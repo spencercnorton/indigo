@@ -57,8 +57,10 @@ controller grammar as every other screen.
 **Cheats read clearly.** The cheat browser shows per-cheat state plainly, and
 the runtime handling around it is stricter about what it will apply.
 
-**Settings and System were rebuilt to match.** Consistent navigation,
-consistent focus, and no screen that still looks like the old list.
+**Settings and System Information match the rest.** Settings keeps Swiss's
+six tabs and every option, restyled; System Information is new. Settings can
+also be written ahead of time in a file on the SD card: see
+[docs/SETTINGS.md](docs/SETTINGS.md).
 
 ## Install
 

@@ -3,6 +3,16 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.5.2 — settings files
+
+- New: [docs/SETTINGS.md](docs/SETTINGS.md) lists every key Swiss reads from
+  `global.ini` and from a game's own settings file, with its values, its
+  default and where it appears in Settings, so a card can be set up on a
+  computer before it goes in the console. Example files are in
+  [docs/examples/](docs/examples/).
+- The README no longer says Settings was rebuilt: it keeps Swiss's six tabs,
+  restyled.
+
 ## v1.5.1 — README
 
 - Install now says where `swiss.dol` goes on the console: in place of the file
