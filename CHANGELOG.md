@@ -3,6 +3,12 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.5.1 — README
+
+- Install now says where `swiss.dol` goes on the console: in place of the file
+  your loader already boots, under that file's name, with PicoBoot spelled
+  out. The build path `cube/swiss/swiss.dol` read as a path on the SD card.
+
 ## v1.5.0 — Home
 
 - The Library face shows a GameCube controller instead of the bookshelf, and

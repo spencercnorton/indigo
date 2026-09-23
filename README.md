@@ -72,17 +72,39 @@ git clone https://github.com/spencercnorton/indigo.git
 cd indigo
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
   ghcr.io/extremscorner/libogc2 make dev
-# cube/swiss/swiss.dol
+# writes cube/swiss/swiss.dol inside this folder, on your computer
 ```
 
-Copy `cube/swiss/swiss.dol` to your SD card as your loader expects it — the
-same path you already use for Swiss. There is no published binary release and
-no installer; this is a source fork of a homebrew utility.
+There is no published binary release and no installer; this is a source fork
+of a homebrew utility.
 
 The release packaging targets (`make dist` and friends) are not supported
 here: they need prebuilt tools and device firmware images that this fork does
 not redistribute. `make dev` builds the executable, which is what the fork
 changes.
+
+### On the console
+
+`cube/swiss/swiss.dol` is where the build leaves the file, not a path on your
+SD card. On the card, Indigo takes the place of the file your loader already
+boots, under that file's name. Your Swiss settings carry over.
+
+- **PicoBoot** boots `ipl.dol` from the root of the card. Rename that file to
+  `z.dol`, then copy `swiss.dol` to the root as `ipl.dol`. PicoBoot starts
+  `z.dol` when Z is held at power-on, so stock Swiss stays one button away.
+- **PicoBoot with no `ipl.dol` on the card** has Swiss flashed onto the Pico
+  itself. Flash PicoBoot's standard firmware (see its
+  [installation guide](https://support.webhdx.dev/gc/picoboot/installation-guide)),
+  then do the step above.
+- **Another loader that boots a `.dol` from the card by name**: replace that
+  file the same way, keeping its name.
+- **GC Loader, and other loaders that boot a disc image**: start `swiss.dol`
+  from Swiss's file browser. This fork does not build `boot.iso` or the other
+  packaged formats.
+
+With In-Game Reset set to **Apploader**, a reset returns to the Swiss inside
+`/swiss/patches/apploader.img`, not to Indigo; `make dev` does not rebuild
+that file.
 
 ## Documentation
 
