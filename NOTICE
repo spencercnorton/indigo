@@ -1,0 +1,34 @@
+Indigo
+Copyright (c) 2026 Spencer Norton
+
+This product is a modified version of Swiss, the homebrew utility for the
+Nintendo GameCube:
+
+    Swiss — https://github.com/emukidid/swiss-gc
+    Copyright (c) emukidid and the Swiss contributors
+    Licensed under the GNU General Public License, version 2 or later.
+
+Indigo keeps that licence. The modifications in this repository are the
+interface: an animated four-face Home, a retained poster library, game
+details, a rebuilt Settings and System surface, shared controller navigation,
+and the cheat presentation around them. The device handlers, patch engine and
+loader are upstream's work.
+
+This is an unofficial fork. It is not endorsed by, affiliated with, or
+supported by the Swiss project, and issues found here should not be reported
+upstream.
+
+Third-party components redistributed in this tree:
+
+  littlefs — https://github.com/littlefs-project/littlefs
+    Copyright (c) 2022, The littlefs authors. BSD-3-Clause.
+    Vendored at commit 6cb4e86540eca0d9ba62500a298385c9d863c8be;
+    see cube/swiss/source/littlefs/LICENSE.md.
+
+  FatFs — http://elm-chan.org/fsw/ff/
+    Copyright (C) ChaN. One-clause BSD-style licence, retained in the source.
+    The DBCS conversion tables are removed; see the note in
+    cube/swiss/source/fatfs/ffunicode.c.
+
+  XZ Embedded, and the other upstream third-party sources under cube/, carry
+  their own notices in place.

@@ -1,0 +1,25 @@
+*.d
+*.dol
+*.elf
+*.map
+*.o
+/cube/packer/SDLOADER.BIN
+/cube/patches/disassembly
+/cube/swiss/source/patches/*.bin.s
+/cube/swiss/source/patches/*_bin.h
+/pc/usbgecko/swissserver
+/pc/usbgecko/swissserver.exe
+/swiss_r*
+build
+dist
+# Native cheat-presentation host test executables.
+/buildtools/ui/tests/test_ui_cheats
+/buildtools/ui/tests/test_ui_cheats_san
+
+# Native play-history host test executables.
+/buildtools/ui/tests/test_ui_game_history
+/buildtools/ui/tests/test_ui_game_history_san
+
+# Native cube-orientation host test executables.
+/buildtools/ui/tests/test_ui_cube_motif
+/buildtools/ui/tests/test_ui_cube_motif_san

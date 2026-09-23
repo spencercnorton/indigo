@@ -1,0 +1,491 @@
+/* filemeta.c
+	- file meta gathering
+	by emu_kidid
+ */
+
+#include <fnmatch.h>
+#include <stdio.h>
+#include <ogcsys.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/time.h>
+#include <time.h>
+#include <malloc.h>
+#include <gcm.h>
+#include <main.h>
+#include "dvd.h"
+#include "filelock.h"
+#include "filemeta.h"
+#include "nkit.h"
+#include "swiss.h"
+#include "sidestep.h"
+#include "deviceHandler.h"
+#include "FrameBufferMagic.h"
+
+//this is the blank banner that will be shown if no banner is found on a disc
+extern BNR blankbanner;
+
+#define NUM_META_MAX (512)
+#define META_CACHE_SIZE (sizeof(file_meta) * NUM_META_MAX)
+
+static void* meta_cache = NULL;
+static mspace meta_mspace = NULL;
+static lwp_t meta_thread = LWP_THREAD_NULL;
+
+void meta_free(file_meta* meta) {
+	if(meta) {
+		if(meta->banner) {
+			free(meta->banner);
+			meta->banner = NULL;
+		}
+		free(meta);
+	}
+}
+
+file_meta* meta_alloc() {
+	if(!meta_cache) {
+		meta_cache = malloc(META_CACHE_SIZE);
+		if(meta_cache) meta_mspace = create_mspace_with_base(meta_cache, META_CACHE_SIZE, 1);
+		if(meta_mspace) mspace_set_footprint_limit(meta_mspace, META_CACHE_SIZE);
+	}
+	if(!meta_mspace) return NULL;
+
+	file_meta* meta = mspace_calloc(meta_mspace, 1, sizeof(file_meta));
+	// When there's no room to allocate, kill thread
+	if(!meta) {
+		lwp_t thread = meta_thread;
+		meta_thread = LWP_THREAD_NULL;
+		if(thread == LWP_GetSelf()) {
+			return NULL;
+		}
+	}
+	// While there's no room to allocate, call release
+	while(!meta) {
+		file_handle** dirEntries = getSortedDirEntries();
+		int dirEntryCount = getSortedDirEntryCount();
+		for(int i = 0; i < dirEntryCount; i++) {
+			if(!in_range(i, current_view_start, current_view_end)) {
+				if(dirEntries[i]->meta && trylockFile(dirEntries[i])) {
+					meta_free(dirEntries[i]->meta);
+					dirEntries[i]->meta = NULL;
+					dirEntries[i]->device->closeFile(dirEntries[i]);
+					unlockFile(dirEntries[i]);
+					break;
+				}
+			}
+		}
+		meta = mspace_calloc(meta_mspace, 1, sizeof(file_meta));
+	}
+	return meta;
+}
+
+void meta_create_direct_texture(file_meta* meta) {
+	DCFlushRange(meta->banner, meta->bannerSize);
+	GX_InitTexObj(&meta->bannerTexObj, meta->banner, 96, 32, GX_TF_RGB5A3, GX_CLAMP, GX_CLAMP, GX_FALSE);
+	GX_InitTexObjFilterMode(&meta->bannerTexObj, GX_LINEAR, GX_NEAR);
+}
+
+void meta_create_direct_texture_ci(file_meta* meta) {
+	DCFlushRange(meta->banner, meta->bannerSize);
+	GX_InitTlutObj(&meta->bannerTlutObj, meta->banner + 96 * 32, GX_TL_RGB5A3, 256);
+	GX_InitTexObjCI(&meta->bannerTexObj, meta->banner, 96, 32, GX_TF_CI8, GX_CLAMP, GX_CLAMP, GX_FALSE, GX_TLUT0);
+	GX_InitTexObjFilterMode(&meta->bannerTexObj, GX_LINEAR, GX_NEAR);
+	GX_InitTexObjUserData(&meta->bannerTexObj, &meta->bannerTlutObj);
+}
+
+void fixBannerDesc(char *str, int len) {
+	const char *end = str + len;
+	for (char *s1 = str; s1 < end && *s1; s1++) {
+		if (*s1 == ' ') {
+			for (char *s2 = s1;;) {
+				if (++s2 == end || *s2 == '\0') {
+					memset(s1, '\0', s2 - s1);
+					return;
+				} else if (*s2 != ' ') {
+					if (s2 - s1 > 2) {
+						if (*s2 != '\n')
+							*s1++ = '\n';
+						s2 = mempcpy(s1, s2, end - s2);
+						memset(s2, '\0', end - s2);
+					}
+					break;
+				}
+			}
+		}
+	}
+}
+
+void populate_save_meta(file_handle *f, u8 bannerFormat, u32 bannerOffset, u32 commentOffset) {
+	if(bannerOffset != -1) {
+		switch(bannerFormat & CARD_BANNER_MASK) {
+			case CARD_BANNER_CI:
+				f->meta->bannerSize = CARD_BANNER_W * CARD_BANNER_H + 256 * 2;
+				f->meta->banner = memalign(32, f->meta->bannerSize);
+				f->device->seekFile(f, bannerOffset, DEVICE_HANDLER_SEEK_SET);
+				if(f->device->readFile(f, f->meta->banner, f->meta->bannerSize) == f->meta->bannerSize) {
+					meta_create_direct_texture_ci(f->meta);
+				}
+				else {
+					free(f->meta->banner);
+					f->meta->banner = NULL;
+				}
+				break;
+			case CARD_BANNER_RGB:
+				f->meta->bannerSize = CARD_BANNER_W * CARD_BANNER_H * 2;
+				f->meta->banner = memalign(32, f->meta->bannerSize);
+				f->device->seekFile(f, bannerOffset, DEVICE_HANDLER_SEEK_SET);
+				if(f->device->readFile(f, f->meta->banner, f->meta->bannerSize) == f->meta->bannerSize) {
+					meta_create_direct_texture(f->meta);
+				}
+				else {
+					free(f->meta->banner);
+					f->meta->banner = NULL;
+				}
+				break;
+		}
+	}
+	if(commentOffset != -1) {
+		char comment[64];
+		f->device->seekFile(f, commentOffset, DEVICE_HANDLER_SEEK_SET);
+		if(f->device->readFile(f, comment, 64) == 64) {
+			snprintf(f->meta->bannerDesc.description, BNR_DESC_LEN, "%.32s\n%.32s", &comment[0], &comment[32]);
+			fixBannerDesc(f->meta->bannerDesc.description, BNR_DESC_LEN);
+		}
+	}
+}
+
+void populate_game_meta(file_handle *f, u32 bannerOffset, u32 bannerSize) {
+	f->meta->bannerSum = 0xFFFF;
+	f->meta->bannerSize = BNR_PIXELDATA_LEN;
+	f->meta->banner = memalign(32,BNR_PIXELDATA_LEN);
+	memcpy(f->meta->banner,blankbanner.pixelData,BNR_PIXELDATA_LEN);
+	if(bannerOffset == -1 || bannerOffset + bannerSize > f->size) {
+		print_debug("Banner not found or out of range\n");
+	}
+	else if(bannerSize) {
+		BNR *banner = readFileBlockAligned(f, bannerOffset, bannerSize);
+		if(!banner) {
+			print_debug("Banner read failed %i from offset %08X\n", bannerSize, bannerOffset);
+		}
+		else {
+			if(!memcmp(banner->magic, "BNR1", 4)) {
+				f->meta->bannerSum = fletcher16(banner, bannerSize);
+				memcpy(f->meta->banner, banner->pixelData, f->meta->bannerSize);
+				memcpy(&f->meta->bannerDesc, &banner->desc[SYS_LANG_ENGLISH], sizeof(f->meta->bannerDesc));
+			}
+			else if(!memcmp(banner->magic, "BNR2", 4)) {
+				f->meta->bannerSum = fletcher16(banner, bannerSize);
+				memcpy(f->meta->banner, banner->pixelData, f->meta->bannerSize);
+				if(in_range(swissSettings.sramLanguage, SYS_LANG_ENGLISH, SYS_LANG_DUTCH))
+					memcpy(&f->meta->bannerDesc, &banner->desc[swissSettings.sramLanguage], sizeof(f->meta->bannerDesc));
+				else
+					memcpy(&f->meta->bannerDesc, &banner->desc[SYS_LANG_ENGLISH], sizeof(f->meta->bannerDesc));
+			}
+			fixBannerDesc(f->meta->bannerDesc.gameName, BNR_SHORT_TEXT_LEN);
+			if(strnlen(f->meta->bannerDesc.gameName, BNR_SHORT_TEXT_LEN))
+				f->meta->displayName = f->meta->bannerDesc.gameName;
+			fixBannerDesc(f->meta->bannerDesc.company, BNR_SHORT_TEXT_LEN);
+			fixBannerDesc(f->meta->bannerDesc.fullGameName, BNR_FULL_TEXT_LEN);
+			if(strnlen(f->meta->bannerDesc.fullGameName, BNR_FULL_TEXT_LEN))
+				f->meta->displayName = f->meta->bannerDesc.fullGameName;
+			fixBannerDesc(f->meta->bannerDesc.fullCompany, BNR_FULL_TEXT_LEN);
+			// Some banners only have empty spaces as padding until they hit a new line in the IPL
+			fixBannerDesc(f->meta->bannerDesc.description, BNR_DESC_LEN);
+			// ...and some banners have no CR/LF and we'd like a sane wrap point
+			if(strlen(f->meta->bannerDesc.description) > 50) {
+				char *desc_ptr = f->meta->bannerDesc.description;
+				if(!strchr(desc_ptr, '\n')) {
+					desc_ptr+=(strlen(desc_ptr) / 2);
+					if((desc_ptr = strchr(desc_ptr, ' '))) {
+						*desc_ptr = '\n';
+					}
+				}
+			}
+		}
+		free(banner);
+	}
+	meta_create_direct_texture(f->meta);
+}
+
+void populate_dol_meta(file_handle *f) {
+	DOLHEADER dolhdr;
+	f->device->seekFile(f, 0, DEVICE_HANDLER_SEEK_SET);
+	if(f->device->readFile(f, &dolhdr, DOLHDRLENGTH) == DOLHDRLENGTH) {
+		char description[BNR_DESC_LEN];
+		if(dolhdr.dataOffset[0] && dolhdr.dataLength[0] >= BNR_DESC_LEN) {
+			f->device->seekFile(f, dolhdr.dataOffset[0], DEVICE_HANDLER_SEEK_SET);
+			if(f->device->readFile(f, description, BNR_DESC_LEN) == BNR_DESC_LEN) {
+				if(strnlen(description, BNR_DESC_LEN) < BNR_DESC_LEN && !strncasecmp(description, "libogc", 6)) {
+					strncpy(f->meta->bannerDesc.description, description, BNR_DESC_LEN);
+				}
+			}
+		}
+	}
+}
+
+void populate_meta(file_handle *f) {
+	// If the meta hasn't been created, lets read it.
+	if(!f->meta && (f->meta = meta_alloc())) {
+		// File detection (GCM, DOL, MP3 etc)
+		if(f->fileType==IS_FILE) {
+			if(endsWith(f->name,".dol")) {
+				populate_dol_meta(f);
+				f->meta->fileTypeTexObj = &dolimgTexObj;
+			}
+			else if(endsWith(f->name,".dol+cli")) {
+				populate_dol_meta(f);
+				f->meta->fileTypeTexObj = &dolcliimgTexObj;
+			}
+			else if(endsWith(f->name,".elf"))
+				f->meta->fileTypeTexObj = &elfimgTexObj;
+			else if(endsWith(f->name,".fpkg"))
+				f->meta->fileTypeTexObj = &fpkgimgTexObj;
+			else if(endsWith(f->name,".mp3"))
+				f->meta->fileTypeTexObj = &mp3imgTexObj;
+			else
+				f->meta->fileTypeTexObj = &fileimgTexObj;
+			
+			if(f->device == &__device_wode && f->status == STATUS_NOT_MAPPED) {
+				f->meta->bannerSum = 0xFFFF;
+				f->meta->bannerSize = BNR_PIXELDATA_LEN;
+				f->meta->banner = memalign(32,BNR_PIXELDATA_LEN);
+				memcpy(f->meta->banner,blankbanner.pixelData,BNR_PIXELDATA_LEN);
+				meta_create_direct_texture(f->meta);
+				// Assign GCM region texture
+				ISOInfo_t* isoInfo = (ISOInfo_t*)&f->other;
+				char region = wodeRegionToChar(isoInfo->iso_region);
+				if(region == 'J')
+					f->meta->regionTexObj = &ntscjTexObj;
+				else if(region == 'E')
+					f->meta->regionTexObj = &ntscuTexObj;
+				else if(region == 'P')
+					f->meta->regionTexObj = &palTexObj;
+				f->meta->fileTypeTexObj = &gcmimgTexObj;
+				f->meta->displayName = strncpy(f->meta->bannerDesc.fullGameName, isoInfo->name, BNR_FULL_TEXT_LEN);
+			}
+			else if(f->device == &__device_card_a || f->device == &__device_card_b) {
+				card_dir* dir = (card_dir*)&f->other;
+				card_stat stat;
+				if(CARD_GetStatus(dir->chn, dir->fileno, &stat) == CARD_ERROR_READY) {
+					populate_save_meta(f, stat.banner_fmt, stat.icon_addr, stat.comment_addr);
+					char region = getGCIRegion((const char*)stat.gamecode);
+					if(region == 'J')
+						f->meta->regionTexObj = &ntscjTexObj;
+					else if(region == 'E')
+						f->meta->regionTexObj = &ntscuTexObj;
+					else if(region == 'P')
+						f->meta->regionTexObj = &palTexObj;
+					f->meta->displayName = strncpy(f->meta->bannerDesc.gameName, stat.filename, BNR_SHORT_TEXT_LEN);
+				}
+			}
+			else if(endsWith(f->name,".gci") || endsWith(f->name,".gcs") || endsWith(f->name,".sav")) {
+				GCI gci;
+				f->device->seekFile(f, 0, DEVICE_HANDLER_SEEK_SET);
+				if(f->device->readFile(f, &gci, sizeof(GCI)) == sizeof(GCI)) {
+					if(!memcmp(&gci, "DATELGC_SAVE", 12)) {
+						f->device->seekFile(f, 0x80, DEVICE_HANDLER_SEEK_SET);
+						f->device->readFile(f, &gci, sizeof(GCI));
+						#pragma GCC diagnostic push
+						#pragma GCC diagnostic ignored "-Wrestrict"
+						swab(&gci.reserved01, &gci.reserved01, 2);
+						swab(&gci.icon_addr,  &gci.icon_addr, 20);
+						#pragma GCC diagnostic pop
+					}
+					else if(!memcmp(&gci, "GCSAVE", 6)) {
+						f->device->seekFile(f, 0x110, DEVICE_HANDLER_SEEK_SET);
+						f->device->readFile(f, &gci, sizeof(GCI));
+					}
+					if(f->size - f->offset == gci.filesize8 * 8192) {
+						if(gci.icon_addr != -1) gci.icon_addr += f->offset;
+						if(gci.comment_addr != -1) gci.comment_addr += f->offset;
+						populate_save_meta(f, gci.banner_fmt, gci.icon_addr, gci.comment_addr);
+						char region = getGCIRegion((const char*)gci.gamecode);
+						if(region == 'J')
+							f->meta->regionTexObj = &ntscjTexObj;
+						else if(region == 'E')
+							f->meta->regionTexObj = &ntscuTexObj;
+						else if(region == 'P')
+							f->meta->regionTexObj = &palTexObj;
+						f->meta->displayName = strncpy(f->meta->bannerDesc.gameName, gci.filename, BNR_SHORT_TEXT_LEN);
+					}
+				}
+			}
+			else if(endsWith(f->name,".fdi") || endsWith(f->name,".gcm") || endsWith(f->name,".iso")) {
+				DiskHeader *diskHeader = get_gcm_header(f);
+				if(diskHeader) {
+					u32 bannerOffset = 0, bannerSize = f->size;
+					if(!get_gcm_banner_fast(diskHeader, &bannerOffset, &bannerSize))
+						get_gcm_banner(f, diskHeader, &bannerOffset, &bannerSize);
+					populate_game_meta(f, bannerOffset, bannerSize);
+					get_gcm_title(diskHeader, f->meta);
+					// Assign GCM region texture
+					char region = wodeRegionToChar(diskHeader->RegionCode);
+					if(region == 'J')
+						f->meta->regionTexObj = &ntscjTexObj;
+					else if(region == 'E')
+						f->meta->regionTexObj = &ntscuTexObj;
+					else if(region == 'P')
+						f->meta->regionTexObj = &palTexObj;
+					f->meta->fileTypeTexObj = &gcmimgTexObj;
+					memcpy(&f->meta->diskId, diskHeader, sizeof(dvddiskid));
+					free(diskHeader);
+				}
+			}
+			else if(endsWith(f->name,".tgc")) {
+				TGCHeader tgcHeader;
+				f->device->seekFile(f, 0, DEVICE_HANDLER_SEEK_SET);
+				if(f->device->readFile(f, &tgcHeader, sizeof(TGCHeader)) == sizeof(TGCHeader) && tgcHeader.magic == TGC_MAGIC) {
+					populate_game_meta(f, tgcHeader.bannerStart, tgcHeader.bannerLength);
+					f->meta->fileTypeTexObj = &tgcimgTexObj;
+				}
+			}
+			else if(endsWith(f->name,"/default.dol")) {
+				file_handle *bannerFile = calloc(1, sizeof(file_handle));
+				getParentPath(f->name, bannerFile->name);
+				concat_path(bannerFile->name, bannerFile->name, "opening.bnr");
+				bannerFile->meta = f->meta;
+				bannerFile->device = f->device;
+				
+				if (f->device->readFile(bannerFile, NULL, 0) == 0 && bannerFile->size)
+					populate_game_meta(bannerFile, 0, bannerFile->size);
+				
+				f->device->closeFile(bannerFile);
+				free(bannerFile);
+			}
+			if(f->device == &__device_flippy || f->device == &__device_flippyflash) {
+				f->device->closeFile(f);
+			}
+		}
+		else if (f->fileType == IS_DIR) {
+			f->meta->fileTypeTexObj = &dirimgTexObj;
+			
+			file_handle *bannerFile = calloc(1, sizeof(file_handle));
+			concat_path(bannerFile->name, f->name, "opening.bnr");
+			bannerFile->meta = f->meta;
+			bannerFile->device = f->device;
+			
+			if (f->device->readFile(bannerFile, NULL, 0) == 0 && bannerFile->size) {
+				populate_game_meta(bannerFile, 0, bannerFile->size);
+				
+				file_handle *bootFile = calloc(1, sizeof(file_handle));
+				concat_path(bootFile->name, f->name, "default.dol");
+				bootFile->meta = f->meta;
+				bootFile->device = f->device;
+				
+				if (f->device->readFile(bootFile, NULL, 0) == 0 && bootFile->size) {
+					f->device->closeFile(bootFile);
+					
+					f = memcpy(f, bootFile, offsetof(file_handle, uiObj));
+					f->meta->fileTypeTexObj = &dolimgTexObj;
+				}
+				f->device->closeFile(bootFile);
+				free(bootFile);
+			} else if (!fnmatch("*/apps", f->name, FNM_PATHNAME | FNM_CASEFOLD))
+				f->meta->displayName = "Applications";
+			 else if (!fnmatch("*/games", f->name, FNM_PATHNAME | FNM_CASEFOLD))
+				f->meta->displayName = "Games";
+			if (!fnmatch("*/apps/*", f->name, FNM_PATHNAME | FNM_CASEFOLD)) {
+				file_handle *bootFile = calloc(1, sizeof(file_handle));
+				concat_path(bootFile->name, f->name, "boot.dol");
+				bootFile->meta = f->meta;
+				bootFile->device = f->device;
+				
+				if (f->device->readFile(bootFile, NULL, 0) == 0 && bootFile->size) {
+					f->device->closeFile(bootFile);
+					
+					concatf_path(bootFile->name, f->name, "%s.dol", getRelativeName(f->name));
+					bootFile->size = 0;
+					
+					if (f->device->readFile(bootFile, NULL, 0) == 0 && bootFile->size) {
+						populate_dol_meta(bootFile);
+						f->device->closeFile(bootFile);
+						
+						f = memcpy(f, bootFile, offsetof(file_handle, uiObj));
+						f->meta->fileTypeTexObj = &dolimgTexObj;
+					}
+				}
+				f->device->closeFile(bootFile);
+				free(bootFile);
+			}
+			f->device->closeFile(bannerFile);
+			free(bannerFile);
+		}
+		else if (f->fileType == IS_SPECIAL) {
+			f->meta->displayName = "Up to parent directory";
+		}
+	}
+}
+
+void repopulate_meta(file_handle *f) {
+	meta_free(f->meta);
+	f->meta = NULL;
+	populate_meta(f);
+}
+
+file_handle* meta_find_disc2(file_handle *f) {
+	file_handle* disc2File = NULL;
+	if(is_multi_disc(f->meta) && !(f->device->quirks & QUIRK_GCLOADER_NO_DISC_2)) {
+		file_handle* dirEntries = getCurrentDirEntries();
+		int dirEntryCount = getCurrentDirEntryCount();
+		for(int i = 0; i < 2; i++) {
+			for(int j = 0; j < dirEntryCount; j++) {
+				if(!dirEntries[j].meta) {
+					if(i == 0) continue;
+					populate_meta(&dirEntries[j]);
+				}
+				if(dirEntries[j].meta) {
+					if(strncmp((const char*)dirEntries[j].meta->diskId.gamename, (const char*)f->meta->diskId.gamename, 4)) {
+						continue;
+					}
+					if(strncmp((const char*)dirEntries[j].meta->diskId.company, (const char*)f->meta->diskId.company, 2)) {
+						continue;
+					}
+					if(dirEntries[j].meta->diskId.disknum == f->meta->diskId.disknum) {
+						continue;
+					}
+					if(dirEntries[j].meta->diskId.gamever != f->meta->diskId.gamever) {
+						continue;
+					}
+					if(strlen(dirEntries[j].name) != strlen(f->name)) {
+						disc2File = &dirEntries[j];
+						continue;
+					}
+					if(strcasecmp(dirEntries[j].name, f->name) != dirEntries[j].meta->diskId.disknum - f->meta->diskId.disknum) {
+						disc2File = &dirEntries[j];
+						continue;
+					}
+					return &dirEntries[j];
+				}
+			}
+		}
+	}
+	return disc2File;
+}
+
+static void *meta_thread_func(void *loadingBox) {
+	DrawUpdateProgressLoading(loadingBox, +1);
+	file_handle *dirEntries = getCurrentDirEntries();
+	int dirEntryCount = getCurrentDirEntryCount();
+	for (int i = 0; i < dirEntryCount; i++) {
+		if (meta_thread != LWP_GetSelf()) break;
+		if (trylockFile(&dirEntries[i])) {
+			populate_meta(&dirEntries[i]);
+			unlockFile(&dirEntries[i]);
+		}
+	}
+	DrawUpdateProgressLoading(loadingBox, -1);
+	return NULL;
+}
+
+void meta_thread_start(void *loadingBox) {
+	if (devices[DEVICE_CUR]->features & FEAT_THREAD_SAFE)
+		LWP_CreateThread(&meta_thread, meta_thread_func, loadingBox, NULL, 16*1024, LWP_PRIO_NORMAL - 1);
+}
+
+void meta_thread_stop() {
+	lwp_t thread = meta_thread;
+	meta_thread = LWP_THREAD_NULL;
+	LWP_JoinThread(thread, NULL);
+}

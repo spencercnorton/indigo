@@ -1,0 +1,28 @@
+# Baseline: the helios public feature_request.yml, which passed the gate.
+name: Feature request
+description: Propose a change to how Indigo works.
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that Indigo makes hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should change, and what should it look like?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: ["Home and navigation", "Library and posters", "Game details", "Cheats", "Settings", "Device handlers", "Booting a game", "Other / not sure"]
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
