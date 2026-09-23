@@ -533,19 +533,20 @@ static guVector cubeViewNormal(const cubeRasterTransform_t *raster, guVector n)
 	return (guVector) {eye.x / length, eye.y / length, eye.z / length};
 }
 
-/* Tints are authored per camera direction in buildCubeFaces order: back,
- * left, right, bottom, top, front. Squared unit-normal components sum to one,
- * so a turning face blends between them and the light stays with the camera
- * instead of rotating with the cube. */
+/* Outward body axes in buildCubeFaces order: back, left, right, bottom, top, front. */
+static const guVector cubeFaceAxes[6] = {
+	{0.0f, 0.0f, -1.0f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f},
+	{0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}
+};
+
+/* Tints are authored per camera direction in cubeFaceAxes order. Squared
+ * unit-normal components sum to one, so a turning face blends between them
+ * and the light stays with the camera instead of rotating with the cube. */
 static void litCubeTints(const cubeRasterTransform_t *raster,
 		const GXColor tints[6], GXColor lit[6])
 {
-	static const guVector axes[6] = {
-		{0.0f, 0.0f, -1.0f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f},
-		{0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}
-	};
 	for(int face = 0; face < 6; face++) {
-		guVector n = cubeViewNormal(raster, axes[face]);
+		guVector n = cubeViewNormal(raster, cubeFaceAxes[face]);
 		const GXColor *x = &tints[n.x < 0.0f ? 1 : 2];
 		const GXColor *y = &tints[n.y < 0.0f ? 3 : 4];
 		const GXColor *z = &tints[n.z < 0.0f ? 0 : 5];
@@ -1516,16 +1517,22 @@ static void drawSemanticFaceMotifs(float seconds, bool animated,
 		GX_LO_CLEAR);
 }
 
-static void drawFrontRailAccents(const cubeRasterTransform_t *raster,
+static void drawFaceFrame(const cubeRasterTransform_t *raster, guVector n,
 		float inset, float front, GXColor color)
 {
 	static const float offsets[4] = {-1.1f, -0.35f, 0.35f, 1.1f};
+	/* Two body axes across face n. The band is symmetric, so the corner
+	 * winding this gives each face does not matter. */
+	guVector u = {fabsf(n.x) > 0.5f ? 0.0f : 1.0f, 0.0f, fabsf(n.x) > 0.5f ? 1.0f : 0.0f};
+	guVector v = {0.0f, fabsf(n.y) > 0.5f ? 0.0f : 1.0f, fabsf(n.y) > 0.5f ? 1.0f : 0.0f};
 	guVector eyes[4];
 	indigoPoint_t points[4], joins[4];
 	Mtx identity;
 	for(int i = 0; i < 4; i++) {
-		if(!projectRailPoint(raster, i == 0 || i == 3 ? -inset : inset,
-			i < 2 ? -inset : inset, front, &eyes[i], &points[i])) return;
+		float su = i == 0 || i == 3 ? -inset : inset, sv = i < 2 ? -inset : inset;
+		if(!projectRailPoint(raster, n.x * front + u.x * su + v.x * sv,
+			n.y * front + u.y * su + v.y * sv, n.z * front + u.z * su + v.z * sv,
+			&eyes[i], &points[i])) return;
 	}
 	for(int i = 0; i < 4; i++) {
 		if(!railJoin(points[(i + 3) % 4], points[i], points[(i + 1) % 4],
@@ -1700,6 +1707,26 @@ static void drawGlassReflection(const cubeRasterTransform_t *raster,
 			}
 		}
 		GX_End();
+	}
+}
+
+/* The frame belongs to whichever face is turned toward the viewer, not to one
+ * face of the body: it follows the selected face through every turn, up and
+ * down included, fading out as one face turns away and in as the next
+ * arrives. */
+static void drawFrontRailAccents(const cubeRasterTransform_t *raster,
+		float inset, float front, GXColor color)
+{
+	for(int face = 0; face < 6; face++) {
+		guVector axis = cubeFaceAxes[face], eye, n = cubeViewNormal(raster, axis);
+		indigoPoint_t screen;
+		if(!projectRailPoint(raster, axis.x * front, axis.y * front, axis.z * front,
+			&eye, &screen)) return;
+		float facing = -(n.x * eye.x + n.y * eye.y + n.z * eye.z) /
+			sqrtf(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z);
+		GXColor faded = color;
+		faded.a = (u8)((float)color.a * glassSmoothstep(0.62f, 0.86f, facing));
+		if(faded.a > 0) drawFaceFrame(raster, axis, inset, front, faded);
 	}
 }
 

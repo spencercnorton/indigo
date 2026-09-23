@@ -3,6 +3,16 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.12.1 — Home
+
+- The white frame on the cube now marks the face you are on. It stayed on
+  the face Library starts on, so after a turn it sat edge-on beside the face
+  you had chosen, or on the top or bottom after Up or Down. Now it fades
+  across to each face as that face turns to the front.
+- The README's Home animation is re-recorded with it, and the System
+  screenshot is current: it still showed the rings around the cube removed
+  in v1.4.1.
+
 ## v1.12.0 — settings read the positive way round
 
 - Settings stored as "Disable …" now read the way you'd say them:
