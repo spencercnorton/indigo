@@ -66,6 +66,14 @@ static int playHistorySlot = -1;
 #define SWISS_SETTINGS_DIR "swiss/settings"
 #define SWISS_GAME_SETTINGS_DIR "swiss/settings/game"
 
+/* Whether global.ini holds the settings: it was read at boot or a save has
+ * written it since. Setup > Storage says so. */
+static bool globalFileLoaded;
+
+bool config_global_file_loaded(void) {
+	return globalFileLoaded;
+}
+
 // Tries to init the current config device
 bool config_set_device() {
 	// Set the current config device to whatever the current configDeviceId is
@@ -545,6 +553,9 @@ int config_update_global(bool checkConfigDevice) {
 	char *existing = config_file_read(path);
 	char *merged = config_merge_file(existing, configString, globalOldKeys);
 	int res = config_file_write(path, merged != NULL ? merged : configString);
+	if(res) {
+		globalFileLoaded = true;
+	}
 	free(merged);
 	free(existing);
 	free(configString);
@@ -1711,6 +1722,7 @@ int config_init(void (*progress_indicator)(char*, int, int)) {
 	// Read config (new format)
 	concat_path(txtbuffer, SWISS_SETTINGS_DIR, SWISS_SETTINGS_FILENAME);
 	configData = config_file_read(txtbuffer);
+	globalFileLoaded = configData != NULL;
 	if(configData != NULL) {
 		config_parse_global(configData);
 		free(configData);

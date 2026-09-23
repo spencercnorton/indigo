@@ -3,6 +3,15 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.11.0 — Storage says whether your settings file loaded
+
+- Settings › Setup › Storage now tells you, under its title, where your
+  settings live and whether that file loaded: "Settings are saved in
+  swiss/settings/global.ini.", "No swiss/settings/global.ini yet: using
+  defaults." or "No device to save settings to."
+- Configuration Device's help names the file and says the choice changes
+  only once Save & Exit has written the settings there.
+
 ## v1.10.0 — help for every setting; saving keeps your files intact
 
 - Y now explains every setting in Settings. 34 rows had no help, including

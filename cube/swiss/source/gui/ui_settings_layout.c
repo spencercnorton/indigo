@@ -102,6 +102,17 @@ const uiSetLayoutPage_t *UISetLayout_PageDesc(int page) {
 	return &PAGES[page];
 }
 
+const char *UISetLayout_SettingsFileText(int state) {
+	static const char *const text[UI_SETLAYOUT_SETTINGS_FILE_STATES] = {
+		"Settings are saved in swiss/settings/global.ini.",
+		"No swiss/settings/global.ini yet: using defaults.",
+		"No device to save settings to.",
+	};
+	if (state < 0 || state >= UI_SETLAYOUT_SETTINGS_FILE_STATES)
+		state = UI_SETLAYOUT_SETTINGS_FILE_NO_DEVICE;
+	return text[state];
+}
+
 int UISetLayout_DiscardIndex(int page) {
 	return UISetLayout_PageDesc(page)->rowCount + 1;
 }

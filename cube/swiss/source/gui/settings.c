@@ -94,7 +94,7 @@ static char *tooltips_global[PAGE_GLOBAL_MAX+1] = {
 	[SET_SYS_VIDEO] = "System Video:\n\nIntended to select between NTSC and PAL-M on DOL-002(BRA)",
 	[SET_SCREEN_POS] = "Screen Position:\n\nAdjusts the horizontal screen position in games",
 	[SET_SYS_LANG] = "System Language:\n\nSystem language used in games, primarily multi-5 PAL games",
-	[SET_CONFIG_DEV] = "Configuration Device:\n\nThe device that Swiss will use to load and save settings from.\nThis setting is stored in SRAM and will remain on reboot.",
+	[SET_CONFIG_DEV] = "Configuration Device:\n\nThe device Indigo loads settings from and saves them to, in\nswiss/settings/global.ini. The choice is stored in SRAM, and it\nchanges only once Save & Exit has written the settings there.\nThe line under the Storage title says whether that file loaded.",
 	[SET_INIT_DRIVE] = "Init DVD Drive at startup:\n\nDisabled - Leave it as-is (default)\nEnabled - Deassert reset signal when Swiss starts\n\nThis is necessary for the eject button to function on the\nPanasonic Q when Swiss is used as IPL replacement.",
 	[SET_STOP_MOTOR] = "Stop DVD Drive motor:\n\nDisabled - Leave it as-is (default)\nEnabled - Stop the disc from spinning when Swiss starts\n\nThis option is mostly for users booting from game save exploits\nwhere the disc will already be spinning.",
 	[SET_AUDIO_BUFFER] = "Configure Audio Buffer:\n\nOff - Disable audio streaming\nAuto - Enable audio streaming if the disc is known to use it\nOn - Enable audio streaming if the disc asks for it (default)\n\nThe audio buffer consumes a large portion of the GameCube\ndisc drive's read-ahead cache, lengthening load times.",
@@ -383,6 +383,7 @@ static void drawSettingsChrome(uiDrawObj_t* page, int page_num, ConfigEntry *gam
 	char subtitle[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
 	char progress[20];
 	char progressDisplay[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
+	const char *subtitleText = desc->subtitle;
 	GXColor panelColor = setPanelColor;
 	float titleScale;
 	float subtitleScale;
@@ -449,7 +450,13 @@ static void drawSettingsChrome(uiDrawObj_t* page, int page_num, ConfigEntry *gam
 		DrawAddChild(page, DrawStyledLabel(setLayout.titleX, setLayout.titleY,
 			title, titleScale, ALIGN_LEFT, defaultColor));
 	}
-	if(prepareSettingText(desc->subtitle,
+	if(page_num == VIEW_STORAGE) {
+		subtitleText = UISetLayout_SettingsFileText(
+			devices[DEVICE_CONFIG] == NULL ? UI_SETLAYOUT_SETTINGS_FILE_NO_DEVICE :
+			config_global_file_loaded() ? UI_SETLAYOUT_SETTINGS_FILE_SAVED :
+			UI_SETLAYOUT_SETTINGS_FILE_MISSING);
+	}
+	if(prepareSettingText(subtitleText,
 			UI_SETLAYOUT_LABEL_BUFFER_SIZE - 1u,
 			UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false,
 			true, setLayout.subtitleMaxWidth, set_subtitle_size, subtitle,

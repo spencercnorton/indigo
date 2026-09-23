@@ -197,6 +197,14 @@ typedef struct {
 /* Static page descriptor (labels, row counts, nav availability). */
 const uiSetLayoutPage_t *UISetLayout_PageDesc(int page);
 
+/* Setup > Storage's subtitle says where the settings live and whether that
+ * file holds them; settings.c picks the state. */
+#define UI_SETLAYOUT_SETTINGS_FILE_SAVED 0
+#define UI_SETLAYOUT_SETTINGS_FILE_MISSING 1
+#define UI_SETLAYOUT_SETTINGS_FILE_NO_DEVICE 2
+#define UI_SETLAYOUT_SETTINGS_FILE_STATES 3
+const char *UISetLayout_SettingsFileText(int state);
+
 /* Index of the Discard & Exit option: rowCount + 1. */
 int UISetLayout_DiscardIndex(int page);
 

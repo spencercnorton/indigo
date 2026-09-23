@@ -17,6 +17,14 @@ the first device it finds that can hold settings. A new choice reaches SRAM
 only after Save & Exit has written the settings to that device; if the save
 fails, the console keeps the old one.
 
+To check that your file loaded, open Settings › Setup › Storage. The line
+under the title reads:
+- "Settings are saved in swiss/settings/global.ini." when it loaded, or
+  after a save has written it.
+- "No swiss/settings/global.ini yet: using defaults." when there is no file
+  there, or it couldn't be read.
+- "No device to save settings to." when no configuration device was found.
+
 | File | What it holds |
 | --- | --- |
 | `/swiss/settings/global.ini` | Every setting that isn't per game. Read once, when Swiss starts. |
