@@ -894,6 +894,11 @@ static uiDrawObj_t* DrawBackground(void)
 	event->type = EV_BACKGROUND;
 	return event;
 }
+const char *DeviceDisplayName(const DEVICEHANDLER_INTERFACE *device)
+{
+	return device == &__device_dvd ? "Game Disc" : device->deviceName;
+}
+
 
 static void _DrawDeviceSelectorCard(uiDrawObj_t *evt)
 {
@@ -932,7 +937,7 @@ static void _DrawDeviceSelectorCard(uiDrawObj_t *evt)
 		drawStringMedium(502, 220, "\233", 0.90f, ALIGN_LEFT, secondary);
 	}
 
-	drawStringMedium(320, 379 + offsetY, device->deviceName,
+	drawStringMedium(320, 379 + offsetY, DeviceDisplayName(device),
 		data->deviceNameScale, ALIGN_CENTER, primary);
 	drawStringMedium(320, 398 + offsetY, data->capability,
 		data->capabilityScale, ALIGN_CENTER,
@@ -1002,7 +1007,7 @@ uiDrawObj_t* DrawDeviceSelectorCard(DEVICEHANDLER_INTERFACE *device,
 		strcpy(eventData->auxiliaryHint, "Y  INFO");
 	}
 	eventData->deviceNameScale =
-		GetTextScaleToFitInWidthWithMax(device->deviceName, 280, 0.76f);
+		GetTextScaleToFitInWidthWithMax(DeviceDisplayName(device), 280, 0.76f);
 	eventData->capabilityScale =
 		GetTextScaleToFitInWidthWithMax(eventData->capability, 300, 0.52f);
 	eventData->actionScale =

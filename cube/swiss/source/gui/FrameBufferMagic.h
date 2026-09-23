@@ -167,6 +167,9 @@ void DrawUpdateProgressBarDetail(uiDrawObj_t *evt, int percent, int speed, int t
 void DrawUpdateProgressLoading(uiDrawObj_t *evt, int increment);
 bool DrawUpdatePresentation(uiDrawObj_t *evt,
 	const uiPresentationSnapshot_t *snapshot);
+/* What the UI calls a device: the disc drive is the "Game Disc", not
+ * upstream's "DVD". */
+const char *DeviceDisplayName(const DEVICEHANDLER_INTERFACE *device);
 void DrawUpdateHome(const uiHomeState_t *state,
 	uiHomeCapabilities_t capabilities, const char *sourceName);
 void DrawUpdateFileBrowserButton(uiDrawObj_t *evt, int mode);

@@ -191,7 +191,7 @@ static void homePublish(bool visible)
 		curMenuSelection = (int)homeState.face;
 	}
 	if(capabilities.hasSource) {
-		sourceName = devices[DEVICE_CUR]->deviceName;
+		sourceName = DeviceDisplayName(devices[DEVICE_CUR]);
 	}
 	DrawUpdateHome(visible && homeStateReady ? &homeState : NULL,
 		capabilities, sourceName);
@@ -665,7 +665,7 @@ void drawCurrentDeviceCarousel(uiDrawObj_t *containerPanel) {
 	uiDrawObj_t *bgBox = DrawTransparentBox(30, 395, getVideoMode()->fbWidth-30, 420);
 	DrawAddChild(containerPanel, bgBox);
 	// Device name
-	uiDrawObj_t *devNameLabel = DrawStyledLabel(50, 406, devices[DEVICE_CUR]->deviceName, 0.5f, ALIGN_LEFT, defaultColor);
+	uiDrawObj_t *devNameLabel = DrawStyledLabel(50, 406, DeviceDisplayName(devices[DEVICE_CUR]), 0.5f, ALIGN_LEFT, defaultColor);
 	DrawAddChild(containerPanel, devNameLabel);
 	
 	device_info *info = devices[DEVICE_CUR]->info(devices[DEVICE_CUR]->initial);
@@ -1193,7 +1193,7 @@ static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 	snapshot->selection.directionHint = directionHint;
 	snapshot->selection.snapTransition = snapTransition;
 	gameflowCopyText(snapshot->deviceName, sizeof(snapshot->deviceName),
-		devices[DEVICE_CUR]->deviceName, sizeof(snapshot->deviceName));
+		DeviceDisplayName(devices[DEVICE_CUR]), sizeof(snapshot->deviceName));
 	count = UIGameflowLibrary_BuildWindow((u32)numFiles,
 		(u32)curSelection, directionHint, slots);
 	snapshot->recordCount = (u32)count;
@@ -2118,13 +2118,19 @@ bool select_dest_dir(file_handle* initial, file_handle* selection)
 	file_handle curDir;
 	memcpy(&curDir, initial, sizeof(file_entry));
 	int i = 0, j = 0, max = 0, refresh = 1, num_files =0, idx = 0;
+	const u32 waitButtons = BUTTON_X | BUTTON_A | BUTTON_B | BUTTON_UP | BUTTON_DOWN;
+	uiMenuInputState_t menuInput;
+	u32 menuInputRetrace = VIDEO_GetRetraceCount();
 	
 	bool cancelled = false;
 	int fileListBase = 90;
 	int scrollBarHeight = (FILES_PER_PAGE*40);
 	int scrollBarTabHeight = (int)((float)scrollBarHeight/(float)num_files);
 	uiDrawObj_t* destDirBox = NULL;
+	UIMenuInput_Init(&menuInput);
 	while(1){
+		u32 buttons;
+		uiMenuInputDirection_t analog;
 		// Read the directory
 		if(refresh) {
 			free(directory);
@@ -2149,11 +2155,21 @@ bool select_dest_dir(file_handle* initial, file_handle* selection)
 			DrawAddChild(tempBox, DrawSelectableButton(50,fileListBase+(j*40), getVideoMode()->fbWidth-35, fileListBase+(j*40)+40, getRelativeName(directory[i]->name), (i == idx) ? B_SELECTED:B_NOSELECT));
 		}
 		destDirBox = DrawRepublish(destDirBox, tempBox);
-		while ((padsStickY() > -16 && padsStickY() < 16) && !(padsButtonsHeld() & (BUTTON_X|BUTTON_A|BUTTON_B|BUTTON_UP|BUTTON_DOWN)))
-			{ VIDEO_WaitVSync (); }
-		if((padsButtonsHeld() & BUTTON_UP) || padsStickY() > 16){	idx = (--idx < 0) ? num_files-1 : idx;}
-		if((padsButtonsHeld() & BUTTON_DOWN) || padsStickY() < -16) {idx = (idx + 1) % num_files;	}
-		if((padsButtonsHeld() & PAD_BUTTON_A))	{
+		/* The stick repeats on the shared list schedule, like every other list. */
+		while(1) {
+			buttons = padsButtonsHeld();
+			analog = padsMenuInputPoll(&menuInput,
+				menuInputElapsedMicroseconds(&menuInputRetrace),
+				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,
+				(buttons & waitButtons) != 0u);
+			if((buttons & waitButtons) != 0u || analog != UI_MENU_INPUT_NONE) {
+				break;
+			}
+			VIDEO_WaitVSync();
+		}
+		if((buttons & BUTTON_UP) || analog == UI_MENU_INPUT_UP){	idx = (--idx < 0) ? num_files-1 : idx;}
+		if((buttons & BUTTON_DOWN) || analog == UI_MENU_INPUT_DOWN) {idx = (idx + 1) % num_files;	}
+		if((buttons & PAD_BUTTON_A))	{
 			//go into a folder or select a file
 			if(directory[idx]->fileType==IS_DIR) {
 				memcpy(&curDir, directory[idx], sizeof(file_handle));
@@ -2165,19 +2181,20 @@ bool select_dest_dir(file_handle* initial, file_handle* selection)
 				refresh=1;
 			}
 		}
-		if(padsStickY() < -16 || padsStickY() > 16) {
-			usleep(50000 - abs(padsStickY()*256));
-		}
-		if(padsButtonsHeld() & BUTTON_X)	{
+		if(buttons & BUTTON_X)	{
 			memcpy(selection, &curDir, sizeof(file_handle));
 			break;
 		}
-		if(padsButtonsHeld() & BUTTON_B)	{
+		if(buttons & BUTTON_B)	{
 			cancelled = true;
 			break;
 		}
-		while (!(!(padsButtonsHeld() & BUTTON_X) && !(padsButtonsHeld() & (BUTTON_X|BUTTON_A|BUTTON_B|BUTTON_UP|BUTTON_DOWN))))
-			{ VIDEO_WaitVSync (); }
+		while((padsButtonsHeld() & waitButtons) != 0u) {
+			(void)padsMenuInputPoll(&menuInput,
+				menuInputElapsedMicroseconds(&menuInputRetrace),
+				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT, true);
+			VIDEO_WaitVSync();
+		}
 	}
 	if(destDirBox != NULL) {
 		DrawDispose(destDirBox);
@@ -2233,8 +2250,14 @@ ExecutableFile* select_alt_dol(ExecutableFile *filesToPatch, int num_files) {
 	int fileListBase = 175;
 	int scrollBarHeight = (page*40);
 	int scrollBarTabHeight = (int)((float)scrollBarHeight/(float)num_files);
+	const u32 waitButtons = BUTTON_A | BUTTON_B | BUTTON_UP | BUTTON_DOWN;
+	uiMenuInputState_t menuInput;
+	u32 menuInputRetrace = VIDEO_GetRetraceCount();
 	uiDrawObj_t *container = NULL;
+	UIMenuInput_Init(&menuInput);
 	while(1) {
+		u32 buttons;
+		uiMenuInputDirection_t analog;
 		uiDrawObj_t *newPanel = DrawEmptyBox(20,fileListBase-30, getVideoMode()->fbWidth-20, 340);
 		DrawAddChild(newPanel, DrawLabel(50, fileListBase-18, "Select DOL or Press B to boot normally"));
 		i = MIN(MAX(0,idx-(page/2)),MAX(0,num_files-page));
@@ -2245,17 +2268,28 @@ ExecutableFile* select_alt_dol(ExecutableFile *filesToPatch, int num_files) {
 			DrawAddChild(newPanel, DrawSelectableButton(50,fileListBase+(j*40), getVideoMode()->fbWidth-35, fileListBase+(j*40)+40, filesToPatch[i].name, (i == idx) ? B_SELECTED:B_NOSELECT));
 		}
 		container = DrawRepublish(container, newPanel);
-		while ((padsStickY() > -16 && padsStickY() < 16) && !(padsButtonsHeld() & BUTTON_B) && !(padsButtonsHeld() & BUTTON_A) && !(padsButtonsHeld() & BUTTON_UP) && !(padsButtonsHeld() & BUTTON_DOWN))
-			{ VIDEO_WaitVSync (); }
-		if((padsButtonsHeld() & BUTTON_UP) || padsStickY() > 16){	idx = (--idx < 0) ? num_files-1 : idx;}
-		if((padsButtonsHeld() & BUTTON_DOWN) || padsStickY() < -16) {idx = (idx + 1) % num_files;	}
-		if((padsButtonsHeld() & BUTTON_A))	break;
-		if((padsButtonsHeld() & BUTTON_B))	{ idx = -1; break; }
-		if(padsStickY() < -16 || padsStickY() > 16) {
-			usleep(50000 - abs(padsStickY()*256));
+		/* The stick repeats on the shared list schedule, like every other list. */
+		while(1) {
+			buttons = padsButtonsHeld();
+			analog = padsMenuInputPoll(&menuInput,
+				menuInputElapsedMicroseconds(&menuInputRetrace),
+				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,
+				(buttons & waitButtons) != 0u);
+			if((buttons & waitButtons) != 0u || analog != UI_MENU_INPUT_NONE) {
+				break;
+			}
+			VIDEO_WaitVSync();
 		}
-		while (!(!(padsButtonsHeld() & BUTTON_B) && !(padsButtonsHeld() & BUTTON_A) && !(padsButtonsHeld() & BUTTON_UP) && !(padsButtonsHeld() & BUTTON_DOWN)))
-			{ VIDEO_WaitVSync (); }
+		if((buttons & BUTTON_UP) || analog == UI_MENU_INPUT_UP){	idx = (--idx < 0) ? num_files-1 : idx;}
+		if((buttons & BUTTON_DOWN) || analog == UI_MENU_INPUT_DOWN) {idx = (idx + 1) % num_files;	}
+		if((buttons & BUTTON_A))	break;
+		if((buttons & BUTTON_B))	{ idx = -1; break; }
+		while((padsButtonsHeld() & waitButtons) != 0u) {
+			(void)padsMenuInputPoll(&menuInput,
+				menuInputElapsedMicroseconds(&menuInputRetrace),
+				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT, true);
+			VIDEO_WaitVSync();
+		}
 	}
 	DrawDispose(container);
 	return idx >= 0 ? &filesToPatch[idx] : NULL;

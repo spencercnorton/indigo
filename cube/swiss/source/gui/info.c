@@ -420,13 +420,13 @@ static void infoDrawOverview(uiDrawObj_t *container,
 		ALIGN_LEFT, systemLabelColor));
 	infoAddFitted(container, 70, 334, calibrationText, 220, 0.72f, ALIGN_LEFT,
 		systemValueColor);
-	infoAddFitted(container, 70, 358, "ADJUST IN SETTINGS / SYSTEM", 220,
+	infoAddFitted(container, 70, 358, "ADJUST IN SETUP / CONSOLE", 220,
 		0.60f, ALIGN_LEFT, systemMutedColor);
 
 	DrawAddChild(container, DrawStyledLabel(348, 154, "ACTIVE SESSION", 0.66f,
 		ALIGN_LEFT, systemLabelColor));
 	infoAddPair(container, 348, 174, 220, "SOURCE",
-		current != NULL ? current->deviceName : "NONE", 0.72f);
+		current != NULL ? DeviceDisplayName(current) : "NONE", 0.72f);
 	infoAddPair(container, 348, 214, 220, "SOURCE STATUS",
 		UISystem_SourceHealth(current != NULL, sourceAvailable), 0.72f);
 	infoAddPair(container, 348, 254, 220, "VIDEO", videoText, 0.72f);
@@ -495,9 +495,9 @@ static void infoDrawConnections(uiDrawObj_t *container,
 	infoAddPair(container, 348, 224, 220, "SLOT-B HOTPLUG",
 		getExiTypeByLocation(LOC_MEMCARD_SLOT_B), 0.70f);
 	infoAddPair(container, 348, 270, 220, "CURRENT SOURCE",
-		current != NULL ? current->deviceName : "NONE", 0.70f);
+		current != NULL ? DeviceDisplayName(current) : "NONE", 0.70f);
 	infoAddPair(container, 348, 316, 220, "CONFIGURATION",
-		configuration != NULL ? configuration->deviceName : "NONE", 0.70f);
+		configuration != NULL ? DeviceDisplayName(configuration) : "NONE", 0.70f);
 	infoAddFitted(container, 348, 358, "REOPEN PAGE TO REFRESH", 220, 0.60f,
 		ALIGN_LEFT, systemMutedColor);
 }

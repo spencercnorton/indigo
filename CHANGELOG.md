@@ -3,6 +3,18 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.13.0 — steady stick in the last two old lists; the disc drive is "Game Disc"
+
+- The folder picker (copying or moving a file) and the "Select DOL"
+  list now scroll with the stick like every other list: one row, a pause,
+  then a steady repeat. Before, a full stick raced through a row every
+  24 ms or so.
+- The disc drive is called "Game Disc" instead of "DVD" wherever Indigo
+  names a source: the source picker, Home's Source screen, the file list
+  and System information. Settings about the drive itself keep their names.
+- System information says CPU calibration is adjusted in Setup / Console,
+  where it moved in v1.9.0, instead of the old "Settings / System".
+
 ## v1.12.1 — Home
 
 - The white frame on the cube now marks the face you are on. It stayed on
