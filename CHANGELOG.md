@@ -3,6 +3,12 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.4.1 — Home
+
+- The orbit rings around the cube are gone, on Home and on every other
+  screen that shows the cube; it now sits on its own over the backdrop.
+- The README's Home animation is re-recorded without them.
+
 ## v1.4.0 — Indigo
 
 - Swiss UI is now called Indigo, with a new home at

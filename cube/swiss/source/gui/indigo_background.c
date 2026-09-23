@@ -4,7 +4,6 @@
 #include "indigo_background.h"
 
 #define INDIGO_TAU 6.28318530718f
-#define ORBIT_SEGMENTS 48
 #define RADIAL_SEGMENTS 24
 #define GLOBE_SEGMENTS 24
 #define PRIMARY_WAVE_SEGMENTS 16
@@ -412,94 +411,6 @@ static void drawRadialDisc(float centerX, float centerY, float radiusX, float ra
 			unitY = (unitX * stepSin) + (unitY * stepCos);
 			unitX = nextX;
 		}
-	GX_End();
-}
-
-static void drawOrbit(float centerX, float centerY, float radiusX, float radiusY,
-		float tilt, float phase, GXColor color)
-{
-	/* Coverage falls to zero across one native pixel. Unlike a hard strip,
-	 * this stays smooth in the console's unmultisampled 480-line framebuffer. */
-	static const float offsets[4] = {-1.5f, -0.5f, 0.5f, 1.5f};
-	indigoPoint_t points[ORBIT_SEGMENTS + 1];
-	indigoPoint_t normals[ORBIT_SEGMENTS + 1];
-	const float step = INDIGO_TAU / ORBIT_SEGMENTS;
-	const float stepCos = cosf(step);
-	const float stepSin = sinf(step);
-	float unitX = cosf(phase);
-	float unitY = sinf(phase);
-
-	for(int i = 0; i <= ORBIT_SEGMENTS; i++) {
-		float nx = radiusY * unitX - tilt * unitY;
-		float ny = radiusX * unitY;
-		float length = sqrtf(nx * nx + ny * ny);
-		points[i] = (indigoPoint_t) {centerX + radiusX * unitX,
-			centerY + radiusY * unitY + tilt * unitX};
-		normals[i] = (indigoPoint_t) {nx / length, ny / length};
-		float nextX = (unitX * stepCos) - (unitY * stepSin);
-		unitY = (unitX * stepSin) + (unitY * stepCos);
-		unitX = nextX;
-	}
-	/* Reuse the first point exactly: no precision seam in the closed ring. */
-	points[ORBIT_SEGMENTS] = points[0];
-	normals[ORBIT_SEGMENTS] = normals[0];
-	for(int band = 0; band < 3; band++) {
-		GX_Begin(GX_TRIANGLESTRIP, GX_VTXFMT0, (ORBIT_SEGMENTS + 1) * 2);
-		for(int i = 0; i <= ORBIT_SEGMENTS; i++) {
-			u8 pulse = (u8)(i <= ORBIT_SEGMENTS / 2 ? i : ORBIT_SEGMENTS - i);
-			for(int side = band; side <= band + 1; side++) {
-				GXColor coverage = color;
-				coverage.a = side == 0 || side == 3 ? 0 : color.a + pulse * 2;
-				putVertex((indigoPoint_t) {
-					points[i].x + normals[i].x * offsets[side],
-					points[i].y + normals[i].y * offsets[side]
-				}, coverage);
-			}
-		}
-		GX_End();
-	}
-}
-
-static void drawOrbitNodes(float centerX, float centerY, float radiusX, float radiusY,
-		float tilt, float phase, float strength)
-{
-	const float turnCos = -0.5f;
-	const float turnSin = 0.8660254f;
-	float unitX = cosf(phase);
-	float unitY = sinf(phase);
-	u8 haloAlpha = (u8)(38.0f * strength);
-	u8 coreAlpha = (u8)(210.0f * strength);
-
-	GX_Begin(GX_QUADS, GX_VTXFMT0, 12);
-	for(int i = 0; i < 3; i++) {
-		float x = centerX + radiusX * unitX;
-		float y = centerY + radiusY * unitY + tilt * unitX;
-		GXColor color = {133, 111, 255, haloAlpha};
-		putVertex((indigoPoint_t) {x, y - 7.0f}, color);
-		putVertex((indigoPoint_t) {x + 7.0f, y}, color);
-		putVertex((indigoPoint_t) {x, y + 7.0f}, color);
-		putVertex((indigoPoint_t) {x - 7.0f, y}, color);
-		float nextX = unitX * turnCos - unitY * turnSin;
-		unitY = unitX * turnSin + unitY * turnCos;
-		unitX = nextX;
-	}
-	GX_End();
-
-	unitX = cosf(phase);
-	unitY = sinf(phase);
-	GX_Begin(GX_QUADS, GX_VTXFMT0, 12);
-	for(int i = 0; i < 3; i++) {
-		float x = centerX + radiusX * unitX;
-		float y = centerY + radiusY * unitY + tilt * unitX;
-		GXColor color = {226, 220, 255, coreAlpha};
-		putVertex((indigoPoint_t) {x, y - 2.5f}, color);
-		putVertex((indigoPoint_t) {x + 2.5f, y}, color);
-		putVertex((indigoPoint_t) {x, y + 2.5f}, color);
-		putVertex((indigoPoint_t) {x - 2.5f, y}, color);
-		float nextX = unitX * turnCos - unitY * turnSin;
-		unitY = unitX * turnSin + unitY * turnCos;
-		unitX = nextX;
-	}
 	GX_End();
 }
 
@@ -1284,7 +1195,6 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 	bool backdropMotionActive = backdropAnimated && scene->visible;
 	bool cubeMotionActive = cubeAnimated && scene->visible;
 	float drift = backdropMotionActive ? sinf(seconds * 0.12f) * 5.0f : 0.0f;
-	float orbitPhase = backdropMotionActive ? seconds * 0.055f : 0.0f;
 	float centerX = 320.0f + (scene->cubeX * 112.0f);
 	float centerY = 238.0f - (scene->cubeY * 112.0f);
 	float orbitScale = 0.70f + (scene->cubeScale * 0.30f);
@@ -1293,8 +1203,6 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 	float decorativeStrength = scene->scene == UI_SCENE_HOME ||
 		scene->scene == UI_SCENE_SOURCE ?
 		orbitStrength * HOME_DECORATIVE_STRENGTH : orbitStrength;
-	u8 primaryAlpha = (u8)(40.0f * decorativeStrength);
-	u8 secondaryAlpha = (u8)(18.0f * decorativeStrength);
 
 	setupRasterPipeline();
 	drawIndigoWash();
@@ -1307,12 +1215,6 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 		104.0f * orbitScale, 14.0f * orbitScale,
 		(GXColor) {3, 2, 12, (u8)(92.0f * orbitStrength)},
 		(GXColor) {3, 2, 12, 0});
-	drawOrbit(centerX, centerY, 176.0f * orbitScale, 88.0f * orbitScale, -14.0f,
-		orbitPhase, (GXColor) {147, 130, 228, primaryAlpha});
-	drawOrbit(centerX, centerY, 148.0f * orbitScale, 116.0f * orbitScale, 10.0f,
-		-orbitPhase - 0.9f, (GXColor) {103, 88, 190, secondaryAlpha});
-	drawOrbitNodes(centerX, centerY, 176.0f * orbitScale, 88.0f * orbitScale,
-		-14.0f, orbitPhase + 0.45f, decorativeStrength);
 	if(scene->introProgress >= BOOT_CUBE_HANDOFF) {
 		drawCube(scene, seconds, cubeMotionActive, clock);
 	}
