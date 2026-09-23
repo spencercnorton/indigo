@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img alt="The Indigo Home screen: a glass cube turning between its Library, Source, Settings and System faces on a dark starfield, the Library face showing a GameCube controller, with only the face you are on named underneath." src="docs/screenshots/home.png" width="640">
+  <img alt="The Indigo Home screen: a glass cube turning sideways and tipping up and down between its Library, Source, Settings and System faces on a dark starfield, light gliding over its faces and glinting on its edges, the Library face showing a GameCube controller, with only the face you are on named underneath." src="docs/screenshots/home.png" width="640">
 </p>
 
 Captured in the Dolphin emulator. The library and game detail pictures show a real poster pack and cheat file in use; box art belongs to its publishers.
@@ -28,13 +28,15 @@ hardware and want it to feel like it belongs on the console.
 
 ## What it does
 
-**Home is an animated cube.** Four faces, one destination each, rotating in
-both axes. Each face carries its own emblem, and only the face you are on is
-named, under the cube. The Library face is a GameCube controller that
-mirrors yours: its sticks lean with your sticks and its buttons light as you
-press them, and when you leave it alone it plays by itself. The GameCube's own
-interface language — the idle cube, the typeface, the palette — is the
-reference, not a desktop launcher.
+**Home is an animated cube.** Four faces, one destination each: left and
+right turn it sideways, up and down tip it over. It is glass, like the
+GameCube's own menu: a soft reflection slides across it as it turns, and its
+bevelled edges catch the light. Each face carries its own emblem, and only
+the face you are on is named, under the cube. The Library face is a GameCube
+controller that mirrors yours: its sticks lean with your sticks and its
+buttons light as you press them, and when you leave it alone it plays by
+itself. The GameCube's own interface language — the idle cube, the typeface,
+the palette — is the reference, not a desktop launcher.
 
 **The library retains its posters.** A grid over whatever device you booted
 from, with artwork kept across navigation rather than re-read per frame, and

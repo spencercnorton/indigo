@@ -3,6 +3,18 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.7.0 — Home
+
+- The cube is glass, like the GameCube's own menu. A soft reflection lies
+  across each face and slides over it as the cube turns and sways, and the
+  bevelled edges catch the light as thin glints.
+- The light stays put while the cube turns, so every face looks the same when
+  it comes to the front. Before, the lighting was painted on the cube and
+  turned with it: Source arrived brighter than Library, and Up or Down
+  carried the bright top to the front.
+- The README's Home animation tips the cube up and down as well as turning
+  it left and right, as Up and Down on the D-pad or control stick do.
+
 ## v1.6.0 — download
 
 - Each release now has an `Indigo-vX.Y.Z.zip` download. Its `SD card`

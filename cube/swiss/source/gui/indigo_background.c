@@ -521,6 +521,44 @@ static void putCubeVertex(float x, float y, float z, GXColor color)
 	GX_Color4u8(color.r, color.g, color.b, color.a);
 }
 
+static guVector cubeViewNormal(const cubeRasterTransform_t *raster, guVector n)
+{
+	guVector eye = {
+		raster->model[0][0] * n.x + raster->model[0][1] * n.y + raster->model[0][2] * n.z,
+		raster->model[1][0] * n.x + raster->model[1][1] * n.y + raster->model[1][2] * n.z,
+		raster->model[2][0] * n.x + raster->model[2][1] * n.y + raster->model[2][2] * n.z
+	};
+	float length = sqrtf(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z);
+	if(length < 0.0001f) return (guVector) {0.0f, 0.0f, 1.0f};
+	return (guVector) {eye.x / length, eye.y / length, eye.z / length};
+}
+
+/* Tints are authored per camera direction in buildCubeFaces order: back,
+ * left, right, bottom, top, front. Squared unit-normal components sum to one,
+ * so a turning face blends between them and the light stays with the camera
+ * instead of rotating with the cube. */
+static void litCubeTints(const cubeRasterTransform_t *raster,
+		const GXColor tints[6], GXColor lit[6])
+{
+	static const guVector axes[6] = {
+		{0.0f, 0.0f, -1.0f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f},
+		{0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}
+	};
+	for(int face = 0; face < 6; face++) {
+		guVector n = cubeViewNormal(raster, axes[face]);
+		const GXColor *x = &tints[n.x < 0.0f ? 1 : 2];
+		const GXColor *y = &tints[n.y < 0.0f ? 3 : 4];
+		const GXColor *z = &tints[n.z < 0.0f ? 0 : 5];
+		float wx = n.x * n.x, wy = n.y * n.y, wz = n.z * n.z;
+		lit[face] = (GXColor) {
+			(u8)(x->r * wx + y->r * wy + z->r * wz + 0.5f),
+			(u8)(x->g * wx + y->g * wy + z->g * wz + 0.5f),
+			(u8)(x->b * wx + y->b * wy + z->b * wz + 0.5f),
+			(u8)(x->a * wx + y->a * wy + z->a * wz + 0.5f)
+		};
+	}
+}
+
 static void buildCubeFaces(cubeSurfaceQuad_t quads[6], float outer, float inset,
 		const GXColor colors[6])
 {
@@ -1324,32 +1362,30 @@ static void buildChamferStrip(cubeSurfaceQuad_t *quad, float ax, float ay, float
 	}
 }
 
-static void buildChamferStrips(cubeSurfaceQuad_t quads[12], float outer, float inset)
+static void buildChamferStrips(cubeSurfaceQuad_t quads[12], float outer, float inset,
+		const GXColor lit[6])
 {
 	const float o = outer;
 	const float i = inset;
-	GXColor pearl = {235, 228, 255, 132};
-	GXColor bright = {196, 180, 255, 112};
-	GXColor medium = {132, 108, 218, 84};
-	GXColor dark = {65, 48, 143, 72};
-	GXColor shadow = {25, 18, 70, 78};
+	enum { BACK, LEFT, RIGHT, BOTTOM, TOP, FRONT };
 
-	/* Keep the original twelve bevels and endpoint gradients. Their place
-	 * before or after the glass is now determined by camera-facing culling,
-	 * so a vertical turn cannot leave an old front strip on top of the pane. */
-	buildChamferStrip(&quads[0], -i,i,-o, i,i,-o, i,o,-i, -i,o,-i, dark, shadow);
-	buildChamferStrip(&quads[1], -i,-o,-i, i,-o,-i, i,-i,-o, -i,-i,-o, shadow, dark);
-	buildChamferStrip(&quads[2], -i,-i,-o, -i,i,-o, -o,i,-i, -o,-i,-i, dark, shadow);
-	buildChamferStrip(&quads[3], o,-i,-i, o,i,-i, i,i,-o, i,-i,-o, shadow, dark);
+	/* Each bevel runs from the lit tint of one neighbouring face to the other.
+	 * Its place before or after the glass is determined by camera-facing
+	 * culling, so a vertical turn cannot leave an old front strip on top of
+	 * the pane. */
+	buildChamferStrip(&quads[0], -i,i,-o, i,i,-o, i,o,-i, -i,o,-i, lit[BACK], lit[TOP]);
+	buildChamferStrip(&quads[1], -i,-o,-i, i,-o,-i, i,-i,-o, -i,-i,-o, lit[BOTTOM], lit[BACK]);
+	buildChamferStrip(&quads[2], -i,-i,-o, -i,i,-o, -o,i,-i, -o,-i,-i, lit[BACK], lit[LEFT]);
+	buildChamferStrip(&quads[3], o,-i,-i, o,i,-i, i,i,-o, i,-i,-o, lit[RIGHT], lit[BACK]);
 
-	buildChamferStrip(&quads[4], -o,i,-i, -o,i,i, -i,o,i, -i,o,-i, medium, bright);
-	buildChamferStrip(&quads[5], i,o,-i, i,o,i, o,i,i, o,i,-i, medium, bright);
-	buildChamferStrip(&quads[6], -i,-o,-i, -i,-o,i, -o,-i,i, -o,-i,-i, shadow, dark);
-	buildChamferStrip(&quads[7], o,-i,-i, o,-i,i, i,-o,i, i,-o,-i, medium, dark);
-	buildChamferStrip(&quads[8], -i,o,i, i,o,i, i,i,o, -i,i,o, pearl, bright);
-	buildChamferStrip(&quads[9], -i,-i,o, i,-i,o, i,-o,i, -i,-o,i, medium, dark);
-	buildChamferStrip(&quads[10], -o,-i,i, -o,i,i, -i,i,o, -i,-i,o, medium, dark);
-	buildChamferStrip(&quads[11], i,-i,o, i,i,o, o,i,i, o,-i,i, pearl, bright);
+	buildChamferStrip(&quads[4], -o,i,-i, -o,i,i, -i,o,i, -i,o,-i, lit[LEFT], lit[TOP]);
+	buildChamferStrip(&quads[5], i,o,-i, i,o,i, o,i,i, o,i,-i, lit[TOP], lit[RIGHT]);
+	buildChamferStrip(&quads[6], -i,-o,-i, -i,-o,i, -o,-i,i, -o,-i,-i, lit[BOTTOM], lit[LEFT]);
+	buildChamferStrip(&quads[7], o,-i,-i, o,-i,i, i,-o,i, i,-o,-i, lit[RIGHT], lit[BOTTOM]);
+	buildChamferStrip(&quads[8], -i,o,i, i,o,i, i,i,o, -i,i,o, lit[TOP], lit[FRONT]);
+	buildChamferStrip(&quads[9], -i,-i,o, i,-i,o, i,-o,i, -i,-o,i, lit[FRONT], lit[BOTTOM]);
+	buildChamferStrip(&quads[10], -o,-i,i, -o,i,i, -i,i,o, -i,-i,o, lit[LEFT], lit[FRONT]);
+	buildChamferStrip(&quads[11], i,-i,o, i,i,o, o,i,i, o,-i,i, lit[FRONT], lit[RIGHT]);
 }
 
 static void buildCubeCorners(cubeSurfaceQuad_t corners[8], float outer, float inset)
@@ -1514,6 +1550,159 @@ static void drawFrontRailAccents(const cubeRasterTransform_t *raster,
 	GX_LoadPosMtxImm(raster->model, GX_PNMTX0);
 }
 
+static float glassSmoothstep(float edge0, float edge1, float x)
+{
+	float t = (x - edge0) / (edge1 - edge0);
+	t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+	return t * t * (3.0f - 2.0f * t);
+}
+
+/* What the glass reflects at an eye-space point with unit normal n: soft
+ * light cards fixed to the camera, standing in for the environment the IPL's
+ * cube mirrors. A broad key lays a gentle gradient across the faces; narrow
+ * cards catch the rounded bevels as thin glints. Fresnel brightens glancing
+ * glass, and the last few degrees before the silhouette fade out so the
+ * reflection never draws a hard aliased rim. */
+static GXColor glassReflection(guVector eye, guVector n)
+{
+	static const struct {
+		guVector direction;
+		float start, full, weight;
+		GXColor color;
+	} lights[] = {
+		{{0.861f, 0.148f, 0.487f}, 0.74f, 0.99f, 0.60f, {200, 214, 255, 0}}, /* key */
+		{{0.097f, 0.970f, 0.222f}, 0.88f, 0.97f, 1.20f, {246, 244, 255, 0}}, /* overhead */
+		{{0.958f, 0.240f, 0.157f}, 0.88f, 0.97f, 1.00f, {226, 206, 255, 0}}, /* right */
+		{{0.000f, 0.350f, -0.937f}, 0.75f, 0.97f, 0.25f, {168, 146, 255, 0}}  /* rim */
+	};
+	GXColor out = {0, 0, 0, 0};
+	float length = sqrtf(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z);
+	guVector view = {-eye.x / length, -eye.y / length, -eye.z / length};
+	float facing = n.x * view.x + n.y * view.y + n.z * view.z;
+	if(facing <= 0.0f) return out;
+	guVector r = {2.0f * facing * n.x - view.x, 2.0f * facing * n.y - view.y,
+		2.0f * facing * n.z - view.z};
+	float glancing = 1.0f - facing;
+	float fresnel = 0.35f + 0.65f * glancing * glancing;
+	float light = 0.0f, red = 0.0f, green = 0.0f, blue = 0.0f;
+	for(unsigned i = 0; i < sizeof(lights) / sizeof(lights[0]); i++) {
+		float d = r.x * lights[i].direction.x + r.y * lights[i].direction.y +
+			r.z * lights[i].direction.z;
+		float s = lights[i].weight * glassSmoothstep(lights[i].start, lights[i].full, d);
+		light += s;
+		red += s * lights[i].color.r;
+		green += s * lights[i].color.g;
+		blue += s * lights[i].color.b;
+	}
+	if(light <= 0.0f) return out;
+	float alpha = 255.0f * fresnel * light * fminf(1.0f, facing * 6.0f);
+	return (GXColor) {(u8)(red / light), (u8)(green / light), (u8)(blue / light),
+		(u8)(alpha > 255.0f ? 255.0f : alpha)};
+}
+
+/* Face and bevel vertices each lie on exactly one outer plane, whose axis is
+ * their normal. Interpolating those normals across a flat bevel shades it
+ * as a rounded, polished edge that the reflection rolls over. */
+static guVector glassVertexNormal(const cubeRasterTransform_t *raster,
+		guVector p, float outer)
+{
+	guVector axis = {
+		fabsf(p.x) >= outer - 0.001f ? (p.x < 0.0f ? -1.0f : 1.0f) : 0.0f,
+		fabsf(p.y) >= outer - 0.001f ? (p.y < 0.0f ? -1.0f : 1.0f) : 0.0f,
+		fabsf(p.z) >= outer - 0.001f ? (p.z < 0.0f ? -1.0f : 1.0f) : 0.0f
+	};
+	return cubeViewNormal(raster, axis);
+}
+
+static bool glassSameNormal(guVector a, guVector b)
+{
+	return a.x == b.x && a.y == b.y && a.z == b.z;
+}
+
+static bool glassCellLit(const GXColor *color, int first, int stride)
+{
+	return (color[first].a | color[first + 1].a | color[first + stride].a |
+		color[first + stride + 1].a) != 0;
+}
+
+static guVector glassBilinear(const guVector corner[4], float u, float v)
+{
+	float w0 = (1.0f - u) * (1.0f - v), w1 = u * (1.0f - v), w2 = u * v, w3 = (1.0f - u) * v;
+	return (guVector) {
+		w0 * corner[0].x + w1 * corner[1].x + w2 * corner[2].x + w3 * corner[3].x,
+		w0 * corner[0].y + w1 * corner[1].y + w2 * corner[2].y + w3 * corner[3].y,
+		w0 * corner[0].z + w1 * corner[1].z + w2 * corner[2].z + w3 * corner[3].z
+	};
+}
+
+/* Additive reflection over the camera-facing outer glass. Each quad is split
+ * into a grid, keeping its winding, so the per-vertex highlight stays smooth:
+ * finely across a bevel, where its normal turns, and coarsely along it.
+ * Unlit cells are skipped. Corner triangles shade at their three vertices. */
+static void drawGlassReflection(const cubeRasterTransform_t *raster,
+		const cubeSurfaceQuad_t *quads, int count, int vertexCount, float outer)
+{
+	enum { STEPS = 10, BEVEL_STEPS = 4 };
+
+	for(int quad = 0; quad < count; quad++) {
+		guVector eyes[4], normals[4], body[(STEPS + 1) * (STEPS + 1)];
+		indigoPoint_t points[4];
+		GXColor color[(STEPS + 1) * (STEPS + 1)];
+		float area = 0.0f;
+		int cells = 0;
+		for(int vertex = 0; vertex < vertexCount; vertex++) {
+			guVector p = quads[quad].point[vertex];
+			if(!projectRailPoint(raster, p.x, p.y, p.z, &eyes[vertex], &points[vertex])) return;
+			normals[vertex] = glassVertexNormal(raster, p, outer);
+		}
+		for(int vertex = 0; vertex < vertexCount; vertex++) {
+			int next = (vertex + 1) % vertexCount;
+			area += points[vertex].x * points[next].y - points[next].x * points[vertex].y;
+		}
+		if(area >= -0.001f) continue;
+		if(vertexCount == 3) {
+			for(int vertex = 0; vertex < 3; vertex++)
+				color[vertex] = glassReflection(eyes[vertex], normals[vertex]);
+			if((color[0].a | color[1].a | color[2].a) == 0) continue;
+			GX_Begin(GX_TRIANGLES, GX_VTXFMT0, 3);
+			for(int vertex = 0; vertex < 3; vertex++) {
+				guVector p = quads[quad].point[vertex];
+				putCubeVertex(p.x, p.y, p.z, color[vertex]);
+			}
+			GX_End();
+			continue;
+		}
+		/* A bevel's normal changes only between its two sides. */
+		bool acrossU = !glassSameNormal(normals[0], normals[1]);
+		bool acrossV = !glassSameNormal(normals[0], normals[3]);
+		int columns = acrossU || !acrossV ? STEPS : BEVEL_STEPS;
+		int rows = acrossV || !acrossU ? STEPS : BEVEL_STEPS;
+		for(int row = 0; row <= rows; row++) for(int column = 0; column <= columns; column++) {
+			float u = (float)column / columns, v = (float)row / rows;
+			int at = row * (STEPS + 1) + column;
+			guVector n = glassBilinear(normals, u, v);
+			float length = sqrtf(n.x * n.x + n.y * n.y + n.z * n.z);
+			n = (guVector) {n.x / length, n.y / length, n.z / length};
+			body[at] = glassBilinear(quads[quad].point, u, v);
+			color[at] = glassReflection(glassBilinear(eyes, u, v), n);
+		}
+		for(int row = 0; row < rows; row++) for(int column = 0; column < columns; column++)
+			cells += glassCellLit(color, row * (STEPS + 1) + column, STEPS + 1);
+		if(cells == 0) continue;
+		GX_Begin(GX_QUADS, GX_VTXFMT0, cells * 4);
+		for(int row = 0; row < rows; row++) for(int column = 0; column < columns; column++) {
+			static const int corner[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+			int first = row * (STEPS + 1) + column;
+			if(!glassCellLit(color, first, STEPS + 1)) continue;
+			for(int vertex = 0; vertex < 4; vertex++) {
+				int at = first + corner[vertex][1] * (STEPS + 1) + corner[vertex][0];
+				putCubeVertex(body[at].x, body[at].y, body[at].z, color[at]);
+			}
+		}
+		GX_End();
+	}
+}
+
 static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 		const uiClockFrame_t *clock, const indigoPadFrame_t *pad)
 {
@@ -1529,8 +1718,13 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 		{69, 54, 145, 24}, {82, 65, 166, 34}, {146, 124, 225, 58},
 		{74, 58, 151, 31}, {219, 207, 255, 78}, {119, 96, 203, 42}
 	};
+	static const GXColor bevelColors[6] = {
+		{25, 18, 70, 78}, {132, 108, 218, 84}, {196, 180, 255, 112},
+		{65, 48, 143, 72}, {235, 228, 255, 132}, {132, 108, 218, 84}
+	};
 	GXColor innerBoundary = {22, 14, 61, 184};
 	GXColor accent = {239, 233, 255, 226};
+	GXColor lit[6];
 	cubeRasterTransform_t raster;
 	cubeSurfaceQuad_t core[6], shell[6], strips[12], corners[8];
 	cubeOutline_t coreOutline, shellOutline;
@@ -1539,9 +1733,12 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	const float front = 1.008f;
 
 	setupCubePipeline(scene, seconds, animated, &raster);
-	buildCubeFaces(core, 0.46f, 0.46f, coreColors);
-	buildCubeFaces(shell, outer, inset, backGlassColors);
-	buildChamferStrips(strips, outer, inset);
+	litCubeTints(&raster, coreColors, lit);
+	buildCubeFaces(core, 0.46f, 0.46f, lit);
+	litCubeTints(&raster, backGlassColors, lit);
+	buildCubeFaces(shell, outer, inset, lit);
+	litCubeTints(&raster, bevelColors, lit);
+	buildChamferStrips(strips, outer, inset, lit);
 	buildCubeCorners(corners, outer, inset);
 	buildCubeOutline(&raster, core, &coreOutline);
 	buildCubeOutline(&raster, shell, &shellOutline);
@@ -1581,7 +1778,8 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	GX_SetCullMode(GX_CULL_FRONT);
 	drawCubeSurfacePass(&raster, &shellOutline, shell, 6, GX_CULL_FRONT, false);
 	GX_SetCullMode(GX_CULL_BACK);
-	buildCubeFaces(shell, outer, inset, frontGlassColors);
+	litCubeTints(&raster, frontGlassColors, lit);
+	buildCubeFaces(shell, outer, inset, lit);
 	drawCubeSurfacePass(&raster, &shellOutline, shell, 6, GX_CULL_BACK, false);
 
 	/* Only near structural surfaces composite in front of the shell. Corner
@@ -1589,6 +1787,16 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 	drawCubeSurfacePass(&raster, &shellOutline, strips, 12, GX_CULL_BACK, false);
 	drawCubeSurfacePassVertices(&raster, &shellOutline, corners, 8, 3, GX_CULL_BACK, false);
+
+	/* The outer glass reflects light over everything the shell shows,
+	 * additively and without depth writes. */
+	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
+	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
+	GX_SetCullMode(GX_CULL_BACK);
+	drawGlassReflection(&raster, shell, 6, 4, outer);
+	drawGlassReflection(&raster, strips, 12, 4, outer);
+	drawGlassReflection(&raster, corners, 8, 3, outer);
+	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 	drawSemanticFaceMotifs(seconds, animated, clock, &raster);
 	drawLibraryController(&raster, seconds, animated, pad);
 
