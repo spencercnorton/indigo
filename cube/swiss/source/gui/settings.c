@@ -1892,7 +1892,7 @@ static bool settingsChanged(const ConfigEntry *config)
 
 /* A live video change can leave the TV without a picture, so it only stays
  * if A is pressed within ten seconds. B, or no answer, changes it back. */
-static bool settingsKeepVideoMode(void)
+static bool settingsKeepVideoMode(const settingRowView_t *row)
 {
 	u32 retrace = VIDEO_GetRetraceCount();
 	u32 waited = 0u;
@@ -1910,10 +1910,13 @@ static bool settingsKeepVideoMode(void)
 			/* DrawMessageBox copies into txtbuffer, so format elsewhere. */
 			char message[128];
 
-			/* Three lines: a fourth runs past the 125 px box. */
-			snprintf(message, sizeof(message), "Keep this video mode?\n"
+			/* Three lines: a fourth runs past the 125 px box. The first names
+			 * the new value, which the page behind still shows as the old
+			 * one until the prompt closes. */
+			snprintf(message, sizeof(message), "Keep %s %s?\n"
 				"Press A to keep it, or B to change it back.\n"
-				"It changes back by itself in %d s.", seconds);
+				"It changes back by itself in %d s.", row->label, row->value,
+				seconds);
 			box = box == NULL ?
 				DrawPublish(DrawMessageBox(D_WARN, message)) :
 				DrawRepublish(box, DrawMessageBox(D_WARN, message));
@@ -1954,7 +1957,12 @@ static void settingsChangeValue(int page, int option, int direction,
 	bool rt4kOptim = swissSettings.rt4kOptim;
 
 	settings_toggle(page, option, direction, config);
-	if(getVideoMode() != before && !settingsKeepVideoMode()) {
+	if(getVideoMode() == before) {
+		return;
+	}
+	settingRowView_t row;
+	settingsDescribeRow(page, option, config, &row);
+	if(!settingsKeepVideoMode(&row)) {
 		swissSettings.sramVideo = sramVideo;
 		swissSettings.uiVMode = uiVMode;
 		swissSettings.aveCompat = aveCompat;

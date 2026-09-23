@@ -3,6 +3,12 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.13.1 — the video prompt names the new mode
+
+- "Keep this video mode?" now says what you'd keep, for example "Keep
+  Swiss Video Mode: PAL 576p?". The row behind the prompt still showed the
+  old value until you answered.
+
 ## v1.13.0 — steady stick in the last two old lists; the disc drive is "Game Disc"
 
 - The folder picker (copying or moving a file) and the "Select DOL"
