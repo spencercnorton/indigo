@@ -3,6 +3,15 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.12.0 — settings read the positive way round
+
+- Settings stored as "Disable …" now read the way you'd say them:
+  Controller Recalibration, Alpha Dithering and Hypervisor show On or Off,
+  like Controller Rumble already did. The settings file keeps its key
+  names, so `Disable Hypervisor=Yes` still works and shows as Hypervisor ›
+  Off.
+- Their help says what On and Off each do.
+
 ## v1.11.0 — Storage says whether your settings file loaded
 
 - Settings › Setup › Storage now tells you, under its title, where your

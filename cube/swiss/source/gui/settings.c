@@ -102,7 +102,7 @@ static char *tooltips_global[PAGE_GLOBAL_MAX+1] = {
 	[SET_AVE_COMPAT] = "AVE Compatibility:\n\nSets the compatibility mode for the used audio/video encoder.\n\nAVE N-DOL - Output PAL as NTSC 50\nAVE P-DOL - Disable progressive scan mode\nCMPV-DOL - Enable 1080i & 540p\nGCDigital - Apply input filtering in OSD\nGCVideo - Apply general workarounds for GCVideo (default)\nAVE-RVL - Support 960i & 1152i without WiiVideo",
 	[SET_FORCE_DTVSTATUS] = "Force DTV Status:\n\nDisabled - Use detect signal from the Digital AV Out (default)\nEnabled - Force detection in the case of a hardware fault\nRegion Switch - Ease transition between SD/ED TV setups",
 	[SET_RT4K_OPTIM] = "RetroTINK-4K HDMI Input:\n\nFor GCDigital compatibility mode:\n Requires FX-Framework firmware version 3.9.46.178 or later\n and RetroTINK-4K firmware version 1.9.4 or later, and using\n DV1-Direct mode.\n\nFor GCVideo compatibility mode:\n Requires GCVideo-DVI firmware version 3.0 or later.",
-	[SET_DISABLE_RECALIB] = "Disable Controller Recalibration:\n\nAvoids problems with non-compliant GameCube Controller\nimplementations.",
+	[SET_DISABLE_RECALIB] = "Controller Recalibration:\n\nOn - Controllers are recalibrated as usual (default)\nOff - Skips recalibration. This avoids problems with\nnon-compliant GameCube Controller implementations.",
 	[SET_ENABLE_USBGECKO] = "Enable USB Gecko:\n\nIf a USB Gecko is present, messages output to the debug UART\nwill be redirected. When the USB host isn't actively reading from\nthe USB Gecko, it may cause the system to hang.\n\nwiiload is also made available for iterative development.",
 	[SET_WAIT_USBGECKO] = "Wait for USB Gecko:\n\nWait for the transmit buffer to be read by the USB host when full.",
 	[SET_SIMMEMSIZE] = "Simulated MRAM Size:\n\nLimits the amount of memory available on development hardware.",
@@ -176,14 +176,14 @@ static char *tooltips_game[PAGE_GAME_DEFAULTS_MAX+1] = {
 	[SET_READ_SPEED] = "Emulate Read Speed:\n\nNo - Start transfer immediately (default)\nYes - Delay transfer to simulate the GameCube disc drive\nWii - Delay transfer to simulate the Wii disc drive\n\nThis is necessary to avoid programming mistakes obfuscated by\nthe original medium, or for speedrunning.",
 	[SET_EMULATE_ETHERNET] = "Emulate Broadband Adapter:\n\nOnly available with the File Service Protocol or an initialised\nETH2GC/GCNET module, where memory constraints permit.\n\nPackets not destined for the hypervisor are forwarded to the\nvirtual MAC. The virtual MAC address is the same as the\nphysical MAC. The physical MAC/PHY retain their configuration\nfrom Swiss, including link speed.",
 	[SET_DISABLE_MEMCARD] = "Disable Memory Card:\n\nSome games misbehave when unexpected devices are present in\nthe memory card slots. When selected, the device will be hidden\nfrom the game if present at boot time.",
-	[SET_DISABLE_HYPERVISOR] = "Disable Hypervisor:\n\nDisables all features and bugfixes relying upon the hypervisor,\nalong with prepatching and patch persistence.\n\nOnly available to devices attached to the DVD Interface.",
+	[SET_DISABLE_HYPERVISOR] = "Hypervisor:\n\nOn - Features and bugfixes that rely on the hypervisor work,\nalong with prepatching and patch persistence (default)\nOff - Turns all of them off\n\nOnly available to devices attached to the DVD Interface.",
 	[SET_CLEAN_BOOT] = "Prefer Clean Boot:\n\nWhen enabled, the GameCube will be reset and the game booted\nthrough normal processes with no changes applied.\nRegion restrictions may be applicable.\n\nOnly available to devices attached to the DVD Interface.",
 	[SET_RT4K_PROFILE] = "RetroTINK-4K Profile:\n\nPresses a profile button through a configured ser2net TCP\nconnection to the RetroTINK-4K's serial port.",
 	[SET_GAME_LANG] = "Game Language:\n\nThe language this game uses. Default follows System Language.\nMostly matters for PAL games that include several languages.",
 	[SET_FORCE_VIDEOMODE] = "Force Video Mode:\n\nThe video mode this game starts in. Auto keeps the game's own\nmode. Some modes only appear with a component or digital cable.",
 	[SET_HORIZ_SCALE] = "Force Horizontal Scale:\n\nHow the video output scales the picture across.\nAuto - Keep the game's own scaling (default)\n1:1 - No horizontal scaling\n11:10, 9:8 - Fixed ratios\n640px to 720px - A fixed output width",
 	[SET_FIELD_RENDER] = "Force Field Rendering:\n\nAuto - Keep the game's own choice (default)\nOn - Draw each field of an interlaced picture separately\nOff - Draw whole frames\nTAA - The jittered rendering some games use for anti-aliasing",
-	[SET_ALPHA_DITHER] = "Disable Alpha Dithering:\n\nTurns off the dithering the GameCube adds to blended effects,\nwhich can show as a fine dot pattern on digital video.",
+	[SET_ALPHA_DITHER] = "Alpha Dithering:\n\nOn - The dithering the GameCube adds to blended effects stays\n(default)\nOff - Turns it off. It can show as a fine dot pattern on digital\nvideo.",
 	[SET_WIDESCREEN] = "Force Widescreen:\n\nStretches games made for 4:3 to fill a 16:9 screen.\n3D - Widen the 3D view only\n2D+3D - Also widen 2D menus and on-screen displays\nSet your TV to 16:9. Edges can look wrong in some games.",
 	[SET_DEFAULTS] = "Reset to defaults:\n\nPuts every setting on this screen back to its default.\nIt asks first, and Discard & Exit still undoes it."
 };
@@ -820,6 +820,13 @@ static void rowYesNo(settingRowView_t *row, const char *label, bool value,
 	rowShow(row, SET_ROWKIND_CYCLE, label, value ? "Yes" : "No", enabled);
 }
 
+/* A setting stored as "Disable X" reads the positive way round. */
+static void rowOnOff(settingRowView_t *row, const char *label, bool on,
+	bool enabled)
+{
+	rowShow(row, SET_ROWKIND_CYCLE, label, on ? "On" : "Off", enabled);
+}
+
 static void rowNumber(settingRowView_t *row, const char *label,
 	const char *format, int value, bool enabled)
 {
@@ -881,9 +888,9 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_AVE_COMPAT: rowCycle(row, "AVE Compatibility:", aveCompatStr[swissSettings.aveCompat], true); break;
 			case SET_FORCE_DTVSTATUS: rowCycle(row, "Force DTV Status:", forceDTVStatusStr[swissSettings.forceDTVStatus], dtvEnable); break;
 			case SET_RT4K_OPTIM: rowYesNo(row, "RetroTINK-4K HDMI Input:", swissSettings.rt4kOptim, rt4kEnable); break;
-			case SET_DISABLE_RECALIB: rowYesNo(row, "Disable Controller Recalibration:", swissSettings.disableRecalibration, true); break;
+			case SET_DISABLE_RECALIB: rowOnOff(row, "Controller Recalibration:", !swissSettings.disableRecalibration, true); break;
 			/* Shown the positive way round; the file keeps Disable PAD Rumble. */
-			case SET_DISABLE_RUMBLE: rowCycle(row, "Controller Rumble:", swissSettings.disableRumble ? "Off" : "On", true); break;
+			case SET_DISABLE_RUMBLE: rowOnOff(row, "Controller Rumble:", !swissSettings.disableRumble, true); break;
 			case SET_ENABLE_USBGECKO: rowCycle(row, "Enable USB Gecko:", enableUSBGeckoStr[swissSettings.enableUSBGecko], true); break;
 			case SET_WAIT_USBGECKO: rowYesNo(row, "Wait for USB Gecko:", swissSettings.waitForUSBGecko, true); break;
 			case SET_SIMMEMSIZE: rowCycle(row, "Simulated MRAM Size:", simulatedMemSizeStr[swissSettings.simulatedMemSize], true); break;
@@ -961,7 +968,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_DEFAULT_VERT_FILTER: rowCycle(row, "Force Vertical Filter:", forceVFilterStr[swissSettings.forceVFilter], enabledVideoPatches); break;
 			case SET_DEFAULT_FIELD_RENDER: rowCycle(row, "Force Field Rendering:", forceVJitterStr[swissSettings.forceVJitter], enabledVideoPatches); break;
 			case SET_DEFAULT_PIXEL_CENTER: rowCycle(row, "Fix Pixel Center:", fixPixelCenterStr[swissSettings.fixPixelCenter], enabledVideoPatches); break;
-			case SET_DEFAULT_ALPHA_DITHER: rowYesNo(row, "Disable Alpha Dithering:", swissSettings.disableDithering, enabledVideoPatches); break;
+			case SET_DEFAULT_ALPHA_DITHER: rowOnOff(row, "Alpha Dithering:", !swissSettings.disableDithering, enabledVideoPatches); break;
 			case SET_DEFAULT_ANISO_FILTER: rowYesNo(row, "Force Anisotropic Filter:", swissSettings.forceAnisotropy, true); break;
 			case SET_DEFAULT_WIDESCREEN: rowCycle(row, "Force Widescreen:", forceWidescreenStr[swissSettings.forceWidescreen], true); break;
 			case SET_DEFAULT_POLL_RATE: rowCycle(row, "Force Polling Rate:", forcePollRateStr[swissSettings.forcePollRate], true); break;
@@ -972,7 +979,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_DEFAULT_READ_SPEED: rowCycle(row, "Emulate Read Speed:", emulateReadSpeedStr[swissSettings.emulateReadSpeed], emulatedReadSpeed); break;
 			case SET_DEFAULT_EMULATE_ETHERNET: rowYesNo(row, "Emulate Broadband Adapter:", swissSettings.emulateEthernet, emulatedEthernet); break;
 			case SET_DEFAULT_DISABLE_MEMCARD: rowCycle(row, "Disable Memory Card:", disableMemoryCardStr[swissSettings.disableMemoryCard], enabledHypervisor); break;
-			case SET_DEFAULT_DISABLE_HYPERVISOR: rowYesNo(row, "Disable Hypervisor:", swissSettings.disableHypervisor, enabledCleanBoot); break;
+			case SET_DEFAULT_DISABLE_HYPERVISOR: rowOnOff(row, "Hypervisor:", !swissSettings.disableHypervisor, enabledCleanBoot); break;
 			case SET_DEFAULT_CLEAN_BOOT: rowYesNo(row, "Prefer Clean Boot:", swissSettings.preferCleanBoot, enabledCleanBoot); break;
 			case SET_DEFAULT_RT4K_PROFILE: rowNumber(row, "RetroTINK-4K Profile:", "%i", swissSettings.rt4kProfile, is_rt4k_alive()); break;
 			case SET_DEFAULT_DEFAULTS: rowAction(row, "Reset to defaults", true); break;
@@ -997,7 +1004,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_VERT_FILTER: rowCycle(row, "Force Vertical Filter:", forceVFilterStr[game->forceVFilter], enabled && enabledVideoPatches); break;
 			case SET_FIELD_RENDER: rowCycle(row, "Force Field Rendering:", forceVJitterStr[game->forceVJitter], enabled && enabledVideoPatches); break;
 			case SET_PIXEL_CENTER: rowCycle(row, "Fix Pixel Center:", fixPixelCenterStr[game->fixPixelCenter], enabled && enabledVideoPatches); break;
-			case SET_ALPHA_DITHER: rowYesNo(row, "Disable Alpha Dithering:", game->disableDithering, enabled && enabledVideoPatches); break;
+			case SET_ALPHA_DITHER: rowOnOff(row, "Alpha Dithering:", !game->disableDithering, enabled && enabledVideoPatches); break;
 			case SET_ANISO_FILTER: rowYesNo(row, "Force Anisotropic Filter:", game->forceAnisotropy, enabled); break;
 			case SET_WIDESCREEN: rowCycle(row, "Force Widescreen:", forceWidescreenStr[game->forceWidescreen], enabled); break;
 			case SET_POLL_RATE: rowCycle(row, "Force Polling Rate:", forcePollRateStr[game->forcePollRate], enabled); break;
@@ -1008,7 +1015,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_READ_SPEED: rowCycle(row, "Emulate Read Speed:", emulateReadSpeedStr[game->emulateReadSpeed], enabled && emulatedReadSpeed); break;
 			case SET_EMULATE_ETHERNET: rowYesNo(row, "Emulate Broadband Adapter:", game->emulateEthernet, enabled && emulatedEthernet); break;
 			case SET_DISABLE_MEMCARD: rowCycle(row, "Disable Memory Card:", disableMemoryCardStr[game->disableMemoryCard], enabled && enabledHypervisor); break;
-			case SET_DISABLE_HYPERVISOR: rowYesNo(row, "Disable Hypervisor:", game->disableHypervisor, enabled && enabledCleanBoot); break;
+			case SET_DISABLE_HYPERVISOR: rowOnOff(row, "Hypervisor:", !game->disableHypervisor, enabled && enabledCleanBoot); break;
 			case SET_CLEAN_BOOT: rowYesNo(row, "Prefer Clean Boot:", game->preferCleanBoot, enabled && enabledCleanBoot); break;
 			case SET_RT4K_PROFILE: rowNumber(row, "RetroTINK-4K Profile:", "%i", game->rt4kProfile, enabled && is_rt4k_alive()); break;
 			case SET_DEFAULTS: rowAction(row, "Reset to defaults", enabled); break;

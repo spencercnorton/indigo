@@ -113,7 +113,7 @@ most use the same key there.
 | `Force Vertical Filter` | `Auto`, `0`, `1`, `2` | `Auto` | Force Vertical Filter |
 | `Force Field Rendering` | `Auto`, `On`, `Off`, `TAA` | `Auto` | Force Field Rendering |
 | `Fix Pixel Center` | `No`, `1/24`, `1/12` | `No` | Fix Pixel Center |
-| `Disable Alpha Dithering` | `Yes`, `No` | `No` | Disable Alpha Dithering |
+| `Disable Alpha Dithering` | `Yes`, `No`. `Yes` shows as Alpha Dithering › Off. | `No` | Alpha Dithering |
 | `Force Anisotropic Filter` | `Yes`, `No` | `No` | Force Anisotropic Filter |
 | `Force Widescreen` | `No`, `3D`, `2D+3D` | `No` | Force Widescreen |
 | `Force Polling Rate` | `No`, `VSync`, `1000Hz`, `500Hz`, `350Hz`, `300Hz`, `250Hz`, `200Hz`, `150Hz`, `120Hz`, `100Hz`. The console lists 150 Hz and 120 Hz twice; a file can only choose the first of each. | `No` | Force Polling Rate |
@@ -124,7 +124,7 @@ most use the same key there.
 | `Emulate Read Speed` | `No`, `Yes`, `Wii` | `No` | Emulate Read Speed |
 | `Emulate Broadband Adapter` | `Yes`, `No` | `No` | Emulate Broadband Adapter |
 | `Disable Memory Card` | `No`, `Slot A`, `Slot B` | `No` | Disable Memory Card |
-| `Disable Hypervisor` | `Yes`, `No` | `No` | Disable Hypervisor |
+| `Disable Hypervisor` | `Yes`, `No`. `Yes` shows as Hypervisor › Off. | `No` | Hypervisor |
 | `Prefer Clean Boot` | `Yes`, `No` | `No` | Prefer Clean Boot |
 | `RetroTINK-4K Profile` | `0` to `12`. Also the profile used in the menus. | `0` | RetroTINK-4K Profile |
 
@@ -149,7 +149,7 @@ most use the same key there.
 | `System Boot Mode` | `Default`, `Production`. Any other value means `Default`. | the console's SRAM | System Boot Mode |
 | `System Sound` | `Mono`, `Stereo`. Any other value means `Mono`. | the console's SRAM | System Sound |
 | `System Language` | `English`, `German`, `French`, `Spanish`, `Italian`, `Dutch`, `Japanese`, `English (US)` | the console's SRAM | System Language |
-| `Disable PAD Recalibration` | `Yes`, `No` | `No` | Disable Controller Recalibration |
+| `Disable PAD Recalibration` | `Yes`, `No`. `Yes` shows as Controller Recalibration › Off. | `No` | Controller Recalibration |
 
 ### Setup › Storage
 
@@ -246,7 +246,7 @@ way in a game's file.
 | `Force Vertical Filter` | `Auto`, `0`, `1`, `2` | from global.ini |
 | `Force Field Rendering` | `Auto`, `On`, `Off`, `TAA` | from global.ini |
 | `Fix Pixel Center` | `No`, `1/24`, `1/12` | from global.ini |
-| `Disable Alpha Dithering` | `Yes`, `No` | from global.ini |
+| `Disable Alpha Dithering` | `Yes`, `No`. `Yes` shows as Alpha Dithering › Off. | from global.ini |
 | `Force Anisotropic Filter` | `Yes`, `No` | from global.ini |
 | `Force Widescreen` | `No`, `3D`, `2D+3D` | from global.ini |
 | `Force Polling Rate` | `No`, `VSync`, `1000Hz`, `500Hz`, `350Hz`, `300Hz`, `250Hz`, `200Hz`, `150Hz`, `120Hz`, `100Hz` | from global.ini |
@@ -257,7 +257,7 @@ way in a game's file.
 | `Emulate Read Speed` | `No`, `Yes`, `Wii` | from global.ini |
 | `Emulate Broadband Adapter` | `Yes`, `No` | from global.ini |
 | `Disable Memory Card` | `No`, `Slot A`, `Slot B` | from global.ini |
-| `Disable Hypervisor` | `Yes`, `No` | from global.ini |
+| `Disable Hypervisor` | `Yes`, `No`. `Yes` shows as Hypervisor › Off. | from global.ini |
 | `Prefer Clean Boot` | `Yes`, `No` | from global.ini |
 | `RetroTINK-4K Profile` | `0` to `12` | from global.ini |
 
