@@ -3,6 +3,18 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.6.0 — download
+
+- Each release now has an `Indigo-vX.Y.Z.zip` download. Its `SD card`
+  folder holds `ipl.dol` and the `games` and `swiss/ui` folders, ready to
+  copy to the root of the card.
+- The README's new "Set up your library" section says how `/games` has to
+  look for the Library to appear, and how to add posters.
+- `buildtools/ui/poster_pack.py` is now published. `--covers DIR` builds
+  `posters.pak` from a folder of cover images named by game ID, and a missing
+  Docker image produces the exact `docker pull` command instead of Docker's
+  error.
+
 ## v1.5.2 — settings files
 
 - New: [docs/SETTINGS.md](docs/SETTINGS.md) lists every key Swiss reads from

@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://norvitech.com"><img alt="NorviTech Suite" src="https://img.shields.io/badge/NorviTech-Suite-FD8024.svg"></a>
   <a href="https://github.com/spencercnorton/indigo/tags"><img alt="Latest release" src="https://img.shields.io/github/v/tag/spencercnorton/indigo?label=release&sort=semver"></a>
-  <a href="#install"><img alt="Build from source" src="https://img.shields.io/badge/install-from%20source-2D2D2D.svg"></a>
+  <a href="https://github.com/spencercnorton/indigo/releases/latest"><img alt="Download for your SD card" src="https://img.shields.io/badge/download-SD%20card%20zip-2D2D2D.svg"></a>
   <a href="LICENSE"><img alt="Licence" src="https://img.shields.io/badge/licence-GPL--2.0--or--later-blue.svg"></a>
   <a href="https://buy.stripe.com/8x26oH2U44f65TRe574wM04"><img alt="Donate" src="https://img.shields.io/badge/donate-Stripe-635bff.svg?logo=stripe&logoColor=white"></a>
 </p>
@@ -39,8 +39,8 @@ reference, not a desktop launcher.
 **The library retains its posters.** A grid over whatever device you booted
 from, with artwork kept across navigation rather than re-read per frame, and
 your selection restored when you come back from a game's details. Cover art
-comes from a pack you build yourself; without one, each game gets a generated
-card.
+comes from a pack you build yourself (see [Posters](#posters)); without one,
+each game gets a generated card.
 
 <p align="center">
   <img alt="The game library: GameCube box art in a carousel, the selected cover raised with its title and publisher below it." src="docs/screenshots/library.png" width="640">
@@ -64,6 +64,24 @@ also be written ahead of time in a file on the SD card: see
 
 ## Install
 
+### Download
+
+Each [release](https://github.com/spencercnorton/indigo/releases/latest) has
+an `Indigo-vX.Y.Z.zip`. Its `SD card` folder holds everything that goes on
+the card:
+
+```text
+SD card/
+├── ipl.dol      Indigo; PicoBoot and other modchips boot this
+├── games/       your games (see Set up your library)
+└── swiss/ui/    posters.pak, if you build one
+```
+
+If your card already has an `ipl.dol` in its root, that is your current
+Swiss: rename it to `z.dol` first (holding Z at power-on starts it). Then copy
+the contents of `SD card` to the root of the card. With GC Loader or another
+loader that boots a disc image, start `ipl.dol` from Swiss instead.
+
 ### Any platform — from source
 
 The build runs in the same container image the project's CI uses, so no
@@ -77,8 +95,8 @@ docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
 # writes cube/swiss/swiss.dol inside this folder, on your computer
 ```
 
-There is no published binary release and no installer; this is a source fork
-of a homebrew utility.
+The download above is this build at the release tag, packaged by
+`buildtools/sd_package.sh`.
 
 The release packaging targets (`make dist` and friends) are not supported
 here: they need prebuilt tools and device firmware images that this fork does
@@ -107,6 +125,41 @@ boots, under that file's name. Your Swiss settings carry over.
 With In-Game Reset set to **Apploader**, a reset returns to the Swiss inside
 `/swiss/patches/apploader.img`, not to Indigo; `make dev` does not rebuild
 that file.
+
+## Set up your library
+
+### Games
+
+The Library shows the games in one folder, `/games` at the root of the card.
+Put each game in its own folder or put the disc images there directly, and
+keep nothing else in that folder:
+
+```text
+/games/Super Mario Sunshine [GMSE01]/game.iso
+/games/Super Mario Sunshine.iso
+```
+
+Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. Any other file in
+`/games` (a text file, a cover image, an empty folder) turns the Library back
+into Swiss's plain file list; Settings → Interface → "Hide unknown file types"
+hides stray files. On Home, turn the cube to Library and press A.
+
+### Posters
+
+Without posters, each game shows its disc banner and its six-character game
+ID, such as `GMSE01`. For box art like the screenshots above, name front-cover
+images after those IDs (`GMSE01.png`, `GALE01.jpg`, at least 192×256) in one
+folder, build a pack from this repository, and copy it to
+`/swiss/ui/posters.pak` on the card:
+
+```bash
+python3 -m pip install pillow
+docker pull ghcr.io/extremscorner/libogc2@sha256:903b442dfd18cab00b5958726f70b17d95b0cf40c15d01b11e841825489dbe3d
+python3 buildtools/ui/poster_pack.py --covers ~/covers --out posters.pak
+```
+
+Covers are cropped to 3:4 from the centre. Files not named by a game ID are
+skipped and listed.
 
 ## Documentation
 
