@@ -113,6 +113,8 @@ licence. Provenance, the modified surface and the third-party components in
 this tree are recorded in [`NOTICE`](NOTICE). This fork is unofficial and is
 not endorsed by or affiliated with the Swiss project.
 
+Indigo's interface was built with [Claude Code](https://claude.com/claude-code).
+
 ---
 
 <p align="center">

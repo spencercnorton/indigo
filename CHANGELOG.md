@@ -3,6 +3,11 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.4.2 — README
+
+- The README's licence section notes that Indigo's interface was built with
+  Claude Code.
+
 ## v1.4.1 — Home
 
 - The orbit rings around the cube are gone, on Home and on every other
