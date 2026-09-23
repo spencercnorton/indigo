@@ -126,6 +126,24 @@ s8 padsStickY() {
 	);
 }
 
+s8 padsSubStickX() {
+	return __chooseMaxMagnitiude(
+		PAD_SubStickX(PAD_CHAN0),
+		PAD_SubStickX(PAD_CHAN1),
+		PAD_SubStickX(PAD_CHAN2),
+		PAD_SubStickX(PAD_CHAN3)
+	);
+}
+
+s8 padsSubStickY() {
+	return __chooseMaxMagnitiude(
+		PAD_SubStickY(PAD_CHAN0),
+		PAD_SubStickY(PAD_CHAN1),
+		PAD_SubStickY(PAD_CHAN2),
+		PAD_SubStickY(PAD_CHAN3)
+	);
+}
+
 uiMenuInputDirection_t padsMenuInputPoll(uiMenuInputState_t *state,
 	u32 elapsedMicroseconds, u32 policy, bool inhibited)
 {

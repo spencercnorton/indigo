@@ -132,6 +132,7 @@ typedef struct {
 
 static uiSystemInstrument_t systemInstrument;
 static void _UpdateSystemInstrument(void);
+static indigoPadFrame_t padInstrument;
 static u32 settingsFocusLastDrawFrame;
 static uiSettingsFocusState_t settingsFocusState;
 static file_handle posterPackFile;
@@ -666,74 +667,6 @@ static void _putFlatRect(float x, float y, float width, float height, GXColor co
 	_putFlatVertex(x, y + height, color);
 }
 
-static void _putFlatDiamond(float x, float y, float radius, GXColor color)
-{
-	_putFlatVertex(x, y - radius, color);
-	_putFlatVertex(x + radius, y, color);
-	_putFlatVertex(x, y + radius, color);
-	_putFlatVertex(x - radius, y, color);
-}
-
-static void _DrawSpatialRails(float reveal, float focusPulse)
-{
-	GXColor glow;
-	GXColor line;
-	GXColor contact;
-
-	if(reveal <= 0.0f) {
-		return;
-	}
-	if(reveal > 1.0f) {
-		reveal = 1.0f;
-	}
-	if(focusPulse < 0.0f) {
-		focusPulse = 0.0f;
-	}
-	else if(focusPulse > 1.0f) {
-		focusPulse = 1.0f;
-	}
-
-	glow = (GXColor) {116, 92, 235, (u8)((26.0f + focusPulse * 20.0f) * reveal)};
-	line = (GXColor) {186, 171, 255, (u8)((98.0f + focusPulse * 28.0f) * reveal)};
-	contact = (GXColor) {235, 229, 255, (u8)((154.0f + focusPulse * 54.0f) * reveal)};
-
-	drawInit();
-	GX_SetNumTexGens(0);
-	GX_SetNumIndStages(0);
-	GX_SetNumTevStages(1);
-	GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORDNULL, GX_TEXMAP_NULL, GX_COLOR0A0);
-	GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
-	GX_SetTevColorOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_ENABLE, GX_TEVPREV);
-	GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
-	GX_SetTevAlphaOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_ENABLE, GX_TEVPREV);
-	GX_SetTevDirect(GX_TEVSTAGE0);
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-
-	/* Nominal Home cube projection is x=200..476, y=84..355. These rails
-	 * stay pixel-aligned while the cube breathes, avoiding 480i text shimmer. */
-	GX_Begin(GX_QUADS, GX_VTXFMT0, 64);
-		_putFlatRect(317.0f, 82.0f, 6.0f, 14.0f, glow);
-		_putFlatRect(288.0f, 91.0f, 64.0f, 6.0f, glow);
-		_putFlatRect(182.0f, 217.0f, 20.0f, 6.0f, glow);
-		_putFlatRect(474.0f, 217.0f, 20.0f, 6.0f, glow);
-		_putFlatRect(317.0f, 353.0f, 6.0f, 14.0f, glow);
-		_putFlatRect(285.0f, 362.0f, 70.0f, 6.0f, glow);
-
-		_putFlatRect(319.0f, 82.0f, 2.0f, 14.0f, line);
-		_putFlatRect(290.0f, 94.0f, 60.0f, 1.0f, line);
-		_putFlatRect(183.0f, 219.0f, 19.0f, 2.0f, line);
-		_putFlatRect(475.0f, 219.0f, 19.0f, 2.0f, line);
-		_putFlatRect(319.0f, 354.0f, 2.0f, 13.0f, line);
-		_putFlatRect(287.0f, 365.0f, 66.0f, 2.0f, line);
-
-		_putFlatDiamond(320.0f, 84.0f, 3.0f, contact);
-		_putFlatDiamond(200.0f, 220.0f, 3.0f, contact);
-		_putFlatDiamond(476.0f, 220.0f, 3.0f, contact);
-		_putFlatDiamond(320.0f, 355.0f, 3.0f, contact);
-	GX_End();
-	drawInit();
-}
-
 static void _DrawSimpleBox(int x, int y, int width, int height, int depth, GXColor fillColor, GXColor borderColor) 
 {
 	//Adjust for blank texture border
@@ -949,7 +882,7 @@ static void _DrawBackground(uiDrawObj_t *evt)
 	IndigoBackground_Draw(UIAnim_Seconds(),
 		decorativeAnimated && !swissSettings.disableAnimatedBackdrop,
 		decorativeAnimated,
-		UIScene_Frame(), &systemInstrument.clock);
+		UIScene_Frame(), &systemInstrument.clock, &padInstrument);
 	/* The background uses a raster-only TEV stage; never leak that state. */
 	drawInit();
 	UI_PERF_END(UI_PERF_METRIC_BACKGROUND_CPU_SUBMIT, backgroundStart);
@@ -987,7 +920,6 @@ static void _DrawDeviceSelectorCard(uiDrawObj_t *evt)
 
 	/* The IPL font remains a crisp screen-space overlay. Thin rails visually
 	 * attach it to the cube without perspective-distorting text at 480i. */
-	_DrawSpatialRails(reveal, data->inAdvanced ? 0.72f : 0.28f);
 	drawStringMedium(320, 70 + offsetY,
 		data->destination ? "DEST" : "SOURCE",
 		0.62f, ALIGN_CENTER, secondary);
@@ -3377,8 +3309,6 @@ static void _DrawHomeRoot(const drawHomeEvent_t *data,
 	if(progress < 0.0f) progress = 0.0f;
 	if(progress > 1.0f) progress = 1.0f;
 	eased = progress * progress * (3.0f - 2.0f * progress);
-	_DrawSpatialRails(reveal,
-		UIMotion_Amplitude(1.0f - eased, motionMode));
 
 	/* The ring names only the selected face, under the cube. Nothing sits
 	 * above or beside it: a label the cube does not carry through the turn
@@ -3435,7 +3365,6 @@ static void _DrawHomeContext(const drawHomeEvent_t *data, float reveal)
 {
 	GXColor title = {220, 211, 255, (u8)(234.0f * reveal)};
 
-	_DrawSpatialRails(reveal, 0.44f);
 	_DrawHomeText(data->layout.titleCenter.x, data->layout.titleCenter.y,
 		data->heading, data->headingScale,
 		ALIGN_CENTER, title);
@@ -3452,7 +3381,6 @@ static void _DrawHomeRestartConfirm(const drawHomeEvent_t *data,
 	GXColor consequence = {220, 210, 239, (u8)(224.0f * reveal)};
 
 	_DrawHomeModalDepth(&data->layout, reveal);
-	_DrawSpatialRails(reveal, 0.24f);
 	_DrawHomeText(data->layout.titleCenter.x, data->layout.titleCenter.y,
 		"RESTART INDIGO?", 0.60f, ALIGN_CENTER, title);
 	_DrawHomeText(data->layout.consequenceCenter.x,
@@ -4773,6 +4701,12 @@ static void *videoUpdate(void *videoEventQueue) {
 		/* Sample once before EV_BACKGROUND so the cube and later title bar read
 		 * the exact same numeric civil-time frame. */
 		_UpdateSystemInstrument();
+		/* The Library emblem mirrors this frame's controller. PAD reads only
+		 * copy the last post-retrace scan; no SI transfer happens here. */
+		padInstrument = (indigoPadFrame_t) {
+			true, padsStickX(), padsStickY(), padsSubStickX(), padsSubStickY(),
+			padsButtonsHeld()
+		};
 		videoFrameSerial++;
 		// Mark events recursively as disposed
 		uiDrawObjQueue_t *videoEventQueueEntry = (uiDrawObjQueue_t*)videoEventQueue;

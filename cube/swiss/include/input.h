@@ -23,6 +23,8 @@ void padsScan(void);
 u32 padsButtonsHeld();
 s8 padsStickX();
 s8 padsStickY();
+s8 padsSubStickX();
+s8 padsSubStickY();
 uiMenuInputDirection_t padsMenuInputPoll(uiMenuInputState_t *state,
 	u32 elapsedMicroseconds, u32 policy, bool inhibited);
 

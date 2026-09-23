@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img alt="The Indigo Home screen: a glass cube turning between its Library, Source, Settings and System faces on a dark starfield, with only the face you are on named underneath." src="docs/screenshots/home.png" width="640">
+  <img alt="The Indigo Home screen: a glass cube turning between its Library, Source, Settings and System faces on a dark starfield, the Library face showing a GameCube controller, with only the face you are on named underneath." src="docs/screenshots/home.png" width="640">
 </p>
 
 Captured in the Dolphin emulator. The library and game detail pictures show a real poster pack and cheat file in use; box art belongs to its publishers.
@@ -30,8 +30,11 @@ hardware and want it to feel like it belongs on the console.
 
 **Home is an animated cube.** Four faces, one destination each, rotating in
 both axes. Each face carries its own emblem, and only the face you are on is
-named, under the cube. The GameCube's own interface language — the idle
-cube, the typeface, the palette — is the reference, not a desktop launcher.
+named, under the cube. The Library face is a GameCube controller that
+mirrors yours: its sticks lean with your sticks and its buttons light as you
+press them, and when you leave it alone it plays by itself. The GameCube's own
+interface language — the idle cube, the typeface, the palette — is the
+reference, not a desktop launcher.
 
 **The library retains its posters.** A grid over whatever device you booted
 from, with artwork kept across navigation rather than re-read per frame, and

@@ -3,6 +3,17 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.5.0 — Home
+
+- The Library face shows a GameCube controller instead of the bookshelf, and
+  it follows the controller in your hand: the control stick and C-stick lean
+  with yours, and A, B, X, Y, Start, the D-pad and the L and R triggers light
+  while you hold them. Two seconds after you let go it starts playing by
+  itself; with reduced motion on it only mirrors you.
+- The short marks on the four sides of the cube are gone, on Home, in
+  Settings and on the restart prompt.
+- The README's Home animation is re-recorded with the controller.
+
 ## v1.4.2 — README
 
 - The README's licence section notes that Indigo's interface was built with

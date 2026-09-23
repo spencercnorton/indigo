@@ -13,6 +13,9 @@
 #define CUBE_IDLE_SWAY_RATE 0.31f
 #define CUBE_IDLE_SWAY_RADIANS 0.035f
 #define HOME_DECORATIVE_STRENGTH 0.76f
+#define FACE_POLYGON_MAX 48
+#define FACE_BAND_MAX 80
+#define CONTROLLER_IDLE_HOLD 2.0f
 
 typedef struct indigoPoint {
 	float x;
@@ -42,6 +45,22 @@ typedef struct cubeCoverageEdge {
 	indigoPoint_t outward[2];
 	GXColor color[2];
 } cubeCoverageEdge_t;
+
+/* Library emblem state: stick axes in -1..1 (y up) and PAD_* bits held. */
+typedef struct controllerPose {
+	float stickX;
+	float stickY;
+	float substickX;
+	float substickY;
+	u32 pressed;
+} controllerPose_t;
+
+/* Idle play resumes only once the controller has been left alone, so it is
+ * never mistaken for the user's own input. */
+typedef struct controllerIdle {
+	float lastLiveInput;
+	bool liveSeen;
+} controllerIdle_t;
 
 typedef struct waveOscillator {
 	float sine;
@@ -852,25 +871,434 @@ static void putSemanticFaceHand(const cubeRasterTransform_t *raster, int face, f
 	putSemanticMotifQuad(raster, face, corners, plane, color);
 }
 
-/* One book on the Library shelf: three pieces whose two gaps read as the
- * spine's bands. lean tips it about its bottom-left corner into the row. */
-static void putSemanticFaceBook(const cubeRasterTransform_t *raster, int face,
-		float u, float v, float width, float height, float lean, float plane,
+/* A convex polygon on a semantic face, clockwise in face space, in its own
+ * primitives: a solid fan inset by half a pixel and a coverage fringe that
+ * falls to zero one native pixel out, as the motif quads do. Back-facing or
+ * collapsed polygons draw nothing. */
+static void drawFacePolygon(const cubeRasterTransform_t *raster, int face,
+		const indigoPoint_t *corners, int count, float plane, GXColor color)
+{
+	guVector eyes[FACE_POLYGON_MAX];
+	indigoPoint_t points[FACE_POLYGON_MAX], joins[FACE_POLYGON_MAX];
+	indigoPoint_t center = {0.0f, 0.0f};
+	float area = 0.0f, clearance = 1000.0f;
+
+	color.a = (u8)((float)color.a * raster->motifAlpha);
+	if(count < 3 || count > FACE_POLYGON_MAX || color.a == 0) return;
+	for(int i = 0; i < count; i++) {
+		guVector point = semanticFacePoint(raster, face, corners[i].x, corners[i].y, plane);
+		if(!projectRailPoint(raster, point.x, point.y, point.z,
+			&eyes[i], &points[i])) return;
+		center.x += points[i].x / (float)count;
+		center.y += points[i].y / (float)count;
+	}
+	for(int i = 0; i < count; i++) {
+		int next = (i + 1) % count;
+		area += points[i].x * points[next].y - points[next].x * points[i].y;
+	}
+	if(area >= -0.001f) return;
+	for(int i = 0; i < count; i++) {
+		int next = (i + 1) % count;
+		float dx = points[next].x - points[i].x;
+		float dy = points[next].y - points[i].y;
+		float length = sqrtf(dx * dx + dy * dy);
+		if(length <= 0.0f || !railJoin(points[(i + count - 1) % count],
+			points[i], points[next], &joins[i])) return;
+		float distance = fabsf(dx * (center.y - points[i].y) -
+			dy * (center.x - points[i].x)) / length;
+		if(distance < clearance) clearance = distance;
+	}
+	float inset = fminf(0.5f, clearance * 0.5f);
+	float outside = 1.0f - inset;
+	color.a = (u8)((float)color.a * fminf(1.0f, clearance * 2.0f));
+	GXColor transparent = color;
+	transparent.a = 0;
+	GX_Begin(GX_TRIANGLEFAN, GX_VTXFMT0, (u16)count);
+	for(int i = 0; i < count; i++) {
+		putProjectedRailVertex(raster, eyes[i], joins[i], -inset, color);
+	}
+	GX_End();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 4));
+	for(int i = 0; i < count; i++) {
+		int next = (i + 1) % count;
+		putProjectedRailVertex(raster, eyes[i], joins[i], -inset, color);
+		putProjectedRailVertex(raster, eyes[i], joins[i], outside, transparent);
+		putProjectedRailVertex(raster, eyes[next], joins[next], outside, transparent);
+		putProjectedRailVertex(raster, eyes[next], joins[next], -inset, color);
+	}
+	GX_End();
+}
+
+/* A closed band of face-space width centred on a clockwise polyline: the
+ * controller's outline and its stick gates. Neighbouring quads share their
+ * mitred corners and each boundary fades over one native pixel, so the
+ * additive emblem pass never double-lights a seam. */
+static void drawFaceBand(const cubeRasterTransform_t *raster, int face,
+		const indigoPoint_t *centre, int count, float halfWidth, float plane,
 		GXColor color)
 {
-	static const float bands[6] = {0.0f, 0.15f, 0.20f, 0.80f, 0.85f, 1.0f};
-	float c = cosf(lean), s = sinf(lean);
+	guVector eyes[2][FACE_BAND_MAX];
+	indigoPoint_t points[2][FACE_BAND_MAX], joins[2][FACE_BAND_MAX];
+	float area = 0.0f;
 
-	for(int i = 0; i < 6; i += 2) {
-		float b0 = bands[i] * height, b1 = bands[i + 1] * height;
-		const indigoPoint_t corners[4] = {
-			{u - b0 * s, v + b0 * c},
-			{u - b1 * s, v + b1 * c},
-			{u + width * c - b1 * s, v + width * s + b1 * c},
-			{u + width * c - b0 * s, v + width * s + b0 * c}
-		};
-		putSemanticMotifQuad(raster, face, corners, plane, color);
+	color.a = (u8)((float)color.a * raster->motifAlpha);
+	if(count < 3 || count > FACE_BAND_MAX || color.a == 0) return;
+	for(int i = 0; i < count; i++) {
+		indigoPoint_t prev = centre[(i + count - 1) % count];
+		indigoPoint_t next = centre[(i + 1) % count];
+		float ax = centre[i].x - prev.x, ay = centre[i].y - prev.y;
+		float bx = next.x - centre[i].x, by = next.y - centre[i].y;
+		float al = sqrtf(ax * ax + ay * ay), bl = sqrtf(bx * bx + by * by);
+		if(al <= 0.0f || bl <= 0.0f) return;
+		/* Clockwise with v up: each edge's outward normal is its left side. */
+		float nx = -ay / al - by / bl, ny = ax / al + bx / bl;
+		float nl = sqrtf(nx * nx + ny * ny);
+		if(nl <= 0.0f) return;
+		nx /= nl; ny /= nl;
+		float miter = nx * (-ay / al) + ny * (ax / al);
+		float reach = halfWidth / (miter > 0.5f ? miter : 0.5f);
+		for(int side = 0; side < 2; side++) {
+			float offset = side == 0 ? -reach : reach;
+			guVector point = semanticFacePoint(raster, face,
+				centre[i].x + nx * offset, centre[i].y + ny * offset, plane);
+			if(!projectRailPoint(raster, point.x, point.y, point.z,
+				&eyes[side][i], &points[side][i])) return;
+		}
 	}
+	for(int i = 0; i < count; i++) {
+		int next = (i + 1) % count;
+		area += points[1][i].x * points[1][next].y - points[1][next].x * points[1][i].y;
+	}
+	if(area >= -0.001f) return;
+	for(int side = 0; side < 2; side++) {
+		for(int i = 0; i < count; i++) {
+			if(!railJoin(points[side][(i + count - 1) % count], points[side][i],
+				points[side][(i + 1) % count], &joins[side][i])) return;
+		}
+	}
+	GXColor transparent = color;
+	transparent.a = 0;
+	/* Solid band, then the outer fringe outward and the inner fringe inward. */
+	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 12));
+	for(int i = 0; i < count; i++) {
+		int next = (i + 1) % count;
+		putProjectedRailVertex(raster, eyes[0][i], joins[0][i], 0.0f, color);
+		putProjectedRailVertex(raster, eyes[1][i], joins[1][i], 0.0f, color);
+		putProjectedRailVertex(raster, eyes[1][next], joins[1][next], 0.0f, color);
+		putProjectedRailVertex(raster, eyes[0][next], joins[0][next], 0.0f, color);
+		for(int side = 0; side < 2; side++) {
+			float fade = side == 0 ? -1.0f : 1.0f;
+			putProjectedRailVertex(raster, eyes[side][i], joins[side][i], 0.0f, color);
+			putProjectedRailVertex(raster, eyes[side][i], joins[side][i], fade, transparent);
+			putProjectedRailVertex(raster, eyes[side][next], joins[side][next], fade, transparent);
+			putProjectedRailVertex(raster, eyes[side][next], joins[side][next], 0.0f, color);
+		}
+	}
+	GX_End();
+}
+
+/* The Library emblem: an original GameCube controller drawn in face units
+ * (v up) in the same glowing strokes and solids as the other faces. */
+static void drawControllerCircle(const cubeRasterTransform_t *raster,
+		float x, float y, float radius, int segments, float plane, GXColor color)
+{
+	indigoPoint_t corners[FACE_POLYGON_MAX];
+
+	if(segments < 3 || segments > FACE_POLYGON_MAX) return;
+	for(int i = 0; i < segments; i++) {
+		float angle = -INDIGO_TAU * (float)i / (float)segments;
+		corners[i] = (indigoPoint_t) {x + radius * cosf(angle),
+			y + radius * sinf(angle)};
+	}
+	drawFacePolygon(raster, UI_HOME_FACE_LIBRARY, corners, segments, plane, color);
+}
+
+/* An octagonal gate ring, a vertex on each axis like the real stick gates. */
+static void drawControllerGate(const cubeRasterTransform_t *raster,
+		float x, float y, float radius, float halfWidth, float plane, GXColor color)
+{
+	indigoPoint_t corners[8];
+
+	for(int i = 0; i < 8; i++) {
+		float angle = -INDIGO_TAU * (float)i / 8.0f;
+		corners[i] = (indigoPoint_t) {x + radius * cosf(angle),
+			y + radius * sinf(angle)};
+	}
+	drawFaceBand(raster, UI_HOME_FACE_LIBRARY, corners, 8, halfWidth, plane, color);
+}
+
+static void drawControllerRect(const cubeRasterTransform_t *raster,
+		float u0, float v0, float u1, float v1, float plane, GXColor color)
+{
+	const indigoPoint_t corners[4] = {{u0, v0}, {u0, v1}, {u1, v1}, {u1, v0}};
+	drawFacePolygon(raster, UI_HOME_FACE_LIBRARY, corners, 4, plane, color);
+}
+
+/* The controller's silhouette, clockwise in face units: the union of its
+ * two main lobes, the bridge carrying Start, the D-pad and C-stick lobes and
+ * the flared grips, traced and simplified by
+ * buildtools/ui/controller_outline.py. */
+static const float controllerOutline[][2] = {
+		{-0.316f, 0.307f}, {-0.23f, 0.285f}, {-0.186f, 0.28f}, {0.144f, 0.279f}, {0.217f, 0.282f},
+		{0.288f, 0.303f}, {0.352f, 0.307f}, {0.418f, 0.293f}, {0.468f, 0.266f}, {0.527f, 0.204f},
+		{0.562f, 0.129f}, {0.57f, 0.022f}, {0.611f, -0.109f}, {0.667f, -0.324f}, {0.664f, -0.36f},
+		{0.645f, -0.399f}, {0.615f, -0.424f}, {0.571f, -0.438f}, {0.539f, -0.434f}, {0.502f, -0.415f},
+		{0.473f, -0.38f}, {0.376f, -0.211f}, {0.352f, -0.18f}, {0.324f, -0.158f}, {0.305f, -0.159f},
+		{0.295f, -0.17f}, {0.284f, -0.232f}, {0.255f, -0.283f}, {0.215f, -0.308f}, {0.16f, -0.317f},
+		{0.118f, -0.308f}, {0.077f, -0.282f}, {0.046f, -0.234f}, {0.035f, -0.164f}, {0.021f, -0.153f},
+		{-0.005f, -0.15f}, {-0.022f, -0.153f}, {-0.036f, -0.164f}, {-0.044f, -0.228f}, {-0.073f, -0.277f},
+		{-0.112f, -0.305f}, {-0.161f, -0.317f}, {-0.215f, -0.308f}, {-0.256f, -0.283f}, {-0.285f, -0.232f},
+		{-0.295f, -0.17f}, {-0.306f, -0.159f}, {-0.325f, -0.158f}, {-0.353f, -0.18f}, {-0.376f, -0.211f},
+		{-0.471f, -0.378f}, {-0.497f, -0.411f}, {-0.527f, -0.43f}, {-0.562f, -0.438f}, {-0.595f, -0.434f},
+		{-0.628f, -0.417f}, {-0.659f, -0.38f}, {-0.667f, -0.329f}, {-0.632f, -0.182f}, {-0.571f, 0.023f},
+		{-0.566f, 0.109f}, {-0.55f, 0.165f}, {-0.51f, 0.23f}, {-0.454f, 0.276f}, {-0.387f, 0.302f}
+};
+
+/* A bean: a band of face-space width along a circular arc with round ends,
+ * swept clockwise from a0 down to a1 (radians): X, Y and the triggers. */
+static void drawFaceBean(const cubeRasterTransform_t *raster, int face,
+		float cx, float cy, float radius, float a0, float a1, float halfWidth,
+		float plane, GXColor color)
+{
+	enum { ARC = 10, CAP = 5, POINTS = 2 * ARC + 2 * CAP };
+	indigoPoint_t outline[POINTS + 2];
+	guVector eyes[POINTS + 2];
+	indigoPoint_t points[POINTS + 2], joins[POINTS];
+	float area = 0.0f;
+	int count = 0;
+
+	color.a = (u8)((float)color.a * raster->motifAlpha);
+	if(color.a == 0) return;
+	/* Outer arc, the a1 end cap, the inner arc back, then the a0 end cap;
+	 * the two cap centres follow for their fans. */
+	for(int i = 0; i <= ARC; i++) {
+		float angle = a0 + (a1 - a0) * (float)i / ARC;
+		outline[count++] = (indigoPoint_t) {cx + (radius + halfWidth) * cosf(angle),
+			cy + (radius + halfWidth) * sinf(angle)};
+	}
+	for(int j = 1; j < CAP; j++) {
+		float angle = a1 - INDIGO_TAU * 0.5f * (float)j / CAP;
+		outline[count++] = (indigoPoint_t) {cx + radius * cosf(a1) + halfWidth * cosf(angle),
+			cy + radius * sinf(a1) + halfWidth * sinf(angle)};
+	}
+	for(int i = ARC; i >= 0; i--) {
+		float angle = a0 + (a1 - a0) * (float)i / ARC;
+		outline[count++] = (indigoPoint_t) {cx + (radius - halfWidth) * cosf(angle),
+			cy + (radius - halfWidth) * sinf(angle)};
+	}
+	for(int j = 1; j < CAP; j++) {
+		float angle = a0 + INDIGO_TAU * 0.5f * (1.0f - (float)j / CAP);
+		outline[count++] = (indigoPoint_t) {cx + radius * cosf(a0) + halfWidth * cosf(angle),
+			cy + radius * sinf(a0) + halfWidth * sinf(angle)};
+	}
+	outline[POINTS] = (indigoPoint_t) {cx + radius * cosf(a1), cy + radius * sinf(a1)};
+	outline[POINTS + 1] = (indigoPoint_t) {cx + radius * cosf(a0), cy + radius * sinf(a0)};
+	for(int i = 0; i < POINTS + 2; i++) {
+		guVector point = semanticFacePoint(raster, face, outline[i].x, outline[i].y, plane);
+		if(!projectRailPoint(raster, point.x, point.y, point.z,
+			&eyes[i], &points[i])) return;
+	}
+	for(int i = 0; i < POINTS; i++) {
+		int next = (i + 1) % POINTS;
+		area += points[i].x * points[next].y - points[next].x * points[i].y;
+	}
+	if(area >= -0.001f) return;
+	for(int i = 0; i < POINTS; i++) {
+		if(!railJoin(points[(i + POINTS - 1) % POINTS], points[i],
+			points[(i + 1) % POINTS], &joins[i])) return;
+	}
+	GXColor transparent = color;
+	transparent.a = 0;
+	/* The arc as a strip of quads: outer i, i+1 against the inner arc. */
+	GX_Begin(GX_QUADS, GX_VTXFMT0, ARC * 4);
+	for(int i = 0; i < ARC; i++) {
+		putProjectedRailVertex(raster, eyes[i], joins[i], 0.0f, color);
+		putProjectedRailVertex(raster, eyes[i + 1], joins[i + 1], 0.0f, color);
+		putProjectedRailVertex(raster, eyes[2 * ARC + CAP - i - 1],
+			joins[2 * ARC + CAP - i - 1], 0.0f, color);
+		putProjectedRailVertex(raster, eyes[2 * ARC + CAP - i],
+			joins[2 * ARC + CAP - i], 0.0f, color);
+	}
+	GX_End();
+	/* Each round end fans from its centre across outer end, cap, inner end. */
+	for(int end = 0; end < 2; end++) {
+		int first = end == 0 ? ARC : 2 * ARC + CAP;
+		GX_Begin(GX_TRIANGLEFAN, GX_VTXFMT0, CAP + 2);
+		putProjectedRailVertex(raster, eyes[POINTS + end], joins[0], 0.0f, color);
+		for(int j = 0; j <= CAP; j++) {
+			int index = (first + j) % POINTS;
+			putProjectedRailVertex(raster, eyes[index], joins[index], 0.0f, color);
+		}
+		GX_End();
+	}
+	GX_Begin(GX_QUADS, GX_VTXFMT0, POINTS * 4);
+	for(int i = 0; i < POINTS; i++) {
+		int next = (i + 1) % POINTS;
+		putProjectedRailVertex(raster, eyes[i], joins[i], 0.0f, color);
+		putProjectedRailVertex(raster, eyes[i], joins[i], 1.0f, transparent);
+		putProjectedRailVertex(raster, eyes[next], joins[next], 1.0f, transparent);
+		putProjectedRailVertex(raster, eyes[next], joins[next], 0.0f, color);
+	}
+	GX_End();
+}
+
+/* Normalised stick axis with a small dead zone, so a resting stick's drift
+ * never wiggles the emblem. */
+static float controllerAxis(s8 value, float fullScale)
+{
+	float axis = (float)value / fullScale;
+
+	if(fabsf(axis) < 0.1f) return 0.0f;
+	return axis > 1.0f ? 1.0f : (axis < -1.0f ? -1.0f : axis);
+}
+
+/* Live input wins. After CONTROLLER_IDLE_HOLD seconds without any, the sticks
+ * drift and the buttons play a slow press sequence; reduced motion keeps the
+ * live mirror and drops that idle play. */
+static void controllerPose(const indigoPadFrame_t *pad, float seconds,
+		bool animated, controllerIdle_t *idle, controllerPose_t *pose)
+{
+	static const struct {
+		u32 button;
+		float start;
+		float length;
+	} presses[] = {
+		{PAD_BUTTON_A, 0.30f, 0.26f}, {PAD_BUTTON_B, 1.20f, 0.22f},
+		{PAD_BUTTON_Y, 2.20f, 0.22f}, {PAD_BUTTON_X, 2.80f, 0.22f},
+		{PAD_BUTTON_RIGHT, 3.80f, 0.20f}, {PAD_BUTTON_DOWN, 4.20f, 0.20f},
+		{PAD_BUTTON_START, 5.10f, 0.22f}
+	};
+	const u32 shown = PAD_BUTTON_A | PAD_BUTTON_B | PAD_BUTTON_X |
+		PAD_BUTTON_Y | PAD_BUTTON_START | PAD_BUTTON_UP | PAD_BUTTON_DOWN |
+		PAD_BUTTON_LEFT | PAD_BUTTON_RIGHT | PAD_TRIGGER_L | PAD_TRIGGER_R;
+	float idleWeight;
+
+	*pose = (controllerPose_t) {0.0f, 0.0f, 0.0f, 0.0f, 0u};
+	if(pad != NULL && pad->available) {
+		pose->stickX = controllerAxis(pad->stickX, 80.0f);
+		pose->stickY = controllerAxis(pad->stickY, 80.0f);
+		pose->substickX = controllerAxis(pad->substickX, 72.0f);
+		pose->substickY = controllerAxis(pad->substickY, 72.0f);
+		pose->pressed = pad->buttons & shown;
+		if(pose->pressed != 0u || pose->stickX != 0.0f ||
+			pose->stickY != 0.0f || pose->substickX != 0.0f ||
+			pose->substickY != 0.0f) {
+			idle->lastLiveInput = seconds;
+			idle->liveSeen = true;
+		}
+	}
+	idleWeight = !animated ? 0.0f : (!idle->liveSeen ? 1.0f :
+		(seconds - idle->lastLiveInput - CONTROLLER_IDLE_HOLD) / 0.8f);
+	if(idleWeight <= 0.0f) return;
+	if(idleWeight > 1.0f) idleWeight = 1.0f;
+	pose->stickX += idleWeight * 0.38f * sinf(seconds * 0.8f);
+	pose->stickY += idleWeight * 0.32f * sinf(seconds * 1.1f + 0.6f);
+	pose->substickX += idleWeight * 0.34f * sinf(seconds * 1.3f + 2.0f);
+	pose->substickY += idleWeight * 0.30f * cosf(seconds * 0.9f);
+	if(idleWeight < 1.0f) return;
+	float phase = fmodf(seconds, 6.0f);
+	for(unsigned i = 0; i < sizeof(presses) / sizeof(presses[0]); i++) {
+		if(phase >= presses[i].start &&
+			phase < presses[i].start + presses[i].length) {
+			pose->pressed |= presses[i].button;
+		}
+	}
+}
+
+/* Every part shares the Library glow; a pressed part sinks to 84% of its
+ * size and brightens, the way a lit button reads on the other faces. */
+static GXColor controllerGlow(GXColor color, float weight, bool pressed)
+{
+	float alpha = (float)color.a * weight * (pressed ? 1.3f : 1.0f);
+
+	color.a = (u8)(alpha > 255.0f ? 255.0f : alpha);
+	return color;
+}
+
+static void drawLibraryController(const cubeRasterTransform_t *raster,
+		float seconds, bool animated, const indigoPadFrame_t *pad)
+{
+	static controllerIdle_t idle;
+	const float plane = 1.012f;
+	/* The same colour and breath as the other faces' emblems. */
+	float pulse = animated ? 0.5f + sinf(seconds * 1.10f) * 0.5f : 0.62f;
+	GXColor glow = {196, 177, 255, (u8)(142.0f + pulse * 42.0f)};
+	controllerPose_t pose;
+	Mtx identity;
+
+	controllerPose(pad, seconds, animated, &idle, &pose);
+	bool l = (pose.pressed & PAD_TRIGGER_L) != 0u;
+	bool r = (pose.pressed & PAD_TRIGGER_R) != 0u;
+	bool a = (pose.pressed & PAD_BUTTON_A) != 0u;
+	bool b = (pose.pressed & PAD_BUTTON_B) != 0u;
+	bool x = (pose.pressed & PAD_BUTTON_X) != 0u;
+	bool y = (pose.pressed & PAD_BUTTON_Y) != 0u;
+	bool start = (pose.pressed & PAD_BUTTON_START) != 0u;
+	float magnitude = sqrtf(pose.stickX * pose.stickX + pose.stickY * pose.stickY);
+	float cMagnitude = sqrtf(pose.substickX * pose.substickX +
+		pose.substickY * pose.substickY);
+	/* A cap travels until a small gap remains inside its gate's inner edge. */
+	float reach = (magnitude > 1.0f ? 1.0f / magnitude : 1.0f) * 0.030f;
+	float cReach = (cMagnitude > 1.0f ? 1.0f / cMagnitude : 1.0f) * 0.016f;
+	const float degree = INDIGO_TAU / 360.0f;
+	indigoPoint_t outline[FACE_BAND_MAX];
+	int outlineCount = (int)(sizeof(controllerOutline) / sizeof(controllerOutline[0]));
+
+	for(int i = 0; i < outlineCount; i++) {
+		outline[i] = (indigoPoint_t) {controllerOutline[i][0], controllerOutline[i][1]};
+	}
+	guMtxIdentity(identity);
+	GX_LoadPosMtxImm(identity, GX_PNMTX0);
+	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
+	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
+	GX_SetCullMode(GX_CULL_NONE);
+
+	/* Nothing overlaps: the pass is additive, like the other emblems. */
+	drawFaceBand(raster, UI_HOME_FACE_LIBRARY, outline, outlineCount, 0.018f,
+		plane, controllerGlow(glow, 0.78f, false));
+	/* The triggers ride the shoulders and press in toward the body. */
+	drawFaceBean(raster, UI_HOME_FACE_LIBRARY, -0.335f, 0.075f, l ? 0.28f : 0.30f,
+		152.0f * degree, 100.0f * degree, 0.022f, plane, controllerGlow(glow, 0.9f, l));
+	drawFaceBean(raster, UI_HOME_FACE_LIBRARY, 0.335f, 0.075f, r ? 0.28f : 0.30f,
+		80.0f * degree, 28.0f * degree, 0.022f, plane, controllerGlow(glow, 0.9f, r));
+
+	/* Both sticks follow the live controller inside their octagonal gates. */
+	drawControllerGate(raster, -0.335f, 0.075f, 0.12f, 0.014f, plane,
+		controllerGlow(glow, 0.9f, false));
+	drawControllerCircle(raster, -0.335f + pose.stickX * reach,
+		0.075f + pose.stickY * reach, 0.058f, 20, plane, controllerGlow(glow, 1.0f, false));
+	drawControllerGate(raster, 0.165f, -0.19f, 0.054f, 0.012f, plane,
+		controllerGlow(glow, 0.9f, false));
+	drawControllerCircle(raster, 0.165f + pose.substickX * cReach,
+		-0.19f + pose.substickY * cReach, 0.024f, 14, plane,
+		controllerGlow(glow, 1.0f, false));
+
+	/* The face cluster: a large A, B below-left, X and Y curving round A. */
+	drawControllerCircle(raster, 0.335f, 0.075f, a ? 0.066f : 0.078f, 24, plane,
+		controllerGlow(glow, 1.05f, a));
+	drawControllerCircle(raster, 0.215f, -0.025f, b ? 0.030f : 0.036f, 16, plane,
+		controllerGlow(glow, 1.0f, b));
+	drawFaceBean(raster, UI_HOME_FACE_LIBRARY, 0.335f, 0.075f, 0.128f,
+		42.0f * degree, -34.0f * degree, x ? 0.019f : 0.024f, plane,
+		controllerGlow(glow, 1.0f, x));
+	drawFaceBean(raster, UI_HOME_FACE_LIBRARY, 0.335f, 0.075f, 0.128f,
+		172.0f * degree, 102.0f * degree, y ? 0.019f : 0.024f, plane,
+		controllerGlow(glow, 1.0f, y));
+	drawControllerCircle(raster, 0.0f, 0.10f, start ? 0.018f : 0.022f, 12,
+		plane, controllerGlow(glow, 0.9f, start));
+
+	/* Four separate D-pad arms around an open centre; a held arm brightens. */
+	drawControllerRect(raster, -0.182f, -0.167f, -0.148f, -0.117f, plane,
+		controllerGlow(glow, 1.0f, (pose.pressed & PAD_BUTTON_UP) != 0u));
+	drawControllerRect(raster, -0.182f, -0.263f, -0.148f, -0.213f, plane,
+		controllerGlow(glow, 1.0f, (pose.pressed & PAD_BUTTON_DOWN) != 0u));
+	drawControllerRect(raster, -0.238f, -0.207f, -0.188f, -0.173f, plane,
+		controllerGlow(glow, 1.0f, (pose.pressed & PAD_BUTTON_LEFT) != 0u));
+	drawControllerRect(raster, -0.142f, -0.207f, -0.092f, -0.173f, plane,
+		controllerGlow(glow, 1.0f, (pose.pressed & PAD_BUTTON_RIGHT) != 0u));
+
+	GX_LoadPosMtxImm(raster->model, GX_PNMTX0);
+	GX_SetCullMode(GX_CULL_BACK);
 }
 
 static void buildChamferStrip(cubeSurfaceQuad_t *quad, float ax, float ay, float az,
@@ -956,7 +1384,6 @@ static void drawSemanticFaceMotifs(float seconds, bool animated,
 	const float plane = 1.012f;
 	float pulse = animated ? 0.5f + sinf(seconds * 1.10f) * 0.5f : 0.62f;
 	float slider = animated ? sinf(seconds * 0.43f) * 0.12f : 0.0f;
-	GXColor library = {196, 177, 255, (u8)(142.0f + pulse * 42.0f)};
 	GXColor source = {151, 190, 255, (u8)(136.0f + pulse * 52.0f)};
 	GXColor settings = {218, 162, 255, (u8)(138.0f + pulse * 46.0f)};
 	GXColor system = {239, 230, 255, (u8)(148.0f + pulse * 38.0f)};
@@ -972,24 +1399,11 @@ static void drawSemanticFaceMotifs(float seconds, bool animated,
 	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
 	GX_SetCullMode(GX_CULL_BACK);
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
-	/* Library 13 + Source 9 + Settings 6 + System 11 = 39 shapes, each with a
-	 * solid quad and four coverage quads: 780 bounded vertices. Invalid civil
-	 * time emits transparent degenerate hands, never an invented time. */
-	GX_Begin(GX_QUADS, GX_VTXFMT0, 780);
-		/* Library: banded books on a shelf, the last leaning into the row so
-		 * it reads as a bookshelf, not a bar chart. The lean clears the third
-		 * spine; additive blending would double-light any overlap. */
-		putSemanticFaceBook(raster, UI_HOME_FACE_LIBRARY, -0.585f, -0.46f,
-			0.20f, 0.90f, 0.0f, plane, library);
-		putSemanticFaceBook(raster, UI_HOME_FACE_LIBRARY, -0.35f, -0.46f,
-			0.25f, 1.00f, 0.0f, plane, library);
-		putSemanticFaceBook(raster, UI_HOME_FACE_LIBRARY, -0.065f, -0.46f,
-			0.17f, 0.80f, 0.0f, plane, library);
-		putSemanticFaceBook(raster, UI_HOME_FACE_LIBRARY, 0.412f, -0.46f,
-			0.19f, 0.84f, 0.349f, plane, library);
-		putSemanticMotifRect(raster, UI_HOME_FACE_LIBRARY, -0.64f, -0.555f,
-			0.64f, -0.49f, plane, library);
-
+	/* Source 9 + Settings 6 + System 11 = 26 shapes, each with a solid quad
+	 * and four coverage quads: 520 bounded vertices. Invalid civil time emits
+	 * transparent degenerate hands, never an invented time. The Library face
+	 * carries the controller, drawn by drawLibraryController(). */
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 520);
 		/* Source: a central port with four linked endpoints. */
 		putSemanticFaceDiamond(raster, UI_HOME_FACE_SOURCE, 0.0f, 0.0f, 0.17f,
 			plane, source);
@@ -1101,7 +1515,7 @@ static void drawFrontRailAccents(const cubeRasterTransform_t *raster,
 }
 
 static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
-		const uiClockFrame_t *clock)
+		const uiClockFrame_t *clock, const indigoPadFrame_t *pad)
 {
 	static const GXColor coreColors[6] = {
 		{19, 15, 54, 255}, {28, 20, 76, 255}, {50, 36, 111, 255},
@@ -1176,6 +1590,7 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	drawCubeSurfacePass(&raster, &shellOutline, strips, 12, GX_CULL_BACK, false);
 	drawCubeSurfacePassVertices(&raster, &shellOutline, corners, 8, 3, GX_CULL_BACK, false);
 	drawSemanticFaceMotifs(seconds, animated, clock, &raster);
+	drawLibraryController(&raster, seconds, animated, pad);
 
 	/* Pixel-width coverage replaces GX's hard subpixel line rasterization.
 	 * The front rail remains depth-tested and follows the same cube pose. */
@@ -1190,7 +1605,7 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 
 void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 	bool cubeAnimated, const uiSceneFrame_t *scene,
-	const uiClockFrame_t *clock)
+	const uiClockFrame_t *clock, const indigoPadFrame_t *pad)
 {
 	bool backdropMotionActive = backdropAnimated && scene->visible;
 	bool cubeMotionActive = cubeAnimated && scene->visible;
@@ -1216,7 +1631,7 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 		(GXColor) {3, 2, 12, (u8)(92.0f * orbitStrength)},
 		(GXColor) {3, 2, 12, 0});
 	if(scene->introProgress >= BOOT_CUBE_HANDOFF) {
-		drawCube(scene, seconds, cubeMotionActive, clock);
+		drawCube(scene, seconds, cubeMotionActive, clock, pad);
 	}
 }
 
@@ -1244,7 +1659,7 @@ void IndigoBackground_DrawBootOverlay(float seconds, bool animated,
 	hidden = 1.0f - reveal;
 	veilAlpha = (u8)(hidden * 255.0f);
 	if(scene->visible && scene->introProgress < BOOT_CUBE_HANDOFF) {
-		drawCube(scene, seconds, animated, clock);
+		drawCube(scene, seconds, animated, clock, NULL);
 	}
 	setupRasterPipeline();
 	drawBootVeil(veilAlpha);
