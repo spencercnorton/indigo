@@ -210,8 +210,18 @@ static void buildPresentation(uiGameflowDetailSnapshot_t *snapshot)
 			sizeof(snapshot->primaryActions), "B  LIBRARY");
 	}
 	if((flags & UI_GAMEFLOW_DETAIL_CAN_SETTINGS) != 0u) {
+		char settingsAction[32];
+
+		if(snapshot->customSettings != 0u) {
+			(void)snprintf(settingsAction, sizeof(settingsAction),
+				"X  SETTINGS (%lu CUSTOM)",
+				(unsigned long)snapshot->customSettings);
+		}
+		else {
+			copyText(settingsAction, sizeof(settingsAction), "X  SETTINGS");
+		}
 		appendText(snapshot->primaryActions,
-			sizeof(snapshot->primaryActions), "X  SETTINGS");
+			sizeof(snapshot->primaryActions), settingsAction);
 	}
 	if((flags & UI_GAMEFLOW_DETAIL_CAN_CHEATS) != 0u) {
 		appendText(snapshot->primaryActions,
@@ -252,6 +262,7 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 
 	snapshot->generation = source->generation;
 	snapshot->focusIndex = source->focusIndex;
+	snapshot->customSettings = source->customSettings;
 	snapshot->flags =
 		(source->flags & ~(uint32_t)UI_GAMEFLOW_DETAIL_HAS_BANNER) |
 		UI_GAMEFLOW_DETAIL_VALID;

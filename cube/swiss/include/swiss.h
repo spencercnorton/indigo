@@ -195,6 +195,7 @@ typedef struct {
 	char recent[RECENT_MAX][PATHNAME_MAX];
 } SwissSettings;
 extern SwissSettings swissSettings;
+void config_defaults_from(ConfigEntry *entry, const SwissSettings *settings);
 
 enum enableUSBGecko
 {

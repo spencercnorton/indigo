@@ -11,13 +11,14 @@
  * values, and performs NO drawing or I/O, so it compiles and tests on
  * the host under strict C99 (buildtools/ui/tests/test_ui_settings_layout).
  *
- * The option-index model mirrors settings.h/show_settings() exactly and
- * is bound to the real enums by _Static_asserts in settings.c:
- *   options 0..rowCount-1          settable rows (page order = enum order)
- *   then [Back]  (absent on the first page)
- *   then [Next]  (absent on the last page)
+ * Pages are the Settings views: three tabs (Quick, Game
+ * Defaults, Setup), the six Setup sections that open from Setup, and one
+ * game's own settings, which has no tabs. The option-index model mirrors
+ * show_settings() and is bound to settings.c's row tables by
+ * _Static_asserts:
+ *   options 0..rowCount-1          rows
  *   then Save & Exit
- *   then Discard & Exit            (index == settings_count_pp[page])
+ *   then Discard & Exit            (index == UISetLayout_DiscardIndex(page))
  *
  * All content rectangles stay inside the 640x480 title-safe area
  * x=32..608, y=34..438; boxes are placed so FrameBufferMagic's implicit
@@ -25,17 +26,27 @@
  * lands inside it.
  */
 
-#define UI_SETLAYOUT_PAGE_COUNT 6
+#define UI_SETLAYOUT_PAGE_COUNT 10
+#define UI_SETLAYOUT_TAB_COUNT 3
 #define UI_SETLAYOUT_VISIBLE_ROWS 9
-#define UI_SETLAYOUT_MAX_ACTIONS 4
+#define UI_SETLAYOUT_MAX_ACTIONS 2
 
-/* Per-page settable-row counts (bound to settings.h in settings.c). */
-#define UI_SETLAYOUT_ROWS_SYSTEM 20
-#define UI_SETLAYOUT_ROWS_INTERFACE 14
-#define UI_SETLAYOUT_ROWS_NETWORK 20
-#define UI_SETLAYOUT_ROWS_GAME_GLOBAL 10
+/* Per-view row counts (bound to settings.c's row tables). */
+#define UI_SETLAYOUT_ROWS_QUICK 9
 #define UI_SETLAYOUT_ROWS_GAME_DEFAULTS 22
-#define UI_SETLAYOUT_ROWS_CURRENT_GAME 22
+#define UI_SETLAYOUT_ROWS_SETUP 6
+#define UI_SETLAYOUT_ROWS_DISPLAY 9
+#define UI_SETLAYOUT_ROWS_CONSOLE 5
+#define UI_SETLAYOUT_ROWS_STORAGE 6
+#define UI_SETLAYOUT_ROWS_NETWORK 20
+#define UI_SETLAYOUT_ROWS_LIBRARY 10
+#define UI_SETLAYOUT_ROWS_DEVELOPER 4
+#define UI_SETLAYOUT_ROWS_GAME 22
+
+/* Tab owning each view: 0..2 are the tabs, the sections belong to Setup,
+ * and a game's own settings belong to none. */
+#define UI_SETLAYOUT_TAB_SETUP 2
+#define UI_SETLAYOUT_NO_TAB (-1)
 
 /* Safe-area bounds every computed rect must respect. */
 #define UI_SETLAYOUT_SAFE_X0 32
@@ -74,9 +85,7 @@ typedef struct {
 } uiSetLayoutRect_t;
 
 typedef enum {
-	UI_SETLAYOUT_ACTION_BACK = 0,
-	UI_SETLAYOUT_ACTION_NEXT,
-	UI_SETLAYOUT_ACTION_SAVE,
+	UI_SETLAYOUT_ACTION_SAVE = 0,
 	UI_SETLAYOUT_ACTION_DISCARD
 } uiSetLayoutActionKind_t;
 
@@ -112,19 +121,20 @@ typedef struct {
 	const char *title;
 	const char *subtitle;
 	int rowCount;
-	int hasBack;
-	int hasNext;
+	int tab;                    /* owning tab, or UI_SETLAYOUT_NO_TAB */
+	int hasTags;                /* rows carry a short tag right of the value */
 } uiSetLayoutPage_t;
 
 typedef struct {
 	int page;
 	int option;
 
-	/* Tab strip: cells sized by label length so every label fits. */
+	/* Tab strip: cells sized by label length so every label fits. A game's
+	 * own settings have no tabs (tabCount 0, currentTab -1). */
 	int tabCount;
 	int currentTab;
-	uiSetLayoutRect_t tabCell[UI_SETLAYOUT_PAGE_COUNT];
-	int tabLabelCenterX[UI_SETLAYOUT_PAGE_COUNT];
+	uiSetLayoutRect_t tabCell[UI_SETLAYOUT_TAB_COUNT];
+	int tabLabelCenterX[UI_SETLAYOUT_TAB_COUNT];
 	int tabLabelY;
 
 	/* Header. */
@@ -134,7 +144,7 @@ typedef struct {
 	int subtitleMaxWidth;
 	int progressX, progressY;   /* right-aligned "n / 6" anchor */
 	int progressMaxWidth;
-	float pageProgress;         /* (page + 1) / 6 */
+	float pageProgress;         /* (tab + 1) / 3; 0 without a tab */
 	uiSetLayoutRect_t titleRegion;
 	uiSetLayoutRect_t subtitleRegion;
 	uiSetLayoutRect_t progressRegion;
@@ -153,6 +163,8 @@ typedef struct {
 	int rowValueX0;             /* left edge of the reserved value column */
 	int rowValueX;              /* right-aligned value anchor */
 	int rowValueWidth;
+	int rowTagX;                /* right-aligned tag anchor (hasTags pages) */
+	int rowTagWidth;            /* 0 when the page has no tags */
 
 	/* Slim scroll treatment (hidden when everything fits). */
 	int scrollVisible;
@@ -185,7 +197,7 @@ typedef struct {
 /* Static page descriptor (labels, row counts, nav availability). */
 const uiSetLayoutPage_t *UISetLayout_PageDesc(int page);
 
-/* Index of the Discard & Exit option == settings_count_pp[page]. */
+/* Index of the Discard & Exit option: rowCount + 1. */
 int UISetLayout_DiscardIndex(int page);
 
 /* Full layout for one published frame. motionMode uses the mirror enum;

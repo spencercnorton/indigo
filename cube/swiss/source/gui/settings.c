@@ -27,13 +27,13 @@
 /* Bind the pure layout module's page model to the real option enums: a
  * drifting row count or action index becomes a compile error here, not a
  * silently wrong highlight. */
-_Static_assert(UI_SETLAYOUT_PAGE_COUNT == PAGE_MAX + 1, "page count drift");
-_Static_assert(UI_SETLAYOUT_ROWS_SYSTEM == SET_PAGE_1_NEXT, "system rows drift");
-_Static_assert(UI_SETLAYOUT_ROWS_INTERFACE == SET_PAGE_2_BACK, "interface rows drift");
-_Static_assert(UI_SETLAYOUT_ROWS_NETWORK == SET_PAGE_3_BACK, "network rows drift");
-_Static_assert(UI_SETLAYOUT_ROWS_GAME_GLOBAL == SET_PAGE_4_BACK, "game-global rows drift");
-_Static_assert(UI_SETLAYOUT_ROWS_GAME_DEFAULTS == SET_PAGE_5_BACK, "defaults rows drift");
-_Static_assert(UI_SETLAYOUT_ROWS_CURRENT_GAME == SET_PAGE_6_BACK, "current-game rows drift");
+_Static_assert(UI_SETLAYOUT_PAGE_COUNT == VIEW_GAME + 1, "view count drift");
+_Static_assert(UI_SETLAYOUT_TAB_COUNT == VIEW_SETUP + 1, "tab count drift");
+_Static_assert(UI_SETLAYOUT_TAB_SETUP == VIEW_SETUP, "Setup tab drift");
+_Static_assert(UI_SETLAYOUT_ROWS_GAME_DEFAULTS == SET_DEFAULT_DEFAULTS + 1, "defaults rows drift");
+_Static_assert(UI_SETLAYOUT_ROWS_NETWORK == SET_RT4K_PORT + 1, "network rows drift");
+_Static_assert(UI_SETLAYOUT_ROWS_GAME == SET_DEFAULTS + 1, "game rows drift");
+_Static_assert(UI_SETLAYOUT_ROWS_SETUP == VIEW_DEVELOPER - VIEW_DISPLAY + 1, "Setup sections drift");
 _Static_assert((int)UI_SETLAYOUT_MOTION_FULL == (int)UI_MOTION_FULL,
 	"Full motion enum drift");
 _Static_assert((int)UI_SETLAYOUT_MOTION_REDUCED == (int)UI_MOTION_REDUCED,
@@ -106,7 +106,9 @@ static char *tooltips_global[PAGE_GLOBAL_MAX+1] = {
 	[SET_ENABLE_USBGECKO] = "Enable USB Gecko:\n\nIf a USB Gecko is present, messages output to the debug UART\nwill be redirected. When the USB host isn't actively reading from\nthe USB Gecko, it may cause the system to hang.\n\nwiiload is also made available for iterative development.",
 	[SET_WAIT_USBGECKO] = "Wait for USB Gecko:\n\nWait for the transmit buffer to be read by the USB host when full.",
 	[SET_SIMMEMSIZE] = "Simulated MRAM Size:\n\nLimits the amount of memory available on development hardware.",
-	[SET_TAU_CALIB] = "CPU Temperature Calibration:\n\nOn a cold boot, adjust this value so that the CPU temperature\nreading in the title bar is around room temperature.\n\nThere is no factory calibration."
+	[SET_TAU_CALIB] = "CPU Temperature Calibration:\n\nOn a cold boot, adjust this value so that the CPU temperature\nreading in the title bar is around room temperature.\n\nThere is no factory calibration.",
+	[SET_SWISS_VIDEOMODE] = "Swiss Video Mode:\n\nThe video mode Indigo's own screens use. Auto picks 480p with a\ndigital cable and otherwise follows the console's region.\n\nAfter a change, press A within 10 seconds to keep the new mode;\notherwise it changes back by itself.",
+	[SET_DISABLE_RUMBLE] = "Controller Rumble:\n\nOn - Controllers can rumble in games (default)\nOff - Rumble is turned off in games"
 };
 
 static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
@@ -121,12 +123,32 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_ANIMATED_BACKDROP] = "Animated Backdrop:\n\nEnabled - The backdrop gently drifts (default)\nDisabled - The backdrop is static.",
 	[SET_MENU_MUSIC] = "Menu Music:\n\nEnabled - Play the bundled original ambient loop (default)\nDisabled - Silent.\n\nChanges take effect immediately.",
 	[SET_MENU_SFX] = "Menu Sounds:\n\nEnabled - Soft blip/confirm sounds on navigation (default)\nDisabled - Silent.",
-	[SET_FLATTEN_DIR] = "Flatten directory:\n\nFlattens a directory structure matching a glob pattern."
+	[SET_FLATTEN_DIR] = "Flatten directory:\n\nFlattens a directory structure matching a glob pattern.",
+	[SET_SHOW_HIDDEN] = "Show hidden files:\n\nLists files and folders marked hidden, such as the /swiss folder\nthat holds Indigo's settings.",
+	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
 
 static char *tooltips_network[PAGE_NETWORK_MAX+1] = {
 	[SET_INIT_NET] = "Init network at startup:\n\nDisabled - Do not initialise the BBA even if present (default)\nEnabled - If a BBA is present, it will be initialised at startup\n\nIf initialised, navigate to the IP in a web browser to backup\nvarious data. wiiload is available for iterative development.",
-	[SET_FSP_PMTU] = "FSP Path MTU:\n\nThe valid range is between 576 and 2030 bytes (default: 1500).\nIncreasing this value may provide a performance enhancement.\n\nThe maximum packet size on the server should be set to at least\nthis value, minus 40 bytes. The Layer 2 MTU on all involved\nnetwork interfaces must be set to at least this value.\n\nMisconfiguration will result in read errors. Users of USB Dolphin\nneed to observe limitations specific to their USB Ethernet adapter."
+	[SET_FSP_PMTU] = "FSP Path MTU:\n\nThe valid range is between 576 and 2030 bytes (default: 1500).\nIncreasing this value may provide a performance enhancement.\n\nThe maximum packet size on the server should be set to at least\nthis value, minus 40 bytes. The Layer 2 MTU on all involved\nnetwork interfaces must be set to at least this value.\n\nMisconfiguration will result in read errors. Users of USB Dolphin\nneed to observe limitations specific to their USB Ethernet adapter.",
+	[SET_BBA_LOCALIP] = "IPv4 Address:\n\nThe console's address when DHCP is off. With DHCP on, the address\nyour router hands out is shown here instead.\n\nTakes effect the next time the network starts.",
+	[SET_BBA_NETMASK] = "IPv4 Netmask:\n\nThe network's prefix length when DHCP is off, such as 24 on a\ntypical home network.",
+	[SET_BBA_GATEWAY] = "IPv4 Gateway:\n\nYour router's address when DHCP is off.",
+	[SET_BBA_DHCP] = "IPv4 uses DHCP:\n\nYes - Your router assigns the address, netmask and gateway (default)\nNo - Use the address, netmask and gateway set above",
+	[SET_FSP_HOSTIP] = "FSP Host IP:\n\nAddress of the computer running the FSP server with your games.",
+	[SET_FSP_PORT] = "FSP Port:\n\nPort of the FSP server (21 by default).",
+	[SET_FSP_PASS] = "FSP Password:\n\nPassword for the FSP server, if it has one. It is stored as plain\ntext in global.ini.",
+	[SET_FTP_HOSTIP] = "FTP Host IP:\n\nAddress of the FTP server with your games.",
+	[SET_FTP_PORT] = "FTP Port:\n\nPort of the FTP server (21 by default).",
+	[SET_FTP_USER] = "FTP Username:\n\nUser name for the FTP server.",
+	[SET_FTP_PASS] = "FTP Password:\n\nPassword for the FTP server. It is stored as plain text in\nglobal.ini.",
+	[SET_FTP_PASV] = "FTP PASV Mode:\n\nUse passive mode, where the console opens the data connection.\nTry it if listings stall behind a firewall or router.",
+	[SET_SMB_HOSTIP] = "SMB Host IP:\n\nAddress of the computer sharing your games over SMB.",
+	[SET_SMB_SHARE] = "SMB Share:\n\nName of the shared folder on that computer.",
+	[SET_SMB_USER] = "SMB Username:\n\nUser name for the share.",
+	[SET_SMB_PASS] = "SMB Password:\n\nPassword for the share. It is stored as plain text in global.ini.",
+	[SET_RT4K_HOSTIP] = "RetroTINK-4K Host IP:\n\nAddress of a RetroTINK-4K on your network. Indigo switches it to\neach game's RetroTINK-4K profile.",
+	[SET_RT4K_PORT] = "RetroTINK-4K Port:\n\nPort of the RetroTINK-4K's network control."
 };
 
 static char *tooltips_game_global[PAGE_GAME_GLOBAL_MAX+1] = {
@@ -135,7 +157,10 @@ static char *tooltips_game_global[PAGE_GAME_GLOBAL_MAX+1] = {
 	[SET_FORCE_VIDACTIVE] = "Force Video Active:\n\nA workaround for GCVideo-DVI firmware version series 3.0,\nrendered obsolete by 3.1 and later.",
 	[SET_PAUSE_AVOUTPUT] = "Pause for resolution change:\n\nWhen enabled, a change in active video resolution will pause the\ngame for 2 seconds.",
 	[SET_ALL_CHEATS] = "Auto-load cheats:\n\nIf enabled, and a cheats file for a particular game is found\ne.g. /swiss/cheats/GPOP8D.txt (on a compatible device)\nthen all previously enabled cheats will be re-enabled",
-	[SET_WIIRDDBG] = "WiiRD debugging:\n\nDisabled - Boot as normal (default)\nEnabled - This will start a game with the WiiRD debugger enabled & paused\n\nThe WiiRD debugger takes up more memory and can cause issues."
+	[SET_WIIRDDBG] = "WiiRD debugging:\n\nDisabled - Boot as normal (default)\nEnabled - This will start a game with the WiiRD debugger enabled\n& paused\n\nThe WiiRD debugger takes up more memory and can cause issues.",
+	[SET_EMULATE_MEMCARD] = "Emulate Memory Card:\n\nGames save to a memory card image on the device they start from\ninstead of a real memory card. Needs a device that supports it.",
+	[SET_DISABLE_MCPGAMEID] = "Disable MemCard PRO GameID:\n\nStops Indigo telling a MemCard PRO or compatible card in that\nslot which game is starting, so it stays on its current card.",
+	[SET_DISABLE_VIDPATCH] = "Disable Video Patches:\n\nNone - Apply Swiss's video patches, including fixes for\nparticular games (default)\nGame - Skip only the fixes for particular games\nAll - Patch no video at all. Forced video modes and the other\npicture settings then have no effect."
 };
 
 static char *tooltips_game[PAGE_GAME_DEFAULTS_MAX+1] = {
@@ -153,11 +178,17 @@ static char *tooltips_game[PAGE_GAME_DEFAULTS_MAX+1] = {
 	[SET_DISABLE_MEMCARD] = "Disable Memory Card:\n\nSome games misbehave when unexpected devices are present in\nthe memory card slots. When selected, the device will be hidden\nfrom the game if present at boot time.",
 	[SET_DISABLE_HYPERVISOR] = "Disable Hypervisor:\n\nDisables all features and bugfixes relying upon the hypervisor,\nalong with prepatching and patch persistence.\n\nOnly available to devices attached to the DVD Interface.",
 	[SET_CLEAN_BOOT] = "Prefer Clean Boot:\n\nWhen enabled, the GameCube will be reset and the game booted\nthrough normal processes with no changes applied.\nRegion restrictions may be applicable.\n\nOnly available to devices attached to the DVD Interface.",
-	[SET_RT4K_PROFILE] = "RetroTINK-4K Profile:\n\nPresses a profile button through a configured ser2net TCP\nconnection to the RetroTINK-4K's serial port."
+	[SET_RT4K_PROFILE] = "RetroTINK-4K Profile:\n\nPresses a profile button through a configured ser2net TCP\nconnection to the RetroTINK-4K's serial port.",
+	[SET_GAME_LANG] = "Game Language:\n\nThe language this game uses. Default follows System Language.\nMostly matters for PAL games that include several languages.",
+	[SET_FORCE_VIDEOMODE] = "Force Video Mode:\n\nThe video mode this game starts in. Auto keeps the game's own\nmode. Some modes only appear with a component or digital cable.",
+	[SET_HORIZ_SCALE] = "Force Horizontal Scale:\n\nHow the video output scales the picture across.\nAuto - Keep the game's own scaling (default)\n1:1 - No horizontal scaling\n11:10, 9:8 - Fixed ratios\n640px to 720px - A fixed output width",
+	[SET_FIELD_RENDER] = "Force Field Rendering:\n\nAuto - Keep the game's own choice (default)\nOn - Draw each field of an interlaced picture separately\nOff - Draw whole frames\nTAA - The jittered rendering some games use for anti-aliasing",
+	[SET_ALPHA_DITHER] = "Disable Alpha Dithering:\n\nTurns off the dithering the GameCube adds to blended effects,\nwhich can show as a fine dot pattern on digital video.",
+	[SET_WIDESCREEN] = "Force Widescreen:\n\nStretches games made for 4:3 to fill a 16:9 screen.\n3D - Widen the 3D view only\n2D+3D - Also widen 2D menus and on-screen displays\nSet your TV to 16:9. Edges can look wrong in some games.",
+	[SET_DEFAULTS] = "Reset to defaults:\n\nPuts every setting on this screen back to its default.\nIt asks first, and Discard & Exit still undoes it."
 };
 
 // Number of settings (including Back, Next, Save, Exit buttons) per page
-int settings_count_pp[PAGE_MAX+1] = {PAGE_GLOBAL_MAX, PAGE_INTERFACE_MAX, PAGE_NETWORK_MAX, PAGE_GAME_GLOBAL_MAX, PAGE_GAME_DEFAULTS_MAX, PAGE_GAME_MAX};
 
 char* getConfigDeviceName(SwissSettings *settings) {
 	DEVICEHANDLER_INTERFACE *configDevice = getDeviceByUniqueId(settings->configDeviceId);
@@ -167,6 +198,13 @@ char* getConfigDeviceName(SwissSettings *settings) {
 char* getGameVideoModeString(int gameVMode) {
 	return gameVMode <= 0 ? getScanMode() == VI_PROGRESSIVE ? "Auto (Progressive)" : "Auto (Interlaced)" : gameVModeStr[gameVMode];
 }
+
+/* Game Defaults' first two rows are the NTSC and PAL video modes; the shared
+ * table holds a game's language and video mode at those indices. */
+static char *tooltips_game_defaults_video[SET_DEFAULT_PAL_VIDEOMODE + 1] = {
+	[SET_DEFAULT_NTSC_VIDEOMODE] = "Force NTSC Video Mode:\n\nThe video mode games that aren't PAL start in, unless a game's\nown settings say otherwise. Auto keeps each game's own mode.",
+	[SET_DEFAULT_PAL_VIDEOMODE] = "Force PAL Video Mode:\n\nThe video mode PAL games start in, unless a game's own settings\nsay otherwise. Auto keeps each game's own mode."
+};
 
 char* get_tooltip(int page_num, int option) {
 	char *textPtr = NULL;
@@ -183,7 +221,8 @@ char* get_tooltip(int page_num, int option) {
 		textPtr = tooltips_game_global[option];
 	}
 	else if(page_num == PAGE_GAME_DEFAULTS) {
-		textPtr = tooltips_game[option];
+		textPtr = option <= SET_DEFAULT_PAL_VIDEOMODE ?
+			tooltips_game_defaults_video[option] : tooltips_game[option];
 	}
 	else if(page_num == PAGE_GAME) {
 		textPtr = tooltips_game[option];
@@ -204,12 +243,14 @@ static GXColor setPanelColor = {8, 8, 28, 198};       /* readable indigo glass *
 static GXColor setSubtleColor = {205, 210, 234, 230}; /* quiet chrome */
 static GXColor setInactiveColor = {198, 203, 228, 235};
 static GXColor setDisabledColor = {132, 138, 164, 220};
+static GXColor setCustomColor = {196, 177, 255, 255};  /* the emblems' glow */
 #define SET_PANEL_SOLID_ALPHA 238
 
 typedef enum {
 	SET_ROWKIND_CYCLE = 0, /* Left/Right cycles the value */
 	SET_ROWKIND_TEXT,      /* opens the on-screen text editor */
-	SET_ROWKIND_ACTION     /* row-level action (e.g. Reset to defaults) */
+	SET_ROWKIND_ACTION,    /* row-level action (e.g. Reset to defaults) */
+	SET_ROWKIND_LINK       /* Setup row that opens a section */
 } uiSettingRowKind_t;
 
 static int measureSettingText(const char *text)
@@ -281,7 +322,7 @@ static void add_tooltip_label(uiDrawObj_t* page, int page_num, int option) {
  * and value and drop their affordance. Value affordances are truthful:
  * "< >" only on cycle rows, "\205" only on rows that open an editor.
  */
-static void drawSettingRow(uiDrawObj_t* page, const char *label, const char *value, uiSettingRowKind_t kind, bool selected, bool enabled) {
+static void drawSettingRow(uiDrawObj_t* page, const char *label, const char *value, const char *tag, uiSettingRowKind_t kind, bool selected, bool enabled) {
 	char boundedLabel[UI_SETLAYOUT_LABEL_BUFFER_SIZE];
 	char displayValue[UI_SETLAYOUT_VALUE_BUFFER_SIZE + 8u];
 	int row = setLayoutRowCursor++;
@@ -309,6 +350,18 @@ static void drawSettingRow(uiDrawObj_t* page, const char *label, const char *val
 		DrawAddChild(page, DrawStyledLabel(setLayout.rowLabelX, textY,
 			boundedLabel, labelScale, ALIGN_LEFT, labelColor));
 	}
+	if(tag != NULL && setLayout.rowTagWidth > 0) {
+		char displayTag[UI_SETLAYOUT_VALUE_BUFFER_SIZE];
+		float tagScale;
+		if(prepareSettingText(tag, UI_SETLAYOUT_VALUE_TEXT_MAX,
+			UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false,
+			true, setLayout.rowTagWidth, set_meta_size, displayTag,
+			sizeof(displayTag), &tagScale)) {
+			DrawAddChild(page, DrawStyledLabel(setLayout.rowTagX, textY,
+				displayTag, tagScale, ALIGN_RIGHT,
+				enabled ? setCustomColor : setDisabledColor));
+		}
+	}
 	if(kind == SET_ROWKIND_ACTION || value == NULL) {
 		return;
 	}
@@ -322,28 +375,8 @@ static void drawSettingRow(uiDrawObj_t* page, const char *label, const char *val
 	}
 }
 
-void drawSettingEntryString(uiDrawObj_t* page, int *y, char *label, char *key, bool selected, bool enabled) {
-	(void)y;
-	drawSettingRow(page, label, key, key == NULL ? SET_ROWKIND_ACTION : SET_ROWKIND_CYCLE, selected, enabled);
-}
-
-/* Rows that open the on-screen text editor rather than cycling. */
-static void drawSettingEntryTextField(uiDrawObj_t* page, int *y, char *label, char *key, bool selected, bool enabled) {
-	(void)y;
-	drawSettingRow(page, label, key, SET_ROWKIND_TEXT, selected, enabled);
-}
-
-void drawSettingEntryBoolean(uiDrawObj_t* page, int *y, char *label, bool boolval, bool selected, bool enabled) {
-	drawSettingEntryString(page, y, label, boolval ? "Yes" : "No", selected, enabled);
-}
-
-void drawSettingEntryNumeric(uiDrawObj_t* page, int *y, char *label, int num, bool selected, bool enabled) {
-	sprintf(txtbuffer, "%i", num);
-	drawSettingEntryString(page, y, label, txtbuffer, selected, enabled);
-}
-
 /* Tabs, header, backing panel, scroll, and the persistent action rail. */
-static void drawSettingsChrome(uiDrawObj_t* page, int page_num) {
+static void drawSettingsChrome(uiDrawObj_t* page, int page_num, ConfigEntry *gameConfig) {
 	const uiSetLayoutPage_t *desc = UISetLayout_PageDesc(page_num);
 	const uiSetLayoutRect_t *focusRect = NULL;
 	char title[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
@@ -397,9 +430,19 @@ static void drawSettingsChrome(uiDrawObj_t* page, int page_num) {
 		}
 	}
 
-	snprintf(progress, sizeof(progress), "L/R  %i OF %i", page_num + 1,
-		UI_SETLAYOUT_PAGE_COUNT);
-	if(prepareSettingText(desc->title, UI_SETLAYOUT_LABEL_BUFFER_SIZE - 1u,
+	if(desc->tab == UI_SETLAYOUT_NO_TAB) {
+		snprintf(progress, sizeof(progress), "X DEFAULT  B DONE");
+	}
+	else if(page_num > VIEW_SETUP) {
+		snprintf(progress, sizeof(progress), "B  BACK");
+	}
+	else {
+		snprintf(progress, sizeof(progress), "L/R  %i OF %i", desc->tab + 1,
+			UI_SETLAYOUT_TAB_COUNT);
+	}
+	if(prepareSettingText(page_num == VIEW_GAME && gameConfig != NULL &&
+			gameConfig->game_name[0] != '\0' ? gameConfig->game_name :
+			desc->title, UI_SETLAYOUT_LABEL_BUFFER_SIZE - 1u,
 			UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false,
 			true, setLayout.titleMaxWidth, set_title_size, title,
 			sizeof(title), &titleScale)) {
@@ -432,7 +475,7 @@ static void drawSettingsChrome(uiDrawObj_t* page, int page_num) {
 
 	for(i = 0; i < setLayout.actionCount; i++) {
 		static const char *actionText[UI_SETLAYOUT_MAX_ACTIONS] = {
-			"Back", "Next", "Save & Exit", "Discard & Exit"
+			"Save & Exit", "Discard & Exit"
 		};
 		DrawAddChild(page, DrawSelectableButton(setLayout.actionRect[i].x, setLayout.actionRect[i].y,
 			setLayout.actionRect[i].x + setLayout.actionRect[i].w,
@@ -441,207 +484,574 @@ static void drawSettingsChrome(uiDrawObj_t* page, int page_num) {
 	}
 }
 
-uiDrawObj_t* settings_draw_page(int page_num, int option, ConfigEntry *gameConfig) {
-	uiDrawObj_t* page = DrawContainer();
-	char sramHOffsetStr[8];
-	char uiVModeStr[21];
-	char sramTemperatureStr[8];
-	char forceVOffsetStr[8];
-	char triggerLevelStr[8];
-	/* Mirrors _CurrentMotionMode() (FrameBufferMagic): Animations off snaps.
-	 * Backdrop animation is decorative and cannot weaken primary focus travel. */
-	int motionMode = (int)UIMotion_ModeFromFlags(
-		swissSettings.disableUIAnimations, swissSettings.reduceUIAnimations);
+/* One view row: the (page, option) setting it shows, or, when page is
+ * SETTINGS_ROW_LINK, the Setup section it opens (option = view). */
+typedef struct {
+	u8 page;
+	u8 option;
+} settingsRowRef_t;
 
-	UISetLayout_Compute(page_num, option, get_tooltip(page_num, option) != NULL, motionMode, &setLayout);
-	setLayoutRowCursor = 0;
-	drawSettingsChrome(page, page_num);
+#define SETTINGS_ROW_LINK 0xFF
 
-	if(page_num == PAGE_GLOBAL) {
+static const settingsRowRef_t quickRows[] = {
+	{PAGE_INTERFACE, SET_MENU_MUSIC},
+	{PAGE_INTERFACE, SET_MENU_SFX},
+	{PAGE_INTERFACE, SET_UI_ANIMS},
+	{PAGE_GLOBAL, SET_DISABLE_RUMBLE},
+	{PAGE_GAME_GLOBAL, SET_IGR},
+	{PAGE_GAME_GLOBAL, SET_BS2BOOT},
+	{PAGE_GAME_GLOBAL, SET_EMULATE_MEMCARD},
+	{PAGE_GAME_GLOBAL, SET_ALL_CHEATS},
+	{PAGE_INTERFACE, SET_AUTOBOOT},
+};
+
+/* Game Defaults and a game's own settings share one order: what people
+ * change most (video, widescreen, controls), then compatibility, picture
+ * tuning and the RetroTINK-4K profile. */
+static const settingsRowRef_t gameDefaultsRows[] = {
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_NTSC_VIDEOMODE},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_PAL_VIDEOMODE},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_WIDESCREEN},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_POLL_RATE},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_INVERT_CAMERA},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_SWAP_CAMERA},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_TRIGGER_LEVEL},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_CLEAN_BOOT},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_DISABLE_HYPERVISOR},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_READ_SPEED},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_AUDIO_STREAM},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_EMULATE_ETHERNET},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_DISABLE_MEMCARD},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_HORIZ_SCALE},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_VERT_OFFSET},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_VERT_FILTER},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_FIELD_RENDER},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_PIXEL_CENTER},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_ALPHA_DITHER},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_ANISO_FILTER},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_RT4K_PROFILE},
+	{PAGE_GAME_DEFAULTS, SET_DEFAULT_DEFAULTS},
+};
+
+static const settingsRowRef_t setupRows[] = {
+	{SETTINGS_ROW_LINK, VIEW_DISPLAY},
+	{SETTINGS_ROW_LINK, VIEW_CONSOLE},
+	{SETTINGS_ROW_LINK, VIEW_STORAGE},
+	{SETTINGS_ROW_LINK, VIEW_NETWORK},
+	{SETTINGS_ROW_LINK, VIEW_LIBRARY},
+	{SETTINGS_ROW_LINK, VIEW_DEVELOPER},
+};
+
+static const settingsRowRef_t displayRows[] = {
+	{PAGE_GLOBAL, SET_SWISS_VIDEOMODE},
+	{PAGE_GLOBAL, SET_SYS_VIDEO},
+	{PAGE_GLOBAL, SET_SCREEN_POS},
+	{PAGE_GLOBAL, SET_AVE_COMPAT},
+	{PAGE_GLOBAL, SET_FORCE_DTVSTATUS},
+	{PAGE_GLOBAL, SET_RT4K_OPTIM},
+	{PAGE_GAME_GLOBAL, SET_DISABLE_VIDPATCH},
+	{PAGE_GAME_GLOBAL, SET_FORCE_VIDACTIVE},
+	{PAGE_GAME_GLOBAL, SET_PAUSE_AVOUTPUT},
+};
+
+static const settingsRowRef_t consoleRows[] = {
+	{PAGE_GLOBAL, SET_SYS_SOUND},
+	{PAGE_GLOBAL, SET_SYS_LANG},
+	{PAGE_GLOBAL, SET_SYS_BOOTMODE},
+	{PAGE_GLOBAL, SET_DISABLE_RECALIB},
+	{PAGE_GLOBAL, SET_TAU_CALIB},
+};
+
+static const settingsRowRef_t storageRows[] = {
+	{PAGE_GLOBAL, SET_CONFIG_DEV},
+	{PAGE_GLOBAL, SET_EXI_SPEED},
+	{PAGE_GLOBAL, SET_INIT_DRIVE},
+	{PAGE_GLOBAL, SET_STOP_MOTOR},
+	{PAGE_GLOBAL, SET_AUDIO_BUFFER},
+	{PAGE_GAME_GLOBAL, SET_DISABLE_MCPGAMEID},
+};
+
+static const settingsRowRef_t networkRows[] = {
+	{PAGE_NETWORK, SET_INIT_NET},
+	{PAGE_NETWORK, SET_BBA_LOCALIP},
+	{PAGE_NETWORK, SET_BBA_NETMASK},
+	{PAGE_NETWORK, SET_BBA_GATEWAY},
+	{PAGE_NETWORK, SET_BBA_DHCP},
+	{PAGE_NETWORK, SET_FSP_HOSTIP},
+	{PAGE_NETWORK, SET_FSP_PORT},
+	{PAGE_NETWORK, SET_FSP_PASS},
+	{PAGE_NETWORK, SET_FSP_PMTU},
+	{PAGE_NETWORK, SET_FTP_HOSTIP},
+	{PAGE_NETWORK, SET_FTP_PORT},
+	{PAGE_NETWORK, SET_FTP_USER},
+	{PAGE_NETWORK, SET_FTP_PASS},
+	{PAGE_NETWORK, SET_FTP_PASV},
+	{PAGE_NETWORK, SET_SMB_HOSTIP},
+	{PAGE_NETWORK, SET_SMB_SHARE},
+	{PAGE_NETWORK, SET_SMB_USER},
+	{PAGE_NETWORK, SET_SMB_PASS},
+	{PAGE_NETWORK, SET_RT4K_HOSTIP},
+	{PAGE_NETWORK, SET_RT4K_PORT},
+};
+
+static const settingsRowRef_t libraryRows[] = {
+	{PAGE_INTERFACE, SET_GAMEBROWSER_TYPE},
+	{PAGE_INTERFACE, SET_APPSBROWSER_TYPE},
+	{PAGE_INTERFACE, SET_FILEBROWSER_TYPE},
+	{PAGE_INTERFACE, SET_RECENT_LIST},
+	{PAGE_INTERFACE, SET_FLATTEN_DIR},
+	{PAGE_INTERFACE, SET_SHOW_HIDDEN},
+	{PAGE_INTERFACE, SET_HIDE_UNK},
+	{PAGE_INTERFACE, SET_FILE_MGMT},
+	{PAGE_INTERFACE, SET_PANEL_TRANSPARENCY},
+	{PAGE_INTERFACE, SET_ANIMATED_BACKDROP},
+};
+
+static const settingsRowRef_t developerRows[] = {
+	{PAGE_GLOBAL, SET_ENABLE_USBGECKO},
+	{PAGE_GLOBAL, SET_WAIT_USBGECKO},
+	{PAGE_GLOBAL, SET_SIMMEMSIZE},
+	{PAGE_GAME_GLOBAL, SET_WIIRDDBG},
+};
+
+static const settingsRowRef_t gameRows[] = {
+	{PAGE_GAME, SET_FORCE_VIDEOMODE},
+	{PAGE_GAME, SET_WIDESCREEN},
+	{PAGE_GAME, SET_GAME_LANG},
+	{PAGE_GAME, SET_POLL_RATE},
+	{PAGE_GAME, SET_INVERT_CAMERA},
+	{PAGE_GAME, SET_SWAP_CAMERA},
+	{PAGE_GAME, SET_TRIGGER_LEVEL},
+	{PAGE_GAME, SET_CLEAN_BOOT},
+	{PAGE_GAME, SET_DISABLE_HYPERVISOR},
+	{PAGE_GAME, SET_READ_SPEED},
+	{PAGE_GAME, SET_AUDIO_STREAM},
+	{PAGE_GAME, SET_EMULATE_ETHERNET},
+	{PAGE_GAME, SET_DISABLE_MEMCARD},
+	{PAGE_GAME, SET_HORIZ_SCALE},
+	{PAGE_GAME, SET_VERT_OFFSET},
+	{PAGE_GAME, SET_VERT_FILTER},
+	{PAGE_GAME, SET_FIELD_RENDER},
+	{PAGE_GAME, SET_PIXEL_CENTER},
+	{PAGE_GAME, SET_ALPHA_DITHER},
+	{PAGE_GAME, SET_ANISO_FILTER},
+	{PAGE_GAME, SET_RT4K_PROFILE},
+	{PAGE_GAME, SET_DEFAULTS},
+};
+
+/* Where each game row keeps its value, so it can be compared with the
+ * default and put back. The game file stores exactly these fields. */
+#define GAME_FIELD(field) {offsetof(ConfigEntry, field), sizeof(((ConfigEntry *)0)->field)}
+static const struct {
+	size_t offset;
+	size_t size;
+} gameRowFields[] = {
+	[SET_GAME_LANG] = GAME_FIELD(gameLanguage),
+	[SET_FORCE_VIDEOMODE] = GAME_FIELD(gameVMode),
+	[SET_HORIZ_SCALE] = GAME_FIELD(forceHScale),
+	[SET_VERT_OFFSET] = GAME_FIELD(forceVOffset),
+	[SET_VERT_FILTER] = GAME_FIELD(forceVFilter),
+	[SET_FIELD_RENDER] = GAME_FIELD(forceVJitter),
+	[SET_PIXEL_CENTER] = GAME_FIELD(fixPixelCenter),
+	[SET_ALPHA_DITHER] = GAME_FIELD(disableDithering),
+	[SET_ANISO_FILTER] = GAME_FIELD(forceAnisotropy),
+	[SET_WIDESCREEN] = GAME_FIELD(forceWidescreen),
+	[SET_POLL_RATE] = GAME_FIELD(forcePollRate),
+	[SET_INVERT_CAMERA] = GAME_FIELD(invertCStick),
+	[SET_SWAP_CAMERA] = GAME_FIELD(swapCStick),
+	[SET_TRIGGER_LEVEL] = GAME_FIELD(triggerLevel),
+	[SET_AUDIO_STREAM] = GAME_FIELD(emulateAudioStream),
+	[SET_READ_SPEED] = GAME_FIELD(emulateReadSpeed),
+	[SET_EMULATE_ETHERNET] = GAME_FIELD(emulateEthernet),
+	[SET_DISABLE_MEMCARD] = GAME_FIELD(disableMemoryCard),
+	[SET_DISABLE_HYPERVISOR] = GAME_FIELD(disableHypervisor),
+	[SET_CLEAN_BOOT] = GAME_FIELD(preferCleanBoot),
+	[SET_RT4K_PROFILE] = GAME_FIELD(rt4kProfile),
+};
+#undef GAME_FIELD
+_Static_assert(sizeof(gameRowFields) / sizeof(gameRowFields[0]) == SET_DEFAULTS, "game fields drift");
+
+/* The defaults this game would get from the current Game Defaults. While a
+ * game's settings are open the global settings cannot change, so these are
+ * also what Save compares against. */
+static void settingsGameDefaults(const ConfigEntry *game, ConfigEntry *defaults)
+{
+	memcpy(defaults, game, sizeof(ConfigEntry));
+	config_defaults_from(defaults, &swissSettings);
+}
+
+static bool settingsGameRowCustom(const ConfigEntry *game,
+	const ConfigEntry *defaults, int option)
+{
+	return option >= 0 && option < SET_DEFAULTS &&
+		memcmp((const char *)game + gameRowFields[option].offset,
+			(const char *)defaults + gameRowFields[option].offset,
+			gameRowFields[option].size) != 0;
+}
+
+/* How many of a game's rows differ from Game Defaults (Game Detail shows it). */
+int settings_game_custom_count(const ConfigEntry *game)
+{
+	static ConfigEntry defaults;
+	int count = 0;
+	int option;
+
+	if(game == NULL) {
+		return 0;
+	}
+	settingsGameDefaults(game, &defaults);
+	for(option = 0; option < SET_DEFAULTS; option++) {
+		if(settingsGameRowCustom(game, &defaults, option)) {
+			count++;
+		}
+	}
+	return count;
+}
+
+/* X in a game's settings: this row follows Game Defaults again. */
+static void settingsUseDefault(ConfigEntry *game, int option)
+{
+	static ConfigEntry defaults;
+
+	if(option < 0 || option >= SET_DEFAULTS) {
+		return;
+	}
+	settingsGameDefaults(game, &defaults);
+	memcpy((char *)game + gameRowFields[option].offset,
+		(const char *)&defaults + gameRowFields[option].offset,
+		gameRowFields[option].size);
+}
+
+/* Reset to defaults in a game's settings: every row follows Game Defaults
+ * again. The game's Comment and Status aren't settings, so they stay. */
+static void settingsResetGame(ConfigEntry *game)
+{
+	int option;
+
+	for(option = 0; option < SET_DEFAULTS; option++) {
+		settingsUseDefault(game, option);
+	}
+}
+
+#define SETTINGS_ROWS(rows) {rows, sizeof(rows) / sizeof(rows[0])}
+static const struct {
+	const settingsRowRef_t *rows;
+	int count;
+} settingsViews[UI_SETLAYOUT_PAGE_COUNT] = {
+	[VIEW_QUICK] = SETTINGS_ROWS(quickRows),
+	[VIEW_GAME_DEFAULTS] = SETTINGS_ROWS(gameDefaultsRows),
+	[VIEW_SETUP] = SETTINGS_ROWS(setupRows),
+	[VIEW_DISPLAY] = SETTINGS_ROWS(displayRows),
+	[VIEW_CONSOLE] = SETTINGS_ROWS(consoleRows),
+	[VIEW_STORAGE] = SETTINGS_ROWS(storageRows),
+	[VIEW_NETWORK] = SETTINGS_ROWS(networkRows),
+	[VIEW_LIBRARY] = SETTINGS_ROWS(libraryRows),
+	[VIEW_DEVELOPER] = SETTINGS_ROWS(developerRows),
+	[VIEW_GAME] = SETTINGS_ROWS(gameRows),
+};
+#undef SETTINGS_ROWS
+
+_Static_assert(sizeof(quickRows) / sizeof(quickRows[0]) == UI_SETLAYOUT_ROWS_QUICK, "quick rows drift");
+_Static_assert(sizeof(gameDefaultsRows) / sizeof(gameDefaultsRows[0]) == UI_SETLAYOUT_ROWS_GAME_DEFAULTS, "defaults rows drift");
+_Static_assert(sizeof(setupRows) / sizeof(setupRows[0]) == UI_SETLAYOUT_ROWS_SETUP, "setup rows drift");
+_Static_assert(sizeof(displayRows) / sizeof(displayRows[0]) == UI_SETLAYOUT_ROWS_DISPLAY, "display rows drift");
+_Static_assert(sizeof(consoleRows) / sizeof(consoleRows[0]) == UI_SETLAYOUT_ROWS_CONSOLE, "console rows drift");
+_Static_assert(sizeof(storageRows) / sizeof(storageRows[0]) == UI_SETLAYOUT_ROWS_STORAGE, "storage rows drift");
+_Static_assert(sizeof(networkRows) / sizeof(networkRows[0]) == UI_SETLAYOUT_ROWS_NETWORK, "network rows drift");
+_Static_assert(sizeof(libraryRows) / sizeof(libraryRows[0]) == UI_SETLAYOUT_ROWS_LIBRARY, "library rows drift");
+_Static_assert(sizeof(developerRows) / sizeof(developerRows[0]) == UI_SETLAYOUT_ROWS_DEVELOPER, "developer rows drift");
+_Static_assert(sizeof(gameRows) / sizeof(gameRows[0]) == UI_SETLAYOUT_ROWS_GAME, "game rows drift");
+
+/* Short summaries shown beside each Setup section; each fits the value
+ * column's UI_SETLAYOUT_VALUE_TEXT_MAX without an ellipsis. */
+static const char *setupSummaries[] = {
+	"Video mode, cable, TV",
+	"Sound, language, system",
+	"Settings file, SD, disc",
+	"Adapter, file servers",
+	"Browser, recent, look",
+	"USB Gecko, memory, debug",
+};
+_Static_assert(sizeof(setupSummaries) / sizeof(setupSummaries[0]) == UI_SETLAYOUT_ROWS_SETUP, "setup summaries drift");
+
+static const settingsRowRef_t *settingsViewRow(int view, int option)
+{
+	if(view < 0 || view >= UI_SETLAYOUT_PAGE_COUNT ||
+		option < 0 || option >= settingsViews[view].count) {
+		return NULL;
+	}
+	return &settingsViews[view].rows[option];
+}
+
+/* What one row shows. `text` holds formatted values. */
+typedef struct {
+	const char *label;
+	const char *value;
+	uiSettingRowKind_t kind;
+	bool enabled;
+	char text[32];
+} settingRowView_t;
+
+static void rowShow(settingRowView_t *row, uiSettingRowKind_t kind,
+	const char *label, const char *value, bool enabled)
+{
+	row->kind = kind;
+	row->label = label;
+	row->value = value;
+	row->enabled = enabled;
+}
+
+static void rowCycle(settingRowView_t *row, const char *label,
+	const char *value, bool enabled)
+{
+	rowShow(row, SET_ROWKIND_CYCLE, label, value, enabled);
+}
+
+static void rowYesNo(settingRowView_t *row, const char *label, bool value,
+	bool enabled)
+{
+	rowShow(row, SET_ROWKIND_CYCLE, label, value ? "Yes" : "No", enabled);
+}
+
+static void rowNumber(settingRowView_t *row, const char *label,
+	const char *format, int value, bool enabled)
+{
+	snprintf(row->text, sizeof(row->text), format, value);
+	rowShow(row, SET_ROWKIND_CYCLE, label, row->text, enabled);
+}
+
+static void rowText(settingRowView_t *row, const char *label,
+	const char *value, bool enabled)
+{
+	rowShow(row, SET_ROWKIND_TEXT, label, value, enabled);
+}
+
+static void rowTextNumber(settingRowView_t *row, const char *label,
+	int value, bool enabled)
+{
+	snprintf(row->text, sizeof(row->text), "%i", value);
+	rowShow(row, SET_ROWKIND_TEXT, label, row->text, enabled);
+}
+
+static void rowAction(settingRowView_t *row, const char *label, bool enabled)
+{
+	rowShow(row, SET_ROWKIND_ACTION, label, NULL, enabled);
+}
+
+/* Label, value and enabled state of one setting, as the six legacy pages
+ * drew them. */
+static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
+	settingRowView_t *row)
+{
+	bool enabledVideoPatches = swissSettings.disableVideoPatches < 2;
+	bool enabledHypervisor = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->features & FEAT_HYPERVISOR);
+	bool emulatedAudioStream = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->emulable & EMU_AUDIO_STREAMING);
+	bool emulatedReadSpeed = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->emulable & EMU_READ_SPEED);
+	bool emulatedEthernet = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->emulable & EMU_ETHERNET);
+	bool enabledCleanBoot = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->location & LOC_DVD_CONNECTOR);
+
+	rowAction(row, "", false);
+	if(page == PAGE_GLOBAL) {
 		bool tvEnable = swissSettings.aveCompat != AVE_RVL_COMPAT;
 		bool dvdEnable = deviceHandler_getDeviceAvailable(&__device_dvd);
 		bool dtvEnable = !in_range(swissSettings.aveCompat, AVE_N_DOL_COMPAT, AVE_P_DOL_COMPAT);
 		bool rt4kEnable = in_range(swissSettings.aveCompat, GCDIGITAL_COMPAT, GCVIDEO_COMPAT);
-		drawSettingEntryString(page, NULL, "System Boot Mode:", swissSettings.sramBoot ? "Production" : "Default", option == SET_SYS_BOOTMODE, true);
-		drawSettingEntryString(page, NULL, "System Sound:", swissSettings.sramStereo ? "Stereo" : "Mono", option == SET_SYS_SOUND, true);
-		drawSettingEntryString(page, NULL, "System Video:", sramVideoStr[swissSettings.sramVideo], option == SET_SYS_VIDEO, tvEnable);
-		sprintf(sramHOffsetStr, "%+hi", swissSettings.sramHOffset);
-		drawSettingEntryString(page, NULL, "Screen Position:", sramHOffsetStr, option == SET_SCREEN_POS, true);
-		drawSettingEntryString(page, NULL, "System Language:", sramLanguageStr[swissSettings.sramLanguage], option == SET_SYS_LANG, true);
-		drawSettingEntryString(page, NULL, "Configuration Device:", getConfigDeviceName(&swissSettings), option == SET_CONFIG_DEV, true);
-		sprintf(uiVModeStr, "%s%s", getVideoModeString(getVideoModeFromSwissSetting(swissSettings.uiVMode)), swissSettings.uiVMode == 0 ? " (Auto) " : "");
-		drawSettingEntryString(page, NULL, "Swiss Video Mode:", uiVModeStr, option == SET_SWISS_VIDEOMODE, true);
-		drawSettingEntryBoolean(page, NULL, "Init DVD Drive at startup:", swissSettings.initDVDDriveAtStart, option == SET_INIT_DRIVE, dvdEnable);
-		drawSettingEntryBoolean(page, NULL, "Stop DVD Drive motor:", swissSettings.stopMotor, option == SET_STOP_MOTOR, dvdEnable);
-		drawSettingEntryString(page, NULL, "Configure Audio Buffer:", configAudioBufferStr[swissSettings.configAudioBuffer], option == SET_AUDIO_BUFFER, dvdEnable);
-		drawSettingEntryString(page, NULL, "SD/IDE-EXI Speed:", swissSettings.exiSpeed ? "27 MHz" : "13.5 MHz", option == SET_EXI_SPEED, true);
-		drawSettingEntryString(page, NULL, "AVE Compatibility:", aveCompatStr[swissSettings.aveCompat], option == SET_AVE_COMPAT, true);
-		drawSettingEntryString(page, NULL, "Force DTV Status:", forceDTVStatusStr[swissSettings.forceDTVStatus], option == SET_FORCE_DTVSTATUS, dtvEnable);
-		drawSettingEntryBoolean(page, NULL, "RetroTINK-4K HDMI Input:", swissSettings.rt4kOptim, option == SET_RT4K_OPTIM, rt4kEnable);
-		drawSettingEntryBoolean(page, NULL, "Disable Controller Recalibration:", swissSettings.disableRecalibration, option == SET_DISABLE_RECALIB, true);
-		drawSettingEntryBoolean(page, NULL, "Disable Controller Rumble:", swissSettings.disableRumble, option == SET_DISABLE_RUMBLE, true);
-		drawSettingEntryString(page, NULL, "Enable USB Gecko:", enableUSBGeckoStr[swissSettings.enableUSBGecko], option == SET_ENABLE_USBGECKO, true);
-		drawSettingEntryBoolean(page, NULL, "Wait for USB Gecko:", swissSettings.waitForUSBGecko, option == SET_WAIT_USBGECKO, true);
-		drawSettingEntryString(page, NULL, "Simulated MRAM Size:", simulatedMemSizeStr[swissSettings.simulatedMemSize], option == SET_SIMMEMSIZE, true);
-		sprintf(sramTemperatureStr, "%+hi\260C", swissSettings.sramTemperature);
-		drawSettingEntryString(page, NULL, "CPU Temperature Calibration:", sramTemperatureStr, option == SET_TAU_CALIB, is_gamecube());
+		switch(option) {
+			case SET_SYS_BOOTMODE: rowCycle(row, "System Boot Mode:", swissSettings.sramBoot ? "Production" : "Default", true); break;
+			case SET_SYS_SOUND: rowCycle(row, "System Sound:", swissSettings.sramStereo ? "Stereo" : "Mono", true); break;
+			case SET_SYS_VIDEO: rowCycle(row, "System Video:", sramVideoStr[swissSettings.sramVideo], tvEnable); break;
+			case SET_SCREEN_POS: rowNumber(row, "Screen Position:", "%+i", swissSettings.sramHOffset, true); break;
+			case SET_SYS_LANG: rowCycle(row, "System Language:", sramLanguageStr[swissSettings.sramLanguage], true); break;
+			case SET_CONFIG_DEV: rowCycle(row, "Configuration Device:", getConfigDeviceName(&swissSettings), true); break;
+			case SET_SWISS_VIDEOMODE:
+				snprintf(row->text, sizeof(row->text), "%s%s", getVideoModeString(getVideoModeFromSwissSetting(swissSettings.uiVMode)), swissSettings.uiVMode == 0 ? " (Auto) " : "");
+				rowCycle(row, "Swiss Video Mode:", row->text, true);
+			break;
+			case SET_INIT_DRIVE: rowYesNo(row, "Init DVD Drive at startup:", swissSettings.initDVDDriveAtStart, dvdEnable); break;
+			case SET_STOP_MOTOR: rowYesNo(row, "Stop DVD Drive motor:", swissSettings.stopMotor, dvdEnable); break;
+			case SET_AUDIO_BUFFER: rowCycle(row, "Configure Audio Buffer:", configAudioBufferStr[swissSettings.configAudioBuffer], dvdEnable); break;
+			case SET_EXI_SPEED: rowCycle(row, "SD/IDE-EXI Speed:", swissSettings.exiSpeed ? "27 MHz" : "13.5 MHz", true); break;
+			case SET_AVE_COMPAT: rowCycle(row, "AVE Compatibility:", aveCompatStr[swissSettings.aveCompat], true); break;
+			case SET_FORCE_DTVSTATUS: rowCycle(row, "Force DTV Status:", forceDTVStatusStr[swissSettings.forceDTVStatus], dtvEnable); break;
+			case SET_RT4K_OPTIM: rowYesNo(row, "RetroTINK-4K HDMI Input:", swissSettings.rt4kOptim, rt4kEnable); break;
+			case SET_DISABLE_RECALIB: rowYesNo(row, "Disable Controller Recalibration:", swissSettings.disableRecalibration, true); break;
+			/* Shown the positive way round; the file keeps Disable PAD Rumble. */
+			case SET_DISABLE_RUMBLE: rowCycle(row, "Controller Rumble:", swissSettings.disableRumble ? "Off" : "On", true); break;
+			case SET_ENABLE_USBGECKO: rowCycle(row, "Enable USB Gecko:", enableUSBGeckoStr[swissSettings.enableUSBGecko], true); break;
+			case SET_WAIT_USBGECKO: rowYesNo(row, "Wait for USB Gecko:", swissSettings.waitForUSBGecko, true); break;
+			case SET_SIMMEMSIZE: rowCycle(row, "Simulated MRAM Size:", simulatedMemSizeStr[swissSettings.simulatedMemSize], true); break;
+			case SET_TAU_CALIB: rowNumber(row, "CPU Temperature Calibration:", "%+i\260C", swissSettings.sramTemperature, is_gamecube()); break;
+		}
 	}
-	else if(page_num == PAGE_INTERFACE) {
-		drawSettingEntryString(page, NULL, "File Browser Type:", fileBrowserTypeStr[swissSettings.fileBrowserType], option == SET_FILEBROWSER_TYPE, true);
-		drawSettingEntryString(page, NULL, "File Browser Type for apps:", fileBrowserTypeStr[swissSettings.appsBrowserType], option == SET_APPSBROWSER_TYPE, true);
-		drawSettingEntryString(page, NULL, "File Browser Type for games:", fileBrowserTypeStr[swissSettings.gameBrowserType], option == SET_GAMEBROWSER_TYPE, true);
-		drawSettingEntryBoolean(page, NULL, "File Management:", swissSettings.enableFileManagement, option == SET_FILE_MGMT, true);
-		drawSettingEntryString(page, NULL, "Recent List:", recentListLevelStr[swissSettings.recentListLevel], option == SET_RECENT_LIST, true);
-		drawSettingEntryBoolean(page, NULL, "Show hidden files:", swissSettings.showHiddenFiles, option == SET_SHOW_HIDDEN, true);
-		drawSettingEntryBoolean(page, NULL, "Hide unknown file types:", swissSettings.hideUnknownFileTypes, option == SET_HIDE_UNK, true);
-		drawSettingEntryString(page, NULL, "UI Motion:",
-			(char*)uiMotionModeStr[motionMode], option == SET_UI_ANIMS, true);
-		drawSettingEntryBoolean(page, NULL, "Panel Transparency:", !swissSettings.disablePanelTransparency, option == SET_PANEL_TRANSPARENCY, true);
-		drawSettingEntryBoolean(page, NULL, "Animated Backdrop:", !swissSettings.disableAnimatedBackdrop, option == SET_ANIMATED_BACKDROP, true);
-		drawSettingEntryBoolean(page, NULL, "Menu Music:", !swissSettings.disableMenuMusic, option == SET_MENU_MUSIC, true);
-		drawSettingEntryBoolean(page, NULL, "Menu Sounds:", !swissSettings.disableMenuSFX, option == SET_MENU_SFX, true);
-		drawSettingEntryBoolean(page, NULL, "Boot without prompts:", swissSettings.autoBoot, option == SET_AUTOBOOT, true);
-		drawSettingEntryTextField(page, NULL, "Flatten directory:", swissSettings.flattenDir, option == SET_FLATTEN_DIR, true);
+	else if(page == PAGE_INTERFACE) {
+		switch(option) {
+			case SET_FILEBROWSER_TYPE: rowCycle(row, "File Browser Type:", fileBrowserTypeStr[swissSettings.fileBrowserType], true); break;
+			case SET_APPSBROWSER_TYPE: rowCycle(row, "File Browser Type for apps:", fileBrowserTypeStr[swissSettings.appsBrowserType], true); break;
+			case SET_GAMEBROWSER_TYPE: rowCycle(row, "File Browser Type for games:", fileBrowserTypeStr[swissSettings.gameBrowserType], true); break;
+			case SET_FILE_MGMT: rowYesNo(row, "File Management:", swissSettings.enableFileManagement, true); break;
+			case SET_RECENT_LIST: rowCycle(row, "Recent List:", recentListLevelStr[swissSettings.recentListLevel], true); break;
+			case SET_SHOW_HIDDEN: rowYesNo(row, "Show hidden files:", swissSettings.showHiddenFiles, true); break;
+			case SET_HIDE_UNK: rowYesNo(row, "Hide unknown file types:", swissSettings.hideUnknownFileTypes, true); break;
+			case SET_UI_ANIMS:
+				rowCycle(row, "UI Motion:", uiMotionModeStr[UIMotion_ModeFromFlags(
+					swissSettings.disableUIAnimations, swissSettings.reduceUIAnimations)], true);
+			break;
+			case SET_PANEL_TRANSPARENCY: rowYesNo(row, "Panel Transparency:", !swissSettings.disablePanelTransparency, true); break;
+			case SET_ANIMATED_BACKDROP: rowYesNo(row, "Animated Backdrop:", !swissSettings.disableAnimatedBackdrop, true); break;
+			case SET_MENU_MUSIC: rowYesNo(row, "Menu Music:", !swissSettings.disableMenuMusic, true); break;
+			case SET_MENU_SFX: rowYesNo(row, "Menu Sounds:", !swissSettings.disableMenuSFX, true); break;
+			case SET_AUTOBOOT: rowYesNo(row, "Boot without prompts:", swissSettings.autoBoot, true); break;
+			case SET_FLATTEN_DIR: rowText(row, "Flatten directory:", swissSettings.flattenDir, true); break;
+		}
 	}
-	else if(page_num == PAGE_NETWORK) {
+	else if(page == PAGE_NETWORK) {
 		bool netEnable = net_initialized || bba_exists(LOC_ANY);
-		drawSettingEntryBoolean(page, NULL, "Init network at startup:", swissSettings.initNetworkAtStart, option == SET_INIT_NET, !bba_requires_init());
-		drawSettingEntryTextField(page, NULL, "IPv4 Address:", swissSettings.bbaLocalIp, option == SET_BBA_LOCALIP, netEnable);
-		sprintf(txtbuffer, "%i", swissSettings.bbaNetmask);
-		drawSettingEntryTextField(page, NULL, "IPv4 Netmask:", txtbuffer, option == SET_BBA_NETMASK, netEnable);
-		drawSettingEntryTextField(page, NULL, "IPv4 Gateway:", swissSettings.bbaGateway, option == SET_BBA_GATEWAY, netEnable);
-		drawSettingEntryBoolean(page, NULL, "IPv4 uses DHCP:", swissSettings.bbaUseDhcp, option == SET_BBA_DHCP, netEnable);
-		drawSettingEntryTextField(page, NULL, "FSP Host IP:", swissSettings.fspHostIp, option == SET_FSP_HOSTIP, netEnable);
-		sprintf(txtbuffer, "%i", swissSettings.fspPort);
-		drawSettingEntryTextField(page, NULL, "FSP Port:", txtbuffer, option == SET_FSP_PORT, netEnable);
-		drawSettingEntryTextField(page, NULL, "FSP Password:", "*****", option == SET_FSP_PASS, netEnable);
-		sprintf(txtbuffer, "%i", swissSettings.fspPathMtu);
-		drawSettingEntryTextField(page, NULL, "FSP Path MTU:", txtbuffer, option == SET_FSP_PMTU, netEnable);
-		drawSettingEntryTextField(page, NULL, "FTP Host IP:", swissSettings.ftpHostIp, option == SET_FTP_HOSTIP, netEnable);
-		sprintf(txtbuffer, "%i", swissSettings.ftpPort);
-		drawSettingEntryTextField(page, NULL, "FTP Port:", txtbuffer, option == SET_FTP_PORT, netEnable);
-		drawSettingEntryTextField(page, NULL, "FTP Username:", swissSettings.ftpUserName, option == SET_FTP_USER, netEnable);
-		drawSettingEntryTextField(page, NULL, "FTP Password:", "*****", option == SET_FTP_PASS, netEnable);
-		drawSettingEntryBoolean(page, NULL, "FTP PASV Mode:", swissSettings.ftpUsePasv, option == SET_FTP_PASV, netEnable);
-		drawSettingEntryTextField(page, NULL, "SMB Host IP:", swissSettings.smbServerIp, option == SET_SMB_HOSTIP, netEnable);
-		drawSettingEntryTextField(page, NULL, "SMB Share:", swissSettings.smbShare, option == SET_SMB_SHARE, netEnable);
-		drawSettingEntryTextField(page, NULL, "SMB Username:", swissSettings.smbUser, option == SET_SMB_USER, netEnable);
-		drawSettingEntryTextField(page, NULL, "SMB Password:", "*****", option == SET_SMB_PASS, netEnable);
-		drawSettingEntryTextField(page, NULL, "RetroTINK-4K Host IP:", swissSettings.rt4kHostIp, option == SET_RT4K_HOSTIP, netEnable);
-		sprintf(txtbuffer, "%i", swissSettings.rt4kPort);
-		drawSettingEntryTextField(page, NULL, "RetroTINK-4K Port:", txtbuffer, option == SET_RT4K_PORT, netEnable);
+		switch(option) {
+			case SET_INIT_NET: rowYesNo(row, "Init network at startup:", swissSettings.initNetworkAtStart, !bba_requires_init()); break;
+			case SET_BBA_LOCALIP: rowText(row, "IPv4 Address:", swissSettings.bbaLocalIp, netEnable); break;
+			case SET_BBA_NETMASK: rowTextNumber(row, "IPv4 Netmask:", swissSettings.bbaNetmask, netEnable); break;
+			case SET_BBA_GATEWAY: rowText(row, "IPv4 Gateway:", swissSettings.bbaGateway, netEnable); break;
+			case SET_BBA_DHCP: rowYesNo(row, "IPv4 uses DHCP:", swissSettings.bbaUseDhcp, netEnable); break;
+			case SET_FSP_HOSTIP: rowText(row, "FSP Host IP:", swissSettings.fspHostIp, netEnable); break;
+			case SET_FSP_PORT: rowTextNumber(row, "FSP Port:", swissSettings.fspPort, netEnable); break;
+			case SET_FSP_PASS: rowText(row, "FSP Password:", "*****", netEnable); break;
+			case SET_FSP_PMTU: rowTextNumber(row, "FSP Path MTU:", swissSettings.fspPathMtu, netEnable); break;
+			case SET_FTP_HOSTIP: rowText(row, "FTP Host IP:", swissSettings.ftpHostIp, netEnable); break;
+			case SET_FTP_PORT: rowTextNumber(row, "FTP Port:", swissSettings.ftpPort, netEnable); break;
+			case SET_FTP_USER: rowText(row, "FTP Username:", swissSettings.ftpUserName, netEnable); break;
+			case SET_FTP_PASS: rowText(row, "FTP Password:", "*****", netEnable); break;
+			case SET_FTP_PASV: rowYesNo(row, "FTP PASV Mode:", swissSettings.ftpUsePasv, netEnable); break;
+			case SET_SMB_HOSTIP: rowText(row, "SMB Host IP:", swissSettings.smbServerIp, netEnable); break;
+			case SET_SMB_SHARE: rowText(row, "SMB Share:", swissSettings.smbShare, netEnable); break;
+			case SET_SMB_USER: rowText(row, "SMB Username:", swissSettings.smbUser, netEnable); break;
+			case SET_SMB_PASS: rowText(row, "SMB Password:", "*****", netEnable); break;
+			case SET_RT4K_HOSTIP: rowText(row, "RetroTINK-4K Host IP:", swissSettings.rt4kHostIp, netEnable); break;
+			case SET_RT4K_PORT: rowTextNumber(row, "RetroTINK-4K Port:", swissSettings.rt4kPort, netEnable); break;
+		}
 	}
-	else if(page_num == PAGE_GAME_GLOBAL) {
-		bool enabledVideoPatches = swissSettings.disableVideoPatches < 2;
+	else if(page == PAGE_GAME_GLOBAL) {
 		bool emulatedMemoryCard = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->emulable & EMU_MEMCARD);
-		bool enabledHypervisor = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->features & FEAT_HYPERVISOR);
 		bool dbgEnable = devices[DEVICE_CUR] != &__device_usbgecko && deviceHandler_getDeviceAvailable(&__device_usbgecko);
-		drawSettingEntryString(page, NULL, "In-Game Reset:", igrTypeStr[swissSettings.igrType], option == SET_IGR, enabledHypervisor);
-		drawSettingEntryString(page, NULL, "Load GameCube Main Menu:", bs2BootStr[swissSettings.bs2Boot], option == SET_BS2BOOT, true);
-		drawSettingEntryBoolean(page, NULL, "Emulate Memory Card:", swissSettings.emulateMemoryCard, option == SET_EMULATE_MEMCARD, emulatedMemoryCard);
-		drawSettingEntryString(page, NULL, "Disable MemCard PRO GameID:", disableMCPGameIDStr[swissSettings.disableMCPGameID], option == SET_DISABLE_MCPGAMEID, true);
-		drawSettingEntryString(page, NULL, "Disable Video Patches:", disableVideoPatchesStr[swissSettings.disableVideoPatches], option == SET_DISABLE_VIDPATCH, true);
-		drawSettingEntryBoolean(page, NULL, "Force Video Active:", swissSettings.forceVideoActive, option == SET_FORCE_VIDACTIVE, enabledVideoPatches);
-		drawSettingEntryBoolean(page, NULL, "Pause for resolution change:", swissSettings.pauseAVOutput, option == SET_PAUSE_AVOUTPUT, enabledHypervisor);
-		drawSettingEntryBoolean(page, NULL, "Auto-load cheats:", swissSettings.autoCheats, option == SET_ALL_CHEATS, true);
-		drawSettingEntryBoolean(page, NULL, "WiiRD debugging:", swissSettings.wiirdDebug, option == SET_WIIRDDBG, dbgEnable);
-		drawSettingEntryString(page, NULL, "Reset to defaults", NULL, option == SET_GLOBAL_DEFAULTS, true);
+		switch(option) {
+			case SET_IGR: rowCycle(row, "In-Game Reset:", igrTypeStr[swissSettings.igrType], enabledHypervisor); break;
+			case SET_BS2BOOT: rowCycle(row, "Load GameCube Main Menu:", bs2BootStr[swissSettings.bs2Boot], true); break;
+			case SET_EMULATE_MEMCARD: rowYesNo(row, "Emulate Memory Card:", swissSettings.emulateMemoryCard, emulatedMemoryCard); break;
+			case SET_DISABLE_MCPGAMEID: rowCycle(row, "Disable MemCard PRO GameID:", disableMCPGameIDStr[swissSettings.disableMCPGameID], true); break;
+			case SET_DISABLE_VIDPATCH: rowCycle(row, "Disable Video Patches:", disableVideoPatchesStr[swissSettings.disableVideoPatches], true); break;
+			case SET_FORCE_VIDACTIVE: rowYesNo(row, "Force Video Active:", swissSettings.forceVideoActive, enabledVideoPatches); break;
+			case SET_PAUSE_AVOUTPUT: rowYesNo(row, "Pause for resolution change:", swissSettings.pauseAVOutput, enabledHypervisor); break;
+			case SET_ALL_CHEATS: rowYesNo(row, "Auto-load cheats:", swissSettings.autoCheats, true); break;
+			case SET_WIIRDDBG: rowYesNo(row, "WiiRD debugging:", swissSettings.wiirdDebug, dbgEnable); break;
+			case SET_GLOBAL_DEFAULTS: rowAction(row, "Reset to defaults", true); break;
+		}
 	}
-	else if(page_num == PAGE_GAME_DEFAULTS) {
-		bool enabledVideoPatches = swissSettings.disableVideoPatches < 2;
-		bool emulatedAudioStream = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->emulable & EMU_AUDIO_STREAMING);
-		bool emulatedReadSpeed = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->emulable & EMU_READ_SPEED);
-		bool emulatedEthernet = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->emulable & EMU_ETHERNET);
-		bool enabledHypervisor = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->features & FEAT_HYPERVISOR);
-		bool enabledCleanBoot = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->location & LOC_DVD_CONNECTOR);
-		drawSettingEntryString(page, NULL, "Force NTSC Video Mode:", getGameVideoModeString(swissSettings.gameVModeNtsc), option == SET_DEFAULT_NTSC_VIDEOMODE, enabledVideoPatches);
-		drawSettingEntryString(page, NULL, "Force PAL Video Mode:", getGameVideoModeString(swissSettings.gameVModePal), option == SET_DEFAULT_PAL_VIDEOMODE, enabledVideoPatches);
-		drawSettingEntryString(page, NULL, "Force Horizontal Scale:", forceHScaleStr[swissSettings.forceHScale], option == SET_DEFAULT_HORIZ_SCALE, enabledVideoPatches);
-		sprintf(forceVOffsetStr, "%+hi", swissSettings.forceVOffset);
-		drawSettingEntryString(page, NULL, "Force Vertical Offset:", forceVOffsetStr, option == SET_DEFAULT_VERT_OFFSET, enabledVideoPatches);
-		drawSettingEntryString(page, NULL, "Force Vertical Filter:", forceVFilterStr[swissSettings.forceVFilter], option == SET_DEFAULT_VERT_FILTER, enabledVideoPatches);
-		drawSettingEntryString(page, NULL, "Force Field Rendering:", forceVJitterStr[swissSettings.forceVJitter], option == SET_DEFAULT_FIELD_RENDER, enabledVideoPatches);
-		drawSettingEntryString(page, NULL, "Fix Pixel Center:", fixPixelCenterStr[swissSettings.fixPixelCenter], option == SET_DEFAULT_PIXEL_CENTER, enabledVideoPatches);
-		drawSettingEntryBoolean(page, NULL, "Disable Alpha Dithering:", swissSettings.disableDithering, option == SET_DEFAULT_ALPHA_DITHER, enabledVideoPatches);
-		drawSettingEntryBoolean(page, NULL, "Force Anisotropic Filter:", swissSettings.forceAnisotropy, option == SET_DEFAULT_ANISO_FILTER, true);
-		drawSettingEntryString(page, NULL, "Force Widescreen:", forceWidescreenStr[swissSettings.forceWidescreen], option == SET_DEFAULT_WIDESCREEN, true);
-		drawSettingEntryString(page, NULL, "Force Polling Rate:", forcePollRateStr[swissSettings.forcePollRate], option == SET_DEFAULT_POLL_RATE, true);
-		drawSettingEntryString(page, NULL, "Invert Camera Stick:", invertCStickStr[swissSettings.invertCStick], option == SET_DEFAULT_INVERT_CAMERA, true);
-		drawSettingEntryString(page, NULL, "Swap Camera Stick:", swapCStickStr[swissSettings.swapCStick], option == SET_DEFAULT_SWAP_CAMERA, true);
-		sprintf(triggerLevelStr, "%hhu", swissSettings.triggerLevel);
-		drawSettingEntryString(page, NULL, "Digital Trigger Level:", triggerLevelStr, option == SET_DEFAULT_TRIGGER_LEVEL, true);
-		drawSettingEntryString(page, NULL, "Emulate Audio Streaming:", emulateAudioStreamStr[swissSettings.emulateAudioStream], option == SET_DEFAULT_AUDIO_STREAM, emulatedAudioStream);
-		drawSettingEntryString(page, NULL, "Emulate Read Speed:", emulateReadSpeedStr[swissSettings.emulateReadSpeed], option == SET_DEFAULT_READ_SPEED, emulatedReadSpeed);
-		drawSettingEntryBoolean(page, NULL, "Emulate Broadband Adapter:", swissSettings.emulateEthernet, option == SET_DEFAULT_EMULATE_ETHERNET, emulatedEthernet);
-		drawSettingEntryString(page, NULL, "Disable Memory Card:", disableMemoryCardStr[swissSettings.disableMemoryCard], option == SET_DEFAULT_DISABLE_MEMCARD, enabledHypervisor);
-		drawSettingEntryBoolean(page, NULL, "Disable Hypervisor:", swissSettings.disableHypervisor, option == SET_DEFAULT_DISABLE_HYPERVISOR, enabledCleanBoot);
-		drawSettingEntryBoolean(page, NULL, "Prefer Clean Boot:", swissSettings.preferCleanBoot, option == SET_DEFAULT_CLEAN_BOOT, enabledCleanBoot);
-		drawSettingEntryNumeric(page, NULL, "RetroTINK-4K Profile:", swissSettings.rt4kProfile, option == SET_DEFAULT_RT4K_PROFILE, is_rt4k_alive());
-		drawSettingEntryString(page, NULL, "Reset to defaults", NULL, option == SET_DEFAULT_DEFAULTS, true);
+	else if(page == PAGE_GAME_DEFAULTS) {
+		switch(option) {
+			case SET_DEFAULT_NTSC_VIDEOMODE: rowCycle(row, "Force NTSC Video Mode:", getGameVideoModeString(swissSettings.gameVModeNtsc), enabledVideoPatches); break;
+			case SET_DEFAULT_PAL_VIDEOMODE: rowCycle(row, "Force PAL Video Mode:", getGameVideoModeString(swissSettings.gameVModePal), enabledVideoPatches); break;
+			case SET_DEFAULT_HORIZ_SCALE: rowCycle(row, "Force Horizontal Scale:", forceHScaleStr[swissSettings.forceHScale], enabledVideoPatches); break;
+			case SET_DEFAULT_VERT_OFFSET: rowNumber(row, "Force Vertical Offset:", "%+i", swissSettings.forceVOffset, enabledVideoPatches); break;
+			case SET_DEFAULT_VERT_FILTER: rowCycle(row, "Force Vertical Filter:", forceVFilterStr[swissSettings.forceVFilter], enabledVideoPatches); break;
+			case SET_DEFAULT_FIELD_RENDER: rowCycle(row, "Force Field Rendering:", forceVJitterStr[swissSettings.forceVJitter], enabledVideoPatches); break;
+			case SET_DEFAULT_PIXEL_CENTER: rowCycle(row, "Fix Pixel Center:", fixPixelCenterStr[swissSettings.fixPixelCenter], enabledVideoPatches); break;
+			case SET_DEFAULT_ALPHA_DITHER: rowYesNo(row, "Disable Alpha Dithering:", swissSettings.disableDithering, enabledVideoPatches); break;
+			case SET_DEFAULT_ANISO_FILTER: rowYesNo(row, "Force Anisotropic Filter:", swissSettings.forceAnisotropy, true); break;
+			case SET_DEFAULT_WIDESCREEN: rowCycle(row, "Force Widescreen:", forceWidescreenStr[swissSettings.forceWidescreen], true); break;
+			case SET_DEFAULT_POLL_RATE: rowCycle(row, "Force Polling Rate:", forcePollRateStr[swissSettings.forcePollRate], true); break;
+			case SET_DEFAULT_INVERT_CAMERA: rowCycle(row, "Invert Camera Stick:", invertCStickStr[swissSettings.invertCStick], true); break;
+			case SET_DEFAULT_SWAP_CAMERA: rowCycle(row, "Swap Camera Stick:", swapCStickStr[swissSettings.swapCStick], true); break;
+			case SET_DEFAULT_TRIGGER_LEVEL: rowNumber(row, "Digital Trigger Level:", "%i", swissSettings.triggerLevel, true); break;
+			case SET_DEFAULT_AUDIO_STREAM: rowCycle(row, "Emulate Audio Streaming:", emulateAudioStreamStr[swissSettings.emulateAudioStream], emulatedAudioStream); break;
+			case SET_DEFAULT_READ_SPEED: rowCycle(row, "Emulate Read Speed:", emulateReadSpeedStr[swissSettings.emulateReadSpeed], emulatedReadSpeed); break;
+			case SET_DEFAULT_EMULATE_ETHERNET: rowYesNo(row, "Emulate Broadband Adapter:", swissSettings.emulateEthernet, emulatedEthernet); break;
+			case SET_DEFAULT_DISABLE_MEMCARD: rowCycle(row, "Disable Memory Card:", disableMemoryCardStr[swissSettings.disableMemoryCard], enabledHypervisor); break;
+			case SET_DEFAULT_DISABLE_HYPERVISOR: rowYesNo(row, "Disable Hypervisor:", swissSettings.disableHypervisor, enabledCleanBoot); break;
+			case SET_DEFAULT_CLEAN_BOOT: rowYesNo(row, "Prefer Clean Boot:", swissSettings.preferCleanBoot, enabledCleanBoot); break;
+			case SET_DEFAULT_RT4K_PROFILE: rowNumber(row, "RetroTINK-4K Profile:", "%i", swissSettings.rt4kProfile, is_rt4k_alive()); break;
+			case SET_DEFAULT_DEFAULTS: rowAction(row, "Reset to defaults", true); break;
+		}
 	}
-	else if(page_num == PAGE_GAME) {
-		bool enabledGamePatches = gameConfig != NULL && !gameConfig->forceCleanBoot;
-		if(enabledGamePatches) {
-			bool enabledVideoPatches = swissSettings.disableVideoPatches < 2;
-			bool emulatedAudioStream = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->emulable & EMU_AUDIO_STREAMING);
-			bool emulatedReadSpeed = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->emulable & EMU_READ_SPEED);
-			bool emulatedEthernet = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->emulable & EMU_ETHERNET);
-			bool enabledHypervisor = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->features & FEAT_HYPERVISOR);
-			bool enabledCleanBoot = devices[DEVICE_CUR] == NULL || (devices[DEVICE_CUR]->location & LOC_DVD_CONNECTOR);
-			drawSettingEntryString(page, NULL, "Game Language:", sramLanguageStr[gameConfig->gameLanguage], option == SET_GAME_LANG, true);
-			drawSettingEntryString(page, NULL, "Force Video Mode:", getGameVideoModeString(gameConfig->gameVMode), option == SET_FORCE_VIDEOMODE, enabledVideoPatches);
-			drawSettingEntryString(page, NULL, "Force Horizontal Scale:", forceHScaleStr[gameConfig->forceHScale], option == SET_HORIZ_SCALE, enabledVideoPatches);
-			sprintf(forceVOffsetStr, "%+hi", gameConfig->forceVOffset);
-			drawSettingEntryString(page, NULL, "Force Vertical Offset:", forceVOffsetStr, option == SET_VERT_OFFSET, enabledVideoPatches);
-			drawSettingEntryString(page, NULL, "Force Vertical Filter:", forceVFilterStr[gameConfig->forceVFilter], option == SET_VERT_FILTER, enabledVideoPatches);
-			drawSettingEntryString(page, NULL, "Force Field Rendering:", forceVJitterStr[gameConfig->forceVJitter], option == SET_FIELD_RENDER, enabledVideoPatches);
-			drawSettingEntryString(page, NULL, "Fix Pixel Center:", fixPixelCenterStr[gameConfig->fixPixelCenter], option == SET_PIXEL_CENTER, enabledVideoPatches);
-			drawSettingEntryBoolean(page, NULL, "Disable Alpha Dithering:", gameConfig->disableDithering, option == SET_ALPHA_DITHER, enabledVideoPatches);
-			drawSettingEntryBoolean(page, NULL, "Force Anisotropic Filter:", gameConfig->forceAnisotropy, option == SET_ANISO_FILTER, true);
-			drawSettingEntryString(page, NULL, "Force Widescreen:", forceWidescreenStr[gameConfig->forceWidescreen], option == SET_WIDESCREEN, true);
-			drawSettingEntryString(page, NULL, "Force Polling Rate:", forcePollRateStr[gameConfig->forcePollRate], option == SET_POLL_RATE, true);
-			drawSettingEntryString(page, NULL, "Invert Camera Stick:", invertCStickStr[gameConfig->invertCStick], option == SET_INVERT_CAMERA, true);
-			drawSettingEntryString(page, NULL, "Swap Camera Stick:", swapCStickStr[gameConfig->swapCStick], option == SET_SWAP_CAMERA, true);
-			sprintf(triggerLevelStr, "%hhu", gameConfig->triggerLevel);
-			drawSettingEntryString(page, NULL, "Digital Trigger Level:", triggerLevelStr, option == SET_TRIGGER_LEVEL, true);
-			drawSettingEntryString(page, NULL, "Emulate Audio Streaming:", emulateAudioStreamStr[gameConfig->emulateAudioStream], option == SET_AUDIO_STREAM, emulatedAudioStream);
-			drawSettingEntryString(page, NULL, "Emulate Read Speed:", emulateReadSpeedStr[gameConfig->emulateReadSpeed], option == SET_READ_SPEED, emulatedReadSpeed);
-			drawSettingEntryBoolean(page, NULL, "Emulate Broadband Adapter:", gameConfig->emulateEthernet, option == SET_EMULATE_ETHERNET, emulatedEthernet);
-			drawSettingEntryString(page, NULL, "Disable Memory Card:", disableMemoryCardStr[gameConfig->disableMemoryCard], option == SET_DISABLE_MEMCARD, enabledHypervisor);
-			drawSettingEntryBoolean(page, NULL, "Disable Hypervisor:", gameConfig->disableHypervisor, option == SET_DISABLE_HYPERVISOR, enabledCleanBoot);
-			drawSettingEntryBoolean(page, NULL, "Prefer Clean Boot:", gameConfig->preferCleanBoot, option == SET_CLEAN_BOOT, enabledCleanBoot);
-			drawSettingEntryNumeric(page, NULL, "RetroTINK-4K Profile:", gameConfig->rt4kProfile, option == SET_RT4K_PROFILE, is_rt4k_alive());
-			drawSettingEntryString(page, NULL, "Reset to defaults", NULL, option == SET_DEFAULTS, true);
+	else if(page == PAGE_GAME) {
+		/* Without a game (or one forced to clean boot) the rows are dimmed
+		 * and show what a game would start with. */
+		static ConfigEntry fallback;
+		bool enabled = gameConfig != NULL && !gameConfig->forceCleanBoot;
+		const ConfigEntry *game = gameConfig;
+		if(!enabled) {
+			memset(&fallback, 0, sizeof(fallback));
+			config_defaults(&fallback);
+			game = &fallback;
+		}
+		switch(option) {
+			case SET_GAME_LANG: rowCycle(row, "Game Language:", sramLanguageStr[game->gameLanguage], enabled); break;
+			case SET_FORCE_VIDEOMODE: rowCycle(row, "Force Video Mode:", getGameVideoModeString(game->gameVMode), enabled && enabledVideoPatches); break;
+			case SET_HORIZ_SCALE: rowCycle(row, "Force Horizontal Scale:", forceHScaleStr[game->forceHScale], enabled && enabledVideoPatches); break;
+			case SET_VERT_OFFSET: rowNumber(row, "Force Vertical Offset:", "%+i", game->forceVOffset, enabled && enabledVideoPatches); break;
+			case SET_VERT_FILTER: rowCycle(row, "Force Vertical Filter:", forceVFilterStr[game->forceVFilter], enabled && enabledVideoPatches); break;
+			case SET_FIELD_RENDER: rowCycle(row, "Force Field Rendering:", forceVJitterStr[game->forceVJitter], enabled && enabledVideoPatches); break;
+			case SET_PIXEL_CENTER: rowCycle(row, "Fix Pixel Center:", fixPixelCenterStr[game->fixPixelCenter], enabled && enabledVideoPatches); break;
+			case SET_ALPHA_DITHER: rowYesNo(row, "Disable Alpha Dithering:", game->disableDithering, enabled && enabledVideoPatches); break;
+			case SET_ANISO_FILTER: rowYesNo(row, "Force Anisotropic Filter:", game->forceAnisotropy, enabled); break;
+			case SET_WIDESCREEN: rowCycle(row, "Force Widescreen:", forceWidescreenStr[game->forceWidescreen], enabled); break;
+			case SET_POLL_RATE: rowCycle(row, "Force Polling Rate:", forcePollRateStr[game->forcePollRate], enabled); break;
+			case SET_INVERT_CAMERA: rowCycle(row, "Invert Camera Stick:", invertCStickStr[game->invertCStick], enabled); break;
+			case SET_SWAP_CAMERA: rowCycle(row, "Swap Camera Stick:", swapCStickStr[game->swapCStick], enabled); break;
+			case SET_TRIGGER_LEVEL: rowNumber(row, "Digital Trigger Level:", "%i", game->triggerLevel, enabled); break;
+			case SET_AUDIO_STREAM: rowCycle(row, "Emulate Audio Streaming:", emulateAudioStreamStr[game->emulateAudioStream], enabled && emulatedAudioStream); break;
+			case SET_READ_SPEED: rowCycle(row, "Emulate Read Speed:", emulateReadSpeedStr[game->emulateReadSpeed], enabled && emulatedReadSpeed); break;
+			case SET_EMULATE_ETHERNET: rowYesNo(row, "Emulate Broadband Adapter:", game->emulateEthernet, enabled && emulatedEthernet); break;
+			case SET_DISABLE_MEMCARD: rowCycle(row, "Disable Memory Card:", disableMemoryCardStr[game->disableMemoryCard], enabled && enabledHypervisor); break;
+			case SET_DISABLE_HYPERVISOR: rowYesNo(row, "Disable Hypervisor:", game->disableHypervisor, enabled && enabledCleanBoot); break;
+			case SET_CLEAN_BOOT: rowYesNo(row, "Prefer Clean Boot:", game->preferCleanBoot, enabled && enabledCleanBoot); break;
+			case SET_RT4K_PROFILE: rowNumber(row, "RetroTINK-4K Profile:", "%i", game->rt4kProfile, enabled && is_rt4k_alive()); break;
+			case SET_DEFAULTS: rowAction(row, "Reset to defaults", enabled); break;
+		}
+	}
+}
+
+uiDrawObj_t* settings_draw_page(int view, int option, ConfigEntry *gameConfig) {
+	uiDrawObj_t* page = DrawContainer();
+	const settingsRowRef_t *focus = settingsViewRow(view, option);
+	bool focusSetting = focus != NULL && focus->page != SETTINGS_ROW_LINK;
+	/* Mirrors _CurrentMotionMode() (FrameBufferMagic): Animations off snaps.
+	 * Backdrop animation is decorative and cannot weaken primary focus travel. */
+	int motionMode = (int)UIMotion_ModeFromFlags(
+		swissSettings.disableUIAnimations, swissSettings.reduceUIAnimations);
+	int i;
+
+	static ConfigEntry gameDefaults;
+	bool tagged = view == VIEW_GAME && gameConfig != NULL;
+
+	UISetLayout_Compute(view, option, focusSetting &&
+		get_tooltip(focus->page, focus->option) != NULL, motionMode, &setLayout);
+	setLayoutRowCursor = 0;
+	drawSettingsChrome(page, view, gameConfig);
+	if(tagged) {
+		settingsGameDefaults(gameConfig, &gameDefaults);
+	}
+
+	for(i = 0; i < settingsViews[view].count; i++) {
+		const settingsRowRef_t *ref = &settingsViews[view].rows[i];
+		const char *tag = NULL;
+		settingRowView_t row;
+
+		if(ref->page == SETTINGS_ROW_LINK) {
+			rowShow(&row, SET_ROWKIND_LINK, UISetLayout_PageDesc(ref->option)->title,
+				setupSummaries[ref->option - VIEW_DISPLAY], true);
 		}
 		else {
-			drawSettingEntryString(page, NULL, "Game Language:", sramLanguageStr[SRAM_LANGUAGE_MAX], option == SET_GAME_LANG, false);
-			drawSettingEntryString(page, NULL, "Force Video Mode:", getGameVideoModeString(swissSettings.gameVMode), option == SET_FORCE_VIDEOMODE, false);
-			drawSettingEntryString(page, NULL, "Force Horizontal Scale:", forceHScaleStr[swissSettings.forceHScale], option == SET_HORIZ_SCALE, false);
-			sprintf(forceVOffsetStr, "%+hi", swissSettings.forceVOffset);
-			drawSettingEntryString(page, NULL, "Force Vertical Offset:", forceVOffsetStr, option == SET_VERT_OFFSET, false);
-			drawSettingEntryString(page, NULL, "Force Vertical Filter:", forceVFilterStr[swissSettings.forceVFilter], option == SET_VERT_FILTER, false);
-			drawSettingEntryString(page, NULL, "Force Field Rendering:", forceVJitterStr[swissSettings.forceVJitter], option == SET_FIELD_RENDER, false);
-			drawSettingEntryString(page, NULL, "Fix Pixel Center:", fixPixelCenterStr[swissSettings.fixPixelCenter], option == SET_PIXEL_CENTER, false);
-			drawSettingEntryBoolean(page, NULL, "Disable Alpha Dithering:", swissSettings.disableDithering, option == SET_ALPHA_DITHER, false);
-			drawSettingEntryBoolean(page, NULL, "Force Anisotropic Filter:", swissSettings.forceAnisotropy, option == SET_ANISO_FILTER, false);
-			drawSettingEntryString(page, NULL, "Force Widescreen:", forceWidescreenStr[swissSettings.forceWidescreen], option == SET_WIDESCREEN, false);
-			drawSettingEntryString(page, NULL, "Force Polling Rate:", forcePollRateStr[swissSettings.forcePollRate], option == SET_POLL_RATE, false);
-			drawSettingEntryString(page, NULL, "Invert Camera Stick:", invertCStickStr[swissSettings.invertCStick], option == SET_INVERT_CAMERA, false);
-			drawSettingEntryString(page, NULL, "Swap Camera Stick:", swapCStickStr[swissSettings.swapCStick], option == SET_SWAP_CAMERA, false);
-			sprintf(triggerLevelStr, "%hhu", swissSettings.triggerLevel);
-			drawSettingEntryString(page, NULL, "Digital Trigger Level:", triggerLevelStr, option == SET_TRIGGER_LEVEL, false);
-			drawSettingEntryString(page, NULL, "Emulate Audio Streaming:", emulateAudioStreamStr[swissSettings.emulateAudioStream], option == SET_AUDIO_STREAM, false);
-			drawSettingEntryString(page, NULL, "Emulate Read Speed:", emulateReadSpeedStr[swissSettings.emulateReadSpeed], option == SET_READ_SPEED, false);
-			drawSettingEntryBoolean(page, NULL, "Emulate Broadband Adapter:", swissSettings.emulateEthernet, option == SET_EMULATE_ETHERNET, false);
-			drawSettingEntryString(page, NULL, "Disable Memory Card:", disableMemoryCardStr[swissSettings.disableMemoryCard], option == SET_DISABLE_MEMCARD, false);
-			drawSettingEntryBoolean(page, NULL, "Disable Hypervisor:", swissSettings.disableHypervisor, option == SET_DISABLE_HYPERVISOR, false);
-			drawSettingEntryBoolean(page, NULL, "Prefer Clean Boot:", swissSettings.preferCleanBoot, option == SET_CLEAN_BOOT, false);
-			drawSettingEntryNumeric(page, NULL, "RetroTINK-4K Profile:", swissSettings.rt4kProfile, option == SET_DEFAULT_RT4K_PROFILE, false);
-			drawSettingEntryString(page, NULL, "Reset to defaults", NULL, option == SET_DEFAULTS, false);
+			settingsDescribeRow(ref->page, ref->option, gameConfig, &row);
 		}
+		/* A game's own values are marked; the rest follow Game Defaults. */
+		if(tagged && settingsGameRowCustom(gameConfig, &gameDefaults, ref->option)) {
+			tag = "Custom";
+		}
+		drawSettingRow(page, row.label, row.value, tag, row.kind, option == i, row.enabled);
 	}
-	// If we have a tooltip for this page/option, add a fading label telling the user to press Y for help
-	add_tooltip_label(page, page_num, option);
+	// If we have a tooltip for this row, tell the user to press Y for help
+	if(focusSetting) {
+		add_tooltip_label(page, focus->page, focus->option);
+	}
 
 	DrawPublish(page);
 	return page;
@@ -1262,7 +1672,7 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_DEFAULTS:
 				if(direction == 0)
-					config_defaults(gameConfig);
+					settingsResetGame(gameConfig);
 			break;
 		}
 	}
@@ -1270,7 +1680,7 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 
 #define SETTINGS_DIGITAL_INPUT_MASK (BUTTON_RIGHT | BUTTON_LEFT | \
 	BUTTON_UP | BUTTON_DOWN | BUTTON_B | BUTTON_A | BUTTON_Y | \
-	BUTTON_R | BUTTON_L)
+	BUTTON_R | BUTTON_L | BUTTON_X)
 #define SETTINGS_MENU_INPUT_POLICY (UI_MENU_INPUT_AXIS_BOTH | \
 	UI_MENU_INPUT_REPEAT)
 
@@ -1359,6 +1769,187 @@ static void settingsInhibitThroughDigitalRelease(
 	}
 }
 
+/* A held D-pad direction repeats on the stick's schedule: once after
+ * UI_MENU_INPUT_INITIAL_REPEAT_US, then every UI_MENU_INPUT_REPEAT_US. Returns
+ * true when the same directions are still held at that point; any other
+ * button, or letting go, ends the repeat. */
+static bool settingsHoldToRepeat(uiMenuInputState_t *menuInput,
+	u32 *lastRetrace, u32 held, bool *repeating)
+{
+	const u32 directions = BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT |
+		BUTTON_RIGHT;
+	u32 due = *repeating ? UI_MENU_INPUT_REPEAT_US :
+		UI_MENU_INPUT_INITIAL_REPEAT_US;
+	u32 waited = 0u;
+
+	*repeating = false;
+	if(held == 0u || (held & ~directions) != 0u) {
+		return false;
+	}
+	while((padsButtonsHeld() & SETTINGS_DIGITAL_INPUT_MASK) == held) {
+		u32 elapsed = settingsMenuInputElapsedMicroseconds(lastRetrace);
+
+		(void)padsMenuInputPoll(menuInput, elapsed,
+			SETTINGS_MENU_INPUT_POLICY, true);
+		waited += elapsed;
+		if(waited >= due) {
+			*repeating = true;
+			return true;
+		}
+		VIDEO_WaitVSync();
+	}
+	return false;
+}
+
+/* Rows whose change re-applies the Swiss video mode immediately. */
+static bool settingsIsLiveVideoRow(int page, int option)
+{
+	return page == PAGE_GLOBAL && (option == SET_SYS_VIDEO ||
+		option == SET_SWISS_VIDEOMODE || option == SET_AVE_COMPAT ||
+		option == SET_FORCE_DTVSTATUS || option == SET_RT4K_OPTIM);
+}
+
+/* Rows A activates as an action (text entry, reset) instead of changing a
+ * value; every other row is a choice that A advances like Right. */
+static bool settingsRowIsAction(int page, int option)
+{
+	switch(page) {
+		case PAGE_INTERFACE:
+			return option == SET_FLATTEN_DIR;
+		case PAGE_NETWORK:
+			return in_range(option, SET_BBA_LOCALIP, SET_BBA_GATEWAY) ||
+				in_range(option, SET_FSP_HOSTIP, SET_FTP_PASS) ||
+				in_range(option, SET_SMB_HOSTIP, SET_RT4K_PORT);
+		case PAGE_GAME_GLOBAL:
+			return option == SET_GLOBAL_DEFAULTS;
+		case PAGE_GAME_DEFAULTS:
+			return option == SET_DEFAULT_DEFAULTS;
+		case PAGE_GAME:
+			return option == SET_DEFAULTS;
+	}
+	return false;
+}
+
+/* Rows that put a whole screen back to its defaults. */
+static bool settingsRowIsReset(int page, int option)
+{
+	return (page == PAGE_GAME_GLOBAL && option == SET_GLOBAL_DEFAULTS) ||
+		(page == PAGE_GAME_DEFAULTS && option == SET_DEFAULT_DEFAULTS) ||
+		(page == PAGE_GAME && option == SET_DEFAULTS);
+}
+
+/* A reset undoes every row on the screen at once, so it asks first. */
+static bool settingsConfirmReset(void)
+{
+	bool released = false;
+	bool confirmed = false;
+	uiDrawObj_t *box = DrawPublish(DrawMessageBox(D_WARN,
+		"Reset everything on this screen to its default?\n"
+		"Press A to reset, or B to keep it."));
+
+	while(1) {
+		u32 held = padsButtonsHeld() & SETTINGS_DIGITAL_INPUT_MASK;
+
+		/* The press that chose the row must be let go first. */
+		if(!released) {
+			released = held == 0u;
+		}
+		else if(held & BUTTON_A) {
+			confirmed = true;
+			break;
+		}
+		else if(held & BUTTON_B) {
+			break;
+		}
+		VIDEO_WaitVSync();
+	}
+	DrawDispose(box);
+	return confirmed;
+}
+
+/* True once anything differs from the snapshot taken when Settings opened. */
+static bool settingsChanged(const ConfigEntry *config)
+{
+	return memcmp(&swissSettings, &tempSettings, sizeof(SwissSettings)) != 0 ||
+		(config != NULL && memcmp(config, &tempConfig, sizeof(ConfigEntry)) != 0);
+}
+
+#define SETTINGS_VIDEO_KEEP_US 10000000u
+
+/* A live video change can leave the TV without a picture, so it only stays
+ * if A is pressed within ten seconds. B, or no answer, changes it back. */
+static bool settingsKeepVideoMode(void)
+{
+	u32 retrace = VIDEO_GetRetraceCount();
+	u32 waited = 0u;
+	int shown = -1;
+	bool released = false;
+	bool keep = false;
+	uiDrawObj_t *box = NULL;
+
+	while(waited < SETTINGS_VIDEO_KEEP_US) {
+		int seconds = (int)((SETTINGS_VIDEO_KEEP_US - waited + 999999u) /
+			1000000u);
+		u32 held = padsButtonsHeld() & SETTINGS_DIGITAL_INPUT_MASK;
+
+		if(seconds != shown) {
+			/* DrawMessageBox copies into txtbuffer, so format elsewhere. */
+			char message[128];
+
+			/* Three lines: a fourth runs past the 125 px box. */
+			snprintf(message, sizeof(message), "Keep this video mode?\n"
+				"Press A to keep it, or B to change it back.\n"
+				"It changes back by itself in %d s.", seconds);
+			box = box == NULL ?
+				DrawPublish(DrawMessageBox(D_WARN, message)) :
+				DrawRepublish(box, DrawMessageBox(D_WARN, message));
+			shown = seconds;
+		}
+		/* The press that changed the mode must be let go first. */
+		if(!released) {
+			released = held == 0u;
+		}
+		else if(held & BUTTON_A) {
+			keep = true;
+			break;
+		}
+		else if(held & BUTTON_B) {
+			break;
+		}
+		VIDEO_WaitVSync();
+		waited += settingsMenuInputElapsedMicroseconds(&retrace);
+	}
+	DrawDispose(box);
+	return keep;
+}
+
+/* Changes one row's value. Video rows ask to keep the new mode and restore
+ * the fields that choose it when the answer is no. */
+static void settingsChangeValue(int page, int option, int direction,
+	ConfigEntry *config)
+{
+	if(!settingsIsLiveVideoRow(page, option)) {
+		settings_toggle(page, option, direction, config);
+		return;
+	}
+	GXRModeObj *before = getVideoMode();
+	u8 sramVideo = swissSettings.sramVideo;
+	int uiVMode = swissSettings.uiVMode;
+	int aveCompat = swissSettings.aveCompat;
+	int forceDTVStatus = swissSettings.forceDTVStatus;
+	bool rt4kOptim = swissSettings.rt4kOptim;
+
+	settings_toggle(page, option, direction, config);
+	if(getVideoMode() != before && !settingsKeepVideoMode()) {
+		swissSettings.sramVideo = sramVideo;
+		swissSettings.uiVMode = uiVMode;
+		swissSettings.aveCompat = aveCompat;
+		swissSettings.forceDTVStatus = forceDTVStatus;
+		swissSettings.rt4kOptim = rt4kOptim;
+		DrawVideoMode(before);
+	}
+}
+
 /* These legacy setting arms open a child input/message loop. Reinitialize the
  * analog policy after they return so movement inside that child cannot become
  * a surprise Settings action. */
@@ -1368,7 +1959,8 @@ static bool settingsInputMayBlock(int page, int option, u32 buttons)
 	bool activate = (buttons & BUTTON_A) != 0u;
 
 	if(page == PAGE_GLOBAL) {
-		return horizontal && option == SET_RT4K_OPTIM;
+		return (horizontal || activate) && (option == SET_RT4K_OPTIM ||
+			settingsIsLiveVideoRow(page, option));
 	}
 	if(page == PAGE_INTERFACE) {
 		return (horizontal || activate) && option == SET_FLATTEN_DIR;
@@ -1378,17 +1970,46 @@ static bool settingsInputMayBlock(int page, int option, u32 buttons)
 			in_range(option, SET_FSP_HOSTIP, SET_FTP_PASS) ||
 			in_range(option, SET_SMB_HOSTIP, SET_RT4K_PORT);
 	}
-	if(page == PAGE_GAME_DEFAULTS && horizontal) {
+	if(page == PAGE_GAME_DEFAULTS && (horizontal || activate)) {
 		return option == SET_DEFAULT_AUDIO_STREAM ||
-			option == SET_DEFAULT_EMULATE_ETHERNET;
+			option == SET_DEFAULT_EMULATE_ETHERNET ||
+			(activate && option == SET_DEFAULT_DEFAULTS);
+	}
+	if(page == PAGE_GAME) {
+		return activate && option == SET_DEFAULTS;
 	}
 	return false;
 }
 
+/* Legacy entry points name a (page, option) setting: open the view that
+ * shows it. A game's settings open on their own. */
 int show_settings(int page, int option, ConfigEntry *config) {
+	int view;
+	int row;
+
+	for(view = VIEW_QUICK; view <= VIEW_GAME; view++) {
+		/* A game's rows live only in its own view. */
+		if((view == VIEW_GAME) != (page == PAGE_GAME)) {
+			continue;
+		}
+		for(row = 0; row < settingsViews[view].count; row++) {
+			const settingsRowRef_t *ref = &settingsViews[view].rows[row];
+			if(ref->page == page && ref->option == option) {
+				return show_settings_view(view, row, config);
+			}
+		}
+	}
+	return show_settings_view(page == PAGE_GAME ? VIEW_GAME : VIEW_QUICK, 0, config);
+}
+
+int show_settings_view(int view, int option, ConfigEntry *config) {
 	uiMenuInputState_t menuInput;
 	u32 menuInputRetrace;
+	bool digitalRepeat = false;
 
+	if(view < 0 || view >= UI_SETLAYOUT_PAGE_COUNT) {
+		view = VIEW_QUICK;
+	}
 	wait_network();
 	// Copy current settings to a temp copy in case the user cancels out
 	if(config != NULL) {
@@ -1399,23 +2020,30 @@ int show_settings(int page, int option, ConfigEntry *config) {
 	GXRModeObj *oldmode = getVideoMode();
 	menuInputRetrace = VIDEO_GetRetraceCount();
 	UIMenuInput_Init(&menuInput);
-	if(padsButtonsHeld() & BUTTON_A) {
+	/* The press that opened Settings (A on Home, X on Game Detail) must not
+	 * also act here: a held X would put a game's first row back to its
+	 * default. */
+	if(padsButtonsHeld() & SETTINGS_DIGITAL_INPUT_MASK) {
 		settingsInhibitThroughDigitalRelease(&menuInput,
 			&menuInputRetrace);
 	}
 	while(1) {
 		bool wasDigital;
 		bool inputMayBlock;
-		int inputPage;
+		int inputView;
 		int inputOption;
-		uiDrawObj_t* settingsPage = settings_draw_page(page, option, config);
+		int rows = settingsViews[view].count;
+		const settingsRowRef_t *ref = settingsViewRow(view, option);
+		bool onSetting = ref != NULL && ref->page != SETTINGS_ROW_LINK;
+		uiDrawObj_t* settingsPage = settings_draw_page(view, option, config);
 		u32 btns = settingsWaitForInput(&menuInput, &menuInputRetrace,
 			&wasDigital);
-		inputPage = page;
+		inputView = view;
 		inputOption = option;
-		inputMayBlock = settingsInputMayBlock(inputPage, inputOption, btns);
+		inputMayBlock = onSetting &&
+			settingsInputMayBlock(ref->page, ref->option, btns);
 		if(btns & BUTTON_Y) {
-			char *tooltip = get_tooltip(page, option);
+			char *tooltip = onSetting ? get_tooltip(ref->page, ref->option) : NULL;
 			if(tooltip) {
 				uiDrawObj_t* tooltipBox = DrawPublish(DrawTooltip(tooltip));
 				while(padsButtonsHeld() & BUTTON_Y) {
@@ -1441,46 +2069,66 @@ int show_settings(int page, int option, ConfigEntry *config) {
 				UIMenuInput_Init(&menuInput);
 			}
 		}
+		// Right/Left change a setting, or move between Save and Discard
 		if(btns & BUTTON_RIGHT) {
-			// If we're on a button (Back, Next, Save, Exit), allow left/right movement
-			if((page == PAGE_MIN || page == PAGE_MAX) && (option >= settings_count_pp[page]-2) && option < settings_count_pp[page]) {
-				option++;
+			if(option >= rows) {
+				if(option < rows + 1) option++;
 			}
-			else if((page != PAGE_MIN && page != PAGE_MAX) && (option >= settings_count_pp[page]-3) && option < settings_count_pp[page]) {
-				option++;
-			}
-			else {
-				settings_toggle(page, option, 1, config);
+			else if(onSetting) {
+				settingsChangeValue(ref->page, ref->option, 1, config);
 			}
 		}
 		if(btns & BUTTON_LEFT) {
-			// If we're on a button (Back, Next, Save, Exit), allow left/right movement
-			if((page == PAGE_MIN || page == PAGE_MAX) && (option > settings_count_pp[page]-2)) {
+			if(option > rows) {
 				option--;
 			}
-			else if((page != PAGE_MIN && page != PAGE_MAX) && (option > settings_count_pp[page]-3)) {
-				option--;
+			else if(option < rows && onSetting) {
+				settingsChangeValue(ref->page, ref->option, -1, config);
+			}
+		}
+		// X in a game's settings puts an enabled row back to its Game
+		// Defaults value
+		if((btns & BUTTON_X) && view == VIEW_GAME && onSetting &&
+			config != NULL) {
+			settingRowView_t row;
+			settingsDescribeRow(ref->page, ref->option, config, &row);
+			if(row.enabled) {
+				settingsUseDefault(config, ref->option);
+			}
+		}
+		if((btns & BUTTON_DOWN) && option < rows + 1)
+			option++;
+		if((btns & BUTTON_UP) && option > 0)
+			option--;
+		// L and R move between the three tabs and wrap; a game's own
+		// settings have none
+		if(UISetLayout_PageDesc(view)->tab != UI_SETLAYOUT_NO_TAB) {
+			int tab = UISetLayout_PageDesc(view)->tab;
+			if(btns & BUTTON_R) {
+				view = (tab + 1) % UI_SETLAYOUT_TAB_COUNT; option = 0;
+			}
+			if(btns & BUTTON_L) {
+				view = (tab + UI_SETLAYOUT_TAB_COUNT - 1) % UI_SETLAYOUT_TAB_COUNT; option = 0;
+			}
+		}
+		// B backs out of a Setup section. Anywhere else it leaves: Save &
+		// Exit when something changed, otherwise just close. Discard & Exit
+		// stays on the rail to undo.
+		if(btns & BUTTON_B) {
+			if(view > VIEW_SETUP && view < VIEW_GAME) {
+				option = view - VIEW_DISPLAY;
+				view = VIEW_SETUP;
+				btns &= ~BUTTON_A;
 			}
 			else {
-				settings_toggle(page, option, -1, config);
+				option = settingsChanged(config) ?
+					settingsViews[view].count : settingsViews[view].count + 1;
+				btns |= BUTTON_A;
 			}
 		}
-		if((btns & BUTTON_DOWN) && option < settings_count_pp[page])
-			option++;
-		if((btns & BUTTON_UP) && option > PAGE_MIN)
-			option--;
-		if((btns & BUTTON_R) && page < PAGE_MAX) {
-			page++; option = 0;
-		}
-		if((btns & BUTTON_L) && page > PAGE_GLOBAL) {
-			page--; option = 0;
-		}
-		if((btns & BUTTON_B))
-			option = settings_count_pp[page];
 		// Handle all options/buttons here
 		if((btns & BUTTON_A)) {
-			// Generic Save/Cancel/Back/Next button actions
-			if(option == settings_count_pp[page]-1) {
+			if(option == settingsViews[view].count) {
 				uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving changes\205"));
 				// Save settings to SRAM
 				swissSettings.sram60Hz = getTVFormat() == VI_EURGB60;
@@ -1489,22 +2137,33 @@ int show_settings(int page, int option, ConfigEntry *config) {
 					swissSettings.sramHOffset &= ~1;
 				}
 				VIDEO_SetAdjustingValues(swissSettings.sramHOffset, 0);
+				// SRAM keeps naming the Configuration Device that Settings
+				// opened with (tempSettings) until the settings are saved on
+				// the one chosen here.
+				u8 chosenConfigDevice = swissSettings.configDeviceId;
+				swissSettings.configDeviceId = tempSettings.configDeviceId;
 				updateSRAM(&swissSettings, true);
+				swissSettings.configDeviceId = chosenConfigDevice;
 				// Update environment
 				config_update_environ();
 				// Update our .ini (in memory)
 				if(config != NULL) {
-					config_defaults(&tempConfig);
+					config_defaults_from(&tempConfig, &tempSettings);
 					config_update_game(config, &tempConfig, true);
 				}
 				// flush settings to .ini
 				if(config_update_global(true)) {
+					// Saved on the chosen device: SRAM may name it now.
+					updateSRAM(&swissSettings, true);
 					rt4k_init();
 					msgBox = DrawRepublish(msgBox, DrawMessageBox(D_INFO, "Successfully saved configuration!"));
 					sleep(1);
 					DrawDispose(msgBox);
 				}
 				else {
+					// Not saved on the chosen device: go back to the one
+					// Settings opened with, which SRAM still names.
+					swissSettings.configDeviceId = tempSettings.configDeviceId;
 					msgBox = DrawRepublish(msgBox, DrawMessageBox(D_INFO, "Failed to save configuration!"));
 					sleep(1);
 					DrawDispose(msgBox);
@@ -1514,7 +2173,7 @@ int show_settings(int page, int option, ConfigEntry *config) {
 					&menuInputRetrace);
 				return 1;
 			}
-			if(option == settings_count_pp[page]) {
+			if(option == settingsViews[view].count + 1) {
 				// Exit without saving (revert)
 				if(config != NULL) {
 					memcpy(config, &tempConfig, sizeof(ConfigEntry));
@@ -1529,37 +2188,34 @@ int show_settings(int page, int option, ConfigEntry *config) {
 					&menuInputRetrace);
 				return 0;
 			}
-			if((page != PAGE_MAX) && (option == settings_count_pp[page]-2)) {
-				page++; option = 0;
-			}
-			if((page != PAGE_MIN) && (option == settings_count_pp[page]-(page != PAGE_MAX ? 3:2))) {
-				page--; option = 0;
-			}
-			// These use text input, allow them to be accessed with the A button
-			if(page == PAGE_INTERFACE && option == SET_FLATTEN_DIR) {
-				settings_toggle(page, option, 0, config);
-			}
-			if(page == PAGE_NETWORK && (in_range(option, SET_BBA_LOCALIP, SET_BBA_GATEWAY) ||
-										in_range(option, SET_FSP_HOSTIP,  SET_FTP_PASS) ||
-										in_range(option, SET_SMB_HOSTIP,  SET_RT4K_PORT))) {
-				settings_toggle(page, option, 0, config);
-			}
-			if(page == PAGE_GAME_GLOBAL && option == SET_GLOBAL_DEFAULTS) {
-				settings_toggle(page, option, 0, config);
-			}
-			if(page == PAGE_GAME_DEFAULTS && option == SET_DEFAULT_DEFAULTS) {
-				settings_toggle(page, option, 0, config);
-			}
-			if(page == PAGE_GAME && option == SET_DEFAULTS) {
-				settings_toggle(page, option, 0, config);
+			// A opens a Setup section, runs a text or reset row, and
+			// changes a choice row the way Right does
+			if(view == inputView && option == inputOption && ref != NULL) {
+				if(ref->page == SETTINGS_ROW_LINK) {
+					view = ref->option; option = 0;
+				}
+				else if(settingsRowIsAction(ref->page, ref->option)) {
+					if(!settingsRowIsReset(ref->page, ref->option) ||
+						settingsConfirmReset()) {
+						settings_toggle(ref->page, ref->option, 0, config);
+					}
+				}
+				else {
+					settingsChangeValue(ref->page, ref->option, 1, config);
+				}
 			}
 		}
-		if(page != inputPage || inputMayBlock) {
+		if(view != inputView || inputMayBlock) {
 			UIMenuInput_Init(&menuInput);
 		}
 		/* A child prompt may return with its dismissing A press held even when
-		 * analog opened it. Consume that release just like a digital action. */
-		if(wasDigital || inputMayBlock) {
+		 * analog opened it. Consume that release just like a digital action.
+		 * A held D-pad direction repeats instead, on the stick's schedule. */
+		if(inputMayBlock || !wasDigital) {
+			digitalRepeat = false;
+		}
+		if(inputMayBlock || (wasDigital && !settingsHoldToRepeat(&menuInput,
+			&menuInputRetrace, btns, &digitalRepeat))) {
 			settingsInhibitThroughDigitalRelease(&menuInput,
 				&menuInputRetrace);
 		}

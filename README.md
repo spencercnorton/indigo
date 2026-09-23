@@ -59,10 +59,16 @@ controller grammar as every other screen.
 **Cheats read clearly.** The cheat browser shows per-cheat state plainly, and
 the runtime handling around it is stricter about what it will apply.
 
-**Settings and System Information match the rest.** Settings keeps Swiss's
-six tabs and every option, restyled; System Information is new. Settings can
-also be written ahead of time in a file on the SD card: see
-[docs/SETTINGS.md](docs/SETTINGS.md).
+**Settings opens on what you change between games.** Quick settings fit
+on one screen: menu music and sounds, In-Game Reset, memory-card emulation,
+auto-loaded cheats and a few more. R moves to Game Defaults, what every game
+starts with, and to Setup, which holds video, console, storage, network,
+library and developer options in six sections. X on a game's detail screen
+opens that game's own settings, where anything that differs from Game Defaults
+is marked Custom and X puts it back. Holding the D-pad scrolls, A changes a value,
+and B leaves and keeps your changes. A new video mode only stays if you press
+A within ten seconds. Settings can also be written ahead of time in a file on
+the SD card: see [docs/SETTINGS.md](docs/SETTINGS.md).
 
 ## Install
 
@@ -143,8 +149,8 @@ keep nothing else in that folder:
 
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. Any other file in
 `/games` (a text file, a cover image, an empty folder) turns the Library back
-into Swiss's plain file list; Settings → Interface → "Hide unknown file types"
-hides stray files. On Home, turn the cube to Library and press A.
+into Swiss's plain file list; "Hide unknown file types" in Settings → Setup →
+Library hides stray files. On Home, turn the cube to Library and press A.
 
 ### Posters
 

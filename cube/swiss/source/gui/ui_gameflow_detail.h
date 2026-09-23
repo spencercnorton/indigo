@@ -60,6 +60,7 @@ typedef struct {
 	uint32_t enabledCheatBytes;
 	uint32_t cheatCapacityBytes;
 	uint32_t flags;
+	uint32_t customSettings;    /* this game's rows that differ from Game Defaults */
 } uiGameflowDetailSource_t;
 
 /* Fixed, pointer-free video-thread payload. The banner begins on a cache-line
@@ -72,6 +73,7 @@ typedef struct {
 	uint32_t enabledCheatCount;
 	uint32_t enabledCheatBytes;
 	uint32_t cheatCapacityBytes;
+	uint32_t customSettings;
 	char gameId[UI_GAMEFLOW_DETAIL_ID_LENGTH + 1u];
 	char title[UI_GAMEFLOW_DETAIL_TITLE_CAPACITY];
 	char company[UI_GAMEFLOW_DETAIL_COMPANY_CAPACITY];

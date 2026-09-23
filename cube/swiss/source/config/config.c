@@ -113,7 +113,12 @@ char* config_file_read(char* filename) {
 		readBuffer = (char*)calloc(1, configFile->size + 1);
 		if (readBuffer) {
 			print_debug("config_file_read: reading %i byte file\n", configFile->size);
-			devices[DEVICE_CONFIG]->readFile(configFile, readBuffer, configFile->size);
+			/* A short read is a failed read: a save must not mistake part
+			 * of a file for all of it. */
+			if(devices[DEVICE_CONFIG]->readFile(configFile, readBuffer, configFile->size) != (s32)configFile->size) {
+				free(readBuffer);
+				readBuffer = NULL;
+			}
 			devices[DEVICE_CONFIG]->closeFile(configFile);
 		}
 	}
@@ -257,6 +262,178 @@ void config_file_delete(char* filename) {
 	free(configFile);
 }
 
+/* Keys a global.ini may still carry from older Swiss versions. They are read
+ * but never written, so a save drops them instead of keeping a stale copy
+ * that could override the current key. */
+static const char *const globalOldKeys[] = {
+	"Enable Debug", "USB Gecko debug output", "Stop DVD Motor on startup", NULL
+};
+
+/* Every key a game's file can hold. A save drops the ones it no longer
+ * writes: a setting back at its default. */
+static const char *const gameFileKeys[] = {
+	"ID", "Name", "Comment", "Status", "Game Language", "Force Video Mode",
+	"Force Horizontal Scale", "Force Vertical Offset", "Force Vertical Filter",
+	"Force Field Rendering", "Fix Pixel Center", "Disable Alpha Dithering",
+	"Force Anisotropic Filter", "Force Widescreen", "Force Polling Rate",
+	"Invert Camera Stick", "Swap Camera Stick", "Digital Trigger Level",
+	"Emulate Audio Streaming", "Emulate Read Speed", "Emulate Broadband Adapter",
+	"Disable Memory Card", "Disable Hypervisor", "Prefer Clean Boot",
+	"RetroTINK-4K Profile", NULL
+};
+
+#define CONFIG_LOST_COMMENT "# Anything written in here will be lost!"
+#define CONFIG_KEPT_COMMENT "# Indigo keeps comments and unknown keys when it saves."
+
+typedef struct {
+	const char *text;
+	size_t length;
+	size_t keyLength;       /* 0 when the line is not Key=Value */
+} configLine_t;
+
+/* Splits text into lines without their endings; a final line ending does
+ * not start another line. Returns the count, or -1 when there are too many. */
+static int config_split_lines(const char *text, configLine_t *lines, int max)
+{
+	int count = 0;
+
+	while(*text != '\0') {
+		const char *end = strchr(text, '\n');
+		size_t length = end ? (size_t)(end - text) : strlen(text);
+		const char *eq;
+
+		if(count == max) return -1;
+		lines[count].text = text;
+		lines[count].length = length > 0 && text[length - 1] == '\r' ? length - 1 : length;
+		eq = lines[count].length > 0 && text[0] != '#' ?
+			memchr(text, '=', lines[count].length) : NULL;
+		lines[count].keyLength = eq ? (size_t)(eq - text) : 0;
+		count++;
+		if(end == NULL) break;
+		text = end + 1;
+	}
+	return count;
+}
+
+/* An upper bound on the lines config_split_lines finds in text. */
+static int config_count_lines(const char *text)
+{
+	int count = 1;
+
+	for(; *text != '\0'; text++) {
+		count += *text == '\n';
+	}
+	return count;
+}
+
+static bool config_line_is(const configLine_t *line, const char *text)
+{
+	return line->length == strlen(text) && !memcmp(line->text, text, line->length);
+}
+
+static bool config_key_listed(const configLine_t *line, const char *const *keys)
+{
+	for(; keys != NULL && *keys != NULL; keys++) {
+		if(strlen(*keys) == line->keyLength &&
+			!memcmp(*keys, line->text, line->keyLength)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static char *config_append_line(char *out, const configLine_t *line)
+{
+	memcpy(out, line->text, line->length);
+	out += line->length;
+	*out++ = '\r';
+	*out++ = '\n';
+	return out;
+}
+
+/* Saving rewrites a settings file from memory. When one already exists, keep
+ * what a person wrote in it: comments, blank lines and keys Swiss doesn't
+ * know stay where they are, and known keys take their new value in place.
+ * Known keys the new text no longer has (older names, or a game setting back
+ * at its default) are dropped. Keys the file lacked go just before its End
+ * marker, or at the end. Returns a malloc'd string, or NULL on failure so
+ * the caller writes the generated text instead. */
+char *config_merge_file(const char *existing, const char *generated,
+	const char *const *alsoKnown)
+{
+	configLine_t *oldLines, *newLines;
+	bool *written;
+	int oldMax, newMax, oldCount, newCount, i, j;
+	char *merged = NULL, *out;
+
+	if(existing == NULL || generated == NULL) return NULL;
+	/* Sized from the text, so a long, well-commented file keeps its notes. */
+	oldMax = config_count_lines(existing);
+	newMax = config_count_lines(generated);
+	oldLines = malloc((size_t)oldMax * sizeof(*oldLines));
+	newLines = malloc((size_t)newMax * sizeof(*newLines));
+	written = calloc((size_t)newMax, sizeof(*written));
+	if(oldLines == NULL || newLines == NULL || written == NULL) goto done;
+	oldCount = config_split_lines(existing, oldLines, oldMax);
+	newCount = config_split_lines(generated, newLines, newMax);
+	if(oldCount <= 0 || newCount < 0) goto done;
+	/* Each output line is an old line (any of which may become the kept
+	 * comment) or a generated one, plus a CRLF. */
+	merged = malloc(strlen(existing) + strlen(generated) +
+		(size_t)(oldCount + newCount) * (2u + sizeof(CONFIG_KEPT_COMMENT)) + 1u);
+	if(merged == NULL) goto done;
+	out = merged;
+	for(i = 0; i < oldCount; i++) {
+		const configLine_t *line = &oldLines[i];
+
+		if(line->keyLength == 0) {
+			if(config_line_is(line, "#!!Swiss Settings End!!")) {
+				for(j = 0; j < newCount; j++) {
+					if(newLines[j].keyLength != 0 && !written[j]) {
+						out = config_append_line(out, &newLines[j]);
+						written[j] = true;
+					}
+				}
+			}
+			if(config_line_is(line, CONFIG_LOST_COMMENT)) {
+				configLine_t kept = {CONFIG_KEPT_COMMENT, sizeof(CONFIG_KEPT_COMMENT) - 1, 0};
+				out = config_append_line(out, &kept);
+			}
+			else {
+				out = config_append_line(out, line);
+			}
+			continue;
+		}
+		for(j = 0; j < newCount; j++) {
+			if(newLines[j].keyLength == line->keyLength &&
+				!memcmp(newLines[j].text, line->text, line->keyLength)) {
+				break;
+			}
+		}
+		if(j < newCount) {
+			/* A repeated key keeps only its first place. */
+			if(!written[j]) {
+				out = config_append_line(out, &newLines[j]);
+				written[j] = true;
+			}
+		}
+		else if(!config_key_listed(line, alsoKnown)) {
+			out = config_append_line(out, line);
+		}
+	}
+	for(j = 0; j < newCount; j++) {
+		if(newLines[j].keyLength != 0 && !written[j]) {
+			out = config_append_line(out, &newLines[j]);
+		}
+	}
+	*out = '\0';
+done:
+	free(written);
+	free(newLines);
+	free(oldLines);
+	return merged;
+}
+
 int config_update_global(bool checkConfigDevice) {
 	if(checkConfigDevice && !config_set_device()) return 0;
 
@@ -266,7 +443,7 @@ int config_update_global(bool checkConfigDevice) {
 	if(!fp) return 0;
 
 	// Write out Swiss settings
-	fprintf(fp, "# Swiss Configuration File!\r\n# Anything written in here will be lost!\r\n\r\n#!!Swiss Settings Start!!\r\n");
+	fprintf(fp, "# Swiss Configuration File!\r\n" CONFIG_KEPT_COMMENT "\r\n\r\n#!!Swiss Settings Start!!\r\n");
 	fprintf(fp, "SD/IDE Speed=%s\r\n", swissSettings.exiSpeed ? "32MHz":"16MHz");
 	fprintf(fp, "System Boot Mode=%s\r\n", swissSettings.sramBoot ? "Production":"Default");
 	fprintf(fp, "System Sound=%s\r\n", swissSettings.sramStereo ? "Stereo":"Mono");
@@ -362,9 +539,43 @@ int config_update_global(bool checkConfigDevice) {
 	ensure_path(DEVICE_CONFIG, SWISS_BASE_DIR, NULL, true);
 	ensure_path(DEVICE_CONFIG, SWISS_SETTINGS_DIR, NULL, false);
 	
-	concat_path(txtbuffer, SWISS_SETTINGS_DIR, SWISS_SETTINGS_FILENAME);
-	int res = config_file_write(txtbuffer, configString);
+	/* The path stays in its own buffer across the read and the write. */
+	char path[PATHNAME_MAX];
+	concat_path(path, SWISS_SETTINGS_DIR, SWISS_SETTINGS_FILENAME);
+	char *existing = config_file_read(path);
+	char *merged = config_merge_file(existing, configString, globalOldKeys);
+	int res = config_file_write(path, merged != NULL ? merged : configString);
+	free(merged);
+	free(existing);
 	free(configString);
+	if(checkConfigDevice) {
+		config_unset_device();
+	}
+	return res;
+}
+
+/* What an autoload toggle saves over an existing global.ini: the same file
+ * with only its Autoload key changed, or NULL when there is no file to keep. */
+static char *config_merge_autoload(const char *existing) {
+	char line[sizeof(swissSettings.autoload) + sizeof("Autoload=\r\n")];
+	snprintf(line, sizeof(line), "Autoload=%s\r\n", swissSettings.autoload);
+	return config_merge_file(existing, line, NULL);
+}
+
+/* Toggling autoload saves only that key. Other settings in memory may hold
+ * values nobody chose to keep (holding B at launch turns AutoBoot off until
+ * the next boot), so the file keeps its own. */
+int config_update_autoload(bool checkConfigDevice) {
+	if(checkConfigDevice && !config_set_device()) return 0;
+
+	char path[PATHNAME_MAX];
+	concat_path(path, SWISS_SETTINGS_DIR, SWISS_SETTINGS_FILENAME);
+	char *existing = config_file_read(path);
+	char *merged = config_merge_autoload(existing);
+	/* No readable file to keep: save every setting, as before. */
+	int res = merged != NULL ? config_file_write(path, merged) : config_update_global(false);
+	free(merged);
+	free(existing);
 	if(checkConfigDevice) {
 		config_unset_device();
 	}
@@ -440,8 +651,13 @@ int config_update_game(ConfigEntry *entry, ConfigEntry *defaults, bool checkConf
 	ensure_path(DEVICE_CONFIG, SWISS_SETTINGS_DIR, NULL, false);
 	ensure_path(DEVICE_CONFIG, SWISS_GAME_SETTINGS_DIR, NULL, false);
 	
-	concatf_path(txtbuffer, SWISS_GAME_SETTINGS_DIR, "%.4s.ini", entry->game_id);
-	int res = config_file_write(txtbuffer, configString);
+	char path[PATHNAME_MAX];
+	concatf_path(path, SWISS_GAME_SETTINGS_DIR, "%.4s.ini", entry->game_id);
+	char *existing = config_file_read(path);
+	char *merged = config_merge_file(existing, configString, gameFileKeys);
+	int res = config_file_write(path, merged != NULL ? merged : configString);
+	free(merged);
+	free(existing);
 	free(configString);
 	if(checkConfigDevice) {
 		config_unset_device();
@@ -455,31 +671,34 @@ static char emulateAudioStreamEntries[][4] = {"UFZE", "UFZJ", "UFZP"};
 static char emulateReadSpeedEntries[][4] = {"DRSE", "GQSD", "GQSE", "GQSF", "GQSI", "GQSP", "GQSS", "GRSE", "GRSJ", "GRSP", "GTOJ"};
 static char emulateEthernetEntries[][4] = {"DPSJ", "GHEE", "GHEJ", "GKYE", "GKYJ", "GKYP", "GM4E", "GM4J", "GM4P", "GPJJ", "GPOE", "GPOJ", "GPOP", "GPSE", "GPSJ", "GPSP", "GTEE", "GTEJ", "GTEP", "GTEW", "PHEJ"};
 
-void config_defaults(ConfigEntry *entry) {
+/* Game defaults as a given settings snapshot defines them. Settings compares
+ * a game against the snapshot it opened with, so changing a default there
+ * does not pin the game's untouched values as overrides. */
+void config_defaults_from(ConfigEntry *entry, const SwissSettings *settings) {
 	strcpy(entry->comment, "No Comment");
 	strcpy(entry->status, "Unknown");
 	entry->gameLanguage = SRAM_LANGUAGE_MAX;
-	entry->gameVMode = entry->region == 'P' ? swissSettings.gameVModePal : swissSettings.gameVModeNtsc;
-	entry->forceHScale = swissSettings.forceHScale;
-	entry->forceVOffset = swissSettings.forceVOffset;
-	entry->forceVOffset = in_range(swissSettings.aveCompat, GCDIGITAL_COMPAT, GCVIDEO_COMPAT) ? -3:0;
-	entry->forceVFilter = swissSettings.forceVFilter;
-	entry->forceVJitter = swissSettings.forceVJitter;
-	entry->fixPixelCenter = swissSettings.fixPixelCenter;
-	entry->disableDithering = swissSettings.disableDithering;
-	entry->forceAnisotropy = swissSettings.forceAnisotropy;
-	entry->forceWidescreen = swissSettings.forceWidescreen;
-	entry->forcePollRate = swissSettings.forcePollRate;
-	entry->invertCStick = swissSettings.invertCStick;
-	entry->swapCStick = swissSettings.swapCStick;
-	entry->triggerLevel = swissSettings.triggerLevel;
-	entry->emulateAudioStream = swissSettings.emulateAudioStream;
-	entry->emulateReadSpeed = swissSettings.emulateReadSpeed;
-	entry->emulateEthernet = swissSettings.emulateEthernet;
-	entry->disableMemoryCard = swissSettings.disableMemoryCard;
-	entry->disableHypervisor = swissSettings.disableHypervisor;
-	entry->preferCleanBoot = swissSettings.preferCleanBoot;
-	entry->rt4kProfile = swissSettings.rt4kProfile;
+	entry->gameVMode = entry->region == 'P' ? settings->gameVModePal : settings->gameVModeNtsc;
+	entry->forceHScale = settings->forceHScale;
+	entry->forceVOffset = settings->forceVOffset;
+	entry->forceVOffset = in_range(settings->aveCompat, GCDIGITAL_COMPAT, GCVIDEO_COMPAT) ? -3:0;
+	entry->forceVFilter = settings->forceVFilter;
+	entry->forceVJitter = settings->forceVJitter;
+	entry->fixPixelCenter = settings->fixPixelCenter;
+	entry->disableDithering = settings->disableDithering;
+	entry->forceAnisotropy = settings->forceAnisotropy;
+	entry->forceWidescreen = settings->forceWidescreen;
+	entry->forcePollRate = settings->forcePollRate;
+	entry->invertCStick = settings->invertCStick;
+	entry->swapCStick = settings->swapCStick;
+	entry->triggerLevel = settings->triggerLevel;
+	entry->emulateAudioStream = settings->emulateAudioStream;
+	entry->emulateReadSpeed = settings->emulateReadSpeed;
+	entry->emulateEthernet = settings->emulateEthernet;
+	entry->disableMemoryCard = settings->disableMemoryCard;
+	entry->disableHypervisor = settings->disableHypervisor;
+	entry->preferCleanBoot = settings->preferCleanBoot;
+	entry->rt4kProfile = settings->rt4kProfile;
 
 	for(int i = 0; i < sizeof(fixPixelCenterEntries) / sizeof(*fixPixelCenterEntries); i++) {
 		if(!strncmp(entry->game_id, fixPixelCenterEntries[i], 4)) {
@@ -511,6 +730,10 @@ void config_defaults(ConfigEntry *entry) {
 			break;
 		}
 	}
+}
+
+void config_defaults(ConfigEntry *entry) {
+	config_defaults_from(entry, &swissSettings);
 }
 
 // TODO kill this off in one major version from now. Don't add new settings to it.

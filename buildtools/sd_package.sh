@@ -38,8 +38,8 @@ directly, and keep nothing else in that folder:
     /games/Super Mario Sunshine.iso
 Disc images end in .iso, .gcm, .tgc or .fdi. Any other file in /games (a
 text file, a cover image, an empty folder) turns the Library back into
-Swiss's plain file list; Settings > Interface > "Hide unknown file types"
-hides stray files. On Home, turn the cube to Library and press A.
+Swiss's plain file list; "Hide unknown file types" in Settings > Setup >
+Library hides stray files. On Home, turn the cube to Library and press A.
 
 POSTERS (optional)
 Without posters, each game shows its disc banner and its six-character game

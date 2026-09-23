@@ -3,6 +3,80 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.10.0 — help for every setting; saving keeps your files intact
+
+- Y now explains every setting in Settings. 34 rows had no help, including
+  most of Network, Swiss Video Mode, Disable Video Patches, Force
+  Widescreen, Field Rendering and Horizontal Scale.
+- Game Defaults' NTSC and PAL video modes have their own help instead of
+  sharing a game's.
+- Saving settings no longer wipes a hand-edited `global.ini` or game file:
+  - comments, blank lines and keys Indigo doesn't know stay where they are;
+  - known keys get their new value in place;
+  - missing keys are added before the End marker.
+
+  Older key names are replaced by their current ones.
+- Reset to defaults in a game's settings no longer wipes the Comment and
+  Status lines in its file.
+- Toggling autoload (Z) saves only the Autoload line. Before, it saved every
+  setting in memory, including ones turned off for this session only, such
+  as Boot without prompts when B was held at launch.
+- A new Configuration Device is written to the console's SRAM only after
+  the settings are saved to it. If that save fails, the console keeps the
+  old device instead of pointing at one without settings.
+- A settings file that can only be read in part now counts as unreadable,
+  so it is never half-applied or saved over.
+- Fixed in v1.9.0's game settings: opening them with X no longer puts the
+  game's Force Video Mode back to its default. The X press that opened the
+  screen was also read as "X: use the default" on the first row.
+
+## v1.9.0 — Settings layout and a game's own settings
+
+- Settings is reorganised around when you change things:
+  - It opens on **Quick**: nine settings that fit on one screen. They are
+    menu music and sounds, UI motion, rumble, In-Game Reset, the GameCube
+    main menu, memory-card emulation, auto-loaded cheats, and boot without
+    prompts.
+  - **Game Defaults** holds what every game starts with.
+  - **Setup** holds everything you set once, in six sections: Display,
+    Console, Storage, Network, Library and Developer. A opens a section and
+    B goes back.
+  - L and R move between the three.
+- A game's own settings (X on its detail screen) open on their own, titled
+  with the game's name and without the global tabs, so changing them can't
+  also change the defaults.
+- The Save & Exit and Discard & Exit buttons replace Back and Next.
+- The old Game tab's "Reset to defaults" is gone, because its settings are
+  now spread across Quick and Setup. Game Defaults and a game's own settings
+  keep their resets.
+- docs/SETTINGS.md now lists each key under the screen that shows it.
+- Values that differ from Game Defaults are marked **Custom**. Every other
+  row follows Game Defaults, and so changes whenever the defaults do.
+- **X** puts the highlighted row back to its Game Defaults value.
+- The rows you're most likely to change come first, in the same order on
+  Game Defaults: video mode, widescreen, language, polling rate and the
+  controls. Compatibility, picture tuning and the RetroTINK-4K profile
+  follow.
+- "Reset to defaults" asks before it resets a whole screen.
+- Game Detail says when a game has its own settings: the hint reads
+  "X SETTINGS (2 CUSTOM)".
+
+## v1.8.0 — Settings controls
+
+- Holding the D-pad now repeats, the same way the control stick does: hold
+  Down to run through a list.
+- A changes the highlighted value, the same as Right.
+- B leaves Settings. Anything you changed is saved, as with Save & Exit.
+  Discard & Exit is still there to undo.
+- L and R wrap around the six tabs.
+- After you change Swiss Video Mode, System Video, AVE Compatibility, Force
+  DTV Status or RetroTINK-4K HDMI Input, Settings asks whether to keep the new
+  picture. Press A within 10 seconds to keep it; otherwise it changes back by
+  itself, so a mode your TV can't show never sticks.
+- Fixed: if you opened Settings from a game and changed a game default,
+  saving wrote that game's old values into its own settings file, so the game
+  stopped following the defaults. It now keeps following them.
+
 ## v1.7.0 — Home
 
 - The cube is glass, like the GameCube's own menu. A soft reflection lies

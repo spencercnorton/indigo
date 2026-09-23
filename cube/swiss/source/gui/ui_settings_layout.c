@@ -43,6 +43,8 @@
 #define ROW_VALUE_X0 350
 #define ROW_VALUE_X 558
 #define ROW_VALUE_GAP 20
+#define ROW_TAG_W 52
+#define ROW_TAG_GAP 8
 
 #define SCROLL_X 584
 #define SCROLL_W 6
@@ -52,8 +54,6 @@
 #define RAIL_H 22
 #define RAIL_X0 48
 #define RAIL_X1 592
-#define ACTION_W_BACK 84
-#define ACTION_W_NEXT 84
 #define ACTION_W_SAVE 128
 #define ACTION_W_DISCARD 148
 #define ACTION_GAP 12
@@ -64,24 +64,36 @@
 #define PANEL_Y1 394
 
 static const uiSetLayoutPage_t PAGES[UI_SETLAYOUT_PAGE_COUNT] = {
-	{ "System", "System",
-	  "Console, video output, and hardware behaviour.",
-	  UI_SETLAYOUT_ROWS_SYSTEM, 0, 1 },
-	{ "Interface", "Interface",
-	  "Browsing, presentation, and menu sound.",
-	  UI_SETLAYOUT_ROWS_INTERFACE, 1, 1 },
-	{ "Network", "Network",
-	  "Adapters, file servers, and remote profiles.",
-	  UI_SETLAYOUT_ROWS_NETWORK, 1, 1 },
-	{ "Game", "Global Game",
-	  "Patches and behaviour applied to every game.",
-	  UI_SETLAYOUT_ROWS_GAME_GLOBAL, 1, 1 },
-	{ "Defaults", "Game Defaults",
-	  "Starting configuration for newly seen games.",
-	  UI_SETLAYOUT_ROWS_GAME_DEFAULTS, 1, 1 },
-	{ "Current Game", "Current Game",
-	  "Overrides saved for the highlighted game only.",
-	  UI_SETLAYOUT_ROWS_CURRENT_GAME, 1, 0 },
+	{ "Quick", "Quick Settings",
+	  "What you change between games.",
+	  UI_SETLAYOUT_ROWS_QUICK, 0, 0 },
+	{ "Game Defaults", "Game Defaults",
+	  "What every game starts with, unless it has its own.",
+	  UI_SETLAYOUT_ROWS_GAME_DEFAULTS, 1, 0 },
+	{ "Setup", "Setup",
+	  "Set once. Press A to open a section.",
+	  UI_SETLAYOUT_ROWS_SETUP, UI_SETLAYOUT_TAB_SETUP, 0 },
+	{ "Setup", "Display",
+	  "Video mode, cable, and TV.",
+	  UI_SETLAYOUT_ROWS_DISPLAY, UI_SETLAYOUT_TAB_SETUP, 0 },
+	{ "Setup", "Console",
+	  "Sound, language, and system.",
+	  UI_SETLAYOUT_ROWS_CONSOLE, UI_SETLAYOUT_TAB_SETUP, 0 },
+	{ "Setup", "Storage",
+	  "Settings device, SD cards, and the disc drive.",
+	  UI_SETLAYOUT_ROWS_STORAGE, UI_SETLAYOUT_TAB_SETUP, 0 },
+	{ "Setup", "Network",
+	  "Adapter, file servers, and RetroTINK-4K.",
+	  UI_SETLAYOUT_ROWS_NETWORK, UI_SETLAYOUT_TAB_SETUP, 0 },
+	{ "Setup", "Library",
+	  "Browser views, the recent list, and the look.",
+	  UI_SETLAYOUT_ROWS_LIBRARY, UI_SETLAYOUT_TAB_SETUP, 0 },
+	{ "Setup", "Developer",
+	  "USB Gecko, memory, and debugging.",
+	  UI_SETLAYOUT_ROWS_DEVELOPER, UI_SETLAYOUT_TAB_SETUP, 0 },
+	{ "Game", "Game Settings",
+	  "Saved for this game only.",
+	  UI_SETLAYOUT_ROWS_GAME, UI_SETLAYOUT_NO_TAB, 1 },
 };
 
 const uiSetLayoutPage_t *UISetLayout_PageDesc(int page) {
@@ -91,8 +103,7 @@ const uiSetLayoutPage_t *UISetLayout_PageDesc(int page) {
 }
 
 int UISetLayout_DiscardIndex(int page) {
-	const uiSetLayoutPage_t *desc = UISetLayout_PageDesc(page);
-	return desc->rowCount + desc->hasBack + desc->hasNext + 1;
+	return UISetLayout_PageDesc(page)->rowCount + 1;
 }
 
 static int clampInt(int value, int lo, int hi) {
@@ -259,27 +270,27 @@ int UISetLayout_PrepareText(const char *source, size_t sourceLength,
 }
 
 /*
- * Tab cells: width follows label length (so "Current Game" fits without
- * shrinking every other label), and the leftover strip width is spread
- * as even gaps. Integer math only -- byte-identical on host and target.
+ * Tab cells: width follows label length, and the leftover strip width is
+ * spread as even gaps. The tabs are the first UI_SETLAYOUT_TAB_COUNT
+ * pages. Integer math only -- byte-identical on host and target.
  */
 static void computeTabs(uiSetLayout_t *out) {
-	int textW[UI_SETLAYOUT_PAGE_COUNT];
+	int textW[UI_SETLAYOUT_TAB_COUNT];
 	int total = 0;
 	int i, x, gap, remainder;
 
-	for (i = 0; i < UI_SETLAYOUT_PAGE_COUNT; i++) {
+	for (i = 0; i < UI_SETLAYOUT_TAB_COUNT; i++) {
 		/* IPL font at the tab size averages ~6px per character. */
 		textW[i] = (int)strlen(PAGES[i].tabLabel) * 6 + TAB_TEXT_PAD * 2;
 		total += textW[i];
 	}
-	gap = (TAB_STRIP_X1 - TAB_STRIP_X0 - total) / (UI_SETLAYOUT_PAGE_COUNT - 1);
+	gap = (TAB_STRIP_X1 - TAB_STRIP_X0 - total) / (UI_SETLAYOUT_TAB_COUNT - 1);
 	if (gap < 2)
 		gap = 2;
 	remainder = (TAB_STRIP_X1 - TAB_STRIP_X0) -
-	            (total + gap * (UI_SETLAYOUT_PAGE_COUNT - 1));
+	            (total + gap * (UI_SETLAYOUT_TAB_COUNT - 1));
 	x = TAB_STRIP_X0 + (remainder > 0 ? remainder / 2 : 0);
-	for (i = 0; i < UI_SETLAYOUT_PAGE_COUNT; i++) {
+	for (i = 0; i < UI_SETLAYOUT_TAB_COUNT; i++) {
 		out->tabCell[i].x = (short)x;
 		out->tabCell[i].y = TAB_STRIP_Y;
 		out->tabCell[i].w = (short)textW[i];
@@ -289,7 +300,7 @@ static void computeTabs(uiSetLayout_t *out) {
 	}
 	/* drawString anchors text on its vertical CENTER. */
 	out->tabLabelY = TAB_STRIP_Y + TAB_CELL_H / 2;
-	out->tabCount = UI_SETLAYOUT_PAGE_COUNT;
+	out->tabCount = UI_SETLAYOUT_TAB_COUNT;
 }
 
 static void computeRows(const uiSetLayoutPage_t *desc, uiSetLayout_t *out) {
@@ -321,7 +332,14 @@ static void computeRows(const uiSetLayoutPage_t *desc, uiSetLayout_t *out) {
 	out->rowLabelMaxWidth = ROW_VALUE_X0 - ROW_LABEL_X - ROW_VALUE_GAP;
 	out->rowValueX0 = ROW_VALUE_X0;
 	out->rowValueX = ROW_VALUE_X;
-	out->rowValueWidth = ROW_VALUE_X - ROW_VALUE_X0;
+	out->rowTagX = ROW_VALUE_X;
+	out->rowTagWidth = 0;
+	/* Tagged pages give the tag the right end of the value column. */
+	if (desc->hasTags) {
+		out->rowTagWidth = ROW_TAG_W;
+		out->rowValueX = ROW_VALUE_X - ROW_TAG_W - ROW_TAG_GAP;
+	}
+	out->rowValueWidth = out->rowValueX - ROW_VALUE_X0;
 }
 
 static void computeScroll(uiSetLayout_t *out) {
@@ -370,62 +388,29 @@ static void computeScroll(uiSetLayout_t *out) {
 }
 
 /*
- * Action rail. Order and option-index mapping mirror show_settings():
- * Back = discard-3 on middle pages / discard-2 on the last page (absent
- * on the first), Next = discard-2 (absent on the last page), Save =
- * discard-1, Discard = discard. Back/Next sit left; Save/Discard sit
- * right so the confirming pair reads as one group.
+ * Action rail: Save & Exit (option rowCount) and Discard & Exit (option
+ * rowCount + 1), right-aligned so the confirming pair reads as one group.
  */
 static void computeActions(const uiSetLayoutPage_t *desc, uiSetLayout_t *out) {
-	int discard = UISetLayout_DiscardIndex(out->page);
-	int n = 0;
-	int x, i;
-	static const short widths[4] = {
-		ACTION_W_BACK, ACTION_W_NEXT, ACTION_W_SAVE, ACTION_W_DISCARD
+	static const short widths[UI_SETLAYOUT_MAX_ACTIONS] = {
+		ACTION_W_SAVE, ACTION_W_DISCARD
 	};
+	int x = RAIL_X1;
+	int i;
 
-	if (desc->hasBack)
-		out->actionKind[n++] = UI_SETLAYOUT_ACTION_BACK;
-	if (desc->hasNext)
-		out->actionKind[n++] = UI_SETLAYOUT_ACTION_NEXT;
-	out->actionKind[n++] = UI_SETLAYOUT_ACTION_SAVE;
-	out->actionKind[n++] = UI_SETLAYOUT_ACTION_DISCARD;
-	out->actionCount = n;
-
-	/* Left group: Back/Next from the left edge. */
-	x = RAIL_X0;
-	for (i = 0; i < n; i++) {
-		if (out->actionKind[i] != UI_SETLAYOUT_ACTION_BACK &&
-		    out->actionKind[i] != UI_SETLAYOUT_ACTION_NEXT)
-			continue;
+	out->actionKind[0] = UI_SETLAYOUT_ACTION_SAVE;
+	out->actionKind[1] = UI_SETLAYOUT_ACTION_DISCARD;
+	out->actionCount = UI_SETLAYOUT_MAX_ACTIONS;
+	for (i = UI_SETLAYOUT_MAX_ACTIONS - 1; i >= 0; i--) {
+		x -= widths[i];
 		out->actionRect[i].x = (short)x;
 		out->actionRect[i].y = RAIL_Y;
-		out->actionRect[i].w = widths[out->actionKind[i]];
-		out->actionRect[i].h = RAIL_H;
-		x += widths[out->actionKind[i]] + ACTION_GAP;
-	}
-	/* Right group: Discard at the right edge, Save to its left. */
-	x = RAIL_X1;
-	for (i = n - 1; i >= 0; i--) {
-		if (out->actionKind[i] != UI_SETLAYOUT_ACTION_SAVE &&
-		    out->actionKind[i] != UI_SETLAYOUT_ACTION_DISCARD)
-			continue;
-		x -= widths[out->actionKind[i]];
-		out->actionRect[i].x = (short)x;
-		out->actionRect[i].y = RAIL_Y;
-		out->actionRect[i].w = widths[out->actionKind[i]];
+		out->actionRect[i].w = widths[i];
 		out->actionRect[i].h = RAIL_H;
 		x -= ACTION_GAP;
 	}
-
-	/* Selected action: option indices above the rows map onto the rail
-	 * in kind order (Back < Next < Save < Discard by construction). */
-	out->selectedAction = -1;
-	if (out->option >= desc->rowCount && out->option <= discard) {
-		i = out->option - desc->rowCount;
-		if (i >= 0 && i < n)
-			out->selectedAction = i;
-	}
+	out->selectedAction = out->option >= desc->rowCount ?
+		out->option - desc->rowCount : -1;
 }
 
 void UISetLayout_Compute(int page, int option, int hasTooltip,
@@ -439,9 +424,10 @@ void UISetLayout_Compute(int page, int option, int hasTooltip,
 	discard = UISetLayout_DiscardIndex(page);
 	out->page = page;
 	out->option = clampInt(option, 0, discard);
-	out->currentTab = page;
+	out->currentTab = desc->tab;
 
-	computeTabs(out);
+	if (desc->tab != UI_SETLAYOUT_NO_TAB)
+		computeTabs(out);
 
 	out->titleRegion.x = TITLE_X;
 	out->titleRegion.y = TITLE_REGION_Y;
@@ -473,7 +459,8 @@ void UISetLayout_Compute(int page, int option, int hasTooltip,
 	out->subtitleX = out->subtitleRegion.x;
 	out->subtitleY = SUBTITLE_Y;
 	out->subtitleMaxWidth = out->subtitleRegion.w;
-	out->pageProgress = (float)(page + 1) / (float)UI_SETLAYOUT_PAGE_COUNT;
+	out->pageProgress = desc->tab == UI_SETLAYOUT_NO_TAB ? 0.0f :
+		(float)(desc->tab + 1) / (float)UI_SETLAYOUT_TAB_COUNT;
 
 	computeRows(desc, out);
 	computeScroll(out);

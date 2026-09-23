@@ -633,7 +633,7 @@ uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj
 				}
 				// Save config
 				uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving autoload\205"));
-				config_update_global(true);
+				config_update_autoload(true);
 				DrawDispose(msgBox);
 			}
 			unlockFile(directory[curSelection]);
@@ -995,7 +995,7 @@ static void homeDispatchEffect(uiHomeEffect_t effect)
 			break;
 		case UI_HOME_EFFECT_OPEN_SETTINGS:
 			UIScene_Request(UI_SCENE_SETTINGS);
-			needsRefresh = show_settings(PAGE_GLOBAL, 0, NULL);
+			needsRefresh = show_settings_view(VIEW_QUICK, 0, NULL);
 			UIScene_Request(UI_SCENE_HOME);
 			break;
 		case UI_HOME_EFFECT_OPEN_INFO:
@@ -1897,7 +1897,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				}
 				// Save config
 				uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving autoload\205"));
-				config_update_global(true);
+				config_update_autoload(true);
 				DrawDispose(msgBox);
 			}
 			unlockFile(directory[curSelection]);
@@ -2083,7 +2083,7 @@ uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawO
 				}
 				// Save config
 				uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving autoload\205"));
-				config_update_global(true);
+				config_update_autoload(true);
 				DrawDispose(msgBox);
 			}
 			unlockFile(directory[curSelection]);
@@ -3985,6 +3985,7 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 	source.lastPlayedUnixSeconds = config_last_played(context->gameId, 6u,
 		&source.playHistoryAvailable);
 	source.saveStatus = UI_GAME_SAVE_NOT_CHECKED;
+	source.customSettings = (uint32_t)settings_game_custom_count(config);
 	if(meta != NULL && meta->banner != NULL &&
 		meta->bannerSize == UI_GAMEFLOW_DETAIL_BANNER_BYTES &&
 		meta->bannerSum != 0xFFFF) {
@@ -4091,7 +4092,7 @@ static int gameflow_info_game(ConfigEntry *config,
 		}
 		else if(action == UI_GAMEFLOW_DETAIL_ACTION_SETTINGS) {
 			UIScene_Request(UI_SCENE_SETTINGS);
-			needsRefresh = show_settings(PAGE_GAME, 0, config);
+			needsRefresh = show_settings_view(VIEW_GAME, 0, config);
 			UIScene_Request(UI_SCENE_GAME_DETAIL);
 			gameflowPublishDetail(config, context);
 		}
@@ -4110,7 +4111,7 @@ static int gameflow_info_game(ConfigEntry *config,
 			}
 			uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0,
 				"Saving autoload\205"));
-			config_update_global(true);
+			config_update_autoload(true);
 			DrawDispose(msgBox);
 			gameflowPublishDetail(config, context);
 		}
@@ -4168,7 +4169,7 @@ int info_game(ConfigEntry *config)
 			verify_game();
 		}
 		if(buttons & BUTTON_X) {
-			needsRefresh = show_settings(PAGE_GAME, 0, config);
+			needsRefresh = show_settings_view(VIEW_GAME, 0, config);
 			infoPanel = DrawRepublish(infoPanel, draw_game_info(config));
 		}
 		if((buttons & BUTTON_Z) && devices[DEVICE_CONFIG] != NULL) {
@@ -4185,7 +4186,7 @@ int info_game(ConfigEntry *config)
 			}
 			// Save config
 			uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving autoload\205"));
-			config_update_global(true);
+			config_update_autoload(true);
 			DrawDispose(msgBox);
 			infoPanel = DrawRepublish(infoPanel, draw_game_info(config));
 		}

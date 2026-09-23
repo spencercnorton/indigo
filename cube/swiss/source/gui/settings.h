@@ -20,6 +20,20 @@ enum PAGES {
 };
 #define PAGE_MIN (PAGE_GLOBAL)
 #define PAGE_MAX (PAGE_GAME)
+/* What Settings shows. The PAGE_ and SET_ enums below stay
+ * the value layer: every view row names one (page, option) pair. */
+enum SETTINGS_VIEWS {
+	VIEW_QUICK=0,       /* tabs */
+	VIEW_GAME_DEFAULTS,
+	VIEW_SETUP,
+	VIEW_DISPLAY,       /* Setup sections */
+	VIEW_CONSOLE,
+	VIEW_STORAGE,
+	VIEW_NETWORK,
+	VIEW_LIBRARY,
+	VIEW_DEVELOPER,
+	VIEW_GAME           /* one game's own settings, opened from that game */
+};
 
 enum SETTINGS_GLOBAL {
 	SET_SYS_BOOTMODE=0,
@@ -205,5 +219,7 @@ extern char *bs2BootStr[];
 extern char *recentListLevelStr[];
 
 int show_settings(int page, int option, ConfigEntry *config);
+int show_settings_view(int view, int option, ConfigEntry *config);
+int settings_game_custom_count(const ConfigEntry *game);
 
 #endif
