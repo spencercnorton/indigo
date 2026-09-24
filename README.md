@@ -72,6 +72,12 @@ A within ten seconds. Settings can also be written ahead of time in a file on
 the SD card: see [docs/SETTINGS.md](docs/SETTINGS.md). Setup › Storage says
 whether that file loaded.
 
+**Indigo comes in eight colors.** Setup › Console › Menu Color recolors the
+cube, its light, the panels and the text: Indigo, the default, or Azure,
+Emerald, Gold, Spice, Crimson, Rose or Jet Black. Every color keeps Indigo's
+brightness, and cover art, the button icons, warnings and enabled cheats keep
+their own colors.
+
 ## Install
 
 ### Download

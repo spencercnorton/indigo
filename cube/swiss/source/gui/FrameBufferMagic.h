@@ -186,6 +186,8 @@ void DrawAddChild(uiDrawObj_t *parent, uiDrawObj_t *child);
 uiDrawObj_t* DrawPublish(uiDrawObj_t *evt);
 uiDrawObj_t* DrawRepublish(uiDrawObj_t *old, uiDrawObj_t *new);
 void DrawDispose(uiDrawObj_t *evt);
+/* Keep the screen in page's Menu Color until page is disposed. */
+void DrawPinMenuColor(uiDrawObj_t *page, int color);
 uiDrawObj_t* DrawFileBrowserButton(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
 uiDrawObj_t* DrawFileBrowserButtonMeta(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
 uiDrawObj_t* DrawFileCarouselEntry(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int distFromMiddle);

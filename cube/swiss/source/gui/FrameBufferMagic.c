@@ -34,6 +34,7 @@
 #include "indigo_background.h"
 #include "ui_anim.h"
 #include "ui_clock.h"
+#include "ui_color.h"
 #include "ui_perf.h"
 #include "ui_scene.h"
 #include "ui_hint.h"
@@ -116,6 +117,10 @@ static lwp_t video_thread = LWP_THREAD_NULL;
 static mutex_t _videomutex = LWP_MUTEX_NULL;
 static bool sceneRenderingEnabled;
 static u32 videoFrameSerial;
+/* While a Settings page is up, the screen keeps the Menu Color that page was
+ * drawn with (DrawPinMenuColor); disposing the page lets it go. */
+static uiDrawObj_t *menuColorPage;
+static int menuColorPinned = -1;
 
 typedef struct {
 	uiClockFrame_t clock;
@@ -641,6 +646,7 @@ static void drawInit()
 
 static void _drawRect(int x, int y, int width, int height, int depth, GXColor color, float s0, float s1, float t0, float t1)
 {
+	UIColor_Apply(&color.r, &color.g, &color.b);
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
 		GX_Position3f32((float) x,(float) y,(float) depth );
 		GX_Color4u8(color.r, color.g, color.b, color.a);
@@ -659,6 +665,7 @@ static void _drawRect(int x, int y, int width, int height, int depth, GXColor co
 
 static void _putFlatVertex(float x, float y, GXColor color)
 {
+	UIColor_Apply(&color.r, &color.g, &color.b);
 	GX_Position3f32(x, y, 0.0f);
 	GX_Color4u8(color.r, color.g, color.b, color.a);
 	GX_TexCoord2f32(0.0f, 0.0f);
@@ -2207,7 +2214,7 @@ static void _HintOctagon(float cx, float cy, float radius, GXColor color)
 static void _HintLetter(float cx, float cy, const char *letter, float scale,
 	GXColor color)
 {
-	drawStringMedium((int)(cx + 0.5f), (int)(cy + 0.5f), letter, scale,
+	drawStringMediumUntinted((int)(cx + 0.5f), (int)(cy + 0.5f), letter, scale,
 		ALIGN_CENTER, color);
 	drawInit();
 	_SetupRasterColor();
@@ -2336,6 +2343,7 @@ static void _DrawHintText(int x, int y, const char *text, float scale, int align
 static void _PutSystemDialVertex(float centerX, float centerY, float radius,
 		const systemDialPoint_t *point, GXColor color)
 {
+	UIColor_Apply(&color.r, &color.g, &color.b);
 	GX_Position3f32(centerX + (point->x * radius), centerY + (point->y * radius), 0.0f);
 	GX_Color4u8(color.r, color.g, color.b, color.a);
 	GX_TexCoord2f32(0.0f, 0.0f);
@@ -2379,15 +2387,17 @@ static void _DrawSystemDial(float centerX, float centerY, s8 coreTemperature,
 	if(clock != NULL && clock->available) {
 		float markerX = clock->secondX;
 		float markerY = -clock->secondY;
+		GXColor marker = {226, 221, 255, 255};
+		UIColor_Apply(&marker.r, &marker.g, &marker.b);
 		GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
 			GX_Position3f32(centerX + markerX * 18.0f - 1.5f, centerY + markerY * 18.0f - 1.5f, 0.0f);
-			GX_Color4u8(226, 221, 255, (230 * opacity) / 255); GX_TexCoord2f32(0.0f, 0.0f);
+			GX_Color4u8(marker.r, marker.g, marker.b, (230 * opacity) / 255); GX_TexCoord2f32(0.0f, 0.0f);
 			GX_Position3f32(centerX + markerX * 18.0f + 1.5f, centerY + markerY * 18.0f - 1.5f, 0.0f);
-			GX_Color4u8(226, 221, 255, (210 * opacity) / 255); GX_TexCoord2f32(0.0f, 0.0f);
+			GX_Color4u8(marker.r, marker.g, marker.b, (210 * opacity) / 255); GX_TexCoord2f32(0.0f, 0.0f);
 			GX_Position3f32(centerX + markerX * 18.0f + 1.5f, centerY + markerY * 18.0f + 1.5f, 0.0f);
-			GX_Color4u8(226, 221, 255, (180 * opacity) / 255); GX_TexCoord2f32(0.0f, 0.0f);
+			GX_Color4u8(marker.r, marker.g, marker.b, (180 * opacity) / 255); GX_TexCoord2f32(0.0f, 0.0f);
 			GX_Position3f32(centerX + markerX * 18.0f - 1.5f, centerY + markerY * 18.0f + 1.5f, 0.0f);
-			GX_Color4u8(226, 221, 255, (210 * opacity) / 255); GX_TexCoord2f32(0.0f, 0.0f);
+			GX_Color4u8(marker.r, marker.g, marker.b, (210 * opacity) / 255); GX_TexCoord2f32(0.0f, 0.0f);
 		GX_End();
 	}
 	drawInit();
@@ -2669,6 +2679,7 @@ static u8 _GameflowAlpha(float value)
 
 static void _GameflowPutVertex(gameflowPoint_t point, GXColor color)
 {
+	UIColor_Apply(&color.r, &color.g, &color.b);
 	GX_Position3f32(point.x, point.y, 0.0f);
 	GX_Color4u8(color.r, color.g, color.b, color.a);
 	GX_TexCoord2f32(0.0f, 0.0f);
@@ -3053,9 +3064,12 @@ static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
 	memset(presentation, 0, sizeof(*presentation));
 	presentation->accent = (GXColor) {135, 120, 207, 255};
 	/* Publication already owns _videomutex. Resolve the immutable pack accent
-	 * once here instead of searching the pack index every presented frame. */
-	if(UIAssets_DominantColor(data->detail.gameId,
-		UI_GAMEFLOW_DETAIL_ID_LENGTH, &coverRed, &coverGreen, &coverBlue)) {
+	 * once here instead of searching the pack index every presented frame.
+	 * Only Indigo takes the cover's tint: mixed with a warm cover, the accent
+	 * can leave the family Menu Color recolors and would stay indigo. */
+	if(swissSettings.uiColor == UI_COLOR_INDIGO &&
+		UIAssets_DominantColor(data->detail.gameId,
+			UI_GAMEFLOW_DETAIL_ID_LENGTH, &coverRed, &coverGreen, &coverBlue)) {
 		presentation->accent.r =
 			(u8)(((u16)presentation->accent.r * 2u + coverRed) / 3u);
 		presentation->accent.g =
@@ -4342,6 +4356,7 @@ static void _CheatsPanel(int x, int y, int width, int height, GXColor color)
 	const int py[9] = {y, y, y + radius, y + height - radius, y + height,
 		y + height, y + height - radius, y + radius, y};
 	int i;
+	UIColor_Apply(&color.r, &color.g, &color.b);
 	drawInit();
 	_SetupRasterColor();
 	GX_Begin(GX_TRIANGLEFAN, GX_VTXFMT0, 10);
@@ -4962,6 +4977,9 @@ static void *videoUpdate(void *videoEventQueue) {
 	while(video_thread == LWP_GetSelf()) {
 		whichfb ^= 1;
 		UIAnim_BeginFrame();
+		/* One Menu Color per frame: every emitter recolors with it. */
+		int menuColor = menuColorPinned;
+		UIColor_Select(menuColor >= 0 ? menuColor : swissSettings.uiColor);
 		UI_PERF_BEGIN(frameWorkStart);
 		//frames++;
 		LWP_MutexLock(_videomutex);
@@ -5078,6 +5096,22 @@ void DrawDispose(uiDrawObj_t *evt)
 {
 	LWP_MutexLock(_videomutex);
 	evt->disposed = true;
+	if(evt == menuColorPage) {
+		menuColorPage = NULL;
+		menuColorPinned = -1;
+	}
+	LWP_MutexUnlock(_videomutex);
+}
+
+/* Settings changes a value when the button goes down but redraws its page
+ * when it comes up, and its picker steps the live value through every color
+ * while it builds the list. Pinning the color to the page keeps the screen
+ * and the row's label in step. */
+void DrawPinMenuColor(uiDrawObj_t *page, int color)
+{
+	LWP_MutexLock(_videomutex);
+	menuColorPage = page;
+	menuColorPinned = color;
 	LWP_MutexUnlock(_videomutex);
 }
 

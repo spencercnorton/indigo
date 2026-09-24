@@ -3,6 +3,18 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.16.0 — Menu Color
+
+- Settings › Setup › Console › Menu Color colors the whole interface: the
+  cube, its light and the stage behind it, the panels, the highlight and the
+  text. Choose Indigo (the default), Azure, Emerald, Gold, Spice, Crimson,
+  Rose or Jet Black. Right steps round the color wheel and A lists them all.
+  The new color shows at once, and Discard & Exit puts the old one back.
+- Every color keeps Indigo's brightness, so text reads as easily and the
+  glass cube keeps its depth. Cover art, banners, the controller buttons
+  in the hints, warnings and enabled cheats keep their own colors.
+- The settings file key is `Menu Color`.
+
 ## v1.15.0 — button icons
 
 - Control hints show the controller's buttons instead of spelling them

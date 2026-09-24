@@ -471,6 +471,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Disable Animated Backdrop=%s\r\n", swissSettings.disableAnimatedBackdrop ? "Yes":"No");
 	fprintf(fp, "Disable Menu Music=%s\r\n", swissSettings.disableMenuMusic ? "Yes":"No");
 	fprintf(fp, "Disable Menu SFX=%s\r\n", swissSettings.disableMenuSFX ? "Yes":"No");
+	fprintf(fp, "Menu Color=%s\r\n", uiColorStr[swissSettings.uiColor]);
 	fprintf(fp, "Init DVD Drive at startup=%s\r\n", swissSettings.initDVDDriveAtStart ? "Yes":"No");
 	fprintf(fp, "Stop DVD Drive motor=%s\r\n", swissSettings.stopMotor ? "Yes":"No");
 	fprintf(fp, "Configure Audio Buffer=%s\r\n", configAudioBufferStr[swissSettings.configAudioBuffer]);
@@ -1279,6 +1280,14 @@ void config_parse_global(char *configData) {
 				}
 				else if(!strcmp("Disable Menu SFX", name)) {
 					swissSettings.disableMenuSFX = !strcmp("Yes", value);
+				}
+				else if(!strcmp("Menu Color", name)) {
+					for(int i = 0; i < UI_COLOR_MAX; i++) {
+						if(!strcmp(uiColorStr[i], value)) {
+							swissSettings.uiColor = i;
+							break;
+						}
+					}
 				}
 				else if(!strcmp("Init DVD Drive at startup", name)) {
 					swissSettings.initDVDDriveAtStart = !strcmp("Yes", value);

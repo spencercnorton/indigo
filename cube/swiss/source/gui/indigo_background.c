@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include "indigo_background.h"
+#include "ui_color.h"
 
 #define INDIGO_TAU 6.28318530718f
 #define RADIAL_SEGMENTS 24
@@ -71,6 +72,7 @@ typedef struct waveOscillator {
 
 static void putVertex(indigoPoint_t point, GXColor color)
 {
+	UIColor_Apply(&color.r, &color.g, &color.b);
 	GX_Position3f32(point.x, point.y, 0.0f);
 	GX_Color4u8(color.r, color.g, color.b, color.a);
 	GX_TexCoord2f32(0.0f, 0.0f);
@@ -517,6 +519,7 @@ static void setupCubePipeline(const uiSceneFrame_t *scene, float seconds, bool a
 
 static void putCubeVertex(float x, float y, float z, GXColor color)
 {
+	UIColor_Apply(&color.r, &color.g, &color.b);
 	GX_Position3f32(x, y, z);
 	GX_Color4u8(color.r, color.g, color.b, color.a);
 }

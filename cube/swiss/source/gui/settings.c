@@ -77,6 +77,8 @@ char *aveCompatStr[] = {"AVE N-DOL", "AVE P-DOL", "CMPV-DOL", "GCDigital", "GCVi
 char *fileBrowserTypeStr[] = {"Standard", "Fullwidth", "Carousel"};
 char *bs2BootStr[] = {"No", "Yes", "Sound 1", "Sound 2"};
 char *recentListLevelStr[] = {"Off", "Lazy", "On"};
+char *uiColorStr[] = {"Indigo", "Azure", "Emerald", "Gold", "Spice", "Crimson", "Rose", "Jet Black"};
+_Static_assert(sizeof(uiColorStr) / sizeof(uiColorStr[0]) == UI_COLOR_MAX, "Menu Color names drift");
 static const char *uiMotionModeStr[] = {"Full", "Reduced", "Off"};
 
 const int simulatedMemSizeInt[] = {
@@ -119,6 +121,7 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_RECENT_LIST] = "Recent List:\n\n(On) - Press Start while browsing to show a recent list.\n(Lazy) - Same as On but list updates only for new entries.\n(Off) - Recent list is completely disabled.\n\nThe lazy/off options exist to minimise SD card writes.",
 	[SET_HIDE_UNK] = "Hide unknown file types:\n\nDisabled - Show all files (default)\nEnabled - Hide unknown file types from being displayed\n\nKnown file types are:\n GameCube Executables (.bin/.dol/.elf)\n Disc images (.gcm/.iso/.nkit.iso/.tgc)\n MP3 Music (.mp3)\n WASP/WKF Flash files (.fzn)\n GameCube Memory Card files (.gci/.gcs/.sav)\n GameCube Executables with parameters appended (.dol+cli)",
 	[SET_UI_ANIMS] = "UI Motion:\n\nFull - Calm spatial motion and ambient detail (default)\nReduced - Faster transitions without decorative travel\nOff - Menu elements move instantly\n\nMotion never delays input or changes the destination.",
+	[SET_UI_COLOR] = "Menu Color:\n\nColors the cube, its light, the panels and the text.\nIndigo (default) is the GameCube's own color; Spice and\nJet Black are GameCube colors too.\n\nCover art, button icons, warnings and enabled cheats\nkeep their own colors.",
 	[SET_PANEL_TRANSPARENCY] = "Panel Transparency:\n\nEnabled - Menu panels are translucent so the backdrop\nshows through, GameCube-menu style (default)\nDisabled - Panels are solid.",
 	[SET_ANIMATED_BACKDROP] = "Animated Backdrop:\n\nEnabled - The backdrop gently drifts (default)\nDisabled - The backdrop is static.",
 	[SET_MENU_MUSIC] = "Menu Music:\n\nEnabled - Play the bundled original ambient loop (default)\nDisabled - Silent.\n\nChanges take effect immediately.",
@@ -577,6 +580,7 @@ static const settingsRowRef_t displayRows[] = {
 };
 
 static const settingsRowRef_t consoleRows[] = {
+	{PAGE_INTERFACE, SET_UI_COLOR},
 	{PAGE_GLOBAL, SET_SYS_SOUND},
 	{PAGE_GLOBAL, SET_SYS_LANG},
 	{PAGE_GLOBAL, SET_SYS_BOOTMODE},
@@ -788,7 +792,7 @@ _Static_assert(sizeof(gameRows) / sizeof(gameRows[0]) == UI_SETLAYOUT_ROWS_GAME,
  * column's UI_SETLAYOUT_VALUE_TEXT_MAX without an ellipsis. */
 static const char *setupSummaries[] = {
 	"Video mode, cable, TV",
-	"Sound, language, system",
+	"Color, sound, language",
 	"Settings file, SD, disc",
 	"Adapter, file servers",
 	"Browser, recent, look",
@@ -925,6 +929,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 				rowCycle(row, "UI Motion:", uiMotionModeStr[UIMotion_ModeFromFlags(
 					swissSettings.disableUIAnimations, swissSettings.reduceUIAnimations)], true);
 			break;
+			case SET_UI_COLOR: rowCycle(row, "Menu Color:", uiColorStr[swissSettings.uiColor], true); break;
 			case SET_PANEL_TRANSPARENCY: rowYesNo(row, "Panel Transparency:", !swissSettings.disablePanelTransparency, true); break;
 			case SET_ANIMATED_BACKDROP: rowYesNo(row, "Animated Backdrop:", !swissSettings.disableAnimatedBackdrop, true); break;
 			case SET_MENU_MUSIC: rowYesNo(row, "Menu Music:", !swissSettings.disableMenuMusic, true); break;
@@ -1083,6 +1088,7 @@ uiDrawObj_t* settings_draw_page(int view, int option, ConfigEntry *gameConfig) {
 	}
 
 	DrawPublish(page);
+	DrawPinMenuColor(page, swissSettings.uiColor);
 	return page;
 }
 
@@ -1280,6 +1286,10 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 				swissSettings.disableUIAnimations = mode == UI_MOTION_OFF;
 				swissSettings.reduceUIAnimations = mode == UI_MOTION_REDUCED;
 			}
+			break;
+			case SET_UI_COLOR:
+				swissSettings.uiColor += direction;
+				swissSettings.uiColor = (swissSettings.uiColor + UI_COLOR_MAX) % UI_COLOR_MAX;
 			break;
 			case SET_PANEL_TRANSPARENCY:
 				swissSettings.disablePanelTransparency ^= 1;
@@ -2006,6 +2016,7 @@ static const settingsPickerRow_t settingsPickerRows[] = {
 	PICK_SETTING(PAGE_GLOBAL, SET_SYS_LANG, sramLanguage),
 	PICK_SETTING(PAGE_GLOBAL, SET_ENABLE_USBGECKO, enableUSBGecko),
 	PICK_SETTING(PAGE_GLOBAL, SET_SIMMEMSIZE, simulatedMemSize),
+	PICK_SETTING(PAGE_INTERFACE, SET_UI_COLOR, uiColor),
 	PICK_SETTING(PAGE_GAME_GLOBAL, SET_BS2BOOT, bs2Boot),
 	PICK_SETTING(PAGE_GAME_GLOBAL, SET_DISABLE_MCPGAMEID, disableMCPGameID),
 	PICK_SETTING(PAGE_GAME_DEFAULTS, SET_DEFAULT_NTSC_VIDEOMODE, gameVModeNtsc),

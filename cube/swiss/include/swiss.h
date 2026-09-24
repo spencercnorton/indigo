@@ -130,6 +130,7 @@ typedef struct {
 	int disableAnimatedBackdrop;	// 0 = animated backdrop drift on (default)
 	int disableMenuMusic;	// 0 = ambient menu music on (default)
 	int disableMenuSFX;	// 0 = menu nav/select sounds on (default)
+	int uiColor;	// UI_COLOR_INDIGO (default): the menus' color
 	int sram60Hz;
 	int sramProgressive;
 	int sramStereo;
@@ -204,6 +205,19 @@ enum enableUSBGecko
 	USBGECKO_MEMCARD_SLOT_B,
 	USBGECKO_SERIAL_PORT_2,
 	USBGECKO_MAX
+};
+
+enum uiColor
+{
+	UI_COLOR_INDIGO=0,
+	UI_COLOR_AZURE,
+	UI_COLOR_EMERALD,
+	UI_COLOR_GOLD,
+	UI_COLOR_SPICE,
+	UI_COLOR_CRIMSON,
+	UI_COLOR_ROSE,
+	UI_COLOR_JET_BLACK,
+	UI_COLOR_MAX
 };
 
 enum aveCompat

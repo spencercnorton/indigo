@@ -13,6 +13,7 @@
 #include <ogcsys.h>
 #include <string.h>
 #include "IPLFontWrite.h"
+#include "ui_color.h"
 
 static u8 fontData[SYS_FONTSIZE_ANSI] ATTRIBUTE_ALIGN (32);
 static sys_fontheader *font = (sys_fontheader *)fontData;
@@ -155,11 +156,21 @@ static void drawStringWeighted(int x, int y, const char *string, float scale,
 void drawString(int x, int y, const char *string, float scale, int align,
 		GXColor fontColor)
 {
+	UIColor_Apply(&fontColor.r, &fontColor.g, &fontColor.b);
 	drawStringWeighted(x, y, string, scale, align, fontColor, false);
 }
 
 void drawStringMedium(int x, int y, const char *string, float scale, int align,
 		GXColor fontColor)
+{
+	UIColor_Apply(&fontColor.r, &fontColor.g, &fontColor.b);
+	drawStringWeighted(x, y, string, scale, align, fontColor, true);
+}
+
+/* drawStringMedium in exactly fontColor under every Menu Color: the letters
+ * on the controller-button icons keep the controller's own colors. */
+void drawStringMediumUntinted(int x, int y, const char *string, float scale,
+		int align, GXColor fontColor)
 {
 	drawStringWeighted(x, y, string, scale, align, fontColor, true);
 }
@@ -169,6 +180,8 @@ void drawStringWithCaret(int x, int y, const char *string, float scale, int alig
 	if(string == NULL) {
 		string = "";
 	}
+	UIColor_Apply(&fontColor.r, &fontColor.g, &fontColor.b);
+	UIColor_Apply(&caretColor.r, &caretColor.g, &caretColor.b);
 	drawFontInit();
 	Mtx GXmodelView2D;
 	int strWidth = 0;
@@ -251,6 +264,7 @@ void drawStringEllipsis(int x, int y, const char *string, float scale, int align
 	if(string == NULL) {
 		return;
 	}
+	UIColor_Apply(&fontColor.r, &fontColor.g, &fontColor.b);
 	drawFontInit();
 	Mtx GXmodelView2D;
 	if(rotateVertical) {
