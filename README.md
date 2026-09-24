@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img alt="The Indigo Home screen: a glass cube turning sideways and tipping up and down between its Library, Source, Settings and System faces on a dark starfield, light gliding over its faces and glinting on its edges, the Library face showing a GameCube controller, with only the face you are on named underneath." src="docs/screenshots/home.png" width="640">
+  <img alt="The Indigo Home screen: a glass cube turning sideways and tipping up and down between its Library, Source, Settings and System faces on a dark starfield, light gliding over its faces and glinting on its edges, the Library face showing a GameCube controller, with only the face you are on named underneath and its controls shown as GameCube buttons." src="docs/screenshots/home.png" width="640">
 </p>
 
 Captured in the Dolphin emulator. The library and game detail pictures show a real poster pack and cheat file in use; box art belongs to its publishers.
@@ -45,7 +45,7 @@ comes from a pack you build yourself (see [Posters](#posters)); without one,
 each game gets a generated card.
 
 <p align="center">
-  <img alt="The game library: GameCube box art in a carousel, the selected cover raised with its title and publisher below it." src="docs/screenshots/library.png" width="640">
+  <img alt="The game library: GameCube box art in a carousel, the selected cover raised with its title and publisher below it, and the controls shown as GameCube buttons along the bottom." src="docs/screenshots/library.png" width="640">
 </p>
 
 **Game details are a surface, not a dialogue.** Artwork, last played, save

@@ -3,6 +3,20 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.15.0 — button icons
+
+- Control hints show the controller's buttons instead of spelling them
+  out, the way games do. You see a green A, a red B, grey X and Y, a
+  purple Z, the L and R triggers, START, the control stick and the D-pad,
+  each followed by what it does.
+- They cover every hint line: Home, the source picker, the Library, game
+  detail, cheats, Settings and System information. On the game detail
+  card they also mark the launch button, "Choose cheats" and the
+  shortcuts. Hold L and press A shows as L + A.
+- A game's own settings now show all of "X DEFAULT  B DONE". The title
+  bar used to cut it off.
+- The README's pictures are re-recorded with the icons.
+
 ## v1.14.1 — Home
 
 - The white frame on the cube is gone. The white line and the dark line

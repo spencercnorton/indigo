@@ -148,6 +148,9 @@ uiDrawObj_t* DrawEmptyColouredBox(int x1, int y1, int x2, int y2, GXColor colour
 uiDrawObj_t* DrawTransparentBox(int x1, int y1, int x2, int y2);
 uiDrawObj_t* DrawSettingsFocus(int x1, int y1, int x2, int y2);
 uiDrawObj_t* DrawStyledLabel(int x, int y, const char *string, float size, int align, GXColor color);
+uiDrawObj_t* DrawHintLabel(int x, int y, const char *string, float size, int align, GXColor color);
+/* A hint line's width at scale 1, button icons included. */
+int GetHintSizeInPixels(const char *text);
 uiDrawObj_t* DrawStyledLabelWithCaret(int x, int y, const char *string, float size, int align, GXColor color, int caretPosition);
 uiDrawObj_t* DrawLabel(int x, int y, const char *string);
 uiDrawObj_t* DrawFadingLabel(int x, int y, const char *string, float size);

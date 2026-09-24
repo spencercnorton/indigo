@@ -25,7 +25,8 @@
 #define TITLE_PROGRESS_GAP 16
 #define PROGRESS_X 588
 #define PROGRESS_REGION_X 486
-#define PROGRESS_REGION_W (PROGRESS_X - PROGRESS_REGION_X)
+/* The game page has no tabs to page through; its hint holds two buttons. */
+#define GAME_PROGRESS_REGION_X 438
 
 #define SUBTITLE_Y 129
 #define SUBTITLE_REGION_Y 122
@@ -428,6 +429,7 @@ void UISetLayout_Compute(int page, int option, int hasTooltip,
                          int motionMode, uiSetLayout_t *out) {
 	const uiSetLayoutPage_t *desc;
 	int discard;
+	int progressLeft;
 
 	memset(out, 0, sizeof(*out));
 	page = clampInt(page, 0, UI_SETLAYOUT_PAGE_COUNT - 1);
@@ -440,16 +442,18 @@ void UISetLayout_Compute(int page, int option, int hasTooltip,
 	if (desc->tab != UI_SETLAYOUT_NO_TAB)
 		computeTabs(out);
 
+	progressLeft = desc->tab == UI_SETLAYOUT_NO_TAB ? GAME_PROGRESS_REGION_X :
+		PROGRESS_REGION_X;
 	out->titleRegion.x = TITLE_X;
 	out->titleRegion.y = TITLE_REGION_Y;
-	out->titleRegion.w = PROGRESS_REGION_X - TITLE_PROGRESS_GAP - TITLE_X;
+	out->titleRegion.w = progressLeft - TITLE_PROGRESS_GAP - TITLE_X;
 	out->titleRegion.h = TITLE_REGION_H;
 	out->titleX = out->titleRegion.x;
 	out->titleY = TITLE_Y;
 	out->titleMaxWidth = out->titleRegion.w;
-	out->progressRegion.x = PROGRESS_REGION_X;
+	out->progressRegion.x = progressLeft;
 	out->progressRegion.y = TITLE_REGION_Y;
-	out->progressRegion.w = PROGRESS_REGION_W;
+	out->progressRegion.w = PROGRESS_X - progressLeft;
 	out->progressRegion.h = TITLE_REGION_H;
 	out->progressX = PROGRESS_X;
 	out->progressY = TITLE_Y;

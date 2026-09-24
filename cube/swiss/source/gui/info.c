@@ -612,6 +612,8 @@ uiDrawObj_t * info_draw_page(int page_num)
 	uiDrawObj_t *container = DrawContainer();
 	char pageProgress[24];
 	char pageStatus[64];
+	char pageFitted[INFO_FITTED_CAPACITY];
+	float pageScale;
 	GXColor panelColor;
 	GXColor railColor;
 
@@ -655,8 +657,11 @@ uiDrawObj_t * info_draw_page(int page_num)
 			break;
 	}
 	UISystem_FormatPageStatus(pageStatus, sizeof(pageStatus), layout.page);
-	infoAddFitted(container, 320, 420, pageStatus, 520, 0.66f, ALIGN_CENTER,
-		systemTitleColor);
+	/* The footer's button names draw as button icons. */
+	pageScale = UISystem_CopyFitted(pageFitted, sizeof(pageFitted), pageStatus,
+		520, 0.66f, GetHintSizeInPixels, NULL);
+	DrawAddChild(container, DrawHintLabel(320, 420, pageFitted, pageScale,
+		ALIGN_CENTER, systemTitleColor));
 	return container;
 }
 

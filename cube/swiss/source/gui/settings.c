@@ -290,6 +290,25 @@ static bool prepareSettingText(const char *source, size_t maxSourceBytes,
 	return true;
 }
 
+/* A button hint fits by its drawn width, icons included. */
+static bool prepareHintText(const char *hint, int width, float preferredScale,
+	char *out, size_t outCapacity, float *scale)
+{
+	uiSetLayoutTextFit_t fit;
+	size_t length = strlen(hint);
+
+	if(!UISetLayout_PrepareText(hint, length, length,
+		UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false, true,
+		width, preferredScale, UI_SETLAYOUT_ROW_TEXT_FLOOR,
+		GetHintSizeInPixels, out, outCapacity, &fit)) {
+		out[0] = '\0';
+		*scale = UI_SETLAYOUT_ROW_TEXT_FLOOR;
+		return false;
+	}
+	*scale = fit.scale;
+	return true;
+}
+
 static uiSetLayoutTextKind_t settingTextKind(uiSettingRowKind_t kind)
 {
 	if(kind == SET_ROWKIND_CYCLE) {
@@ -306,11 +325,9 @@ static void add_tooltip_label(uiDrawObj_t* page, int page_num, int option) {
 	float scale;
 
 	if(get_tooltip(page_num, option) &&
-		prepareSettingText("(Y) Help", sizeof("(Y) Help") - 1u,
-			UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN,
-			false, true, setLayout.helpHintMaxWidth, set_subtitle_size,
-			display, sizeof(display), &scale)) {
-		DrawAddChild(page, DrawStyledLabel(setLayout.helpHintX,
+		prepareHintText("Y  HELP", setLayout.helpHintMaxWidth,
+			set_subtitle_size, display, sizeof(display), &scale)) {
+		DrawAddChild(page, DrawHintLabel(setLayout.helpHintX,
 			setLayout.helpHintY, display, scale, ALIGN_LEFT, setSubtleColor));
 	}
 }
@@ -381,7 +398,7 @@ static void drawSettingsChrome(uiDrawObj_t* page, int page_num, ConfigEntry *gam
 	const uiSetLayoutRect_t *focusRect = NULL;
 	char title[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
 	char subtitle[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
-	char progress[20];
+	char progress[32];
 	char progressDisplay[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
 	const char *subtitleText = desc->subtitle;
 	GXColor panelColor = setPanelColor;
@@ -432,7 +449,7 @@ static void drawSettingsChrome(uiDrawObj_t* page, int page_num, ConfigEntry *gam
 	}
 
 	if(desc->tab == UI_SETLAYOUT_NO_TAB) {
-		snprintf(progress, sizeof(progress), "X DEFAULT  B DONE");
+		snprintf(progress, sizeof(progress), "X  DEFAULT    B  DONE");
 	}
 	else if(page_num > VIEW_SETUP) {
 		snprintf(progress, sizeof(progress), "B  BACK");
@@ -465,11 +482,9 @@ static void drawSettingsChrome(uiDrawObj_t* page, int page_num, ConfigEntry *gam
 			setLayout.subtitleY, subtitle, subtitleScale, ALIGN_LEFT,
 			setSubtleColor));
 	}
-	if(prepareSettingText(progress, sizeof(progress) - 1u,
-			UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false,
-			true, setLayout.progressMaxWidth, set_meta_size, progressDisplay,
-			sizeof(progressDisplay), &progressScale)) {
-		DrawAddChild(page, DrawStyledLabel(setLayout.progressX,
+	if(prepareHintText(progress, setLayout.progressMaxWidth, set_meta_size,
+			progressDisplay, sizeof(progressDisplay), &progressScale)) {
+		DrawAddChild(page, DrawHintLabel(setLayout.progressX,
 			setLayout.progressY, progressDisplay, progressScale,
 			ALIGN_RIGHT, setSubtleColor));
 	}
@@ -2175,8 +2190,8 @@ static uiDrawObj_t *settingsDrawPicker(const char *label,
 			(float)focus / (float)(list->count - 1),
 			MAX(16, visible * SETTINGS_PICKER_PITCH * visible / list->count)));
 	}
-	DrawAddChild(box, DrawStyledLabel((x0 + x1) / 2, y1 - 18,
-		"A  CHOOSE     B  CANCEL", set_meta_size, ALIGN_CENTER, setSubtleColor));
+	DrawAddChild(box, DrawHintLabel((x0 + x1) / 2, y1 - 18,
+		"A  CHOOSE    B  CANCEL", set_meta_size, ALIGN_CENTER, setSubtleColor));
 	return box;
 }
 

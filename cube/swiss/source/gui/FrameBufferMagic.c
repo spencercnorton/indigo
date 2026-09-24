@@ -36,6 +36,7 @@
 #include "ui_clock.h"
 #include "ui_perf.h"
 #include "ui_scene.h"
+#include "ui_hint.h"
 #include "ui_assets.h"
 #include "ui_command_rail.h"
 #include "ui_home_layout.h"
@@ -221,6 +222,7 @@ typedef struct drawStyledLabelEvent {
 	bool showCaret;
 	int caretPosition;
 	GXColor caretColor;
+	bool hint;	/* draw button names as icons */
 } drawStyledLabelEvent_t;
 
 typedef struct drawSelectableButtonEvent {
@@ -378,6 +380,9 @@ static uiDrawObjQueue_t *videoEventQueue = NULL;
 static uiDrawObj_t *buttonPanel = NULL;
 
 static void drawInit(void);
+static void _DrawHintText(int x, int y, const char *text, float scale, int align,
+	GXColor color);
+static float _HintScaleToFit(const char *text, int width, float maximum);
 static void _DrawSimpleBox(int x, int y, int width, int height, int depth,
 	GXColor fillColor, GXColor borderColor);
 
@@ -942,17 +947,17 @@ static void _DrawDeviceSelectorCard(uiDrawObj_t *evt)
 	drawStringMedium(320, 398 + offsetY, data->capability,
 		data->capabilityScale, ALIGN_CENTER,
 		data->available ? secondary : muted);
-	drawStringMedium(320, 419 + offsetY, data->actionHint,
+	_DrawHintText(320, 419 + offsetY, data->actionHint,
 		data->actionScale,
 		ALIGN_CENTER, muted);
 
-	drawStringMedium(28, 446,
+	_DrawHintText(28, 446,
 		data->showAllDevices ? "Z  ONLY" : "Z  ALL",
 		0.48f, ALIGN_LEFT,
 		data->showAllDevices ? primary : muted);
-	drawStringMedium(320, 446, "B  BACK", 0.48f, ALIGN_CENTER, muted);
+	_DrawHintText(320, 446, "B  BACK", 0.48f, ALIGN_CENTER, muted);
 	if(data->auxiliaryHint[0]) {
-		drawStringMedium(612, 446, data->auxiliaryHint, data->auxiliaryScale,
+		_DrawHintText(612, 446, data->auxiliaryHint, data->auxiliaryScale,
 			ALIGN_RIGHT,
 			data->inAdvanced ? primary : muted);
 	}
@@ -1010,10 +1015,9 @@ uiDrawObj_t* DrawDeviceSelectorCard(DEVICEHANDLER_INTERFACE *device,
 		GetTextScaleToFitInWidthWithMax(DeviceDisplayName(device), 280, 0.76f);
 	eventData->capabilityScale =
 		GetTextScaleToFitInWidthWithMax(eventData->capability, 300, 0.52f);
-	eventData->actionScale =
-		GetTextScaleToFitInWidthWithMax(eventData->actionHint, 280, 0.50f);
+	eventData->actionScale = _HintScaleToFit(eventData->actionHint, 280, 0.50f);
 	eventData->auxiliaryScale = eventData->auxiliaryHint[0] ?
-		GetTextScaleToFitInWidthWithMax(eventData->auxiliaryHint, 190, 0.48f) : 0.0f;
+		_HintScaleToFit(eventData->auxiliaryHint, 190, 0.48f) : 0.0f;
 	event->type = EV_DEVICESELECTOR;
 	event->data = eventData;
 	return event;
@@ -1528,8 +1532,14 @@ static void _DrawStyledLabel(uiDrawObj_t *evt) {
 			if(data->color.a >= 255) data->fadingDirection = -1;
 			else if(data->color.a <= 15) data->fadingDirection = 1;
 		}
-		drawStringMedium(data->x, data->y, string, data->size, data->align,
-			data->color);
+		if(data->hint) {
+			_DrawHintText(data->x, data->y, string, data->size, data->align,
+				data->color);
+		}
+		else {
+			drawStringMedium(data->x, data->y, string, data->size, data->align,
+				data->color);
+		}
 	}
 }
 
@@ -1551,6 +1561,14 @@ uiDrawObj_t* DrawStyledLabel(int x, int y, const char *string, float size, int a
 	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
 	event->type = EV_STYLEDLABEL;
 	event->data = eventData;
+	return event;
+}
+
+// External: a label whose button names ("A  OPEN") draw as button icons.
+uiDrawObj_t* DrawHintLabel(int x, int y, const char *string, float size, int align, GXColor color)
+{
+	uiDrawObj_t *event = DrawStyledLabel(x, y, string, size, align, color);
+	((drawStyledLabelEvent_t*)event->data)->hint = true;
 	return event;
 }
 
@@ -2074,6 +2092,245 @@ static void _SetupRasterColor(void)
 	GX_SetTevAlphaOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_ENABLE, GX_TEVPREV);
 	GX_SetTevDirect(GX_TEVSTAGE0);
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
+}
+
+/* ------------------------------------------------------------------------
+ * Button icons in hint lines. "A  OPEN" draws the A button, then "OPEN",
+ * like a game's on-screen prompts. Shapes are drawn like the title-bar dial:
+ * a solid core and a one-pixel feathered rim instead of MSAA. Colours are
+ * the GameCube controller's; letters use the console's own font.
+ * --------------------------------------------------------------------- */
+#define HINT_POINTS_MAX 40
+#define HINT_QUARTER_TURN 1.5707963f
+
+static void _HintVertex(float x, float y, GXColor color)
+{
+	GX_Position3f32(x, y, 0.0f);
+	GX_Color4u8(color.r, color.g, color.b, color.a);
+	GX_TexCoord2f32(0.0f, 0.0f);
+}
+
+/* A convex outline round (cx, cy): a fan for the core, then a rim pushed
+ * out one pixel along each corner's normal, fading to clear. */
+static void _HintShape(float cx, float cy, const float (*points)[2], int count,
+	GXColor color)
+{
+	GXColor clear = color;
+	int i;
+
+	clear.a = 0;
+	GX_Begin(GX_TRIANGLEFAN, GX_VTXFMT0, (u16)(count + 2));
+	_HintVertex(cx, cy, color);
+	for(i = 0; i <= count; i++) {
+		_HintVertex(points[i % count][0], points[i % count][1], color);
+	}
+	GX_End();
+	GX_Begin(GX_TRIANGLESTRIP, GX_VTXFMT0, (u16)((count + 1) * 2));
+	for(i = 0; i <= count; i++) {
+		const float *prev = points[(i + count - 1) % count];
+		const float *here = points[i % count];
+		const float *next = points[(i + 1) % count];
+		float nx = next[1] - prev[1];
+		float ny = prev[0] - next[0];
+		float length = sqrtf(nx * nx + ny * ny);
+
+		if(length <= 0.0f) {
+			nx = here[0] - cx;
+			ny = here[1] - cy;
+			length = sqrtf(nx * nx + ny * ny);
+		}
+		if(length > 0.0f) {
+			nx /= length;
+			ny /= length;
+		}
+		if(nx * (here[0] - cx) + ny * (here[1] - cy) < 0.0f) {
+			nx = -nx;
+			ny = -ny;
+		}
+		_HintVertex(here[0], here[1], color);
+		_HintVertex(here[0] + nx, here[1] + ny, clear);
+	}
+	GX_End();
+}
+
+/* A rectangle with round corners; radius = half the height makes a pill. */
+static void _HintRoundRect(float cx, float cy, float width, float height,
+	float radius, GXColor color)
+{
+	static const int steps = 6;
+	float points[HINT_POINTS_MAX][2];
+	float halfW = width / 2.0f - radius;
+	float halfH = height / 2.0f - radius;
+	int corner, i, count = 0;
+
+	for(corner = 0; corner < 4; corner++) {
+		float ox = (corner == 0 || corner == 3) ? halfW : -halfW;
+		float oy = (corner < 2) ? halfH : -halfH;
+
+		for(i = 0; i <= steps; i++) {
+			float angle = HINT_QUARTER_TURN * ((float)corner + (float)i / (float)steps);
+
+			points[count][0] = cx + ox + radius * cosf(angle);
+			points[count][1] = cy + oy + radius * sinf(angle);
+			count++;
+		}
+	}
+	_HintShape(cx, cy, points, count, color);
+}
+
+static void _HintDisc(float cx, float cy, float radius, GXColor color)
+{
+	_HintRoundRect(cx, cy, radius * 2.0f, radius * 2.0f, radius, color);
+}
+
+static GXColor _HintAlpha(GXColor color, u8 alpha)
+{
+	color.a = (u8)(((u16)color.a * alpha) / 255u);
+	return color;
+}
+
+/* A regular octagon, flat side up: the control stick's gate. */
+static void _HintOctagon(float cx, float cy, float radius, GXColor color)
+{
+	float points[8][2];
+	int i;
+
+	for(i = 0; i < 8; i++) {
+		float angle = HINT_QUARTER_TURN * ((float)i + 0.5f) / 2.0f;
+
+		points[i][0] = cx + radius * cosf(angle);
+		points[i][1] = cy + radius * sinf(angle);
+	}
+	_HintShape(cx, cy, points, 8, color);
+}
+
+static void _HintLetter(float cx, float cy, const char *letter, float scale,
+	GXColor color)
+{
+	drawStringMedium((int)(cx + 0.5f), (int)(cy + 0.5f), letter, scale,
+		ALIGN_CENTER, color);
+	drawInit();
+	_SetupRasterColor();
+}
+
+/* One icon centred on (cx, cy), size tall and width wide. Letters are about
+ * the label's own size so they stay legible on a 480-line screen. */
+static void _DrawHintGlyph(uiHintGlyph_t glyph, float cx, float cy, float size,
+	float width, float scale, u8 alpha)
+{
+	const GXColor grey = _HintAlpha((GXColor) {202, 202, 214, 255}, alpha);
+	const GXColor ink = _HintAlpha((GXColor) {42, 40, 56, 255}, alpha);
+	const GXColor white = _HintAlpha((GXColor) {255, 255, 255, 255}, alpha);
+
+	drawInit();
+	_SetupRasterColor();
+	switch(glyph) {
+		case UI_HINT_GLYPH_A:
+			_HintDisc(cx, cy, width / 2.0f, _HintAlpha((GXColor) {0, 170, 122, 255}, alpha));
+			_HintLetter(cx, cy, "A", scale, white);
+			break;
+		case UI_HINT_GLYPH_B:
+			_HintDisc(cx, cy, width / 2.0f, _HintAlpha((GXColor) {222, 48, 56, 255}, alpha));
+			_HintLetter(cx, cy, "B", scale * 0.9f, white);
+			break;
+		case UI_HINT_GLYPH_X:
+			_HintRoundRect(cx, cy, width, size, width / 2.0f, grey);
+			_HintLetter(cx, cy, "X", scale * 0.9f, ink);
+			break;
+		case UI_HINT_GLYPH_Y:
+			_HintRoundRect(cx, cy, width, size * 0.78f, size * 0.39f, grey);
+			_HintLetter(cx, cy, "Y", scale * 0.9f, ink);
+			break;
+		case UI_HINT_GLYPH_Z:
+			_HintRoundRect(cx, cy, width, size * 0.8f, size * 0.22f,
+				_HintAlpha((GXColor) {122, 86, 214, 255}, alpha));
+			_HintLetter(cx, cy, "Z", scale * 0.86f, white);
+			break;
+		case UI_HINT_GLYPH_L:
+		case UI_HINT_GLYPH_R:
+			_HintRoundRect(cx, cy, width, size * 0.8f, size * 0.26f, grey);
+			_HintLetter(cx, cy, glyph == UI_HINT_GLYPH_L ? "L" : "R",
+				scale * 0.86f, ink);
+			break;
+		case UI_HINT_GLYPH_START:
+			_HintRoundRect(cx, cy, width, size * 0.86f, size * 0.43f, grey);
+			_HintLetter(cx, cy, "START", scale * UI_HINT_START_TEXT_SCALE, ink);
+			break;
+		case UI_HINT_GLYPH_STICK:
+			/* The stick from above: its octagonal gate, then the cap. */
+			_HintOctagon(cx, cy, size * 0.54f,
+				_HintAlpha((GXColor) {104, 102, 124, 255}, alpha));
+			_HintDisc(cx, cy, size * 0.3f, grey);
+			break;
+		case UI_HINT_GLYPH_DPAD:
+			_HintRoundRect(cx, cy, size, size * 0.36f, size * 0.08f, grey);
+			_HintRoundRect(cx, cy, size * 0.36f, size, size * 0.08f, grey);
+			break;
+		default:
+			break;
+	}
+}
+
+int GetHintSizeInPixels(const char *text)
+{
+	return (int)ceilf(UIHint_LineWidth(text, GetFontHeight(1.0f), 1.0f,
+		GetTextSizeInPixels));
+}
+
+/* The largest scale up to maximum at which a hint line fits width. */
+static float _HintScaleToFit(const char *text, int width, float maximum)
+{
+	int natural = GetHintSizeInPixels(text);
+
+	return natural > 0 && (float)natural * maximum > (float)width ?
+		(float)width / (float)natural : maximum;
+}
+
+/* One hint line: button names become icons, the rest stays text. x is the
+ * line's left edge, centre or right edge as align says; y is its middle. */
+static void _DrawHintText(int x, int y, const char *text, float scale, int align,
+	GXColor color)
+{
+	uiHintItem_t items[UI_HINT_MAX_ITEMS];
+	char label[UI_HINT_MAX_ITEMS][UI_HINT_LABEL_CAPACITY];
+	float size = UIHint_GlyphSize(GetFontHeight(1.0f), scale);
+	float total = 0.0f;
+	float cursor;
+	int count = UIHint_Parse(text, items, UI_HINT_MAX_ITEMS);
+	int i, g;
+
+	for(i = 0; i < count; i++) {
+		total += UIHint_ItemWidth(&items[i], size, scale, GetTextSizeInPixels,
+			label[i], sizeof(label[i])) + (i > 0 ? size * UI_HINT_ITEM_GAP : 0.0f);
+	}
+	cursor = (float)x - (align == ALIGN_CENTER ? total / 2.0f :
+		(align == ALIGN_RIGHT ? total : 0.0f));
+	for(i = 0; i < count; i++) {
+		for(g = 0; g < items[i].glyphCount; g++) {
+			float width = UIHint_GlyphWidth(items[i].glyph[g], size, scale,
+				GetTextSizeInPixels);
+
+			if(g > 0 && items[i].chord) {
+				/* A chord: the two buttons are held together. */
+				drawStringMedium((int)(cursor + size * UI_HINT_ALTERNATIVE_GAP + 0.5f), y,
+					"+", scale, ALIGN_LEFT, color);
+			}
+			if(g > 0) {
+				cursor += UIHint_JoinWidth(&items[i], size, scale, GetTextSizeInPixels);
+			}
+			_DrawHintGlyph(items[i].glyph[g], cursor + width / 2.0f, (float)y, size,
+				width, scale, color.a);
+			cursor += width;
+		}
+		if(label[i][0] != '\0') {
+			if(items[i].glyphCount > 0) {
+				cursor += size * UI_HINT_LABEL_GAP;
+			}
+			drawStringMedium((int)(cursor + 0.5f), y, label[i], scale, ALIGN_LEFT, color);
+			cursor += (float)GetTextSizeInPixels(label[i]) * scale;
+		}
+		cursor += size * UI_HINT_ITEM_GAP;
+	}
 }
 
 static void _PutSystemDialVertex(float centerX, float centerY, float radius,
@@ -2833,6 +3090,10 @@ static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
 	presentation->primaryActionsScale = _GameflowPrepareDetailText(
 		data->detail.primaryActions, sizeof(data->detail.primaryActions),
 		590, 0.46f, 0.46f);
+	/* ponytail: the shortcut, launch and cheat hints fit by their text
+	 * width. Their strings are fixed and the icons leave room (the widest,
+	 * "Z  AUTOLOAD ON   R  VERIFY", draws about 115 px of 164); measure with
+	 * GetHintSizeInPixels if a longer one is added. */
 	presentation->advancedLineOneScale = _GameflowPrepareDetailText(
 		data->detail.advancedLineOne, sizeof(data->detail.advancedLineOne),
 		164, 0.42f, 0.42f);
@@ -2971,7 +3232,9 @@ static void _GameflowDrawDetailDashboard(
 				presentation->cheatPreviewScale, ALIGN_LEFT, primary);
 		}
 		else {
-			drawStringMedium(274, 329, detail->cheatPreview,
+			/* "Y  Choose cheats": a hint only while nothing is on, since
+			 * cheat names are free text. */
+			_DrawHintText(274, 329, detail->cheatPreview,
 				presentation->cheatPreviewScale, ALIGN_LEFT, muted);
 		}
 	}
@@ -2981,7 +3244,7 @@ static void _GameflowDrawDetailDashboard(
 	launchScale = frame->launchProgress > 0.02f ?
 		0.56f : presentation->launchScale;
 	drawStringMedium(278, 369, "\267", 0.58f, ALIGN_LEFT, focus);
-	drawStringMedium(425, 369, launchText, launchScale, ALIGN_CENTER, focus);
+	_DrawHintText(425, 369, launchText, launchScale, ALIGN_CENTER, focus);
 
 	if(detail->advancedLineOne[0] != '\0' ||
 		detail->advancedLineTwo[0] != '\0') {
@@ -2990,11 +3253,11 @@ static void _GameflowDrawDetailDashboard(
 		drawStringMedium(138, 359, "SHORTCUTS", 0.36f,
 			ALIGN_CENTER, secondary);
 		if(detail->advancedLineOne[0] != '\0') {
-			drawStringMedium(138, firstY, detail->advancedLineOne,
+			_DrawHintText(138, firstY, detail->advancedLineOne,
 				presentation->advancedLineOneScale, ALIGN_CENTER, muted);
 		}
 		if(detail->advancedLineTwo[0] != '\0') {
-			drawStringMedium(138, 396, detail->advancedLineTwo,
+			_DrawHintText(138, 396, detail->advancedLineTwo,
 				presentation->advancedLineTwoScale, ALIGN_CENTER, muted);
 		}
 	}
@@ -3004,7 +3267,7 @@ static void _GameflowDrawDetailDashboard(
 		GXColor command = secondary;
 
 		command.a = _GameflowAlpha(235.0f * reveal * commandRail->alpha);
-		drawStringMedium(320, 433, detail->primaryActions,
+		_DrawHintText(320, 433, detail->primaryActions,
 			presentation->primaryActionsScale, ALIGN_CENTER, command);
 	}
 	drawInit();
@@ -3197,7 +3460,7 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 				commandRail.alpha > 0.001f) {
 			GXColor command = label;
 			command.a = _GameflowAlpha(180.0f * reveal * commandRail.alpha);
-			drawStringMedium(320, 428,
+			_DrawHintText(320, 428,
 				"D-PAD  BROWSE   A  OPEN   X  BACK   B  HOME",
 				0.46f, ALIGN_CENTER, command);
 		}
@@ -3336,7 +3599,7 @@ static void _DrawHomeRoot(const drawHomeEvent_t *data,
 	_DrawHomeText(incomingX, incomingY,
 		UIHome_FaceLabel(face), scale,
 		ALIGN_CENTER, incoming);
-	_DrawHomeText(layout->commandCenter.x, layout->commandCenter.y,
+	_DrawHintText(layout->commandCenter.x, layout->commandCenter.y,
 		data->command, data->commandScale,
 		ALIGN_CENTER, muted);
 }
@@ -3361,7 +3624,7 @@ static void _DrawHomeRows(const drawHomeEvent_t *data, float reveal)
 			selected ? data->rowSelectedScale[row] : data->rowIdleScale[row],
 			ALIGN_CENTER, selected ? primary : muted);
 	}
-	_DrawHomeText(layout->commandCenter.x, layout->commandCenter.y,
+	_DrawHintText(layout->commandCenter.x, layout->commandCenter.y,
 		homeContextCommand, data->contextCommandScale,
 		ALIGN_CENTER, muted);
 }
@@ -3404,7 +3667,7 @@ static void _DrawHomeRestartConfirm(const drawHomeEvent_t *data,
 			selected ? 0.54f : 0.49f,
 			ALIGN_CENTER, selected ? primary : muted);
 	}
-	_DrawHomeText(data->layout.commandCenter.x, data->layout.commandCenter.y,
+	_DrawHintText(data->layout.commandCenter.x, data->layout.commandCenter.y,
 		homeConfirmCommand, data->confirmCommandScale,
 		ALIGN_CENTER, muted);
 }
@@ -3490,7 +3753,7 @@ static void _PrepareHomeText(drawHomeEvent_t *data)
 			UIHome_PrimaryHint(data->state.face, data->capabilities));
 	}
 	data->commandScale = UIHomeText_FitScale(data->command,
-		commandWidth, 0.46f, GetTextSizeInPixels);
+		commandWidth, 0.46f, GetHintSizeInPixels);
 	if(data->state.surface == UI_HOME_SURFACE_SOURCE) {
 		if(data->capabilities.hasSource && data->sourceName[0] != '\0') {
 			snprintf(headingSource, sizeof(headingSource), "SOURCE   %s",
@@ -3524,9 +3787,9 @@ static void _PrepareHomeText(drawHomeEvent_t *data)
 		}
 	}
 	data->contextCommandScale = UIHomeText_FitScale(homeContextCommand,
-		commandWidth, 0.46f, GetTextSizeInPixels);
+		commandWidth, 0.46f, GetHintSizeInPixels);
 	data->confirmCommandScale = UIHomeText_FitScale(homeConfirmCommand,
-		commandWidth, 0.46f, GetTextSizeInPixels);
+		commandWidth, 0.46f, GetHintSizeInPixels);
 	data->consequenceScale = data->state.surface ==
 		UI_HOME_SURFACE_RESTART_CONFIRM ?
 		UIHomeText_FitScale(homeRestartConsequence,
@@ -4186,15 +4449,15 @@ static void _DrawCheats(uiDrawObj_t *evt)
 		ALIGN_LEFT, (GXColor){255, 207, 139, 255});
 	_CheatsPanel(40, 413, 560, 1, (GXColor){43, 52, 80, 255});
 	if(s->advanced) {
-		drawStringMedium(40, 435, "A  Toggle debug", 0.48f, ALIGN_LEFT, primary);
-		drawStringMedium(600, 435, "B  Back", 0.48f, ALIGN_RIGHT, secondary);
+		_DrawHintText(40, 435, "A  Toggle debug", 0.48f, ALIGN_LEFT, primary);
+		_DrawHintText(600, 435, "B  Back", 0.48f, ALIGN_RIGHT, secondary);
 	}
 	else {
-		drawStringMedium(40, 435, "A  Toggle", 0.48f, ALIGN_LEFT, primary);
-		drawStringMedium(169, 435, "B  Done", 0.48f, ALIGN_LEFT, secondary);
-		drawStringMedium(290, 435, s->enabledOnly ? "X  Show all" : "X  Enabled only",
+		_DrawHintText(40, 435, "A  Toggle", 0.48f, ALIGN_LEFT, primary);
+		_DrawHintText(169, 435, "B  Done", 0.48f, ALIGN_LEFT, secondary);
+		_DrawHintText(290, 435, s->enabledOnly ? "X  Show all" : "X  Enabled only",
 			0.48f, ALIGN_LEFT, secondary);
-		drawStringMedium(600, 435, "Z  Advanced", 0.48f, ALIGN_RIGHT, secondary);
+		_DrawHintText(600, 435, "Z  Advanced", 0.48f, ALIGN_RIGHT, secondary);
 	}
 	drawInit();
 }
