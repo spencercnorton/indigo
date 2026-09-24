@@ -3,6 +3,13 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.16.1 — posters and cheats to download
+
+- Ready-made poster packs (USA and Japan, or Europe and Australia) and a cheat
+  pack for every region are at https://indigo.norvitech.com. The README and
+  the release zip's instructions point there; building your own posters.pak
+  still works as before.
+
 ## v1.16.0 — Menu Color
 
 - Settings › Setup › Console › Menu Color colors the whole interface: the

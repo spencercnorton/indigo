@@ -41,10 +41,11 @@ text file, a cover image, an empty folder) turns the Library back into
 Swiss's plain file list; "Hide unknown file types" in Settings > Setup >
 Library hides stray files. On Home, turn the cube to Library and press A.
 
-POSTERS (optional)
+POSTERS AND CHEATS (optional)
 Without posters, each game shows its disc banner and its six-character game
-ID (GMSE01). For box art, build posters.pak from cover images named by that
-ID and copy it to /swiss/ui/posters.pak. See "Set up your library" at
+ID (GMSE01). Ready-made poster packs and a cheat pack are at
+https://indigo.norvitech.com - unzip them into the root of the card. To build
+your own posters.pak, see "Set up your library" at
 https://github.com/spencercnorton/indigo#set-up-your-library
 
 In-Game Reset set to Apploader returns to the Swiss inside

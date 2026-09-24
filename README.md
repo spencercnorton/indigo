@@ -90,7 +90,7 @@ the card:
 SD card/
 ├── ipl.dol      Indigo; PicoBoot and other modchips boot this
 ├── games/       your games (see Set up your library)
-└── swiss/ui/    posters.pak, if you build one
+└── swiss/ui/    posters.pak, if you add one (see Posters)
 ```
 
 If your card already has an `ipl.dol` in its root, that is your current
@@ -163,10 +163,14 @@ Library hides stray files. On Home, turn the cube to Library and press A.
 ### Posters
 
 Without posters, each game shows its disc banner and its six-character game
-ID, such as `GMSE01`. For box art like the screenshots above, name front-cover
-images after those IDs (`GMSE01.png`, `GALE01.jpg`, at least 192×256) in one
-folder, build a pack from this repository, and copy it to
-`/swiss/ui/posters.pak` on the card:
+ID, such as `GMSE01`. For box art like the screenshots above, download a
+ready-made pack from [indigo.norvitech.com](https://indigo.norvitech.com):
+one covers USA and Japan, the other Europe and Australia. Unzip it into the
+root of the card; it holds `swiss/ui/posters.pak`.
+
+To make your own, name front-cover images after the game IDs (`GMSE01.png`,
+`GALE01.jpg`, at least 192×256) in one folder, build a pack from this
+repository, and copy it to `/swiss/ui/posters.pak` on the card:
 
 ```bash
 python3 -m pip install pillow
@@ -176,6 +180,14 @@ python3 buildtools/ui/poster_pack.py --covers ~/covers --out posters.pak
 
 Covers are cropped to 3:4 from the centre. Files not named by a game ID are
 skipped and listed.
+
+### Cheats
+
+Indigo runs Gecko codes from `/swiss/cheats/<game ID>.txt`. A pack for every
+region is at [indigo.norvitech.com](https://indigo.norvitech.com); unzip it
+into the root of the card, open a game and press Y. Cheats that the files show
+would break Indigo are switched off and marked; the page says what can't be
+checked in advance.
 
 ## Documentation
 
