@@ -65,8 +65,9 @@ auto-loaded cheats and a few more. R moves to Game Defaults, what every game
 starts with, and to Setup, which holds video, console, storage, network,
 library and developer options in six sections. X on a game's detail screen
 opens that game's own settings, where anything that differs from Game Defaults
-is marked Custom and X puts it back. Holding the D-pad scrolls, A changes a value,
-and B leaves and keeps your changes. A new video mode only stays if you press
+is marked Custom and X puts it back. Holding the D-pad scrolls, A changes a value
+(or, for a setting with many choices, lists them all), and B leaves and keeps
+your changes. A new video mode only stays if you press
 A within ten seconds. Settings can also be written ahead of time in a file on
 the SD card: see [docs/SETTINGS.md](docs/SETTINGS.md). Setup › Storage says
 whether that file loaded.

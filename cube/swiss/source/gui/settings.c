@@ -1972,6 +1972,271 @@ static void settingsChangeValue(int page, int option, int direction,
 	}
 }
 
+/* Choice rows with four or more values: A lists them all to pick from.
+ * Left and Right still step one value at a time. The field lets the list
+ * show the values in order with the current one in place. */
+typedef struct {
+	u8 page;
+	u8 option;
+	bool game;	/* the field is in the game's ConfigEntry */
+	u16 offset;
+	u8 size;
+} settingsPickerRow_t;
+
+#define PICK_SETTING(page, option, field) {page, option, false, \
+	offsetof(SwissSettings, field), sizeof(((SwissSettings *)0)->field)}
+#define PICK_GAME(option, field) {PAGE_GAME, option, true, \
+	offsetof(ConfigEntry, field), sizeof(((ConfigEntry *)0)->field)}
+static const settingsPickerRow_t settingsPickerRows[] = {
+	PICK_SETTING(PAGE_GLOBAL, SET_SYS_LANG, sramLanguage),
+	PICK_SETTING(PAGE_GLOBAL, SET_ENABLE_USBGECKO, enableUSBGecko),
+	PICK_SETTING(PAGE_GLOBAL, SET_SIMMEMSIZE, simulatedMemSize),
+	PICK_SETTING(PAGE_GAME_GLOBAL, SET_BS2BOOT, bs2Boot),
+	PICK_SETTING(PAGE_GAME_GLOBAL, SET_DISABLE_MCPGAMEID, disableMCPGameID),
+	PICK_SETTING(PAGE_GAME_DEFAULTS, SET_DEFAULT_NTSC_VIDEOMODE, gameVModeNtsc),
+	PICK_SETTING(PAGE_GAME_DEFAULTS, SET_DEFAULT_PAL_VIDEOMODE, gameVModePal),
+	PICK_SETTING(PAGE_GAME_DEFAULTS, SET_DEFAULT_HORIZ_SCALE, forceHScale),
+	PICK_SETTING(PAGE_GAME_DEFAULTS, SET_DEFAULT_VERT_FILTER, forceVFilter),
+	PICK_SETTING(PAGE_GAME_DEFAULTS, SET_DEFAULT_FIELD_RENDER, forceVJitter),
+	PICK_SETTING(PAGE_GAME_DEFAULTS, SET_DEFAULT_POLL_RATE, forcePollRate),
+	PICK_SETTING(PAGE_GAME_DEFAULTS, SET_DEFAULT_INVERT_CAMERA, invertCStick),
+	PICK_SETTING(PAGE_GAME_DEFAULTS, SET_DEFAULT_SWAP_CAMERA, swapCStick),
+	PICK_SETTING(PAGE_GAME_DEFAULTS, SET_DEFAULT_RT4K_PROFILE, rt4kProfile),
+	PICK_GAME(SET_GAME_LANG, gameLanguage),
+	PICK_GAME(SET_FORCE_VIDEOMODE, gameVMode),
+	PICK_GAME(SET_HORIZ_SCALE, forceHScale),
+	PICK_GAME(SET_VERT_FILTER, forceVFilter),
+	PICK_GAME(SET_FIELD_RENDER, forceVJitter),
+	PICK_GAME(SET_POLL_RATE, forcePollRate),
+	PICK_GAME(SET_INVERT_CAMERA, invertCStick),
+	PICK_GAME(SET_SWAP_CAMERA, swapCStick),
+	PICK_GAME(SET_RT4K_PROFILE, rt4kProfile),
+};
+#undef PICK_SETTING
+#undef PICK_GAME
+
+static const settingsPickerRow_t *settingsPickerFor(int page, int option)
+{
+	size_t i;
+
+	for(i = 0; i < sizeof(settingsPickerRows) / sizeof(settingsPickerRows[0]); i++) {
+		if(settingsPickerRows[i].page == page &&
+			settingsPickerRows[i].option == option) {
+			return &settingsPickerRows[i];
+		}
+	}
+	return NULL;
+}
+
+static u32 settingsPickerValue(const settingsPickerRow_t *pick,
+	const ConfigEntry *config)
+{
+	const u8 *field = (pick->game ? (const u8 *)config :
+		(const u8 *)&swissSettings) + pick->offset;
+	u8 byte;
+	u16 half;
+	u32 word;
+
+	switch(pick->size) {
+		case 1: memcpy(&byte, field, 1); return byte;
+		case 2: memcpy(&half, field, 2); return half;
+		default: memcpy(&word, field, 4); return word;
+	}
+}
+
+#define SETTINGS_PICKER_MAX 16
+typedef struct {
+	int count;
+	int current;	/* the entry set when the list opened */
+	u32 value[SETTINGS_PICKER_MAX];
+	char text[SETTINGS_PICKER_MAX][32];
+} settingsPicker_t;
+
+/* Lists a row's values by stepping the settings with the same code Right
+ * uses, so modes Right skips stay out, then puts the settings back. Values
+ * with the same name (the two 150 Hz rates) are listed once. */
+static int settingsPickerLoad(const settingsPickerRow_t *pick,
+	ConfigEntry *config, settingsPicker_t *list)
+{
+	static SwissSettings savedSettings;
+	static ConfigEntry savedConfig;
+	u32 start = settingsPickerValue(pick, config);
+	int step, i, j;
+
+	memcpy(&savedSettings, &swissSettings, sizeof(SwissSettings));
+	if(config != NULL) {
+		memcpy(&savedConfig, config, sizeof(ConfigEntry));
+	}
+	list->count = 0;
+	for(step = 0; step < SETTINGS_PICKER_MAX; step++) {
+		settingRowView_t row;
+		u32 value = settingsPickerValue(pick, config);
+		bool named = false;
+
+		if(step > 0 && value == start) {
+			break;
+		}
+		settingsDescribeRow(pick->page, pick->option, config, &row);
+		for(i = 0; i < list->count; i++) {
+			named = named || !strcmp(list->text[i], row.value);
+		}
+		if(!named) {
+			list->value[list->count] = value;
+			snprintf(list->text[list->count], sizeof(list->text[0]), "%s", row.value);
+			list->count++;
+		}
+		settings_toggle(pick->page, pick->option, 1, config);
+		if(settingsPickerValue(pick, config) == value) {
+			break;
+		}
+	}
+	memcpy(&swissSettings, &savedSettings, sizeof(SwissSettings));
+	if(config != NULL) {
+		memcpy(config, &savedConfig, sizeof(ConfigEntry));
+	}
+	/* The walk began at the current value; list in value order. */
+	for(i = 1; i < list->count; i++) {
+		for(j = i; j > 0 && list->value[j - 1] > list->value[j]; j--) {
+			u32 value = list->value[j];
+			char text[sizeof(list->text[0])];
+
+			memcpy(text, list->text[j], sizeof(text));
+			list->value[j] = list->value[j - 1];
+			memcpy(list->text[j], list->text[j - 1], sizeof(text));
+			list->value[j - 1] = value;
+			memcpy(list->text[j - 1], text, sizeof(text));
+		}
+	}
+	list->current = 0;
+	for(i = 0; i < list->count; i++) {
+		if(list->value[i] == start) {
+			list->current = i;
+		}
+	}
+	return list->count;
+}
+
+#define SETTINGS_PICKER_ROWS 8
+#define SETTINGS_PICKER_PITCH 28
+
+static uiDrawObj_t *settingsDrawPicker(const char *label,
+	const settingsPicker_t *list, int focus)
+{
+	int visible = MIN(list->count, SETTINGS_PICKER_ROWS);
+	int first = MIN(MAX(0, focus - visible / 2), MAX(0, list->count - visible));
+	bool scroll = list->count > visible;
+	int x0 = 150, x1 = 490;
+	int height = 44 + visible * SETTINGS_PICKER_PITCH + 34;
+	int y0 = (480 - height) / 2, y1 = y0 + height;
+	int rowsY = y0 + 44;
+	int textRight = x1 - (scroll ? 34 : 20);
+	GXColor panel = setPanelColor;
+	char text[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
+	float scale;
+	int i;
+	uiDrawObj_t *box = DrawContainer();
+
+	/* Solid, so the list reads over the rows behind it. */
+	panel.a = SET_PANEL_SOLID_ALPHA;
+	DrawAddChild(box, DrawEmptyColouredBox(x0, y0, x1, y1, panel));
+	if(prepareSettingText(label, UI_SETLAYOUT_LABEL_BUFFER_SIZE - 1u,
+		UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false, true,
+		x1 - x0 - 40, set_row_size, text, sizeof(text), &scale)) {
+		DrawAddChild(box, DrawStyledLabel(x0 + 20, y0 + 24, text, scale,
+			ALIGN_LEFT, setSubtleColor));
+	}
+	for(i = first; i < first + visible; i++) {
+		int y = rowsY + (i - first) * SETTINGS_PICKER_PITCH;
+		bool focused = i == focus;
+
+		if(focused) {
+			/* Not DrawSettingsFocus: that is one animated focus shared with
+			 * the page behind, and two targets would pull it between rows. */
+			DrawAddChild(box, DrawTransparentBox(x0 + 12, y, textRight + 6,
+				y + SETTINGS_PICKER_PITCH - 2));
+			DrawAddChild(box, DrawStyledLabel(x0 + 20, y + 13, "\225",
+				set_row_size, ALIGN_LEFT, defaultColor));
+		}
+		if(prepareSettingText(list->text[i], UI_SETLAYOUT_VALUE_TEXT_MAX,
+			UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false, true,
+			textRight - x0 - 110, focused ? set_row_sel_size : set_row_size,
+			text, sizeof(text), &scale)) {
+			DrawAddChild(box, DrawStyledLabel(x0 + 36, y + 13, text, scale,
+				ALIGN_LEFT, focused ? defaultColor : setInactiveColor));
+		}
+		if(i == list->current) {
+			DrawAddChild(box, DrawStyledLabel(textRight, y + 13, "Current",
+				set_meta_size, ALIGN_RIGHT, setCustomColor));
+		}
+	}
+	if(scroll) {
+		DrawAddChild(box, DrawVertScrollBar(x1 - 24, rowsY, 8,
+			visible * SETTINGS_PICKER_PITCH,
+			(float)focus / (float)(list->count - 1),
+			MAX(16, visible * SETTINGS_PICKER_PITCH * visible / list->count)));
+	}
+	DrawAddChild(box, DrawStyledLabel((x0 + x1) / 2, y1 - 18,
+		"A  CHOOSE     B  CANCEL", set_meta_size, ALIGN_CENTER, setSubtleColor));
+	return box;
+}
+
+/* A on a picker row: every value in a list. A picks the focused one, B
+ * keeps the current value. Returns whether the value changed. */
+static bool settingsPick(const settingsPickerRow_t *pick, ConfigEntry *config,
+	uiMenuInputState_t *menuInput, u32 *lastRetrace)
+{
+	static settingsPicker_t list;
+	settingRowView_t row;
+	uiDrawObj_t *box = NULL;
+	bool repeating = false;
+	int focus, step, chosen = -1;
+	u32 target;
+
+	settingsDescribeRow(pick->page, pick->option, config, &row);
+	if(!row.enabled || settingsPickerLoad(pick, config, &list) < 2) {
+		return false;
+	}
+	focus = list.current;
+	/* The A that opened the list must not also choose from it. */
+	settingsInhibitThroughDigitalRelease(menuInput, lastRetrace);
+	while(1) {
+		bool wasDigital;
+		u32 btns;
+		uiDrawObj_t *next = settingsDrawPicker(row.label, &list, focus);
+
+		box = box == NULL ? DrawPublish(next) : DrawRepublish(box, next);
+		btns = settingsWaitForInput(menuInput, lastRetrace, &wasDigital);
+		if(btns & BUTTON_UP) {
+			focus = MAX(0, focus - 1);
+		}
+		if(btns & BUTTON_DOWN) {
+			focus = MIN(list.count - 1, focus + 1);
+		}
+		if(btns & (BUTTON_A | BUTTON_B)) {
+			chosen = (btns & BUTTON_A) ? focus : -1;
+			settingsInhibitThroughDigitalRelease(menuInput, lastRetrace);
+			break;
+		}
+		if(!wasDigital) {
+			repeating = false;
+		}
+		else if(!settingsHoldToRepeat(menuInput, lastRetrace, btns, &repeating)) {
+			settingsInhibitThroughDigitalRelease(menuInput, lastRetrace);
+		}
+	}
+	DrawDispose(box);
+	if(chosen < 0 || chosen == list.current) {
+		return false;
+	}
+	/* Step to the chosen value with Right's code, as Right would. */
+	target = list.value[chosen];
+	for(step = 0; step < SETTINGS_PICKER_MAX &&
+		settingsPickerValue(pick, config) != target; step++) {
+		settings_toggle(pick->page, pick->option, 1, config);
+	}
+	return true;
+}
+
 /* These legacy setting arms open a child input/message loop. Reinitialize the
  * analog policy after they return so movement inside that child cannot become
  * a surprise Settings action. */
@@ -1979,6 +2244,10 @@ static bool settingsInputMayBlock(int page, int option, u32 buttons)
 {
 	bool horizontal = (buttons & (BUTTON_LEFT | BUTTON_RIGHT)) != 0u;
 	bool activate = (buttons & BUTTON_A) != 0u;
+
+	if(activate && settingsPickerFor(page, option) != NULL) {
+		return true;
+	}
 
 	if(page == PAGE_GLOBAL) {
 		return (horizontal || activate) && (option == SET_RT4K_OPTIM ||
@@ -2221,6 +2490,10 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 						settingsConfirmReset()) {
 						settings_toggle(ref->page, ref->option, 0, config);
 					}
+				}
+				else if(settingsPickerFor(ref->page, ref->option) != NULL) {
+					settingsPick(settingsPickerFor(ref->page, ref->option), config,
+						&menuInput, &menuInputRetrace);
 				}
 				else {
 					settingsChangeValue(ref->page, ref->option, 1, config);

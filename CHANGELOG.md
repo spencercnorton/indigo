@@ -3,6 +3,17 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.14.0 — pick from a list
+
+- A on a setting with four or more choices lists them all. That covers the
+  video modes, languages, polling rates, horizontal scale, camera stick
+  options, RetroTINK-4K profiles and a few more. Move with the D-pad or
+  stick, press A to pick, or B to keep what you had; the current choice is
+  marked. Left and Right still step one choice at a time.
+- The list holds exactly what Right steps through, so video modes your
+  cable can't show stay out of it, and the polling rates the list would
+  otherwise name twice appear once.
+
 ## v1.13.1 — the video prompt names the new mode
 
 - "Keep this video mode?" now says what you'd keep, for example "Keep
