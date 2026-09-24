@@ -1517,46 +1517,6 @@ static void drawSemanticFaceMotifs(float seconds, bool animated,
 		GX_LO_CLEAR);
 }
 
-static void drawFaceFrame(const cubeRasterTransform_t *raster, guVector n,
-		float inset, float front, GXColor color)
-{
-	static const float offsets[4] = {-1.1f, -0.35f, 0.35f, 1.1f};
-	/* Two body axes across face n. The band is symmetric, so the corner
-	 * winding this gives each face does not matter. */
-	guVector u = {fabsf(n.x) > 0.5f ? 0.0f : 1.0f, 0.0f, fabsf(n.x) > 0.5f ? 1.0f : 0.0f};
-	guVector v = {0.0f, fabsf(n.y) > 0.5f ? 0.0f : 1.0f, fabsf(n.y) > 0.5f ? 1.0f : 0.0f};
-	guVector eyes[4];
-	indigoPoint_t points[4], joins[4];
-	Mtx identity;
-	for(int i = 0; i < 4; i++) {
-		float su = i == 0 || i == 3 ? -inset : inset, sv = i < 2 ? -inset : inset;
-		if(!projectRailPoint(raster, n.x * front + u.x * su + v.x * sv,
-			n.y * front + u.y * su + v.y * sv, n.z * front + u.z * su + v.z * sv,
-			&eyes[i], &points[i])) return;
-	}
-	for(int i = 0; i < 4; i++) {
-		if(!railJoin(points[(i + 3) % 4], points[i], points[(i + 1) % 4],
-			&joins[i])) return;
-	}
-	guMtxIdentity(identity);
-	GX_LoadPosMtxImm(identity, GX_PNMTX0);
-	GX_Begin(GX_QUADS, GX_VTXFMT0, 48);
-	for(int edge = 0; edge < 4; edge++) {
-		int next = (edge + 1) % 4;
-		for(int band = 0; band < 3; band++) {
-			GXColor a = color, b = color;
-			if(band == 0) a.a = 0;
-			if(band == 2) b.a = 0;
-			putProjectedRailVertex(raster, eyes[edge], joins[edge], offsets[band], a);
-			putProjectedRailVertex(raster, eyes[next], joins[next], offsets[band], a);
-			putProjectedRailVertex(raster, eyes[next], joins[next], offsets[band + 1], b);
-			putProjectedRailVertex(raster, eyes[edge], joins[edge], offsets[band + 1], b);
-		}
-	}
-	GX_End();
-	GX_LoadPosMtxImm(raster->model, GX_PNMTX0);
-}
-
 static float glassSmoothstep(float edge0, float edge1, float x)
 {
 	float t = (x - edge0) / (edge1 - edge0);
@@ -1710,26 +1670,6 @@ static void drawGlassReflection(const cubeRasterTransform_t *raster,
 	}
 }
 
-/* The frame belongs to whichever face is turned toward the viewer, not to one
- * face of the body: it follows the selected face through every turn, up and
- * down included, fading out as one face turns away and in as the next
- * arrives. */
-static void drawFrontRailAccents(const cubeRasterTransform_t *raster,
-		float inset, float front, GXColor color)
-{
-	for(int face = 0; face < 6; face++) {
-		guVector axis = cubeFaceAxes[face], eye, n = cubeViewNormal(raster, axis);
-		indigoPoint_t screen;
-		if(!projectRailPoint(raster, axis.x * front, axis.y * front, axis.z * front,
-			&eye, &screen)) return;
-		float facing = -(n.x * eye.x + n.y * eye.y + n.z * eye.z) /
-			sqrtf(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z);
-		GXColor faded = color;
-		faded.a = (u8)((float)color.a * glassSmoothstep(0.62f, 0.86f, facing));
-		if(faded.a > 0) drawFaceFrame(raster, axis, inset, front, faded);
-	}
-}
-
 static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 		const uiClockFrame_t *clock, const indigoPadFrame_t *pad)
 {
@@ -1749,15 +1689,12 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 		{25, 18, 70, 78}, {132, 108, 218, 84}, {196, 180, 255, 112},
 		{65, 48, 143, 72}, {235, 228, 255, 132}, {132, 108, 218, 84}
 	};
-	GXColor innerBoundary = {22, 14, 61, 184};
-	GXColor accent = {239, 233, 255, 226};
 	GXColor lit[6];
 	cubeRasterTransform_t raster;
 	cubeSurfaceQuad_t core[6], shell[6], strips[12], corners[8];
 	cubeOutline_t coreOutline, shellOutline;
 	const float outer = 1.0f;
 	const float inset = 0.78f;
-	const float front = 1.008f;
 
 	setupCubePipeline(scene, seconds, animated, &raster);
 	litCubeTints(&raster, coreColors, lit);
@@ -1826,16 +1763,7 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 	drawSemanticFaceMotifs(seconds, animated, clock, &raster);
 	drawLibraryController(&raster, seconds, animated, pad);
-
-	/* Pixel-width coverage replaces GX's hard subpixel line rasterization.
-	 * The front rail remains depth-tested and follows the same cube pose. */
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-	/* GX_LINES ignored face culling; the replacement coverage quads must
-	 * remain two-sided after the semantic motif pass restores back culling. */
-	GX_SetCullMode(GX_CULL_NONE);
-	drawFrontRailAccents(&raster, inset - 0.035f, front + 0.001f, innerBoundary);
-	drawFrontRailAccents(&raster, inset, front, accent);
-	GX_SetCullMode(GX_CULL_BACK);
 }
 
 void IndigoBackground_Draw(float seconds, bool backdropAnimated,

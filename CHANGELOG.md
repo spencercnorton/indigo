@@ -3,6 +3,14 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.14.1 — Home
+
+- The white frame on the cube is gone. The white line and the dark line
+  inside it no longer outline the face you are on; the glass, its reflection
+  and each face's emblem are unchanged.
+- The README's Home animation and System screenshot are re-recorded without
+  it.
+
 ## v1.14.0 — pick from a list
 
 - A on a setting with four or more choices lists them all. That covers the
