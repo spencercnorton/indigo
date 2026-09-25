@@ -2515,11 +2515,18 @@ typedef struct gameflowQuad {
 	gameflowPoint_t point[4];
 } gameflowQuad_t;
 
+/* visualSlot orders the painting (farthest first); focus lights the card's
+ * border and art says whether it shows its cover, banner or emblem, laid out
+ * for artSlot. On a ring focus and artSlot follow visualSlot; in the grid
+ * they follow the highlight. */
 typedef struct gameflowRenderCard {
 	const uiGameflowCardSnapshot_t *record;
 	u32 recordIndex;
 	float visualSlot;
+	float artSlot;
+	float focus;
 	float presence;
+	bool art;
 	gameflowQuad_t quad;
 } gameflowRenderCard_t;
 
@@ -2532,6 +2539,32 @@ static const gameflowQuad_t gameflowSlotPoses[7] = {
 	{{{588.0f, 151.0f}, {608.0f, 159.0f}, {608.0f, 258.0f}, {588.0f, 266.0f}}},
 	{{{630.0f, 174.0f}, {668.0f, 185.0f}, {668.0f, 233.0f}, {630.0f, 244.0f}}}
 };
+
+/* The Vertical layout: the same ring on end, the selected cover at the left
+ * of the screen and its neighbours tipped back above and below it. */
+static const gameflowQuad_t gameflowVerticalPoses[7] = {
+	{{{112.0f, -36.0f}, {196.0f, -36.0f}, {202.0f, -28.0f}, {106.0f, -28.0f}}},
+	{{{112.0f, 16.0f}, {196.0f, 16.0f}, {206.0f, 24.0f}, {102.0f, 24.0f}}},
+	{{{98.0f, 36.0f}, {210.0f, 36.0f}, {224.0f, 98.0f}, {84.0f, 98.0f}}},
+	{{{72.0f, 108.0f}, {236.0f, 108.0f}, {236.0f, 328.0f}, {72.0f, 328.0f}}},
+	{{{84.0f, 338.0f}, {224.0f, 338.0f}, {210.0f, 400.0f}, {98.0f, 400.0f}}},
+	{{{102.0f, 408.0f}, {206.0f, 408.0f}, {196.0f, 416.0f}, {112.0f, 416.0f}}},
+	{{{106.0f, 480.0f}, {202.0f, 480.0f}, {196.0f, 488.0f}, {112.0f, 488.0f}}}
+};
+
+/* The Grid layout: five columns, three rows on screen, the focused row in the
+ * middle. The highlighted card grows by a tenth. */
+#define GAMEFLOW_GRID_CENTER_X 320.0f
+#define GAMEFLOW_GRID_CENTER_Y 216.0f
+#define GAMEFLOW_GRID_PITCH_X 100.0f
+#define GAMEFLOW_GRID_PITCH_Y 108.0f
+#define GAMEFLOW_GRID_CARD_W 72.0f
+#define GAMEFLOW_GRID_CARD_H 96.0f
+#define GAMEFLOW_GRID_FOCUS_GROWTH 0.10f
+
+_Static_assert(UI_GAMEFLOW_RENDER_SLOTS >= UI_GAMEFLOW_LIBRARY_GRID_WINDOW &&
+	UI_GAMEFLOW_RENDER_SLOTS >= UI_GAMEFLOW_LIBRARY_WINDOW,
+	"Gameflow records must hold every layout's window");
 
 static float _GameflowClamp(float value, float minimum, float maximum)
 {
@@ -2559,7 +2592,8 @@ static gameflowPoint_t _GameflowLerpPoint(gameflowPoint_t from,
 	return point;
 }
 
-static gameflowQuad_t _GameflowSamplePose(float slot)
+static gameflowQuad_t _GameflowSamplePoseIn(const gameflowQuad_t poses[7],
+	float slot)
 {
 	gameflowQuad_t result;
 	float clamped = _GameflowClamp(slot, -3.0f, 3.0f);
@@ -2570,12 +2604,50 @@ static gameflowQuad_t _GameflowSamplePose(float slot)
 
 	for(i = 0; i < 4; ++i) {
 		result.point[i] = _GameflowLerpPoint(
-			gameflowSlotPoses[lower + 3].point[i],
-			gameflowSlotPoses[upper + 3].point[i], progress);
+			poses[lower + 3].point[i],
+			poses[upper + 3].point[i], progress);
 		result.point[i].x = _GameflowRound(result.point[i].x);
 		result.point[i].y = _GameflowRound(result.point[i].y);
 	}
 	return result;
+}
+
+static gameflowQuad_t _GameflowSamplePose(float slot)
+{
+	return _GameflowSamplePoseIn(gameflowSlotPoses, slot);
+}
+
+/* A grid card at a column and a row (0 is the focused row), grown by
+ * focus. Whole pixels, like the carousel's poses. */
+static gameflowQuad_t _GameflowGridQuad(float column, float row, float focus)
+{
+	float scale = 1.0f + GAMEFLOW_GRID_FOCUS_GROWTH * focus;
+	float halfWidth = GAMEFLOW_GRID_CARD_W * 0.5f * scale;
+	float halfHeight = GAMEFLOW_GRID_CARD_H * 0.5f * scale;
+	float x = GAMEFLOW_GRID_CENTER_X +
+		(column - (float)(UI_GAMEFLOW_LIBRARY_GRID_COLUMNS - 1u) * 0.5f) *
+		GAMEFLOW_GRID_PITCH_X;
+	float y = GAMEFLOW_GRID_CENTER_Y + row * GAMEFLOW_GRID_PITCH_Y;
+	float left = _GameflowRound(x - halfWidth);
+	float right = _GameflowRound(x + halfWidth);
+	float top = _GameflowRound(y - halfHeight);
+	float bottom = _GameflowRound(y + halfHeight);
+	gameflowQuad_t quad = {{{left, top}, {right, top}, {right, bottom},
+		{left, bottom}}};
+	return quad;
+}
+
+/* The focused row is lit and its neighbours dimmed; two rows out a row is
+ * gone, which is where rows scroll in and out. */
+static float _GameflowGridPresence(float row)
+{
+	float distance = fabsf(row);
+
+	if(distance >= 2.0f) {
+		return 0.0f;
+	}
+	return distance <= 1.0f ? 1.0f - 0.34f * distance :
+		0.66f * (2.0f - distance);
 }
 
 static gameflowPoint_t _GameflowQuadPoint(const gameflowQuad_t *quad,
@@ -2810,7 +2882,7 @@ static void _GameflowDrawFallback(const gameflowRenderCard_t *card,
 	GXColor dark;
 	u8 alpha;
 
-	if(!UIGameflowLibrary_BuildFallbackLayout(card->visualSlot, &layout)) {
+	if(!UIGameflowLibrary_BuildFallbackLayout(card->artSlot, &layout)) {
 		return;
 	}
 	alpha = _GameflowAlpha(255.0f * card->presence * reveal);
@@ -2954,20 +3026,47 @@ static GXTexObj *_GameflowPosterTexture(
 	return UIAssets_Peek(handle);
 }
 
+/* The selected game's title and publisher: under the carousel's cover,
+ * beside the column's with its facts, or in the grid's strip above the
+ * command line. */
 static void _GameflowDrawMetadata(const uiGameflowCardSnapshot_t *record,
 	const drawGameflowCardPresentation_t *presentation, float alpha,
-	float reveal)
+	float reveal, uiGameflowLayout_t layout)
 {
 	GXColor primary = {246, 243, 255, _GameflowAlpha(255.0f * alpha * reveal)};
 	GXColor secondary = {190, 181, 231, _GameflowAlpha(220.0f * alpha * reveal)};
+	GXColor muted = {165, 158, 201, _GameflowAlpha(218.0f * alpha * reveal)};
+	bool company = record != NULL && record->company[0] && !(record->flags &
+		(UI_GAMEFLOW_CARD_PARENT | UI_GAMEFLOW_CARD_FOLDER));
 
 	if(record == NULL || presentation == NULL || alpha <= 0.001f) {
 		return;
 	}
+	if(layout == UI_GAMEFLOW_LAYOUT_VERTICAL) {
+		drawStringMedium(262, 206, record->title, presentation->titleScale,
+			ALIGN_LEFT, primary);
+		if(company) {
+			drawStringMedium(262, 235, record->company,
+				presentation->companyScale, ALIGN_LEFT, secondary);
+		}
+		if(record->facts[0] && !(record->flags & UI_GAMEFLOW_CARD_PARENT)) {
+			drawStringMedium(262, company ? 260 : 235, record->facts,
+				presentation->factsScale, ALIGN_LEFT, muted);
+		}
+		return;
+	}
+	if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
+		drawStringMedium(320, 388, record->title, presentation->titleScale,
+			ALIGN_CENTER, primary);
+		if(company) {
+			drawStringMedium(320, 407, record->company,
+				presentation->companyScale, ALIGN_CENTER, secondary);
+		}
+		return;
+	}
 	drawStringMedium(320, 350, record->title, presentation->titleScale,
 		ALIGN_CENTER, primary);
-	if(record->company[0] && !(record->flags &
-		(UI_GAMEFLOW_CARD_PARENT | UI_GAMEFLOW_CARD_FOLDER))) {
+	if(company) {
 		drawStringMedium(320, 376, record->company,
 			presentation->companyScale, ALIGN_CENTER, secondary);
 	}
@@ -3016,8 +3115,24 @@ static float _GameflowPrepareDetailText(char *text, size_t capacity,
 static void _GameflowPrepareCardPresentation(drawGameflowEvent_t *data,
 	u32 recordIndex)
 {
+	/* Room for the title, publisher and facts in each layout: the line under
+	 * the carousel's cover, the column beside the vertical cover (x 262 to
+	 * 606), the grid's strip above the command line. */
+	static const struct {
+		int width;
+		float maximum;
+		float floor;
+	} fit[UI_GAMEFLOW_LAYOUT_COUNT][3] = {
+		[UI_GAMEFLOW_LAYOUT_HORIZONTAL] = {
+			{520, 0.78f, 0.50f}, {420, 0.50f, 0.42f}, {500, 0.44f, 0.42f}},
+		[UI_GAMEFLOW_LAYOUT_VERTICAL] = {
+			{344, 0.84f, 0.54f}, {344, 0.54f, 0.44f}, {344, 0.46f, 0.42f}},
+		[UI_GAMEFLOW_LAYOUT_GRID] = {
+			{560, 0.66f, 0.50f}, {480, 0.46f, 0.42f}, {500, 0.44f, 0.42f}}
+	};
 	uiGameflowCardSnapshot_t *record;
 	drawGameflowCardPresentation_t *presentation;
+	u32 layout;
 
 	if(data == NULL || recordIndex >= data->snapshot.recordCount ||
 		recordIndex >= UI_GAMEFLOW_RENDER_SLOTS) {
@@ -3025,12 +3140,17 @@ static void _GameflowPrepareCardPresentation(drawGameflowEvent_t *data,
 	}
 	record = &data->snapshot.records[recordIndex];
 	presentation = &data->cardPresentation[recordIndex];
+	layout = data->snapshot.layout < UI_GAMEFLOW_LAYOUT_COUNT ?
+		data->snapshot.layout : UI_GAMEFLOW_LAYOUT_HORIZONTAL;
 	presentation->titleScale = _GameflowPrepareDetailText(record->title,
-		sizeof(record->title), 520, 0.78f, 0.50f);
+		sizeof(record->title), fit[layout][0].width, fit[layout][0].maximum,
+		fit[layout][0].floor);
 	presentation->companyScale = _GameflowPrepareDetailText(record->company,
-		sizeof(record->company), 420, 0.50f, 0.42f);
+		sizeof(record->company), fit[layout][1].width, fit[layout][1].maximum,
+		fit[layout][1].floor);
 	presentation->factsScale = _GameflowPrepareDetailText(record->facts,
-		sizeof(record->facts), 500, 0.44f, 0.42f);
+		sizeof(record->facts), fit[layout][2].width, fit[layout][2].maximum,
+		fit[layout][2].floor);
 }
 
 static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
@@ -3300,12 +3420,55 @@ static void _GameflowDrawDetailDashboard(
 	drawInit();
 }
 
+/* An axis-aligned quad grown by pixels on every side. */
+static gameflowQuad_t _GameflowGrowQuad(const gameflowQuad_t *quad, float by)
+{
+	gameflowQuad_t result = {{
+		{quad->point[0].x - by, quad->point[0].y - by},
+		{quad->point[1].x + by, quad->point[1].y - by},
+		{quad->point[2].x + by, quad->point[2].y + by},
+		{quad->point[3].x - by, quad->point[3].y + by}
+	}};
+	return result;
+}
+
+/* The grid's highlight: a bright frame and a soft glow that slide along the
+ * focused row while the rows scroll under it. */
+static void _GameflowDrawGridHighlight(const uiGameflowFrame_t *frame,
+	float alpha)
+{
+	float pulse = _CurrentMotionMode() == UI_MOTION_FULL ?
+		0.84f + 0.16f * sinf(UIAnim_Seconds() * 3.0f) : 1.0f;
+	gameflowQuad_t card = _GameflowGridQuad(frame->columnPosition, 0.0f,
+		1.0f);
+	gameflowQuad_t edge = _GameflowGrowQuad(&card, 2.0f);
+	gameflowQuad_t glow = _GameflowGrowQuad(&edge, 2.0f);
+	gameflowQuad_t halo = _GameflowGrowQuad(&glow, 3.0f);
+	GXColor edgeColor = {244, 239, 255, _GameflowAlpha(245.0f * alpha)};
+	GXColor glowColor = {196, 177, 255, _GameflowAlpha(150.0f * alpha * pulse)};
+	GXColor haloColor = {117, 88, 244, _GameflowAlpha(78.0f * alpha * pulse)};
+
+	if(alpha <= 0.001f) {
+		return;
+	}
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 48);
+		_GameflowPutBorder(&halo, &glow, haloColor);
+		_GameflowPutBorder(&glow, &edge, glowColor);
+		_GameflowPutBorder(&edge, &card, edgeColor);
+	GX_End();
+	drawInit();
+}
+
 static void _DrawGameflow(uiDrawObj_t *evt)
 {
 	drawGameflowEvent_t *data = (drawGameflowEvent_t*)evt->data;
 	const uiSceneFrame_t *scene = UIScene_Frame();
 	const uiGameflowFrame_t *frame;
-	gameflowRenderCard_t cards[UI_GAMEFLOW_RENDER_SLOTS];
+	/* A small grid wraps round the screen, so a card can be drawn twice
+	 * while its row leaves at one edge and arrives at the other. */
+	gameflowRenderCard_t cards[UI_GAMEFLOW_RENDER_SLOTS * 2u];
 	const uiGameflowCardSnapshot_t *selectedRecord;
 	const uiGameflowCardSnapshot_t *previousRecord;
 	const uiGameflowCardSnapshot_t *focusRecord;
@@ -3313,8 +3476,10 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 	uiCommandRailFrame_t commandRail;
 	gameflowQuad_t detailPose = {{{48.0f, 96.0f}, {228.0f, 96.0f},
 		{228.0f, 336.0f}, {48.0f, 336.0f}}};
+	uiGameflowLayout_t layout;
 	float reveal;
 	float titleTravel;
+	u32 rows = 0u;
 	u32 count = 0u;
 	u32 i;
 	u32 selectedRecordIndex = 0u;
@@ -3342,44 +3507,79 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		strnlen(focusRecord->gameId, sizeof(focusRecord->gameId)))) {
 		detail = &data->detail;
 	}
+	layout = (uiGameflowLayout_t)data->snapshot.layout;
+	if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
+		rows = (frame->itemCount + data->snapshot.columns - 1u) /
+			data->snapshot.columns;
+	}
 
 	for(i = 0u; i < data->snapshot.recordCount; ++i) {
 		const uiGameflowCardSnapshot_t *record = &data->snapshot.records[i];
-		float slot;
-		float presence;
+		int copies = rows >= 3u ? 1 : 0;
+		int copy;
 
 		if(!(record->flags & UI_GAMEFLOW_CARD_VALID)) {
 			continue;
 		}
-		slot = (float)record->relativeSlot + frame->carouselTravel;
-		presence = _GameflowPresence(slot);
-		if(frame->detailProgress > 0.0f) {
-			if(record->libraryIndex == frame->focusIndex) {
-				presence = 1.0f;
+		for(copy = -copies; copy <= copies &&
+			count < sizeof(cards) / sizeof(cards[0]); ++copy) {
+			gameflowRenderCard_t *card = &cards[count];
+			bool focused = copy == 0 &&
+				record->libraryIndex == frame->focusIndex;
+			float presence;
+
+			if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
+				float row = (float)record->relativeSlot +
+					frame->carouselTravel + (float)copy * (float)rows;
+				float across = (float)record->column - frame->columnPosition;
+				float distance = sqrtf(across * across + row * row);
+
+				presence = _GameflowGridPresence(row);
+				card->visualSlot = distance;
+				card->artSlot = distance < 1.0f ? distance : 1.0f;
+				card->focus = 1.0f - _GameflowClamp(distance, 0.0f, 1.0f);
+				card->art = fabsf(row) < 1.5f;
+				card->quad = _GameflowGridQuad((float)record->column, row,
+					card->focus);
 			}
 			else {
-				presence *= 1.0f - frame->detailProgress;
+				float slot = (float)record->relativeSlot +
+					frame->carouselTravel;
+
+				presence = _GameflowPresence(slot);
+				card->visualSlot = slot;
+				card->artSlot = slot;
+				card->focus = 1.0f - _GameflowClamp(fabsf(slot), 0.0f, 1.0f);
+				card->art = fabsf(slot) < 1.5f;
+				card->quad = layout == UI_GAMEFLOW_LAYOUT_VERTICAL ?
+					_GameflowSamplePoseIn(gameflowVerticalPoses, slot) :
+					_GameflowSamplePose(slot);
 			}
-		}
-		if(presence <= 0.001f) {
-			continue;
-		}
-		cards[count].record = record;
-		cards[count].recordIndex = i;
-		cards[count].visualSlot = slot;
-		cards[count].presence = presence *
-			((record->flags & UI_GAMEFLOW_CARD_HIDDEN) ? 0.55f : 1.0f);
-		cards[count].quad = _GameflowSamplePose(slot);
-		if(frame->detailProgress > 0.0f &&
-			record->libraryIndex == frame->focusIndex) {
-			int vertex;
-			for(vertex = 0; vertex < 4; ++vertex) {
-				cards[count].quad.point[vertex] = _GameflowLerpPoint(
-					cards[count].quad.point[vertex], detailPose.point[vertex],
-					frame->detailProgress);
+			if(frame->detailProgress > 0.0f) {
+				if(focused) {
+					presence = 1.0f;
+				}
+				else {
+					presence *= 1.0f - frame->detailProgress;
+				}
 			}
+			if(presence <= 0.001f) {
+				continue;
+			}
+			card->record = record;
+			card->recordIndex = i;
+			card->presence = presence *
+				((record->flags & UI_GAMEFLOW_CARD_HIDDEN) ? 0.55f : 1.0f);
+			if(frame->detailProgress > 0.0f && focused) {
+				int vertex;
+				for(vertex = 0; vertex < 4; ++vertex) {
+					card->quad.point[vertex] = _GameflowLerpPoint(
+						card->quad.point[vertex], detailPose.point[vertex],
+						frame->detailProgress);
+				}
+			}
+			count++;
 		}
-		count++;
 	}
 
 	/* Painter's order: far/sliver cards first, center-most focus last. */
@@ -3398,9 +3598,8 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 	_SetupRasterColor();
 	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 4u));
 	for(i = 0u; i < count; ++i) {
-		u8 topAlpha = _GameflowAlpha((104.0f +
-			(1.0f - _GameflowClamp(fabsf(cards[i].visualSlot), 0.0f, 1.0f)) *
-			64.0f) * cards[i].presence * reveal);
+		u8 topAlpha = _GameflowAlpha((104.0f + cards[i].focus * 64.0f) *
+			cards[i].presence * reveal);
 		u8 bottomAlpha = _GameflowAlpha(210.0f * cards[i].presence * reveal);
 		GXColor top = _GameflowAccent(cards[i].record, topAlpha);
 		GXColor bottom = {10, 8, 30, bottomAlpha};
@@ -3424,10 +3623,8 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 	for(i = 0u; i < count; ++i) {
 		gameflowQuad_t inner = _GameflowInsetQuad(&cards[i].quad,
 			0.018f, 0.018f);
-		float focus = 1.0f - _GameflowClamp(fabsf(cards[i].visualSlot),
-			0.0f, 1.0f);
 		GXColor border = {220, 214, 255,
-			_GameflowAlpha((112.0f + focus * 126.0f) *
+			_GameflowAlpha((112.0f + cards[i].focus * 126.0f) *
 			cards[i].presence * reveal)};
 		_GameflowPutBorder(&cards[i].quad, &inner, border);
 	}
@@ -3437,12 +3634,11 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 	 * exact/universal record is loading (or unavailable), retain the native
 	 * BNR; use the code-native emblem only when neither texture exists. */
 	for(i = 0u; i < count; ++i) {
-		float distance = fabsf(cards[i].visualSlot);
 		GXTexObj *posterTexture;
 		GXTexObj *bannerTexture = NULL;
 		uiGameflowLibraryArtwork_t artwork;
 
-		if(distance >= 1.5f) {
+		if(!cards[i].art) {
 			continue;
 		}
 		posterTexture = _GameflowPosterTexture(cards[i].record);
@@ -3462,24 +3658,38 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		}
 		_GameflowDrawFallback(&cards[i], artwork, bannerTexture, reveal);
 	}
+	/* Every card that shows its art carries the mark, sized to the card. */
 	for(i = 0u; i < count; ++i) {
-		if(fabsf(cards[i].visualSlot) < 1.5f &&
+		if(cards[i].art &&
 			(cards[i].record->flags & UI_GAMEFLOW_CARD_CUSTOM)) {
 			_GameflowDrawCustomMark(&cards[i], reveal);
 		}
+	}
+
+	if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
+		_GameflowDrawGridHighlight(frame,
+			reveal * (1.0f - frame->detailProgress));
 	}
 
 	selectedRecord = _GameflowFindRecord(&data->snapshot,
 		frame->selectedIndex, &selectedRecordIndex);
 	previousRecord = _GameflowFindRecord(&data->snapshot,
 		frame->previousIndex, &previousRecordIndex);
-	titleTravel = _GameflowClamp(fabsf(frame->carouselTravel), 0.0f, 1.0f);
+	titleTravel = fabsf(frame->carouselTravel);
+	if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
+		/* The title changes as the highlight reaches the new card. */
+		float across = fabsf(frame->columnPosition - (float)(
+			frame->selectedIndex % data->snapshot.columns));
+		titleTravel = across > titleTravel ? across : titleTravel;
+	}
+	titleTravel = _GameflowClamp(titleTravel, 0.0f, 1.0f);
 	_GameflowDrawMetadata(previousRecord, previousRecord != NULL ?
 		&data->cardPresentation[previousRecordIndex] : NULL,
-		titleTravel * (1.0f - frame->detailProgress), reveal);
+		titleTravel * (1.0f - frame->detailProgress), reveal, layout);
 	_GameflowDrawMetadata(selectedRecord, selectedRecord != NULL ?
 		&data->cardPresentation[selectedRecordIndex] : NULL,
-		(1.0f - titleTravel) * (1.0f - frame->detailProgress), reveal);
+		(1.0f - titleTravel) * (1.0f - frame->detailProgress), reveal,
+		layout);
 
 	UICommandRail_Gameflow(frame->detailProgress, &commandRail);
 	_GameflowDrawDetailDashboard(detail, &data->detailPresentation,
@@ -3488,13 +3698,24 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		GXColor label = {177, 168, 220,
 			_GameflowAlpha(180.0f * reveal *
 			(1.0f - frame->detailProgress))};
-		drawStringMedium(320, 70, "GAME LIBRARY", 0.50f, ALIGN_CENTER, label);
+		if(layout == UI_GAMEFLOW_LAYOUT_VERTICAL) {
+			drawStringMedium(262, 177, "GAME LIBRARY", 0.42f, ALIGN_LEFT,
+				label);
+		}
+		else if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
+			drawStringMedium(320, 40, "GAME LIBRARY", 0.46f, ALIGN_CENTER,
+				label);
+		}
+		else {
+			drawStringMedium(320, 70, "GAME LIBRARY", 0.50f, ALIGN_CENTER,
+				label);
+		}
 		if(commandRail.owner == UI_COMMAND_RAIL_LIBRARY &&
 				commandRail.alpha > 0.001f) {
 			GXColor command = label;
 			command.a = _GameflowAlpha(180.0f * reveal * commandRail.alpha);
 			_DrawHintText(320, 428,
-				"D-PAD  BROWSE   A  OPEN   X  BACK   B  HOME",
+				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   X  BACK   B  HOME",
 				0.46f, ALIGN_CENTER, command);
 		}
 	}
@@ -3873,6 +4094,7 @@ void DrawUpdateFileBrowserButton(uiDrawObj_t *evt, int mode) {
 static bool _GameflowSnapshotValid(const uiGameflowRenderSnapshot_t *snapshot)
 {
 	bool hasSelected = false;
+	bool grid;
 	u32 i;
 	u32 j;
 
@@ -3880,14 +4102,25 @@ static bool _GameflowSnapshotValid(const uiGameflowRenderSnapshot_t *snapshot)
 		snapshot->selection.selectedIndex >= snapshot->selection.itemCount ||
 		snapshot->recordCount == 0u ||
 		snapshot->recordCount > UI_GAMEFLOW_RENDER_SLOTS ||
-		snapshot->recordCount > snapshot->selection.itemCount) {
+		snapshot->recordCount > snapshot->selection.itemCount ||
+		snapshot->layout >= UI_GAMEFLOW_LAYOUT_COUNT) {
+		return false;
+	}
+	/* A grid names its columns; the carousels keep their seven cards. */
+	grid = snapshot->layout == UI_GAMEFLOW_LAYOUT_GRID;
+	if(grid ? snapshot->columns == 0u ||
+		snapshot->columns > UI_GAMEFLOW_LIBRARY_GRID_COLUMNS :
+		snapshot->columns != 0u ||
+		snapshot->recordCount > UI_GAMEFLOW_LIBRARY_WINDOW) {
 		return false;
 	}
 	for(i = 0u; i < snapshot->recordCount; ++i) {
 		const uiGameflowCardSnapshot_t *record = &snapshot->records[i];
 		if(!(record->flags & UI_GAMEFLOW_CARD_VALID) ||
 			record->libraryIndex >= snapshot->selection.itemCount ||
-			record->relativeSlot < -3 || record->relativeSlot > 3) {
+			record->relativeSlot < -3 || record->relativeSlot > 3 ||
+			(grid && (record->column >= snapshot->columns ||
+			record->relativeSlot < -2 || record->relativeSlot > 2))) {
 			return false;
 		}
 		if(record->libraryIndex == snapshot->selection.selectedIndex &&
@@ -3980,11 +4213,21 @@ static bool _GameflowOpenPosterPack(DEVICEHANDLER_INTERFACE *device)
 void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	const uiGameflowRenderSnapshot_t *snapshot)
 {
-	char ids[UI_ASSETS_WINDOW][8] = {{0}};
+	char ids[UI_ASSETS_SLOTS][8] = {{0}};
 	u32 i;
 
 	if(!_GameflowSnapshotValid(snapshot) ||
 		!_GameflowOpenPosterPack(device)) {
+		return;
+	}
+	if(snapshot->layout == UI_GAMEFLOW_LAYOUT_GRID) {
+		/* The grid window is already nearest first: the focused row from
+		 * the highlight outwards, then the rows around it. */
+		for(i = 0u; i < snapshot->recordCount; ++i) {
+			memcpy(ids[i], snapshot->records[i].gameId, sizeof(ids[i]));
+			ids[i][UI_ASSETS_ID_LEN] = '\0';
+		}
+		UIAssets_RequestWindow(ids, (int)snapshot->recordCount, 0);
 		return;
 	}
 	for(i = 0u; i < snapshot->recordCount; ++i) {
@@ -4012,7 +4255,10 @@ static void _GameflowCopySnapshot(drawGameflowEvent_t *data,
 {
 	u32 i;
 
-	memcpy(&data->snapshot, snapshot, sizeof(data->snapshot));
+	/* The header and the records the window filled, nothing after them. */
+	memcpy(&data->snapshot, snapshot,
+		offsetof(uiGameflowRenderSnapshot_t, records) +
+		snapshot->recordCount * sizeof(snapshot->records[0]));
 	memset(data->cardPresentation, 0, sizeof(data->cardPresentation));
 	for(i = 0u; i < UI_GAMEFLOW_RENDER_SLOTS; ++i) {
 		uiGameflowCardSnapshot_t *record = &data->snapshot.records[i];
@@ -4048,6 +4294,7 @@ uiDrawObj_t* DrawGameflow(const uiGameflowRenderSnapshot_t *snapshot)
 	}
 	memset(eventData, 0, sizeof(*eventData));
 	UIGameflow_Init(&eventData->state);
+	UIGameflow_SetColumns(&eventData->state, snapshot->columns);
 	if(!UIGameflow_ApplySnapshot(&eventData->state, &snapshot->selection,
 		_CurrentMotionMode())) {
 		free(eventData);
@@ -4071,7 +4318,10 @@ bool DrawUpdateGameflow(uiDrawObj_t *evt,
 	LWP_MutexLock(_videomutex);
 	if(!evt->disposed && evt->type == EV_GAMEFLOW && evt->data != NULL) {
 		drawGameflowEvent_t *data = (drawGameflowEvent_t*)evt->data;
-		if(UIGameflow_ApplySnapshot(&data->state, &snapshot->selection,
+		/* An event keeps its layout; a new one needs a new event. */
+		if(data->snapshot.layout == snapshot->layout &&
+			data->snapshot.columns == snapshot->columns &&
+			UIGameflow_ApplySnapshot(&data->state, &snapshot->selection,
 			_CurrentMotionMode())) {
 			_GameflowCopySnapshot(data, snapshot);
 			updated = true;

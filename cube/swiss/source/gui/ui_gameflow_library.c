@@ -371,8 +371,162 @@ size_t UIGameflowLibrary_BuildWindow(uint32_t itemCount,
 		}
 		slots[count].index = index;
 		slots[count].relativeSlot = relativeSlot;
+		slots[count].column = 0u;
 		if(++count == itemCount) {
 			break;
+		}
+	}
+	return count;
+}
+
+static uint32_t gridRows(uint32_t itemCount, uint32_t columns)
+{
+	return itemCount / columns + (itemCount % columns != 0u ? 1u : 0u);
+}
+
+bool UIGameflowLibrary_Move(uint32_t itemCount, uint32_t columns,
+	uint32_t selectedIndex, uiGameflowLibraryMove_t move, uint32_t page,
+	uiGameflowLibraryStep_t *step)
+{
+	uint32_t last;
+	uint32_t rows;
+	uint32_t row;
+	uint32_t target;
+
+	if(step == NULL || itemCount == 0u) {
+		return false;
+	}
+	last = itemCount - 1u;
+	if(selectedIndex > last) {
+		selectedIndex = last;
+	}
+	if(move == UI_GAMEFLOW_LIBRARY_MOVE_PREVIOUS) {
+		target = selectedIndex == 0u ? last : selectedIndex - 1u;
+	}
+	else if(move == UI_GAMEFLOW_LIBRARY_MOVE_NEXT) {
+		target = selectedIndex == last ? 0u : selectedIndex + 1u;
+	}
+	else if(columns == 0u) {
+		/* A ring pages by cards. */
+		if(move == UI_GAMEFLOW_LIBRARY_MOVE_PAGE_BACK) {
+			target = selectedIndex == 0u ? last :
+				(selectedIndex > page ? selectedIndex - page : 0u);
+		}
+		else if(move == UI_GAMEFLOW_LIBRARY_MOVE_PAGE_ON) {
+			target = selectedIndex == last ? 0u :
+				(page > last - selectedIndex ? last : selectedIndex + page);
+		}
+		else {
+			return false;
+		}
+	}
+	else {
+		/* A grid moves by rows and keeps the column. */
+		rows = gridRows(itemCount, columns);
+		row = selectedIndex / columns;
+		switch(move) {
+			case UI_GAMEFLOW_LIBRARY_MOVE_UP:
+				row = row == 0u ? rows - 1u : row - 1u;
+				break;
+			case UI_GAMEFLOW_LIBRARY_MOVE_DOWN:
+				row = row == rows - 1u ? 0u : row + 1u;
+				break;
+			case UI_GAMEFLOW_LIBRARY_MOVE_PAGE_BACK:
+				row = row == 0u ? rows - 1u : (row > page ? row - page : 0u);
+				break;
+			case UI_GAMEFLOW_LIBRARY_MOVE_PAGE_ON:
+				row = row == rows - 1u ? 0u :
+					(page > rows - 1u - row ? rows - 1u : row + page);
+				break;
+			default:
+				return false;
+		}
+		target = row * columns + selectedIndex % columns;
+		if(target > last) {
+			target = last;
+		}
+	}
+	step->index = target;
+	step->direction = move == UI_GAMEFLOW_LIBRARY_MOVE_PREVIOUS ||
+		move == UI_GAMEFLOW_LIBRARY_MOVE_UP ||
+		move == UI_GAMEFLOW_LIBRARY_MOVE_PAGE_BACK ?
+		UI_GAMEFLOW_DIRECTION_PREVIOUS : UI_GAMEFLOW_DIRECTION_NEXT;
+	step->snap = move == UI_GAMEFLOW_LIBRARY_MOVE_PAGE_BACK ||
+		move == UI_GAMEFLOW_LIBRARY_MOVE_PAGE_ON;
+	return true;
+}
+
+size_t UIGameflowLibrary_BuildGridWindow(uint32_t itemCount,
+	uint32_t selectedIndex, uint32_t columns,
+	uiGameflowDirection_t rowDirection,
+	uiGameflowLibraryWindowSlot_t slots[UI_GAMEFLOW_LIBRARY_GRID_WINDOW])
+{
+	static const int8_t rowOrder[5] = {0, -1, 1, -2, 2};
+	uint32_t placed[5];
+	uint32_t rows;
+	uint32_t focusRow;
+	uint32_t focusColumn;
+	size_t placedCount = 0u;
+	size_t count = 0u;
+	size_t i;
+
+	if(slots == NULL || itemCount == 0u || columns == 0u ||
+		columns > UI_GAMEFLOW_LIBRARY_GRID_COLUMNS) {
+		return 0u;
+	}
+	if(selectedIndex >= itemCount) {
+		selectedIndex = itemCount - 1u;
+	}
+	rows = gridRows(itemCount, columns);
+	focusRow = selectedIndex / columns;
+	focusColumn = selectedIndex % columns;
+	for(i = 0u; i < sizeof(rowOrder); ++i) {
+		int8_t relativeRow = rowOrder[i];
+		uint32_t row = (uint32_t)(((int64_t)focusRow + relativeRow +
+			2 * (int64_t)rows) % rows);
+		uint32_t step;
+		size_t j;
+
+		if(rows == 2u && (relativeRow == -1 || relativeRow == 1)) {
+			int8_t side = rowDirection == UI_GAMEFLOW_DIRECTION_NEXT ? -1 :
+				rowDirection == UI_GAMEFLOW_DIRECTION_PREVIOUS ? 1 :
+				(focusRow == 0u ? 1 : -1);
+			if(relativeRow != side) {
+				continue;
+			}
+		}
+		for(j = 0u; j < placedCount && placed[j] != row; ++j) {
+		}
+		if(j != placedCount) {
+			continue;
+		}
+		placed[placedCount++] = row;
+		/* The selected column, then outwards: left before right. */
+		for(step = 0u; step < 2u * columns; ++step) {
+			uint32_t offset = (step + 1u) / 2u;
+			uint32_t column;
+			uint32_t index;
+
+			if(step % 2u == 1u) {
+				if(offset > focusColumn) {
+					continue;
+				}
+				column = focusColumn - offset;
+			}
+			else {
+				column = focusColumn + offset;
+				if(column >= columns) {
+					continue;
+				}
+			}
+			index = row * columns + column;
+			if(index >= itemCount) {
+				continue;
+			}
+			slots[count].index = index;
+			slots[count].relativeSlot = relativeRow;
+			slots[count].column = (uint8_t)column;
+			count++;
 		}
 	}
 	return count;

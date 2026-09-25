@@ -82,6 +82,7 @@ enum SETTINGS_INTERFACE {
 	SET_MENU_SFX,
 	SET_AUTOBOOT,
 	SET_FLATTEN_DIR,
+	SET_LIBRARY_LAYOUT,
 	SET_PAGE_2_BACK,
 	SET_PAGE_2_NEXT,
 	SET_PAGE_2_SAVE,
@@ -224,6 +225,7 @@ extern char *bs2BootStr[];
 extern char *recentListLevelStr[];
 extern char *uiColorStr[];
 extern char *faceIconStr[];
+extern char *libraryLayoutStr[];
 
 int show_settings(int page, int option, ConfigEntry *config);
 int show_settings_view(int view, int option, ConfigEntry *config);

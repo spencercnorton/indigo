@@ -123,12 +123,12 @@ static struct {
 	uiAssetsSource_t src;
 	uiAssetsSync_t sync;
 	u32 (*nowMs)(void);
-	u8 *arena;         /* UI_ASSETS_WINDOW * UI_ASSETS_POSTER_BYTES, 32-aligned */
+	u8 *arena;         /* UI_ASSETS_SLOTS * UI_ASSETS_POSTER_BYTES, 32-aligned */
 	u8 *index;         /* recordCount * PAK_RECORD_SIZE raw big-endian records */
 	u32 recordCount;
 	u32 dataOffset;
 	u32 fileLength;
-	uiAssetSlot_t slots[UI_ASSETS_WINDOW];
+	uiAssetSlot_t slots[UI_ASSETS_SLOTS];
 } ua;
 
 /* Menu-thread-only critical-section entry/exit. Video APIs never call
@@ -246,7 +246,7 @@ static s32 resolveRecord(const char *id, bool *universal) {
 
 static uiAssetSlot_t *slotForRecord(s32 recordPos) {
 	int i;
-	for (i = 0; i < UI_ASSETS_WINDOW; i++) {
+	for (i = 0; i < UI_ASSETS_SLOTS; i++) {
 		if (ua.slots[i].state != SLOT_EMPTY && ua.slots[i].recordPos == recordPos)
 			return &ua.slots[i];
 	}
@@ -256,7 +256,7 @@ static uiAssetSlot_t *slotForRecord(s32 recordPos) {
 /* Stale handles (evicted, cancelled, shut down) resolve to NULL here. */
 static uiAssetSlot_t *slotFromHandle(uiPosterHandle_t handle) {
 	uiAssetSlot_t *slot;
-	if (handle.slot >= UI_ASSETS_WINDOW)
+	if (handle.slot >= UI_ASSETS_SLOTS)
 		return NULL;
 	slot = &ua.slots[handle.slot];
 	if (slot->generation != handle.generation)
@@ -276,7 +276,7 @@ static void evictSlot(uiAssetSlot_t *slot) {
 
 static void invalidateAll(void) {
 	int i;
-	for (i = 0; i < UI_ASSETS_WINDOW; i++)
+	for (i = 0; i < UI_ASSETS_SLOTS; i++)
 		evictSlot(&ua.slots[i]);
 }
 
@@ -423,7 +423,7 @@ s32 UIAssets_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync) {
 
 	if (!ua.arenaReady) {
 		ua.arena = UIA_ALLOC_ALIGNED32(
-			(u32)UI_ASSETS_WINDOW * UI_ASSETS_POSTER_BYTES);
+			(u32)UI_ASSETS_SLOTS * UI_ASSETS_POSTER_BYTES);
 		if (!ua.arena) {
 			err = UI_ASSETS_ERR_NOMEM;
 			goto fail;
@@ -442,7 +442,7 @@ s32 UIAssets_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync) {
 	ua.src = *source;
 	ua.nowMs = nowMs;
 	if (!ua.arenaReady) {
-		for (i = 0; i < UI_ASSETS_WINDOW; i++)
+		for (i = 0; i < UI_ASSETS_SLOTS; i++)
 			ua.slots[i].data =
 				ua.arena + (size_t)i * UI_ASSETS_POSTER_BYTES;
 		ua.arenaReady = true;
@@ -473,7 +473,7 @@ void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected) {
 	struct {
 		s32 recordPos;
 		u8 distance;
-	} want[UI_ASSETS_WINDOW];
+	} want[UI_ASSETS_SLOTS];
 	int wantCount = 0;
 	int i, j;
 
@@ -481,8 +481,8 @@ void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected) {
 		return;
 	if (count < 0)
 		count = 0;
-	if (count > UI_ASSETS_WINDOW)
-		count = UI_ASSETS_WINDOW;
+	if (count > UI_ASSETS_SLOTS)
+		count = UI_ASSETS_SLOTS;
 	if (selected < 0)
 		selected = 0;
 	if (selected >= count && count > 0)
@@ -522,7 +522,7 @@ void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected) {
 	/* Keep slots already holding wanted records (including FAILED ones:
 	 * a corrupt poster stays corrupt until the pack changes, so don't
 	 * retry-loop); evict unpinned slots that fell out of the window. */
-	for (i = 0; i < UI_ASSETS_WINDOW; i++) {
+	for (i = 0; i < UI_ASSETS_SLOTS; i++) {
 		uiAssetSlot_t *slot = &ua.slots[i];
 		bool wanted = false;
 		if (slot->state == SLOT_EMPTY)
@@ -553,7 +553,7 @@ void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected) {
 		}
 		if (best < 0)
 			break;
-		for (i = 0; i < UI_ASSETS_WINDOW; i++) {
+		for (i = 0; i < UI_ASSETS_SLOTS; i++) {
 			if (ua.slots[i].state == SLOT_EMPTY) {
 				freeSlot = &ua.slots[i];
 				break;
@@ -596,7 +596,7 @@ bool UIAssets_Poll(void) {
 		return false;
 	}
 	now = ua.nowMs();
-	for (i = 0; i < UI_ASSETS_WINDOW; i++) {
+	for (i = 0; i < UI_ASSETS_SLOTS; i++) {
 		uiAssetSlot_t *candidate = &ua.slots[i];
 		if (candidate->state != SLOT_PENDING)
 			continue;
@@ -658,7 +658,7 @@ bool UIAssets_Poll(void) {
 		}
 	}
 	pending = false;
-	for (i = 0; i < UI_ASSETS_WINDOW; i++) {
+	for (i = 0; i < UI_ASSETS_SLOTS; i++) {
 		if (ua.slots[i].state == SLOT_PENDING) {
 			pending = true;
 			break;
@@ -789,7 +789,7 @@ s32 UIAssets_DisposeAfterVideoStop(void) {
 	oldArena = ua.arena;
 	ua.arena = NULL;
 	ua.arenaReady = false;
-	for (i = 0; i < UI_ASSETS_WINDOW; i++) {
+	for (i = 0; i < UI_ASSETS_SLOTS; i++) {
 		ua.slots[i].state = SLOT_EMPTY;
 		ua.slots[i].pinCount = 0;
 		ua.slots[i].distance = 0;
@@ -813,7 +813,7 @@ s32 UIAssets_DisposeAfterVideoStop(void) {
 u32 UIAssets_MemoryFootprint(void) {
 	u32 total = 0;
 	if (ua.arenaReady)
-		total += (u32)UI_ASSETS_WINDOW * UI_ASSETS_POSTER_BYTES;
+		total += (u32)UI_ASSETS_SLOTS * UI_ASSETS_POSTER_BYTES;
 	if (ua.index)
 		total += ua.recordCount * PAK_RECORD_SIZE;
 	return total;
@@ -822,7 +822,7 @@ u32 UIAssets_MemoryFootprint(void) {
 #ifdef UI_ASSETS_HOST_BUILD
 
 void UIAssetsTest_ForceGeneration(u16 slot, u32 generation) {
-	if (slot < UI_ASSETS_WINDOW)
+	if (slot < UI_ASSETS_SLOTS)
 		ua.slots[slot].generation = generation;
 }
 

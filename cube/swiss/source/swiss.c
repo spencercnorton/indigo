@@ -703,6 +703,8 @@ typedef struct {
 	u32 focusIndex;
 	int knownCheatCount;
 	bool cheatsScanned;
+	/* Y in the Library: Detail opens this game's settings first, once. */
+	bool openSettings;
 	char gameId[UI_GAMEFLOW_DETAIL_ID_LENGTH + 1u];
 } gameflowLaunchContext_t;
 
@@ -1185,9 +1187,10 @@ static void gameflowProtectMetaFile(const file_handle *file)
 
 static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 	file_handle **directory, int numFiles, uiGameflowLibraryMode_t mode,
-	uiGameflowDirection_t directionHint, bool snapTransition)
+	uiGameflowLayout_t layout, uiGameflowDirection_t directionHint,
+	uiGameflowDirection_t rowDirection, bool snapTransition)
 {
-	uiGameflowLibraryWindowSlot_t slots[UI_GAMEFLOW_LIBRARY_WINDOW];
+	uiGameflowLibraryWindowSlot_t slots[UI_GAMEFLOW_LIBRARY_GRID_WINDOW];
 	size_t count;
 	size_t i;
 
@@ -1195,7 +1198,8 @@ static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 		curSelection < 0 || curSelection >= numFiles) {
 		return false;
 	}
-	memset(snapshot, 0, sizeof(*snapshot));
+	/* Only the records the window fills are cleared, then copied. */
+	memset(snapshot, 0, offsetof(uiGameflowRenderSnapshot_t, records));
 	/* filemeta's bounded cache protects this global inclusive sorted-entry range
 	 * from eviction. Retained Gameflow wraps, so at minimum pin the selected
 	 * entry whose metadata is borrowed by activation. */
@@ -1207,8 +1211,38 @@ static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 	snapshot->selection.snapTransition = snapTransition;
 	gameflowCopyText(snapshot->deviceName, sizeof(snapshot->deviceName),
 		DeviceDisplayName(devices[DEVICE_CUR]), sizeof(snapshot->deviceName));
-	count = UIGameflowLibrary_BuildWindow((u32)numFiles,
-		(u32)curSelection, directionHint, slots);
+	snapshot->layout = (u8)layout;
+	if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
+		size_t kept = 0u;
+
+		snapshot->columns = UI_GAMEFLOW_LIBRARY_GRID_COLUMNS;
+		count = UIGameflowLibrary_BuildGridWindow((u32)numFiles,
+			(u32)curSelection, UI_GAMEFLOW_LIBRARY_GRID_COLUMNS, rowDirection,
+			slots);
+		/* A grid's rows two away are off screen until a scroll brings them
+		 * one row away. Take a game there only once its metadata is in, so
+		 * no press waits on reading them. */
+		for(i = 0u; i < count; ++i) {
+			file_handle *file = directory[slots[i].index];
+			bool unread;
+
+			if(file == NULL) {
+				return false;
+			}
+			lockFile(file);
+			unread = file->fileType == IS_FILE && file->meta == NULL;
+			unlockFile(file);
+			if(!unread || (slots[i].relativeSlot >= -1 &&
+				slots[i].relativeSlot <= 1)) {
+				slots[kept++] = slots[i];
+			}
+		}
+		count = kept;
+	}
+	else {
+		count = UIGameflowLibrary_BuildWindow((u32)numFiles,
+			(u32)curSelection, directionHint, slots);
+	}
 	snapshot->recordCount = (u32)count;
 	/* Read the settings files once, outside the per-card file locks. */
 	settings_game_files_load();
@@ -1219,8 +1253,10 @@ static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 		if(file == NULL) {
 			return false;
 		}
+		memset(record, 0, sizeof(*record));
 		record->libraryIndex = slots[i].index;
 		record->relativeSlot = slots[i].relativeSlot;
+		record->column = slots[i].column;
 		lockFile(file);
 		gameflowSnapshotRecord(record, file, mode);
 		unlockFile(file);
@@ -1431,7 +1467,8 @@ static const uiGameflowCardSnapshot_t *gameflowSelectedRecord(
 }
 
 static bool gameflowResolveAndLoadFolder(file_handle *folder,
-	uiDrawObj_t *event, const uiGameflowRenderSnapshot_t *snapshot)
+	uiDrawObj_t *event, const uiGameflowRenderSnapshot_t *snapshot,
+	bool openSettings)
 {
 	gameflowLaunchContext_t context;
 	uiPresentationSnapshot_t presentationSnapshot;
@@ -1474,6 +1511,7 @@ static bool gameflowResolveAndLoadFolder(file_handle *folder,
 	memcpy(&context.rootFolder, folder, sizeof(context.rootFolder));
 	context.generation = snapshot->selection.generation;
 	context.focusIndex = snapshot->selection.selectedIndex;
+	context.openSettings = openSettings;
 	memcpy(context.gameId, resolverFolder.gameId, sizeof(context.gameId));
 	context.childCount = folder->device->readDir(&context.rootFolder,
 		&context.children, -1);
@@ -1567,7 +1605,8 @@ static bool gameflowResolveAndLoadFolder(file_handle *folder,
 }
 
 static bool gameflowLoadImageWithContext(file_handle *image,
-	uiDrawObj_t *event, const uiGameflowRenderSnapshot_t *snapshot)
+	uiDrawObj_t *event, const uiGameflowRenderSnapshot_t *snapshot,
+	bool openSettings)
 {
 	gameflowLaunchContext_t context;
 	uiGameflowResolverEntry_t headerEntry;
@@ -1597,6 +1636,7 @@ static bool gameflowLoadImageWithContext(file_handle *image,
 	context.primary = image;
 	context.generation = snapshot->selection.generation;
 	context.focusIndex = snapshot->selection.selectedIndex;
+	context.openSettings = openSettings;
 	memcpy(context.gameId, headerEntry.gameId, sizeof(context.gameId));
 	gameflowProtectMetaFile(image);
 	gameflowPopulateResolvedMeta(image, &headerEntry);
@@ -1691,6 +1731,38 @@ void drawFilesCarousel(file_handle** directory, int num_files, uiDrawObj_t *cont
 	}
 }
 
+/* The Library's layout from Setup; anything unknown is the carousel. */
+static uiGameflowLayout_t gameflowLayout(void)
+{
+	return swissSettings.libraryLayout > UI_GAMEFLOW_LAYOUT_HORIZONTAL &&
+		swissSettings.libraryLayout < UI_GAMEFLOW_LAYOUT_COUNT ?
+		(uiGameflowLayout_t)swissSettings.libraryLayout :
+		UI_GAMEFLOW_LAYOUT_HORIZONTAL;
+}
+
+/* The stick follows the layout: across the carousel, up and down the
+ * column, both ways in the grid. */
+static u32 gameflowMenuInputPolicy(uiGameflowLayout_t layout)
+{
+	switch(layout) {
+		case UI_GAMEFLOW_LAYOUT_VERTICAL:
+			return UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT;
+		case UI_GAMEFLOW_LAYOUT_GRID:
+			return UI_MENU_INPUT_AXIS_BOTH | UI_MENU_INPUT_REPEAT;
+		default:
+			return UI_MENU_INPUT_AXIS_HORIZONTAL | UI_MENU_INPUT_REPEAT;
+	}
+}
+
+/* The layout the Library shows here, for the cube's pose: the retained
+ * Library's own, or the carousel of the legacy browsers. */
+static uiGameflowLayout_t gameflowSceneLayout(void)
+{
+	return gameflowLibraryMode(getSortedDirEntries(),
+		getSortedDirEntryCount()) != UI_GAMEFLOW_LIBRARY_NONE ?
+		gameflowLayout() : UI_GAMEFLOW_LAYOUT_HORIZONTAL;
+}
+
 // Carousel (one main file in the middle, entries to either side)
 uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
 {
@@ -1706,11 +1778,15 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 	uiGameflowLibraryMode_t gameflowMode = gameflowLibraryMode(directory, num_files);
 	bool useGameflow = gameflowMode != UI_GAMEFLOW_LIBRARY_NONE;
 	uiGameflowDirection_t gameflowDirection = UI_GAMEFLOW_DIRECTION_NONE;
+	/* The last move between grid rows: a two-row grid keeps its other row
+	 * on the side that move left it. */
+	uiGameflowDirection_t gameflowRowDirection = UI_GAMEFLOW_DIRECTION_NONE;
 	bool gameflowSnapTransition = false;
 	uiGameflowRenderSnapshot_t *gameflowSnapshot = useGameflow ?
 		memalign(32, sizeof(uiGameflowRenderSnapshot_t)) : NULL;
 	if(gameflowSnapshot == NULL) {
 		useGameflow = false;
+		UIScene_RequestLibraryLayout(UI_GAMEFLOW_LAYOUT_HORIZONTAL);
 	}
 	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPRIGHT);
 	DrawPublish(loadingBox);
@@ -1719,11 +1795,17 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 	u32 menuInputRetrace = VIDEO_GetRetraceCount();
 	UIMenuInput_Init(&menuInput);
 	while(1) {
+		/* The legacy carousel keeps its own left-and-right navigation. */
+		uiGameflowLayout_t layout = useGameflow ? gameflowLayout() :
+			UI_GAMEFLOW_LAYOUT_HORIZONTAL;
 		DrawUpdateProgressLoading(loadingBox, +1);
 		if(useGameflow) {
 			if(!gameflowBuildSnapshot(gameflowSnapshot, directory, num_files,
-				gameflowMode, gameflowDirection, gameflowSnapTransition)) {
+				gameflowMode, layout, gameflowDirection, gameflowRowDirection,
+				gameflowSnapTransition)) {
 				useGameflow = false;
+				layout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
+				UIScene_RequestLibraryLayout(layout);
 			}
 			else {
 				gameflowDirection = UI_GAMEFLOW_DIRECTION_NONE;
@@ -1752,15 +1834,16 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 		}
 		DrawUpdateProgressLoading(loadingBox, -1);
 		
-		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z;
+		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|
+			(useGameflow ? PAD_BUTTON_Y : 0u);
+		u32 menuInputPolicy = gameflowMenuInputPolicy(layout);
 		u32 browserButtons;
 		uiMenuInputDirection_t analog;
 		while(1) {
 			browserButtons = padsButtonsHeld();
 			analog = padsMenuInputPoll(&menuInput,
 				menuInputElapsedMicroseconds(&menuInputRetrace),
-				UI_MENU_INPUT_AXIS_HORIZONTAL | UI_MENU_INPUT_REPEAT,
-				(browserButtons & waitButtons) != 0u);
+				menuInputPolicy, (browserButtons & waitButtons) != 0u);
 			if((browserButtons & waitButtons) != 0u ||
 					analog != UI_MENU_INPUT_NONE) {
 				break;
@@ -1773,46 +1856,79 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			}
 		}
 		bool retainedActivation = useGameflow &&
-			(browserButtons & BUTTON_A);
-		/* A owns a retained-library input frame. Moving curSelection first
-		 * would pair the new directory entry with the previous immutable
-		 * snapshot and bypass the strict folder resolver/dashboard. */
+			(browserButtons & (BUTTON_A | PAD_BUTTON_Y));
+		/* Y on a game opens its settings through its Detail: never on the
+		 * parent card, and A wins a press of both. */
+		bool openSettings = useGameflow && !(browserButtons & BUTTON_A) &&
+			(browserButtons & PAD_BUTTON_Y) &&
+			UIGameflowLibrary_UsesRetainedDetail(gameflowMode,
+				gameflowEntryType(directory[curSelection]));
+		/* A and Y own a retained-library input frame. Moving curSelection
+		 * first would pair the new directory entry with the previous
+		 * immutable snapshot and bypass the strict folder resolver/dashboard. */
 		if(!retainedActivation) {
-			if((browserButtons & BUTTON_LEFT) ||
-					analog == UI_MENU_INPUT_LEFT) {
-				curSelection = (--curSelection < 0) ? num_files-1 : curSelection;
-				gameflowDirection = UI_GAMEFLOW_DIRECTION_PREVIOUS;
-				gameflowSnapTransition = false;
+			bool left = (browserButtons & BUTTON_LEFT) ||
+				analog == UI_MENU_INPUT_LEFT;
+			bool right = (browserButtons & BUTTON_RIGHT) ||
+				analog == UI_MENU_INPUT_RIGHT;
+			bool up = (browserButtons & BUTTON_UP) ||
+				analog == UI_MENU_INPUT_UP;
+			bool down = (browserButtons & BUTTON_DOWN) ||
+				analog == UI_MENU_INPUT_DOWN;
+			uiGameflowLibraryMove_t moves[6];
+			u32 columns = layout == UI_GAMEFLOW_LAYOUT_GRID ?
+				UI_GAMEFLOW_LIBRARY_GRID_COLUMNS : 0u;
+			int moveCount = 0;
+
+			/* Each layout's presses, applied in this order. */
+			if(layout == UI_GAMEFLOW_LAYOUT_VERTICAL) {
+				/* The column: up and down step, left and right page. */
+				if(up) moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_PREVIOUS;
+				if(down) moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_NEXT;
+				if(left || (browserButtons & BUTTON_L))
+					moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_PAGE_BACK;
+				if(right || (browserButtons & BUTTON_R))
+					moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_PAGE_ON;
 			}
-			if((browserButtons & BUTTON_RIGHT) ||
-					analog == UI_MENU_INPUT_RIGHT) {
-				curSelection = (curSelection + 1) % num_files;
-				gameflowDirection = UI_GAMEFLOW_DIRECTION_NEXT;
-				gameflowSnapTransition = false;
+			else if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
+				/* The grid: every direction steps, L and R page. */
+				if(left) moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_PREVIOUS;
+				if(right) moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_NEXT;
+				if(up) moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_UP;
+				if(down) moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_DOWN;
+				if(browserButtons & BUTTON_L)
+					moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_PAGE_BACK;
+				if(browserButtons & BUTTON_R)
+					moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_PAGE_ON;
 			}
-			if(browserButtons & (BUTTON_UP|BUTTON_L)) {
-				gameflowDirection = UI_GAMEFLOW_DIRECTION_PREVIOUS;
-				gameflowSnapTransition = true;
-				if(curSelection == 0) {
-					curSelection = num_files-1;
-				}
-				else {
-					curSelection = (curSelection - FILES_PER_PAGE_CAROUSEL < 0) ? 0 : curSelection - FILES_PER_PAGE_CAROUSEL;
-				}
+			else {
+				/* The carousel: left and right step, up and down page. */
+				if(left) moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_PREVIOUS;
+				if(right) moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_NEXT;
+				if(up || (browserButtons & BUTTON_L))
+					moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_PAGE_BACK;
+				if(down || (browserButtons & BUTTON_R))
+					moves[moveCount++] = UI_GAMEFLOW_LIBRARY_MOVE_PAGE_ON;
 			}
-			if(browserButtons & (BUTTON_DOWN|BUTTON_R)) {
-				gameflowDirection = UI_GAMEFLOW_DIRECTION_NEXT;
-				gameflowSnapTransition = true;
-				if(curSelection == num_files-1) {
-					curSelection = 0;
+			for(int move = 0; move < moveCount; ++move) {
+				uiGameflowLibraryStep_t step;
+
+				if(!UIGameflowLibrary_Move((u32)num_files, columns,
+					(u32)curSelection, moves[move], columns ?
+					UI_GAMEFLOW_LIBRARY_GRID_ROWS : FILES_PER_PAGE_CAROUSEL,
+					&step)) {
+					continue;
 				}
-				else {
-					curSelection = (curSelection + FILES_PER_PAGE_CAROUSEL > num_files-1) ? num_files-1 : (curSelection + FILES_PER_PAGE_CAROUSEL) % num_files;
+				if(columns && step.index / columns != (u32)curSelection / columns) {
+					gameflowRowDirection = step.direction;
 				}
+				curSelection = (int)step.index;
+				gameflowDirection = step.direction;
+				gameflowSnapTransition = step.snap;
 			}
 		}
 		
-		if(browserButtons & BUTTON_A) {
+		if((browserButtons & BUTTON_A) || openSettings) {
 			if(useGameflow && UIGameflowLibrary_UsesRetainedDetail(
 				gameflowMode,
 				gameflowEntryType(directory[curSelection]))) {
@@ -1839,18 +1955,23 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 					folderSnapshot.meta = NULL;
 					folderSnapshot.uiObj = NULL;
 					handled = gameflowResolveAndLoadFolder(&folderSnapshot,
-						filePanel, gameflowSnapshot);
+						filePanel, gameflowSnapshot, openSettings);
 				}
 				else {
 					lockFile(directory[curSelection]);
 					handled = gameflowLoadImageWithContext(
 						directory[curSelection], filePanel,
-						gameflowSnapshot);
+						gameflowSnapshot, openSettings);
 					unlockFile(directory[curSelection]);
 				}
 				if(handled) {
 					break;
 				}
+			}
+			if(openSettings) {
+				/* Y has no legacy meaning: it never opens or boots a file. */
+				while(padsButtonsHeld() & PAD_BUTTON_Y) VIDEO_WaitVSync();
+				break;
 			}
 			lockFile(directory[curSelection]);
 			//go into a folder or select a file
@@ -1932,7 +2053,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 		while (padsButtonsHeld() & waitButtons) {
 			(void)padsMenuInputPoll(&menuInput,
 				menuInputElapsedMicroseconds(&menuInputRetrace),
-				UI_MENU_INPUT_AXIS_HORIZONTAL | UI_MENU_INPUT_REPEAT, true);
+				menuInputPolicy, true);
 			VIDEO_WaitVSync();
 		}
 	}
@@ -4065,13 +4186,17 @@ static int gameflow_info_game(ConfigEntry *config,
 		PAD_BUTTON_Y | BUTTON_Z | BUTTON_R;
 	uiMenuActionState_t detailInput;
 	int numCheats;
+	bool openSettings;
 
 	/* Preserve all Cubeboot and auto-boot behavior in the untouched public
-	 * implementation, including its cancellation semantics. */
+	 * implementation, including its cancellation semantics. Y's settings
+	 * are never a boot, so they bypass Boot without prompts. */
 	if(context == NULL || swissSettings.cubebootInvoked ||
-		swissSettings.autoBoot) {
+		(swissSettings.autoBoot && !context->openSettings)) {
 		return info_game(config);
 	}
+	openSettings = context->openSettings;
+	context->openSettings = false;
 
 	numCheats = findCheatsReadOnly();
 	context->cheatsScanned = true;
@@ -4085,7 +4210,9 @@ static int gameflow_info_game(ConfigEntry *config,
 		context->knownCheatCount = 0;
 	}
 	if(!gameflowPublishDetail(config, context)) {
-		return info_game(config);
+		/* Without the retained Detail, Y goes back to the Library: the
+		 * legacy screen would boot under Boot without prompts. */
+		return openSettings ? 0 : info_game(config);
 	}
 	DrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_DETAIL);
 	/* The entry A press is consumed, but held L and the C-stick cannot
@@ -4097,27 +4224,34 @@ static int gameflow_info_game(ConfigEntry *config,
 		uiGameflowDetailSnapshot_t actionSnapshot;
 		uiGameflowDetailAction_t action;
 
-		do {
-			VIDEO_WaitVSync();
-			buttons = UIMenuAction_Update(&detailInput, padsButtonsHeld(),
-				detailButtons, BUTTON_L, BUTTON_B);
-		} while(buttons == 0u);
-		memset(&actionSnapshot, 0, sizeof(actionSnapshot));
-		actionSnapshot.flags = UI_GAMEFLOW_DETAIL_VALID |
-			UI_GAMEFLOW_DETAIL_CAN_SETTINGS |
-			(devices[DEVICE_CUR] != &__device_wode ?
-				UI_GAMEFLOW_DETAIL_CAN_LIBRARY : 0u) |
-			(context->knownCheatCount > 0 ?
-				UI_GAMEFLOW_DETAIL_CAN_CHEATS : 0u) |
-			(devices[DEVICE_CONFIG] != NULL ?
-				UI_GAMEFLOW_DETAIL_CAN_AUTOLOAD : 0u) |
-			(is_verifiable_disc(&GCMDisk) ?
-				UI_GAMEFLOW_DETAIL_CAN_VERIFY : 0u) |
-			(((devices[DEVICE_CUR]->location & LOC_DVD_CONNECTOR) &&
-				!config->preferCleanBoot) ?
-				UI_GAMEFLOW_DETAIL_CAN_CLEAN_BOOT : 0u);
-		action = UIGameflowDetail_ResolveAction(&actionSnapshot,
-			gameflowDetailInput(buttons));
+		if(openSettings) {
+			/* Entered with Y: the settings, then this Detail. */
+			openSettings = false;
+			action = UI_GAMEFLOW_DETAIL_ACTION_SETTINGS;
+		}
+		else {
+			do {
+				VIDEO_WaitVSync();
+				buttons = UIMenuAction_Update(&detailInput, padsButtonsHeld(),
+					detailButtons, BUTTON_L, BUTTON_B);
+			} while(buttons == 0u);
+			memset(&actionSnapshot, 0, sizeof(actionSnapshot));
+			actionSnapshot.flags = UI_GAMEFLOW_DETAIL_VALID |
+				UI_GAMEFLOW_DETAIL_CAN_SETTINGS |
+				(devices[DEVICE_CUR] != &__device_wode ?
+					UI_GAMEFLOW_DETAIL_CAN_LIBRARY : 0u) |
+				(context->knownCheatCount > 0 ?
+					UI_GAMEFLOW_DETAIL_CAN_CHEATS : 0u) |
+				(devices[DEVICE_CONFIG] != NULL ?
+					UI_GAMEFLOW_DETAIL_CAN_AUTOLOAD : 0u) |
+				(is_verifiable_disc(&GCMDisk) ?
+					UI_GAMEFLOW_DETAIL_CAN_VERIFY : 0u) |
+				(((devices[DEVICE_CUR]->location & LOC_DVD_CONNECTOR) &&
+					!config->preferCleanBoot) ?
+					UI_GAMEFLOW_DETAIL_CAN_CLEAN_BOOT : 0u);
+			action = UIGameflowDetail_ResolveAction(&actionSnapshot,
+				gameflowDetailInput(buttons));
+		}
 
 		if(action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||
 			action == UI_GAMEFLOW_DETAIL_ACTION_CLEAN_BOOT) {
@@ -4551,6 +4685,7 @@ void menu_loop()
 			}
 		}
 		if(devices[DEVICE_CUR] != NULL && curMenuLocation==ON_FILLIST) {
+			UIScene_RequestLibraryLayout(gameflowSceneLayout());
 			UIScene_Request(UI_SCENE_LIBRARY);
 			int fileBrowserType = swissSettings.fileBrowserType;
 			if(!fnmatch("*/apps", curDir.name, FNM_PATHNAME | FNM_CASEFOLD | FNM_LEADING_DIR)) {

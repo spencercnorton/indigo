@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "ui_gameflow.h"
 #include "ui_home.h"
 #include "ui_motion.h"
 
@@ -58,6 +59,10 @@ void UIScene_Request(uiSceneId_t scene);
 /* Publish one complete reducer snapshot. Absolute orientation preserves mixed
  * axis commands even when several menu updates coalesce before one frame. */
 void UIScene_RequestHome(const uiHomeState_t *home);
+/* The Library's cube pose follows its layout: Horizontal keeps the
+ * carousel's, Vertical tucks the cube behind the selected cover and Grid
+ * moves it out of the grid's way. Unknown layouts are Horizontal. */
+void UIScene_RequestLibraryLayout(uiGameflowLayout_t layout);
 void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode);
 const uiSceneFrame_t *UIScene_Frame(void);
 

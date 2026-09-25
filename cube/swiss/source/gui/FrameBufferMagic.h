@@ -44,7 +44,9 @@ typedef struct uiDrawObj {
 	bool disposed;
 } uiDrawObj_t;
 
-#define UI_GAMEFLOW_RENDER_SLOTS 7u
+/* Enough records for the Grid layout's window, five rows of five
+ * (UI_GAMEFLOW_LIBRARY_GRID_WINDOW); the carousels fill 7 of them. */
+#define UI_GAMEFLOW_RENDER_SLOTS 25u
 #define UI_GAMEFLOW_TITLE_LENGTH 96u
 #define UI_GAMEFLOW_COMPANY_LENGTH 64u
 #define UI_GAMEFLOW_FACTS_LENGTH 64u
@@ -67,17 +69,21 @@ typedef struct {
 	char gameId[8];
 	u64 size;
 	u32 libraryIndex;
+	/* Place on the ring, or the row in a grid (0 is the focused row). */
 	s8 relativeSlot;
 	u8 flags;
-	u8 reserved[10];
+	u8 column;	/* grid only */
+	u8 reserved[9];
 } uiGameflowCardSnapshot_t;
 
 typedef struct {
 	uiGameflowSelectionSnapshot_t selection;
 	u32 recordCount;
 	char deviceName[64];
+	u8 layout;	/* uiGameflowLayout_t */
+	u8 columns;	/* the grid's row length, 0 for a ring */
 	/* Keep records at offset 96 after the explicit snapTransition field. */
-	u8 reserved[8];
+	u8 reserved[6];
 	uiGameflowCardSnapshot_t records[UI_GAMEFLOW_RENDER_SLOTS];
 } uiGameflowRenderSnapshot_t;
 

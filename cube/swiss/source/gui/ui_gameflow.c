@@ -162,11 +162,35 @@ static void refreshFrame(uiGameflowState_t *state)
 		state->carouselSpring.value;
 	frame->detailProgress = clampProgress(state->detailSpring.value);
 	frame->launchProgress = clampProgress(state->launchSpring.value);
+	frame->columnPosition = state->columnSpring.value;
 	frame->hasSnapshot = state->hasSnapshot;
 	frame->selectionPinned = state->selectionPinned;
 	frame->transitioning = !springSettled(&state->carouselSpring) ||
 		!springSettled(&state->detailSpring) ||
-		!springSettled(&state->launchSpring);
+		!springSettled(&state->launchSpring) ||
+		!springSettled(&state->columnSpring);
+}
+
+/* The selection's column in a grid; always 0 on a ring. */
+static float gridColumn(const uiGameflowState_t *state, uint32_t index)
+{
+	return state->columns > 0u ? (float)(index % state->columns) : 0.0f;
+}
+
+/* How far the carousel spring travels: cards on a ring, rows in a grid. */
+static int32_t selectionDelta(const uiGameflowState_t *state,
+	uint32_t previous, uint32_t selected, uint32_t itemCount,
+	uiGameflowDirection_t directionHint)
+{
+	uint32_t rows;
+
+	if(state->columns == 0u) {
+		return ringDelta(previous, selected, itemCount, directionHint);
+	}
+	rows = itemCount / state->columns +
+		(itemCount % state->columns != 0u ? 1u : 0u);
+	return ringDelta(previous / state->columns, selected / state->columns,
+		rows, directionHint);
 }
 
 static void retargetModeSprings(uiGameflowState_t *state,
@@ -194,6 +218,19 @@ void UIGameflow_Init(uiGameflowState_t *state)
 		UI_GAMEFLOW_DETAIL_RESPONSE);
 	UIMotion_SpringInit(&state->launchSpring, 0.0f,
 		UI_GAMEFLOW_LAUNCH_RESPONSE);
+	UIMotion_SpringInit(&state->columnSpring, 0.0f,
+		UI_GAMEFLOW_CAROUSEL_RESPONSE);
+	refreshFrame(state);
+}
+
+void UIGameflow_SetColumns(uiGameflowState_t *state, uint32_t columns)
+{
+	if(state == NULL) {
+		return;
+	}
+	state->columns = columns;
+	UIMotion_SpringSnap(&state->columnSpring,
+		gridColumn(state, state->selectedIndex));
 	refreshFrame(state);
 }
 
@@ -250,6 +287,8 @@ bool UIGameflow_ApplySnapshot(uiGameflowState_t *state,
 		state->pinnedIndex = newSelection;
 		state->direction = UI_GAMEFLOW_DIRECTION_NONE;
 		UIMotion_SpringSnap(&state->carouselSpring, 0.0f);
+		UIMotion_SpringSnap(&state->columnSpring,
+			gridColumn(state, newSelection));
 		retargetModeSprings(state, motionMode);
 		refreshFrame(state);
 		return true;
@@ -263,7 +302,8 @@ bool UIGameflow_ApplySnapshot(uiGameflowState_t *state,
 		state->pinnedIndex = newSelection;
 	}
 
-	delta = ringDelta(oldSelection, newSelection, newCount, directionHint);
+	delta = selectionDelta(state, oldSelection, newSelection, newCount,
+		directionHint);
 	state->previousIndex = oldSelection;
 	state->selectedIndex = newSelection;
 	if(delta > 0) {
@@ -291,6 +331,14 @@ bool UIGameflow_ApplySnapshot(uiGameflowState_t *state,
 		UIMotion_SpringSnap(&state->carouselSpring,
 			state->carouselSpring.target);
 		state->direction = UI_GAMEFLOW_DIRECTION_NONE;
+	}
+	if(snapshot->snapTransition) {
+		UIMotion_SpringSnap(&state->columnSpring,
+			gridColumn(state, newSelection));
+	}
+	else {
+		UIMotion_SpringRetarget(&state->columnSpring,
+			gridColumn(state, newSelection), motionMode);
 	}
 	retargetModeSprings(state, motionMode);
 	refreshFrame(state);
@@ -335,6 +383,8 @@ void UIGameflow_SetMode(uiGameflowState_t *state, uiGameflowMode_t mode,
 	if(motionMode == UI_MOTION_OFF) {
 		UIMotion_SpringSnap(&state->carouselSpring,
 			state->carouselSpring.target);
+		UIMotion_SpringSnap(&state->columnSpring,
+			state->columnSpring.target);
 		state->direction = UI_GAMEFLOW_DIRECTION_NONE;
 	}
 	refreshFrame(state);
@@ -372,6 +422,7 @@ void UIGameflow_Update(uiGameflowState_t *state, float deltaSeconds,
 	UIMotion_SpringUpdate(&state->carouselSpring, deltaSeconds, motionMode);
 	UIMotion_SpringUpdate(&state->detailSpring, deltaSeconds, motionMode);
 	UIMotion_SpringUpdate(&state->launchSpring, deltaSeconds, motionMode);
+	UIMotion_SpringUpdate(&state->columnSpring, deltaSeconds, motionMode);
 	if(springSettled(&state->carouselSpring)) {
 		state->direction = UI_GAMEFLOW_DIRECTION_NONE;
 	}

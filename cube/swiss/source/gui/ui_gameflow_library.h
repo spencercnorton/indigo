@@ -8,6 +8,12 @@
 #include "ui_gameflow.h"
 
 #define UI_GAMEFLOW_LIBRARY_WINDOW 7u
+/* The Grid layout: five posters a row and three rows on screen. Its window
+ * holds the focused row and two rows either side of it, so the row that
+ * scrolls in already has its cards and posters. */
+#define UI_GAMEFLOW_LIBRARY_GRID_COLUMNS 5u
+#define UI_GAMEFLOW_LIBRARY_GRID_ROWS 3u
+#define UI_GAMEFLOW_LIBRARY_GRID_WINDOW 25u
 
 typedef enum {
 	UI_GAMEFLOW_LIBRARY_NONE = 0,
@@ -36,10 +42,30 @@ typedef struct {
 	bool hasGame;
 } uiGameflowLibraryClassifier_t;
 
+/* relativeSlot is the card's place on the ring, or its row in a grid window
+ * (0 is the focused row), where column is its column. */
 typedef struct {
 	uint32_t index;
 	int8_t relativeSlot;
+	uint8_t column;
 } uiGameflowLibraryWindowSlot_t;
+
+/* One press in the Library. Previous and next step one card; up and down
+ * step one grid row; the page moves jump a page. */
+typedef enum {
+	UI_GAMEFLOW_LIBRARY_MOVE_PREVIOUS = 0,
+	UI_GAMEFLOW_LIBRARY_MOVE_NEXT,
+	UI_GAMEFLOW_LIBRARY_MOVE_UP,
+	UI_GAMEFLOW_LIBRARY_MOVE_DOWN,
+	UI_GAMEFLOW_LIBRARY_MOVE_PAGE_BACK,
+	UI_GAMEFLOW_LIBRARY_MOVE_PAGE_ON
+} uiGameflowLibraryMove_t;
+
+typedef struct {
+	uint32_t index;
+	uiGameflowDirection_t direction;
+	bool snap;
+} uiGameflowLibraryStep_t;
 
 typedef enum {
 	UI_GAMEFLOW_LIBRARY_ART_POSTER = 0,
@@ -136,5 +162,34 @@ const char *UIGameflowLibrary_RegionLabel(const char *gameId);
 size_t UIGameflowLibrary_BuildWindow(uint32_t itemCount,
 	uint32_t selectedIndex, uiGameflowDirection_t directionHint,
 	uiGameflowLibraryWindowSlot_t slots[7]);
+
+/*
+ * Where one press moves the selection. columns is 0 for a ring of cards and
+ * the row length for a grid; page is in cards on a ring, rows in a grid.
+ *   Previous/next: one card, from the last card to the first and back.
+ *   Up/down (grid only): the card above or below in the same column, from
+ *     the last row to the first and back. The last row can be short: a
+ *     column it lacks lands on its last card.
+ *   Page back/on: a page, stopping at the first or last card (row), and
+ *     from there to the other end. Pages snap instead of sliding.
+ * Returns false, leaving *step alone, for an empty library or a move the
+ * layout lacks.
+ */
+bool UIGameflowLibrary_Move(uint32_t itemCount, uint32_t columns,
+	uint32_t selectedIndex, uiGameflowLibraryMove_t move, uint32_t page,
+	uiGameflowLibraryStep_t *step);
+
+/*
+ * A grid's cards around the selection: the focused row (0) and two rows
+ * above and below it, each row's cards nearest the selected column first,
+ * with no card twice. The rows wrap, so above the first row is the last
+ * one. With only two rows, the other row goes above after a move down
+ * (rowDirection NEXT) and below after a move up, so the row that was
+ * focused stays where it was; with none yet, it keeps the rows' order.
+ */
+size_t UIGameflowLibrary_BuildGridWindow(uint32_t itemCount,
+	uint32_t selectedIndex, uint32_t columns,
+	uiGameflowDirection_t rowDirection,
+	uiGameflowLibraryWindowSlot_t slots[UI_GAMEFLOW_LIBRARY_GRID_WINDOW]);
 
 #endif

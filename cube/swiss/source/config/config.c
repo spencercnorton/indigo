@@ -518,6 +518,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Source Icon=%s\r\n", faceIconStr[swissSettings.sourceIcon]);
 	fprintf(fp, "Settings Icon=%s\r\n", faceIconStr[swissSettings.settingsIcon]);
 	fprintf(fp, "System Icon=%s\r\n", faceIconStr[swissSettings.systemIcon]);
+	fprintf(fp, "Library Layout=%s\r\n", libraryLayoutStr[swissSettings.libraryLayout]);
 	fprintf(fp, "Init DVD Drive at startup=%s\r\n", swissSettings.initDVDDriveAtStart ? "Yes":"No");
 	fprintf(fp, "Stop DVD Drive motor=%s\r\n", swissSettings.stopMotor ? "Yes":"No");
 	fprintf(fp, "Configure Audio Buffer=%s\r\n", configAudioBufferStr[swissSettings.configAudioBuffer]);
@@ -1365,6 +1366,14 @@ void config_parse_global(char *configData) {
 					for(int i = 0; i < UI_HOME_ICON_COUNT; i++) {
 						if(!strcmp(faceIconStr[i], value)) {
 							swissSettings.systemIcon = i;
+							break;
+						}
+					}
+				}
+				else if(!strcmp("Library Layout", name)) {
+					for(int i = 0; i < UI_GAMEFLOW_LAYOUT_COUNT; i++) {
+						if(!strcmp(libraryLayoutStr[i], value)) {
+							swissSettings.libraryLayout = i;
 							break;
 						}
 					}

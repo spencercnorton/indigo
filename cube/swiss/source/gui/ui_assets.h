@@ -115,7 +115,11 @@ typedef struct {
 
 #include <stdbool.h>
 
+/* The carousels' window: the selected card and three either side. */
 #define UI_ASSETS_WINDOW 7
+/* Poster slots, enough for the Grid layout's window of five rows of five.
+ * A smaller window keeps only its own posters: the others are evicted. */
+#define UI_ASSETS_SLOTS 25
 #define UI_ASSETS_CANVAS_W 256
 #define UI_ASSETS_CANVAS_H 256
 #define UI_ASSETS_CONTENT_W 192
@@ -195,7 +199,7 @@ s32 UIAssets_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync);
 bool UIAssets_Ready(void);
 
 /* Menu thread, lock NOT held. ids: count entries of at least 7 bytes each
- * (6-char ID, NUL-terminated); count <= UI_ASSETS_WINDOW; selected indexes
+ * (6-char ID, NUL-terminated); count <= UI_ASSETS_SLOTS; selected indexes
  * into ids. Slots already holding a requested poster are kept; others are
  * evicted unless pinned. Loading proceeds selected-outward. */
 void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected);

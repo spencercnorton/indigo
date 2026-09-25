@@ -195,6 +195,7 @@ most use the same key there.
 
 | Key | Values | Default | On screen |
 | --- | --- | --- | --- |
+| `Library Layout` | `Horizontal`, `Vertical`, `Grid`. How the Library shows your games: a row, a column, or rows of five. | `Horizontal` | Library Layout |
 | `FileBrowserType` | `Standard`, `Fullwidth`, `Carousel` | `Standard` | File Browser Type |
 | `AppsBrowserType` | `Standard`, `Fullwidth`, `Carousel` | `Fullwidth` | File Browser Type for apps |
 | `GameBrowserType` | `Standard`, `Fullwidth`, `Carousel` | `Fullwidth` | File Browser Type for games |

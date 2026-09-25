@@ -48,6 +48,7 @@ typedef struct {
 	int appliedHomeSelection;
 	uint32_t appliedHomeRevision;
 	uiMotionMode_t appliedMotionMode;
+	uiGameflowLayout_t libraryLayout;
 	int homeTurnDirection;
 	bool active;
 	bool bootComplete;
@@ -67,6 +68,7 @@ static int32_t requestedHomeOrientation[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
 static uint32_t requestedHomeTurnAxis;
 static int32_t requestedHomeTurnDirection;
 static uint32_t sceneReady;
+static uint32_t requestedLibraryLayout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
 static uiSceneState_t state;
 
 static const uiScenePose_t poses[UI_SCENE_COUNT] = {
@@ -81,6 +83,13 @@ static const uiScenePose_t poses[UI_SCENE_COUNT] = {
 	[UI_SCENE_SYSTEM] = {0.0f, -0.02f, 0.70f, -0.10f, -0.18f, 1.0f},
 	[UI_SCENE_SETTINGS] = {1.16f, 0.0f, 0.50f, 0.08f, -0.48f, 0.58f}
 };
+/* The Library's other layouts. Vertical's cover sits where Game Detail's
+ * does, so the cube keeps Detail's place behind it; the grid fills the
+ * screen, so the cube waits beyond its left edge. */
+static const uiScenePose_t verticalLibraryPose =
+	{-1.36f, 0.0f, 0.44f, 0.10f, 0.58f, 0.48f};
+static const uiScenePose_t gridLibraryPose =
+	{-3.60f, 0.0f, 0.44f, 0.10f, 0.58f, 0.48f};
 
 static bool isHomeYawScene(uiSceneId_t scene)
 {
@@ -385,6 +394,16 @@ static void retargetPose(uiSceneId_t scene, uiMotionMode_t motionMode)
 		pose = &resolvedHomePose;
 		cubeYaw = pose->cubeYaw;
 	}
+	else if(scene == UI_SCENE_LIBRARY &&
+		state.libraryLayout == UI_GAMEFLOW_LAYOUT_VERTICAL) {
+		pose = &verticalLibraryPose;
+		cubeYaw = pose->cubeYaw;
+	}
+	else if(scene == UI_SCENE_LIBRARY &&
+		state.libraryLayout == UI_GAMEFLOW_LAYOUT_GRID) {
+		pose = &gridLibraryPose;
+		cubeYaw = pose->cubeYaw;
+	}
 	else {
 		pose = &poses[scene];
 		cubeYaw = pose->cubeYaw;
@@ -478,6 +497,8 @@ void UIScene_Reset(void)
 	__atomic_store_n(&requestedHomeSelection, 0, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeRevision, 0u, __ATOMIC_RELAXED);
 	__atomic_store_n(&sceneReady, 0u, __ATOMIC_RELAXED);
+	__atomic_store_n(&requestedLibraryLayout, UI_GAMEFLOW_LAYOUT_HORIZONTAL,
+		__ATOMIC_RELAXED);
 	state = (uiSceneState_t) {0};
 	UIHome_OrientationInit(&state.homeTarget);
 	UIHome_OrientationInit(&state.navigationTarget);
@@ -543,6 +564,13 @@ void UIScene_Request(uiSceneId_t scene)
 		__ATOMIC_RELAXED);
 }
 
+void UIScene_RequestLibraryLayout(uiGameflowLayout_t layout)
+{
+	__atomic_store_n(&requestedLibraryLayout,
+		(uint32_t)layout < UI_GAMEFLOW_LAYOUT_COUNT ?
+		(uint32_t)layout : UI_GAMEFLOW_LAYOUT_HORIZONTAL, __ATOMIC_RELAXED);
+}
+
 void UIScene_RequestHome(const uiHomeState_t *home)
 {
 	if(!homeRequestValid(home)) return;
@@ -580,6 +608,19 @@ void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode)
 	targetScene = sanitizeScene(__atomic_load_n(&requestedScene,
 		__ATOMIC_RELAXED));
 	applyHomeRequest(motionMode);
+	{
+		uiGameflowLayout_t layout = (uiGameflowLayout_t)__atomic_load_n(
+			&requestedLibraryLayout, __ATOMIC_RELAXED);
+
+		if(layout != state.libraryLayout) {
+			/* A new layout moves the cube now if the Library is showing. */
+			state.libraryLayout = layout;
+			if(state.bootComplete && state.appliedScene == UI_SCENE_LIBRARY &&
+				targetScene == UI_SCENE_LIBRARY) {
+				retargetPose(UI_SCENE_LIBRARY, motionMode);
+			}
+		}
+	}
 	if(!state.active) {
 		state.active = true;
 		state.frame.visible = true;

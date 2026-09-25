@@ -75,6 +75,8 @@ char *uiColorStr[] = {"Indigo", "Azure", "Emerald", "Gold", "Spice", "Crimson", 
 _Static_assert(sizeof(uiColorStr) / sizeof(uiColorStr[0]) == UI_COLOR_MAX, "Menu Color names drift");
 char *faceIconStr[] = {"Controller", "Books", "Hub", "Disc", "Sliders", "Gear", "Clock", "None"};
 _Static_assert(sizeof(faceIconStr) / sizeof(faceIconStr[0]) == UI_HOME_ICON_COUNT, "face icon names drift");
+char *libraryLayoutStr[] = {"Horizontal", "Vertical", "Grid"};
+_Static_assert(sizeof(libraryLayoutStr) / sizeof(libraryLayoutStr[0]) == UI_GAMEFLOW_LAYOUT_COUNT, "library layout names drift");
 static const char *uiMotionModeStr[] = {"Full", "Reduced", "Off"};
 
 const int simulatedMemSizeInt[] = {
@@ -128,6 +130,7 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_MENU_SFX] = "Menu Sounds:\n\nEnabled - Soft blip/confirm sounds on navigation (default)\nDisabled - Silent.",
 	[SET_FLATTEN_DIR] = "Flatten directory:\n\nFlattens a directory structure matching a glob pattern.",
 	[SET_SHOW_HIDDEN] = "Show hidden files:\n\nLists files and folders marked hidden, such as the /swiss folder\nthat holds Indigo's settings.",
+	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\n\nThe selected game's title and details show beside its cover in\nVertical and above the controls in Grid. Every layout wraps round\nfrom the last game to the first; L and R jump a page.\nY opens the focused game's settings.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
 
@@ -570,6 +573,7 @@ static const settingsRowRef_t networkRows[] = {
 };
 
 static const settingsRowRef_t libraryRows[] = {
+	{PAGE_INTERFACE, SET_LIBRARY_LAYOUT},
 	{PAGE_INTERFACE, SET_GAMEBROWSER_TYPE},
 	{PAGE_INTERFACE, SET_APPSBROWSER_TYPE},
 	{PAGE_INTERFACE, SET_FILEBROWSER_TYPE},
@@ -986,6 +990,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_MENU_SFX: rowYesNo(row, "Menu Sounds:", !swissSettings.disableMenuSFX, true); break;
 			case SET_AUTOBOOT: rowYesNo(row, "Boot without prompts:", swissSettings.autoBoot, true); break;
 			case SET_FLATTEN_DIR: rowText(row, "Flatten directory:", swissSettings.flattenDir, true); break;
+			case SET_LIBRARY_LAYOUT: rowCycle(row, "Library Layout:", libraryLayoutStr[swissSettings.libraryLayout], true); break;
 		}
 	}
 	else if(page == PAGE_NETWORK) {
@@ -1479,6 +1484,10 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_FLATTEN_DIR:
 				DrawGetTextEntry(ENTRYMODE_NUMERIC|ENTRYMODE_ALPHA, "Flatten directory", &swissSettings.flattenDir, sizeof(swissSettings.flattenDir) - 1);
+			break;
+			case SET_LIBRARY_LAYOUT:
+				swissSettings.libraryLayout += direction;
+				swissSettings.libraryLayout = (swissSettings.libraryLayout + UI_GAMEFLOW_LAYOUT_COUNT) % UI_GAMEFLOW_LAYOUT_COUNT;
 			break;
 		}
 	}

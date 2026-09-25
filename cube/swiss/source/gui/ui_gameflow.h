@@ -22,6 +22,16 @@ typedef enum {
 	UI_GAMEFLOW_DIRECTION_NEXT = 1
 } uiGameflowDirection_t;
 
+/* Setup > Library > Library Layout: how the Library lays out the games.
+ * Horizontal is the original carousel and the default; Vertical is the same
+ * ring on end; Grid is rows of posters that scroll up and down. */
+typedef enum {
+	UI_GAMEFLOW_LAYOUT_HORIZONTAL = 0,
+	UI_GAMEFLOW_LAYOUT_VERTICAL,
+	UI_GAMEFLOW_LAYOUT_GRID,
+	UI_GAMEFLOW_LAYOUT_COUNT
+} uiGameflowLayout_t;
+
 /*
  * Menu-thread selection snapshot. generation is a wrapping uint32_t serial;
  * equal, stale, and exactly half-range-ambiguous snapshots are rejected.
@@ -56,6 +66,9 @@ typedef struct {
 	float carouselTravel;
 	float detailProgress;
 	float launchProgress;
+	/* Grid only: the highlight's column, sliding between whole columns.
+	 * carouselTravel is then the rows' travel instead of the cards'. */
+	float columnPosition;
 	bool hasSnapshot;
 	bool selectionPinned;
 	bool transitioning;
@@ -81,10 +94,19 @@ typedef struct {
 	uiMotionSpring_t carouselSpring;
 	uiMotionSpring_t detailSpring;
 	uiMotionSpring_t launchSpring;
+	/* 0: the cards are one ring. Otherwise a grid of this many columns:
+	 * the carousel spring travels in rows and columnSpring moves the
+	 * highlight along its row. */
+	uint32_t columns;
+	uiMotionSpring_t columnSpring;
 	uiGameflowFrame_t frame;
 } uiGameflowState_t;
 
 void UIGameflow_Init(uiGameflowState_t *state);
+
+/* Lay the cards out as a grid of columns (0 keeps the ring), before the
+ * first snapshot. The retained event keeps one layout for its lifetime. */
+void UIGameflow_SetColumns(uiGameflowState_t *state, uint32_t columns);
 
 /* Returns false without mutation when snapshot is null, equal, or stale. */
 bool UIGameflow_ApplySnapshot(uiGameflowState_t *state,

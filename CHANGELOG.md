@@ -3,6 +3,25 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.23.0 — Library layouts, and a game's settings from the Library
+
+- Library Layout, the first setting in Setup › Library, lays the Library out
+  three ways. **Horizontal** is the row of covers you know. **Vertical** is a
+  column down the left of the screen, turning like a wheel, with the
+  selected game's title, publisher and details beside its cover. **Grid**
+  shows rows of five covers, three rows at a time, with a lit frame that
+  slides to the selected cover and its title and publisher above the
+  controls.
+- Every layout wraps round from the last game to the first. In the grid,
+  Left and Right run on from one row to the next, Up and Down move a row
+  and keep to the column, and L and R move three rows at a time.
+- Y on a game in the Library opens that game's own settings, in every
+  layout. Leaving them shows the game's details, and B returns to the
+  Library with the same game selected. Y never starts a game, even with
+  Boot without prompts on.
+- The sliders mark that shows a game has settings of its own now appears
+  on every cover that shows its art.
+
 ## v1.22.1 — glass that catches the light without burning white
 
 - When a face of the Home cube turns through the light as the cube turns or

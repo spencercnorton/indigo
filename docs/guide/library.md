@@ -2,19 +2,52 @@
 
 # Library
 
-The Library shows the games on your card as a row of posters. On Home, turn
-the cube to **Library** and press A.
+The Library shows the games on your card as posters: in a row, in a column
+or in a grid, as you choose. On Home, turn the cube to **Library** and press
+A.
 
 <p align="center">
   <img alt="The Library: moving right through the James Bond games to 1080° Avalanche, each cover raised in turn with its title and publisher below; A opens its details, B returns to the Library, and 1080° Avalanche is still selected." src="images/library-browse.png" width="640">
 </p>
 
-## Moving around
+## Choose a layout
 
-- **Left and Right** move through your games. The game in the middle is
+**Library Layout**, the first row of [Settings](settings.md) › Setup ›
+Library, sets how the Library lays out your games:
+
+- **Horizontal**, the default: a row of covers. The game in the middle is
   raised, with its title and publisher underneath, as the disc's own banner
   gives them.
+- **Vertical**: a column of covers down the left of the screen, turning like
+  a wheel. The selected cover is large, with its title, publisher and game ID
+  beside it.
+- **Grid**: rows of five covers, three rows on screen. The selected cover is
+  lit and a little larger, and its title and publisher are shown above the
+  controls.
+
+Every layout wraps round: after the last game comes the first.
+
+## Moving around
+
+| To move | Horizontal | Vertical | Grid |
+| --- | --- | --- | --- |
+| To the next or previous game | Left, Right | Up, Down | Left, Right |
+| To the game above or below | | | Up, Down |
+| A page at a time | Up, Down, L, R | Left, Right, L, R | L, R |
+
+The control stick moves along the layout too, and in the grid in every
+direction. A page is nine games, or three rows of the grid; it stops at the
+first or last game (or row) before it wraps round.
+
+In the grid, Left and Right run on from the end of one row to the start of
+the next. Up and Down keep to the column. The last row can be short: from a
+column it doesn't have, Up or Down lands on its last game.
+
 - **A** opens the game's [details](game-details.md), where you launch it.
+- **Y** opens the game's [own settings](game-details.md#this-games-own-settings),
+  as X does on its details. When you leave them you are on the game's
+  details, and B takes you back to the Library. Y never starts the game,
+  even with **Boot without prompts** on.
 - **B** goes back to Home.
 - A small **sliders mark** in the corner of a cover means that game has
   [settings of its own](game-details.md#this-games-own-settings).

@@ -46,9 +46,11 @@ the palette — is the reference, not a desktop launcher.
 
 **The library retains its posters.** A grid over whatever device you booted
 from, with artwork kept across navigation rather than re-read per frame, and
-your selection restored when you come back from a game's details. Cover art
-comes from a pack you build yourself (see [Posters](#posters)); without one,
-each game gets a generated card.
+your selection restored when you come back from a game's details. Lay it
+out as a carousel, a column with the title beside the cover, or a grid five
+covers wide (Setup › Library › Library Layout); Y on a cover opens that
+game's own settings. Cover art comes from a pack you build yourself (see
+[Posters](#posters)); without one, each game gets a generated card.
 
 <p align="center">
   <img alt="The game library: GameCube box art in a carousel, the selected cover raised with its title and publisher below it, and the controls shown as GameCube buttons along the bottom." src="docs/screenshots/library.png" width="640">

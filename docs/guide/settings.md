@@ -244,6 +244,7 @@ Passwords are saved as plain text in `global.ini`.
 
 | Setting | What it does |
 | --- | --- |
+| Library Layout | How the poster Library lays out your games: **Horizontal**, a row (the default); **Vertical**, a column with the title beside the cover; or **Grid**, rows of five. See [Library](library.md#choose-a-layout). |
 | File Browser Type for games, for apps, and for everything else | How Swiss's file lists look: Standard, Fullwidth or Carousel. The poster Library isn't affected. |
 | Recent List | START shows recently played games. **Lazy** updates it only for new games; **Off** saves SD card writes. |
 | Flatten directory | A folder pattern whose game folders are listed as if their disc images sat directly in it. The default is `*/games`. |

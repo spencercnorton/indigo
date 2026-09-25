@@ -135,6 +135,7 @@ typedef struct {
 	int sourceIcon;
 	int settingsIcon;
 	int systemIcon;
+	int libraryLayout;	// uiGameflowLayout_t (gui/ui_gameflow.h): Horizontal (default), Vertical or Grid
 	int sram60Hz;
 	int sramProgressive;
 	int sramStereo;
