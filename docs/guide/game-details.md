@@ -6,7 +6,7 @@ A on a game in the [Library](library.md) opens its details: everything about
 that one game, and every way to start it, on one screen.
 
 <p align="center">
-  <img alt="The detail screen for 1080° Avalanche: the cover on the left; on the right the title, the publisher, Audio Streaming, Last played, Save data, Cheats with 2 of 12 enabled, and a Launch Game button; below the cover a Shortcuts box with R Verify and L + A Clean Boot; the hint line reads A Launch, B Library, X Settings, Y Cheats." src="images/game-details.png" width="640">
+  <img alt="The detail screen for 1080° Avalanche: the cover on the left; on the right the title, the publisher, Audio Streaming, Last played, Save data, Settings reading Game Defaults with X Change for this game, Cheats with 2 of 12 enabled and the first of them named, and a Launch Game button; below the cover a Shortcuts box with R Verify and L + A Clean Boot; the hint line reads A Launch, B Library, X Settings, Y Cheats." src="images/game-details.png" width="640">
 </p>
 
 ## What's on the screen
@@ -23,6 +23,9 @@ that one game, and every way to start it, on one screen.
   read it from, it says "History unavailable".
 - **Save data**: "Check in game". Indigo doesn't read your memory cards, so
   the game itself is where to look.
+- **Settings**: "Game Defaults" while the game follows them, or how many of
+  its settings are its own and the first of them, such as "1 custom" and
+  "Force Video Mode: 480p". See [below](#this-games-own-settings).
 - **Cheats**: how many of the game's cheats are on and the names of the first
   ones, or "Y Choose cheats" when none are. It reads "No cheats found" when
   there's no cheat file for the game. See [Cheats](cheats.md).
@@ -49,14 +52,16 @@ restart.
 ## This game's own settings
 
 **X** opens settings that apply to this game only: its video mode,
-widescreen, language, polling rate and the rest. Anything you change is marked
+widescreen, language, polling rate and the rest. In the
+[Library](library.md#moving-around), **Y** on the game's cover opens them
+straight away, and leaving them shows these details. Anything you change is marked
 **Custom**, and the detail screen's **Settings** line counts them and names
 the first, for example "1 custom" and "Force Video Mode: 480p". With none, it
 reads "Game Defaults". In the Library, a game with any Custom setting shows
 a small sliders mark in the corner of its cover.
 
 <p align="center">
-  <img alt="X on the detail screen for 1080° Avalanche opens its own settings. A on Force Video Mode lists the modes; 480p is chosen and the row is marked Custom. B returns to the detail screen, whose hint now reads X Settings (1 Custom)." src="images/detail-game-settings.png" width="640">
+  <img alt="X on the detail screen for 1080° Avalanche opens its own settings. A on Force Video Mode lists the modes; 480p is chosen and the row is marked Custom. B returns to the detail screen, whose Settings line now reads 1 custom and Force Video Mode: 480p." src="images/detail-game-settings.png" width="640">
 </p>
 
 In a game's own settings, **X** puts the highlighted setting back to the

@@ -13,7 +13,12 @@ A.
 ## Choose a layout
 
 **Library Layout**, the first row of [Settings](settings.md) › Setup ›
-Library, sets how the Library lays out your games:
+Library, sets how the Library lays out your games. Left and Right on it step
+through the three, and the line above the buttons says how each one moves.
+
+<p align="center">
+  <img alt="Settings, Setup, Library: Library Layout is the first row. Right steps it from Horizontal to Vertical to Grid, and the line above the buttons reads A row of covers; Left and Right move (default), then A column of covers; Up and Down move, then Rows of five covers; every direction moves." src="images/library-layout-setting.png" width="640">
+</p>
 
 - **Horizontal**, the default: a row of covers. The game in the middle is
   raised, with its title and publisher underneath, as the disc's own banner
@@ -24,6 +29,14 @@ Library, sets how the Library lays out your games:
 - **Grid**: rows of five covers, three rows on screen. The selected cover is
   lit and a little larger, and its title and publisher are shown above the
   controls.
+
+<p align="center">
+  <img alt="The Vertical layout: the selected cover large at the left, the covers before and after it tipped back above and below, and its title, publisher, game ID and size beside it. Down moves through 007: Everything or Nothing, From Russia With Love, NightFire and 1080° Avalanche; Right jumps nine games to The Legend of Zelda: Ocarina of Time, and Down moves on to The Wind Waker." src="images/library-vertical.png" width="640">
+</p>
+
+<p align="center">
+  <img alt="The Grid layout: five covers across and three rows on screen, the selected cover lit by a bright frame and a little larger, with its title and publisher above the controls. The frame slides right along the row, the rows scroll as it moves down and back up, and R moves three rows at a time." src="images/library-grid.png" width="640">
+</p>
 
 Every layout wraps round: after the last game comes the first.
 
@@ -51,6 +64,10 @@ column it doesn't have, Up or Down lands on its last game.
 - **B** goes back to Home.
 - A small **sliders mark** in the corner of a cover means that game has
   [settings of its own](game-details.md#this-games-own-settings).
+
+<p align="center">
+  <img alt="Y on 007: Agent Under Fire in the grid opens its own settings. A on Force Video Mode lists the modes; 480p is chosen, the row is marked Custom and the top right reads 1 custom. B shows the game's details, whose Settings line reads 1 custom and Force Video Mode: 480p; B again returns to the grid with the same game selected." src="images/library-game-settings.png" width="640">
+</p>
 
 The Library remembers where you were. Come back from a game's details, or
 from Home, and the same game is still selected.

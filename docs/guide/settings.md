@@ -89,10 +89,11 @@ back: if your TV can't show the new one, you only have to wait ten seconds.
 ## A game's own settings
 
 Each game can have its own video mode, widescreen, language, polling rate and
-the rest. Open them with **X** on the game's [details](game-details.md).
+the rest. Open them with **X** on the game's [details](game-details.md), or
+with **Y** on the game in the [Library](library.md#moving-around).
 
 <p align="center">
-  <img alt="The own settings of 1080° Avalanche, saved for this game only: Force Video Mode is 480p and marked Custom; the top right reads X Default, B Done and Y Help." src="images/settings-game.png" width="640">
+  <img alt="The own settings of 1080° Avalanche, saved for this game only: Force Video Mode is 480p and marked Custom, and the top right reads 1 custom; the buttons along the bottom are A Choose, Y Help, X Default and B Done, with Save & Exit and Discard & Exit." src="images/settings-game.png" width="640">
 </p>
 
 - The title is the game's name, with "Saved for this game only" under it.

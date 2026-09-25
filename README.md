@@ -53,7 +53,7 @@ game's own settings. Cover art comes from a pack you build yourself (see
 [Posters](#posters)); without one, each game gets a generated card.
 
 <p align="center">
-  <img alt="The game library: GameCube box art in a carousel, the selected cover raised with its title and publisher below it, and the controls shown as GameCube buttons along the bottom." src="docs/screenshots/library.png" width="640">
+  <img alt="The game library in its three layouts in turn. Horizontal: a row of GameCube box art, the selected cover raised with its title and publisher below it. Vertical: a column of covers down the left, the selected one large with its title, publisher and game ID beside it. Grid: five covers across and three rows on screen, a lit frame sliding to the selected cover as the rows scroll. The controls are shown as GameCube buttons along the bottom." src="docs/screenshots/library.png" width="640">
 </p>
 
 **Game details are a surface, not a dialogue.** Artwork, last played, save
@@ -73,14 +73,23 @@ highlighted setting does, and the buttons that work shown as icons. Quick
 settings fit on one screen: menu music and sounds, In-Game Reset, memory-card
 emulation, auto-loaded cheats and a few more. R moves to Game Defaults, what every game
 starts with, and to Setup, which holds video, console, storage, network,
-library and developer options in six sections. X on a game's detail screen
-opens that game's own settings, where anything that differs from Game Defaults
-is marked Custom and X puts it back. Holding the D-pad scrolls, A changes a value
+library and developer options in six sections. X on a game's detail screen,
+or Y on its cover in the Library, opens that game's own settings, where
+anything that differs from Game Defaults is marked Custom and X puts it back.
+Holding the D-pad scrolls, A changes a value
 (or, for a setting with many choices, lists them all), and B leaves and keeps
 your changes. A new video mode only stays if you press
 A within ten seconds. Settings can also be written ahead of time in a file on
 the SD card: see [docs/SETTINGS.md](docs/SETTINGS.md). Setup › Storage says
 whether that file loaded.
+
+<p align="center">
+  <img alt="Settings opens on Quick, its settings as cards with ON and OFF switches and a line above the buttons saying what the highlighted one does. R moves to Game Defaults and R again to Setup, whose six sections are listed with a summary each; A opens Display, its rows go by, and B returns to the list of sections." src="docs/guide/images/settings-tour.png" width="640">
+</p>
+
+<p align="center">
+  <img alt="Y on 007: Agent Under Fire in the grid opens its own settings. A on Force Video Mode lists the modes; 480p is chosen, the row is marked Custom and the top right reads 1 custom. B shows the game's details, whose Settings line reads 1 custom and Force Video Mode: 480p; B again returns to the grid with the same game selected." src="docs/guide/images/library-game-settings.png" width="640">
+</p>
 
 **Indigo comes in eight colors.** Setup › Console › Menu Color recolors the
 cube, its light, the panels and the text: Indigo, the default, or Azure,

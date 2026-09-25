@@ -3,6 +3,20 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.23.1 — pictures of every new screen
+
+- The README's Library animation shows all three layouts, and two new
+  animations follow its Settings paragraph: a tour of Settings in its new
+  look, and Y opening a game's settings from the Library. Home, Game Detail
+  and Menu Color are recorded again on this release.
+- The guide's Library page has an animation of the Library Layout setting
+  and of the Vertical and Grid layouts, and one of Y and a game's settings.
+  Every picture of Settings, Game Detail, the cheat browser, the Library,
+  the Source and System screens and the troubleshooting box is new, so each
+  shows the current look.
+- The guide's Game Detail, Settings and Controls pages describe the
+  Settings line on Game Detail, Y in the Library and each layout's buttons.
+
 ## v1.23.0 — Library layouts, and a game's settings from the Library
 
 - Library Layout, the first setting in Setup › Library, lays the Library out

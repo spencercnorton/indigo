@@ -25,7 +25,7 @@
     </td>
     <td width="50%" valign="top">
       <a href="library.md"><img alt="The Library with 1080° Avalanche selected, its box art raised and its title underneath." src="images/library-posters.png" width="100%"></a><br>
-      <b><a href="library.md">Library</a></b>: your games as posters.
+      <b><a href="library.md">Library</a></b>: your games as posters, in a row, a column or a grid.
     </td>
   </tr>
   <tr>

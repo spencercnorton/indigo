@@ -7,7 +7,7 @@ every screen shows the buttons that work there, drawn as the controller's
 own buttons.
 
 <p align="center">
-  <img alt="The hint lines of five screens, one above the other: Home (the stick and D-pad to turn, A Open), the Library (D-pad Browse, A Open, X Back, B Home), game details (A Launch, B Library, X Settings, Y Cheats), the cheat browser (A Toggle, B Done, X Enabled only, Z Advanced) and a list of choices in Settings (A Choose, B Cancel)." src="images/controls-hints.png" width="640">
+  <img alt="The hint lines of five screens, one above the other: Home (the stick and D-pad to turn, A Open), the Library (D-pad Browse, A Open, Y Settings, X Back, B Home), game details (A Launch, B Library, X Settings, Y Cheats), the cheat browser (A Toggle, B Done, X Enabled only, Z Advanced) and a list of choices in Settings (A Choose, B Cancel)." src="images/controls-hints.png" width="640">
 </p>
 
 ## The short version
@@ -52,10 +52,19 @@ See [Source](source.md).
 
 | Button | Does |
 | --- | --- |
-| Left, Right | Move through your games. |
+| D-pad or stick | Move through your games: see the layouts below. |
 | A | Open the game's details. |
+| Y | The game's own settings. Leaving them shows its details. |
 | X | Up one folder. |
 | B | Back to Home. |
+
+How the D-pad moves depends on **Library Layout** (Setup › Library):
+
+| To move | Horizontal | Vertical | Grid |
+| --- | --- | --- | --- |
+| To the next or previous game | Left, Right | Up, Down | Left, Right |
+| To the game above or below | | | Up, Down |
+| A page at a time | Up, Down, L, R | Left, Right, L, R | L, R |
 
 See [Library](library.md).
 
