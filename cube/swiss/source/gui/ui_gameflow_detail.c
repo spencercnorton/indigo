@@ -210,18 +210,8 @@ static void buildPresentation(uiGameflowDetailSnapshot_t *snapshot)
 			sizeof(snapshot->primaryActions), "B  LIBRARY");
 	}
 	if((flags & UI_GAMEFLOW_DETAIL_CAN_SETTINGS) != 0u) {
-		char settingsAction[32];
-
-		if(snapshot->customSettings != 0u) {
-			(void)snprintf(settingsAction, sizeof(settingsAction),
-				"X  SETTINGS (%lu CUSTOM)",
-				(unsigned long)snapshot->customSettings);
-		}
-		else {
-			copyText(settingsAction, sizeof(settingsAction), "X  SETTINGS");
-		}
 		appendText(snapshot->primaryActions,
-			sizeof(snapshot->primaryActions), settingsAction);
+			sizeof(snapshot->primaryActions), "X  SETTINGS");
 	}
 	if((flags & UI_GAMEFLOW_DETAIL_CAN_CHEATS) != 0u) {
 		appendText(snapshot->primaryActions,
@@ -241,6 +231,38 @@ static void buildPresentation(uiGameflowDetailSnapshot_t *snapshot)
 	if((flags & UI_GAMEFLOW_DETAIL_CAN_CLEAN_BOOT) != 0u) {
 		copyText(snapshot->advancedLineTwo,
 			sizeof(snapshot->advancedLineTwo), "L+A  CLEAN BOOT");
+	}
+}
+
+/* The SETTINGS inset, like the CHEATS one: how many of the game's rows are
+ * its own and the first of them, or how to set some. The command rail keeps
+ * a plain "X  SETTINGS", so the count isn't said twice. */
+static void buildSettingsPresentation(uiGameflowDetailSnapshot_t *snapshot,
+	const char *first)
+{
+	if((snapshot->flags & UI_GAMEFLOW_DETAIL_CAN_SETTINGS) == 0u) {
+		return;
+	}
+	if(first == NULL || first[0] == '\0') {
+		first = "Custom settings";
+	}
+	if(snapshot->customSettings == 0u) {
+		copyText(snapshot->settingsSummary, sizeof(snapshot->settingsSummary),
+			"Game Defaults");
+		copyText(snapshot->settingsPreview, sizeof(snapshot->settingsPreview),
+			"X  Change for this game");
+		return;
+	}
+	(void)snprintf(snapshot->settingsSummary, sizeof(snapshot->settingsSummary),
+		"%lu custom", (unsigned long)snapshot->customSettings);
+	if(snapshot->customSettings == 1u) {
+		copyText(snapshot->settingsPreview, sizeof(snapshot->settingsPreview),
+			first);
+	}
+	else {
+		(void)snprintf(snapshot->settingsPreview,
+			sizeof(snapshot->settingsPreview), "%s  +%lu MORE", first,
+			(unsigned long)(snapshot->customSettings - 1u));
 	}
 }
 
@@ -311,6 +333,7 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 	copyText(snapshot->saveStatusText, sizeof(snapshot->saveStatusText),
 		UIGameHistory_SaveStatus(source->saveStatus));
 	buildPresentation(snapshot);
+	buildSettingsPresentation(snapshot, source->firstCustomSetting);
 	return true;
 }
 

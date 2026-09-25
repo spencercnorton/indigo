@@ -49,7 +49,6 @@
 
 #define GUI_MSGBOX_ALPHA 225
 #define GUI_PANEL_ALPHA 150	// Phase 2: translucent content panels (config-gated; dialogs stay at GUI_MSGBOX_ALPHA)
-#define SETTINGS_FOCUS_CONTINUITY_FRAMES 8u
 
 TPLFile imagesTPL;
 TPLFile buttonsTPL;
@@ -118,8 +117,8 @@ static mutex_t _videomutex = LWP_MUTEX_NULL;
 static bool sceneRenderingEnabled;
 static u32 videoFrameSerial;
 /* While a Settings page is up, the screen keeps the Menu Color that page was
- * drawn with (DrawPinMenuColor); disposing the page lets it go. While the
- * Menu Color list is open, the color it has focused shows instead. */
+ * drawn with (DrawUpdateSettingsPage); disposing the page lets it go. While
+ * the Menu Color list is open, the color it has focused shows instead. */
 static uiDrawObj_t *menuColorPage;
 static int menuColorPinned = -1;
 static int menuColorPreview = -1;
@@ -141,8 +140,6 @@ typedef struct {
 static uiSystemInstrument_t systemInstrument;
 static void _UpdateSystemInstrument(void);
 static indigoPadFrame_t padInstrument;
-static u32 settingsFocusLastDrawFrame;
-static uiSettingsFocusState_t settingsFocusState;
 static file_handle posterPackFile;
 static DEVICEHANDLER_INTERFACE *posterPackDevice;
 static bool posterPackAttempted;
@@ -175,12 +172,14 @@ enum VideoEventType
 	EV_TITLEBAR,
 	EV_GAMEFLOW,
 	EV_PRESENTATION,
-	EV_SETTINGSFOCUS,
-	EV_CHEATS
+	EV_SETTINGS,
+	EV_CHEATS,
+	EV_SETTINGSLIST,
+	EV_SETTINGSHELP
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Background", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "SettingsFocus", "Cheats"};
+						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp"};
 
 typedef struct drawTexObjEvent {
 	GXTexObj *texObj;
@@ -248,10 +247,6 @@ typedef struct drawBoxEvent {
 	int y2;
 	GXColor backfill;
 } drawBoxEvent_t;
-
-typedef struct drawSettingsFocusEvent {
-	uiSetLayoutRect_t target;
-} drawSettingsFocusEvent_t;
 
 typedef struct drawFileBrowserButtonEvent {
 	int x1;
@@ -322,6 +317,8 @@ typedef struct drawGameflowDetailPresentation {
 	float saveStatusScale;
 	float cheatSummaryScale;
 	float cheatPreviewScale;
+	float settingsSummaryScale;
+	float settingsPreviewScale;
 	float launchScale;
 	float primaryActionsScale;
 	float advancedLineOneScale;
@@ -391,6 +388,8 @@ static void _DrawHintText(int x, int y, const char *text, float scale, int align
 	GXColor color);
 static void _DrawSimpleBox(int x, int y, int width, int height, int depth,
 	GXColor fillColor, GXColor borderColor);
+static void _DrawDialogCard(int x, int y, int width, int height, int type);
+static void _DrawDialogBar(int x, int y, int width, int start, int length);
 
 #if UI_PERF_CAPTURE
 static void _DrawPerfOverlay(void)
@@ -1128,12 +1127,6 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 	int y1 = ((480/2) - (PROGRESS_BOX_HEIGHT/2));
 	int y2 = ((480/2) + (PROGRESS_BOX_HEIGHT/2));
 
-  	GXColor fillColor = (GXColor) {0,0,0,GUI_MSGBOX_ALPHA}; //black
-  	GXColor noColor = (GXColor) {0,0,0,0}; //blank
-	GXColor borderColor = (GXColor) {200,200,200,GUI_MSGBOX_ALPHA}; //silver
-	GXColor progressBarColor = (GXColor) {255,128,0,GUI_MSGBOX_ALPHA}; //orange
-	GXColor progressBarIndColor = (GXColor) {0xb3,0xd9,0xff,GUI_MSGBOX_ALPHA}; //orange
-	
 	if(data->miniMode) {	
 		int x = 30, y = 420;
 		if(data->miniModePos == PROGRESS_BOX_TOPRIGHT) {
@@ -1154,8 +1147,8 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 		drawString(x+8, y, "Loading\205", 0.55f, ALIGN_LEFT, loadingColor);
 		return;
 	}
-	_DrawSimpleBox( x1, y1, x2-x1, y2-y1, 0, fillColor, borderColor);		
-	
+	_DrawDialogCard(x1, y1, x2-x1, y2-y1, -1);
+
 	int middleY = (y2+y1)/2;
 	if(data->indeterminate) {
 		data->percent += (data->percent + 2 == 400 ? -398 : 2);
@@ -1180,20 +1173,14 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 			progressSize = 100-(data->percent%100);
 		}
 		
-		_DrawSimpleBox( (640/2 - progressBarWidth/2), y1+20,
-				(multiplier*100), 20, 0, noColor, borderColor); 
-		_DrawSimpleBox( (640/2 - progressBarWidth/2) + (progressStart*multiplier),
-				y1+20,
-				(multiplier*progressSize),
-				20, 0, progressBarIndColor, noColor);
+		_DrawDialogBar(640/2 - progressBarWidth/2, y1+20, progressBarWidth,
+			progressStart*multiplier, progressSize*multiplier);
 	}
 	else {
 		int multiplier = (PROGRESS_BOX_WIDTH-20)/100;
 		int progressBarWidth = multiplier*100;
-		_DrawSimpleBox( (640/2 - progressBarWidth/2), y1+20,
-				(multiplier*100), 20, 0, noColor, borderColor); 
-		_DrawSimpleBox( (640/2 - progressBarWidth/2), y1+20,
-				(multiplier*data->percent), 20, 0, progressBarColor, noColor); 
+		_DrawDialogBar(640/2 - progressBarWidth/2, y1+20, progressBarWidth, 0,
+			multiplier*MIN(data->percent, 100));
 		sprintf(fbTextBuffer,"%d%%", data->percent);
 		bool displaySpeed = data->speed != 0;
 		drawString(displaySpeed ? (x1 + 80) : (640/2), middleY+30, fbTextBuffer, 1.0f, ALIGN_CENTER, defaultColor);
@@ -1245,16 +1232,14 @@ uiDrawObj_t* DrawProgressLoading(int miniModePos) {
 
 // Internal
 static void _DrawMessageBox(uiDrawObj_t *evt) {
+	drawMsgBoxEvent_t *data = (drawMsgBoxEvent_t*)evt->data;
 	int x1 = ((640/2) - (PROGRESS_BOX_WIDTH/2));
 	int x2 = ((640/2) + (PROGRESS_BOX_WIDTH/2));
 	int y1 = ((480/2) - (PROGRESS_BOX_HEIGHT/2));
 	int y2 = ((480/2) + (PROGRESS_BOX_HEIGHT/2));
-	
-  	GXColor fillColor = (GXColor) {0,0,0,GUI_MSGBOX_ALPHA}; //black
-	GXColor borderColor = (GXColor) {200,200,200,GUI_MSGBOX_ALPHA}; //silver
-	
-	_DrawSimpleBox( x1, y1, x2-x1, y2-y1, 0, fillColor, borderColor); 
-}	
+
+	_DrawDialogCard(x1, y1, x2-x1, y2-y1, data->type);
+}
 
 // External
 uiDrawObj_t* DrawMessageBox(int type, const char *msg)
@@ -2072,22 +2057,6 @@ uiDrawObj_t* DrawTransparentBox(int x1, int y1, int x2, int y2)
 	return event;
 }
 
-uiDrawObj_t* DrawSettingsFocus(int x1, int y1, int x2, int y2)
-{
-	int borderSize = (y2 - y1) <= 30 ? 3 : 10;
-	drawSettingsFocusEvent_t *eventData =
-		calloc(1, sizeof(drawSettingsFocusEvent_t));
-	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
-
-	eventData->target.x = (short)(x1 - borderSize);
-	eventData->target.y = (short)(y1 - borderSize);
-	eventData->target.w = (short)(x2 - x1 + borderSize * 2);
-	eventData->target.h = (short)(y2 - y1 + borderSize * 2);
-	event->type = EV_SETTINGSFOCUS;
-	event->data = eventData;
-	return event;
-}
-
 typedef struct systemDialPoint {
 	float x;
 	float y;
@@ -2535,43 +2504,6 @@ static uiMotionMode_t _CurrentMotionMode(void)
 	 * primary navigation, focus, or scene-transition motion. */
 	return UIMotion_ModeFromFlags(swissSettings.disableUIAnimations,
 		swissSettings.reduceUIAnimations);
-}
-
-/* Retained settings focus is deliberately local to one appended event type.
- * The immutable event supplies only a target rectangle; the video thread owns
- * and advances the bounded springs. Page objects are rebuilt after each input,
- * so a short continuity window carries motion across replacement while a real
- * exit/re-entry snaps cleanly to the new target. */
-static void _DrawSettingsFocus(uiDrawObj_t *evt)
-{
-	drawSettingsFocusEvent_t *data =
-		(drawSettingsFocusEvent_t*)evt->data;
-	uiSettingsFocusFrame_t frame;
-	uiMotionMode_t mode = _CurrentMotionMode();
-	GXColor fillColor = swissSettings.disablePanelTransparency ?
-		(GXColor) {78, 62, 158, 154} : (GXColor) {68, 50, 148, 92};
-	GXColor borderColor = (GXColor) {211, 202, 255, 210};
-	int x;
-	int y;
-	int width;
-	int height;
-
-	if(!settingsFocusState.initialized ||
-		!UISettingsFocus_IsContinuous(videoFrameSerial,
-			settingsFocusLastDrawFrame,
-			SETTINGS_FOCUS_CONTINUITY_FRAMES)) {
-		UISettingsFocus_Init(&settingsFocusState, &data->target);
-	}
-	else {
-		UISettingsFocus_Retarget(&settingsFocusState, &data->target, mode);
-	}
-	UISettingsFocus_Update(&settingsFocusState, UIAnim_Delta(), mode, &frame);
-	settingsFocusLastDrawFrame = videoFrameSerial;
-	x = (int)(frame.x + 0.5f);
-	y = (int)(frame.y + 0.5f);
-	width = (int)(frame.w + 0.5f);
-	height = (int)(frame.h + 0.5f);
-	_DrawSimpleBox(x, y, width, height, 0, fillColor, borderColor);
 }
 
 typedef struct gameflowPoint {
@@ -3137,17 +3069,24 @@ static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
 	presentation->statusScale = _GameflowPrepareDetailText(
 		data->detail.statusText, sizeof(data->detail.statusText),
 		310, 0.44f, 0.44f);
+	/* LAST PLAYED and SAVE DATA share a line, so each has half of it. */
 	presentation->lastPlayedScale = _GameflowPrepareDetailText(
 		data->detail.lastPlayedText, sizeof(data->detail.lastPlayedText),
-		310, 0.46f, 0.46f);
+		154, 0.46f, 0.46f);
 	presentation->saveStatusScale = _GameflowPrepareDetailText(
 		data->detail.saveStatusText, sizeof(data->detail.saveStatusText),
-		310, 0.46f, 0.46f);
+		150, 0.46f, 0.46f);
 	presentation->cheatSummaryScale = _GameflowPrepareDetailText(
 		data->detail.cheatSummary, sizeof(data->detail.cheatSummary),
 		294, 0.46f, 0.46f);
 	presentation->cheatPreviewScale = _GameflowPrepareDetailText(
 		data->detail.cheatPreview, sizeof(data->detail.cheatPreview),
+		294, 0.46f, 0.46f);
+	presentation->settingsSummaryScale = _GameflowPrepareDetailText(
+		data->detail.settingsSummary, sizeof(data->detail.settingsSummary),
+		180, 0.42f, 0.42f);
+	presentation->settingsPreviewScale = _GameflowPrepareDetailText(
+		data->detail.settingsPreview, sizeof(data->detail.settingsPreview),
 		294, 0.46f, 0.46f);
 	presentation->launchScale = _GameflowPrepareDetailText(
 		data->detail.launchLabel, sizeof(data->detail.launchLabel),
@@ -3218,7 +3157,9 @@ static void _GameflowDrawDetailPlanes(
 		(u8)(((u16)presentation->accent.g + 255u) / 2u),
 		(u8)(((u16)presentation->accent.b + 255u) / 2u),
 		_GameflowAlpha(255.0f * alpha * focus)};
-	u16 panelCount = hasAdvanced ? 4u : 3u;
+	bool hasSettings = detail->settingsSummary[0] != '\0';
+	u16 panelCount = (u16)(3u + (hasAdvanced ? 1u : 0u) +
+		(hasSettings ? 1u : 0u));
 
 	panelGlow.a = _GameflowAlpha(34.0f * alpha);
 	panelEdge.a = _GameflowAlpha(172.0f * alpha);
@@ -3230,6 +3171,10 @@ static void _GameflowDrawDetailPlanes(
 	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(panelCount * 12u));
 		_GameflowPutDetailPanel(246, 76, 358, 328, 2,
 			panelGlow, panelFill, panelEdge);
+		if(hasSettings) {
+			_GameflowPutDetailPanel(260, 232, 330, 42, 2,
+				insetGlow, insetFill, insetEdge);
+		}
 		_GameflowPutDetailPanel(260, 281, 330, 59, 2,
 			insetGlow, insetFill, insetEdge);
 		_GameflowPutDetailPanel(260, 348, 330, 43, 4,
@@ -3280,12 +3225,29 @@ static void _GameflowDrawDetailDashboard(
 			presentation->statusScale, ALIGN_LEFT, muted);
 	}
 
-	drawStringMedium(264, 207, "LAST PLAYED", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(264, 226, detail->lastPlayedText,
+	drawStringMedium(264, 202, "LAST PLAYED", 0.42f, ALIGN_LEFT, secondary);
+	drawStringMedium(264, 219, detail->lastPlayedText,
 		presentation->lastPlayedScale, ALIGN_LEFT, primary);
-	drawStringMedium(264, 247, "SAVE DATA", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(264, 265, detail->saveStatusText,
+	drawStringMedium(430, 202, "SAVE DATA", 0.42f, ALIGN_LEFT, secondary);
+	drawStringMedium(430, 219, detail->saveStatusText,
 		presentation->saveStatusScale, ALIGN_LEFT, muted);
+
+	/* SETTINGS, like CHEATS below it: this game's own rows, or how to set
+	 * some (X opens them). */
+	if(detail->settingsSummary[0] != '\0') {
+		drawStringMedium(274, 244, "SETTINGS", 0.42f, ALIGN_LEFT, secondary);
+		drawStringMedium(576, 244, detail->settingsSummary,
+			presentation->settingsSummaryScale, ALIGN_RIGHT, muted);
+		if(detail->customSettings != 0u) {
+			drawStringMedium(274, 262, "\267", 0.50f, ALIGN_LEFT, focus);
+			drawStringMedium(288, 262, detail->settingsPreview,
+				presentation->settingsPreviewScale, ALIGN_LEFT, primary);
+		}
+		else {
+			_DrawHintText(274, 262, detail->settingsPreview,
+				presentation->settingsPreviewScale, ALIGN_LEFT, muted);
+		}
+	}
 
 	drawStringMedium(274, 293, "CHEATS", 0.42f, ALIGN_LEFT, secondary);
 	drawStringMedium(274, 311, detail->cheatSummary,
@@ -4430,13 +4392,39 @@ static void _CheatsPanel(int x, int y, int width, int height, GXColor color)
 	drawInit();
 }
 
-static void _CheatsToggle(int x, int y, bool enabled)
+/* Message and progress boxes, in the Settings pages' card language: a flat
+ * rounded card with a hairline edge and, for a message, an accent bar that
+ * says what kind it is (a warning's amber, a failure's red, otherwise
+ * Indigo's lilac). Their place and size are Swiss's own, so every caller's
+ * text and prompt lines land where they always did. */
+static void _DrawDialogCard(int x, int y, int width, int height, int type)
 {
-	_CheatsPanel(x, y, 62, 24, enabled ? (GXColor){26, 93, 103, 255} :
-		(GXColor){34, 42, 65, 255});
+	_CheatsPanel(x - 1, y - 1, width + 2, height + 2, (GXColor) {43, 52, 80, 255});
+	_CheatsPanel(x, y, width, height, (GXColor) {16, 23, 43, 250});
+	if(type >= 0) {
+		_CheatsPanel(x + 20, y + 14, 40, 3, type == D_WARN ?
+			(GXColor) {255, 207, 139, 255} : type == D_FAIL ?
+			(GXColor) {243, 126, 145, 255} : (GXColor) {196, 177, 255, 255});
+	}
+}
+
+/* A progress box's bar: its track, filled from start for length. */
+static void _DrawDialogBar(int x, int y, int width, int start, int length)
+{
+	_CheatsPanel(x, y, width, 20, (GXColor) {34, 42, 65, 255});
+	if(length > 0) {
+		_CheatsPanel(x + start, y, length, 20, (GXColor) {196, 177, 255, 255});
+	}
+}
+
+/* alpha dims a toggle Settings can't change. */
+static void _CheatsToggle(int x, int y, bool enabled, u8 alpha)
+{
+	_CheatsPanel(x, y, 62, 24, _HintAlpha(enabled ? (GXColor){26, 93, 103, 255} :
+		(GXColor){34, 42, 65, 255}, alpha));
 	drawStringMedium(x + 31, y + 12, enabled ? "ON" : "OFF", 0.60f,
-		ALIGN_CENTER, enabled ? (GXColor){151, 250, 246, 255} :
-		(GXColor){184, 192, 215, 255});
+		ALIGN_CENTER, _HintAlpha(enabled ? (GXColor){151, 250, 246, 255} :
+		(GXColor){184, 192, 215, 255}, alpha));
 }
 
 static void _DrawCheats(uiDrawObj_t *evt)
@@ -4476,7 +4464,7 @@ static void _DrawCheats(uiDrawObj_t *evt)
 		_CheatsPanel(40, focusY, 560, 44, (GXColor){38, 37, 78, 255});
 		_CheatsPanel(40, focusY + 6, 3, 32, accent);
 		drawStringMedium(52, 286, "WiiRD Debug", 0.66f, ALIGN_LEFT, primary);
-		_CheatsToggle(526, 274, s->debug);
+		_CheatsToggle(526, 274, s->debug, 255);
 		drawStringMedium(52, 327, "For compatible debugging tools.", 0.48f,
 			ALIGN_LEFT, secondary);
 		drawStringMedium(52, 356, s->memoryText, 0.54f, ALIGN_LEFT, secondary);
@@ -4497,7 +4485,7 @@ static void _DrawCheats(uiDrawObj_t *evt)
 		for(i = 0; i < s->rowCount; ++i) {
 			drawStringMedium(52, 165 + i * 40, s->rows[i], 0.66f,
 				ALIGN_LEFT, primary);
-			_CheatsToggle(526, 153 + i * 40, s->enabled[i]);
+			_CheatsToggle(526, 153 + i * 40, s->enabled[i], 255);
 		}
 		if(s->count > UI_CHEATS_VISIBLE_ROWS) {
 			int thumb = 234 * UI_CHEATS_VISIBLE_ROWS / s->count;
@@ -4658,6 +4646,458 @@ void DrawCheatsSelector(const char *fileName)
 	DrawDispose(event);
 }
 
+
+/* ------------------------------------------------------------------------
+ * Settings, in the cheat browser's language (_DrawCheats): the page, the
+ * value list and the help card. settings.c prepares every string on the menu
+ * thread; these only draw. The page is one event for the whole Settings
+ * session, and its focus card springs from row to row inside it.
+ * --------------------------------------------------------------------- */
+static const GXColor settingsInk = {241, 244, 255, 255};
+static const GXColor settingsQuiet = {173, 187, 216, 255};
+static const GXColor settingsDim = {104, 112, 142, 255};
+/* Indigo's lilac. Menu Color turns it with the rest of the page. */
+static const GXColor settingsAccent = {196, 177, 255, 255};
+static const GXColor settingsBack = {8, 12, 27, 255};
+static const GXColor settingsCard = {16, 23, 43, 255};
+static const GXColor settingsFocus = {38, 37, 78, 255};
+static const GXColor settingsRule = {43, 52, 80, 255};
+static const GXColor settingsTrack = {34, 42, 65, 255};
+static const GXColor settingsValue = {27, 35, 62, 255};
+static const GXColor settingsField = {10, 14, 31, 255};
+static const GXColor settingsSwatch = {122, 104, 224, 255};
+static const GXColor settingsScrim = {4, 3, 15, 184};
+
+typedef struct {
+	uiSetPageSnapshot_t snapshot;
+	uiSettingsFocusState_t focus;
+	int focusView;
+} drawSettingsEvent_t;
+
+typedef struct {
+	uiSetHelpLayout_t layout;
+	char title[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
+	char line[UI_SETLAYOUT_HELP_LINES][80];
+	char hint[UI_SETLAYOUT_HINT_CAPACITY];
+	float titleScale;
+	float lineScale[UI_SETLAYOUT_HELP_LINES];
+	float hintScale;
+} drawSettingsHelpEvent_t;
+
+static void _SettingsBox(const uiSetLayoutRect_t *rect, GXColor color)
+{
+	_CheatsPanel(rect->x, rect->y, rect->w, rect->h, color);
+}
+
+/* The focus card and its accent bar, the cheat browser's. */
+static void _SettingsFocusCard(int x, int y, int width, int height)
+{
+	_CheatsPanel(x, y, width, height, settingsFocus);
+	_CheatsPanel(x, y + 4, 3, height - 8, settingsAccent);
+}
+
+/* A choice steps with Left and Right: a small arrow each side of its value. */
+static void _SettingsArrow(float x, float y, float direction, GXColor color)
+{
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_TRIANGLES, GX_VTXFMT0, 3);
+		_putFlatVertex(x + 3.0f * direction, y, color);
+		_putFlatVertex(x - 2.0f * direction, y - 5.0f, color);
+		_putFlatVertex(x - 2.0f * direction, y + 5.0f, color);
+	GX_End();
+	drawInit();
+}
+
+/* Menu Color's swatch: saturated Indigo turns to the color the screen
+ * shows, which is the one its row names. The hint icons' disc, feathered one
+ * pixel, draws it round; those keep the controller's own colors, so the
+ * swatch is recolored here. */
+static void _SettingsSwatch(float cx, float cy)
+{
+	GXColor color = settingsSwatch;
+
+	UIColor_Apply(&color.r, &color.g, &color.b);
+	drawInit();
+	_SetupRasterColor();
+	_HintDisc(cx, cy, (float)UI_SETLAYOUT_SWATCH * 0.5f, color);
+	drawInit();
+}
+
+static void _SettingsChip(int right, int y, const char *text)
+{
+	int x = right - UI_SETLAYOUT_CHIP_W;
+
+	_CheatsPanel(x, y - UI_SETLAYOUT_CHIP_H / 2, UI_SETLAYOUT_CHIP_W,
+		UI_SETLAYOUT_CHIP_H, _HintAlpha(settingsAccent, 56));
+	drawStringMedium(x + UI_SETLAYOUT_CHIP_W / 2, y, text,
+		UI_SETLAYOUT_CHIP_SCALE, ALIGN_CENTER, settingsAccent);
+}
+
+static void _SettingsRow(const uiSetLayout_t *layout, int slot,
+	const uiSetPageRow_t *row, bool focused)
+{
+	int y = layout->rowTextY[slot];
+	int top = y - UI_SETLAYOUT_PILL_H / 2;
+	int right = layout->rowValueX;
+	int left = right;
+	u8 alpha = row->enabled ? 255 : 110;
+	GXColor ink = row->enabled ? settingsInk : settingsDim;
+
+	drawStringMedium(layout->rowLabelX, y, row->label, row->labelScale,
+		ALIGN_LEFT, row->kind == UI_SETLAYOUT_ROW_ACTION && row->enabled ?
+		settingsAccent : ink);
+	switch(row->kind) {
+		case UI_SETLAYOUT_ROW_TOGGLE:
+			left = right - UI_SETLAYOUT_TOGGLE_W;
+			_CheatsToggle(left, top, row->on, alpha);
+			break;
+		case UI_SETLAYOUT_ROW_CHOICE: {
+			bool arrows = focused && row->enabled;
+			int swatch = row->swatch ?
+				UI_SETLAYOUT_SWATCH + UI_SETLAYOUT_SWATCH_GAP : 0;
+			int width = row->valueWidth + swatch + UI_SETLAYOUT_PILL_PAD * 2 +
+				(arrows ? UI_SETLAYOUT_ARROW_W * 2 : 0);
+			int text;
+
+			left = right - width;
+			text = left + (width - row->valueWidth - swatch) / 2;
+			_CheatsPanel(left, top, width, UI_SETLAYOUT_PILL_H,
+				_HintAlpha(settingsValue, alpha));
+			if(arrows) {
+				_SettingsArrow((float)(left + 12), (float)y, -1.0f,
+					settingsAccent);
+				_SettingsArrow((float)(right - 12), (float)y, 1.0f,
+					settingsAccent);
+			}
+			if(row->swatch) {
+				_SettingsSwatch((float)text + UI_SETLAYOUT_SWATCH * 0.5f,
+					(float)y);
+			}
+			drawStringMedium(text + swatch, y, row->value, row->valueScale,
+				ALIGN_LEFT, ink);
+			break;
+		}
+		case UI_SETLAYOUT_ROW_TEXT:
+			left = right - UI_SETLAYOUT_FIELD_W;
+			_CheatsPanel(left, top, UI_SETLAYOUT_FIELD_W, UI_SETLAYOUT_PILL_H,
+				_HintAlpha(settingsField, alpha));
+			_CheatsPanel(left + 6, top + UI_SETLAYOUT_PILL_H - 2,
+				UI_SETLAYOUT_FIELD_W - 12, 1, focused ? settingsAccent :
+				_HintAlpha(settingsRule, alpha));
+			drawStringMedium(left + UI_SETLAYOUT_PILL_PAD, y, row->value,
+				row->valueScale, ALIGN_LEFT,
+				row->placeholder ? settingsDim : ink);
+			break;
+		case UI_SETLAYOUT_ROW_LINK:
+			drawStringMedium(right - 16, y, row->value, row->valueScale,
+				ALIGN_RIGHT, settingsQuiet);
+			drawStringMedium(right, y, "\233", 0.90f, ALIGN_RIGHT,
+				focused ? settingsAccent : settingsQuiet);
+			break;
+		default:
+			break;
+	}
+	if(row->custom) {
+		_SettingsChip(left - UI_SETLAYOUT_CHIP_GAP, y, "CUSTOM");
+	}
+}
+
+static void _DrawSettingsPage(uiDrawObj_t *evt)
+{
+	drawSettingsEvent_t *data = (drawSettingsEvent_t*)evt->data;
+	const uiSetPageSnapshot_t *s = &data->snapshot;
+	const uiSetLayout_t *l = &s->layout;
+	uiMotionMode_t motion = _CurrentMotionMode();
+	uiSettingsFocusFrame_t frame;
+	GXColor back = settingsBack;
+	int focusSlot = l->selectedRow >= 0 ?
+		l->selectedRow - l->firstVisibleRow : -1;
+	int i;
+
+	/* A new view snaps the focus card; within one it springs. */
+	if(!data->focus.initialized || data->focusView != s->view) {
+		UISettingsFocus_Init(&data->focus, &l->focusRect);
+		data->focusView = s->view;
+	}
+	else {
+		UISettingsFocus_Retarget(&data->focus, &l->focusRect, motion);
+	}
+	UISettingsFocus_Update(&data->focus, UIAnim_Delta(), motion, &frame);
+
+	back.a = UI_SETLAYOUT_PAGE_ALPHA;
+	_CheatsPanel(UI_SETLAYOUT_PAGE_X, UI_SETLAYOUT_PAGE_Y, UI_SETLAYOUT_PAGE_W,
+		UI_SETLAYOUT_PAGE_H, back);
+	_SettingsBox(&l->accentBar, settingsAccent);
+	drawStringMedium(l->titleX, l->titleY, s->title, s->titleScale,
+		ALIGN_LEFT, settingsInk);
+	if(l->tabCount > 0) {
+		_SettingsBox(&l->tabTrack, settingsCard);
+		_SettingsBox(&l->tabCell[l->currentTab], settingsFocus);
+		for(i = 0; i < l->tabCount; i++) {
+			drawStringMedium(l->tabLabelCenterX[i], l->tabLabelY, s->tab[i],
+				s->tabScale[i], ALIGN_CENTER,
+				i == l->currentTab ? settingsAccent : settingsQuiet);
+		}
+		_DrawHintText(l->tabLeftGlyphX, l->tabLabelY, "L",
+			UI_SETLAYOUT_TAB_SCALE, ALIGN_LEFT, settingsQuiet);
+		_DrawHintText(l->tabRightGlyphX, l->tabLabelY, "R",
+			UI_SETLAYOUT_TAB_SCALE, ALIGN_RIGHT, settingsQuiet);
+	}
+	else {
+		drawStringMedium(l->badgeX, l->badgeY, s->badge, s->badgeScale,
+			ALIGN_RIGHT, settingsAccent);
+	}
+	drawStringMedium(l->subtitleX, l->subtitleY, s->subtitle,
+		s->subtitleScale, ALIGN_LEFT, settingsQuiet);
+	_SettingsBox(&l->topDivider, settingsRule);
+	drawStringMedium(l->sectionX, l->sectionY, s->section,
+		UI_SETLAYOUT_SECTION_SCALE, ALIGN_LEFT, settingsAccent);
+	drawStringMedium(l->positionX, l->positionY, s->position,
+		UI_SETLAYOUT_POSITION_SCALE, ALIGN_RIGHT, settingsQuiet);
+
+	for(i = 0; i < l->visibleRowCount; i++) {
+		_SettingsBox(&l->rowRect[i], settingsCard);
+	}
+	for(i = 0; i < l->actionCount; i++) {
+		_SettingsBox(&l->actionRect[i], settingsCard);
+	}
+	_SettingsFocusCard((int)lrintf(frame.x), (int)lrintf(frame.y),
+		(int)lrintf(frame.w), (int)lrintf(frame.h));
+	for(i = 0; i < l->visibleRowCount; i++) {
+		_SettingsRow(l, i, &s->rows[i], i == focusSlot);
+	}
+	if(l->scrollVisible) {
+		_SettingsBox(&l->scrollTrack, settingsTrack);
+		_SettingsBox(&l->scrollThumb, settingsAccent);
+	}
+
+	drawStringMedium(l->descriptionX, l->descriptionY, s->description,
+		s->descriptionScale, ALIGN_LEFT, settingsQuiet);
+	_SettingsBox(&l->bottomDivider, settingsRule);
+	for(i = 0; i < s->hintCount; i++) {
+		_DrawHintText(s->hintX[i], l->hintY, s->hint[i],
+			UI_SETLAYOUT_HINT_SCALE, ALIGN_LEFT,
+			i == 0 ? settingsInk : settingsQuiet);
+	}
+	for(i = 0; i < l->actionCount; i++) {
+		drawStringMedium(l->actionRect[i].x + l->actionRect[i].w / 2, l->hintY,
+			s->action[i], s->actionScale[i], ALIGN_CENTER,
+			i == l->selectedAction ? settingsInk : settingsQuiet);
+	}
+	drawInit();
+}
+
+uiDrawObj_t* DrawSettingsPage(const uiSetPageSnapshot_t *snapshot)
+{
+	drawSettingsEvent_t *data = calloc(1, sizeof(*data));
+	uiDrawObj_t *event = calloc(1, sizeof(*event));
+
+	if(data == NULL || event == NULL) {
+		free(data);
+		free(event);
+		return NULL;
+	}
+	data->snapshot = *snapshot;
+	event->type = EV_SETTINGS;
+	event->data = data;
+	return event;
+}
+
+/* The copy and the Menu Color it was built with change in one step, so the
+ * page never shows a label in another color. Settings changes a value on the
+ * press but draws on the release, and its value list steps the live value
+ * through every choice while it builds, so the screen follows the page, not
+ * swissSettings. */
+void DrawUpdateSettingsPage(uiDrawObj_t *page,
+	const uiSetPageSnapshot_t *snapshot, int menuColor)
+{
+	if(page == NULL) {
+		return;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!page->disposed && page->type == EV_SETTINGS && page->data != NULL) {
+		((drawSettingsEvent_t*)page->data)->snapshot = *snapshot;
+		menuColorPage = page;
+		menuColorPinned = menuColor;
+		menuColorPreview = -1;
+	}
+	LWP_MutexUnlock(_videomutex);
+}
+
+static void _DrawSettingsCard(const uiSetLayoutRect_t *card,
+	const uiSetLayoutRect_t *accentBar, const uiSetLayoutRect_t *topDivider,
+	const uiSetLayoutRect_t *bottomDivider)
+{
+	_CheatsPanel(UI_SETLAYOUT_PAGE_X, UI_SETLAYOUT_PAGE_Y, UI_SETLAYOUT_PAGE_W,
+		UI_SETLAYOUT_PAGE_H, settingsScrim);
+	_SettingsBox(card, settingsCard);
+	_SettingsBox(accentBar, settingsAccent);
+	_SettingsBox(topDivider, settingsRule);
+	_SettingsBox(bottomDivider, settingsRule);
+}
+
+static void _DrawSettingsList(uiDrawObj_t *evt)
+{
+	const uiSetListSnapshot_t *s = (const uiSetListSnapshot_t*)evt->data;
+	const uiSetListLayout_t *l = &s->layout;
+	int focus = l->focus - l->first;
+	int i;
+
+	_DrawSettingsCard(&l->card, &l->accentBar, &l->topDivider,
+		&l->bottomDivider);
+	drawStringMedium(l->titleX, l->titleY, s->title, s->titleScale,
+		ALIGN_LEFT, settingsInk);
+	for(i = 0; i < l->visibleCount; i++) {
+		_SettingsBox(&l->rowRect[i], settingsBack);
+	}
+	/* Drawn where it is: the list's focus never slides. */
+	_SettingsFocusCard(l->focusRect.x, l->focusRect.y, l->focusRect.w,
+		l->focusRect.h);
+	for(i = 0; i < l->visibleCount; i++) {
+		drawStringMedium(l->rowTextX, l->rowTextY[i], s->value[i],
+			s->valueScale[i], ALIGN_LEFT,
+			i == focus ? settingsInk : settingsQuiet);
+		if(i == s->current) {
+			_SettingsChip(l->chipRight, l->rowTextY[i], "CURRENT");
+		}
+	}
+	if(l->scrollVisible) {
+		_SettingsBox(&l->scrollTrack, settingsTrack);
+		_SettingsBox(&l->scrollThumb, settingsAccent);
+	}
+	_DrawHintText(l->hintX, l->hintY, s->hint[0], s->hintScale[0], ALIGN_LEFT,
+		settingsInk);
+	_DrawHintText(l->hintRightX, l->hintY, s->hint[1], s->hintScale[1],
+		ALIGN_RIGHT, settingsQuiet);
+	drawInit();
+}
+
+uiDrawObj_t* DrawSettingsList(const uiSetListSnapshot_t *snapshot)
+{
+	uiSetListSnapshot_t *data = calloc(1, sizeof(*data));
+	uiDrawObj_t *event = calloc(1, sizeof(*event));
+
+	if(data == NULL || event == NULL) {
+		free(data);
+		free(event);
+		return NULL;
+	}
+	*data = *snapshot;
+	event->type = EV_SETTINGSLIST;
+	event->data = data;
+	return event;
+}
+
+void DrawUpdateSettingsList(uiDrawObj_t *list,
+	const uiSetListSnapshot_t *snapshot, int previewColor)
+{
+	if(list == NULL) {
+		return;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!list->disposed && list->type == EV_SETTINGSLIST && list->data != NULL) {
+		*(uiSetListSnapshot_t*)list->data = *snapshot;
+		if(previewColor >= 0) {
+			menuColorPreview = previewColor;
+		}
+	}
+	LWP_MutexUnlock(_videomutex);
+}
+
+static void _DrawSettingsHelp(uiDrawObj_t *evt)
+{
+	const drawSettingsHelpEvent_t *data =
+		(const drawSettingsHelpEvent_t*)evt->data;
+	const uiSetHelpLayout_t *l = &data->layout;
+	int i;
+
+	_DrawSettingsCard(&l->card, &l->accentBar, &l->topDivider,
+		&l->bottomDivider);
+	drawStringMedium(l->titleX, l->titleY, data->title, data->titleScale,
+		ALIGN_LEFT, settingsInk);
+	for(i = 0; i < l->lineCount; i++) {
+		drawStringMedium(l->lineX, l->lineY0 + i * l->linePitch,
+			data->line[i], data->lineScale[i], ALIGN_LEFT, settingsQuiet);
+	}
+	_DrawHintText(l->hintX, l->hintY, data->hint, data->hintScale, ALIGN_LEFT,
+		settingsInk);
+	drawInit();
+}
+
+static float _SettingsHelpFit(char *out, size_t capacity, const char *text,
+	size_t length, int width, float scale, float floor,
+	uiSetLayoutTextMeasureFn measure)
+{
+	uiSetLayoutTextFit_t fit;
+
+	if(!UISetLayout_PrepareText(text, length, length,
+		UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, 0, 1, width,
+		scale, floor, measure, out, capacity, &fit)) {
+		out[0] = '\0';
+		return floor;
+	}
+	return fit.scale;
+}
+
+/* The help's first line is its title; the lines after the blank one under it
+ * are drawn as written. Built on the menu thread, drawn as it is. */
+uiDrawObj_t* DrawSettingsHelp(const char *help)
+{
+	drawSettingsHelpEvent_t *data = calloc(1, sizeof(*data));
+	uiDrawObj_t *event = calloc(1, sizeof(*event));
+	const char *cursor = help != NULL ? help : "";
+	const char *end = strchr(cursor, '\n');
+	char title[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
+	size_t length;
+	int count = 0;
+
+	if(data == NULL || event == NULL) {
+		free(data);
+		free(event);
+		return NULL;
+	}
+	/* The widths don't depend on the number of lines. */
+	UISetLayout_ComputeHelp(0, &data->layout);
+	if(end == NULL) {
+		end = cursor + strlen(cursor);
+	}
+	length = MIN((size_t)(end - cursor), sizeof(title) - 1u);
+	memcpy(title, cursor, length);
+	title[length] = '\0';
+	length = UISetLayout_Label(title, title, sizeof(title));
+	data->titleScale = _SettingsHelpFit(data->title, sizeof(data->title),
+		title, length, data->layout.titleMaxWidth,
+		UI_SETLAYOUT_CARD_TITLE_SCALE, UI_SETLAYOUT_ROW_TEXT_FLOOR,
+		GetTextSizeInPixels);
+	/* Y or B closes it, as before. */
+	data->hintScale = _SettingsHelpFit(data->hint, sizeof(data->hint),
+		"B  Close", 8u, data->layout.lineMaxWidth, UI_SETLAYOUT_HINT_SCALE,
+		UI_SETLAYOUT_HINT_SCALE, GetHintSizeInPixels);
+	cursor = *end == '\n' ? end + 1 : end;
+	while(*cursor == '\n') {
+		cursor++;
+	}
+	while(*cursor != '\0' && count < UI_SETLAYOUT_HELP_LINES) {
+		end = strchr(cursor, '\n');
+		if(end == NULL) {
+			end = cursor + strlen(cursor);
+		}
+		/* A blank line keeps its place as the gap between paragraphs. */
+		data->lineScale[count] = end > cursor ?
+			_SettingsHelpFit(data->line[count], sizeof(data->line[count]),
+				cursor, (size_t)(end - cursor), data->layout.lineMaxWidth,
+				UI_SETLAYOUT_HELP_SCALE, UI_SETLAYOUT_HELP_SCALE,
+				GetTextSizeInPixels) :
+			UI_SETLAYOUT_HELP_SCALE;
+		count++;
+		cursor = *end == '\n' ? end + 1 : end;
+	}
+	UISetLayout_ComputeHelp(count, &data->layout);
+	event->type = EV_SETTINGSHELP;
+	event->data = data;
+	return event;
+}
 
 void DrawGetTextEntry(int mode, const char *label, void *src, int size) {
 	
@@ -4998,8 +5438,14 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 		case EV_CHEATS:
 			_DrawCheats(videoEvent);
 			break;
-		case EV_SETTINGSFOCUS:
-			_DrawSettingsFocus(videoEvent);
+		case EV_SETTINGS:
+			_DrawSettingsPage(videoEvent);
+			break;
+		case EV_SETTINGSLIST:
+			_DrawSettingsList(videoEvent);
+			break;
+		case EV_SETTINGSHELP:
+			_DrawSettingsHelp(videoEvent);
 			break;
 		default:
 			break;
@@ -5158,6 +5604,9 @@ uiDrawObj_t* DrawRepublish(uiDrawObj_t *old, uiDrawObj_t *new)
 
 void DrawDispose(uiDrawObj_t *evt)
 {
+	if(evt == NULL) {
+		return;
+	}
 	LWP_MutexLock(_videomutex);
 	evt->disposed = true;
 	if(evt == menuColorPage) {
@@ -5165,29 +5614,6 @@ void DrawDispose(uiDrawObj_t *evt)
 		menuColorPinned = -1;
 		menuColorPreview = -1;
 	}
-	LWP_MutexUnlock(_videomutex);
-}
-
-/* Settings changes a value when the button goes down but redraws its page
- * when it comes up, and its picker steps the live value through every color
- * while it builds the list. Pinning the color to the page keeps the screen
- * and the row's label in step. */
-void DrawPinMenuColor(uiDrawObj_t *page, int color)
-{
-	LWP_MutexLock(_videomutex);
-	menuColorPage = page;
-	menuColorPinned = color;
-	menuColorPreview = -1;
-	LWP_MutexUnlock(_videomutex);
-}
-
-/* The Menu Color list shows the color it has focused. The page's next draw
- * (DrawPinMenuColor) ends the preview, so a pick never flashes the old color
- * between the list closing and the page showing the new value. */
-void DrawPreviewMenuColor(int color)
-{
-	LWP_MutexLock(_videomutex);
-	menuColorPreview = color;
 	LWP_MutexUnlock(_videomutex);
 }
 
@@ -5208,8 +5634,6 @@ void DrawInit(GXRModeObj *videoMode, bool black) {
 	systemInstrument.coreTemperature = -1;
 	memcpy(systemInstrument.timeText, "--:--:--", 9u);
 	videoFrameSerial = 0u;
-	settingsFocusLastDrawFrame = 0u;
-	UISettingsFocus_Reset(&settingsFocusState);
 	UIPerf_Reset();
 	UIScene_Reset();
 	sceneRenderingEnabled = !black;

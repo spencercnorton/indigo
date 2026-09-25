@@ -20,8 +20,8 @@ third. On Home, turn the cube to **Settings** and press A.
 
 ## The three tabs
 
-**L** and **R** move between the tabs; the top right shows which one you're
-on, "1 of 3" to "3 of 3".
+**L** and **R** move between the tabs. They sit at the top right, with the
+one you're on lit.
 
 | Tab | Holds |
 | --- | --- |
@@ -41,6 +41,10 @@ on, "1 of 3" to "3 of 3".
 - **A** changes it too.
 - **Y** explains the highlighted setting. Every setting has help; Y again
   closes it.
+
+Settings that are on or off show a switch, **ON** or **OFF**. The line above
+the buttons says what the highlighted setting does, or what its current value
+does, such as "Rumble is turned off in games".
 
 On a setting with four or more choices, such as a video mode or a language,
 A lists them all instead. Move to a choice and press A, or press B to keep
@@ -95,7 +99,8 @@ the rest. Open them with **X** on the game's [details](game-details.md).
 - A setting you change is marked **Custom**. Everything else follows Game
   Defaults, and changes when they do.
 - **X** puts the highlighted setting back to its Game Defaults value.
-- **B** is Done. The game's details then count its custom settings.
+- **B** is Done. The game's details then show how many of its settings are
+  its own, and the first of them.
 - **Reset to defaults**, at the end of the list, clears them all. It asks
   first, and keeps the game's Comment and Status lines in its file.
 

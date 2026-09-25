@@ -231,5 +231,6 @@ int settings_game_custom_count(const ConfigEntry *game);
 void settings_game_files_load(void);
 void settings_game_files_forget(void);
 bool settings_game_has_custom(const char *gameId, char region);
+const char *settings_game_custom_first(ConfigEntry *game);
 
 #endif

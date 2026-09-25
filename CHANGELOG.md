@@ -3,6 +3,27 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.22.0 — Settings in the cheat browser's look
+
+- Every Settings page (Quick, Game Defaults, Setup and its six sections, and
+  a game's own settings) is drawn like the cheat browser: one full page, the
+  tabs as a segmented control between L and R, the settings as cards, and the
+  highlighted one lit with an accent bar that slides as you move.
+- Settings that are on or off show an ON or OFF switch; settings with more
+  choices show their value in a pill, with arrows while highlighted. Text
+  settings read like a field, and "Not set" when empty. Menu Color shows a
+  swatch of the color.
+- A line above the buttons says what the highlighted setting does, or what
+  its current value does. The buttons that work are shown as icons, with
+  Save & Exit and Discard & Exit beside them.
+- The list of choices, the help and every message and progress box are cards
+  in the same style; a warning's accent is amber and a failure's red.
+- A game's own settings count their Custom rows at the top right ("2
+  custom"), and Game Detail gains a SETTINGS line: how many are the game's
+  own and the first of them, or "Game Defaults" with X to change them.
+- The page stays on screen for the whole of Settings instead of being
+  rebuilt after every press, so it never flickers.
+
 ## v1.21.0 — glass that bends light
 
 - The Home cube is glass that refracts: through the front you see the cube's

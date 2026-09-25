@@ -50,8 +50,9 @@ restart.
 
 **X** opens settings that apply to this game only: its video mode,
 widescreen, language, polling rate and the rest. Anything you change is marked
-**Custom**, and the hint on the detail screen counts them, for example
-"X Settings (1 Custom)". In the Library, a game with any Custom setting shows
+**Custom**, and the detail screen's **Settings** line counts them and names
+the first, for example "1 custom" and "Force Video Mode: 480p". With none, it
+reads "Game Defaults". In the Library, a game with any Custom setting shows
 a small sliders mark in the corner of its cover.
 
 <p align="center">

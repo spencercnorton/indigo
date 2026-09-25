@@ -65,9 +65,11 @@ controller grammar as every other screen.
 **Cheats read clearly.** The cheat browser shows per-cheat state plainly, and
 the runtime handling around it is stricter about what it will apply.
 
-**Settings opens on what you change between games.** Quick settings fit
-on one screen: menu music and sounds, In-Game Reset, memory-card emulation,
-auto-loaded cheats and a few more. R moves to Game Defaults, what every game
+**Settings opens on what you change between games**, and reads like the
+cheat browser: cards with ON and OFF switches, a line that says what the
+highlighted setting does, and the buttons that work shown as icons. Quick
+settings fit on one screen: menu music and sounds, In-Game Reset, memory-card
+emulation, auto-loaded cheats and a few more. R moves to Game Defaults, what every game
 starts with, and to Setup, which holds video, console, storage, network,
 library and developer options in six sections. X on a game's detail screen
 opens that game's own settings, where anything that differs from Game Defaults

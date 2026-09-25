@@ -160,9 +160,3 @@ void UISettingsFocus_Update(uiSettingsFocusState_t *state,
 	out->w = state->width.value;
 	out->h = state->height.value;
 }
-
-bool UISettingsFocus_IsContinuous(uint32_t currentFrame,
-	uint32_t lastDrawFrame, uint32_t maximumGap)
-{
-	return (uint32_t)(currentFrame - lastDrawFrame) <= maximumGap;
-}

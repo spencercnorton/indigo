@@ -15,6 +15,7 @@
 #include "ui_gameflow.h"
 #include "ui_home.h"
 #include "ui_presentation.h"
+#include "ui_settings_layout.h"
 
 #define D_WARN  0
 #define D_INFO  1
@@ -147,7 +148,6 @@ uiDrawObj_t* DrawSelectableButton(int x1, int y1, int x2, int y2, const char *me
 uiDrawObj_t* DrawEmptyBox(int x1, int y1, int x2, int y2);
 uiDrawObj_t* DrawEmptyColouredBox(int x1, int y1, int x2, int y2, GXColor colour);
 uiDrawObj_t* DrawTransparentBox(int x1, int y1, int x2, int y2);
-uiDrawObj_t* DrawSettingsFocus(int x1, int y1, int x2, int y2);
 uiDrawObj_t* DrawStyledLabel(int x, int y, const char *string, float size, int align, GXColor color);
 uiDrawObj_t* DrawHintLabel(int x, int y, const char *string, float size, int align, GXColor color);
 /* A hint line's width at scale 1, button icons included. */
@@ -188,10 +188,20 @@ void DrawAddChild(uiDrawObj_t *parent, uiDrawObj_t *child);
 uiDrawObj_t* DrawPublish(uiDrawObj_t *evt);
 uiDrawObj_t* DrawRepublish(uiDrawObj_t *old, uiDrawObj_t *new);
 void DrawDispose(uiDrawObj_t *evt);
-/* Keep the screen in page's Menu Color until page is disposed. */
-void DrawPinMenuColor(uiDrawObj_t *page, int color);
-/* Show color while the Menu Color list has it focused. */
-void DrawPreviewMenuColor(int color);
+/* Settings: one page event for the whole session, drawn from a snapshot in
+ * the cheat browser's language. Each update copies the snapshot and keeps
+ * the screen in the Menu Color it was built with (menuColor), in one step,
+ * until the page is disposed. */
+uiDrawObj_t* DrawSettingsPage(const uiSetPageSnapshot_t *snapshot);
+void DrawUpdateSettingsPage(uiDrawObj_t *page,
+	const uiSetPageSnapshot_t *snapshot, int menuColor);
+/* The value list over the page. previewColor >= 0 shows that Menu Color
+ * while the list has it focused; the page's next update ends it. */
+uiDrawObj_t* DrawSettingsList(const uiSetListSnapshot_t *snapshot);
+void DrawUpdateSettingsList(uiDrawObj_t *list,
+	const uiSetListSnapshot_t *snapshot, int previewColor);
+/* A row's help (its tooltip) as a card over the page. */
+uiDrawObj_t* DrawSettingsHelp(const char *help);
 uiDrawObj_t* DrawFileBrowserButton(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
 uiDrawObj_t* DrawFileBrowserButtonMeta(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
 uiDrawObj_t* DrawFileCarouselEntry(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int distFromMiddle);

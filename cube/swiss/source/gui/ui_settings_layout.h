@@ -4,12 +4,13 @@
 #include <stddef.h>
 
 /*
- * ui_settings_layout -- pure presentation geometry for the Phase 4D
- * settings shell. Computes tabs, the visible row window, selection and
- * action-rail mapping, scroll treatment, and motion targets from
- * (page, option) alone. It owns NO Swiss settings, mutates NO option
- * values, and performs NO drawing or I/O, so it compiles and tests on
- * the host under strict C99 (buildtools/ui/tests/test_ui_settings_layout).
+ * ui_settings_layout -- pure presentation geometry and text for the Settings
+ * pages, drawn in the cheat browser's language: one full-screen page with a
+ * header, a section line, six row cards in a window that follows the focus,
+ * a one-line description of the focused row and a footer holding the button
+ * hints and the two exits. It owns NO Swiss settings, mutates NO option
+ * values, and performs NO drawing or I/O, so it compiles and tests on the
+ * host under strict C99 (buildtools/ui/tests/test_ui_settings_layout).
  *
  * Pages are the Settings views: three tabs (Quick, Game
  * Defaults, Setup), the six Setup sections that open from Setup, and one
@@ -20,15 +21,14 @@
  *   then Save & Exit
  *   then Discard & Exit            (index == UISetLayout_DiscardIndex(page))
  *
- * All content rectangles stay inside the 640x480 title-safe area
- * x=32..608, y=34..438; boxes are placed so FrameBufferMagic's implicit
- * border expansion (3px for boxes <=30px tall, 10px otherwise) also
- * lands inside it.
+ * The page covers the whole screen, title bar included, like the cheat
+ * browser. Its content stays inside the 5% action-safe area
+ * x=32..608, y=24..456.
  */
 
 #define UI_SETLAYOUT_PAGE_COUNT 10
 #define UI_SETLAYOUT_TAB_COUNT 3
-#define UI_SETLAYOUT_VISIBLE_ROWS 9
+#define UI_SETLAYOUT_VISIBLE_ROWS 6
 #define UI_SETLAYOUT_MAX_ACTIONS 2
 
 /* Per-view row counts (bound to settings.c's row tables). */
@@ -50,20 +50,18 @@
 
 /* Safe-area bounds every computed rect must respect. */
 #define UI_SETLAYOUT_SAFE_X0 32
-#define UI_SETLAYOUT_SAFE_Y0 34
+#define UI_SETLAYOUT_SAFE_Y0 24
 #define UI_SETLAYOUT_SAFE_X1 608
-#define UI_SETLAYOUT_SAFE_Y1 438
+#define UI_SETLAYOUT_SAFE_Y1 456
 
-/* Persistent titlebar exclusions. Settings content must remain clear of
- * both the Swiss mark and the live clock/temperature dial. */
-#define UI_SETLAYOUT_TITLEBAR_LOGO_X0 30
-#define UI_SETLAYOUT_TITLEBAR_LOGO_Y0 28
-#define UI_SETLAYOUT_TITLEBAR_LOGO_X1 126
-#define UI_SETLAYOUT_TITLEBAR_LOGO_Y1 60
-#define UI_SETLAYOUT_TITLEBAR_DIAL_X0 530
-#define UI_SETLAYOUT_TITLEBAR_DIAL_Y0 23
-#define UI_SETLAYOUT_TITLEBAR_DIAL_X1 620
-#define UI_SETLAYOUT_TITLEBAR_DIAL_Y1 63
+/* The page: drawn 6 px past every screen edge and opaque, so it covers the
+ * title bar's clock and the cube like the cheat browser. (Any translucency
+ * let the clock show through the tabs.) */
+#define UI_SETLAYOUT_PAGE_X (-6)
+#define UI_SETLAYOUT_PAGE_Y (-6)
+#define UI_SETLAYOUT_PAGE_W 652
+#define UI_SETLAYOUT_PAGE_H 492
+#define UI_SETLAYOUT_PAGE_ALPHA 254
 
 /* Display values are bounded before font measurement or Draw* allocation.
  * The setting itself is never modified; only its one-frame presentation is
@@ -74,11 +72,39 @@
 #define UI_SETLAYOUT_LABEL_BUFFER_SIZE 96u
 #define UI_SETLAYOUT_TEXT_BUFFER_SIZE 104u
 #define UI_SETLAYOUT_ELLIPSIS_BYTE 0x85u
-#define UI_SETLAYOUT_SCROLL_INSET 3
 
 /* Settings text never shrinks below this native-grid scale. Wider strings
  * are ellipsized to the measured column before drawing. */
 #define UI_SETLAYOUT_ROW_TEXT_FLOOR 0.60f
+
+/* Type scale, the cheat browser's. */
+#define UI_SETLAYOUT_TITLE_SCALE 1.05f
+#define UI_SETLAYOUT_TITLE_FLOOR 0.80f
+#define UI_SETLAYOUT_SUBTITLE_SCALE 0.64f
+#define UI_SETLAYOUT_TAB_SCALE 0.50f
+#define UI_SETLAYOUT_BADGE_SCALE 0.54f
+#define UI_SETLAYOUT_SECTION_SCALE 0.42f
+#define UI_SETLAYOUT_POSITION_SCALE 0.46f
+#define UI_SETLAYOUT_LABEL_SCALE 0.66f
+#define UI_SETLAYOUT_VALUE_SCALE 0.60f
+#define UI_SETLAYOUT_CHIP_SCALE 0.36f
+#define UI_SETLAYOUT_DESCRIPTION_SCALE 0.48f
+#define UI_SETLAYOUT_HINT_SCALE 0.48f
+#define UI_SETLAYOUT_ACTION_SCALE 0.50f
+
+/* Inside a row card: an ON/OFF pill, a value pill with the < > it cycles
+ * with, a text field, and the CUSTOM chip of a game's own rows. */
+#define UI_SETLAYOUT_TOGGLE_W 62
+#define UI_SETLAYOUT_TOGGLE_H 24
+#define UI_SETLAYOUT_PILL_H 24
+#define UI_SETLAYOUT_PILL_PAD 12
+#define UI_SETLAYOUT_ARROW_W 14
+#define UI_SETLAYOUT_FIELD_W 200
+#define UI_SETLAYOUT_CHIP_W 50
+#define UI_SETLAYOUT_CHIP_H 16
+#define UI_SETLAYOUT_CHIP_GAP 8
+#define UI_SETLAYOUT_SWATCH 14
+#define UI_SETLAYOUT_SWATCH_GAP 6
 
 typedef struct {
 	short x, y, w, h;
@@ -122,32 +148,43 @@ typedef struct {
 	const char *subtitle;
 	int rowCount;
 	int tab;                    /* owning tab, or UI_SETLAYOUT_NO_TAB */
-	int hasTags;                /* rows carry a short tag right of the value */
+	int hasTags;                /* rows can carry the CUSTOM chip */
 } uiSetLayoutPage_t;
 
 typedef struct {
 	int page;
 	int option;
 
-	/* Tab strip: cells sized by label length so every label fits. A game's
-	 * own settings have no tabs (tabCount 0, currentTab -1). */
+	/* Header: accent bar, title, then the tabs (or a game's badge) on the
+	 * title's line, the subtitle and a divider. The tabs are one segmented
+	 * control with the L and R buttons at its ends. A game's own settings
+	 * have no tabs (tabCount 0, currentTab -1) and show how many rows are
+	 * its own instead. */
+	uiSetLayoutRect_t accentBar;
+	int titleX, titleY;
+	int titleMaxWidth;
+	uiSetLayoutRect_t titleRegion;
 	int tabCount;
 	int currentTab;
+	uiSetLayoutRect_t tabTrack;
 	uiSetLayoutRect_t tabCell[UI_SETLAYOUT_TAB_COUNT];
 	int tabLabelCenterX[UI_SETLAYOUT_TAB_COUNT];
 	int tabLabelY;
-
-	/* Header. */
-	int titleX, titleY;
-	int titleMaxWidth;
+	int tabLeftGlyphX;          /* L: its left edge */
+	int tabRightGlyphX;         /* R: its right edge */
+	int badgeX, badgeY;         /* right-aligned */
+	int badgeMaxWidth;
+	uiSetLayoutRect_t badgeRegion;
 	int subtitleX, subtitleY;
 	int subtitleMaxWidth;
-	int progressX, progressY;   /* right-aligned "n / 6" anchor */
-	int progressMaxWidth;
-	float pageProgress;         /* (tab + 1) / 3; 0 without a tab */
-	uiSetLayoutRect_t titleRegion;
 	uiSetLayoutRect_t subtitleRegion;
-	uiSetLayoutRect_t progressRegion;
+	uiSetLayoutRect_t topDivider;
+
+	/* Section line: where this page sits (left) and "3 / 22" (right). */
+	int sectionX, sectionY;
+	int sectionMaxWidth;
+	int positionX, positionY;   /* right-aligned */
+	int positionMaxWidth;
 
 	/* Rows: a window of at most UI_SETLAYOUT_VISIBLE_ROWS around the
 	 * selection; row i of the window shows settable row
@@ -155,44 +192,160 @@ typedef struct {
 	int rowCount;
 	int firstVisibleRow;
 	int visibleRowCount;
-	int selectedRow;            /* absolute row index, -1 on the action rail */
+	int selectedRow;            /* absolute row index, -1 on an exit */
 	uiSetLayoutRect_t rowRect[UI_SETLAYOUT_VISIBLE_ROWS];
 	int rowTextY[UI_SETLAYOUT_VISIBLE_ROWS];
 	int rowLabelX;              /* left-aligned label anchor */
-	int rowLabelMaxWidth;       /* fit boundary before the value gutter */
-	int rowValueX0;             /* left edge of the reserved value column */
-	int rowValueX;              /* right-aligned value anchor */
+	int rowLabelMaxWidth;       /* fit boundary before the value column */
+	int rowValueX0;             /* left edge of the value column */
+	int rowValueX;              /* right edge of every value */
 	int rowValueWidth;
-	int rowTagX;                /* right-aligned tag anchor (hasTags pages) */
-	int rowTagWidth;            /* 0 when the page has no tags */
 
 	/* Slim scroll treatment (hidden when everything fits). */
 	int scrollVisible;
 	uiSetLayoutRect_t scrollTrack;
 	uiSetLayoutRect_t scrollThumb;
-	float scrollPercent;        /* thumb travel fraction, 0..1 */
 
-	/* Persistent bottom action rail. */
+	/* The focused row in one line, above the footer. */
+	int descriptionX, descriptionY;
+	int descriptionMaxWidth;
+	uiSetLayoutRect_t bottomDivider;
+
+	/* Footer: button hints from the left, the two exits at the right. */
+	int hintX, hintY;
+	int hintMaxWidth;
 	int actionCount;
 	int actionKind[UI_SETLAYOUT_MAX_ACTIONS];
 	uiSetLayoutRect_t actionRect[UI_SETLAYOUT_MAX_ACTIONS];
 	int selectedAction;         /* -1 or index into actionKind/actionRect */
 
-	/* Contextual help hint (only when the selected option has a tooltip). */
-	int helpHintVisible;
-	int helpHintX, helpHintY;
-	int helpHintMaxWidth;
-	uiSetLayoutRect_t helpHintRegion;
-
-	/* Backing panel for the whole surface (border-expansion aware). */
-	uiSetLayoutRect_t panel;
-
-	/* Motion: the focus highlight's target center Y (rows or rail) and
-	 * whether the consumer may animate toward it. Off must resolve on
-	 * the next published frame. */
-	float focusTargetY;
+	/* Motion: where the focus card goes (the selected row's card or exit)
+	 * and whether the consumer may animate toward it. Off must resolve on
+	 * the next drawn frame. */
+	uiSetLayoutRect_t focusRect;
 	int focusAnimate;           /* 0 under UI_SETLAYOUT_MOTION_OFF */
 } uiSetLayout_t;
+
+/* ------------------------------------------------------------------------
+ * The page as the video thread draws it. settings.c fills one on the menu
+ * thread, every string already fitted to its place, and FrameBufferMagic
+ * copies it under the video mutex into the one page event Settings keeps
+ * for its whole session. Pointer-free, so the copy is all the renderer
+ * ever reads.
+ * --------------------------------------------------------------------- */
+typedef enum {
+	UI_SETLAYOUT_ROW_TOGGLE = 0, /* two values: an ON/OFF pill */
+	UI_SETLAYOUT_ROW_CHOICE,     /* a value pill, < > while focused */
+	UI_SETLAYOUT_ROW_TEXT,       /* A opens the text editor */
+	UI_SETLAYOUT_ROW_LINK,       /* A opens a Setup section */
+	UI_SETLAYOUT_ROW_ACTION      /* A runs it (Reset to defaults) */
+} uiSetLayoutRowKind_t;
+
+#define UI_SETLAYOUT_HINT_ITEMS 4
+#define UI_SETLAYOUT_HINT_CAPACITY 24u
+#define UI_SETLAYOUT_SHORT_CAPACITY 32u
+
+typedef struct {
+	char label[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
+	char value[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
+	float labelScale;
+	float valueScale;
+	short valueWidth;           /* value's drawn width, px */
+	unsigned char kind;         /* uiSetLayoutRowKind_t */
+	unsigned char on;           /* a toggle's state */
+	unsigned char enabled;
+	unsigned char custom;       /* a game's own value: the CUSTOM chip */
+	unsigned char swatch;       /* Menu Color: a dot of the color shown */
+	unsigned char placeholder;  /* an empty text value, drawn as "Not set" */
+} uiSetPageRow_t;
+
+typedef struct {
+	uiSetLayout_t layout;
+	char title[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
+	char subtitle[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
+	char tab[UI_SETLAYOUT_TAB_COUNT][UI_SETLAYOUT_SHORT_CAPACITY];
+	char badge[UI_SETLAYOUT_SHORT_CAPACITY];
+	char section[UI_SETLAYOUT_LABEL_BUFFER_SIZE];
+	char position[UI_SETLAYOUT_SHORT_CAPACITY];
+	char description[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
+	char hint[UI_SETLAYOUT_HINT_ITEMS][UI_SETLAYOUT_HINT_CAPACITY];
+	char action[UI_SETLAYOUT_MAX_ACTIONS][UI_SETLAYOUT_SHORT_CAPACITY];
+	float titleScale;
+	float subtitleScale;
+	float tabScale[UI_SETLAYOUT_TAB_COUNT];
+	float badgeScale;
+	float descriptionScale;
+	float actionScale[UI_SETLAYOUT_MAX_ACTIONS];
+	short hintX[UI_SETLAYOUT_HINT_ITEMS];
+	int hintCount;
+	int view;                   /* a new view snaps the focus card */
+	uiSetPageRow_t rows[UI_SETLAYOUT_VISIBLE_ROWS];
+} uiSetPageSnapshot_t;
+
+/* ------------------------------------------------------------------------
+ * The value list A opens on a long choice, and the help card Y opens: cards
+ * over a dimmed page. The list's focus is drawn where it is, never animated.
+ * --------------------------------------------------------------------- */
+#define UI_SETLAYOUT_LIST_ROWS 7
+#define UI_SETLAYOUT_LIST_MAX 16
+#define UI_SETLAYOUT_HELP_LINES 16
+#define UI_SETLAYOUT_CARD_TITLE_SCALE 0.72f
+#define UI_SETLAYOUT_HELP_SCALE 0.58f
+
+typedef struct {
+	uiSetLayoutRect_t card;
+	uiSetLayoutRect_t accentBar;
+	int titleX, titleY;
+	int titleMaxWidth;
+	uiSetLayoutRect_t topDivider;
+	int count;
+	int first;
+	int visibleCount;
+	int focus;                  /* absolute value index */
+	uiSetLayoutRect_t rowRect[UI_SETLAYOUT_LIST_ROWS];
+	int rowTextY[UI_SETLAYOUT_LIST_ROWS];
+	int rowTextX;
+	int rowTextMaxWidth;
+	int chipRight;              /* the CURRENT chip's right edge */
+	int scrollVisible;
+	uiSetLayoutRect_t scrollTrack;
+	uiSetLayoutRect_t scrollThumb;
+	uiSetLayoutRect_t bottomDivider;
+	int hintX, hintRightX, hintY;
+	uiSetLayoutRect_t focusRect;
+} uiSetListLayout_t;
+
+typedef struct {
+	uiSetListLayout_t layout;
+	char title[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
+	char value[UI_SETLAYOUT_LIST_ROWS][UI_SETLAYOUT_SHORT_CAPACITY];
+	char hint[2][UI_SETLAYOUT_HINT_CAPACITY]; /* A Choose, B Cancel */
+	float titleScale;
+	float valueScale[UI_SETLAYOUT_LIST_ROWS];
+	float hintScale[2];
+	int current;                /* window slot of the value set, or -1 */
+} uiSetListSnapshot_t;
+
+typedef struct {
+	uiSetLayoutRect_t card;
+	uiSetLayoutRect_t accentBar;
+	int titleX, titleY;
+	int titleMaxWidth;
+	uiSetLayoutRect_t topDivider;
+	int lineCount;
+	int lineX, lineY0, linePitch;
+	int lineMaxWidth;
+	uiSetLayoutRect_t bottomDivider;
+	int hintX, hintY;
+} uiSetHelpLayout_t;
+
+/* The list of count values (at most UI_SETLAYOUT_LIST_MAX) with focus on
+ * one: its window centres the focus, like the page's. */
+void UISetLayout_ComputeList(int count, int focus, uiSetListLayout_t *out);
+
+/* The help card for lineCount body lines (at most UI_SETLAYOUT_HELP_LINES),
+ * centred on the screen. */
+void UISetLayout_ComputeHelp(int lineCount, uiSetHelpLayout_t *out);
 
 /* Static page descriptor (labels, row counts, nav availability). */
 const uiSetLayoutPage_t *UISetLayout_PageDesc(int page);
@@ -208,10 +361,9 @@ const char *UISetLayout_SettingsFileText(int state);
 /* Index of the Discard & Exit option: rowCount + 1. */
 int UISetLayout_DiscardIndex(int page);
 
-/* Full layout for one published frame. motionMode uses the mirror enum;
- * hasTooltip reports whether the currently selected option has help. */
-void UISetLayout_Compute(int page, int option, int hasTooltip,
-                         int motionMode, uiSetLayout_t *out);
+/* Full layout for one page. motionMode uses the mirror enum. */
+void UISetLayout_Compute(int page, int option, int motionMode,
+	uiSetLayout_t *out);
 
 /* Copies at most UI_SETLAYOUT_VALUE_TEXT_MAX display bytes, replacing a
  * clipped tail or middle with the IPL ellipsis glyph. sourceLength is an
@@ -236,5 +388,24 @@ int UISetLayout_PrepareText(const char *source, size_t sourceLength,
 	uiSetLayoutTextKind_t kind, int selected, int enabled, int maxWidth,
 	float preferredScale, float floorScale, uiSetLayoutTextMeasureFn measure,
 	char *out, size_t outCapacity, uiSetLayoutTextFit_t *fit);
+
+/* A row's label as the page shows it: without the trailing colon the row
+ * tables keep for prompts ("Menu Music:" is drawn "Menu Music"). out may be
+ * label itself. */
+size_t UISetLayout_Label(const char *label, char *out, size_t capacity);
+
+/* The one line under the rows, from a row's help text (its tooltip), whose
+ * "Name:" line is skipped:
+ * - when the help lists the values ("Off - Rumble is turned off in
+ *   games"), the line for value, with the lines that continue it (they
+ *   don't start with a capital). Yes, On and Enabled name one state; No,
+ *   Off and Disabled the other. A value listed twice, per video mode say,
+ *   isn't picked;
+ * - otherwise the first sentence of the first paragraph, up to any list in
+ *   it. Nothing when that paragraph opens with the list or introduces one
+ *   with a colon, rather than describe another value.
+ * Returns the length written into out, cut to capacity (0: say nothing). */
+size_t UISetLayout_HelpSummary(const char *help, const char *value,
+	char *out, size_t capacity);
 
 #endif

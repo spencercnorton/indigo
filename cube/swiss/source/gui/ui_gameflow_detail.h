@@ -61,6 +61,7 @@ typedef struct {
 	uint32_t cheatCapacityBytes;
 	uint32_t flags;
 	uint32_t customSettings;    /* this game's rows that differ from Game Defaults */
+	const char *firstCustomSetting; /* the first of them, "Name: value" */
 } uiGameflowDetailSource_t;
 
 /* Fixed, pointer-free video-thread payload. The banner begins on a cache-line
@@ -89,6 +90,10 @@ typedef struct {
 	char statusText[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
 	char cheatSummary[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
 	char cheatPreview[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
+	/* The SETTINGS inset: "3 custom" or "Game Defaults", then the first
+	 * custom row, or how to set some. */
+	char settingsSummary[UI_GAMEFLOW_DETAIL_ADVANCED_CAPACITY];
+	char settingsPreview[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
 	char launchLabel[UI_GAMEFLOW_DETAIL_LAUNCH_LABEL_CAPACITY];
 	char primaryActions[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
 	char advancedLineOne[UI_GAMEFLOW_DETAIL_ADVANCED_CAPACITY];

@@ -91,8 +91,8 @@ Setup sections. The last column names the row on that screen.
 | `Disable PAD Rumble` | `Yes`, `No`. `Yes` shows as Controller Rumble › Off. | `No` | Controller Rumble |
 | `Disable UI Animations` | `Yes`, `No`. `Yes` is UI Motion › Off. | `No` | UI Motion |
 | `Reduce UI Animations` | `Yes`, `No`. `Yes` with `Disable UI Animations=No` is UI Motion › Reduced. | `No` | UI Motion |
-| `Disable Menu Music` | `Yes`, `No`. `Yes` shows as Menu Music › No. | `No` | Menu Music |
-| `Disable Menu SFX` | `Yes`, `No`. `Yes` shows as Menu Sounds › No. | `No` | Menu Sounds |
+| `Disable Menu Music` | `Yes`, `No`. `Yes` shows as Menu Music › Off. | `No` | Menu Music |
+| `Disable Menu SFX` | `Yes`, `No`. `Yes` shows as Menu Sounds › Off. | `No` | Menu Sounds |
 | `AutoBoot` | `Yes`, `No` | `No` | Boot without prompts |
 | `IGRType` | `Disabled`, `Reboot`, `Apploader` | `Disabled` | In-Game Reset |
 | `BS2Boot` | `No`, `Yes`, `Sound 1`, `Sound 2` | `No` | Load GameCube Main Menu |
@@ -202,8 +202,8 @@ most use the same key there.
 | `RecentListLevel` | `Off`, `Lazy`, `On` | `On` | Recent List |
 | `ShowHiddenFiles` | `Yes`, `No` | `No` | Show hidden files |
 | `Hide Unknown file types` | `Yes`, `No` | `No` | Hide unknown file types |
-| `Disable Panel Transparency` | `Yes`, `No`. `Yes` shows as Panel Transparency › No. | `No` | Panel Transparency |
-| `Disable Animated Backdrop` | `Yes`, `No`. `Yes` shows as Animated Backdrop › No. | `No` | Animated Backdrop |
+| `Disable Panel Transparency` | `Yes`, `No`. `Yes` shows as Panel Transparency › Off. | `No` | Panel Transparency |
+| `Disable Animated Backdrop` | `Yes`, `No`. `Yes` shows as Animated Backdrop › Off. | `No` | Animated Backdrop |
 | `FlattenDir` | A folder pattern, such as `*/games`. | `*/games` | Flatten directory |
 
 ### Setup › Developer

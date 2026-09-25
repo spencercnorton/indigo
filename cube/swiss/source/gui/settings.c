@@ -43,14 +43,6 @@ _Static_assert((int)UI_SETLAYOUT_MOTION_REDUCED == (int)UI_MOTION_REDUCED,
 _Static_assert((int)UI_SETLAYOUT_MOTION_OFF == (int)UI_MOTION_OFF,
 	"Off motion enum drift");
 
-/* Text sizes for the settings shell. */
-#define set_title_size (0.92f)
-#define set_subtitle_size (0.60f)
-#define set_tab_size (0.60f)
-#define set_row_size (0.72f)
-#define set_row_sel_size (0.78f)
-#define set_meta_size (0.6f)
-
 ConfigEntry tempConfig;
 SwissSettings tempSettings;
 char *enableUSBGeckoStr[] = {"No", "Slot A", "Slot B", "Serial Port 2"};
@@ -242,23 +234,18 @@ char* get_tooltip(int page_num, int option) {
 }
 
 /*
- * Phase 4D presentation state. One static layout per published page:
- * bounded MEM1 (sizeof(uiSetLayout_t), well under 1 KB), no per-frame
- * allocation, and no retained pointers -- every string handed to a Draw*
- * primitive is strdup'd by FrameBufferMagic before this frame returns.
+ * Presentation. Each page is described as a snapshot with every string
+ * fitted to its place, and FrameBufferMagic draws it in the cheat browser's
+ * language from one page event kept for the whole Settings session: an
+ * input updates that event in place, so no frame is ever drawn without a
+ * page. Bounded: one static snapshot, no per-frame allocation, and nothing
+ * the renderer reads points back here.
  */
-static uiSetLayout_t setLayout;
-static int setLayoutRowCursor;
-
-static GXColor setPanelColor = {8, 8, 28, 198};       /* readable indigo glass */
-static GXColor setSubtleColor = {205, 210, 234, 230}; /* quiet chrome */
-static GXColor setInactiveColor = {198, 203, 228, 235};
-static GXColor setDisabledColor = {132, 138, 164, 220};
-static GXColor setCustomColor = {196, 177, 255, 255};  /* the emblems' glow */
-#define SET_PANEL_SOLID_ALPHA 238
+static uiDrawObj_t *settingsPageEvent;
 
 typedef enum {
 	SET_ROWKIND_CYCLE = 0, /* Left/Right cycles the value */
+	SET_ROWKIND_TOGGLE,    /* two values, drawn as ON or OFF */
 	SET_ROWKIND_TEXT,      /* opens the on-screen text editor */
 	SET_ROWKIND_ACTION,    /* row-level action (e.g. Reset to defaults) */
 	SET_ROWKIND_LINK       /* Setup row that opens a section */
@@ -279,26 +266,29 @@ static size_t boundedSettingTextLength(const char *text)
 	return length;
 }
 
-/* Preserve the native-grid type floor by shortening presentation copies to
- * their measured owner. The underlying label/value is never modified. */
+/* A presentation copy of source that fits width: at scale, shrinking to
+ * floor, then shortened with an ellipsis. The label or value itself is never
+ * modified. Fails closed with an empty copy. */
 static bool prepareSettingText(const char *source, size_t maxSourceBytes,
-	uiSetLayoutEllipsizeMode_t mode, uiSetLayoutTextKind_t kind,
-	bool selected, bool enabled, int width, float preferredScale,
-	char *out, size_t outCapacity, float *scale)
+	uiSetLayoutEllipsizeMode_t mode, int width, float scale, float floor,
+	char *out, size_t outCapacity, float *outScale, short *outWidth)
 {
 	uiSetLayoutTextFit_t fit;
-	size_t sourceLength = boundedSettingTextLength(source);
 
-	if(!UISetLayout_PrepareText(source, sourceLength, maxSourceBytes, mode,
-		kind, selected, enabled, width, preferredScale,
-		UI_SETLAYOUT_ROW_TEXT_FLOOR, measureSettingText, out, outCapacity,
-		&fit)) {
+	if(!UISetLayout_PrepareText(source, boundedSettingTextLength(source),
+		maxSourceBytes, mode, UI_SETLAYOUT_TEXT_PLAIN, false, true, width,
+		scale, floor, measureSettingText, out, outCapacity, &fit)) {
 		out[0] = '\0';
-		*scale = UI_SETLAYOUT_ROW_TEXT_FLOOR;
-		return false;
+		*outScale = floor;
+		fit.renderedWidth = 0;
 	}
-	*scale = fit.scale;
-	return true;
+	else {
+		*outScale = fit.scale;
+	}
+	if(outWidth != NULL) {
+		*outWidth = (short)fit.renderedWidth;
+	}
+	return out[0] != '\0';
 }
 
 /* A button hint fits by its drawn width, icons included. */
@@ -310,210 +300,155 @@ static bool prepareHintText(const char *hint, int width, float preferredScale,
 
 	if(!UISetLayout_PrepareText(hint, length, length,
 		UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false, true,
-		width, preferredScale, UI_SETLAYOUT_ROW_TEXT_FLOOR,
+		width, preferredScale, preferredScale,
 		GetHintSizeInPixels, out, outCapacity, &fit)) {
 		out[0] = '\0';
-		*scale = UI_SETLAYOUT_ROW_TEXT_FLOOR;
+		*scale = preferredScale;
 		return false;
 	}
 	*scale = fit.scale;
 	return true;
 }
 
-static uiSetLayoutTextKind_t settingTextKind(uiSettingRowKind_t kind)
+/* What one row shows. `text` holds formatted values. */
+typedef struct {
+	const char *label;
+	const char *value;
+	uiSettingRowKind_t kind;
+	bool enabled;
+	bool on;	/* a toggle's state */
+	char text[32];
+} settingRowView_t;
+
+/* One row of the snapshot. The value is drawn as its kind reads: a toggle's
+ * ON/OFF pill, a choice's value pill (< > while focused), a text field, a
+ * Setup section's summary, or an action's label alone. */
+static void drawSettingRow(uiSetPageSnapshot_t *page, int slot,
+	const settingRowView_t *row, bool custom, bool swatch)
 {
-	if(kind == SET_ROWKIND_CYCLE) {
-		return UI_SETLAYOUT_TEXT_CYCLE;
+	const uiSetLayout_t *layout = &page->layout;
+	uiSetPageRow_t *out = &page->rows[slot];
+	char label[UI_SETLAYOUT_LABEL_BUFFER_SIZE];
+	int valueWidth = layout->rowValueWidth - UI_SETLAYOUT_PILL_PAD * 2 -
+		UI_SETLAYOUT_ARROW_W * 2;
+
+	out->enabled = row->enabled;
+	out->custom = custom;
+	out->swatch = swatch;
+	out->on = row->on;
+	(void)UISetLayout_Label(row->label, label, sizeof(label));
+	(void)prepareSettingText(label, sizeof(label) - 1u,
+		UI_SETLAYOUT_ELLIPSIZE_TAIL, layout->rowLabelMaxWidth,
+		UI_SETLAYOUT_LABEL_SCALE, UI_SETLAYOUT_ROW_TEXT_FLOOR, out->label,
+		sizeof(out->label), &out->labelScale, NULL);
+	switch(row->kind) {
+		case SET_ROWKIND_TOGGLE:
+			out->kind = UI_SETLAYOUT_ROW_TOGGLE;
+			return;
+		case SET_ROWKIND_ACTION:
+			out->kind = UI_SETLAYOUT_ROW_ACTION;
+			return;
+		case SET_ROWKIND_TEXT:
+			out->kind = UI_SETLAYOUT_ROW_TEXT;
+			valueWidth = UI_SETLAYOUT_FIELD_W - UI_SETLAYOUT_PILL_PAD * 2;
+			break;
+		case SET_ROWKIND_LINK:
+			out->kind = UI_SETLAYOUT_ROW_LINK;
+			valueWidth = layout->rowValueWidth - 16;
+			break;
+		default:
+			out->kind = UI_SETLAYOUT_ROW_CHOICE;
+			/* Menu Color's swatch sits in the pill, before the name. */
+			if(swatch) {
+				valueWidth -= UI_SETLAYOUT_SWATCH + UI_SETLAYOUT_SWATCH_GAP;
+			}
+			break;
 	}
-	if(kind == SET_ROWKIND_TEXT) {
-		return UI_SETLAYOUT_TEXT_EDITABLE;
-	}
-	return UI_SETLAYOUT_TEXT_PLAIN;
+	/* An empty text value reads "Not set" in the dimmed color. */
+	out->placeholder = row->kind == SET_ROWKIND_TEXT &&
+		(row->value == NULL || row->value[0] == '\0');
+	(void)prepareSettingText(out->placeholder ? "Not set" : row->value,
+		UI_SETLAYOUT_VALUE_TEXT_MAX, row->kind == SET_ROWKIND_TEXT ?
+		UI_SETLAYOUT_ELLIPSIZE_MIDDLE : UI_SETLAYOUT_ELLIPSIZE_TAIL,
+		valueWidth, UI_SETLAYOUT_VALUE_SCALE, UI_SETLAYOUT_VALUE_SCALE,
+		out->value, sizeof(out->value), &out->valueScale, &out->valueWidth);
 }
 
-static void add_tooltip_label(uiDrawObj_t* page, int page_num, int option) {
-	char display[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
-	float scale;
-
-	if(get_tooltip(page_num, option) &&
-		prepareHintText("Y  HELP", setLayout.helpHintMaxWidth,
-			set_subtitle_size, display, sizeof(display), &scale)) {
-		DrawAddChild(page, DrawHintLabel(setLayout.helpHintX,
-			setLayout.helpHintY, display, scale, ALIGN_LEFT, setSubtleColor));
-	}
-}
-
-/*
- * Emit one settable row if it falls inside the layout's visible window.
- * The selected row is structurally distinct (capsule border + larger
- * text + leading marker), never hue-only; disabled rows dim both label
- * and value and drop their affordance. Value affordances are truthful:
- * "< >" only on cycle rows, "\205" only on rows that open an editor.
- */
-static void drawSettingRow(uiDrawObj_t* page, const char *label, const char *value, const char *tag, uiSettingRowKind_t kind, bool selected, bool enabled) {
-	char boundedLabel[UI_SETLAYOUT_LABEL_BUFFER_SIZE];
-	char displayValue[UI_SETLAYOUT_VALUE_BUFFER_SIZE + 8u];
-	int row = setLayoutRowCursor++;
-	int slot = row - setLayout.firstVisibleRow;
-	int textY;
-	float labelScale = selected ? set_row_sel_size : set_row_size;
-	float valueScale = labelScale;
-	GXColor labelColor = !enabled ? setDisabledColor :
-		(selected ? defaultColor : setInactiveColor);
-	GXColor valueColor = !enabled ? setDisabledColor :
-		(selected ? defaultColor : setInactiveColor);
-
-	if(slot < 0 || slot >= setLayout.visibleRowCount) {
-		return;
-	}
-	/* drawString anchors text on its vertical CENTER. */
-	textY = setLayout.rowTextY[slot];
-	if(selected) {
-		DrawAddChild(page, DrawStyledLabel(setLayout.rowRect[slot].x - 12, textY, "\225", set_row_size, ALIGN_LEFT, labelColor));
-	}
-	if(prepareSettingText(label, UI_SETLAYOUT_LABEL_BUFFER_SIZE - 1u,
-		UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false,
-		enabled, setLayout.rowLabelMaxWidth, labelScale, boundedLabel,
-		sizeof(boundedLabel), &labelScale)) {
-		DrawAddChild(page, DrawStyledLabel(setLayout.rowLabelX, textY,
-			boundedLabel, labelScale, ALIGN_LEFT, labelColor));
-	}
-	if(tag != NULL && setLayout.rowTagWidth > 0) {
-		char displayTag[UI_SETLAYOUT_VALUE_BUFFER_SIZE];
-		float tagScale;
-		if(prepareSettingText(tag, UI_SETLAYOUT_VALUE_TEXT_MAX,
-			UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false,
-			true, setLayout.rowTagWidth, set_meta_size, displayTag,
-			sizeof(displayTag), &tagScale)) {
-			DrawAddChild(page, DrawStyledLabel(setLayout.rowTagX, textY,
-				displayTag, tagScale, ALIGN_RIGHT,
-				enabled ? setCustomColor : setDisabledColor));
-		}
-	}
-	if(kind == SET_ROWKIND_ACTION || value == NULL) {
-		return;
-	}
-	if(prepareSettingText(value, UI_SETLAYOUT_VALUE_TEXT_MAX,
-		kind == SET_ROWKIND_TEXT ? UI_SETLAYOUT_ELLIPSIZE_MIDDLE :
-			UI_SETLAYOUT_ELLIPSIZE_TAIL,
-		settingTextKind(kind), selected, enabled, setLayout.rowValueWidth,
-		valueScale, displayValue, sizeof(displayValue), &valueScale)) {
-		DrawAddChild(page, DrawStyledLabel(setLayout.rowValueX, textY,
-			displayValue, valueScale, ALIGN_RIGHT, valueColor));
-	}
-}
-
-/* Tabs, header, backing panel, scroll, and the persistent action rail. */
-static void drawSettingsChrome(uiDrawObj_t* page, int page_num, ConfigEntry *gameConfig) {
+/* The header, section line and exits: where this page is and how to leave. */
+static void drawSettingsChrome(uiSetPageSnapshot_t *page, int page_num,
+	int option, ConfigEntry *gameConfig)
+{
+	static const char *actionText[UI_SETLAYOUT_MAX_ACTIONS] = {
+		"Save & Exit", "Discard & Exit"
+	};
+	const uiSetLayout_t *layout = &page->layout;
 	const uiSetLayoutPage_t *desc = UISetLayout_PageDesc(page_num);
-	const uiSetLayoutRect_t *focusRect = NULL;
-	char title[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
-	char subtitle[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
-	char progress[32];
-	char progressDisplay[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
 	const char *subtitleText = desc->subtitle;
-	GXColor panelColor = setPanelColor;
-	float titleScale;
-	float subtitleScale;
-	float progressScale;
-	int focusSlot;
-	int i;
+	char section[UI_SETLAYOUT_LABEL_BUFFER_SIZE];
+	char text[UI_SETLAYOUT_SHORT_CAPACITY];
+	float scale;
+	size_t i;
+	int n;
 
-	panelColor.a = swissSettings.disablePanelTransparency ?
-		SET_PANEL_SOLID_ALPHA : setPanelColor.a;
-	DrawAddChild(page, DrawEmptyColouredBox(setLayout.panel.x, setLayout.panel.y,
-		setLayout.panel.x + setLayout.panel.w, setLayout.panel.y + setLayout.panel.h,
-		panelColor));
-	if(setLayout.selectedRow >= 0) {
-		focusSlot = setLayout.selectedRow - setLayout.firstVisibleRow;
-		if(focusSlot >= 0 && focusSlot < setLayout.visibleRowCount) {
-			focusRect = &setLayout.rowRect[focusSlot];
-		}
-	}
-	else if(setLayout.selectedAction >= 0 &&
-		setLayout.selectedAction < setLayout.actionCount) {
-		focusRect = &setLayout.actionRect[setLayout.selectedAction];
-	}
-	if(focusRect != NULL) {
-		DrawAddChild(page, DrawSettingsFocus(focusRect->x, focusRect->y,
-			focusRect->x + focusRect->w, focusRect->y + focusRect->h));
-	}
-
-	for(i = 0; i < setLayout.tabCount; i++) {
-		const uiSetLayoutPage_t *tab = UISetLayout_PageDesc(i);
-		char tabDisplay[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
-		float tabScale;
-		if(i == setLayout.currentTab) {
-			DrawAddChild(page, DrawTransparentBox(setLayout.tabCell[i].x, setLayout.tabCell[i].y,
-				setLayout.tabCell[i].x + setLayout.tabCell[i].w,
-				setLayout.tabCell[i].y + setLayout.tabCell[i].h));
-		}
-		if(prepareSettingText(tab->tabLabel,
-				UI_SETLAYOUT_LABEL_BUFFER_SIZE - 1u,
-				UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN,
-				false, true, setLayout.tabCell[i].w - 12, set_tab_size,
-				tabDisplay, sizeof(tabDisplay), &tabScale)) {
-			DrawAddChild(page, DrawStyledLabel(setLayout.tabLabelCenterX[i],
-				setLayout.tabLabelY, tabDisplay, tabScale, ALIGN_CENTER,
-				i == setLayout.currentTab ? defaultColor : setInactiveColor));
-		}
-	}
-
-	if(desc->tab == UI_SETLAYOUT_NO_TAB) {
-		snprintf(progress, sizeof(progress), "X  DEFAULT    B  DONE");
-	}
-	else if(page_num > VIEW_SETUP) {
-		snprintf(progress, sizeof(progress), "B  BACK");
-	}
-	else {
-		snprintf(progress, sizeof(progress), "L/R  %i OF %i", desc->tab + 1,
-			UI_SETLAYOUT_TAB_COUNT);
-	}
-	if(prepareSettingText(page_num == VIEW_GAME && gameConfig != NULL &&
-			gameConfig->game_name[0] != '\0' ? gameConfig->game_name :
-			desc->title, UI_SETLAYOUT_LABEL_BUFFER_SIZE - 1u,
-			UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false,
-			true, setLayout.titleMaxWidth, set_title_size, title,
-			sizeof(title), &titleScale)) {
-		DrawAddChild(page, DrawStyledLabel(setLayout.titleX, setLayout.titleY,
-			title, titleScale, ALIGN_LEFT, defaultColor));
-	}
+	(void)prepareSettingText(page_num == VIEW_GAME && gameConfig != NULL &&
+		gameConfig->game_name[0] != '\0' ? gameConfig->game_name :
+		desc->title, UI_SETLAYOUT_LABEL_BUFFER_SIZE - 1u,
+		UI_SETLAYOUT_ELLIPSIZE_TAIL, layout->titleMaxWidth,
+		UI_SETLAYOUT_TITLE_SCALE, UI_SETLAYOUT_TITLE_FLOOR, page->title,
+		sizeof(page->title), &page->titleScale, NULL);
 	if(page_num == VIEW_STORAGE) {
 		subtitleText = UISetLayout_SettingsFileText(
 			devices[DEVICE_CONFIG] == NULL ? UI_SETLAYOUT_SETTINGS_FILE_NO_DEVICE :
 			config_global_file_loaded() ? UI_SETLAYOUT_SETTINGS_FILE_SAVED :
 			UI_SETLAYOUT_SETTINGS_FILE_MISSING);
 	}
-	if(prepareSettingText(subtitleText,
-			UI_SETLAYOUT_LABEL_BUFFER_SIZE - 1u,
-			UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false,
-			true, setLayout.subtitleMaxWidth, set_subtitle_size, subtitle,
-			sizeof(subtitle), &subtitleScale)) {
-		DrawAddChild(page, DrawStyledLabel(setLayout.subtitleX,
-			setLayout.subtitleY, subtitle, subtitleScale, ALIGN_LEFT,
-			setSubtleColor));
+	(void)prepareSettingText(subtitleText, UI_SETLAYOUT_LABEL_BUFFER_SIZE - 1u,
+		UI_SETLAYOUT_ELLIPSIZE_TAIL, layout->subtitleMaxWidth,
+		UI_SETLAYOUT_SUBTITLE_SCALE, UI_SETLAYOUT_SUBTITLE_SCALE,
+		page->subtitle, sizeof(page->subtitle), &page->subtitleScale, NULL);
+
+	/* The tabs, or on a game's page how many of its rows are its own. */
+	for(n = 0; n < layout->tabCount; n++) {
+		(void)prepareSettingText(UISetLayout_PageDesc(n)->tabLabel,
+			sizeof(page->tab[n]) - 1u, UI_SETLAYOUT_ELLIPSIZE_TAIL,
+			layout->tabCell[n].w - 12, UI_SETLAYOUT_TAB_SCALE,
+			UI_SETLAYOUT_TAB_SCALE, page->tab[n], sizeof(page->tab[n]),
+			&page->tabScale[n], NULL);
 	}
-	if(prepareHintText(progress, setLayout.progressMaxWidth, set_meta_size,
-			progressDisplay, sizeof(progressDisplay), &progressScale)) {
-		DrawAddChild(page, DrawHintLabel(setLayout.progressX,
-			setLayout.progressY, progressDisplay, progressScale,
-			ALIGN_RIGHT, setSubtleColor));
+	if(layout->tabCount == 0) {
+		n = settings_game_custom_count(gameConfig);
+		if(n > 0) {
+			snprintf(text, sizeof(text), "%d custom", n);
+		}
+		(void)prepareSettingText(n > 0 ? text : "No custom settings",
+			sizeof(text) - 1u, UI_SETLAYOUT_ELLIPSIZE_TAIL,
+			layout->badgeMaxWidth, UI_SETLAYOUT_BADGE_SCALE,
+			UI_SETLAYOUT_BADGE_SCALE, page->badge, sizeof(page->badge),
+			&page->badgeScale, NULL);
 	}
 
-	if(setLayout.scrollVisible) {
-		DrawAddChild(page, DrawVertScrollBar(setLayout.scrollTrack.x, setLayout.scrollTrack.y,
-			setLayout.scrollTrack.w, setLayout.scrollTrack.h,
-			setLayout.scrollPercent, setLayout.scrollThumb.h));
+	/* "SETUP  >>  DISPLAY": the section line says where this page is. */
+	snprintf(section, sizeof(section), "%s%s", page_num > VIEW_SETUP &&
+		page_num < VIEW_GAME ? "SETUP  \273  " : "", desc->title);
+	for(i = 0; section[i] != '\0'; i++) {
+		if(section[i] >= 'a' && section[i] <= 'z') {
+			section[i] = (char)(section[i] - 'a' + 'A');
+		}
 	}
-
-	for(i = 0; i < setLayout.actionCount; i++) {
-		static const char *actionText[UI_SETLAYOUT_MAX_ACTIONS] = {
-			"Save & Exit", "Discard & Exit"
-		};
-		DrawAddChild(page, DrawSelectableButton(setLayout.actionRect[i].x, setLayout.actionRect[i].y,
-			setLayout.actionRect[i].x + setLayout.actionRect[i].w,
-			setLayout.actionRect[i].y + setLayout.actionRect[i].h,
-			actionText[setLayout.actionKind[i]], B_NOSELECT));
+	(void)prepareSettingText(section, sizeof(page->section) - 1u,
+		UI_SETLAYOUT_ELLIPSIZE_TAIL, layout->sectionMaxWidth,
+		UI_SETLAYOUT_SECTION_SCALE, UI_SETLAYOUT_SECTION_SCALE,
+		page->section, sizeof(page->section), &scale, NULL);
+	if(layout->selectedRow >= 0) {
+		snprintf(page->position, sizeof(page->position), "%d / %d",
+			option + 1, layout->rowCount);
+	}
+	for(n = 0; n < layout->actionCount; n++) {
+		(void)prepareSettingText(actionText[layout->actionKind[n]],
+			sizeof(page->action[n]) - 1u, UI_SETLAYOUT_ELLIPSIZE_TAIL,
+			layout->actionRect[n].w - 12, UI_SETLAYOUT_ACTION_SCALE,
+			UI_SETLAYOUT_ROW_TEXT_FLOOR - 0.12f, page->action[n],
+			sizeof(page->action[n]), &page->actionScale[n], NULL);
 	}
 }
 
@@ -926,15 +861,6 @@ static const settingsRowRef_t *settingsViewRow(int view, int option)
 	return &settingsViews[view].rows[option];
 }
 
-/* What one row shows. `text` holds formatted values. */
-typedef struct {
-	const char *label;
-	const char *value;
-	uiSettingRowKind_t kind;
-	bool enabled;
-	char text[32];
-} settingRowView_t;
-
 static void rowShow(settingRowView_t *row, uiSettingRowKind_t kind,
 	const char *label, const char *value, bool enabled)
 {
@@ -942,6 +868,7 @@ static void rowShow(settingRowView_t *row, uiSettingRowKind_t kind,
 	row->label = label;
 	row->value = value;
 	row->enabled = enabled;
+	row->on = false;
 }
 
 static void rowCycle(settingRowView_t *row, const char *label,
@@ -953,14 +880,16 @@ static void rowCycle(settingRowView_t *row, const char *label,
 static void rowYesNo(settingRowView_t *row, const char *label, bool value,
 	bool enabled)
 {
-	rowShow(row, SET_ROWKIND_CYCLE, label, value ? "Yes" : "No", enabled);
+	rowShow(row, SET_ROWKIND_TOGGLE, label, value ? "Yes" : "No", enabled);
+	row->on = value;
 }
 
 /* A setting stored as "Disable X" reads the positive way round. */
 static void rowOnOff(settingRowView_t *row, const char *label, bool on,
 	bool enabled)
 {
-	rowShow(row, SET_ROWKIND_CYCLE, label, on ? "On" : "Off", enabled);
+	rowShow(row, SET_ROWKIND_TOGGLE, label, on ? "On" : "Off", enabled);
+	row->on = on;
 }
 
 static void rowNumber(settingRowView_t *row, const char *label,
@@ -1164,30 +1093,106 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 	}
 }
 
+static bool settingsRowHasList(int page, int option);
+
+/* The footer's button hints, and the line about the focused row from its
+ * help: what its current value does, or what the setting is for. */
+static void settingsDescribeFocus(uiSetPageSnapshot_t *page, int view,
+	int option, ConfigEntry *gameConfig, const ConfigEntry *gameDefaults)
+{
+	const uiSetLayout_t *layout = &page->layout;
+	const settingsRowRef_t *ref = settingsViewRow(view, option);
+	const char *hints[UI_SETLAYOUT_HINT_ITEMS];
+	const char *about = NULL;
+	char summary[256];
+	int count = 0;
+	int x = layout->hintX;
+	int i;
+
+	if(ref != NULL && ref->page == SETTINGS_ROW_LINK) {
+		hints[count++] = "A  Open";
+	}
+	else if(ref != NULL) {
+		settingRowView_t row;
+		const char *help = get_tooltip(ref->page, ref->option);
+
+		settingsDescribeRow(ref->page, ref->option, gameConfig, &row);
+		if(row.kind == SET_ROWKIND_TEXT) {
+			hints[count++] = "A  Edit";
+		}
+		else if(row.kind == SET_ROWKIND_ACTION) {
+			if(row.enabled) {
+				hints[count++] = "A  Reset";
+			}
+		}
+		else if(row.enabled) {
+			hints[count++] = settingsRowHasList(ref->page, ref->option) ?
+				"A  Choose" : "A  Change";
+		}
+		if(help != NULL) {
+			hints[count++] = "Y  Help";
+			if(UISetLayout_HelpSummary(help, row.value, summary,
+				sizeof(summary)) > 0) {
+				about = summary;
+			}
+		}
+		/* X puts a game's own value back to Game Defaults. */
+		if(gameDefaults != NULL && row.enabled &&
+			settingsGameRowCustom(gameConfig, gameDefaults, ref->option)) {
+			hints[count++] = "X  Default";
+		}
+	}
+	else if(option == settingsViews[view].count) {
+		hints[count++] = "A  Save";
+		about = "Keeps every change and closes Settings.";
+	}
+	else {
+		hints[count++] = "A  Discard";
+		about = "Puts back everything changed since Settings opened, and closes it.";
+	}
+	hints[count++] = view > VIEW_SETUP && view < VIEW_GAME ? "B  Back" : "B  Done";
+
+	if(about != NULL) {
+		(void)prepareSettingText(about, sizeof(summary) - 1u,
+			UI_SETLAYOUT_ELLIPSIZE_TAIL, layout->descriptionMaxWidth,
+			UI_SETLAYOUT_DESCRIPTION_SCALE, UI_SETLAYOUT_DESCRIPTION_SCALE,
+			page->description, sizeof(page->description),
+			&page->descriptionScale, NULL);
+	}
+	/* The cheat browser's footer: each hint on its own, spaced apart. */
+	for(i = 0; i < count; i++) {
+		float scale;
+
+		if(!prepareHintText(hints[i], layout->hintX + layout->hintMaxWidth - x,
+			UI_SETLAYOUT_HINT_SCALE, page->hint[page->hintCount],
+			sizeof(page->hint[0]), &scale)) {
+			break;
+		}
+		page->hintX[page->hintCount++] = (short)x;
+		x += (int)((float)GetHintSizeInPixels(hints[i]) * scale + 0.999f) + 22;
+	}
+}
+
 uiDrawObj_t* settings_draw_page(int view, int option, ConfigEntry *gameConfig) {
-	uiDrawObj_t* page = DrawContainer();
-	const settingsRowRef_t *focus = settingsViewRow(view, option);
-	bool focusSetting = focus != NULL && focus->page != SETTINGS_ROW_LINK;
+	static uiSetPageSnapshot_t page;
+	static ConfigEntry gameDefaults;
 	/* Mirrors _CurrentMotionMode() (FrameBufferMagic): Animations off snaps.
 	 * Backdrop animation is decorative and cannot weaken primary focus travel. */
 	int motionMode = (int)UIMotion_ModeFromFlags(
 		swissSettings.disableUIAnimations, swissSettings.reduceUIAnimations);
+	bool tagged = view == VIEW_GAME && gameConfig != NULL;
 	int i;
 
-	static ConfigEntry gameDefaults;
-	bool tagged = view == VIEW_GAME && gameConfig != NULL;
-
-	UISetLayout_Compute(view, option, focusSetting &&
-		get_tooltip(focus->page, focus->option) != NULL, motionMode, &setLayout);
-	setLayoutRowCursor = 0;
-	drawSettingsChrome(page, view, gameConfig);
+	memset(&page, 0, sizeof(page));
+	UISetLayout_Compute(view, option, motionMode, &page.layout);
+	page.view = view;
 	if(tagged) {
 		settingsGameDefaults(gameConfig, &gameDefaults);
 	}
-
-	for(i = 0; i < settingsViews[view].count; i++) {
-		const settingsRowRef_t *ref = &settingsViews[view].rows[i];
-		const char *tag = NULL;
+	drawSettingsChrome(&page, view, option, gameConfig);
+	for(i = 0; i < page.layout.visibleRowCount; i++) {
+		const settingsRowRef_t *ref =
+			&settingsViews[view].rows[page.layout.firstVisibleRow + i];
 		settingRowView_t row;
 
 		if(ref->page == SETTINGS_ROW_LINK) {
@@ -1198,19 +1203,46 @@ uiDrawObj_t* settings_draw_page(int view, int option, ConfigEntry *gameConfig) {
 			settingsDescribeRow(ref->page, ref->option, gameConfig, &row);
 		}
 		/* A game's own values are marked; the rest follow Game Defaults. */
-		if(tagged && settingsGameRowCustom(gameConfig, &gameDefaults, ref->option)) {
-			tag = "Custom";
-		}
-		drawSettingRow(page, row.label, row.value, tag, row.kind, option == i, row.enabled);
+		drawSettingRow(&page, i, &row, tagged &&
+			settingsGameRowCustom(gameConfig, &gameDefaults, ref->option),
+			ref->page == PAGE_INTERFACE && ref->option == SET_UI_COLOR);
 	}
-	// If we have a tooltip for this row, tell the user to press Y for help
-	if(focusSetting) {
-		add_tooltip_label(page, focus->page, focus->option);
-	}
+	settingsDescribeFocus(&page, view, option, gameConfig,
+		tagged ? &gameDefaults : NULL);
 
-	DrawPublish(page);
-	DrawPinMenuColor(page, swissSettings.uiColor);
-	return page;
+	/* One page for the whole session: published once, then updated in
+	 * place with the color it shows (see show_settings_view). */
+	if(settingsPageEvent == NULL &&
+		(settingsPageEvent = DrawSettingsPage(&page)) != NULL) {
+		DrawPublish(settingsPageEvent);
+	}
+	DrawUpdateSettingsPage(settingsPageEvent, &page, swissSettings.uiColor);
+	return settingsPageEvent;
+}
+
+/* Game Detail's SETTINGS line: the first of a game's own rows as it reads on
+ * its page ("Force Video Mode: 480p"), or "" when none is. */
+const char *settings_game_custom_first(ConfigEntry *game)
+{
+	static char text[64];
+	static ConfigEntry defaults;
+	size_t i;
+
+	text[0] = '\0';
+	if(game == NULL) {
+		return text;
+	}
+	settingsGameDefaults(game, &defaults);
+	for(i = 0; i < sizeof(gameRows) / sizeof(gameRows[0]); i++) {
+		settingRowView_t row;
+
+		if(settingsGameRowCustom(game, &defaults, gameRows[i].option)) {
+			settingsDescribeRow(PAGE_GAME, gameRows[i].option, game, &row);
+			snprintf(text, sizeof(text), "%s %s", row.label, row.value);
+			break;
+		}
+	}
+	return text;
 }
 
 void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfig) {
@@ -2195,6 +2227,11 @@ static const settingsPickerRow_t *settingsPickerFor(int page, int option)
 	return NULL;
 }
 
+static bool settingsRowHasList(int page, int option)
+{
+	return settingsPickerFor(page, option) != NULL;
+}
+
 static u32 settingsPickerValue(const settingsPickerRow_t *pick,
 	const ConfigEntry *config)
 {
@@ -2283,68 +2320,38 @@ static int settingsPickerLoad(const settingsPickerRow_t *pick,
 	return list->count;
 }
 
-#define SETTINGS_PICKER_ROWS 8
-#define SETTINGS_PICKER_PITCH 28
-
-static uiDrawObj_t *settingsDrawPicker(const char *label,
-	const settingsPicker_t *list, int focus)
+/* The value list as the video thread draws it: a card over the page with
+ * the row's name, its values, and the one set now marked CURRENT. */
+static void settingsDrawPicker(const char *label, const settingsPicker_t *list,
+	int focus, uiSetListSnapshot_t *out)
 {
-	int visible = MIN(list->count, SETTINGS_PICKER_ROWS);
-	int first = MIN(MAX(0, focus - visible / 2), MAX(0, list->count - visible));
-	bool scroll = list->count > visible;
-	int x0 = 150, x1 = 490;
-	int height = 44 + visible * SETTINGS_PICKER_PITCH + 34;
-	int y0 = (480 - height) / 2, y1 = y0 + height;
-	int rowsY = y0 + 44;
-	int textRight = x1 - (scroll ? 34 : 20);
-	GXColor panel = setPanelColor;
-	char text[UI_SETLAYOUT_TEXT_BUFFER_SIZE];
-	float scale;
+	char title[UI_SETLAYOUT_LABEL_BUFFER_SIZE];
 	int i;
-	uiDrawObj_t *box = DrawContainer();
 
-	/* Solid, so the list reads over the rows behind it. */
-	panel.a = SET_PANEL_SOLID_ALPHA;
-	DrawAddChild(box, DrawEmptyColouredBox(x0, y0, x1, y1, panel));
-	if(prepareSettingText(label, UI_SETLAYOUT_LABEL_BUFFER_SIZE - 1u,
-		UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false, true,
-		x1 - x0 - 40, set_row_size, text, sizeof(text), &scale)) {
-		DrawAddChild(box, DrawStyledLabel(x0 + 20, y0 + 24, text, scale,
-			ALIGN_LEFT, setSubtleColor));
+	memset(out, 0, sizeof(*out));
+	UISetLayout_ComputeList(list->count, focus, &out->layout);
+	(void)UISetLayout_Label(label, title, sizeof(title));
+	(void)prepareSettingText(title, sizeof(title) - 1u,
+		UI_SETLAYOUT_ELLIPSIZE_TAIL, out->layout.titleMaxWidth,
+		UI_SETLAYOUT_CARD_TITLE_SCALE, UI_SETLAYOUT_ROW_TEXT_FLOOR,
+		out->title, sizeof(out->title), &out->titleScale, NULL);
+	for(i = 0; i < out->layout.visibleCount; i++) {
+		(void)prepareSettingText(list->text[out->layout.first + i],
+			sizeof(list->text[0]) - 1u, UI_SETLAYOUT_ELLIPSIZE_TAIL,
+			out->layout.rowTextMaxWidth, UI_SETLAYOUT_LABEL_SCALE,
+			UI_SETLAYOUT_ROW_TEXT_FLOOR, out->value[i], sizeof(out->value[i]),
+			&out->valueScale[i], NULL);
 	}
-	for(i = first; i < first + visible; i++) {
-		int y = rowsY + (i - first) * SETTINGS_PICKER_PITCH;
-		bool focused = i == focus;
-
-		if(focused) {
-			/* Not DrawSettingsFocus: that is one animated focus shared with
-			 * the page behind, and two targets would pull it between rows. */
-			DrawAddChild(box, DrawTransparentBox(x0 + 12, y, textRight + 6,
-				y + SETTINGS_PICKER_PITCH - 2));
-			DrawAddChild(box, DrawStyledLabel(x0 + 20, y + 13, "\225",
-				set_row_size, ALIGN_LEFT, defaultColor));
-		}
-		if(prepareSettingText(list->text[i], UI_SETLAYOUT_VALUE_TEXT_MAX,
-			UI_SETLAYOUT_ELLIPSIZE_TAIL, UI_SETLAYOUT_TEXT_PLAIN, false, true,
-			textRight - x0 - 110, focused ? set_row_sel_size : set_row_size,
-			text, sizeof(text), &scale)) {
-			DrawAddChild(box, DrawStyledLabel(x0 + 36, y + 13, text, scale,
-				ALIGN_LEFT, focused ? defaultColor : setInactiveColor));
-		}
-		if(i == list->current) {
-			DrawAddChild(box, DrawStyledLabel(textRight, y + 13, "Current",
-				set_meta_size, ALIGN_RIGHT, setCustomColor));
-		}
+	out->current = list->current - out->layout.first;
+	if(out->current >= out->layout.visibleCount) {
+		out->current = -1;
 	}
-	if(scroll) {
-		DrawAddChild(box, DrawVertScrollBar(x1 - 24, rowsY, 8,
-			visible * SETTINGS_PICKER_PITCH,
-			(float)focus / (float)(list->count - 1),
-			MAX(16, visible * SETTINGS_PICKER_PITCH * visible / list->count)));
+	for(i = 0; i < 2; i++) {
+		(void)prepareHintText(i == 0 ? "A  Choose" : "B  Cancel",
+			(out->layout.hintRightX - out->layout.hintX) / 2,
+			UI_SETLAYOUT_HINT_SCALE, out->hint[i], sizeof(out->hint[i]),
+			&out->hintScale[i]);
 	}
-	DrawAddChild(box, DrawHintLabel((x0 + x1) / 2, y1 - 18,
-		"A  CHOOSE    B  CANCEL", set_meta_size, ALIGN_CENTER, setSubtleColor));
-	return box;
 }
 
 /* A on a picker row: every value in a list. A picks the focused one, B
@@ -2353,6 +2360,7 @@ static bool settingsPick(const settingsPickerRow_t *pick, ConfigEntry *config,
 	uiMenuInputState_t *menuInput, u32 *lastRetrace)
 {
 	static settingsPicker_t list;
+	static uiSetListSnapshot_t shown;
 	settingRowView_t row;
 	uiDrawObj_t *box = NULL;
 	bool repeating = false;
@@ -2369,13 +2377,15 @@ static bool settingsPick(const settingsPickerRow_t *pick, ConfigEntry *config,
 	while(1) {
 		bool wasDigital;
 		u32 btns;
-		uiDrawObj_t *next = settingsDrawPicker(row.label, &list, focus);
 
-		/* Menu Color's list shows each color as the focus reaches it. */
-		if(pick->page == PAGE_INTERFACE && pick->option == SET_UI_COLOR) {
-			DrawPreviewMenuColor((int)list.value[focus]);
+		settingsDrawPicker(row.label, &list, focus, &shown);
+		if(box == NULL && (box = DrawSettingsList(&shown)) != NULL) {
+			DrawPublish(box);
 		}
-		box = box == NULL ? DrawPublish(next) : DrawRepublish(box, next);
+		/* Menu Color's list shows each color as the focus reaches it. */
+		DrawUpdateSettingsList(box, &shown,
+			pick->page == PAGE_INTERFACE && pick->option == SET_UI_COLOR ?
+			(int)list.value[focus] : -1);
 		btns = settingsWaitForInput(menuInput, lastRetrace, &wasDigital);
 		if(btns & BUTTON_UP) {
 			focus = MAX(0, focus - 1);
@@ -2480,6 +2490,8 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 	memcpy(&tempSettings, &swissSettings, sizeof(SwissSettings));
 
 	GXRModeObj *oldmode = getVideoMode();
+	/* A new session publishes a new page; Save and Discard dispose it. */
+	settingsPageEvent = NULL;
 	menuInputRetrace = VIDEO_GetRetraceCount();
 	UIMenuInput_Init(&menuInput);
 	/* The press that opened Settings (A on Home, X on Game Detail) must not
@@ -2507,7 +2519,7 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 		if(btns & BUTTON_Y) {
 			char *tooltip = onSetting ? get_tooltip(ref->page, ref->option) : NULL;
 			if(tooltip) {
-				uiDrawObj_t* tooltipBox = DrawPublish(DrawTooltip(tooltip));
+				uiDrawObj_t* tooltipBox = DrawPublish(DrawSettingsHelp(tooltip));
 				while(padsButtonsHeld() & BUTTON_Y) {
 					(void)padsMenuInputPoll(&menuInput,
 						settingsMenuInputElapsedMicroseconds(
@@ -2685,6 +2697,5 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 			settingsInhibitThroughDigitalRelease(&menuInput,
 				&menuInputRetrace);
 		}
-		DrawDispose(settingsPage);
 	}
 }

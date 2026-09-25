@@ -1,9 +1,10 @@
 #ifndef UI_SETTINGS_FOCUS_H
 #define UI_SETTINGS_FOCUS_H
 
-/* Pure retained focus motion for the settings shell. The video event owns
- * one state, retargets it from immutable layout rectangles, and updates it
- * exactly once per rendered frame under FrameBufferMagic's video mutex. */
+/* Pure retained focus motion for the Settings page. The page's one event
+ * owns one state, retargets it from each snapshot's focus rectangle, and
+ * updates it exactly once per rendered frame under FrameBufferMagic's video
+ * mutex. */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -33,10 +34,5 @@ void UISettingsFocus_Retarget(uiSettingsFocusState_t *state,
 	const uiSetLayoutRect_t *target, uiMotionMode_t mode);
 void UISettingsFocus_Update(uiSettingsFocusState_t *state,
 	float deltaSeconds, uiMotionMode_t mode, uiSettingsFocusFrame_t *out);
-
-/* Unsigned subtraction keeps the replacement window correct across the
- * video-frame serial's UINT32_MAX -> 0 wrap. */
-bool UISettingsFocus_IsContinuous(uint32_t currentFrame,
-	uint32_t lastDrawFrame, uint32_t maximumGap);
 
 #endif

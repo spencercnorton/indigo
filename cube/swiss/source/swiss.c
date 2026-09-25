@@ -4035,6 +4035,7 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 		&source.playHistoryAvailable);
 	source.saveStatus = UI_GAME_SAVE_NOT_CHECKED;
 	source.customSettings = (uint32_t)settings_game_custom_count(config);
+	source.firstCustomSetting = settings_game_custom_first(config);
 	if(meta != NULL && meta->banner != NULL &&
 		meta->bannerSize == UI_GAMEFLOW_DETAIL_BANNER_BYTES &&
 		meta->bannerSum != 0xFFFF) {
