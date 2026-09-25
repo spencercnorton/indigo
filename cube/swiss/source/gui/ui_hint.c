@@ -177,3 +177,83 @@ float UIHint_LineWidth(const char *text, int fontHeight, float scale,
 	}
 	return width;
 }
+
+/* Swiss's message endings, longest first, and the hint each becomes. */
+static const struct {
+	const char *prompt;
+	const char *hint;
+} swissPrompts[] = {
+	{"Press L + A to continue, or B to cancel.", "L+A  CONTINUE    B  CANCEL"},
+	{"Press A to continue.", "A  CONTINUE"},
+	{"Press A to continue", "A  CONTINUE"},
+	{"Press A.", "A  CONTINUE"},
+	{"Press A", "A  CONTINUE"},
+};
+
+static void trimEnd(char *text)
+{
+	size_t length = strlen(text);
+
+	while(length > 0 && (text[length - 1] == ' ' || text[length - 1] == '\n')) {
+		text[--length] = '\0';
+	}
+}
+
+static void copyHint(char *hint, size_t capacity, const char *source, size_t length)
+{
+	if(length >= capacity) {
+		length = capacity - 1u;
+	}
+	memcpy(hint, source, length);
+	hint[length] = '\0';
+}
+
+int UIHint_SplitPrompt(char *text, char *hint, size_t capacity)
+{
+	uiHintItem_t items[UI_HINT_MAX_ITEMS];
+	const char *line;
+	size_t length, i;
+	int count, glyphItems = 0, k;
+
+	if(text == NULL || hint == NULL || capacity == 0u) {
+		return 0;
+	}
+	hint[0] = '\0';
+	length = strlen(text);
+	while(length > 0 && (text[length - 1] == ' ' || text[length - 1] == '\n')) {
+		length--;
+	}
+	/* A last line that is all buttons. */
+	for(i = length; i > 0 && text[i - 1] != '\n'; i--) {
+	}
+	line = text + i;
+	count = UIHint_Parse(line, items, UI_HINT_MAX_ITEMS);
+	for(k = 0; k < count; k++) {
+		glyphItems += items[k].glyphCount > 0;
+	}
+	if(count > 0 && glyphItems == count) {
+		copyHint(hint, capacity, line, length - i);
+		text[i] = '\0';
+		trimEnd(text);
+		return 1;
+	}
+	/* One of Swiss's endings, on its own line or after a sentence. */
+	for(i = 0; i < sizeof(swissPrompts) / sizeof(swissPrompts[0]); i++) {
+		size_t promptLength = strlen(swissPrompts[i].prompt);
+		size_t start;
+
+		if(promptLength > length) {
+			continue;
+		}
+		start = length - promptLength;
+		if(memcmp(text + start, swissPrompts[i].prompt, promptLength) != 0 ||
+			(start > 0 && text[start - 1] != ' ' && text[start - 1] != '\n')) {
+			continue;
+		}
+		copyHint(hint, capacity, swissPrompts[i].hint, strlen(swissPrompts[i].hint));
+		text[start] = '\0';
+		trimEnd(text);
+		return 1;
+	}
+	return 0;
+}

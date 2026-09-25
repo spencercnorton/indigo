@@ -1884,7 +1884,7 @@ static bool settingsConfirmReset(void)
 	bool confirmed = false;
 	uiDrawObj_t *box = DrawPublish(DrawMessageBox(D_WARN,
 		"Reset everything on this screen to its default?\n"
-		"Press A to reset, or B to keep it."));
+		"A  RESET    B  KEEP"));
 
 	while(1) {
 		u32 held = padsButtonsHeld() & SETTINGS_DIGITAL_INPUT_MASK;
@@ -1937,11 +1937,11 @@ static bool settingsKeepVideoMode(const settingRowView_t *row)
 
 			/* Three lines: a fourth runs past the 125 px box. The first names
 			 * the new value, which the page behind still shows as the old
-			 * one until the prompt closes. */
+			 * one until the prompt closes. The last is the buttons, which
+			 * DrawMessageBox draws as icons. */
 			snprintf(message, sizeof(message), "Keep %s %s?\n"
-				"Press A to keep it, or B to change it back.\n"
-				"It changes back by itself in %d s.", row->label, row->value,
-				seconds);
+				"It changes back by itself in %d s.\n"
+				"A  KEEP    B  CHANGE BACK", row->label, row->value, seconds);
 			box = box == NULL ?
 				DrawPublish(DrawMessageBox(D_WARN, message)) :
 				DrawRepublish(box, DrawMessageBox(D_WARN, message));

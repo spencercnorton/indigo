@@ -3,6 +3,21 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.18.0 — button icons in prompts
+
+- Message boxes show their buttons as icons too. "Press A to continue."
+  becomes the A button and CONTINUE, and deleting a file shows L + A to
+  continue or B to cancel.
+- Settings' two questions end on their buttons: "Reset everything on this
+  screen?" shows A RESET or B KEEP, and "Keep this video mode?" shows
+  A KEEP or B CHANGE BACK under its countdown.
+- The icons also reach these screens:
+  - the on-screen keyboard;
+  - the DOL parameters screen;
+  - the cheat browser when it has nothing to show;
+  - the older Swiss screens: the classic file browser's game box, the
+    file manager, the folder and DOL pickers, and the MP3 player.
+
 ## v1.17.2 — Menu Color in the README
 
 - The README shows Menu Color: the Home cube in each of the eight colors,

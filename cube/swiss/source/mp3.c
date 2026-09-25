@@ -35,10 +35,10 @@ uiDrawObj_t* updatescreen_mp3(file_handle *file, int state, int numFiles, int cu
 	float percentPlayed = (float)(((float)file->offset / (float)file->size) * 30);
 	txtbuffer[(int)percentPlayed] = '*';
 	DrawAddChild(player, DrawStyledLabel(640/2, 210, txtbuffer, 1.0f, ALIGN_CENTER, defaultColor));
-	DrawAddChild(player, DrawStyledLabel(640/2, 300, "(<-) Rewind (->) Forward (X) Vol+ (Y) Vol-", 1.0f, ALIGN_CENTER, defaultColor));
-	DrawAddChild(player, DrawStyledLabel(640/2, 330, "(B) Stop (L) Prev (R) Next (Start) Pause", 1.0f, ALIGN_CENTER, defaultColor));
-	sprintf(txtbuffer, "Shuffle is currently %s press (Z) to toggle", (useShuffle ? "on":"off"));
-	DrawAddChild(player, DrawStyledLabel(640/2, 360, txtbuffer, 1.0f, ALIGN_CENTER, defaultColor));
+	DrawAddChild(player, DrawHintLabel(640/2, 300, "\213 Rewind    \233 Forward    X  Vol+    Y  Vol-", 1.0f, ALIGN_CENTER, defaultColor));
+	DrawAddChild(player, DrawHintLabel(640/2, 330, "B  Stop    L  Prev    R  Next    START  Pause", 1.0f, ALIGN_CENTER, defaultColor));
+	sprintf(txtbuffer, "Z  Shuffle: %s", (useShuffle ? "On":"Off"));
+	DrawAddChild(player, DrawHintLabel(640/2, 360, txtbuffer, 1.0f, ALIGN_CENTER, defaultColor));
 	return player;
 }
 

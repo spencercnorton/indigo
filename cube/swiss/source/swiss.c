@@ -2146,7 +2146,7 @@ bool select_dest_dir(file_handle* initial, file_handle* selection)
 			scrollBarTabHeight = (int)((float)scrollBarHeight/(float)num_files);
 		}
 		uiDrawObj_t* tempBox = DrawEmptyBox(20,40, getVideoMode()->fbWidth-20, 450);
-		DrawAddChild(tempBox, DrawLabel(50, 67, "Enter directory and press X"));
+		DrawAddChild(tempBox, DrawHintLabel(50, 67, "X  Choose this folder", 1.0f, ALIGN_LEFT, defaultColor));
 		i = MIN(MAX(0,idx-FILES_PER_PAGE/2),MAX(0,num_files-FILES_PER_PAGE));
 		max = MIN(num_files, MAX(idx+FILES_PER_PAGE/2,FILES_PER_PAGE));
 		if(num_files > FILES_PER_PAGE)
@@ -2259,7 +2259,7 @@ ExecutableFile* select_alt_dol(ExecutableFile *filesToPatch, int num_files) {
 		u32 buttons;
 		uiMenuInputDirection_t analog;
 		uiDrawObj_t *newPanel = DrawEmptyBox(20,fileListBase-30, getVideoMode()->fbWidth-20, 340);
-		DrawAddChild(newPanel, DrawLabel(50, fileListBase-18, "Select DOL or Press B to boot normally"));
+		DrawAddChild(newPanel, DrawHintLabel(50, fileListBase-18, "Select a DOL    B  Boot normally", 1.0f, ALIGN_LEFT, defaultColor));
 		i = MIN(MAX(0,idx-(page/2)),MAX(0,num_files-page));
 		max = MIN(num_files, MAX(idx+(page/2),page));
 		if(num_files > page)
@@ -2805,13 +2805,13 @@ bool manage_file() {
 	float scale = GetTextScaleToFitInWidth(getRelativeName(curFile.name), getVideoMode()->fbWidth-10-10);
 	DrawAddChild(manageFileBox, DrawStyledLabel(640/2, 190, getRelativeName(curFile.name), scale, ALIGN_CENTER, defaultColor));
 	sprintf(txtbuffer, "%s%s%s%s%s",
-					canCopy ? " (X) Copy " : "",
-					canMove ? " (Y) Move " : "",
-					canDelete ? " (Z) Delete " : "",
-					canRename ? " (R) Rename " : "",
-					canHide ? isHidden ? " (L) Unhide " : " (L) Hide " : "");
-	DrawAddChild(manageFileBox, DrawStyledLabel(640/2, 250, txtbuffer, GetTextScaleToFitInWidth(txtbuffer, getVideoMode()->fbWidth-10-10), ALIGN_CENTER, defaultColor));
-	DrawAddChild(manageFileBox, DrawStyledLabel(640/2, 310, "Press an option to continue, or B to return", 1.0f, ALIGN_CENTER, defaultColor));
+					canCopy ? "X  Copy    " : "",
+					canMove ? "Y  Move    " : "",
+					canDelete ? "Z  Delete    " : "",
+					canRename ? "R  Rename    " : "",
+					canHide ? isHidden ? "L  Unhide" : "L  Hide" : "");
+	DrawAddChild(manageFileBox, DrawHintLabel(640/2, 250, txtbuffer, GetHintScaleToFitInWidthWithMax(txtbuffer, getVideoMode()->fbWidth-10-10, 1.0f), ALIGN_CENTER, defaultColor));
+	DrawAddChild(manageFileBox, DrawHintLabel(640/2, 310, "B  Return", 1.0f, ALIGN_CENTER, defaultColor));
 	DrawPublish(manageFileBox);
 	u32 waitButtons = BUTTON_X|BUTTON_Y|BUTTON_B|BUTTON_Z|BUTTON_R|BUTTON_L;
 	do {VIDEO_WaitVSync();} while (padsButtonsHeld() & waitButtons);
@@ -2968,8 +2968,8 @@ bool manage_file() {
 			DrawAddChild(dupeBox, DrawStyledLabel(640/2, 160, "File exists:", 1.0f, ALIGN_CENTER, defaultColor));
 			float scale = GetTextScaleToFitInWidth(getRelativeName(curFile.name), getVideoMode()->fbWidth-10-10);
 			DrawAddChild(dupeBox, DrawStyledLabel(640/2, 200, getRelativeName(curFile.name), scale, ALIGN_CENTER, defaultColor));
-			DrawAddChild(dupeBox, DrawStyledLabel(640/2, 230, "(A) Rename (Z) Overwrite", 1.0f, ALIGN_CENTER, defaultColor));
-			DrawAddChild(dupeBox, DrawStyledLabel(640/2, 300, "Press an option to continue, or B to return", 1.0f, ALIGN_CENTER, defaultColor));
+			DrawAddChild(dupeBox, DrawHintLabel(640/2, 230, "A  Rename    Z  Overwrite", 1.0f, ALIGN_CENTER, defaultColor));
+			DrawAddChild(dupeBox, DrawHintLabel(640/2, 300, "B  Return", 1.0f, ALIGN_CENTER, defaultColor));
 			DrawPublish(dupeBox);
 			while(padsButtonsHeld() & (BUTTON_A | BUTTON_Z)) { VIDEO_WaitVSync (); }
 			while(1) {
@@ -3888,26 +3888,26 @@ uiDrawObj_t* draw_game_info(ConfigEntry *config) {
 	char *textPtr = txtbuffer;
 	if(devices[DEVICE_CONFIG] != NULL) {
 		bool isAutoLoadEntry = !strcmp(swissSettings.autoload, curFile.name) || !fnmatch(swissSettings.autoload, curFile.name, FNM_PATHNAME);
-		textPtr += sprintf(textPtr, "(Z) Load at startup [Current: %s]", isAutoLoadEntry ? "Yes":"No");
+		textPtr += sprintf(textPtr, "Z  Load at startup [Current: %s]", isAutoLoadEntry ? "Yes":"No");
 	}
 	if((devices[DEVICE_CUR]->location & LOC_DVD_CONNECTOR) && !config->preferCleanBoot) {
-		textPtr = stpcpy(textPtr, textPtr == txtbuffer ? "(L+A) Clean Boot":" \267 (L+A) Clean Boot");
+		textPtr = stpcpy(textPtr, textPtr == txtbuffer ? "L+A  Clean Boot":"    L+A  Clean Boot");
 	}
 	if(textPtr != txtbuffer) {
-		DrawAddChild(container, DrawStyledLabel(640/2, 370, txtbuffer, 0.6f, ALIGN_CENTER, defaultColor));
+		DrawAddChild(container, DrawHintLabel(640/2, 370, txtbuffer, 0.6f, ALIGN_CENTER, defaultColor));
 	}
-	textPtr = stpcpy(txtbuffer, "(X) Settings \267 (Y) Cheats");
+	textPtr = stpcpy(txtbuffer, "X  Settings    Y  Cheats");
 
 	if(devices[DEVICE_CUR] != &__device_wode) {
-		textPtr = stpcpy(textPtr, " \267 (B) Exit");
+		textPtr = stpcpy(textPtr, "    B  Exit");
 	}
 	if((devices[DEVICE_CUR]->location & LOC_DVD_CONNECTOR) && config->preferCleanBoot) {
-		textPtr = stpcpy(textPtr, " \267 (A) Clean Boot");
+		textPtr = stpcpy(textPtr, "    A  Clean Boot");
 	}
 	else {
-		textPtr = stpcpy(textPtr, " \267 (A) Boot");
+		textPtr = stpcpy(textPtr, "    A  Boot");
 	}
-	DrawAddChild(container, DrawStyledLabel(640/2, 390, txtbuffer, 0.75f, ALIGN_CENTER, defaultColor));
+	DrawAddChild(container, DrawHintLabel(640/2, 390, txtbuffer, 0.75f, ALIGN_CENTER, defaultColor));
 	return container;
 }
 

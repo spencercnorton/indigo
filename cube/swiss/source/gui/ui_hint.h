@@ -75,4 +75,12 @@ float UIHint_ItemWidth(const uiHintItem_t *item, float size, float scale,
 float UIHint_LineWidth(const char *text, int fontHeight, float scale,
 	uiHintMeasureFn measure);
 
+/* Takes a message box's button prompt off its text so it can be drawn as
+ * icons. The prompt is either a last line written as a hint ("A  RESET    B
+ * KEEP"), or one of Swiss's own endings ("Press A to continue.", "Press L +
+ * A to continue, or B to cancel."), which becomes its hint. text is cut
+ * before the prompt, with the blank space before it trimmed. Returns 0, and
+ * leaves text alone, when there is no prompt. */
+int UIHint_SplitPrompt(char *text, char *hint, size_t capacity);
+
 #endif

@@ -389,7 +389,6 @@ static uiDrawObj_t *buttonPanel = NULL;
 static void drawInit(void);
 static void _DrawHintText(int x, int y, const char *text, float scale, int align,
 	GXColor color);
-static float _HintScaleToFit(const char *text, int width, float maximum);
 static void _DrawSimpleBox(int x, int y, int width, int height, int depth,
 	GXColor fillColor, GXColor borderColor);
 
@@ -1024,9 +1023,9 @@ uiDrawObj_t* DrawDeviceSelectorCard(DEVICEHANDLER_INTERFACE *device,
 		GetTextScaleToFitInWidthWithMax(DeviceDisplayName(device), 280, 0.76f);
 	eventData->capabilityScale =
 		GetTextScaleToFitInWidthWithMax(eventData->capability, 300, 0.52f);
-	eventData->actionScale = _HintScaleToFit(eventData->actionHint, 280, 0.50f);
+	eventData->actionScale = GetHintScaleToFitInWidthWithMax(eventData->actionHint, 280, 0.50f);
 	eventData->auxiliaryScale = eventData->auxiliaryHint[0] ?
-		_HintScaleToFit(eventData->auxiliaryHint, 190, 0.48f) : 0.0f;
+		GetHintScaleToFitInWidthWithMax(eventData->auxiliaryHint, 190, 0.48f) : 0.0f;
 	event->type = EV_DEVICESELECTOR;
 	event->data = eventData;
 	return event;
@@ -1254,6 +1253,9 @@ uiDrawObj_t* DrawMessageBox(int type, const char *msg)
 	
 	// Add child component(s) for label(s)
 	sprintf(txtbuffer, "%s", msg);
+	/* "Press A to continue." and the like become a line of button icons. */
+	char hint[UI_HINT_LABEL_CAPACITY];
+	bool hasHint = UIHint_SplitPrompt(txtbuffer, hint, sizeof(hint)) != 0;
 	char *tok = strtok(txtbuffer,"\n");
 	int y1 = ((480/2) - (PROGRESS_BOX_HEIGHT/2));
 	int y2 = ((480/2) + (PROGRESS_BOX_HEIGHT/2));
@@ -1263,6 +1265,9 @@ uiDrawObj_t* DrawMessageBox(int type, const char *msg)
 		tok = strtok(NULL,"\n");
 		middleY+=24;
 		DrawAddChild(event, lineLabel);
+	}
+	if(hasHint) {
+		DrawAddChild(event, DrawHintLabel(640/2, middleY, hint, 0.8f, ALIGN_CENTER, defaultColor));
 	}
 	
 	return event;
@@ -2286,8 +2291,9 @@ int GetHintSizeInPixels(const char *text)
 		GetTextSizeInPixels));
 }
 
-/* The largest scale up to maximum at which a hint line fits width. */
-static float _HintScaleToFit(const char *text, int width, float maximum)
+/* The largest scale up to max at which a hint line fits width, like
+ * GetTextScaleToFitInWidthWithMax with the button icons measured. */
+float GetHintScaleToFitInWidthWithMax(const char *text, int width, float maximum)
 {
 	int natural = GetHintSizeInPixels(text);
 
@@ -4233,7 +4239,7 @@ void DrawArgsSelector(const char *fileName) {
 		DrawAddChild(newPanel, DrawStyledLabel(33, 354, "Default values will be used by the DOL being loaded if a", 0.8f, ALIGN_LEFT, defaultColor));
 		DrawAddChild(newPanel, DrawStyledLabel(33, 374, "parameter is not enabled. Please check the documentation", 0.8f, ALIGN_LEFT, defaultColor));
 		DrawAddChild(newPanel, DrawStyledLabel(33, 394, "for this DOL if you are unsure of the default values.", 0.8f, ALIGN_LEFT, defaultColor));
-		DrawAddChild(newPanel, DrawStyledLabel(640/2, 440, "(A) Toggle Param \267 (Start) Load the DOL", 1.0f, ALIGN_CENTER, defaultColor));
+		DrawAddChild(newPanel, DrawHintLabel(640/2, 440, "A  Toggle Param    START  Load the DOL", 1.0f, ALIGN_CENTER, defaultColor));
 		
 		container = DrawRepublish(container, newPanel);
 		
@@ -4457,8 +4463,8 @@ static void _DrawCheats(uiDrawObj_t *evt)
 			drawStringMedium(320, 236, s->enabledOnly ?
 				"No cheats enabled" : "No cheats available", 0.76f,
 				ALIGN_CENTER, primary);
-			drawStringMedium(320, 269, s->enabledOnly ?
-				"Press X to browse all cheats." : "Press B to return to your game.",
+			_DrawHintText(320, 269, s->enabledOnly ?
+				"X  Browse all cheats" : "B  Return to your game",
 				0.54f, ALIGN_CENTER, secondary);
 		}
 	}
@@ -4758,7 +4764,7 @@ void DrawGetTextEntry(int mode, const char *label, void *src, int size) {
 		// Draw the text entry box (TODO: mask chars if the mode says to do so)
 		DrawAddChild(newPanel, DrawEmptyBox(40, 100, getVideoMode()->fbWidth-40, 140));
 		DrawAddChild(newPanel, DrawStyledLabelWithCaret(320, 120, text, GetTextScaleToFitInWidth(text, getVideoMode()->fbWidth-90), ALIGN_CENTER, defaultColor, caret));
-		DrawAddChild(newPanel, DrawStyledLabel(320, 160, "(L/R) Cursor \267 (Start) Accept \267 (B) Discard", 0.75f, ALIGN_CENTER, defaultColor));
+		DrawAddChild(newPanel, DrawHintLabel(320, 160, "L/R  Cursor    START  Accept    B  Discard", 0.75f, ALIGN_CENTER, defaultColor));
 
 		// Alphanumeric has a little "mode" hint at the bottom (upper/lower case set switching)
 		if(mode & ENTRYMODE_ALPHA) {
@@ -4766,9 +4772,9 @@ void DrawGetTextEntry(int mode, const char *label, void *src, int size) {
 				(mode & ENTRYMODE_FILE ? txt_mode_file_chars_lower : txt_mode_chars_lower)
 				: 
 				(mode & ENTRYMODE_FILE ? txt_mode_file_chars_upper : txt_mode_chars_upper);
-			sprintf(txtbuffer, "Press X to change to [%s], current mode is [%s]",
+			sprintf(txtbuffer, "X  Change to [%s], current mode is [%s]",
 													txt_modes_str[(cur_txt_mode + 1 >= num_txt_modes ? 0 : cur_txt_mode + 1)], txt_modes_str[cur_txt_mode]);
-			DrawAddChild(newPanel, DrawStyledLabel(25, 427, txtbuffer, 0.65f, ALIGN_LEFT, defaultColor));
+			DrawAddChild(newPanel, DrawHintLabel(25, 427, txtbuffer, 0.65f, ALIGN_LEFT, defaultColor));
 		}
 		
 		// Draw the grid
@@ -4783,10 +4789,14 @@ void DrawGetTextEntry(int mode, const char *label, void *src, int size) {
 				DrawAddChild(newPanel, DrawEmptyColouredBox(x, y, x+button_width, y+button_height, cur_col == dx && cur_row == dy ? (GXColor) {96,107,164,GUI_MSGBOX_ALPHA} : (GXColor) {0,0,0,GUI_MSGBOX_ALPHA}));
 				float fontSize = isSpecial ? 0.65f : 1.0f;
 				if(isSpecial)
-					sprintf(txtbuffer, "%s", gridText[i] == '\a' ? "Space" : "(Y) Back");
+					sprintf(txtbuffer, "%s", gridText[i] == '\a' ? "Space" : "Y  Back");
 				else
 					sprintf(txtbuffer, "%c", gridText[i]);
-				DrawAddChild(newPanel, DrawStyledLabel(x+(button_width/2), y+(button_height/2), txtbuffer, fontSize, ALIGN_CENTER, cur_col == dx && cur_row == dy ? defaultColor : deSelectedColor));
+				GXColor keyColor = cur_col == dx && cur_row == dy ? defaultColor : deSelectedColor;
+				if(gridText[i] == '\b')
+					DrawAddChild(newPanel, DrawHintLabel(x+(button_width/2), y+(button_height/2), txtbuffer, fontSize, ALIGN_CENTER, keyColor));
+				else
+					DrawAddChild(newPanel, DrawStyledLabel(x+(button_width/2), y+(button_height/2), txtbuffer, fontSize, ALIGN_CENTER, keyColor));
 				x += (grid_gap + button_width);
 				i++;
 			}

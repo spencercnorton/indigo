@@ -151,6 +151,7 @@ uiDrawObj_t* DrawStyledLabel(int x, int y, const char *string, float size, int a
 uiDrawObj_t* DrawHintLabel(int x, int y, const char *string, float size, int align, GXColor color);
 /* A hint line's width at scale 1, button icons included. */
 int GetHintSizeInPixels(const char *text);
+float GetHintScaleToFitInWidthWithMax(const char *text, int width, float maximum);
 uiDrawObj_t* DrawStyledLabelWithCaret(int x, int y, const char *string, float size, int align, GXColor color, int caretPosition);
 uiDrawObj_t* DrawLabel(int x, int y, const char *string);
 uiDrawObj_t* DrawFadingLabel(int x, int y, const char *string, float size);
