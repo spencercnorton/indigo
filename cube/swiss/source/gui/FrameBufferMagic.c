@@ -885,17 +885,28 @@ static void _DrawImage(uiDrawObj_t *evt) {
 		data->depth, data->s1, data->s2, data->t1, data->t2, 0, 255);
 }
 
+/* The icon Settings chose for each Home face, in uiHomeFace_t order. */
+static void _HomeFaceIcons(int icons[UI_HOME_FACE_COUNT])
+{
+	icons[UI_HOME_FACE_LIBRARY] = swissSettings.libraryIcon;
+	icons[UI_HOME_FACE_SOURCE] = swissSettings.sourceIcon;
+	icons[UI_HOME_FACE_SETTINGS] = swissSettings.settingsIcon;
+	icons[UI_HOME_FACE_SYSTEM] = swissSettings.systemIcon;
+}
+
 static void _DrawBackground(uiDrawObj_t *evt)
 {
 	bool decorativeAnimated = _CurrentMotionMode() == UI_MOTION_FULL;
+	int icons[UI_HOME_FACE_COUNT];
 
 	UI_PERF_BEGIN(backgroundStart);
 
 	(void)evt;
+	_HomeFaceIcons(icons);
 	IndigoBackground_Draw(UIAnim_Seconds(),
 		decorativeAnimated && !swissSettings.disableAnimatedBackdrop,
 		decorativeAnimated,
-		UIScene_Frame(), &systemInstrument.clock, &padInstrument);
+		UIScene_Frame(), &systemInstrument.clock, &padInstrument, icons);
 	/* The background uses a raster-only TEV stage; never leak that state. */
 	drawInit();
 	UI_PERF_END(UI_PERF_METRIC_BACKGROUND_CPU_SUBMIT, backgroundStart);
@@ -5042,10 +5053,13 @@ static void *videoUpdate(void *videoEventQueue) {
 		/* During the short boot reveal, veil the already-published legacy widgets
 		 * and redraw the cube above them. Animations Off skips this pass entirely. */
 		if(sceneRenderingEnabled && UIScene_Frame()->introProgress < 1.0f) {
+			int icons[UI_HOME_FACE_COUNT];
+
+			_HomeFaceIcons(icons);
 			drawInit();
 			IndigoBackground_DrawBootOverlay(UIAnim_Seconds(),
 				!swissSettings.disableUIAnimations, UIScene_Frame(),
-				&systemInstrument.clock);
+				&systemInstrument.clock, icons);
 			drawInit();
 		}
 #if UI_PERF_CAPTURE

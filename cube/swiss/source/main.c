@@ -263,6 +263,10 @@ int main(int argc, char *argv[])
 	swissSettings.appsBrowserType = BROWSER_FULLWIDTH;
 	swissSettings.gameBrowserType = BROWSER_FULLWIDTH;
 	swissSettings.recentListLevel = 2;
+	swissSettings.libraryIcon = UI_HOME_ICON_CONTROLLER;
+	swissSettings.sourceIcon = UI_HOME_ICON_HUB;
+	swissSettings.settingsIcon = UI_HOME_ICON_SLIDERS;
+	swissSettings.systemIcon = UI_HOME_ICON_CLOCK;
 	memset(&swissSettings.recent[0][0], 0, PATHNAME_MAX);
 	config_init_environ();
 

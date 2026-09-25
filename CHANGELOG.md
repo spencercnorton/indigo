@@ -3,6 +3,22 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.19.0 — cube face icons
+
+- Settings › Setup › Console has a row for each face of the Home cube:
+  Library Icon, Source Icon, Settings Icon and System Icon. Each picks the
+  picture on its face: Controller, Books, Hub, Disc, Sliders, Gear, Clock or
+  None. Any face can show any of them, and a face keeps its name and what
+  A does there.
+- Disc and Gear are new, and Books is the bookshelf the Library face had in
+  v1.4.0. Controller mirrors your controller and Clock tells the time on
+  whichever face you put them.
+- Every icon now glows in the same lilac, the Library controller's, on every
+  face, and the glass behind each face has the same tint. The defaults are
+  still the controller, hub, sliders and clock.
+- The settings file keys are `Library Icon`, `Source Icon`, `Settings Icon`
+  and `System Icon`.
+
 ## v1.18.0 — button icons in prompts
 
 - Message boxes show their buttons as icons too. "Press A to continue."

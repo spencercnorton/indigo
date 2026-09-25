@@ -72,6 +72,10 @@ enum SETTINGS_INTERFACE {
 	SET_HIDE_UNK,
 	SET_UI_ANIMS,
 	SET_UI_COLOR,
+	SET_LIBRARY_ICON,
+	SET_SOURCE_ICON,
+	SET_SETTINGS_ICON,
+	SET_SYSTEM_ICON,
 	SET_PANEL_TRANSPARENCY,
 	SET_ANIMATED_BACKDROP,
 	SET_MENU_MUSIC,
@@ -219,6 +223,7 @@ extern char *fileBrowserTypeStr[];
 extern char *bs2BootStr[];
 extern char *recentListLevelStr[];
 extern char *uiColorStr[];
+extern char *faceIconStr[];
 
 int show_settings(int page, int option, ConfigEntry *config);
 int show_settings_view(int view, int option, ConfigEntry *config);

@@ -472,6 +472,10 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Disable Menu Music=%s\r\n", swissSettings.disableMenuMusic ? "Yes":"No");
 	fprintf(fp, "Disable Menu SFX=%s\r\n", swissSettings.disableMenuSFX ? "Yes":"No");
 	fprintf(fp, "Menu Color=%s\r\n", uiColorStr[swissSettings.uiColor]);
+	fprintf(fp, "Library Icon=%s\r\n", faceIconStr[swissSettings.libraryIcon]);
+	fprintf(fp, "Source Icon=%s\r\n", faceIconStr[swissSettings.sourceIcon]);
+	fprintf(fp, "Settings Icon=%s\r\n", faceIconStr[swissSettings.settingsIcon]);
+	fprintf(fp, "System Icon=%s\r\n", faceIconStr[swissSettings.systemIcon]);
 	fprintf(fp, "Init DVD Drive at startup=%s\r\n", swissSettings.initDVDDriveAtStart ? "Yes":"No");
 	fprintf(fp, "Stop DVD Drive motor=%s\r\n", swissSettings.stopMotor ? "Yes":"No");
 	fprintf(fp, "Configure Audio Buffer=%s\r\n", configAudioBufferStr[swissSettings.configAudioBuffer]);
@@ -1285,6 +1289,38 @@ void config_parse_global(char *configData) {
 					for(int i = 0; i < UI_COLOR_MAX; i++) {
 						if(!strcmp(uiColorStr[i], value)) {
 							swissSettings.uiColor = i;
+							break;
+						}
+					}
+				}
+				else if(!strcmp("Library Icon", name)) {
+					for(int i = 0; i < UI_HOME_ICON_COUNT; i++) {
+						if(!strcmp(faceIconStr[i], value)) {
+							swissSettings.libraryIcon = i;
+							break;
+						}
+					}
+				}
+				else if(!strcmp("Source Icon", name)) {
+					for(int i = 0; i < UI_HOME_ICON_COUNT; i++) {
+						if(!strcmp(faceIconStr[i], value)) {
+							swissSettings.sourceIcon = i;
+							break;
+						}
+					}
+				}
+				else if(!strcmp("Settings Icon", name)) {
+					for(int i = 0; i < UI_HOME_ICON_COUNT; i++) {
+						if(!strcmp(faceIconStr[i], value)) {
+							swissSettings.settingsIcon = i;
+							break;
+						}
+					}
+				}
+				else if(!strcmp("System Icon", name)) {
+					for(int i = 0; i < UI_HOME_ICON_COUNT; i++) {
+						if(!strcmp(faceIconStr[i], value)) {
+							swissSettings.systemIcon = i;
 							break;
 						}
 					}

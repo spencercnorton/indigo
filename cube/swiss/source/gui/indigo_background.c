@@ -47,7 +47,7 @@ typedef struct cubeCoverageEdge {
 	GXColor color[2];
 } cubeCoverageEdge_t;
 
-/* Library emblem state: stick axes in -1..1 (y up) and PAD_* bits held. */
+/* Controller icon state: stick axes in -1..1 (y up) and PAD_* bits held. */
 typedef struct controllerPose {
 	float stickX;
 	float stickY;
@@ -913,6 +913,27 @@ static void putSemanticFaceHand(const cubeRasterTransform_t *raster, int face, f
 	putSemanticMotifQuad(raster, face, corners, plane, color);
 }
 
+/* One book on a shelf: three pieces whose two gaps read as the spine's
+ * bands. lean tips it about its bottom-left corner into the row. */
+static void putSemanticFaceBook(const cubeRasterTransform_t *raster, int face,
+		float u, float v, float width, float height, float lean, float plane,
+		GXColor color)
+{
+	static const float bands[6] = {0.0f, 0.15f, 0.20f, 0.80f, 0.85f, 1.0f};
+	float c = cosf(lean), s = sinf(lean);
+
+	for(int i = 0; i < 6; i += 2) {
+		float b0 = bands[i] * height, b1 = bands[i + 1] * height;
+		const indigoPoint_t corners[4] = {
+			{u - b0 * s, v + b0 * c},
+			{u - b1 * s, v + b1 * c},
+			{u + width * c - b1 * s, v + width * s + b1 * c},
+			{u + width * c - b0 * s, v + width * s + b0 * c}
+		};
+		putSemanticMotifQuad(raster, face, corners, plane, color);
+	}
+}
+
 /* A convex polygon on a semantic face, clockwise in face space, in its own
  * primitives: a solid fan inset by half a pixel and a coverage fringe that
  * falls to zero one native pixel out, as the motif quads do. Back-facing or
@@ -974,7 +995,7 @@ static void drawFacePolygon(const cubeRasterTransform_t *raster, int face,
 /* A closed band of face-space width centred on a clockwise polyline: the
  * controller's outline and its stick gates. Neighbouring quads share their
  * mitred corners and each boundary fades over one native pixel, so the
- * additive emblem pass never double-lights a seam. */
+ * additive icon pass never double-lights a seam. */
 static void drawFaceBand(const cubeRasterTransform_t *raster, int face,
 		const indigoPoint_t *centre, int count, float halfWidth, float plane,
 		GXColor color)
@@ -1039,9 +1060,9 @@ static void drawFaceBand(const cubeRasterTransform_t *raster, int face,
 	GX_End();
 }
 
-/* The Library emblem: an original GameCube controller drawn in face units
- * (v up) in the same glowing strokes and solids as the other faces. */
-static void drawControllerCircle(const cubeRasterTransform_t *raster,
+/* The Controller icon: an original GameCube controller drawn in face units
+ * (v up) in the same glowing strokes and solids as the other icons. */
+static void drawControllerCircle(const cubeRasterTransform_t *raster, int face,
 		float x, float y, float radius, int segments, float plane, GXColor color)
 {
 	indigoPoint_t corners[FACE_POLYGON_MAX];
@@ -1052,28 +1073,31 @@ static void drawControllerCircle(const cubeRasterTransform_t *raster,
 		corners[i] = (indigoPoint_t) {x + radius * cosf(angle),
 			y + radius * sinf(angle)};
 	}
-	drawFacePolygon(raster, UI_HOME_FACE_LIBRARY, corners, segments, plane, color);
+	drawFacePolygon(raster, face, corners, segments, plane, color);
 }
 
-/* An octagonal gate ring, a vertex on each axis like the real stick gates. */
-static void drawControllerGate(const cubeRasterTransform_t *raster,
-		float x, float y, float radius, float halfWidth, float plane, GXColor color)
+/* A ring of segments sides with a vertex on each axis: 8 for the stick
+ * gates, more for the round rims of the Disc and Gear icons. */
+static void drawFaceRing(const cubeRasterTransform_t *raster, int face,
+		float x, float y, float radius, int segments, float halfWidth,
+		float plane, GXColor color)
 {
-	indigoPoint_t corners[8];
+	indigoPoint_t corners[FACE_BAND_MAX];
 
-	for(int i = 0; i < 8; i++) {
-		float angle = -INDIGO_TAU * (float)i / 8.0f;
+	if(segments < 3 || segments > FACE_BAND_MAX) return;
+	for(int i = 0; i < segments; i++) {
+		float angle = -INDIGO_TAU * (float)i / (float)segments;
 		corners[i] = (indigoPoint_t) {x + radius * cosf(angle),
 			y + radius * sinf(angle)};
 	}
-	drawFaceBand(raster, UI_HOME_FACE_LIBRARY, corners, 8, halfWidth, plane, color);
+	drawFaceBand(raster, face, corners, segments, halfWidth, plane, color);
 }
 
-static void drawControllerRect(const cubeRasterTransform_t *raster,
+static void drawControllerRect(const cubeRasterTransform_t *raster, int face,
 		float u0, float v0, float u1, float v1, float plane, GXColor color)
 {
 	const indigoPoint_t corners[4] = {{u0, v0}, {u0, v1}, {u1, v1}, {u1, v0}};
-	drawFacePolygon(raster, UI_HOME_FACE_LIBRARY, corners, 4, plane, color);
+	drawFacePolygon(raster, face, corners, 4, plane, color);
 }
 
 /* The controller's silhouette, clockwise in face units: the union of its
@@ -1185,7 +1209,7 @@ static void drawFaceBean(const cubeRasterTransform_t *raster, int face,
 }
 
 /* Normalised stick axis with a small dead zone, so a resting stick's drift
- * never wiggles the emblem. */
+ * never wiggles the icon. */
 static float controllerAxis(s8 value, float fullScale)
 {
 	float axis = (float)value / fullScale;
@@ -1247,8 +1271,8 @@ static void controllerPose(const indigoPadFrame_t *pad, float seconds,
 	}
 }
 
-/* Every part shares the Library glow; a pressed part sinks to 84% of its
- * size and brightens, the way a lit button reads on the other faces. */
+/* Every part shares its face's glow; a pressed part sinks to 84% of its
+ * size and brightens, the way a lit button reads on the other icons. */
 static GXColor controllerGlow(GXColor color, float weight, bool pressed)
 {
 	float alpha = (float)color.a * weight * (pressed ? 1.3f : 1.0f);
@@ -1257,16 +1281,12 @@ static GXColor controllerGlow(GXColor color, float weight, bool pressed)
 	return color;
 }
 
-static void drawLibraryController(const cubeRasterTransform_t *raster,
-		float seconds, bool animated, const indigoPadFrame_t *pad)
+static void drawControllerIcon(const cubeRasterTransform_t *raster, int face,
+		GXColor glow, float seconds, bool animated, const indigoPadFrame_t *pad)
 {
 	static controllerIdle_t idle;
 	const float plane = 1.012f;
-	/* The same colour and breath as the other faces' emblems. */
-	float pulse = animated ? 0.5f + sinf(seconds * 1.10f) * 0.5f : 0.62f;
-	GXColor glow = {196, 177, 255, (u8)(142.0f + pulse * 42.0f)};
 	controllerPose_t pose;
-	Mtx identity;
 
 	controllerPose(pad, seconds, animated, &idle, &pose);
 	bool l = (pose.pressed & PAD_TRIGGER_L) != 0u;
@@ -1289,58 +1309,49 @@ static void drawLibraryController(const cubeRasterTransform_t *raster,
 	for(int i = 0; i < outlineCount; i++) {
 		outline[i] = (indigoPoint_t) {controllerOutline[i][0], controllerOutline[i][1]};
 	}
-	guMtxIdentity(identity);
-	GX_LoadPosMtxImm(identity, GX_PNMTX0);
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
-	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
-	GX_SetCullMode(GX_CULL_NONE);
-
-	/* Nothing overlaps: the pass is additive, like the other emblems. */
-	drawFaceBand(raster, UI_HOME_FACE_LIBRARY, outline, outlineCount, 0.018f,
+	/* Nothing overlaps: the pass is additive. */
+	drawFaceBand(raster, face, outline, outlineCount, 0.018f,
 		plane, controllerGlow(glow, 0.78f, false));
 	/* The triggers ride the shoulders and press in toward the body. */
-	drawFaceBean(raster, UI_HOME_FACE_LIBRARY, -0.335f, 0.075f, l ? 0.28f : 0.30f,
+	drawFaceBean(raster, face, -0.335f, 0.075f, l ? 0.28f : 0.30f,
 		152.0f * degree, 100.0f * degree, 0.022f, plane, controllerGlow(glow, 0.9f, l));
-	drawFaceBean(raster, UI_HOME_FACE_LIBRARY, 0.335f, 0.075f, r ? 0.28f : 0.30f,
+	drawFaceBean(raster, face, 0.335f, 0.075f, r ? 0.28f : 0.30f,
 		80.0f * degree, 28.0f * degree, 0.022f, plane, controllerGlow(glow, 0.9f, r));
 
 	/* Both sticks follow the live controller inside their octagonal gates. */
-	drawControllerGate(raster, -0.335f, 0.075f, 0.12f, 0.014f, plane,
+	drawFaceRing(raster, face, -0.335f, 0.075f, 0.12f, 8, 0.014f, plane,
 		controllerGlow(glow, 0.9f, false));
-	drawControllerCircle(raster, -0.335f + pose.stickX * reach,
+	drawControllerCircle(raster, face, -0.335f + pose.stickX * reach,
 		0.075f + pose.stickY * reach, 0.058f, 20, plane, controllerGlow(glow, 1.0f, false));
-	drawControllerGate(raster, 0.165f, -0.19f, 0.054f, 0.012f, plane,
+	drawFaceRing(raster, face, 0.165f, -0.19f, 0.054f, 8, 0.012f, plane,
 		controllerGlow(glow, 0.9f, false));
-	drawControllerCircle(raster, 0.165f + pose.substickX * cReach,
+	drawControllerCircle(raster, face, 0.165f + pose.substickX * cReach,
 		-0.19f + pose.substickY * cReach, 0.024f, 14, plane,
 		controllerGlow(glow, 1.0f, false));
 
 	/* The face cluster: a large A, B below-left, X and Y curving round A. */
-	drawControllerCircle(raster, 0.335f, 0.075f, a ? 0.066f : 0.078f, 24, plane,
+	drawControllerCircle(raster, face, 0.335f, 0.075f, a ? 0.066f : 0.078f, 24, plane,
 		controllerGlow(glow, 1.05f, a));
-	drawControllerCircle(raster, 0.215f, -0.025f, b ? 0.030f : 0.036f, 16, plane,
+	drawControllerCircle(raster, face, 0.215f, -0.025f, b ? 0.030f : 0.036f, 16, plane,
 		controllerGlow(glow, 1.0f, b));
-	drawFaceBean(raster, UI_HOME_FACE_LIBRARY, 0.335f, 0.075f, 0.128f,
+	drawFaceBean(raster, face, 0.335f, 0.075f, 0.128f,
 		42.0f * degree, -34.0f * degree, x ? 0.019f : 0.024f, plane,
 		controllerGlow(glow, 1.0f, x));
-	drawFaceBean(raster, UI_HOME_FACE_LIBRARY, 0.335f, 0.075f, 0.128f,
+	drawFaceBean(raster, face, 0.335f, 0.075f, 0.128f,
 		172.0f * degree, 102.0f * degree, y ? 0.019f : 0.024f, plane,
 		controllerGlow(glow, 1.0f, y));
-	drawControllerCircle(raster, 0.0f, 0.10f, start ? 0.018f : 0.022f, 12,
+	drawControllerCircle(raster, face, 0.0f, 0.10f, start ? 0.018f : 0.022f, 12,
 		plane, controllerGlow(glow, 0.9f, start));
 
 	/* Four separate D-pad arms around an open centre; a held arm brightens. */
-	drawControllerRect(raster, -0.182f, -0.167f, -0.148f, -0.117f, plane,
+	drawControllerRect(raster, face, -0.182f, -0.167f, -0.148f, -0.117f, plane,
 		controllerGlow(glow, 1.0f, (pose.pressed & PAD_BUTTON_UP) != 0u));
-	drawControllerRect(raster, -0.182f, -0.263f, -0.148f, -0.213f, plane,
+	drawControllerRect(raster, face, -0.182f, -0.263f, -0.148f, -0.213f, plane,
 		controllerGlow(glow, 1.0f, (pose.pressed & PAD_BUTTON_DOWN) != 0u));
-	drawControllerRect(raster, -0.238f, -0.207f, -0.188f, -0.173f, plane,
+	drawControllerRect(raster, face, -0.238f, -0.207f, -0.188f, -0.173f, plane,
 		controllerGlow(glow, 1.0f, (pose.pressed & PAD_BUTTON_LEFT) != 0u));
-	drawControllerRect(raster, -0.142f, -0.207f, -0.092f, -0.173f, plane,
+	drawControllerRect(raster, face, -0.142f, -0.207f, -0.092f, -0.173f, plane,
 		controllerGlow(glow, 1.0f, (pose.pressed & PAD_BUTTON_RIGHT) != 0u));
-
-	GX_LoadPosMtxImm(raster->model, GX_PNMTX0);
-	GX_SetCullMode(GX_CULL_BACK);
 }
 
 static void buildChamferStrip(cubeSurfaceQuad_t *quad, float ax, float ay, float az,
@@ -1418,104 +1429,180 @@ static void buildCubeCorners(cubeSurfaceQuad_t corners[8], float outer, float in
 	}
 }
 
-static void drawSemanticFaceMotifs(float seconds, bool animated,
-		const uiClockFrame_t *clock, const cubeRasterTransform_t *raster)
+/* A central port with four linked endpoints: 9 quads, 180 vertices. */
+static void drawHubIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
 {
 	const float plane = 1.012f;
-	float pulse = animated ? 0.5f + sinf(seconds * 1.10f) * 0.5f : 0.62f;
-	float slider = animated ? sinf(seconds * 0.43f) * 0.12f : 0.0f;
-	GXColor source = {151, 190, 255, (u8)(136.0f + pulse * 52.0f)};
-	GXColor settings = {218, 162, 255, (u8)(138.0f + pulse * 46.0f)};
-	GXColor system = {239, 230, 255, (u8)(148.0f + pulse * 38.0f)};
-	GXColor secondHand = {211, 191, 255, 228};
+
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 180);
+		putSemanticFaceDiamond(raster, face, 0.0f, 0.0f, 0.17f, plane, glow);
+		putSemanticFaceDiamond(raster, face, -0.48f, 0.0f, 0.09f, plane, glow);
+		putSemanticFaceDiamond(raster, face, 0.48f, 0.0f, 0.09f, plane, glow);
+		putSemanticFaceDiamond(raster, face, 0.0f, -0.48f, 0.09f, plane, glow);
+		putSemanticFaceDiamond(raster, face, 0.0f, 0.48f, 0.09f, plane, glow);
+		putSemanticMotifRect(raster, face, -0.40f, -0.025f, -0.16f, 0.025f, plane, glow);
+		putSemanticMotifRect(raster, face, 0.16f, -0.025f, 0.40f, 0.025f, plane, glow);
+		putSemanticMotifRect(raster, face, -0.025f, -0.40f, 0.025f, -0.16f, plane, glow);
+		putSemanticMotifRect(raster, face, -0.025f, 0.16f, 0.025f, 0.40f, plane, glow);
+	GX_End();
+}
+
+/* Three calm tracks with independently placed controls: 6 quads, 120
+ * vertices. slider drifts the knobs while motion is on. */
+static void drawSlidersIcon(const cubeRasterTransform_t *raster, int face,
+		GXColor glow, float slider)
+{
+	const float plane = 1.012f;
+
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 120);
+	for(int track = 0; track < 3; ++track) {
+		float y = -0.42f + (float)track * 0.42f;
+		float knob = (track == 0 ? -0.25f : (track == 1 ? 0.12f : 0.34f));
+		knob += (track == 1 ? slider : -slider * 0.45f);
+		putSemanticMotifRect(raster, face, -0.55f, y - 0.025f,
+			0.55f, y + 0.025f, plane, glow);
+		putSemanticMotifRect(raster, face, knob - 0.065f,
+			y - 0.13f, knob + 0.065f, y + 0.13f, plane, glow);
+	}
+	GX_End();
+}
+
+/* A framed live clock with three civil-time hands and cardinal ticks; the
+ * hand tails form a compact luminous hub. 11 quads, 220 vertices. Invalid
+ * civil time emits transparent degenerate hands, never an invented time. */
+static void drawClockIcon(const cubeRasterTransform_t *raster, int face,
+		GXColor glow, const uiClockFrame_t *clock)
+{
+	const float plane = 1.012f;
+	GXColor secondHand = {glow.r, glow.g, glow.b, 228};
 	GXColor hiddenHand = {0, 0, 0, 0};
 	bool clockAvailable = clock != NULL && clock->available;
-	int face;
-	Mtx identity;
 
-	guMtxIdentity(identity);
-	GX_LoadPosMtxImm(identity, GX_PNMTX0);
-
-	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
-	GX_SetCullMode(GX_CULL_BACK);
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
-	/* Source 9 + Settings 6 + System 11 = 26 shapes, each with a solid quad
-	 * and four coverage quads: 520 bounded vertices. Invalid civil time emits
-	 * transparent degenerate hands, never an invented time. The Library face
-	 * carries the controller, drawn by drawLibraryController(). */
-	GX_Begin(GX_QUADS, GX_VTXFMT0, 520);
-		/* Source: a central port with four linked endpoints. */
-		putSemanticFaceDiamond(raster, UI_HOME_FACE_SOURCE, 0.0f, 0.0f, 0.17f,
-			plane, source);
-		putSemanticFaceDiamond(raster, UI_HOME_FACE_SOURCE, -0.48f, 0.0f, 0.09f,
-			plane, source);
-		putSemanticFaceDiamond(raster, UI_HOME_FACE_SOURCE, 0.48f, 0.0f, 0.09f,
-			plane, source);
-		putSemanticFaceDiamond(raster, UI_HOME_FACE_SOURCE, 0.0f, -0.48f, 0.09f,
-			plane, source);
-		putSemanticFaceDiamond(raster, UI_HOME_FACE_SOURCE, 0.0f, 0.48f, 0.09f,
-			plane, source);
-		putSemanticMotifRect(raster, UI_HOME_FACE_SOURCE, -0.40f, -0.025f,
-			-0.16f, 0.025f, plane, source);
-		putSemanticMotifRect(raster, UI_HOME_FACE_SOURCE, 0.16f, -0.025f,
-			0.40f, 0.025f, plane, source);
-		putSemanticMotifRect(raster, UI_HOME_FACE_SOURCE, -0.025f, -0.40f,
-			0.025f, -0.16f, plane, source);
-		putSemanticMotifRect(raster, UI_HOME_FACE_SOURCE, -0.025f, 0.16f,
-			0.025f, 0.40f, plane, source);
-
-		/* Settings: three calm tracks with independently placed controls. */
-		for(face = 0; face < 3; ++face) {
-			float y = -0.42f + (float)face * 0.42f;
-			float knob = (face == 0 ? -0.25f : (face == 1 ? 0.12f : 0.34f));
-			knob += (face == 1 ? slider : -slider * 0.45f);
-			putSemanticMotifRect(raster, UI_HOME_FACE_SETTINGS, -0.55f, y - 0.025f,
-				0.55f, y + 0.025f, plane, settings);
-			putSemanticMotifRect(raster, UI_HOME_FACE_SETTINGS, knob - 0.065f,
-				y - 0.13f, knob + 0.065f, y + 0.13f, plane, settings);
-		}
-
-		/* System: a framed live clock with three civil-time hands and
-		 * cardinal ticks. The hand tails form a compact luminous hub. */
-		putSemanticFaceHand(raster, UI_HOME_FACE_SYSTEM,
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 220);
+		putSemanticFaceHand(raster, face,
 			clockAvailable ? clock->hourX : 0.0f,
 			clockAvailable ? clock->hourY : 0.0f,
 			clockAvailable ? 0.34f : 0.0f,
 			clockAvailable ? 0.040f : 0.0f,
 			clockAvailable ? 0.045f : 0.0f, plane,
-			clockAvailable ? system : hiddenHand);
-		putSemanticFaceHand(raster, UI_HOME_FACE_SYSTEM,
+			clockAvailable ? glow : hiddenHand);
+		putSemanticFaceHand(raster, face,
 			clockAvailable ? clock->minuteX : 0.0f,
 			clockAvailable ? clock->minuteY : 0.0f,
 			clockAvailable ? 0.49f : 0.0f,
 			clockAvailable ? 0.027f : 0.0f,
 			clockAvailable ? 0.055f : 0.0f, plane,
-			clockAvailable ? system : hiddenHand);
-		putSemanticFaceHand(raster, UI_HOME_FACE_SYSTEM,
+			clockAvailable ? glow : hiddenHand);
+		putSemanticFaceHand(raster, face,
 			clockAvailable ? clock->secondX : 0.0f,
 			clockAvailable ? clock->secondY : 0.0f,
 			clockAvailable ? 0.56f : 0.0f,
 			clockAvailable ? 0.013f : 0.0f,
 			clockAvailable ? 0.090f : 0.0f, plane,
 			clockAvailable ? secondHand : hiddenHand);
-		putSemanticMotifRect(raster, UI_HOME_FACE_SYSTEM, -0.55f, 0.55f,
-			0.55f, 0.61f, plane, system);
-		putSemanticMotifRect(raster, UI_HOME_FACE_SYSTEM, -0.55f, -0.61f,
-			0.55f, -0.55f, plane, system);
-		putSemanticMotifRect(raster, UI_HOME_FACE_SYSTEM, -0.61f, -0.55f,
-			-0.55f, 0.55f, plane, system);
-		putSemanticMotifRect(raster, UI_HOME_FACE_SYSTEM, 0.55f, -0.55f,
-			0.61f, 0.55f, plane, system);
-		putSemanticMotifRect(raster, UI_HOME_FACE_SYSTEM, -0.035f, 0.55f,
-			0.035f, 0.66f, plane, system);
-		putSemanticMotifRect(raster, UI_HOME_FACE_SYSTEM, -0.035f, -0.66f,
-			0.035f, -0.55f, plane, system);
-		putSemanticMotifRect(raster, UI_HOME_FACE_SYSTEM, -0.66f, -0.035f,
-			-0.55f, 0.035f, plane, system);
-		putSemanticMotifRect(raster, UI_HOME_FACE_SYSTEM, 0.55f, -0.035f,
-			0.66f, 0.035f, plane, system);
+		putSemanticMotifRect(raster, face, -0.55f, 0.55f, 0.55f, 0.61f, plane, glow);
+		putSemanticMotifRect(raster, face, -0.55f, -0.61f, 0.55f, -0.55f, plane, glow);
+		putSemanticMotifRect(raster, face, -0.61f, -0.55f, -0.55f, 0.55f, plane, glow);
+		putSemanticMotifRect(raster, face, 0.55f, -0.55f, 0.61f, 0.55f, plane, glow);
+		putSemanticMotifRect(raster, face, -0.035f, 0.55f, 0.035f, 0.66f, plane, glow);
+		putSemanticMotifRect(raster, face, -0.035f, -0.66f, 0.035f, -0.55f, plane, glow);
+		putSemanticMotifRect(raster, face, -0.66f, -0.035f, -0.55f, 0.035f, plane, glow);
+		putSemanticMotifRect(raster, face, 0.55f, -0.035f, 0.66f, 0.035f, plane, glow);
 	GX_End();
+}
+
+/* Banded books on a shelf, the last leaning into the row so it reads as a
+ * bookshelf, not a bar chart: 13 quads, 260 vertices. The lean clears the
+ * third spine; additive blending would double-light any overlap. */
+static void drawBooksIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = 1.012f;
+
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 260);
+		putSemanticFaceBook(raster, face, -0.585f, -0.46f, 0.20f, 0.90f, 0.0f, plane, glow);
+		putSemanticFaceBook(raster, face, -0.35f, -0.46f, 0.25f, 1.00f, 0.0f, plane, glow);
+		putSemanticFaceBook(raster, face, -0.065f, -0.46f, 0.17f, 0.80f, 0.0f, plane, glow);
+		putSemanticFaceBook(raster, face, 0.412f, -0.46f, 0.19f, 0.84f, 0.349f, plane, glow);
+		putSemanticMotifRect(raster, face, -0.64f, -0.555f, 0.64f, -0.49f, plane, glow);
+	GX_End();
+}
+
+/* A GameCube disc: its rim, the ring round the centre hole and two glints
+ * between them, which spin turns while motion is on. */
+static void drawDiscIcon(const cubeRasterTransform_t *raster, int face,
+		GXColor glow, float spin)
+{
+	const float plane = 1.012f;
+	const float degree = INDIGO_TAU / 360.0f;
+
+	drawFaceRing(raster, face, 0.0f, 0.0f, 0.52f, 32, 0.020f, plane, glow);
+	drawFaceRing(raster, face, 0.0f, 0.0f, 0.14f, 16, 0.018f, plane, glow);
+	for(int glint = 0; glint < 2; glint++) {
+		float from = spin + 125.0f * degree + (float)glint * INDIGO_TAU * 0.5f;
+		drawFaceBean(raster, face, 0.0f, 0.0f, 0.33f, from, from - 50.0f * degree,
+			0.028f, plane, glow);
+	}
+}
+
+/* A gear: six rounded teeth and its centre hole, turned by turn. tanh
+ * squares each tooth off; at this sharpness every corner of the 78-point
+ * outline stays under the 45 degrees drawFaceBand needs. */
+static void drawGearIcon(const cubeRasterTransform_t *raster, int face,
+		GXColor glow, float turn)
+{
+	enum { TEETH = 6, POINTS = TEETH * 13 };
+	const float plane = 1.012f;
+	indigoPoint_t outline[POINTS];
+
+	for(int i = 0; i < POINTS; i++) {
+		float angle = -INDIGO_TAU * (float)i / (float)POINTS;
+		float radius = 0.45f + 0.085f * tanhf(2.0f * sinf(TEETH * angle)) / tanhf(2.0f);
+		outline[i] = (indigoPoint_t) {radius * cosf(angle + turn),
+			radius * sinf(angle + turn)};
+	}
+	drawFaceBand(raster, face, outline, POINTS, 0.018f, plane, glow);
+	drawFaceRing(raster, face, 0.0f, 0.0f, 0.15f, 16, 0.018f, plane, glow);
+}
+
+/* Every face shows the icon chosen for it in Settings (a uiHomeIcon_t per
+ * face), in one additive pass without depth writes, and every icon glows in
+ * the same lilac. Each icon's primitive count is fixed, so a face turning
+ * away draws transparent degenerates or nothing; None, and any value out of
+ * range, draws nothing. */
+static void drawFaceIcons(float seconds, bool animated,
+		const uiClockFrame_t *clock, const indigoPadFrame_t *pad,
+		const int icons[UI_HOME_FACE_COUNT], const cubeRasterTransform_t *raster)
+{
+	float pulse = animated ? 0.5f + sinf(seconds * 1.10f) * 0.5f : 0.62f;
+	float slider = animated ? sinf(seconds * 0.43f) * 0.12f : 0.0f;
+	GXColor glow = {196, 177, 255, (u8)(142.0f + pulse * 42.0f)};
+	Mtx identity;
+
+	guMtxIdentity(identity);
+	GX_LoadPosMtxImm(identity, GX_PNMTX0);
+	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
+	GX_SetCullMode(GX_CULL_NONE);
+	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
+	for(int face = 0; face < UI_HOME_FACE_COUNT; face++) {
+		switch(icons[face]) {
+			case UI_HOME_ICON_CONTROLLER:
+				drawControllerIcon(raster, face, glow, seconds, animated, pad);
+				break;
+			case UI_HOME_ICON_BOOKS: drawBooksIcon(raster, face, glow); break;
+			case UI_HOME_ICON_HUB: drawHubIcon(raster, face, glow); break;
+			case UI_HOME_ICON_DISC:
+				drawDiscIcon(raster, face, glow, animated ? seconds * 0.6f : 0.0f);
+				break;
+			case UI_HOME_ICON_SLIDERS: drawSlidersIcon(raster, face, glow, slider); break;
+			case UI_HOME_ICON_GEAR:
+				drawGearIcon(raster, face, glow, animated ? seconds * 0.2f : 0.0f);
+				break;
+			case UI_HOME_ICON_CLOCK: drawClockIcon(raster, face, glow, clock); break;
+			default: break;
+		}
+	}
 	GX_LoadPosMtxImm(raster->model, GX_PNMTX0);
+	GX_SetCullMode(GX_CULL_BACK);
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA,
 		GX_LO_CLEAR);
 }
@@ -1674,7 +1761,8 @@ static void drawGlassReflection(const cubeRasterTransform_t *raster,
 }
 
 static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
-		const uiClockFrame_t *clock, const indigoPadFrame_t *pad)
+		const uiClockFrame_t *clock, const indigoPadFrame_t *pad,
+		const int icons[UI_HOME_FACE_COUNT])
 {
 	static const GXColor coreColors[6] = {
 		{19, 15, 54, 255}, {28, 20, 76, 255}, {50, 36, 111, 255},
@@ -1725,20 +1813,17 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	drawCubeSurfacePass(&raster, &shellOutline, strips, 12, GX_CULL_FRONT, false);
 	drawCubeSurfacePassVertices(&raster, &shellOutline, corners, 8, 3, GX_CULL_FRONT, false);
 
-	/* Every semantic lateral face receives the same restrained inset pane;
-	 * no destination becomes a blank reverse side of the Library artwork. */
+	/* Every semantic lateral face receives the same restrained inset pane,
+	 * in one tint so every face's icon reads in the same shade; no
+	 * destination becomes a blank reverse side of the Library artwork. */
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
 	GX_SetCullMode(GX_CULL_BACK);
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 16);
-		putSemanticFaceRect(&raster, UI_HOME_FACE_LIBRARY, -0.72f, -0.72f,
+	for(int face = 0; face < UI_HOME_FACE_COUNT; face++) {
+		putSemanticFaceRect(&raster, face, -0.72f, -0.72f,
 			0.72f, 0.72f, 0.86f, (GXColor) {57, 42, 122, 58});
-		putSemanticFaceRect(&raster, UI_HOME_FACE_SOURCE, -0.72f, -0.72f,
-			0.72f, 0.72f, 0.86f, (GXColor) {43, 50, 119, 58});
-		putSemanticFaceRect(&raster, UI_HOME_FACE_SETTINGS, -0.72f, -0.72f,
-			0.72f, 0.72f, 0.86f, (GXColor) {79, 39, 112, 58});
-		putSemanticFaceRect(&raster, UI_HOME_FACE_SYSTEM, -0.72f, -0.72f,
-			0.72f, 0.72f, 0.86f, (GXColor) {68, 56, 126, 58});
+	}
 	GX_End();
 
 	/* Convex glass is rendered back-to-front with depth writes disabled. */
@@ -1764,14 +1849,13 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	drawGlassReflection(&raster, strips, 12, 4, outer);
 	drawGlassReflection(&raster, corners, 8, 3, outer);
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-	drawSemanticFaceMotifs(seconds, animated, clock, &raster);
-	drawLibraryController(&raster, seconds, animated, pad);
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
+	drawFaceIcons(seconds, animated, clock, pad, icons, &raster);
 }
 
 void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 	bool cubeAnimated, const uiSceneFrame_t *scene,
-	const uiClockFrame_t *clock, const indigoPadFrame_t *pad)
+	const uiClockFrame_t *clock, const indigoPadFrame_t *pad,
+	const int icons[UI_HOME_FACE_COUNT])
 {
 	bool backdropMotionActive = backdropAnimated && scene->visible;
 	bool cubeMotionActive = cubeAnimated && scene->visible;
@@ -1797,12 +1881,13 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 		(GXColor) {3, 2, 12, (u8)(92.0f * orbitStrength)},
 		(GXColor) {3, 2, 12, 0});
 	if(scene->introProgress >= BOOT_CUBE_HANDOFF) {
-		drawCube(scene, seconds, cubeMotionActive, clock, pad);
+		drawCube(scene, seconds, cubeMotionActive, clock, pad, icons);
 	}
 }
 
 void IndigoBackground_DrawBootOverlay(float seconds, bool animated,
-	const uiSceneFrame_t *scene, const uiClockFrame_t *clock)
+	const uiSceneFrame_t *scene, const uiClockFrame_t *clock,
+	const int icons[UI_HOME_FACE_COUNT])
 {
 	float hidden;
 	float reveal;
@@ -1825,7 +1910,7 @@ void IndigoBackground_DrawBootOverlay(float seconds, bool animated,
 	hidden = 1.0f - reveal;
 	veilAlpha = (u8)(hidden * 255.0f);
 	if(scene->visible && scene->introProgress < BOOT_CUBE_HANDOFF) {
-		drawCube(scene, seconds, animated, clock, NULL);
+		drawCube(scene, seconds, animated, clock, NULL, icons);
 	}
 	setupRasterPipeline();
 	drawBootVeil(veilAlpha);

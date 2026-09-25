@@ -12,6 +12,20 @@ typedef enum {
 	UI_HOME_FACE_COUNT
 } uiHomeFace_t;
 
+/* The picture on a Home face. Settings keeps one per face (faceIcons in
+ * swiss.h); the cube draws it in that face's own color. */
+typedef enum {
+	UI_HOME_ICON_CONTROLLER = 0,
+	UI_HOME_ICON_BOOKS,
+	UI_HOME_ICON_HUB,
+	UI_HOME_ICON_DISC,
+	UI_HOME_ICON_SLIDERS,
+	UI_HOME_ICON_GEAR,
+	UI_HOME_ICON_CLOCK,
+	UI_HOME_ICON_NONE,
+	UI_HOME_ICON_COUNT
+} uiHomeIcon_t;
+
 typedef enum {
 	UI_HOME_SURFACE_RING = 0,
 	UI_HOME_SURFACE_SOURCE,
