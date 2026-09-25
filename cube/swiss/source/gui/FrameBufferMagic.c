@@ -903,6 +903,9 @@ static void _DrawBackground(uiDrawObj_t *evt)
 
 	(void)evt;
 	_HomeFaceIcons(icons);
+	/* The glass copies the frame it is drawn in. */
+	IndigoBackground_SetFramebuffer(getVideoMode()->fbWidth,
+		getVideoMode()->efbHeight);
 	IndigoBackground_Draw(UIAnim_Seconds(),
 		decorativeAnimated && !swissSettings.disableAnimatedBackdrop,
 		decorativeAnimated,

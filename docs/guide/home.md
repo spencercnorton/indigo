@@ -29,6 +29,30 @@ front. The face icons can be changed: see [Make it yours](personalize.md#cube-ic
 Indigo starts on Library when it finds a device to read games from. If it
 doesn't, it starts on Source, and A on Library takes you there too.
 
+## The glass
+
+The cube is glass, and it treats light the way glass does:
+
+- **It bends what is behind it.** Through the front you see the cube's far
+  edges, its inner cube and the backdrop, slightly magnified across the faces
+  and pulled round the rounded edges.
+- **It parts light into colour.** Where the bend is strongest, on the rounded
+  edges, light splits into red, green and blue like a prism.
+- **It glows.** Highlights, glints and the face icons have a soft glow, a
+  fine rim lights the edges that face the light, and a halo sits behind the
+  cube with a patch of focused light on the floor under it.
+- **It catches the sun.** When a corner turns the light toward you it
+  flares: a bright point with rays, a long streak and faint reflections
+  across the screen.
+- **It shines.** While Home rests, a band of light passes over the glass
+  every seven seconds.
+
+Every part follows your [Menu Color](personalize.md), except the sun's white
+core and the prism's fringes, which keep their own colors. With UI Motion set
+to Reduced or Off, the passing light and the cube's gentle sway stop; the
+glass still bends light and glows. Behind Settings the cube keeps its plain
+glass.
+
 ## The controller on the Library face
 
 The controller on the Library face follows the one in your hand. Its sticks

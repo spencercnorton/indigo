@@ -18,6 +18,9 @@ typedef struct indigoPadFrame {
 	u32 buttons;
 } indigoPadFrame_t;
 
+/* The EFB the frame is drawn in, for the glass's screen copies; the
+ * default is 640 x 480. */
+void IndigoBackground_SetFramebuffer(u16 width, u16 height);
 /* Drawn after the configured backdrop and before every foreground widget.
  * pad may be NULL: the Controller icon then plays only its idle motion.
  * icons holds a uiHomeIcon_t for each uiHomeFace_t. */

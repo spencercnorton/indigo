@@ -3,6 +3,21 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.21.0 — glass that bends light
+
+- The Home cube is glass that refracts: through the front you see the cube's
+  far edges, its inner cube and the backdrop, bent and slightly magnified,
+  and the rounded edges part the light into red, green and blue like a prism.
+- Highlights, glints and the face icons glow. A fine rim lights the edges
+  that face the light, a halo sits behind the cube, and the glass focuses a
+  patch of light on the floor under it.
+- A corner that catches the light flares like the sun: a bright point, six
+  rays, a long streak and faint reflections strung across the screen.
+- While Home rests, a band of light passes over the glass every seven
+  seconds. It needs UI Motion set to Full.
+- All of it follows Menu Color. The sun's white core and the prism's fringes
+  keep their own colors.
+
 ## v1.20.0 — see which games have their own settings
 
 - In the Library, a small sliders mark in the corner of a cover means the
