@@ -3,6 +3,13 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.22.1 — glass that catches the light without burning white
+
+- When a face of the Home cube turns through the light as the cube turns or
+  tips, it now brightens to a pale lilac with its icon still showing. Before,
+  the glow added on top of the reflection turned the whole face white for a
+  few frames. The cube at rest looks the same as before.
+
 ## v1.22.0 — Settings in the cheat browser's look
 
 - Every Settings page (Quick, Game Defaults, Setup and its six sections, and

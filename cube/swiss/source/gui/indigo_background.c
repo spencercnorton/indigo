@@ -2271,15 +2271,18 @@ static void drawSunFlare(const glassSun_t *sun, float strength, float spin,
 }
 
 /* Bloom: the finished cube copied again, blurred by five taps, cut to what
- * is brighter than the glass itself, and added back. Highlights, glints and
- * the icons' strokes glow; the tinted body does not. */
+ * is brighter than the glass itself, and screened back over it. Highlights,
+ * glints and the icons' strokes glow; the tinted body does not. Screening
+ * (the frame gains glow * (1 - frame)) rather than adding keeps a face that
+ * turns through the key light's reflection, bright across its whole width,
+ * from burning to white and hiding its icon for a few frames. */
 static void drawGlassBloom(float left, float top, float right, float bottom,
 		float strength)
 {
 	static const float taps[GLASS_BLOOM_TAPS][2] = {
 		{0.0f, 0.0f}, {-3.0f, -2.0f}, {3.0f, -2.0f}, {-3.0f, 2.0f}, {3.0f, 2.0f}
 	};
-	GXColor glow = {220, 208, 255, (u8)(255.0f * fminf(1.0f, strength) + 0.5f)};
+	GXColor glow = {220, 208, 255, 255};
 	float sScale, tScale;
 
 	if(strength <= 0.01f || !glassCopyFrame()) return;
@@ -2329,11 +2332,18 @@ static void drawGlassBloom(float left, float top, float right, float bottom,
 	GX_SetTevAlphaOp(GX_TEVSTAGE5, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_ENABLE, GX_TEVPREV);
 	GX_SetTevOrder(GX_TEVSTAGE6, GX_TEXCOORDNULL, GX_TEXMAP_NULL, GX_COLOR0A0);
 	GX_SetTevColorIn(GX_TEVSTAGE6, GX_CC_ZERO, GX_CC_CPREV, GX_CC_RASC, GX_CC_ZERO);
-	GX_SetTevColorOp(GX_TEVSTAGE6, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_ENABLE, GX_TEVPREV);
+	GX_SetTevColorOp(GX_TEVSTAGE6, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_2, GX_ENABLE, GX_TEVPREV);
 	GX_SetTevAlphaIn(GX_TEVSTAGE6, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_APREV);
 	GX_SetTevAlphaOp(GX_TEVSTAGE6, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_ENABLE, GX_TEVPREV);
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
+	/* A screen has no source alpha, so the strength rides in the colour, and
+	 * the stage doubles it back: screening gives the bright strokes less
+	 * than adding did, and at rest the glow should read as before. */
+	GX_SetBlendMode(GX_BM_BLEND, GX_BL_INVDSTCLR, GX_BL_ONE, GX_LO_CLEAR);
 	UIColor_Apply(&glow.r, &glow.g, &glow.b);
+	strength = 0.8f * fminf(1.0f, strength);
+	glow.r = (u8)(glow.r * strength + 0.5f);
+	glow.g = (u8)(glow.g * strength + 0.5f);
+	glow.b = (u8)(glow.b * strength + 0.5f);
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
 		GX_Position3f32(left, top, 0.0f);
 		GX_Color4u8(glow.r, glow.g, glow.b, glow.a);
