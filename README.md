@@ -78,6 +78,17 @@ Emerald, Gold, Spice, Crimson, Rose or Jet Black. Every color keeps Indigo's
 brightness, and cover art, the button icons, warnings and enabled cheats keep
 their own colors.
 
+<p align="center">
+  <img alt="The Home cube on its Library face in each Menu Color in turn: Indigo, Azure, Emerald, Gold, Spice, Crimson, Rose and Jet Black. The glass, its light, the waves behind it and the label change color; the green A button in the hint line stays green." src="docs/screenshots/colors.png" width="640">
+</p>
+
+A on Menu Color lists the colors, and the whole screen takes each one as you
+move through the list. B keeps the color you had; A chooses the one you are on.
+
+<p align="center">
+  <img alt="Settings, Setup, Console: A on Menu Color opens a list of the eight colors with Indigo marked Current. Moving down, the whole screen turns Azure, Emerald, Gold, Spice, Crimson, Rose and Jet Black in turn; moving back up to Emerald and pressing A chooses it, and the row reads Emerald." src="docs/screenshots/color-menu.png" width="640">
+</p>
+
 ## Install
 
 ### Download

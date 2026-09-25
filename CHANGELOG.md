@@ -3,6 +3,11 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.17.2 — Menu Color in the README
+
+- The README shows Menu Color: the Home cube in each of the eight colors,
+  and the Menu Color list previewing each one before you choose.
+
 ## v1.17.1 — direct download links
 
 - The README's Posters and Cheats sections link straight to the three
