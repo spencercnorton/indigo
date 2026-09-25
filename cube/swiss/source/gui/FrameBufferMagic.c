@@ -884,7 +884,8 @@ static void _DrawImage(uiDrawObj_t *evt) {
 		data->depth, data->s1, data->s2, data->t1, data->t2, 0, 255);
 }
 
-/* The icon Settings chose for each Home face, in uiHomeFace_t order. */
+/* The icon Settings chose for each Home face, a choice of that face's own
+ * four, in uiHomeFace_t order. */
 static void _HomeFaceIcons(int icons[UI_HOME_FACE_COUNT])
 {
 	icons[UI_HOME_FACE_LIBRARY] = swissSettings.libraryIcon;
@@ -2362,7 +2363,7 @@ static void _DrawSystemRing(float centerX, float centerY, float radius,
 }
 
 static void _DrawSystemDial(float centerX, float centerY, s8 coreTemperature,
-		const uiClockFrame_t *clock, u8 opacity)
+		u8 opacity)
 {
 	int temperatureSegments = coreTemperature < 20 ? 0 :
 		(coreTemperature > 80 ? 24 : (coreTemperature - 20) * 24 / 60);
@@ -2374,22 +2375,6 @@ static void _DrawSystemDial(float centerX, float centerY, s8 coreTemperature,
 	if(temperatureSegments > 0) {
 		_DrawSystemRing(centerX, centerY, 16.0f, 1.45f, 18, temperatureSegments,
 			(GXColor) {183, 171, 238, (u8)((196 * opacity) / 255)});
-	}
-	if(clock != NULL && clock->available) {
-		float markerX = clock->secondX;
-		float markerY = -clock->secondY;
-		GXColor marker = {226, 221, 255, 255};
-		UIColor_Apply(&marker.r, &marker.g, &marker.b);
-		GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-			GX_Position3f32(centerX + markerX * 18.0f - 1.5f, centerY + markerY * 18.0f - 1.5f, 0.0f);
-			GX_Color4u8(marker.r, marker.g, marker.b, (230 * opacity) / 255); GX_TexCoord2f32(0.0f, 0.0f);
-			GX_Position3f32(centerX + markerX * 18.0f + 1.5f, centerY + markerY * 18.0f - 1.5f, 0.0f);
-			GX_Color4u8(marker.r, marker.g, marker.b, (210 * opacity) / 255); GX_TexCoord2f32(0.0f, 0.0f);
-			GX_Position3f32(centerX + markerX * 18.0f + 1.5f, centerY + markerY * 18.0f + 1.5f, 0.0f);
-			GX_Color4u8(marker.r, marker.g, marker.b, (180 * opacity) / 255); GX_TexCoord2f32(0.0f, 0.0f);
-			GX_Position3f32(centerX + markerX * 18.0f - 1.5f, centerY + markerY * 18.0f + 1.5f, 0.0f);
-			GX_Color4u8(marker.r, marker.g, marker.b, (210 * opacity) / 255); GX_TexCoord2f32(0.0f, 0.0f);
-		GX_End();
 	}
 	drawInit();
 }
@@ -2476,9 +2461,7 @@ static void _DrawTitleBar(uiDrawObj_t *evt) {
 	textColor = (GXColor) {209, 201, 255, (u8)(232.0f * reveal)};
 
 	/* A single pre-traversal instrument snapshot owns both header and cube. */
-	_DrawSystemDial(600.0f, 43.0f + offsetY,
-		systemInstrument.coreTemperature, &systemInstrument.clock,
-		(u8)(255.0f * reveal));
+	_DrawSystemDial(600.0f, 43.0f + offsetY, systemInstrument.coreTemperature, (u8)(255.0f * reveal));
 	if(systemInstrument.temperatureText[0]) {
 		drawStringMedium(600, 43 + offsetY,
 			systemInstrument.temperatureText,

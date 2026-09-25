@@ -3,6 +3,23 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.24.0 — four icons for every face, sharp on the glass
+
+- Each face of the Home cube has four icons of its own, and no face offers
+  another face's. Library has Controller, Books, Covers and Play; Source has
+  Hub, Disc, SD Card and Folder; Settings has Sliders, Gear, Toggles and Dial;
+  System has Clock, Info, Power and Chip. Covers, Play, SD Card, Folder,
+  Toggles, Dial, Info, Power and Chip are new, and None is gone.
+- A settings file that names an icon from another face's list, or None,
+  leaves that face on its first icon.
+- The face icons are drawn after the glass's glow instead of under it, so
+  their lines stay sharp and easy to read.
+- The sun no longer glints in the corner of the glass, and no band of light
+  passes over it while Home rests. The rest of the glass (the bent view
+  through it, the prism edges, the glow, the rim and the halo) is unchanged.
+- The dot that circled the temperature dial at the top right is gone; the
+  time and the temperature stay.
+
 ## v1.23.2 — a quieter sun on the glass
 
 - The sun that a corner of the Home cube catches is now a small glint with

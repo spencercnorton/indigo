@@ -224,7 +224,10 @@ extern char *fileBrowserTypeStr[];
 extern char *bs2BootStr[];
 extern char *recentListLevelStr[];
 extern char *uiColorStr[];
-extern char *faceIconStr[];
+extern char *libraryIconStr[];
+extern char *sourceIconStr[];
+extern char *settingsIconStr[];
+extern char *systemIconStr[];
 extern char *libraryLayoutStr[];
 
 int show_settings(int page, int option, ConfigEntry *config);

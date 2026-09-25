@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img alt="The Indigo Home screen: a glass cube turning sideways and tipping up and down between its Library, Source, Settings and System faces on a dark starfield. Its far edges bend through the front glass, the rounded edges show faint prism colours, the icons glow, and a corner glints like the sun as it catches the light. The Library face shows a GameCube controller, only the face you are on is named underneath, and its controls are shown as GameCube buttons." src="docs/screenshots/home.png" width="640">
+  <img alt="The Indigo Home screen: a glass cube turning sideways and tipping up and down between its Library, Source, Settings and System faces on a dark starfield. Its far edges bend through the front glass, the rounded edges show faint prism colours, and the icons sit sharp on the glass. The Library face shows a GameCube controller, only the face you are on is named underneath, and its controls are shown as GameCube buttons." src="docs/screenshots/home.png" width="640">
 </p>
 
 Captured in the Dolphin emulator. The library and game detail pictures show a real poster pack and cheat file in use; box art belongs to its publishers.
@@ -34,10 +34,9 @@ hardware and want it to feel like it belongs on the console.
 right turn it sideways, up and down tip it over. It is glass, like the
 GameCube's own menu, and it treats light the way glass does. Through the front
 you see the cube's far edges and its inner cube, bent and slightly magnified,
-and the rounded edges part the light into colour like a prism. Highlights and
-the face icons glow, a fine rim lights the edges that face the light, and a
-corner that catches the light glints like the sun. While Home rests, a band of
-light passes over the glass every few seconds. Each face carries its own
+and the rounded edges part the light into colour like a prism. Highlights
+glow, a fine rim lights the edges that face the light, and the face icons sit
+sharp on the glass. Each face carries its own
 emblem, and only the face you are on is named, under the cube. The Library face is a GameCube
 controller that mirrors yours: its sticks lean with your sticks and its
 buttons light as you press them, and when you leave it alone it plays by
@@ -109,8 +108,10 @@ move through the list. B keeps the color you had; A chooses the one you are on.
 </p>
 
 **Each face of the cube shows the picture you choose.** Setup › Console has a
-row per face (Library Icon, Source Icon, Settings Icon and System Icon), each
-with Controller, Books, Hub, Disc, Sliders, Gear, Clock or None.
+row per face (Library Icon, Source Icon, Settings Icon and System Icon), and
+each face has four icons of its own. Library has Controller, Books, Covers
+and Play; Source has Hub, Disc, SD Card and Folder; Settings has Sliders,
+Gear, Toggles and Dial; System has Clock, Info, Power and Chip.
 
 ## Install
 

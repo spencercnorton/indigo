@@ -73,8 +73,14 @@ char *bs2BootStr[] = {"No", "Yes", "Sound 1", "Sound 2"};
 char *recentListLevelStr[] = {"Off", "Lazy", "On"};
 char *uiColorStr[] = {"Indigo", "Azure", "Emerald", "Gold", "Spice", "Crimson", "Rose", "Jet Black"};
 _Static_assert(sizeof(uiColorStr) / sizeof(uiColorStr[0]) == UI_COLOR_MAX, "Menu Color names drift");
-char *faceIconStr[] = {"Controller", "Books", "Hub", "Disc", "Sliders", "Gear", "Clock", "None"};
-_Static_assert(sizeof(faceIconStr) / sizeof(faceIconStr[0]) == UI_HOME_ICON_COUNT, "face icon names drift");
+char *libraryIconStr[] = {"Controller", "Books", "Covers", "Play"};
+char *sourceIconStr[] = {"Hub", "Disc", "SD Card", "Folder"};
+char *settingsIconStr[] = {"Sliders", "Gear", "Toggles", "Dial"};
+char *systemIconStr[] = {"Clock", "Info", "Power", "Chip"};
+_Static_assert(sizeof(libraryIconStr) / sizeof(libraryIconStr[0]) == UI_HOME_ICON_CHOICES, "library icon names drift");
+_Static_assert(sizeof(sourceIconStr) / sizeof(sourceIconStr[0]) == UI_HOME_ICON_CHOICES, "source icon names drift");
+_Static_assert(sizeof(settingsIconStr) / sizeof(settingsIconStr[0]) == UI_HOME_ICON_CHOICES, "settings icon names drift");
+_Static_assert(sizeof(systemIconStr) / sizeof(systemIconStr[0]) == UI_HOME_ICON_CHOICES, "system icon names drift");
 char *libraryLayoutStr[] = {"Horizontal", "Vertical", "Grid"};
 _Static_assert(sizeof(libraryLayoutStr) / sizeof(libraryLayoutStr[0]) == UI_GAMEFLOW_LAYOUT_COUNT, "library layout names drift");
 static const char *uiMotionModeStr[] = {"Full", "Reduced", "Off"};
@@ -120,10 +126,10 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_HIDE_UNK] = "Hide unknown file types:\n\nDisabled - Show all files (default)\nEnabled - Hide unknown file types from being displayed\n\nKnown file types are:\n GameCube Executables (.bin/.dol/.elf)\n Disc images (.gcm/.iso/.nkit.iso/.tgc)\n MP3 Music (.mp3)\n WASP/WKF Flash files (.fzn)\n GameCube Memory Card files (.gci/.gcs/.sav)\n GameCube Executables with parameters appended (.dol+cli)",
 	[SET_UI_ANIMS] = "UI Motion:\n\nFull - Calm spatial motion and ambient detail (default)\nReduced - Faster transitions without decorative travel\nOff - Menu elements move instantly\n\nMotion never delays input or changes the destination.",
 	[SET_UI_COLOR] = "Menu Color:\n\nColors the cube, its light, the panels and the text.\nIndigo (default) is the GameCube's own color; Spice and\nJet Black are GameCube colors too.\n\nCover art, button icons, warnings and enabled cheats\nkeep their own colors.",
-	[SET_LIBRARY_ICON] = "Library Icon:\n\nThe picture on the cube's Library face:\nController (default), Books, Hub, Disc,\nSliders, Gear, Clock or None.\n\nEvery icon glows in the same shade. Controller mirrors your\ncontroller and Clock tells the time. The face keeps its name\nand what A opens.",
-	[SET_SOURCE_ICON] = "Source Icon:\n\nThe picture on the cube's Source face:\nController, Books, Hub (default), Disc,\nSliders, Gear, Clock or None.\n\nEvery icon glows in the same shade. Controller mirrors your\ncontroller and Clock tells the time. The face keeps its name\nand what A opens.",
-	[SET_SETTINGS_ICON] = "Settings Icon:\n\nThe picture on the cube's Settings face:\nController, Books, Hub, Disc,\nSliders (default), Gear, Clock or None.\n\nEvery icon glows in the same shade. Controller mirrors your\ncontroller and Clock tells the time. The face keeps its name\nand what A opens.",
-	[SET_SYSTEM_ICON] = "System Icon:\n\nThe picture on the cube's System face:\nController, Books, Hub, Disc,\nSliders, Gear, Clock (default) or None.\n\nEvery icon glows in the same shade. Controller mirrors your\ncontroller and Clock tells the time. The face keeps its name\nand what A opens.",
+	[SET_LIBRARY_ICON] = "Library Icon:\n\nThe picture on the cube's Library face: Controller (default),\nBooks, Covers or Play. Each face has its own four icons.\n\nController mirrors your controller.\nEvery icon glows in the same shade, and the face keeps its\nname and what A opens.",
+	[SET_SOURCE_ICON] = "Source Icon:\n\nThe picture on the cube's Source face: Hub (default),\nDisc, SD Card or Folder. Each face has its own four icons.\n\nThe Disc's glints turn while the menu moves.\nEvery icon glows in the same shade, and the face keeps its\nname and what A opens.",
+	[SET_SETTINGS_ICON] = "Settings Icon:\n\nThe picture on the cube's Settings face: Sliders (default),\nGear, Toggles or Dial. Each face has its own four icons.\n\nSliders, Gear and Dial move while the menu does.\nEvery icon glows in the same shade, and the face keeps its\nname and what A opens.",
+	[SET_SYSTEM_ICON] = "System Icon:\n\nThe picture on the cube's System face: Clock (default),\nInfo, Power or Chip. Each face has its own four icons.\n\nClock tells the time.\nEvery icon glows in the same shade, and the face keeps its\nname and what A opens.",
 	[SET_PANEL_TRANSPARENCY] = "Panel Transparency:\n\nEnabled - Menu panels are translucent so the backdrop\nshows through, GameCube-menu style (default)\nDisabled - Panels are solid.",
 	[SET_ANIMATED_BACKDROP] = "Animated Backdrop:\n\nEnabled - The backdrop gently drifts (default)\nDisabled - The backdrop is static.",
 	[SET_MENU_MUSIC] = "Menu Music:\n\nEnabled - Play the bundled original ambient loop (default)\nDisabled - Silent.\n\nChanges take effect immediately.",
@@ -980,10 +986,10 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 					swissSettings.disableUIAnimations, swissSettings.reduceUIAnimations)], true);
 			break;
 			case SET_UI_COLOR: rowCycle(row, "Menu Color:", uiColorStr[swissSettings.uiColor], true); break;
-			case SET_LIBRARY_ICON: rowCycle(row, "Library Icon:", faceIconStr[swissSettings.libraryIcon], true); break;
-			case SET_SOURCE_ICON: rowCycle(row, "Source Icon:", faceIconStr[swissSettings.sourceIcon], true); break;
-			case SET_SETTINGS_ICON: rowCycle(row, "Settings Icon:", faceIconStr[swissSettings.settingsIcon], true); break;
-			case SET_SYSTEM_ICON: rowCycle(row, "System Icon:", faceIconStr[swissSettings.systemIcon], true); break;
+			case SET_LIBRARY_ICON: rowCycle(row, "Library Icon:", libraryIconStr[swissSettings.libraryIcon], true); break;
+			case SET_SOURCE_ICON: rowCycle(row, "Source Icon:", sourceIconStr[swissSettings.sourceIcon], true); break;
+			case SET_SETTINGS_ICON: rowCycle(row, "Settings Icon:", settingsIconStr[swissSettings.settingsIcon], true); break;
+			case SET_SYSTEM_ICON: rowCycle(row, "System Icon:", systemIconStr[swissSettings.systemIcon], true); break;
 			case SET_PANEL_TRANSPARENCY: rowYesNo(row, "Panel Transparency:", !swissSettings.disablePanelTransparency, true); break;
 			case SET_ANIMATED_BACKDROP: rowYesNo(row, "Animated Backdrop:", !swissSettings.disableAnimatedBackdrop, true); break;
 			case SET_MENU_MUSIC: rowYesNo(row, "Menu Music:", !swissSettings.disableMenuMusic, true); break;
@@ -1451,19 +1457,19 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_LIBRARY_ICON:
 				swissSettings.libraryIcon += direction;
-				swissSettings.libraryIcon = (swissSettings.libraryIcon + UI_HOME_ICON_COUNT) % UI_HOME_ICON_COUNT;
+				swissSettings.libraryIcon = (swissSettings.libraryIcon + UI_HOME_ICON_CHOICES) % UI_HOME_ICON_CHOICES;
 			break;
 			case SET_SOURCE_ICON:
 				swissSettings.sourceIcon += direction;
-				swissSettings.sourceIcon = (swissSettings.sourceIcon + UI_HOME_ICON_COUNT) % UI_HOME_ICON_COUNT;
+				swissSettings.sourceIcon = (swissSettings.sourceIcon + UI_HOME_ICON_CHOICES) % UI_HOME_ICON_CHOICES;
 			break;
 			case SET_SETTINGS_ICON:
 				swissSettings.settingsIcon += direction;
-				swissSettings.settingsIcon = (swissSettings.settingsIcon + UI_HOME_ICON_COUNT) % UI_HOME_ICON_COUNT;
+				swissSettings.settingsIcon = (swissSettings.settingsIcon + UI_HOME_ICON_CHOICES) % UI_HOME_ICON_CHOICES;
 			break;
 			case SET_SYSTEM_ICON:
 				swissSettings.systemIcon += direction;
-				swissSettings.systemIcon = (swissSettings.systemIcon + UI_HOME_ICON_COUNT) % UI_HOME_ICON_COUNT;
+				swissSettings.systemIcon = (swissSettings.systemIcon + UI_HOME_ICON_CHOICES) % UI_HOME_ICON_CHOICES;
 			break;
 			case SET_PANEL_TRANSPARENCY:
 				swissSettings.disablePanelTransparency ^= 1;

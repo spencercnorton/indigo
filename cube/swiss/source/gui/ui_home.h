@@ -12,17 +12,28 @@ typedef enum {
 	UI_HOME_FACE_COUNT
 } uiHomeFace_t;
 
-/* The picture on a Home face. Settings keeps one per face (faceIcons in
- * swiss.h); the cube draws it in that face's own color. */
+/* The pictures a Home face can show, four per face and in face order: a
+ * face's icon is face * UI_HOME_ICON_CHOICES + its choice (libraryIcon…
+ * systemIcon in swiss.h), so no face can show another face's icon. Choice 0
+ * is the face's own default. The cube draws every icon in one shade. */
+#define UI_HOME_ICON_CHOICES 4
 typedef enum {
 	UI_HOME_ICON_CONTROLLER = 0,
 	UI_HOME_ICON_BOOKS,
+	UI_HOME_ICON_COVERS,
+	UI_HOME_ICON_PLAY,
 	UI_HOME_ICON_HUB,
 	UI_HOME_ICON_DISC,
+	UI_HOME_ICON_SD_CARD,
+	UI_HOME_ICON_FOLDER,
 	UI_HOME_ICON_SLIDERS,
 	UI_HOME_ICON_GEAR,
+	UI_HOME_ICON_TOGGLES,
+	UI_HOME_ICON_DIAL,
 	UI_HOME_ICON_CLOCK,
-	UI_HOME_ICON_NONE,
+	UI_HOME_ICON_INFO,
+	UI_HOME_ICON_POWER,
+	UI_HOME_ICON_CHIP,
 	UI_HOME_ICON_COUNT
 } uiHomeIcon_t;
 

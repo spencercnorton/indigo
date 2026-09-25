@@ -33,24 +33,23 @@ that are on keep their own colors.
 
 Each face of the Home cube shows a picture, and you can pick it:
 Settings › Setup › Console has **Library Icon**, **Source Icon**, **Settings
-Icon** and **System Icon**. Each offers Controller, Books, Hub, Disc,
-Sliders, Gear, Clock or None, and A lists them. The cube behind the settings
-shows the icon as you choose.
+Icon** and **System Icon**. Each face has four icons of its own, so no two
+faces can show the same one, and A lists them. Home shows your choice as
+soon as you leave Settings.
 
 <p align="center">
-  <img alt="Setup, Console: Library Icon steps through Books, Hub, Disc, Sliders, Gear, Clock, None and back to Controller, the small cube behind the list showing each one; Books is chosen, and on Home the Library face shows a bookshelf." src="images/personalize-icons.png" width="640">
+  <img alt="Setup, Console: Library Icon steps through Books, Covers, Play and back to Controller, and Books is chosen; back on Home the cube turns to the Library face, which shows a bookshelf." src="images/personalize-icons.png" width="640">
 </p>
 
-| Face | Icon it starts with |
+| Face | Its icons (it starts with the first) |
 | --- | --- |
-| Library | Controller |
-| Source | Hub |
-| Settings | Sliders |
-| System | Clock |
+| Library | Controller, Books, Covers, Play |
+| Source | Hub, Disc, SD Card, Folder |
+| Settings | Sliders, Gear, Toggles, Dial |
+| System | Clock, Info, Power, Chip |
 
-Any face can show any icon. A face keeps its name and what A does there, and
-the Controller follows your controller and the Clock tells the time on
-whichever face you put them.
+A face keeps its name and what A does there. The Controller follows your
+controller, and the Clock tells the time.
 
 ## Motion
 

@@ -16,7 +16,13 @@
 #define HOME_DECORATIVE_STRENGTH 0.76f
 #define FACE_POLYGON_MAX 48
 #define FACE_BAND_MAX 80
+#define FACE_ARC_MAX 24
 #define CONTROLLER_IDLE_HOLD 2.0f
+/* ponytail: Spencer turned the corner sun off to see the cube without it
+ * (2026-09-25); 1 brings drawSunFlare back. */
+#define CUBE_SUN_FLARE 0
+/* ponytail: Spencer turned the passing sheen off too (2026-09-25); 1 brings it back. */
+#define CUBE_GLASS_SHEEN 0
 
 typedef struct indigoPoint {
 	float x;
@@ -435,11 +441,24 @@ static void drawRadialDisc(float centerX, float centerY, float radiusX, float ra
 	GX_End();
 }
 
+static Mtx44 cubeProjection;
+
+/* The cube's perspective, loaded again wherever a screen-space pass left an
+ * orthographic one: the icons after the bloom. */
+static void loadCubeProjection(void)
+{
+	static bool ready;
+
+	if(!ready) {
+		guPerspective(cubeProjection, 42.0f, 640.0f / 480.0f, 0.1f, 20.0f);
+		ready = true;
+	}
+	GX_LoadProjectionMtx(cubeProjection, GX_PERSPECTIVE);
+}
+
 static void setupCubePipeline(const uiSceneFrame_t *scene, float seconds, bool animated,
 		cubeRasterTransform_t *raster)
 {
-	static Mtx44 projection;
-	static bool projectionReady;
 	static const guVector xAxis = {1.0f, 0.0f, 0.0f};
 	static const guVector yAxis = {0.0f, 1.0f, 0.0f};
 	Mtx rotateX;
@@ -458,11 +477,7 @@ static void setupCubePipeline(const uiSceneFrame_t *scene, float seconds, bool a
 		(animated ? sinf(seconds * 0.17f) * 0.030f : 0.0f);
 	float bob = animated ? sinf(seconds * 0.62f) * 0.035f : 0.0f;
 
-	if(!projectionReady) {
-		guPerspective(projection, 42.0f, 640.0f / 480.0f, 0.1f, 20.0f);
-		projectionReady = true;
-	}
-	GX_LoadProjectionMtx(projection, GX_PERSPECTIVE);
+	loadCubeProjection();
 
 	guMtxRotAxisRad(rotateX, &xAxis, pitch);
 	guMtxRotAxisRad(rotateY, &yAxis, yaw);
@@ -490,8 +505,8 @@ static void setupCubePipeline(const uiSceneFrame_t *scene, float seconds, bool a
 	guMtxConcat(translation, rotation, model);
 	GX_LoadPosMtxImm(model, GX_PNMTX0);
 	guMtxCopy(model, raster->model);
-	raster->scaleX = projection[0][0] * 320.0f;
-	raster->scaleY = projection[1][1] * 240.0f;
+	raster->scaleX = cubeProjection[0][0] * 320.0f;
+	raster->scaleY = cubeProjection[1][1] * 240.0f;
 
 	GX_SetCoPlanar(GX_DISABLE);
 	GX_SetClipMode(GX_CLIP_ENABLE);
@@ -1060,9 +1075,9 @@ static void drawFaceBand(const cubeRasterTransform_t *raster, int face,
 	GX_End();
 }
 
-/* The Controller icon: an original GameCube controller drawn in face units
- * (v up) in the same glowing strokes and solids as the other icons. */
-static void drawControllerCircle(const cubeRasterTransform_t *raster, int face,
+/* A filled circle of segments sides: the controller's sticks and buttons,
+ * the Toggles' knobs, the Info dot. */
+static void drawFaceCircle(const cubeRasterTransform_t *raster, int face,
 		float x, float y, float radius, int segments, float plane, GXColor color)
 {
 	indigoPoint_t corners[FACE_POLYGON_MAX];
@@ -1120,21 +1135,22 @@ static const float controllerOutline[][2] = {
 		{-0.566f, 0.109f}, {-0.55f, 0.165f}, {-0.51f, 0.23f}, {-0.454f, 0.276f}, {-0.387f, 0.302f}
 };
 
-/* A bean: a band of face-space width along a circular arc with round ends,
- * swept clockwise from a0 down to a1 (radians): X, Y and the triggers. */
-static void drawFaceBean(const cubeRasterTransform_t *raster, int face,
+/* An arc: a band of face-space width along a circular arc with round ends,
+ * swept clockwise from a0 down to a1 (radians) in ARC straight steps. */
+static void drawFaceArc(const cubeRasterTransform_t *raster, int face,
 		float cx, float cy, float radius, float a0, float a1, float halfWidth,
-		float plane, GXColor color)
+		int ARC, float plane, GXColor color)
 {
-	enum { ARC = 10, CAP = 5, POINTS = 2 * ARC + 2 * CAP };
-	indigoPoint_t outline[POINTS + 2];
-	guVector eyes[POINTS + 2];
-	indigoPoint_t points[POINTS + 2], joins[POINTS];
+	enum { CAP = 5 };
+	const int POINTS = 2 * ARC + 2 * CAP;
+	indigoPoint_t outline[2 * FACE_ARC_MAX + 2 * CAP + 2];
+	guVector eyes[2 * FACE_ARC_MAX + 2 * CAP + 2];
+	indigoPoint_t points[2 * FACE_ARC_MAX + 2 * CAP + 2], joins[2 * FACE_ARC_MAX + 2 * CAP];
 	float area = 0.0f;
 	int count = 0;
 
 	color.a = (u8)((float)color.a * raster->motifAlpha);
-	if(color.a == 0) return;
+	if(color.a == 0 || ARC < 1 || ARC > FACE_ARC_MAX) return;
 	/* Outer arc, the a1 end cap, the inner arc back, then the a0 end cap;
 	 * the two cap centres follow for their fans. */
 	for(int i = 0; i <= ARC; i++) {
@@ -1206,6 +1222,14 @@ static void drawFaceBean(const cubeRasterTransform_t *raster, int face,
 		putProjectedRailVertex(raster, eyes[next], joins[next], 0.0f, color);
 	}
 	GX_End();
+}
+
+/* A bean: a short arc in ten steps (X, Y, the triggers, the Disc's glints). */
+static void drawFaceBean(const cubeRasterTransform_t *raster, int face,
+		float cx, float cy, float radius, float a0, float a1, float halfWidth,
+		float plane, GXColor color)
+{
+	drawFaceArc(raster, face, cx, cy, radius, a0, a1, halfWidth, 10, plane, color);
 }
 
 /* Normalised stick axis with a small dead zone, so a resting stick's drift
@@ -1321,18 +1345,18 @@ static void drawControllerIcon(const cubeRasterTransform_t *raster, int face,
 	/* Both sticks follow the live controller inside their octagonal gates. */
 	drawFaceRing(raster, face, -0.335f, 0.075f, 0.12f, 8, 0.014f, plane,
 		controllerGlow(glow, 0.9f, false));
-	drawControllerCircle(raster, face, -0.335f + pose.stickX * reach,
+	drawFaceCircle(raster, face, -0.335f + pose.stickX * reach,
 		0.075f + pose.stickY * reach, 0.058f, 20, plane, controllerGlow(glow, 1.0f, false));
 	drawFaceRing(raster, face, 0.165f, -0.19f, 0.054f, 8, 0.012f, plane,
 		controllerGlow(glow, 0.9f, false));
-	drawControllerCircle(raster, face, 0.165f + pose.substickX * cReach,
+	drawFaceCircle(raster, face, 0.165f + pose.substickX * cReach,
 		-0.19f + pose.substickY * cReach, 0.024f, 14, plane,
 		controllerGlow(glow, 1.0f, false));
 
 	/* The face cluster: a large A, B below-left, X and Y curving round A. */
-	drawControllerCircle(raster, face, 0.335f, 0.075f, a ? 0.066f : 0.078f, 24, plane,
+	drawFaceCircle(raster, face, 0.335f, 0.075f, a ? 0.066f : 0.078f, 24, plane,
 		controllerGlow(glow, 1.05f, a));
-	drawControllerCircle(raster, face, 0.215f, -0.025f, b ? 0.030f : 0.036f, 16, plane,
+	drawFaceCircle(raster, face, 0.215f, -0.025f, b ? 0.030f : 0.036f, 16, plane,
 		controllerGlow(glow, 1.0f, b));
 	drawFaceBean(raster, face, 0.335f, 0.075f, 0.128f,
 		42.0f * degree, -34.0f * degree, x ? 0.019f : 0.024f, plane,
@@ -1340,7 +1364,7 @@ static void drawControllerIcon(const cubeRasterTransform_t *raster, int face,
 	drawFaceBean(raster, face, 0.335f, 0.075f, 0.128f,
 		172.0f * degree, 102.0f * degree, y ? 0.019f : 0.024f, plane,
 		controllerGlow(glow, 1.0f, y));
-	drawControllerCircle(raster, face, 0.0f, 0.10f, start ? 0.018f : 0.022f, 12,
+	drawFaceCircle(raster, face, 0.0f, 0.10f, start ? 0.018f : 0.022f, 12,
 		plane, controllerGlow(glow, 0.9f, start));
 
 	/* Four separate D-pad arms around an open centre; a held arm brightens. */
@@ -1564,14 +1588,214 @@ static void drawGearIcon(const cubeRasterTransform_t *raster, int face,
 	drawFaceRing(raster, face, 0.0f, 0.0f, 0.15f, 16, 0.018f, plane, glow);
 }
 
-/* Every face shows the icon chosen for it in Settings (a uiHomeIcon_t per
- * face), in one additive pass without depth writes, and every icon glows in
- * the same lilac. Each icon's primitive count is fixed, so a face turning
- * away draws transparent degenerates or nothing; None, and any value out of
- * range, draws nothing. */
+/* A closed outline through corners (clockwise, v up) with every corner
+ * rounded off from radius before it, in steps of at most 20 degrees, so no
+ * point turns the 45 degrees drawFaceBand needs to stay under. Returns the
+ * point count, or 0 when it would not fit in max. */
+static int roundedOutline(const indigoPoint_t *corners, int count, float radius,
+		indigoPoint_t *out, int max)
+{
+	const float step = 20.0f * INDIGO_TAU / 360.0f;
+	int n = 0;
+
+	for(int i = 0; i < count; i++) {
+		indigoPoint_t p = corners[(i + count - 1) % count], c = corners[i];
+		indigoPoint_t q = corners[(i + 1) % count];
+		float ax = c.x - p.x, ay = c.y - p.y, bx = q.x - c.x, by = q.y - c.y;
+		float al = sqrtf(ax * ax + ay * ay), bl = sqrtf(bx * bx + by * by);
+		if(al <= 0.0f || bl <= 0.0f) return 0;
+		ax /= al; ay /= al; bx /= bl; by /= bl;
+		float turn = acosf(fmaxf(-1.0f, fminf(1.0f, ax * bx + ay * by)));
+		int steps = (int)ceilf(turn / step);
+		if(steps < 1) {
+			if(n == max) return 0;
+			out[n++] = c;
+			continue;
+		}
+		if(n + steps + 1 > max) return 0;
+		/* A quadratic from one tangent point to the other, the corner its
+		 * control point: close to the arc, and every step a small turn. */
+		float cut = radius * tanf(turn * 0.5f);
+		indigoPoint_t from = {c.x - ax * cut, c.y - ay * cut};
+		indigoPoint_t to = {c.x + bx * cut, c.y + by * cut};
+		for(int k = 0; k <= steps; k++) {
+			float t = (float)k / (float)steps, u = 1.0f - t;
+			indigoPoint_t point = {u * u * from.x + 2.0f * u * t * c.x + t * t * to.x,
+				u * u * from.y + 2.0f * u * t * c.y + t * t * to.y};
+			/* Arcs that meet (a pill's two rounded ends) share a point. */
+			if(n > 0 && fabsf(point.x - out[n - 1].x) < 1e-5f &&
+				fabsf(point.y - out[n - 1].y) < 1e-5f) continue;
+			out[n++] = point;
+		}
+	}
+	if(n > 1 && fabsf(out[n - 1].x - out[0].x) < 1e-5f &&
+		fabsf(out[n - 1].y - out[0].y) < 1e-5f) n--;
+	return n;
+}
+
+/* A band along roundedOutline(corners). */
+static void drawRoundedBand(const cubeRasterTransform_t *raster, int face,
+		const indigoPoint_t *corners, int count, float radius, float halfWidth,
+		float plane, GXColor color)
+{
+	indigoPoint_t outline[FACE_BAND_MAX];
+	int points = roundedOutline(corners, count, radius, outline, FACE_BAND_MAX);
+
+	if(points >= 3) drawFaceBand(raster, face, outline, points, halfWidth, plane, color);
+}
+
+static void drawRoundedRect(const cubeRasterTransform_t *raster, int face,
+		float u0, float v0, float u1, float v1, float radius, float halfWidth,
+		float plane, GXColor color)
+{
+	const indigoPoint_t corners[4] = {{u0, v1}, {u1, v1}, {u1, v0}, {u0, v0}};
+
+	drawRoundedBand(raster, face, corners, 4, radius, halfWidth, plane, color);
+}
+
+static void drawFaceBar(const cubeRasterTransform_t *raster, int face,
+		float u0, float v0, float u1, float v1, float plane, GXColor color)
+{
+	const indigoPoint_t corners[4] = {{u0, v0}, {u0, v1}, {u1, v1}, {u1, v0}};
+
+	drawFacePolygon(raster, face, corners, 4, plane, color);
+}
+
+/* A bar from radius r0 to r1 along angle, halfWidth to each side. */
+static void drawFaceSpoke(const cubeRasterTransform_t *raster, int face,
+		float angle, float r0, float r1, float halfWidth, float plane, GXColor color)
+{
+	float x = cosf(angle), y = sinf(angle), px = -y * halfWidth, py = x * halfWidth;
+	const indigoPoint_t corners[4] = {
+		{x * r0 - px, y * r0 - py}, {x * r0 + px, y * r0 + py},
+		{x * r1 + px, y * r1 + py}, {x * r1 - px, y * r1 - py}
+	};
+
+	drawFacePolygon(raster, face, corners, 4, plane, color);
+}
+
+/* Library: three covers, the middle one raised and larger, its title below. */
+static void drawCoversIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = 1.012f;
+
+	drawRoundedRect(raster, face, -0.57f, -0.24f, -0.29f, 0.16f, 0.035f, 0.016f, plane, glow);
+	drawRoundedRect(raster, face, -0.20f, -0.30f, 0.20f, 0.28f, 0.04f, 0.018f, plane, glow);
+	drawRoundedRect(raster, face, 0.29f, -0.24f, 0.57f, 0.16f, 0.035f, 0.016f, plane, glow);
+	drawFaceBar(raster, face, -0.15f, -0.43f, 0.15f, -0.38f, plane, glow);
+}
+
+/* Library: a play button in its ring. */
+static void drawPlayIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = 1.012f;
+	const indigoPoint_t triangle[3] = {{-0.12f, 0.24f}, {0.26f, 0.0f}, {-0.12f, -0.24f}};
+
+	drawFaceRing(raster, face, 0.0f, 0.0f, 0.50f, 40, 0.022f, plane, glow);
+	drawFacePolygon(raster, face, triangle, 3, plane, glow);
+}
+
+/* Source: an SD card, its corner cut and its contacts along the top. */
+static void drawSdCardIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = 1.012f;
+	const indigoPoint_t card[5] = {
+		{-0.28f, 0.36f}, {0.12f, 0.36f}, {0.28f, 0.20f}, {0.28f, -0.36f}, {-0.28f, -0.36f}
+	};
+
+	drawRoundedBand(raster, face, card, 5, 0.04f, 0.018f, plane, glow);
+	for(int contact = 0; contact < 4; contact++) {
+		float u = -0.195f + (float)contact * 0.09f;
+		drawFaceBar(raster, face, u, 0.12f, u + 0.05f, 0.27f, plane, glow);
+	}
+}
+
+/* Source: a folder with its tab, and the edge of the front pocket. */
+static void drawFolderIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = 1.012f;
+	const indigoPoint_t folder[6] = {
+		{-0.42f, 0.30f}, {-0.12f, 0.30f}, {-0.04f, 0.20f}, {0.42f, 0.20f},
+		{0.42f, -0.30f}, {-0.42f, -0.30f}
+	};
+
+	drawRoundedBand(raster, face, folder, 6, 0.04f, 0.018f, plane, glow);
+	drawFaceBar(raster, face, -0.33f, 0.08f, 0.33f, 0.12f, plane, glow);
+}
+
+/* Settings: two switches, one on and one off. */
+static void drawTogglesIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = 1.012f;
+
+	drawRoundedRect(raster, face, -0.36f, 0.08f, 0.36f, 0.36f, 0.14f, 0.018f, plane, glow);
+	drawFaceCircle(raster, face, 0.22f, 0.22f, 0.085f, 24, plane, glow);
+	drawRoundedRect(raster, face, -0.36f, -0.36f, 0.36f, -0.08f, 0.14f, 0.018f, plane, glow);
+	drawFaceCircle(raster, face, -0.22f, -0.22f, 0.085f, 24, plane, glow);
+}
+
+/* Settings: a knob with its pointer, turned slowly by turn, over a scale of
+ * seven ticks. */
+static void drawDialIcon(const cubeRasterTransform_t *raster, int face,
+		GXColor glow, float turn)
+{
+	const float plane = 1.012f;
+	const float degree = INDIGO_TAU / 360.0f;
+
+	drawFaceRing(raster, face, 0.0f, 0.0f, 0.33f, 40, 0.022f, plane, glow);
+	drawFaceSpoke(raster, face, (120.0f + turn) * degree, 0.05f, 0.25f, 0.032f, plane, glow);
+	for(int tick = 0; tick < 7; tick++) {
+		drawFaceSpoke(raster, face, (225.0f - 45.0f * (float)tick) * degree,
+			0.44f, 0.54f, 0.02f, plane, glow);
+	}
+}
+
+/* System: information, an i in its ring. */
+static void drawInfoIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = 1.012f;
+
+	drawFaceRing(raster, face, 0.0f, 0.0f, 0.50f, 40, 0.022f, plane, glow);
+	drawFaceCircle(raster, face, 0.0f, 0.22f, 0.055f, 16, plane, glow);
+	drawFaceBar(raster, face, -0.045f, -0.28f, 0.045f, 0.08f, plane, glow);
+}
+
+/* System: the power symbol, a ring open at the top and a bar through it. */
+static void drawPowerIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = 1.012f;
+	const float degree = INDIGO_TAU / 360.0f;
+
+	drawFaceArc(raster, face, 0.0f, -0.02f, 0.36f, 58.0f * degree, -238.0f * degree,
+		0.035f, 24, plane, glow);
+	drawFaceBar(raster, face, -0.035f, 0.04f, 0.035f, 0.44f, plane, glow);
+}
+
+/* System: a chip, its die, the pin-one mark and three pins a side. */
+static void drawChipIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = 1.012f;
+
+	drawRoundedRect(raster, face, -0.27f, -0.27f, 0.27f, 0.27f, 0.045f, 0.018f, plane, glow);
+	drawFaceBar(raster, face, -0.11f, -0.11f, 0.11f, 0.11f, plane, glow);
+	drawFaceCircle(raster, face, -0.175f, 0.175f, 0.028f, 12, plane, glow);
+	for(int pin = 0; pin < 3; pin++) {
+		float at = -0.13f + (float)pin * 0.13f;
+		drawFaceBar(raster, face, at - 0.025f, 0.31f, at + 0.025f, 0.42f, plane, glow);
+		drawFaceBar(raster, face, at - 0.025f, -0.42f, at + 0.025f, -0.31f, plane, glow);
+		drawFaceBar(raster, face, -0.42f, at - 0.025f, -0.31f, at + 0.025f, plane, glow);
+		drawFaceBar(raster, face, 0.31f, at - 0.025f, 0.42f, at + 0.025f, plane, glow);
+	}
+}
+
+/* Every face shows the icon chosen for it in Settings: choices[face] picks
+ * one of that face's own four (uiHomeIcon_t face * UI_HOME_ICON_CHOICES +
+ * choice). One additive pass without depth writes, every icon in the same
+ * lilac. Each icon's primitive count is fixed, so a face turning away draws
+ * transparent degenerates or nothing; a choice out of range draws nothing. */
 static void drawFaceIcons(float seconds, bool animated,
 		const uiClockFrame_t *clock, const indigoPadFrame_t *pad,
-		const int icons[UI_HOME_FACE_COUNT], const cubeRasterTransform_t *raster)
+		const int choices[UI_HOME_FACE_COUNT], const cubeRasterTransform_t *raster)
 {
 	float pulse = animated ? 0.5f + sinf(seconds * 1.10f) * 0.5f : 0.62f;
 	float slider = animated ? sinf(seconds * 0.43f) * 0.12f : 0.0f;
@@ -1584,20 +1808,34 @@ static void drawFaceIcons(float seconds, bool animated,
 	GX_SetCullMode(GX_CULL_NONE);
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
 	for(int face = 0; face < UI_HOME_FACE_COUNT; face++) {
-		switch(icons[face]) {
+		int choice = choices[face];
+
+		if(choice < 0 || choice >= UI_HOME_ICON_CHOICES) continue;
+		switch(face * UI_HOME_ICON_CHOICES + choice) {
 			case UI_HOME_ICON_CONTROLLER:
 				drawControllerIcon(raster, face, glow, seconds, animated, pad);
 				break;
 			case UI_HOME_ICON_BOOKS: drawBooksIcon(raster, face, glow); break;
+			case UI_HOME_ICON_COVERS: drawCoversIcon(raster, face, glow); break;
+			case UI_HOME_ICON_PLAY: drawPlayIcon(raster, face, glow); break;
 			case UI_HOME_ICON_HUB: drawHubIcon(raster, face, glow); break;
 			case UI_HOME_ICON_DISC:
 				drawDiscIcon(raster, face, glow, animated ? seconds * 0.6f : 0.0f);
 				break;
+			case UI_HOME_ICON_SD_CARD: drawSdCardIcon(raster, face, glow); break;
+			case UI_HOME_ICON_FOLDER: drawFolderIcon(raster, face, glow); break;
 			case UI_HOME_ICON_SLIDERS: drawSlidersIcon(raster, face, glow, slider); break;
 			case UI_HOME_ICON_GEAR:
 				drawGearIcon(raster, face, glow, animated ? seconds * 0.2f : 0.0f);
 				break;
+			case UI_HOME_ICON_TOGGLES: drawTogglesIcon(raster, face, glow); break;
+			case UI_HOME_ICON_DIAL:
+				drawDialIcon(raster, face, glow, animated ? sinf(seconds * 0.4f) * 25.0f : 0.0f);
+				break;
 			case UI_HOME_ICON_CLOCK: drawClockIcon(raster, face, glow, clock); break;
+			case UI_HOME_ICON_INFO: drawInfoIcon(raster, face, glow); break;
+			case UI_HOME_ICON_POWER: drawPowerIcon(raster, face, glow); break;
+			case UI_HOME_ICON_CHIP: drawChipIcon(raster, face, glow); break;
 			default: break;
 		}
 	}
@@ -2483,7 +2721,7 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	drawGlassReflection(&raster, shell, 6, 4, outer);
 	drawGlassReflection(&raster, strips, 12, 4, outer);
 	drawGlassReflection(&raster, corners, 8, 3, outer);
-	if(animated && scene->homeIdleBlend > 0.01f && strength > 0.01f) {
+	if(CUBE_GLASS_SHEEN && animated && scene->homeIdleBlend > 0.01f && strength > 0.01f) {
 		float phase = fmodf(seconds, GLASS_SHEEN_PERIOD);
 		if(phase < GLASS_SHEEN_LENGTH) {
 			float progress = glassSmoothstep(0.0f, GLASS_SHEEN_LENGTH, phase);
@@ -2495,11 +2733,11 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 				0.42f * scene->cubeScale, weight);
 		}
 	}
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-	drawFaceIcons(seconds, animated, clock, pad, icons, &raster);
-
-	/* Light leaving the finished glass: its bloom, then the sun it catches. */
-	if(strength > 0.01f && shellOutline.count >= 3) {
+	/* Light leaving the finished glass: its bloom first, then the icons, so
+	 * their strokes stay sharp instead of blurring with it (Spencer found
+	 * them hard to read), then the rim, and the sun it catches if on. */
+	bool light = strength > 0.01f && shellOutline.count >= 3;
+	if(light && screenGlass) {
 		float left = 640.0f, top = 480.0f, right = 0.0f, bottom = 0.0f;
 		for(int i = 0; i < shellOutline.count; i++) {
 			float x = 320.0f + shellOutline.point[i].x;
@@ -2507,14 +2745,20 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 			left = fminf(left, x); right = fmaxf(right, x);
 			top = fminf(top, y); bottom = fmaxf(bottom, y);
 		}
-		if(screenGlass) {
-			drawGlassBloom(left - 28.0f, top - 28.0f, right + 28.0f, bottom + 28.0f,
-				0.78f * strength);
-		}
+		drawGlassBloom(left - 28.0f, top - 28.0f, right + 28.0f, bottom + 28.0f,
+			0.78f * strength);
+		loadCubeProjection();
+		restoreCubeRaster();
+	}
+	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
+	drawFaceIcons(seconds, animated, clock, pad, icons, &raster);
+	if(light) {
 		setupRasterPipeline();
 		drawGlassRim(&shellOutline, strength);
-		drawSunFlare(&sun, strength, (animated ? seconds * 0.05f : 0.0f) +
-			scene->cubeYaw * 0.5f, scene->cubeScale / 0.92f);
+		if(CUBE_SUN_FLARE) {
+			drawSunFlare(&sun, strength, (animated ? seconds * 0.05f : 0.0f) +
+				scene->cubeYaw * 0.5f, scene->cubeScale / 0.92f);
+		}
 	}
 }
 
