@@ -3,6 +3,12 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.17.1 — direct download links
+
+- The README's Posters and Cheats sections link straight to the three
+  downloads (posters for USA and Japan, posters for Europe and Australia,
+  cheats for every region) instead of only to the page.
+
 ## v1.17.0 — Menu Color previews in its list
 
 - The list that A opens on Settings › Setup › Console › Menu Color now shows

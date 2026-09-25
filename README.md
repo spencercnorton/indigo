@@ -164,9 +164,14 @@ Library hides stray files. On Home, turn the cube to Library and press A.
 
 Without posters, each game shows its disc banner and its six-character game
 ID, such as `GMSE01`. For box art like the screenshots above, download a
-ready-made pack from [indigo.norvitech.com](https://indigo.norvitech.com):
-one covers USA and Japan, the other Europe and Australia. Unzip it into the
-root of the card; it holds `swiss/ui/posters.pak`.
+ready-made pack and unzip it into the root of the card; it holds
+`swiss/ui/posters.pak`:
+
+- [Posters: USA & Japan](https://indigo.norvitech.com/indigo-posters-ntsc.zip) (NTSC)
+- [Posters: Europe & Australia](https://indigo.norvitech.com/indigo-posters-pal.zip) (PAL)
+
+Indigo reads one pack, so pick the region most of your games are from.
+Checksums and details are at [indigo.norvitech.com](https://indigo.norvitech.com).
 
 To make your own, name front-cover images after the game IDs (`GMSE01.png`,
 `GALE01.jpg`, at least 192×256) in one folder, build a pack from this
@@ -183,9 +188,9 @@ skipped and listed.
 
 ### Cheats
 
-Indigo runs Gecko codes from `/swiss/cheats/<game ID>.txt`. A pack for every
-region is at [indigo.norvitech.com](https://indigo.norvitech.com); unzip it
-into the root of the card, open a game and press Y. Cheats that the files show
+Indigo runs Gecko codes from `/swiss/cheats/<game ID>.txt`.
+[Download the cheat pack](https://indigo.norvitech.com/indigo-cheats.zip)
+(every region), unzip it into the root of the card, open a game and press Y. Cheats that the files show
 would break Indigo are switched off and marked; the page says what can't be
 checked in advance.
 
