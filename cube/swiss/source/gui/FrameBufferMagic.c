@@ -2827,6 +2827,35 @@ static void _GameflowDrawPoster(const gameflowRenderCard_t *card,
 	_SetupRasterColor();
 }
 
+/* A game with settings of its own: a small sliders mark, the Settings
+ * face's emblem, in the top-right corner of its cover. */
+static void _GameflowDrawCustomMark(const gameflowRenderCard_t *card, float reveal)
+{
+	static const float knob[3] = {0.66f, 0.28f, 0.50f};
+	gameflowPoint_t top = _GameflowQuadPoint(&card->quad, 1.0f, 0.0f);
+	gameflowPoint_t bottom = _GameflowQuadPoint(&card->quad, 1.0f, 1.0f);
+	gameflowPoint_t center = _GameflowQuadPoint(&card->quad, 0.85f, 0.085f);
+	float size = fabsf(bottom.y - top.y) * 0.13f;
+	float bar = fmaxf(1.4f, size * 0.08f);
+	u8 alpha = _GameflowAlpha(255.0f * card->presence * reveal);
+	GXColor plate = {22, 17, 46, (u8)((alpha * 220u) / 255u)};
+	GXColor line = {206, 196, 255, alpha};
+	int k;
+
+	UIColor_Apply(&plate.r, &plate.g, &plate.b);
+	UIColor_Apply(&line.r, &line.g, &line.b);
+	drawInit();
+	_SetupRasterColor();
+	_HintRoundRect(center.x, center.y, size, size, size * 0.24f, plate);
+	for(k = 0; k < 3; k++) {
+		float y = center.y + (float)(k - 1) * size * 0.25f;
+
+		_HintRoundRect(center.x, y, size * 0.64f, bar, bar / 2.0f, line);
+		_HintRoundRect(center.x - size * 0.32f + knob[k] * size * 0.64f, y,
+			size * 0.17f, size * 0.17f, size * 0.05f, line);
+	}
+}
+
 static void _GameflowDrawFallback(const gameflowRenderCard_t *card,
 	uiGameflowLibraryArtwork_t artwork, GXTexObj *bannerTexture,
 	float reveal)
@@ -3467,6 +3496,12 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			continue;
 		}
 		_GameflowDrawFallback(&cards[i], artwork, bannerTexture, reveal);
+	}
+	for(i = 0u; i < count; ++i) {
+		if(fabsf(cards[i].visualSlot) < 1.5f &&
+			(cards[i].record->flags & UI_GAMEFLOW_CARD_CUSTOM)) {
+			_GameflowDrawCustomMark(&cards[i], reveal);
+		}
 	}
 
 	selectedRecord = _GameflowFindRecord(&data->snapshot,

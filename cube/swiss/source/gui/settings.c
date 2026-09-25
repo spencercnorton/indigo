@@ -5,6 +5,7 @@
 #include <math.h>
 #include <malloc.h>
 #include <gccore.h>
+#include <ogc/lwp_watchdog.h>
 #include <ogc/exi.h>
 #include <ogc/machine/processor.h>
 #include "deviceHandler.h"
@@ -30,7 +31,8 @@
 _Static_assert(UI_SETLAYOUT_PAGE_COUNT == VIEW_GAME + 1, "view count drift");
 _Static_assert(UI_SETLAYOUT_TAB_COUNT == VIEW_SETUP + 1, "tab count drift");
 _Static_assert(UI_SETLAYOUT_TAB_SETUP == VIEW_SETUP, "Setup tab drift");
-_Static_assert(UI_SETLAYOUT_ROWS_GAME_DEFAULTS == SET_DEFAULT_DEFAULTS + 1, "defaults rows drift");
+/* Game Defaults shows every default but the vertical offset (see gameDefaultsRows). */
+_Static_assert(UI_SETLAYOUT_ROWS_GAME_DEFAULTS == SET_DEFAULT_DEFAULTS, "defaults rows drift");
 _Static_assert(UI_SETLAYOUT_ROWS_NETWORK == SET_RT4K_PORT + 1, "network rows drift");
 _Static_assert(UI_SETLAYOUT_ROWS_GAME == SET_DEFAULTS + 1, "game rows drift");
 _Static_assert(UI_SETLAYOUT_ROWS_SETUP == VIEW_DEVELOPER - VIEW_DISPLAY + 1, "Setup sections drift");
@@ -554,7 +556,9 @@ static const settingsRowRef_t gameDefaultsRows[] = {
 	{PAGE_GAME_DEFAULTS, SET_DEFAULT_EMULATE_ETHERNET},
 	{PAGE_GAME_DEFAULTS, SET_DEFAULT_DISABLE_MEMCARD},
 	{PAGE_GAME_DEFAULTS, SET_DEFAULT_HORIZ_SCALE},
-	{PAGE_GAME_DEFAULTS, SET_DEFAULT_VERT_OFFSET},
+	/* No SET_DEFAULT_VERT_OFFSET: config_defaults_from gives every game -3 or
+	 * +0 by the AVE setting, so a Game Defaults value would do nothing. It
+	 * stays in global.ini and in each game's own settings. */
 	{PAGE_GAME_DEFAULTS, SET_DEFAULT_VERT_FILTER},
 	{PAGE_GAME_DEFAULTS, SET_DEFAULT_FIELD_RENDER},
 	{PAGE_GAME_DEFAULTS, SET_DEFAULT_PIXEL_CENTER},
@@ -742,6 +746,109 @@ int settings_game_custom_count(const ConfigEntry *game)
 		}
 	}
 	return count;
+}
+
+/* The Library marks the covers of games that have settings of their own.
+ * Each card on screen asks again on every step of the carousel, so the
+ * settings files are read once (one mount, one folder listing) and kept
+ * until the next save changes them. */
+typedef struct {
+	char gameId[4];
+	char *text;
+} settingsGameFile_t;
+
+static settingsGameFile_t *settingsGameFiles;
+static int settingsGameFileCount;
+static bool settingsGameFilesRead;
+static bool settingsGameFilesFailed;
+static u64 settingsGameFilesFailedAt;
+
+static void settingsKeepGameFile(const char *gameId, char *text, void *context)
+{
+	settingsGameFile_t *grown;
+
+	(void)context;
+	grown = realloc(settingsGameFiles,
+		(size_t)(settingsGameFileCount + 1) * sizeof(*grown));
+	if(grown == NULL) {
+		return;
+	}
+	settingsGameFiles = grown;
+	memcpy(grown[settingsGameFileCount].gameId, gameId, 4);
+	grown[settingsGameFileCount].text = strdup(text);
+	if(grown[settingsGameFileCount].text != NULL) {
+		settingsGameFileCount++;
+	}
+}
+
+/* A save changed the files: read them again next time. */
+void settings_game_files_forget(void)
+{
+	int i;
+
+	for(i = 0; i < settingsGameFileCount; i++) {
+		free(settingsGameFiles[i].text);
+	}
+	free(settingsGameFiles);
+	settingsGameFiles = NULL;
+	settingsGameFileCount = 0;
+	settingsGameFilesRead = false;
+	settingsGameFilesFailed = false;
+}
+
+/* A settings device that can't be mounted is tried again, but at most this
+ * often: the carousel asks on every step, and probing a missing card is
+ * slow. */
+#define SETTINGS_GAME_FILES_RETRY_MS 30000u
+
+void settings_game_files_load(void)
+{
+	if(settingsGameFilesRead || (settingsGameFilesFailed &&
+		ticks_to_millisecs(gettime() - settingsGameFilesFailedAt) <
+			SETTINGS_GAME_FILES_RETRY_MS)) {
+		return;
+	}
+	settingsGameFilesFailed = config_each_game_file(settingsKeepGameFile, NULL) < 0;
+	if(settingsGameFilesFailed) {
+		settingsGameFilesFailedAt = gettime();
+	}
+	else {
+		settingsGameFilesRead = true;
+	}
+}
+
+/* Whether a game has any row that differs from Game Defaults, as Game
+ * Detail counts it. region is 'P' for PAL discs, whose video mode default
+ * differs. Reads nothing: settings_game_files_load did. */
+bool settings_game_has_custom(const char *gameId, char region)
+{
+	static ConfigEntry game;
+	char *text;
+	int i;
+
+	if(gameId == NULL || gameId[0] == '\0') {
+		return false;
+	}
+	for(i = 0; i < settingsGameFileCount; i++) {
+		if(memcmp(settingsGameFiles[i].gameId, gameId, 4) == 0) {
+			break;
+		}
+	}
+	if(i == settingsGameFileCount) {
+		return false;
+	}
+	/* config_parse_game cuts its input into lines, so parse a copy. */
+	text = strdup(settingsGameFiles[i].text);
+	if(text == NULL) {
+		return false;
+	}
+	memset(&game, 0, sizeof(game));
+	memcpy(game.game_id, gameId, 4);
+	game.region = region;
+	config_defaults(&game);
+	config_parse_game(text, &game);
+	free(text);
+	return settings_game_custom_count(&game) > 0;
 }
 
 /* X in a game's settings: this row follows Game Defaults again. */

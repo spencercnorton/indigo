@@ -33,7 +33,7 @@
 
 /* Per-view row counts (bound to settings.c's row tables). */
 #define UI_SETLAYOUT_ROWS_QUICK 9
-#define UI_SETLAYOUT_ROWS_GAME_DEFAULTS 22
+#define UI_SETLAYOUT_ROWS_GAME_DEFAULTS 21
 #define UI_SETLAYOUT_ROWS_SETUP 6
 #define UI_SETLAYOUT_ROWS_DISPLAY 9
 #define UI_SETLAYOUT_ROWS_CONSOLE 10

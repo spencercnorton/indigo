@@ -54,6 +54,7 @@ typedef struct uiDrawObj {
 #define UI_GAMEFLOW_CARD_HIDDEN      (1u << 3)
 #define UI_GAMEFLOW_CARD_PARENT      (1u << 4)
 #define UI_GAMEFLOW_CARD_FOLDER      (1u << 5)
+#define UI_GAMEFLOW_CARD_CUSTOM      (1u << 6) /* the game has settings of its own */
 
 /* Pointer-free menu-thread record. Its fixed 6400-byte stride keeps every
  * inline RGB5A3 banner 32-byte aligned when the snapshot is memalign(32). */

@@ -16,6 +16,8 @@ the cube to **Library** and press A.
   gives them.
 - **A** opens the game's [details](game-details.md), where you launch it.
 - **B** goes back to Home.
+- A small **sliders mark** in the corner of a cover means that game has
+  [settings of its own](game-details.md#this-games-own-settings).
 
 The Library remembers where you were. Come back from a game's details, or
 from Home, and the same game is still selected.

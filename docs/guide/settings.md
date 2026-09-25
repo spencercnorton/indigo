@@ -161,7 +161,7 @@ Press Y on any row for the same explanations on the console.
 | Emulate Broadband Adapter | Gives the game a network adapter over a file server or network module, where memory allows. |
 | Disable Memory Card | Hides the memory card in slot A or B from the game, for games that misbehave with it. |
 | Force Horizontal Scale | How the picture is scaled across: Auto, 1:1, fixed ratios or a fixed width. |
-| Force Vertical Offset | Moves the picture up or down. Set it in a game's own settings: the Game Defaults value doesn't reach games. |
+| Force Vertical Offset | *Game's own settings only.* Moves the picture up or down. |
 | Force Vertical Filter | The vertical blend or deflicker filter. |
 | Force Field Rendering | How interlaced pictures are drawn: by field, whole frames, or TAA. |
 | Fix Pixel Center | Shifts the picture by 1/24 or 1/12 of a pixel, for games drawn off the pixel grid. Swiss turns it on by itself for the few games that need it. |

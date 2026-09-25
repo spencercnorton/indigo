@@ -51,7 +51,8 @@ restart.
 **X** opens settings that apply to this game only: its video mode,
 widescreen, language, polling rate and the rest. Anything you change is marked
 **Custom**, and the hint on the detail screen counts them, for example
-"X Settings (1 Custom)".
+"X Settings (1 Custom)". In the Library, a game with any Custom setting shows
+a small sliders mark in the corner of its cover.
 
 <p align="center">
   <img alt="X on the detail screen for 1080° Avalanche opens its own settings. A on Force Video Mode lists the modes; 480p is chosen and the row is marked Custom. B returns to the detail screen, whose hint now reads X Settings (1 Custom)." src="images/detail-game-settings.png" width="640">

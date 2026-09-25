@@ -3,6 +3,19 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.20.0 — see which games have their own settings
+
+- In the Library, a small sliders mark in the corner of a cover means the
+  game has settings of its own: at least one that differs from Game
+  Defaults, the same count Game Detail shows as "X SETTINGS (2 CUSTOM)". A
+  game reset to its defaults loses the mark. It follows Menu Color.
+- Indigo reads the games' settings files once when the Library first opens,
+  and again after you save settings.
+- Game Defaults no longer shows Force Vertical Offset. That default never
+  reached a game (each game starts at -3 with GCVideo or GCDigital and +0
+  otherwise), so the row did nothing. Set it in a game's own settings; the
+  key in global.ini is still read.
+
 ## v1.19.1 — the Indigo guide
 
 - New: [the Indigo guide](docs/guide/README.md), thirteen pages with pictures

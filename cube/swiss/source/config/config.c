@@ -5,6 +5,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <malloc.h>
 #include <gccore.h>
 #include "deviceHandler.h"
@@ -132,6 +133,45 @@ char* config_file_read(char* filename) {
 	}
 	free(configFile);
 	return readBuffer;
+}
+
+/* Hands every per-game settings file to visit: its four-character game ID
+ * and its text, which visit may change and is freed afterwards. The
+ * settings device is mounted once for all of them. Returns the files read,
+ * or -1 when there is no settings device. */
+int config_each_game_file(void (*visit)(const char *gameId, char *text, void *context),
+	void *context) {
+	file_handle dir;
+	file_handle *entries = NULL;
+	int count, i, read = 0;
+
+	if(visit == NULL || !config_set_device()) {
+		return -1;
+	}
+	memset(&dir, 0, sizeof(dir));
+	concat_path(dir.name, devices[DEVICE_CONFIG]->initial->name, SWISS_GAME_SETTINGS_DIR);
+	count = devices[DEVICE_CONFIG]->readDir(&dir, &entries, -1);
+	for(i = 0; i < count && entries != NULL; i++) {
+		const char *leaf = getRelativeName(entries[i].name);
+		char path[PATHNAME_MAX];
+		char *text;
+
+		/* <ID4>.ini; nothing else in the folder is a game's settings. */
+		if(entries[i].fileType != IS_FILE || strlen(leaf) != 8u ||
+			strcasecmp(leaf + 4, ".ini") != 0) {
+			continue;
+		}
+		concatf_path(path, SWISS_GAME_SETTINGS_DIR, "%.4s.ini", leaf);
+		text = config_file_read(path);
+		if(text != NULL) {
+			visit(leaf, text, context);
+			free(text);
+			read++;
+		}
+	}
+	free(entries);
+	config_unset_device();
+	return read;
 }
 
 int config_file_write(char* filename, char* contents) {
@@ -443,6 +483,8 @@ done:
 }
 
 int config_update_global(bool checkConfigDevice) {
+	/* Settings files change: the Library's custom marks read them again. */
+	settings_game_files_forget();
 	if(checkConfigDevice && !config_set_device()) return 0;
 
 	char *configString = NULL;
@@ -628,6 +670,8 @@ int config_update_recent(bool checkConfigDevice) {
 
 
 int config_update_game(ConfigEntry *entry, ConfigEntry *defaults, bool checkConfigDevice) {
+	/* Settings files change: the Library's custom marks read them again. */
+	settings_game_files_forget();
 	if(checkConfigDevice && !config_set_device()) return 0;
 
 	char *configString = NULL;

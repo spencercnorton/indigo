@@ -228,5 +228,8 @@ extern char *faceIconStr[];
 int show_settings(int page, int option, ConfigEntry *config);
 int show_settings_view(int view, int option, ConfigEntry *config);
 int settings_game_custom_count(const ConfigEntry *game);
+void settings_game_files_load(void);
+void settings_game_files_forget(void);
+bool settings_game_has_custom(const char *gameId, char region);
 
 #endif

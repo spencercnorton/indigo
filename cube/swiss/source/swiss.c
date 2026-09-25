@@ -1063,6 +1063,17 @@ static bool gameflowCopyDiskId(char destination[7], const dvddiskid *diskId)
 	return true;
 }
 
+/* The Library marks a game whose settings differ from Game Defaults. */
+static void gameflowMarkCustom(uiGameflowCardSnapshot_t *record)
+{
+	char region = strcmp(UIGameflowLibrary_RegionLabel(record->gameId), "PAL") ?
+		'E' : 'P';
+
+	if(settings_game_has_custom(record->gameId, region)) {
+		record->flags |= UI_GAMEFLOW_CARD_CUSTOM;
+	}
+}
+
 static void gameflowSnapshotRecord(uiGameflowCardSnapshot_t *record,
 	file_handle *file, uiGameflowLibraryMode_t mode)
 {
@@ -1089,6 +1100,7 @@ static void gameflowSnapshotRecord(uiGameflowCardSnapshot_t *record,
 		record->flags |= UI_GAMEFLOW_CARD_FOLDER;
 		UIGameflowLibrary_ParseGameFolderName(relativeName, record->gameId,
 			record->title, sizeof(record->title));
+		gameflowMarkCustom(record);
 		gameflowCopyText(record->company, sizeof(record->company),
 			"GAME FOLDER", sizeof("GAME FOLDER"));
 		snprintf(record->facts, sizeof(record->facts), "%s  |  A OPEN",
@@ -1153,6 +1165,7 @@ static void gameflowSnapshotRecord(uiGameflowCardSnapshot_t *record,
 			FNM_PATHNAME | FNM_PREFIX_DIRS)) {
 		record->flags |= UI_GAMEFLOW_CARD_AUTOLOAD;
 	}
+	gameflowMarkCustom(record);
 }
 
 static void gameflowProtectMetaFile(const file_handle *file)
@@ -1197,6 +1210,8 @@ static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 	count = UIGameflowLibrary_BuildWindow((u32)numFiles,
 		(u32)curSelection, directionHint, slots);
 	snapshot->recordCount = (u32)count;
+	/* Read the settings files once, outside the per-card file locks. */
+	settings_game_files_load();
 
 	for(i = 0u; i < count; ++i) {
 		uiGameflowCardSnapshot_t *record = &snapshot->records[i];

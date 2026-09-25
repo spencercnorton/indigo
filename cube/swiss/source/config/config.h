@@ -40,6 +40,9 @@ uint64_t config_last_played(const char *gameId, size_t gameIdLength, bool *avail
 void config_record_game_handoff(const char *gameId, size_t gameIdLength);
 
 void config_find(ConfigEntry *entry);
+void config_parse_game(char *configData, ConfigEntry *entry);
+int config_each_game_file(void (*visit)(const char *gameId, char *text, void *context),
+	void *context);
 void config_defaults(ConfigEntry *entry);
 int config_update_game(ConfigEntry *entry, ConfigEntry *defaults, bool checkConfigDevice);
 int config_update_global(bool checkConfigDevice);
