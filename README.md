@@ -19,6 +19,8 @@
 
 Captured in the Dolphin emulator. The library and game detail pictures show a real poster pack and cheat file in use; box art belongs to its publishers.
 
+**New to Indigo?** The [Indigo guide](docs/guide/README.md) walks through every screen and setting, with pictures.
+
 Indigo is an unofficial fork of [Swiss](https://github.com/emukidid/swiss-gc),
 the homebrew utility that boots and patches games on a Nintendo GameCube. The
 fork changes one thing: what you look at. Everything underneath — the device
@@ -211,6 +213,7 @@ checked in advance.
 
 ## Documentation
 
+- [Indigo guide](docs/guide/README.md) — install, controls, and every screen and setting, with pictures.
 - [`CHANGELOG.md`](CHANGELOG.md) — what each release contains.
 - [`NOTICE`](NOTICE) — upstream provenance and the third-party components in this tree.
 - [`docs/screenshots/`](docs/screenshots) — the pictures above, captured in Dolphin.

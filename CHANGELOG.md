@@ -3,6 +3,16 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.19.1 — the Indigo guide
+
+- New: [the Indigo guide](docs/guide/README.md), thirteen pages with pictures
+  from the real interface. It covers installing, the controls, Home, the
+  Library, game details, cheats, Settings and a game's own settings, Menu
+  Color and the cube icons, sources, System, posters and troubleshooting,
+  and ends with every setting explained.
+- The README links to it, and its Home animation and System picture are
+  re-recorded with v1.19.0's cube, whose icons now share one shade.
+
 ## v1.19.0 — cube face icons
 
 - Settings › Setup › Console has a row for each face of the Home cube:
