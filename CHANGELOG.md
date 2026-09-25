@@ -3,6 +3,12 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.17.0 — Menu Color previews in its list
+
+- The list that A opens on Settings › Setup › Console › Menu Color now shows
+  each color on screen as you move through it, the way Left and Right
+  already do on the row. B puts your color back; A keeps the one you are on.
+
 ## v1.16.1 — posters and cheats to download
 
 - Ready-made poster packs (USA and Japan, or Europe and Australia) and a cheat

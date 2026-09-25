@@ -2230,6 +2230,10 @@ static bool settingsPick(const settingsPickerRow_t *pick, ConfigEntry *config,
 		u32 btns;
 		uiDrawObj_t *next = settingsDrawPicker(row.label, &list, focus);
 
+		/* Menu Color's list shows each color as the focus reaches it. */
+		if(pick->page == PAGE_INTERFACE && pick->option == SET_UI_COLOR) {
+			DrawPreviewMenuColor((int)list.value[focus]);
+		}
 		box = box == NULL ? DrawPublish(next) : DrawRepublish(box, next);
 		btns = settingsWaitForInput(menuInput, lastRetrace, &wasDigital);
 		if(btns & BUTTON_UP) {

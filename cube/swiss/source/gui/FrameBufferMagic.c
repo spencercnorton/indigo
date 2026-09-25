@@ -118,9 +118,11 @@ static mutex_t _videomutex = LWP_MUTEX_NULL;
 static bool sceneRenderingEnabled;
 static u32 videoFrameSerial;
 /* While a Settings page is up, the screen keeps the Menu Color that page was
- * drawn with (DrawPinMenuColor); disposing the page lets it go. */
+ * drawn with (DrawPinMenuColor); disposing the page lets it go. While the
+ * Menu Color list is open, the color it has focused shows instead. */
 static uiDrawObj_t *menuColorPage;
 static int menuColorPinned = -1;
+static int menuColorPreview = -1;
 
 typedef struct {
 	uiClockFrame_t clock;
@@ -4978,7 +4980,7 @@ static void *videoUpdate(void *videoEventQueue) {
 		whichfb ^= 1;
 		UIAnim_BeginFrame();
 		/* One Menu Color per frame: every emitter recolors with it. */
-		int menuColor = menuColorPinned;
+		int menuColor = menuColorPreview >= 0 ? menuColorPreview : menuColorPinned;
 		UIColor_Select(menuColor >= 0 ? menuColor : swissSettings.uiColor);
 		UI_PERF_BEGIN(frameWorkStart);
 		//frames++;
@@ -5099,6 +5101,7 @@ void DrawDispose(uiDrawObj_t *evt)
 	if(evt == menuColorPage) {
 		menuColorPage = NULL;
 		menuColorPinned = -1;
+		menuColorPreview = -1;
 	}
 	LWP_MutexUnlock(_videomutex);
 }
@@ -5112,6 +5115,17 @@ void DrawPinMenuColor(uiDrawObj_t *page, int color)
 	LWP_MutexLock(_videomutex);
 	menuColorPage = page;
 	menuColorPinned = color;
+	menuColorPreview = -1;
+	LWP_MutexUnlock(_videomutex);
+}
+
+/* The Menu Color list shows the color it has focused. The page's next draw
+ * (DrawPinMenuColor) ends the preview, so a pick never flashes the old color
+ * between the list closing and the page showing the new value. */
+void DrawPreviewMenuColor(int color)
+{
+	LWP_MutexLock(_videomutex);
+	menuColorPreview = color;
 	LWP_MutexUnlock(_videomutex);
 }
 
