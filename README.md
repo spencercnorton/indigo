@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img alt="The Indigo Home screen: a glass cube turning sideways and tipping up and down between its Library, Source, Settings and System faces on a dark starfield. Its far edges bend through the front glass, the rounded edges show faint prism colours, the icons glow, and a corner flares like the sun as it catches the light. The Library face shows a GameCube controller, only the face you are on is named underneath, and its controls are shown as GameCube buttons." src="docs/screenshots/home.png" width="640">
+  <img alt="The Indigo Home screen: a glass cube turning sideways and tipping up and down between its Library, Source, Settings and System faces on a dark starfield. Its far edges bend through the front glass, the rounded edges show faint prism colours, the icons glow, and a corner glints like the sun as it catches the light. The Library face shows a GameCube controller, only the face you are on is named underneath, and its controls are shown as GameCube buttons." src="docs/screenshots/home.png" width="640">
 </p>
 
 Captured in the Dolphin emulator. The library and game detail pictures show a real poster pack and cheat file in use; box art belongs to its publishers.
@@ -36,7 +36,7 @@ GameCube's own menu, and it treats light the way glass does. Through the front
 you see the cube's far edges and its inner cube, bent and slightly magnified,
 and the rounded edges part the light into colour like a prism. Highlights and
 the face icons glow, a fine rim lights the edges that face the light, and a
-corner that catches the light flares like the sun. While Home rests, a band of
+corner that catches the light glints like the sun. While Home rests, a band of
 light passes over the glass every few seconds. Each face carries its own
 emblem, and only the face you are on is named, under the cube. The Library face is a GameCube
 controller that mirrors yours: its sticks lean with your sticks and its

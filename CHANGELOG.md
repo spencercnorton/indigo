@@ -3,6 +3,14 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.23.2 — a quieter sun on the glass
+
+- The sun that a corner of the Home cube catches is now a small glint with
+  short rays instead of a large starburst. Its core is smaller and softer,
+  the streak and rays are shorter and fainter, and the reflections across
+  the screen are fainter. The README and guide pictures of Home, Source and
+  System are recorded again with it.
+
 ## v1.23.1 — pictures of every new screen
 
 - The README's Library animation shows all three layouts, and two new

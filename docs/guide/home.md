@@ -42,8 +42,8 @@ The cube is glass, and it treats light the way glass does:
   fine rim lights the edges that face the light, and a halo sits behind the
   cube with a patch of focused light on the floor under it.
 - **It catches the sun.** When a corner turns the light toward you it
-  flares: a bright point with rays, a long streak and faint reflections
-  across the screen.
+  glints: a small bright point with short rays, a faint streak and fainter
+  reflections across the screen.
 - **It shines.** While Home rests, a band of light passes over the glass
   every seven seconds.
 

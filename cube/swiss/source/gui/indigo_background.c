@@ -2222,11 +2222,13 @@ static void drawGlassRim(const cubeOutline_t *outline, float strength)
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 }
 
-/* The sun caught in the glass: a hot white core where the bevel mirrors the
- * key light, a lilac bloom round it, a long anamorphic streak, six fine
- * rays that turn with the cube, and faint ghosts strung through the middle
- * of the screen the way a lens repeats a bright light. Nothing shows until
- * the glass actually turns the light toward the camera. */
+/* The sun caught in the glass: a small bright core where the bevel mirrors
+ * the key light, a lilac bloom round it, a short anamorphic streak, six
+ * short rays that turn with the cube, and faint ghosts strung through the
+ * middle of the screen the way a lens repeats a bright light. It is a glint,
+ * not a starburst: at rest the same corner holds it, so it has to sit
+ * quietly on the glass. Nothing shows until the glass actually turns the
+ * light toward the camera. */
 static void drawSunFlare(const glassSun_t *sun, float strength, float spin,
 		float scale)
 {
@@ -2239,9 +2241,9 @@ static void drawSunFlare(const glassSun_t *sun, float strength, float spin,
 		float alpha;
 		GXColor color;
 	} ghosts[3] = {
-		{1.28f, 11.0f, 0.10f, {164, 138, 255, 255}},
-		{1.62f, 24.0f, 0.055f, {134, 120, 236, 255}},
-		{2.05f, 8.0f, 0.085f, {214, 204, 255, 255}}
+		{1.28f, 11.0f, 0.05f, {164, 138, 255, 255}},
+		{1.62f, 24.0f, 0.028f, {134, 120, 236, 255}},
+		{2.05f, 8.0f, 0.042f, {214, 204, 255, 255}}
 	};
 	float intensity;
 	float x, y;
@@ -2252,15 +2254,15 @@ static void drawSunFlare(const glassSun_t *sun, float strength, float spin,
 	y = sun->y / sun->weight;
 	if(!isfinite(x) || !isfinite(y)) return;
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
-	drawSoftGlow(x, y, 54.0f * scale, 54.0f * scale, bloom, 0.30f * intensity);
-	drawSoftGlow(x, y, 176.0f * scale, 3.0f * scale, streak, 0.36f * intensity);
-	drawSoftGlow(x, y, 112.0f * scale, 8.0f * scale, streak, 0.12f * intensity);
+	drawSoftGlow(x, y, 38.0f * scale, 38.0f * scale, bloom, 0.18f * intensity);
+	drawSoftGlow(x, y, 104.0f * scale, 2.5f * scale, streak, 0.16f * intensity);
+	drawSoftGlow(x, y, 64.0f * scale, 6.0f * scale, streak, 0.05f * intensity);
 	for(int ray = 0; ray < 6; ray++) {
 		float angle = spin + INDIGO_TAU * (float)ray / 6.0f;
-		float length = (ray & 1 ? 46.0f : 78.0f) * scale;
-		drawLightRay(x, y, angle, length, 1.5f * scale, bloom, 0.34f * intensity);
+		float length = (ray & 1 ? 18.0f : 32.0f) * scale;
+		drawLightRay(x, y, angle, length, 1.1f * scale, bloom, 0.16f * intensity);
 	}
-	drawSoftGlow(x, y, 15.0f * scale, 15.0f * scale, core, 0.95f * intensity);
+	drawSoftGlow(x, y, 10.0f * scale, 10.0f * scale, core, 0.55f * intensity);
 	for(int ghost = 0; ghost < 3; ghost++) {
 		float gx = x + (320.0f - x) * ghosts[ghost].along;
 		float gy = y + (240.0f - y) * ghosts[ghost].along;
