@@ -1,0 +1,114 @@
+# A pushed tag becomes a GitHub Release: vX.Y.Z on main is a release (marked
+# Latest), vX.Y.Z-beta.N on beta is a pre-release. The zip is built from the
+# tagged commit in the pinned image, carries a build provenance attestation, and
+# its notes are the tag's CHANGELOG section. workflow_dispatch builds an existing
+# tag without publishing anything, to check the pipeline.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build as a dry run (nothing is published)
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the release zip
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container: ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      title: ${{ steps.meta.outputs.title }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Check the tag
+        id: meta
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if printf '%s\n' "$TAG" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+'; then
+            channel=main prerelease=false
+          elif printf '%s\n' "$TAG" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+'; then
+            channel=beta prerelease=true
+          else
+            echo "not a release tag: $TAG (vX.Y.Z or vX.Y.Z-beta.N)" >&2; exit 1
+          fi
+          # A release tag names a commit its branch already carries.
+          git merge-base --is-ancestor HEAD "origin/$channel" || {
+            echo "$TAG is not on $channel" >&2; exit 1; }
+          title="Indigo $TAG"
+          if [ "$prerelease" = false ]; then
+            heading=$(awk -v v="$TAG" '/^## / && $2 == v { sub(/^## /, ""); print; exit }' CHANGELOG.md)
+            [ -n "$heading" ] || { echo "CHANGELOG.md has no '## $TAG' section" >&2; exit 1; }
+            title="Indigo $heading"
+          fi
+          {
+            echo "tag=$TAG"
+            echo "title=$title"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+      - name: Build Indigo
+        run: make dev
+      - name: Check the DOL names its commit
+        run: grep -aqF "$(git rev-parse --short HEAD)" cube/swiss/swiss.dol
+      - name: Package the SD card zip and the notes
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          mkdir -p dist
+          buildtools/sd_package.sh "$TAG" cube/swiss/swiss.dol dist
+          (cd dist && sha256sum "Indigo-$TAG.zip" > SHA256SUMS.txt)
+          buildtools/release_notes.sh "$TAG" > dist/notes.md
+          cat dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ steps.meta.outputs.tag }}
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish the GitHub Release
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-${{ needs.build.outputs.tag }}
+          path: dist
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/Indigo-*.zip
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+          TITLE: ${{ needs.build.outputs.title }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          if [ "$PRERELEASE" = true ]; then set -- --prerelease --latest=false; else set -- --latest; fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "$TITLE" --notes-file dist/notes.md "$@" \
+            "dist/Indigo-$TAG.zip" dist/SHA256SUMS.txt

@@ -7,6 +7,7 @@
 
 <p align="center">
   <a href="https://norvitech.com"><img alt="NorviTech Suite" src="https://img.shields.io/badge/NorviTech-Suite-FD8024.svg"></a>
+  <a href="https://github.com/spencercnorton/indigo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/spencercnorton/indigo/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/spencercnorton/indigo/tags"><img alt="Latest release" src="https://img.shields.io/github/v/tag/spencercnorton/indigo?label=release&sort=semver"></a>
   <a href="https://github.com/spencercnorton/indigo/releases/latest"><img alt="Download for your SD card" src="https://img.shields.io/badge/download-SD%20card%20zip-2D2D2D.svg"></a>
   <a href="LICENSE"><img alt="Licence" src="https://img.shields.io/badge/licence-GPL--2.0--or--later-blue.svg"></a>
@@ -269,16 +270,22 @@ checked in advance.
 
 - Bugs and feature requests: [open an issue](https://github.com/spencercnorton/indigo/issues/new/choose). Questions: [Discussions](https://github.com/spencercnorton/indigo/discussions). Do not report fork issues to the upstream project.
 - Security reports: [private vulnerability reporting](https://github.com/spencercnorton/indigo/security/advisories/new) — see [SECURITY.md](SECURITY.md). There is no e-mail address; that is deliberate.
-- Pull requests are welcome; read [CONTRIBUTING.md](CONTRIBUTING.md) first — this repository is a release mirror, and accepted changes ship in the next tagged release.
+- Pull requests are welcome: they go to the `beta` branch, and CI builds a test zip for each one. Read [CONTRIBUTING.md](CONTRIBUTING.md) first; [docs/RELEASING.md](docs/RELEASING.md) says how betas become releases.
 - If Indigo saves you time, you can [support its development](https://buy.stripe.com/8x26oH2U44f65TRe574wM04).
 
 ## Development
 
 ```bash
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2 make dev      # what CI builds
-buildtools/check_whitespace.sh
+  ghcr.io/extremscorner/libogc2 make dev      # the DOL, as CI builds it
+buildtools/ui/tests/run_tests.sh all          # host tests: plain, sanitized, contracts
+buildtools/check_whitespace.sh origin/beta    # lint
+buildtools/check_ui_isolation.sh origin/beta  # the change stays in the interface
 ```
+
+Work lands on `beta` by pull request and ships as `vX.Y.Z-beta.N` pre-releases;
+a beta that holds up is promoted to `main` as a release. See
+[AGENTS.md](AGENTS.md) for the working detail.
 
 ## Licence
 

@@ -1,0 +1,14 @@
+# Keeps the pinned GitHub Actions current: one pull request a week into beta,
+# where CI runs on it like any other change.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: beta
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci

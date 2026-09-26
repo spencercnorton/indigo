@@ -16,7 +16,9 @@ otherwise.
 
 ## Supported versions
 
-Only the latest tagged release is supported. Indigo has no LTS line.
+The latest release (`vX.Y.Z`, marked Latest on GitHub) gets security fixes.
+Betas (`vX.Y.Z-beta.N`) are for testing; a problem found in a beta is fixed in
+the next beta. Indigo has no LTS line.
 
 ## Scope
 
