@@ -6,6 +6,15 @@ Changes land under `## Unreleased` until the release names them.
 
 ## Unreleased
 
+### Menu Widescreen
+
+- New setting, Setup › Display › Menu Widescreen, for a TV set to 16:9.
+  Indigo's own screens are drawn narrower so the TV's stretch gives them
+  back their shape: the background and its waves fill the whole screen, and
+  the cube, the text and the menus keep their size in the middle. The clock
+  moves into the corner. It changes as soon as you switch it. Games still
+  follow Force Widescreen.
+
 ### For developers
 
 - Indigo is developed on GitHub. Changes land on the `beta` branch by pull

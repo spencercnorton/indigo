@@ -131,6 +131,7 @@ typedef struct {
 	int disableMenuMusic;	// 0 = ambient menu music on (default)
 	int disableMenuSFX;	// 0 = menu nav/select sounds on (default)
 	int uiColor;	// UI_COLOR_INDIGO (default): the menus' color
+	int menuWidescreen;	// 0 = 4:3 (default); 1 = the menus drawn for a 16:9 TV (gui/ui_stage.h)
 	int libraryIcon;	// each Home face's icon: a choice 0-3 of its own four (gui/ui_home.h)
 	int sourceIcon;
 	int settingsIcon;

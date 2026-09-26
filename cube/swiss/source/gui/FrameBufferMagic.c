@@ -37,6 +37,7 @@
 #include "ui_color.h"
 #include "ui_perf.h"
 #include "ui_scene.h"
+#include "ui_stage.h"
 #include "ui_hint.h"
 #include "ui_assets.h"
 #include "ui_command_rail.h"
@@ -600,6 +601,7 @@ static void drawInit()
 	GX_LoadTexMtxImm(GXmodelView2D,GX_TEXMTX0,GX_MTX2x4);
 	GX_LoadPosMtxImm(GXmodelView2D,GX_PNMTX0);
 	guOrtho(GXprojection2D, 0, 480, 0, 640, 0, 1);
+	UIStage_Project(GXprojection2D);
 	GX_LoadProjectionMtx(GXprojection2D, GX_ORTHOGRAPHIC);
 
 	GX_SetZMode(GX_DISABLE,GX_ALWAYS,GX_FALSE);
@@ -1305,6 +1307,7 @@ static void _DrawPresentation(uiDrawObj_t *evt)
 	uiMotionMode_t motionMode;
 	u32 activeCell = 0u;
 	u32 i;
+	int scrimLeft;
 
 	if(data == NULL) {
 		return;
@@ -1319,7 +1322,10 @@ static void _DrawPresentation(uiDrawObj_t *evt)
 	}
 
 	drawInit();
-	_DrawSimpleBox(0, 0, 640, 480, 0, scrim, transparent);
+	/* The scrim covers the whole frame, the widescreen margins too. */
+	scrimLeft = (int)floorf(UIStage_Left());
+	_DrawSimpleBox(scrimLeft, 0, (int)ceilf(UIStage_Right()) - scrimLeft, 480, 0,
+		scrim, transparent);
 	_DrawSimpleBox(68, 115, 504, 254, 0, shadow, transparent);
 	_DrawSimpleBox(72, 111, 496, 254, 0, panel, border);
 	_DrawSimpleBox(72, 111, 6, 254, 0, accent, transparent);
@@ -2448,6 +2454,8 @@ static void _UpdateSystemInstrument(void)
 // Internal
 static void _DrawTitleBar(uiDrawObj_t *evt) {
 	float reveal = UIScene_Frame()->chromeProgress;
+	/* The dial sits 40 in from the right edge the frame shows. */
+	int dialX = (int)(UIStage_Right() - 40.0f);
 	int offsetY;
 	GXColor textColor;
 
@@ -2462,14 +2470,14 @@ static void _DrawTitleBar(uiDrawObj_t *evt) {
 	textColor = (GXColor) {209, 201, 255, (u8)(232.0f * reveal)};
 
 	/* A single pre-traversal instrument snapshot owns both header and cube. */
-	_DrawSystemDial(600.0f, 43.0f + offsetY, systemInstrument.coreTemperature, (u8)(255.0f * reveal));
+	_DrawSystemDial((float)dialX, 43.0f + offsetY, systemInstrument.coreTemperature, (u8)(255.0f * reveal));
 	if(systemInstrument.temperatureText[0]) {
-		drawStringMedium(600, 43 + offsetY,
+		drawStringMedium(dialX, 43 + offsetY,
 			systemInstrument.temperatureText,
 			0.42f, ALIGN_CENTER, textColor);
 	}
 	if(systemInstrument.clock.available) {
-		drawStringMedium(568, 43 + offsetY, systemInstrument.timeText,
+		drawStringMedium(dialX - 32, 43 + offsetY, systemInstrument.timeText,
 			0.54f, ALIGN_RIGHT, textColor);
 	}
 }
@@ -3785,7 +3793,7 @@ static void _DrawHomeModalDepth(const uiHomeLayout_t *layout, float reveal)
 		GX_LO_CLEAR);
 	GX_SetZMode(GX_DISABLE, GX_ALWAYS, GX_FALSE);
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 12);
-		_putFlatRect(0.0f, 0.0f, 640.0f, 480.0f, scrim);
+		_putFlatRect(UIStage_Left(), 0.0f, UIStage_Right() - UIStage_Left(), 480.0f, scrim);
 		_putFlatRect((float)layout->modalBounds.left,
 			(float)layout->modalBounds.top, (float)width, (float)height,
 			card);
@@ -4626,6 +4634,15 @@ static void _CheatsPanel(int x, int y, int width, int height, GXColor color)
 	drawInit();
 }
 
+/* A page that covers the screen, and in widescreen the margins beside it. */
+static void _PagePanel(int x, int y, int width, int height, GXColor color)
+{
+	int left = (int)floorf(UIStage_Left());
+	int right = (int)ceilf(UIStage_Right());
+
+	_CheatsPanel(x + left, y, width + (right - 640) - left, height, color);
+}
+
 /* Message and progress boxes, in the Settings pages' card language: a flat
  * rounded card with a hairline edge and, for a message, an accent bar that
  * says what kind it is (a warning's amber, a failure's red, otherwise
@@ -4681,7 +4698,7 @@ static void _DrawCheats(uiDrawObj_t *evt)
 	focusY = (int)lrintf(UIMotion_SpringUpdate(&data->focusY,
 		UIAnim_Delta(), motion));
 
-	_CheatsPanel(-6, -6, 652, 492, (GXColor){8, 12, 27, 254});
+	_PagePanel(-6, -6, 652, 492, (GXColor){8, 12, 27, 254});
 	_CheatsPanel(40, 30, 40, 3, accent);
 	drawStringMedium(40, 63, "Cheats", 1.05f, ALIGN_LEFT, primary);
 	drawStringMedium(600, 63, s->enabledText, 0.54f, ALIGN_RIGHT, accent);
@@ -5060,7 +5077,7 @@ static void _DrawSettingsPage(uiDrawObj_t *evt)
 	UISettingsFocus_Update(&data->focus, UIAnim_Delta(), motion, &frame);
 
 	back.a = UI_SETLAYOUT_PAGE_ALPHA;
-	_CheatsPanel(UI_SETLAYOUT_PAGE_X, UI_SETLAYOUT_PAGE_Y, UI_SETLAYOUT_PAGE_W,
+	_PagePanel(UI_SETLAYOUT_PAGE_X, UI_SETLAYOUT_PAGE_Y, UI_SETLAYOUT_PAGE_W,
 		UI_SETLAYOUT_PAGE_H, back);
 	_SettingsBox(&l->accentBar, settingsAccent);
 	drawStringMedium(l->titleX, l->titleY, s->title, s->titleScale,
@@ -5419,7 +5436,7 @@ static void _DrawSaves(uiDrawObj_t *evt)
 	focusY = (int)lrintf(UIMotion_SpringUpdate(&data->focusY,
 		UIAnim_Delta(), motion));
 
-	_CheatsPanel(-6, -6, 652, 492, settingsBack);
+	_PagePanel(-6, -6, 652, 492, settingsBack);
 	_CheatsPanel(40, 30, 40, 3, settingsAccent);
 	drawStringMedium(40, 63, s->title, 1.05f, ALIGN_LEFT, settingsInk);
 	drawStringMedium(600, 63, s->status, 0.54f, ALIGN_RIGHT, settingsAccent);
@@ -5952,6 +5969,8 @@ static void *videoUpdate(void *videoEventQueue) {
 		if(vmode->field_rendering) {
 			GX_SetViewportJitter(0.0f, 0.0f, vmode->fbWidth, vmode->efbHeight, 0.0f, 1.0f, VIDEO_GetNextField());
 		}
+		/* One shape for the whole frame, whatever Settings does meanwhile. */
+		UIStage_SetWide(swissSettings.menuWidescreen);
 		// Draw out every event
 		videoEventQueueEntry = (uiDrawObjQueue_t*)videoEventQueue;
 		while(videoEventQueueEntry != NULL) {

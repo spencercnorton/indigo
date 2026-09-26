@@ -515,6 +515,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Disable Menu Music=%s\r\n", swissSettings.disableMenuMusic ? "Yes":"No");
 	fprintf(fp, "Disable Menu SFX=%s\r\n", swissSettings.disableMenuSFX ? "Yes":"No");
 	fprintf(fp, "Menu Color=%s\r\n", uiColorStr[swissSettings.uiColor]);
+	fprintf(fp, "Menu Widescreen=%s\r\n", swissSettings.menuWidescreen ? "Yes":"No");
 	fprintf(fp, "Library Icon=%s\r\n", libraryIconStr[swissSettings.libraryIcon]);
 	fprintf(fp, "Source Icon=%s\r\n", sourceIconStr[swissSettings.sourceIcon]);
 	fprintf(fp, "Settings Icon=%s\r\n", settingsIconStr[swissSettings.settingsIcon]);
@@ -1339,6 +1340,9 @@ void config_parse_global(char *configData) {
 							break;
 						}
 					}
+				}
+				else if(!strcmp("Menu Widescreen", name)) {
+					swissSettings.menuWidescreen = !strcmp("Yes", value);
 				}
 				else if(!strcmp("Library Icon", name)) {
 					for(int i = 0; i < UI_HOME_ICON_CHOICES; i++) {

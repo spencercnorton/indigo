@@ -54,6 +54,8 @@ enum { GX_QUADS=1, GX_TRIANGLESTRIP=2, GX_TRIANGLES=3, GX_VTXFMT0=0,
     GX_TEXMAP0=0 };
 /* Menu Color is Indigo here: the emitters' recolor passes colors through. */
 static void UIColor_Apply(u8 *r,u8 *g,u8 *b) { (void)r; (void)g; (void)b; }
+/* The 4:3 stage; test_ui_stage.c covers widescreen. */
+static float UIStage_FrameX(float x) { return x; }
 static bool active; static int phase,remaining,count,begins,uvs,uvCalls,blendDst;
 static guVector positions[8192];
 static GXColor colors[8192];

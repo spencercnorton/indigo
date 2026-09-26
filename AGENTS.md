@@ -72,6 +72,12 @@ with a tagged release.
 - **Keep the draw path cheap.** The interface is drawn with the console's GX
   pipeline at a fixed per-frame budget: no per-frame allocation, no blocking
   read in a draw function.
+- **Draw for both screen shapes.** Menu Widescreen squeezes every projection
+  through `UIStage_Project` (`gui/ui_stage.h`), so the frame shows the 640 x 480
+  stage plus a margin at each side. Load a new projection through it, keep
+  layouts in 0..640, and reach the screen's edges with `UIStage_Left()` and
+  `UIStage_Right()` rather than 0 and 640 (a full-screen page goes through
+  `_PagePanel`).
 - **Tests with every change.** A bug fix carries a regression test; a feature
   carries the smallest test that fails without it. Pinned hashes in the audits
   (for example `SHOW_ACTIONS_SHA256`) are updated on purpose, never to make a

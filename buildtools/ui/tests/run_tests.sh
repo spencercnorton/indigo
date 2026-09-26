@@ -98,6 +98,9 @@ run_plain() {
 	./test_ui_clock
 	./test_ui_hint
 
+	echo "== widescreen stage (plain) =="
+	./test_ui_stage
+
 	echo "== Home reducer, lifecycle, layout, scene, and command rail (plain) =="
 	./test_ui_home
 	./test_ui_cube_motif
@@ -150,6 +153,9 @@ run_sanitized() {
 	./test_ui_menu_input_san
 	./test_ui_clock_san
 	./test_ui_hint_san
+
+	echo "== widescreen stage (ASan/UBSan) =="
+	./test_ui_stage_san
 
 	echo "== Home reducer, lifecycle, layout, scene, and command rail (ASan/UBSan) =="
 	./test_ui_home_san
