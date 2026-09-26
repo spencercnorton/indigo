@@ -59,8 +59,8 @@ modes your cable can't show stay out of it.
   <img alt="Help for Force Widescreen over the settings list: it stretches games made for 4:3 to fill a 16:9 screen; 3D widens the 3D view only; 2D+3D also widens 2D menus and on-screen displays." src="images/settings-help.png" width="640">
 </p>
 
-A dimmed setting doesn't apply to your setup right now, such as IPv4 Address
-while DHCP is on.
+A dimmed setting doesn't apply to your setup right now, such as Save Folder
+when there's no Configuration Device.
 
 ## Leave: keep or discard
 

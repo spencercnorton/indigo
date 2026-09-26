@@ -15,6 +15,19 @@ Changes land under `## Unreleased` until the release names them.
   moves into the corner. It changes as soon as you switch it. Games still
   follow Force Widescreen.
 
+### Fixes
+
+- Settings › Storage no longer offers A Edit on Save Folder while it is
+  dimmed. Without a Configuration Device there are no folders to list, so A
+  does nothing there. Dimmed network settings keep A Edit: A still opens
+  their editor.
+
+### Documentation
+
+- The guide's example of a dimmed setting is Save Folder with no
+  Configuration Device. IPv4 Address, the old example, doesn't dim while DHCP
+  is on.
+
 ### For developers
 
 - Indigo is developed on GitHub. Changes land on the `beta` branch by pull

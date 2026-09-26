@@ -238,6 +238,26 @@ class SettingsViewsTest(unittest.TestCase):
         save = save[:save.index("\n}\n")]
         self.assertIn("if(res) {\n\t\tglobalFileLoaded = true;", save)
 
+    def test_a_text_row_offers_edit_only_where_a_acts(self):
+        # A dimmed network row (no adapter yet) still opens the text editor;
+        # a dimmed Save Folder has no Configuration Device to list, so A does
+        # nothing there and its footer must not offer "A  Edit".
+        focus = SETTINGS_C[SETTINGS_C.index("static void settingsDescribeFocus("):]
+        focus = focus[:focus.index("\n}\n")]
+        self.assertRegex(focus, r'if\(row\.enabled \|\| ref->page == PAGE_NETWORK\) \{\s*'
+                                r'hints\[count\+\+\] = "A  Edit";')
+        # Only these can dim a text row; a new one needs its hint decided.
+        self.assertEqual(set(re.findall(r'rowText(?:Number)?\(row, "[^"]*", [^;]*, ([^;]*?)\);',
+                                        SETTINGS_C)),
+                         {"true", "netEnable", "devices[DEVICE_CONFIG] != NULL"})
+        arms = toggle_arms()
+        network = re.findall(r'case (SET_\w+): rowText(?:Number)?\(row, "[^"]*", [^;]*, netEnable\);',
+                             SETTINGS_C)
+        self.assertGreater(len(network), 10)
+        for option in network:
+            self.assertTrue(arms[option].strip().startswith("DrawGetTextEntry("), option)
+        self.assertIn("devices[DEVICE_CONFIG] != NULL &&", arms["SET_SAVE_FOLDER"])
+
     def test_entry_points_land_where_they_should(self):
         self.assertIn("show_settings_view(VIEW_QUICK, 0, NULL)", SWISS_C)
         self.assertNotIn("show_settings(PAGE_GLOBAL, 0, NULL)", SWISS_C)

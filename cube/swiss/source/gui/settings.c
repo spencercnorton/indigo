@@ -1148,7 +1148,11 @@ static void settingsDescribeFocus(uiSetPageSnapshot_t *page, int view,
 
 		settingsDescribeRow(ref->page, ref->option, gameConfig, &row);
 		if(row.kind == SET_ROWKIND_TEXT) {
-			hints[count++] = "A  Edit";
+			/* A dimmed network row still opens the editor; a dimmed Save
+			 * Folder has no Configuration Device to list folders on. */
+			if(row.enabled || ref->page == PAGE_NETWORK) {
+				hints[count++] = "A  Edit";
+			}
 		}
 		else if(row.kind == SET_ROWKIND_ACTION) {
 			if(row.enabled) {
