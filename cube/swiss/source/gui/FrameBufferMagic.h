@@ -208,6 +208,54 @@ void DrawUpdateSettingsList(uiDrawObj_t *list,
 	const uiSetListSnapshot_t *snapshot, int previewColor);
 /* A row's help (its tooltip) as a card over the page. */
 uiDrawObj_t* DrawSettingsHelp(const char *help);
+
+/* Memory Cards (saves.c): one page event, drawn from this snapshot in the
+ * cheat browser's language. A row carries its banner inline, and the rows
+ * come first, so each banner and its palette stay 32-byte aligned in the
+ * memalign(32) event, as the Library's cards do. */
+#define UI_SAVES_PAGE_ROWS 6
+#define UI_SAVES_PAGE_TABS 3
+
+typedef enum {
+	UI_SAVES_ROW_SAVE = 0,
+	UI_SAVES_ROW_FOLDER,
+	UI_SAVES_ROW_PARENT
+} uiSavesRowKind_t;
+
+typedef struct {
+	/* RGB5A3, or CI8 then its 256-color palette */
+	u8 banner[CARD_BANNER_W * CARD_BANNER_H * 2];
+	char title[64];
+	char blocks[24];
+	u8 bannerFormat;	/* CARD_BANNER_NONE, _CI or _RGB */
+	u8 kind;		/* uiSavesRowKind_t */
+	u8 reserved[6];
+} uiSavesPageRow_t;
+
+typedef struct {
+	uiSavesPageRow_t rows[UI_SAVES_PAGE_ROWS];
+	char title[32];
+	char tabs[UI_SAVES_PAGE_TABS][16];
+	char status[48];
+	char section[96];
+	char position[16];
+	char detail[96];
+	char empty[2][96];
+	char hint[2][64];	/* left, in ink, and right */
+	s32 count;
+	s32 first;
+	s8 tabCount;		/* 0: the folder chooser, no tabs */
+	s8 tab;
+	s8 rowCount;
+	s8 focusRow;
+	u8 warning;		/* detail is a warning */
+	u8 reserved[3];
+	u32 list;		/* changes with the list shown: the focus snaps */
+} uiSavesPageSnapshot_t;
+
+uiDrawObj_t* DrawSavesPage(const uiSavesPageSnapshot_t *snapshot);
+void DrawUpdateSavesPage(uiDrawObj_t *page,
+	const uiSavesPageSnapshot_t *snapshot);
 uiDrawObj_t* DrawFileBrowserButton(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
 uiDrawObj_t* DrawFileBrowserButtonMeta(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
 uiDrawObj_t* DrawFileCarouselEntry(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int distFromMiddle);

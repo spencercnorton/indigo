@@ -33,6 +33,11 @@ typedef struct {
 	float orbitStrength;
 	float introProgress;
 	float chromeProgress;
+	/* The boot fly-in: how much farther off than its pose the cube still is
+	 * (cube units) and how far it has left to spin (radians). Both reach 0 as
+	 * it arrives on its Home face. */
+	float introDistance;
+	float introSpin;
 	/* Poster opacity follows the cube retreat, separate from the boot chrome. */
 	float libraryReveal;
 	uiHomeFace_t homeFace;

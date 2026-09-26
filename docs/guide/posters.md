@@ -20,8 +20,9 @@ Ready-made packs are made from GameTDB's cover art:
 
 Unzip the one you want into the root of the card; it holds
 `swiss/ui/posters.pak`. Indigo reads one pack at a time, so pick the region
-most of your games are from. Checksums and details are at
-[indigo.norvitech.com](https://indigo.norvitech.com).
+most of your games are from. Checksums are in
+[SHA256SUMS.txt](https://indigo.norvitech.com/SHA256SUMS.txt), and the
+[Indigo page](https://norvitech.com/indigo/) has the details.
 
 A game gets its poster when its game ID is in the pack. Games from the other
 region, and the few games GameTDB has no art for, keep their banner card.
@@ -56,4 +57,4 @@ on [GameTDB](https://www.gametdb.com/).
 
 ---
 
-<p align="center"><a href="system.md">← System</a> · <a href="troubleshooting.md">Troubleshooting →</a></p>
+<p align="center"><a href="memory-cards.md">← Memory Cards</a> · <a href="troubleshooting.md">Troubleshooting →</a></p>

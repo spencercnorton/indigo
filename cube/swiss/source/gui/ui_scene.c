@@ -6,8 +6,15 @@
 
 #include "ui_scene.h"
 
-#define UI_SCENE_BOOT_HOLD_SECONDS 1.15f
-#define UI_SCENE_CHROME_REVEAL_START 0.62f
+#define UI_SCENE_BOOT_HOLD_SECONDS 0.8f
+#define UI_SCENE_CHROME_REVEAL_START 0.45f
+/* The boot fly-in: the cube starts far off, spinning fast, and rushes to its
+ * Home pose. The distance eases out cubically, so it looms and then brakes;
+ * the spin eases out quadratically: fastest while the cube is still small,
+ * about 24 degrees a frame at 60 Hz once it is half way in. */
+#define UI_SCENE_BOOT_FLY_SECONDS 0.5f
+#define UI_SCENE_BOOT_FLY_DISTANCE 60.0f
+#define UI_SCENE_BOOT_SPIN_RADIANS 12.5663706f /* two turns */
 #define UI_SCENE_ORIENTATION_EPSILON 0.0002f
 #define UI_SCENE_CUBE_YAW_RESPONSE 6.5f
 #define UI_SCENE_HOME_TURN_RESPONSE 10.0f
@@ -72,7 +79,8 @@ static uint32_t requestedLibraryLayout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
 static uiSceneState_t state;
 
 static const uiScenePose_t poses[UI_SCENE_COUNT] = {
-	[UI_SCENE_BOOT] = {0.0f, 0.22f, 0.08f, 0.30f, -0.78f, 0.0f},
+	/* The cube flies in at its Home size and turn, seen a little from above. */
+	[UI_SCENE_BOOT] = {0.0f, 0.22f, 0.92f, 0.22f, 0.28f, 0.0f},
 	[UI_SCENE_HOME] = {0.0f, 0.22f, 0.92f, 0.0f, 0.28f, 1.0f},
 	/* Source is a Home context, not a separate authored destination. Its
 	 * distinct scene id hides root composition while retaining the live Home
@@ -90,6 +98,18 @@ static const uiScenePose_t verticalLibraryPose =
 	{-1.36f, 0.0f, 0.44f, 0.10f, 0.58f, 0.48f};
 static const uiScenePose_t gridLibraryPose =
 	{-3.60f, 0.0f, 0.44f, 0.10f, 0.58f, 0.48f};
+
+/* How far off the cube still is this many seconds in, and how far it still
+ * has to spin. */
+static void bootFly(float seconds, float *distance, float *spin)
+{
+	float left = 1.0f - seconds / UI_SCENE_BOOT_FLY_SECONDS;
+
+	if(!(left > 0.0f)) left = 0.0f;
+	if(left > 1.0f) left = 1.0f;
+	*distance = UI_SCENE_BOOT_FLY_DISTANCE * left * left * left;
+	*spin = UI_SCENE_BOOT_SPIN_RADIANS * left * left;
+}
 
 static bool isHomeYawScene(uiSceneId_t scene)
 {
@@ -675,6 +695,13 @@ void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode)
 	state.frame.chromeProgress = UIMotion_EaseOutCubic(
 		(state.frame.introProgress - UI_SCENE_CHROME_REVEAL_START) /
 		(1.0f - UI_SCENE_CHROME_REVEAL_START));
+	/* Full motion flies the cube in; Reduced fades it in where it rests. */
+	state.frame.introDistance = 0.0f;
+	state.frame.introSpin = 0.0f;
+	if(motionMode == UI_MOTION_FULL && !state.bootComplete) {
+		bootFly(state.bootElapsed, &state.frame.introDistance,
+			&state.frame.introSpin);
+	}
 	/* Library posters must not appear at full opacity over the Home-sized
 	 * cube on the first destination frame. Derive their reveal from the live
 	 * retreat pose: interruption and Off therefore need no separate timeline.
@@ -685,7 +712,9 @@ void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode)
 	state.frame.libraryReveal = (targetScene == UI_SCENE_LIBRARY ||
 		targetScene == UI_SCENE_GAME_DETAIL) ?
 		retreat * retreat * (3.0f - 2.0f * retreat) : 0.0f;
-	state.frame.scene = state.bootComplete ? targetScene : UI_SCENE_BOOT;
+	/* The boot already shows its destination, so the chrome that scene draws
+	 * fades in with chromeProgress rather than appearing when the boot ends. */
+	state.frame.scene = targetScene;
 	UICubeMotif_Update(&state.motifs, deltaSeconds, motionMode);
 	memcpy(state.frame.homeMotifBasis, state.motifs.basis.face,
 		sizeof(state.frame.homeMotifBasis));

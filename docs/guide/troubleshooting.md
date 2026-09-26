@@ -101,10 +101,11 @@ Leaving with **Discard & Exit** throws away the changes you made.
 
 ## In-Game Reset takes me to stock Swiss
 
-With In-Game Reset set to **Apploader**, a reset returns to the Swiss inside
-`/swiss/patches/apploader.img`, not to Indigo. Set it to **Reboot** in
-Settings › Quick to reset the console instead, which brings you back to
-Indigo when your loader boots it.
+In-Game Reset set to **Apploader** returns to whatever is in
+`/swiss/patches/apploader.img`. Copy that file from the zip of the Indigo
+you run: the one stock Swiss ships is stock Swiss. **Reboot** resets the
+console instead, which returns to Indigo only when your loader boots it
+(GC Loader boots `boot.iso`).
 
 ## The same game opens every time Indigo starts
 

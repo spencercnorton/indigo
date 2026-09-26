@@ -139,9 +139,11 @@ $(OFILES_SOURCES) : $(HFILES)
 #---------------------------------------------------------------------------------
 executable.xz : executable.bin
 #---------------------------------------------------------------------------------
+# xz, not 7z: the pinned libogc2 image has no 7z. Same PowerPC BCJ + LZMA2 chain;
+# CRC32 because XZ Embedded here is built without CRC64.
 	$(SILENTMSG) $(notdir $@)
 	$(SILENTCMD)rm -f $@
-	$(SILENTCMD)7z a $@ $< -mf=ppc -mx=9
+	$(SILENTCMD)xz --format=xz --check=crc32 --powerpc --lzma2=preset=9e -T1 -c $< > $@
 
 #---------------------------------------------------------------------------------
 %.bin.o %_bin.h : %.bin

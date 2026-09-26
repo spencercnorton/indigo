@@ -20,7 +20,7 @@ cube to the face you want and press A.
 | **Library** | Your games, as posters. See [Library](library.md). |
 | **Source** | A short list: **Change Source** picks the device your games come from, and **Refresh Library** reads it again, for example after you swap the disc. See [Source](source.md). |
 | **Settings** | Settings. See [Settings](settings.md). |
-| **System** | A short list: **System Information** and **Restart Indigo**. See [System](system.md). |
+| **System** | A short list: **System Information**, **Memory Cards** and **Restart Indigo**. See [System](system.md) and [Memory Cards](memory-cards.md). |
 
 Left and Right turn the cube sideways; Up and Down tip it over. Either way you
 reach the next face, and the name under the cube tells you which face is in
@@ -28,6 +28,14 @@ front. The face icons can be changed: see [Make it yours](personalize.md#cube-ic
 
 Indigo starts on Library when it finds a device to read games from. If it
 doesn't, it starts on Source, and A on Library takes you there too.
+
+When Indigo starts, the cube flies in from the distance, spinning, and comes
+to rest on that face within a second. With UI Motion set to Reduced it fades
+in instead, and with Off it is simply there.
+
+<p align="center">
+  <img alt="Indigo starting: a small cube spins in from the distance, tumbles toward you and comes to rest on the Library face, and LIBRARY and the controls fade in." src="../screenshots/intro.png" width="640">
+</p>
 
 ## The glass
 

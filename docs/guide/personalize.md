@@ -55,10 +55,11 @@ controller, and the Clock tells the time.
 
 Settings › Quick › **UI Motion**:
 
-- **Full**: calm movement and ambient detail. The cube sways, the backdrop
-  drifts, and the Library face's controller plays by itself when you leave
-  it alone.
-- **Reduced**: quicker transitions without the decorative movement.
+- **Full**: calm movement and ambient detail. The cube flies in when Indigo
+  starts, it sways, the backdrop drifts, and the Library face's controller
+  plays by itself when you leave it alone.
+- **Reduced**: quicker transitions without the decorative movement. The cube
+  fades in when Indigo starts instead of flying in.
 - **Off**: everything moves instantly.
 
 Motion never delays your input: Indigo acts on a press at once, even in the

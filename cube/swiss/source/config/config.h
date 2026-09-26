@@ -45,6 +45,10 @@ int config_each_game_file(void (*visit)(const char *gameId, char *text, void *co
 	void *context);
 void config_defaults(ConfigEntry *entry);
 int config_update_game(ConfigEntry *entry, ConfigEntry *defaults, bool checkConfigDevice);
+/* Mounts the settings device unless it's the source; config_unset_device
+ * lets it go again. */
+bool config_set_device(void);
+void config_unset_device(void);
 int config_update_global(bool checkConfigDevice);
 int config_update_autoload(bool checkConfigDevice);
 bool config_global_file_loaded(void);

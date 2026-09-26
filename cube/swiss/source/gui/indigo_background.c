@@ -10,7 +10,14 @@
 #define PRIMARY_WAVE_SEGMENTS 16
 #define REAR_WAVE_SEGMENTS 12
 #define CUBE_CAMERA_Z -5.4f
-#define BOOT_CUBE_HANDOFF 0.82f
+/* The boot fly-in's tumble: turns about the cube's own horizontal axis per
+ * turn about its vertical one, so the spin shows every face on the way in. */
+#define CUBE_INTRO_TUMBLE 0.45f
+/* Boot progress at which the flown-in cube arrives and the background cube,
+ * lit, takes over; ui_scene.c's fly-in takes 0.5 s of the 0.8 s boot. */
+#define BOOT_CUBE_HANDOFF 0.625f
+/* The veil is gone 0.12 s in, while the cube is still far off. */
+#define BOOT_VEIL_LIFT 0.15f
 #define CUBE_IDLE_SWAY_RATE 0.31f
 #define CUBE_IDLE_SWAY_RADIANS 0.035f
 #define HOME_DECORATIVE_STRENGTH 0.76f
@@ -119,25 +126,17 @@ static void setupRasterPipeline(void)
 	GX_SetCullMode(GX_CULL_NONE);
 }
 
-static void drawIndigoWash(void)
+/* The stage, and at boot the veil over it: a veil in the stage's own colors
+ * shows no step when the menu activates, and lifts to show the scene. */
+static void drawIndigoWash(u8 alpha)
 {
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
 		/* This pass deliberately replaces the legacy grey backdrop rather than
 		 * tinting it. The cube needs a clean, high-contrast stage. */
-		putVertex((indigoPoint_t) {0.0f, 0.0f}, (GXColor) {6, 6, 22, 255});
-		putVertex((indigoPoint_t) {640.0f, 0.0f}, (GXColor) {9, 7, 27, 255});
-		putVertex((indigoPoint_t) {640.0f, 480.0f}, (GXColor) {29, 19, 65, 255});
-		putVertex((indigoPoint_t) {0.0f, 480.0f}, (GXColor) {19, 14, 48, 255});
-	GX_End();
-}
-
-static void drawBootVeil(u8 alpha)
-{
-	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-		putVertex((indigoPoint_t) {0.0f, 0.0f}, (GXColor) {7, 6, 25, alpha});
-		putVertex((indigoPoint_t) {640.0f, 0.0f}, (GXColor) {10, 8, 33, alpha});
-		putVertex((indigoPoint_t) {640.0f, 480.0f}, (GXColor) {18, 13, 49, alpha});
-		putVertex((indigoPoint_t) {0.0f, 480.0f}, (GXColor) {12, 9, 39, alpha});
+		putVertex((indigoPoint_t) {0.0f, 0.0f}, (GXColor) {6, 6, 22, alpha});
+		putVertex((indigoPoint_t) {640.0f, 0.0f}, (GXColor) {9, 7, 27, alpha});
+		putVertex((indigoPoint_t) {640.0f, 480.0f}, (GXColor) {29, 19, 65, alpha});
+		putVertex((indigoPoint_t) {0.0f, 480.0f}, (GXColor) {19, 14, 48, alpha});
 	GX_End();
 }
 
@@ -450,7 +449,8 @@ static void loadCubeProjection(void)
 	static bool ready;
 
 	if(!ready) {
-		guPerspective(cubeProjection, 42.0f, 640.0f / 480.0f, 0.1f, 20.0f);
+		/* Far enough for the boot fly-in, which starts 60 units back. */
+		guPerspective(cubeProjection, 42.0f, 640.0f / 480.0f, 0.1f, 80.0f);
 		ready = true;
 	}
 	GX_LoadProjectionMtx(cubeProjection, GX_PERSPECTIVE);
@@ -482,6 +482,16 @@ static void setupCubePipeline(const uiSceneFrame_t *scene, float seconds, bool a
 	guMtxRotAxisRad(rotateX, &xAxis, pitch);
 	guMtxRotAxisRad(rotateY, &yAxis, yaw);
 	guMtxConcat(rotateY, rotateX, rotation);
+	/* The boot fly-in spins the cube about its vertical axis and tumbles it
+	 * about its horizontal one; both unwind to square on the Home face. */
+	if(scene->introSpin > 0.0f) {
+		Mtx spin;
+
+		guMtxRotAxisRad(spin, &yAxis, scene->introSpin);
+		guMtxConcat(rotation, spin, rotation);
+		guMtxRotAxisRad(spin, &xAxis, scene->introSpin * CUBE_INTRO_TUMBLE);
+		guMtxConcat(rotation, spin, rotation);
+	}
 	guMtxIdentity(navigation);
 	for(int row = 0; row < 3; row++) {
 		for(int column = 0; column < 3; column++) {
@@ -501,7 +511,8 @@ static void setupCubePipeline(const uiSceneFrame_t *scene, float seconds, bool a
 	raster->motifAlpha = scene->homeMotifAlpha;
 	guMtxScaleApply(rotation, rotation, scene->cubeScale, scene->cubeScale, scene->cubeScale);
 	guMtxIdentity(translation);
-	guMtxTransApply(translation, translation, scene->cubeX, scene->cubeY + bob, CUBE_CAMERA_Z);
+	guMtxTransApply(translation, translation, scene->cubeX, scene->cubeY + bob,
+		CUBE_CAMERA_Z - scene->introDistance);
 	guMtxConcat(translation, rotation, model);
 	GX_LoadPosMtxImm(model, GX_PNMTX0);
 	guMtxCopy(model, raster->model);
@@ -2040,7 +2051,7 @@ typedef struct glassRefraction {
 	float dispersion;
 	float sScale;
 	float tScale;
-	GXColor tint;
+	GXColor tint; /* its alpha is the layer's opacity */
 } glassRefraction_t;
 
 /* Toward the key light, up and to the right of the camera, in eye space. */
@@ -2208,7 +2219,7 @@ static void refractGlassVertex(const cubeRasterTransform_t *raster,
 	}
 	out->body = body;
 	out->color = glass->tint;
-	out->color.a = (u8)(255.0f * glassSmoothstep(0.0f, 0.34f, facing) + 0.5f);
+	out->color.a = (u8)((float)glass->tint.a * glassSmoothstep(0.0f, 0.34f, facing) + 0.5f);
 	UIColor_Apply(&out->color.r, &out->color.g, &out->color.b);
 	for(int channel = 0; channel < 3; channel++) {
 		float k = 1.0f + glass->dispersion * (float)(channel - 1);
@@ -2688,7 +2699,9 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 			240.0f - raster.model[1][3] * raster.scaleY / -raster.model[2][3],
 			0.46f * radius, 0.05f, 0.24f,
 			refract ? glassCopyS() : 0.0f, refract ? glassCopyT() : 0.0f,
-			{128, 125, 134, 255}
+			/* The layer fades in with the boot's light, never all at once. */
+			{128, 125, 134, (u8)(255.0f * glassSmoothstep(BOOT_CUBE_HANDOFF, 1.0f,
+				scene->introProgress) + 0.5f)}
 		};
 		if(refract) {
 			setupGlassRefractionPipeline();
@@ -2810,7 +2823,7 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 		orbitStrength * HOME_DECORATIVE_STRENGTH : orbitStrength;
 
 	setupRasterPipeline();
-	drawIndigoWash();
+	drawIndigoWash(255);
 	drawGlobeGrid(320.0f, 212.0f, drift * 0.18f);
 	if(!scene->visible) {
 		return;
@@ -2841,7 +2854,7 @@ void IndigoBackground_DrawBootOverlay(float seconds, bool animated,
 		return;
 	}
 
-	reveal = (scene->introProgress - 0.10f) / 0.72f;
+	reveal = scene->introProgress / BOOT_VEIL_LIFT;
 	if(reveal < 0.0f) {
 		reveal = 0.0f;
 	}
@@ -2855,5 +2868,5 @@ void IndigoBackground_DrawBootOverlay(float seconds, bool animated,
 		drawCube(scene, seconds, animated, clock, NULL, icons, false);
 	}
 	setupRasterPipeline();
-	drawBootVeil(veilAlpha);
+	drawIndigoWash(veilAlpha);
 }

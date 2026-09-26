@@ -118,6 +118,20 @@ static void computeRows(const uiHomeState_t *state,
 			state->selection == 0);
 		return;
 	}
+	/* Three rows share the band between the cube's rail and the command
+	 * line at a 19-pixel pitch: 12-pixel panels, the glows a pixel apart. */
+	if(count == 3) {
+		int row;
+
+		for(row = 0; row < 3; ++row) {
+			int top = 372 + row * 19;
+
+			setItem(&out->rows[row], rect(142, top, 498, top + 12),
+				rect(160, top + 2, 480, top + 10), HOME_CENTER_X, top + 6,
+				state->selection == row);
+		}
+		return;
+	}
 	setItem(&out->rows[0], rect(142, 372, 498, 388),
 		rect(160, 374, 480, 386), HOME_CENTER_X, 380,
 		state->selection == 0);

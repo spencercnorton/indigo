@@ -160,6 +160,7 @@ most use the same key there.
 
 | Key | Values | Default | On screen |
 | --- | --- | --- | --- |
+| `Save Folder` | A folder on the Configuration Device, such as `swiss/saves`, or `/` for its root. Where Memory Cards copies saves off a memory card and the folder it opens first. Empty means `swiss/saves`. | empty | Save Folder |
 | `Init DVD Drive at startup` | `Yes`, `No` | `No` | Init DVD Drive at startup |
 | `Stop DVD Drive motor` | `Yes`, `No` | `No` | Stop DVD Drive motor |
 | `Configure Audio Buffer` | `Off`, `Auto`, `On` | `On` | Configure Audio Buffer |

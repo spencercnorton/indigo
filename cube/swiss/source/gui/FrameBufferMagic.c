@@ -175,11 +175,12 @@ enum VideoEventType
 	EV_SETTINGS,
 	EV_CHEATS,
 	EV_SETTINGSLIST,
-	EV_SETTINGSHELP
+	EV_SETTINGSHELP,
+	EV_SAVES
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Background", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp"};
+						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "Saves"};
 
 typedef struct drawTexObjEvent {
 	GXTexObj *texObj;
@@ -272,8 +273,8 @@ typedef struct drawHomeEvent {
 	char heading[96];
 	char command[96];
 	float focusScale[UI_HOME_FACE_COUNT];
-	float rowSelectedScale[2];
-	float rowIdleScale[2];
+	float rowSelectedScale[UI_HOME_LAYOUT_MAX_ROWS];
+	float rowIdleScale[UI_HOME_LAYOUT_MAX_ROWS];
 	float headingScale;
 	float commandScale;
 	float contextCommandScale;
@@ -4008,7 +4009,7 @@ static void _PrepareHomeText(drawHomeEvent_t *data)
 	data->headingScale = UIHomeText_CopyFitted(data->heading,
 		sizeof(data->heading), headingSource, titleWidth, 0.58f,
 		GetTextSizeInPixels, NULL);
-	for(row = 0; row < 2; ++row) {
+	for(row = 0; row < UI_HOME_LAYOUT_MAX_ROWS; ++row) {
 		const char *label = UIHome_RowLabel(data->state.surface, row);
 		if(row < data->layout.rowCount && label[0] != '\0') {
 			int rowWidth = data->layout.rows[row].labelBounds.right -
@@ -5332,6 +5333,194 @@ uiDrawObj_t* DrawSettingsHelp(const char *help)
 	return event;
 }
 
+/* ------------------------------------------------------------------------
+ * Memory Cards (saves.c), in the same language: a tab for each slot and the
+ * SD card, a row per save with its banner, and the focus card springing from
+ * row to row as the cheat list's does.
+ * --------------------------------------------------------------------- */
+_Static_assert(sizeof(uiSavesPageRow_t) % 32 == 0,
+	"each save's banner stays 32-byte aligned");
+
+typedef struct {
+	uiSavesPageSnapshot_t snapshot;	/* first: its banners stay aligned */
+	GXTexObj banner[UI_SAVES_PAGE_ROWS];
+	GXTlutObj palette[UI_SAVES_PAGE_ROWS];
+	uiMotionSpring_t focusY;
+	bool focusInitialized;
+	u32 focusList;
+} drawSavesEvent_t;
+
+static void _SavesCopySnapshot(drawSavesEvent_t *data,
+	const uiSavesPageSnapshot_t *snapshot)
+{
+	int i;
+
+	data->snapshot = *snapshot;
+	for(i = 0; i < UI_SAVES_PAGE_ROWS; i++) {
+		uiSavesPageRow_t *row = &data->snapshot.rows[i];
+
+		memset(&data->banner[i], 0, sizeof(data->banner[i]));
+		if(i >= data->snapshot.rowCount) {
+			continue;
+		}
+		if(row->bannerFormat == CARD_BANNER_RGB) {
+			DCFlushRange(row->banner, CARD_BANNER_W * CARD_BANNER_H * 2);
+			GX_InitTexObj(&data->banner[i], row->banner, CARD_BANNER_W,
+				CARD_BANNER_H, GX_TF_RGB5A3, GX_CLAMP, GX_CLAMP, GX_FALSE);
+		}
+		else if(row->bannerFormat == CARD_BANNER_CI) {
+			DCFlushRange(row->banner, CARD_BANNER_W * CARD_BANNER_H + 512);
+			GX_InitTlutObj(&data->palette[i],
+				row->banner + CARD_BANNER_W * CARD_BANNER_H, GX_TL_RGB5A3, 256);
+			GX_InitTexObjCI(&data->banner[i], row->banner, CARD_BANNER_W,
+				CARD_BANNER_H, GX_TF_CI8, GX_CLAMP, GX_CLAMP, GX_FALSE,
+				GX_TLUT0);
+			GX_InitTexObjUserData(&data->banner[i], &data->palette[i]);
+		}
+		else {
+			continue;
+		}
+		GX_InitTexObjFilterMode(&data->banner[i], GX_LINEAR, GX_NEAR);
+	}
+}
+
+/* A folder: its tab and body. */
+static void _SavesFolder(int x, int y, GXColor color)
+{
+	_CheatsPanel(x + 31, y + 5, 14, 6, color);
+	_CheatsPanel(x + 31, y + 9, 34, 19, color);
+}
+
+/* A save without a banner: a memory card and its label. */
+static void _SavesCard(int x, int y)
+{
+	_CheatsPanel(x + 36, y + 2, 24, 28, settingsTrack);
+	_CheatsPanel(x + 40, y + 6, 16, 9, settingsValue);
+}
+
+static void _DrawSaves(uiDrawObj_t *evt)
+{
+	drawSavesEvent_t *data = (drawSavesEvent_t*)evt->data;
+	const uiSavesPageSnapshot_t *s = &data->snapshot;
+	const GXColor amber = {255, 207, 139, 255};
+	uiMotionMode_t motion = _CurrentMotionMode();
+	float target = (float)(148 + s->focusRow * 40);
+	int focusY;
+	int i;
+	int x;
+
+	/* Another place or folder snaps the focus; within a list it slides. */
+	if(!data->focusInitialized || data->focusList != s->list) {
+		UIMotion_SpringInit(&data->focusY, target, 25.0f);
+		data->focusInitialized = true;
+		data->focusList = s->list;
+	}
+	UIMotion_SpringRetarget(&data->focusY, target, motion);
+	focusY = (int)lrintf(UIMotion_SpringUpdate(&data->focusY,
+		UIAnim_Delta(), motion));
+
+	_CheatsPanel(-6, -6, 652, 492, settingsBack);
+	_CheatsPanel(40, 30, 40, 3, settingsAccent);
+	drawStringMedium(40, 63, s->title, 1.05f, ALIGN_LEFT, settingsInk);
+	drawStringMedium(600, 63, s->status, 0.54f, ALIGN_RIGHT, settingsAccent);
+	for(i = 0, x = 40; i < s->tabCount; i++) {
+		int width = (int)((float)GetTextSizeInPixels(s->tabs[i]) * 0.54f);
+
+		drawStringMedium(x, 98, s->tabs[i], 0.54f, ALIGN_LEFT,
+			i == s->tab ? settingsInk : settingsQuiet);
+		if(i == s->tab) {
+			_CheatsPanel(x, 108, width, 2, settingsAccent);
+		}
+		x += width + 32;
+	}
+	_CheatsPanel(40, 115, 560, 1, settingsRule);
+	drawStringMedium(40, 132, s->section, 0.42f, ALIGN_LEFT, settingsAccent);
+	drawStringMedium(600, 132, s->position, 0.46f, ALIGN_RIGHT, settingsQuiet);
+	for(i = 0; i < s->rowCount; i++) {
+		_CheatsPanel(40, 148 + i * 40, 560, 34, settingsCard);
+	}
+	if(s->rowCount > 0) {
+		_CheatsPanel(40, focusY, 560, 34, settingsFocus);
+		_CheatsPanel(40, focusY + 4, 3, 26, settingsAccent);
+	}
+	for(i = 0; i < s->rowCount; i++) {
+		const uiSavesPageRow_t *row = &s->rows[i];
+		bool focused = i == s->focusRow;
+		int y = 148 + i * 40;
+
+		if(row->bannerFormat != CARD_BANNER_NONE) {
+			drawInit();
+			_DrawTexObjNow(&data->banner[i], 52, y + 1, CARD_BANNER_W,
+				CARD_BANNER_H, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0);
+			drawInit();
+		}
+		else if(row->kind == UI_SAVES_ROW_SAVE) {
+			_SavesCard(52, y + 1);
+		}
+		else {
+			_SavesFolder(52, y + 1, focused ? settingsAccent : settingsSwatch);
+		}
+		drawStringMedium(160, y + 17, row->title, 0.62f, ALIGN_LEFT,
+			focused ? settingsInk : settingsQuiet);
+		drawStringMedium(588, y + 17, row->blocks, 0.50f, ALIGN_RIGHT,
+			settingsQuiet);
+	}
+	if(s->count > UI_SAVES_PAGE_ROWS) {
+		int thumb = 234 * UI_SAVES_PAGE_ROWS / s->count;
+		int travel;
+
+		if(thumb < 12) thumb = 12;
+		travel = (int)((int64_t)(234 - thumb) * s->first /
+			(s->count - UI_SAVES_PAGE_ROWS));
+		_CheatsPanel(608, 148, 2, 234, settingsTrack);
+		_CheatsPanel(608, 148 + travel, 2, thumb, settingsAccent);
+	}
+	if(s->empty[0][0] != '\0') {
+		drawStringMedium(320, 236, s->empty[0], 0.76f, ALIGN_CENTER,
+			settingsInk);
+		drawStringMedium(320, 269, s->empty[1], 0.54f, ALIGN_CENTER,
+			settingsQuiet);
+	}
+	if(s->detail[0] != '\0') {
+		drawStringMedium(40, 400, s->detail, 0.48f, ALIGN_LEFT,
+			s->warning ? amber : settingsQuiet);
+	}
+	_CheatsPanel(40, 413, 560, 1, settingsRule);
+	_DrawHintText(40, 435, s->hint[0], 0.48f, ALIGN_LEFT, settingsInk);
+	_DrawHintText(600, 435, s->hint[1], 0.48f, ALIGN_RIGHT, settingsQuiet);
+	drawInit();
+}
+
+uiDrawObj_t* DrawSavesPage(const uiSavesPageSnapshot_t *snapshot)
+{
+	drawSavesEvent_t *data = memalign(32, sizeof(*data));
+	uiDrawObj_t *event = calloc(1, sizeof(*event));
+
+	if(data == NULL || event == NULL) {
+		free(data);
+		free(event);
+		return NULL;
+	}
+	memset(data, 0, sizeof(*data));
+	_SavesCopySnapshot(data, snapshot);
+	event->type = EV_SAVES;
+	event->data = data;
+	return event;
+}
+
+void DrawUpdateSavesPage(uiDrawObj_t *page,
+	const uiSavesPageSnapshot_t *snapshot)
+{
+	if(page == NULL) {
+		return;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!page->disposed && page->type == EV_SAVES && page->data != NULL) {
+		_SavesCopySnapshot((drawSavesEvent_t*)page->data, snapshot);
+	}
+	LWP_MutexUnlock(_videomutex);
+}
+
 void DrawGetTextEntry(int mode, const char *label, void *src, int size) {
 	
 	print_debug("DrawGetTextEntry Modes: Alpha [%s] Numeric [%s] IP [%s] Masked [%s] File [%s]\n", mode & ENTRYMODE_ALPHA ? "Y":"N", mode & ENTRYMODE_NUMERIC ? "Y":"N",
@@ -5679,6 +5868,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 			break;
 		case EV_SETTINGSHELP:
 			_DrawSettingsHelp(videoEvent);
+			break;
+		case EV_SAVES:
+			_DrawSaves(videoEvent);
 			break;
 		default:
 			break;

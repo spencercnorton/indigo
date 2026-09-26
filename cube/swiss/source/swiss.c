@@ -33,6 +33,7 @@
 #include "main.h"
 #include "util.h"
 #include "info.h"
+#include "saves.h"
 #include "httpd.h"
 #include "exi.h"
 #include "bba.h"
@@ -1005,6 +1006,11 @@ static void homeDispatchEffect(uiHomeEffect_t effect)
 			show_info();
 			UIScene_Request(UI_SCENE_HOME);
 			break;
+		case UI_HOME_EFFECT_OPEN_SAVES:
+			UIScene_Request(UI_SCENE_SYSTEM);
+			show_saves();
+			UIScene_Request(UI_SCENE_HOME);
+			break;
 		case UI_HOME_EFFECT_RESTART:
 			homeConfirmRestartEffect();
 			break;
@@ -1604,6 +1610,18 @@ static bool gameflowResolveAndLoadFolder(file_handle *folder,
 	return true;
 }
 
+/* A launch starts from a fresh handle. A Library entry keeps the file
+ * its banner was read through, and a read error on a slow SD card over EXI
+ * leaves that file failing every later read. A launch that failed after setup
+ * leaves the entry marked as mapped, and the next map of it would be wrong. */
+static void gameflowFreshHandle(file_handle *file)
+{
+	file->device->closeFile(file);
+	if(file->status == STATUS_HAS_MAPPING) {
+		file->status = STATUS_NOT_MAPPED;
+	}
+}
+
 static bool gameflowLoadImageWithContext(file_handle *image,
 	uiDrawObj_t *event, const uiGameflowRenderSnapshot_t *snapshot,
 	bool openSettings)
@@ -1623,6 +1641,7 @@ static bool gameflowLoadImageWithContext(file_handle *image,
 		return false;
 	}
 	memset(&headerEntry, 0, sizeof(headerEntry));
+	gameflowFreshHandle(image);
 	if(!gameflowReadResolverHeader(image, &headerEntry) ||
 		(selectedRecord->gameId[0] &&
 		strncmp(selectedRecord->gameId, headerEntry.gameId,
@@ -1643,6 +1662,9 @@ static bool gameflowLoadImageWithContext(file_handle *image,
 	memcpy(&curFile, image, sizeof(curFile));
 	context.oppositeDisc = gameflowFindOppositeImage(image, &headerEntry,
 		&oppositeHeader);
+	if(context.oppositeDisc != NULL) {
+		gameflowFreshHandle(context.oppositeDisc);
+	}
 	if(context.oppositeDisc != NULL &&
 		!gameflowPopulateResolvedMeta(context.oppositeDisc,
 			&oppositeHeader)) {
@@ -2667,9 +2689,6 @@ void load_app(ExecutableFile *fileToPatch)
 		}
 	}
 
-	/* Only completed read/patch/engine validation counts as a handoff. */
-	config_record_game_handoff((const char *)&GCMDisk, 6u);
-
 	/* The poster pack may share DEVICE_CUR with patches. Unpublish it before
 	 * either alias can tear the device down. */
 	DrawGameflowCancelPosters();
@@ -3544,6 +3563,10 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 			DrawDispose(msgBox);
 		}
 	}
+	/* Play history is written where the recent list is, before the fragment
+	 * table, FST and patches exist: Indigo never writes the card once the
+	 * game's sectors are mapped. */
+	config_record_game_handoff((const char *)&GCMDisk, 6u);
 	
 	// Load config for this game into our current settings
 	config_load_current(config);
@@ -3564,7 +3587,6 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 			DrawDispose(msgBox);
 			goto fail;
 		}
-		config_record_game_handoff((const char *)&GCMDisk, 6u);
 		if(!(devices[DEVICE_CUR]->quirks & QUIRK_NO_DEINIT)) {
 			DrawGameflowCancelPosters();
 			devices[DEVICE_CUR]->deinit(devices[DEVICE_CUR]->initial);

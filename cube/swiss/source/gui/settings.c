@@ -24,6 +24,7 @@
 #include "input.h"
 #include "ui_motion.h"
 #include "ui_settings_layout.h"
+#include "saves.h"
 
 /* Bind the pure layout module's page model to the real option enums: a
  * drifting row count or action index becomes a compile error here, not a
@@ -101,6 +102,7 @@ static char *tooltips_global[PAGE_GLOBAL_MAX+1] = {
 	[SET_SCREEN_POS] = "Screen Position:\n\nAdjusts the horizontal screen position in games",
 	[SET_SYS_LANG] = "System Language:\n\nSystem language used in games, primarily multi-5 PAL games",
 	[SET_CONFIG_DEV] = "Configuration Device:\n\nThe device Indigo loads settings from and saves them to, in\nswiss/settings/global.ini. The choice is stored in SRAM, and it\nchanges only once Save & Exit has written the settings there.\nThe line under the Storage title says whether that file loaded.",
+	[SET_SAVE_FOLDER] = "Save Folder:\n\nWhere Memory Cards (Home > System) copies saves off a memory\ncard, and the folder it opens first. It's a folder on the\nConfiguration Device; swiss/saves until you choose another.\n\nA opens its folders: A goes into one, X chooses the one open.",
 	[SET_INIT_DRIVE] = "Init DVD Drive at startup:\n\nDisabled - Leave it as-is (default)\nEnabled - Deassert reset signal when Swiss starts\n\nThis is necessary for the eject button to function on the\nPanasonic Q when Swiss is used as IPL replacement.",
 	[SET_STOP_MOTOR] = "Stop DVD Drive motor:\n\nDisabled - Leave it as-is (default)\nEnabled - Stop the disc from spinning when Swiss starts\n\nThis option is mostly for users booting from game save exploits\nwhere the disc will already be spinning.",
 	[SET_AUDIO_BUFFER] = "Configure Audio Buffer:\n\nOff - Disable audio streaming\nAuto - Enable audio streaming if the disc is known to use it\nOn - Enable audio streaming if the disc asks for it (default)\n\nThe audio buffer consumes a large portion of the GameCube\ndisc drive's read-ahead cache, lengthening load times.",
@@ -548,6 +550,7 @@ static const settingsRowRef_t consoleRows[] = {
 
 static const settingsRowRef_t storageRows[] = {
 	{PAGE_GLOBAL, SET_CONFIG_DEV},
+	{PAGE_GLOBAL, SET_SAVE_FOLDER},
 	{PAGE_GLOBAL, SET_EXI_SPEED},
 	{PAGE_GLOBAL, SET_INIT_DRIVE},
 	{PAGE_GLOBAL, SET_STOP_MOTOR},
@@ -952,6 +955,19 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_SCREEN_POS: rowNumber(row, "Screen Position:", "%+i", swissSettings.sramHOffset, true); break;
 			case SET_SYS_LANG: rowCycle(row, "System Language:", sramLanguageStr[swissSettings.sramLanguage], true); break;
 			case SET_CONFIG_DEV: rowCycle(row, "Configuration Device:", getConfigDeviceName(&swissSettings), true); break;
+			case SET_SAVE_FOLDER: {
+				/* The value holds 24 bytes; a longer path shows its end. */
+				static char folder[UI_SETLAYOUT_VALUE_TEXT_MAX + 1];
+				char path[PATHNAME_MAX + 1];
+				size_t length;
+
+				snprintf(path, sizeof(path), "/%s", strcmp(saves_folder(), "/") ? saves_folder() : "");
+				length = strlen(path);
+				snprintf(folder, sizeof(folder), "%s%s", length > UI_SETLAYOUT_VALUE_TEXT_MAX ? "\205" : "",
+					length > UI_SETLAYOUT_VALUE_TEXT_MAX ? path + length - (UI_SETLAYOUT_VALUE_TEXT_MAX - 1) : path);
+				rowText(row, "Save Folder:", folder, devices[DEVICE_CONFIG] != NULL);
+			}
+			break;
 			case SET_SWISS_VIDEOMODE:
 				snprintf(row->text, sizeof(row->text), "%s%s", getVideoModeString(getVideoModeFromSwissSetting(swissSettings.uiVMode)), swissSettings.uiVMode == 0 ? " (Auto) " : "");
 				rowCycle(row, "Swiss Video Mode:", row->text, true);
@@ -1285,6 +1301,15 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			case SET_SYS_LANG:
 				swissSettings.sramLanguage += direction;
 				swissSettings.sramLanguage = ((s8)swissSettings.sramLanguage + SRAM_LANGUAGE_MAX) % SRAM_LANGUAGE_MAX;
+			break;
+			case SET_SAVE_FOLDER:
+			{
+				char folder[PATHNAME_MAX];
+
+				if(devices[DEVICE_CONFIG] != NULL && saves_choose_folder(folder, sizeof(folder))) {
+					strlcpy(swissSettings.saveFolder, folder, sizeof(swissSettings.saveFolder));
+				}
+			}
 			break;
 			case SET_CONFIG_DEV:
 			{
@@ -2037,6 +2062,8 @@ static bool settingsIsLiveVideoRow(int page, int option)
 static bool settingsRowIsAction(int page, int option)
 {
 	switch(page) {
+		case PAGE_GLOBAL:
+			return option == SET_SAVE_FOLDER;
 		case PAGE_INTERFACE:
 			return option == SET_FLATTEN_DIR;
 		case PAGE_NETWORK:
@@ -2447,7 +2474,7 @@ static bool settingsInputMayBlock(int page, int option, u32 buttons)
 
 	if(page == PAGE_GLOBAL) {
 		return (horizontal || activate) && (option == SET_RT4K_OPTIM ||
-			settingsIsLiveVideoRow(page, option));
+			option == SET_SAVE_FOLDER || settingsIsLiveVideoRow(page, option));
 	}
 	if(page == PAGE_INTERFACE) {
 		return (horizontal || activate) && option == SET_FLATTEN_DIR;

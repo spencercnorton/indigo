@@ -198,6 +198,7 @@ typedef struct {
 	char gcloaderTopVersion[32];
 	char autoload[PATHNAME_MAX];
 	char flattenDir[PATHNAME_MAX];
+	char saveFolder[PATHNAME_MAX];	// Memory Cards' folder on the settings device; empty is swiss/saves
 	char recent[RECENT_MAX][PATHNAME_MAX];
 } SwissSettings;
 extern SwissSettings swissSettings;

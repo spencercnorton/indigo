@@ -264,8 +264,9 @@ void config_record_game_handoff(const char *gameId, size_t gameIdLength) {
 	int slot;
 	bool written = false;
 	if(now < 0 || !UIGameHistory_ValidTime((uint64_t)now)) return;
-	/* Loading/patch setup has completed: never probe, mount, change devices or
-	 * reload history here. Optional persistence uses the active FAT mount only. */
+	/* Called before the game's setup, like the recent list. Never probe, mount,
+	 * change devices or reload history here: optional persistence uses the
+	 * active FAT mount only. */
 	if(device == NULL || device != devices[DEVICE_CUR] ||
 		device != playHistoryDevice || !playHistory.available ||
 		device->initial == NULL || device->context == NULL ||
@@ -565,6 +566,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "GCLoaderTopVersion=%s\r\n", swissSettings.gcloaderTopVersion);
 	fprintf(fp, "Autoload=%s\r\n", swissSettings.autoload);
 	fprintf(fp, "FlattenDir=%s\r\n", swissSettings.flattenDir);
+	fprintf(fp, "Save Folder=%s\r\n", swissSettings.saveFolder);
 
 	// Write out the default game config portion too
 	fprintf(fp, "Force NTSC Video Mode=%s\r\n", gameVModeStr[swissSettings.gameVModeNtsc]);
@@ -1570,6 +1572,9 @@ void config_parse_global(char *configData) {
 				}
 				else if(!strcmp("FlattenDir", name)) {
 					strlcpy(swissSettings.flattenDir, value, sizeof(swissSettings.flattenDir));
+				}
+				else if(!strcmp("Save Folder", name)) {
+					strlcpy(swissSettings.saveFolder, value, sizeof(swissSettings.saveFolder));
 				}
 			}
 		}

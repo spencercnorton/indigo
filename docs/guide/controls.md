@@ -101,7 +101,7 @@ See [Cheats](cheats.md).
 | Up, Down | Move between settings. Hold to scroll. |
 | Left, Right | Step the highlighted setting to its previous or next value. |
 | A | Change the value. On a setting with four or more choices, list them all. |
-| Y | Explain the highlighted setting. Y again closes it. |
+| Y | Explain the highlighted setting. Y or B closes it. |
 | L, R | Switch between Quick, Game Defaults and Setup. |
 | X | In a game's own settings: put the setting back to Game Defaults. |
 | B | Leave Settings, keeping your changes. In a Setup section, go back to the list of sections. |
@@ -117,6 +117,19 @@ See [Settings](settings.md).
 | B | Back. |
 
 See [System](system.md).
+
+### Memory Cards
+
+| Button | Does |
+| --- | --- |
+| Up, Down | Move through the saves. Hold to scroll. |
+| Left, Right | A page at a time. |
+| L, R | Slot A, Slot B or the SD card. |
+| A | On a save: Copy, Move or Delete. On a folder: open it. |
+| X | When choosing a folder: choose the one that's open. |
+| B | Back. |
+
+See [Memory Cards](memory-cards.md).
 
 ### During a game
 

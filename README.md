@@ -20,6 +20,7 @@
 Captured in the Dolphin emulator. The library and game detail pictures show a real poster pack and cheat file in use; box art belongs to its publishers.
 
 **New to Indigo?** The [Indigo guide](docs/guide/README.md) walks through every screen and setting, with pictures.
+Watch it in motion: [the video tour](https://norvitech.com/indigo/#videos) on norvitech.com.
 
 Indigo is an unofficial fork of [Swiss](https://github.com/emukidid/swiss-gc),
 the homebrew utility that boots and patches games on a Nintendo GameCube. The
@@ -31,7 +32,9 @@ hardware and want it to feel like it belongs on the console.
 ## What it does
 
 **Home is an animated cube.** Four faces, one destination each: left and
-right turn it sideways, up and down tip it over. It is glass, like the
+right turn it sideways, up and down tip it over. When Indigo starts, the cube
+flies in from the distance, spinning, and comes to rest on the face you
+start on. It is glass, like the
 GameCube's own menu, and it treats light the way glass does. Through the front
 you see the cube's far edges and its inner cube, bent and slightly magnified,
 and the rounded edges part the light into colour like a prism. Highlights
@@ -42,6 +45,10 @@ controller that mirrors yours: its sticks lean with your sticks and its
 buttons light as you press them, and when you leave it alone it plays by
 itself. The GameCube's own interface language — the idle cube, the typeface,
 the palette — is the reference, not a desktop launcher.
+
+<p align="center">
+  <img alt="Indigo starting: a small cube spins in from the distance in the middle of the screen, tumbles toward you and comes to rest on the Library face; the glass lights up, and LIBRARY and the controls fade in." src="docs/screenshots/intro.png" width="640">
+</p>
 
 **The library retains its posters.** A grid over whatever device you booted
 from, with artwork kept across navigation rather than re-read per frame, and
@@ -113,25 +120,44 @@ each face has four icons of its own. Library has Controller, Books, Covers
 and Play; Source has Hub, Disc, SD Card and Folder; Settings has Sliders,
 Gear, Toggles and Dial; System has Clock, Info, Power and Chip.
 
+**Memory Cards moves your saves, like the GameCube's own screen.** System ›
+Memory Cards lists the saves on the cards in Slot A and Slot B, each with its
+banner, and the saves in any folder on your SD card. A on a save copies,
+moves or deletes it: to the other slot, to your Save Folder, or to a folder
+you choose. Every copy is read back before it counts, and a Move removes the
+original only then. Setup › Storage › Save Folder sets where saves copied off
+a card go (`swiss/saves` until you choose one). See
+[Memory Cards](docs/guide/memory-cards.md).
+
+<p align="center">
+  <img alt="Memory Cards: Slot A lists four saves with their banners. R shows Slot B, then the SD CARD tab with no saves in the Save Folder. Back on Slot A, A on Indigo Quest offers Copy, Move and Delete; Copy to lists Slot B, the Save Folder and Another folder; the save is copied to /swiss/saves, and the SD CARD tab now holds it." src="docs/guide/images/memory-cards.png" width="640">
+</p>
+
 ## Install
 
-### Download
+### Download — drag and drop
 
 Each [release](https://github.com/spencercnorton/indigo/releases/latest) has
-an `Indigo-vX.Y.Z.zip`. Its `SD card` folder holds everything that goes on
-the card:
+an `Indigo-vX.Y.Z.zip` laid out exactly as it goes on the card:
 
 ```text
-SD card/
-├── ipl.dol      Indigo; PicoBoot and other modchips boot this
-├── games/       your games (see Set up your library)
-└── swiss/ui/    posters.pak, if you add one (see Posters)
+Indigo-README.txt              what goes where, in plain words
+ipl.dol                        Indigo; PicoBoot and other modchips boot this
+games/                         your games (see Set up your library)
+swiss/patches/apploader.img    Indigo again, for In-Game Reset
+swiss/ui/                      posters.pak, if you add one (see Posters)
+swiss/indigo/                  the licence and notice
 ```
 
-If your card already has an `ipl.dol` in its root, that is your current
-Swiss: rename it to `z.dol` first (holding Z at power-on starts it). Then copy
-the contents of `SD card` to the root of the card. With GC Loader or another
-loader that boots a disc image, start `ipl.dol` from Swiss instead.
+1. If your card already has an `ipl.dol` in its root, that is your current
+   Swiss: rename it to `z.dol` first (holding Z at power-on starts it).
+2. Unzip the download, select everything inside and drag it onto the root of
+   the card. Let it replace files of the same name.
+3. Put your games in `/games` and power on.
+
+With GC Loader or another loader that boots a disc image, start `ipl.dol` from
+Swiss instead. The [install guide](docs/guide/install.md) covers every loader,
+updating and going back to stock Swiss.
 
 ### Any platform — from source
 
@@ -173,9 +199,10 @@ boots, under that file's name. Your Swiss settings carry over.
   from Swiss's file browser. This fork does not build `boot.iso` or the other
   packaged formats.
 
-With In-Game Reset set to **Apploader**, a reset returns to the Swiss inside
-`/swiss/patches/apploader.img`, not to Indigo; `make dev` does not rebuild
-that file.
+With In-Game Reset set to **Apploader**, a reset returns to the program in
+`/swiss/patches/apploader.img`. The release zip puts Indigo there, and
+`buildtools/sd_package.sh` builds that file from `make dev`'s output.
+**Reboot** resets the console, which starts whatever your loader boots.
 
 ## Set up your library
 
@@ -206,7 +233,8 @@ ready-made pack and unzip it into the root of the card; it holds
 - [Posters: Europe & Australia](https://indigo.norvitech.com/indigo-posters-pal.zip) (PAL)
 
 Indigo reads one pack, so pick the region most of your games are from.
-Checksums and details are at [indigo.norvitech.com](https://indigo.norvitech.com).
+Checksums are in [SHA256SUMS.txt](https://indigo.norvitech.com/SHA256SUMS.txt); the
+[Indigo page](https://norvitech.com/indigo/) has the details.
 
 To make your own, name front-cover images after the game IDs (`GMSE01.png`,
 `GALE01.jpg`, at least 192×256) in one folder, build a pack from this

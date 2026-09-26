@@ -20,8 +20,8 @@ get them is the ready-made pack, which covers every region:
   and unzip it into the root of the card.
 
 Cheats that the pack's checks show would break Indigo are switched off in
-the file and marked; [indigo.norvitech.com](https://indigo.norvitech.com)
-says what the checks can't cover.
+the file and marked; the [Indigo page](https://norvitech.com/indigo/) says
+what the checks can't cover.
 
 A game without a file says "No cheats found" on its detail screen.
 

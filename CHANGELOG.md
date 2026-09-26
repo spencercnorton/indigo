@@ -3,6 +3,98 @@
 Versions follow [semantic versioning](https://semver.org/); each release is a
 tag on `main`.
 
+## v1.25.0 — Memory Cards, a cube that flies in, and a drag-and-drop download
+
+The first formal release of Indigo: everything below, tested together, with the
+guide and every picture recorded again on this build.
+
+### Memory Cards
+
+- **Memory Cards**, a new row on the System face between System Information
+  and Restart Indigo, shows the saves on the memory cards in Slot A and Slot
+  B and in folders on the SD card, much as the GameCube's own Memory Card
+  screen does. Each save shows its banner, the game's name for it and its
+  size in blocks; the tab says how many blocks the card has free, and the
+  line above the buttons shows the rest of the save's comment. L and R move
+  between Slot A, Slot B and the SD card; A opens a folder.
+- A on a save copies, moves or deletes it. Copy and Move go to the other
+  slot, to the Save Folder, or to another folder you choose. A save copied
+  off a card becomes a `.gci` named as Dolphin names a GCI folder's saves;
+  Action Replay (`.sav`) and GameShark (`.gcs`) saves copy onto a card too.
+  Every copy is read back and compared before it counts, and a Move removes
+  the original only then. A card that already has the save, or hasn't the
+  room for it, says so and nothing changes; a save its game marks as not to
+  be moved can be copied but not moved; Delete asks first, with Cancel
+  highlighted.
+- Settings › Setup › Storage › **Save Folder** chooses where saves copied off
+  a card go: a folder on the Configuration Device, `swiss/saves` until you
+  choose another (key `Save Folder` in `global.ini`). A lists the folders, X
+  chooses the one that's open.
+- The System face's three rows sit a little closer together to fit under
+  the cube, and Restart Indigo's confirmation returns to its row, now the
+  third.
+
+### The cube flies in
+
+- When Indigo starts, the Home cube flies in from the distance. It starts
+  as a small spinning cube in the middle of the screen, tumbles toward you,
+  and comes to rest on Library half a second later. Home is ready after 0.8
+  seconds instead of 1.15, and the cube is in view from the first frames
+  instead of fading up out of a dark screen.
+- Starting no longer dims the screen before the cube appears. The face name,
+  its hint and the glass's light fade in as the cube arrives instead of
+  switching on at once.
+- With UI Motion set to Reduced, the cube fades in where it rests. With Off
+  it is simply there, as before.
+
+### In-Game Reset comes back to Indigo
+
+- With In-Game Reset set to Apploader, A + Z + START during a game now
+  returns to Indigo. A reset restarts whatever `swiss/patches/apploader.img`
+  holds, and until now that was stock Swiss's copy. The release zip now
+  carries Indigo's own. It replaces stock Swiss's, so a game started from
+  stock Swiss resets to Indigo too.
+
+### A drag-and-drop download
+
+- The download is drag and drop. `Indigo-vX.Y.Z.zip` is laid out exactly
+  as the card is: unzip it, select everything inside and drag it onto the
+  root of the SD card. Before, everything sat in an `Indigo-vX.Y.Z/SD card/`
+  folder inside the zip. An `Indigo-README.txt` says what each file is for,
+  and the licence and notice now travel in `swiss/indigo/`.
+
+### Fixes
+
+- Starting a game from the Library opens its file afresh. A read error while
+  browsing, which a slow SD card adapter (SD2SP2, SD Gecko) can cause, no
+  longer carries into the launch. A launch that failed after setup no longer
+  leaves the next try reading the game from the wrong place on the card.
+- Indigo records when you last played a game before it prepares the game, as
+  Swiss does with its recent list. It no longer writes to the card after the
+  game's data has been mapped.
+
+### Documentation
+
+- Every picture in the README and the guide is recorded again on this
+  release, and the README gains two animations: the cube flying in when
+  Indigo starts, and Memory Cards copying a save to the SD card. The guide's
+  Memory Cards page has pictures of each screen and a card of its own on the
+  guide's index, next to System. The README and the guide link the video
+  tour and the Indigo page at norvitech.com/indigo; the poster and cheat
+  downloads stay at indigo.norvitech.com, with their checksums.
+- The guide says Settings help closes with B as well as Y.
+
+### For developers
+
+- `make dev` also builds the packer (`cube/packer/reboot.dol`), compressing
+  with `xz` because the build image has no `7z`, and
+  `buildtools/sd_package.sh` turns it into that `apploader.img`.
+- The host test suite ships with the source: `buildtools/ui/tests/` (C unit
+  tests, GX vertex-stream checks and source audits) and the UI isolation
+  guardrail `buildtools/check_ui_isolation.sh` are now in the public
+  repository, so anyone can run what CI runs with
+  `buildtools/ui/tests/run_tests.sh all`.
+
 ## v1.24.0 — four icons for every face, sharp on the glass
 
 - Each face of the Home cube has four icons of its own, and no face offers

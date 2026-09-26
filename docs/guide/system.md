@@ -2,11 +2,12 @@
 
 # System
 
-The System face tells you about your console and restarts Indigo. On Home,
-turn the cube to **System** and press A.
+The System face tells you about your console, manages the saves on your
+memory cards and restarts Indigo. On Home, turn the cube to **System** and
+press A.
 
 <p align="center">
-  <img alt="The System face opened: the cube shows a clock, with System Information and Restart Indigo listed below it." src="../screenshots/system.png" width="640">
+  <img alt="The System face opened: the cube shows a clock, with System Information, Memory Cards and Restart Indigo listed below it." src="../screenshots/system.png" width="640">
 </p>
 
 ## System Information
@@ -34,6 +35,16 @@ The CPU temperature has no factory calibration. If Overview's reading is off
 on a cold console, adjust Settings › Setup › Console › **CPU Temperature
 Calibration** until it reads about room temperature.
 
+## Memory Cards
+
+**Memory Cards** lists the saves on the memory cards in Slot A and Slot B and
+in folders on your SD card, with each save's banner, and copies, moves and
+deletes them between the three. See [Memory Cards](memory-cards.md).
+
+<p align="center">
+  <img alt="The System face opened with Memory Cards highlighted, the second of its three rows." src="images/memory-cards-system.png" width="640">
+</p>
+
 ## Restart Indigo
 
 **Restart Indigo** resets the console, which then starts the way it does
@@ -50,4 +61,4 @@ by mistake. Choose **Restart** with Left or Right, then press A.
 
 ---
 
-<p align="center"><a href="source.md">← Source</a> · <a href="posters.md">Posters →</a></p>
+<p align="center"><a href="source.md">← Source</a> · <a href="memory-cards.md">Memory Cards →</a></p>

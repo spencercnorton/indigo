@@ -39,7 +39,7 @@ one you're on lit.
 - **Left and Right** step the highlighted setting to its previous or next
   value, with the change on screen at once.
 - **A** changes it too.
-- **Y** explains the highlighted setting. Every setting has help; Y again
+- **Y** explains the highlighted setting. Every setting has help; Y or B
   closes it.
 
 Settings that are on or off show a switch, **ON** or **OFF**. The line above
@@ -140,7 +140,7 @@ Press Y on any row for the same explanations on the console.
 | Menu Sounds | The soft sounds as you move and choose. |
 | UI Motion | **Full**: calm motion and ambient detail. **Reduced**: faster transitions, no decorative movement. **Off**: everything moves instantly. |
 | Controller Rumble | Whether controllers can rumble in games. |
-| In-Game Reset | **Reboot** or **Apploader** lets you leave a game with A + Z + START (R + Z + START restarts it). Apploader needs `/swiss/patches/apploader.img`. |
+| In-Game Reset | **Reboot** or **Apploader** lets you leave a game with A + Z + START (R + Z + START restarts it). Apploader returns to Indigo through `/swiss/patches/apploader.img`, which the zip includes; Reboot resets the console. |
 | Load GameCube Main Menu | Starts games through the GameCube logo and main menu, with patches applied. |
 | Emulate Memory Card | Games save to a memory card image on the device they start from, instead of a real memory card. Needs a device that supports it. |
 | Auto-load cheats | Applies a game's saved cheats every time it starts. See [Cheats](cheats.md#start-with-your-cheats-every-time). |
@@ -216,6 +216,7 @@ Press Y on any row for the same explanations on the console.
 | Setting | What it does |
 | --- | --- |
 | Configuration Device | Where `global.ini` is read and saved. Kept in the console's memory once Save & Exit has written the settings there. |
+| Save Folder | Where [Memory Cards](memory-cards.md) copies saves off a memory card, and the folder it opens first: a folder on the Configuration Device, `swiss/saves` until you choose another. A lists the folders; X chooses the one that's open. |
 | SD/IDE-EXI Speed | 27 MHz is faster; some SD cards or adapters only work at 13.5 MHz. |
 | Init DVD Drive at startup | Needed for the eject button on the Panasonic Q when Indigo replaces the IPL. |
 | Stop DVD Drive motor | Stops a disc that is already spinning, as after a save-game exploit. |

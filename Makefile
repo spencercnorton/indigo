@@ -45,7 +45,7 @@ WIIBOOTER     = wii/booter
 all: clean compile-patches compile compile-packer build recovery-iso build-AR build-gci build-ipl build-wii build-geckoserver package
 
 # For dev use only, avoid the unnecessary fluff
-dev: clean compile-patches compile
+dev: clean compile-patches compile compile-packer
 
 clean:
 	@echo Building on $(OS)
