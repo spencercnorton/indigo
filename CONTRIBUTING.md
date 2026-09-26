@@ -5,15 +5,19 @@ the process is deliberately light — but a few things are fixed.
 
 ## How changes land
 
-This GitHub repository is a **release mirror**: every commit on `main` is a
-tagged release built from a private development tree, and `main` only ever
-moves forward by a release. That has two consequences for contributors:
+Development happens here, in the open, on two branches:
 
-- Pull requests are reviewed **here**, but they are not merged here. An
-  accepted change is applied to the development tree and ships in the next
-  tagged release; the pull request is then closed with a reference to that
-  release, and you keep the credit in the release notes.
-- Please do not rebase your pull request onto anything but `main`.
+- **`beta`** is where changes land. Branch from `beta` (or fork and branch),
+  open a pull request into `beta`, and it is squash-merged once CI is green
+  and review is done. Betas are published from it as `vX.Y.Z-beta.N`
+  pre-releases, so a change reaches testers within days.
+- **`main`** holds releases only. When a beta has held up, `beta` is merged
+  into `main` and tagged `vX.Y.Z`; nothing reaches `main` any other way.
+
+Every pull request runs CI: the DOL build, the host test suite (three lanes)
+and the source checks. The build job keeps the SD card zip as an artifact, so
+you can try a pull request on a console before it merges. The release
+procedure is in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Before you start
 
@@ -31,21 +35,31 @@ moves forward by a release. That has two consequences for contributors:
 ## Working on the code
 
 ```bash
-docker run --rm -v "$PWD:/work" -w /work ghcr.io/extremscorner/libogc2 make dev
-make dev        # what CI runs
-buildtools/check_whitespace.sh        # lint; CI enforces it
+# Build the DOL in the image CI uses; writes cube/swiss/swiss.dol
+docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
+  ghcr.io/extremscorner/libogc2 make dev
+buildtools/sd_package.sh dev cube/swiss/swiss.dol .   # the SD card zip
+buildtools/ui/tests/run_tests.sh all                  # host tests
+buildtools/check_whitespace.sh origin/beta            # lint; CI enforces it
+buildtools/check_ui_isolation.sh origin/beta          # the fork's scope
 ```
 
-- the interface is drawn with the console's own GX pipeline at a fixed budget - a change that adds a per-frame allocation or a blocking read to the draw path will be sent back
+- The interface is drawn with the console's own GX pipeline at a fixed
+  budget: a change that adds a per-frame allocation or a blocking read to the
+  draw path will be sent back.
+- Stay inside the interface. `check_ui_isolation.sh` fails a change to the
+  loader, device handlers or patch engine; those are upstream Swiss's.
 - Keep a change to one concern. A pull request that fixes a bug and
   reformats a file is two pull requests.
 - Tests: a bug fix carries a regression test; a feature carries the smallest
   test that fails without it.
+- Docs move with the code: a change to a screen or a setting updates its
+  page in `docs/guide/`, and every change adds a line under `## Unreleased`
+  in `CHANGELOG.md`.
 - Commits carry a `Signed-off-by:` line (`git commit -s`, the Developer
   Certificate of Origin). There is no CLA.
 - No secrets, hostnames, personal data or screenshots of a real desktop in
-  the diff — the export gate rejects them and the pull request will be sent
-  back.
+  the diff. Pictures come from the Dolphin emulator.
 
 ## Out of scope
 

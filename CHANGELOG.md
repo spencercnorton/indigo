@@ -1,7 +1,23 @@
 # Changelog
 
-Versions follow [semantic versioning](https://semver.org/); each release is a
-tag on `main`.
+Versions follow [semantic versioning](https://semver.org/). Each release is a
+`vX.Y.Z` tag on `main`; betas before it are `vX.Y.Z-beta.N` tags on `beta`.
+Changes land under `## Unreleased` until the release names them.
+
+## Unreleased
+
+### For developers
+
+- Indigo is developed on GitHub. Changes land on the `beta` branch by pull
+  request, betas ship as `vX.Y.Z-beta.N` pre-releases, and a beta that holds
+  up is promoted to `main` as a release. [docs/RELEASING.md](docs/RELEASING.md)
+  has the procedure and [AGENTS.md](AGENTS.md) the working detail.
+- GitHub Actions builds the DOL and the SD card zip for every push and pull
+  request, runs the three host-test lanes and the source checks (whitespace
+  and the UI isolation guardrail), and keeps the zip as an artifact to try on
+  a console. A pushed tag publishes its release from the tagged commit, with
+  `SHA256SUMS.txt` and a build provenance attestation.
+- The issue forms are the two Indigo ones; upstream's duplicates are gone.
 
 ## v1.25.0 — Memory Cards, a cube that flies in, and a drag-and-drop download
 
