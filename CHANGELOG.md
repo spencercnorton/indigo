@@ -40,6 +40,9 @@ Changes land under `## Unreleased` until the release names them.
   a console. A pushed tag publishes its release from the tagged commit, with
   `SHA256SUMS.txt` and a build provenance attestation.
 - The issue forms are the two Indigo ones; upstream's duplicates are gone.
+- `make clean` in `buildtools/ui/tests/` removes every test it builds. It
+  used to leave the cube-motif tests behind and listed others twice; it now
+  removes the Makefile's own target lists, so a new test is cleaned too.
 
 ## v1.25.0 — Memory Cards, a cube that flies in, and a drag-and-drop download
 
