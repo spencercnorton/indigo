@@ -1,8 +1,9 @@
 # A pushed tag becomes a GitHub Release: vX.Y.Z on main is a release (marked
 # Latest), vX.Y.Z-beta.N on beta is a pre-release. The zip is built from the
-# tagged commit in the pinned image, carries a build provenance attestation, and
-# its notes are the tag's CHANGELOG section. workflow_dispatch builds an existing
-# tag without publishing anything, to check the pipeline.
+# tagged commit on our own build runner (the pinned toolchain image), checked
+# like every CI build, carries a build provenance attestation, and its notes
+# are the tag's CHANGELOG section. workflow_dispatch builds an existing tag
+# without publishing anything, to check the pipeline.
 name: Release
 
 on:
@@ -21,12 +22,14 @@ concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
+env:
+  TOOLCHAIN: ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575
+
 jobs:
   build:
     name: Build the release zip
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, indigo-build]
     timeout-minutes: 20
-    container: ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       title: ${{ steps.meta.outputs.title }}
@@ -36,8 +39,8 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
-      - name: Trust the checkout
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Toolchain
+        run: buildtools/ci/toolchain.sh "$TOOLCHAIN"
       - name: Check the tag
         id: meta
         env:
@@ -66,14 +69,19 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       - name: Build Indigo
         run: make dev
-      - name: Check the DOL names its commit
-        run: grep -aqF "$(git rev-parse --short HEAD)" cube/swiss/swiss.dol
+      - name: Check the DOL
+        run: |
+          mkdir -p dist
+          python3 buildtools/ci/verify_dol.py cube/swiss/swiss.dol --toolchain "$TOOLCHAIN" \
+            --revision "$(git rev-parse HEAD)" --short "$(git rev-parse --short HEAD)" \
+            --out dist/provenance.json
       - name: Package the SD card zip and the notes
         env:
           TAG: ${{ steps.meta.outputs.tag }}
         run: |
-          mkdir -p dist
           buildtools/sd_package.sh "$TAG" cube/swiss/swiss.dol dist
+          python3 buildtools/ci/check_package.py "dist/Indigo-$TAG.zip" \
+            --dol cube/swiss/swiss.dol --version "$TAG"
           (cd dist && sha256sum "Indigo-$TAG.zip" > SHA256SUMS.txt)
           buildtools/release_notes.sh "$TAG" > dist/notes.md
           cat dist/SHA256SUMS.txt
@@ -87,7 +95,7 @@ jobs:
     name: Publish the GitHub Release
     needs: build
     if: github.event_name == 'push'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, indigo-build]
     timeout-minutes: 10
     permissions:
       contents: write

@@ -24,3 +24,4 @@ dist
 # Native cube-orientation host test executables.
 /buildtools/ui/tests/test_ui_cube_motif
 /buildtools/ui/tests/test_ui_cube_motif_san
+__pycache__/

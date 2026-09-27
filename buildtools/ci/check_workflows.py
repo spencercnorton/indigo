@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Hold the workflows to how Indigo's CI works.
+
+- Every job runs on our own runners (runs-on names self-hosted and a pool).
+- Every action is pinned to a full commit SHA.
+- No job asks for Docker (container:, services:): our runners have none.
+- No pull_request_target: a fork's code never runs with this repository's rights.
+- The toolchain a workflow names is the one the build runner image is built on.
+
+usage: check_workflows.py [repository root]
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+POOLS = {"indigo-build", "indigo-emulator"}
+FORBIDDEN = {
+    "pull_request_target": "pull_request_target runs fork code with this repository's rights",
+    "container:": "our runners have no Docker; the build runner already is the toolchain image",
+    "services:": "our runners have no Docker",
+}
+
+
+def runs_on_values(lines: list[str]) -> list[tuple[int, set[str]]]:
+    found = []
+    for number, line in enumerate(lines):
+        match = re.match(r"^\s*runs-on:\s*(.*?)\s*(#.*)?$", line)
+        if not match:
+            continue
+        value = match.group(1)
+        if value.startswith("["):
+            labels = {part.strip().strip("'\"") for part in value.strip("[]").split(",")}
+        elif value:
+            labels = {value.strip("'\"")}
+        else:  # a block list on the following lines
+            labels = set()
+            for following in lines[number + 1:]:
+                item = re.match(r"^\s*-\s*(\S+)", following)
+                if not item:
+                    break
+                labels.add(item.group(1).strip("'\""))
+        found.append((number + 1, labels))
+    return found
+
+
+def problems(root: Path) -> list[str]:
+    found: list[str] = []
+    dockerfile = (root / "buildtools/ci/runner/build.Dockerfile").read_text()
+    base = re.search(r"^FROM (\S+)", dockerfile, re.M)
+    if not base or "@sha256:" not in base.group(1):
+        found.append("build.Dockerfile: FROM must pin the toolchain by digest")
+    elif f'echo "{base.group(1)}"' not in dockerfile:
+        found.append("build.Dockerfile: /etc/indigo-ci/toolchain must record its FROM image")
+    workflows = sorted((root / ".github/workflows").glob("*.y*ml"))
+    if not workflows:
+        found.append("no workflows found")
+    for path in workflows:
+        name = path.relative_to(root)
+        text = path.read_text()
+        lines = text.splitlines()
+        for number, line in enumerate(lines, 1):
+            code = line.split("#", 1)[0]
+            key = re.match(r"^\s*([\w-]+):", code)
+            for needle, why in FORBIDDEN.items():
+                if needle.rstrip(":") in code and (needle == "pull_request_target" or
+                                                    (key and key.group(1) + ":" == needle)):
+                    found.append(f"{name}:{number}: {needle.rstrip(':')} — {why}")
+        values = runs_on_values(lines)
+        if not values:
+            found.append(f"{name}: no jobs found")
+        for number, labels in values:
+            if "self-hosted" not in labels or not labels & POOLS:
+                found.append(f"{name}:{number}: runs-on {sorted(labels)} is not one of our pools "
+                             f"(self-hosted plus {' or '.join(sorted(POOLS))})")
+        for number, line in enumerate(lines, 1):
+            use = re.match(r"^\s*(?:-\s*)?uses:\s*(\S+)", line)
+            if use and not use.group(1).startswith("./") and \
+                    not re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", use.group(1)):
+                found.append(f"{name}:{number}: {use.group(1)} is not pinned to a full commit SHA")
+        toolchain = re.search(r"^\s*TOOLCHAIN:\s*(\S+)", text, re.M)
+        if toolchain and base and toolchain.group(1) != base.group(1):
+            found.append(f"{name}: TOOLCHAIN {toolchain.group(1)} is not build.Dockerfile's {base.group(1)}")
+    return found
+
+
+def main(argv: list[str]) -> int:
+    root = Path(argv[1] if len(argv) > 1 else ".")
+    found = problems(root)
+    for problem in found:
+        print(f"::error::{problem}", file=sys.stderr)
+    if not found:
+        print("workflows: every job on our runners, actions pinned, toolchain matches the runner image")
+    return 1 if found else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
