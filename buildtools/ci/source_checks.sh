@@ -27,9 +27,10 @@ for path in sys.argv[1:]:
     ast.parse(open(path, encoding="utf-8").read(), path)
 print(len(sys.argv) - 1, "files parse")'
 
-echo "== CI tools and the runner supervisor =="
+echo "== CI tools, the runner supervisor and the emulator test's parts =="
 python3 -m unittest discover -s buildtools/ci -p 'test_*.py'
 python3 -m unittest discover -s buildtools/ci/runner -p 'test_*.py'
+python3 -m unittest discover -s buildtools/ui/emulator -p 'test_*.py'
 
 echo "== workflows =="
 python3 buildtools/ci/check_workflows.py .

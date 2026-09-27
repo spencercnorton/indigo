@@ -64,7 +64,7 @@ class Dockerfiles(unittest.TestCase):
         for pool in indigo_ci.POOLS.values():
             copied = set()
             for line in (here / pool.dockerfile).read_text().splitlines():
-                if line.startswith("COPY "):
+                if line.startswith("COPY ") and "--from=" not in line:
                     words = [w for w in line.split()[1:] if not w.startswith("--")]
                     copied.update(words[:-1])
             self.assertEqual(copied, set(pool.copies), pool.dockerfile)

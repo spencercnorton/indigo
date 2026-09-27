@@ -12,7 +12,7 @@ Documentation=https://github.com/spencercnorton/indigo/blob/beta/buildtools/ci/r
 EnvironmentFile=-%h/.config/indigo-ci.env
 ExecStart=/usr/bin/python3 %h/.local/share/indigo-ci/src/buildtools/ci/runner/indigo_ci.py run
 Restart=always
-RestartSec=30
+RestartSec=5
 TimeoutStopSec=30
 
 [Install]
