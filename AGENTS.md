@@ -43,8 +43,10 @@ buildtools/ci/source_checks.sh   # shell and Python syntax, CI tool tests, workf
 
 CI (`.github/workflows/ci.yml`) also checks the DOL (`buildtools/ci/verify_dol.py`:
 structure, size budget, the commit it names) and the zip's exact layout
-(`buildtools/ci/check_package.py`), and builds a second time in a fresh
-container to prove the build is reproducible. "CI passed" sums every job up.
+(`buildtools/ci/check_package.py`), builds a second time in a fresh
+container to prove the build is reproducible, and boots the DOL in Dolphin
+and walks its menus with a controller (`buildtools/ui/emulator/`: every
+face, the Library, no crash). "CI passed" sums every job up.
 Every job runs on self-hosted runners, one throwaway container per job:
 [buildtools/ci/runner/README.md](buildtools/ci/runner/README.md).
 
@@ -92,6 +94,11 @@ with a tagged release.
   and uses no `container:`, `services:` or `pull_request_target`;
   `buildtools/ci/check_workflows.py` fails CI otherwise. A change to a runner
   image (`buildtools/ci/runner/`) applies from the first run after it merges.
+- **The emulator test reads the screen.** It finds the face's name under the
+  cube and a game's title in the Library by where they sit (`LABEL_BOX`,
+  `TITLE_BOX` in `buildtools/ui/emulator/run.py`); a change that moves them
+  updates those boxes, and a change that adds a screen or a control can add a
+  step to the route.
 - **Tests with every change.** A bug fix carries a regression test; a feature
   carries the smallest test that fails without it. Pinned hashes in the audits
   (for example `SHOW_ACTIONS_SHA256`) are updated on purpose, never to make a

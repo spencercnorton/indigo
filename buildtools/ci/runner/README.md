@@ -7,7 +7,7 @@ takes that one job, and is thrown away. Nothing a job does survives it.
 | Pool | `runs-on` | Image | What runs there |
 | --- | --- | --- | --- |
 | build | `[self-hosted, indigo-build]` | [`build.Dockerfile`](build.Dockerfile): the pinned devkitPPC/libogc2 image, GCC and Clang with their sanitizers, Python with Pillow and NumPy | the DOL, the SD card zip, host tests, source checks, releases |
-| emulator | `[self-hosted, indigo-emulator]` | [`emulator.Dockerfile`](emulator.Dockerfile): Dolphin (pinned), a virtual X server, FFmpeg | the emulator tests |
+| emulator | `[self-hosted, indigo-emulator]` | [`emulator.Dockerfile`](emulator.Dockerfile): Dolphin (pinned), a virtual X server, FFmpeg, gxtexconv | the emulator test ([buildtools/ui/emulator/](../../ui/emulator/README.md)) |
 
 ## How a job is contained
 

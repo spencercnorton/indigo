@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1
 # The emulator runner: Dolphin (pinned), a virtual X server with software
 # OpenGL, FFmpeg and the Python the harness in buildtools/ui/emulator/ uses,
-# and a GitHub Actions runner that takes one job.
+# gxtexconv for the demonstration disc's posters, and a GitHub Actions runner
+# that takes one job.
+FROM ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575 AS toolchain
+
 FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
 
 # Debian and Ubuntu install Dolphin in /usr/games.
@@ -16,9 +19,15 @@ RUN apt-get update \
       xvfb xz-utils \
  && rm -rf /var/lib/apt/lists/*
 
+# The same static gxtexconv the build runner has, from the same image.
+COPY --from=toolchain /opt/devkitpro/tools/bin/gxtexconv /usr/local/bin/gxtexconv
+
+# X keeps its sockets in /tmp/.X11-unix, which only root may create.
 RUN useradd --create-home --uid 1001 --shell /bin/bash runner \
  && mkdir -p /etc/indigo-ci \
- && dolphin-emu-nogui --version > /etc/indigo-ci/emulator
+ && mkdir -m 1777 /tmp/.X11-unix \
+ && dolphin-emu-nogui --version > /etc/indigo-ci/emulator \
+ && gxtexconv --version
 
 ARG RUNNER_VERSION
 ARG RUNNER_SHA256

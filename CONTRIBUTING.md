@@ -15,8 +15,9 @@ Development happens here, in the open, on two branches:
   into `main` and tagged `vX.Y.Z`; nothing reaches `main` any other way.
 
 Every pull request runs CI: the DOL build and the checks on it, a second
-build that must match it byte for byte, the host test suite (plain, GCC and
-Clang sanitizers, contracts) and the source checks. The build job keeps the
+build that must match it byte for byte, the emulator test (the build boots in
+Dolphin and a controller walks its menus), the host test suite (plain, GCC
+and Clang sanitizers, contracts) and the source checks. The build job keeps the
 SD card zip as an artifact, so you can try a pull request on a console before
 it merges. CI runs on the maintainer's own machines
 ([buildtools/ci/runner/](buildtools/ci/runner/README.md)), so a first pull

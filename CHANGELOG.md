@@ -52,6 +52,12 @@ Changes land under `## Unreleased` until the release names them.
   byte; the host tests under Clang's sanitizers as well as GCC's; and a
   policy check on the workflows themselves. One "CI passed" check sums up
   every job.
+- CI boots every build in Dolphin and walks its menus with a controller:
+  the cube turns through its four faces, each face opens and closes, and the
+  Library moves between games, on a demonstration disc of fictitious games.
+  Dolphin emulates the MMU, so a crash stops the test as it would stop a
+  console. Every step's picture is kept with the run
+  ([buildtools/ui/emulator/](buildtools/ui/emulator/README.md)).
 
 ## v1.25.0 — Memory Cards, a cube that flies in, and a drag-and-drop download
 
