@@ -55,6 +55,8 @@ SOURCE_EVERY = 600          # look for new image definitions on the trusted bran
 RUNNER_RELEASE_EVERY = 21600  # look for a new actions/runner release
 CLEANUP_EVERY = 300         # drop registrations whose container is gone
 MAX_IDLE_AGE = 12 * 3600    # replace an idle runner this old with a fresh one
+STUCK_AFTER = 180           # a runner still offline this long after it started is replaced
+HEALTH_EVERY = 60           # how often to ask GitHub whether running runners are connected
 ALERT_AFTER = 5             # consecutive failed starts before INDIGO_CI_ALERT
 
 
@@ -199,7 +201,7 @@ class Supervisor:
         self.pools = pools
         self.images: dict[str, str] = {}
         self.runner: tuple[str, str] | None = None
-        self.next_source = self.next_release = self.next_cleanup = 0.0
+        self.next_source = self.next_release = self.next_cleanup = self.next_health = 0.0
         self.failures: dict[str, int] = {}
         self.backoff: dict[str, float] = {}
         self.stopping = False
@@ -248,37 +250,41 @@ class Supervisor:
                    *(["--internal"] if internal else []), network)
 
     def ensure_proxy(self, busy: bool = True) -> None:
-        """Start the proxy if it is missing; replace an outdated one only while no job runs."""
+        """Keep the proxy running and on every slot's network. A new egress_proxy.py
+        replaces it only while no job runs: replacing it cuts every runner off."""
         image = self.images.get("build")
         if not image:
             return
+        script = hashlib.sha256((SOURCE / CONTEXT / "egress_proxy.py").read_bytes()).hexdigest()[:16]
         self.ensure_network(EGRESS_NETWORK, internal=False)
         info = inspect(PROXY)
-        if info and info["Config"]["Image"] != image and not busy:
-            log(f"replacing the egress proxy with {image}")
+        if info and info["Config"]["Labels"].get(f"{LABEL}.proxy") != script and not busy:
+            log(f"replacing the egress proxy for egress_proxy.py {script}")
             docker("rm", "--force", PROXY)
             info = None
         if info is None:
             docker("run", "--detach", "--name", PROXY, "--restart", "unless-stopped",
-                   "--label", LABEL, "--network", EGRESS_NETWORK, "--runtime", "runc",
+                   "--label", LABEL, "--label", f"{LABEL}.proxy={script}",
+                   "--network", EGRESS_NETWORK, "--runtime", "runc",
                    "--user", RUNNER_UID, "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
                    "--read-only", "--memory", "256m", "--pids-limit", "256",
                    "--env", "PYTHONDONTWRITEBYTECODE=1", "--entrypoint", "python3",
                    image, "/opt/indigo-ci/egress_proxy.py")
+            info = inspect(PROXY) or {}
         elif not info["State"]["Running"]:
             docker("start", PROXY)
-
-    def attach(self, network: str) -> None:
-        self.ensure_network(network, internal=True)
-        info = inspect(PROXY) or {}
-        if network not in info.get("NetworkSettings", {}).get("Networks", {}):
-            docker("network", "connect", network, PROXY)
+        joined = info.get("NetworkSettings", {}).get("Networks", {})
+        for pool, count in self.pools.items():
+            for slot in range(1, count + 1):
+                network = slot_network(pool, slot)
+                self.ensure_network(network, internal=True)
+                if network not in joined:
+                    docker("network", "connect", network, PROXY)
 
     # -- one runner per slot
     def launch(self, pool: Pool, slot: int) -> str:
         name = runner_name(pool.name, slot)
         network = slot_network(pool.name, slot)
-        self.attach(network)
         config = github("POST", f"/repos/{REPO}/actions/runners/generate-jitconfig", {
             "name": name, "runner_group_id": 1, "work_folder": "_work",
             "labels": ["self-hosted", "linux", "x64", pool.label]})["encoded_jit_config"]
@@ -317,6 +323,9 @@ class Supervisor:
                 runners = {r["name"]: r for r in repo_runners()}
             return runners
 
+        health = now >= self.next_health
+        if health:
+            self.next_health = now + HEALTH_EVERY
         live: set[str] = set()
         for pool_name, count in self.pools.items():
             pool = POOLS[pool_name]
@@ -331,6 +340,11 @@ class Supervisor:
                     old = started and now - _epoch(started) > MAX_IDLE_AGE
                     if (outdated or old) and not registrations().get(runner, {}).get("busy", True):
                         log(f"retiring idle {runner} ({'new image' if outdated else 'age'})")
+                        docker("rm", "--force", container)
+                        self.delete_registration(registrations().get(runner))
+                    elif health and started and now - _epoch(started) > STUCK_AFTER and \
+                            registrations().get(runner, {}).get("status") != "online":
+                        log(f"{runner} is not connected to GitHub; replacing it")
                         docker("rm", "--force", container)
                         self.delete_registration(registrations().get(runner))
                     continue
