@@ -50,6 +50,7 @@ jobs:
             --revision "$(git rev-parse HEAD)" --short "$(git rev-parse --short HEAD)" \
             --out dist/provenance.json
           cp cube/swiss/swiss.dol dist/swiss.dol
+          git show-ref --tags > dist/tags.txt || true  # the DOL lists every tag (tags.h)
       - name: Package and check the SD card zip
         run: |
           version="ci-$(git rev-parse --short=8 HEAD)"
@@ -76,6 +77,7 @@ jobs:
           path: |
             dist/swiss.dol
             dist/provenance.json
+            dist/tags.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -90,12 +92,21 @@ jobs:
           fetch-depth: 0
       - name: Toolchain
         run: buildtools/ci/toolchain.sh "$TOOLCHAIN"
-      - name: Build Indigo again, in a fresh container
-        run: make dev
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dol-${{ github.sha }}
           path: first
+      - name: The tags the first build saw
+        # The DOL lists every tag, so a tag pushed between the two builds would
+        # make them differ. Tags never move (they are immutable), so dropping the
+        # ones the first build did not have leaves exactly its set.
+        run: |
+          cut -d' ' -f2 first/tags.txt > first/tag-refs.txt
+          git tag -l | while read -r tag; do
+            grep -qxF "refs/tags/$tag" first/tag-refs.txt || git tag -d "$tag" > /dev/null
+          done
+      - name: Build Indigo again, in a fresh container
+        run: make dev
       - name: Both builds are the same bytes
         run: |
           sha256sum first/swiss.dol cube/swiss/swiss.dol
