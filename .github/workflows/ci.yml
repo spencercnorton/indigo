@@ -1,7 +1,10 @@
-# Every push to main or beta and every pull request: build the DOL and the SD card
-# zip in the pinned devkitPPC/libogc2 image, run the host test suite, and check
-# whitespace. The zip is kept as an artifact, so any pull request can be tried on
-# a console before it merges.
+# Every push to main or beta and every pull request: build the DOL and the SD
+# card zip and check both, build again in a fresh container to prove the build
+# is reproducible, run the host tests (plain, GCC and Clang sanitizers,
+# contracts) and the source checks. Every job runs on our own machines, in a
+# fresh container that takes one job and is then thrown away
+# (buildtools/ci/runner/README.md). The zip is kept as an artifact, so any
+# pull request can be tried on a console before it merges.
 name: CI
 
 on:
@@ -17,62 +20,114 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  # The image every DOL is built in. The build runner is built on it, and
+  # buildtools/ci/check_workflows.py keeps this line and its Dockerfile equal.
+  TOOLCHAIN: ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575
+
 jobs:
   build:
     name: Build
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, indigo-build]
     timeout-minutes: 20
-    container: ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Trust the checkout
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Toolchain
+        run: buildtools/ci/toolchain.sh "$TOOLCHAIN"
       - name: Build Indigo
         run: make dev
-      - name: Package the SD card zip
+      - name: Check the DOL
+        run: |
+          mkdir -p dist
+          python3 buildtools/ci/verify_dol.py cube/swiss/swiss.dol --toolchain "$TOOLCHAIN" \
+            --revision "$(git rev-parse HEAD)" --short "$(git rev-parse --short HEAD)" \
+            --out dist/provenance.json
+          cp cube/swiss/swiss.dol dist/swiss.dol
+      - name: Package and check the SD card zip
         run: |
           version="ci-$(git rev-parse --short=8 HEAD)"
-          mkdir -p dist
           buildtools/sd_package.sh "$version" cube/swiss/swiss.dol dist
+          python3 buildtools/ci/check_package.py "dist/Indigo-$version.zip" \
+            --dol cube/swiss/swiss.dol --version "$version"
+          {
+            echo "### Build"
+            echo "| | bytes | SHA-256 |"
+            echo "| --- | ---: | --- |"
+            for file in dist/swiss.dol "dist/Indigo-$version.zip"; do
+              echo "| \`${file#dist/}\` | $(wc -c < "$file") | \`$(sha256sum "$file" | cut -c1-64)\` |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: indigo-sd-card-${{ github.sha }}
           path: dist/*.zip
           if-no-files-found: error
           retention-days: 14
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dol-${{ github.sha }}
+          path: |
+            dist/swiss.dol
+            dist/provenance.json
+          if-no-files-found: error
+          retention-days: 14
 
-  host-tests:
-    name: Host tests (${{ matrix.lane }})
-    runs-on: ubuntu-24.04
+  reproducible:
+    name: Reproducible build
+    needs: build
+    runs-on: [self-hosted, indigo-build]
     timeout-minutes: 20
-    container: ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575
-    strategy:
-      fail-fast: false
-      matrix:
-        lane: [plain, sanitized, contracts]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Trust the checkout
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Install the host toolchain
+      - name: Toolchain
+        run: buildtools/ci/toolchain.sh "$TOOLCHAIN"
+      - name: Build Indigo again, in a fresh container
+        run: make dev
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dol-${{ github.sha }}
+          path: first
+      - name: Both builds are the same bytes
         run: |
-          apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-            python3-pil python3-numpy zlib1g-dev
-      - name: Run the ${{ matrix.lane }} lane
+          sha256sum first/swiss.dol cube/swiss/swiss.dol
+          if ! cmp first/swiss.dol cube/swiss/swiss.dol; then
+            echo "::error::Two builds of the same commit in the same toolchain differ. Something in the build depends on the machine, the time or the order of files."
+            exit 1
+          fi
+          echo "Reproducible: two independent builds are byte for byte the same." >> "$GITHUB_STEP_SUMMARY"
+
+  host-tests:
+    name: Host tests (${{ matrix.name }})
+    runs-on: [self-hosted, indigo-build]
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: plain, lane: plain, cc: gcc }
+          - { name: sanitized, lane: sanitized, cc: gcc }
+          - { name: "sanitized, Clang", lane: sanitized, cc: clang }
+          - { name: contracts, lane: contracts, cc: gcc }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Run the ${{ matrix.name }} lane
         env:
+          CC: ${{ matrix.cc }}
           LANE: ${{ matrix.lane }}
+          UI_TEST_JOBS: "8"
           UI_TEST_REQUIRE_GXTEXCONV: "1"
         run: buildtools/ui/tests/run_tests.sh "$LANE"
 
   target:
     name: Target branch
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, indigo-build]
     timeout-minutes: 2
     steps:
       - name: Changes go to beta; main takes only beta or a hotfix
@@ -90,8 +145,8 @@ jobs:
 
   source:
     name: Source checks
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    runs-on: [self-hosted, indigo-build]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -107,3 +162,19 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: buildtools/check_ui_isolation.sh "origin/$BASE_REF"
+      - name: Scripts, CI tools and workflows
+        run: buildtools/ci/source_checks.sh
+
+  passed:
+    name: CI passed
+    if: always()
+    needs: [build, reproducible, host-tests, target, source]
+    runs-on: [self-hosted, indigo-build]
+    timeout-minutes: 2
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")' > /dev/null
