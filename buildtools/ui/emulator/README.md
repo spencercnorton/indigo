@@ -8,7 +8,7 @@ and answers the controller.
 | File | What it is |
 | --- | --- |
 | [`run.py`](run.py) | The test: starts Dolphin, plugs a controller in, walks the route, checks every step |
-| [`card.py`](card.py) | The demonstration disc it boots with: fictitious games with banners, and posters |
+| [`card.py`](card.py) | The demonstration disc it boots with: fictitious games with banners, two damaged images, and posters |
 | [`dsu_pad.py`](dsu_pad.py) | The controller: a pad served to Dolphin over its DSU protocol |
 | [`test_emulator.py`](test_emulator.py) | Tests for those three, without Dolphin |
 
@@ -67,4 +67,7 @@ disc has none and every card shows its banner.
   connected while it runs.
 - **Games need a file table.** The Library reads a game's banner through the
   file table its disc header points to, so each game on the demonstration
-  disc has one, with an `opening.bnr`, as a real game does.
+  disc has one, with an `opening.bnr`, as a real game does. Two more images
+  are damaged on purpose, a header-only dump and a table that counts more
+  entries than it holds, because the Library must list both without
+  crashing.

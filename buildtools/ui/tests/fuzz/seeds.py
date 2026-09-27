@@ -64,9 +64,22 @@ def settings(out: Path) -> None:
     (out / "keys.ini").write_bytes(b"# a comment\nSystem Language=English\nAutoload=sd:/x.dol\n")
 
 
+def fst(out: Path) -> None:
+    # A game's file table as card.py writes it, then the two shapes that once
+    # crashed the Library: no table at all (a header-only image), and a table
+    # that counts more entries than it holds. get_fst_details reads the count
+    # as a native u32, big-endian on the console. It is stored in the host's
+    # byte order here, or a little-endian host would read a huge count, stop
+    # at the count check and never reach the names.
+    root, entry = struct.pack(">BBHI", 1, 0, 0, 0), struct.pack(">BBHII", 0, 0, 0, 0x5000, 0x1960)
+    (out / "game").write_bytes(root + struct.pack("=I", 2) + entry + b"opening.bnr\0")
+    (out / "empty").write_bytes(b"")
+    (out / "runaway-count").write_bytes(root + struct.pack("=I", 0x00FFFFFF) + entry)
+
+
 def main() -> int:
     out = Path(sys.argv[1])
-    for target in (history, saves, posters, settings):
+    for target in (history, saves, posters, settings, fst):
         folder = out / target.__name__
         folder.mkdir(parents=True, exist_ok=True)
         target(folder)

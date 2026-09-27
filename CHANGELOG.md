@@ -28,6 +28,11 @@ Changes land under `## Unreleased` until the release names them.
   dimmed. Without a Configuration Device there are no folders to list, so A
   does nothing there. Dimmed network settings keep A Edit: A still opens
   their editor.
+- The Library no longer crashes on a damaged disc image. It reads each
+  listed image's file table to find the game's banner, and a header-only
+  dump, a truncated download or a corrupt table could send that read past the
+  end of the table and crash the console. Indigo now checks every entry
+  against the table's size; such an image shows without its banner.
 
 ### Documentation
 
@@ -67,9 +72,11 @@ Changes land under `## Unreleased` until the release names them.
   console. Every step's picture is kept with the run
   ([buildtools/ui/emulator/](buildtools/ui/emulator/README.md)).
 - CI fuzzes the files Indigo reads from a card: poster packs, the play
-  history, saves and settings files, each with AddressSanitizer and UBSan,
-  starting from real files of each kind. The settings fuzzer runs Swiss's own
-  parsers with the console's `strtok_r`. Weekly on `main`, every check runs
+  history, saves, settings files and disc images' file tables, each with
+  AddressSanitizer and UBSan, starting from real files of each kind. The
+  settings and file-table fuzzers run Swiss's own code as the console does:
+  with its `strtok_r`, and with its unsigned `char`. The emulator test's disc
+  also carries two damaged images the Library must list without crashing. Weekly on `main`, every check runs
   again and the fuzzers run for ten minutes each.
 
 ## v1.25.0 — Memory Cards, a cube that flies in, and a drag-and-drop download

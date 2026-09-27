@@ -45,8 +45,22 @@ class Disc(unittest.TestCase):
         self.assertEqual(header[card.FST_OFFSET:], bytes([1] + [0] * 10 + [1]))
         self.assertLess(len(header), card.SYSTEM_AREA)
 
+    def test_damaged_images(self):
+        broken = card.header_only("GBHZ01", "Broken Header")
+        self.assertEqual((len(broken), broken[:6]), (0x440, b"GBHZ01"))
+        self.assertEqual(struct.unpack_from(">III", broken, 0x424), (0, 0, 0))
+        runaway = card.runaway_table("GCTZ01", "Corrupt Table")
+        offset, size = struct.unpack_from(">II", runaway, 0x424)
+        count = struct.unpack_from(">I", runaway, offset + 8)[0]
+        self.assertGreater(12 * count, size)
+        self.assertEqual(12 * count, 0x7FFFFFF8, "wraps an unchecked lookup below 0x80000000")
+        third = sorted(title for _, title in card.GAMES)[2]
+        for _, title, _ in card.DAMAGED:
+            self.assertLess(title, third, "the route browses only the first games")
+
     def test_ids_and_names(self):
-        self.assertEqual(len({game_id for game_id, _ in card.GAMES}), len(card.GAMES))
+        ids = [game_id for game_id, _ in card.GAMES] + [game_id for game_id, _, _ in card.DAMAGED]
+        self.assertEqual(len(set(ids)), len(ids))
         self.assertTrue(card.NO_POSTER < {game_id for game_id, _ in card.GAMES})
         with self.assertRaises(ValueError):
             card.disc_header("gacz01", "lower case")
