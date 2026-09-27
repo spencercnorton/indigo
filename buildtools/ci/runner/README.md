@@ -7,6 +7,7 @@ takes that one job, and is thrown away. Nothing a job does survives it.
 | Pool | `runs-on` | Image | What runs there |
 | --- | --- | --- | --- |
 | build | `[self-hosted, indigo-build]` | [`build.Dockerfile`](build.Dockerfile): the pinned devkitPPC/libogc2 image, GCC and Clang with their sanitizers, Python with Pillow and NumPy | the DOL, the SD card zip, host tests, source checks, releases |
+| site | `[self-hosted, norvitech-site]` | the build image | norvitech.com's checks, for [spencercnorton/norvitech-site](https://github.com/spencercnorton/norvitech-site) |
 | emulator | `[self-hosted, indigo-emulator]` | [`emulator.Dockerfile`](emulator.Dockerfile): Dolphin (pinned), a virtual X server, FFmpeg, gxtexconv | the emulator test ([buildtools/ui/emulator/](../../ui/emulator/README.md)) |
 
 ## How a job is contained
@@ -61,7 +62,8 @@ writes `~/.config/indigo-ci.env`. The supervisor needs `GH_TOKEN`, a token
 with admin rights on the repository (it mints runner registrations): put it
 in that file (it is mode 0600), or give the unit a drop-in that fetches it
 from a secret store at start. `INDIGO_CI_POOLS` sets the slots per pool
-(default `build:3,emulator:1`); two machines can serve the same pools.
+(default `build:3,emulator:1`; `site:1` also serves norvitech.com's checks);
+two machines can serve the same pools.
 
 ```bash
 systemctl --user status indigo-ci     # the supervisor

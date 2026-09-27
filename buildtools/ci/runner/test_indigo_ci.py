@@ -13,6 +13,14 @@ import indigo_ci  # noqa: E402
 class Pools(unittest.TestCase):
     def test_default_and_custom(self):
         self.assertEqual(indigo_ci.parse_pools("build:3,emulator:1"), {"build": 3, "emulator": 1})
+        self.assertEqual(indigo_ci.parse_pools("build:4,emulator:2,site:1"),
+                         {"build": 4, "emulator": 2, "site": 1})
+
+    def test_the_site_pool_serves_the_site_on_the_build_image(self):
+        site = indigo_ci.POOLS["site"]
+        self.assertEqual((site.repo, site.dockerfile, site.label),
+                         ("spencercnorton/norvitech-site", "build.Dockerfile", "norvitech-site"))
+        self.assertEqual(indigo_ci.POOLS["build"].repo, indigo_ci.REPO)
         self.assertEqual(indigo_ci.parse_pools(" build:0 "), {"build": 0})
 
     def test_bad_entries_stop_the_supervisor(self):
