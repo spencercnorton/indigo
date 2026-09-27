@@ -151,4 +151,3 @@ class Pad:
                     self._socket.sendto(pad_data(self._id, self._counter, held), address)
                 except OSError:
                     pass
-
