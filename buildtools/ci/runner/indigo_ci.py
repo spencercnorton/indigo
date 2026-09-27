@@ -14,8 +14,9 @@ file has the design.
 
 Environment:
     GH_TOKEN          admin on the repository (it mints runner registrations)
-    INDIGO_CI_POOLS   slots per pool, default "build:3,emulator:1"
-    INDIGO_CI_REPO    default spencercnorton/indigo
+    INDIGO_CI_POOLS   slots per pool, default "build:3,emulator:1"; the site pool
+                      serves spencercnorton/norvitech-site
+    INDIGO_CI_REPO    default spencercnorton/indigo (its pools, and the images' source)
     INDIGO_CI_REF     the trusted branch images are built from, default beta
     INDIGO_CI_NAME    this machine in runner names, default the hostname
     INDIGO_CI_HOME    state and the source checkout, ~/.local/share/indigo-ci
@@ -60,6 +61,9 @@ HEALTH_EVERY = 60           # how often to ask GitHub whether running runners ar
 ALERT_AFTER = 5             # consecutive failed starts before INDIGO_CI_ALERT
 
 
+REPO = os.environ.get("INDIGO_CI_REPO", "spencercnorton/indigo")
+
+
 @dataclass(frozen=True)
 class Pool:
     name: str
@@ -68,6 +72,7 @@ class Pool:
     label: str
     cpus: str
     memory: str
+    repo: str = REPO  # whose runners the pool's slots register as
 
 
 POOLS = {
@@ -75,9 +80,10 @@ POOLS = {
                   "indigo-build", "8", "6g"),
     "emulator": Pool("emulator", "emulator.Dockerfile", ("entrypoint.sh",),
                      "indigo-emulator", "8", "6g"),
+    # norvitech.com's checks (Python, Node, gitleaks) on the build image.
+    "site": Pool("site", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py"),
+                 "norvitech-site", "2", "2g", repo="spencercnorton/norvitech-site"),
 }
-
-REPO = os.environ.get("INDIGO_CI_REPO", "spencercnorton/indigo")
 REF = os.environ.get("INDIGO_CI_REF", "beta")
 NAME = (os.environ.get("INDIGO_CI_NAME") or socket.gethostname().split(".")[0]).lower()
 HOME = Path(os.environ.get("INDIGO_CI_HOME") or Path.home() / ".local/share/indigo-ci")
@@ -170,13 +176,15 @@ def github(method: str, path: str, body: dict | None = None) -> object:
     return json.loads(data) if data else None
 
 
-def repo_runners() -> list[dict]:
+def repo_runners(repos: set[str]) -> list[dict]:
+    """Every runner registered with these repositories, each marked with its repository."""
     runners: list[dict] = []
-    for page in range(1, 20):
-        batch = github("GET", f"/repos/{REPO}/actions/runners?per_page=100&page={page}")["runners"]
-        runners += batch
-        if len(batch) < 100:
-            return runners
+    for repo in sorted(repos):
+        for page in range(1, 20):
+            batch = github("GET", f"/repos/{repo}/actions/runners?per_page=100&page={page}")["runners"]
+            runners += [{**runner, "repo": repo} for runner in batch]
+            if len(batch) < 100:
+                break
     return runners
 
 
@@ -285,7 +293,7 @@ class Supervisor:
     def launch(self, pool: Pool, slot: int) -> str:
         name = runner_name(pool.name, slot)
         network = slot_network(pool.name, slot)
-        config = github("POST", f"/repos/{REPO}/actions/runners/generate-jitconfig", {
+        config = github("POST", f"/repos/{pool.repo}/actions/runners/generate-jitconfig", {
             "name": name, "runner_group_id": 1, "work_folder": "_work",
             "labels": ["self-hosted", "linux", "x64", pool.label]})["encoded_jit_config"]
         proxy = f"http://{PROXY}:{PROXY_PORT}"
@@ -320,7 +328,7 @@ class Supervisor:
         def registrations() -> dict[str, dict]:
             nonlocal runners
             if runners is None:
-                runners = {r["name"]: r for r in repo_runners()}
+                runners = {r["name"]: r for r in repo_runners({POOLS[p].repo for p in self.pools})}
             return runners
 
         health = now >= self.next_health
@@ -390,7 +398,7 @@ class Supervisor:
     def delete_registration(self, runner: dict | None) -> None:
         if runner and runner.get("id"):
             try:
-                github("DELETE", f"/repos/{REPO}/actions/runners/{runner['id']}")
+                github("DELETE", f"/repos/{runner['repo']}/actions/runners/{runner['id']}")
                 log(f"removed registration {runner.get('name')}")
             except urllib.error.HTTPError as error:
                 if error.code != 404:
@@ -399,7 +407,7 @@ class Supervisor:
     def loop(self) -> None:
         signal.signal(signal.SIGTERM, lambda *_: setattr(self, "stopping", True))
         HOME.mkdir(parents=True, exist_ok=True)
-        log(f"{NAME}: pools {self.pools} for {REPO}, images from {REF}")
+        log(f"{NAME}: pools {self.pools}, images from {REPO} {REF}")
         while not self.stopping:
             self.tick(time.time())
             for _ in range(TICK_SECONDS):
@@ -414,22 +422,22 @@ def _epoch(stamp: str) -> float:
     return float(calendar.timegm(time.strptime(stamp[:19], "%Y-%m-%dT%H:%M:%S")))
 
 
-def status() -> None:
+def status(pools: dict[str, int]) -> None:
     print(docker("ps", "--all", "--filter", f"label={LABEL}",
                  "--format", "table {{.Names}}\t{{.Status}}\t{{.Image}}").stdout)
-    for runner in sorted(repo_runners(), key=lambda r: r["name"]):
+    for runner in sorted(repo_runners({POOLS[p].repo for p in pools}), key=lambda r: r["name"]):
         labels = ",".join(label["name"] for label in runner.get("labels", []))
         state = "busy" if runner.get("busy") else runner.get("status")
         print(f"{runner['name']:32} {state:8} {labels}")
 
 
-def stop() -> None:
+def stop(pools: dict[str, int]) -> None:
     names = docker("ps", "--all", "--quiet", "--filter", f"label={LABEL}").stdout.split()
     if names:
         docker("rm", "--force", *names)
-    for runner in repo_runners():
+    for runner in repo_runners({POOLS[p].repo for p in pools}):
         if str(runner.get("name", "")).startswith(NAME + "-"):
-            github("DELETE", f"/repos/{REPO}/actions/runners/{runner['id']}")
+            github("DELETE", f"/repos/{runner['repo']}/actions/runners/{runner['id']}")
             print(f"removed {runner['name']}")
 
 
@@ -444,9 +452,9 @@ def main(argv: list[str]) -> int:
         supervisor.refresh(time.time(), force=True)
         print(json.dumps(supervisor.images, indent=2))
     elif command == "status":
-        status()
+        status(pools)
     elif command == "stop":
-        stop()
+        stop(pools)
     else:
         print(__doc__, file=sys.stderr)
         return 2
