@@ -13,6 +13,10 @@ on:
     branches: [main, beta]
   pull_request:
   workflow_dispatch:
+  # Weekly on main: the same checks on the release, which catches a change in
+  # the runners themselves, and a longer fuzzing run.
+  schedule:
+    - cron: '23 9 * * 1'
 
 permissions:
   contents: read
@@ -148,6 +152,27 @@ jobs:
           UI_TEST_JOBS: "8"
           UI_TEST_REQUIRE_GXTEXCONV: "1"
         run: buildtools/ui/tests/run_tests.sh "$LANE"
+
+  fuzz:
+    # Not in "CI passed": a fuzzer can find an old bug on any pull request, so
+    # a red Fuzz is a real parser bug to fix, not a verdict on this change.
+    name: Fuzz
+    runs-on: [self-hosted, indigo-build]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fuzz the files Indigo reads from a card
+        env:
+          SECONDS_EACH: ${{ github.event_name == 'schedule' && '600' || '30' }}
+        run: buildtools/ui/tests/fuzz/run_fuzz.sh "$SECONDS_EACH" fuzz-out
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: fuzz-crashes-${{ github.sha }}
+          path: |
+            fuzz-out/crashes/
+            fuzz-out/*.log
+          retention-days: 30
 
   target:
     name: Target branch

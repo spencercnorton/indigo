@@ -1,0 +1,56 @@
+#!/bin/sh
+# Coverage-guided fuzzing of the files Indigo reads from a card: poster packs,
+# its play history, save files and settings files. Each target is built with
+# libFuzzer, AddressSanitizer and UBSan and runs for SECONDS, starting from
+# seeds.py's real files. A crash, a sanitizer finding or a broken invariant
+# fails the run and leaves the input that caused it in OUT/crashes/<target>/.
+#
+# usage: buildtools/ui/tests/fuzz/run_fuzz.sh [SECONDS per target, 30] [OUT, ./fuzz-out]
+# Needs clang with its fuzzer and sanitizer runtimes, zlib, Python 3 with
+# Pillow and NumPy; the poster seed also needs gxtexconv.
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+seconds=${1:-30}
+mkdir -p "${2:-fuzz-out}"
+out=$(cd "${2:-fuzz-out}" && pwd)
+cc=${FUZZ_CC:-clang}
+gui=$here/../../../../cube/swiss/source/gui
+flags="-g -O1 -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
+# Sanitizer executables and high-ASLR hosts: see ../Makefile.
+[ "$(uname -s)" = Linux ] && flags="$flags -fno-pie -no-pie"
+
+mkdir -p "$out/bin"
+echo "== building the fuzzers =="
+# shellcheck disable=SC2086 # $flags is a list of flags
+{
+	$cc $flags -std=c11 -I"$gui" -o "$out/bin/history" "$here/fuzz_history.c" "$gui/ui_game_history.c"
+	$cc $flags -std=c11 -I"$gui" -o "$out/bin/saves" "$here/fuzz_saves.c" "$gui/ui_saves.c"
+	$cc $flags -std=c11 -DUI_ASSETS_HOST_BUILD -I"$gui" -o "$out/bin/posters" \
+		"$here/fuzz_posters.c" "$gui/ui_assets.c" -lz
+	python3 "$here/settings_source.py" "$out/fuzz_settings.c"
+	$cc $flags -std=gnu11 -w -o "$out/bin/settings" "$out/fuzz_settings.c"
+}
+python3 "$here/seeds.py" "$out/corpus"
+# Inputs that once broke something stay in the corpus for good: corpus/<target>/.
+for target in history saves posters settings; do
+	if [ -d "$here/corpus/$target" ]; then
+		cp "$here/corpus/$target"/* "$out/corpus/$target/"
+	fi
+done
+
+status=0
+for target in history saves posters settings; do
+	echo "== $target: ${seconds}s =="
+	mkdir -p "$out/crashes/$target"
+	if "$out/bin/$target" -max_total_time="$seconds" -timeout=10 -rss_limit_mb=2048 \
+		-artifact_prefix="$out/crashes/$target/" -print_final_stats=1 \
+		"$out/corpus/$target" >"$out/$target.log" 2>&1; then
+		grep -E "^stat::number_of_executed_units|^stat::new_units_added" "$out/$target.log" | tr '\n' ' '
+		echo
+	else
+		status=1
+		echo "::error::the $target fuzzer found a problem; the input is in crashes/$target/"
+		tail -n 40 "$out/$target.log"
+	fi
+done
+exit $status

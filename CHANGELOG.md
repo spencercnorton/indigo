@@ -58,6 +58,11 @@ Changes land under `## Unreleased` until the release names them.
   Dolphin emulates the MMU, so a crash stops the test as it would stop a
   console. Every step's picture is kept with the run
   ([buildtools/ui/emulator/](buildtools/ui/emulator/README.md)).
+- CI fuzzes the files Indigo reads from a card: poster packs, the play
+  history, saves and settings files, each with AddressSanitizer and UBSan,
+  starting from real files of each kind. The settings fuzzer runs Swiss's own
+  parsers with the console's `strtok_r`. Weekly on `main`, every check runs
+  again and the fuzzers run for ten minutes each.
 
 ## v1.25.0 — Memory Cards, a cube that flies in, and a drag-and-drop download
 
