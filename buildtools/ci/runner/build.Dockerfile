@@ -40,7 +40,7 @@ RUN mkdir /home/runner/actions-runner \
  && tar -xzf /tmp/runner.tgz -C /home/runner/actions-runner \
  && rm /tmp/runner.tgz \
  && chown -R runner:runner /home/runner
-COPY entrypoint.sh egress_proxy.py /opt/indigo-ci/
+COPY --chmod=0755 entrypoint.sh egress_proxy.py /opt/indigo-ci/
 
 USER runner
 WORKDIR /home/runner

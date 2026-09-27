@@ -4,7 +4,9 @@
 # and a GitHub Actions runner that takes one job.
 FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
 
-ENV DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8 TZ=UTC
+# Debian and Ubuntu install Dolphin in /usr/games.
+ENV DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8 TZ=UTC \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
@@ -16,7 +18,7 @@ RUN apt-get update \
 
 RUN useradd --create-home --uid 1001 --shell /bin/bash runner \
  && mkdir -p /etc/indigo-ci \
- && dolphin-emu-nogui --version | head -1 > /etc/indigo-ci/emulator
+ && dolphin-emu-nogui --version > /etc/indigo-ci/emulator
 
 ARG RUNNER_VERSION
 ARG RUNNER_SHA256
@@ -27,7 +29,7 @@ RUN mkdir /home/runner/actions-runner \
  && tar -xzf /tmp/runner.tgz -C /home/runner/actions-runner \
  && rm /tmp/runner.tgz \
  && chown -R runner:runner /home/runner
-COPY entrypoint.sh /opt/indigo-ci/
+COPY --chmod=0755 entrypoint.sh /opt/indigo-ci/
 
 USER runner
 WORKDIR /home/runner
