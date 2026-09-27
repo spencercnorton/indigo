@@ -39,19 +39,37 @@ class RunnerRelease(unittest.TestCase):
 
 
 class ImageTag(unittest.TestCase):
-    def test_changes_with_the_context_and_the_runner(self):
+    def test_changes_with_its_inputs_and_the_runner_only(self):
         with tempfile.TemporaryDirectory() as directory:
             context = Path(directory)
-            (context / "build.Dockerfile").write_text("FROM x\n")
-            pool = indigo_ci.POOLS["build"]
-            first = indigo_ci.image_tag(pool, context, ("2.337.0", "a" * 64))
+            for name in ("build.Dockerfile", "emulator.Dockerfile", "entrypoint.sh", "egress_proxy.py"):
+                (context / name).write_text(name)
+            build, emulator = indigo_ci.POOLS["build"], indigo_ci.POOLS["emulator"]
+            runner = ("2.337.0", "a" * 64)
+            first = indigo_ci.image_tag(build, context, runner)
             self.assertRegex(first, r"^indigo-ci/build:[0-9a-f]{16}$")
-            self.assertEqual(first, indigo_ci.image_tag(pool, context, ("2.337.0", "a" * 64)))
-            self.assertNotEqual(first, indigo_ci.image_tag(pool, context, ("2.338.0", "c" * 64)))
-            (context / "entrypoint.sh").write_text("#!/bin/sh\n")
-            self.assertNotEqual(first, indigo_ci.image_tag(pool, context, ("2.337.0", "a" * 64)))
-            self.assertNotEqual(first, indigo_ci.image_tag(indigo_ci.POOLS["emulator"], context,
-                                                           ("2.337.0", "a" * 64)))
+            self.assertEqual(first, indigo_ci.image_tag(build, context, runner))
+            self.assertNotEqual(first, indigo_ci.image_tag(build, context, ("2.338.0", "c" * 64)))
+            (context / "README.md").write_text("docs")  # not an input: no rebuild
+            self.assertEqual(first, indigo_ci.image_tag(build, context, runner))
+            emulator_tag = indigo_ci.image_tag(emulator, context, runner)
+            (context / "egress_proxy.py").write_text("changed")  # the build image copies it
+            self.assertNotEqual(first, indigo_ci.image_tag(build, context, runner))
+            self.assertEqual(emulator_tag, indigo_ci.image_tag(emulator, context, runner))
+
+
+class Dockerfiles(unittest.TestCase):
+    def test_each_pool_declares_what_its_dockerfile_copies(self):
+        here = Path(__file__).resolve().parent
+        for pool in indigo_ci.POOLS.values():
+            copied = set()
+            for line in (here / pool.dockerfile).read_text().splitlines():
+                if line.startswith("COPY "):
+                    words = [w for w in line.split()[1:] if not w.startswith("--")]
+                    copied.update(words[:-1])
+            self.assertEqual(copied, set(pool.copies), pool.dockerfile)
+            for name in pool.copies:
+                self.assertTrue((here / name).is_file(), name)
 
 
 class Cleanup(unittest.TestCase):

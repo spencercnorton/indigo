@@ -62,14 +62,17 @@ ALERT_AFTER = 5             # consecutive failed starts before INDIGO_CI_ALERT
 class Pool:
     name: str
     dockerfile: str
+    copies: tuple[str, ...]  # what the Dockerfile COPYs: with it, the image's inputs
     label: str
     cpus: str
     memory: str
 
 
 POOLS = {
-    "build": Pool("build", "build.Dockerfile", "indigo-build", "8", "6g"),
-    "emulator": Pool("emulator", "emulator.Dockerfile", "indigo-emulator", "8", "6g"),
+    "build": Pool("build", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py"),
+                  "indigo-build", "8", "6g"),
+    "emulator": Pool("emulator", "emulator.Dockerfile", ("entrypoint.sh",),
+                     "indigo-emulator", "8", "6g"),
 }
 
 REPO = os.environ.get("INDIGO_CI_REPO", "spencercnorton/indigo")
@@ -120,11 +123,11 @@ def parse_runner_release(release: dict) -> tuple[str, str]:
 
 
 def image_tag(pool: Pool, context: Path, runner: tuple[str, str]) -> str:
-    """Content address of a pool's image: its build context and runner release."""
+    """Content address of a pool's image: its Dockerfile, what it copies, the runner release."""
     digest = hashlib.sha256()
-    for path in sorted(p for p in context.iterdir() if p.is_file()):
-        digest.update(path.name.encode() + b"\0" + path.read_bytes() + b"\0")
-    digest.update(f"{pool.dockerfile}\0{runner[0]}\0{runner[1]}".encode())
+    for name in (pool.dockerfile, *sorted(pool.copies)):
+        digest.update(name.encode() + b"\0" + (context / name).read_bytes() + b"\0")
+    digest.update(f"{runner[0]}\0{runner[1]}".encode())
     return f"indigo-ci/{pool.name}:{digest.hexdigest()[:16]}"
 
 
