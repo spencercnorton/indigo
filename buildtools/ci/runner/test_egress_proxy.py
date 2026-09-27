@@ -2,9 +2,12 @@
 """The egress proxy lets a job reach GitHub and Sigstore, and nothing else."""
 
 import asyncio
+import gc
 import unittest
+from unittest import mock
 
-from egress_proxy import handle, host_allowed, parse_connect, public_address
+import egress_proxy
+from egress_proxy import accept, host_allowed, parse_connect, public_address
 
 
 class Rules(unittest.TestCase):
@@ -42,7 +45,7 @@ class Refusals(unittest.TestCase):
 
     def exchange(self, request: bytes) -> bytes:
         async def run() -> bytes:
-            server = await asyncio.start_server(handle, "127.0.0.1", 0)
+            server = await asyncio.start_server(accept, "127.0.0.1", 0)
             port = server.sockets[0].getsockname()[1]
             async with server:
                 reader, writer = await asyncio.open_connection("127.0.0.1", port)
@@ -61,6 +64,40 @@ class Refusals(unittest.TestCase):
         for target in (b"example.com:443", b"github.com:22", b"127.0.0.1:443", b"localhost:443"):
             reply = self.exchange(b"CONNECT " + target + b" HTTP/1.1\r\nHost: x\r\n\r\n")
             self.assertTrue(reply.startswith(b"HTTP/1.1 403"), (target, reply))
+
+
+class Lifetime(unittest.TestCase):
+    def test_a_connection_is_kept_until_it_ends(self):
+        """Once a client closes its side, nothing but the proxy refers to that
+        connection's task; a garbage collection must not end the tunnel."""
+        async def run() -> list[str]:
+            events: list[str] = []
+            started = asyncio.Event()
+
+            async def waits(reader, writer):
+                started.set()
+                try:
+                    await asyncio.get_running_loop().create_future()  # only this task refers to it
+                finally:
+                    events.append("ended")
+                    writer.close()
+
+            with mock.patch.object(egress_proxy, "handle", waits):
+                server = await asyncio.start_server(accept, "127.0.0.1", 0)
+                async with server:
+                    _, writer = await asyncio.open_connection(*server.sockets[0].getsockname()[:2])
+                    await started.wait()
+                    writer.close()
+                    await asyncio.sleep(0.2)  # the proxy reads the client's end
+                    gc.collect()
+                    events.append(f"live {len(egress_proxy.LIVE)}")
+                    tasks = list(egress_proxy.LIVE)
+                    for task in tasks:
+                        task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    events.append(f"live {len(egress_proxy.LIVE)}")
+            return events
+        self.assertEqual(asyncio.run(run()), ["live 1", "ended", "live 0"])
 
 
 if __name__ == "__main__":

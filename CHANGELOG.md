@@ -61,7 +61,8 @@ Changes land under `## Unreleased` until the release names them.
   every job.
 - CI boots every build in Dolphin and walks its menus with a controller:
   the cube turns through its four faces, each face opens and closes, and the
-  Library moves between games, on a demonstration disc of fictitious games.
+  Library moves between games and opens one's details, on a demonstration
+  disc of fictitious games.
   Dolphin emulates the MMU, so a crash stops the test as it would stop a
   console. Every step's picture is kept with the run
   ([buildtools/ui/emulator/](buildtools/ui/emulator/README.md)).

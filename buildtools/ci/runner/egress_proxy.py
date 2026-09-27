@@ -123,8 +123,22 @@ async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> 
         writer.close()
 
 
+# Every open connection's task. asyncio holds tasks only weakly, and
+# start_server keeps no reference to its handler's task (none before Python
+# 3.12, and none after the client's side closes). A tunnel whose client has
+# closed its side is then reachable from nothing, and the garbage collector
+# would destroy it while the server may still be answering.
+LIVE: set[asyncio.Task] = set()
+
+
+def accept(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    task = asyncio.get_running_loop().create_task(handle(reader, writer))
+    LIVE.add(task)
+    task.add_done_callback(LIVE.discard)
+
+
 async def serve(port: int) -> None:
-    server = await asyncio.start_server(handle, "0.0.0.0", port)
+    server = await asyncio.start_server(accept, "0.0.0.0", port)
     print(f"egress proxy on :{port}; tunnels to {' '.join(ALLOWED)} only", flush=True)
     async with server:
         await server.serve_forever()
