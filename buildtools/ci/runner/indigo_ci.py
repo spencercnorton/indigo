@@ -272,7 +272,7 @@ class Supervisor:
             docker("network", "connect", network, PROXY)
 
     # -- one runner per slot
-    def launch(self, pool: Pool, slot: int) -> None:
+    def launch(self, pool: Pool, slot: int) -> str:
         name = runner_name(pool.name, slot)
         network = slot_network(pool.name, slot)
         self.attach(network)
@@ -295,6 +295,7 @@ class Supervisor:
                    "--memory-swap", pool.memory, "--shm-size", "1g", "--env-file", env.name,
                    self.images[pool.name])
         log(f"started {name} in {container_name(pool.name, slot)}")
+        return name
 
     def tick(self, now: float) -> None:
         try:
@@ -340,7 +341,9 @@ class Supervisor:
                 if now < self.backoff.get(key, 0) or pool_name not in self.images:
                     continue
                 try:
-                    self.launch(pool, slot)
+                    # Live from now: a runner shows offline until it connects,
+                    # and cleanup below must not take that for a dead one.
+                    live.add(self.launch(pool, slot))
                     if self.failures.get(pool_name, 0) >= ALERT_AFTER:
                         alert(f"the {pool_name} pool starts runners again")
                     self.failures[pool_name] = 0
