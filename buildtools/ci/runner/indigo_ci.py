@@ -244,7 +244,8 @@ class Supervisor:
             docker("network", "create", "--driver", "bridge", "--label", LABEL,
                    *(["--internal"] if internal else []), network)
 
-    def ensure_proxy(self, busy: bool) -> None:
+    def ensure_proxy(self, busy: bool = True) -> None:
+        """Start the proxy if it is missing; replace an outdated one only while no job runs."""
         image = self.images.get("build")
         if not image:
             return
@@ -300,6 +301,10 @@ class Supervisor:
             self.refresh(now)
         except (OSError, RuntimeError, subprocess.TimeoutExpired, urllib.error.URLError, KeyError) as error:
             log(f"refresh failed, keeping current images: {error}")
+        try:
+            self.ensure_proxy()
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            log(f"egress proxy: {error}")
         runners: dict[str, dict] | None = None
 
         def registrations() -> dict[str, dict]:
@@ -356,11 +361,11 @@ class Supervisor:
                         self.delete_registration(runner)
             except (OSError, urllib.error.URLError, KeyError) as error:
                 log(f"cleanup failed: {error}")
-        try:
-            busy = any(r.get("busy") for r in (runners or {}).values())
-            self.ensure_proxy(busy=busy if runners is not None else True)
-        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
-            log(f"egress proxy: {error}")
+        if runners is not None:
+            try:
+                self.ensure_proxy(busy=any(r.get("busy") for r in runners.values()))
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+                log(f"egress proxy: {error}")
 
     def delete_registration(self, runner: dict | None) -> None:
         if runner and runner.get("id"):

@@ -43,6 +43,15 @@ Changes land under `## Unreleased` until the release names them.
 - `make clean` in `buildtools/ui/tests/` removes every test it builds. It
   used to leave the cube-motif tests behind and listed others twice; it now
   removes the Makefile's own target lists, so a new test is cleaned too.
+- CI and releases run on the maintainer's own machines: every job gets a
+  fresh container that takes that one job and is thrown away, runs without
+  privileges, and can reach GitHub and nothing else
+  ([buildtools/ci/runner/](buildtools/ci/runner/README.md)).
+- CI checks more: the DOL's structure, size and the commit it names; the
+  zip's exact layout; a second build that must match the first byte for
+  byte; the host tests under Clang's sanitizers as well as GCC's; and a
+  policy check on the workflows themselves. One "CI passed" check sums up
+  every job.
 
 ## v1.25.0 — Memory Cards, a cube that flies in, and a drag-and-drop download
 

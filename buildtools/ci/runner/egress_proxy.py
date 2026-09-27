@@ -113,6 +113,7 @@ async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> 
         await refuse(writer, "502 Bad Gateway")
         return
     up_reader, up_writer = upstream
+    print(f"tunnel {client}: {host}", flush=True)
     writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
     try:
         await writer.drain()

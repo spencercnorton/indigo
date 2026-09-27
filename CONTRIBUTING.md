@@ -14,10 +14,14 @@ Development happens here, in the open, on two branches:
 - **`main`** holds releases only. When a beta has held up, `beta` is merged
   into `main` and tagged `vX.Y.Z`; nothing reaches `main` any other way.
 
-Every pull request runs CI: the DOL build, the host test suite (three lanes)
-and the source checks. The build job keeps the SD card zip as an artifact, so
-you can try a pull request on a console before it merges. The release
-procedure is in [docs/RELEASING.md](docs/RELEASING.md).
+Every pull request runs CI: the DOL build and the checks on it, a second
+build that must match it byte for byte, the host test suite (plain, GCC and
+Clang sanitizers, contracts) and the source checks. The build job keeps the
+SD card zip as an artifact, so you can try a pull request on a console before
+it merges. CI runs on the maintainer's own machines
+([buildtools/ci/runner/](buildtools/ci/runner/README.md)), so a first pull
+request waits for the maintainer to approve its run. The release procedure is
+in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Before you start
 
@@ -42,6 +46,7 @@ buildtools/sd_package.sh dev cube/swiss/swiss.dol .   # the SD card zip
 buildtools/ui/tests/run_tests.sh all                  # host tests
 buildtools/check_whitespace.sh origin/beta            # lint; CI enforces it
 buildtools/check_ui_isolation.sh origin/beta          # the fork's scope
+buildtools/ci/source_checks.sh                        # scripts, CI tools, workflows
 ```
 
 - The interface is drawn with the console's own GX pipeline at a fixed

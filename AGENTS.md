@@ -31,13 +31,22 @@ buildtools/sd_package.sh dev cube/swiss/swiss.dol .
 
 # Host tests: lanes plain, sanitized, contracts, or all. Needs Python 3 with
 # Pillow and NumPy, a C compiler and zlib; the poster tests also need
-# gxtexconv (in the image above). CI runs all three lanes in that image.
+# gxtexconv (in the image above). CI runs every lane on that toolchain, and
+# the sanitized lane twice: CC=gcc and CC=clang.
 buildtools/ui/tests/run_tests.sh all
 
 # Source checks CI runs on a pull request into beta:
 buildtools/check_whitespace.sh origin/beta
 buildtools/check_ui_isolation.sh origin/beta
+buildtools/ci/source_checks.sh   # shell and Python syntax, CI tool tests, workflow policy
 ```
+
+CI (`.github/workflows/ci.yml`) also checks the DOL (`buildtools/ci/verify_dol.py`:
+structure, size budget, the commit it names) and the zip's exact layout
+(`buildtools/ci/check_package.py`), and builds a second time in a fresh
+container to prove the build is reproducible. "CI passed" sums every job up.
+Every job runs on self-hosted runners, one throwaway container per job:
+[buildtools/ci/runner/README.md](buildtools/ci/runner/README.md).
 
 Run tests from a git clone with tags: some checks compare today's renderer
 with a tagged release.
@@ -78,6 +87,11 @@ with a tagged release.
   layouts in 0..640, and reach the screen's edges with `UIStage_Left()` and
   `UIStage_Right()` rather than 0 and 640 (a full-screen page goes through
   `_PagePanel`).
+- **CI stays on our runners.** Every job names `[self-hosted, indigo-build]`
+  or `[self-hosted, indigo-emulator]`, pins its actions to a full commit SHA,
+  and uses no `container:`, `services:` or `pull_request_target`;
+  `buildtools/ci/check_workflows.py` fails CI otherwise. A change to a runner
+  image (`buildtools/ci/runner/`) applies from the first run after it merges.
 - **Tests with every change.** A bug fix carries a regression test; a feature
   carries the smallest test that fails without it. Pinned hashes in the audits
   (for example `SHOW_ACTIONS_SHA256`) are updated on purpose, never to make a
