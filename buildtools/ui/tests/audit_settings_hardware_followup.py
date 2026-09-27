@@ -329,7 +329,7 @@ def validate(files: dict[str, str]) -> list[str]:
     ):
         need(token in layout_h, f"the page no longer covers the screen: {token}")
     need("back.a = UI_SETLAYOUT_PAGE_ALPHA;" in page_render and
-         page_render.index("_CheatsPanel(UI_SETLAYOUT_PAGE_X, UI_SETLAYOUT_PAGE_Y,") <
+         page_render.index("_PagePanel(UI_SETLAYOUT_PAGE_X, UI_SETLAYOUT_PAGE_Y,") <
          page_render.index("drawStringMedium("),
          "the page is not drawn opaque beneath everything else")
     need(row.count("prepareSettingText(") == 2,

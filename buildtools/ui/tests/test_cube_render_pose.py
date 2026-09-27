@@ -42,6 +42,8 @@ static void guMtxTransApply(Mtx a,Mtx out,float x,float y,float z) {
 static void guPerspective(Mtx44 p,float fov,float aspect,float near,float far) {
  (void)near;(void)far; memset(p,0,sizeof(Mtx44));p[1][1]=1/tanf(fov*3.14159265359f/360);p[0][0]=p[1][1]/aspect;
 }
+/* The 4:3 stage; test_ui_stage.c covers widescreen. */
+static void UIStage_Project(Mtx44 p) { (void)p; }
 #define GX_LoadPosMtxImm(m,i) guMtxCopy(m,loaded)
 '''
 MAIN = r'''

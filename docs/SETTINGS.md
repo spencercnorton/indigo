@@ -135,6 +135,7 @@ most use the same key there.
 | `System Video` | `NTSC`, `PAL`, `PAL-M`. Ignored on a Wii (AVE-RVL). | the console's region | System Video |
 | `Screen Position` | A signed number, such as `+0` or `-2`. | the console's SRAM | Screen Position |
 | `Swiss Video Mode` | `Auto`, `480i`, `480sf`, `480p`, `576i`, `576sf`, `576p` | `Auto` | Swiss Video Mode |
+| `Menu Widescreen` | `Yes`, `No`. `Yes` draws Indigo's own screens for a TV set to 16:9; games follow `Force Widescreen`. | `No` | Menu Widescreen |
 | `AVECompat` | `AVE N-DOL`, `AVE P-DOL`, `CMPV-DOL`, `GCDigital`, `GCVideo`, `AVE-RVL` | `GCVideo`, or what your loader reports | AVE Compatibility |
 | `Force DTV Status` | `No`, `Yes`, `Region Switch` | `No` | Force DTV Status |
 | `RT4KOptim` | `Yes`, `No` | `No` | RetroTINK-4K HDMI Input |

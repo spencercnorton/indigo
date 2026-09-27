@@ -22,6 +22,9 @@ typedef unsigned char u8;
 typedef struct { u8 r,g,b,a; } GXColor;
 /* Menu Color is Indigo here: the emitters' recolor passes colors through. */
 static void UIColor_Apply(u8 *r,u8 *g,u8 *b) { (void)r; (void)g; (void)b; }
+/* The 4:3 stage; test_ui_stage.c covers widescreen. */
+static float UIStage_Left(void) { return 0.0f; }
+static float UIStage_Right(void) { return 640.0f; }
 typedef struct { float x,y; } indigoPoint_t;
 typedef struct { float sine,cosine,stepSine,stepCosine; } waveOscillator_t;
 enum { GX_QUADS=1,GX_TRIANGLESTRIP=2,GX_LINES=3,GX_VTXFMT0=0,

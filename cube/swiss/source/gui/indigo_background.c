@@ -3,6 +3,7 @@
 
 #include "indigo_background.h"
 #include "ui_color.h"
+#include "ui_stage.h"
 
 #define INDIGO_TAU 6.28318530718f
 #define RADIAL_SEGMENTS 24
@@ -99,6 +100,7 @@ static void setupRasterPipeline(void)
 	guMtxIdentity(modelView);
 	GX_LoadPosMtxImm(modelView, GX_PNMTX0);
 	guOrtho(projection, 0.0f, 480.0f, 0.0f, 640.0f, 0.0f, 1.0f);
+	UIStage_Project(projection);
 	GX_LoadProjectionMtx(projection, GX_ORTHOGRAPHIC);
 	GX_SetCoPlanar(GX_DISABLE);
 	GX_SetClipMode(GX_CLIP_ENABLE);
@@ -130,13 +132,15 @@ static void setupRasterPipeline(void)
  * shows no step when the menu activates, and lifts to show the scene. */
 static void drawIndigoWash(u8 alpha)
 {
+	float left = UIStage_Left(), right = UIStage_Right();
+
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
 		/* This pass deliberately replaces the legacy grey backdrop rather than
 		 * tinting it. The cube needs a clean, high-contrast stage. */
-		putVertex((indigoPoint_t) {0.0f, 0.0f}, (GXColor) {6, 6, 22, alpha});
-		putVertex((indigoPoint_t) {640.0f, 0.0f}, (GXColor) {9, 7, 27, alpha});
-		putVertex((indigoPoint_t) {640.0f, 480.0f}, (GXColor) {29, 19, 65, alpha});
-		putVertex((indigoPoint_t) {0.0f, 480.0f}, (GXColor) {19, 14, 48, alpha});
+		putVertex((indigoPoint_t) {left, 0.0f}, (GXColor) {6, 6, 22, alpha});
+		putVertex((indigoPoint_t) {right, 0.0f}, (GXColor) {9, 7, 27, alpha});
+		putVertex((indigoPoint_t) {right, 480.0f}, (GXColor) {29, 19, 65, alpha});
+		putVertex((indigoPoint_t) {left, 480.0f}, (GXColor) {19, 14, 48, alpha});
 	GX_End();
 }
 
@@ -226,13 +230,14 @@ static void drawRasterStroke(const indigoPoint_t *points,
 }
 
 static void drawWaveFeather(const float *center, const float *halfWidth,
-		int segments, float startX, float side, GXColor color, float strength)
+		int segments, float startX, float span, float side, GXColor color,
+		float strength)
 {
 	indigoPoint_t points[PRIMARY_WAVE_SEGMENTS + 1];
 	indigoPoint_t joins[PRIMARY_WAVE_SEGMENTS + 1];
 	if(segments < 1 || segments > PRIMARY_WAVE_SEGMENTS) return;
 	for(int i = 0; i <= segments; i++) points[i] = (indigoPoint_t) {
-		startX + 736.0f * (float)i / segments, center[i] + halfWidth[i] * side};
+		startX + span * (float)i / segments, center[i] + halfWidth[i] * side};
 	if(!buildRasterJoins(points, joins, segments + 1, false)) return;
 	GX_Begin(GX_TRIANGLESTRIP, GX_VTXFMT0, (segments + 1) * 2);
 	for(int i = 0; i <= segments; i++) {
@@ -261,6 +266,9 @@ static void drawSilkWaves(float seconds, bool animated, float strength)
 	float primaryCenter[PRIMARY_WAVE_SEGMENTS + 1];
 	float primaryWidth[PRIMARY_WAVE_SEGMENTS + 1];
 	float motionTime = animated ? seconds : 0.0f;
+	/* The ribbons run 48 units past each edge the frame shows. */
+	float waveLeft = UIStage_Left() - 48.0f;
+	float waveSpan = UIStage_Right() - UIStage_Left() + 96.0f;
 	float amplitudeScale;
 	float primaryOffsetX;
 	waveOscillator_t centerA;
@@ -305,14 +313,14 @@ static void drawSilkWaves(float seconds, bool animated, float strength)
 	/* The rear fringe stays behind both ribbons. Its outward-only coverage
 	 * does not overlap its own fill or paint a seam over the primary wave. */
 	drawWaveFeather(rearCenter, rearWidth, REAR_WAVE_SEGMENTS,
-		-48.0f, -1.0f, rearColors[0], strength);
+		waveLeft, waveSpan, -1.0f, rearColors[0], strength);
 	drawWaveFeather(rearCenter, rearWidth, REAR_WAVE_SEGMENTS,
-		-48.0f, 1.0f, rearColors[2], strength);
+		waveLeft, waveSpan, 1.0f, rearColors[2], strength);
 	GX_Begin(GX_QUADS, GX_VTXFMT0,
 		REAR_WAVE_SEGMENTS * 2 * 4 + PRIMARY_WAVE_SEGMENTS * 3 * 4);
 	for(int segment = 0; segment < REAR_WAVE_SEGMENTS; segment++) {
-		float x0 = -48.0f + 736.0f * (float)segment / REAR_WAVE_SEGMENTS;
-		float x1 = -48.0f + 736.0f * (float)(segment + 1) / REAR_WAVE_SEGMENTS;
+		float x0 = waveLeft + waveSpan * (float)segment / REAR_WAVE_SEGMENTS;
+		float x1 = waveLeft + waveSpan * (float)(segment + 1) / REAR_WAVE_SEGMENTS;
 		float fade0 = waveEdgeFade(segment, REAR_WAVE_SEGMENTS);
 		float fade1 = waveEdgeFade(segment + 1, REAR_WAVE_SEGMENTS);
 		for(int row = 0; row < 2; row++) {
@@ -331,10 +339,10 @@ static void drawSilkWaves(float seconds, bool animated, float strength)
 		}
 	}
 	for(int segment = 0; segment < PRIMARY_WAVE_SEGMENTS; segment++) {
-		float x0 = primaryOffsetX - 48.0f +
-			736.0f * (float)segment / PRIMARY_WAVE_SEGMENTS;
-		float x1 = primaryOffsetX - 48.0f +
-			736.0f * (float)(segment + 1) / PRIMARY_WAVE_SEGMENTS;
+		float x0 = primaryOffsetX + waveLeft +
+			waveSpan * (float)segment / PRIMARY_WAVE_SEGMENTS;
+		float x1 = primaryOffsetX + waveLeft +
+			waveSpan * (float)(segment + 1) / PRIMARY_WAVE_SEGMENTS;
 		float fade0 = waveEdgeFade(segment, PRIMARY_WAVE_SEGMENTS);
 		float fade1 = waveEdgeFade(segment + 1, PRIMARY_WAVE_SEGMENTS);
 		for(int row = 0; row < 3; row++) {
@@ -354,9 +362,9 @@ static void drawSilkWaves(float seconds, bool animated, float strength)
 	}
 	GX_End();
 	drawWaveFeather(primaryCenter, primaryWidth, PRIMARY_WAVE_SEGMENTS,
-		primaryOffsetX - 48.0f, -1.0f, primaryColors[0], strength);
+		primaryOffsetX + waveLeft, waveSpan, -1.0f, primaryColors[0], strength);
 	drawWaveFeather(primaryCenter, primaryWidth, PRIMARY_WAVE_SEGMENTS,
-		primaryOffsetX - 48.0f, 1.0f, primaryColors[3], strength);
+		primaryOffsetX + waveLeft, waveSpan, 1.0f, primaryColors[3], strength);
 
 	/* A single restrained additive shoulder provides the familiar silk crest
 	 * without turning the background into a competing luminous object. Its
@@ -367,8 +375,8 @@ static void drawSilkWaves(float seconds, bool animated, float strength)
 	GXColor crestColors[PRIMARY_WAVE_SEGMENTS + 1];
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
 	for(int i = 0; i <= PRIMARY_WAVE_SEGMENTS; i++) {
-		crest[i] = (indigoPoint_t) {primaryOffsetX - 48.0f +
-			736.0f * (float)i / PRIMARY_WAVE_SEGMENTS,
+		crest[i] = (indigoPoint_t) {primaryOffsetX + waveLeft +
+			waveSpan * (float)i / PRIMARY_WAVE_SEGMENTS,
 			primaryCenter[i] - primaryWidth[i] * 0.28f};
 		crestColors[i] = waveVertexColor((GXColor) {238, 232, 255, 34},
 			waveEdgeFade(i, PRIMARY_WAVE_SEGMENTS), strength);
@@ -447,13 +455,20 @@ static Mtx44 cubeProjection;
 static void loadCubeProjection(void)
 {
 	static bool ready;
+	Mtx44 projection;
 
 	if(!ready) {
 		/* Far enough for the boot fly-in, which starts 60 units back. */
 		guPerspective(cubeProjection, 42.0f, 640.0f / 480.0f, 0.1f, 80.0f);
 		ready = true;
 	}
-	GX_LoadProjectionMtx(cubeProjection, GX_PERSPECTIVE);
+	/* The rails and the glass measure in stage units through
+	 * cubeProjection; only the copy GX draws with is squeezed. */
+	for(int row = 0; row < 4; row++)
+		for(int column = 0; column < 4; column++)
+			projection[row][column] = cubeProjection[row][column];
+	UIStage_Project(projection);
+	GX_LoadProjectionMtx(projection, GX_PERSPECTIVE);
 }
 
 static void setupCubePipeline(const uiSceneFrame_t *scene, float seconds, bool animated,
@@ -2102,7 +2117,8 @@ static bool glassCopyFrame(void)
 	return true;
 }
 
-/* Texture coordinates of a screen point (640 x 480 units) in the copy. */
+/* Texture coordinates of a frame point (640 x 480 units) in the copy;
+ * UIStage_FrameX takes a stage x there. */
 static float glassCopyS(void)
 {
 	return (float)glassEfbWidth / (float)(glassCopyWidth * 2u) / 640.0f;
@@ -2223,7 +2239,7 @@ static void refractGlassVertex(const cubeRasterTransform_t *raster,
 	UIColor_Apply(&out->color.r, &out->color.g, &out->color.b);
 	for(int channel = 0; channel < 3; channel++) {
 		float k = 1.0f + glass->dispersion * (float)(channel - 1);
-		out->s[channel] = (bx + ox * k) * glass->sScale;
+		out->s[channel] = UIStage_FrameX(bx + ox * k) * glass->sScale;
 		out->t[channel] = (by + oy * k) * glass->tScale;
 	}
 }
@@ -2539,8 +2555,8 @@ static void drawGlassBloom(float left, float top, float right, float bottom,
 	if(strength <= 0.01f || !glassCopyFrame()) return;
 	sScale = glassCopyS();
 	tScale = glassCopyT();
-	left = fmaxf(0.0f, left); top = fmaxf(0.0f, top);
-	right = fminf(640.0f, right); bottom = fminf(480.0f, bottom);
+	left = fmaxf(UIStage_Left(), left); top = fmaxf(0.0f, top);
+	right = fminf(UIStage_Right(), right); bottom = fminf(480.0f, bottom);
 	if(right - left < 2.0f || bottom - top < 2.0f) return;
 	setupRasterPipeline();
 	GX_SetNumTexGens(GLASS_BLOOM_TAPS);
@@ -2598,16 +2614,16 @@ static void drawGlassBloom(float left, float top, float right, float bottom,
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
 		GX_Position3f32(left, top, 0.0f);
 		GX_Color4u8(glow.r, glow.g, glow.b, glow.a);
-		GX_TexCoord2f32(left * sScale, top * tScale);
+		GX_TexCoord2f32(UIStage_FrameX(left) * sScale, top * tScale);
 		GX_Position3f32(right, top, 0.0f);
 		GX_Color4u8(glow.r, glow.g, glow.b, glow.a);
-		GX_TexCoord2f32(right * sScale, top * tScale);
+		GX_TexCoord2f32(UIStage_FrameX(right) * sScale, top * tScale);
 		GX_Position3f32(right, bottom, 0.0f);
 		GX_Color4u8(glow.r, glow.g, glow.b, glow.a);
-		GX_TexCoord2f32(right * sScale, bottom * tScale);
+		GX_TexCoord2f32(UIStage_FrameX(right) * sScale, bottom * tScale);
 		GX_Position3f32(left, bottom, 0.0f);
 		GX_Color4u8(glow.r, glow.g, glow.b, glow.a);
-		GX_TexCoord2f32(left * sScale, bottom * tScale);
+		GX_TexCoord2f32(UIStage_FrameX(left) * sScale, bottom * tScale);
 	GX_End();
 	setupRasterPipeline();
 }

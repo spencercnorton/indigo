@@ -115,6 +115,11 @@ move through the list. B keeps the color you had; A chooses the one you are on.
   <img alt="Settings, Setup, Console: A on Menu Color opens a list of the eight colors with Indigo marked Current. Moving down, the whole screen turns Azure, Emerald, Gold, Spice, Crimson, Rose and Jet Black in turn; moving back up to Emerald and pressing A chooses it, and the row reads Emerald." src="docs/screenshots/color-menu.png" width="640">
 </p>
 
+**Widescreen TVs get the whole screen.** Setup › Display › Menu Widescreen
+draws Indigo for a TV set to 16:9: the background and its waves reach both
+edges, and the cube, the text and every menu keep their shape in the middle.
+Games have their own setting, Force Widescreen.
+
 **Each face of the cube shows the picture you choose.** Setup › Console has a
 row per face (Library Icon, Source Icon, Settings Icon and System Icon), and
 each face has four icons of its own. Library has Controller, Books, Covers
