@@ -17,6 +17,13 @@ Changes land under `## Unreleased` until the release names them.
 
 ### Fixes
 
+- Indigo stays on screen when stock Swiss is kept on the card as `z.dol`, as
+  the install guide says. At startup Indigo still ran Swiss's search for a
+  newer Swiss in the root of the card (`z.dol`, `a.dol`, `start.dol`,
+  `boot.dol` and similar names) and took any stock Swiss it found for one, so
+  PicoBoot and PicoLoader started Indigo only for it to start stock Swiss
+  straight away. Indigo no longer runs that search, which also made a copy of
+  Indigo named `boot.dol` start itself over and over.
 - Settings › Storage no longer offers A Edit on Save Folder while it is
   dimmed. Without a Configuration Device there are no folders to list, so A
   does nothing there. Dimmed network settings keep A Edit: A still opens
