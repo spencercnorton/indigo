@@ -22,7 +22,8 @@ exception screen as it would on a console. The route:
 2. **Turn.** RIGHT four times: each turn shows another name, the fourth
    comes back to the first, and the four names differ. LEFT turns back.
 3. **Every face.** A opens it and B comes back to the same face. In the
-   Library, RIGHT twice and LEFT twice move between games and back.
+   Library, RIGHT twice and LEFT twice move between games and back, and A
+   opens a game's details and B comes back to the same game.
 4. **Nothing crashed.** No step lands on the exception screen or a black
    screen, and Dolphin's log reports no exception or invalid access.
 

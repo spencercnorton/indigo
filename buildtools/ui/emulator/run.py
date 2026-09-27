@@ -12,7 +12,8 @@ while a crash, a hang, a black screen or a broken control does:
   - turning the cube changes the name, four turns come back to the first,
     turning back undoes a turn, and the four names differ;
   - A on a face opens another screen, and B comes back to the same face;
-  - in the Library, RIGHT and LEFT move between games and back again;
+  - in the Library, RIGHT and LEFT move between games and back again, and
+    A opens a game's details and B comes back to it;
   - nothing crashes: Dolphin emulates the MMU, so an invalid memory access
     stops Indigo on its exception screen as it would on a console, and
     Dolphin's own log reports no exception or invalid access.
@@ -273,15 +274,20 @@ class Route:
             mask, _ = self.settled_label(like=faces[(n + 1) % 4])
             self.check("the cube turns on to the next face", mask is not None, face=n + 1)
 
+    def covered(self, reference: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX) -> bool:
+        """Wait for the text in a box to stop matching reference: another screen opened over it."""
+        deadline = time.monotonic() + SETTLE_SECONDS
+        while time.monotonic() < deadline:
+            time.sleep(0.3)
+            if overlap(text_mask(self.gray(), box), reference) < DIFFERENT:
+                time.sleep(1.0)  # let the screen finish arriving before the picture
+                self.gray()
+                return True
+        return False
+
     def open_and_close(self, face: np.ndarray, n: int, inside=None) -> None:
         self.press("A")
-        deadline = time.monotonic() + SETTLE_SECONDS
-        opened = False
-        while time.monotonic() < deadline and not opened:
-            time.sleep(0.3)
-            opened = overlap(text_mask(self.gray()), face) < DIFFERENT
-        time.sleep(1.0)  # let the screen finish arriving before the picture
-        self.gray()
+        opened = self.covered(face)
         self.shot(f"face-{n + 1}-open", self.last_rgb)
         self.check("A opens the face", opened, face=n + 1)
         if inside:
@@ -292,7 +298,8 @@ class Route:
         self.check("B comes back to the same face", mask is not None, face=n + 1)
 
     def browse_library(self) -> None:
-        """RIGHT twice then LEFT twice: a new title each way, and back to the first."""
+        """RIGHT twice then LEFT twice: a new title each way, and back to the first.
+        Then A opens that game's details and B comes back to it."""
         titles = []
         first, _ = self.settled_label(box=TITLE_BOX)
         self.check("the Library shows a game's title", first is not None)
@@ -308,6 +315,14 @@ class Route:
             title, _ = self.settled_label(like=expected, box=TITLE_BOX)
             self.shot(f"library-left-{n}", self.last_rgb)
             self.check("LEFT goes back a game", title is not None, step=n)
+        self.press("A")
+        opened = self.covered(titles[0], TITLE_BOX)
+        self.shot("game-details", self.last_rgb)
+        self.check("A opens the game's details", opened)
+        self.press("B")
+        title, _ = self.settled_label(like=titles[0], box=TITLE_BOX)
+        self.shot("library-back", self.last_rgb)
+        self.check("B comes back to the same game", title is not None)
 
     def tour(self) -> None:
         self.smoke()
