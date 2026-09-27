@@ -20,10 +20,12 @@ BASE="${1:-origin/master}"
 # include/callback. util.c likewise permits only deletion of its superseded GUI
 # include/callback. No added dependency, callback, driver, or behavior change is
 # accepted through either exception.
-# main.c has one narrowly audited startup exception: a failed boot-device init
-# clears DEVICE_CUR so Home cannot inherit a detected-but-unmounted handler.
-# audit_routing_safety.py locks that hunk against the accepted base. No loader
-# or driver behavior is allowed through this exception.
+# main.c has two narrowly audited startup exceptions: a failed boot-device init
+# clears DEVICE_CUR so Home cannot inherit a detected-but-unmounted handler, and
+# the startup DOL autoload is dropped, because upstream's boots any official
+# Swiss in the root of the card (z.dol, a.dol, boot.dol...) in place of Indigo.
+# audit_routing_safety.py locks both hunks against the accepted base. No other
+# loader or driver behavior is allowed through this exception.
 # video.c has one mechanical input exception: the existing post-retrace callback
 # calls padsScan(), whose wrapper performs the same PAD_ScanPads call and
 # atomically publishes its low-bit validity mask for menu navigation.
