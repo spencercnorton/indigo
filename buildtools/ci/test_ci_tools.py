@@ -76,7 +76,7 @@ class Package(unittest.TestCase):
                 elif name == "ipl.dol":
                     archive.writestr(name, ipl if ipl is not None else dol())
                 elif name == "swiss/patches/apploader.img":
-                    archive.writestr(name, b"\0\0*indigo-v9.9.9\0")
+                    archive.writestr(name, b"*indigo-v9.9.9".ljust(32, b"\0") + b"image")
                 elif name == "Indigo-README.txt":
                     archive.writestr(name, "Indigo v9.9.9 - an unofficial fork\n")
                 else:
@@ -94,6 +94,18 @@ class Package(unittest.TestCase):
                          {"drop": "swiss/patches/apploader.img"}, {"ipl": dol(revisions=2)}):
                 self.assertNotEqual(check_package.problems(self.build(here, **case), dol(), "v9.9.9"),
                                     [], case)
+
+    def test_a_long_version_is_cut_to_the_header_field(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "Indigo-ci-d87bcf54.zip"
+            with zipfile.ZipFile(path, "w") as archive:
+                for name in sorted(check_package.LAYOUT):
+                    archive.writestr(name, {
+                        "ipl.dol": dol(),
+                        "swiss/patches/apploader.img": b"*indigo-ci-d87bc" + bytes(16) + b"image",
+                        "Indigo-README.txt": b"Indigo ci-d87bcf54 - an unofficial fork\n",
+                    }.get(name, b""))
+            self.assertEqual(check_package.problems(path, dol(), "ci-d87bcf54"), [])
 
     def test_the_version_must_match(self):
         with tempfile.TemporaryDirectory() as directory:

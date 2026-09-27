@@ -47,9 +47,11 @@ def problems(zip_path: Path, dol: bytes, version: str) -> list[str]:
         if "ipl.dol" in names and archive.read("ipl.dol") != dol:
             found.append("ipl.dol is not the DOL this build produced")
         if "swiss/patches/apploader.img" in names:
-            image = archive.read("swiss/patches/apploader.img")
-            if f"*indigo-{version}".encode() not in image:
-                found.append(f"apploader.img does not carry *indigo-{version}")
+            # dol2ipl.py writes the name into the image header's 16-byte date
+            # field, so a long version is cut to fit.
+            header = archive.read("swiss/patches/apploader.img")[:16].rstrip(b"\0")
+            if header != f"*indigo-{version}".encode()[:16]:
+                found.append(f"apploader.img is named {header!r}, not *indigo-{version}")
         if "Indigo-README.txt" in names:
             readme = archive.read("Indigo-README.txt").decode("utf-8", "replace")
             if not readme.startswith(f"Indigo {version} "):
