@@ -39,6 +39,10 @@ buildtools/ui/tests/run_tests.sh all
 buildtools/check_whitespace.sh origin/beta
 buildtools/check_ui_isolation.sh origin/beta
 buildtools/ci/source_checks.sh   # shell and Python syntax, CI tool tests, workflow policy
+
+# Fuzz the files Indigo reads from a card (poster packs, play history, saves,
+# settings files) for 30 s each; needs clang with its fuzzer runtime:
+buildtools/ui/tests/fuzz/run_fuzz.sh 30
 ```
 
 CI (`.github/workflows/ci.yml`) also checks the DOL (`buildtools/ci/verify_dol.py`:
@@ -99,6 +103,10 @@ with a tagged release.
   `TITLE_BOX` in `buildtools/ui/emulator/run.py`); a change that moves them
   updates those boxes, and a change that adds a screen or a control can add a
   step to the route.
+- **A file from the card is untrusted.** Code that reads a poster pack, the
+  play history, a save or a settings file has a fuzzer in
+  `buildtools/ui/tests/fuzz/`; a new format gets one too. A crash the fuzzer
+  finds is fixed with the input kept in `corpus/<target>/`.
 - **Tests with every change.** A bug fix carries a regression test; a feature
   carries the smallest test that fails without it. Pinned hashes in the audits
   (for example `SHOW_ACTIONS_SHA256`) are updated on purpose, never to make a

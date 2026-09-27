@@ -48,6 +48,7 @@ buildtools/ui/tests/run_tests.sh all                  # host tests
 buildtools/check_whitespace.sh origin/beta            # lint; CI enforces it
 buildtools/check_ui_isolation.sh origin/beta          # the fork's scope
 buildtools/ci/source_checks.sh                        # scripts, CI tools, workflows
+buildtools/ui/tests/fuzz/run_fuzz.sh 30               # fuzz the files read from a card
 ```
 
 - The interface is drawn with the console's own GX pipeline at a fixed
