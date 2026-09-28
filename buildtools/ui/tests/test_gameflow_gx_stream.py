@@ -51,6 +51,8 @@ BASE_EDITS = (
 )
 PURE = ("ui_gameflow.c", "ui_motion.c", "ui_gameflow_library.c",
         "ui_command_rail.c", "ui_gameflow_detail.c", "ui_game_history.c")
+# The current renderer also draws the launch screen (test_launch_gx_stream.py).
+LAUNCH = ("ui_launch.c", "ui_stage.c")
 
 
 def between(source: str, start: str, end: str, inclusive: bool = False) -> str:
@@ -86,6 +88,10 @@ PRELUDE = r"""
 #include "ui_gameflow_library.h"
 #include "ui_command_rail.h"
 #include "ui_scene.h"
+#if LAYOUTS
+#include "ui_launch.h"
+#include "ui_stage.h"
+#endif
 
 typedef int8_t s8;
 typedef struct { u8 r, g, b, a; } GXColor;
@@ -94,7 +100,7 @@ typedef struct { u8 r, g, b, a; } GXColor;
 #define ALIGN_CENTER 1
 #define ALIGN_RIGHT 2
 #define UI_COLOR_INDIGO 0
-enum { GX_QUADS = 0x80, GX_VTXFMT0 = 0, GX_TEXMAP0 = 0, GX_BM_BLEND = 1,
+enum { GX_QUADS = 0x80, GX_TRIANGLESTRIP = 0x98, GX_VTXFMT0 = 0, GX_TEXMAP0 = 0, GX_BM_BLEND = 1,
 	GX_BL_SRCALPHA = 4, GX_BL_INVSRCALPHA = 5, GX_LO_CLEAR = 0,
 	GX_TF_RGB5A3 = 5, GX_CLAMP = 0, GX_FALSE = 0, GX_LINEAR = 1, GX_NEAR = 0 };
 static struct { int uiColor; } swissSettings;
@@ -112,9 +118,10 @@ static void GX_InvalidateTexAll(void) { CHECK(!active); }
 static void GX_LoadTexObj(GXTexObj *texture, int map) { CHECK(!active); (void)map; fprintf(out, "X %s\n", (const char *)texture->data); }
 static void GX_Begin(int primitive, int format, int count)
 {
-	CHECK(!active && primitive == GX_QUADS && format == GX_VTXFMT0 && count > 0 && count % 4 == 0);
+	CHECK(!active && format == GX_VTXFMT0 && count > 0 && (primitive == GX_QUADS ?
+		count % 4 == 0 : primitive == GX_TRIANGLESTRIP && count >= 4 && count % 2 == 0));
 	active = true; declared = count; emitted = 0; phase = 0;
-	fprintf(out, "B %d\n", count);
+	fprintf(out, primitive == GX_QUADS ? "B %d\n" : "B %d strip\n", count);
 }
 static void GX_Position3f32(float x, float y, float z)
 {
@@ -145,13 +152,16 @@ static float GetTextScaleToFitInWidthWithMax(const char *text, int width, float 
 	float scale = size < (float)width ? 1.0f : (float)width / size;
 	return scale < maximum ? scale : maximum;
 }
-/* Every seventh game has no cover, so the fallback art is drawn too. */
+/* Every seventh game has no cover, so the fallback art is drawn too. The
+ * launch test closes the pack, as the hand-off does. */
 static GXTexObj covers[1000];
 static char coverIds[1000][8];
+static bool packClosed;
 uiPosterResult_t UIAssets_Query(const char *id, size_t length, bool bnr, uiPosterHandle_t *handle)
 {
 	int n = atoi(id + 1);
 	(void)bnr;
+	if(packClosed) return UI_POSTER_CORRUPT_OR_UNAVAILABLE;
 	if(length < 6 || id[0] != 'G' || n % 7 == 3) return UI_POSTER_PROCEDURAL_CARD;
 	handle->slot = (u16)n; handle->generation = 1u;
 	return UI_POSTER_EXACT;
@@ -272,9 +282,10 @@ int main(void)
 """
 
 
-def build(work: Path, gui: Path, frame_c: str, frame_h: str, layouts: bool, name: str) -> Path:
+def build(work: Path, gui: Path, frame_c: str, frame_h: str, layouts: bool, name: str,
+          driver: str = DRIVER) -> Path:
     source = work / f"{name}.c"
-    source.write_text(PRELUDE + renderer(frame_c, frame_h) + DRIVER)
+    source.write_text(PRELUDE + renderer(frame_c, frame_h) + driver)
     binary = work / name
     flags = ["-std=gnu11", "-O1", "-Wall", "-Wextra", "-Wno-unused-function",
              "-Wno-unused-parameter", "-fsanitize=address,undefined",
@@ -284,7 +295,8 @@ def build(work: Path, gui: Path, frame_c: str, frame_h: str, layouts: bool, name
         flags += ["-fno-pie", "-no-pie"]
     result = subprocess.run(shlex.split(os.environ.get("CC", "cc")) + flags +
                             ["-o", str(binary), str(source)] +
-                            [str(gui / pure) for pure in PURE] + ["-lm"],
+                            [str(gui / pure) for pure in PURE + (LAUNCH if layouts else ())] +
+                            ["-lm"],
                             capture_output=True, text=True, timeout=180)
     if result.returncode:
         raise AssertionError(result.stderr[-4000:])

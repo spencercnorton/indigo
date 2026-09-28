@@ -4,7 +4,8 @@
 
 #define UI_GAMEFLOW_CAROUSEL_RESPONSE 15.0f
 #define UI_GAMEFLOW_DETAIL_RESPONSE 12.0f
-#define UI_GAMEFLOW_LAUNCH_RESPONSE 16.0f
+/* The launch screen's glide of the cover to the centre: about half a second. */
+#define UI_GAMEFLOW_LAUNCH_RESPONSE 10.0f
 #define UI_GAMEFLOW_POSITION_EPSILON 0.0001f
 #define UI_GAMEFLOW_VELOCITY_EPSILON 0.0005f
 

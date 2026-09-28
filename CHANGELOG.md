@@ -32,6 +32,19 @@ Changes land under `## Unreleased` until the release names them.
   frame is. The hint line reads D-pad Move, A Select, B Library, X Settings,
   Y Cheats.
 
+### Launch screen
+
+- Starting a game from the Library no longer shows Swiss's progress boxes,
+  with their file names, sizes and bar that starts over for every file. The
+  details make way for the game's cover, centred in a ring that fills as
+  Indigo checks, prepares and loads the game, and one line under the title
+  says which step it's on. When the ring is full the screen fades to black
+  and the game starts. A card that must stay in its slot is still named. It
+  is the same with Boot without prompts. With Animations Off the ring stays
+  still and the screen goes straight to black.
+- The video mode and the number of cheats applied are steps on the ring
+  instead of notices that held the start for two seconds and one second.
+
 ### Fixes
 
 - Indigo stays on screen when stock Swiss is kept on the card as `z.dol`, as
