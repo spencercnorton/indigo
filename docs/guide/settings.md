@@ -141,7 +141,7 @@ Press Y on any row for the same explanations on the console.
 
 | Setting | What it does |
 | --- | --- |
-| Menu Music | Indigo's ambient music loop. Changes at once. |
+| Menu Music | "Up in the Sky", Indigo's menu music: a quiet intro, then a loop. Changes at once. |
 | Menu Sounds | The soft sounds as you move and choose. |
 | UI Motion | **Full**: calm motion and ambient detail. **Reduced**: faster transitions, no decorative movement. **Off**: everything moves instantly. |
 | Controller Rumble | Whether controllers can rumble in games. |
