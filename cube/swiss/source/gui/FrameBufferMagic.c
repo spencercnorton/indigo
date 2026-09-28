@@ -2524,11 +2524,11 @@ typedef struct gameflowRenderCard {
 
 static const gameflowQuad_t gameflowSlotPoses[7] = {
 	{{{-28.0f, 185.0f}, {10.0f, 174.0f}, {10.0f, 244.0f}, {-28.0f, 233.0f}}},
-	{{{32.0f, 159.0f}, {52.0f, 151.0f}, {52.0f, 266.0f}, {32.0f, 258.0f}}},
+	{{{14.0f, 151.0f}, {72.0f, 143.0f}, {72.0f, 273.0f}, {14.0f, 265.0f}}},
 	{{{78.0f, 132.0f}, {208.0f, 121.0f}, {208.0f, 295.0f}, {78.0f, 284.0f}}},
 	{{{230.0f, 88.0f}, {410.0f, 88.0f}, {410.0f, 328.0f}, {230.0f, 328.0f}}},
 	{{{432.0f, 121.0f}, {562.0f, 132.0f}, {562.0f, 284.0f}, {432.0f, 295.0f}}},
-	{{{588.0f, 151.0f}, {608.0f, 159.0f}, {608.0f, 258.0f}, {588.0f, 266.0f}}},
+	{{{568.0f, 143.0f}, {626.0f, 151.0f}, {626.0f, 265.0f}, {568.0f, 273.0f}}},
 	{{{630.0f, 174.0f}, {668.0f, 185.0f}, {668.0f, 233.0f}, {630.0f, 244.0f}}}
 };
 
@@ -3542,7 +3542,10 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 				card->visualSlot = slot;
 				card->artSlot = slot;
 				card->focus = 1.0f - _GameflowClamp(fabsf(slot), 0.0f, 1.0f);
-				card->art = fabsf(slot) < 1.5f;
+				/* The row shows two covers either side, fading in from the
+				 * third; the column's second covers are slivers. */
+				card->art = layout == UI_GAMEFLOW_LAYOUT_VERTICAL ?
+					fabsf(slot) < 1.5f : fabsf(slot) < 3.0f;
 				card->quad = layout == UI_GAMEFLOW_LAYOUT_VERTICAL ?
 					_GameflowSamplePoseIn(gameflowVerticalPoses, slot) :
 					_GameflowSamplePose(slot);
