@@ -124,6 +124,26 @@ Changes land under `## Unreleased` until the release names them.
 - The guide's example of a dimmed setting is Save Folder with no
   Configuration Device. IPv4 Address, the old example, doesn't dim while DHCP
   is on.
+- The install instructions were checked against the code and against
+  PicoBoot's, PicoLoader's, FlippyDrive's and Swiss's own documentation:
+  - PicoLoader sits beside PicoBoot. A chip with Swiss in its flash names the
+    firmware to flash instead (`picoboot_full_pico.uf2`,
+    `picoloader_gekkoboot.uf2`); FlippyDrive boots `boot.dol`.
+  - SD2SP2 and SD Gecko are named as what reads the card, not as ways to
+    start Swiss, and a Wii needs GameCube ports and an SD Gecko.
+  - A stray file or folder inside a game's folder also brings back Swiss's
+    file list, and Hide unknown file types hides text files and pictures but
+    not folders, programs or music.
+  - Home faces Library when Indigo has a device to read from, whether or not
+    it found games.
+  - Stock Swiss drops Indigo's own settings, such as Menu Color, when it
+    saves.
+  - The build commands name the image CI uses, pinned by digest; there is no
+    `make dist`.
+  - Troubleshooting covers stock Swiss taking over at startup in 1.25.0 and
+    earlier.
+  - The README's release badge links the latest release rather than the list
+    of tags.
 
 ### For developers
 

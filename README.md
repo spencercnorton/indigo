@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://norvitech.com"><img alt="NorviTech Suite" src="https://img.shields.io/badge/NorviTech-Suite-FD8024.svg"></a>
   <a href="https://github.com/spencercnorton/indigo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/spencercnorton/indigo/actions/workflows/ci.yml/badge.svg?branch=main"></a>
-  <a href="https://github.com/spencercnorton/indigo/tags"><img alt="Latest release" src="https://img.shields.io/github/v/tag/spencercnorton/indigo?label=release&sort=semver"></a>
+  <a href="https://github.com/spencercnorton/indigo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/spencercnorton/indigo?label=release"></a>
   <a href="https://github.com/spencercnorton/indigo/releases/latest"><img alt="Download for your SD card" src="https://img.shields.io/badge/download-SD%20card%20zip-2D2D2D.svg"></a>
   <a href="LICENSE"><img alt="Licence" src="https://img.shields.io/badge/licence-GPL--2.0--or--later-blue.svg"></a>
   <a href="https://buy.stripe.com/8x26oH2U44f65TRe574wM04"><img alt="Donate" src="https://img.shields.io/badge/donate-Stripe-635bff.svg?logo=stripe&logoColor=white"></a>
@@ -157,7 +157,8 @@ swiss/indigo/                  the licence and notice
 ```
 
 1. If your card already has an `ipl.dol` in its root, that is your current
-   Swiss: rename it to `z.dol` first (holding Z at power-on starts it).
+   Swiss: rename it to `z.dol` first (with PicoBoot or PicoLoader, holding Z
+   at power-on starts it).
 2. Unzip the download, select everything inside and drag it onto the root of
    the card. Let it replace files of the same name.
 3. Put your games in `/games` and power on.
@@ -175,14 +176,14 @@ toolchain is installed on your machine:
 git clone https://github.com/spencercnorton/indigo.git
 cd indigo
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2 make dev
+  ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575 make dev
 # writes cube/swiss/swiss.dol inside this folder, on your computer
 ```
 
 The download above is this build at the release tag, packaged by
 `buildtools/sd_package.sh`.
 
-The release packaging targets (`make dist` and friends) are not supported
+Upstream's packaging targets (`make all`, `make package`) are not supported
 here: they need prebuilt tools and device firmware images that this fork does
 not redistribute. `make dev` builds the executable, which is what the fork
 changes.
@@ -193,15 +194,17 @@ changes.
 SD card. On the card, Indigo takes the place of the file your loader already
 boots, under that file's name. Your Swiss settings carry over.
 
-- **PicoBoot** boots `ipl.dol` from the root of the card. Rename that file to
-  `z.dol`, then copy `swiss.dol` to the root as `ipl.dol`. PicoBoot starts
-  `z.dol` when Z is held at power-on, so stock Swiss stays one button away.
-- **PicoBoot with no `ipl.dol` on the card** has Swiss flashed onto the Pico
-  itself. Flash PicoBoot's standard firmware (see its
+- **PicoBoot and PicoLoader** boot `ipl.dol` from the root of the card.
+  Rename that file to `z.dol`, then copy `swiss.dol` to the root as `ipl.dol`.
+  They start `z.dol` when Z is held at power-on, so stock Swiss stays one
+  button away.
+- **PicoBoot or PicoLoader with no `ipl.dol` on the card** has Swiss in the
+  chip's flash. First flash the firmware that starts the card's `ipl.dol`:
+  PicoBoot's `picoboot_full_pico.uf2` or `picoboot_full_pico2.uf2` (see its
   [installation guide](https://support.webhdx.dev/gc/picoboot/installation-guide)),
-  then do the step above.
+  or PicoLoader's `picoloader_gekkoboot.uf2`. Then do the step above.
 - **Another loader that boots a `.dol` from the card by name**: replace that
-  file the same way, keeping its name.
+  file the same way, keeping its name (FlippyDrive boots `boot.dol`).
 - **GC Loader, and other loaders that boot a disc image**: start `swiss.dol`
   from Swiss's file browser. This fork does not build `boot.iso` or the other
   packaged formats.
@@ -217,17 +220,19 @@ With In-Game Reset set to **Apploader**, a reset returns to the program in
 
 The Library shows the games in one folder, `/games` at the root of the card.
 Put each game in its own folder or put the disc images there directly, and
-keep nothing else in that folder:
+keep nothing else in `/games` or in the game folders:
 
 ```text
 /games/Super Mario Sunshine [GMSE01]/game.iso
 /games/Super Mario Sunshine.iso
 ```
 
-Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. Any other file in
-`/games` (a text file, a cover image, an empty folder) turns the Library back
-into Swiss's plain file list; "Hide unknown file types" in Settings → Setup →
-Library hides stray files. On Home, turn the cube to Library and press A.
+Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. Anything else there (a
+text file, a cover image, an empty folder, a folder inside a game's folder)
+turns the Library back into Swiss's plain file list. "Hide unknown file types"
+in Settings → Setup → Library hides stray text files and pictures, but not
+folders, programs (`.dol`, `.elf`) or music. On Home, turn the cube to Library
+and press A.
 
 ### Posters
 
@@ -258,7 +263,8 @@ skipped and listed.
 
 ### Cheats
 
-Indigo runs Gecko codes from `/swiss/cheats/<game ID>.txt`.
+Indigo runs Gecko codes from `/swiss/cheats/<game ID>.txt`, or from
+`<game ID>_v102.txt` and the like for one revision of a disc.
 [Download the cheat pack](https://indigo.norvitech.com/indigo-cheats.zip)
 (every region), unzip it into the root of the card, open a game and press Y. Cheats that the files show
 would break Indigo are switched off and marked; the page says what can't be
@@ -283,7 +289,7 @@ checked in advance.
 
 ```bash
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2 make dev      # the DOL, as CI builds it
+  ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575 make dev   # the DOL, as CI builds it
 buildtools/ui/tests/run_tests.sh all          # host tests: plain, sanitized, contracts
 buildtools/check_whitespace.sh origin/beta    # lint
 buildtools/check_ui_isolation.sh origin/beta  # the change stays in the interface

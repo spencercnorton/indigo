@@ -6,9 +6,11 @@ Indigo is a single program, `ipl.dol`, that runs in place of Swiss. It reads
 the same settings, cheats and saves as Swiss, so nothing on your card has to
 move.
 
-**You need** a GameCube that already starts Swiss from an SD card or a drive
-replacement (PicoBoot, GC Loader, SD2SP2, SD Gecko and the like), and a
-computer to copy files to the card.
+**You need** a GameCube that already starts Swiss (with PicoBoot, PicoLoader,
+FlippyDrive, GC Loader or the like) and reads an SD card, in an SD2SP2, an SD
+Gecko or the loader's own slot, and a computer to copy files to the card. A
+Wii with GameCube ports works too, running Swiss in GameCube mode with the
+card in an SD Gecko.
 
 ## 1. Download
 
@@ -29,19 +31,21 @@ swiss/indigo/                  the licence and notice
 
 Pick the line that matches how your console starts Swiss.
 
-**PicoBoot, and other modchips that boot `ipl.dol` from the card.**
+**PicoBoot, PicoLoader, and other modchips that boot `ipl.dol` from the card.**
 If the root of the card already has an `ipl.dol`, that is your current Swiss:
 rename it to `z.dol`. Then unzip the download, select everything inside and
-drag it onto the root of the card. PicoBoot starts `z.dol` when you hold Z at power-on, so stock Swiss
-stays one button away.
+drag it onto the root of the card. PicoBoot and PicoLoader start `z.dol` when
+you hold Z at power-on, so stock Swiss stays one button away.
 
-**PicoBoot with no `ipl.dol` on the card.** Swiss is flashed onto the Pico
-itself. Flash PicoBoot's standard firmware first (see its
-[installation guide](https://support.webhdx.dev/gc/picoboot/installation-guide)),
-then follow the step above.
+**PicoBoot or PicoLoader with no `ipl.dol` on the card.** Swiss is in the
+chip's flash. First flash the firmware that starts the card's `ipl.dol`:
+PicoBoot's `picoboot_full_pico.uf2`, or `picoboot_full_pico2.uf2` on a Pico 2
+(see its [installation guide](https://support.webhdx.dev/gc/picoboot/installation-guide)),
+or PicoLoader's `picoloader_gekkoboot.uf2`. Then follow the step above.
 
 **A loader that boots a `.dol` from the card by name.** Replace that file
-with `ipl.dol`, keeping the old file's name.
+with `ipl.dol`, keeping the old file's name. FlippyDrive, for one, boots
+`boot.dol`.
 
 **GC Loader, or a loader that boots a disc image.** Drag everything in the
 download onto the root of the card, start Swiss the way you do now, and open
@@ -50,8 +54,8 @@ download onto the root of the card, start Swiss the way you do now, and open
 ## 3. First boot
 
 Indigo opens on Home, a glass cube with one destination on each face. If it
-finds your games, the cube faces **Library**; press A to see them. If it
-finds no device to read from yet, it faces **Source**, where you choose one.
+found a device to read from, the cube faces **Library**; press A to see your
+games. If it found none yet, it faces **Source**, where you choose one.
 
 <p align="center">
   <img alt="Home on the Library face: the glass cube shows a GameCube controller, LIBRARY is written underneath, and the hint line reads Turn and A Open." src="images/home-library-face.png" width="640">
@@ -73,14 +77,19 @@ poster pack and cheats stay where they are.
 
 ## Go back to stock Swiss
 
-- **PicoBoot:** hold Z while you switch the console on to start `z.dol`.
+- **PicoBoot and PicoLoader:** hold Z while you switch the console on to
+  start `z.dol`.
 - **Other loaders:** put your old file back, or start stock Swiss from your
   loader as before.
 - In-Game Reset set to Apploader returns to Indigo until you put back stock
-  Swiss's own `swiss/patches/apploader.img`.
+  Swiss's own `swiss/patches/apploader.img`, from `Apploader/EXTRACT_TO_ROOT.zip`
+  in the Swiss release.
 
 Both use the same settings file. Indigo keeps your comments in it when it
-saves; stock Swiss rewrites the whole file when it saves.
+saves. Stock Swiss rewrites the whole file when it saves and leaves out the
+settings only Indigo has, such as Menu Color, the face icons, Library Layout
+and Save Folder, so those are back to their defaults the next time Indigo
+starts.
 
 ## Leaving a game
 
@@ -99,7 +108,7 @@ installed on your computer:
 git clone https://github.com/spencercnorton/indigo.git
 cd indigo
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2 make dev
+  ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575 make dev
 ```
 
 This writes `cube/swiss/swiss.dol`. That is the same program as `ipl.dol`

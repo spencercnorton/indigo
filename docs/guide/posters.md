@@ -32,8 +32,9 @@ region, and the few games GameTDB has no art for, keep their banner card.
 You can make a pack from your own cover images, from this repository:
 
 1. Put the front covers in one folder, each named after its game ID, such as
-   `GMSE01.png` or `GALE01.jpg`. They should be at least 192×256; Indigo
-   crops them to 3:4 from the center.
+   `GMSE01.png` or `GALE01.jpg`, each at least 192×256: a smaller one
+   stops the build and names the file. Indigo crops them to 3:4 from the
+   center.
 2. Build the pack. You need Python with Pillow, and Docker for the texture
    converter:
 
