@@ -336,6 +336,41 @@ for mutant_label, mutant_sources in picker_mutants:
         continue
     raise SystemExit(f"hardware follow-up audit failed: picker mutant escaped: {mutant_label}")
 
+# The Source picker: the stick changes the device as the D-pad, L and R do,
+# repeating while held, and one published event slides between devices.
+def check_source_picker(selector: str) -> None:
+    require(selector.count("padsMenuInputPoll(&menuInput,") == 2,
+            "Source picker must have one stick poll and one release drain")
+    require("UI_MENU_INPUT_AXIS_HORIZONTAL" in selector and
+            "UI_MENU_INPUT_REPEAT" in selector and "padsStick" not in selector,
+            "Source picker has the wrong stick policy")
+    for intent in ("btns |= BUTTON_RIGHT;", "btns |= BUTTON_LEFT;",
+                   "BUTTON_RIGHT|BUTTON_R|BUTTON_LEFT|BUTTON_L"):
+        require(intent in selector, f"Source picker drops a way to change: {intent}")
+    require(selector.count("DrawPublish(DrawDeviceSelector(") == 1 and
+            "DrawUpdateDeviceSelector(" in selector,
+            "Source picker republishes instead of updating its one event")
+
+
+source_picker = block(SWISS, "static bool select_device_internal(")
+check_source_picker(source_picker)
+source_picker_mutants = (
+    ("Source picker loses repeat", changed(
+        source_picker, "(inAdvanced ? 0u : UI_MENU_INPUT_REPEAT)", "0u")),
+    ("Source picker ignores the stick", changed(
+        source_picker, "btns |= BUTTON_RIGHT;", ";")),
+    ("Source picker republishes every step", changed(
+        source_picker, "\t\tfocus = ((travel % count) + count) % count;\n",
+        "\t\tfocus = ((travel % count) + count) % count;\n\t\tDrawDispose(deviceSelectBox);\n"
+        "\t\tdeviceSelectBox = DrawPublish(DrawDeviceSelector(type == DEVICE_DEST));\n")),
+)
+for mutant_label, mutant in source_picker_mutants:
+    try:
+        check_source_picker(mutant)
+    except SystemExit:
+        continue
+    raise SystemExit(f"hardware follow-up audit failed: picker mutant escaped: {mutant_label}")
+
 # The disc drive is the "Game Disc" wherever the UI names a device. Only the
 # patches device (never the drive) still prints its own name, in load messages.
 INFO = read(GUI / "info.c")
@@ -349,4 +384,5 @@ for name, source in (("swiss.c", SWISS), ("FrameBufferMagic.c", FRAME), ("info.c
     require(not raw, f"{name} shows a raw device name: {raw[:1]}")
 
 print(f"Home hardware follow-up structural audit passed "
-      f"({len(consumer_mutants)} consumer and {len(picker_mutants)} picker mutants rejected)")
+      f"({len(consumer_mutants)} consumer and "
+      f"{len(picker_mutants) + len(source_picker_mutants)} picker mutants rejected)")

@@ -4460,9 +4460,56 @@ int info_game(ConfigEntry *config)
 	return ret;
 }
 
+/* The devices the picker lists, in allDevices order: those that can do the
+ * job and were detected, or with Z every one. With none detected it lists
+ * every one, as Z does. */
+static int selectorDevices(DEVICEHANDLER_INTERFACE **listed,
+	u32 requiredFeatures, int *showAllDevices)
+{
+	int count = 0;
+
+	for(int i = 0; i < MAX_DEVICES; i++) {
+		DEVICEHANDLER_INTERFACE *device = allDevices[i];
+		if(device != NULL && (device->features & requiredFeatures) &&
+				(*showAllDevices || deviceHandler_getDeviceAvailable(device))) {
+			listed[count++] = device;
+		}
+	}
+	if(count == 0 && !*showAllDevices) {
+		*showAllDevices = 1;
+		return selectorDevices(listed, requiredFeatures, showAllDevices);
+	}
+	return count;
+}
+
+/* Where the focus lands in a list: on device, or else on the next device
+ * listed after it. */
+static int selectorFocus(DEVICEHANDLER_INTERFACE *const *listed, int count,
+	const DEVICEHANDLER_INTERFACE *device)
+{
+	int start = 0;
+
+	for(int i = 0; i < MAX_DEVICES; i++) {
+		if(allDevices[i] == device) {
+			start = i;
+			break;
+		}
+	}
+	for(int step = 0; step < MAX_DEVICES; step++) {
+		for(int j = 0; j < count; j++) {
+			if(listed[j] == allDevices[(start + step) % MAX_DEVICES]) {
+				return j;
+			}
+		}
+	}
+	return 0;
+}
+
 static bool select_device_internal(int type)
 {
 	u32 requiredFeatures = (type == DEVICE_DEST) ? FEAT_WRITE:FEAT_READ;
+	const u32 selectorButtons = BUTTON_RIGHT|BUTTON_LEFT|BUTTON_B|BUTTON_A|
+		BUTTON_X|BUTTON_Y|BUTTON_L|BUTTON_R|BUTTON_Z;
 
 	if(is_httpd_in_use()) {
 		uiDrawObj_t *msgBox = DrawPublish(DrawMessageBox(D_INFO,"Can't load device while HTTP is processing!"));
@@ -4472,45 +4519,40 @@ static bool select_device_internal(int type)
 	}
 	UIScene_Request(type == DEVICE_CUR ? UI_SCENE_SOURCE : UI_SCENE_LIBRARY);
 
-	int curDevice = 0;
+	DEVICEHANDLER_INTERFACE *listed[MAX_DEVICES];
 	int inAdvanced = 0, showAllDevices = 0;
-	int direction = 0;
 	int savedExiSpeed = swissSettings.exiSpeed;
+	int count = selectorDevices(listed, requiredFeatures, &showAllDevices);
+	/* The focus, unwrapped: each step moves it by one, round and round. */
+	int travel = selectorFocus(listed, count, devices[DEVICE_PREV]);
+	int focus = travel;
+	uiMenuInputState_t menuInput;
+	u32 menuInputRetrace = VIDEO_GetRetraceCount();
 
-	while((allDevices[curDevice] != devices[DEVICE_PREV])) {
-		curDevice = (curDevice + 1) % MAX_DEVICES;
-	}
-	// Find the first device that meets the requiredFeatures and is available
-	while((allDevices[curDevice] == NULL) || !(deviceHandler_getDeviceAvailable(allDevices[curDevice])||showAllDevices) || !(allDevices[curDevice]->features & requiredFeatures)) {
-		curDevice = (curDevice + 1) % MAX_DEVICES;
-	}
-
-	uiDrawObj_t *deviceSelectBox = NULL;
+	UIMenuInput_Init(&menuInput);
+	uiDrawObj_t *deviceSelectBox = DrawPublish(DrawDeviceSelector(type == DEVICE_DEST));
 	while(1) {
-		if(direction != 0) {
-			if(direction > 0) {
-				curDevice = allDevices[curDevice+1] == NULL ? 0 : curDevice+1;
-			}
-			else {
-				curDevice = curDevice > 0 ? curDevice-1 : MAX_DEVICES-1;
-			}
-			// Go to next available device that meets the requiredFeatures
-			while((allDevices[curDevice] == NULL) || !(deviceHandler_getDeviceAvailable(allDevices[curDevice])) || !(allDevices[curDevice]->features & requiredFeatures)) {
-				if(allDevices[curDevice] != NULL && showAllDevices && (allDevices[curDevice]->features & requiredFeatures)) {
-					break;	// Show all devices? then continue
-				}
-				curDevice += direction;
-				curDevice = (curDevice + MAX_DEVICES) % MAX_DEVICES;
-			}
-			direction = 0;
-		}
+		/* The stick changes the device too, and repeats while it is held;
+		 * on the EXI speed's two values it steps once per push. */
+		u32 stickPolicy = UI_MENU_INPUT_AXIS_HORIZONTAL |
+			(inAdvanced ? 0u : UI_MENU_INPUT_REPEAT);
+		uiMenuInputDirection_t analog;
+		u32 btns;
 
-		deviceSelectBox = DrawDeviceSelectorCard(allDevices[curDevice],
-			type == DEVICE_DEST, showAllDevices, inAdvanced);
-		DrawPublish(deviceSelectBox);
-		while (!(padsButtonsHeld() & (BUTTON_RIGHT|BUTTON_LEFT|BUTTON_B|BUTTON_A|BUTTON_X|BUTTON_Y|BUTTON_L|BUTTON_R|BUTTON_Z)))
-			{ VIDEO_WaitVSync (); }
-		u32 btns = padsButtonsHeld();
+		focus = ((travel % count) + count) % count;
+		DrawUpdateDeviceSelector(deviceSelectBox, listed, count, travel,
+			homeSourceLifecycleMounted() ? devices[DEVICE_CUR] : NULL,
+			devices[DEVICE_CONFIG], showAllDevices, inAdvanced);
+		while(1) {
+			btns = padsButtonsHeld();
+			analog = padsMenuInputPoll(&menuInput,
+				menuInputElapsedMicroseconds(&menuInputRetrace),
+				stickPolicy, (btns & selectorButtons) != 0u);
+			if((btns & selectorButtons) || analog != UI_MENU_INPUT_NONE) {
+				break;
+			}
+			VIDEO_WaitVSync();
+		}
 		/* Cancellation wins every simultaneous selector chord and leaves all
 		 * source configuration exactly as it entered. */
 		if(btns & BUTTON_B) {
@@ -4522,12 +4564,20 @@ static bool select_device_internal(int type)
 			if(type == DEVICE_DEST) {
 				UIScene_Request(UI_SCENE_LIBRARY);
 			}
+			menuaudio_select();
 			homeDrainSelectorInput();
 			return false;
 		}
-		if((btns & BUTTON_Y) && allDevices[curDevice]->details) {
-			char *deviceDetails = allDevices[curDevice]->details(allDevices[curDevice]->initial);
+		if(analog == UI_MENU_INPUT_RIGHT) {
+			btns |= BUTTON_RIGHT;
+		}
+		else if(analog == UI_MENU_INPUT_LEFT) {
+			btns |= BUTTON_LEFT;
+		}
+		if((btns & BUTTON_Y) && listed[focus]->details) {
+			char *deviceDetails = listed[focus]->details(listed[focus]->initial);
 			if(deviceDetails) {
+				menuaudio_select();
 				uiDrawObj_t *deviceDetailBox = DrawPublish(DrawTooltip(deviceDetails));
 				while (padsButtonsHeld() & BUTTON_Y){ VIDEO_WaitVSync (); }
 				while (!((padsButtonsHeld() & BUTTON_Y) || (padsButtonsHeld() & BUTTON_B))){ VIDEO_WaitVSync (); }
@@ -4535,51 +4585,46 @@ static bool select_device_internal(int type)
 				free(deviceDetails);
 			}
 		}
-		if((btns & BUTTON_X) && (allDevices[curDevice]->features & FEAT_EXI_SPEED))
+		if((btns & BUTTON_X) && (listed[focus]->features & FEAT_EXI_SPEED)) {
 			inAdvanced ^= 1;
+			menuaudio_select();
+		}
 		if(btns & BUTTON_Z) {
+			DEVICEHANDLER_INTERFACE *shown = listed[focus];
 			showAllDevices ^= 1;
-			if(!showAllDevices && !deviceHandler_getDeviceAvailable(allDevices[curDevice])) {
+			count = selectorDevices(listed, requiredFeatures, &showAllDevices);
+			travel = focus = selectorFocus(listed, count, shown);
+			if(listed[focus] != shown) {
 				inAdvanced = 0;
-				direction = 1;
 			}
+			menuaudio_select();
 		}
 		if(inAdvanced) {
-			if((btns & BUTTON_RIGHT) || (btns & BUTTON_LEFT)) {
-				swissSettings.exiSpeed^=1;
+			if(btns & (BUTTON_RIGHT|BUTTON_LEFT)) {
+				swissSettings.exiSpeed ^= 1;
+				menuaudio_blip();
 			}
 		}
-		else {
-			if(btns & (BUTTON_RIGHT|BUTTON_R)) {
-				direction = 1;
-			}
-			if(btns & (BUTTON_LEFT|BUTTON_L)) {
-				direction = -1;
-			}
+		else if(count > 1 && (btns & (BUTTON_RIGHT|BUTTON_R|BUTTON_LEFT|BUTTON_L))) {
+			travel += (btns & (BUTTON_RIGHT|BUTTON_R)) ? 1 : -1;
+			menuaudio_blip();
 		}
-			
 		if(btns & BUTTON_A) {
 			if(!inAdvanced) {
-				if(type == DEVICE_CUR)
-					break;
-				else {
-					if(!(allDevices[curDevice]->features & FEAT_WRITE)) {
-						// TODO don't break cause read only device
-					}
-					else {
-						break;
-					}
-				}
+				menuaudio_select();
+				break;
 			}
-			else 
-				inAdvanced = 0;
+			inAdvanced = 0;
 		}
-		while (padsButtonsHeld() & (BUTTON_RIGHT|BUTTON_LEFT|BUTTON_B|BUTTON_A|BUTTON_X|BUTTON_Y|BUTTON_L|BUTTON_R|BUTTON_Z))
-			{ VIDEO_WaitVSync (); }
-		DrawDispose(deviceSelectBox);
+		while((padsButtonsHeld() & selectorButtons) != 0u) {
+			(void)padsMenuInputPoll(&menuInput,
+				menuInputElapsedMicroseconds(&menuInputRetrace),
+				stickPolicy, true);
+			VIDEO_WaitVSync();
+		}
 	}
 	while ((padsButtonsHeld() & BUTTON_A)){ VIDEO_WaitVSync (); }
-	DEVICEHANDLER_INTERFACE *selectedDevice = allDevices[curDevice];
+	DEVICEHANDLER_INTERFACE *selectedDevice = listed[focus];
 	if(type == DEVICE_CUR) {
 		/* The live source survived the selector. Only now that A has confirmed
 		 * do we invalidate files and remount, including same-source EXI changes. */
@@ -4599,7 +4644,7 @@ static bool select_device_internal(int type)
 			devices[type]->deinit(devices[type]->initial);
 		}
 	}
-	if(showAllDevices && (allDevices[curDevice]->location & (LOC_MEMCARD_SLOT_A | LOC_MEMCARD_SLOT_B | LOC_SERIAL_PORT_2))) {
+	if(showAllDevices && (selectedDevice->location & (LOC_MEMCARD_SLOT_A | LOC_MEMCARD_SLOT_B | LOC_SERIAL_PORT_2))) {
 		EXI_ProbeReset();
 	}
 	devices[type] = selectedDevice;

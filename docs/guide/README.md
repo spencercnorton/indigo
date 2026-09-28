@@ -51,7 +51,7 @@
   </tr>
   <tr>
     <td valign="top">
-      <a href="source.md"><img alt="The source picker with Game Disc on the cube." src="images/source-picker-still.png" width="100%"></a><br>
+      <a href="source.md"><img alt="The source picker: the cube above a row of devices, Game Disc in the middle." src="images/source-picker-still.png" width="100%"></a><br>
       <b><a href="source.md">Source</a></b>: choose the device your games come from.
     </td>
     <td valign="top">

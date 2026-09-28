@@ -45,6 +45,22 @@ Changes land under `## Unreleased` until the release names them.
 - The video mode and the number of cheats applied are steps on the ring
   instead of notices that held the start for two seconds and one second.
 
+### Source picker
+
+- Change Source shows the devices themselves. The cube lifts out of the way
+  and the devices Indigo found line up under it on glass tiles, each with
+  its picture: the one in the middle larger and framed, its neighbours
+  smaller and dimmer. The row slides from one device to the next and goes
+  round. Under the middle one, the picker says what the device can do
+  (Boot + Stream, Boot or Files), where it plugs in (Slot A, Serial Port 2,
+  Disc Drive and so on), whether Indigo detected it, and whether it is the
+  current source or holds your settings.
+- The control stick changes the device too, and holding it keeps going; the
+  D-pad, L and R still work. The bottom line shows the buttons, the stick
+  and D-pad that change the device among them, and the picker plays the
+  menu's sounds.
+- Copy and Move choose where to put a file in the same picker.
+
 ### Fixes
 
 - Indigo stays on screen when stock Swiss is kept on the card as `z.dol`, as
@@ -117,6 +133,8 @@ Changes land under `## Unreleased` until the release names them.
   with its `strtok_r`, and with its unsigned `char`. The emulator test's disc
   also carries two damaged images the Library must list without crashing. Weekly on `main`, every check runs
   again and the fuzzers run for ten minutes each.
+- The emulator test also opens Change Source: the device picker shows a
+  device's name, RIGHT shows another, and B leaves it.
 
 ## v1.25.0 — Memory Cards, a cube that flies in, and a drag-and-drop download
 
