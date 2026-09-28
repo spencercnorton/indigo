@@ -7,7 +7,7 @@ every screen shows the buttons that work there, drawn as the controller's
 own buttons.
 
 <p align="center">
-  <img alt="The hint lines of five screens, one above the other: Home (the stick and D-pad to turn, A Open), the Library (D-pad Browse, A Open, Y Settings, X Back, B Home), game details (A Launch, B Library, X Settings, Y Cheats), the cheat browser (A Toggle, B Done, X Enabled only, Z Advanced) and a list of choices in Settings (A Choose, B Cancel)." src="images/controls-hints.png" width="640">
+  <img alt="The hint lines of five screens, one above the other: Home (the stick and D-pad to turn, A Open), the Library (D-pad Browse, A Open, Y Settings, X Back, B Home), game details (D-pad Move, A Select, B Library, X Settings, Y Cheats), the cheat browser (A Toggle, B Done, X Enabled only, Z Advanced) and a list of choices in Settings (A Choose, B Cancel)." src="images/controls-hints.png" width="640">
 </p>
 
 ## The short version
@@ -72,7 +72,8 @@ See [Library](library.md).
 
 | Button | Does |
 | --- | --- |
-| A | Launch the game. |
+| Up, Down | Move between Launch Game, Cheats and Settings. |
+| A | Open the one you're on: launch the game, or its cheats or settings. |
 | L + A | Clean boot: start the disc with no changes applied (disc drive only). |
 | B | Back to the Library. |
 | X | This game's own settings. |
@@ -80,8 +81,8 @@ See [Library](library.md).
 | Z | Autoload: open this game every time Indigo starts. Press again to turn it off. |
 | R | Check the disc image's data, for discs Indigo can verify. |
 
-Z appears when Indigo has a device to save settings to. See
-[Game details](game-details.md).
+The other buttons work wherever you are on the screen. Z appears when Indigo
+has a device to save settings to. See [Game details](game-details.md).
 
 ### Cheats
 

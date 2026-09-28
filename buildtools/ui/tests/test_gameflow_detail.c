@@ -118,9 +118,9 @@ static void testPointerFreeCopyAndMatch(void)
 	CHECK(strcmp(snapshot.cheatSummary,
 		"3 of 4 enabled") == 0);
 	CHECK(strcmp(snapshot.cheatPreview, "Infinite Water  +2 MORE") == 0);
-	CHECK(strcmp(snapshot.launchLabel, "A  LAUNCH GAME") == 0);
+	CHECK(strcmp(snapshot.launchLabel, "LAUNCH GAME") == 0);
 	CHECK(strcmp(snapshot.primaryActions,
-		"A  LAUNCH   B  LIBRARY   X  SETTINGS   Y  CHEATS") == 0);
+		"D-PAD  MOVE   A  SELECT   B  LIBRARY   X  SETTINGS   Y  CHEATS") == 0);
 	CHECK(strcmp(snapshot.advancedLineOne,
 		"Z  AUTOLOAD ON   R  VERIFY") == 0);
 	CHECK(strcmp(snapshot.advancedLineTwo, "L+A  CLEAN BOOT") == 0);
@@ -159,6 +159,7 @@ static void testNoCheatsClearsCapability(void)
 	CHECK(snapshot.cheatPreview[0] == '\0');
 	CHECK(strstr(snapshot.primaryActions, "Y  CHEATS") == NULL);
 	CHECK(UIGameflowDetail_ResolveAction(&snapshot,
+		UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
 		UI_GAMEFLOW_DETAIL_INPUT_Y) == UI_GAMEFLOW_DETAIL_ACTION_NONE);
 }
 
@@ -182,9 +183,9 @@ static void testPresentationVariants(void)
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
 	CHECK(strcmp(snapshot.cheatSummary, "STATUS UNAVAILABLE") == 0);
 	CHECK(snapshot.cheatPreview[0] == '\0');
-	CHECK(strcmp(snapshot.launchLabel, "A  CLEAN BOOT") == 0);
+	CHECK(strcmp(snapshot.launchLabel, "CLEAN BOOT") == 0);
 	CHECK(strcmp(snapshot.primaryActions,
-		"A  LAUNCH   X  SETTINGS   Y  CHEATS") == 0);
+		"D-PAD  MOVE   A  SELECT   X  SETTINGS   Y  CHEATS") == 0);
 	CHECK(snapshot.advancedLineOne[0] == '\0');
 	CHECK(strcmp(snapshot.advancedLineTwo, "L+A  CLEAN BOOT") == 0);
 
@@ -228,34 +229,121 @@ static void testControllerPrecedence(void)
 	uiGameflowDetailSnapshot_t snapshot = buildSnapshot();
 
 	CHECK(UIGameflowDetail_ResolveAction(&snapshot,
+		UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
 		UI_GAMEFLOW_DETAIL_INPUT_A) == UI_GAMEFLOW_DETAIL_ACTION_BOOT);
 	CHECK(UIGameflowDetail_ResolveAction(&snapshot,
+		UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
 		UI_GAMEFLOW_DETAIL_INPUT_A | UI_GAMEFLOW_DETAIL_INPUT_L) ==
 		UI_GAMEFLOW_DETAIL_ACTION_CLEAN_BOOT);
 	CHECK(UIGameflowDetail_ResolveAction(&snapshot,
+		UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
 		UI_GAMEFLOW_DETAIL_INPUT_A | UI_GAMEFLOW_DETAIL_INPUT_B |
 		UI_GAMEFLOW_DETAIL_INPUT_Y) == UI_GAMEFLOW_DETAIL_ACTION_BOOT);
 	CHECK(UIGameflowDetail_ResolveAction(&snapshot,
+		UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
 		UI_GAMEFLOW_DETAIL_INPUT_B | UI_GAMEFLOW_DETAIL_INPUT_X) ==
 		UI_GAMEFLOW_DETAIL_ACTION_LIBRARY);
 	CHECK(UIGameflowDetail_ResolveAction(&snapshot,
+		UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
 		UI_GAMEFLOW_DETAIL_INPUT_R | UI_GAMEFLOW_DETAIL_INPUT_X) ==
 		UI_GAMEFLOW_DETAIL_ACTION_VERIFY);
 	CHECK(UIGameflowDetail_ResolveAction(&snapshot,
+		UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
 		UI_GAMEFLOW_DETAIL_INPUT_X | UI_GAMEFLOW_DETAIL_INPUT_Y) ==
 		UI_GAMEFLOW_DETAIL_ACTION_SETTINGS);
 	CHECK(UIGameflowDetail_ResolveAction(&snapshot,
+		UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
 		UI_GAMEFLOW_DETAIL_INPUT_Z | UI_GAMEFLOW_DETAIL_INPUT_Y) ==
 		UI_GAMEFLOW_DETAIL_ACTION_AUTOLOAD);
 	CHECK(UIGameflowDetail_ResolveAction(&snapshot,
+		UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
 		UI_GAMEFLOW_DETAIL_INPUT_Y) == UI_GAMEFLOW_DETAIL_ACTION_CHEATS);
 	snapshot.flags &= ~(uint32_t)(UI_GAMEFLOW_DETAIL_CAN_LIBRARY |
 		UI_GAMEFLOW_DETAIL_CAN_CLEAN_BOOT);
 	CHECK(UIGameflowDetail_ResolveAction(&snapshot,
+		UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
 		UI_GAMEFLOW_DETAIL_INPUT_B) == UI_GAMEFLOW_DETAIL_ACTION_NONE);
 	CHECK(UIGameflowDetail_ResolveAction(&snapshot,
+		UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
 		UI_GAMEFLOW_DETAIL_INPUT_A | UI_GAMEFLOW_DETAIL_INPUT_L) ==
 		UI_GAMEFLOW_DETAIL_ACTION_BOOT);
+}
+
+/* Up and down walk the rows as they are drawn and stop at the ends, past
+ * Cheats when the game has none. Plain A runs the focused row; L+A and every
+ * shortcut do what they always did, whatever is focused. */
+static void testFocus(void)
+{
+	const uiGameflowDetailFocus_t launch = UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH;
+	const uiGameflowDetailFocus_t cheats = UI_GAMEFLOW_DETAIL_FOCUS_CHEATS;
+	const uiGameflowDetailFocus_t settings = UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS;
+	const uiGameflowDetailFocus_t rows[] = {launch, cheats, settings};
+	const uint32_t up = UI_GAMEFLOW_DETAIL_INPUT_UP;
+	const uint32_t down = UI_GAMEFLOW_DETAIL_INPUT_DOWN;
+	const uint32_t a = UI_GAMEFLOW_DETAIL_INPUT_A;
+	const struct {
+		uint32_t input;
+		uiGameflowDetailAction_t action;
+	} shortcuts[] = {
+		{a | UI_GAMEFLOW_DETAIL_INPUT_L, UI_GAMEFLOW_DETAIL_ACTION_CLEAN_BOOT},
+		{UI_GAMEFLOW_DETAIL_INPUT_B, UI_GAMEFLOW_DETAIL_ACTION_LIBRARY},
+		{UI_GAMEFLOW_DETAIL_INPUT_R, UI_GAMEFLOW_DETAIL_ACTION_VERIFY},
+		{UI_GAMEFLOW_DETAIL_INPUT_X, UI_GAMEFLOW_DETAIL_ACTION_SETTINGS},
+		{UI_GAMEFLOW_DETAIL_INPUT_Z, UI_GAMEFLOW_DETAIL_ACTION_AUTOLOAD},
+		{UI_GAMEFLOW_DETAIL_INPUT_Y, UI_GAMEFLOW_DETAIL_ACTION_CHEATS}
+	};
+	uiGameflowDetailSnapshot_t snapshot = buildSnapshot();
+	size_t row;
+	size_t i;
+
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, launch, up) == cheats);
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, cheats, up) == settings);
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, settings, up) == settings);
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, settings, down) == cheats);
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, cheats, down) == launch);
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, launch, down) == launch);
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, cheats, a |
+		UI_GAMEFLOW_DETAIL_INPUT_X | UI_GAMEFLOW_DETAIL_INPUT_Y) == cheats);
+
+	CHECK(UIGameflowDetail_ResolveAction(&snapshot, launch, a) ==
+		UI_GAMEFLOW_DETAIL_ACTION_BOOT);
+	CHECK(UIGameflowDetail_ResolveAction(&snapshot, cheats, a) ==
+		UI_GAMEFLOW_DETAIL_ACTION_CHEATS);
+	CHECK(UIGameflowDetail_ResolveAction(&snapshot, settings, a) ==
+		UI_GAMEFLOW_DETAIL_ACTION_SETTINGS);
+	for(row = 0u; row < sizeof(rows) / sizeof(rows[0]); ++row) {
+		CHECK(UIGameflowDetail_ResolveAction(&snapshot, rows[row], up) ==
+			UI_GAMEFLOW_DETAIL_ACTION_NONE);
+		CHECK(UIGameflowDetail_ResolveAction(&snapshot, rows[row], down) ==
+			UI_GAMEFLOW_DETAIL_ACTION_NONE);
+		for(i = 0u; i < sizeof(shortcuts) / sizeof(shortcuts[0]); ++i) {
+			CHECK(UIGameflowDetail_ResolveAction(&snapshot, rows[row],
+				shortcuts[i].input) == shortcuts[i].action);
+		}
+	}
+
+	/* L is Clean Boot's modifier only where Clean Boot is offered. */
+	snapshot.flags &= ~(uint32_t)UI_GAMEFLOW_DETAIL_CAN_CLEAN_BOOT;
+	CHECK(UIGameflowDetail_ResolveAction(&snapshot, settings,
+		a | UI_GAMEFLOW_DETAIL_INPUT_L) == UI_GAMEFLOW_DETAIL_ACTION_SETTINGS);
+	CHECK(UIGameflowDetail_ResolveAction(&snapshot, launch,
+		a | UI_GAMEFLOW_DETAIL_INPUT_L) == UI_GAMEFLOW_DETAIL_ACTION_BOOT);
+
+	/* No cheats: Cheats is passed both ways, and A never acts on it. */
+	snapshot.flags &= ~(uint32_t)UI_GAMEFLOW_DETAIL_CAN_CHEATS;
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, launch, up) == settings);
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, settings, down) == launch);
+	CHECK(UIGameflowDetail_ResolveAction(&snapshot, cheats, a) ==
+		UI_GAMEFLOW_DETAIL_ACTION_NONE);
+	/* Launch alone: nowhere to go. */
+	snapshot.flags &= ~(uint32_t)UI_GAMEFLOW_DETAIL_CAN_SETTINGS;
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, launch, up) == launch);
+	CHECK(UIGameflowDetail_ResolveAction(&snapshot, settings, a) ==
+		UI_GAMEFLOW_DETAIL_ACTION_NONE);
+
+	memset(&snapshot, 0, sizeof(snapshot));
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, launch, up) == launch);
+	CHECK(UIGameflowDetail_MoveFocus(NULL, cheats, down) == cheats);
 }
 
 static void testInvalidInputResetsSnapshot(void)
@@ -292,7 +380,7 @@ static void testCustomSettingsLine(void)
 
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
 	CHECK(strcmp(snapshot.primaryActions,
-		"A  LAUNCH   B  LIBRARY   X  SETTINGS") == 0);
+		"D-PAD  MOVE   A  SELECT   B  LIBRARY   X  SETTINGS") == 0);
 	CHECK(strcmp(snapshot.settingsSummary, "2 custom") == 0);
 	CHECK(strcmp(snapshot.settingsPreview,
 		"Force Video Mode: 480p  +1 MORE") == 0);
@@ -307,7 +395,7 @@ static void testCustomSettingsLine(void)
 	source.customSettings = 0u;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
 	CHECK(strcmp(snapshot.primaryActions,
-		"A  LAUNCH   B  LIBRARY   X  SETTINGS") == 0);
+		"D-PAD  MOVE   A  SELECT   B  LIBRARY   X  SETTINGS") == 0);
 	CHECK(strcmp(snapshot.settingsSummary, "Game Defaults") == 0);
 	CHECK(strcmp(snapshot.settingsPreview, "X  Change for this game") == 0);
 	/* Without the X action there is no settings line to offer. */
@@ -328,6 +416,7 @@ int main(void)
 	testPresentationVariants();
 	testDescriptionTruncationIsVisible();
 	testControllerPrecedence();
+	testFocus();
 	testInvalidInputResetsSnapshot();
 	puts("gameflow detail tests passed");
 	return EXIT_SUCCESS;

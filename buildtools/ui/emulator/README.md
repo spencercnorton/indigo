@@ -23,18 +23,19 @@ exception screen as it would on a console. The route:
    comes back to the first, and the four names differ. LEFT turns back.
 3. **Every face.** A opens it and B comes back to the same face. In the
    Library, RIGHT twice and LEFT twice move between games and back, and A
-   opens a game's details and B comes back to the same game.
+   opens a game's details. There UP moves to Settings and A opens them, B
+   comes back to the details, and B again to the same game.
 4. **Nothing crashed.** No step lands on the exception screen or a black
    screen, and Dolphin's log reports no exception or invalid access.
 
 Every check compares the screen with itself earlier in the same run (the
 text under the cube, a game's title), never with stored pictures, so a
 redesign does not break the test and a crash, a hang, a black screen or a
-dead control does. Only where that text sits is fixed (`LABEL_BOX` and
-`TITLE_BOX` in `run.py`): a change that moves it updates them. The test
-waits for what it expects to see, not for a fixed time, so a busy machine
-makes it slower, not flaky. A failed step says why, and names the crash when
-there is one.
+dead control does. Only where that text sits is fixed (`LABEL_BOX`,
+`TITLE_BOX` and `DETAIL_TITLE_BOX` in `run.py`): a change that moves it
+updates them. The test waits for what it expects to see, not for a fixed
+time, so a busy machine makes it slower, not flaky. A failed step says why,
+and names the crash when there is one.
 
 ## Running it
 

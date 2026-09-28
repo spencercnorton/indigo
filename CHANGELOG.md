@@ -22,6 +22,16 @@ Changes land under `## Unreleased` until the release names them.
   edge-on, is a smaller card turned away with its box art, or its disc banner
   when the poster pack has none, and covers fade in at the edges as you move.
 
+### Game details
+
+- Up and down on the D-pad or the control stick move between Launch Game,
+  Cheats and Settings on a game's details, and A opens the one you're on. A
+  bright frame shows where you are: it starts on Launch Game, passes over
+  Cheats when the game has none, and is still there when you come back from
+  Settings or Cheats. X, Y, Z, R, L + A and B work as before, wherever the
+  frame is. The hint line reads D-pad Move, A Select, B Library, X Settings,
+  Y Cheats.
+
 ### Fixes
 
 - Indigo stays on screen when stock Swiss is kept on the card as `z.dol`, as
@@ -73,8 +83,8 @@ Changes land under `## Unreleased` until the release names them.
   every job.
 - CI boots every build in Dolphin and walks its menus with a controller:
   the cube turns through its four faces, each face opens and closes, and the
-  Library moves between games and opens one's details, on a demonstration
-  disc of fictitious games.
+  Library moves between games and opens one's details, where UP and A open
+  the game's settings, on a demonstration disc of fictitious games.
   Dolphin emulates the MMU, so a crash stops the test as it would stop a
   console. Every step's picture is kept with the run
   ([buildtools/ui/emulator/](buildtools/ui/emulator/README.md)).
