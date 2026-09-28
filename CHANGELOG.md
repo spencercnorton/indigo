@@ -105,6 +105,9 @@ Changes land under `## Unreleased` until the release names them.
   through the values; A switches to the one shown and asks, as before,
   whether to keep it. Moving to another setting or leaving without A puts the
   old value back.
+- A game whose launch cannot read the console's BS2 says "Failed to read
+  BS2!" and comes back to the Library, as Swiss means it to. It crashed
+  instead: the failure freed a pointer the launch had never set.
 
 ### Documentation
 

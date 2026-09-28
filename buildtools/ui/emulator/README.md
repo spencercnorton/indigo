@@ -24,7 +24,9 @@ exception screen as it would on a console. The route:
 3. **Every face.** A opens it and B comes back to the same face. In the
    Library, RIGHT twice and LEFT twice move between games and back, and A
    opens a game's details. There UP moves to Settings and A opens them, B
-   comes back to the details, and B again to the same game. On the Source
+   comes back to the details, and B again to the same game. A launch of that
+   game then fails (Dolphin has no IPL ROM, so BS2 cannot be read): Indigo
+   must say so and come back to the Library once A dismisses it. On the Source
    face, A on Change Source opens the device picker, RIGHT shows another
    device and B leaves the picker.
 4. **Nothing crashed.** No step lands on the exception screen or a black

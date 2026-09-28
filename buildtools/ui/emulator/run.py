@@ -308,7 +308,8 @@ class Route:
     def browse_library(self) -> None:
         """RIGHT twice then LEFT twice: a new title each way, and back to the first.
         Then A opens that game's details, UP and A its settings, B comes back
-        to the details and B again to the game."""
+        to the details and B again to the game; then a launch that fails comes
+        back to it too."""
         titles = []
         first, _ = self.settled_label(box=TITLE_BOX)
         self.check("the Library shows a game's title", first is not None)
@@ -346,6 +347,27 @@ class Route:
         title, _ = self.settled_label(like=titles[0], box=TITLE_BOX)
         self.shot("library-back", self.last_rgb)
         self.check("B comes back to the same game", title is not None)
+        self.launch_fails_cleanly(titles[0])
+
+    def launch_fails_cleanly(self, title: np.ndarray) -> None:
+        """A and A launch the game. Dolphin has no IPL ROM and the demo disc no
+        swiss/patches/ipl.bin, so the launch cannot read BS2: it must say so and,
+        once A dismisses the message, come back to the same game in the Library.
+        It used to free a pointer it had never set and crash."""
+        self.press("A")
+        self.check("A opens the game's details again", self.covered(title, TITLE_BOX))
+        self.press("A")
+        back, deadline = None, time.monotonic() + BOOT_SECONDS / 2
+        while back is None and time.monotonic() < deadline:
+            time.sleep(2.0)
+            self.gray()
+            self.shot("launch-failure", self.last_rgb)
+            if diagnose(self.last_rgb):
+                break  # a crash or a black screen: check() reports which
+            self.press("A")  # dismisses the failure message once it is up
+            back, _ = self.settled_label(4, like=title, box=TITLE_BOX)
+        self.shot("launch-failed-back", self.last_rgb)
+        self.check("a launch that cannot read BS2 comes back to the Library", back is not None)
 
     def change_source(self) -> None:
         """A on Change Source opens the device picker, RIGHT shows the next device
