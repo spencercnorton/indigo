@@ -8,7 +8,8 @@ and log what is drawn. The tests then check:
 
 - Horizontal draws exactly what the base commit's renderer drew, frame for
   frame, through moves, wraps, pages, Detail and every motion mode: only the
-  Library's command line is new.
+  Library's command line and the edits in BASE_EDITS are new.
+- Horizontal shows two covers either side of the selected one.
 - Vertical and Grid place their cards where the layouts say, show every card
   a user can see with its cover, never draw a card twice at rest, and move
   without a card jumping when the selection changes (a small grid wraps round
@@ -33,6 +34,21 @@ GUI = ROOT / "cube/swiss/source/gui"
 # reference the Horizontal layout must reproduce. Move it forward on purpose,
 # and only when the carousel's own drawing changes.
 BASE = "v1.22.0"
+# The carousel's deliberate changes since BASE, made to its tree before it is
+# built: (file, text found exactly once, replacement). The second card either
+# side became a receding card with its cover (or banner) and settings mark.
+BASE_EDITS = (
+    ("FrameBufferMagic.c",
+     "{{{32.0f, 159.0f}, {52.0f, 151.0f}, {52.0f, 266.0f}, {32.0f, 258.0f}}},",
+     "{{{14.0f, 151.0f}, {72.0f, 143.0f}, {72.0f, 273.0f}, {14.0f, 265.0f}}},"),
+    ("FrameBufferMagic.c",
+     "{{{588.0f, 151.0f}, {608.0f, 159.0f}, {608.0f, 258.0f}, {588.0f, 266.0f}}},",
+     "{{{568.0f, 143.0f}, {626.0f, 151.0f}, {626.0f, 265.0f}, {568.0f, 273.0f}}},"),
+    ("FrameBufferMagic.c", "if(distance >= 1.5f) {", "if(distance >= 3.0f) {"),
+    ("FrameBufferMagic.c", "if(fabsf(cards[i].visualSlot) < 1.5f &&",
+     "if(fabsf(cards[i].visualSlot) < 3.0f &&"),
+    ("ui_gameflow_library.c", "if(distance >= 1.5f) {", "if(distance >= 3.0f) {"),
+)
 PURE = ("ui_gameflow.c", "ui_motion.c", "ui_gameflow_library.c",
         "ui_command_rail.c", "ui_gameflow_detail.c", "ui_game_history.c")
 
@@ -333,6 +349,11 @@ class GameflowGxStream(unittest.TestCase):
             raise AssertionError(archive.stderr.decode()[-2000:])
         subprocess.run(["tar", "-x", "-C", str(base)], input=archive.stdout, check=True)
         base_gui = base / "cube/swiss/source/gui"
+        for name, old, new in BASE_EDITS:
+            text = (base_gui / name).read_text()
+            if text.count(old) != 1:
+                raise AssertionError(f"{BASE} {name}: {old!r} is not there exactly once")
+            (base_gui / name).write_text(text.replace(old, new))
         cls.base = build(work, base_gui, (base_gui / "FrameBufferMagic.c").read_text(),
                          (base_gui / "FrameBufferMagic.h").read_text(), False, "base")
 
@@ -364,6 +385,24 @@ class GameflowGxStream(unittest.TestCase):
                     hints += 1
         self.assertEqual(len(frames(now)), len(frames(before)))
         self.assertGreater(hints, 300)
+
+    def test_horizontal_shows_two_covers_either_side(self):
+        log = self.run_script(["L 0 40 20", "N 40 0.0167"])
+        rest = covers(frames(log)[-1])
+        games = [f"G{i:03d}E0" for i in range(18, 23)]
+        self.assertEqual(set(rest), set(games))
+        for game in games:
+            self.assertEqual(len(rest[game]), 1, game)
+            self.assertTrue(0 <= rest[game][0][0] and rest[game][0][2] <= 640, game)
+        self.assertEqual([centre(rest[g][0])[0] for g in games],
+                         sorted(centre(rest[g][0])[0] for g in games))
+        # The second either side is a card turned away, not an edge-on sliver.
+        for game in (games[0], games[-1]):
+            self.assertGreaterEqual(rest[game][0][2] - rest[game][0][0], 50, game)
+        # A game without a cover shows its banner or emblem there instead.
+        log = self.run_script(["L 0 40 19", "N 40 0.0167"])
+        self.assertNotIn("G017E0", covers(frames(log)[-1]))
+        self.assertEqual(frames(log)[-1].count("B 24\n"), 1)
 
     def test_vertical_column(self):
         log = self.run_script(["L 1 40 12", "N 40 0.0167"])
@@ -520,9 +559,11 @@ class GameflowGxStream(unittest.TestCase):
                                                      "_GameflowSamplePose(slot) :"),
             "the highlight stays put": ("_GameflowGridQuad(frame->columnPosition, 0.0f,\n\t\t1.0f);",
                                         "_GameflowGridQuad(0.0f, 0.0f,\n\t\t1.0f);"),
+            "the row's second covers stay hidden": ("fabsf(slot) < 1.5f : fabsf(slot) < 3.0f;",
+                                                    "fabsf(slot) < 1.5f : fabsf(slot) < 1.5f;"),
         }
         tests = (self.test_grid_rows_and_highlight, self.check_all_grid_moves,
-                 self.test_vertical_column)
+                 self.test_vertical_column, self.test_horizontal_shows_two_covers_either_side)
         original = self.binary
         try:
             for index, (name, (old, new)) in enumerate(mutants.items()):

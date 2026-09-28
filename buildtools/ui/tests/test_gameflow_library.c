@@ -163,8 +163,11 @@ static void testArtworkFallbackPolicy(void)
 	CHECK(layout.identityAlpha > 0.0f && layout.identityAlpha < 1.0f);
 	CHECK(UIGameflowLibrary_BuildFallbackLayout(-1.0f, &layout));
 	CHECK(layout.identityAlpha == 0.0f);
-	CHECK(!UIGameflowLibrary_BuildFallbackLayout(1.5f, &layout));
-	CHECK(!UIGameflowLibrary_BuildFallbackLayout(-1.5f, &layout));
+	/* The row's second card either side shows its banner too. */
+	CHECK(UIGameflowLibrary_BuildFallbackLayout(-2.0f, &layout));
+	CHECK(layout.identityAlpha == 0.0f);
+	CHECK(!UIGameflowLibrary_BuildFallbackLayout(3.0f, &layout));
+	CHECK(!UIGameflowLibrary_BuildFallbackLayout(-3.0f, &layout));
 	CHECK(!UIGameflowLibrary_BuildFallbackLayout(NAN, &layout));
 	CHECK(!UIGameflowLibrary_BuildFallbackLayout(0.0f, NULL));
 

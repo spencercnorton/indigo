@@ -20,9 +20,9 @@ through the three, and the line above the buttons says how each one moves.
   <img alt="Settings, Setup, Library: Library Layout is the first row. Right steps it from Horizontal to Vertical to Grid, and the line above the buttons reads A row of covers; Left and Right move (default), then A column of covers; Up and Down move, then Rows of five covers; every direction moves." src="images/library-layout-setting.png" width="640">
 </p>
 
-- **Horizontal**, the default: a row of covers. The game in the middle is
-  raised, with its title and publisher underneath, as the disc's own banner
-  gives them.
+- **Horizontal**, the default: a row of covers, two either side of the
+  game in the middle. That one is raised, with its title and publisher
+  underneath, as the disc's own banner gives them.
 - **Vertical**: a column of covers down the left of the screen, turning like
   a wheel. The selected cover is large, with its title, publisher and game ID
   beside it.

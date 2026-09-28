@@ -259,7 +259,7 @@ bool UIGameflowLibrary_BuildFallbackLayout(float visualSlot,
 		return false;
 	}
 	distance = visualSlot < 0.0f ? -visualSlot : visualSlot;
-	if(distance >= 1.5f) {
+	if(distance >= 3.0f) {
 		return false;
 	}
 

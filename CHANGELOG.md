@@ -15,6 +15,13 @@ Changes land under `## Unreleased` until the release names them.
   moves into the corner. It changes as soon as you switch it. Games still
   follow Force Widescreen.
 
+### Library
+
+- The Horizontal layout shows two covers either side of the selected game
+  instead of one. The second on each side, until now a thin strip seen
+  edge-on, is a smaller card turned away with its box art, or its disc banner
+  when the poster pack has none, and covers fade in at the edges as you move.
+
 ### Fixes
 
 - Indigo stays on screen when stock Swiss is kept on the card as `z.dol`, as
