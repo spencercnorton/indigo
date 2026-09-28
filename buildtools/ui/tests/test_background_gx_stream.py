@@ -22,9 +22,12 @@ typedef unsigned char u8;
 typedef struct { u8 r,g,b,a; } GXColor;
 /* Menu Color is Indigo here: the emitters' recolor passes colors through. */
 static void UIColor_Apply(u8 *r,u8 *g,u8 *b) { (void)r; (void)g; (void)b; }
-/* The 4:3 stage; test_ui_stage.c covers widescreen. */
+/* The 4:3 stage's edges; test_ui_stage.c covers widescreen's. A widescreen
+ * run widens x offsets by PixelWidth and measures fades through the squeeze. */
 static float UIStage_Left(void) { return 0.0f; }
 static float UIStage_Right(void) { return 640.0f; }
+static float pixelWidth=1, squeeze=1;
+static float UIStage_PixelWidth(void) { return pixelWidth; }
 typedef struct { float x,y; } indigoPoint_t;
 typedef struct { float sine,cosine,stepSine,stepCosine; } waveOscillator_t;
 enum { GX_QUADS=1,GX_TRIANGLESTRIP=2,GX_LINES=3,GX_VTXFMT0=0,
@@ -78,7 +81,9 @@ static void GX_End(void) {
 /* EMITTERS */
 static bool closef(float a,float b) { return fabsf(a-b)<.003f; }
 static bool same(indigoPoint_t a,indigoPoint_t b) { return closef(a.x,b.x)&&closef(a.y,b.y); }
+/* In frame pixels: widescreen draws x through a 3/4 squeeze. */
 static float sideDistance(indigoPoint_t a,indigoPoint_t b,indigoPoint_t p) {
+    a.x*=squeeze; b.x*=squeeze; p.x*=squeeze;
     return ((b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x))/hypotf(b.x-a.x,b.y-a.y);
 }
 /* Independent trigonometric reference for the unchanged colored ribbons.
@@ -214,6 +219,11 @@ static void testGrid(void) {
 }
 int main(void) {
     testWaves(); testGrid();
+    /* Menu Widescreen: every fade still spans one frame pixel. */
+    pixelWidth=4.0f/3; squeeze=.75f;
+    for(int t=0;t<3;t++) checkWave(t*400.5f,true,.76f);
+    testGrid();
+    pixelWidth=1; squeeze=1;
     indigoPoint_t p[2]={{0,0},{0,0}},join[2];
     CHECK(!buildRasterJoins(p,join,1,false) && !buildRasterJoins(p,join,2,false),
         "degenerate raster path accepted");
@@ -265,6 +275,8 @@ class BackgroundGXStreamTests(unittest.TestCase):
             "wave color": ("{196, 178, 255, 82}", "{170, 178, 255, 82}"),
             "ribbon fringe": ("edge.a = 0;", "edge.a = 255;"),
             "inward wave fringe": ("points[i].y + joins[i].y * side", "points[i].y - joins[i].y * side"),
+            "joins mitred in stage units": ("float across = UIStage_PixelWidth();",
+                "float across = UIStage_PixelWidth() * 0.0f + 1.0f;"),
             "disabled animation": ("animated ? seconds : 0.0f", "animated ? seconds : 1.0f"),
             "hard crest": ("GX_Begin(GX_TRIANGLESTRIP, GX_VTXFMT0, count * 2);",
                 "GX_Begin(GX_LINES, GX_VTXFMT0, count * 2);"),

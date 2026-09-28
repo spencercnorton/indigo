@@ -61,6 +61,16 @@ Changes land under `## Unreleased` until the release names them.
   menu's sounds.
 - Copy and Move choose where to put a file in the same picker.
 
+### Home cube
+
+- The cube's edges no longer look jagged on a large or upscaled TV. Where a
+  face met one of its rounded edges the glass changed colour in one step,
+  which the picture drew as a staircase; the colour now blends across. The
+  cube's outline, its rim of light, the face icons and the waves behind
+  fade over one whole pixel, with Menu Widescreen too, which had narrowed
+  them to three quarters of one, and the rim keeps one brightness along its
+  length.
+
 ### Fixes
 
 - Indigo stays on screen when stock Swiss is kept on the card as `z.dol`, as

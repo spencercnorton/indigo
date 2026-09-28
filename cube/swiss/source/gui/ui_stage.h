@@ -15,5 +15,8 @@ float UIStage_Right(void);
 void UIStage_Project(float projection[4][4]);
 /* Where a stage x lands across a 640-unit frame, for the frame copies. */
 float UIStage_FrameX(float x);
+/* Stage units one frame-buffer pixel spans across: 1, or 4/3 through the
+ * squeeze. A fade meant to cover one pixel scales its x offset by it. */
+float UIStage_PixelWidth(void);
 
 #endif

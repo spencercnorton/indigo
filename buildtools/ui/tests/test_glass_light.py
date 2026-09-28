@@ -56,6 +56,7 @@ enum { GX_QUADS=1, GX_TRIANGLESTRIP=2, GX_TRIANGLES=3, GX_VTXFMT0=0,
 static void UIColor_Apply(u8 *r,u8 *g,u8 *b) { (void)r; (void)g; (void)b; }
 /* The 4:3 stage; test_ui_stage.c covers widescreen. */
 static float UIStage_FrameX(float x) { return x; }
+static float UIStage_PixelWidth(void) { return 1.0f; }
 static bool active; static int phase,remaining,count,begins,uvs,uvCalls,blendDst;
 static guVector positions[8192];
 static GXColor colors[8192];
@@ -187,7 +188,7 @@ static void test_sun(void) {
 static void test_refraction_stream(void) {
     const GXColor tint[6]={{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4}};
     cubeSurfaceQuad_t shell[6],strips[12],corners[8];
-    buildCubeFaces(shell,1,.78f,tint); buildChamferStrips(strips,1,.78f,tint); buildCubeCorners(corners,1,.78f);
+    buildCubeFaces(shell,1,.78f,tint); buildChamferStrips(strips,1,.78f,tint,NULL); buildCubeCorners(corners,1,.78f);
     int most=0,poses=0;
     for(int yaw=0;yaw<360;yaw+=30) for(int pitch=0;pitch<360;pitch+=30)
     for(int roll=0;roll<180;roll+=45) for(int size=0;size<2;size++) {
@@ -281,13 +282,20 @@ static void test_rim(void) {
         if(positions[i].x<=230 && positions[i].y>=330) dark++;
     }
     CHECK(lit>0 && dark==0,"rim does not follow the key light");
+    /* The lit rim's solid core is a whole pixel across, so a pixel centre
+     * always lands in it and the rim holds one brightness along its edge. */
+    for(int i=10;i<20;i+=2) {
+        CHECK(colors[i].a==colors[i+1].a,"rim core is not solid");
+        CHECK(near(fmaxf(fabsf(positions[i+1].x-positions[i].x),
+            fabsf(positions[i+1].y-positions[i].y)),1.0f,.01f),"rim core is not one pixel across");
+    }
     reset(1); drawGlassRim(&o,0); CHECK(count==0,"a scene without light drew a rim");
 }
 static void test_sheen(void) {
     const GXColor tint[6]={{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4}};
     cubeSurfaceQuad_t shell[6],strips[12];
     cubeRasterTransform_t r;
-    buildCubeFaces(shell,1,.78f,tint); buildChamferStrips(strips,1,.78f,tint);
+    buildCubeFaces(shell,1,.78f,tint); buildChamferStrips(strips,1,.78f,tint,NULL);
     pose(&r,0.28f,0.09f,0,0.92f);
     reset(0); drawGlassSheen(&r,shell,6,4,1,0,0.4f,1); drawGlassSheen(&r,strips,12,4,1,0,0.4f,1);
     CHECK(!active && count>0 && count<=1200,"sheen missing or unbounded at the centre");
@@ -343,6 +351,7 @@ FUNCTIONS = [
     "static bool railJoin(", "static bool buildRasterJoins(", "static void drawRasterStroke(",
     "static bool projectRailPoint(", "static guVector cubeViewNormal(",
     "static void buildCubeFaces(", "static void buildChamferStrip(",
+    "static guVector bevelCut(", "static void buildChamferBands(",
     "static void buildChamferStrips(", "static void buildCubeCorners(",
     "static float glassSmoothstep(", "static guVector glassVertexNormal(",
     "static bool glassSameNormal(", "static guVector glassBilinear(",
@@ -365,7 +374,8 @@ class GlassLightTests(unittest.TestCase):
                 cls.source, re.S).group(0))
         blocks.append(re.search(r"static const guVector glassSunDirection = \{.*?\};",
             cls.source).group(0))
-        blocks.append("\n".join(re.findall(r"^#define GLASS_\w+ .*$", cls.source, re.M)))
+        blocks.append("\n".join(re.findall(r"^#define (?:GLASS_\w+|BEVEL_SEAM_BLEND) .*$",
+            cls.source, re.M)))
         blocks.append(re.search(r"static u8 glassTexels\[.*?;\n(?:static .*?;\n)+",
             cls.source).group(0))
         for signature in FUNCTIONS:
@@ -482,6 +492,7 @@ class GlassLightTests(unittest.TestCase):
             "open glow ring": ("for(int i = 0; i <= RADIAL_SEGMENTS; i++) {\n\t\t\tputVertex((indigoPoint_t) {x + radiusX * ring",
                 "for(int i = 0; i < RADIAL_SEGMENTS; i++) {\n\t\t\tputVertex((indigoPoint_t) {x + radiusX * ring"),
             "rim on the dark side": ("float lit = nx * lightX + ny * lightY;", "float lit = -(nx * lightX + ny * lightY);"),
+            "rim core under a pixel": ("{-1.5f, -0.5f, 0.5f, 1.5f}", "{-1.0f, -0.25f, 0.25f, 1.0f}"),
             "flare stays additive": ("\t\t\tghosts[ghost].color, ghosts[ghost].alpha * intensity);\n\t}\n\tGX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);",
                 "\t\t\tghosts[ghost].color, ghosts[ghost].alpha * intensity);\n\t}"),
             "sheen everywhere": ("bump = bump <= 0.0f ? 0.0f : bump * bump;", "bump = 1.0f;"),
