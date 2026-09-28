@@ -21,6 +21,13 @@
 #define BOOT_VEIL_LIFT 0.15f
 #define CUBE_IDLE_SWAY_RATE 0.31f
 #define CUBE_IDLE_SWAY_RADIANS 0.035f
+/* While Home rests the studio the glass mirrors turns this far (radians)
+ * about the view axis and back, at this rate, so its highlights drift. */
+#define GLASS_STUDIO_DRIFT 0.20f
+#define GLASS_STUDIO_DRIFT_RATE 0.45f
+/* How far the studio's lights stand from the cube, in cube sizes: nearer
+ * spreads a face's reflection over more of them. */
+#define GLASS_STUDIO_REACH 3.0f
 #define HOME_DECORATIVE_STRENGTH 0.76f
 #define FACE_POLYGON_MAX 48
 #define FACE_BAND_MAX 80
@@ -537,7 +544,9 @@ static void setupCubePipeline(const uiSceneFrame_t *scene, float seconds, bool a
 	GX_SetCoPlanar(GX_DISABLE);
 	GX_SetClipMode(GX_CLIP_ENABLE);
 	GX_SetAlphaCompare(GX_ALWAYS, 0, GX_AOP_AND, GX_ALWAYS, 0);
-	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_TRUE);
+	/* The glass is clear all through: no part of the cube writes depth, so
+	 * its passes layer in the order drawCube draws them. */
+	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
 	GX_ClearVtxDesc();
 	GX_SetVtxDesc(GX_VA_POS, GX_DIRECT);
 	GX_SetVtxDesc(GX_VA_CLR0, GX_DIRECT);
@@ -763,7 +772,7 @@ static bool cubeOutlineEdge(const cubeOutline_t *outline,
 
 static void drawCubeSurfacePassVertices(const cubeRasterTransform_t *raster,
 		const cubeOutline_t *outline, const cubeSurfaceQuad_t *quads, int count, int vertexCount,
-		u8 cullMode, bool opaque)
+		u8 cullMode)
 {
 	/* Fringes go on silhouette edges only: the outline has at most 24
 	 * sides, each covered by at most three polygon edges (a banded bevel's
@@ -772,8 +781,8 @@ static void drawCubeSurfacePassVertices(const cubeRasterTransform_t *raster,
 	int edgeCount = 0;
 	Mtx identity;
 	if(count < 1 || count > 72 || (vertexCount != 3 && vertexCount != 4)) return;
-	/* Preserve the old fill vertices, gradients, draw order and opaque depth
-	 * writes exactly. Coverage extends outward only, never opens mesh seams. */
+	/* Preserve the fill vertices, gradients and draw order exactly.
+	 * Coverage extends outward only, never opens mesh seams. */
 	GX_LoadPosMtxImm(raster->model, GX_PNMTX0);
 	GX_SetCullMode(cullMode);
 	GX_Begin(vertexCount == 3 ? GX_TRIANGLES : GX_QUADS, GX_VTXFMT0,
@@ -829,17 +838,13 @@ static void drawCubeSurfacePassVertices(const cubeRasterTransform_t *raster,
 	GX_End();
 	GX_LoadPosMtxImm(raster->model, GX_PNMTX0);
 	GX_SetCullMode(cullMode);
-	if(opaque) {
-		GX_SetBlendMode(GX_BM_NONE, GX_BL_ONE, GX_BL_ZERO, GX_LO_CLEAR);
-		GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_TRUE);
-	}
 }
 
 static void drawCubeSurfacePass(const cubeRasterTransform_t *raster,
 		const cubeOutline_t *outline, const cubeSurfaceQuad_t *quads, int count,
-		u8 cullMode, bool opaque)
+		u8 cullMode)
 {
-	drawCubeSurfacePassVertices(raster, outline, quads, count, 4, cullMode, opaque);
+	drawCubeSurfacePassVertices(raster, outline, quads, count, 4, cullMode);
 }
 
 /* The scene owns cardinal body-space symbol bases. During an axis change it
@@ -1966,47 +1971,190 @@ static float glassSmoothstep(float edge0, float edge1, float x)
 	return t * t * (3.0f - 2.0f * t);
 }
 
-/* What the glass reflects at an eye-space point with unit normal n: soft
- * light cards fixed to the camera, standing in for the environment the IPL's
- * cube mirrors. A broad key lays a gentle gradient across the faces; narrow
- * cards catch the rounded bevels as thin glints. Fresnel brightens glancing
- * glass, and the last few degrees before the silhouette fade out so the
- * reflection never draws a hard aliased rim. */
-static GXColor glassReflection(guVector eye, guVector n)
+/* The studio the glass mirrors: soft light cards fixed to the camera,
+ * standing in for the environment the IPL's cube mirrors. A broad key lays a
+ * gentle gradient across the faces, and a window above it a brighter patch
+ * that slides across a face as it turns; narrow cards catch the rounded
+ * bevels as thin glints; a faint fill and floor keep the far sides alive,
+ * and a rim behind lights glancing glass. Each card lights reflected rays
+ * from start to full cosine about its direction (eye space). */
+static const struct {
+	guVector direction;
+	float start, full, weight;
+	GXColor color;
+} glassLights[] = {
+	{{0.861f, 0.148f, 0.487f}, 0.74f, 0.99f, 0.60f, {200, 214, 255, 255}}, /* key */
+	{{0.500f, 0.550f, 0.669f}, 0.90f, 0.935f, 0.60f, {214, 222, 255, 255}}, /* window */
+	{{0.097f, 0.970f, 0.222f}, 0.88f, 0.97f, 1.20f, {246, 244, 255, 255}}, /* overhead */
+	{{0.958f, 0.240f, 0.157f}, 0.88f, 0.97f, 1.00f, {226, 206, 255, 255}}, /* right */
+	{{-0.800f, 0.150f, 0.581f}, 0.55f, 0.95f, 0.16f, {170, 150, 255, 255}}, /* fill */
+	{{0.000f, -0.940f, 0.342f}, 0.80f, 0.97f, 0.22f, {150, 120, 240, 255}}, /* floor */
+	{{0.000f, 0.350f, -0.937f}, 0.75f, 0.97f, 0.25f, {168, 146, 255, 255}}  /* rim */
+};
+#define GLASS_LIGHTS ((int)(sizeof(glassLights) / sizeof(glassLights[0])))
+
+/* The light reflected along unit direction r, with the cards in colors (their
+ * own, recoloured for Menu Color), premultiplied: the cards' mean colour
+ * times their summed strength, which is full at one. */
+static GXColor glassStudioLight(guVector r, const GXColor colors[GLASS_LIGHTS])
 {
-	static const struct {
-		guVector direction;
-		float start, full, weight;
-		GXColor color;
-	} lights[] = {
-		{{0.861f, 0.148f, 0.487f}, 0.74f, 0.99f, 0.60f, {200, 214, 255, 0}}, /* key */
-		{{0.097f, 0.970f, 0.222f}, 0.88f, 0.97f, 1.20f, {246, 244, 255, 0}}, /* overhead */
-		{{0.958f, 0.240f, 0.157f}, 0.88f, 0.97f, 1.00f, {226, 206, 255, 0}}, /* right */
-		{{0.000f, 0.350f, -0.937f}, 0.75f, 0.97f, 0.25f, {168, 146, 255, 0}}  /* rim */
-	};
-	GXColor out = {0, 0, 0, 0};
+	float light = 0.0f, red = 0.0f, green = 0.0f, blue = 0.0f;
+	for(int i = 0; i < GLASS_LIGHTS; i++) {
+		float d = r.x * glassLights[i].direction.x + r.y * glassLights[i].direction.y +
+			r.z * glassLights[i].direction.z;
+		float s = glassLights[i].weight * glassSmoothstep(glassLights[i].start,
+			glassLights[i].full, d);
+		light += s;
+		red += s * colors[i].r;
+		green += s * colors[i].g;
+		blue += s * colors[i].b;
+	}
+	if(light <= 0.0f) return (GXColor) {0, 0, 0, 255};
+	float scale = fminf(1.0f, light) / light;
+	return (GXColor) {(u8)(red * scale + 0.5f), (u8)(green * scale + 0.5f),
+		(u8)(blue * scale + 0.5f), 255};
+}
+
+/* The studio is a sphere map: a reflected direction r lands where the unit
+ * half vector between r and the view axis (+z) points, h.x and h.y across a
+ * disc of radius 1/2 about the map's middle, up at the top. The camera's own
+ * direction is the middle, the one straight behind the cube the rim. */
+static void glassStudioCoords(guVector r, float *s, float *t)
+{
+	float m = 2.0f * sqrtf(r.x * r.x + r.y * r.y + (r.z + 1.0f) * (r.z + 1.0f));
+	if(m < 0.0001f) {
+		*s = 0.5f;
+		*t = 0.0f;
+		return;
+	}
+	*s = 0.5f + r.x / m;
+	*t = 0.5f - r.y / m;
+}
+
+/* The direction glassStudioCoords puts at (s, t); outside the disc, the one
+ * on its rim. */
+static guVector glassStudioDirection(float s, float t)
+{
+	float x = 2.0f * s - 1.0f, y = 1.0f - 2.0f * t;
+	float d = x * x + y * y;
+	if(d > 1.0f) {
+		float rim = 1.0f / sqrtf(d);
+		x *= rim;
+		y *= rim;
+		d = 1.0f;
+	}
+	float z = sqrtf(1.0f - d);
+	return (guVector) {2.0f * z * x, 2.0f * z * y, 2.0f * z * z - 1.0f};
+}
+
+/* How the glass at eye-space point eye with unit normal n, offset (cube
+ * sizes) from the cube's centre, mirrors the studio: where its reflected ray
+ * lands on the map, and (returned) how much it reflects. The studio stands
+ * close, GLASS_STUDIO_REACH cube sizes away, so a point sees it from its own
+ * place along the glass: a flat face spans a wide stretch of the map and
+ * its highlights slide across it as it turns. Fresnel brightens glancing
+ * glass, and the last few degrees before the silhouette fade out, so the
+ * reflection never draws a hard aliased rim. 0 where the glass faces away. */
+static u8 glassReflect(guVector eye, guVector n, guVector offset, float *s, float *t)
+{
 	float length = sqrtf(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z);
 	guVector view = {-eye.x / length, -eye.y / length, -eye.z / length};
 	float facing = n.x * view.x + n.y * view.y + n.z * view.z;
-	if(facing <= 0.0f) return out;
-	guVector r = {2.0f * facing * n.x - view.x, 2.0f * facing * n.y - view.y,
-		2.0f * facing * n.z - view.z};
+	*s = 0.5f;
+	*t = 0.5f;
+	if(facing <= 0.0f) return 0;
+	/* Along the glass only: a face's middle mirrors what it would from the
+	 * centre, its sides reach further round the studio. */
+	float out = offset.x * n.x + offset.y * n.y + offset.z * n.z;
+	guVector r = {2.0f * facing * n.x - view.x + (offset.x - out * n.x) / GLASS_STUDIO_REACH,
+		2.0f * facing * n.y - view.y + (offset.y - out * n.y) / GLASS_STUDIO_REACH,
+		2.0f * facing * n.z - view.z + (offset.z - out * n.z) / GLASS_STUDIO_REACH};
+	float reach = sqrtf(r.x * r.x + r.y * r.y + r.z * r.z);
 	float glancing = 1.0f - facing;
 	float fresnel = 0.35f + 0.65f * glancing * glancing;
-	float light = 0.0f, red = 0.0f, green = 0.0f, blue = 0.0f;
-	for(unsigned i = 0; i < sizeof(lights) / sizeof(lights[0]); i++) {
-		float d = r.x * lights[i].direction.x + r.y * lights[i].direction.y +
-			r.z * lights[i].direction.z;
-		float s = lights[i].weight * glassSmoothstep(lights[i].start, lights[i].full, d);
-		light += s;
-		red += s * lights[i].color.r;
-		green += s * lights[i].color.g;
-		blue += s * lights[i].color.b;
+	glassStudioCoords((guVector) {r.x / reach, r.y / reach, r.z / reach}, s, t);
+	return (u8)(255.0f * fresnel * fminf(1.0f, facing * 6.0f) + 0.5f);
+}
+
+/* The studio as the GPU samples it: GLASS_STUDIO_SIZE square, RGBA8 in the
+ * GameCube's 4x4 tiles (each 32 bytes of alpha, red then 32 of green, blue).
+ * It is baked on the CPU once, and again whenever Menu Color recolours the
+ * cards. */
+#define GLASS_STUDIO_SIZE 64
+
+static u8 glassStudioTexels[GLASS_STUDIO_SIZE * GLASS_STUDIO_SIZE * 4] ATTRIBUTE_ALIGN(32);
+static GXTexObj glassStudioTexObj;
+static GXColor glassStudioColors[GLASS_LIGHTS];
+static bool glassStudioBaked;
+
+/* Bakes the studio if the cards' Menu Color differs from the last bake's;
+ * true if it baked. The frame before has been drawn (the video thread waits
+ * for the GPU at every frame's end), so nothing still reads the texels. */
+static bool prepareGlassStudio(void)
+{
+	GXColor colors[GLASS_LIGHTS];
+	bool same = glassStudioBaked;
+
+	for(int i = 0; i < GLASS_LIGHTS; i++) {
+		colors[i] = glassLights[i].color;
+		UIColor_Apply(&colors[i].r, &colors[i].g, &colors[i].b);
+		same = same && colors[i].r == glassStudioColors[i].r &&
+			colors[i].g == glassStudioColors[i].g && colors[i].b == glassStudioColors[i].b;
 	}
-	if(light <= 0.0f) return out;
-	float alpha = 255.0f * fresnel * light * fminf(1.0f, facing * 6.0f);
-	return (GXColor) {(u8)(red / light), (u8)(green / light), (u8)(blue / light),
-		(u8)(alpha > 255.0f ? 255.0f : alpha)};
+	if(same) return false;
+	for(int y = 0; y < GLASS_STUDIO_SIZE; y++) for(int x = 0; x < GLASS_STUDIO_SIZE; x++) {
+		GXColor light = glassStudioLight(glassStudioDirection(
+			((float)x + 0.5f) / GLASS_STUDIO_SIZE, ((float)y + 0.5f) / GLASS_STUDIO_SIZE), colors);
+		u8 *tile = glassStudioTexels + ((y >> 2) * (GLASS_STUDIO_SIZE >> 2) + (x >> 2)) * 64;
+		int at = ((y & 3) * 4 + (x & 3)) * 2;
+		tile[at] = light.a;
+		tile[at + 1] = light.r;
+		tile[32 + at] = light.g;
+		tile[32 + at + 1] = light.b;
+	}
+	DCFlushRange(glassStudioTexels, sizeof(glassStudioTexels));
+	GX_InitTexObj(&glassStudioTexObj, glassStudioTexels, GLASS_STUDIO_SIZE,
+		GLASS_STUDIO_SIZE, GX_TF_RGBA8, GX_CLAMP, GX_CLAMP, GX_FALSE);
+	GX_InitTexObjLOD(&glassStudioTexObj, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f,
+		GX_FALSE, GX_FALSE, GX_ANISO_1);
+	GX_InvalidateTexAll();
+	for(int i = 0; i < GLASS_LIGHTS; i++) glassStudioColors[i] = colors[i];
+	glassStudioBaked = true;
+	return true;
+}
+
+/* The reflection's pipeline: the studio in TEXMAP1 (TEXMAP0 is the frame
+ * copy's), turned by drift radians about the view axis, times each vertex's
+ * reflectance in its alpha, added to the frame. One texture coordinate, one
+ * TEV stage. */
+static void setupGlassReflectionPipeline(float drift)
+{
+	float c = cosf(drift), s = sinf(drift);
+	Mtx turn = {
+		{c, -s, 0.0f, 0.5f - 0.5f * c + 0.5f * s},
+		{s, c, 0.0f, 0.5f - 0.5f * s - 0.5f * c},
+		{0.0f, 0.0f, 1.0f, 0.0f}
+	};
+
+	prepareGlassStudio();
+	GX_ClearVtxDesc();
+	GX_SetVtxDesc(GX_VA_POS, GX_DIRECT);
+	GX_SetVtxDesc(GX_VA_CLR0, GX_DIRECT);
+	GX_SetVtxDesc(GX_VA_TEX0, GX_DIRECT);
+	GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_F32, 0);
+	GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
+	GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_TEX0, GX_TEX_ST, GX_F32, 0);
+	GX_LoadTexObj(&glassStudioTexObj, GX_TEXMAP1);
+	GX_LoadTexMtxImm(turn, GX_TEXMTX0, GX_MTX2x4);
+	GX_SetNumTexGens(1);
+	GX_SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_TEXMTX0);
+	GX_SetNumTevStages(1);
+	GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP1, GX_COLOR0A0);
+	GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_TEXC);
+	GX_SetTevColorOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_ENABLE, GX_TEVPREV);
+	GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
+	GX_SetTevAlphaOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_ENABLE, GX_TEVPREV);
+	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
 }
 
 /* Face and bevel vertices each lie on exactly one outer plane, whose axis is
@@ -2044,19 +2192,42 @@ static guVector glassBilinear(const guVector corner[4], float u, float v)
 	};
 }
 
-/* Additive reflection over the camera-facing outer glass. Each quad is split
- * into a grid, keeping its winding, so the per-vertex highlight stays smooth:
- * finely across a bevel, where its normal turns, and coarsely along it.
- * Unlit cells are skipped. Corner triangles shade at their three vertices. */
+/* One reflecting vertex: its body position, where it looks in the studio
+ * and how much it reflects. */
+typedef struct glassMirrorVertex {
+	guVector body;
+	float s;
+	float t;
+	u8 alpha;
+} glassMirrorVertex_t;
+
+static void putGlassMirrorVertex(const glassMirrorVertex_t *vertex)
+{
+	GX_Position3f32(vertex->body.x, vertex->body.y, vertex->body.z);
+	GX_Color4u8(255, 255, 255, vertex->alpha);
+	GX_TexCoord2f32(vertex->s, vertex->t);
+}
+
+/* The camera-facing outer glass mirroring the studio, additively. The GPU
+ * reads the studio at every pixel, so a highlight is as sharp as the map and
+ * slides across the glass as it turns; the vertices only need to follow
+ * the reflected ray: faces in a coarse grid for perspective, bevels finely
+ * across their width, where the normal rolls. Cells that reflect nothing at
+ * all four corners (turned away or grazing) are skipped. Corner triangles,
+ * which always face the camera at one vertex at least, mirror at their
+ * three. */
 static void drawGlassReflection(const cubeRasterTransform_t *raster,
 		const cubeSurfaceQuad_t *quads, int count, int vertexCount, float outer)
 {
-	enum { STEPS = 10, BEVEL_STEPS = 4 };
+	enum { FACE_STEPS = 4, ACROSS_STEPS = 6, ALONG_STEPS = 2, GRID = 7 };
+	const guVector centre = {raster->model[0][3], raster->model[1][3], raster->model[2][3]};
+	const float size = sqrtf(raster->model[0][0] * raster->model[0][0] +
+		raster->model[1][0] * raster->model[1][0] + raster->model[2][0] * raster->model[2][0]);
 
 	for(int quad = 0; quad < count; quad++) {
-		guVector eyes[4], normals[4], body[(STEPS + 1) * (STEPS + 1)];
+		guVector eyes[4], normals[4];
+		glassMirrorVertex_t grid[GRID * GRID];
 		indigoPoint_t points[4];
-		GXColor color[(STEPS + 1) * (STEPS + 1)];
 		float area = 0.0f;
 		int cells = 0;
 		for(int vertex = 0; vertex < vertexCount; vertex++) {
@@ -2070,43 +2241,46 @@ static void drawGlassReflection(const cubeRasterTransform_t *raster,
 		}
 		if(area >= -0.001f) continue;
 		if(vertexCount == 3) {
-			for(int vertex = 0; vertex < 3; vertex++)
-				color[vertex] = glassReflection(eyes[vertex], normals[vertex]);
-			if((color[0].a | color[1].a | color[2].a) == 0) continue;
-			GX_Begin(GX_TRIANGLES, GX_VTXFMT0, 3);
 			for(int vertex = 0; vertex < 3; vertex++) {
-				guVector p = quads[quad].point[vertex];
-				putCubeVertex(p.x, p.y, p.z, color[vertex]);
+				guVector e = eyes[vertex];
+				grid[vertex].body = quads[quad].point[vertex];
+				grid[vertex].alpha = glassReflect(e, normals[vertex],
+					(guVector) {(e.x - centre.x) / size, (e.y - centre.y) / size,
+					(e.z - centre.z) / size}, &grid[vertex].s, &grid[vertex].t);
 			}
+			GX_Begin(GX_TRIANGLES, GX_VTXFMT0, 3);
+			for(int vertex = 0; vertex < 3; vertex++) putGlassMirrorVertex(&grid[vertex]);
 			GX_End();
 			continue;
 		}
 		/* A bevel's normal changes only between its two sides. */
 		bool acrossU = !glassSameNormal(normals[0], normals[1]);
 		bool acrossV = !glassSameNormal(normals[0], normals[3]);
-		int columns = acrossU || !acrossV ? STEPS : BEVEL_STEPS;
-		int rows = acrossV || !acrossU ? STEPS : BEVEL_STEPS;
+		int columns = acrossU ? ACROSS_STEPS : (acrossV ? ALONG_STEPS : FACE_STEPS);
+		int rows = acrossV ? ACROSS_STEPS : (acrossU ? ALONG_STEPS : FACE_STEPS);
 		for(int row = 0; row <= rows; row++) for(int column = 0; column <= columns; column++) {
 			float u = (float)column / columns, v = (float)row / rows;
-			int at = row * (STEPS + 1) + column;
-			guVector n = glassBilinear(normals, u, v);
+			glassMirrorVertex_t *at = &grid[row * GRID + column];
+			guVector n = glassBilinear(normals, u, v), e = glassBilinear(eyes, u, v);
 			float length = sqrtf(n.x * n.x + n.y * n.y + n.z * n.z);
 			n = (guVector) {n.x / length, n.y / length, n.z / length};
-			body[at] = glassBilinear(quads[quad].point, u, v);
-			color[at] = glassReflection(glassBilinear(eyes, u, v), n);
+			at->body = glassBilinear(quads[quad].point, u, v);
+			at->alpha = glassReflect(e, n, (guVector) {(e.x - centre.x) / size,
+				(e.y - centre.y) / size, (e.z - centre.z) / size}, &at->s, &at->t);
 		}
-		for(int row = 0; row < rows; row++) for(int column = 0; column < columns; column++)
-			cells += glassCellLit(color, row * (STEPS + 1) + column, STEPS + 1);
+		for(int row = 0; row < rows; row++) for(int column = 0; column < columns; column++) {
+			const glassMirrorVertex_t *first = &grid[row * GRID + column];
+			cells += (first[0].alpha | first[1].alpha | first[GRID].alpha | first[GRID + 1].alpha) != 0;
+		}
 		if(cells == 0) continue;
-		GX_Begin(GX_QUADS, GX_VTXFMT0, cells * 4);
+		GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(cells * 4));
 		for(int row = 0; row < rows; row++) for(int column = 0; column < columns; column++) {
 			static const int corner[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
-			int first = row * (STEPS + 1) + column;
-			if(!glassCellLit(color, first, STEPS + 1)) continue;
-			for(int vertex = 0; vertex < 4; vertex++) {
-				int at = first + corner[vertex][1] * (STEPS + 1) + corner[vertex][0];
-				putCubeVertex(body[at].x, body[at].y, body[at].z, color[at]);
-			}
+			const glassMirrorVertex_t *first = &grid[row * GRID + column];
+			if((first[0].alpha | first[1].alpha | first[GRID].alpha | first[GRID + 1].alpha) == 0)
+				continue;
+			for(int vertex = 0; vertex < 4; vertex++)
+				putGlassMirrorVertex(&first[corner[vertex][1] * GRID + corner[vertex][0]]);
 		}
 		GX_End();
 	}
@@ -2723,10 +2897,6 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 		const uiClockFrame_t *clock, const indigoPadFrame_t *pad,
 		const int icons[UI_HOME_FACE_COUNT], bool screenGlass)
 {
-	static const GXColor coreColors[6] = {
-		{19, 15, 54, 255}, {28, 20, 76, 255}, {50, 36, 111, 255},
-		{24, 18, 64, 255}, {76, 59, 139, 255}, {44, 31, 102, 255}
-	};
 	static const GXColor backGlassColors[6] = {
 		{61, 46, 132, 14}, {72, 55, 151, 18}, {111, 88, 193, 25},
 		{62, 47, 136, 17}, {153, 135, 220, 34}, {92, 71, 174, 20}
@@ -2739,17 +2909,18 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 		{25, 18, 70, 88}, {132, 108, 218, 98}, {196, 180, 255, 134},
 		{65, 48, 143, 84}, {235, 228, 255, 154}, {132, 108, 218, 98}
 	};
-	/* Glass tints for the pass being drawn, and the bevels' edge tints. */
-	GXColor lit[6], edge[6];
+	/* Glass tints for the pass being drawn, and the bevels' edge tints near
+	 * and far. */
+	GXColor lit[6], edge[6], rear[6];
 	cubeRasterTransform_t raster;
-	cubeSurfaceQuad_t core[6], shell[6], strips[12], corners[8];
+	cubeSurfaceQuad_t shell[6], strips[12], corners[8];
 	/* The bevels and corners in the tint passes' seamless form. Static: too
 	 * large for the video thread's stack. */
 	static cubeSurfaceQuad_t bevels[36], fans[72];
 	static const indigoPoint_t pane[4] = {
 		{-0.72f, -0.72f}, {-0.72f, 0.72f}, {0.72f, 0.72f}, {0.72f, -0.72f}
 	};
-	cubeOutline_t coreOutline, shellOutline;
+	cubeOutline_t shellOutline;
 	glassSun_t sun = {0.0f, 0.0f, 0.0f, 0.0f};
 	const float outer = 1.0f;
 	const float inset = 0.78f;
@@ -2757,37 +2928,37 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	bool refract;
 
 	setupCubePipeline(scene, seconds, animated, &raster);
-	litCubeTints(&raster, coreColors, lit);
-	buildCubeFaces(core, 0.46f, 0.46f, lit);
 	litCubeTints(&raster, bevelColors, edge);
 	buildChamferStrips(strips, outer, inset, edge, NULL);
 	buildCubeCorners(corners, outer, inset);
+	/* Seen through the glass, the far bevels and corners are the cube's rear
+	 * frame: at half the near ones' opacity they read as depth, not as a
+	 * second wireframe. */
+	for(int face = 0; face < 6; face++) {
+		rear[face] = edge[face];
+		rear[face].a /= 2;
+	}
 	litCubeTints(&raster, backGlassColors, lit);
 	buildCubeFaces(shell, outer, inset, lit);
-	buildChamferStrips(bevels, outer, inset, edge, lit);
-	buildCornerFans(fans, outer, inset, edge, lit);
-	buildCubeOutline(&raster, core, &coreOutline);
+	buildChamferStrips(bevels, outer, inset, rear, lit);
+	buildCornerFans(fans, outer, inset, rear, lit);
 	buildCubeOutline(&raster, shell, &shellOutline);
-
-	/* The dark inner volume is the sole Z-writing part of the object. Glass,
-	 * filaments, rails and highlights layer around it without masking each
-	 * other as their draw order changes. */
-	GX_SetBlendMode(GX_BM_NONE, GX_BL_ONE, GX_BL_ZERO, GX_LO_CLEAR);
-	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_TRUE);
-	GX_SetCullMode(GX_CULL_BACK);
-	drawCubeSurfacePass(&raster, &coreOutline, core, 6, GX_CULL_BACK, true);
 
 	/* Far structural surfaces must precede the transparent shell; otherwise
 	 * rear rails and caps visibly composite across the front pane. */
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
-	drawCubeSurfacePass(&raster, &shellOutline, bevels, 36, GX_CULL_FRONT, false);
-	drawCubeSurfacePassVertices(&raster, &shellOutline, fans, 72, 3, GX_CULL_FRONT, false);
+	drawCubeSurfacePass(&raster, &shellOutline, bevels, 36, GX_CULL_FRONT);
+	drawCubeSurfacePassVertices(&raster, &shellOutline, fans, 72, 3, GX_CULL_FRONT);
 
-	/* Every semantic lateral face receives the same restrained inset pane,
-	 * in one tint so every face's icon reads in the same shade; no
-	 * destination becomes a blank reverse side of the Library artwork. Its
-	 * edge fades over one pixel, as an icon's does. */
+	/* Convex glass is rendered back-to-front with depth writes disabled. */
+	GX_SetCullMode(GX_CULL_FRONT);
+	drawCubeSurfacePass(&raster, &shellOutline, shell, 6, GX_CULL_FRONT);
+	/* Every semantic lateral face has the same smoked plate set into the
+	 * glass, so no destination becomes a blank reverse side of the Library
+	 * artwork. It is dark: each face's icon, glowing on the glass above it,
+	 * reads against it. It is behind the copy, so the front glass bends it
+	 * like an inlay. Its edge fades over one pixel, as an icon's does. */
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
 	{
@@ -2796,19 +2967,17 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 		GX_LoadPosMtxImm(identity, GX_PNMTX0);
 		GX_SetCullMode(GX_CULL_NONE);
 		for(int face = 0; face < UI_HOME_FACE_COUNT; face++)
-			drawFacePolygon(&raster, face, pane, 4, 0.86f, (GXColor) {57, 42, 122, 58});
+			drawFacePolygon(&raster, face, pane, 4, 0.86f, (GXColor) {12, 9, 34, 132});
+		GX_LoadPosMtxImm(raster.model, GX_PNMTX0);
 	}
 
-	/* Convex glass is rendered back-to-front with depth writes disabled. */
-	GX_SetCullMode(GX_CULL_FRONT);
-	drawCubeSurfacePass(&raster, &shellOutline, shell, 6, GX_CULL_FRONT, false);
-	/* Everything behind the front glass so far (backdrop, halo, core, far
-	 * bevels, the inset panes and the back glass) is copied and bent through
-	 * the camera-facing outer glass, as a solid glass block shows its own far
+	/* Everything behind the front glass so far (backdrop, halo, far bevels,
+	 * the plates and the back glass) is copied and bent through the
+	 * camera-facing outer glass, as a solid glass block shows its own far
 	 * edges: magnified across the faces, wrapped round the bevels and parted
-	 * into colour where the bend is strongest. The front tint, near bevels,
-	 * reflections and icons then sit on the glass, sharp. Without a copy the
-	 * walk still finds the sun glint. */
+	 * into colour where the bend is strongest, with a faint indigo body. The
+	 * front tint, near bevels, reflections and icons then sit on the glass,
+	 * sharp. Without a copy the walk still finds the sun glint. */
 	refract = screenGlass && strength > 0.01f && glassCopyFrame();
 	{
 		float radius = raster.scaleY * scene->cubeScale / -CUBE_CAMERA_Z;
@@ -2818,7 +2987,7 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 			0.46f * radius, 0.05f, 0.24f,
 			refract ? glassCopyS() : 0.0f, refract ? glassCopyT() : 0.0f,
 			/* The layer fades in with the boot's light, never all at once. */
-			{128, 125, 134, (u8)(255.0f * glassSmoothstep(BOOT_CUBE_HANDOFF, 1.0f,
+			{116, 110, 140, (u8)(255.0f * glassSmoothstep(BOOT_CUBE_HANDOFF, 1.0f,
 				scene->introProgress) + 0.5f)}
 		};
 		if(refract) {
@@ -2838,22 +3007,25 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	buildCubeFaces(shell, outer, inset, lit);
 	buildChamferStrips(bevels, outer, inset, edge, lit);
 	buildCornerFans(fans, outer, inset, edge, lit);
-	drawCubeSurfacePass(&raster, &shellOutline, shell, 6, GX_CULL_BACK, false);
+	drawCubeSurfacePass(&raster, &shellOutline, shell, 6, GX_CULL_BACK);
 
 	/* Only near structural surfaces composite in front of the shell. Corner
 	 * fans close the chamfer and share its camera-facing depth policy. */
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-	drawCubeSurfacePass(&raster, &shellOutline, bevels, 36, GX_CULL_BACK, false);
-	drawCubeSurfacePassVertices(&raster, &shellOutline, fans, 72, 3, GX_CULL_BACK, false);
+	drawCubeSurfacePass(&raster, &shellOutline, bevels, 36, GX_CULL_BACK);
+	drawCubeSurfacePassVertices(&raster, &shellOutline, fans, 72, 3, GX_CULL_BACK);
 
-	/* The outer glass reflects light over everything the shell shows,
-	 * additively and without depth writes. */
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
+	/* The outer glass mirrors the studio over everything the shell shows,
+	 * additively. While Home rests, the studio turns a little about the view
+	 * axis and back, so the highlights drift and the glass is never still. */
 	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
 	GX_SetCullMode(GX_CULL_BACK);
+	setupGlassReflectionPipeline(animated ? GLASS_STUDIO_DRIFT * scene->homeIdleBlend *
+		sinf(seconds * GLASS_STUDIO_DRIFT_RATE) : 0.0f);
 	drawGlassReflection(&raster, shell, 6, 4, outer);
 	drawGlassReflection(&raster, strips, 12, 4, outer);
 	drawGlassReflection(&raster, corners, 8, 3, outer);
+	restoreCubeRaster();
 	if(CUBE_GLASS_SHEEN && animated && scene->homeIdleBlend > 0.01f && strength > 0.01f) {
 		float phase = fmodf(seconds, GLASS_SHEEN_PERIOD);
 		if(phase < GLASS_SHEEN_LENGTH) {

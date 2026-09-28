@@ -70,6 +70,13 @@ Changes land under `## Unreleased` until the release names them.
   fade over one whole pixel, with Menu Widescreen too, which had narrowed
   them to three quarters of one, and the rim keeps one brightness along its
   length.
+- The cube is clear glass all through: the solid cube inside it is gone.
+  Its far edges show through, bent by the front, and a smoked panel under
+  each face's icon keeps the icon easy to read. The glass mirrors soft
+  lights around it, a gradient and a brighter window on the faces and thin
+  glints along the rounded edges, drawn sharp to the pixel; they slide
+  across the glass as the cube turns and drift a little while Home rests
+  (not with UI Motion set to Reduced or Off).
 
 ### Fixes
 

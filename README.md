@@ -36,11 +36,12 @@ hardware and want it to feel like it belongs on the console.
 right turn it sideways, up and down tip it over. When Indigo starts, the cube
 flies in from the distance, spinning, and comes to rest on the face you
 start on. It is glass, like the
-GameCube's own menu, and it treats light the way glass does. Through the front
-you see the cube's far edges and its inner cube, bent and slightly magnified,
-and the rounded edges part the light into colour like a prism. Highlights
-glow, a fine rim lights the edges that face the light, and the face icons sit
-sharp on the glass. Each face carries its own
+GameCube's own menu, and it treats light the way glass does. Through the clear
+front you see the cube's far edges, bent and slightly magnified, and a smoked
+panel under each face's icon; the rounded edges part the light into colour
+like a prism. Soft lights mirrored in the glass slide across it as it turns.
+Highlights glow, a fine rim lights the edges that face the light, and the face
+icons sit sharp on the glass. Each face carries its own
 emblem, and only the face you are on is named, under the cube. The Library face is a GameCube
 controller that mirrors yours: its sticks lean with your sticks and its
 buttons light as you press them, and when you leave it alone it plays by
