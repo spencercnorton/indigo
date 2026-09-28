@@ -13,7 +13,8 @@ while a crash, a hang, a black screen or a broken control does:
     turning back undoes a turn, and the four names differ;
   - A on a face opens another screen, and B comes back to the same face;
   - in the Library, RIGHT and LEFT move between games and back again, and
-    A opens a game's details and B comes back to it;
+    A opens a game's details; there UP and A open the game's settings, B
+    comes back to the details, and B again to the game;
   - nothing crashes: Dolphin emulates the MMU, so an invalid memory access
     stops Indigo on its exception screen as it would on a console, and
     Dolphin's own log reports no exception or invalid access.
@@ -46,9 +47,11 @@ import dsu_pad  # noqa: E402
 
 WIDTH, HEIGHT = 640, 480
 # Where text the route reads sits (x0, y0, x1, y1): the face's name under the
-# cube on Home, and the selected game's title in the Library.
+# cube on Home, the selected game's title in the Library, and its title on
+# the game's details.
 LABEL_BOX = (200, 372, 440, 396)
 TITLE_BOX = (200, 338, 440, 362)
+DETAIL_TITLE_BOX = (264, 106, 600, 134)
 TEXT_LEVEL = 160          # label text is bright; the waves behind it are not
 SAME, DIFFERENT = 0.85, 0.5  # intersection over union of two label masks
 BOOT_SECONDS = 120
@@ -299,7 +302,8 @@ class Route:
 
     def browse_library(self) -> None:
         """RIGHT twice then LEFT twice: a new title each way, and back to the first.
-        Then A opens that game's details and B comes back to it."""
+        Then A opens that game's details, UP and A its settings, B comes back
+        to the details and B again to the game."""
         titles = []
         first, _ = self.settled_label(box=TITLE_BOX)
         self.check("the Library shows a game's title", first is not None)
@@ -319,6 +323,20 @@ class Route:
         opened = self.covered(titles[0], TITLE_BOX)
         self.shot("game-details", self.last_rgb)
         self.check("A opens the game's details", opened)
+        details, _ = self.settled_label(box=DETAIL_TITLE_BOX)
+        self.check("the details show the game's title", details is not None)
+        # Two presses reach Settings whether or not a Cheats row sits between.
+        for _ in range(2):
+            self.press("UP")
+            time.sleep(0.3)
+        self.press("A")
+        opened = self.covered(details, DETAIL_TITLE_BOX)
+        self.shot("game-settings", self.last_rgb)
+        self.check("UP and A open the game's settings", opened)
+        self.press("B")
+        back, _ = self.settled_label(like=details, box=DETAIL_TITLE_BOX)
+        self.shot("game-details-back", self.last_rgb)
+        self.check("B comes back to the game's details", back is not None)
         self.press("B")
         title, _ = self.settled_label(like=titles[0], box=TITLE_BOX)
         self.shot("library-back", self.last_rgb)

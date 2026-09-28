@@ -109,8 +109,19 @@ typedef enum {
 	UI_GAMEFLOW_DETAIL_INPUT_Y = 1u << 3,
 	UI_GAMEFLOW_DETAIL_INPUT_Z = 1u << 4,
 	UI_GAMEFLOW_DETAIL_INPUT_R = 1u << 5,
-	UI_GAMEFLOW_DETAIL_INPUT_L = 1u << 6
+	UI_GAMEFLOW_DETAIL_INPUT_L = 1u << 6,
+	UI_GAMEFLOW_DETAIL_INPUT_UP = 1u << 7,
+	UI_GAMEFLOW_DETAIL_INPUT_DOWN = 1u << 8
 } uiGameflowDetailInput_t;
+
+/* The rows up and down move between, counted from the bottom as they are
+ * drawn: Launch, Cheats above it, Settings at the top. A zeroed event rests
+ * on Launch. */
+typedef enum {
+	UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH = 0,
+	UI_GAMEFLOW_DETAIL_FOCUS_CHEATS,
+	UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS
+} uiGameflowDetailFocus_t;
 
 typedef enum {
 	UI_GAMEFLOW_DETAIL_ACTION_NONE = 0,
@@ -128,7 +139,15 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 bool UIGameflowDetail_Matches(const uiGameflowDetailSnapshot_t *snapshot,
 	uint32_t generation, uint32_t focusIndex, const char *gameId,
 	size_t gameIdLength);
+/* UP or DOWN moves one row, past a row the game can't use (Cheats when it
+ * has none), and stops at the ends. */
+uiGameflowDetailFocus_t UIGameflowDetail_MoveFocus(
+	const uiGameflowDetailSnapshot_t *snapshot, uiGameflowDetailFocus_t focus,
+	uint32_t input);
+/* Plain A runs the focused row. Clean Boot's L+A and every other shortcut
+ * do what they always did, whatever is focused. */
 uiGameflowDetailAction_t UIGameflowDetail_ResolveAction(
-	const uiGameflowDetailSnapshot_t *snapshot, uint32_t input);
+	const uiGameflowDetailSnapshot_t *snapshot, uiGameflowDetailFocus_t focus,
+	uint32_t input);
 
 #endif

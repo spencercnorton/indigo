@@ -187,6 +187,9 @@ void DrawUpdateFileBrowserButton(uiDrawObj_t *evt, int mode);
 bool DrawUpdateGameflow(uiDrawObj_t *evt,
 	const uiGameflowRenderSnapshot_t *snapshot);
 bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode);
+/* The Detail row the D-pad rests on. */
+bool DrawSetGameflowDetailFocus(uiDrawObj_t *evt,
+	uiGameflowDetailFocus_t focus);
 bool DrawUpdateGameflowDetail(uiDrawObj_t *evt,
 	const uiGameflowDetailSnapshot_t *snapshot);
 void DrawClearGameflowDetail(uiDrawObj_t *evt);

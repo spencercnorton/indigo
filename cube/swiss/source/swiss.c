@@ -4080,6 +4080,8 @@ static u32 gameflowDetailInput(u32 buttons)
 	if(buttons & BUTTON_Z) input |= UI_GAMEFLOW_DETAIL_INPUT_Z;
 	if(buttons & BUTTON_R) input |= UI_GAMEFLOW_DETAIL_INPUT_R;
 	if(buttons & BUTTON_L) input |= UI_GAMEFLOW_DETAIL_INPUT_L;
+	if(buttons & BUTTON_UP) input |= UI_GAMEFLOW_DETAIL_INPUT_UP;
+	if(buttons & BUTTON_DOWN) input |= UI_GAMEFLOW_DETAIL_INPUT_DOWN;
 	return input;
 }
 
@@ -4205,8 +4207,10 @@ static int gameflow_info_game(ConfigEntry *config,
 	gameflowLaunchContext_t *context)
 {
 	const u32 detailButtons = PAD_BUTTON_X | BUTTON_B | BUTTON_A |
-		PAD_BUTTON_Y | BUTTON_Z | BUTTON_R;
+		PAD_BUTTON_Y | BUTTON_Z | BUTTON_R | BUTTON_UP | BUTTON_DOWN;
 	uiMenuActionState_t detailInput;
+	uiMenuInputState_t detailStick;
+	uiGameflowDetailFocus_t focus = UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH;
 	int numCheats;
 	bool openSettings;
 
@@ -4236,15 +4240,20 @@ static int gameflow_info_game(ConfigEntry *config,
 		 * legacy screen would boot under Boot without prompts. */
 		return openSettings ? 0 : info_game(config);
 	}
+	DrawSetGameflowDetailFocus(context->event, focus);
 	DrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_DETAIL);
 	/* The entry A press is consumed, but held L and the C-stick cannot
 	 * block the detail screen. Only physical X/Y invoke those shortcuts. */
 	UIMenuAction_Init(&detailInput, padsButtonsHeld());
+	UIMenuInput_Init(&detailStick);
 
 	while(1) {
 		u32 buttons;
+		u32 input;
+		uiMenuInputDirection_t analog;
 		uiGameflowDetailSnapshot_t actionSnapshot;
 		uiGameflowDetailAction_t action;
+		uiGameflowDetailFocus_t moved;
 
 		if(openSettings) {
 			/* Entered with Y: the settings, then this Detail. */
@@ -4256,6 +4265,14 @@ static int gameflow_info_game(ConfigEntry *config,
 				VIDEO_WaitVSync();
 				buttons = UIMenuAction_Update(&detailInput, padsButtonsHeld(),
 					detailButtons, BUTTON_L, BUTTON_B);
+				/* The stick steps like the D-pad: once a push, back to
+				 * centre first, never while a button is down. With no
+				 * repeat it needs no clock. */
+				analog = padsMenuInputPoll(&detailStick, 0u,
+					UI_MENU_INPUT_AXIS_VERTICAL,
+					(padsButtonsHeld() & detailButtons) != 0u);
+				if(analog == UI_MENU_INPUT_UP) buttons |= BUTTON_UP;
+				if(analog == UI_MENU_INPUT_DOWN) buttons |= BUTTON_DOWN;
 			} while(buttons == 0u);
 			memset(&actionSnapshot, 0, sizeof(actionSnapshot));
 			actionSnapshot.flags = UI_GAMEFLOW_DETAIL_VALID |
@@ -4271,8 +4288,22 @@ static int gameflow_info_game(ConfigEntry *config,
 				(((devices[DEVICE_CUR]->location & LOC_DVD_CONNECTOR) &&
 					!config->preferCleanBoot) ?
 					UI_GAMEFLOW_DETAIL_CAN_CLEAN_BOOT : 0u);
-			action = UIGameflowDetail_ResolveAction(&actionSnapshot,
-				gameflowDetailInput(buttons));
+			input = gameflowDetailInput(buttons);
+			moved = UIGameflowDetail_MoveFocus(&actionSnapshot, focus, input);
+			action = UI_GAMEFLOW_DETAIL_ACTION_NONE;
+			/* Like Home: a sample that moves does nothing else. */
+			if(moved != focus) {
+				focus = moved;
+				DrawSetGameflowDetailFocus(context->event, focus);
+				menuaudio_blip();
+			}
+			else {
+				action = UIGameflowDetail_ResolveAction(&actionSnapshot,
+					focus, input);
+				if(action != UI_GAMEFLOW_DETAIL_ACTION_NONE) {
+					menuaudio_select();
+				}
+			}
 		}
 
 		if(action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||
@@ -4280,6 +4311,9 @@ static int gameflow_info_game(ConfigEntry *config,
 			if(action == UI_GAMEFLOW_DETAIL_ACTION_CLEAN_BOOT) {
 				config->forceCleanBoot = 1;
 			}
+			/* L+A from another row: the launch lights Launch. */
+			DrawSetGameflowDetailFocus(context->event,
+				UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH);
 			DrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LAUNCH);
 			while(padsButtonsHeld() & BUTTON_A) {
 				VIDEO_WaitVSync();
@@ -4329,6 +4363,7 @@ static int gameflow_info_game(ConfigEntry *config,
 		/* A modal's dismissal is not a new Detail action. Do not require
 		 * unrelated buttons or a held clean-boot modifier to be released. */
 		UIMenuAction_Init(&detailInput, padsButtonsHeld());
+		UIMenuInput_Init(&detailStick);
 	}
 }
 

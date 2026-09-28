@@ -343,6 +343,8 @@ typedef struct drawGameflowEvent {
 	drawGameflowCardPresentation_t
 		cardPresentation[UI_GAMEFLOW_RENDER_SLOTS];
 	GXTexObj detailBannerTexObj;
+	/* Outside the snapshot, so a republished Detail keeps it. */
+	uiGameflowDetailFocus_t detailFocus;
 } drawGameflowEvent_t;
 
 typedef struct drawPresentationEvent {
@@ -3245,11 +3247,25 @@ static void _GameflowPutDetailPanel(int x, int y, int width, int height,
 		(float)y + (float)height}, edge);
 }
 
+static gameflowQuad_t _GameflowGrowQuad(const gameflowQuad_t *quad, float by);
+
 static void _GameflowDrawDetailPlanes(
 	const uiGameflowDetailSnapshot_t *detail,
 	const drawGameflowDetailPresentation_t *presentation,
-	const uiGameflowFrame_t *frame, float alpha)
+	const uiGameflowFrame_t *frame, float alpha,
+	uiGameflowDetailFocus_t focusRow)
 {
+	/* The rows the focus moves between, bottom up: Launch, Cheats, Settings. */
+	static const int rowTop[] = {348, 281, 232};
+	static const int rowHeight[] = {43, 59, 42};
+	float litTop = (float)rowTop[focusRow];
+	float litBottom = litTop + (float)rowHeight[focusRow];
+	gameflowQuad_t litRow = {{{260.0f, litTop}, {590.0f, litTop},
+		{590.0f, litBottom}, {260.0f, litBottom}}};
+	gameflowQuad_t litInner = _GameflowGrowQuad(&litRow, -2.0f);
+	gameflowQuad_t litGlow = _GameflowGrowQuad(&litRow, 2.0f);
+	gameflowQuad_t litHalo = _GameflowGrowQuad(&litGlow, 3.0f);
+	int row;
 	bool hasAdvanced = detail->advancedLineOne[0] != '\0' ||
 		detail->advancedLineTwo[0] != '\0';
 	float focus = _CurrentMotionMode() == UI_MOTION_FULL ?
@@ -3269,6 +3285,12 @@ static void _GameflowDrawDetailPlanes(
 		(u8)(((u16)presentation->accent.g + 255u) / 2u),
 		(u8)(((u16)presentation->accent.b + 255u) / 2u),
 		_GameflowAlpha(255.0f * alpha * focus)};
+	/* The Library grid's highlight colors: it reads across the room. */
+	GXColor litEdgeColor = {244, 239, 255, _GameflowAlpha(245.0f * alpha)};
+	GXColor litGlowColor = {196, 177, 255,
+		_GameflowAlpha(150.0f * alpha * focus)};
+	GXColor litHaloColor = {117, 88, 244,
+		_GameflowAlpha(78.0f * alpha * focus)};
 	bool hasSettings = detail->settingsSummary[0] != '\0';
 	u16 panelCount = (u16)(3u + (hasAdvanced ? 1u : 0u) +
 		(hasSettings ? 1u : 0u));
@@ -3280,17 +3302,26 @@ static void _GameflowDrawDetailPlanes(
 	ctaGlow.a = _GameflowAlpha(92.0f * alpha * focus);
 	drawInit();
 	_SetupRasterColor();
-	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(panelCount * 12u));
+	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(panelCount * 12u + 48u));
 		_GameflowPutDetailPanel(246, 76, 358, 328, 2,
 			panelGlow, panelFill, panelEdge);
-		if(hasSettings) {
-			_GameflowPutDetailPanel(260, 232, 330, 42, 2,
-				insetGlow, insetFill, insetEdge);
+		/* The focused row takes the bright edge and the glow, and the
+		 * grid's frame round it; Launch keeps its button fill. */
+		for(row = UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH;
+			row <= UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS; ++row) {
+			bool lit = row == (int)focusRow;
+
+			if(row == UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS && !hasSettings) {
+				continue;
+			}
+			_GameflowPutDetailPanel(260, rowTop[row], 330, rowHeight[row],
+				lit ? 4 : 2, lit ? ctaGlow : insetGlow,
+				row == UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH ? ctaFill : insetFill,
+				lit ? ctaEdge : insetEdge);
 		}
-		_GameflowPutDetailPanel(260, 281, 330, 59, 2,
-			insetGlow, insetFill, insetEdge);
-		_GameflowPutDetailPanel(260, 348, 330, 43, 4,
-			ctaGlow, ctaFill, ctaEdge);
+		_GameflowPutBorder(&litHalo, &litGlow, litHaloColor);
+		_GameflowPutBorder(&litGlow, &litRow, litGlowColor);
+		_GameflowPutBorder(&litRow, &litInner, litEdgeColor);
 		if(hasAdvanced) {
 			_GameflowPutDetailPanel(48, 350, 180, 52, 2,
 				insetGlow, insetFill, insetEdge);
@@ -3303,7 +3334,7 @@ static void _GameflowDrawDetailDashboard(
 	const uiGameflowDetailSnapshot_t *detail,
 	const drawGameflowDetailPresentation_t *presentation,
 	const uiGameflowFrame_t *frame, float reveal,
-	const uiCommandRailFrame_t *commandRail)
+	const uiCommandRailFrame_t *commandRail, uiGameflowDetailFocus_t focusRow)
 {
 	const char *launchText;
 	float launchScale;
@@ -3322,7 +3353,7 @@ static void _GameflowDrawDetailDashboard(
 	secondary = (GXColor) {202, 192, 244, _GameflowAlpha(235.0f * alpha)};
 	muted = (GXColor) {165, 158, 201, _GameflowAlpha(218.0f * alpha)};
 	focus = (GXColor) {244, 239, 255, _GameflowAlpha(255.0f * alpha)};
-	_GameflowDrawDetailPlanes(detail, presentation, frame, alpha);
+	_GameflowDrawDetailPlanes(detail, presentation, frame, alpha, focusRow);
 
 	drawStringMedium(264, 95, frame->launchProgress > 0.02f ?
 		"LAUNCHING" : "GAME DETAIL", 0.42f, ALIGN_LEFT, secondary);
@@ -3382,7 +3413,9 @@ static void _GameflowDrawDetailDashboard(
 		"STARTING GAME..." : detail->launchLabel;
 	launchScale = frame->launchProgress > 0.02f ?
 		0.56f : presentation->launchScale;
-	drawStringMedium(278, 369, "\267", 0.58f, ALIGN_LEFT, focus);
+	if(focusRow == UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH) {
+		drawStringMedium(278, 369, "\267", 0.58f, ALIGN_LEFT, focus);
+	}
 	_DrawHintText(425, 369, launchText, launchScale, ALIGN_CENTER, focus);
 
 	if(detail->advancedLineOne[0] != '\0' ||
@@ -3688,7 +3721,7 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 
 	UICommandRail_Gameflow(frame->detailProgress, &commandRail);
 	_GameflowDrawDetailDashboard(detail, &data->detailPresentation,
-		frame, reveal, &commandRail);
+		frame, reveal, &commandRail, data->detailFocus);
 	if(frame->detailProgress < 0.999f) {
 		GXColor label = {177, 168, 220,
 			_GameflowAlpha(180.0f * reveal *
@@ -4337,6 +4370,23 @@ bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode)
 	if(!evt->disposed && evt->type == EV_GAMEFLOW && evt->data != NULL) {
 		drawGameflowEvent_t *data = (drawGameflowEvent_t*)evt->data;
 		UIGameflow_SetMode(&data->state, mode, _CurrentMotionMode());
+		updated = true;
+	}
+	LWP_MutexUnlock(_videomutex);
+	return updated;
+}
+
+bool DrawSetGameflowDetailFocus(uiDrawObj_t *evt,
+	uiGameflowDetailFocus_t focus)
+{
+	bool updated = false;
+
+	if(evt == NULL || focus > UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS) {
+		return false;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!evt->disposed && evt->type == EV_GAMEFLOW && evt->data != NULL) {
+		((drawGameflowEvent_t*)evt->data)->detailFocus = focus;
 		updated = true;
 	}
 	LWP_MutexUnlock(_videomutex);
