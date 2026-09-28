@@ -4,10 +4,11 @@
 Dolphin inserts it as a GameCube disc and Swiss reads its ISO 9660 file
 system as a device. /games holds small images of fictitious games: a disc
 header, a file table with one file, opening.bnr, and that banner (drawn
-here), which is all the Library reads of a game. /swiss/ui/posters.pak holds
-posters drawn here from gradients and shapes, for all but two of the games,
-so the Library shows both kinds of card. Nothing in it is anyone else's: no
-game, no box art, no font.
+here), which is all the Library reads of a game. Two more images have a
+missing or corrupt file table, which the Library must survive (DAMAGED).
+/swiss/ui/posters.pak holds posters drawn here from gradients and shapes, for
+all but two of the games, so the Library shows both kinds of card. Nothing
+in it is anyone else's: no game, no box art, no font.
 
 usage: card.py OUT.iso [--no-posters]
 Needs genisoimage; the posters need gxtexconv (see buildtools/ui/poster_pack.py)
@@ -90,6 +91,36 @@ def game_image(index: int, game_id: str, title: str) -> bytes:
     return bytes(image)
 
 
+def header_only(game_id: str, title: str) -> bytes:
+    """A header-only dump: a disc header that declares no file table."""
+    return bytes(disc_header(game_id, title))
+
+
+RUNAWAY_COUNT = 0x0AAAAAAA
+
+
+def runaway_table(game_id: str, title: str) -> bytes:
+    """A game whose file table counts far more entries than it holds.
+
+    RUNAWAY_COUNT puts the string table 0x7FFFFFF8 bytes past the table: an
+    unchecked lookup wraps below 0x80000000, where nothing is mapped, and faults
+    on its first name instead of reading on through memory."""
+    image = bytearray(STUB_BYTES)
+    image[:0x440] = disc_header(game_id, title)
+    fst = struct.pack(">BBHII", 1, 0, 0, 0, RUNAWAY_COUNT)
+    fst += struct.pack(">BBHII", 0, 0, 0, GAME_BANNER, BANNER_BYTES)
+    struct.pack_into(">III", image, 0x424, GAME_FST, len(fst), len(fst))
+    image[GAME_FST:GAME_FST + len(fst)] = fst
+    return bytes(image)
+
+
+# Images the Library lists and must survive. It reads the file table of every
+# image it lists, to find the banner, and an unchecked read of a missing or
+# corrupt table crashed it. Their titles sort among the first games, which the
+# emulator test browses.
+DAMAGED = (("GBHZ01", "Broken Header", header_only), ("GCTZ01", "Corrupt Table", runaway_table))
+
+
 def outer_header() -> bytes:
     """The disc itself: a header Dolphin accepts, with an empty file table."""
     area = bytearray(FST_OFFSET + 12)
@@ -166,6 +197,8 @@ def build(out: Path, posters: bool = True) -> dict[str, object]:
         (root / "swiss/ui").mkdir(parents=True)
         for index, (game_id, title) in enumerate(GAMES):
             (root / "games" / f"{title} [{game_id}].iso").write_bytes(game_image(index, game_id, title))
+        for game_id, title, image in DAMAGED:
+            (root / "games" / f"{title} [{game_id}].iso").write_bytes(image(game_id, title))
         with_posters = posters and build_posters(folder, root / "swiss/ui/posters.pak")
         for path in sorted(root.rglob("*")) + [root]:
             os.utime(path, (1000000000, 1000000000))
@@ -177,8 +210,8 @@ def build(out: Path, posters: bool = True) -> dict[str, object]:
     header = outer_header()
     image[:len(header)] = header
     out.write_bytes(image)
-    return {"games": len(GAMES), "posters": len(GAMES) - len(NO_POSTER) if with_posters else 0,
-            "bytes": len(image)}
+    return {"games": len(GAMES), "damaged": len(DAMAGED),
+            "posters": len(GAMES) - len(NO_POSTER) if with_posters else 0, "bytes": len(image)}
 
 
 def main(argv: list[str] | None = None) -> int:
