@@ -267,5 +267,6 @@ void DrawInit(GXRModeObj *videoMode, bool black);
 void DrawLoadBackdrop(DEVICEHANDLER_INTERFACE *device);
 void DrawShutdown();
 void DrawVideoMode(GXRModeObj *videoMode);
+void DrawVideoModeDefer(bool defer);
 
 #endif

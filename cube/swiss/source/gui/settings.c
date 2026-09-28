@@ -115,7 +115,7 @@ static char *tooltips_global[PAGE_GLOBAL_MAX+1] = {
 	[SET_WAIT_USBGECKO] = "Wait for USB Gecko:\n\nWait for the transmit buffer to be read by the USB host when full.",
 	[SET_SIMMEMSIZE] = "Simulated MRAM Size:\n\nLimits the amount of memory available on development hardware.",
 	[SET_TAU_CALIB] = "CPU Temperature Calibration:\n\nOn a cold boot, adjust this value so that the CPU temperature\nreading in the title bar is around room temperature.\n\nThere is no factory calibration.",
-	[SET_SWISS_VIDEOMODE] = "Swiss Video Mode:\n\nThe video mode Indigo's own screens use. Auto picks 480p with a\ndigital cable and otherwise follows the console's region.\n\nAfter a change, press A within 10 seconds to keep the new mode;\notherwise it changes back by itself.",
+	[SET_SWISS_VIDEOMODE] = "Swiss Video Mode:\n\nThe video mode Indigo's own screens use. Auto picks 480p with a\ndigital cable and otherwise follows the console's region.\n\nLeft and Right choose a mode and A switches to it. Press A\nagain within 10 seconds to keep it; otherwise it changes back\nby itself.",
 	[SET_DISABLE_RUMBLE] = "Controller Rumble:\n\nOn - Controllers can rumble in games (default)\nOff - Rumble is turned off in games"
 };
 
@@ -1124,6 +1124,30 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 }
 
 static bool settingsRowHasList(int page, int option);
+static bool settingsIsLiveVideoRow(int page, int option);
+
+/* Left and Right on a video row only step its value: the row shows it and
+ * the picture stays as it is until A applies it. These are the five
+ * settings that choose the mode as they were before the first step. */
+static struct {
+	bool pending;
+	u8 sramVideo;
+	int uiVMode;
+	int aveCompat;
+	int forceDTVStatus;
+	bool rt4kOptim;
+} settingsVideo;
+
+/* Whether a video row shows a value that isn't on screen yet. */
+static bool settingsVideoStepped(void)
+{
+	return settingsVideo.pending &&
+		(swissSettings.sramVideo != settingsVideo.sramVideo ||
+		swissSettings.uiVMode != settingsVideo.uiVMode ||
+		swissSettings.aveCompat != settingsVideo.aveCompat ||
+		swissSettings.forceDTVStatus != settingsVideo.forceDTVStatus ||
+		swissSettings.rt4kOptim != settingsVideo.rt4kOptim);
+}
 
 /* The footer's button hints, and the line about the focused row from its
  * help: what its current value does, or what the setting is for. */
@@ -1159,6 +1183,12 @@ static void settingsDescribeFocus(uiSetPageSnapshot_t *page, int view,
 				hints[count++] = "A  Reset";
 			}
 		}
+		else if(settingsIsLiveVideoRow(ref->page, ref->option)) {
+			/* A only applies a value Left or Right stepped to. */
+			if(settingsVideoStepped()) {
+				hints[count++] = "A  Apply";
+			}
+		}
 		else if(row.enabled) {
 			hints[count++] = settingsRowHasList(ref->page, ref->option) ?
 				"A  Choose" : "A  Change";
@@ -1169,6 +1199,10 @@ static void settingsDescribeFocus(uiSetPageSnapshot_t *page, int view,
 				sizeof(summary)) > 0) {
 				about = summary;
 			}
+		}
+		if(settingsIsLiveVideoRow(ref->page, ref->option) &&
+			settingsVideoStepped()) {
+			about = "Not applied yet: A switches to it, then asks whether to keep it.";
 		}
 		/* X puts a game's own value back to Game Defaults. */
 		if(gameDefaults != NULL && row.enabled &&
@@ -2059,7 +2093,7 @@ static bool settingsHoldToRepeat(uiMenuInputState_t *menuInput,
 	return false;
 }
 
-/* Rows whose change re-applies the Swiss video mode immediately. */
+/* Rows whose value chooses the Swiss video mode: A applies it. */
 static bool settingsIsLiveVideoRow(int page, int option)
 {
 	return page == PAGE_GLOBAL && (option == SET_SYS_VIDEO ||
@@ -2157,9 +2191,8 @@ static bool settingsKeepVideoMode(const settingRowView_t *row)
 			char message[128];
 
 			/* Three lines: a fourth runs past the 125 px box. The first names
-			 * the new value, which the page behind still shows as the old
-			 * one until the prompt closes. The last is the buttons, which
-			 * DrawMessageBox draws as icons. */
+			 * the new value, as the row behind shows it. The last is the
+			 * buttons, which DrawMessageBox draws as icons. */
 			snprintf(message, sizeof(message), "Keep %s %s?\n"
 				"It changes back by itself in %d s.\n"
 				"A  KEEP    B  CHANGE BACK", row->label, row->value, seconds);
@@ -2186,8 +2219,18 @@ static bool settingsKeepVideoMode(const settingRowView_t *row)
 	return keep;
 }
 
-/* Changes one row's value. Video rows ask to keep the new mode and restore
- * the fields that choose it when the answer is no. */
+/* Puts back the settings a video row's steps, or a mode not kept, changed. */
+static void settingsVideoRestore(void)
+{
+	swissSettings.sramVideo = settingsVideo.sramVideo;
+	swissSettings.uiVMode = settingsVideo.uiVMode;
+	swissSettings.aveCompat = settingsVideo.aveCompat;
+	swissSettings.forceDTVStatus = settingsVideo.forceDTVStatus;
+	swissSettings.rt4kOptim = settingsVideo.rt4kOptim;
+	settingsVideo.pending = false;
+}
+
+/* Changes one row's value. A video row only steps it; A applies it. */
 static void settingsChangeValue(int page, int option, int direction,
 	ConfigEntry *config)
 {
@@ -2195,25 +2238,39 @@ static void settingsChangeValue(int page, int option, int direction,
 		settings_toggle(page, option, direction, config);
 		return;
 	}
-	GXRModeObj *before = getVideoMode();
-	u8 sramVideo = swissSettings.sramVideo;
-	int uiVMode = swissSettings.uiVMode;
-	int aveCompat = swissSettings.aveCompat;
-	int forceDTVStatus = swissSettings.forceDTVStatus;
-	bool rt4kOptim = swissSettings.rt4kOptim;
-
+	if(!settingsVideo.pending) {
+		settingsVideo.pending = true;
+		settingsVideo.sramVideo = swissSettings.sramVideo;
+		settingsVideo.uiVMode = swissSettings.uiVMode;
+		settingsVideo.aveCompat = swissSettings.aveCompat;
+		settingsVideo.forceDTVStatus = swissSettings.forceDTVStatus;
+		settingsVideo.rt4kOptim = swissSettings.rt4kOptim;
+	}
+	/* settings_toggle switches to the new mode itself: hold that back. */
+	DrawVideoModeDefer(true);
 	settings_toggle(page, option, direction, config);
-	if(getVideoMode() == before) {
+	DrawVideoModeDefer(false);
+}
+
+/* A on a video row switches to the value Left and Right stepped to, and it
+ * stays only if A is pressed again within ten seconds. Any change asks, not
+ * only a new mode: AVE N-DOL and RetroTINK-4K change the signal in place. */
+static void settingsApplyVideoMode(int page, int option, ConfigEntry *config)
+{
+	GXRModeObj *before = getVideoMode();
+	settingRowView_t row;
+
+	if(!settingsVideoStepped()) {
+		settingsVideo.pending = false;
 		return;
 	}
-	settingRowView_t row;
+	DrawVideoMode(getVideoModeFromSwissSetting(swissSettings.uiVMode));
 	settingsDescribeRow(page, option, config, &row);
-	if(!settingsKeepVideoMode(&row)) {
-		swissSettings.sramVideo = sramVideo;
-		swissSettings.uiVMode = uiVMode;
-		swissSettings.aveCompat = aveCompat;
-		swissSettings.forceDTVStatus = forceDTVStatus;
-		swissSettings.rt4kOptim = rt4kOptim;
+	if(settingsKeepVideoMode(&row)) {
+		settingsVideo.pending = false;
+	}
+	else {
+		settingsVideoRestore();
 		DrawVideoMode(before);
 	}
 }
@@ -2482,9 +2539,12 @@ static bool settingsInputMayBlock(int page, int option, u32 buttons)
 		return true;
 	}
 
+	/* A video row asks to keep its mode on A only: Left and Right just step
+	 * the value, so holding them scrolls through the values. */
 	if(page == PAGE_GLOBAL) {
-		return (horizontal || activate) && (option == SET_RT4K_OPTIM ||
-			option == SET_SAVE_FOLDER || settingsIsLiveVideoRow(page, option));
+		return ((horizontal || activate) && (option == SET_RT4K_OPTIM ||
+			option == SET_SAVE_FOLDER)) ||
+			(activate && settingsIsLiveVideoRow(page, option));
 	}
 	if(page == PAGE_INTERFACE) {
 		return (horizontal || activate) && option == SET_FLATTEN_DIR;
@@ -2564,6 +2624,15 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 		uiDrawObj_t* settingsPage = settings_draw_page(view, option, config);
 		u32 btns = settingsWaitForInput(&menuInput, &menuInputRetrace,
 			&wasDigital);
+		/* A video value Left or Right stepped to waits for A on its row.
+		 * Any other button but Y, or any button off a video row, puts it
+		 * back before it acts, so a mode that was never on screen can't be
+		 * saved: startup applies the saved mode without asking. */
+		if(settingsVideo.pending && (!onSetting ||
+			!settingsIsLiveVideoRow(ref->page, ref->option) ||
+			(btns & ~(BUTTON_LEFT | BUTTON_RIGHT | BUTTON_A | BUTTON_Y)) != 0u)) {
+			settingsVideoRestore();
+		}
 		inputView = view;
 		inputOption = option;
 		inputMayBlock = onSetting &&
@@ -2714,8 +2783,9 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 					&menuInputRetrace);
 				return 0;
 			}
-			// A opens a Setup section, runs a text or reset row, and
-			// changes a choice row the way Right does
+			// A opens a Setup section, runs a text or reset row, applies
+			// a video row's stepped value, and changes any other choice row
+			// the way Right does
 			if(view == inputView && option == inputOption && ref != NULL) {
 				if(ref->page == SETTINGS_ROW_LINK) {
 					view = ref->option; option = 0;
@@ -2729,6 +2799,9 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 				else if(settingsPickerFor(ref->page, ref->option) != NULL) {
 					settingsPick(settingsPickerFor(ref->page, ref->option), config,
 						&menuInput, &menuInputRetrace);
+				}
+				else if(settingsIsLiveVideoRow(ref->page, ref->option)) {
+					settingsApplyVideoMode(ref->page, ref->option, config);
 				}
 				else {
 					settingsChangeValue(ref->page, ref->option, 1, config);

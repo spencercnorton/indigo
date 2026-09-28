@@ -85,8 +85,8 @@ or Y on its cover in the Library, opens that game's own settings, where
 anything that differs from Game Defaults is marked Custom and X puts it back.
 Holding the D-pad scrolls, A changes a value
 (or, for a setting with many choices, lists them all), and B leaves and keeps
-your changes. A new video mode only stays if you press
-A within ten seconds. Settings can also be written ahead of time in a file on
+your changes. A new video mode waits for A, and only stays if you press
+A again within ten seconds. Settings can also be written ahead of time in a file on
 the SD card: see [docs/SETTINGS.md](docs/SETTINGS.md). Setup › Storage says
 whether that file loaded.
 

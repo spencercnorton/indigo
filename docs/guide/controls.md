@@ -99,8 +99,8 @@ See [Cheats](cheats.md).
 | Button | Does |
 | --- | --- |
 | Up, Down | Move between settings. Hold to scroll. |
-| Left, Right | Step the highlighted setting to its previous or next value. |
-| A | Change the value. On a setting with four or more choices, list them all. |
+| Left, Right | Step the highlighted setting to its previous or next value. A video setting waits for A. |
+| A | Change the value. On a setting with four or more choices, list them all. On a video setting, switch to the value shown. |
 | Y | Explain the highlighted setting. Y or B closes it. |
 | L, R | Switch between the Quick, Defaults and Setup tabs. |
 | X | In a game's own settings: put the setting back to Game Defaults. |
