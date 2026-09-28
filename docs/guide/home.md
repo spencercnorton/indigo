@@ -39,13 +39,18 @@ in instead, and with Off it is simply there.
 
 ## The glass
 
-The cube is glass, and it treats light the way glass does:
+The cube is clear glass, and it treats light the way glass does:
 
 - **It bends what is behind it.** Through the front you see the cube's far
-  edges, its inner cube and the backdrop, slightly magnified across the faces
-  and pulled round the rounded edges.
+  edges and the backdrop, slightly magnified across the faces and pulled
+  round the rounded edges. A smoked panel sits under each face's icon, so
+  the icon reads clearly.
 - **It parts light into colour.** Where the bend is strongest, on the rounded
   edges, light splits into red, green and blue like a prism.
+- **It mirrors the lights around it.** Soft lights reflect in the faces and
+  catch the rounded edges as thin glints. The reflections slide across the
+  glass as the cube turns, and while Home rests they drift a little, so the
+  glass is never quite still.
 - **It glows.** Highlights and glints have a soft glow, a fine rim lights
   the edges that face the light, and a halo sits behind the cube with a patch
   of focused light on the floor under it. The face icons stay sharp on top
@@ -53,9 +58,9 @@ The cube is glass, and it treats light the way glass does:
 
 Every part follows your [Menu Color](personalize.md), except the prism's
 fringes, which keep their own colors. With UI Motion set
-to Reduced or Off, the cube's gentle sway stops; the
-glass still bends light and glows. Behind Settings the cube keeps its plain
-glass.
+to Reduced or Off, the cube's gentle sway and the drift of its reflections
+stop; the glass still bends light, mirrors and glows. Behind Settings the cube
+keeps its plain glass.
 
 ## The controller on the Library face
 

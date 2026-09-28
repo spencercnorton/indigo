@@ -61,6 +61,7 @@ int main(void)
 	UIStage_SetWide(false);
 	CHECK(UIStage_Left() == 0.0f && UIStage_Right() == 640.0f);
 	CHECK(UIStage_FrameX(123.5f) == 123.5f);
+	CHECK(UIStage_PixelWidth() == 1.0f);
 	ortho(m); ortho(plain); UIStage_Project(m);
 	CHECK(memcmp(m, plain, sizeof(m)) == 0);
 	perspective(m); perspective(plain); UIStage_Project(m);
@@ -80,6 +81,9 @@ int main(void)
 	/* The glass reads its copy where the projection drew. */
 	for(size_t i = 0; i < sizeof(xs) / sizeof(xs[0]); i++)
 		CHECK(near(UIStage_FrameX(xs[i]), (orthoClipX(m, xs[i]) + 1.0f) * 320.0f));
+	/* A fade PixelWidth() stage units across covers one frame pixel. */
+	CHECK(near((orthoClipX(m, 100.0f + UIStage_PixelWidth()) - orthoClipX(m, 100.0f)) *
+		320.0f, 1.0f));
 
 	/* The cube gets a 16:9 aspect... */
 	float squeezed[4][4];

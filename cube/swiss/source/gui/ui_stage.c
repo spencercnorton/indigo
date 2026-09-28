@@ -32,3 +32,8 @@ float UIStage_FrameX(float x)
 {
 	return stageWide ? 320.0f + (x - 320.0f) * UI_STAGE_SQUEEZE : x;
 }
+
+float UIStage_PixelWidth(void)
+{
+	return stageWide ? 1.0f / UI_STAGE_SQUEEZE : 1.0f;
+}

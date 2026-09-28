@@ -30,6 +30,10 @@ typedef unsigned int u32;
 typedef struct { u8 r,g,b,a; } GXColor;
 /* Menu Color is Indigo here: the emitters' recolor passes colors through. */
 static void UIColor_Apply(u8 *r,u8 *g,u8 *b) { (void)r; (void)g; (void)b; }
+/* 4:3 unless a run widens x fades for Menu Widescreen's 3/4 squeeze; fades
+ * are then measured through the squeeze, in frame pixels. */
+static float pixelWidth=1, squeeze=1;
+static float UIStage_PixelWidth(void) { return pixelWidth; }
 typedef float Mtx[3][4];
 typedef struct { float x,y,z; } guVector;
 typedef struct { float x,y; } indigoPoint_t;
@@ -54,7 +58,7 @@ enum { PAD_BUTTON_LEFT=0x0001, PAD_BUTTON_RIGHT=0x0002, PAD_BUTTON_DOWN=0x0004, 
 #define INDIGO_TAU 6.28318530718f
 #define CUBE_CAMERA_Z -5.4f
 #define CHECK(c,m) do { if(!(c)) { fprintf(stderr,"%s\n",m); exit(73); } } while(0)
-static bool active, uv, surfaceTest;
+static bool active, uv, surfaceTest, studio;
 static int phase, remaining, count, begins, matrixLoads, firstPrimitive;
 static guVector positions[4096];
 static u8 alphas[4096];
@@ -62,20 +66,19 @@ static GXColor colors[4096];
 static Mtx loaded;
 static int culling, depthWrites;
 static void GX_SetCullMode(int mode) { culling=mode; }
+/* The glass is clear all through: no pass writes depth or draws opaque. */
 static void GX_SetZMode(int enable,int comparison,int write) {
-    CHECK(enable==GX_ENABLE && comparison==GX_LEQUAL &&
-        (surfaceTest || write==GX_FALSE),"motif depth policy");
+    CHECK(enable==GX_ENABLE && comparison==GX_LEQUAL && write==GX_FALSE,
+        "glass depth policy: a pass writes depth");
     depthWrites=write;
 }
 static void GX_SetBlendMode(int mode,int source,int destination,int operation) {
-    CHECK(operation==GX_LO_CLEAR && ((mode==GX_BM_BLEND && source==GX_BL_SRCALPHA &&
-        (destination==GX_BL_ONE || destination==GX_BL_INVSRCALPHA)) ||
-        (surfaceTest && mode==GX_BM_NONE && source==GX_BL_ONE && destination==GX_BL_ZERO)),
-        "motif blend policy");
+    CHECK(operation==GX_LO_CLEAR && mode==GX_BM_BLEND && source==GX_BL_SRCALPHA &&
+        (destination==GX_BL_ONE || destination==GX_BL_INVSRCALPHA),"glass blend policy");
 }
 static void reset(bool textured) {
     CHECK(!active,"previous primitive unfinished");
-    uv=textured; surfaceTest=false; phase=remaining=count=begins=matrixLoads=firstPrimitive=0;
+    uv=textured; surfaceTest=studio=false; phase=remaining=count=begins=matrixLoads=firstPrimitive=0;
 }
 static void GX_Begin(int primitive,int format,int vertices) {
     CHECK(!active && phase==0,"nested begin or partial vertex");
@@ -107,9 +110,15 @@ static void GX_Color4u8(u8 r,u8 g,u8 b,u8 a) {
     colors[count]=(GXColor){r,g,b,a};
     if(uv) phase=2; else { phase=0; --remaining; ++count; }
 }
+static float studioS[4096], studioT[4096];
 static void GX_TexCoord2f32(float s,float t) {
     CHECK(uv && active && phase==2,"missing or unexpected texture attribute");
-    CHECK(s==0 && t==0,"raster UV"); phase=0; --remaining; ++count;
+    if(studio) {
+        CHECK(s>=0 && s<=1 && t>=0 && t<=1,"studio coordinates off the map");
+        studioS[count]=s; studioT[count]=t;
+    }
+    else CHECK(s==0 && t==0,"raster UV");
+    phase=0; --remaining; ++count;
 }
 static void GX_End(void) {
     CHECK(active && phase==0 && remaining==0,"incomplete GX primitive"); active=false;
@@ -428,6 +437,11 @@ static void surface_pose(cubeRasterTransform_t *r,float yaw,float pitch,float ro
 static indigoPoint_t projected(const cubeRasterTransform_t *r,guVector p) {
     return (indigoPoint_t){r->scaleX*p.x/-p.z,r->scaleY*p.y/-p.z};
 }
+/* How far p lies from the line through a and b, in frame pixels. */
+static float framePixels(indigoPoint_t a,indigoPoint_t b,indigoPoint_t p) {
+    a.x*=squeeze; b.x*=squeeze; p.x*=squeeze;
+    return fabsf((b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x))/hypotf(b.x-a.x,b.y-a.y);
+}
 static void check_outline(const cubeRasterTransform_t *r,const cubeSurfaceQuad_t *faces,
     const cubeOutline_t *outline) {
     CHECK(outline->count>=3 && outline->count<=24,"invalid projected outline budget");
@@ -450,14 +464,14 @@ static void check_outline(const cubeRasterTransform_t *r,const cubeSurfaceQuad_t
         "interior edge was classified as silhouette");
 }
 static void check_surface_vertices(const cubeRasterTransform_t *r,const cubeOutline_t *outline,
-    const cubeSurfaceQuad_t *quads,int quadsCount,int vertexCount,int cull,bool opaque,bool *covered) {
-    reset(false); surfaceTest=true; depthWrites=opaque?GX_TRUE:GX_FALSE;
-    if(vertexCount==4) drawCubeSurfacePass(r,outline,quads,quadsCount,cull,opaque);
-    else drawCubeSurfacePassVertices(r,outline,quads,quadsCount,vertexCount,cull,opaque);
+    const cubeSurfaceQuad_t *quads,int quadsCount,int vertexCount,int cull,bool *covered) {
+    reset(false); surfaceTest=true; depthWrites=GX_FALSE;
+    if(vertexCount==4) drawCubeSurfacePass(r,outline,quads,quadsCount,cull);
+    else drawCubeSurfacePassVertices(r,outline,quads,quadsCount,vertexCount,cull);
     CHECK(firstPrimitive==(vertexCount==3?GX_TRIANGLES:GX_QUADS),"surface primitive type");
     CHECK(count>=quadsCount*vertexCount && count<=quadsCount*vertexCount*5 && begins>=1 && begins<=2,
         "surface vertex/draw budget");
-    CHECK(culling==cull && depthWrites==(opaque?GX_TRUE:GX_FALSE) &&
+    CHECK(culling==cull && depthWrites==GX_FALSE &&
         memcmp(loaded,r->model,sizeof(Mtx))==0,"surface state not restored");
     for(int i=0;i<quadsCount*vertexCount;i++) {
         guVector p=quads[i/vertexCount].point[i%vertexCount]; GXColor c=quads[i/vertexCount].color[i%vertexCount];
@@ -472,12 +486,10 @@ static void check_surface_vertices(const cubeRasterTransform_t *r,const cubeOutl
             "solid silhouette did not fade to transparent");
         CHECK(positions[i].z==positions[i+3].z && positions[i+1].z==positions[i+2].z,
             "silhouette coverage changed endpoint depth");
-        float dx=b.x-a.x,dy=b.y-a.y,length=hypotf(dx,dy);
-        CHECK(closef(fabsf(dx*(outsideA.y-a.y)-dy*(outsideA.x-a.x))/length,1.0f) &&
-            closef(fabsf(dx*(outsideB.y-b.y)-dy*(outsideB.x-b.x))/length,1.0f),
-            "solid edge coverage is not one source pixel");
-        CHECK(hypotf(outsideA.x-a.x,outsideA.y-a.y)<=4.01f &&
-            hypotf(outsideB.x-b.x,outsideB.y-b.y)<=4.01f,"outline miter spike");
+        CHECK(closef(framePixels(a,b,outsideA),1.0f) && closef(framePixels(a,b,outsideB),1.0f),
+            "solid edge coverage is not one frame pixel");
+        CHECK(hypotf((outsideA.x-a.x)*squeeze,outsideA.y-a.y)<=4.01f &&
+            hypotf((outsideB.x-b.x)*squeeze,outsideB.y-b.y)<=4.01f,"outline miter spike");
         bool boundary=false;
         for(int edge=0;edge<outline->count;edge++) {
             indigoPoint_t p=outline->point[edge],q=outline->point[(edge+1)%outline->count];
@@ -518,8 +530,8 @@ static void check_surface_vertices(const cubeRasterTransform_t *r,const cubeOutl
     }
 }
 static void check_surface_pass(const cubeRasterTransform_t *r,const cubeOutline_t *outline,
-    const cubeSurfaceQuad_t *quads,int quadsCount,int cull,bool opaque,bool *covered) {
-    check_surface_vertices(r,outline,quads,quadsCount,4,cull,opaque,covered);
+    const cubeSurfaceQuad_t *quads,int quadsCount,int cull,bool *covered) {
+    check_surface_vertices(r,outline,quads,quadsCount,4,cull,covered);
 }
 static int compare_point(guVector a,guVector b) {
     if(a.x!=b.x) return a.x<b.x?-1:1;
@@ -535,7 +547,7 @@ static void test_closed_cube(void) {
     guVector vertices[96]; int edgeCount=0,vertexCount=0;
     memset(mesh,0,sizeof(mesh)); memset(edges,0,sizeof(edges));
     buildCubeFaces(mesh,1,.78f,color);
-    buildChamferStrips(mesh+6,1,.78f,color); buildCubeCorners(mesh+18,1,.78f);
+    buildChamferStrips(mesh+6,1,.78f,color,NULL); buildCubeCorners(mesh+18,1,.78f);
     for(int f=0;f<26;f++) {
         int sides=f<18?4:3;
         guVector p=mesh[f].point[0],a=mesh[f].point[1],b=mesh[f].point[2];
@@ -556,14 +568,78 @@ static void test_closed_cube(void) {
                 !compare_point(edges[edge].b,to)) break;
             if(edge==edgeCount) {edges[edgeCount].a=from;edges[edgeCount++].b=to;}
             edges[edge].uses++;edges[edge].balance+=direction;
-            if(f>=18) CHECK(mesh[f].color[v].a>0&&mesh[f].color[v].a<=90&&
-                mesh[f].color[v].r<=160,"corner cap is missing or excessively bright");
         }
     }
     CHECK(vertexCount==24&&edgeCount==48&&vertexCount-edgeCount+26==2,
         "sealed cube changed geometry or topology");
     for(int edge=0;edge<edgeCount;edge++) CHECK(edges[edge].uses==2&&edges[edge].balance==0,
         "cube has an open boundary, overlapping face, or inconsistent winding");
+}
+/* The face a point lies on (cubeFaceAxes order), or -1 inside a bevel. */
+static int faceOfPoint(guVector p) {
+    if(p.z==-1) return 0;
+    if(p.x==-1) return 1;
+    if(p.x==1) return 2;
+    if(p.y==-1) return 3;
+    if(p.y==1) return 4;
+    return p.z==1?5:-1;
+}
+static bool sameColor(GXColor a,GXColor b) { return !memcmp(&a,&b,sizeof(a)); }
+/* The tint passes' mesh: faces, banded bevels and fanned corners close with
+ * no gap or flipped polygon, and every seam carries one colour on both
+ * sides, so the frame buffer has no colour step to stair. Points on a face
+ * take its tint; a bevel's inner rows take the edge tints. */
+static void test_seamless_mesh(void) {
+    static cubeSurfaceQuad_t mesh[6+36+72];
+    static struct {guVector a,b;GXColor ca,cb;int uses,balance;} edges[256];
+    static guVector vertices[128];
+    GXColor face[6],edge[6];
+    int edgeCount=0,vertexCount=0;
+    for(int f=0;f<6;f++) {
+        face[f]=(GXColor){(u8)(10+f),20,30,(u8)(40+f)};
+        edge[f]=(GXColor){(u8)(100+f),120,140,(u8)(160+f)};
+    }
+    buildCubeFaces(mesh,1,.78f,face);
+    buildChamferStrips(mesh+6,1,.78f,edge,face);
+    buildCornerFans(mesh+42,1,.78f,edge,face);
+    for(int f=0;f<114;f++) {
+        int sides=f<42?4:3;
+        guVector p=mesh[f].point[0],a=mesh[f].point[1],b=mesh[f].point[2];
+        a=(guVector){a.x-p.x,a.y-p.y,a.z-p.z};
+        b=(guVector){b.x-p.x,b.y-p.y,b.z-p.z};
+        guVector normal={a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};
+        CHECK(normal.x*p.x+normal.y*p.y+normal.z*p.z<0,"seamless mesh winding/degenerate polygon");
+        for(int v=0;v<sides;v++) {
+            guVector from=mesh[f].point[v],to=mesh[f].point[(v+1)%sides];
+            GXColor cFrom=mesh[f].color[v],cTo=mesh[f].color[(v+1)%sides];
+            int on=faceOfPoint(from),point=0;
+            if(on>=0) CHECK(sameColor(cFrom,face[on]),"a point on a face lost the face's tint");
+            else if(f<42) {
+                int tinted=0;
+                for(int g=0;g<6;g++) tinted+=sameColor(cFrom,edge[g]);
+                CHECK(tinted==1,"a bevel's inner row lost its edge tint");
+            }
+            for(;point<vertexCount;point++) if(!compare_point(vertices[point],from)) break;
+            if(point==vertexCount) { CHECK(vertexCount<128,"seamless mesh vertex budget"); vertices[vertexCount++]=from; }
+            int direction=compare_point(from,to);
+            CHECK(direction!=0,"seamless mesh zero-length edge");
+            if(direction>0) { guVector swap=from; GXColor tint=cFrom; from=to; to=swap; cFrom=cTo; cTo=tint; }
+            int at=0;
+            for(;at<edgeCount;at++) if(!compare_point(edges[at].a,from)&&!compare_point(edges[at].b,to)) break;
+            if(at==edgeCount) {
+                CHECK(edgeCount<256,"seamless mesh edge budget");
+                edges[edgeCount].a=from; edges[edgeCount].b=to;
+                edges[edgeCount].ca=cFrom; edges[edgeCount++].cb=cTo;
+            }
+            else CHECK(sameColor(edges[at].ca,cFrom)&&sameColor(edges[at].cb,cTo),
+                "a seam changes colour from one side to the other");
+            edges[at].uses++; edges[at].balance+=direction;
+        }
+    }
+    CHECK(vertexCount==80&&edgeCount==192&&vertexCount-edgeCount+114==2,
+        "seamless mesh changed geometry or topology");
+    for(int at=0;at<edgeCount;at++) CHECK(edges[at].uses==2&&edges[at].balance==0,
+        "seamless mesh has an open seam, an overlap or a flipped polygon");
 }
 static void test_chamfer_color_pairs(void) {
     const guVector points[4]={{-1,.78f,-.78f},{-1,.78f,.78f},
@@ -589,46 +665,65 @@ static void test_chamfer_color_pairs(void) {
 static void test_surfaces(void) {
     const GXColor colors[6]={{19,15,54,255},{28,20,76,255},{50,36,111,255},
         {24,18,64,255},{76,59,139,255},{44,31,102,255}};
-    cubeSurfaceQuad_t core[6],shell[6],strips[12],corners[8];
-    cubeOutline_t coreOutline,shellOutline;
+    static cubeSurfaceQuad_t shell[6],bevels[36],fans[72];
+    cubeOutline_t shellOutline;
     cubeRasterTransform_t r;
-    buildCubeFaces(core,.46f,.46f,colors);
     buildCubeFaces(shell,1,.78f,colors);
-    buildChamferStrips(strips,1,.78f,colors); buildCubeCorners(corners,1,.78f);
-    for(int q=0;q<12;q++) {
-        guVector p=strips[q].point[0],a=strips[q].point[1],b=strips[q].point[2];
+    buildChamferStrips(bevels,1,.78f,colors,colors); buildCornerFans(fans,1,.78f,colors,colors);
+    for(int q=0;q<36;q++) {
+        guVector p=bevels[q].point[0],a=bevels[q].point[1],b=bevels[q].point[2];
         a=(guVector){a.x-p.x,a.y-p.y,a.z-p.z};
         b=(guVector){b.x-p.x,b.y-p.y,b.z-p.z};
         guVector normal={a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};
         CHECK(normal.x*p.x+normal.y*p.y+normal.z*p.z<0,
             "bevel winding disagrees with clockwise exterior faces");
     }
+    /* Every pose in 4:3, then every other one through Menu Widescreen's
+     * squeeze: the silhouette still fades over exactly one frame pixel. */
     int poses=0;
-    for(int yaw=0;yaw<360;yaw+=30) for(int pitch=0;pitch<360;pitch+=30)
-    for(int roll=0;roll<180;roll+=45) for(int size=0;size<2;size++) {
-        surface_pose(&r,yaw*INDIGO_TAU/360,pitch*INDIGO_TAU/360,
-            roll*INDIGO_TAU/360,size?1.3f:.65f);
-        buildCubeOutline(&r,core,&coreOutline); buildCubeOutline(&r,shell,&shellOutline);
-        check_outline(&r,core,&coreOutline); check_outline(&r,shell,&shellOutline);
-        bool coreCovered[24]={false},shellCovered[24]={false};
-        check_surface_pass(&r,&coreOutline,core,6,GX_CULL_BACK,true,coreCovered);
-        check_surface_pass(&r,&shellOutline,strips,12,GX_CULL_FRONT,false,shellCovered);
-        check_surface_vertices(&r,&shellOutline,corners,8,3,GX_CULL_FRONT,false,shellCovered);
-        check_surface_pass(&r,&shellOutline,shell,6,GX_CULL_FRONT,false,shellCovered);
-        check_surface_pass(&r,&shellOutline,shell,6,GX_CULL_BACK,false,shellCovered);
-        check_surface_pass(&r,&shellOutline,strips,12,GX_CULL_BACK,false,shellCovered);
-        check_surface_vertices(&r,&shellOutline,corners,8,3,GX_CULL_BACK,false,shellCovered);
-        for(int i=0;i<coreOutline.count;i++) CHECK(coreCovered[i],"core silhouette has a coverage gap");
-        for(int i=0;i<shellOutline.count;i++) CHECK(shellCovered[i],"shell silhouette has a coverage gap");
-        ++poses;
+    for(int wide=0;wide<2;wide++) {
+        int step=wide?60:30;
+        pixelWidth=wide?4.0f/3:1; squeeze=wide?.75f:1;
+        for(int yaw=0;yaw<360;yaw+=step) for(int pitch=0;pitch<360;pitch+=step)
+        for(int roll=0;roll<180;roll+=45) for(int size=0;size<2;size++) {
+            surface_pose(&r,yaw*INDIGO_TAU/360,pitch*INDIGO_TAU/360,
+                roll*INDIGO_TAU/360,size?1.3f:.65f);
+            buildCubeOutline(&r,shell,&shellOutline);
+            check_outline(&r,shell,&shellOutline);
+            bool shellCovered[24]={false};
+            check_surface_pass(&r,&shellOutline,bevels,36,GX_CULL_FRONT,shellCovered);
+            check_surface_vertices(&r,&shellOutline,fans,72,3,GX_CULL_FRONT,shellCovered);
+            check_surface_pass(&r,&shellOutline,shell,6,GX_CULL_FRONT,shellCovered);
+            check_surface_pass(&r,&shellOutline,shell,6,GX_CULL_BACK,shellCovered);
+            check_surface_pass(&r,&shellOutline,bevels,36,GX_CULL_BACK,shellCovered);
+            check_surface_vertices(&r,&shellOutline,fans,72,3,GX_CULL_BACK,shellCovered);
+            for(int i=0;i<shellOutline.count;i++) CHECK(shellCovered[i],"shell silhouette has a coverage gap");
+            ++poses;
+        }
     }
-    CHECK(poses==1152,"full yaw/pitch/roll/scale sweep missing");
+    pixelWidth=1; squeeze=1;
+    CHECK(poses==1152+288,"full yaw/pitch/roll/scale sweep missing");
     guMtxIdentity(r.model); buildCubeOutline(&r,shell,&shellOutline);
     CHECK(shellOutline.count==0,"near-plane-invalid outline accepted");
 }
+/* What the viewer sees the glass at eye mirror: its reflectance times the
+ * studio's light where its ray lands, as the GPU reads it (0..255). */
+static int mirrored(const cubeRasterTransform_t *r,guVector eye,guVector n) {
+    GXColor cards[GLASS_LIGHTS],c;
+    float size=sqrtf(r->model[0][0]*r->model[0][0]+r->model[1][0]*r->model[1][0]+
+        r->model[2][0]*r->model[2][0]),s,t;
+    guVector offset={(eye.x-r->model[0][3])/size,(eye.y-r->model[1][3])/size,
+        (eye.z-r->model[2][3])/size};
+    int alpha=glassReflect(eye,n,offset,&s,&t),peak;
+    for(int i=0;i<GLASS_LIGHTS;i++) cards[i]=glassLights[i].color;
+    c=glassStudioLight(glassStudioDirection(s,t),cards);
+    peak=c.r>c.g?c.r:c.g;
+    if(c.b>peak) peak=c.b;
+    return alpha*peak/255;
+}
 static void check_glass_stream(const cubeRasterTransform_t *r,const cubeSurfaceQuad_t *quads,
     int quadsCount,int vertexCount,int *total) {
-    reset(false);
+    reset(true); studio=true;
     drawGlassReflection(r,quads,quadsCount,vertexCount,1.0f);
     CHECK(!active && matrixLoads==0,"reflection left a primitive open or moved the matrix");
     int sides=vertexCount==3?3:4;
@@ -642,7 +737,7 @@ static void check_glass_stream(const cubeRasterTransform_t *r,const cubeSurfaceQ
         for(int v=0;v<sides;v++) area+=p[v].x*p[(v+1)%sides].y-p[(v+1)%sides].x*p[v].y;
         /* GX culls clockwise-negative back faces: every reflection cell must face the camera. */
         CHECK(area<0.0f,"reflection cell faces away and would be culled");
-        CHECK(lit,"unlit reflection cell was drawn");
+        CHECK(lit,"a cell that reflects nothing was drawn");
         for(int v=0;v<sides;v++) {
             guVector q=positions[i+v];
             float m=fmaxf(fabsf(q.x),fmaxf(fabsf(q.y),fabsf(q.z)));
@@ -673,8 +768,19 @@ static void test_glass(void) {
     /* Only camera-facing glass reflects, and grazing glass fades out before
      * the silhouette rather than drawing a hard aliased rim. */
     guVector eye={0,0,-5},grazing={0.99995f,0,0.01f};
-    CHECK(glassReflection(eye,(guVector){0,0,-1}).a==0,"back-facing glass reflected");
-    CHECK(glassReflection(eye,grazing).a<=8,"grazing reflection is not faded");
+    surface_pose(&r,0,0,0,1);
+    CHECK(mirrored(&r,eye,(guVector){0,0,-1})==0,"back-facing glass reflected");
+    CHECK(mirrored(&r,eye,grazing)<=8,"grazing reflection is not faded");
+    /* The studio stands close: along a face, a point's ray lands further
+     * round the map the further it sits from the middle; out along the
+     * normal changes nothing. */
+    float s0,t0,s1,t1;
+    guVector view={1,0.5f,-4.4f},front={0,0,1};
+    glassReflect(view,front,(guVector){0,0,1},&s0,&t0);
+    glassReflect(view,front,(guVector){0.8f,0,1},&s1,&t1);
+    CHECK(s1>s0+0.02f && fabsf(t1-t0)<0.01f,"a face's side mirrors what its middle does");
+    glassReflect(view,front,(guVector){0,0,3},&s1,&t1);
+    CHECK(s1==s0 && t1==t0,"the studio moved with the glass's distance from the centre");
     /* At each Home face's rest pitch the front pane carries a gentle reflection
      * that brightens toward the key light on the right. */
     static const float restPitch[4]={0.09f,0.16f,0.0f,0.135f};
@@ -684,14 +790,15 @@ static void test_glass(void) {
         indigoPoint_t screen;
         CHECK(projectRailPoint(&r,-.7f,0,1,&left,&screen) && projectRailPoint(&r,.7f,0,1,&right,&screen) &&
             projectRailPoint(&r,0,0,1,&center,&screen),"front pane left the view");
-        int a=glassReflection(left,n).a,b=glassReflection(center,n).a,c=glassReflection(right,n).a;
+        int a=mirrored(&r,left,n),b=mirrored(&r,center,n),c=mirrored(&r,right,n);
         CHECK(a<b && b<c,"front reflection does not brighten toward the key");
         CHECK(b>=15 && c<=70,"front reflection is not gentle at rest");
     }
-    /* Every reflection cell is complete, camera-facing, lit and on the glass,
-     * within a bounded vertex budget, across the full pose sweep. */
+    /* Every reflection cell is complete, camera-facing, reflecting, on the
+     * glass and on the map, within a bounded vertex budget, across the full
+     * pose sweep. */
     cubeSurfaceQuad_t shell[6],strips[12],corners[8];
-    buildCubeFaces(shell,1,.78f,tint); buildChamferStrips(strips,1,.78f,tint);
+    buildCubeFaces(shell,1,.78f,tint); buildChamferStrips(strips,1,.78f,tint,NULL);
     buildCubeCorners(corners,1,.78f);
     int most=0;
     for(int yaw=0;yaw<360;yaw+=30) for(int pitch=0;pitch<360;pitch+=30)
@@ -703,13 +810,14 @@ static void test_glass(void) {
         check_glass_stream(&r,corners,8,3,&total);
         if(total>most) most=total;
     }
-    /* Measured 1,381 at the worst sweep pose; the video thread pays for each. */
-    CHECK(most>400 && most<=1600,"reflection vertex budget");
+    /* Measured 449 at the worst sweep pose (1,381 when the light was shaded
+     * per vertex); the video thread pays for each. */
+    CHECK(most>200 && most<=600,"reflection vertex budget");
 }
 int main(void) {
     test_dial(); test_rail_joins(); test_motifs(); test_controller(); test_rounded_outlines();
     test_icons_on_their_faces();
-    test_closed_cube(); test_chamfer_color_pairs(); test_surfaces(); test_glass();
+    test_closed_cube(); test_seamless_mesh(); test_chamfer_color_pairs(); test_surfaces(); test_glass();
     puts("native strokes: bounded complete GX streams, perspective coverage and closed seams");
     return 0;
 }
@@ -750,25 +858,34 @@ class StrokeGXStreamTests(unittest.TestCase):
         blocks += [extract_function(indigo, "static void buildCubeOutline(")]
         blocks += [extract_function(indigo, "static indigoPoint_t cubeOutlineNormal(")]
         blocks += [extract_function(indigo, "static bool cubeOutlineEdge(")]
+        blocks += [extract_function(indigo, "static guVector bevelCut(")]
         blocks += [extract_function(indigo, "static void " + name + "(") for name in (
-            "buildCubeFaces", "buildChamferStrip", "buildChamferStrips",
-            "buildCubeCorners", "drawCubeSurfacePassVertices", "drawCubeSurfacePass")]
+            "buildCubeFaces", "buildChamferStrip", "buildChamferBands", "buildChamferStrips",
+            "buildCubeCorners", "buildCornerFans", "drawCubeSurfacePassVertices",
+            "drawCubeSurfacePass")]
         blocks += [re.search(r"static const guVector cubeFaceAxes\[6\] = \{.*?\n\};",
+            indigo, re.S).group(0)]
+        blocks += [re.search(r"static const struct \{\n\tguVector direction;.*?\} glassLights\[\] = "
+            r"\{.*?\n\};", indigo, re.S).group(0)]
+        blocks += re.findall(r"^#define GLASS_(?:LIGHTS|STUDIO_REACH) .*$", indigo, re.M)
+        blocks += [re.search(r"typedef struct glassMirrorVertex \{.*?\} glassMirrorVertex_t;",
             indigo, re.S).group(0)]
         blocks += [extract_function(indigo, signature) for signature in (
             "static guVector cubeViewNormal(", "static void litCubeTints(",
-            "static float glassSmoothstep(", "static GXColor glassReflection(",
-            "static guVector glassVertexNormal(", "static bool glassSameNormal(",
-            "static bool glassCellLit(", "static guVector glassBilinear(",
-            "static void drawGlassReflection(")]
+            "static float glassSmoothstep(", "static GXColor glassStudioLight(",
+            "static void glassStudioCoords(", "static guVector glassStudioDirection(",
+            "static u8 glassReflect(", "static guVector glassVertexNormal(",
+            "static bool glassSameNormal(", "static guVector glassBilinear(",
+            "static void putGlassMirrorVertex(", "static void drawGlassReflection(")]
         blocks += [frame[frame.index("typedef struct systemDialPoint"):frame.index("static void _SetupRasterColor(")]]
         blocks += [extract_function(frame, "static void " + name + "(")
                    for name in ("_PutSystemDialVertex", "_DrawSystemRing")]
         cls.emitters="\n".join(blocks)
-        # The controller's sizing constants come from the source, never a copy.
+        # The controller's sizing constants and the bevels' seam blend come
+        # from the source, never a copy.
         cls.defines="\n".join(re.findall(
-            r"^#define (?:FACE_POLYGON_MAX|FACE_BAND_MAX|FACE_ARC_MAX|CONTROLLER_IDLE_HOLD) .*$",
-            indigo, re.MULTILINE))
+            r"^#define (?:FACE_POLYGON_MAX|FACE_BAND_MAX|FACE_ARC_MAX|CONTROLLER_IDLE_HOLD|"
+            r"BEVEL_SEAM_BLEND) .*$", indigo, re.MULTILINE))
         # The face and icon lists come from the source, never a copy.
         home=(GUI / "ui_home.h").read_text()
         cls.enums="\n".join([re.search(r"^#define UI_HOME_ICON_CHOICES \d+$", home, re.M).group(0)] +
@@ -792,22 +909,40 @@ class StrokeGXStreamTests(unittest.TestCase):
         draw = extract_function(self.indigo, "static void drawCube(")
         def check(source):
             calls = re.findall(r"drawCubeSurfacePass(?:Vertices)?\(&raster, &shellOutline, "
-                r"(\w+), (\d+), (?:(3|4), )?(GX_CULL_\w+), false\);", source)
+                r"(\w+), (\d+), (?:(3|4), )?(GX_CULL_\w+)\);", source)
             self.assertEqual(calls, [
-                ("strips", "12", "", "GX_CULL_FRONT"),
-                ("corners", "8", "3", "GX_CULL_FRONT"),
+                ("bevels", "36", "", "GX_CULL_FRONT"),
+                ("fans", "72", "3", "GX_CULL_FRONT"),
                 ("shell", "6", "", "GX_CULL_FRONT"),
                 ("shell", "6", "", "GX_CULL_BACK"),
-                ("strips", "12", "", "GX_CULL_BACK"),
-                ("corners", "8", "3", "GX_CULL_BACK")])
-            self.assertEqual(source.count("buildChamferStrips(strips, outer, inset, lit);"), 1)
+                ("bevels", "36", "", "GX_CULL_BACK"),
+                ("fans", "72", "3", "GX_CULL_BACK")])
+            # The refraction and the reflection shade the bare strips.
+            self.assertEqual(source.count("buildChamferStrips(strips, outer, inset, edge, NULL);"), 1)
+            # Each tint pass's bevels and corners are rebuilt in that pass's
+            # glass tints, so their seams match the faces they meet.
+            order = []
+            for tints in ("backGlassColors", "frontGlassColors"):
+                at = source.index("litCubeTints(&raster, " + tints + ", lit);")
+                order += [at, source.index("buildChamferStrips(bevels, outer, inset, ", at),
+                          source.index("buildCornerFans(fans, outer, inset, ", at),
+                          source.index("bevels, 36, ", at)]
+            self.assertEqual(order, sorted(order))
+            # The rear frame, seen through the glass, is at half the near
+            # bevels' opacity: depth, not a second wireframe.
+            self.assertIn("buildChamferStrips(bevels, outer, inset, rear, lit);", source)
+            self.assertIn("buildCornerFans(fans, outer, inset, rear, lit);", source)
+            self.assertIn("rear[face] = edge[face];\n\t\trear[face].a /= 2;", source)
         check(draw)
         # Both complete mesh passes must use current facing, not an object-axis split.
-        for old,new in [("strips, 12, GX_CULL_FRONT", "strips, 8, GX_CULL_NONE"),
-                        ("strips, 12, GX_CULL_BACK", "strips, 4, GX_CULL_NONE"),
-                        ("strips, 12, GX_CULL_FRONT", "strips, 12, GX_CULL_BACK"),
-                        ("corners, 8, 3, GX_CULL_FRONT", "corners, 8, 3, GX_CULL_BACK")]:
-            with self.subTest(mutant=new), self.assertRaises(AssertionError):
+        for old,new in [("bevels, 36, GX_CULL_FRONT", "bevels, 24, GX_CULL_NONE"),
+                        ("bevels, 36, GX_CULL_BACK", "bevels, 12, GX_CULL_NONE"),
+                        ("bevels, 36, GX_CULL_FRONT", "bevels, 36, GX_CULL_BACK"),
+                        ("fans, 72, 3, GX_CULL_FRONT", "fans, 72, 3, GX_CULL_BACK"),
+                        ("\tbuildChamferStrips(bevels, outer, inset, edge, lit);\n\tbuildCornerFans(fans, outer, inset, edge, lit);\n\tdrawCubeSurfacePass(&raster, &shellOutline, shell, 6, GX_CULL_BACK",
+                         "\tdrawCubeSurfacePass(&raster, &shellOutline, shell, 6, GX_CULL_BACK"),
+                        ("rear[face].a /= 2;", "rear[face].a /= 1;")]:
+            with self.subTest(mutant=new), self.assertRaises((AssertionError, ValueError)):
                 check(draw.replace(old,new,1))
 
     def run_emitters(self, emitters):
@@ -823,7 +958,7 @@ class StrokeGXStreamTests(unittest.TestCase):
             return subprocess.run([str(binary)],capture_output=True,text=True,timeout=5)
 
     def test_controller_defines_come_from_the_source(self):
-        self.assertEqual(self.defines.count("#define"), 4)
+        self.assertEqual(self.defines.count("#define"), 5)
 
     def test_native_emitters(self):
         result=self.run_emitters(self.emitters)
@@ -835,6 +970,10 @@ class StrokeGXStreamTests(unittest.TestCase):
                 "if(color.a == 254) GX_TexCoord2f32(0.0f, 0.0f);"),
             "opaque fringe": ("if(band == 0) a.a = 0;", "if(band == 0) a.a = color.a;"),
             "depth-dependent width": ("join.x * offset * -eye.z", "join.x * offset * 5.4f"),
+            "joins mitred in stage units": ("float across = UIStage_PixelWidth();\n\tfloat ax",
+                "float across = 1.0f;\n\tfloat ax"),
+            "silhouette normal in stage units": ("float across = UIStage_PixelWidth();\n\t\tfloat pixels",
+                "float across = 1.0f;\n\t\tfloat pixels"),
             "changed depth": ("/ raster->scaleY, eye.z, color)", "/ raster->scaleY, eye.z - 0.1f, color)"),
             "matrix restore": ("GX_LoadPosMtxImm(raster->model, GX_PNMTX0);", "GX_LoadPosMtxImm(identity, GX_PNMTX0);"),
             "opaque semantic fringe": ("transparent.a = 0;", "transparent.a = color.a;"),
@@ -852,9 +991,6 @@ class StrokeGXStreamTests(unittest.TestCase):
                 "putCubeVertex(p.x + 0.01f, p.y, p.z, quads[quad].color[vertex]);"),
             "silhouette source gradient": ("edge->color[1] = quads[quad].color[next];",
                 "edge->color[1] = quads[quad].color[vertex];"),
-            "silhouette opaque depth restoration": (
-                "GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_TRUE);",
-                "GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);"),
             "interior silhouette fringe": (
                 "fabsf(outlineCross(p, q, a)) / length > 0.005f ||\n\t\t\t"
                 "fabsf(outlineCross(p, q, b)) / length > 0.005f ||", "false ||"),
@@ -872,6 +1008,16 @@ class StrokeGXStreamTests(unittest.TestCase):
             "corner reversed winding": ("x * y * z > 0.0f", "x * y * z < 0.0f"),
             "detached cap": ("x * outer, y * inset, z * inset", "x * outer, y * inset, z * inset + 0.01f"),
             "triangle primitive": ("vertexCount == 3 ? GX_TRIANGLES : GX_QUADS", "GX_QUADS"),
+            "seam takes the edge tint": ("a1.x, a1.y, a1.z, face[faceA], edge[faceA]);",
+                "a1.x, a1.y, a1.z, edge[faceA], edge[faceA]);"),
+            "inner row takes the face tint": ("d1.x, d1.y, d1.z, edge[faceA], edge[faceB]);",
+                "d1.x, d1.y, d1.z, face[faceA], edge[faceB]);"),
+            "corner fan misses a bevel's cut": ("rim[k * 3 + 2] = bevelCut(p[next], p[k]);",
+                "rim[k * 3 + 2] = bevelCut(p[k], p[next]);"),
+            "corner fan's corner takes another face's tint": ("tint[k * 3] = face[on[k]];",
+                "tint[k * 3] = face[on[next]];"),
+            "corner fan reversed winding": ("\t\tif(x * y * z > 0.0f) {\n\t\t\tguVector point = p[1];",
+                "\t\tif(x * y * z < 0.0f) {\n\t\t\tguVector point = p[1];"),
             "triangle count": ("count * vertexCount);", "count * 4);"),
             "bevel reversed winding": (
                 "normal.x * ax + normal.y * ay + normal.z * az > 0.0f",
@@ -890,8 +1036,12 @@ class StrokeGXStreamTests(unittest.TestCase):
             "back-facing reflection": ("if(area >= -0.001f) continue;", "if(area >= 1e30f) continue;"),
             "reversed reflection cells": ("{{0, 0}, {1, 0}, {1, 1}, {0, 1}}",
                 "{{0, 0}, {0, 1}, {1, 1}, {1, 0}}"),
-            "unlit reflection cells": ("if(!glassCellLit(color, first, STEPS + 1)) continue;", ""),
-            "unlit corner reflection": ("if((color[0].a | color[1].a | color[2].a) == 0) continue;", ""),
+            "dark reflection cells": ("\t\t\tif((first[0].alpha | first[1].alpha | first[GRID].alpha | "
+                "first[GRID + 1].alpha) == 0)\n\t\t\t\tcontinue;\n", ""),
+            "studio stands far": ("#define GLASS_STUDIO_REACH 3.0f", "#define GLASS_STUDIO_REACH 3000.0f"),
+            "studio follows the glass out along its normal": (
+                "float out = offset.x * n.x + offset.y * n.y + offset.z * n.z;", "float out = 0.0f;"),
+            "studio map upside down": ("*t = 0.5f - r.y / m;", "*t = 0.5f + r.y / m;"),
         }
         for name,(old,new) in mutants.items():
             with self.subTest(name=name):
