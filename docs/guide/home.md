@@ -81,7 +81,7 @@ never plays by itself. UI Motion is in Settings › Quick.
   temperature has no factory calibration; adjust it in Settings › Setup ›
   Console › CPU Temperature Calibration.
 - **Bottom:** the buttons that work here.
-- **Music and sounds:** Indigo plays its own ambient loop and soft navigation
+- **Music and sounds:** Indigo plays its own menu music and soft navigation
   sounds. Turn either off in Settings › Quick.
 - **START:** shows your recently played games, when Settings › Setup ›
   Library › Recent List is on.

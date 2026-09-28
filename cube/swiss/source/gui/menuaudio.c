@@ -1,10 +1,9 @@
 #include <gccore.h>
-#include <ogc/cache.h>
+#include <ogc/lwp.h>
+#include <ogc/message.h>
 #include <aesndlib.h>
 #include <mad.h>
-#include <limits.h>
 #include <malloc.h>
-#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include "swiss.h"
@@ -17,8 +16,23 @@
 
 #define SR                  32000
 #define VOL_UNITY           256
-#define PCM_INITIAL_SAMPLES (1u << 20)
-#define MIN_LOOP_FRAMES     (SR / 10)
+
+// The menu music streams. A decoder thread turns the bundled MP3 into blocks
+// and the music voice's stream callback plays them, so only a few blocks of
+// PCM are ever in memory however long the piece is. AESND copies a voice's
+// buffer in DSP_STREAMBUFFER_SIZE chunks and pads a short last chunk with
+// silence, so a block is exactly one MP3 frame of 16-bit stereo: 4608 bytes,
+// four whole chunks.
+#define MUSIC_FRAME_SAMPLES 1152
+#define MUSIC_BLOCK_BYTES   (MUSIC_FRAME_SAMPLES * 2 * sizeof(s16))
+#define MUSIC_BLOCKS        8     // about 290 ms queued at 32 kHz
+#define MUSIC_PRIME_FRAMES  3     // decoded and dropped after a seek: bit reservoir, overlap
+#define MUSIC_STACK_SIZE    16384
+#define MUSIC_PRIORITY      80    // above the menus, like libaesnd's own MP3 player
+
+_Static_assert(sizeof(menu_music_mp3) >= MENU_MUSIC_MP3_LEN + MAD_BUFFER_GUARD,
+               "libmad reads MAD_BUFFER_GUARD bytes past the last frame");
+_Static_assert(MENU_MUSIC_LOOP_START < MENU_MUSIC_LOOP_END, "the loop must have a length");
 
 static bool inited = false;
 static bool musicPlaying = false;
@@ -26,14 +40,21 @@ static bool suspended = false;
 static bool resumeMusic = false;
 static AESNDPB *musicVoice = NULL;
 static AESNDPB *sfxVoice = NULL;
-static s16 *musicBuf = NULL;
-static u32 musicBytes = 0;
-static u32 musicFormat = VOICE_STEREO16;
-static int musicRate = SR;
 static s16 *blipBuf = NULL;
 static u32 blipBytes = 0;
 static s16 *selBuf = NULL;
 static u32 selBytes = 0;
+
+static s16 musicBlocks[MUSIC_BLOCKS][MUSIC_FRAME_SAMPLES * 2] ATTRIBUTE_ALIGN(32);
+static struct mad_stream musicStream;
+static struct mad_frame musicFrame;
+static struct mad_synth musicSynth;
+static u8 musicStack[MUSIC_STACK_SIZE] ATTRIBUTE_ALIGN(8);
+static lwp_t musicThread = LWP_THREAD_NULL;
+static mqbox_t musicFree = MQ_BOX_NULL;
+static mqbox_t musicReady = MQ_BOX_NULL;
+static s16 *musicHeld = NULL;           // the block the voice is copying from
+static volatile bool musicRun = false;
 
 static s16 clamp16(double v) {
 	if(v > 32767.0) return 32767;
@@ -48,137 +69,127 @@ static s16 mf2s16(mad_fixed_t f) {
 	return (s16)(f >> (MAD_F_FRACBITS + 1 - 16));
 }
 
-static bool grow_pcm(s16 **buf, u32 *capacity, u32 used, u32 needed) {
-	u32 nextCapacity = *capacity ? *capacity : PCM_INITIAL_SAMPLES;
-	while(nextCapacity < needed) {
-		if(nextCapacity > UINT_MAX / 2) {
-			nextCapacity = needed;
-			break;
-		}
-		nextCapacity *= 2;
-	}
-	if(nextCapacity > UINT_MAX / sizeof(**buf)) return false;
+// Point the decoder at an MP3 frame. The bundled stream is constant bitrate
+// with no tags (buildtools/audio/make_header.py checks), so frame n starts at
+// n * MENU_MUSIC_FRAME_BYTES.
+static void music_seek(u32 frame) {
+	u32 offset = frame * MENU_MUSIC_FRAME_BYTES;
+	mad_stream_buffer(&musicStream, menu_music_mp3 + offset,
+	                  MENU_MUSIC_MP3_LEN - offset + MAD_BUFFER_GUARD);
+	mad_frame_mute(&musicFrame);
+	mad_synth_mute(&musicSynth);
+}
 
-	s16 *next = memalign(32, (size_t)nextCapacity * sizeof(*next));
-	if(!next) return false;
-	if(*buf && used) memcpy(next, *buf, (size_t)used * sizeof(*next));
-	free(*buf);
-	*buf = next;
-	*capacity = nextCapacity;
+// The intro plays once; then [loop_start, loop_end) repeats. Positions count
+// decoded samples from the start of the stream, so a seek lands a few frames
+// early and drops them until the decoder's history is whole again.
+static void *music_decode(void *arg) {
+	(void)arg;
+	u32 next = 0;
+	u32 fill = 0;
+	s16 *block = NULL;
+
+	mad_stream_init(&musicStream);
+	mad_frame_init(&musicFrame);
+	mad_synth_init(&musicSynth);
+	music_seek(0);
+	while(musicRun) {
+		bool wrap = false;
+		if(mad_frame_decode(&musicFrame, &musicStream)) {
+			if(MAD_RECOVERABLE(musicStream.error)) continue;
+			wrap = true;    // the end of the data, or a broken stream
+		}
+		else {
+			u32 first = (u32)(musicStream.this_frame - menu_music_mp3) / MENU_MUSIC_FRAME_BYTES * MUSIC_FRAME_SAMPLES;
+			mad_synth_frame(&musicSynth, &musicFrame);
+			const struct mad_pcm *pcm = &musicSynth.pcm;
+			int right = pcm->channels > 1;
+			for(u32 i = 0; i < pcm->length; i++) {
+				u32 at = first + i;
+				if(at < next) continue;
+				if(at >= MENU_MUSIC_LOOP_END) {
+					wrap = true;
+					break;
+				}
+				if(!block) {
+					mqmsg_t msg = NULL;
+					MQ_Receive(musicFree, &msg, MQ_MSG_BLOCK);
+					if(!msg || !musicRun) goto out;
+					block = msg;
+					fill = 0;
+				}
+				block[fill * 2] = mf2s16(pcm->samples[0][i]);
+				block[fill * 2 + 1] = mf2s16(pcm->samples[right][i]);
+				next = at + 1;
+				if(++fill == MUSIC_FRAME_SAMPLES) {
+					MQ_Send(musicReady, block, MQ_MSG_BLOCK);
+					block = NULL;
+				}
+			}
+		}
+		if(wrap) {
+			u32 frame = MENU_MUSIC_LOOP_START / MUSIC_FRAME_SAMPLES;
+			next = MENU_MUSIC_LOOP_START;
+			music_seek(frame > MUSIC_PRIME_FRAMES ? frame - MUSIC_PRIME_FRAMES : 0);
+		}
+	}
+out:
+	mad_synth_finish(&musicSynth);
+	mad_frame_finish(&musicFrame);
+	mad_stream_finish(&musicStream);
+	return NULL;
+}
+
+// AESND asks for the next buffer once it has copied the whole current one, so
+// the block it held goes straight back to the decoder. With nothing ready the
+// voice plays silence and asks again on the next request.
+static void music_voice(AESNDPB *pb, u32 state) {
+	if(state != VOICE_STATE_STREAM) return;
+	mqmsg_t msg = NULL;
+	if(musicHeld) MQ_Send(musicFree, musicHeld, MQ_MSG_NOBLOCK);
+	musicHeld = NULL;
+	if(MQ_Receive(musicReady, &msg, MQ_MSG_NOBLOCK) && msg) {
+		musicHeld = msg;
+		AESND_SetVoiceBuffer(pb, musicHeld, MUSIC_BLOCK_BYTES);
+	}
+}
+
+static bool start_decoder(void) {
+	if(musicThread != LWP_THREAD_NULL) return true;
+	// One spare slot in each box, so the stop message always fits.
+	if(MQ_Init(&musicFree, MUSIC_BLOCKS + 1) < 0) return false;
+	if(MQ_Init(&musicReady, MUSIC_BLOCKS + 1) < 0) {
+		MQ_Close(musicFree);
+		musicFree = MQ_BOX_NULL;
+		return false;
+	}
+	for(int i = 0; i < MUSIC_BLOCKS; i++) MQ_Send(musicFree, musicBlocks[i], MQ_MSG_BLOCK);
+	musicHeld = NULL;
+	musicRun = true;
+	if(LWP_CreateThread(&musicThread, music_decode, NULL, musicStack, MUSIC_STACK_SIZE, MUSIC_PRIORITY) < 0) {
+		musicRun = false;
+		musicThread = LWP_THREAD_NULL;
+		MQ_Close(musicFree);
+		MQ_Close(musicReady);
+		musicFree = musicReady = MQ_BOX_NULL;
+		return false;
+	}
 	return true;
 }
 
-// Decode the bundled MP3 into an aligned, interleaved s16 buffer. libmad may
-// read MAD_BUFFER_GUARD bytes past the final frame, so decode from a padded
-// copy rather than directly from the compiled-in array.
-static s16 *decode_mp3(const unsigned char *mp3, u32 mp3len, u32 *outFrames, int *outCh, int *outRate) {
-	struct mad_stream stream;
-	struct mad_frame frame;
-	struct mad_synth synth;
-	s16 *out = NULL;
-	unsigned char *guarded = NULL;
-	u32 capacity = 0;
-	u32 count = 0;
-	int channels = 0;
-	int rate = 0;
-	bool failed = false;
-
-	*outFrames = 0;
-	*outCh = 0;
-	*outRate = 0;
-	if(!mp3 || !mp3len || mp3len > UINT_MAX - MAD_BUFFER_GUARD) return NULL;
-
-	guarded = malloc((size_t)mp3len + MAD_BUFFER_GUARD);
-	if(!guarded) return NULL;
-	memcpy(guarded, mp3, mp3len);
-	memset(guarded + mp3len, 0, MAD_BUFFER_GUARD);
-
-	mad_stream_init(&stream);
-	mad_frame_init(&frame);
-	mad_synth_init(&synth);
-	mad_stream_buffer(&stream, guarded, mp3len + MAD_BUFFER_GUARD);
-
-	for(;;) {
-		if(mad_frame_decode(&frame, &stream)) {
-			if(stream.error == MAD_ERROR_BUFLEN) break;
-			if(MAD_RECOVERABLE(stream.error)) continue;
-			failed = true;
-			break;
-		}
-
-		mad_synth_frame(&synth, &frame);
-		int frameChannels = synth.pcm.channels;
-		int frameRate = synth.pcm.samplerate;
-		u32 frameSamples = synth.pcm.length;
-		if((frameChannels != 1 && frameChannels != 2) || frameRate <= 0 ||
-		   (channels && (channels != frameChannels || rate != frameRate)) ||
-		   frameSamples > (UINT_MAX - count) / frameChannels) {
-			failed = true;
-			break;
-		}
-		channels = frameChannels;
-		rate = frameRate;
-
-		u32 needed = count + frameSamples * frameChannels;
-		if(needed > capacity && !grow_pcm(&out, &capacity, count, needed)) {
-			failed = true;
-			break;
-		}
-		for(u32 i = 0; i < frameSamples; i++) {
-			out[count++] = mf2s16(synth.pcm.samples[0][i]);
-			if(frameChannels == 2) out[count++] = mf2s16(synth.pcm.samples[1][i]);
-		}
-	}
-
-	mad_synth_finish(&synth);
-	mad_frame_finish(&frame);
-	mad_stream_finish(&stream);
-	free(guarded);
-
-	if(failed || !out || !channels || !count) {
-		free(out);
-		return NULL;
-	}
-
-	*outFrames = count / channels;
-	*outCh = channels;
-	*outRate = rate;
-	return out;
-}
-
-// Trim MP3 encoder delay/padding, then overlap the tail into the head so the
-// voice wraps without a click.
-static u32 make_seamless(s16 *buf, u32 frames, int channels) {
-	const int threshold = 120;
-	u32 head = 0;
-	u32 tail = frames;
-	while(head < frames) {
-		int left = abs(buf[head * channels]);
-		int right = channels > 1 ? abs(buf[head * channels + 1]) : left;
-		if(left > threshold || right > threshold) break;
-		head++;
-	}
-	while(tail > head) {
-		u32 i = tail - 1;
-		int left = abs(buf[i * channels]);
-		int right = channels > 1 ? abs(buf[i * channels + 1]) : left;
-		if(left > threshold || right > threshold) break;
-		tail--;
-	}
-
-	u32 length = tail - head;
-	if(head && length) memmove(buf, buf + (size_t)head * channels, (size_t)length * channels * sizeof(*buf));
-	u32 crossfade = 1600;
-	if(crossfade > length / 4) crossfade = length / 4;
-	for(u32 i = 0; i < crossfade; i++) {
-		float weight = (float)i / crossfade;
-		for(int channel = 0; channel < channels; channel++) {
-			float headSample = buf[(size_t)i * channels + channel];
-			float tailSample = buf[((size_t)length - crossfade + i) * channels + channel];
-			buf[(size_t)i * channels + channel] = (s16)(headSample * weight + tailSample * (1.0f - weight));
-		}
-	}
-	return length - crossfade;
+// Call with the music voice stopped: nothing else touches the boxes then.
+static void stop_decoder(void) {
+	if(musicThread == LWP_THREAD_NULL) return;
+	musicRun = false;
+	MQ_Send(musicFree, NULL, MQ_MSG_NOBLOCK);    // wakes a decoder waiting for a block
+	mqmsg_t msg;
+	while(MQ_Receive(musicReady, &msg, MQ_MSG_NOBLOCK));    // frees one waiting to queue
+	LWP_JoinThread(musicThread, NULL);
+	musicThread = LWP_THREAD_NULL;
+	MQ_Close(musicFree);
+	MQ_Close(musicReady);
+	musicFree = musicReady = MQ_BOX_NULL;
+	musicHeld = NULL;
 }
 
 static s16 *synth_tone(double freq, double duration, double decay, double amp, u32 *outBytes) {
@@ -224,43 +235,33 @@ static s16 *synth_chime(u32 *outBytes) {
 	return buf;
 }
 
-static bool prepare_music(void) {
-	if(musicBuf && musicBytes) return true;
-
-	u32 frames = 0;
-	int channels = 0;
-	int rate = 0;
-	s16 *pcm = decode_mp3(menu_music_mp3, menu_music_mp3_len, &frames, &channels, &rate);
-	if(!pcm || frames < MIN_LOOP_FRAMES) {
-		free(pcm);
-		return false;
-	}
-	u32 loopFrames = make_seamless(pcm, frames, channels);
-	if(loopFrames < MIN_LOOP_FRAMES || loopFrames > UINT_MAX / (channels * sizeof(*pcm))) {
-		free(pcm);
-		return false;
-	}
-
-	musicBuf = pcm;
-	musicBytes = loopFrames * channels * sizeof(*pcm);
-	musicFormat = channels == 2 ? VOICE_STEREO16 : VOICE_MONO16;
-	musicRate = rate;
-	DCFlushRange(musicBuf, musicBytes);
-	return true;
-}
-
 static void start_music(void) {
-	if(!inited || suspended || musicPlaying || swissSettings.disableMenuMusic || !prepare_music()) return;
-	if(!musicVoice) musicVoice = AESND_AllocateVoice(NULL);
-	if(!musicVoice) return;
-	AESND_SetVoiceVolume(musicVoice, (VOL_UNITY * 3) / 5, (VOL_UNITY * 3) / 5);
-	AESND_PlayVoice(musicVoice, musicFormat, musicBuf, musicBytes, musicRate, 0, true);
+	if(!inited || suspended || musicPlaying || swissSettings.disableMenuMusic) return;
+	if(!musicVoice) {
+		musicVoice = AESND_AllocateVoice(music_voice);
+		if(!musicVoice) return;
+		AESND_SetVoiceStream(musicVoice, true);
+		AESND_SetVoiceFormat(musicVoice, VOICE_STEREO16);
+		AESND_SetVoiceFrequency(musicVoice, MENU_MUSIC_RATE);
+		AESND_SetVoiceVolume(musicVoice, (VOL_UNITY * 3) / 5, (VOL_UNITY * 3) / 5);
+	}
+	if(!start_decoder()) return;
+	AESND_SetVoiceStop(musicVoice, false);
 	musicPlaying = true;
 }
 
-static void stop_music(void) {
+// Pausing keeps the decoder where it is; stopping for good starts the music
+// over, intro first, the next time it plays.
+static void pause_music(void) {
 	if(musicVoice && musicPlaying) AESND_SetVoiceStop(musicVoice, true);
 	musicPlaying = false;
+}
+
+static void stop_music(void) {
+	pause_music();
+	stop_decoder();
+	// Forget the block the voice held: it belongs to the next decoder now.
+	if(musicVoice) AESND_SetVoiceBuffer(musicVoice, NULL, 0);
 }
 
 void menuaudio_init(void) {
@@ -290,7 +291,7 @@ void menuaudio_suspend(void) {
 	if(!inited || suspended) return;
 	resumeMusic = musicPlaying;
 	suspended = true;
-	stop_music();
+	pause_music();
 	if(sfxVoice) AESND_SetVoiceStop(sfxVoice, true);
 }
 
@@ -312,13 +313,10 @@ bool menuaudio_shutdown(void) {
 	musicPlaying = false;
 	suspended = false;
 	resumeMusic = false;
-	free(musicBuf);
 	free(blipBuf);
 	free(selBuf);
-	musicBuf = NULL;
 	blipBuf = NULL;
 	selBuf = NULL;
-	musicBytes = 0;
 	blipBytes = 0;
 	selBytes = 0;
 	inited = false;

@@ -71,9 +71,10 @@ solid instead of letting the backdrop show through.
 
 ## Music and sounds
 
-Settings › Quick has **Menu Music**, Indigo's own ambient loop, and **Menu
-Sounds**, the soft sounds as you move and choose. Music changes the moment
-you switch it.
+Settings › Quick has **Menu Music** and **Menu Sounds**, the soft sounds as
+you move and choose. The music is an arrangement of "Up in the Sky" by
+Memoraphile (CC0): a quiet intro, then a section that loops. It starts or
+stops the moment you switch it, and starts again from the intro.
 
 ---
 
