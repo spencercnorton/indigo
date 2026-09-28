@@ -8,10 +8,10 @@ Changes land under `## Unreleased` until the release names them.
 
 ### Menu music
 
-- New menu music: an arrangement of "Up in the Sky" (Memoraphile, CC0) with
-  glass chimes written on its own beat and chords, mastered at the console's
-  32 kHz through the GameCube's own DSP-ADPCM compression. A quiet intro plays
-  once, then an 85-second section loops without a seam.
+- New menu music: "Up in the Sky" by Memoraphile (CC0), given the console's
+  sound: the GameCube's 32 kHz, a gentle top end and its own DSP-ADPCM
+  compression. The track's quiet intro plays once, then an 85-second section
+  loops without a seam.
 - The music streams: a decoder thread feeds the audio DSP a frame at a time,
   so the two-minute piece takes less memory than the old 16-second loop,
   which decoded 2 MB of sound up front. The DOL grows by 1.1 MB, the MP3.

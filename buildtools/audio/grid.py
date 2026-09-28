@@ -1,4 +1,4 @@
-"""Beat grid and per-bar chord tones of the source track (they place mix.py's chimes).
+"""Beat grid of the source track: mix.py loops 32 of its bars.
 
 usage: grid.py source.wav grid.json
 """
@@ -50,18 +50,5 @@ down = int(np.argmax(phase_score))
 bars = beats[down::4]
 print("downbeat phase", down, [round(s, 2) for s in phase_score], "bars", len(bars), "first bar", round(bars[0], 3))
 
-# Per-bar chroma -> top pitch classes (chord tones).
-pitch = 12 * np.log2(np.maximum(f, 1) / 440) + 69
-pc = np.round(pitch).astype(int) % 12
-names = "C C# D D# E F F# G G# A A# B".split()
-harm = (f > 80) & (f < 1500)
-chords = []
-for b0, b1 in zip(bars[:-1], bars[1:]):
-    a, z = int(b0 * fps), int(b1 * fps)
-    seg = S[:, a:z]
-    ch = np.array([seg[harm & (pc == k)].sum() for k in range(12)])
-    ch = ch / (ch.max() + 1e-9)
-    top = [int(k) for k in np.argsort(ch)[::-1][:4] if ch[k] > 0.45]
-    chords.append({"t": round(float(b0), 4), "pcs": top, "names": [names[k] for k in top]})
-json.dump({"bpm": bpm, "beat": beat, "first_beat": first, "bars": [float(b) for b in bars], "chords": chords},
+json.dump({"bpm": bpm, "beat": beat, "first_beat": first, "bars": [float(b) for b in bars]},
           open(sys.argv[2], "w"), indent=1)

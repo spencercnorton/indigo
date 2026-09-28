@@ -32,7 +32,7 @@ Third-party components redistributed in this tree:
 
   Up in the Sky — https://opengameart.org/content/up-in-the-sky
     Music by Memoraphile, released under CC0 1.0 (also offered under CC-BY 4.0
-    and OGA-BY 3.0). The menu music is an arrangement of it for Indigo; see
+    and OGA-BY 3.0). Indigo's menu music is made from it; see
     buildtools/audio/README.md.
 
   XZ Embedded, and the other upstream third-party sources under cube/, carry

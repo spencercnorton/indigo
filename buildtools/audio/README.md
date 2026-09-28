@@ -15,19 +15,21 @@ under CC-BY 4.0 and OGA-BY 3.0). The file used:
 | --- | --- |
 | `Memoraphile - Up in the Sky.wav` (48 kHz stereo, 197.6 s) | `d216756ca636f91c57cf9ee3148c8912c4368c0271153fbae43c6646dfc304f5` |
 
-## What the arrangement adds
+## What Indigo does to it
+
+Nothing is added to the music: `mix.py` gives it the console's sound and a loop.
 
 - **Structure:** the first 30 s (the track's quiet intro) play once, then 32
-  bars from 30.0 s to 114.7 s loop. The last 0.35 s of the loop is
-  crossfaded into what precedes its start, so the wrap is seamless.
-- **Glass chimes:** FM bells composed on the track's own beat grid (90.66 BPM)
-  and each bar's chord tones (`grid.py` finds both), with a ping-pong echo and
-  a plate reverb. A single shimmer every other bar during the intro.
-- **The console's sound:** 32 kHz, the GameCube's native rate, and a round
-  trip through DSP-ADPCM (`dspadpcm.c`), the 4-bit compression GameCube games
-  stream their music in.
-- `mix.py` also makes two other versions: `light` (fewer, quieter chimes) and
-  `memory` (slowed 8 % with a hall reverb).
+  bars from 30.0 s to 114.7 s loop (the bars come from `grid.py`, which finds
+  the track's beat, 90.66 BPM). The loop's last 0.35 s is crossfaded into what
+  precedes its start, and after everything else its last 50 ms blend into the
+  samples just before its start, so the wrap is seamless.
+- **The console's sound:** 32 kHz, the GameCube's native rate, a gentle top
+  end (13 kHz), and a round trip through DSP-ADPCM (`dspadpcm.c`), the 4-bit
+  compression GameCube games stream their music in.
+- One second of the loop's start follows its end in the file. The player
+  jumps back before it plays it; it is there so the MP3 encoder shapes the
+  loop's last frames knowing what follows.
 
 ## Making it again
 
@@ -38,7 +40,7 @@ C compiler.
 cd buildtools/audio
 cc -O2 -o dspadpcm dspadpcm.c -lm
 python3 grid.py "Memoraphile - Up in the Sky.wav" grid.json   # optional: grid.json is committed
-python3 mix.py "Memoraphile - Up in the Sky.wav" grid.json crystal menu.wav
+python3 mix.py "Memoraphile - Up in the Sky.wav" grid.json menu.wav
 python3 make_header.py menu.wav menu.wav.json
 ```
 
