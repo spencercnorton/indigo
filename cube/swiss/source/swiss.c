@@ -2462,7 +2462,9 @@ void load_app(ExecutableFile *fileToPatch)
 	uiDrawObj_t* progBox = NULL;
 	const char* message = NULL;
 	char* gameID = VAR_AREA;
-	void* buffer;
+	/* NULL until something is read: a BS2 that can't be read goes to fail
+	 * and frees it without ever setting it. */
+	void* buffer = NULL;
 	u32 sizeToRead;
 	int type;
 	char* argz = NULL;
