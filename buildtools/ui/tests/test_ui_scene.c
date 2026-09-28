@@ -242,16 +242,28 @@ static void testContextAndSceneReturns(void)
 	turn(&home, UI_HOME_INPUT_DOWN); settle(0.02f, UI_MOTION_FULL);
 	CHECK(home.face == UI_HOME_FACE_SOURCE);
 	float target[9]; memcpy(target, UIScene_Frame()->homeOrientation, sizeof(target));
+	/* The Source face's short list is Home's: its rows tilt the cube. */
 	UIHome_Apply(&home, UI_HOME_INPUT_ACTIVATE, caps); UIScene_RequestHome(&home);
-	UIScene_Request(UI_SCENE_SOURCE); settle(0.02f, UI_MOTION_FULL);
+	settle(0.02f, UI_MOTION_FULL);
 	float rowY = UIScene_Frame()->cubeY, rowPitch = UIScene_Frame()->cubePitch;
+	float rowScale = UIScene_Frame()->cubeScale;
 	UIHome_Apply(&home, UI_HOME_INPUT_DOWN, caps); UIScene_RequestHome(&home);
 	settle(0.02f, UI_MOTION_FULL);
 	CHECK(UIScene_Frame()->homeSelection == 1);
 	CHECK(UIScene_Frame()->cubeY < rowY && UIScene_Frame()->cubePitch > rowPitch);
 	matrixNear(&UIScene_Frame()->homeOrientation[0][0], target, 0.0f);
-	UIHome_Apply(&home, UI_HOME_INPUT_BACK, caps); UIScene_RequestHome(&home);
+	/* Change Source's picker lifts the cube, smaller, above its row of
+	 * devices, still on the Source face; leaving it puts the cube back. */
+	UIHome_Apply(&home, UI_HOME_INPUT_UP, caps); UIScene_RequestHome(&home);
+	UIScene_Request(UI_SCENE_SOURCE); settle(0.02f, UI_MOTION_FULL);
+	CHECK(UIScene_Frame()->cubeY > rowY + 0.5f);
+	CHECK(UIScene_Frame()->cubeScale < rowScale * 0.6f);
+	matrixNear(&UIScene_Frame()->homeOrientation[0][0], target, 0.0f);
 	UIScene_Request(UI_SCENE_HOME); settle(0.02f, UI_MOTION_FULL);
+	near(UIScene_Frame()->cubeY, rowY, 0.0001f);
+	near(UIScene_Frame()->cubeScale, rowScale, 0.0001f);
+	UIHome_Apply(&home, UI_HOME_INPUT_BACK, caps); UIScene_RequestHome(&home);
+	settle(0.02f, UI_MOTION_FULL);
 	CHECK(UIScene_Frame()->homeSurface == UI_HOME_SURFACE_RING);
 	matrixNear(&UIScene_Frame()->homeOrientation[0][0], target, 0.0f);
 	for(int destination = UI_SCENE_LIBRARY; destination < UI_SCENE_COUNT; ++destination) {

@@ -39,7 +39,7 @@ B goes back. See [Home](home.md).
 
 | Button | Does |
 | --- | --- |
-| Left, Right | Show the next device. |
+| Left, Right, L, R | Slide the previous or next device into the middle. The stick works too: hold it to keep going. |
 | A | Open the device, or try again if it wasn't detected. |
 | Z | Show every device, or only the ones detected. |
 | X | Change an SD adapter's speed. |

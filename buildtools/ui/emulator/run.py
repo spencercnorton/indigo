@@ -15,6 +15,8 @@ while a crash, a hang, a black screen or a broken control does:
   - in the Library, RIGHT and LEFT move between games and back again, and
     A opens a game's details; there UP and A open the game's settings, B
     comes back to the details, and B again to the game;
+  - on the Source face, Change Source opens the device picker, RIGHT shows
+    another device and B leaves it;
   - nothing crashes: Dolphin emulates the MMU, so an invalid memory access
     stops Indigo on its exception screen as it would on a console, and
     Dolphin's own log reports no exception or invalid access.
@@ -47,8 +49,9 @@ import dsu_pad  # noqa: E402
 
 WIDTH, HEIGHT = 640, 480
 # Where text the route reads sits (x0, y0, x1, y1): the face's name under the
-# cube on Home, the selected game's title in the Library, and its title on
-# the game's details.
+# cube on Home, the selected game's title in the Library (the focused
+# device's name in the Source picker sits there too), and its title on the
+# game's details.
 LABEL_BOX = (200, 372, 440, 396)
 TITLE_BOX = (200, 338, 440, 362)
 DETAIL_TITLE_BOX = (264, 106, 600, 134)
@@ -271,8 +274,10 @@ class Route:
         mask, _ = self.settled_label(like=home)
         self.check("RIGHT undoes LEFT", mask is not None)
         for n, face in enumerate(faces):
-            # Home starts on the Library face: browse it while it is open.
-            self.open_and_close(face, n, self.browse_library if n == 0 else None)
+            # Home starts on the Library face: browse it while it is open, and
+            # change the source on the Source face.
+            inside = {0: self.browse_library, 1: self.change_source}.get(n)
+            self.open_and_close(face, n, inside)
             self.press("RIGHT")
             mask, _ = self.settled_label(like=faces[(n + 1) % 4])
             self.check("the cube turns on to the next face", mask is not None, face=n + 1)
@@ -341,6 +346,21 @@ class Route:
         title, _ = self.settled_label(like=titles[0], box=TITLE_BOX)
         self.shot("library-back", self.last_rgb)
         self.check("B comes back to the same game", title is not None)
+
+    def change_source(self) -> None:
+        """A on Change Source opens the device picker, RIGHT shows the next device
+        (the disc drive, then Memory Card Slot A in Dolphin) and B leaves it."""
+        before = text_mask(self.gray(), TITLE_BOX)
+        self.press("A")
+        first, _ = self.settled_label(unlike=before, box=TITLE_BOX)
+        self.shot("source-picker", self.last_rgb)
+        self.check("Change Source opens the device picker", first is not None)
+        self.press("RIGHT")
+        name, _ = self.settled_label(unlike=first, box=TITLE_BOX)
+        self.shot("source-picker-right", self.last_rgb)
+        self.check("RIGHT shows the next device", name is not None)
+        self.press("B")
+        self.check("B leaves the device picker", self.covered(name, TITLE_BOX))
 
     def tour(self) -> None:
         self.smoke()

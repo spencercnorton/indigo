@@ -291,20 +291,36 @@ static const char homeConfirmCommand[] =
 static const char homeRestartConsequence[] =
 	"RELOADS INDIGO AND ENDS THIS SESSION";
 
-typedef struct drawDeviceSelectorEvent {
-	DEVICEHANDLER_INTERFACE *device;
-	bool destination;
+/* One device the Source picker lists, copied when the menu thread publishes:
+ * FTP, SMB and FSP change their picture, name and place as they probe, so
+ * the video thread never reads a device handler. */
+typedef struct {
+	textureImage picture;
+	char name[40];
+	char facts[48];		/* what it can do, and where it plugs in */
+	char status[48];	/* DETECTED or NOT DETECTED, CURRENT, SETTINGS */
+	float nameScale;
+	bool detected;
+} drawDeviceTile_t;
+
+typedef struct {
+	drawDeviceTile_t tiles[MAX_DEVICES];
+	char hint[112];
+	float hintScale;
+	int count;
+	int travel;	/* the focus, unwrapped: a step moves it by one */
 	bool showAllDevices;
 	bool inAdvanced;
-	bool exiSpeed;
-	bool available;
-	char capability[64];
-	char actionHint[64];
-	char auxiliaryHint[48];
-	float deviceNameScale;
-	float capabilityScale;
-	float actionScale;
-	float auxiliaryScale;
+	bool exiFast;
+} drawDeviceSelectorSnapshot_t;
+
+typedef struct drawDeviceSelectorEvent {
+	drawDeviceSelectorSnapshot_t snapshot;
+	bool destination;
+	/* The video thread's own. */
+	uiMotionSpring_t position;
+	bool started;
+	bool shownAll;
 } drawDeviceSelectorEvent_t;
 
 typedef struct drawTooltipEvent {
@@ -933,124 +949,6 @@ const char *DeviceDisplayName(const DEVICEHANDLER_INTERFACE *device)
 	return device == &__device_dvd ? "Game Disc" : device->deviceName;
 }
 
-
-static void _DrawDeviceSelectorCard(uiDrawObj_t *evt)
-{
-	drawDeviceSelectorEvent_t *data = (drawDeviceSelectorEvent_t*)evt->data;
-	DEVICEHANDLER_INTERFACE *device = data->device;
-	float reveal = UIScene_Frame()->chromeProgress;
-	int offsetY;
-	u8 alpha;
-	GXColor primary;
-	GXColor secondary;
-	GXColor muted;
-
-	if(!device || reveal <= 0.0f) {
-		return;
-	}
-	if(reveal > 1.0f) {
-		reveal = 1.0f;
-	}
-	offsetY = (int)((1.0f - reveal) * 20.0f);
-	alpha = (u8)(255.0f * reveal);
-	primary = (GXColor) {246, 243, 255, alpha};
-	secondary = (GXColor) {216, 207, 255, (u8)(alpha * 0.96f)};
-	muted = (GXColor) {178, 166, 224, (u8)(alpha * 0.88f)};
-
-	/* The IPL font remains a crisp screen-space overlay. Thin rails visually
-	 * attach it to the cube without perspective-distorting text at 480i. */
-	drawStringMedium(320, 70 + offsetY,
-		data->destination ? "DEST" : "SOURCE",
-		0.62f, ALIGN_CENTER, secondary);
-	if(data->inAdvanced) {
-		drawStringMedium(174, 220, "\213", 0.90f, ALIGN_RIGHT, muted);
-		drawStringMedium(502, 220, "\233", 0.90f, ALIGN_LEFT, muted);
-	}
-	else {
-		drawStringMedium(174, 220, "\213", 0.90f, ALIGN_RIGHT, secondary);
-		drawStringMedium(502, 220, "\233", 0.90f, ALIGN_LEFT, secondary);
-	}
-
-	drawStringMedium(320, 379 + offsetY, DeviceDisplayName(device),
-		data->deviceNameScale, ALIGN_CENTER, primary);
-	drawStringMedium(320, 398 + offsetY, data->capability,
-		data->capabilityScale, ALIGN_CENTER,
-		data->available ? secondary : muted);
-	_DrawHintText(320, 419 + offsetY, data->actionHint,
-		data->actionScale,
-		ALIGN_CENTER, muted);
-
-	_DrawHintText(28, 446,
-		data->showAllDevices ? "Z  ONLY" : "Z  ALL",
-		0.48f, ALIGN_LEFT,
-		data->showAllDevices ? primary : muted);
-	_DrawHintText(320, 446, "B  BACK", 0.48f, ALIGN_CENTER, muted);
-	if(data->auxiliaryHint[0]) {
-		_DrawHintText(612, 446, data->auxiliaryHint, data->auxiliaryScale,
-			ALIGN_RIGHT,
-			data->inAdvanced ? primary : muted);
-	}
-}
-
-uiDrawObj_t* DrawDeviceSelectorCard(DEVICEHANDLER_INTERFACE *device,
-		bool destination, bool showAllDevices, bool inAdvanced)
-{
-	drawDeviceSelectorEvent_t *eventData = calloc(1, sizeof(drawDeviceSelectorEvent_t));
-	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
-
-	eventData->device = device;
-	eventData->destination = destination;
-	eventData->showAllDevices = showAllDevices;
-	eventData->inAdvanced = inAdvanced;
-	eventData->exiSpeed = !!swissSettings.exiSpeed;
-	eventData->available = deviceHandler_getDeviceAvailable(device);
-	if(!eventData->available) {
-		strcpy(eventData->capability, "NOT DETECTED");
-	}
-	else if(inAdvanced && (device->features & FEAT_EXI_SPEED)) {
-		snprintf(eventData->capability, sizeof(eventData->capability),
-			"EXI  %s", eventData->exiSpeed ? "27 MHz" : "13.5 MHz");
-	}
-	else if(device->features & FEAT_BOOT_GCM) {
-		strcpy(eventData->capability,
-			(device->features & FEAT_AUDIO_STREAMING) ?
-			"BOOT + STREAM" : "BOOT READY");
-	}
-	else {
-		strcpy(eventData->capability, "FILES READY");
-	}
-	if(inAdvanced) {
-		strcpy(eventData->actionHint, "A  DONE");
-	}
-	else if(!eventData->available) {
-		strcpy(eventData->actionHint, "A  TRY");
-	}
-	else if(destination) {
-		strcpy(eventData->actionHint, "A  SELECT");
-	}
-	else {
-		strcpy(eventData->actionHint, "A  OPEN");
-	}
-	if((device->features & FEAT_EXI_SPEED) && device->details) {
-		strcpy(eventData->auxiliaryHint, "X  EXI  \267  Y  INFO");
-	}
-	else if(device->features & FEAT_EXI_SPEED) {
-		strcpy(eventData->auxiliaryHint, "X  EXI");
-	}
-	else if(device->details) {
-		strcpy(eventData->auxiliaryHint, "Y  INFO");
-	}
-	eventData->deviceNameScale =
-		GetTextScaleToFitInWidthWithMax(DeviceDisplayName(device), 280, 0.76f);
-	eventData->capabilityScale =
-		GetTextScaleToFitInWidthWithMax(eventData->capability, 300, 0.52f);
-	eventData->actionScale = GetHintScaleToFitInWidthWithMax(eventData->actionHint, 280, 0.50f);
-	eventData->auxiliaryScale = eventData->auxiliaryHint[0] ?
-		GetHintScaleToFitInWidthWithMax(eventData->auxiliaryHint, 190, 0.48f) : 0.0f;
-	event->type = EV_DEVICESELECTOR;
-	event->data = eventData;
-	return event;
-}
 
 // External
 uiDrawObj_t* DrawImage(int textureId, int x, int y, int width, int height, int depth, float s1, float s2, float t1, float t2, int centered)
@@ -4203,6 +4101,300 @@ uiDrawObj_t* DrawHome(void)
 	return event;
 }
 
+/* The Source picker: the focused device's tile in the middle of a row
+ * under the cube, up to two more each side, smaller and dimmer the farther
+ * out. The row slides on a spring and wraps round. */
+#define DEVICE_ROW_Y 262.0f
+#define DEVICE_TILE_W 168.0f
+#define DEVICE_TILE_H 124.0f
+#define DEVICE_NEAR_STEP 158.0f
+#define DEVICE_FAR_STEP 80.0f
+#define DEVICE_ROW_SLOTS 5
+
+/* The device a place in the unwrapped row shows. */
+static int _DeviceIndex(int travel, int count)
+{
+	int index = travel % count;
+
+	return index < 0 ? index + count : index;
+}
+
+static void _DeviceRect(float cx, float cy, float width, float height,
+	GXColor top, GXColor bottom)
+{
+	float x = cx - width / 2.0f;
+	float y = cy - height / 2.0f;
+
+	_putFlatVertex(x, y, top);
+	_putFlatVertex(x + width, y, top);
+	_putFlatVertex(x + width, y + height, bottom);
+	_putFlatVertex(x, y + height, bottom);
+}
+
+/* A frame thickness wide just inside a centred rectangle: four quads. */
+static void _DeviceFrame(float cx, float cy, float width, float height,
+	float thickness, GXColor color)
+{
+	float x = cx - width / 2.0f;
+	float y = cy - height / 2.0f;
+
+	_putFlatRect(x, y, width, thickness, color);
+	_putFlatRect(x, y + height - thickness, width, thickness, color);
+	_putFlatRect(x, y + thickness, thickness, height - thickness * 2.0f, color);
+	_putFlatRect(x + width - thickness, y + thickness, thickness,
+		height - thickness * 2.0f, color);
+}
+
+/* One glass tile, place steps from the middle, and its device's picture. */
+static void _DrawDeviceTile(const drawDeviceTile_t *tile, float place,
+	float y, float alpha)
+{
+	const textureImage *picture = &tile->picture;
+	float offset = fabsf(place);
+	float side = offset < 1.0f ? offset : 1.0f;
+	float beyond = offset > 1.0f ? offset - 1.0f : 0.0f;
+	float scale = 1.0f - 0.30f * side - 0.18f * beyond;
+	float focus = 1.0f - side;
+	float x = 320.0f + copysignf(DEVICE_NEAR_STEP * side +
+		DEVICE_FAR_STEP * beyond, place);
+	float width = DEVICE_TILE_W * scale;
+	float height = DEVICE_TILE_H * scale;
+
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 28);
+		_DeviceRect(x, y, width, height,
+			(GXColor) {104, 88, 190, (u8)((96.0f + 72.0f * focus) * alpha)},
+			(GXColor) {10, 8, 30, (u8)(214.0f * alpha)});
+		_DeviceRect(x, y, width - 10.0f * scale, height - 10.0f * scale,
+			(GXColor) {49, 43, 92, (u8)(130.0f * alpha)},
+			(GXColor) {12, 10, 34, (u8)(190.0f * alpha)});
+		_DeviceFrame(x, y, width, height, 2.0f,
+			(GXColor) {220, 214, 255, (u8)((90.0f + 140.0f * focus) * alpha)});
+		/* Light along the glass's top edge. */
+		_putFlatRect(x - width / 2.0f + 4.0f, y - height / 2.0f + 3.0f,
+			width - 8.0f, 1.0f,
+			(GXColor) {255, 255, 255, (u8)((34.0f + 56.0f * focus) * alpha)});
+	GX_End();
+	drawInit();
+	if(picture->width > 0 && picture->height > 0) {
+		/* drawCurrentDevice's sizing, in a box that shrinks with the tile. */
+		float fit = fminf(fminf(120.0f / picture->width,
+			84.0f / picture->height), 1.0f) * scale;
+		int w = (int)(picture->realWidth * fit);
+		int h = (int)(picture->realHeight * fit);
+		float light = (0.5f + 0.5f * focus) * (1.0f - 0.35f * beyond) *
+			(tile->detected ? 1.0f : 0.45f);
+
+		_DrawImageNow(picture->textureId, (int)lrintf(x - w / 2.0f),
+			(int)lrintf(y - h / 2.0f), w, h, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0,
+			(u8)(255.0f * light * alpha));
+		drawInit();
+	}
+}
+
+static void _DrawDeviceSelector(uiDrawObj_t *evt)
+{
+	drawDeviceSelectorEvent_t *data = (drawDeviceSelectorEvent_t*)evt->data;
+	const drawDeviceSelectorSnapshot_t *s = &data->snapshot;
+	const drawDeviceTile_t *tile;
+	uiMotionMode_t motion = _CurrentMotionMode();
+	struct {
+		float place;
+		float presence;
+		int device;
+	} row[DEVICE_ROW_SLOTS];
+	const uiSceneFrame_t *scene = UIScene_Frame();
+	/* The row rises into view as the cube lifts and shrinks out of its way,
+	 * as the Library's posters follow the cube's retreat. */
+	float rise = fminf(fmaxf((0.92f - scene->cubeScale) / 0.30f, 0.0f), 1.0f);
+	float reveal = fminf(scene->chromeProgress, 1.0f);
+	float position, first, last, y, pulse, labels;
+	int tiles = 0;
+	int nearest, k, i;
+
+	rise = rise * rise * (3.0f - 2.0f * rise);
+	reveal *= rise;
+	if(s->count <= 0 || reveal <= 0.0f) {
+		return;
+	}
+	/* A new list (Z) snaps into place: its travel counts from its start. */
+	if(!data->started || data->shownAll != s->showAllDevices) {
+		UIMotion_SpringInit(&data->position, (float)s->travel, 13.0f);
+		data->shownAll = s->showAllDevices;
+		data->started = true;
+	}
+	UIMotion_SpringRetarget(&data->position, (float)s->travel, motion);
+	position = UIMotion_SpringUpdate(&data->position, UIAnim_Delta(), motion);
+	y = DEVICE_ROW_Y + (1.0f - rise) * 24.0f;
+
+	/* Copy/Move's destination opens over the file list: a page behind it. */
+	if(data->destination) {
+		drawInit();
+		_SetupRasterColor();
+		GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+			_putFlatRect(UIStage_Left(), 0.0f, UIStage_Right() - UIStage_Left(),
+				480.0f, (GXColor) {8, 12, 27, (u8)(236.0f * reveal)});
+		GX_End();
+	}
+
+	/* The places that show a device at rest: two each side, or as many as
+	 * there are other devices, so none shows twice. A tile leaving them
+	 * fades out over half a place. */
+	last = s->count >= DEVICE_ROW_SLOTS ? 2.0f : (float)(s->count / 2);
+	first = s->count >= DEVICE_ROW_SLOTS ? -2.0f : -(float)((s->count - 1) / 2);
+	for(k = (int)floorf(position + first - 0.5f);
+			k <= (int)ceilf(position + last + 0.5f); ++k) {
+		float place = (float)k - position;
+		float presence = place < first ? 1.0f - 2.0f * (first - place) :
+			place > last ? 1.0f - 2.0f * (place - last) : 1.0f;
+
+		if(presence <= 0.001f || tiles == DEVICE_ROW_SLOTS) {
+			continue;
+		}
+		/* Painter's order: the farthest first, the middle one last. */
+		for(i = tiles++; i > 0 && fabsf(row[i - 1].place) < fabsf(place); --i) {
+			row[i] = row[i - 1];
+		}
+		row[i].place = place;
+		row[i].presence = presence;
+		row[i].device = _DeviceIndex(k, s->count);
+	}
+	for(i = 0; i < tiles; ++i) {
+		_DrawDeviceTile(&s->tiles[row[i].device], row[i].place, y,
+			row[i].presence * reveal);
+	}
+
+	/* The focus frame stays in the middle while the tiles slide through. */
+	pulse = motion == UI_MOTION_FULL ?
+		0.84f + 0.16f * sinf(UIAnim_Seconds() * 3.0f) : 1.0f;
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 48);
+		_DeviceFrame(320.0f, y, DEVICE_TILE_W + 14.0f, DEVICE_TILE_H + 14.0f,
+			3.0f, (GXColor) {117, 88, 244, (u8)(78.0f * reveal * pulse)});
+		_DeviceFrame(320.0f, y, DEVICE_TILE_W + 8.0f, DEVICE_TILE_H + 8.0f,
+			2.0f, (GXColor) {196, 177, 255, (u8)(150.0f * reveal * pulse)});
+		_DeviceFrame(320.0f, y, DEVICE_TILE_W + 4.0f, DEVICE_TILE_H + 4.0f,
+			2.0f, (GXColor) {244, 239, 255, (u8)(245.0f * reveal)});
+	GX_End();
+	drawInit();
+
+	/* The words are the middle tile's: they fade out, and the next tile's
+	 * in, as the row slides. */
+	nearest = (int)floorf(position + 0.5f);
+	labels = reveal * (1.0f - 2.0f * fabsf(position - (float)nearest));
+	tile = &s->tiles[_DeviceIndex(nearest, s->count)];
+	drawStringMedium(40, 44, data->destination ? "DESTINATION" : "SOURCE",
+		0.50f, ALIGN_LEFT, (GXColor) {216, 207, 255, (u8)(230.0f * reveal)});
+	drawStringMedium(320, (int)(y + 88.0f), tile->name, tile->nameScale,
+		ALIGN_CENTER, (GXColor) {246, 243, 255, (u8)(255.0f * labels)});
+	drawStringMedium(320, (int)(y + 110.0f), !s->inAdvanced ? tile->facts :
+		s->exiFast ? "\213  EXI  27 MHz  \233" : "\213  EXI  13.5 MHz  \233",
+		0.50f, ALIGN_CENTER, (GXColor) {216, 207, 255, (u8)(245.0f * labels)});
+	drawStringMedium(320, (int)(y + 130.0f), tile->status, 0.44f,
+		ALIGN_CENTER, tile->detected ?
+		(GXColor) {178, 166, 224, (u8)(230.0f * labels)} :
+		(GXColor) {255, 207, 139, (u8)(240.0f * labels)});
+	_DrawHintText(320, 440, s->hint, s->hintScale, ALIGN_CENTER,
+		(GXColor) {178, 166, 224, (u8)(225.0f * reveal)});
+	drawInit();
+}
+
+/* What a device can do, where it plugs in and whether it's there, in the
+ * picker's words. Menu thread only: it reads the device's handler. */
+static void _DeviceSelectorTile(drawDeviceTile_t *tile,
+	DEVICEHANDLER_INTERFACE *device, bool current, bool settings)
+{
+	static const struct {
+		u32 location;
+		const char *name;
+	} places[] = {
+		{LOC_MEMCARD_SLOT_A, "SLOT A"}, {LOC_MEMCARD_SLOT_B, "SLOT B"},
+		{LOC_SERIAL_PORT_1, "SERIAL PORT 1"},
+		{LOC_SERIAL_PORT_2, "SERIAL PORT 2"}, {LOC_HSP, "HI-SPEED PORT"},
+		{LOC_DVD_CONNECTOR, "DISC DRIVE"}, {LOC_SYSTEM, "CONSOLE"}
+	};
+	const char *place = "";
+	size_t i;
+
+	for(i = 0; i < sizeof(places) / sizeof(places[0]); ++i) {
+		if(device->location & places[i].location) {
+			place = places[i].name;
+			break;
+		}
+	}
+	tile->picture = device->deviceTexture;
+	snprintf(tile->name, sizeof(tile->name), "%s", DeviceDisplayName(device));
+	snprintf(tile->facts, sizeof(tile->facts), "%s%s%s",
+		!(device->features & FEAT_BOOT_GCM) ? "FILES" :
+		(device->features & FEAT_AUDIO_STREAMING) ? "BOOT + STREAM" : "BOOT",
+		place[0] ? "  \267  " : "", place);
+	tile->detected = deviceHandler_getDeviceAvailable(device);
+	snprintf(tile->status, sizeof(tile->status), "%s%s%s",
+		tile->detected ? "DETECTED" : "NOT DETECTED",
+		current ? "  \267  CURRENT" : "", settings ? "  \267  SETTINGS" : "");
+	tile->nameScale = GetTextScaleToFitInWidthWithMax(tile->name, 300, 0.76f);
+}
+
+uiDrawObj_t* DrawDeviceSelector(bool destination)
+{
+	drawDeviceSelectorEvent_t *eventData = calloc(1, sizeof(drawDeviceSelectorEvent_t));
+	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
+
+	eventData->destination = destination;
+	event->type = EV_DEVICESELECTOR;
+	event->data = eventData;
+	return event;
+}
+
+void DrawUpdateDeviceSelector(uiDrawObj_t *selector,
+	DEVICEHANDLER_INTERFACE *const *listed, int count, int travel,
+	const DEVICEHANDLER_INTERFACE *current,
+	const DEVICEHANDLER_INTERFACE *settings, bool showAllDevices,
+	bool inAdvanced)
+{
+	/* Built outside the video lock, then copied in one step. */
+	static drawDeviceSelectorSnapshot_t snapshot;
+	drawDeviceSelectorEvent_t *data = (drawDeviceSelectorEvent_t*)selector->data;
+	const DEVICEHANDLER_INTERFACE *device;
+	const drawDeviceTile_t *tile;
+	int i;
+
+	if(count <= 0 || count > MAX_DEVICES) {
+		return;
+	}
+	memset(&snapshot, 0, sizeof(snapshot));
+	for(i = 0; i < count; ++i) {
+		_DeviceSelectorTile(&snapshot.tiles[i], listed[i],
+			listed[i] == current, listed[i] == settings);
+	}
+	device = listed[_DeviceIndex(travel, count)];
+	tile = &snapshot.tiles[_DeviceIndex(travel, count)];
+	snapshot.count = count;
+	snapshot.travel = travel;
+	snapshot.showAllDevices = showAllDevices;
+	snapshot.inAdvanced = inAdvanced;
+	snapshot.exiFast = swissSettings.exiSpeed != 0;
+	if(inAdvanced) {
+		strcpy(snapshot.hint, "STICK / D-PAD  SPEED   A  DONE   B  BACK");
+	}
+	else {
+		snprintf(snapshot.hint, sizeof(snapshot.hint),
+			"%sA  %s%s%s   Z  %s   B  BACK",
+			count > 1 ? "STICK / D-PAD  CHANGE   " : "",
+			!tile->detected ? "TRY" : data->destination ? "SELECT" : "OPEN",
+			device->details ? "   Y  INFO" : "",
+			(device->features & FEAT_EXI_SPEED) ? "   X  EXI" : "",
+			showAllDevices ? "DETECTED" : "ALL");
+	}
+	snapshot.hintScale = GetHintScaleToFitInWidthWithMax(snapshot.hint, 600,
+		0.46f);
+	LWP_MutexLock(_videomutex);
+	data->snapshot = snapshot;
+	LWP_MutexUnlock(_videomutex);
+}
+
 void DrawUpdateProgressBar(uiDrawObj_t *evt, int percent) {
 	drawProgressEvent_t *data = (drawProgressEvent_t*)evt->data;
 	data->percent = percent;
@@ -6162,7 +6354,7 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 			_DrawHome(videoEvent);
 			break;
 		case EV_DEVICESELECTOR:
-			_DrawDeviceSelectorCard(videoEvent);
+			_DrawDeviceSelector(videoEvent);
 			break;
 		case EV_TOOLTIP:
 			_DrawTooltip(videoEvent);
