@@ -65,7 +65,8 @@ static const uiSetLayoutPage_t PAGES[UI_SETLAYOUT_PAGE_COUNT] = {
 	{ "Quick", "Quick Settings",
 	  "What you change between games.",
 	  UI_SETLAYOUT_ROWS_QUICK, 0, 0 },
-	{ "Game Defaults", "Game Defaults",
+	/* "Game Defaults" is too wide for its tab in the console's font. */
+	{ "Defaults", "Game Defaults",
 	  "What every game starts with, unless it has its own.",
 	  UI_SETLAYOUT_ROWS_GAME_DEFAULTS, 1, 0 },
 	{ "Setup", "Setup",

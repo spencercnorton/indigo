@@ -688,6 +688,32 @@ static void test_tab_cells_ordered_and_disjoint(void) {
 	}
 }
 
+/* The console's IPL font is wider than testMeasure, and than the font
+ * Dolphin draws with: "Game Defaults" passed both yet read "Game Def..." on
+ * a GameCube. Tab labels never shrink, so each must fit its cell in a font
+ * 1.75 times testMeasure's width. */
+static int consoleMeasure(const char *text) {
+	return (testMeasure(text) * 7 + 3) / 4;
+}
+
+static void test_tab_labels_fit_the_console_font(void) {
+	uiSetLayout_t l;
+	uiSetLayoutTextFit_t fit;
+	char out[UI_SETLAYOUT_SHORT_CAPACITY];
+	int i;
+
+	UISetLayout_Compute(0, 0, UI_SETLAYOUT_MOTION_FULL, &l);
+	for (i = 0; i < l.tabCount; i++) {
+		const char *tab = UISetLayout_PageDesc(i)->tabLabel;
+		CHECK(UISetLayout_PrepareText(tab, strlen(tab),
+		      UI_SETLAYOUT_SHORT_CAPACITY - 1u, UI_SETLAYOUT_ELLIPSIZE_TAIL,
+		      UI_SETLAYOUT_TEXT_PLAIN, 0, 1, l.tabCell[i].w - 12,
+		      UI_SETLAYOUT_TAB_SCALE, UI_SETLAYOUT_TAB_SCALE, consoleMeasure,
+		      out, sizeof(out), &fit));
+		CHECK(!fit.ellipsized);
+	}
+}
+
 /* A game's own rows keep room for the CUSTOM chip before the value. */
 static void test_custom_chip_room(void) {
 	uiSetLayout_t l;
@@ -1008,6 +1034,7 @@ int main(void) {
 	RUN(test_geometry_inside_safe_area_everywhere);
 	RUN(test_explicit_text_and_vertical_ownership);
 	RUN(test_tab_cells_ordered_and_disjoint);
+	RUN(test_tab_labels_fit_the_console_font);
 	RUN(test_value_column_and_ellipsize_bounds);
 	RUN(test_measured_floor_ellipsize_budgets);
 	RUN(test_custom_chip_room);

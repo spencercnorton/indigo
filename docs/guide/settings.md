@@ -26,7 +26,7 @@ one you're on lit.
 | Tab | Holds |
 | --- | --- |
 | **Quick** | Nine settings you might change any day: menu music and sounds, UI motion, rumble, In-Game Reset, the GameCube main menu, memory card emulation, auto-loaded cheats and booting without prompts. |
-| **Game Defaults** | What every game starts with: video modes, widescreen, polling rate, the camera stick, compatibility and picture options. A game's own settings can differ from these. |
+| **Defaults** | **Game Defaults**, what every game starts with: video modes, widescreen, polling rate, the camera stick, compatibility and picture options. A game's own settings can differ from these. |
 | **Setup** | Everything you set once, in six sections: Display, Console, Storage, Network, Library and Developer. A opens a section and B goes back to the list. |
 
 <p align="center">

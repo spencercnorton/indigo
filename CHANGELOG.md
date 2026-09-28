@@ -33,6 +33,9 @@ Changes land under `## Unreleased` until the release names them.
   dump, a truncated download or a corrupt table could send that read past the
   end of the table and crash the console. Indigo now checks every entry
   against the table's size; such an image shows without its banner.
+- Settings' middle tab reads Defaults. "Game Defaults" is wider in the
+  console's font than on a computer and showed cut short, as "Game Def…";
+  the page it opens is still called Game Defaults.
 
 ### Documentation
 

@@ -102,7 +102,7 @@ See [Cheats](cheats.md).
 | Left, Right | Step the highlighted setting to its previous or next value. |
 | A | Change the value. On a setting with four or more choices, list them all. |
 | Y | Explain the highlighted setting. Y or B closes it. |
-| L, R | Switch between Quick, Game Defaults and Setup. |
+| L, R | Switch between the Quick, Defaults and Setup tabs. |
 | X | In a game's own settings: put the setting back to Game Defaults. |
 | B | Leave Settings, keeping your changes. In a Setup section, go back to the list of sections. |
 
