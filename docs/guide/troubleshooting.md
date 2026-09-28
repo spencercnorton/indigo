@@ -55,9 +55,10 @@ NKit's recovery, as the message suggests, or make a fresh copy of the disc.
 
 ## The screen went dark after I changed a video mode
 
-Wait ten seconds. After a change to **Swiss Video Mode**, **System Video**,
-**AVE Compatibility**, **Force DTV Status** or **RetroTINK-4K HDMI Input**,
-Indigo puts the old mode back by itself unless you press A to keep it. See
+Wait ten seconds. When A switches **Swiss Video Mode**, **System Video**,
+**AVE Compatibility**, **Force DTV Status** or **RetroTINK-4K HDMI Input**
+to a new value, Indigo puts the old mode back by itself unless you press A
+again to keep it. See
 [Video changes ask first](settings.md#video-changes-ask-first).
 
 If a game starts in a mode your TV can't show, open the game's details, press

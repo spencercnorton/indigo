@@ -61,6 +61,10 @@ def validate(files: dict[str, str]) -> list[str]:
         if not condition:
             errors.append(message)
 
+    def ordered(text: str, *tokens: str) -> bool:
+        positions = [text.find(token) for token in tokens]
+        return -1 not in positions and positions == sorted(positions)
+
     settings = files["settings"]
     layout_c = files["layout_c"]
     layout_h = files["layout_h"]
@@ -83,9 +87,12 @@ def validate(files: dict[str, str]) -> list[str]:
         blocking = extract_function(settings, "static bool settingsInputMayBlock(")
         repeat = extract_function(settings, "static bool settingsHoldToRepeat(")
         changed = extract_function(settings, "static bool settingsChanged(")
-        live_rows = extract_function(settings, "static bool settingsIsLiveVideoRow(")
+        live_rows = extract_function(
+            settings, "static bool settingsIsLiveVideoRow(int page, int option)\n{")
         keep_video = extract_function(settings, "static bool settingsKeepVideoMode(")
         change_value = extract_function(settings, "static void settingsChangeValue(")
+        apply_video = extract_function(settings, "static void settingsApplyVideoMode(")
+        restore_video = extract_function(settings, "static void settingsVideoRestore(")
         pick = extract_function(settings, "static bool settingsPick(")
         pick_draw = extract_function(settings, "static void settingsDrawPicker(")
         chrome = extract_function(settings, "static void drawSettingsChrome(")
@@ -96,6 +103,7 @@ def validate(files: dict[str, str]) -> list[str]:
         page_render = extract_function(framebuffer, "static void _DrawSettingsPage(")
         list_render = extract_function(framebuffer, "static void _DrawSettingsList(")
         page_update = extract_function(framebuffer, "void DrawUpdateSettingsPage(")
+        draw_mode = extract_function(framebuffer, "void DrawVideoMode(GXRModeObj *videoMode)")
     except ValueError as error:
         errors.append(str(error))
         return errors
@@ -243,19 +251,62 @@ def validate(files: dict[str, str]) -> list[str]:
     for token in ("SET_SYS_VIDEO", "SET_SWISS_VIDEOMODE", "SET_AVE_COMPAT",
                   "SET_FORCE_DTVSTATUS", "SET_RT4K_OPTIM"):
         need(token in live_rows, f"live video rows omit {token}")
-    need("settingsIsLiveVideoRow(page, option)" in blocking,
-         "the video confirmation does not reset analog ownership")
+    # A opens the video prompt, so it resets analog ownership; Left and Right
+    # only step the value, so holding them scrolls through the values.
+    need("(activate && settingsIsLiveVideoRow(page, option))" in blocking,
+         "the video confirmation does not reset analog ownership, or holding "
+         "Left/Right cannot scroll a video row's values")
     need("#define SETTINGS_VIDEO_KEEP_US 10000000u" in settings and
          "SETTINGS_VIDEO_KEEP_US" in keep_video and
          "released = held == 0u;" in keep_video and "keep = true;" in keep_video,
          "the video confirmation is not a released, timed A-to-keep prompt")
+    # Browsing never switches: Left and Right step a video row with
+    # DrawVideoMode held back (settings_toggle, upstream's, switches itself),
+    # and DrawVideoMode honours it.
+    need("DrawVideoModeDefer(true);\n\tsettings_toggle(page, option, direction, config);\n"
+         "\tDrawVideoModeDefer(false);" in change_value and
+         "DrawVideoMode(" not in change_value.replace("DrawVideoModeDefer(", ""),
+         "Left/Right on a video row switches the mode")
+    need("if(videoModeDeferred) {\n\t\treturn;\n\t}" in draw_mode and
+         draw_mode.index("if(videoModeDeferred)") < draw_mode.index("setVideoMode("),
+         "DrawVideoMode switches while Settings holds it back")
+    # AVE Compatibility and RetroTINK-4K often keep the mode object and change
+    # the signal in place: DrawVideoMode must re-apply an unchanged object
+    # (updateVideoMode reconfigures the VI), or A would ask about a change
+    # that isn't on screen and B would not bring the old signal back.
+    need(ordered(draw_mode, "if(getVideoMode() != videoMode) {", "setVideoMode(videoMode);",
+                 "else {", "updateVideoMode(videoMode);"),
+         "DrawVideoMode drops a change that keeps the mode object (AVE, RetroTINK-4K)")
     for field in ("sramVideo", "uiVMode", "aveCompat", "forceDTVStatus", "rt4kOptim"):
-        need(f"swissSettings.{field} = {field};" in change_value,
-             f"a refused video change does not restore {field}")
-    need("DrawVideoMode(before);" in change_value and
-         "settingsKeepVideoMode(&row)" in change_value,
-         "a refused video change keeps the new mode")
-    need("settingsDescribeRow(page, option, config, &row);" in change_value and
+        need(f"settingsVideo.{field} = swissSettings.{field};" in change_value,
+             f"a video step does not record {field}")
+        need(f"swissSettings.{field} = settingsVideo.{field};" in restore_video,
+             f"a video value not kept does not restore {field}")
+    # A only applies: one switch to the stepped value, the prompt, and on a
+    # no the settings and the old mode back.
+    need(apply_video.count("DrawVideoMode(") == 2 and
+         "settings_toggle(" not in apply_video and "settingsChangeValue(" not in apply_video and
+         ordered(apply_video,
+                 "DrawVideoMode(getVideoModeFromSwissSetting(swissSettings.uiVMode));",
+                 "settingsKeepVideoMode(&row)", "settingsVideoRestore();",
+                 "DrawVideoMode(before);"),
+         "A on a video row does not switch once, ask, and change back when refused")
+    need("else if(settingsIsLiveVideoRow(ref->page, ref->option)) {\n"
+         "\t\t\t\t\tsettingsApplyVideoMode(ref->page, ref->option, config);" in show,
+         "A on a video row changes its value instead of applying the stepped one")
+    # Cancel runs before actions: any button but Left, Right, A and Y, or any
+    # button off a video row, puts a stepped value back before B, L/R, Save
+    # or Discard can act, so a mode never on screen is never saved.
+    cancel = ("if(settingsVideo.pending && (!onSetting ||\n"
+              "\t\t\t!settingsIsLiveVideoRow(ref->page, ref->option) ||\n"
+              "\t\t\t(btns & ~(BUTTON_LEFT | BUTTON_RIGHT | BUTTON_A | BUTTON_Y)) != 0u)) {\n"
+              "\t\t\tsettingsVideoRestore();")
+    need(ordered(show, "settingsWaitForInput(", cancel, "if(btns & BUTTON_Y)"),
+         "a stepped video value outlives another button, so it can be saved unseen")
+    need('hints[count++] = "A  Apply";' in describe_focus and
+         "settingsVideoStepped()" in describe_focus,
+         "the footer does not say A applies a stepped video value")
+    need("settingsDescribeRow(page, option, config, &row);" in apply_video and
          '"Keep %s %s?' in keep_video and "row->label, row->value" in keep_video,
          "the video prompt does not name the new value")
     need("settings_toggle(ref->page, ref->option, 1, config)" not in show and
@@ -445,6 +496,25 @@ for name, key, old, new in (
     ("video-no-revert", "settings", "DrawVideoMode(before);", ""),
     ("video-bypass", "settings", "settingsChangeValue(ref->page, ref->option, -1, config);",
      "settings_toggle(ref->page, ref->option, -1, config);"),
+    ("video-browse-switches", "settings",
+     "\tDrawVideoModeDefer(true);\n\tsettings_toggle(page, option, direction, config);",
+     "\tsettings_toggle(page, option, direction, config);"),
+    ("video-defer-ignored", "framebuffer", "\tif(videoModeDeferred) {\n\t\treturn;\n\t}\n", ""),
+    ("video-same-mode-dropped", "framebuffer", "\telse {\n\t\tupdateVideoMode(videoMode);\n\t}\n", ""),
+    ("video-revert-before-restore", "settings",
+     "\t\tsettingsVideoRestore();\n\t\tDrawVideoMode(before);",
+     "\t\tDrawVideoMode(before);\n\t\tsettingsVideoRestore();"),
+    ("video-no-cancel", "settings",
+     "BUTTON_A | BUTTON_Y)) != 0u)) {\n\t\t\tsettingsVideoRestore();",
+     "BUTTON_A | BUTTON_Y)) != 0u)) {\n\t\t\t;"),
+    ("video-step-leaves-row", "settings",
+     "(!onSetting ||\n\t\t\t!settingsIsLiveVideoRow(ref->page, ref->option) ||\n\t\t\t(btns",
+     "((btns"),
+    ("video-a-steps", "settings", "settingsApplyVideoMode(ref->page, ref->option, config);",
+     "settingsChangeValue(ref->page, ref->option, 1, config);"),
+    ("video-apply-unasked", "settings", "if(settingsKeepVideoMode(&row)) {", "if(true) {"),
+    ("video-hold-blocks", "settings", "(activate && settingsIsLiveVideoRow(page, option))",
+     "((horizontal || activate) && settingsIsLiveVideoRow(page, option))"),
     ("repeat-any-button", "settings", "(held & ~directions) != 0u", "false"),
     ("stale-game-defaults", "settings", "config_defaults_from(&tempConfig, &tempSettings);",
      "config_defaults(&tempConfig);"),

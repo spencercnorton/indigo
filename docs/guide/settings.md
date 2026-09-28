@@ -26,7 +26,7 @@ one you're on lit.
 | Tab | Holds |
 | --- | --- |
 | **Quick** | Nine settings you might change any day: menu music and sounds, UI motion, rumble, In-Game Reset, the GameCube main menu, memory card emulation, auto-loaded cheats and booting without prompts. |
-| **Game Defaults** | What every game starts with: video modes, widescreen, polling rate, the camera stick, compatibility and picture options. A game's own settings can differ from these. |
+| **Defaults** | **Game Defaults**, what every game starts with: video modes, widescreen, polling rate, the camera stick, compatibility and picture options. A game's own settings can differ from these. |
 | **Setup** | Everything you set once, in six sections: Display, Console, Storage, Network, Library and Developer. A opens a section and B goes back to the list. |
 
 <p align="center">
@@ -37,7 +37,8 @@ one you're on lit.
 
 - **Up and Down** move between settings. Hold to scroll.
 - **Left and Right** step the highlighted setting to its previous or next
-  value, with the change on screen at once.
+  value, with the change on screen at once. Video settings wait for A: see
+  [Video changes ask first](#video-changes-ask-first).
 - **A** changes it too.
 - **Y** explains the highlighted setting. Every setting has help; Y or B
   closes it.
@@ -73,9 +74,11 @@ them. In a Setup section, B first goes back to the list of sections.
 
 ## Video changes ask first
 
-After you change **Swiss Video Mode**, **System Video**, **AVE
-Compatibility**, **Force DTV Status** or **RetroTINK-4K HDMI Input**,
-Indigo shows the new picture and asks whether to keep it:
+On **Swiss Video Mode**, **System Video**, **AVE Compatibility**, **Force
+DTV Status** and **RetroTINK-4K HDMI Input**, Left and Right only choose a
+value. The setting shows it and the line above the buttons reads "Not
+applied yet", but the picture stays as it is. Step to the one you want and
+press **A**: Indigo switches to it and asks whether to keep it:
 
 ```text
 Keep Swiss Video Mode: PAL 576i?
@@ -85,6 +88,8 @@ It changes back by itself in 10 s.
 
 Press **A** to keep it. Press **B**, or just wait, and the old mode comes
 back: if your TV can't show the new one, you only have to wait ten seconds.
+Moving to another setting or leaving before you press A puts the old value
+back.
 
 ## A game's own settings
 
@@ -183,7 +188,7 @@ Press Y on any row for the same explanations on the console.
 
 | Setting | What it does |
 | --- | --- |
-| Swiss Video Mode | The video mode of Indigo's own screens. Auto picks 480p with a digital cable and otherwise follows the console's region. Asks before it keeps a change. |
+| Swiss Video Mode | The video mode of Indigo's own screens. Auto picks 480p with a digital cable and otherwise follows the console's region. A switches to a new mode and asks before it keeps it. |
 | Menu Widescreen | Draws Indigo's own screens for a TV set to 16:9: the background fills the screen and the menus keep their shape in the middle. Set your TV or HDMI adapter to 16:9 too. Games follow **Force Widescreen** instead. |
 | System Video | NTSC, PAL or PAL-M, mainly for the Brazilian console. |
 | Screen Position | Moves the picture left or right in games. |

@@ -6245,8 +6245,20 @@ void DrawShutdown() {
 	unsetVideoMode();
 }
 
+/* Settings steps a video row's value without switching to it: while
+ * deferred, DrawVideoMode leaves the mode as it is. */
+static bool videoModeDeferred;
+
+void DrawVideoModeDefer(bool defer)
+{
+	videoModeDeferred = defer;
+}
+
 void DrawVideoMode(GXRModeObj *videoMode)
 {
+	if(videoModeDeferred) {
+		return;
+	}
 	LWP_MutexLock(_videomutex);
 	if(getVideoMode() != videoMode) {
 		setVideoMode(videoMode);

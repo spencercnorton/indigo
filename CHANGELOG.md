@@ -50,6 +50,15 @@ Changes land under `## Unreleased` until the release names them.
   dump, a truncated download or a corrupt table could send that read past the
   end of the table and crash the console. Indigo now checks every entry
   against the table's size; such an image shows without its banner.
+- Settings' middle tab reads Defaults. "Game Defaults" is wider in the
+  console's font than on a computer and showed cut short, as "Game Def…";
+  the page it opens is still called Game Defaults.
+- Video settings no longer switch the picture at every step. On Swiss Video
+  Mode, System Video, AVE Compatibility, Force DTV Status and RetroTINK-4K
+  HDMI Input, Left and Right now only choose a value, so holding them steps
+  through the values; A switches to the one shown and asks, as before,
+  whether to keep it. Moving to another setting or leaving without A puts the
+  old value back.
 
 ### Documentation
 
