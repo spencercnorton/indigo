@@ -2254,7 +2254,9 @@ static void settingsChangeValue(int page, int option, int direction,
 
 /* A on a video row switches to the value Left and Right stepped to, and it
  * stays only if A is pressed again within ten seconds. Any change asks, not
- * only a new mode: AVE N-DOL and RetroTINK-4K change the signal in place. */
+ * only a new mode: AVE N-DOL and RetroTINK-4K change the signal in place, and
+ * DrawVideoMode re-applies an unchanged mode object (updateVideoMode) for the
+ * switch and for the change back alike. */
 static void settingsApplyVideoMode(int page, int option, ConfigEntry *config)
 {
 	GXRModeObj *before = getVideoMode();

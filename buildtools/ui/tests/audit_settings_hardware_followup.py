@@ -270,6 +270,13 @@ def validate(files: dict[str, str]) -> list[str]:
     need("if(videoModeDeferred) {\n\t\treturn;\n\t}" in draw_mode and
          draw_mode.index("if(videoModeDeferred)") < draw_mode.index("setVideoMode("),
          "DrawVideoMode switches while Settings holds it back")
+    # AVE Compatibility and RetroTINK-4K often keep the mode object and change
+    # the signal in place: DrawVideoMode must re-apply an unchanged object
+    # (updateVideoMode reconfigures the VI), or A would ask about a change
+    # that isn't on screen and B would not bring the old signal back.
+    need(ordered(draw_mode, "if(getVideoMode() != videoMode) {", "setVideoMode(videoMode);",
+                 "else {", "updateVideoMode(videoMode);"),
+         "DrawVideoMode drops a change that keeps the mode object (AVE, RetroTINK-4K)")
     for field in ("sramVideo", "uiVMode", "aveCompat", "forceDTVStatus", "rt4kOptim"):
         need(f"settingsVideo.{field} = swissSettings.{field};" in change_value,
              f"a video step does not record {field}")
@@ -493,6 +500,10 @@ for name, key, old, new in (
      "\tDrawVideoModeDefer(true);\n\tsettings_toggle(page, option, direction, config);",
      "\tsettings_toggle(page, option, direction, config);"),
     ("video-defer-ignored", "framebuffer", "\tif(videoModeDeferred) {\n\t\treturn;\n\t}\n", ""),
+    ("video-same-mode-dropped", "framebuffer", "\telse {\n\t\tupdateVideoMode(videoMode);\n\t}\n", ""),
+    ("video-revert-before-restore", "settings",
+     "\t\tsettingsVideoRestore();\n\t\tDrawVideoMode(before);",
+     "\t\tDrawVideoMode(before);\n\t\tsettingsVideoRestore();"),
     ("video-no-cancel", "settings",
      "BUTTON_A | BUTTON_Y)) != 0u)) {\n\t\t\tsettingsVideoRestore();",
      "BUTTON_A | BUTTON_Y)) != 0u)) {\n\t\t\t;"),
