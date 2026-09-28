@@ -264,10 +264,13 @@ void ogc_video__reset()
 	}
 	if((newmode != NULL) && (newmode != getVideoMode())) {
 		DrawVideoMode(newmode);
-		uiDrawObj_t *msgBox = DrawMessageBox(D_INFO, txtbuffer);
-		DrawPublish(msgBox);
-		sleep(2);
-		DrawDispose(msgBox);
+		/* The launch screen shows it as a step, without the wait. */
+		if(!DrawLaunchStep(txtbuffer)) {
+			uiDrawObj_t *msgBox = DrawMessageBox(D_INFO, txtbuffer);
+			DrawPublish(msgBox);
+			sleep(2);
+			DrawDispose(msgBox);
+		}
 	}
 }
 
@@ -3554,6 +3557,11 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 		free(config);
 		goto exit;
 	}
+	/* A Library launch shows the launch screen from here to the hand-off,
+	 * Boot without prompts included. */
+	if(context != NULL) {
+		DrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LAUNCH);
+	}
 	
 	if(devices[DEVICE_CONFIG] != NULL) {
 		// Update the recent list.
@@ -3613,9 +3621,11 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 		if(cheatsFound) {
 			int appliedCount = getRuntimeEnabledCheatsCount();
 			sprintf(txtbuffer, "Applied %i cheats", appliedCount);
-			msgBox = DrawPublish(DrawMessageBox(D_INFO, txtbuffer));
-			sleep(1);
-			DrawDispose(msgBox);
+			if(!DrawLaunchStep(txtbuffer)) {
+				msgBox = DrawPublish(DrawMessageBox(D_INFO, txtbuffer));
+				sleep(1);
+				DrawDispose(msgBox);
+			}
 		}
 	}
 	if(swissSettings.wiirdDebug && !usb_isgeckoalive(1)) {

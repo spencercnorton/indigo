@@ -190,6 +190,10 @@ bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode);
 /* The Detail row the D-pad rests on. */
 bool DrawSetGameflowDetailFocus(uiDrawObj_t *evt,
 	uiGameflowDetailFocus_t focus);
+/* While Launch mode is on, the launch screen shows message as its step and
+ * this returns true; otherwise it returns false and the caller shows its own
+ * box. DrawProgressBar sends it every looping bar's message. */
+bool DrawLaunchStep(const char *message);
 bool DrawUpdateGameflowDetail(uiDrawObj_t *evt,
 	const uiGameflowDetailSnapshot_t *snapshot);
 void DrawClearGameflowDetail(uiDrawObj_t *evt);

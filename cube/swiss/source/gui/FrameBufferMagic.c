@@ -47,6 +47,7 @@
 #include "ui_gameflow_detail.h"
 #include "ui_gameflow_library.h"
 #include "ui_cheats.h"
+#include "ui_launch.h"
 
 #define GUI_MSGBOX_ALPHA 225
 #define GUI_PANEL_ALPHA 150	// Phase 2: translucent content panels (config-gated; dialogs stay at GUI_MSGBOX_ALPHA)
@@ -371,6 +372,7 @@ typedef struct drawMsgBoxEvent {
 typedef struct drawProgressEvent {
 	bool indeterminate;
 	bool miniMode;
+	bool hidden;	/* a launch's: the launch screen shows its step */
 	int miniModePos;
 	int miniModeAlpha;
 	int percent;
@@ -1133,6 +1135,9 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 	int y1 = ((480/2) - (PROGRESS_BOX_HEIGHT/2));
 	int y2 = ((480/2) + (PROGRESS_BOX_HEIGHT/2));
 
+	if(data->hidden) {
+		return;
+	}
 	if(data->miniMode) {	
 		int x = 30, y = 420;
 		if(data->miniModePos == PROGRESS_BOX_TOPRIGHT) {
@@ -1210,6 +1215,11 @@ uiDrawObj_t* DrawProgressBar(bool indeterminate, int percent, const char *messag
 	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
 	event->type = EV_PROGRESS;
 	event->data = eventData;
+	/* During a launch the launch screen shows a looping bar's step. */
+	if(indeterminate && DrawLaunchStep(message)) {
+		eventData->hidden = true;
+		return event;
+	}
 	if(message && strlen(message) > 0) {
 		sprintf(txtbuffer, "%s", message);
 		// Add child component(s) for label(s)
@@ -3486,6 +3496,192 @@ static void _GameflowDrawGridHighlight(const uiGameflowFrame_t *frame,
 	drawInit();
 }
 
+/* The launch screen. From the A that starts a game to the hand-off, Game
+ * Detail gives way to the cover alone, centred in a glass ring that fills as
+ * Swiss works: its progress boxes become the ring's steps and one caption
+ * (_GameflowLaunchMessage), and only its warnings and failures still show as
+ * boxes. Launch mode turns it on and off; its state is written under
+ * _videomutex. */
+#define GAMEFLOW_LAUNCH_X 320.0f
+#define GAMEFLOW_LAUNCH_Y 188.0f
+#define GAMEFLOW_LAUNCH_RADIUS 136.0f
+/* The whole ring's segments: under a third of a pixel from a circle. */
+#define GAMEFLOW_LAUNCH_SEGMENTS 48
+#define GAMEFLOW_TURN 6.2831853f
+
+/* The cover, centred in the ring with a clear margin at its corners. */
+static const gameflowQuad_t gameflowLaunchPose = {{{248.0f, 92.0f},
+	{392.0f, 92.0f}, {392.0f, 284.0f}, {248.0f, 284.0f}}};
+static bool launchActive;
+static uiLaunch_t launchState;
+static GXTexObj launchPoster;
+static bool launchHasPoster;
+static float launchWarningScale;
+
+/* A launch starts from an empty ring and keeps the cover Detail shows now:
+ * ui_assets keeps a poster's texels until the video thread stops, so closing
+ * the pack for the hand-off can't swap it for the banner. */
+static void _GameflowSetLaunch(drawGameflowEvent_t *data, bool on)
+{
+	if(on && !launchActive) {
+		const uiGameflowCardSnapshot_t *record = _GameflowFindRecord(
+			&data->snapshot, UIGameflow_Frame(&data->state)->focusIndex, NULL);
+		GXTexObj *poster = record != NULL ?
+			_GameflowPosterTexture(record) : NULL;
+
+		UILaunch_Begin(&launchState);
+		launchWarningScale = 0.0f;
+		launchHasPoster = poster != NULL;
+		if(poster != NULL) {
+			launchPoster = *poster;
+		}
+	}
+	launchActive = on;
+}
+
+static void _GameflowLaunchMessage(const char *message)
+{
+	if(UILaunch_Message(&launchState, message) &&
+		launchState.warning[0] != '\0') {
+		launchWarningScale = _GameflowPrepareDetailText(launchState.warning,
+			sizeof(launchState.warning), 520, 0.50f, 0.42f);
+	}
+}
+
+static GXColor _GameflowMixColor(GXColor from, GXColor to, float amount)
+{
+	GXColor mixed = {
+		(u8)((float)from.r + ((float)to.r - (float)from.r) * amount + 0.5f),
+		(u8)((float)from.g + ((float)to.g - (float)from.g) * amount + 0.5f),
+		(u8)((float)from.b + ((float)to.b - (float)from.b) * amount + 0.5f),
+		(u8)((float)from.a + ((float)to.a - (float)from.a) * amount + 0.5f)
+	};
+	return mixed;
+}
+
+/* The ring from turn `from` to `to` (0 is twelve o'clock, clockwise): a core
+ * halfWidth either side of the radius and a pixel fading to clear at each
+ * edge, like the title bar's dial. Its color runs from tail to head, and
+ * where the glint passes it turns towards light by glint. */
+static void _GameflowPutLaunchArc(float from, float to, float halfWidth,
+	GXColor tail, GXColor head, GXColor light, float glintTurn, float glint)
+{
+	const float edge[4] = {-halfWidth - 1.0f, -halfWidth, halfWidth,
+		halfWidth + 1.0f};
+	gameflowPoint_t direction[GAMEFLOW_LAUNCH_SEGMENTS + 1];
+	GXColor color[GAMEFLOW_LAUNCH_SEGMENTS + 1];
+	int segments = (int)ceilf((to - from) * (float)GAMEFLOW_LAUNCH_SEGMENTS);
+	int band;
+	int i;
+
+	segments = segments < 1 ? 1 : (segments > GAMEFLOW_LAUNCH_SEGMENTS ?
+		GAMEFLOW_LAUNCH_SEGMENTS : segments);
+	for(i = 0; i <= segments; ++i) {
+		float along = (float)i / (float)segments;
+		float turn = from + (to - from) * along;
+		float angle = (turn - 0.25f) * GAMEFLOW_TURN;
+		float away = fabsf(turn - glintTurn);
+		float shine;
+
+		away = away > 0.5f ? 1.0f - away : away;
+		shine = away < 0.1f ? 1.0f - away / 0.1f : 0.0f;
+		direction[i] = (gameflowPoint_t) {cosf(angle), sinf(angle)};
+		color[i] = _GameflowMixColor(_GameflowMixColor(tail, head, along),
+			light, shine * shine * glint);
+	}
+	for(band = 0; band < 3; ++band) {
+		float inside = GAMEFLOW_LAUNCH_RADIUS + edge[band];
+		float outside = GAMEFLOW_LAUNCH_RADIUS + edge[band + 1];
+
+		GX_Begin(GX_TRIANGLESTRIP, GX_VTXFMT0, (u16)((segments + 1) * 2));
+		for(i = 0; i <= segments; ++i) {
+			GXColor inner = color[i];
+			GXColor outer = color[i];
+
+			inner.a = band == 0 ? 0 : inner.a;
+			outer.a = band == 2 ? 0 : outer.a;
+			_GameflowPutVertex((gameflowPoint_t) {
+				GAMEFLOW_LAUNCH_X + direction[i].x * inside,
+				GAMEFLOW_LAUNCH_Y + direction[i].y * inside}, inner);
+			_GameflowPutVertex((gameflowPoint_t) {
+				GAMEFLOW_LAUNCH_X + direction[i].x * outside,
+				GAMEFLOW_LAUNCH_Y + direction[i].y * outside}, outer);
+		}
+		GX_End();
+	}
+}
+
+/* Under the cover: the screen dimmed to its edges, the ring, and below it
+ * the title, the publisher, the step and any "Do not remove" line. */
+static void _GameflowDrawLaunch(const drawGameflowEvent_t *data,
+	const uiGameflowDetailSnapshot_t *detail,
+	const uiGameflowCardSnapshot_t *record, u32 recordIndex, float launch,
+	float reveal)
+{
+	uiMotionMode_t motion = _CurrentMotionMode();
+	float alpha = _GameflowClamp(launch * reveal, 0.0f, 1.0f);
+	gameflowQuad_t screen = {{{UIStage_Left(), 0.0f},
+		{UIStage_Right(), 0.0f}, {UIStage_Right(), 480.0f},
+		{UIStage_Left(), 480.0f}}};
+	/* The screen darkens ahead of the cover, which leaves nothing behind. */
+	GXColor dim = {5, 4, 17,
+		_GameflowAlpha(240.0f * _GameflowClamp(2.0f * alpha, 0.0f, 1.0f))};
+	GXColor track = {122, 112, 201, _GameflowAlpha(76.0f * alpha)};
+	GXColor tail = {139, 124, 226, _GameflowAlpha(214.0f * alpha)};
+	GXColor head = {232, 226, 255, _GameflowAlpha(255.0f * alpha)};
+	GXColor light = {250, 248, 255, _GameflowAlpha(210.0f * alpha)};
+	GXColor primary = {246, 243, 255, _GameflowAlpha(255.0f * alpha)};
+	GXColor secondary = {190, 181, 231, _GameflowAlpha(224.0f * alpha)};
+	GXColor step = {196, 177, 255, _GameflowAlpha(240.0f * alpha)};
+	GXColor warning = {255, 207, 139, _GameflowAlpha(255.0f * alpha)};
+	float glint = motion == UI_MOTION_OFF ? 0.0f : 0.8f;
+	float glintTurn = fmodf(UIAnim_Seconds() *
+		(motion == UI_MOTION_REDUCED ? 0.12f : 0.3f), 1.0f);
+	float fill;
+
+	if(alpha <= 0.001f) {
+		return;
+	}
+	/* The fill moves while the launch runs; a launch that failed fades out
+	 * where it stopped. Animations Off: no glint, and the fill steps. */
+	fill = launchActive ? UILaunch_Update(&launchState, UIAnim_Delta(),
+		motion != UI_MOTION_OFF) : launchState.fill;
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+		_GameflowPutQuad(&screen, dim, dim);
+	GX_End();
+	_GameflowPutLaunchArc(0.0f, 1.0f, 1.5f, track, track, light, glintTurn,
+		glint);
+	if(fill > 0.001f) {
+		_GameflowPutLaunchArc(0.0f, fill, 2.0f, tail, head, light, glintTurn,
+			glint);
+	}
+	drawInit();
+	if(record != NULL) {
+		const char *company = detail != NULL ? detail->company :
+			record->company;
+
+		drawStringMedium(320, 360, detail != NULL ? detail->title :
+			record->title, detail != NULL ?
+			data->detailPresentation.titleScale :
+			data->cardPresentation[recordIndex].titleScale,
+			ALIGN_CENTER, primary);
+		if(company[0] != '\0') {
+			drawStringMedium(320, 384, company, detail != NULL ?
+				data->detailPresentation.companyScale :
+				data->cardPresentation[recordIndex].companyScale,
+				ALIGN_CENTER, secondary);
+		}
+	}
+	drawStringMedium(320, 414, UILaunch_Caption(launchState.step), 0.52f,
+		ALIGN_CENTER, step);
+	if(launchState.warning[0] != '\0') {
+		drawStringMedium(320, 438, launchState.warning, launchWarningScale,
+			ALIGN_CENTER, warning);
+	}
+}
+
 static void _DrawGameflow(uiDrawObj_t *evt)
 {
 	drawGameflowEvent_t *data = (drawGameflowEvent_t*)evt->data;
@@ -3509,6 +3705,7 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 	u32 i;
 	u32 selectedRecordIndex = 0u;
 	u32 previousRecordIndex = 0u;
+	u32 focusRecordIndex = 0u;
 
 	if(data == NULL || (scene->scene != UI_SCENE_LIBRARY &&
 		scene->scene != UI_SCENE_GAME_DETAIL)) {
@@ -3526,7 +3723,7 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		return;
 	}
 	focusRecord = _GameflowFindRecord(&data->snapshot, frame->focusIndex,
-		NULL);
+		&focusRecordIndex);
 	if(focusRecord != NULL && UIGameflowDetail_Matches(&data->detail,
 		frame->generation, frame->focusIndex, focusRecord->gameId,
 		strnlen(focusRecord->gameId, sizeof(focusRecord->gameId)))) {
@@ -3606,6 +3803,15 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 						frame->detailProgress);
 				}
 			}
+			if(frame->launchProgress > 0.0f && focused) {
+				int vertex;
+				for(vertex = 0; vertex < 4; ++vertex) {
+					card->quad.point[vertex] = _GameflowLerpPoint(
+						card->quad.point[vertex],
+						gameflowLaunchPose.point[vertex],
+						frame->launchProgress);
+				}
+			}
 			count++;
 		}
 	}
@@ -3622,6 +3828,8 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		cards[j] = card;
 	}
 
+	_GameflowDrawLaunch(data, detail, focusRecord, focusRecordIndex,
+		frame->launchProgress, reveal);
 	drawInit();
 	_SetupRasterColor();
 	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 4u));
@@ -3669,7 +3877,9 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		if(!cards[i].art) {
 			continue;
 		}
-		posterTexture = _GameflowPosterTexture(cards[i].record);
+		posterTexture = launchActive && launchHasPoster &&
+			cards[i].record->libraryIndex == frame->focusIndex ?
+			&launchPoster : _GameflowPosterTexture(cards[i].record);
 		if(cards[i].record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) {
 			bannerTexture = &data->bannerTexObj[cards[i].recordIndex];
 		}
@@ -3720,8 +3930,12 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		layout);
 
 	UICommandRail_Gameflow(frame->detailProgress, &commandRail);
-	_GameflowDrawDetailDashboard(detail, &data->detailPresentation,
-		frame, reveal, &commandRail, data->detailFocus);
+	/* Launching, Detail's panels give way to the launch screen. */
+	if(frame->launchProgress < 0.999f) {
+		_GameflowDrawDetailDashboard(detail, &data->detailPresentation,
+			frame, reveal * (1.0f - frame->launchProgress), &commandRail,
+			data->detailFocus);
+	}
 	if(frame->detailProgress < 0.999f) {
 		GXColor label = {177, 168, 220,
 			_GameflowAlpha(180.0f * reveal *
@@ -4370,6 +4584,8 @@ bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode)
 	if(!evt->disposed && evt->type == EV_GAMEFLOW && evt->data != NULL) {
 		drawGameflowEvent_t *data = (drawGameflowEvent_t*)evt->data;
 		UIGameflow_SetMode(&data->state, mode, _CurrentMotionMode());
+		_GameflowSetLaunch(data, UIGameflow_Frame(&data->state)->mode ==
+			UI_GAMEFLOW_MODE_LAUNCH);
 		updated = true;
 	}
 	LWP_MutexUnlock(_videomutex);
@@ -4391,6 +4607,39 @@ bool DrawSetGameflowDetailFocus(uiDrawObj_t *evt,
 	}
 	LWP_MutexUnlock(_videomutex);
 	return updated;
+}
+
+bool DrawLaunchStep(const char *message)
+{
+	/* Only this thread turns a launch on or off. */
+	if(!launchActive) {
+		return false;
+	}
+	LWP_MutexLock(_videomutex);
+	_GameflowLaunchMessage(message);
+	LWP_MutexUnlock(_videomutex);
+	return true;
+}
+
+/* The hand-off: DrawShutdown fades a launch to black over this long. */
+#define GAMEFLOW_LAUNCH_FADE_SECONDS 0.25f
+static bool launchFading;
+static float launchFade;
+
+static void _DrawLaunchFade(void)
+{
+	GXColor black = {0, 0, 0, 0};
+
+	launchFade = fminf(1.0f,
+		launchFade + UIAnim_Delta() / GAMEFLOW_LAUNCH_FADE_SECONDS);
+	black.a = (u8)(255.0f * launchFade + 0.5f);
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+		_putFlatRect(UIStage_Left(), 0.0f, UIStage_Right() - UIStage_Left(),
+			480.0f, black);
+	GX_End();
+	drawInit();
 }
 
 bool DrawUpdateGameflowDetail(uiDrawObj_t *evt,
@@ -6031,6 +6280,9 @@ static void *videoUpdate(void *videoEventQueue) {
 			videoDrawEvent(videoEvent);
 			videoEventQueueEntry = videoEventQueueEntry->next;
 		}
+		if(launchFading) {
+			_DrawLaunchFade();
+		}
 		/* During the short boot reveal, veil the already-published legacy widgets
 		 * and redraw the cube above them. Animations Off skips this pass entirely. */
 		if(sceneRenderingEnabled && UIScene_Frame()->introProgress < 1.0f) {
@@ -6222,6 +6474,24 @@ void DrawShutdown() {
 	mutex_t mutex;
 	lwp_t thread = video_thread;
 
+	/* A launch ends on black: the ring completes while the screen fades
+	 * out. Animations Off cuts to black as it always did. */
+	if(launchActive && thread != LWP_THREAD_NULL &&
+		_CurrentMotionMode() != UI_MOTION_OFF) {
+		bool faded = false;
+		int frames;
+
+		LWP_MutexLock(_videomutex);
+		UILaunch_Finish(&launchState);
+		launchFading = true;
+		LWP_MutexUnlock(_videomutex);
+		for(frames = 0; frames < 30 && !faded; ++frames) {
+			VIDEO_WaitVSync();
+			LWP_MutexLock(_videomutex);
+			faded = launchFade >= 1.0f;
+			LWP_MutexUnlock(_videomutex);
+		}
+	}
 	/* Cancel while the source device and shared mutex are still live. */
 	DrawGameflowCancelPosters();
 	if(gameflowResetRegistered) {
@@ -6232,6 +6502,10 @@ void DrawShutdown() {
 	if(thread != LWP_THREAD_NULL) {
 		LWP_JoinThread(thread, NULL);
 	}
+	/* The last frame kept the launch's cover; nothing draws now. */
+	launchActive = false;
+	launchFading = false;
+	launchFade = 0.0f;
 	/* Cancellation above unpublished the pack while the mutex was live.
 	 * With video readers joined, final arena disposal is intentionally
 	 * lock-free and remains safe before the mutex is destroyed. */

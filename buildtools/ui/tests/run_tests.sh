@@ -122,6 +122,9 @@ run_plain() {
 
 	echo "== cheat identity, launch policy, and bounded writer (plain) =="
 	./test_cheat_policy
+
+	echo "== launch screen steps, pinned to Swiss's messages (plain) =="
+	./test_ui_launch
 }
 
 run_sanitized() {
@@ -178,6 +181,9 @@ run_sanitized() {
 
 	echo "== cheat identity, launch policy, and bounded writer (ASan/UBSan) =="
 	./test_cheat_policy_san
+
+	echo "== launch screen steps, pinned to Swiss's messages (ASan/UBSan) =="
+	./test_ui_launch_san
 }
 
 run_contracts() {
@@ -195,6 +201,8 @@ run_contracts() {
 	python3 ./test_frame_copy_clear.py
 	echo "== Library layouts: GX stream, poses, motion, Horizontal unchanged =="
 	python3 ./test_gameflow_gx_stream.py
+	echo "== launch screen: GX stream in both screen shapes =="
+	python3 ./test_launch_gx_stream.py
 	echo "== Library layouts: navigation and state mutants =="
 	python3 ./test_gameflow_layout_mutants.py
 	echo "== cube orientation and visible face binding =="

@@ -34,8 +34,18 @@ that one game, and every way to start it, on one screen.
 
 ## Start the game
 
-The screen opens with a bright frame on **Launch Game**: press **A**. Indigo
-applies the game's settings and your cheats, then starts it.
+The screen opens with a bright frame on **Launch Game**: press **A** to
+start the game. The details make way for the game's cover, centred in a
+ring that fills as Indigo applies the game's settings and your cheats,
+prepares the game and loads it. One line under the title says which step
+it's on, such as "Checking game" or "Loading game". If the game's patches
+live on another card than the game, that card is named under it ("Do not
+remove SD Card - SD2SP2"): leave it in until the game is running. When the
+ring is full the screen fades to black and the game starts. With Animations
+Off the ring stays still, and the screen goes straight to black.
+
+If the game can't start, a message says why, and then the Library comes
+back.
 
 Up and down on the D-pad or the control stick move the frame between
 **Launch Game**, **Cheats** and **Settings**, and **A** opens the one it's
@@ -51,9 +61,9 @@ way, turn on **Prefer Clean Boot** in its own settings; Launch Game then
 reads **Clean Boot**.
 
 To start games straight from the Library without this screen, turn on
-**Boot without prompts** in Settings › Quick. Hold B while you choose a game
-to see its details anyway; that turns Boot without prompts off until you
-restart.
+**Boot without prompts** in Settings › Quick; the cover and its ring show
+all the same. Hold B while you choose a game to see its details anyway; that
+turns Boot without prompts off until you restart.
 
 ## This game's own settings
 
