@@ -44,6 +44,10 @@ remove SD Card - SD2SP2"): leave it in until the game is running. When the
 ring is full the screen fades to black and the game starts. With Animations
 Off the ring stays still, and the screen goes straight to black.
 
+<p align="center">
+  <img alt="A on Launch Game for 1080° Avalanche: the details have made way for its cover, centred in a ring that is filling, with the title, the publisher and the step under it, Loading game." src="images/game-details-launch.png" width="640">
+</p>
+
 If the game can't start, a message says why, and then the Library comes
 back.
 
