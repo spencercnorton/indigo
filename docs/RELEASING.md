@@ -1,8 +1,9 @@
 # Releasing Indigo
 
-Two channels, one direction: changes land on `beta`, betas are tested, and a
-beta that has held up is promoted to `main` unchanged. Tags are immutable; a
-mistake is fixed by the next version, never by moving a tag.
+Two channels, one direction: changes land on `beta`, betas and release
+candidates are tested, and the last candidate's code is promoted to `main`.
+Tags are immutable; a mistake is fixed by the next version, never by moving a
+tag.
 
 | Channel | Branch | Tag | GitHub Release |
 | --- | --- | --- | --- |
@@ -33,11 +34,14 @@ publishing, run the workflow by hand with an existing tag.
 
 ## A release candidate
 
-When a version is complete and a beta of it has held up, tag the tip of
-`beta` `vX.Y.Z-rc.1` the same way. It is a pre-release like a beta, with the
-same notes, opening with "Release candidate" instead of "Beta". A fix found
-in it lands on `beta` as usual and ships as `-rc.2`; the release is then
-promoted from the last candidate unchanged.
+When a version is complete and has held up in the betas before it (they
+need not carry its version number), tag the tip of `beta` `vX.Y.Z-rc.1` the
+same way. It is a pre-release like a beta, with the same notes, opening with
+"Release candidate" instead of "Beta". A fix found in it lands on `beta` as
+usual and ships as `-rc.2`. The release's code is the last candidate's,
+unchanged: after that candidate only documentation may change on `beta`, the
+release notes and the zip's README included (step 1 of a release). A change
+to the code needs another candidate.
 
 ## A release
 

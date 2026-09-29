@@ -4,7 +4,13 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
-## Unreleased
+## v2.0.0 — A clear glass cube, a launch screen and new menu music
+
+Indigo 2.0: the Home cube is clear glass all through, a game starts on a
+launch screen with its cover instead of Swiss's progress boxes, Change Source
+shows the devices themselves, and the menus have new music. Everything below
+was tested together on a GameCube as 2.0.0-rc.1. Some of the guide's pictures
+still show 1.25.0; the next update records them again.
 
 ### Menu music
 
@@ -41,6 +47,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
   Settings or Cheats. X, Y, Z, R, L + A and B work as before, wherever the
   frame is. The hint line reads D-pad Move, A Select, B Library, X Settings,
   Y Cheats.
+- Game details play the menu's sounds: moving the frame blips, and every
+  action, the shortcuts too, plays the select sound. They made none before.
 
 ### Launch screen
 
@@ -50,8 +58,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
   Indigo checks, prepares and loads the game, and one line under the title
   says which step it's on. When the ring is full the screen fades to black
   and the game starts. A card that must stay in its slot is still named. It
-  is the same with Boot without prompts. With Animations Off the ring stays
-  still and the screen goes straight to black.
+  is the same with Boot without prompts. With UI Motion set to Off the ring
+  fills in steps, without its glint, and the screen goes straight to black.
 - The video mode and the number of cheats applied are steps on the ring
   instead of notices that held the start for two seconds and one second.
 
@@ -62,9 +70,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
   its picture: the one in the middle larger and framed, its neighbours
   smaller and dimmer. The row slides from one device to the next and goes
   round. Under the middle one, the picker says what the device can do
-  (Boot + Stream, Boot or Files), where it plugs in (Slot A, Serial Port 2,
-  Disc Drive and so on), whether Indigo detected it, and whether it is the
-  current source or holds your settings.
+  (Boot + Stream, Boot or Files, where 1.25.0 said Boot Ready and Files
+  Ready), where it plugs in (Slot A, Serial Port 2, Disc Drive and so on),
+  whether Indigo detected it, and whether it is the current source or holds
+  your settings.
+- With no device detected that can do the job, the picker lists every one
+  that could, as Z does. It used to search for one forever.
 - The control stick changes the device too, and holding it keeps going; the
   D-pad, L and R still work. The bottom line shows the buttons, the stick
   and D-pad that change the device among them, and the picker plays the
@@ -96,10 +107,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
   `boot.dol` and similar names) and took any stock Swiss it found for one, so
   PicoBoot and PicoLoader started Indigo only for it to start stock Swiss
   straight away. Indigo no longer runs that search, which also made a copy of
-  Indigo named `boot.dol` start itself over and over.
-- Settings › Storage no longer offers A Edit on Save Folder while it is
-  dimmed. Without a Configuration Device there are no folders to list, so A
-  does nothing there. Dimmed network settings keep A Edit: A still opens
+  Indigo named `boot.dol` start itself over and over
+  ([#3](https://github.com/spencercnorton/indigo/issues/3)).
+- Settings › Setup › Storage no longer offers A Edit on Save Folder while it
+  is dimmed. Without a Configuration Device there are no folders to list, so
+  A does nothing there. Dimmed network settings keep A Edit: A still opens
   their editor.
 - The Library no longer crashes on a damaged disc image. It reads each
   listed image's file table to find the game's banner, and a header-only
@@ -149,13 +161,25 @@ tag on `beta`. The newest changes are at the top until their release is named.
   frame on a game's details and the new source picker. Game details has a
   picture of the launch screen, and the button icons keep their colors in
   the animations, where the green A had turned teal.
+- The install steps start by renaming the card's `ipl.dol`, before anything
+  is copied, and say how to update from Indigo 1.x. They warn that on a Mac,
+  Finder's Replace deletes what is in the card's `games` and `swiss`
+  folders: hold Option and choose Merge. The README, the guide, the release
+  notes and the zip's `Indigo-README.txt` say the same.
+- The README describes 2.0's screens.
+- The guide's Game details page no longer says Indigo can't read memory
+  cards.
+- SECURITY.md, SUPPORT.md and CONTRIBUTING.md name release candidates, and
+  CONTRIBUTING.md the route for a fix to a release.
+- The issue forms are brought up to date for 2.0.
 
 ### For developers
 
 - Indigo is developed on GitHub. Changes land on the `beta` branch by pull
-  request, betas ship as `vX.Y.Z-beta.N` pre-releases, and a beta that holds
-  up is promoted to `main` as a release. [docs/RELEASING.md](docs/RELEASING.md)
-  has the procedure and [AGENTS.md](AGENTS.md) the working detail.
+  request, betas ship as `vX.Y.Z-beta.N` pre-releases, and a release
+  candidate that holds up is promoted to `main` as a release.
+  [docs/RELEASING.md](docs/RELEASING.md) has the procedure and
+  [AGENTS.md](AGENTS.md) the working detail.
 - GitHub Actions builds the DOL and the SD card zip for every push and pull
   request, runs the three host-test lanes and the source checks (whitespace
   and the UI isolation guardrail), and keeps the zip as an artifact to try on
@@ -193,9 +217,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - Release candidates: a `vX.Y.Z-rc.N` tag on `beta` publishes a pre-release
   like a beta, its notes opening with "Release candidate"
   ([docs/RELEASING.md](docs/RELEASING.md)).
-- Release notes link the repository's files at the release's tag. The links
-  CHANGELOG.md makes to files in the repository used to resolve against the
-  release page, and failed.
+- Release notes link the repository's files by full URL at the release's
+  tag, so the links also work where GitHub doesn't rewrite them: through the
+  API, `gh` and feeds.
+- The test fixtures use neutral machine names and documentation addresses.
 
 ## v1.25.0 — Memory Cards, a cube that flies in, and a drag-and-drop download
 
