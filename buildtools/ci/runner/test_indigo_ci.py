@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-os.environ["INDIGO_CI_NAME"] = "apollo"
+os.environ["INDIGO_CI_NAME"] = "ci-host"
 import indigo_ci  # noqa: E402
 
 
@@ -82,15 +82,15 @@ class Dockerfiles(unittest.TestCase):
 
 class Cleanup(unittest.TestCase):
     def test_only_this_machines_offline_runners_without_a_container(self):
-        live = {"apollo-build-1-aaaaaa"}
-        self.assertTrue(indigo_ci.ours({"name": "apollo-build-2-bbbbbb", "status": "offline"}, live))
-        self.assertFalse(indigo_ci.ours({"name": "apollo-build-1-aaaaaa", "status": "offline"}, live))
-        self.assertFalse(indigo_ci.ours({"name": "apollo-build-2-bbbbbb", "status": "online"}, live))
-        self.assertFalse(indigo_ci.ours({"name": "squire-build-1-cccccc", "status": "offline"}, live))
-        self.assertFalse(indigo_ci.ours({"name": "apollonia-build-1", "status": "offline"}, live))
+        live = {"ci-host-build-1-aaaaaa"}
+        self.assertTrue(indigo_ci.ours({"name": "ci-host-build-2-bbbbbb", "status": "offline"}, live))
+        self.assertFalse(indigo_ci.ours({"name": "ci-host-build-1-aaaaaa", "status": "offline"}, live))
+        self.assertFalse(indigo_ci.ours({"name": "ci-host-build-2-bbbbbb", "status": "online"}, live))
+        self.assertFalse(indigo_ci.ours({"name": "other-host-build-1-cccccc", "status": "offline"}, live))
+        self.assertFalse(indigo_ci.ours({"name": "ci-host2-build-1", "status": "offline"}, live))
 
     def test_names(self):
-        self.assertRegex(indigo_ci.runner_name("build", 2), r"^apollo-build-2-[0-9a-f]{6}$")
+        self.assertRegex(indigo_ci.runner_name("build", 2), r"^ci-host-build-2-[0-9a-f]{6}$")
         self.assertEqual(indigo_ci.container_name("emulator", 1), "indigo-ci-emulator-1")
 
 
