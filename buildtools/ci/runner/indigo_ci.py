@@ -18,7 +18,10 @@ Environment:
                       serves spencercnorton/norvitech-site
     INDIGO_CI_REPO    default spencercnorton/indigo (its pools, and the images' source)
     INDIGO_CI_REF     the trusted branch images are built from, default beta
-    INDIGO_CI_NAME    this machine in runner names, default the hostname
+    INDIGO_CI_NAME    the prefix of this machine's runner names, default "indigo";
+                      runner names show in public job logs, so never a hostname.
+                      A second machine needs a name of its own ("indigo2"):
+                      cleanup removes offline runners that carry its prefix
     INDIGO_CI_HOME    state and the source checkout, ~/.local/share/indigo-ci
     INDIGO_CI_ALERT   optional command, run with one message argument when a
                       pool cannot start runners and again when it recovers
@@ -34,7 +37,6 @@ import re
 import secrets
 import shlex
 import signal
-import socket
 import subprocess
 import sys
 import tempfile
@@ -85,7 +87,7 @@ POOLS = {
                  "norvitech-site", "2", "2g", repo="spencercnorton/norvitech-site"),
 }
 REF = os.environ.get("INDIGO_CI_REF", "beta")
-NAME = (os.environ.get("INDIGO_CI_NAME") or socket.gethostname().split(".")[0]).lower()
+NAME = (os.environ.get("INDIGO_CI_NAME") or "indigo").lower()
 HOME = Path(os.environ.get("INDIGO_CI_HOME") or Path.home() / ".local/share/indigo-ci")
 SOURCE = HOME / "src"
 SELF = Path(__file__).resolve()

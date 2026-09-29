@@ -8,9 +8,19 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- The download no longer carries an empty `games` folder. On a Mac,
+  choosing Replace when dropping it on the card swapped the card's own
+  `games` folder, and every game in it, for the empty one. Make `/games` on
+  the card if it has none; the install steps say so.
 - System Information › About Indigo sends bug reports and questions to
   Indigo's GitHub issues and discussions. It pointed to upstream Swiss's
   community, which does not support Indigo.
+
+### For developers
+
+- A CI machine names its runners "indigo" unless `INDIGO_CI_NAME` says
+  otherwise, instead of after its hostname: runner names show in public job
+  logs.
 
 ## v2.0.0 — A clear glass cube, a launch screen and new menu music
 

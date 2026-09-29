@@ -21,7 +21,6 @@ installing is drag and drop:
 ```text
 Indigo-README.txt              what goes where, in plain words
 ipl.dol                        Indigo
-games/                         your games (see Library)
 swiss/patches/apploader.img    Indigo again, for In-Game Reset
 swiss/ui/                      posters.pak, if you add one (see Posters)
 swiss/indigo/                  the licence and notice
@@ -54,11 +53,12 @@ download onto the root of the card, start Swiss the way you do now, and open
 `ipl.dol` from Swiss's file list. Indigo doesn't build a `boot.iso`.
 
 **On a Mac**, hold Option as you drop the files on the card and choose
-**Merge**. **Replace** deletes what is already in the card's `games` and
-`swiss` folders: your games, settings, cheats and saves.
+**Merge**. **Replace** deletes what is already in the card's `swiss`
+folder: your settings, cheats and saves.
 
-Then put your games in `/games`, with nothing else in it or in the game
-folders: see [Set up the games folder](library.md#set-up-the-games-folder).
+Then put your games in `/games` (make the folder if the card has none), with
+nothing else in it or in the game folders: see
+[Set up the games folder](library.md#set-up-the-games-folder).
 
 ## 3. First boot
 
