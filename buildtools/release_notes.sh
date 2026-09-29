@@ -1,7 +1,7 @@
 #!/bin/sh
 # Print the GitHub Release notes for one tag: its CHANGELOG.md section, then how
-# to install it. A beta (vX.Y.Z-beta.N) uses the vX.Y.Z section when the
-# changelog has one yet, else the "## Unreleased" section.
+# to install it. A pre-release (vX.Y.Z-beta.N or vX.Y.Z-rc.N) uses the vX.Y.Z
+# section when the changelog has one yet, else the "## Unreleased" section.
 # Usage: buildtools/release_notes.sh <tag>   (run from the repository root)
 set -eu
 
@@ -18,9 +18,10 @@ if [ -z "$notes" ] && [ "$tag" != "$version" ]; then
 fi
 [ -n "$notes" ] || { echo "release_notes: CHANGELOG.md has no section for $version" >&2; exit 1; }
 
-if [ "$tag" != "$version" ]; then
-	printf '%s\n\n' "> **Beta.** A pre-release for testing what comes next. The current stable release is linked from https://norvitech.com/indigo/."
-fi
+case $tag in
+	*-rc.*) printf '%s\n\n' "> **Release candidate.** $version as it is meant to ship, for a last round of testing before it does. The current stable release is linked from https://norvitech.com/indigo/." ;;
+	*-*) printf '%s\n\n' "> **Beta.** A pre-release for testing what comes next. The current stable release is linked from https://norvitech.com/indigo/." ;;
+esac
 printf '%s\n' "$notes" | sed -e '/./,$!d'
 cat <<NOTES
 
