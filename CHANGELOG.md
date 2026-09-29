@@ -6,10 +6,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ## v2.0.0 — A clear glass cube, a launch screen and new menu music
 
-Indigo 2.0: the Home cube is clear glass all through, a game starts on a
-launch screen with its cover instead of Swiss's progress boxes, Change Source
-shows the devices themselves, and the menus have new music. Everything below
-was tested together on a GameCube as 2.0.0-rc.1.
+Indigo 2.0: the Home cube is clear glass all through, a game started from
+the Library opens on a launch screen with its cover instead of Swiss's
+progress boxes, Change Source shows the devices themselves, and the menus
+have new music. Everything below was tested together on a GameCube as
+2.0.0-rc.1, and every picture in the README and the guide is recorded again
+on it.
 
 ### Menu music
 
