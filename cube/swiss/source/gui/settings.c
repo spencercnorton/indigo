@@ -24,6 +24,7 @@
 #include "input.h"
 #include "ui_motion.h"
 #include "ui_settings_layout.h"
+#include "ui_stage.h"
 #include "saves.h"
 
 /* Bind the pure layout module's page model to the real option enums: a
@@ -139,6 +140,7 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_FLATTEN_DIR] = "Flatten directory:\n\nFlattens a directory structure matching a glob pattern.",
 	[SET_SHOW_HIDDEN] = "Show hidden files:\n\nLists files and folders marked hidden, such as the /swiss folder\nthat holds Indigo's settings.",
 	[SET_MENU_WIDESCREEN] = "Menu Widescreen:\n\nYes - Drawn for a TV set to 16:9: the background fills the\nscreen and the menus keep their shape.\nNo - Drawn for a 4:3 picture (default)\n\nSet your TV or HDMI adapter to 16:9 too. Games follow Force\nWidescreen in Game Defaults, not this.",
+	[SET_MENU_SCREEN_SIZE] = "Menu Screen Size:\n\nDraws Indigo's own screens smaller, for a CRT TV that hides the\nedges of the picture. Lower it until the clock and the edges of\nevery page are in view; 90% keeps everything inside the part of\nthe picture nearly every TV shows. 100% fills the screen (default).\n\nGames are not affected.",
 	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\n\nThe selected game's title and details show beside its cover in\nVertical and above the controls in Grid. Every layout wraps round\nfrom the last game to the first; L and R jump a page.\nY opens the focused game's settings.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
@@ -527,6 +529,7 @@ static const settingsRowRef_t setupRows[] = {
 static const settingsRowRef_t displayRows[] = {
 	{PAGE_GLOBAL, SET_SWISS_VIDEOMODE},
 	{PAGE_INTERFACE, SET_MENU_WIDESCREEN},
+	{PAGE_INTERFACE, SET_MENU_SCREEN_SIZE},
 	{PAGE_GLOBAL, SET_SYS_VIDEO},
 	{PAGE_GLOBAL, SET_SCREEN_POS},
 	{PAGE_GLOBAL, SET_AVE_COMPAT},
@@ -1016,6 +1019,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_FLATTEN_DIR: rowText(row, "Flatten directory:", swissSettings.flattenDir, true); break;
 			case SET_LIBRARY_LAYOUT: rowCycle(row, "Library Layout:", libraryLayoutStr[swissSettings.libraryLayout], true); break;
 			case SET_MENU_WIDESCREEN: rowYesNo(row, "Menu Widescreen:", swissSettings.menuWidescreen, true); break;
+			case SET_MENU_SCREEN_SIZE: rowNumber(row, "Menu Screen Size:", "%i%%", 100 - swissSettings.menuScreenInset, true); break;
 		}
 	}
 	else if(page == PAGE_NETWORK) {
@@ -1563,6 +1567,11 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_MENU_WIDESCREEN:
 				swissSettings.menuWidescreen ^= 1;
+			break;
+			case SET_MENU_SCREEN_SIZE:
+				swissSettings.menuScreenInset -= direction;
+				if(swissSettings.menuScreenInset < 0) swissSettings.menuScreenInset = 0;
+				if(swissSettings.menuScreenInset > UI_STAGE_MAX_INSET) swissSettings.menuScreenInset = UI_STAGE_MAX_INSET;
 			break;
 		}
 	}

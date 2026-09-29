@@ -140,14 +140,15 @@ static void setupRasterPipeline(void)
 static void drawIndigoWash(u8 alpha)
 {
 	float left = UIStage_Left(), right = UIStage_Right();
+	float top = UIStage_Top(), bottom = UIStage_Bottom();
 
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
 		/* This pass deliberately replaces the legacy grey backdrop rather than
 		 * tinting it. The cube needs a clean, high-contrast stage. */
-		putVertex((indigoPoint_t) {left, 0.0f}, (GXColor) {6, 6, 22, alpha});
-		putVertex((indigoPoint_t) {right, 0.0f}, (GXColor) {9, 7, 27, alpha});
-		putVertex((indigoPoint_t) {right, 480.0f}, (GXColor) {29, 19, 65, alpha});
-		putVertex((indigoPoint_t) {left, 480.0f}, (GXColor) {19, 14, 48, alpha});
+		putVertex((indigoPoint_t) {left, top}, (GXColor) {6, 6, 22, alpha});
+		putVertex((indigoPoint_t) {right, top}, (GXColor) {9, 7, 27, alpha});
+		putVertex((indigoPoint_t) {right, bottom}, (GXColor) {29, 19, 65, alpha});
+		putVertex((indigoPoint_t) {left, bottom}, (GXColor) {19, 14, 48, alpha});
 	GX_End();
 }
 
@@ -2380,7 +2381,7 @@ static bool glassCopyFrame(void)
 }
 
 /* Texture coordinates of a frame point (640 x 480 units) in the copy;
- * UIStage_FrameX takes a stage x there. */
+ * UIStage_FrameX and UIStage_FrameY take a stage point there. */
 static float glassCopyS(void)
 {
 	return (float)glassEfbWidth / (float)(glassCopyWidth * 2u) / 640.0f;
@@ -2502,7 +2503,7 @@ static void refractGlassVertex(const cubeRasterTransform_t *raster,
 	for(int channel = 0; channel < 3; channel++) {
 		float k = 1.0f + glass->dispersion * (float)(channel - 1);
 		out->s[channel] = UIStage_FrameX(bx + ox * k) * glass->sScale;
-		out->t[channel] = (by + oy * k) * glass->tScale;
+		out->t[channel] = UIStage_FrameY(by + oy * k) * glass->tScale;
 	}
 }
 
@@ -2820,8 +2821,8 @@ static void drawGlassBloom(float left, float top, float right, float bottom,
 	if(strength <= 0.01f || !glassCopyFrame()) return;
 	sScale = glassCopyS();
 	tScale = glassCopyT();
-	left = fmaxf(UIStage_Left(), left); top = fmaxf(0.0f, top);
-	right = fminf(UIStage_Right(), right); bottom = fminf(480.0f, bottom);
+	left = fmaxf(UIStage_Left(), left); top = fmaxf(UIStage_Top(), top);
+	right = fminf(UIStage_Right(), right); bottom = fminf(UIStage_Bottom(), bottom);
 	if(right - left < 2.0f || bottom - top < 2.0f) return;
 	setupRasterPipeline();
 	GX_SetNumTexGens(GLASS_BLOOM_TAPS);
@@ -2879,16 +2880,16 @@ static void drawGlassBloom(float left, float top, float right, float bottom,
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
 		GX_Position3f32(left, top, 0.0f);
 		GX_Color4u8(glow.r, glow.g, glow.b, glow.a);
-		GX_TexCoord2f32(UIStage_FrameX(left) * sScale, top * tScale);
+		GX_TexCoord2f32(UIStage_FrameX(left) * sScale, UIStage_FrameY(top) * tScale);
 		GX_Position3f32(right, top, 0.0f);
 		GX_Color4u8(glow.r, glow.g, glow.b, glow.a);
-		GX_TexCoord2f32(UIStage_FrameX(right) * sScale, top * tScale);
+		GX_TexCoord2f32(UIStage_FrameX(right) * sScale, UIStage_FrameY(top) * tScale);
 		GX_Position3f32(right, bottom, 0.0f);
 		GX_Color4u8(glow.r, glow.g, glow.b, glow.a);
-		GX_TexCoord2f32(UIStage_FrameX(right) * sScale, bottom * tScale);
+		GX_TexCoord2f32(UIStage_FrameX(right) * sScale, UIStage_FrameY(bottom) * tScale);
 		GX_Position3f32(left, bottom, 0.0f);
 		GX_Color4u8(glow.r, glow.g, glow.b, glow.a);
-		GX_TexCoord2f32(UIStage_FrameX(left) * sScale, bottom * tScale);
+		GX_TexCoord2f32(UIStage_FrameX(left) * sScale, UIStage_FrameY(bottom) * tScale);
 	GX_End();
 	setupRasterPipeline();
 }

@@ -46,7 +46,7 @@ static const struct {
 	{  9,  0, 10 }, /* Quick */
 	{ 21,  1, 22 }, /* Game Defaults: no Vertical Offset, which can't reach a game */
 	{  6,  2,  7 }, /* Setup: one row per section */
-	{ 10,  2, 11 }, /* Display */
+	{ 11,  2, 12 }, /* Display: Menu Screen Size too */
 	{ 10,  2, 11 }, /* Console */
 	{  7,  2,  8 }, /* Storage: its Save Folder too */
 	{ 20,  2, 21 }, /* Network */

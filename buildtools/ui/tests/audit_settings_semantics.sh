@@ -10,9 +10,11 @@
 # their own face's icon round that face's own four, the Library Layout arm
 # (SET_LIBRARY_LAYOUT) only steps swissSettings.libraryLayout round its
 # three layouts, the Save Folder arm (SET_SAVE_FOLDER) only sets
-# swissSettings.saveFolder to the folder Memory Cards' chooser returns, and
-# the Menu Widescreen arm (SET_MENU_WIDESCREEN) only flips
-# swissSettings.menuWidescreen.
+# swissSettings.saveFolder to the folder Memory Cards' chooser returns, the
+# Menu Widescreen arm (SET_MENU_WIDESCREEN) only flips
+# swissSettings.menuWidescreen, and the Menu Screen Size arm
+# (SET_MENU_SCREEN_SIZE) only steps swissSettings.menuScreenInset within
+# 0..UI_STAGE_MAX_INSET.
 #
 # The Right/Left/Up/Down/L/R/B/A action block changed on purpose in the Settings redesign:
 # phase 1 made B leave (Save & Exit when something changed), A advance choice
@@ -114,6 +116,14 @@ normalized = re.sub(
     r"\t+swissSettings\.menuWidescreen \^= 1;\n"
     r"\t+break;\n",
     "", normalized, count=1)
+# And the Menu Screen Size arm, a step held within its range.
+normalized = re.sub(
+    r"(?ms)^\t+case SET_MENU_SCREEN_SIZE:\n"
+    r"\t+swissSettings\.menuScreenInset -= direction;\n"
+    r"\t+if\(swissSettings\.menuScreenInset < 0\) swissSettings\.menuScreenInset = 0;\n"
+    r"\t+if\(swissSettings\.menuScreenInset > UI_STAGE_MAX_INSET\) swissSettings\.menuScreenInset = UI_STAGE_MAX_INSET;\n"
+    r"\t+break;\n",
+    "", normalized, count=1)
 normalized = re.sub(r"[ \t]+(?=\n|$)", "", normalized)
 Path(sys.argv[2]).write_text(normalized)
 PY
@@ -131,9 +141,9 @@ for fn in settings_toggle; do
 			normalize_intended_changes "$TMP/base_$fn" "$TMP/base_${fn}_normalized"
 			normalize_intended_changes "$TMP/head_$fn" "$TMP/head_${fn}_normalized"
 			if cmp -s "$TMP/base_${fn}_normalized" "$TMP/head_${fn}_normalized"; then
-				printf '  %-18s unchanged outside motion, color, icon, layout, save folder and widescreen arms and game reset\n' "$fn"
+				printf '  %-18s unchanged outside motion, color, icon, layout, save folder, widescreen and screen size arms and game reset\n' "$fn"
 			else
-				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN and the game reset" >&2
+				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_MENU_SCREEN_SIZE and the game reset" >&2
 				diff -u "$TMP/base_${fn}_normalized" \
 					"$TMP/head_${fn}_normalized" | head -40 >&2 || true
 				fail=1

@@ -89,12 +89,15 @@ with a tagged release.
 - **Keep the draw path cheap.** The interface is drawn with the console's GX
   pipeline at a fixed per-frame budget: no per-frame allocation, no blocking
   read in a draw function.
-- **Draw for both screen shapes.** Menu Widescreen squeezes every projection
+- **Draw for every screen shape.** Menu Widescreen squeezes every projection
   through `UIStage_Project` (`gui/ui_stage.h`), so the frame shows the 640 x 480
-  stage plus a margin at each side. Load a new projection through it, keep
-  layouts in 0..640, and reach the screen's edges with `UIStage_Left()` and
-  `UIStage_Right()` rather than 0 and 640 (a full-screen page goes through
-  `_PagePanel`).
+  stage plus a margin at each side; Menu Screen Size shrinks it for a CRT's
+  overscan, so the frame shows a margin all round. Load a new projection
+  through it, keep layouts in 0..640 x 0..480, and reach the frame's edges
+  with `UIStage_Left()`, `UIStage_Right()`, `UIStage_Top()` and
+  `UIStage_Bottom()` rather than 0, 640 and 480 (a full-screen page goes
+  through `_PagePanel`). Something that sits against the screen's edge, like
+  the clock, measures from `UIStage_ShownRight()`, which the TV still shows.
 - **CI stays on our runners.** Every job names `[self-hosted, indigo-build]`
   or `[self-hosted, indigo-emulator]`, pins its actions to a full commit SHA,
   and uses no `container:`, `services:` or `pull_request_target`;

@@ -1217,7 +1217,7 @@ static void _DrawPresentation(uiDrawObj_t *evt)
 	uiMotionMode_t motionMode;
 	u32 activeCell = 0u;
 	u32 i;
-	int scrimLeft;
+	int scrimLeft, scrimTop;
 
 	if(data == NULL) {
 		return;
@@ -1232,9 +1232,11 @@ static void _DrawPresentation(uiDrawObj_t *evt)
 	}
 
 	drawInit();
-	/* The scrim covers the whole frame, the widescreen margins too. */
+	/* The scrim covers the whole frame, its margins too. */
 	scrimLeft = (int)floorf(UIStage_Left());
-	_DrawSimpleBox(scrimLeft, 0, (int)ceilf(UIStage_Right()) - scrimLeft, 480, 0,
+	scrimTop = (int)floorf(UIStage_Top());
+	_DrawSimpleBox(scrimLeft, scrimTop, (int)ceilf(UIStage_Right()) - scrimLeft,
+		(int)ceilf(UIStage_Bottom()) - scrimTop, 0,
 		scrim, transparent);
 	_DrawSimpleBox(68, 115, 504, 254, 0, shadow, transparent);
 	_DrawSimpleBox(72, 111, 496, 254, 0, panel, border);
@@ -2364,8 +2366,8 @@ static void _UpdateSystemInstrument(void)
 // Internal
 static void _DrawTitleBar(uiDrawObj_t *evt) {
 	float reveal = UIScene_Frame()->chromeProgress;
-	/* The dial sits 40 in from the right edge the frame shows. */
-	int dialX = (int)(UIStage_Right() - 40.0f);
+	/* The dial sits 40 in from the right edge the TV shows. */
+	int dialX = (int)(UIStage_ShownRight() - 40.0f);
 	int offsetY;
 	GXColor textColor;
 
@@ -3518,9 +3520,9 @@ static void _GameflowDrawLaunch(const drawGameflowEvent_t *data,
 {
 	uiMotionMode_t motion = _CurrentMotionMode();
 	float alpha = _GameflowClamp(launch * reveal, 0.0f, 1.0f);
-	gameflowQuad_t screen = {{{UIStage_Left(), 0.0f},
-		{UIStage_Right(), 0.0f}, {UIStage_Right(), 480.0f},
-		{UIStage_Left(), 480.0f}}};
+	gameflowQuad_t screen = {{{UIStage_Left(), UIStage_Top()},
+		{UIStage_Right(), UIStage_Top()}, {UIStage_Right(), UIStage_Bottom()},
+		{UIStage_Left(), UIStage_Bottom()}}};
 	/* The screen darkens ahead of the cover, which leaves nothing behind. */
 	GXColor dim = {5, 4, 17,
 		_GameflowAlpha(240.0f * _GameflowClamp(2.0f * alpha, 0.0f, 1.0f))};
@@ -3941,7 +3943,8 @@ static void _DrawHomeModalDepth(const uiHomeLayout_t *layout, float reveal)
 		GX_LO_CLEAR);
 	GX_SetZMode(GX_DISABLE, GX_ALWAYS, GX_FALSE);
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 12);
-		_putFlatRect(UIStage_Left(), 0.0f, UIStage_Right() - UIStage_Left(), 480.0f, scrim);
+		_putFlatRect(UIStage_Left(), UIStage_Top(), UIStage_Right() - UIStage_Left(),
+			UIStage_Bottom() - UIStage_Top(), scrim);
 		_putFlatRect((float)layout->modalBounds.left,
 			(float)layout->modalBounds.top, (float)width, (float)height,
 			card);
@@ -4233,8 +4236,8 @@ static void _DrawDeviceSelector(uiDrawObj_t *evt)
 		drawInit();
 		_SetupRasterColor();
 		GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-			_putFlatRect(UIStage_Left(), 0.0f, UIStage_Right() - UIStage_Left(),
-				480.0f, (GXColor) {8, 12, 27, (u8)(236.0f * reveal)});
+			_putFlatRect(UIStage_Left(), UIStage_Top(), UIStage_Right() - UIStage_Left(),
+				UIStage_Bottom() - UIStage_Top(), (GXColor) {8, 12, 27, (u8)(236.0f * reveal)});
 		GX_End();
 	}
 
@@ -4828,8 +4831,8 @@ static void _DrawLaunchFade(void)
 	drawInit();
 	_SetupRasterColor();
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-		_putFlatRect(UIStage_Left(), 0.0f, UIStage_Right() - UIStage_Left(),
-			480.0f, black);
+		_putFlatRect(UIStage_Left(), UIStage_Top(), UIStage_Right() - UIStage_Left(),
+			UIStage_Bottom() - UIStage_Top(), black);
 	GX_End();
 	drawInit();
 }
@@ -5128,13 +5131,16 @@ static void _CheatsPanel(int x, int y, int width, int height, GXColor color)
 	drawInit();
 }
 
-/* A page that covers the screen, and in widescreen the margins beside it. */
+/* A page that covers the screen, and the frame's margins round it. */
 static void _PagePanel(int x, int y, int width, int height, GXColor color)
 {
 	int left = (int)floorf(UIStage_Left());
 	int right = (int)ceilf(UIStage_Right());
+	int top = (int)floorf(UIStage_Top());
+	int bottom = (int)ceilf(UIStage_Bottom());
 
-	_CheatsPanel(x + left, y, width + (right - 640) - left, height, color);
+	_CheatsPanel(x + left, y + top, width + (right - 640) - left,
+		height + (bottom - 480) - top, color);
 }
 
 /* Message and progress boxes, in the Settings pages' card language: a flat
@@ -6465,6 +6471,7 @@ static void *videoUpdate(void *videoEventQueue) {
 		}
 		/* One shape for the whole frame, whatever Settings does meanwhile. */
 		UIStage_SetWide(swissSettings.menuWidescreen);
+		UIStage_SetInset(swissSettings.menuScreenInset);
 		// Draw out every event
 		videoEventQueueEntry = (uiDrawObjQueue_t*)videoEventQueue;
 		while(videoEventQueueEntry != NULL) {

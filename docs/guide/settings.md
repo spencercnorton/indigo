@@ -190,6 +190,7 @@ Press Y on any row for the same explanations on the console.
 | --- | --- |
 | Swiss Video Mode | The video mode of Indigo's own screens. Auto picks 480p with a digital cable and otherwise follows the console's region. A switches to a new mode and asks before it keeps it. |
 | Menu Widescreen | Draws Indigo's own screens for a TV set to 16:9: the background fills the screen and the menus keep their shape in the middle. Set your TV or HDMI adapter to 16:9 too. Games follow **Force Widescreen** instead. |
+| Menu Screen Size | Draws Indigo's own screens smaller, from 100% down to 80%, for a CRT TV that hides the edges of the picture (overscan). Lower it until the clock and the edges of every page are in view; 90% keeps everything inside the part of the picture nearly every TV shows. The background still fills the screen. Games are not affected. |
 | System Video | NTSC, PAL or PAL-M, mainly for the Brazilian console. |
 | Screen Position | Moves the picture left or right in games. |
 | AVE Compatibility | Workarounds for your video encoder or digital video mod, such as GCVideo or GCDigital. |

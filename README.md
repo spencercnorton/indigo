@@ -141,6 +141,12 @@ draws Indigo for a TV set to 16:9: the background and its waves reach both
 edges, and the cube, the text and every menu keep their shape in the middle.
 Games have their own setting, Force Widescreen.
 
+**CRT TVs show every edge.** A CRT hides a little of each edge of the
+picture. Setup › Display › Menu Screen Size draws Indigo smaller, from 100%
+down to 80%, so the clock and the edges of every page stay in view; the
+background still fills the screen. At 90% everything sits inside the part
+of the picture nearly every TV shows. Games are not affected.
+
 **Each face of the cube shows the picture you choose.** Setup › Console has a
 row per face (Library Icon, Source Icon, Settings Icon and System Icon), and
 each face has four icons of its own. Library has Controller, Books, Covers

@@ -18,6 +18,7 @@
 #include "bba.h"
 #include "deviceHandler-FAT.h"
 #include "ui_game_history.h"
+#include "ui_stage.h"
 
 // This is an example Swiss settings entry (sits at the top of global.ini)
 //!!Swiss Settings Start!!
@@ -516,6 +517,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Disable Menu SFX=%s\r\n", swissSettings.disableMenuSFX ? "Yes":"No");
 	fprintf(fp, "Menu Color=%s\r\n", uiColorStr[swissSettings.uiColor]);
 	fprintf(fp, "Menu Widescreen=%s\r\n", swissSettings.menuWidescreen ? "Yes":"No");
+	fprintf(fp, "Menu Screen Size=%i%%\r\n", 100 - swissSettings.menuScreenInset);
 	fprintf(fp, "Library Icon=%s\r\n", libraryIconStr[swissSettings.libraryIcon]);
 	fprintf(fp, "Source Icon=%s\r\n", sourceIconStr[swissSettings.sourceIcon]);
 	fprintf(fp, "Settings Icon=%s\r\n", settingsIconStr[swissSettings.settingsIcon]);
@@ -1343,6 +1345,12 @@ void config_parse_global(char *configData) {
 				}
 				else if(!strcmp("Menu Widescreen", name)) {
 					swissSettings.menuWidescreen = !strcmp("Yes", value);
+				}
+				else if(!strcmp("Menu Screen Size", name)) {
+					int inset = 100 - atoi(value);
+					if(inset >= 0 && inset <= UI_STAGE_MAX_INSET) {
+						swissSettings.menuScreenInset = inset;
+					}
 				}
 				else if(!strcmp("Library Icon", name)) {
 					for(int i = 0; i < UI_HOME_ICON_CHOICES; i++) {
