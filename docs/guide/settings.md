@@ -208,6 +208,7 @@ Press Y on any row for the same explanations on the console.
 | --- | --- |
 | Menu Color | The color of the whole interface. See [Make it yours](personalize.md#menu-color). |
 | Library Icon, Source Icon, Settings Icon, System Icon | The icon on each face of the Home cube. See [Make it yours](personalize.md#cube-icons). |
+| Apps Face | **On** shows [Apps](apps.md) on Home while the card has a program in `/apps`; **Off** never shows it. |
 | System Sound | The audio output most games use: mono or stereo. |
 | System Language | The language games use, mainly multi-language PAL games. |
 | System Boot Mode | On development hardware, development or production mode. With GC Loader or PicoLoader on a retail console, the default skips the GameCube logo. |

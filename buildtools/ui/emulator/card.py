@@ -14,8 +14,10 @@ all but two of the games, so the Library shows both kinds of card, and
 /swiss/ui/stills.pak gameplay stills drawn the same way for all but three, so
 Spotlight shows a still, a cover and a banner card, and
 /swiss/ui/descriptions.txt a line about all but one, which keeps its
-banner's. Nothing in it is anyone else's: no game, no box art, no
-screenshot, no text, no font.
+banner's. /apps holds stand-in programs for Apps, beside pictures drawn here
+in each shape Indigo fits to a card, one in a Homebrew Channel folder whose
+boot.dol Apps must leave out. Nothing in it is anyone else's: no game, no
+box art, no screenshot, no text, no font.
 
 usage: card.py OUT.iso [--no-posters]
 Needs genisoimage; the posters need gxtexconv (see buildtools/ui/poster_pack.py)
@@ -234,6 +236,58 @@ def build_pack(folder: Path, pak: Path, kind: str) -> bool:
     return True
 
 
+# Apps, sorted as Apps shows them. Arcade, first, has no picture.
+APPS = ("Arcade", "Pixel Painter", "Starfield", "toolbox")
+APP_STUB = b"a stand-in for a program: Apps lists it, nothing can run it"
+
+
+def app_picture(kind: str):
+    """An app's picture: a small pixel-art icon, a poster, or a Homebrew
+    Channel banner, so Apps shows each shape Indigo fits to a card."""
+    from PIL import Image, ImageDraw
+
+    if kind == "painter":
+        image = Image.new("RGB", (16, 16), _rgb(260, 0.5, 0.3))
+        for y in range(16):
+            for x in range(16):
+                if (x - 7.5) ** 2 + (y - 7.5) ** 2 < 36:
+                    image.putpixel((x, y), _rgb((x * 24 + y * 8) % 360, 0.7, 0.95))
+        return image
+    if kind == "starfield":
+        width, height = 300, 400
+        image = Image.new("RGB", (width, height))
+        draw = ImageDraw.Draw(image)
+        for y in range(height):
+            draw.line([(0, y), (width, y)], fill=_rgb(230, 0.8, 0.12 + 0.3 * y / height))
+        for n in range(60):
+            x, y = (n * 97) % width, (n * 53) % (height - 60)
+            draw.ellipse([x, y, x + 2 + n % 3, y + 2 + n % 3], fill=(255, 250, 220))
+        draw.polygon([(150, 250), (190, 330), (110, 330)], fill=_rgb(20, 0.6, 0.9))
+        return image
+    image = Image.new("RGB", (128, 48), _rgb(150, 0.6, 0.45))
+    draw = ImageDraw.Draw(image)
+    for n in range(4):
+        draw.rectangle([10 + n * 30, 12, 30 + n * 30, 36], outline=(240, 240, 240), width=3)
+    return image
+
+
+def build_apps(apps: Path) -> int:
+    """/apps, as Apps reads it; returns how many apps it should list."""
+    apps.mkdir()
+    (apps / "Arcade.dol").write_bytes(APP_STUB)
+    for name, kind in (("Pixel Painter", "painter"), ("Starfield", "starfield")):
+        (apps / f"{name}.dol").write_bytes(APP_STUB)
+        app_picture(kind).save(apps / f"{name}.png")
+    toolbox = apps / "Toolbox"
+    toolbox.mkdir()
+    (toolbox / "toolbox.dol").write_bytes(APP_STUB)
+    (toolbox / "boot.dol").write_bytes(APP_STUB)  # the Wii's
+    (toolbox / "meta.xml").write_text("<app><name>Toolbox</name></app>\n")
+    app_picture("banner").save(toolbox / "icon.png")
+    (apps / "readme.txt").write_text("Not a program: Apps leaves it out.\n")
+    return len(APPS)
+
+
 def build(out: Path, posters: bool = True) -> dict[str, object]:
     if not shutil.which("genisoimage"):
         raise SystemExit("card.py: genisoimage is missing")
@@ -256,6 +310,7 @@ def build(out: Path, posters: bool = True) -> dict[str, object]:
         (root / "swiss/ui/descriptions.txt").write_text(
             "# Descriptions of the demonstration disc's fictitious games\n" +
             "".join(f"{game_id} {text}\n" for game_id, text in sorted(DESCRIPTIONS.items())))
+        apps = build_apps(root / "apps")
         for path in sorted(root.rglob("*")) + [root]:
             os.utime(path, (1000000000, 1000000000))
         subprocess.run(["genisoimage", "-quiet", "-R", "-J", "-V", "INDIGO_DEMO", "-o", str(out), str(root)],
@@ -268,7 +323,8 @@ def build(out: Path, posters: bool = True) -> dict[str, object]:
     out.write_bytes(image)
     return {"games": len(GAMES), "damaged": len(DAMAGED),
             "posters": len(GAMES) - len(NO_POSTER) if with_posters else 0,
-            "stills": len(GAMES) - len(NO_STILL) if with_stills else 0, "bytes": len(image)}
+            "stills": len(GAMES) - len(NO_STILL) if with_stills else 0, "apps": apps,
+            "bytes": len(image)}
 
 
 def main(argv: list[str] | None = None) -> int:

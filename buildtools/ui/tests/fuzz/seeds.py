@@ -89,9 +89,38 @@ def fst(out: Path) -> None:
     (out / "runaway-count").write_bytes(root + struct.pack("=I", 0x00FFFFFF) + entry)
 
 
+def png(out: Path) -> None:
+    # An app's picture, in each colour type Pillow writes, small so the
+    # fuzzer's mutations reach every chunk, and one it must refuse.
+    from PIL import Image
+    gradient = Image.linear_gradient("L").resize((24, 32))
+    shapes = {
+        "rgb.png": Image.merge("RGB", (gradient, gradient.transpose(Image.Transpose.FLIP_LEFT_RIGHT), gradient)),
+        "rgba.png": Image.merge("RGBA", (gradient, gradient, gradient, gradient.rotate(90))),
+        "gray.png": gradient,
+        "bilevel.png": gradient.convert("1"),
+        "palette.png": gradient.convert("RGB").quantize(16),
+        "banner.png": Image.new("RGB", (32, 12), (200, 40, 60)),
+    }
+    for name, image in shapes.items():
+        image.save(out / name)
+    palette = shapes["palette.png"].copy()
+    palette.info["transparency"] = 0
+    palette.save(out / "palette-trns.png", transparency=0)
+    Image.new("I;16", (8, 8), 40000).save(out / "gray16.png")
+    shapes["rgb.png"].save(out / "interlaced.png", interlace=1)
+    # Stored, not compressed: a mutation there is a changed filter or pixel.
+    for name in ("rgba", "palette", "bilevel"):
+        shapes[f"{name}.png"].save(out / f"{name}-stored.png", compress_level=0)
+    # 'N' and an app's name: its poster of the name.
+    (out / "name-variant").write_bytes(b"Ngbihf-ossc+carby")
+    (out / "name-long").write_bytes(b"N" + b"swiss_r2119-" * 8)
+    (out / "name-separators").write_bytes(b"N-_. +a")
+
+
 def main() -> int:
     out = Path(sys.argv[1])
-    for target in (history, saves, posters, about, settings, fst):
+    for target in (history, saves, posters, about, settings, fst, png):
         folder = out / target.__name__
         folder.mkdir(parents=True, exist_ok=True)
         target(folder)

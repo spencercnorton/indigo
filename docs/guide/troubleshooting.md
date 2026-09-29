@@ -13,6 +13,7 @@
 - [Indigo starts, then stock Swiss appears](#indigo-starts-then-stock-swiss-appears)
 - [In-Game Reset takes me to stock Swiss](#in-game-reset-takes-me-to-stock-swiss)
 - [The same game opens every time Indigo starts](#the-same-game-opens-every-time-indigo-starts)
+- [There's no Apps face, or an app or its picture is missing](#theres-no-apps-face-or-an-app-or-its-picture-is-missing)
 - [Still stuck](#still-stuck)
 
 ## I see Swiss's file list instead of the Library
@@ -132,6 +133,15 @@ That game is set to Autoload. Press B to go to the Library, open the game
 again and press **Z**: the shortcut changes from "Autoload On" back to
 "Autoload".
 
+## There's no Apps face, or an app or its picture is missing
+
+The Apps face shows only when `/apps`, at the root of the source, holds a
+program: a `.dol`, `.dol+cli` or `.elf` that isn't called `boot.dol` (the
+Wii's), and Settings › Setup › Console › Apps Face is On. Programs two folders deep, hidden ones and names starting with a dot
+are left out. A picture must be a PNG with the program's name, or its
+folder's `icon.png`, up to 2048 pixels a side and 2 MB, and not interlaced.
+[Apps](apps.md#when-apps-doesnt-look-right) has the details.
+
 ## Still stuck
 
 - Questions: [Discussions](https://github.com/spencercnorton/indigo/discussions).
@@ -143,4 +153,4 @@ again and press **Z**: the shortcut changes from "Autoload On" back to
 
 ---
 
-<p align="center"><a href="posters.md">← Posters</a> · <a href="README.md">Guide</a></p>
+<p align="center"><a href="apps.md">← Apps</a> · <a href="README.md">Guide</a></p>

@@ -1,9 +1,9 @@
 #!/bin/sh
 # Coverage-guided fuzzing of the files Indigo reads from a card: poster and
-# stills packs, game descriptions, its play history, save files, settings files
-# and the file table of every disc image the Library lists. Each target is built with
-# libFuzzer, AddressSanitizer and UBSan and runs for SECONDS, starting from
-# seeds.py's real files. A crash, a sanitizer finding or a broken invariant
+# stills packs, game descriptions, its play history, save files, settings files,
+# the file table of every disc image the Library lists and the pictures of the
+# programs in /apps. Each target is built with libFuzzer, AddressSanitizer and
+# UBSan and runs for SECONDS, starting from seeds.py's real files. A crash, a sanitizer finding or a broken invariant
 # fails the run and leaves the input that caused it in OUT/crashes/<target>/.
 #
 # usage: buildtools/ui/tests/fuzz/run_fuzz.sh [SECONDS per target, 30] [OUT, ./fuzz-out]
@@ -29,6 +29,7 @@ echo "== building the fuzzers =="
 	$cc $flags -std=c11 -I"$gui" -o "$out/bin/about" "$here/fuzz_about.c" "$gui/ui_about.c"
 	$cc $flags -std=c11 -DUI_ASSETS_HOST_BUILD -I"$gui" -o "$out/bin/posters" \
 		"$here/fuzz_posters.c" "$gui/ui_assets.c" -lz
+	$cc $flags -std=c11 -I"$gui" -o "$out/bin/png" "$here/fuzz_png.c" "$gui/ui_png.c" -lz -lm
 	python3 "$here/settings_source.py" "$out/fuzz_settings.c"
 	$cc $flags -std=gnu11 -w -o "$out/bin/settings" "$out/fuzz_settings.c"
 	python3 "$here/fst_source.py" "$out/fuzz_fst.c"
@@ -36,14 +37,14 @@ echo "== building the fuzzers =="
 }
 python3 "$here/seeds.py" "$out/corpus"
 # Inputs that once broke something stay in the corpus for good: corpus/<target>/.
-for target in history saves posters about settings fst; do
+for target in history saves posters about settings fst png; do
 	if [ -d "$here/corpus/$target" ]; then
 		cp "$here/corpus/$target"/* "$out/corpus/$target/"
 	fi
 done
 
 status=0
-for target in history saves posters about settings fst; do
+for target in history saves posters about settings fst png; do
 	echo "== $target: ${seconds}s =="
 	mkdir -p "$out/crashes/$target"
 	if "$out/bin/$target" -max_total_time="$seconds" -timeout=10 -rss_limit_mb=2048 \

@@ -4,7 +4,7 @@
 #include "ui_home.h"
 
 static const char *const faceLabels[UI_HOME_FACE_COUNT] = {
-	"LIBRARY", "SOURCE", "SETTINGS", "SYSTEM"
+	"LIBRARY", "SOURCE", "SETTINGS", "SYSTEM", "APPS"
 };
 
 static int positiveModulo(int value, int modulus)
@@ -24,10 +24,23 @@ bool UIHome_IsSurface(int surface)
 		surface < UI_HOME_SURFACE_COUNT;
 }
 
-uiHomeFace_t UIHome_FaceForTurn(int32_t turnOrdinal)
+int UIHome_FaceCount(uiHomeCapabilities_t capabilities)
 {
-	return (uiHomeFace_t)positiveModulo((int)(turnOrdinal %
-		(int32_t)UI_HOME_FACE_COUNT), UI_HOME_FACE_COUNT);
+	return capabilities.hasApps ? UI_HOME_FACE_COUNT : UI_HOME_FACE_APPS;
+}
+
+static int ringSize(int faceCount)
+{
+	return faceCount == UI_HOME_FACE_COUNT ? UI_HOME_FACE_COUNT :
+		UI_HOME_FACE_APPS;
+}
+
+uiHomeFace_t UIHome_FaceForTurn(int32_t turnOrdinal, int faceCount)
+{
+	int count = ringSize(faceCount);
+
+	return (uiHomeFace_t)positiveModulo((int)(turnOrdinal % (int32_t)count),
+		count);
 }
 
 void UIHome_OrientationInit(uiHomeOrientation_t *orientation)
@@ -119,6 +132,7 @@ void UIHome_Init(uiHomeState_t *state, uiHomeCapabilities_t capabilities)
 	state->surface = UI_HOME_SURFACE_RING;
 	state->selection = 0;
 	state->turnOrdinal = (int32_t)state->face;
+	state->faceCount = UIHome_FaceCount(capabilities);
 	state->revision = 1u;
 	UIHome_OrientationInit(&state->orientation);
 	state->turnAxis = UI_HOME_TURN_NONE;
@@ -132,13 +146,13 @@ static void moveFace(uiHomeState_t *state, uiHomeTurnAxis_t axis, int direction)
 	 * is absolute and does not depend on the counter's accumulated magnitude. */
 	if((state->turnOrdinal == INT32_MAX && step > 0) ||
 		(state->turnOrdinal == INT32_MIN && step < 0)) {
-		state->turnOrdinal %= (int32_t)UI_HOME_FACE_COUNT;
+		state->turnOrdinal %= (int32_t)ringSize(state->faceCount);
 	}
 	state->turnOrdinal += (int32_t)step;
 	UIHome_OrientationTurn(&state->orientation, axis, step);
 	state->turnAxis = axis;
 	state->turnDirection = step;
-	state->face = UIHome_FaceForTurn(state->turnOrdinal);
+	state->face = UIHome_FaceForTurn(state->turnOrdinal, state->faceCount);
 	state->surface = UI_HOME_SURFACE_RING;
 	state->selection = 0;
 	state->revision++;
@@ -203,6 +217,8 @@ static uiHomeEffect_t applyRing(uiHomeState_t *state, uiHomeInput_t input,
 			case UI_HOME_FACE_SYSTEM:
 				enterSurface(state, UI_HOME_SURFACE_SYSTEM, 0);
 				break;
+			case UI_HOME_FACE_APPS:
+				return UI_HOME_EFFECT_OPEN_APPS;
 			default:
 				break;
 		}
@@ -283,6 +299,27 @@ static uiHomeEffect_t applyRestartConfirm(uiHomeState_t *state,
 	return UI_HOME_EFFECT_NONE;
 }
 
+/* The ring follows the capabilities: Apps comes when the source has apps and
+ * goes when it has none. The cube stays where it is; standing on Apps as it
+ * goes lands on Library. Like the selection's repair, this is published, not
+ * counted as an input: the revision stays. */
+static void reconcileFaces(uiHomeState_t *state,
+	uiHomeCapabilities_t capabilities)
+{
+	int count = UIHome_FaceCount(capabilities);
+
+	if(state->faceCount == count && (int)state->face < count) {
+		return;
+	}
+	if((int)state->face >= count) {
+		state->face = UI_HOME_FACE_LIBRARY;
+		state->surface = UI_HOME_SURFACE_RING;
+		state->selection = 0;
+	}
+	state->turnOrdinal = (int32_t)state->face;
+	state->faceCount = count;
+}
+
 uiHomeEffect_t UIHome_Apply(uiHomeState_t *state, uiHomeInput_t input,
 	uiHomeCapabilities_t capabilities)
 {
@@ -290,6 +327,7 @@ uiHomeEffect_t UIHome_Apply(uiHomeState_t *state, uiHomeInput_t input,
 		!UIHome_IsSurface((int)state->surface)) {
 		return UI_HOME_EFFECT_NONE;
 	}
+	reconcileFaces(state, capabilities);
 	normalizeSelection(state, capabilities);
 	switch(state->surface) {
 		case UI_HOME_SURFACE_RING:
@@ -344,6 +382,7 @@ const char *UIHome_PrimaryHint(uiHomeFace_t face,
 		case UI_HOME_FACE_SYSTEM:
 			return "A  ENTER";
 		case UI_HOME_FACE_SETTINGS:
+		case UI_HOME_FACE_APPS:
 			return "A  OPEN";
 		default:
 			return "";

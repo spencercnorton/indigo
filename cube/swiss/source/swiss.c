@@ -53,6 +53,7 @@
 #include "aram/sidestep.h"
 #include "gui/FrameBufferMagic.h"
 #include "gui/IPLFontWrite.h"
+#include "gui/apps.h"
 #include "gui/ui_gameflow_detail.h"
 #include "gui/ui_gameflow_library.h"
 #include "gui/ui_gameflow_ownership.h"
@@ -94,16 +95,19 @@ static uiMenuInputState_t homeMenuInput;
 static bool homeMenuInputVisible;
 static u32 homeMenuInputRetrace;
 
-static u32 menuInputElapsedMicroseconds(u32 *lastRetrace);
-
 /* Mount truth is bound to the exact handler pointer. A newly assigned source
  * therefore starts unmounted and can never inherit a predecessor's state. */
 static uiHomeSourceLifecycle_t homeSourceLifecycle;
+
+/* Whether the source has apps, looked for once per mount and refresh. */
+static bool homeAppsKnown;
+static bool homeAppsFound;
 
 static void homeSourceRecord(DEVICEHANDLER_INTERFACE *handler,
 	uiHomeSourceMountState_t state)
 {
 	UIHomeSafety_RecordSource(&homeSourceLifecycle, handler, state);
+	homeAppsKnown = false;
 }
 
 static bool homeSourceLifecycleMounted(void)
@@ -168,6 +172,14 @@ static uiHomeCapabilities_t homeCapabilities(void)
 		.hasRecent = swissSettings.recentListLevel > 0 &&
 			swissSettings.recent[0][0] != '\0'
 	};
+	/* The Apps face shows while the mounted source has an app, unless
+	 * Setup > Console > Apps Face is Off; then the card isn't read for it. */
+	if(capabilities.hasSource && !swissSettings.hideAppsFace && !homeAppsKnown) {
+		homeAppsFound = apps_available(devices[DEVICE_CUR]);
+		homeAppsKnown = true;
+	}
+	capabilities.hasApps = capabilities.hasSource && !swissSettings.hideAppsFace &&
+		homeAppsFound;
 	return capabilities;
 }
 
@@ -868,6 +880,8 @@ static bool gameflowEnterLibraryFromHome(void)
 static void homeRefreshLibrary(void)
 {
 	DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];
+	/* Refresh reads the card again, /apps included. */
+	homeAppsKnown = false;
 	if(source == NULL) {
 		needsRefresh = 0;
 		return;
@@ -963,7 +977,7 @@ static void homeRestartSwiss(void)
 #define SELECTOR_RELEASE_BUTTONS (HOME_CONFIRMATION_BUTTONS | BUTTON_X | \
 	BUTTON_Y | BUTTON_L | BUTTON_R | BUTTON_Z)
 
-static u32 menuInputElapsedMicroseconds(u32 *lastRetrace)
+u32 menuInputElapsedMicroseconds(u32 *lastRetrace)
 {
 	u32 currentRetrace;
 	u32 elapsedRetraces;
@@ -1072,6 +1086,10 @@ static void homeDispatchEffect(uiHomeEffect_t effect)
 		case UI_HOME_EFFECT_OPEN_SAVES:
 			UIScene_Request(UI_SCENE_SYSTEM);
 			show_saves();
+			UIScene_Request(UI_SCENE_HOME);
+			break;
+		case UI_HOME_EFFECT_OPEN_APPS:
+			show_apps();
 			UIScene_Request(UI_SCENE_HOME);
 			break;
 		case UI_HOME_EFFECT_RESTART:
@@ -1838,7 +1856,7 @@ void drawFilesCarousel(file_handle** directory, int num_files, uiDrawObj_t *cont
 }
 
 /* The Library's layout from Setup; anything unknown is the carousel. */
-static uiGameflowLayout_t gameflowLayout(void)
+uiGameflowLayout_t gameflowLayout(void)
 {
 	return swissSettings.libraryLayout > UI_GAMEFLOW_LAYOUT_HORIZONTAL &&
 		swissSettings.libraryLayout < UI_GAMEFLOW_LAYOUT_COUNT ?
@@ -1848,7 +1866,7 @@ static uiGameflowLayout_t gameflowLayout(void)
 
 /* The stick follows the layout: across the carousel, up and down the
  * column, both ways in the grid. */
-static u32 gameflowMenuInputPolicy(uiGameflowLayout_t layout)
+u32 gameflowMenuInputPolicy(uiGameflowLayout_t layout)
 {
 	switch(layout) {
 		case UI_GAMEFLOW_LAYOUT_VERTICAL:

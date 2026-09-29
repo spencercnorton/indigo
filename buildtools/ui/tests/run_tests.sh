@@ -73,6 +73,9 @@ run_plain() {
 	./test_ui_cheats
 	echo "== Memory Cards save files and destinations (plain) =="
 	./test_ui_saves
+	echo "== Apps: what is an app, its picture, its poster slots (plain) =="
+	./test_ui_apps
+	python3 ./test_ui_png.py ./test_ui_png
 	echo "== ui_assets runtime (plain + target-sync policy) =="
 	if make_fixture; then
 		./test_ui_assets "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
@@ -133,6 +136,9 @@ run_sanitized() {
 	./test_ui_cheats_san
 	echo "== Memory Cards save files and destinations (ASan/UBSan) =="
 	./test_ui_saves_san
+	echo "== Apps: what is an app, its picture, its poster slots (ASan/UBSan) =="
+	./test_ui_apps_san
+	python3 ./test_ui_png.py ./test_ui_png_san
 	echo "== ui_assets runtime (ASan/UBSan + target-sync policy) =="
 	if make_fixture; then
 		./test_ui_assets_san "$TMP/fixture.pak" "$TMP/fixture-stills.pak"

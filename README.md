@@ -32,8 +32,9 @@ hardware and want it to feel like it belongs on the console.
 
 ## What it does
 
-**Home is an animated cube.** Four faces, one destination each: left and
-right turn it sideways, up and down tip it over. When Indigo starts, the cube
+**Home is an animated cube.** Four faces, one destination each, and a fifth,
+Apps, when your card has programs in `/apps`: left and right turn it
+sideways, up and down tip it over. When Indigo starts, the cube
 flies in from the distance, spinning, and comes to rest on the face you
 start on. It is glass, like the
 GameCube's own menu, and it treats light the way glass does. Through the clear
@@ -72,6 +73,13 @@ one, each game gets a card with its disc banner.
 <p align="center">
   <img alt="The game library in its four layouts in turn. Horizontal: a row of GameCube box art, the selected cover raised between two covers either side, with its title and publisher below it; two steps right. Vertical: a column of covers down the left, the selected one large with its title, publisher and game ID beside it; three steps down. Grid: five covers across and three rows on screen, a lit frame moving right, right, down and down. Spotlight: the selected game's gameplay still fills a framed panel, with its title, publisher, a few sentences about it and its game ID beside it, over a row of disc banners; two steps right bring 007: Everything or Nothing's and From Russia With Love's stills and text." src="docs/screenshots/library.png" width="640">
 </p>
+
+**Apps keeps your other programs apart.** Emulators, Game Boy Interface,
+tools: put their `.dol` files in `/apps` and they get their own face of the
+cube, shown as posters and started the way games are, never mixed in with
+your games. Each app's picture is any PNG you put beside it (`gbi.png` for
+`gbi.dol`); Indigo turns it into a poster on the console. See
+[Apps](docs/guide/apps.md).
 
 **Change Source shows the devices themselves.** Choose it on the Source
 face: the cube lifts out of the way and the devices Indigo found line up
@@ -265,7 +273,8 @@ Put each game in its own folder or put the disc images there directly:
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. The Library skips
 anything else there, such as a text file, a cover image or an empty folder.
 If `/games` holds no disc images at all, you get Swiss's plain file list
-instead. On Home, turn the cube to Library and press A.
+instead. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn the
+cube to Library and press A.
 
 ### Posters
 
@@ -307,6 +316,23 @@ edit (see [Posters](docs/guide/posters.md#game-descriptions)).
 To build one from your own screenshots (at least 320×240, named like the
 covers): `poster_pack.py --stills ~/screenshots --out stills.pak`. See
 [Posters](docs/guide/posters.md#gameplay-stills).
+
+### Apps
+
+Put other programs (`.dol`, `.dol+cli` or `.elf`) in `/apps` at the root of
+the card, loose or each in a folder of its own, and a picture beside each,
+a PNG with the program's name. Home then gets an Apps face:
+
+```text
+/apps/gbi.dol
+/apps/gbi.png
+/apps/Genesis Plus GX/genplus_cube.dol
+/apps/Genesis Plus GX/icon.png
+```
+
+A file called `boot.dol` is left out: in the Wii's Homebrew Channel layout it
+is the Wii program. Settings › Setup › Console › Apps Face turns the face
+off. [Apps](docs/guide/apps.md) has the rest.
 
 ### Cheats
 

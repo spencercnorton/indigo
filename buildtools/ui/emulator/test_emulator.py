@@ -89,6 +89,25 @@ class Disc(unittest.TestCase):
         self.assertEqual(text(0x18A0, 0x40), "Indigo demonstration disc")
         self.assertEqual(text(0x18E0, 0x80), card.DESCRIPTION)
 
+    def test_apps_folder(self):
+        """/apps as Apps reads it: stand-in programs, pictures of each shape
+        Indigo fits to a card, and a Homebrew Channel folder whose boot.dol
+        (the Wii's) and other files Apps leaves out."""
+        with tempfile.TemporaryDirectory() as directory:
+            apps = Path(directory) / "apps"
+            self.assertEqual(card.build_apps(apps), len(card.APPS))
+            self.assertEqual((apps / "Arcade.dol").read_bytes(), card.APP_STUB)
+            programs = [p for p in apps.rglob("*.dol") if p.name.lower() != "boot.dol"]
+            self.assertEqual(tuple(sorted((p.stem for p in programs), key=str.lower)), card.APPS)
+            self.assertTrue((apps / "Toolbox/boot.dol").exists())
+            for picture, size in (("Pixel Painter.png", (16, 16)), ("Starfield.png", (300, 400)),
+                                  ("Toolbox/icon.png", (128, 48))):
+                from PIL import Image
+                with Image.open(apps / picture) as image:
+                    self.assertEqual(image.size, size, picture)
+                    self.assertFalse(image.info.get("interlace"), picture)
+            self.assertFalse((apps / "Arcade.png").exists())  # a card with its name
+
     def test_posters_differ(self):
         self.assertNotEqual(card.poster(0).tobytes(), card.poster(1).tobytes())
 

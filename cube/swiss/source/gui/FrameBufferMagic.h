@@ -63,6 +63,9 @@ typedef struct uiDrawObj {
 #define UI_GAMEFLOW_CARD_PARENT      (1u << 4)
 #define UI_GAMEFLOW_CARD_FOLDER      (1u << 5)
 #define UI_GAMEFLOW_CARD_CUSTOM      (1u << 6) /* the game has settings of its own */
+/* An app (gui/apps.c), not a game: its poster is its own picture, and a
+ * snapshot of apps is the Apps screen. */
+#define UI_GAMEFLOW_CARD_APP         (1u << 7)
 
 /* Pointer-free menu-thread record. Its fixed 6400-byte stride keeps every
  * inline RGB5A3 banner 32-byte aligned when the snapshot is memalign(32). */
@@ -221,6 +224,10 @@ bool DrawUpdateGameflowDetail(uiDrawObj_t *evt,
 	const uiGameflowDetailSnapshot_t *snapshot);
 void DrawClearGameflowDetail(uiDrawObj_t *evt);
 void DrawAddChild(uiDrawObj_t *parent, uiDrawObj_t *child);
+/* Runs change on the menu thread with the video thread held off, so what a
+ * frame draws never changes half way (Apps' posters). change must not
+ * block, draw or call anything that takes the video lock. */
+void DrawWithVideoLocked(void (*change)(void *context), void *context);
 uiDrawObj_t* DrawPublish(uiDrawObj_t *evt);
 uiDrawObj_t* DrawRepublish(uiDrawObj_t *old, uiDrawObj_t *new);
 void DrawDispose(uiDrawObj_t *evt);

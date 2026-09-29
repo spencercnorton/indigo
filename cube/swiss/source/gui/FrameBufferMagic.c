@@ -49,6 +49,7 @@
 #include "ui_cheats.h"
 #include "ui_about.h"
 #include "ui_launch.h"
+#include "apps.h"
 
 #define GUI_MSGBOX_ALPHA 225
 #define GUI_PANEL_ALPHA 150	// Phase 2: translucent content panels (config-gated; dialogs stay at GUI_MSGBOX_ALPHA)
@@ -161,6 +162,7 @@ static uiAboutEntry_t *descriptionsIndex;
 static uiAbout_t descriptions;
 static bool gameflowResetRegistered;
 static s32 _GameflowOnReset(s32 final);
+static bool _LaunchTakesBar(bool indeterminate);
 static sys_resetinfo gameflowResetInfo = {
 	{NULL, NULL}, _GameflowOnReset, 0
 };
@@ -924,13 +926,16 @@ static void _DrawImage(uiDrawObj_t *evt) {
 }
 
 /* The icon Settings chose for each Home face, a choice of that face's own
- * four, in uiHomeFace_t order. */
+ * four, in uiHomeFace_t order. Apps has its one icon, drawn while it shows
+ * at all: without apps the cube draws exactly what it did. */
 static void _HomeFaceIcons(int icons[UI_HOME_FACE_COUNT])
 {
 	icons[UI_HOME_FACE_LIBRARY] = swissSettings.libraryIcon;
 	icons[UI_HOME_FACE_SOURCE] = swissSettings.sourceIcon;
 	icons[UI_HOME_FACE_SETTINGS] = swissSettings.settingsIcon;
 	icons[UI_HOME_FACE_SYSTEM] = swissSettings.systemIcon;
+	icons[UI_HOME_FACE_APPS] =
+		UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_APPS] > 0.0f ? 0 : -1;
 }
 
 static void _DrawBackground(uiDrawObj_t *evt)
@@ -1131,8 +1136,7 @@ uiDrawObj_t* DrawProgressBar(bool indeterminate, int percent, const char *messag
 	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
 	event->type = EV_PROGRESS;
 	event->data = eventData;
-	/* During a launch the launch screen shows a looping bar's step. */
-	if(indeterminate && DrawLaunchStep(message)) {
+	if(_LaunchTakesBar(indeterminate) && DrawLaunchStep(message)) {
 		eventData->hidden = true;
 		return event;
 	}
@@ -2949,6 +2953,24 @@ static void _GameflowDrawFallback(const gameflowRenderCard_t *card,
 		const char *regionText = card->record->flags & UI_GAMEFLOW_CARD_PARENT ?
 			"GAME LIBRARY" :
 			UIGameflowLibrary_RegionLabel(card->record->gameId);
+		/* An app whose poster isn't made yet: its name where a game's ID
+		 * goes, cut to what a card holds, so the cards tell apart. */
+		char appName[12];
+
+		if(card->record->flags & UI_GAMEFLOW_CARD_APP) {
+			size_t k;
+
+			for(k = 0; k < 8u && card->record->title[k] != '\0'; ++k) {
+				char c = card->record->title[k];
+				appName[k] = c >= 'a' && c <= 'z' ? (char)(c - 'a' + 'A') : c;
+			}
+			if(card->record->title[k] != '\0') {
+				appName[k++] = '\205';
+			}
+			appName[k] = '\0';
+			identityText = appName;
+			regionText = "APP";
+		}
 		gameflowPoint_t idPoint = _GameflowQuadPoint(&card->quad, 0.5f,
 			layout.idBaseline);
 		gameflowPoint_t regionPoint = _GameflowQuadPoint(&card->quad, 0.5f,
@@ -2976,6 +2998,10 @@ static GXTexObj *_GameflowPosterTexture(
 	uiPosterHandle_t handle;
 	uiPosterResult_t result;
 
+	/* An app's poster is its own picture, from Apps' slots. */
+	if(record->flags & UI_GAMEFLOW_CARD_APP) {
+		return apps_poster(record->libraryIndex);
+	}
 	/* _DrawGameflow runs under _videomutex. Query and Peek deliberately do
 	 * not lock and the borrowed texture is consumed before that lock drops. */
 	result = UIAssets_Query(record->gameId,
@@ -3662,6 +3688,15 @@ static bool launchActive;
 static uiLaunch_t launchState;
 static GXTexObj launchPoster;
 static bool launchHasPoster;
+/* The launch under way is an app's (Apps): it says app, not game. */
+static bool launchIsApp;
+
+/* During a launch the launch screen shows a looping bar's step, and during
+ * an app's boot_dol's "Loading DOL" bar too. */
+static bool _LaunchTakesBar(bool indeterminate)
+{
+	return indeterminate || launchIsApp;
+}
 static float launchWarningScale;
 
 /* A launch starts from an empty ring and keeps the cover Detail shows now:
@@ -3677,6 +3712,8 @@ static void _GameflowSetLaunch(drawGameflowEvent_t *data, bool on)
 
 		UILaunch_Begin(&launchState);
 		launchWarningScale = 0.0f;
+		launchIsApp = record != NULL &&
+			(record->flags & UI_GAMEFLOW_CARD_APP) != 0u;
 		launchHasPoster = poster != NULL;
 		if(poster != NULL) {
 			launchPoster = *poster;
@@ -3820,8 +3857,9 @@ static void _GameflowDrawLaunch(const drawGameflowEvent_t *data,
 				ALIGN_CENTER, secondary);
 		}
 	}
-	drawStringMedium(320, 414, UILaunch_Caption(launchState.step), 0.52f,
-		ALIGN_CENTER, step);
+	drawStringMedium(320, 414, launchIsApp ?
+		UILaunch_AppCaption(launchState.step) :
+		UILaunch_Caption(launchState.step), 0.52f, ALIGN_CENTER, step);
 	if(launchState.warning[0] != '\0') {
 		drawStringMedium(320, 438, launchState.warning, launchWarningScale,
 			ALIGN_CENTER, warning);
@@ -4126,12 +4164,18 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		GXColor label = {177, 168, 220,
 			_GameflowAlpha(180.0f * reveal *
 			(1.0f - frame->detailProgress))};
+		/* Apps are shown as the Library shows games, under their own name
+		 * and with their own controls: A starts one, and that is all. */
+		bool apps = (data->snapshot.records[0].flags &
+			UI_GAMEFLOW_CARD_APP) != 0u;
+		const char *heading = apps ? "APPS" : "GAME LIBRARY";
+
 		if(layout == UI_GAMEFLOW_LAYOUT_VERTICAL) {
-			drawStringMedium(262, 177, "GAME LIBRARY", 0.42f, ALIGN_LEFT,
+			drawStringMedium(262, 177, heading, 0.42f, ALIGN_LEFT,
 				label);
 		}
 		else if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
-			drawStringMedium(320, 40, "GAME LIBRARY", 0.46f, ALIGN_CENTER,
+			drawStringMedium(320, 40, heading, 0.46f, ALIGN_CENTER,
 				label);
 		}
 		else if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
@@ -4139,14 +4183,15 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 				label);
 		}
 		else {
-			drawStringMedium(320, 70, "GAME LIBRARY", 0.50f, ALIGN_CENTER,
+			drawStringMedium(320, 70, heading, 0.50f, ALIGN_CENTER,
 				label);
 		}
 		if(commandRail.owner == UI_COMMAND_RAIL_LIBRARY &&
 				commandRail.alpha > 0.001f) {
 			GXColor command = label;
 			command.a = _GameflowAlpha(180.0f * reveal * commandRail.alpha);
-			_DrawHintText(320, 428,
+			_DrawHintText(320, 428, apps ?
+				"D-PAD  BROWSE   A  START   B  HOME" :
 				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   X  BACK   B  HOME",
 				0.46f, ALIGN_CENTER, command);
 		}
@@ -6933,6 +6978,13 @@ void DrawAddChild(uiDrawObj_t *parent, uiDrawObj_t *child)
 	child->disposed = false;
 	//print_debug("Add child %08X (type %s) to parent %08X (type %s)\n",
 	//	(u32)child, typeStrings[child->type], (u32)parent, typeStrings[parent->type]);
+	LWP_MutexUnlock(_videomutex);
+}
+
+void DrawWithVideoLocked(void (*change)(void *context), void *context)
+{
+	LWP_MutexLock(_videomutex);
+	change(context);
 	LWP_MutexUnlock(_videomutex);
 }
 

@@ -9,6 +9,9 @@ typedef enum {
 	UI_HOME_FACE_SOURCE,
 	UI_HOME_FACE_SETTINGS,
 	UI_HOME_FACE_SYSTEM,
+	/* Only while the source has apps (hasApps below): the ring is then five
+	 * faces, Apps one turn left of Library. */
+	UI_HOME_FACE_APPS,
 	UI_HOME_FACE_COUNT
 } uiHomeFace_t;
 
@@ -34,6 +37,8 @@ typedef enum {
 	UI_HOME_ICON_INFO,
 	UI_HOME_ICON_POWER,
 	UI_HOME_ICON_CHIP,
+	/* Apps has one picture; its other choices draw nothing. */
+	UI_HOME_ICON_APPS,
 	UI_HOME_ICON_COUNT
 } uiHomeIcon_t;
 
@@ -65,12 +70,15 @@ typedef enum {
 	UI_HOME_EFFECT_OPEN_INFO,
 	UI_HOME_EFFECT_RESTART,
 	UI_HOME_EFFECT_OPEN_RECENT,
-	UI_HOME_EFFECT_OPEN_SAVES
+	UI_HOME_EFFECT_OPEN_SAVES,
+	UI_HOME_EFFECT_OPEN_APPS
 } uiHomeEffect_t;
 
 typedef struct {
 	bool hasSource;
 	bool hasRecent;
+	/* The source's /apps folder holds a program: the Apps face shows. */
+	bool hasApps;
 } uiHomeCapabilities_t;
 
 typedef enum {
@@ -92,6 +100,9 @@ typedef struct {
 	uiHomeSurface_t surface;
 	int selection;
 	int32_t turnOrdinal;
+	/* The faces the ring has now: 4, or 5 with Apps. face is always one of
+	 * them, turnOrdinal modulo faceCount. */
+	int faceCount;
 	uint32_t revision;
 	uiHomeOrientation_t orientation;
 	uiHomeTurnAxis_t turnAxis;
@@ -109,7 +120,11 @@ void UIHome_OrientationMatrix(const uiHomeOrientation_t *orientation,
 
 bool UIHome_IsFace(int face);
 bool UIHome_IsSurface(int surface);
-uiHomeFace_t UIHome_FaceForTurn(int32_t turnOrdinal);
+/* 5 when the capabilities have apps, else 4. */
+int UIHome_FaceCount(uiHomeCapabilities_t capabilities);
+/* The face turnOrdinal lands on in a ring of faceCount faces (4 or 5; any
+ * other count is taken as 4). */
+uiHomeFace_t UIHome_FaceForTurn(int32_t turnOrdinal, int faceCount);
 void UIHome_Init(uiHomeState_t *state, uiHomeCapabilities_t capabilities);
 uiHomeEffect_t UIHome_Apply(uiHomeState_t *state, uiHomeInput_t input,
 	uiHomeCapabilities_t capabilities);

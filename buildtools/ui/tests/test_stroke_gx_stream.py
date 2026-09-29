@@ -37,12 +37,17 @@ static float UIStage_PixelWidth(void) { return pixelWidth; }
 typedef float Mtx[3][4];
 typedef struct { float x,y,z; } guVector;
 typedef struct { float x,y; } indigoPoint_t;
-typedef struct { Mtx model,semanticFaces[4]; float motifAlpha,scaleX,scaleY; } cubeRasterTransform_t;
 typedef struct { guVector point[4]; GXColor color[4]; } cubeSurfaceQuad_t;
 typedef struct { indigoPoint_t point[24]; int count; } cubeOutline_t;
 typedef struct { guVector eye[2]; indigoPoint_t outward[2]; GXColor color[2]; } cubeCoverageEdge_t;
 enum { GX_QUADS=1, GX_TRIANGLESTRIP=2, GX_TRIANGLES=3, GX_TRIANGLEFAN=4, GX_VTXFMT0=0, GX_PNMTX0=0 };
 /* HOME ENUMS */
+typedef struct { Mtx model,semanticFaces[UI_HOME_FACE_COUNT];
+    float motifAlpha[UI_HOME_FACE_COUNT],scaleX,scaleY; } cubeRasterTransform_t;
+/* Every face's glyph at full opacity. */
+static void lightAll(cubeRasterTransform_t *r) {
+    for(int face=0;face<UI_HOME_FACE_COUNT;face++) r->motifAlpha[face]=1.0f;
+}
 enum { GX_ENABLE=1, GX_LEQUAL=2, GX_FALSE=0, GX_TRUE=1,
     GX_CULL_BACK=1, GX_CULL_NONE=0, GX_CULL_FRONT=2,
     GX_BM_BLEND=3, GX_BL_SRCALPHA=4, GX_BL_ONE=5, GX_LO_CLEAR=6, GX_BL_INVSRCALPHA=7,
@@ -156,7 +161,7 @@ static void test_rail_joins(void) {
         "opposed join accepted");
 }
 /* The default Source, Settings and System icons, with None on Library. */
-static const int quadIcons[4]={-1,0,0,0};
+static const int quadIcons[UI_HOME_FACE_COUNT]={-1,0,0,0,-1};
 static void test_motifs(void) {
     cubeRasterTransform_t r;
     const Mtx semanticFaces[4]={
@@ -165,7 +170,7 @@ static void test_motifs(void) {
         {{-1,0,0,0},{0,1,0,0},{0,0,-1,0}},
         {{0,0,-1,0},{0,1,0,0},{1,0,0,0}}
     };
-    memcpy(r.semanticFaces,semanticFaces,sizeof(semanticFaces)); r.motifAlpha=1.0f;
+    memcpy(r.semanticFaces,semanticFaces,sizeof(semanticFaces)); lightAll(&r);
     uiClockFrame_t clock={true,0,1,1,0,0.70710678f,0.70710678f};
     r.scaleX=r.scaleY=625.221f;
     for(int angle=0;angle<360;angle+=5) {
@@ -226,7 +231,7 @@ static int brighter(const u8 *before,int n) {
 }
 static void drawController(const cubeRasterTransform_t *r,float seconds,bool animated,
     const indigoPadFrame_t *pad) {
-    static const int icons[4]={0,-1,-1,-1};
+    static const int icons[UI_HOME_FACE_COUNT]={0,-1,-1,-1,-1};
     drawFaceIcons(seconds,animated,NULL,pad,icons,r);
 }
 static void test_controller(void) {
@@ -239,7 +244,7 @@ static void test_controller(void) {
         {{-1,0,0,0},{0,1,0,0},{0,0,-1,0}},
         {{0,0,-1,0},{0,1,0,0},{1,0,0,0}}
     };
-    memcpy(r.semanticFaces,semanticFaces,sizeof(semanticFaces)); r.motifAlpha=1.0f;
+    memcpy(r.semanticFaces,semanticFaces,sizeof(semanticFaces)); lightAll(&r);
     r.scaleX=r.scaleY=625.221f;
     guMtxIdentity(r.model); r.model[2][3]=-5.4f;
     /* The traced silhouette is a clockwise loop that fits a band. */
@@ -360,25 +365,28 @@ static void test_icons_on_their_faces(void) {
         [UI_HOME_ICON_SD_CARD]=1+4*2,[UI_HOME_ICON_FOLDER]=1+2,[UI_HOME_ICON_SLIDERS]=1,
         [UI_HOME_ICON_GEAR]=2,[UI_HOME_ICON_TOGGLES]=2+2*2,[UI_HOME_ICON_DIAL]=1+2+7*2,
         [UI_HOME_ICON_CLOCK]=1,[UI_HOME_ICON_INFO]=1+2+2,[UI_HOME_ICON_POWER]=4+2,
-        [UI_HOME_ICON_CHIP]=1+2+2+12*2};
+        [UI_HOME_ICON_CHIP]=1+2+2+12*2,[UI_HOME_ICON_APPS]=4};
     static const int quadBudget[UI_HOME_ICON_COUNT]={
         [UI_HOME_ICON_BOOKS]=260,[UI_HOME_ICON_HUB]=180,[UI_HOME_ICON_SLIDERS]=120,[UI_HOME_ICON_CLOCK]=220};
-    const Mtx semanticFaces[4]={
+    /* Apps' own icon is drawn alone, on the front. */
+    const Mtx semanticFaces[UI_HOME_FACE_COUNT]={
         {{1,0,0,0},{0,1,0,0},{0,0,1,0}},
         {{0,0,1,0},{0,1,0,0},{-1,0,0,0}},
         {{-1,0,0,0},{0,1,0,0},{0,0,-1,0}},
-        {{0,0,-1,0},{0,1,0,0},{1,0,0,0}}
+        {{0,0,-1,0},{0,1,0,0},{1,0,0,0}},
+        {{1,0,0,0},{0,1,0,0},{0,0,1,0}}
     };
     uiClockFrame_t clock={true,0,1,1,0,0.70710678f,0.70710678f};
     indigoPadFrame_t pad={true,0,0,0,0,0u};
     cubeRasterTransform_t r;
     GXColor shade={0,0,0,0};
     bool shaded=false;
-    memcpy(r.semanticFaces,semanticFaces,sizeof(semanticFaces)); r.motifAlpha=1.0f;
+    memcpy(r.semanticFaces,semanticFaces,sizeof(semanticFaces)); lightAll(&r);
     r.scaleX=r.scaleY=625.221f;
-    for(int face=0;face<4;face++) for(int choice=0;choice<UI_HOME_ICON_CHOICES;choice++) {
+    for(int face=0;face<UI_HOME_FACE_COUNT;face++) for(int choice=0;choice<UI_HOME_ICON_CHOICES;choice++) {
         int icon=face*UI_HOME_ICON_CHOICES+choice;
-        int choices[4]={-1,-1,-1,-1};
+        int choices[UI_HOME_FACE_COUNT]={-1,-1,-1,-1,-1};
+        if(icon>=UI_HOME_ICON_COUNT) continue;
         float nx=semanticFaces[face][0][2],nz=semanticFaces[face][2][2];
         bool shown=false;
         choices[face]=choice;
@@ -411,7 +419,7 @@ static void test_icons_on_their_faces(void) {
         CHECK(shown,"no angle showed the icon");
     }
     /* A choice outside a face's four draws nothing. */
-    const int none[4]={UI_HOME_ICON_CHOICES,-1,1000,4};
+    const int none[UI_HOME_FACE_COUNT]={UI_HOME_ICON_CHOICES,-1,1000,4,1};
     guMtxIdentity(r.model); r.model[2][3]=-5.4f;
     reset(false); drawFaceIcons(1.0f,true,&clock,&pad,none,&r);
     CHECK(count==0 && begins==0 && matrixLoads==2,"an out-of-range choice drew");
@@ -861,7 +869,8 @@ class StrokeGXStreamTests(unittest.TestCase):
             "drawControllerIcon", "drawHubIcon", "drawSlidersIcon", "drawClockIcon",
             "drawBooksIcon", "drawDiscIcon", "drawGearIcon", "drawCoversIcon",
             "drawPlayIcon", "drawSdCardIcon", "drawFolderIcon", "drawTogglesIcon",
-            "drawDialIcon", "drawInfoIcon", "drawPowerIcon", "drawChipIcon")]
+            "drawDialIcon", "drawInfoIcon", "drawPowerIcon", "drawChipIcon",
+            "drawAppsIcon")]
         blocks += [extract_function(indigo, "static void drawFaceIcons(")]
         blocks += [extract_function(indigo, "static float outlineCross(")]
         blocks += [extract_function(indigo, "static void buildCubeOutline(")]

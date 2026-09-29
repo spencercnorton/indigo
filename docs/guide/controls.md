@@ -68,6 +68,16 @@ How the D-pad moves depends on **Library Layout** (Setup › Library):
 
 See [Library](library.md).
 
+### Apps
+
+| Button | Does |
+| --- | --- |
+| D-pad or stick | Move through your apps, as the Library moves: the table above. |
+| A | Start the app. |
+| B | Back to Home. |
+
+See [Apps](apps.md).
+
 ### Game details
 
 | Button | Does |

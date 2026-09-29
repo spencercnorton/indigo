@@ -64,6 +64,36 @@ r2073 and r2092, and has everything upstream changed since:
   any region, so a card mixing USA, Japanese and European games no longer
   has to choose. The two regional packs stay, for Indigo 2.0 and earlier.
 
+### Apps
+
+- New: Apps, for the programs on your card that aren't games (emulators,
+  Game Boy Interface, tools). Put their `.dol`, `.dol+cli` or `.elf` files in
+  `/apps` at the root of the card, loose or each in a folder of its own, and
+  Home gets a fifth face, Apps, one turn left of Library. A on it shows them
+  as posters in your Library Layout, moving the same way; A starts one, with
+  the launch screen games have, and B goes back to Home. Swiss's `.cli` and
+  `.dcp` files beside a program still work. Without apps on the card, Home is
+  the four faces it was.
+- Setup › Console › Apps Face (`Hide Apps Face` in `global.ini`) turns the
+  Apps face off, and Indigo then doesn't look in `/apps` at all. It is On by
+  default.
+- Each app's poster is your own picture: a PNG beside the program with its
+  name (`gbi.png` for `gbi.dol`), or its folder's `icon.png`, up to 2048
+  pixels a side. Indigo converts it on the console, so there is no pack to
+  build. A poster-shaped picture fills the card; a square icon or a Homebrew
+  Channel banner sits in the middle over a backdrop in its own colours.
+- An app without a picture gets a poster of its name, in big letters split
+  where the name has a `-`, `_` or space, in a colour picked from its first
+  word: Game Boy Interface's `gbihf-ossc` and `gbihf-direct-hdmi` share one,
+  and its `gbisr` variants have another.
+- `boot.dol` is left out of Apps, since the Wii's Homebrew Channel layout uses
+  that name for the Wii program, and so are hidden files and names starting
+  with a dot.
+- The cube's icons fade one by one. When a turn has to move an icon to
+  another side, as turning sideways and then tipping at once does, only that
+  icon fades out and back in, where every icon used to. With five faces the
+  icons you can see never have to move: only ones facing away do.
+
 ### Fixes
 
 - A file in `/games` that isn't a game no longer hides the Library. A text

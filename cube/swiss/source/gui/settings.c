@@ -141,6 +141,7 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_SHOW_HIDDEN] = "Show hidden files:\n\nLists files and folders marked hidden, such as the /swiss folder\nthat holds Indigo's settings.",
 	[SET_MENU_WIDESCREEN] = "Menu Widescreen:\n\nYes - Drawn for a TV set to 16:9: the background fills the\nscreen and the menus keep their shape.\nNo - Drawn for a 4:3 picture (default)\n\nSet your TV or HDMI adapter to 16:9 too. Games follow Force\nWidescreen in Game Defaults, not this.",
 	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\nSpotlight - A gameplay still over banners; Left and Right move\n\nThe selected game's title and details show beside its cover in\nVertical and its still in Spotlight, and above the controls in Grid.\nEvery layout wraps round from the last game to the first; L and R\njump a page. Y opens the focused game's settings.",
+	[SET_APPS_FACE] = "Apps Face:\n\nOn - Home shows Apps, one turn left of Library, while the\nsource has a program in /apps (default)\nOff - Home never shows Apps. The programs stay in /apps,\nand the file list still starts them.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
 
@@ -549,6 +550,7 @@ static const settingsRowRef_t consoleRows[] = {
 	{PAGE_INTERFACE, SET_SOURCE_ICON},
 	{PAGE_INTERFACE, SET_SETTINGS_ICON},
 	{PAGE_INTERFACE, SET_SYSTEM_ICON},
+	{PAGE_INTERFACE, SET_APPS_FACE},
 	{PAGE_GLOBAL, SET_SYS_SOUND},
 	{PAGE_GLOBAL, SET_SYS_LANG},
 	{PAGE_GLOBAL, SET_SYS_BOOTMODE},
@@ -1015,6 +1017,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_SOURCE_ICON: rowCycle(row, "Source Icon:", sourceIconStr[swissSettings.sourceIcon], true); break;
 			case SET_SETTINGS_ICON: rowCycle(row, "Settings Icon:", settingsIconStr[swissSettings.settingsIcon], true); break;
 			case SET_SYSTEM_ICON: rowCycle(row, "System Icon:", systemIconStr[swissSettings.systemIcon], true); break;
+			case SET_APPS_FACE: rowOnOff(row, "Apps Face:", !swissSettings.hideAppsFace, true); break;
 			case SET_PANEL_TRANSPARENCY: rowYesNo(row, "Panel Transparency:", !swissSettings.disablePanelTransparency, true); break;
 			case SET_ANIMATED_BACKDROP: rowYesNo(row, "Animated Backdrop:", !swissSettings.disableAnimatedBackdrop, true); break;
 			case SET_MENU_MUSIC: rowYesNo(row, "Menu Music:", !swissSettings.disableMenuMusic, true); break;
@@ -1544,6 +1547,9 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			case SET_SYSTEM_ICON:
 				swissSettings.systemIcon += direction;
 				swissSettings.systemIcon = (swissSettings.systemIcon + UI_HOME_ICON_CHOICES) % UI_HOME_ICON_CHOICES;
+			break;
+			case SET_APPS_FACE:
+				swissSettings.hideAppsFace ^= 1;
 			break;
 			case SET_PANEL_TRANSPARENCY:
 				swissSettings.disablePanelTransparency ^= 1;

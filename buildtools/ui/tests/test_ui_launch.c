@@ -202,6 +202,18 @@ static void checkUnknown(void)
 		strcmp(UILaunch_Caption(UI_LAUNCH_STEP_COUNT), "") == 0 &&
 		strcmp(UILaunch_Caption((uiLaunchStep_t)99), "") == 0,
 		"no caption for no step");
+	/* An app from Apps goes through boot_dol's steps only (the start, the
+	 * recent list and "Loading DOL"), and each says app. */
+	check(strcmp(UILaunch_AppCaption(UI_LAUNCH_STEP_START), "Starting app") == 0 &&
+		strcmp(UILaunch_AppCaption(UI_LAUNCH_STEP_RECENT), "Saving recent list") == 0 &&
+		strcmp(UILaunch_AppCaption(UI_LAUNCH_STEP_LOAD), "Loading app") == 0,
+		"an app's launch says app");
+	check(UILaunch_Classify("Loading DOL", NULL, NULL) == UI_LAUNCH_STEP_LOAD &&
+		UILaunch_Classify("Saving recent list\205", NULL, NULL) ==
+			UI_LAUNCH_STEP_RECENT, "boot_dol's messages are an app's steps");
+	check(strcmp(UILaunch_AppCaption(UI_LAUNCH_STEP_COUNT), "") == 0 &&
+		strcmp(UILaunch_AppCaption((uiLaunchStep_t)99), "") == 0,
+		"no caption for no step");
 }
 
 static void checkOrder(void)

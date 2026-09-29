@@ -47,7 +47,7 @@ typedef struct indigoPoint {
 typedef struct cubeRasterTransform {
 	Mtx model;
 	Mtx semanticFaces[UI_HOME_FACE_COUNT];
-	float motifAlpha;
+	float motifAlpha[UI_HOME_FACE_COUNT];
 	float scaleX;
 	float scaleY;
 } cubeRasterTransform_t;
@@ -530,7 +530,8 @@ static void setupCubePipeline(const uiSceneFrame_t *scene, float seconds, bool a
 				raster->semanticFaces[face][row][column] =
 					scene->homeMotifBasis[face][row][column];
 	}
-	raster->motifAlpha = scene->homeMotifAlpha;
+	for(int face = 0; face < UI_HOME_FACE_COUNT; face++)
+		raster->motifAlpha[face] = scene->homeMotifAlpha[face];
 	guMtxScaleApply(rotation, rotation, scene->cubeScale, scene->cubeScale, scene->cubeScale);
 	guMtxIdentity(translation);
 	guMtxTransApply(translation, translation, scene->cubeX, scene->cubeY + bob,
@@ -863,7 +864,7 @@ static guVector semanticFacePoint(const cubeRasterTransform_t *raster,
 static void putSemanticMotifQuad(const cubeRasterTransform_t *raster, int face,
 		const indigoPoint_t corners[4], float plane, GXColor color)
 {
-	color.a = (u8)((float)color.a * raster->motifAlpha);
+	color.a = (u8)((float)color.a * raster->motifAlpha[face]);
 	guVector eyes[4];
 	indigoPoint_t points[4], joins[4], center = {0.0f, 0.0f};
 	float area = 0.0f, clearance = 1000.0f;
@@ -984,7 +985,7 @@ static void drawFacePolygon(const cubeRasterTransform_t *raster, int face,
 	indigoPoint_t center = {0.0f, 0.0f};
 	float area = 0.0f, clearance = 1000.0f;
 
-	color.a = (u8)((float)color.a * raster->motifAlpha);
+	color.a = (u8)((float)color.a * raster->motifAlpha[face]);
 	if(count < 3 || count > FACE_POLYGON_MAX || color.a == 0) return;
 	for(int i = 0; i < count; i++) {
 		guVector point = semanticFacePoint(raster, face, corners[i].x, corners[i].y, plane);
@@ -1042,7 +1043,7 @@ static void drawFaceBand(const cubeRasterTransform_t *raster, int face,
 	indigoPoint_t points[2][FACE_BAND_MAX], joins[2][FACE_BAND_MAX];
 	float area = 0.0f;
 
-	color.a = (u8)((float)color.a * raster->motifAlpha);
+	color.a = (u8)((float)color.a * raster->motifAlpha[face]);
 	if(count < 3 || count > FACE_BAND_MAX || color.a == 0) return;
 	for(int i = 0; i < count; i++) {
 		indigoPoint_t prev = centre[(i + count - 1) % count];
@@ -1172,7 +1173,7 @@ static void drawFaceArc(const cubeRasterTransform_t *raster, int face,
 	float area = 0.0f;
 	int count = 0;
 
-	color.a = (u8)((float)color.a * raster->motifAlpha);
+	color.a = (u8)((float)color.a * raster->motifAlpha[face]);
 	if(color.a == 0 || ARC < 1 || ARC > FACE_ARC_MAX) return;
 	/* Outer arc, the a1 end cap, the inner arc back, then the a0 end cap. */
 	for(int i = 0; i <= ARC; i++) {
@@ -1906,6 +1907,20 @@ static void drawChipIcon(const cubeRasterTransform_t *raster, int face, GXColor 
 	}
 }
 
+/* Apps: four app tiles, two by two. */
+static void drawAppsIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = 1.012f;
+
+	for(int tile = 0; tile < 4; tile++) {
+		float u = (tile & 1) ? 0.10f : -0.40f;
+		float v = (tile & 2) ? -0.40f : 0.10f;
+
+		drawRoundedRect(raster, face, u, v, u + 0.30f, v + 0.30f, 0.07f, 0.018f,
+			plane, glow);
+	}
+}
+
 /* Every face shows the icon chosen for it in Settings: choices[face] picks
  * one of that face's own four (uiHomeIcon_t face * UI_HOME_ICON_CHOICES +
  * choice). One additive pass without depth writes, every icon in the same
@@ -1954,6 +1969,7 @@ static void drawFaceIcons(float seconds, bool animated,
 			case UI_HOME_ICON_INFO: drawInfoIcon(raster, face, glow); break;
 			case UI_HOME_ICON_POWER: drawPowerIcon(raster, face, glow); break;
 			case UI_HOME_ICON_CHIP: drawChipIcon(raster, face, glow); break;
+			case UI_HOME_ICON_APPS: drawAppsIcon(raster, face, glow); break;
 			default: break;
 		}
 	}

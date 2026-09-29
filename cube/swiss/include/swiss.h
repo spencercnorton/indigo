@@ -136,6 +136,7 @@ typedef struct {
 	int sourceIcon;
 	int settingsIcon;
 	int systemIcon;
+	int hideAppsFace;	// 0 = Home shows Apps while /apps has a program (default); 1 = never
 	int libraryLayout;	// uiGameflowLayout_t (gui/ui_gameflow.h): Horizontal (default), Vertical, Grid or Spotlight
 	int sram60Hz;
 	int sramProgressive;

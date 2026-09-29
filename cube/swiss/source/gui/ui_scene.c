@@ -68,6 +68,7 @@ static uint32_t requestedScene = UI_SCENE_HOME;
 static uint32_t requestedHomeSequence;
 static uint32_t requestedHomeFace = UI_HOME_FACE_LIBRARY;
 static int32_t requestedHomeTurnOrdinal;
+static int32_t requestedHomeFaceCount = UI_HOME_FACE_APPS;
 static uint32_t requestedHomeSurface = UI_HOME_SURFACE_RING;
 static int32_t requestedHomeSelection;
 static uint32_t requestedHomeRevision;
@@ -127,12 +128,12 @@ static bool isHomeSurface(int surface)
 		surface < (int)UI_HOME_SURFACE_COUNT;
 }
 
-static uiHomeFace_t faceForTurn(int32_t turnOrdinal)
+static uiHomeFace_t faceForTurn(int32_t turnOrdinal, int32_t faceCount)
 {
-	int32_t face = turnOrdinal % (int32_t)UI_HOME_FACE_COUNT;
+	int32_t face = turnOrdinal % faceCount;
 
 	if(face < 0) {
-		face += (int32_t)UI_HOME_FACE_COUNT;
+		face += faceCount;
 	}
 	return (uiHomeFace_t)face;
 }
@@ -142,6 +143,8 @@ static bool homeRequestValid(const uiHomeState_t *home)
 	if(home == NULL) return false;
 	uiHomeFace_t face = home->face;
 	int32_t turnOrdinal = home->turnOrdinal;
+	/* Four faces, or five with Apps. */
+	int32_t faceCount = home->faceCount;
 	uiHomeSurface_t surface = home->surface;
 	int selection = home->selection;
 	bool selectionValid = surface == UI_HOME_SURFACE_RING ? selection == 0 :
@@ -152,7 +155,10 @@ static bool homeRequestValid(const uiHomeState_t *home)
 			surface == UI_HOME_SURFACE_RESTART_CONFIRM) &&
 			face == UI_HOME_FACE_SYSTEM);
 
-	return isHomeFace((int)face) && faceForTurn(turnOrdinal) == face &&
+	if(faceCount != UI_HOME_FACE_APPS && faceCount != UI_HOME_FACE_COUNT)
+		return false;
+	return isHomeFace((int)face) && (int32_t)face < faceCount &&
+		faceForTurn(turnOrdinal, faceCount) == face &&
 		isHomeSurface((int)surface) && selectionValid && surfaceMatchesFace &&
 		UIHome_OrientationValid(&home->orientation) &&
 		((home->turnAxis == UI_HOME_TURN_NONE && home->turnDirection == 0) ||
@@ -164,10 +170,10 @@ static bool homeRequestValid(const uiHomeState_t *home)
 static uiScenePose_t homePose(void)
 {
 	static const float faceLift[UI_HOME_FACE_COUNT] = {
-		0.000f, 0.065f, -0.045f, 0.035f
+		0.000f, 0.065f, -0.045f, 0.035f, -0.030f
 	};
 	static const float facePitch[UI_HOME_FACE_COUNT] = {
-		0.000f, 0.070f, -0.090f, 0.045f
+		0.000f, 0.070f, -0.090f, 0.045f, 0.055f
 	};
 	uiScenePose_t pose = poses[UI_SCENE_HOME];
 	int face = isHomeFace((int)state.appliedHomeFace) ?
@@ -222,6 +228,8 @@ static uiSceneHomeRequest_t loadHomeRequest(void)
 		request.face = (uiHomeFace_t)__atomic_load_n(&requestedHomeFace,
 			__ATOMIC_RELAXED);
 		request.turnOrdinal = __atomic_load_n(&requestedHomeTurnOrdinal,
+			__ATOMIC_RELAXED);
+		request.faceCount = (int)__atomic_load_n(&requestedHomeFaceCount,
 			__ATOMIC_RELAXED);
 		request.surface = (uiHomeSurface_t)__atomic_load_n(
 			&requestedHomeSurface, __ATOMIC_RELAXED);
@@ -451,6 +459,7 @@ static void applyHomeRequest(uiMotionMode_t motionMode)
 	uiSceneHomeRequest_t request = loadHomeRequest();
 	if(request.face == state.appliedHomeFace &&
 		request.turnOrdinal == state.appliedHomeTurnOrdinal &&
+		request.faceCount == state.home.faceCount &&
 		request.surface == state.appliedHomeSurface &&
 		request.selection == state.appliedHomeSelection &&
 		request.revision == state.appliedHomeRevision &&
@@ -513,6 +522,8 @@ void UIScene_Reset(void)
 	__atomic_store_n(&requestedHomeFace, UI_HOME_FACE_LIBRARY,
 		__ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeTurnOrdinal, 0, __ATOMIC_RELAXED);
+	__atomic_store_n(&requestedHomeFaceCount, UI_HOME_FACE_APPS,
+		__ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeSurface, UI_HOME_SURFACE_RING,
 		__ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeSelection, 0, __ATOMIC_RELAXED);
@@ -523,7 +534,7 @@ void UIScene_Reset(void)
 	state = (uiSceneState_t) {0};
 	UIHome_OrientationInit(&state.homeTarget);
 	UIHome_OrientationInit(&state.navigationTarget);
-	UIHome_Init(&state.home, (uiHomeCapabilities_t){true, false});
+	UIHome_Init(&state.home, (uiHomeCapabilities_t){.hasSource = true});
 	state.home.revision = 0u;
 	UICubeMotif_Reset(&state.motifs);
 	for(int i = 0; i < 4; ++i)
@@ -571,7 +582,8 @@ void UIScene_Reset(void)
 	UIHome_OrientationMatrix(&state.homeTarget, state.frame.homeTargetOrientation);
 	memcpy(state.frame.homeMotifBasis, state.motifs.basis.face,
 		sizeof(state.frame.homeMotifBasis));
-	state.frame.homeMotifAlpha = 1.0f;
+	memcpy(state.frame.homeMotifAlpha, state.motifs.alpha,
+		sizeof(state.frame.homeMotifAlpha));
 }
 
 void UIScene_Activate(void)
@@ -601,6 +613,8 @@ void UIScene_RequestHome(const uiHomeState_t *home)
 		__ATOMIC_ACQ_REL);
 	__atomic_store_n(&requestedHomeFace, (uint32_t)home->face, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeTurnOrdinal, home->turnOrdinal, __ATOMIC_RELAXED);
+	__atomic_store_n(&requestedHomeFaceCount, (int32_t)home->faceCount,
+		__ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeSurface, (uint32_t)home->surface, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeSelection, home->selection, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeRevision, home->revision, __ATOMIC_RELAXED);
@@ -719,7 +733,8 @@ void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode)
 	UICubeMotif_Update(&state.motifs, deltaSeconds, motionMode);
 	memcpy(state.frame.homeMotifBasis, state.motifs.basis.face,
 		sizeof(state.frame.homeMotifBasis));
-	state.frame.homeMotifAlpha = state.motifs.alpha;
+	memcpy(state.frame.homeMotifAlpha, state.motifs.alpha,
+		sizeof(state.frame.homeMotifAlpha));
 	state.frame.homeTurnAxis = state.homeTurnAxis;
 	state.frame.homeFace = state.appliedHomeFace;
 	state.frame.homeTurnDirection = state.homeTurnDirection;
@@ -733,7 +748,7 @@ void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode)
 		!UIMotion_SpringSettled(&state.cubeScale, 0.002f, 0.01f) ||
 		!UIMotion_SpringSettled(&state.cubePitch, 0.002f, 0.01f) ||
 		!UIMotion_SpringSettled(&state.cubeYaw, 0.002f, 0.01f) ||
-		!orientationSettled() || state.motifs.changing || state.motifs.alpha < 1.0f ||
+		!orientationSettled() || !UICubeMotif_Settled(&state.motifs) ||
 		state.homeFocusProgress < 1.0f;
 }
 

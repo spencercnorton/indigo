@@ -7,7 +7,9 @@
 #include "ui_scene.h"
 
 static unsigned checks;
-static const uiHomeCapabilities_t caps = {true, true};
+static const uiHomeCapabilities_t caps = {true, true, false};
+/* With an app on the source: a ring of five faces. */
+static const uiHomeCapabilities_t appsCaps = {true, true, true};
 static const float identity[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
 
 #define CHECK(c) do { ++checks; if(!(c)) { \
@@ -38,7 +40,8 @@ static void tick(float dt, uiMotionMode_t mode)
 	checkRotation(&f->homeOrientation[0][0]);
 	checkRotation(&f->homeTargetOrientation[0][0]);
 	CHECK(f->homeFocusProgress >= 0.0f && f->homeFocusProgress <= 1.0f);
-	CHECK(f->homeMotifAlpha >= 0.0f && f->homeMotifAlpha <= 1.0f);
+	for(int face = 0; face < UI_HOME_FACE_COUNT; ++face)
+		CHECK(f->homeMotifAlpha[face] >= 0.0f && f->homeMotifAlpha[face] <= 1.0f);
 	CHECK(isfinite(f->cubeYaw) && isfinite(f->cubePitch));
 }
 static void advance(float seconds, float dt, uiMotionMode_t mode)
@@ -227,7 +230,10 @@ static void testModeChangesAndBadTiming(void)
 	matrixNear(&UIScene_Frame()->homeOrientation[0][0],
 		&UIScene_Frame()->homeTargetOrientation[0][0], 0.0f);
 	CHECK(!UIScene_Frame()->transitioning);
-	near(UIScene_Frame()->homeMotifAlpha, 1.0f, 0.0f);
+	/* Every face of the ring lit; Apps, outside it, not. */
+	for(int face = 0; face < UI_HOME_FACE_APPS; ++face)
+		near(UIScene_Frame()->homeMotifAlpha[face], 1.0f, 0.0f);
+	near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_APPS], 0.0f, 0.0f);
 	tick(1.0f/60.0f, UI_MOTION_FULL);
 	CHECK(!UIScene_Frame()->transitioning);
 	for(int i = 0; i < 100; ++i) {
@@ -287,7 +293,7 @@ static void testPublicationAndInvalidRequests(void)
 	CHECK(!UIScene_Frame()->visible);
 	UIScene_Activate(); settle(0.02f, UI_MOTION_FULL);
 	CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_SYSTEM);
-	for(int which = 0; which < 8; ++which) {
+	for(int which = 0; which < 12; ++which) {
 		uiHomeState_t invalid = home;
 		switch(which) {
 		case 0: invalid.face = (uiHomeFace_t)-1; break;
@@ -297,6 +303,12 @@ static void testPublicationAndInvalidRequests(void)
 		case 4: invalid.orientation.m[0][0] = 2; break;
 		case 5: invalid.turnAxis = (uiHomeTurnAxis_t)99; break;
 		case 6: invalid.turnDirection = 0; break;
+		/* A ring of neither four nor five faces, Apps in front of a ring
+		 * of four, and an ordinal that lands elsewhere in a ring of five. */
+		case 7: invalid.faceCount = 3; break;
+		case 8: invalid.faceCount = 6; break;
+		case 9: invalid.face = UI_HOME_FACE_APPS; invalid.turnOrdinal = 4; break;
+		case 10: invalid.faceCount = 5; break;
 		default: invalid.surface = UI_HOME_SURFACE_COUNT; break;
 		}
 		invalid.revision++;
@@ -307,6 +319,35 @@ static void testPublicationAndInvalidRequests(void)
 	tick(0.02f, UI_MOTION_OFF);
 	CHECK(UIScene_Frame()->scene == UI_SCENE_HOME);
 }
+/* Apps' face is published with its ring: the frame names it, and the
+ * glyphs are placed for five faces, then four again when the apps go. */
+static void testAppsRing(void)
+{
+	uiHomeState_t home;
+
+	UIHome_Init(&home, appsCaps);
+	UIScene_Reset(); UIScene_RequestHome(&home); UIScene_Activate();
+	settle(0.02f, UI_MOTION_FULL);
+	/* Library in front: Apps lit on the side before it, Settings (two
+	 * ahead) with no side of its own. */
+	near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_APPS], 1.0f, 0.0f);
+	near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SETTINGS], 0.0f, 0.0f);
+	CHECK(UIHome_Apply(&home, UI_HOME_INPUT_LEFT, appsCaps) ==
+		UI_HOME_EFFECT_NONE);
+	UIScene_RequestHome(&home);
+	settle(0.02f, UI_MOTION_FULL);
+	CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_APPS);
+	near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_APPS], 1.0f, 0.0f);
+	near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SOURCE], 0.0f, 0.0f);
+	CHECK(!UIScene_Frame()->transitioning);
+	(void)UIHome_Apply(&home, UI_HOME_INPUT_NONE, caps);
+	UIScene_RequestHome(&home);
+	settle(0.02f, UI_MOTION_FULL);
+	CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_LIBRARY);
+	near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_APPS], 0.0f, 0.0f);
+	near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SOURCE], 1.0f, 0.0f);
+}
+
 /* Exercise visible composition, not just arrival: posters remain transparent
  * while the cube is Home-sized and only become opaque once it has retreated. */
 static void testLibraryRetreatReveal(void)
@@ -443,6 +484,7 @@ int main(void)
 	testHalfTurnsFromEveryOrientation();
 	testMixedCoalescingAndInterruptions(); testModeChangesAndBadTiming();
 	testContextAndSceneReturns(); testPublicationAndInvalidRequests();
+	testAppsRing();
 	testLibraryLayoutPoses();
 	printf("ui_scene: %u checks passed\n", checks);
 	return 0;

@@ -199,6 +199,16 @@ GXTexObj *UIStills_Peek(uiPosterHandle_t handle)
 	return &stills[handle.slot];
 }
 #endif
+/* Apps' posters (gui/apps.c): every third app has none. */
+static GXTexObj appPosters[64];
+static char appPosterNames[64][8];
+static GXTexObj *apps_poster(u32 app)
+{
+	if(app >= 64u || app % 3u == 2u) return NULL;
+	snprintf(appPosterNames[app], sizeof(appPosterNames[0]), "APP%03u", app);
+	appPosters[app].data = appPosterNames[app];
+	return &appPosters[app];
+}
 static uiSceneFrame_t sceneFrame;
 const uiSceneFrame_t *UIScene_Frame(void) { return &sceneFrame; }
 static float animDelta, animSeconds;
@@ -213,8 +223,10 @@ static drawGameflowEvent_t *eventData;
 static uiDrawObj_t event;
 static uiGameflowRenderSnapshot_t snapshot;
 static uint32_t generation;
+/* A: the cards are apps, as Apps shows them. */
+static bool apps;
 
-/* L layout count selected | P selected hint rowDirection snap
+/* L layout count selected (A: apps) | P selected hint rowDirection snap
  * | M motion | D mode | N frames dt  -- the log has one "F" per frame. */
 static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 	int rowDirection, int snap, bool first)
@@ -260,6 +272,16 @@ static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 			snprintf((char *)record->banner, 16, "banner:%s", record->gameId);
 		}
 #endif
+#ifdef UI_GAMEFLOW_CARD_APP	/* the reference renderer has no Apps */
+		if(apps) {
+			record->flags = UI_GAMEFLOW_CARD_VALID | UI_GAMEFLOW_CARD_APP;
+			memset(record->gameId, 0, sizeof(record->gameId));
+			/* Short names, and long ones a card cuts. */
+			snprintf(record->title, sizeof(record->title), slots[i].index % 2u ?
+				"Game Boy Interface %u" : "gbi%u", slots[i].index);
+			snprintf(record->company, sizeof(record->company), "app%u.dol", slots[i].index);
+		}
+#endif
 	}
 #if LAYOUTS
 	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT && selected != 27u) {
@@ -299,7 +321,10 @@ int main(void)
 	while(fgets(line, sizeof(line), stdin)) {
 		unsigned a, b; int c, d, e; float dt;
 		if(sscanf(line, "L %d %u %u", &layout, &a, &b) == 3) {
-			count = a; publish(layout, count, b, 0, 0, 0, true);
+			count = a; apps = false; publish(layout, count, b, 0, 0, 0, true);
+		}
+		else if(sscanf(line, "A %d %u %u", &layout, &a, &b) == 3) {
+			count = a; apps = true; publish(layout, count, b, 0, 0, 0, true);
 		}
 		else if(sscanf(line, "P %u %d %d %d", &a, &c, &d, &e) == 4) {
 			publish(layout, count, a, c, d, e, false);
@@ -456,6 +481,44 @@ class GameflowGxStream(unittest.TestCase):
         log = self.run_script(["L 0 40 19", "N 40 0.0167"])
         self.assertNotIn("G017E0", covers(frames(log)[-1]))
         self.assertEqual(frames(log)[-1].count("B 24\n"), 1)
+
+    def test_apps_show_as_the_library(self):
+        """Cards of apps are the Apps screen, in every layout: its heading,
+        its controls (A starts, nothing opens settings or goes back a
+        folder), each app's own poster, and on an app without one its name,
+        cut to what a card holds, where a game's ID goes."""
+        for layout, heading in ((0, "S 320 70 0.500 1"), (1, "S 262 177 0.420 0"),
+                                (2, "S 320 40 0.460 1")):
+            with self.subTest(layout=layout):
+                result = subprocess.run([str(self.binary)], input=f"A {layout} 12 4\nN 40 0.0167\n",
+                                        capture_output=True, encoding="latin-1", timeout=120)
+                self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+                last = frames(result.stdout)[-1]
+                self.assertIn(" APPS\n", last)
+                self.assertTrue(any(l.startswith(heading) and l.endswith(" APPS")
+                                    for l in last.splitlines()), heading)
+                self.assertNotIn("GAME LIBRARY", last)
+                self.assertIn("D-PAD  BROWSE   A  START   B  HOME", last)
+                self.assertNotIn("SETTINGS", last)
+                drawn = set(covers(last))
+                self.assertIn("APP004", drawn)
+                self.assertFalse({name for name in drawn if not name.startswith("APP")})
+                self.assertFalse({f"APP{n:03d}" for n in range(12) if n % 3 == 2} & drawn)
+                texts = [l.split(" ", 6)[6] for l in last.splitlines() if l.startswith("S ")]
+                self.assertIn("gbi4", texts)
+        # In front, an app without a picture (every third) shows its name
+        # where a game's ID goes, cut to eight letters, over "APP".
+        for selected, name in ((2, "GBI2"), (5, "GAME BOY\x85")):
+            result = subprocess.run([str(self.binary)], input=f"A 0 12 {selected}\nN 40 0.0167\n",
+                                    capture_output=True, encoding="latin-1", timeout=120)
+            self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+            last = frames(result.stdout)[-1]
+            # split, not splitlines: the IPL font's ellipsis is U+0085, a
+            # line break to Python.
+            texts = [l.split(" ", 6)[6] for l in last.split("\n") if l.startswith("S ")]
+            self.assertIn(name, texts)
+            self.assertIn("APP", texts)
+            self.assertNotIn(f"APP{selected:03d}", covers(last))
 
     def test_vertical_column(self):
         log = self.run_script(["L 1 40 12", "N 40 0.0167"])

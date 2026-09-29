@@ -96,4 +96,4 @@ on [GameTDB](https://www.gametdb.com/).
 
 ---
 
-<p align="center"><a href="memory-cards.md">← Memory Cards</a> · <a href="troubleshooting.md">Troubleshooting →</a></p>
+<p align="center"><a href="memory-cards.md">← Memory Cards</a> · <a href="apps.md">Apps →</a></p>
