@@ -7,7 +7,7 @@ or in a grid, as you choose. On Home, turn the cube to **Library** and press
 A.
 
 <p align="center">
-  <img alt="The Library: moving right through the James Bond games to 1080° Avalanche, each cover raised in turn with its title and publisher below; A opens its details, B returns to the Library, and 1080° Avalanche is still selected." src="images/library-browse.png" width="640">
+  <img alt="The Library: moving right through the James Bond games to 1080° Avalanche, each cover raised in turn between two covers either side, with its title and publisher below; A opens its details, B returns to the Library, and 1080° Avalanche is still selected." src="images/library-browse.png" width="640">
 </p>
 
 ## Choose a layout

@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img alt="The Indigo Home screen: a glass cube turning sideways and tipping up and down between its Library, Source, Settings and System faces on a dark starfield. Its far edges bend through the front glass, the rounded edges show faint prism colours, and the icons sit sharp on the glass. The Library face shows a GameCube controller, only the face you are on is named underneath, and its controls are shown as GameCube buttons." src="docs/screenshots/home.png" width="640">
+  <img alt="The Indigo Home screen: a clear glass cube turning sideways and tipping up and down between its Library, Source, Settings and System faces over dark waves. Its far edges bend through the front glass, soft lights mirrored in the glass slide across it as it turns, the rounded edges show faint prism colours, and the icons sit sharp on the glass. The Library face shows a GameCube controller, only the face you are on is named underneath, and its controls are shown as GameCube buttons." src="docs/screenshots/home.png" width="640">
 </p>
 
 Captured in the Dolphin emulator. The library and game detail pictures show a real poster pack and cheat file in use; box art belongs to its publishers.
@@ -61,7 +61,7 @@ game's own settings. Cover art comes from a pack you build yourself (see
 [Posters](#posters)); without one, each game gets a generated card.
 
 <p align="center">
-  <img alt="The game library in its three layouts in turn. Horizontal: a row of GameCube box art, the selected cover raised with its title and publisher below it. Vertical: a column of covers down the left, the selected one large with its title, publisher and game ID beside it. Grid: five covers across and three rows on screen, a lit frame sliding to the selected cover as the rows scroll. The controls are shown as GameCube buttons along the bottom." src="docs/screenshots/library.png" width="640">
+  <img alt="The game library in its three layouts in turn. Horizontal: a row of GameCube box art, the selected cover raised between two covers either side, with its title and publisher below it. Vertical: a column of covers down the left, the selected one large with its title, publisher and game ID beside it. Grid: five covers across and three rows on screen, a lit frame sliding to the selected cover as the rows scroll. The controls are shown as GameCube buttons along the bottom." src="docs/screenshots/library.png" width="640">
 </p>
 
 **Game details are a surface, not a dialogue.** Artwork, last played, save

@@ -144,6 +144,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
     earlier.
   - The README's release badge links the latest release rather than the list
     of tags.
+- Every picture in the guide and the README is recorded again: the clear
+  glass cube, the Defaults tab, two covers either side in the Library, the
+  frame on a game's details and the new source picker. Game details has a
+  picture of the launch screen, and the button icons keep their colors in
+  the animations, where the green A had turned teal.
 
 ### For developers
 
