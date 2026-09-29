@@ -118,6 +118,7 @@ run_plain() {
 	./test_gameflow_resolver
 	./test_gameflow_detail
 	./test_ui_game_history
+	./test_ui_about
 	./test_gameflow_ownership
 
 	echo "== cheat identity, launch policy, and bounded writer (plain) =="
@@ -177,6 +178,7 @@ run_sanitized() {
 	./test_gameflow_resolver_san
 	./test_gameflow_detail_san
 	./test_ui_game_history_san
+	./test_ui_about_san
 	./test_gameflow_ownership_san
 
 	echo "== cheat identity, launch policy, and bounded writer (ASan/UBSan) =="

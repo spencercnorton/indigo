@@ -127,7 +127,9 @@ with a tagged release.
   red test go green.
 - **Public-repository hygiene.** Nothing in a commit, a file or a pull request
   may name a private host, an internal tracker or ticket, a personal path, a
-  credential, or a real person other than the maintainer. Screenshots come
+  credential, or a real person other than the maintainer, except a credit
+  the maintainer asks for, which goes in `NOTICE` and System › Credits.
+  Screenshots come
   from Dolphin with demonstration data. GitHub push protection scans for
   secrets; do not rely on it.
 - **Never contact upstream.** Indigo sends the Swiss project nothing: no pull

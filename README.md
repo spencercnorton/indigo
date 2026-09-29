@@ -60,14 +60,17 @@ Settings › Quick › Menu Music turns it off.
 source, with artwork kept across navigation rather than re-read per frame,
 and your selection restored when you come back from a game's details. It
 opens as a row, with two covers either side of the game in the middle; it
-can also be a column with the title beside the cover, or a grid five covers
-wide (Setup › Library › Library Layout). Y on a cover opens that game's own
-settings. Cover art comes from a ready-made pack or one you build yourself
-(see [Posters](#posters)); without one, each game gets a card with its disc
-banner.
+can also be a column with the title beside the cover, a grid five covers
+wide, or Spotlight: the selected game's gameplay still and description over
+a row of disc banners (Setup › Library › Library Layout), a design that
+comes from mvizensk's
+[Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight), with
+their permission. Y on a game opens its own settings. Cover art comes from a
+ready-made pack or one you build yourself (see [Posters](#posters)); without
+one, each game gets a card with its disc banner.
 
 <p align="center">
-  <img alt="The game library in its three layouts in turn. Horizontal: a row of GameCube box art, the selected cover raised between two covers either side, with its title and publisher below it. Vertical: a column of covers down the left, the selected one large with its title, publisher and game ID beside it. Grid: five covers across and three rows on screen, a lit frame sliding to the selected cover as the rows scroll. The controls are shown as GameCube buttons along the bottom." src="docs/screenshots/library.png" width="640">
+  <img alt="The game library in its four layouts in turn. Horizontal: a row of GameCube box art, the selected cover raised between two covers either side, with its title and publisher below it; two steps right. Vertical: a column of covers down the left, the selected one large with its title, publisher and game ID beside it; three steps down. Grid: five covers across and three rows on screen, a lit frame moving right, right, down and down. Spotlight: the selected game's gameplay still fills a framed panel, with its title, publisher, a few sentences about it and its game ID beside it, over a row of disc banners; two steps right bring 007: Everything or Nothing's and From Russia With Love's stills and text." src="docs/screenshots/library.png" width="640">
 </p>
 
 **Change Source shows the devices themselves.** Choose it on the Source
@@ -291,6 +294,18 @@ python3 buildtools/ui/poster_pack.py --covers ~/covers --out posters.pak
 Covers are cropped to 3:4 from the centre. Files not named by a game ID are
 skipped and listed.
 
+The Spotlight layout also shows each game's gameplay still from
+`swiss/ui/stills.pak` and a few sentences about it from
+`swiss/ui/descriptions.txt`, which the ready-made packs carry beside the
+posters. The packs' covers and descriptions come from
+[GameTDB](https://www.gametdb.com/), and their stills from
+[libretro-thumbnails](https://github.com/libretro-thumbnails/Nintendo_-_GameCube),
+as do the screenshots above. The descriptions file is plain text you can
+edit (see [Posters](docs/guide/posters.md#game-descriptions)).
+To build one from your own screenshots (at least 320×240, named like the
+covers): `poster_pack.py --stills ~/screenshots --out stills.pak`. See
+[Posters](docs/guide/posters.md#gameplay-stills).
+
 ### Cheats
 
 Indigo runs Gecko codes from `/swiss/cheats/<game ID>.txt`, or from
@@ -341,6 +356,10 @@ Indigo is a modified version of [Swiss](https://github.com/emukidid/swiss-gc)
 licence. Provenance, the modified surface and the third-party components in
 this tree are recorded in [`NOTICE`](NOTICE). This fork is unofficial and is
 not endorsed by or affiliated with the Swiss project.
+
+The Library's Spotlight layout takes its design from
+[Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight) by mvizensk
+(GPL-2.0), with its author's permission; Indigo's code for it is its own.
 
 Indigo's interface was built with [Claude Code](https://claude.com/claude-code).
 

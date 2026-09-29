@@ -65,8 +65,8 @@ void UIScene_Request(uiSceneId_t scene);
  * axis commands even when several menu updates coalesce before one frame. */
 void UIScene_RequestHome(const uiHomeState_t *home);
 /* The Library's cube pose follows its layout: Horizontal keeps the
- * carousel's, Vertical tucks the cube behind the selected cover and Grid
- * moves it out of the grid's way. Unknown layouts are Horizontal. */
+ * carousel's, Vertical tucks the cube behind the selected cover, and Grid
+ * and Spotlight move it out of their way. Unknown layouts are Horizontal. */
 void UIScene_RequestLibraryLayout(uiGameflowLayout_t layout);
 void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode);
 const uiSceneFrame_t *UIScene_Frame(void);

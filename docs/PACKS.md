@@ -1,12 +1,13 @@
 # Library packs
 
-The Library's pictures come from two optional files in `/swiss/ui/` on the
-device you browse:
+The Library's pictures and descriptions come from optional files in
+`/swiss/ui/` on the device you browse:
 
 | File | What it holds |
 | --- | --- |
 | `posters.pak` | Box art: a 192×256 front cover per game. |
 | `stills.pak` | Gameplay stills: a 320×240 screenshot per game. |
+| `descriptions.txt` | A few sentences about each game, for Spotlight. See [below](#game-descriptions). |
 
 Both are built with `buildtools/ui/poster_pack.py` and share one format,
 described here. Indigo checks every field below before it uses a pack, and
@@ -120,3 +121,25 @@ A texture whose CRC doesn't match is not shown: that game looks as if the
 pack had no picture for it, and the rest of the pack still works. The file is read in pieces as the
 Library needs them, never all at once: 25 posters and 3 stills at most are
 held in memory.
+
+## Game descriptions
+
+`descriptions.txt` is plain text: one game per line, its six-character game
+ID, a space (or a tab), then its description, in Windows-1252 as a disc
+banner's text is. Lines starting with `#` are comments.
+
+```text
+# Descriptions for my card
+GMSE01 Clean up Isle Delfino with FLUDD, a water pack with a mind of its own.
+GAFE01 Move into a village where something happens every day.
+```
+
+The order doesn't matter, and a game's first line wins. A line whose ID isn't
+six of `A`–`Z` and `0`–`9` is skipped. The file can be up to 1 MiB and hold up
+to 4,096 games. Spotlight shows what fits in six lines of its column, about
+250 characters, and ends with "..." when a description runs on.
+
+For a game the file doesn't list, Spotlight uses the first line for another
+disc of the same game and region (the same first four characters of its ID),
+then its disc banner's own description. Without either, it says the game has
+no description rather than leaving the space blank.

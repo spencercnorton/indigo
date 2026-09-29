@@ -30,7 +30,7 @@
 #define PROGRESS_BOX_WIDTH  600
 #define PROGRESS_BOX_HEIGHT 125
 #define PROGRESS_BOX_BOTTOMLEFT 0
-#define PROGRESS_BOX_TOPRIGHT 1
+#define PROGRESS_BOX_TOPLEFT 1
 
 #include "images_tpl.h"
 #include "images.h"
@@ -50,6 +50,11 @@ typedef struct uiDrawObj {
 #define UI_GAMEFLOW_TITLE_LENGTH 96u
 #define UI_GAMEFLOW_COMPANY_LENGTH 64u
 #define UI_GAMEFLOW_FACTS_LENGTH 64u
+/* Spotlight's description: from the card's descriptions file (up to 300
+ * characters), else a disc banner's 128, which need not end in a NUL. */
+#define UI_GAMEFLOW_DESCRIPTION_LENGTH 320u
+/* ...shown in this many lines of Spotlight's column. */
+#define UI_GAMEFLOW_DESCRIPTION_LINES 6u
 
 #define UI_GAMEFLOW_CARD_VALID       (1u << 0)
 #define UI_GAMEFLOW_CARD_HAS_BANNER  (1u << 1)
@@ -82,8 +87,10 @@ typedef struct {
 	char deviceName[64];
 	u8 layout;	/* uiGameflowLayout_t */
 	u8 columns;	/* the grid's row length, 0 for a ring */
-	/* Keep records at offset 96 after the explicit snapTransition field. */
 	u8 reserved[6];
+	/* Spotlight: the selected game's description. Keeps the records at
+	 * offset 416, a multiple of 32. */
+	char description[UI_GAMEFLOW_DESCRIPTION_LENGTH];
 	uiGameflowCardSnapshot_t records[UI_GAMEFLOW_RENDER_SLOTS];
 } uiGameflowRenderSnapshot_t;
 
@@ -183,6 +190,12 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	const uiGameflowRenderSnapshot_t *snapshot);
 bool DrawGameflowPollPosters(void);
 void DrawGameflowCancelPosters(void);
+/* Spotlight's description of a game, from swiss/ui/descriptions.txt on
+ * device: read whole the first time it is asked for there, and again after
+ * DrawGameflowCancelPosters. False, with out empty, when there is none.
+ * Menu thread only. */
+bool DrawGameflowDescription(DEVICEHANDLER_INTERFACE *device,
+	const char *gameId, char *out, size_t capacity);
 void DrawUpdateProgressBar(uiDrawObj_t *evt, int percent);
 void DrawUpdateProgressBarDetail(uiDrawObj_t *evt, int percent, int speed, int timestart, int timeremain);
 void DrawUpdateProgressLoading(uiDrawObj_t *evt, int increment);

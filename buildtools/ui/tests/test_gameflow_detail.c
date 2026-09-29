@@ -198,11 +198,11 @@ static void testPresentationVariants(void)
 
 static void testDescriptionTruncationIsVisible(void)
 {
+	/* A banner holds 128 characters at most; four long words are enough to
+	 * need a fourth line. */
 	const char *description =
-		"One two three four five six seven eight nine ten eleven twelve "
-		"thirteen fourteen fifteen sixteen seventeen eighteen nineteen "
-		"twenty twenty-one twenty-two twenty-three twenty-four twenty-five "
-		"twenty-six twenty-seven twenty-eight twenty-nine thirty and beyond.";
+		"Thirtycharacterswordnumberone. Thirtycharacterswordnumbertwo. "
+		"Thirtycharacterswordnumberthre. Thirtycharacterswordnumberfour.";
 	uiGameflowDetailSource_t source = {
 		.gameId = "GALE01",
 		.title = "Super Smash Bros. Melee",
@@ -222,6 +222,32 @@ static void testDescriptionTruncationIsVisible(void)
 	length = strlen(snapshot.description[2]);
 	CHECK(length >= 3u);
 	CHECK(strcmp(&snapshot.description[2][length - 3u], "...") == 0);
+}
+
+/* A disc banner's description need not end in a NUL: the wrap stops at its
+ * 128 characters instead of reading on into whatever follows it. */
+static void testDescriptionReadsNoFurtherThanTheBanner(void)
+{
+	char banner[160];
+	uiGameflowDetailSource_t source = {
+		.gameId = "GALE01",
+		.title = "Super Smash Bros. Melee",
+		.description = banner,
+		.saveStatus = UI_GAME_SAVE_NOT_CHECKED,
+		.flags = UI_GAMEFLOW_DETAIL_CHEATS_KNOWN
+	};
+	uiGameflowDetailSnapshot_t snapshot;
+	size_t line;
+
+	memset(banner, 'a', UI_GAMEFLOW_DETAIL_DESCRIPTION_SOURCE);
+	memset(&banner[UI_GAMEFLOW_DETAIL_DESCRIPTION_SOURCE], 'Z',
+		sizeof(banner) - UI_GAMEFLOW_DETAIL_DESCRIPTION_SOURCE - 1u);
+	banner[sizeof(banner) - 1u] = '\0';
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(snapshot.description[0][0] == 'a');
+	for(line = 0u; line < UI_GAMEFLOW_DETAIL_DESCRIPTION_LINES; ++line) {
+		CHECK(strchr(snapshot.description[line], 'Z') == NULL);
+	}
 }
 
 static void testControllerPrecedence(void)
@@ -415,6 +441,7 @@ int main(void)
 	testNoCheatsClearsCapability();
 	testPresentationVariants();
 	testDescriptionTruncationIsVisible();
+	testDescriptionReadsNoFurtherThanTheBanner();
 	testControllerPrecedence();
 	testFocus();
 	testInvalidInputResetsSnapshot();

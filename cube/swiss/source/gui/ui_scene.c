@@ -91,8 +91,8 @@ static const uiScenePose_t poses[UI_SCENE_COUNT] = {
 	[UI_SCENE_SETTINGS] = {1.16f, 0.0f, 0.50f, 0.08f, -0.48f, 0.58f}
 };
 /* The Library's other layouts. Vertical's cover sits where Game Detail's
- * does, so the cube keeps Detail's place behind it; the grid fills the
- * screen, so the cube waits beyond its left edge. */
+ * does, so the cube keeps Detail's place behind it; the grid and Spotlight
+ * fill the screen, so the cube waits beyond its left edge. */
 static const uiScenePose_t verticalLibraryPose =
 	{-1.36f, 0.0f, 0.44f, 0.10f, 0.58f, 0.48f};
 static const uiScenePose_t gridLibraryPose =
@@ -420,7 +420,8 @@ static void retargetPose(uiSceneId_t scene, uiMotionMode_t motionMode)
 		cubeYaw = pose->cubeYaw;
 	}
 	else if(scene == UI_SCENE_LIBRARY &&
-		state.libraryLayout == UI_GAMEFLOW_LAYOUT_GRID) {
+		(state.libraryLayout == UI_GAMEFLOW_LAYOUT_GRID ||
+		state.libraryLayout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT)) {
 		pose = &gridLibraryPose;
 		cubeYaw = pose->cubeYaw;
 	}

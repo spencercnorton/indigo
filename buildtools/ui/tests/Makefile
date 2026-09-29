@@ -14,7 +14,7 @@ endif
 GAMEFLOW_CFLAGS := -std=c11 -Wall -Wextra -Werror -Wconversion \
 	-Wsign-conversion -pedantic
 
-PLAIN_TARGETS := test_ui_cube_motif test_ui_game_history test_ui_cheats test_ui_saves test_ui_assets test_ui_assets_target_sync \
+PLAIN_TARGETS := test_ui_cube_motif test_ui_game_history test_ui_about test_ui_cheats test_ui_saves test_ui_assets test_ui_assets_target_sync \
 	test_ui_settings_layout test_ui_settings_focus test_ui_system_info \
 	test_ui_menu_input test_ui_clock test_ui_hint test_ui_stage \
 	test_ui_home test_ui_presentation \
@@ -23,7 +23,7 @@ PLAIN_TARGETS := test_ui_cube_motif test_ui_game_history test_ui_cheats test_ui_
 	test_gameflow_resolver test_gameflow_detail test_gameflow_ownership \
 	test_cheat_policy test_ui_launch
 
-SANITIZED_TARGETS := test_ui_cube_motif_san test_ui_game_history_san test_ui_cheats_san test_ui_saves_san test_ui_assets_san test_ui_assets_target_sync_san \
+SANITIZED_TARGETS := test_ui_cube_motif_san test_ui_game_history_san test_ui_about_san test_ui_cheats_san test_ui_saves_san test_ui_assets_san test_ui_assets_target_sync_san \
 	test_ui_settings_layout_san test_ui_settings_focus_san \
 	test_ui_menu_input_san test_ui_clock_san test_ui_hint_san test_ui_stage_san \
 	test_ui_system_info_san test_ui_home_san test_ui_presentation_san \
@@ -50,6 +50,13 @@ test_ui_game_history: test_ui_game_history.c $(GUI)/ui_game_history.c $(GUI)/ui_
 
 test_ui_game_history_san: test_ui_game_history.c $(GUI)/ui_game_history.c $(GUI)/ui_game_history.h
 	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_game_history.c $(GUI)/ui_game_history.c
+
+# Spotlight's game descriptions (swiss/ui/descriptions.txt).
+test_ui_about: test_ui_about.c $(GUI)/ui_about.c $(GUI)/ui_about.h
+	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_about.c $(GUI)/ui_about.c
+
+test_ui_about_san: test_ui_about.c $(GUI)/ui_about.c $(GUI)/ui_about.h
+	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_about.c $(GUI)/ui_about.c
 
 test_ui_cheats: test_ui_cheats.c $(GUI)/ui_cheats.c $(GUI)/ui_cheats.h
 	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_cheats.c $(GUI)/ui_cheats.c

@@ -47,6 +47,7 @@
 #include "ui_gameflow_detail.h"
 #include "ui_gameflow_library.h"
 #include "ui_cheats.h"
+#include "ui_about.h"
 #include "ui_launch.h"
 
 #define GUI_MSGBOX_ALPHA 225
@@ -146,6 +147,18 @@ static file_handle posterPackFile;
 static DEVICEHANDLER_INTERFACE *posterPackDevice;
 static bool posterPackAttempted;
 static bool posterPackFileOwned;
+/* Spotlight's gameplay stills: stills.pak beside posters.pak, tried in the
+ * same attempt on the same device. */
+static file_handle stillsPackFile;
+static bool stillsPackFileOwned;
+/* Spotlight's game descriptions: swiss/ui/descriptions.txt on the browsed
+ * device, read whole the first time Spotlight asks there. The menu thread's
+ * alone; the video thread only ever sees a snapshot's copy. */
+static DEVICEHANDLER_INTERFACE *descriptionsDevice;
+static bool descriptionsAttempted;
+static char *descriptionsText;
+static uiAboutEntry_t *descriptionsIndex;
+static uiAbout_t descriptions;
 static bool gameflowResetRegistered;
 static s32 _GameflowOnReset(s32 final);
 static sys_resetinfo gameflowResetInfo = {
@@ -362,6 +375,9 @@ typedef struct drawGameflowEvent {
 	GXTexObj detailBannerTexObj;
 	/* Outside the snapshot, so a republished Detail keeps it. */
 	uiGameflowDetailFocus_t detailFocus;
+	/* Spotlight: the selected game's description, wrapped for its column
+	 * when the snapshot is published. */
+	char spotlightLines[UI_GAMEFLOW_DESCRIPTION_LINES][UI_CHEATS_TEXT_CAPACITY];
 } drawGameflowEvent_t;
 
 typedef struct drawPresentationEvent {
@@ -1038,8 +1054,10 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 	}
 	if(data->miniMode) {	
 		int x = 30, y = 420;
-		if(data->miniModePos == PROGRESS_BOX_TOPRIGHT) {
-			x = 535; y = 95;
+		/* The header's left corner, level with the clock on the right and
+		 * as far in from the edge the frame shows. */
+		if(data->miniModePos == PROGRESS_BOX_TOPLEFT) {
+			x = (int)(UIStage_Left() + 44.0f); y = 43;
 		}
 		GXColor loadingColor = (GXColor) {255,255,255,data->miniModeAlpha};
 		int numSegments = (data->percent*8)/100;
@@ -2429,6 +2447,9 @@ typedef struct gameflowRenderCard {
 	float focus;
 	float presence;
 	bool art;
+	/* Spotlight's row: a banner tile, framed in whole pixels rather than in
+	 * proportion, since it is three times as wide as it is tall. */
+	bool tile;
 	gameflowQuad_t quad;
 } gameflowRenderCard_t;
 
@@ -2453,6 +2474,32 @@ static const gameflowQuad_t gameflowVerticalPoses[7] = {
 	{{{102.0f, 408.0f}, {206.0f, 408.0f}, {196.0f, 416.0f}, {112.0f, 416.0f}}},
 	{{{106.0f, 480.0f}, {202.0f, 480.0f}, {196.0f, 488.0f}, {112.0f, 488.0f}}}
 };
+
+/* The Spotlight layout, designed after Gameplay Spotlight by mvizensk
+ * (github.com/mvizensk/gameplay-spotlight), with its author's permission;
+ * see NOTICE. The same ring as a row of disc banners along the
+ * bottom, each 96x32 inside a 4-pixel frame, the selected one a quarter
+ * larger. Above the row, the selected game's picture fills a 4:3 panel,
+ * 320x240 inside its frame so a gameplay still is drawn pixel for pixel, and
+ * its details stand in the column beside it. A cover leaves the panel's
+ * middle for Detail. */
+static const gameflowQuad_t gameflowSpotlightPoses[7] = {
+	{{{-92.0f, 352.0f}, {12.0f, 352.0f}, {12.0f, 392.0f}, {-92.0f, 392.0f}}},
+	{{{28.0f, 352.0f}, {132.0f, 352.0f}, {132.0f, 392.0f}, {28.0f, 392.0f}}},
+	{{{148.0f, 352.0f}, {252.0f, 352.0f}, {252.0f, 392.0f}, {148.0f, 392.0f}}},
+	{{{256.0f, 348.0f}, {384.0f, 348.0f}, {384.0f, 396.0f}, {256.0f, 396.0f}}},
+	{{{388.0f, 352.0f}, {492.0f, 352.0f}, {492.0f, 392.0f}, {388.0f, 392.0f}}},
+	{{{508.0f, 352.0f}, {612.0f, 352.0f}, {612.0f, 392.0f}, {508.0f, 392.0f}}},
+	{{{628.0f, 352.0f}, {732.0f, 352.0f}, {732.0f, 392.0f}, {628.0f, 392.0f}}}
+};
+static const gameflowQuad_t gameflowSpotlightPanel =
+	{{{32.0f, 74.0f}, {360.0f, 74.0f}, {360.0f, 322.0f}, {32.0f, 322.0f}}};
+static const gameflowQuad_t gameflowSpotlightCover =
+	{{{106.0f, 78.0f}, {286.0f, 78.0f}, {286.0f, 318.0f}, {106.0f, 318.0f}}};
+#define GAMEFLOW_SPOTLIGHT_COLUMN_X 380
+#define GAMEFLOW_SPOTLIGHT_COLUMN_W 224
+#define GAMEFLOW_SPOTLIGHT_TEXT_SCALE 0.46f
+#define GAMEFLOW_SPOTLIGHT_NO_DESCRIPTION "No description for this game."
 
 /* The Grid layout: five columns, three rows on screen, the focused row in the
  * middle. The highlighted card grows by a tenth. */
@@ -2570,6 +2617,18 @@ static gameflowQuad_t _GameflowInsetQuad(const gameflowQuad_t *quad,
 		_GameflowQuadPoint(quad, horizontal, 1.0f - vertical)
 	}};
 	return result;
+}
+
+/* Inset by whole pixels rather than a share of the quad: a Spotlight tile
+ * is three times as wide as it is tall and changes size as it slides. */
+static gameflowQuad_t _GameflowInsetPixels(const gameflowQuad_t *quad,
+	float pixels)
+{
+	float width = quad->point[1].x - quad->point[0].x;
+	float height = quad->point[3].y - quad->point[0].y;
+
+	return _GameflowInsetQuad(quad, width > 0.0f ? pixels / width : 0.0f,
+		height > 0.0f ? pixels / height : 0.0f);
 }
 
 static gameflowQuad_t _GameflowRectQuad(const gameflowQuad_t *quad,
@@ -2928,9 +2987,138 @@ static GXTexObj *_GameflowPosterTexture(
 	return UIAssets_Peek(handle);
 }
 
+/* The game's gameplay still from stills.pak, or NULL; the same borrowing
+ * rules as its poster. */
+static GXTexObj *_GameflowStillTexture(const uiGameflowCardSnapshot_t *record)
+{
+	uiPosterHandle_t handle;
+	uiPosterResult_t result = UIStills_Query(record->gameId,
+		strnlen(record->gameId, sizeof(record->gameId)), false, &handle);
+
+	if(result != UI_POSTER_EXACT && result != UI_POSTER_UNIVERSAL) {
+		return NULL;
+	}
+	return UIStills_Peek(handle);
+}
+
+/* Spotlight's picture panel: a frame and a dark field, faded by alpha. */
+static void _GameflowDrawSpotlightPanel(float alpha)
+{
+	gameflowQuad_t inner = _GameflowInsetPixels(&gameflowSpotlightPanel, 4.0f);
+	GXColor top = {49, 43, 92, _GameflowAlpha(130.0f * alpha)};
+	GXColor bottom = {12, 10, 34, _GameflowAlpha(190.0f * alpha)};
+	GXColor border = {220, 214, 255, _GameflowAlpha(200.0f * alpha)};
+
+	if(alpha <= 0.001f) {
+		return;
+	}
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 20);
+		_GameflowPutQuad(&inner, top, bottom);
+		_GameflowPutBorder(&gameflowSpotlightPanel, &inner, border);
+	GX_End();
+}
+
+/* One game's picture in Spotlight's panel, faded by alpha: its gameplay
+ * still filling the panel, else its cover in the middle, drawn as Detail
+ * draws it, so the cover can leave from there for Detail. A game with
+ * settings of its own carries the mark a cover does, on either. */
+static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
+	const uiGameflowCardSnapshot_t *record, u32 recordIndex, float alpha)
+{
+	gameflowRenderCard_t cover;
+	GXTexObj *texture;
+	GXTexObj *bannerTexture = NULL;
+	uiGameflowLibraryArtwork_t artwork;
+
+	if(record == NULL || alpha <= 0.001f) {
+		return;
+	}
+	texture = _GameflowStillTexture(record);
+	if(texture != NULL) {
+		gameflowQuad_t inner = _GameflowInsetPixels(&gameflowSpotlightPanel,
+			4.0f);
+		_GameflowDrawBanner(&inner, texture, _GameflowAlpha(255.0f * alpha));
+		drawInit();
+		_SetupRasterColor();
+		if(record->flags & UI_GAMEFLOW_CARD_CUSTOM) {
+			memset(&cover, 0, sizeof(cover));
+			cover.quad = inner;
+			cover.presence = alpha;
+			_GameflowDrawCustomMark(&cover, 1.0f);
+		}
+		return;
+	}
+	memset(&cover, 0, sizeof(cover));
+	cover.record = record;
+	cover.recordIndex = recordIndex;
+	cover.focus = 1.0f;
+	cover.presence = alpha;
+	cover.art = true;
+	cover.quad = gameflowSpotlightCover;
+	texture = _GameflowPosterTexture(record);
+	if(record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) {
+		bannerTexture = &data->bannerTexObj[recordIndex];
+	}
+	artwork = UIGameflowLibrary_ChooseArtwork(texture != NULL,
+		bannerTexture != NULL);
+	if(artwork == UI_GAMEFLOW_LIBRARY_ART_POSTER) {
+		_GameflowDrawPoster(&cover, texture, 1.0f);
+	}
+	else {
+		_GameflowDrawFallback(&cover, artwork, bannerTexture, 1.0f);
+	}
+	if(record->flags & UI_GAMEFLOW_CARD_CUSTOM) {
+		_GameflowDrawCustomMark(&cover, 1.0f);
+	}
+}
+
+/* A game on Spotlight's row: its disc banner inside the tile's frame, or its
+ * game ID when it has no banner. */
+static void _GameflowDrawSpotlightTile(const gameflowRenderCard_t *card,
+	GXTexObj *banner, float reveal)
+{
+	gameflowQuad_t inner = _GameflowInsetPixels(&card->quad, 4.0f);
+	float alpha = card->presence * reveal;
+
+	if(banner != NULL) {
+		_GameflowDrawBanner(&inner, banner, _GameflowAlpha(255.0f * alpha));
+		drawInit();
+		_SetupRasterColor();
+		return;
+	}
+	{
+		GXColor text = {190, 181, 231, _GameflowAlpha(220.0f * alpha)};
+		gameflowPoint_t middle = _GameflowQuadPoint(&card->quad, 0.5f, 0.5f);
+		drawStringMedium((int)_GameflowRound(middle.x),
+			(int)_GameflowRound(middle.y) - 6, card->record->gameId[0] ?
+			card->record->gameId : card->record->title, 0.38f,
+			ALIGN_CENTER, text);
+	}
+}
+
+/* Spotlight's column: the selected game's description, under its title. */
+static void _GameflowDrawSpotlightDescription(const drawGameflowEvent_t *data,
+	float alpha, float reveal)
+{
+	GXColor text = {190, 181, 231, _GameflowAlpha(230.0f * alpha * reveal)};
+	unsigned line;
+
+	if(alpha <= 0.001f) {
+		return;
+	}
+	for(line = 0u; line < UI_GAMEFLOW_DESCRIPTION_LINES &&
+		data->spotlightLines[line][0]; ++line) {
+		drawStringMedium(GAMEFLOW_SPOTLIGHT_COLUMN_X, 154 + (int)line * 22,
+			data->spotlightLines[line], GAMEFLOW_SPOTLIGHT_TEXT_SCALE,
+			ALIGN_LEFT, text);
+	}
+}
+
 /* The selected game's title and publisher: under the carousel's cover,
- * beside the column's with its facts, or in the grid's strip above the
- * command line. */
+ * beside the column's or Spotlight's picture with its facts, or in the
+ * grid's strip above the command line. */
 static void _GameflowDrawMetadata(const uiGameflowCardSnapshot_t *record,
 	const drawGameflowCardPresentation_t *presentation, float alpha,
 	float reveal, uiGameflowLayout_t layout)
@@ -2953,6 +3141,19 @@ static void _GameflowDrawMetadata(const uiGameflowCardSnapshot_t *record,
 		}
 		if(record->facts[0] && !(record->flags & UI_GAMEFLOW_CARD_PARENT)) {
 			drawStringMedium(262, company ? 260 : 235, record->facts,
+				presentation->factsScale, ALIGN_LEFT, muted);
+		}
+		return;
+	}
+	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
+		drawStringMedium(GAMEFLOW_SPOTLIGHT_COLUMN_X, 92, record->title,
+			presentation->titleScale, ALIGN_LEFT, primary);
+		if(company) {
+			drawStringMedium(GAMEFLOW_SPOTLIGHT_COLUMN_X, 118, record->company,
+				presentation->companyScale, ALIGN_LEFT, secondary);
+		}
+		if(record->facts[0] && !(record->flags & UI_GAMEFLOW_CARD_PARENT)) {
+			drawStringMedium(GAMEFLOW_SPOTLIGHT_COLUMN_X, 306, record->facts,
 				presentation->factsScale, ALIGN_LEFT, muted);
 		}
 		return;
@@ -3017,21 +3218,25 @@ static float _GameflowPrepareDetailText(char *text, size_t capacity,
 static void _GameflowPrepareCardPresentation(drawGameflowEvent_t *data,
 	u32 recordIndex)
 {
-	/* Room for the title, publisher and facts in each layout: the line under
-	 * the carousel's cover, the column beside the vertical cover (x 262 to
-	 * 606), the grid's strip above the command line. */
+	/* Room for the title, publisher and facts in each layout, in the
+	 * layouts' order: the line under the carousel's cover, the column beside
+	 * the vertical cover (x 262 to 606), the grid's strip above the command
+	 * line, Spotlight's column beside its picture (x 380 to 604). */
 	static const struct {
 		int width;
 		float maximum;
 		float floor;
-	} fit[UI_GAMEFLOW_LAYOUT_COUNT][3] = {
-		[UI_GAMEFLOW_LAYOUT_HORIZONTAL] = {
-			{520, 0.78f, 0.50f}, {420, 0.50f, 0.42f}, {500, 0.44f, 0.42f}},
-		[UI_GAMEFLOW_LAYOUT_VERTICAL] = {
-			{344, 0.84f, 0.54f}, {344, 0.54f, 0.44f}, {344, 0.46f, 0.42f}},
-		[UI_GAMEFLOW_LAYOUT_GRID] = {
-			{560, 0.66f, 0.50f}, {480, 0.46f, 0.42f}, {500, 0.44f, 0.42f}}
+	} fit[][3] = {
+		{{520, 0.78f, 0.50f}, {420, 0.50f, 0.42f}, {500, 0.44f, 0.42f}},
+		{{344, 0.84f, 0.54f}, {344, 0.54f, 0.44f}, {344, 0.46f, 0.42f}},
+		{{560, 0.66f, 0.50f}, {480, 0.46f, 0.42f}, {500, 0.44f, 0.42f}},
+		{{GAMEFLOW_SPOTLIGHT_COLUMN_W, 0.62f, 0.46f},
+			{GAMEFLOW_SPOTLIGHT_COLUMN_W, 0.46f, 0.40f},
+			{GAMEFLOW_SPOTLIGHT_COLUMN_W, 0.42f, 0.40f}}
 	};
+	/* A layout without its row would draw its text at scale 0. */
+	_Static_assert(sizeof(fit) / sizeof(fit[0]) == UI_GAMEFLOW_LAYOUT_COUNT,
+		"every Library layout needs its text sizes");
 	uiGameflowCardSnapshot_t *record;
 	drawGameflowCardPresentation_t *presentation;
 	u32 layout;
@@ -3053,6 +3258,49 @@ static void _GameflowPrepareCardPresentation(drawGameflowEvent_t *data,
 	presentation->factsScale = _GameflowPrepareDetailText(record->facts,
 		sizeof(record->facts), fit[layout][2].width, fit[layout][2].maximum,
 		fit[layout][2].floor);
+}
+
+/* Spotlight's column: the selected game's description wrapped to its
+ * width, once per snapshot. A banner breaks its lines with newlines or runs
+ * of spaces; the column joins them and wraps at its own width. A game with
+ * no description says so rather than leaving the column blank. */
+static void _GameflowPrepareSpotlight(drawGameflowEvent_t *data)
+{
+	const char *description = data->snapshot.description;
+	const uiGameflowCardSnapshot_t *selected;
+	char text[sizeof(data->snapshot.description)];
+	size_t in;
+	size_t out = 0u;
+
+	memset(data->spotlightLines, 0, sizeof(data->spotlightLines));
+	if(data->snapshot.layout != UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
+		return;
+	}
+	selected = _GameflowFindRecord(&data->snapshot,
+		data->snapshot.selection.selectedIndex, NULL);
+	for(in = 0u; in < sizeof(text) && description[in] != '\0' &&
+		out + 1u < sizeof(text); ++in) {
+		char c = description[in];
+		if(c == '\r' || c == '\n' || c == '\t') {
+			c = ' ';
+		}
+		if(c == ' ' && (out == 0u || text[out - 1u] == ' ')) {
+			continue;
+		}
+		text[out++] = c;
+	}
+	while(out > 0u && text[out - 1u] == ' ') {
+		--out;
+	}
+	text[out] = '\0';
+	if(out == 0u && selected != NULL &&
+		!(selected->flags & UI_GAMEFLOW_CARD_PARENT)) {
+		memcpy(text, GAMEFLOW_SPOTLIGHT_NO_DESCRIPTION,
+			sizeof(GAMEFLOW_SPOTLIGHT_NO_DESCRIPTION));
+	}
+	UICheats_WrapLines(data->spotlightLines, UI_GAMEFLOW_DESCRIPTION_LINES,
+		text, GAMEFLOW_SPOTLIGHT_COLUMN_W, GAMEFLOW_SPOTLIGHT_TEXT_SCALE,
+		GetTextSizeInPixels);
 }
 
 static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
@@ -3648,6 +3896,8 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 				record->libraryIndex == frame->focusIndex;
 			float presence;
 
+			card->tile = false;
+
 			if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
 				float row = (float)record->relativeSlot +
 					frame->carouselTravel + (float)copy * (float)rows;
@@ -3676,7 +3926,10 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 					fabsf(slot) < 1.5f : fabsf(slot) < 3.0f;
 				card->quad = layout == UI_GAMEFLOW_LAYOUT_VERTICAL ?
 					_GameflowSamplePoseIn(gameflowVerticalPoses, slot) :
+					layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT ?
+					_GameflowSamplePoseIn(gameflowSpotlightPoses, slot) :
 					_GameflowSamplePose(slot);
+				card->tile = layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT;
 			}
 			if(frame->detailProgress > 0.0f) {
 				if(focused) {
@@ -3685,6 +3938,17 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 				else {
 					presence *= 1.0f - frame->detailProgress;
 				}
+			}
+			/* Spotlight's selected game leaves its row for Detail or the
+			 * launch as its cover, from the middle of the picture panel,
+			 * fading in over its still. */
+			if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT && focused &&
+				(frame->detailProgress > 0.0f ||
+				frame->launchProgress > 0.0f)) {
+				card->quad = gameflowSpotlightCover;
+				card->tile = false;
+				presence = frame->detailProgress > frame->launchProgress ?
+					frame->detailProgress : frame->launchProgress;
 			}
 			if(presence <= 0.001f) {
 				continue;
@@ -3726,6 +3990,30 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		cards[j] = card;
 	}
 
+	selectedRecord = _GameflowFindRecord(&data->snapshot,
+		frame->selectedIndex, &selectedRecordIndex);
+	previousRecord = _GameflowFindRecord(&data->snapshot,
+		frame->previousIndex, &previousRecordIndex);
+	titleTravel = fabsf(frame->carouselTravel);
+	if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
+		/* The title changes as the highlight reaches the new card. */
+		float across = fabsf(frame->columnPosition - (float)(
+			frame->selectedIndex % data->snapshot.columns));
+		titleTravel = across > titleTravel ? across : titleTravel;
+	}
+	titleTravel = _GameflowClamp(titleTravel, 0.0f, 1.0f);
+	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
+		/* The picture changes with the title: the old game's fades out as
+		 * the row moves and the new game's fades in. */
+		float heroAlpha = reveal * (1.0f - frame->detailProgress) *
+			(1.0f - frame->launchProgress);
+		_GameflowDrawSpotlightPanel(heroAlpha);
+		_GameflowDrawSpotlightArt(data, previousRecord, previousRecordIndex,
+			heroAlpha * titleTravel);
+		_GameflowDrawSpotlightArt(data, selectedRecord, selectedRecordIndex,
+			heroAlpha * (1.0f - titleTravel));
+	}
+
 	_GameflowDrawLaunch(data, detail, focusRecord, focusRecordIndex,
 		frame->launchProgress, reveal);
 	drawInit();
@@ -3743,8 +4031,9 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 
 	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 4u));
 	for(i = 0u; i < count; ++i) {
-		gameflowQuad_t inner = _GameflowInsetQuad(&cards[i].quad,
-			0.033333f, 0.033333f);
+		gameflowQuad_t inner = cards[i].tile ?
+			_GameflowInsetPixels(&cards[i].quad, 4.0f) :
+			_GameflowInsetQuad(&cards[i].quad, 0.033333f, 0.033333f);
 		GXColor top = {49, 43, 92,
 			_GameflowAlpha(130.0f * cards[i].presence * reveal)};
 		GXColor bottom = {12, 10, 34,
@@ -3755,8 +4044,9 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 
 	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 16u));
 	for(i = 0u; i < count; ++i) {
-		gameflowQuad_t inner = _GameflowInsetQuad(&cards[i].quad,
-			0.018f, 0.018f);
+		gameflowQuad_t inner = cards[i].tile ?
+			_GameflowInsetPixels(&cards[i].quad, 2.0f) :
+			_GameflowInsetQuad(&cards[i].quad, 0.018f, 0.018f);
 		GXColor border = {220, 214, 255,
 			_GameflowAlpha((112.0f + cards[i].focus * 126.0f) *
 			cards[i].presence * reveal)};
@@ -3786,6 +4076,10 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			(detail->flags & UI_GAMEFLOW_DETAIL_HAS_BANNER) != 0u) {
 			bannerTexture = &data->detailBannerTexObj;
 		}
+		if(cards[i].tile) {
+			_GameflowDrawSpotlightTile(&cards[i], bannerTexture, reveal);
+			continue;
+		}
 		artwork = UIGameflowLibrary_ChooseArtwork(posterTexture != NULL,
 			bannerTexture != NULL);
 		if(artwork == UI_GAMEFLOW_LIBRARY_ART_POSTER) {
@@ -3794,9 +4088,11 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		}
 		_GameflowDrawFallback(&cards[i], artwork, bannerTexture, reveal);
 	}
-	/* Every card that shows its art carries the mark, sized to the card. */
+	/* Every card that shows its art carries the mark, sized to the card.
+	 * Spotlight's banners are too small for one: its panel carries the
+	 * selected game's. */
 	for(i = 0u; i < count; ++i) {
-		if(cards[i].art &&
+		if(cards[i].art && !cards[i].tile &&
 			(cards[i].record->flags & UI_GAMEFLOW_CARD_CUSTOM)) {
 			_GameflowDrawCustomMark(&cards[i], reveal);
 		}
@@ -3807,18 +4103,6 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			reveal * (1.0f - frame->detailProgress));
 	}
 
-	selectedRecord = _GameflowFindRecord(&data->snapshot,
-		frame->selectedIndex, &selectedRecordIndex);
-	previousRecord = _GameflowFindRecord(&data->snapshot,
-		frame->previousIndex, &previousRecordIndex);
-	titleTravel = fabsf(frame->carouselTravel);
-	if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
-		/* The title changes as the highlight reaches the new card. */
-		float across = fabsf(frame->columnPosition - (float)(
-			frame->selectedIndex % data->snapshot.columns));
-		titleTravel = across > titleTravel ? across : titleTravel;
-	}
-	titleTravel = _GameflowClamp(titleTravel, 0.0f, 1.0f);
 	_GameflowDrawMetadata(previousRecord, previousRecord != NULL ?
 		&data->cardPresentation[previousRecordIndex] : NULL,
 		titleTravel * (1.0f - frame->detailProgress), reveal, layout);
@@ -3826,6 +4110,10 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		&data->cardPresentation[selectedRecordIndex] : NULL,
 		(1.0f - titleTravel) * (1.0f - frame->detailProgress), reveal,
 		layout);
+	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
+		_GameflowDrawSpotlightDescription(data, (1.0f - titleTravel) *
+			(1.0f - frame->detailProgress), reveal);
+	}
 
 	UICommandRail_Gameflow(frame->detailProgress, &commandRail);
 	/* Launching, Detail's panels give way to the launch screen. */
@@ -3844,6 +4132,10 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		}
 		else if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
 			drawStringMedium(320, 40, "GAME LIBRARY", 0.46f, ALIGN_CENTER,
+				label);
+		}
+		else if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
+			drawStringMedium(36, 62, "GAME LIBRARY", 0.42f, ALIGN_LEFT,
 				label);
 		}
 		else {
@@ -4580,16 +4872,102 @@ static void _GameflowClosePosterPackFile(void)
 	posterPackFileOwned = false;
 }
 
+static void _GameflowCloseStillsPackFile(void)
+{
+	if(stillsPackFileOwned && stillsPackFile.device != NULL &&
+		stillsPackFile.device->closeFile != NULL) {
+		stillsPackFile.device->closeFile(&stillsPackFile);
+	}
+	memset(&stillsPackFile, 0, sizeof(stillsPackFile));
+	stillsPackFileOwned = false;
+}
+
+static void _GameflowDropDescriptions(void)
+{
+	free(descriptionsText);
+	free(descriptionsIndex);
+	descriptionsText = NULL;
+	descriptionsIndex = NULL;
+	memset(&descriptions, 0, sizeof(descriptions));
+	descriptionsDevice = NULL;
+}
+
+/* Read swiss/ui/descriptions.txt whole and index it. A missing, empty or
+ * oversized file, or one that cannot be read, leaves no descriptions. */
+static void _GameflowLoadDescriptions(DEVICEHANDLER_INTERFACE *device)
+{
+	file_handle file;
+	size_t size;
+	size_t games = 1u;
+	size_t i;
+
+	memset(&file, 0, sizeof(file));
+	concat_path(file.name, device->initial->name,
+		"swiss/ui/descriptions.txt");
+	file.device = device;
+	if(device->statFile == NULL || device->seekFile == NULL ||
+		device->readFile == NULL || device->statFile(&file) != 0 ||
+		file.size == 0 || file.size > UI_ABOUT_MAX_BYTES) {
+		goto done;
+	}
+	size = (size_t)file.size;
+	descriptionsText = malloc(size);
+	if(descriptionsText == NULL ||
+		device->seekFile(&file, 0, DEVICE_HANDLER_SEEK_SET) != 0 ||
+		device->readFile(&file, descriptionsText, (u32)size) != (s32)size) {
+		goto done;
+	}
+	for(i = 0u; i < size; ++i) {
+		games += descriptionsText[i] == '\n';
+	}
+	if(games > UI_ABOUT_MAX_GAMES) {
+		games = UI_ABOUT_MAX_GAMES;
+	}
+	descriptionsIndex = malloc(games * sizeof(*descriptionsIndex));
+	if(descriptionsIndex != NULL) {
+		UIAbout_Index(&descriptions, descriptionsText, size,
+			descriptionsIndex, games);
+	}
+done:
+	if(device->closeFile != NULL) {
+		device->closeFile(&file);
+	}
+}
+
+bool DrawGameflowDescription(DEVICEHANDLER_INTERFACE *device,
+	const char *gameId, char *out, size_t capacity)
+{
+	if(out != NULL && capacity > 0u) {
+		out[0] = '\0';
+	}
+	if(device == NULL || device->initial == NULL) {
+		return false;
+	}
+	if(!descriptionsAttempted || descriptionsDevice != device) {
+		_GameflowDropDescriptions();
+		descriptionsAttempted = true;
+		descriptionsDevice = device;
+		_GameflowLoadDescriptions(device);
+	}
+	return UIAbout_Find(&descriptions, gameId, out, capacity);
+}
+
 void DrawGameflowCancelPosters(void)
 {
-	if(!posterPackAttempted && !posterPackFileOwned) {
+	/* The descriptions are the menu thread's: this can run from the reset
+	 * callback, so it only marks them stale, and the next lookup reads the
+	 * file again. */
+	descriptionsAttempted = false;
+	if(!posterPackAttempted && !posterPackFileOwned && !stillsPackFileOwned) {
 		return;
 	}
 
-	/* Unpublish the pack before closing its source. Video readers use the
-	 * same private mutex through ui_assets' callback contract. */
+	/* Unpublish the packs before closing their sources. Video readers use
+	 * the same private mutex through ui_assets' callback contract. */
 	UIAssets_CancelForDeviceChange();
+	UIStills_CancelForDeviceChange();
 	_GameflowClosePosterPackFile();
+	_GameflowCloseStillsPackFile();
 	posterPackDevice = NULL;
 	posterPackAttempted = false;
 }
@@ -4632,16 +5010,26 @@ static bool _GameflowOpenPosterPack(DEVICEHANDLER_INTERFACE *device)
 	posterPackFile.device = device;
 	posterPackFileOwned = true;
 
+	UIAssets_SyncFromMutex(_videomutex, &sync);
 	result = UIAssets_SourceFromFileHandle(&posterPackFile, &source);
 	if(result == UI_ASSETS_OK) {
-		UIAssets_SyncFromMutex(_videomutex, &sync);
 		result = UIAssets_Init(&source, &sync);
 	}
 	if(result != UI_ASSETS_OK) {
 		_GameflowClosePosterPackFile();
-		return false;
 	}
-	return true;
+
+	/* The stills beside them, whether or not the posters opened. */
+	memset(&stillsPackFile, 0, sizeof(stillsPackFile));
+	concat_path(stillsPackFile.name, device->initial->name,
+		"swiss/ui/stills.pak");
+	stillsPackFile.device = device;
+	stillsPackFileOwned = true;
+	if(UIAssets_SourceFromFileHandle(&stillsPackFile, &source) !=
+		UI_ASSETS_OK || UIStills_Init(&source, &sync) != UI_ASSETS_OK) {
+		_GameflowCloseStillsPackFile();
+	}
+	return result == UI_ASSETS_OK;
 }
 
 void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
@@ -4650,8 +5038,26 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	char ids[UI_ASSETS_SLOTS][8] = {{0}};
 	u32 i;
 
-	if(!_GameflowSnapshotValid(snapshot) ||
-		!_GameflowOpenPosterPack(device)) {
+	if(!_GameflowSnapshotValid(snapshot)) {
+		return;
+	}
+	_GameflowOpenPosterPack(device);
+	if(snapshot->layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT && UIStills_Ready()) {
+		/* The selected game's still and the ones either side of it. */
+		char stills[UI_STILLS_SLOTS][8] = {{0}};
+		for(i = 0u; i < snapshot->recordCount; ++i) {
+			const uiGameflowCardSnapshot_t *record = &snapshot->records[i];
+			int position = (int)record->relativeSlot + 1;
+			if(position < 0 || position >= UI_STILLS_SLOTS ||
+				strnlen(record->gameId, sizeof(record->gameId)) !=
+					UI_ASSETS_ID_LEN) {
+				continue;
+			}
+			memcpy(stills[position], record->gameId, UI_ASSETS_ID_LEN);
+		}
+		UIStills_RequestWindow(stills, UI_STILLS_SLOTS, 1);
+	}
+	if(!UIAssets_Ready()) {
 		return;
 	}
 	if(snapshot->layout == UI_GAMEFLOW_LAYOUT_GRID) {
@@ -4681,7 +5087,9 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 
 bool DrawGameflowPollPosters(void)
 {
-	return UIAssets_Poll();
+	/* One read for each pack at most: a poster, then a still. */
+	bool more = UIAssets_Poll();
+	return UIStills_Poll() || more;
 }
 
 static void _GameflowCopySnapshot(drawGameflowEvent_t *data,
@@ -4709,6 +5117,7 @@ static void _GameflowCopySnapshot(drawGameflowEvent_t *data,
 			GX_TF_RGB5A3, GX_CLAMP, GX_CLAMP, GX_FALSE);
 		GX_InitTexObjFilterMode(&data->bannerTexObj[i], GX_LINEAR, GX_NEAR);
 	}
+	_GameflowPrepareSpotlight(data);
 }
 
 uiDrawObj_t* DrawGameflow(const uiGameflowRenderSnapshot_t *snapshot)
@@ -6705,6 +7114,7 @@ void DrawShutdown() {
 	 * With video readers joined, final arena disposal is intentionally
 	 * lock-free and remains safe before the mutex is destroyed. */
 	UIAssets_DisposeAfterVideoStop();
+	UIStills_DisposeAfterVideoStop();
 	mutex = _videomutex;
 	_videomutex = LWP_MUTEX_NULL;
 	if(mutex != LWP_MUTEX_NULL) {

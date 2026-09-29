@@ -62,6 +62,12 @@ class Disc(unittest.TestCase):
         ids = [game_id for game_id, _ in card.GAMES] + [game_id for game_id, _, _ in card.DAMAGED]
         self.assertEqual(len(set(ids)), len(ids))
         self.assertTrue(card.NO_POSTER < {game_id for game_id, _ in card.GAMES})
+        # Spotlight shows every kind of picture: a still, a cover without a
+        # still, and a banner card with neither.
+        games = {game_id for game_id, _ in card.GAMES}
+        self.assertTrue(card.NO_STILL < games)
+        self.assertTrue(card.NO_STILL - card.NO_POSTER)
+        self.assertTrue(card.NO_STILL & card.NO_POSTER)
         with self.assertRaises(ValueError):
             card.disc_header("gacz01", "lower case")
 
@@ -71,8 +77,31 @@ class Disc(unittest.TestCase):
                         "the Library must skip a stray that Swiss lists ahead of the games")
         self.assertTrue(card.STRAYS[1].endswith("/"), "and an empty folder")
 
+    def test_banner_fields_sit_where_swiss_reads_them(self):
+        # BNRDesc after the pixels: name 0x20, publisher 0x20, full name 0x40,
+        # full publisher 0x40, description 0x80 (include/bnr.h).
+        data = card.banner(0, "Astral Circuit")
+        text = lambda at, size: data[at:at + size].split(b"\0")[0].decode()
+        self.assertEqual(len(data), 0x20 + 96 * 32 * 2 + 0x140)
+        self.assertEqual(text(0x1820, 0x20), "Astral Circuit")
+        self.assertEqual(text(0x1840, 0x20), "Indigo test disc")
+        self.assertEqual(text(0x1860, 0x40), "Astral Circuit")
+        self.assertEqual(text(0x18A0, 0x40), "Indigo demonstration disc")
+        self.assertEqual(text(0x18E0, 0x80), card.DESCRIPTION)
+
     def test_posters_differ(self):
         self.assertNotEqual(card.poster(0).tobytes(), card.poster(1).tobytes())
+
+    def test_descriptions_leave_one_game_to_its_banner(self):
+        games = {game_id for game_id, _ in card.GAMES}
+        self.assertEqual(len(games - set(card.DESCRIPTIONS)), 1)
+        self.assertTrue(set(card.DESCRIPTIONS) < games)
+        for text in card.DESCRIPTIONS.values():
+            self.assertTrue(text.isascii() and "\n" not in text and len(text) <= 300)
+
+    def test_stills_are_4_3_and_differ(self):
+        self.assertEqual(card.still(0).size, (640, 480))
+        self.assertNotEqual(card.still(0).tobytes(), card.still(1).tobytes())
 
 
 class Pad(unittest.TestCase):

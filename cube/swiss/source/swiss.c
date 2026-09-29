@@ -1330,6 +1330,27 @@ static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 		gameflowSnapshotRecord(record, file, mode);
 		unlockFile(file);
 	}
+	/* Spotlight shows the selected game's description: the card's
+	 * descriptions file's, else its disc banner's. */
+	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
+		file_handle *file = directory[curSelection];
+		const char *gameId = NULL;
+		for(i = 0u; i < count; ++i) {
+			if(snapshot->records[i].libraryIndex == (u32)curSelection) {
+				gameId = snapshot->records[i].gameId;
+			}
+		}
+		if(gameId == NULL || !DrawGameflowDescription(devices[DEVICE_CUR],
+			gameId, snapshot->description, sizeof(snapshot->description))) {
+			lockFile(file);
+			if(file->meta != NULL) {
+				gameflowCopyText(snapshot->description,
+					sizeof(snapshot->description),
+					file->meta->bannerDesc.description, BNR_DESC_LEN);
+			}
+			unlockFile(file);
+		}
+	}
 	return count > 0u;
 }
 
@@ -1873,7 +1894,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 		useGameflow = false;
 		UIScene_RequestLibraryLayout(UI_GAMEFLOW_LAYOUT_HORIZONTAL);
 	}
-	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPRIGHT);
+	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPLEFT);
 	DrawPublish(loadingBox);
 	meta_thread_start(loadingBox);
 	uiMenuInputState_t menuInput;
@@ -2201,7 +2222,7 @@ uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawO
 	if(curSelection == 0 && num_files > 1 && directory[0]->fileType==IS_SPECIAL) {
 		curSelection = 1; // skip the ".." by default
 	}
-	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPRIGHT);
+	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPLEFT);
 	DrawPublish(loadingBox);
 	meta_thread_start(loadingBox);
 	uiMenuInputState_t menuInput;

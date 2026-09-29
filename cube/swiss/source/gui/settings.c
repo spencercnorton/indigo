@@ -82,7 +82,7 @@ _Static_assert(sizeof(libraryIconStr) / sizeof(libraryIconStr[0]) == UI_HOME_ICO
 _Static_assert(sizeof(sourceIconStr) / sizeof(sourceIconStr[0]) == UI_HOME_ICON_CHOICES, "source icon names drift");
 _Static_assert(sizeof(settingsIconStr) / sizeof(settingsIconStr[0]) == UI_HOME_ICON_CHOICES, "settings icon names drift");
 _Static_assert(sizeof(systemIconStr) / sizeof(systemIconStr[0]) == UI_HOME_ICON_CHOICES, "system icon names drift");
-char *libraryLayoutStr[] = {"Horizontal", "Vertical", "Grid"};
+char *libraryLayoutStr[] = {"Horizontal", "Vertical", "Grid", "Spotlight"};
 _Static_assert(sizeof(libraryLayoutStr) / sizeof(libraryLayoutStr[0]) == UI_GAMEFLOW_LAYOUT_COUNT, "library layout names drift");
 static const char *uiMotionModeStr[] = {"Full", "Reduced", "Off"};
 
@@ -140,7 +140,7 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_FLATTEN_DIR] = "Flatten directory:\n\nFlattens a directory structure matching a glob pattern.",
 	[SET_SHOW_HIDDEN] = "Show hidden files:\n\nLists files and folders marked hidden, such as the /swiss folder\nthat holds Indigo's settings.",
 	[SET_MENU_WIDESCREEN] = "Menu Widescreen:\n\nYes - Drawn for a TV set to 16:9: the background fills the\nscreen and the menus keep their shape.\nNo - Drawn for a 4:3 picture (default)\n\nSet your TV or HDMI adapter to 16:9 too. Games follow Force\nWidescreen in Game Defaults, not this.",
-	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\n\nThe selected game's title and details show beside its cover in\nVertical and above the controls in Grid. Every layout wraps round\nfrom the last game to the first; L and R jump a page.\nY opens the focused game's settings.",
+	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\nSpotlight - A gameplay still over banners; Left and Right move\n\nThe selected game's title and details show beside its cover in\nVertical and its still in Spotlight, and above the controls in Grid.\nEvery layout wraps round from the last game to the first; L and R\njump a page. Y opens the focused game's settings.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
 
@@ -2325,6 +2325,7 @@ static const settingsPickerRow_t settingsPickerRows[] = {
 	PICK_SETTING(PAGE_GLOBAL, SET_ENABLE_USBGECKO, enableUSBGecko),
 	PICK_SETTING(PAGE_GLOBAL, SET_SIMMEMSIZE, simulatedMemSize),
 	PICK_SETTING(PAGE_INTERFACE, SET_UI_COLOR, uiColor),
+	PICK_SETTING(PAGE_INTERFACE, SET_LIBRARY_LAYOUT, libraryLayout),
 	PICK_SETTING(PAGE_INTERFACE, SET_LIBRARY_ICON, libraryIcon),
 	PICK_SETTING(PAGE_INTERFACE, SET_SOURCE_ICON, sourceIcon),
 	PICK_SETTING(PAGE_INTERFACE, SET_SETTINGS_ICON, settingsIcon),

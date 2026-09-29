@@ -35,6 +35,28 @@ r2073 and r2092, and has everything upstream changed since:
 - The first start from a GC Loader or PicoLoader boot image says that
   System Boot Mode › Production brings back the GameCube logo screen.
 
+### Library
+
+- A fourth Library Layout, **Spotlight**: the selected game's gameplay still
+  fills a 4:3 panel, with its title, publisher, a description and its game
+  ID in the column beside it, over a row of disc banners, the selected
+  game's in the middle and a little larger. Left and Right move along the
+  row, as in Horizontal; the still changes with the title. A game without a still shows its cover there, and leaves from it
+  for its details. Choose it in Settings › Setup › Library › Library
+  Layout.
+- Spotlight's stills come from `/swiss/ui/stills.pak`, a second pack next to
+  the posters: one 320×240 screenshot per game. The ready-made downloads
+  carry it beside `posters.pak`, made from the libretro-thumbnails project's
+  GameCube screenshots; `poster_pack.py --stills` builds one from your own.
+- Spotlight describes every game: a few sentences from
+  `/swiss/ui/descriptions.txt`, which the ready-made downloads carry too
+  (English descriptions from GameTDB), else the description on the game's
+  disc banner. A game with neither says so. The file is plain text you can
+  edit, one game per line.
+- The Spotlight layout's design comes from
+  [Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight) by mvizensk,
+  with its author's permission. System › Credits and `NOTICE` thank them.
+
 ### Fixes
 
 - A file in `/games` that isn't a game no longer hides the Library. A text
@@ -64,6 +86,9 @@ r2073 and r2092, and has everything upstream changed since:
   loads a stills pack next to the poster pack, in three slots of its own;
   nothing shows the stills yet. [docs/PACKS.md](docs/PACKS.md) describes
   the format, which the source cited but the repository never had.
+- Game details read no further than a disc banner's 128-character
+  description, which need not end in a NUL; they could read on into the
+  memory after it.
 
 ## v2.0.1 — The download keeps your games folder
 

@@ -190,6 +190,10 @@ for credit in (
     "THANKS TO YOU",
 ):
     require(credit in credits, f"Credits page omits legacy content {credit}")
+# The Spotlight layout's design comes from Gameplay Spotlight, with its
+# author's permission; the credit stays.
+for credit in ('"SPOTLIGHT LIBRARY DESIGN"', '"GAMEPLAY SPOTLIGHT BY MVIZENSK"'):
+    require(credit in credits, "Credits page omits Gameplay Spotlight's author")
 
 # Input remains exactly the established B-only, one-level return contract.
 interactive = show_info[show_info.index("while(1)") :]

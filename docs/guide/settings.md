@@ -252,7 +252,7 @@ Passwords are saved as plain text in `global.ini`.
 
 | Setting | What it does |
 | --- | --- |
-| Library Layout | How the poster Library lays out your games: **Horizontal**, a row (the default); **Vertical**, a column with the title beside the cover; or **Grid**, rows of five. See [Library](library.md#choose-a-layout). |
+| Library Layout | How the poster Library lays out your games: **Horizontal**, a row (the default); **Vertical**, a column with the title beside the cover; **Grid**, rows of five; or **Spotlight**, the selected game's gameplay still and details over a row of disc banners. See [Library](library.md#choose-a-layout). |
 | File Browser Type for games, for apps, and for everything else | How Swiss's file lists look: Standard, Fullwidth or Carousel. The poster Library isn't affected. |
 | Recent List | START shows recently played games. **Lazy** updates it only for new games; **Off** saves SD card writes. |
 | Load at startup | What Indigo opens when it starts. A chooses a device, then a folder on it: X picks the folder you are in. The row shows the device. Z on a game's details sets a game instead ([Autoload](game-details.md#autoload)); Z on that game again, or on `..` in the folder's file list, turns it off. |

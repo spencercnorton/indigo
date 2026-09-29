@@ -49,6 +49,40 @@ You can make a pack from your own cover images, from this repository:
 
 A pack holds up to 1,024 covers.
 
+## Gameplay stills
+
+The **Spotlight** layout (Settings › Setup › Library › Library Layout) shows
+the selected game's gameplay still, a 320×240 screenshot, from a second file
+next to the posters, `/swiss/ui/stills.pak`. It's optional too: without it,
+or for a game it has no still for, Spotlight shows the game's cover instead.
+The ready-made downloads above carry both files, so unzipping one gives you
+posters and stills together. The stills come from the
+[libretro-thumbnails](https://github.com/libretro-thumbnails/Nintendo_-_GameCube)
+project's GameCube screenshots.
+
+To build your own, put screenshots in one folder, each named after its game
+ID and at least 320×240 (Dolphin saves one with F9), and build the pack as
+you would posters:
+
+```bash
+python3 buildtools/ui/poster_pack.py --stills ~/screenshots --out stills.pak
+```
+
+Screenshots are cropped to 4:3 from the center. Copy `stills.pak` to
+`/swiss/ui/stills.pak` on the card.
+
+## Game descriptions
+
+Spotlight shows a few sentences about the selected game beside its still.
+They come from `/swiss/ui/descriptions.txt`, which the ready-made downloads
+carry too: English descriptions from [GameTDB](https://www.gametdb.com/), for
+every game it knows. Without the file, or for a game it doesn't list,
+Spotlight shows the description from the game's disc banner.
+
+It's a text file you can edit: one game per line, its game ID, a space, then
+the description. Add lines for games it doesn't know, such as homebrew or a
+translation. The format is in [PACKS.md](../PACKS.md#game-descriptions).
+
 ## Where the game ID comes from
 
 Every GameCube disc has a six-character ID: four for the game and region, two

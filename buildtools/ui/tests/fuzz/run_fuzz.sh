@@ -1,7 +1,7 @@
 #!/bin/sh
-# Coverage-guided fuzzing of the files Indigo reads from a card: poster packs,
-# its play history, save files, settings files and the file table of every
-# disc image the Library lists. Each target is built with
+# Coverage-guided fuzzing of the files Indigo reads from a card: poster and
+# stills packs, game descriptions, its play history, save files, settings files
+# and the file table of every disc image the Library lists. Each target is built with
 # libFuzzer, AddressSanitizer and UBSan and runs for SECONDS, starting from
 # seeds.py's real files. A crash, a sanitizer finding or a broken invariant
 # fails the run and leaves the input that caused it in OUT/crashes/<target>/.
@@ -26,6 +26,7 @@ echo "== building the fuzzers =="
 {
 	$cc $flags -std=c11 -I"$gui" -o "$out/bin/history" "$here/fuzz_history.c" "$gui/ui_game_history.c"
 	$cc $flags -std=c11 -I"$gui" -o "$out/bin/saves" "$here/fuzz_saves.c" "$gui/ui_saves.c"
+	$cc $flags -std=c11 -I"$gui" -o "$out/bin/about" "$here/fuzz_about.c" "$gui/ui_about.c"
 	$cc $flags -std=c11 -DUI_ASSETS_HOST_BUILD -I"$gui" -o "$out/bin/posters" \
 		"$here/fuzz_posters.c" "$gui/ui_assets.c" -lz
 	python3 "$here/settings_source.py" "$out/fuzz_settings.c"
@@ -35,14 +36,14 @@ echo "== building the fuzzers =="
 }
 python3 "$here/seeds.py" "$out/corpus"
 # Inputs that once broke something stay in the corpus for good: corpus/<target>/.
-for target in history saves posters settings fst; do
+for target in history saves posters about settings fst; do
 	if [ -d "$here/corpus/$target" ]; then
 		cp "$here/corpus/$target"/* "$out/corpus/$target/"
 	fi
 done
 
 status=0
-for target in history saves posters settings fst; do
+for target in history saves posters about settings fst; do
 	echo "== $target: ${seconds}s =="
 	mkdir -p "$out/crashes/$target"
 	if "$out/bin/$target" -max_total_time="$seconds" -timeout=10 -rss_limit_mb=2048 \

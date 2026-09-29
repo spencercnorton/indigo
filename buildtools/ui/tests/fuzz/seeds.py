@@ -60,6 +60,16 @@ def posters(out: Path) -> None:
         (out / "header-only").write_bytes(b"SWPK" + bytes(60))
 
 
+def about(out: Path) -> None:
+    # Game descriptions as the downloads write them, and as a person might.
+    (out / "descriptions.txt").write_bytes(
+        b"# Indigo game descriptions\n"
+        b"GAFE01 Welcome to Animal Crossing, where something happens every day.\n"
+        b"GMSE01 Clean up Isle Delfino with FLUDD, a water pack.\n"
+        b"GTEE01 Wax your board. This is the sickest ride ever!\n")
+    (out / "hand-written").write_bytes(b"GZLE01\tSail the Great Sea.\r\n\r\ngale01 not an ID\nGALE01 Melee\nGALE01 again")
+
+
 def settings(out: Path) -> None:
     for example in sorted((ROOT / "docs/examples").rglob("*.ini")):
         shutil.copyfile(example, out / example.name)
@@ -81,7 +91,7 @@ def fst(out: Path) -> None:
 
 def main() -> int:
     out = Path(sys.argv[1])
-    for target in (history, saves, posters, settings, fst):
+    for target in (history, saves, posters, about, settings, fst):
         folder = out / target.__name__
         folder.mkdir(parents=True, exist_ok=True)
         target(folder)

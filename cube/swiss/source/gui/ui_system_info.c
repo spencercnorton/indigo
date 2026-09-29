@@ -9,7 +9,7 @@ static const uiSystemPageDesc_t PAGES[UI_SYSTEM_PAGE_COUNT] = {
 	{ "CONNECTIONS", "Storage and peripherals captured on page entry." },
 	{ "INPUT / OUTPUT", "Controller sockets and active video state." },
 	{ "ABOUT INDIGO", "Version, toolchain, source, and support identity." },
-	{ "CREDITS", "People who made Swiss possible." },
+	{ "CREDITS", "People who made Swiss and Indigo possible." },
 };
 
 static const char *const WEEKDAYS[7] = {

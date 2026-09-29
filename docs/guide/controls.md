@@ -60,7 +60,7 @@ See [Source](source.md).
 
 How the D-pad moves depends on **Library Layout** (Setup › Library):
 
-| To move | Horizontal | Vertical | Grid |
+| To move | Horizontal, Spotlight | Vertical | Grid |
 | --- | --- | --- | --- |
 | To the next or previous game | Left, Right | Up, Down | Left, Right |
 | To the game above or below | | | Up, Down |
