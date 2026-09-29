@@ -9,8 +9,7 @@ tag on `beta`. The newest changes are at the top until their release is named.
 Indigo 2.0: the Home cube is clear glass all through, a game starts on a
 launch screen with its cover instead of Swiss's progress boxes, Change Source
 shows the devices themselves, and the menus have new music. Everything below
-was tested together on a GameCube as 2.0.0-rc.1. Some of the guide's pictures
-still show 1.25.0; the next update records them again.
+was tested together on a GameCube as 2.0.0-rc.1.
 
 ### Menu music
 
@@ -219,8 +218,8 @@ still show 1.25.0; the next update records them again.
   ([docs/RELEASING.md](docs/RELEASING.md)).
 - Release notes link the repository's files by full URL at the release's
   tag, so the links also work where GitHub doesn't rewrite them: through the
-  API, `gh` and feeds.
-- The test fixtures use neutral machine names and documentation addresses.
+  API and `gh`.
+- The test fixtures use neutral machine names and generic addresses.
 
 ## v1.25.0 — Memory Cards, a cube that flies in, and a drag-and-drop download
 

@@ -200,7 +200,7 @@ class Release(unittest.TestCase):
             self.assertIn(f"Indigo-{tag}.zip", notes)
 
     def test_changelog_links_name_the_file_at_the_tag(self):
-        """The API, gh and feeds pass a relative link on as written, so a file in the
+        """The API and gh pass a relative link on as written, so a file in the
         repository is linked at the tag by full URL; anchors and full URLs stay as written."""
         notes = self.notes("v2.0.0-rc.1", "- See [RELEASING](docs/RELEASING.md), [the examples](docs/examples/),"
                                           " [AGENTS.md](AGENTS.md#rules), [above](#install) and"
@@ -214,10 +214,11 @@ class Release(unittest.TestCase):
         self.assertNotIn("](docs/", notes)
 
     def test_install_keeps_the_card_safe(self):
-        """The Swiss already on the card is renamed before anything is copied over
-        it, and a Mac's Replace, which deletes the card's games and swiss folders,
-        is warned about."""
+        """Someone new to Indigo renames the Swiss already on the card before anything
+        is copied over it, and a Mac's Replace, which deletes the card's games and
+        swiss folders, is warned about."""
         install = self.notes("v2.0.0-rc.1").split("## Install", 1)[1]
+        self.assertLess(install.index("**New to Indigo:**"), install.index("Rename it to `z.dol`"))
         self.assertLess(install.index("Rename it to `z.dol`"), install.index("drag it onto the root"))
         self.assertIn("choose **Merge**", install)
         self.assertIn("nothing else in it or in the game folders", install)

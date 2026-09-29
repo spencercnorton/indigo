@@ -33,6 +33,7 @@ Guide:  https://norvitech.com/indigo/
 Source: https://github.com/spencercnorton/indigo/tree/$version
 
 INSTALL: DRAG AND DROP
+New to Indigo:
 1. First, before you copy anything: if your SD card already has an ipl.dol
    in its root, that is your current Swiss. Rename it to z.dol to keep it;
    with PicoBoot or PicoLoader, holding Z while you power on starts it.

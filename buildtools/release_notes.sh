@@ -23,7 +23,7 @@ case $tag in
 	*-*) printf '%s\n\n' "> **Beta.** A pre-release for testing what comes next. The current stable release is linked from https://norvitech.com/indigo/." ;;
 esac
 # The notes are a copy of CHANGELOG.md, whose relative links name files in the
-# repository. GitHub's release page rewrites them, but the API, gh and feeds
+# repository. GitHub's release page and feed rewrite them, but the API and gh
 # pass them on as written, so each goes to the file at this tag by full URL
 # (a folder, ending in /, to its tree).
 repo=https://github.com/spencercnorton/indigo
@@ -33,6 +33,8 @@ printf '%s\n' "$notes" | sed -e '/./,$!d' | sed -E \
 cat <<NOTES
 
 ## Install
+
+**New to Indigo:**
 
 1. First, before you copy anything: if the card already has an \`ipl.dol\` in its root, that is your current Swiss. Rename it to \`z.dol\` to keep it; with PicoBoot or PicoLoader, holding Z at power-on starts it.
 2. Unzip \`Indigo-$tag.zip\` (below), select everything inside and drag it onto the root of the card. Let it replace files of the same name. On a Mac, hold Option as you drop and choose **Merge**: **Replace** deletes what is already in the card's \`games\` and \`swiss\` folders (your games, settings, cheats and saves).
