@@ -218,11 +218,8 @@ jobs:
         run: |
           if [ -n "$BASE_REF" ]; then base="origin/$BASE_REF"; else base="HEAD^"; fi
           buildtools/check_whitespace.sh "$base"
-      - name: UI isolation (a pull request changes the interface, not the loader)
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: buildtools/check_ui_isolation.sh "origin/$BASE_REF"
+      - name: Upstream (outside the interface, the Swiss commit UPSTREAM names, or listed there)
+        run: python3 buildtools/ci/check_upstream.py
       - name: Scripts, CI tools and workflows
         run: buildtools/ci/source_checks.sh
 

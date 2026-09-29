@@ -14,8 +14,16 @@ BASE="${1:-origin/master}"
 ROOT=$(git rev-parse --show-toplevel)
 cd "$ROOT"
 
-git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol \
-	diff --check "$BASE"...HEAD --
+# The style rules are for Indigo's own paths. Upstream's files keep upstream's
+# whitespace: check_upstream.py holds them to the commit UPSTREAM names.
+own=$(git diff --name-only "$BASE"...HEAD -- | python3 -c '
+import sys
+sys.path.insert(0, "buildtools/ci")
+from check_upstream import OWN
+print("\n".join(p for p in sys.stdin.read().split("\n") if p and OWN.match(p)))')
+# shellcheck disable=SC2086 # one word per path; no tracked path has a space
+[ -z "$own" ] || git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol \
+	diff --check "$BASE"...HEAD -- $own
 
 git diff --name-only "$BASE"...HEAD -- | while IFS= read -r file; do
 	case "$file" in

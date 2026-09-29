@@ -12,6 +12,7 @@ import zipfile
 from pathlib import Path
 
 import check_package
+import check_upstream
 import check_workflows
 import verify_dol
 
@@ -164,6 +165,71 @@ class Workflows(unittest.TestCase):
                     good.replace("    steps:\n      - uses", "    container: debian\n    steps:\n      - uses", 1),
                     good.replace("1" * 64, "2" * 64, 1)):
             self.assertNotEqual(self.check(bad), [], bad)
+
+
+class Upstream(unittest.TestCase):
+    """Outside the interface, a file matches the upstream commit UPSTREAM names,
+    line endings aside, or UPSTREAM lists it; a listed file that matches again fails."""
+
+    def commit(self, directory: Path, files: dict[str, bytes]) -> str:
+        for name, data in files.items():
+            (directory / name).parent.mkdir(parents=True, exist_ok=True)
+            (directory / name).write_bytes(data)
+        def git(*args: str) -> str:
+            return subprocess.run(["git", "-C", str(directory), *args], capture_output=True,
+                                  text=True, check=True).stdout.strip()
+        if not (directory / ".git").exists():
+            git("init", "-q")
+        git("add", "-A")
+        git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false",
+            "commit", "-qm", "c")
+        return git("rev-parse", "HEAD")
+
+    def check(self, patcher: bytes, listed: str = "") -> list[str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            up, ours = Path(tmp, "up"), Path(tmp, "ours")
+            commit = self.commit(up, {"cube/swiss/source/patcher.c": b"a\r\nb\r\n",
+                                      "cube/swiss/source/gui/menu.c": b"swiss\n"})
+            self.commit(ours, {"UPSTREAM": f"upstream {up}\ncommit {commit}\n{listed}".encode(),
+                               "cube/swiss/source/patcher.c": patcher,
+                               "cube/swiss/source/gui/menu.c": b"indigo\n"})
+            return check_upstream.problems(ours)
+
+    def test_line_endings_and_the_interface_are_not_changes(self):
+        self.assertEqual(self.check(b"a\nb\n"), [])
+
+    def test_a_change_is_listed_and_the_list_stays_true(self):
+        self.assertEqual(self.check(b"a\nc\n", "cube/swiss/source/patcher.c  a fix\n"), [])
+        self.assertIn("does not list it", self.check(b"a\nc\n")[0])
+        self.assertIn("gives no reason", self.check(b"a\nc\n", "cube/swiss/source/patcher.c\n")[0])
+        self.assertIn("matches upstream", self.check(b"a\nb\n", "cube/swiss/source/patcher.c  a fix\n")[0])
+
+    def merge(self, ours: bytes) -> tuple[subprocess.CompletedProcess, Path, str]:
+        """upstream_merge.sh from an upstream commit to the next, over line endings."""
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        tmp = Path(directory.name)
+        up, indigo = tmp / "up", tmp / "indigo"
+        old = self.commit(up, {"a.c": b"x\r\ny\r\n", "b.c": b"keep\r\n"})
+        new = self.commit(up, {"a.c": b"x\r\nz\r\n", "c.c": b"new\r\n"})
+        self.commit(indigo, {"UPSTREAM": f"upstream {up}\ncommit {old}\n".encode(),
+                             "a.c": ours, "b.c": b"mine\n"})
+        done = subprocess.run(["sh", str(ROOT / "buildtools/upstream_merge.sh"), new], cwd=indigo,
+                              capture_output=True, text=True)
+        return done, indigo, new
+
+    def test_merge_takes_upstream_changes_over_line_endings(self):
+        done, indigo, new = self.merge(b"x\ny\n")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual([(indigo / f).read_bytes() for f in ("a.c", "b.c", "c.c")],
+                         [b"x\nz\n", b"mine\n", b"new\n"])
+        self.assertIn(f"commit {new}", (indigo / "UPSTREAM").read_text())
+
+    def test_merge_lists_a_conflict(self):
+        done, indigo, _ = self.merge(b"x\nq\n")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("  a.c\n", done.stdout)
+        self.assertIn(b"<<<<<<<", (indigo / "a.c").read_bytes())
 
 
 ROOT = Path(__file__).resolve().parents[2]

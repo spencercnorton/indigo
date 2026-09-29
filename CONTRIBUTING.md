@@ -50,7 +50,7 @@ docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
 buildtools/sd_package.sh dev cube/swiss/swiss.dol .   # the SD card zip
 buildtools/ui/tests/run_tests.sh all                  # host tests
 buildtools/check_whitespace.sh origin/beta            # lint; CI enforces it
-buildtools/check_ui_isolation.sh origin/beta          # the fork's scope
+python3 buildtools/ci/check_upstream.py               # upstream's files match UPSTREAM
 buildtools/ci/source_checks.sh                        # scripts, CI tools, workflows
 buildtools/ui/tests/fuzz/run_fuzz.sh 30               # fuzz the files read from a card
 ```
@@ -58,8 +58,10 @@ buildtools/ui/tests/fuzz/run_fuzz.sh 30               # fuzz the files read from
 - The interface is drawn with the console's own GX pipeline at a fixed
   budget: a change that adds a per-frame allocation or a blocking read to the
   draw path will be sent back.
-- Stay inside the interface. `check_ui_isolation.sh` fails a change to the
-  loader, device handlers or patch engine; those are upstream Swiss's.
+- Stay inside the interface. The loader, device handlers and patch engine are
+  upstream Swiss's, at the commit [`UPSTREAM`](UPSTREAM) names, and
+  `check_upstream.py` fails a change to them that `UPSTREAM` does not list.
+  Ask before changing one, then list it there with the reason.
 - Keep a change to one concern. A pull request that fixes a bug and
   reformats a file is two pull requests.
 - Tests: a bug fix carries a regression test; a feature carries the smallest
