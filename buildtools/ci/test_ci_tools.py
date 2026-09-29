@@ -185,9 +185,9 @@ class Release(unittest.TestCase):
                              ("2.0.0", None)):
             self.assertEqual(self.channel(tag), channel, tag)
 
-    def notes(self, tag: str) -> str:
+    def notes(self, tag: str, entry: str = "- Something new.") -> str:
         with tempfile.TemporaryDirectory() as tmp:
-            Path(tmp, "CHANGELOG.md").write_text("# Changelog\n\n## Unreleased\n\n- Something new.\n")
+            Path(tmp, "CHANGELOG.md").write_text(f"# Changelog\n\n## Unreleased\n\n{entry}\n")
             return subprocess.run(["sh", str(ROOT / "buildtools/release_notes.sh"), tag], cwd=tmp,
                                   capture_output=True, text=True, check=True).stdout
 
@@ -198,6 +198,20 @@ class Release(unittest.TestCase):
             notes = self.notes(tag)
             self.assertIn("- Something new.", notes)
             self.assertIn(f"Indigo-{tag}.zip", notes)
+
+    def test_changelog_links_name_the_file_at_the_tag(self):
+        """A release page resolves a relative link against itself, so a file in the
+        repository has to be linked at the tag; anchors and full URLs stay as written."""
+        notes = self.notes("v2.0.0-rc.1", "- See [RELEASING](docs/RELEASING.md), [the examples](docs/examples/),"
+                                          " [AGENTS.md](AGENTS.md#rules), [above](#install) and"
+                                          " [the site](https://norvitech.com/indigo/).")
+        repo = "https://github.com/spencercnorton/indigo"
+        self.assertIn(f"[RELEASING]({repo}/blob/v2.0.0-rc.1/docs/RELEASING.md)", notes)
+        self.assertIn(f"[the examples]({repo}/tree/v2.0.0-rc.1/docs/examples/)", notes)
+        self.assertIn(f"[AGENTS.md]({repo}/blob/v2.0.0-rc.1/AGENTS.md#rules)", notes)
+        self.assertIn("[above](#install)", notes)
+        self.assertIn("[the site](https://norvitech.com/indigo/)", notes)
+        self.assertNotIn("](docs/", notes)
 
 
 if __name__ == "__main__":
