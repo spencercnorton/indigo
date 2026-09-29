@@ -8,6 +8,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- The download no longer carries an empty `games` folder. On a Mac,
+  choosing Replace when dropping it on the card swapped the card's own
+  `games` folder, and every game in it, for the empty one. Make `/games` on
+  the card if it has none; the install steps say so.
 - Opening a game's settings from its details and leaving them no longer
   flashes the empty background in between. The details went away as the
   button went down, but the settings page came up only once it was let go,
@@ -16,6 +20,18 @@ tag on `beta`. The newest changes are at the top until their release is named.
   the cube showed. The page now comes up on the press and stays until the
   button is let go. Opening and leaving Settings from Home flashed the same
   way and is fixed too.
+
+### For developers
+
+- A CI machine names its runners "indigo" unless `INDIGO_CI_NAME` says
+  otherwise, instead of after its hostname: runner names show in public job
+  logs.
+- The build uses libogc2's toolchain image of 2026-09-28
+  (`sha256:e6531ec…`), up from 2026-07-05's. CI, releases, both runner
+  images, the poster pack builder and the build commands in the README, the
+  guide and AGENTS.md all name it. The poster builder had its own older pin.
+  The new image has an arm64 build as well, so it runs natively on
+  Apple-silicon Macs.
 
 ## v2.0.0 — A clear glass cube, a launch screen and new menu music
 

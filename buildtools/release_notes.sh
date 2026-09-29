@@ -37,8 +37,8 @@ cat <<NOTES
 **New to Indigo:**
 
 1. First, before you copy anything: if the card already has an \`ipl.dol\` in its root, that is your current Swiss. Rename it to \`z.dol\` to keep it; with PicoBoot or PicoLoader, holding Z at power-on starts it.
-2. Unzip \`Indigo-$tag.zip\` (below), select everything inside and drag it onto the root of the card. Let it replace files of the same name. On a Mac, hold Option as you drop and choose **Merge**: **Replace** deletes what is already in the card's \`games\` and \`swiss\` folders (your games, settings, cheats and saves).
-3. Put your games in \`/games\`, with nothing else in it or in the game folders, and power on.
+2. Unzip \`Indigo-$tag.zip\` (below), select everything inside and drag it onto the root of the card. Let it replace files of the same name. On a Mac, hold Option as you drop and choose **Merge**: **Replace** deletes what is already in the card's \`swiss\` folder (your settings, cheats and saves).
+3. Put your games in \`/games\` (make the folder if the card has none), with nothing else in it or in the game folders, and power on.
 
 **Updating from Indigo 1.x:** \`ipl.dol\` is already Indigo, so don't rename it; copy the new files over the old ones, choosing Merge on a Mac. If 1.25.0 made you rename stock Swiss to \`swiss.dol\`, you can rename it back to \`z.dol\`: since 2.0, Indigo doesn't start it by itself ([#3](https://github.com/spencercnorton/indigo/issues/3)).
 

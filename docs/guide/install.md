@@ -21,7 +21,6 @@ installing is drag and drop:
 ```text
 Indigo-README.txt              what goes where, in plain words
 ipl.dol                        Indigo
-games/                         your games (see Library)
 swiss/patches/apploader.img    Indigo again, for In-Game Reset
 swiss/ui/                      posters.pak, if you add one (see Posters)
 swiss/indigo/                  the licence and notice
@@ -54,11 +53,12 @@ download onto the root of the card, start Swiss the way you do now, and open
 `ipl.dol` from Swiss's file list. Indigo doesn't build a `boot.iso`.
 
 **On a Mac**, hold Option as you drop the files on the card and choose
-**Merge**. **Replace** deletes what is already in the card's `games` and
-`swiss` folders: your games, settings, cheats and saves.
+**Merge**. **Replace** deletes what is already in the card's `swiss`
+folder: your settings, cheats and saves.
 
-Then put your games in `/games`, with nothing else in it or in the game
-folders: see [Set up the games folder](library.md#set-up-the-games-folder).
+Then put your games in `/games` (make the folder if the card has none), with
+nothing else in it or in the game folders: see
+[Set up the games folder](library.md#set-up-the-games-folder).
 
 ## 3. First boot
 
@@ -123,7 +123,7 @@ installed on your computer:
 git clone https://github.com/spencercnorton/indigo.git
 cd indigo
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575 make dev
+  ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
 ```
 
 This writes `cube/swiss/swiss.dol`. That is the same program as `ipl.dol`

@@ -4,7 +4,6 @@
 #   Indigo-<version>.zip
 #     Indigo-README.txt              what goes where, in plain words
 #     ipl.dol                        Indigo; PicoBoot and other modchips boot it
-#     games/                         your disc images
 #     swiss/patches/apploader.img    In-Game Reset (Apploader) returns to Indigo
 #     swiss/ui/                      posters.pak, if you add one
 #     swiss/indigo/LICENSE.txt, NOTICE.txt
@@ -21,7 +20,8 @@ reboot=cube/packer/reboot.dol
 
 card=$(mktemp -d)
 trap 'rm -rf "$card"' EXIT
-mkdir -p "$card/games" "$card/swiss/ui" "$card/swiss/patches" "$card/swiss/indigo"
+# No games/: a Mac's Replace would swap the card's own games folder for an empty one.
+mkdir -p "$card/swiss/ui" "$card/swiss/patches" "$card/swiss/indigo"
 cp "$dol" "$card/ipl.dol"
 # In-Game Reset set to Apploader restarts whatever this file holds: Indigo.
 python3 buildtools/dol2ipl.py "$card/swiss/patches/apploader.img" "$reboot" "*indigo-$version" >/dev/null
@@ -39,10 +39,11 @@ New to Indigo:
    with PicoBoot or PicoLoader, holding Z while you power on starts it.
 2. Select everything in this folder and drag it onto the root of the card.
    Let it replace files of the same name. On a Mac, hold Option as you drop
-   and choose Merge: Replace deletes what is already in the card's games
-   and swiss folders (your games, settings, cheats and saves).
-3. Put your games in /games, with nothing else in it or in the game
-   folders (see GAMES), put the card back and power on.
+   and choose Merge: Replace deletes what is already in the card's swiss
+   folder (your settings, cheats and saves).
+3. Put your games in /games (make the folder if the card has none), with
+   nothing else in it or in the game folders (see GAMES), put the card back
+   and power on.
 Your Swiss settings carry over.
 
 PicoBoot and PicoLoader boot ipl.dol. FlippyDrive boots boot.dol, and with
@@ -58,7 +59,6 @@ it by itself.
 
 WHAT EACH FILE IS FOR
   ipl.dol                      Indigo itself
-  games/                       your games go here (see GAMES)
   swiss/patches/apploader.img  In-Game Reset returns to Indigo (see below)
   swiss/ui/                    posters.pak goes here, if you add one
   swiss/indigo/                Indigo's licence (GPL-2.0-or-later) and notice
@@ -89,5 +89,5 @@ TXT
 
 rm -f "$out/Indigo-$version.zip"
 # Directory entries included, so the empty folders arrive on the card too.
-(cd "$card" && zip -qrX "$out/Indigo-$version.zip" Indigo-README.txt ipl.dol games swiss)
+(cd "$card" && zip -qrX "$out/Indigo-$version.zip" Indigo-README.txt ipl.dol swiss)
 shasum -a 256 "$out/Indigo-$version.zip"
