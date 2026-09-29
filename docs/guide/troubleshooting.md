@@ -81,9 +81,10 @@ Defaults tab).
 
 A CRT TV hides a little of each edge of the picture (overscan), so the clock
 or the edge of a page can fall off the screen. In Settings, Setup › Display,
-lower **Menu Screen Size** until everything is in view: 90% keeps the menus
-inside the part of the picture nearly every TV shows. The background still
-fills the screen, and games are not affected.
+select **Menu Screen Size**: a mark shows at each corner of the menus. Press
+Left until you can see all four; 90% keeps the menus inside the part of the
+picture nearly every TV shows. The background still fills the screen, and
+games are not affected.
 
 ## On a CRT with component cables, the screen stays dark
 

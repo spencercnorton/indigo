@@ -5546,11 +5546,63 @@ static void _SettingsRow(const uiSetLayout_t *layout, int slot,
 			drawStringMedium(right, y, "\233", 0.90f, ALIGN_RIGHT,
 				focused ? settingsAccent : settingsQuiet);
 			break;
+		case UI_SETLAYOUT_ROW_SLIDER: {
+			/* A choice's pill holding a track, filled up to a knob where
+			 * the value is, and the value itself at the right. */
+			bool arrows = focused && row->enabled;
+			int inner = arrows ? UI_SETLAYOUT_ARROW_W : 0;
+			int textRight = right - UI_SETLAYOUT_PILL_PAD - inner;
+			int trackRight = textRight - UI_SETLAYOUT_SLIDER_TEXT_W -
+				UI_SETLAYOUT_SLIDER_GAP;
+			int trackLeft = trackRight - UI_SETLAYOUT_SLIDER_W;
+			float knobX = (float)trackLeft + _GameflowClamp(row->fill, 0.0f, 1.0f) *
+				(float)UI_SETLAYOUT_SLIDER_W;
+			GXColor knob = _HintAlpha(settingsInk, alpha);
+
+			left = trackLeft - UI_SETLAYOUT_PILL_PAD - inner;
+			_CheatsPanel(left, top, right - left, UI_SETLAYOUT_PILL_H,
+				_HintAlpha(settingsValue, alpha));
+			if(arrows) {
+				_SettingsArrow((float)(left + 12), (float)y, -1.0f,
+					settingsAccent);
+				_SettingsArrow((float)(right - 12), (float)y, 1.0f,
+					settingsAccent);
+			}
+			_CheatsPanel(trackLeft, y - 2, UI_SETLAYOUT_SLIDER_W, 4,
+				_HintAlpha(settingsRule, alpha));
+			_CheatsPanel(trackLeft, y - 2, (int)lrintf(knobX) - trackLeft, 4,
+				_HintAlpha(settingsAccent, alpha));
+			UIColor_Apply(&knob.r, &knob.g, &knob.b);
+			drawInit();
+			_SetupRasterColor();
+			_HintDisc(knobX, (float)y, 5.0f, knob);
+			drawInit();
+			drawStringMedium(textRight, y, row->value, row->valueScale,
+				ALIGN_RIGHT, ink);
+			break;
+		}
 		default:
 			break;
 	}
 	if(row->custom) {
 		_SettingsChip(left - UI_SETLAYOUT_CHIP_GAP, y, "CUSTOM");
+	}
+}
+
+/* Marks at the menus' four corners, drawn while Menu Screen Size is
+ * focused: when all four are in view, the TV shows every part of them. */
+static void _SettingsFrameMarks(void)
+{
+	const int arm = 28, thick = 3;
+	int corner;
+
+	for(corner = 0; corner < 4; corner++) {
+		int x = (corner & 1) ? 640 - arm : 0;
+		int y = (corner & 2) ? 480 - thick : 0;
+
+		_CheatsPanel(x, y, arm, thick, settingsAccent);
+		_CheatsPanel((corner & 1) ? 640 - thick : 0,
+			(corner & 2) ? 480 - arm : 0, thick, arm, settingsAccent);
 	}
 }
 
@@ -5635,6 +5687,9 @@ static void _DrawSettingsPage(uiDrawObj_t *evt)
 		drawStringMedium(l->actionRect[i].x + l->actionRect[i].w / 2, l->hintY,
 			s->action[i], s->actionScale[i], ALIGN_CENTER,
 			i == l->selectedAction ? settingsInk : settingsQuiet);
+	}
+	if(s->frameMarks) {
+		_SettingsFrameMarks();
 	}
 	drawInit();
 }

@@ -10,10 +10,13 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 - Setup › Display › **Menu Screen Size** draws Indigo's own screens smaller,
   from 100% down to 80%, for a CRT TV that hides the edges of the picture
-  (overscan). At 90% everything, the clock included, sits inside the part of
-  the picture nearly every TV shows. The background still fills the screen,
-  and games are not affected. `global.ini` keeps it as `Menu Screen Size`;
-  the default, 100%, draws exactly what Indigo drew before.
+  (overscan). It is a bar that the D-Pad or the stick moves a step at a time,
+  or steadily when held, and while it is selected a mark shows at each corner
+  of the menus: lower it until all four are in view. At 90% everything, the
+  clock included, sits inside the part of the picture nearly every TV shows.
+  The background still fills the screen, and games are not affected.
+  `global.ini` keeps it as `Menu Screen Size`; the default, 100%, draws
+  exactly what Indigo drew before.
 - The troubleshooting guide covers CRTs: the menus' edges cut off, and a
   dark screen on component cables, which most standard-definition TVs take
   only at 480i.
