@@ -35,5 +35,5 @@ Understanding the trust model helps you judge what is and is not a finding:
 - **There are no credentials:** Indigo runs on a GameCube with no accounts and no key material; network settings you enter (SMB, FTP, FSP), passwords included, are stored as plain text in `swiss/settings/global.ini` on your own storage device.
 - **What leaves the console:** nothing, unless you use a network device handler you configured yourself. There is no telemetry and no update check.
 - **Game patching is not a security boundary:** Indigo loads and patches code you supply from your own media; a malformed image can crash the console, and that is a bug rather than a vulnerability unless it escapes what the loader is meant to do.
-- **Local state** lives on your SD card or other storage device: settings and play history in `swiss/settings/` (`global.ini`, and one file per game under `game/`), and cheat files with the cheats you switched on in `swiss/cheats/`. No telemetry is
+- **Local state** lives on your SD card or other storage device: settings and play history in `swiss/settings/` (`global.ini`, and one file per game under `game/`), cheat files and the cheats you switched on for each game in `swiss/cheats/`, and saves copied with Memory Cards in its Save Folder (`swiss/saves/` unless you choose another). No telemetry is
   sent anywhere.

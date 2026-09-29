@@ -14,8 +14,8 @@ Development happens here, in the open, on two branches:
   testers within days.
 - **`main`** holds releases only. When a release candidate has held up,
   `beta` is merged into `main` and tagged `vX.Y.Z`. The only other way into
-  `main` is an urgent fix to a release, from a `hotfix/*` branch, which is
-  then merged back into `beta`
+  `main` is an urgent fix to a release: a pull request from a `hotfix/*`
+  branch into `main`, after which `main` is merged back into `beta`
   ([docs/RELEASING.md](docs/RELEASING.md#a-fix-to-a-release)).
 
 Every pull request runs CI: the DOL build and the checks on it, a second
