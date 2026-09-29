@@ -312,7 +312,7 @@ def check_pickers(dest_dir: str, alt_dol: str) -> None:
                 f"{name} still times the stick itself")
 
 
-dest_dir = block(SWISS, "bool select_dest_dir(file_handle* initial, file_handle* selection)")
+dest_dir = block(SWISS, "bool select_dest_dir(file_handle* initial, char* selection)")
 alt_dol = block(SWISS, "ExecutableFile* select_alt_dol(")
 check_pickers(dest_dir, alt_dol)
 picker_mutants = (

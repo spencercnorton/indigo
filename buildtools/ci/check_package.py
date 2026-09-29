@@ -21,7 +21,9 @@ LAYOUT = {
     "swiss/patches/apploader.img", "swiss/indigo/", "swiss/indigo/LICENSE.txt",
     "swiss/indigo/NOTICE.txt",
 }
-MAX_ZIP_BYTES = 6 * 1024 * 1024  # a tripwire; the zip is about 5 MB since the menu music
+# A tripwire: the zip is about 6.1 MiB since upstream Swiss r2119's text-encoding
+# libraries (5 MB before, with the menu music). Raise it on purpose.
+MAX_ZIP_BYTES = 7 * 1024 * 1024
 
 
 def problems(zip_path: Path, dol: bytes, version: str) -> list[str]:

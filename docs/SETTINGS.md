@@ -109,7 +109,7 @@ most use the same key there.
 | `Force NTSC Video Mode` | `Auto`, `480i`, `480sf`, `240p`, `960i`, `480p`, `1080i60`, `540p60`. For games that aren't PAL; 50 Hz modes are ignored here. | `Auto` | Force NTSC Video Mode |
 | `Force PAL Video Mode` | `Auto`, `480i`, `480sf`, `240p`, `960i`, `480p`, `1080i60`, `540p60`, `576i`, `576sf`, `288p`, `1152i`, `576p`, `1080i50`, `540p50`. For PAL games. | `Auto` | Force PAL Video Mode |
 | `Force Horizontal Scale` | `Auto`, `1:1`, `11:10`, `9:8`, `640px`, `656px`, `672px`, `704px`, `720px` | `Auto` | Force Horizontal Scale |
-| `Force Vertical Offset` | A signed number. **This one doesn't reach games:** a game starts at `-3` with GCVideo or GCDigital and `+0` otherwise. Set it per game instead. | `+0` | Not shown, since it does nothing |
+| `Force Vertical Offset` | A signed number. Every game starts at this value unless its own settings change it. | `+0` | Not shown; a game's own settings have it |
 | `Force Vertical Filter` | `Auto`, `0`, `1`, `2` | `Auto` | Force Vertical Filter |
 | `Force Field Rendering` | `Auto`, `On`, `Off`, `TAA` | `Auto` | Force Field Rendering |
 | `Fix Pixel Center` | `No`, `1/24`, `1/12` | `No` | Fix Pixel Center |
@@ -134,7 +134,7 @@ most use the same key there.
 | --- | --- | --- | --- |
 | `System Video` | `NTSC`, `PAL`, `PAL-M`. Ignored on a Wii (AVE-RVL). | the console's region | System Video |
 | `Screen Position` | A signed number, such as `+0` or `-2`. | the console's SRAM | Screen Position |
-| `Swiss Video Mode` | `Auto`, `480i`, `480sf`, `480p`, `576i`, `576sf`, `576p` | `Auto` | Swiss Video Mode |
+| `Swiss Video Mode` | `Auto`, `480i`, `480sf`, `240p`, `480p`, `576i`, `576sf`, `288p`, `576p` | `Auto` | Swiss Video Mode |
 | `Menu Widescreen` | `Yes`, `No`. `Yes` draws Indigo's own screens for a TV set to 16:9; games follow `Force Widescreen`. | `No` | Menu Widescreen |
 | `AVECompat` | `AVE N-DOL`, `AVE P-DOL`, `CMPV-DOL`, `GCDigital`, `GCVideo`, `AVE-RVL` | `GCVideo`, or what your loader reports | AVE Compatibility |
 | `Force DTV Status` | `No`, `Yes`, `Region Switch` | `No` | Force DTV Status |
@@ -207,6 +207,7 @@ most use the same key there.
 | `Hide Unknown file types` | `Yes`, `No` | `No` | Hide unknown file types |
 | `Disable Panel Transparency` | `Yes`, `No`. `Yes` shows as Panel Transparency › Off. | `No` | Panel Transparency |
 | `Disable Animated Backdrop` | `Yes`, `No`. `Yes` shows as Animated Backdrop › Off. | `No` | Animated Backdrop |
+| `Autoload` | The path of the game or folder to open when Indigo starts. Z on a game's detail screen sets a game and saves only this key. | empty | Load at startup |
 | `FlattenDir` | A folder pattern, such as `*/games`. | `*/games` | Flatten directory |
 
 ### Setup › Developer
@@ -231,7 +232,6 @@ most use the same key there.
 | Key | Values | Default | On screen |
 | --- | --- | --- | --- |
 | `Last DTV Status` | `Yes`, `No`. Swiss writes the cable it detected. Leave it out: if it doesn't match the cable at boot, Swiss opens Settings at AVE Compatibility. |  |  |
-| `Autoload` | The path of the game to start automatically. Set with Z on a game's detail screen, which saves only this key. | empty |  |
 | `GCLoaderHWVersion` | A number Swiss uses to remind you about GC Loader firmware updates. | `0` |  |
 | `GCLoaderTopVersion` | Text Swiss uses to remind you about GC Loader firmware updates. | empty |  |
 
@@ -250,7 +250,7 @@ way in a game's file.
 | `Game Language` | `English`, `German`, `French`, `Spanish`, `Italian`, `Dutch`, `Japanese`, `English (US)`, `Default`. `Default` uses the System Language. | `Default` |
 | `Force Video Mode` | `Auto`, `480i`, `480sf`, `240p`, `960i`, `480p`, `1080i60`, `540p60`, `576i`, `576sf`, `288p`, `1152i`, `576p`, `1080i50`, `540p50` | `Force NTSC Video Mode` or `Force PAL Video Mode`, by the game's region |
 | `Force Horizontal Scale` | `Auto`, `1:1`, `11:10`, `9:8`, `640px`, `656px`, `672px`, `704px`, `720px` | from global.ini |
-| `Force Vertical Offset` | A signed number, such as `-3` or `+2`. | `-3` with GCVideo or GCDigital, otherwise `+0` |
+| `Force Vertical Offset` | A signed number, such as `-3` or `+2`. | from global.ini |
 | `Force Vertical Filter` | `Auto`, `0`, `1`, `2` | from global.ini |
 | `Force Field Rendering` | `Auto`, `On`, `Off`, `TAA` | from global.ini |
 | `Fix Pixel Center` | `No`, `1/24`, `1/12` | from global.ini |

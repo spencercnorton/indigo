@@ -219,43 +219,46 @@ void ogc_video__reset()
 	/* set TV mode for current game */
 	switch(swissSettings.gameVMode) {
 		case -2:
-			sprintf(txtbuffer, "Video Mode: %s", "PAL 576p");
 			newmode = &TVPal576ProgScale;
 			break;
 		case -1:
-			sprintf(txtbuffer, "Video Mode: %s", "NTSC 480p");
 			newmode = &TVNtsc480Prog;
 			break;
 		case 0:
 			switch(swissSettings.sramVideo) {
 				case SYS_VIDEO_PAL:
-					sprintf(txtbuffer, "Video Mode: %s", "PAL 576i");
 					newmode = &TVPal576IntDfScale;
 					break;
 				case SYS_VIDEO_MPAL:
-					sprintf(txtbuffer, "Video Mode: %s", "PAL-M 480i");
 					newmode = &TVMpal480IntDf;
 					break;
 				default:
-					sprintf(txtbuffer, "Video Mode: %s", "NTSC 480i");
 					newmode = &TVNtsc480IntDf;
 					break;
 			}
 			break;
-		case 1 ... 3:
-			sprintf(txtbuffer, "Video Mode: %s %s", "NTSC", gameVModeStr[swissSettings.gameVMode]);
+		case 1:
 			newmode = &TVNtsc480IntDf;
 			break;
+		case 2:
+			newmode = &TVNtsc480Int;
+			break;
+		case 3:
+			newmode = &TVNtsc240DsVf;
+			break;
 		case 4 ... 7:
-			sprintf(txtbuffer, "Video Mode: %s %s", "NTSC", gameVModeStr[swissSettings.gameVMode]);
 			newmode = &TVNtsc480Prog;
 			break;
-		case 8 ... 10:
-			sprintf(txtbuffer, "Video Mode: %s %s\n%s Mode selected.", "PAL", gameVModeStr[swissSettings.gameVMode], swissSettings.sram60Hz ? "60Hz":"50Hz");
+		case 8:
 			newmode = &TVPal576IntDfScale;
 			break;
+		case 9:
+			newmode = &TVPal576IntScale;
+			break;
+		case 10:
+			newmode = &TVPal288DsVfScale;
+			break;
 		case 11 ... 14:
-			sprintf(txtbuffer, "Video Mode: %s %s\n%s Mode selected.", "PAL", gameVModeStr[swissSettings.gameVMode], swissSettings.sram60Hz ? "60Hz":"50Hz");
 			newmode = &TVPal576ProgScale;
 			break;
 		default:
@@ -263,6 +266,11 @@ void ogc_video__reset()
 			break;
 	}
 	if((newmode != NULL) && (newmode != getVideoMode())) {
+		if((newmode->viTVMode >> 2) == VI_PAL) {
+			sprintf(txtbuffer, "Video Mode: %s\n%s Mode selected.", getVideoModeString(newmode), swissSettings.sram60Hz ? "60Hz":"50Hz");
+		} else {
+			sprintf(txtbuffer, "Video Mode: %s", getVideoModeString(newmode));
+		}
 		DrawVideoMode(newmode);
 		/* The launch screen shows it as a step, without the wait. */
 		if(!DrawLaunchStep(txtbuffer)) {
@@ -542,7 +550,7 @@ uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj
 		filePanel = DrawRepublish(filePanel, newPanel);
 		DrawUpdateProgressLoading(loadingBox, -1);
 		
-		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z;
+		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP;
 		u32 browserButtons;
 		uiMenuInputDirection_t analog;
 		while(1) {
@@ -574,6 +582,11 @@ uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj
 			else {
 				curSelection = (curSelection + FILES_PER_PAGE > num_files-1) ? num_files-1 : (curSelection + FILES_PER_PAGE) % num_files;
 			}
+		}
+		if(padsButtonsHeld() & BUTTON_CLAP) {
+			DrawUpdateProgressLoading(loadingBox, +1);
+			curSelection = meta_find_barrel_game(curSelection);
+			DrawUpdateProgressLoading(loadingBox, -1);
 		}
 		
 		if(browserButtons & BUTTON_A) {
@@ -1859,7 +1872,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 		}
 		DrawUpdateProgressLoading(loadingBox, -1);
 		
-		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|
+		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP|
 			(useGameflow ? PAD_BUTTON_Y : 0u);
 		u32 menuInputPolicy = gameflowMenuInputPolicy(layout);
 		u32 browserButtons;
@@ -1951,6 +1964,11 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				gameflowDirection = step.direction;
 				gameflowSnapTransition = step.snap;
 			}
+		}
+		if(padsButtonsHeld() & BUTTON_CLAP) {
+			DrawUpdateProgressLoading(loadingBox, +1);
+			curSelection = meta_find_barrel_game(curSelection);
+			DrawUpdateProgressLoading(loadingBox, -1);
 		}
 		
 		if((browserButtons & BUTTON_A) || openSettings) {
@@ -2149,7 +2167,7 @@ uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawO
 		filePanel = DrawRepublish(filePanel, newPanel);
 		DrawUpdateProgressLoading(loadingBox, -1);
 		
-		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z;
+		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP;
 		u32 browserButtons;
 		uiMenuInputDirection_t analog;
 		while(1) {
@@ -2181,6 +2199,11 @@ uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawO
 			else {
 				curSelection = (curSelection + FILES_PER_PAGE_FULLWIDTH > num_files-1) ? num_files-1 : (curSelection + FILES_PER_PAGE_FULLWIDTH) % num_files;
 			}
+		}
+		if(padsButtonsHeld() & BUTTON_CLAP) {
+			DrawUpdateProgressLoading(loadingBox, +1);
+			curSelection = meta_find_barrel_game(curSelection);
+			DrawUpdateProgressLoading(loadingBox, -1);
 		}
 		
 		if(browserButtons & BUTTON_A) {
@@ -2272,12 +2295,12 @@ uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawO
 	return filePanel;
 }
 
-bool select_dest_dir(file_handle* initial, file_handle* selection)
+bool select_dest_dir(file_handle* initial, char* selection)
 {
 	file_handle **directory = NULL;
 	file_handle *curDirEntries = NULL;
 	file_handle curDir;
-	memcpy(&curDir, initial, sizeof(file_entry));
+	memcpy(&curDir, initial, sizeof(file_handle));
 	int i = 0, j = 0, max = 0, refresh = 1, num_files =0, idx = 0;
 	const u32 waitButtons = BUTTON_X | BUTTON_A | BUTTON_B | BUTTON_UP | BUTTON_DOWN;
 	uiMenuInputState_t menuInput;
@@ -2300,7 +2323,7 @@ bool select_dest_dir(file_handle* initial, file_handle* selection)
 			num_files = devices[DEVICE_DEST]->readDir(&curDir, &curDirEntries, IS_DIR);
 			num_files = sortFiles(curDirEntries, num_files, &directory);
 			if(num_files <= 1 && destDirBox == NULL) {
-				memcpy(selection, &curDir, sizeof(file_handle));
+				strcpy(selection, curDir.name);
 				break;
 			}
 			refresh = idx = 0;
@@ -2343,7 +2366,7 @@ bool select_dest_dir(file_handle* initial, file_handle* selection)
 			}
 		}
 		if(buttons & BUTTON_X)	{
-			memcpy(selection, &curDir, sizeof(file_handle));
+			strcpy(selection, curDir.name);
 			break;
 		}
 		if(buttons & BUTTON_B)	{
@@ -3080,16 +3103,16 @@ bool manage_file() {
 		if(devices[DEVICE_DEST] == NULL) return false;
 
 		// If the devices are not the same, init the destination, fail on non-existing device/etc
-		if(devices[DEVICE_CUR] != devices[DEVICE_DEST]) {
+		if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
 			devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );	
 			deviceHandler_setStatEnabled(0);
 			if(devices[DEVICE_DEST]->init( devices[DEVICE_DEST]->initial )) {
+				deviceHandler_setStatEnabled(1);
 				sprintf(txtbuffer, "Failed to init destination device! (%u)\nPress A to continue.",ret);
 				uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,txtbuffer);
 				DrawPublish(msgBox);
 				wait_press_A();
 				DrawDispose(msgBox);
-				deviceHandler_setStatEnabled(1);
 				return false;
 			}
 			deviceHandler_setStatEnabled(1);
@@ -3098,11 +3121,12 @@ bool manage_file() {
 		file_handle *destFile = calloc(1, sizeof(file_handle));
 		
 		// Show a directory only browser and get the destination file location
-		ret = select_dest_dir(devices[DEVICE_DEST]->initial, destFile);
+		ret = select_dest_dir(devices[DEVICE_DEST]->initial, destFile->name);
 		if(ret) {
 			if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
 				devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );
 			}
+			devices[DEVICE_DEST] = NULL;
 			return false;
 		}
 		
@@ -3110,12 +3134,6 @@ bool manage_file() {
 		u32 isSrcCard = devices[DEVICE_CUR] == &__device_card_a || devices[DEVICE_CUR] == &__device_card_b;
 		
 		concat_path(destFile->name, destFile->name, stripInvalidChars(getRelativeName(curFile.name)));
-		destFile->fp = 0;
-		destFile->ffsFp = 0;
-		destFile->fileBase = 0;
-		destFile->offset = 0;
-		destFile->size = 0;
-		destFile->fileType = IS_FILE;
 		// Create a GCI if something is coming out from CARD to another device
 		if(isSrcCard && !isDestCard) {
 			strlcat(destFile->name, ".gci", PATHNAME_MAX);
@@ -3161,6 +3179,7 @@ bool manage_file() {
 							extension_start = -1;
 						name_backup[cursor] = destFile->name[cursor];
 					}
+					name_backup[cursor] = 0;
 
 					devices[DEVICE_DEST]->closeFile(destFile);
 
@@ -3191,8 +3210,7 @@ bool manage_file() {
 						strcpy(destFile->name + cursor, name_backup + extension_start);
 					}
 
-					while(devices[DEVICE_DEST]->readFile(destFile, NULL, 0) == 0) {
-						devices[DEVICE_DEST]->closeFile(destFile);
+					while(!devices[DEVICE_DEST]->statFile(destFile)) {
 						copy_num++;
 						if(copy_num > 99) {
 							DrawDispose(dupeBox);
@@ -3515,7 +3533,7 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 			DrawDispose(msgBox);
 			goto exit;
 		}
-		else if(is_nkit_format(&GCMDisk) && !valid_gcm_boot(&GCMDisk)) {
+		else if((is_artx_disc(&GCMDisk) || !valid_gcm_boot(&GCMDisk)) && is_nkit_format(&GCMDisk)) {
 			msgBox = DrawRepublish(msgBox, DrawMessageBox(D_WARN, "File is not playable in NKit.iso format.\nPlease convert back to ISO using NKit."));
 			sleep(5);
 			DrawDispose(msgBox);

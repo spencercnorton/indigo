@@ -1,5 +1,3 @@
-/* The recorded base for audit_settings_semantics.sh: the Settings value switch
- * as it stood before the presentation refactor (upstream Swiss code, GPL-2.0). */
 void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfig) {
 	if(page == PAGE_GLOBAL) {
 		switch(option) {
@@ -57,7 +55,7 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 						curDevicePos = allDevices[curDevicePos+1] == NULL ? 0 : curDevicePos+1;
 					}
 					else {
-						curDevicePos = curDevicePos > 0 ? curDevicePos-1 : 0;
+						curDevicePos = curDevicePos > 0 ? curDevicePos-1 : MAX_DEVICES-1;
 					}
 					// Go to next writable device
 					while((allDevices[curDevicePos] == NULL) || !(allDevices[curDevicePos]->features & FEAT_CONFIG_DEVICE)) {
@@ -72,7 +70,7 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_SWISS_VIDEOMODE:
 				swissSettings.uiVMode += direction;
-				swissSettings.uiVMode = (swissSettings.uiVMode + 7) % 7;
+				swissSettings.uiVMode = (swissSettings.uiVMode + 9) % 9;
 			break;
 			case SET_INIT_DRIVE:
 				if(deviceHandler_getDeviceAvailable(&__device_dvd))
@@ -205,6 +203,26 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_AUTOBOOT:
 				swissSettings.autoBoot ^= 1;
+			break;
+			case SET_AUTOLOAD:
+				select_device(DEVICE_DEST);
+				if(devices[DEVICE_DEST] != NULL) {
+					if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
+						deviceHandler_setStatEnabled(0);
+						if(devices[DEVICE_DEST]->init(devices[DEVICE_DEST]->initial)) {
+							deviceHandler_setStatEnabled(1);
+							strlcpy(swissSettings.autoload, devices[DEVICE_DEST]->initial->name, sizeof(swissSettings.autoload));
+							return;
+						}
+						deviceHandler_setStatEnabled(1);
+					}
+					select_dest_dir(devices[DEVICE_DEST]->initial, swissSettings.autoload);
+
+					if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
+						devices[DEVICE_DEST]->deinit(devices[DEVICE_DEST]->initial);
+					}
+					devices[DEVICE_DEST] = NULL;
+				}
 			break;
 			case SET_FLATTEN_DIR:
 				DrawGetTextEntry(ENTRYMODE_NUMERIC|ENTRYMODE_ALPHA, "Flatten directory", &swissSettings.flattenDir, sizeof(swissSettings.flattenDir) - 1);

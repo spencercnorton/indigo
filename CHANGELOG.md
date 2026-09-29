@@ -6,17 +6,49 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ## Unreleased
 
+### Swiss r2119
+
+Indigo is built on upstream Swiss r2119 now, up from a July build between
+r2073 and r2092, and has everything upstream changed since:
+
+- Games start with Swiss's current video timings: the timing tables Swiss
+  gives every game, and a +0 vertical offset by default. Under GCVideo or
+  GCDigital compatibility, the default, every game started at -3 (#42).
+- Turning off controller rumble no longer makes games reset after 32
+  minutes.
+- Neighbours from Hell returns to its menu. Animal Crossing Deluxe starts
+  without disc read speed emulation, and discs with Kawasedo's NES emulator
+  without the forced anisotropic filter.
+- Swiss Video Mode offers 240p and 288p.
+- Setup › Library › Load at startup chooses a device and a folder for Indigo
+  to open when it starts. Z on a game's details still sets a game.
+- A game's name and description from its banner, when written in another
+  encoding such as Japanese Shift JIS, show far fewer garbled characters.
+- In the file lists, a clap on the DK Bongos jumps to the next game that
+  uses them.
+- Fixes to the SD card file system (FatFs R0.16-p2), the FTP client,
+  copying a file onto a name that already exists, and the stub that
+  reloads Swiss.
+- An NKit.iso of an ArtX diagnostic disc says it can't be played in that
+  format.
+- The Redump and [T-En] Collection game databases are current.
+- The first start from a GC Loader or PicoLoader boot image says that
+  System Boot Mode › Production brings back the GameCube logo screen.
+
 ### For developers
 
 - [`UPSTREAM`](UPSTREAM) names the upstream Swiss commit Indigo is built on,
-  `9c94126b` (v0.6r2073 and 16 commits), and lists the upstream files Indigo
-  changes, each with the reason. CI checks it both ways: a change to an
+  now r2119, and lists the upstream files Indigo changes, each with the
+  reason. CI checks it both ways: a change to an
   upstream file that the list leaves out fails, and so does a listed file
   that matches upstream again. It replaces the interface-only gate and its
   exact-line exceptions, which are now lines in that list.
   `buildtools/upstream_merge.sh <commit>` moves to another upstream commit:
   it merges upstream's changes over the difference in line endings, updates
   the commit, and lists anything left to resolve.
+- The size tripwires are 6 MiB for the DOL (`verify_dol.py`) and 7 MiB for
+  the zip (`check_package.py`), up from 5 and 6: the DOL is about 5.2 MiB
+  and the zip about 6.1 MiB with the text-encoding libraries r2119 links.
 
 ## v2.0.1 — The download keeps your games folder
 

@@ -4964,8 +4964,8 @@ void DrawArgsSelector(const char *fileName) {
 	int param_selection = 0;
 	int params_per_page = 6;
 	
-	while ((padsButtonsHeld() & BUTTON_A)){ VIDEO_WaitVSync (); }
 	uiDrawObj_t *container = NULL;
+	while (padsButtonsHeld() & BUTTON_A){ VIDEO_WaitVSync (); }
 	while(1) {
 		uiDrawObj_t *newPanel = DrawEmptyBox(20,60, getVideoMode()->fbWidth-20, 460);
 		sprintf(txtbuffer, "%s Parameters:", fileName);
@@ -6494,6 +6494,9 @@ static void *videoUpdate(void *videoEventQueue) {
 #endif
 		
 		//Copy EFB->XFB
+		if(vmode->copy_interlaced == GX_COPY_INTERLACED) {
+			GX_SetDispCopyFrame2Field(GX_COPY_INTERLACED ^ VIDEO_GetNextField());
+		}
 		u16 width = vmode->fbWidth;
 		u16 height = GX_SetDispCopyYScale(getYScaleFactor(vmode->efbHeight, vmode->xfbHeight));
 		copyDisplayFrame(xfb[whichfb]);
