@@ -42,7 +42,7 @@
   <tr>
     <td valign="top">
       <a href="settings.md"><img alt="Quick Settings, the first of the three tabs." src="images/settings-quick.png" width="100%"></a><br>
-      <b><a href="settings.md">Settings</a></b>: Quick, Game Defaults, Setup and each game's own settings.
+      <b><a href="settings.md">Settings</a></b>: the Quick, Defaults and Setup tabs, and each game's own settings.
     </td>
     <td valign="top">
       <a href="personalize.md"><img alt="The Home cube in four Menu Colors." src="images/personalize-colors.png" width="100%"></a><br>

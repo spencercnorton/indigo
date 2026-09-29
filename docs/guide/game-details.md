@@ -21,8 +21,9 @@ that one game, and every way to start it, on one screen.
   play recorded". Indigo records it when your settings live on the card the
   game starts from, as with a single SD card. With no settings device to
   read it from, it says "History unavailable".
-- **Save data**: "Check in game". Indigo doesn't read your memory cards, so
-  the game itself is where to look.
+- **Save data**: "Check in game". This screen doesn't look for the game's
+  saves; System › [Memory Cards](memory-cards.md) lists the saves on your
+  memory cards.
 - **Settings**: "Game Defaults" while the game follows them, or how many of
   its settings are its own and the first of them, such as "1 custom" and
   "Force Video Mode: 480p". See [below](#this-games-own-settings).
@@ -41,8 +42,9 @@ prepares the game and loads it. One line under the title says which step
 it's on, such as "Checking game" or "Loading game". If the game's patches
 live on another card than the game, that card is named under it ("Do not
 remove SD Card - SD2SP2"): leave it in until the game is running. When the
-ring is full the screen fades to black and the game starts. With Animations
-Off the ring stays still, and the screen goes straight to black.
+ring is full the screen fades to black and the game starts. With
+[UI Motion](personalize.md#motion) set to Off, the ring fills in steps
+without its glint, and the screen goes straight to black.
 
 If the game can't start, a message says why, and then the Library comes
 back.
