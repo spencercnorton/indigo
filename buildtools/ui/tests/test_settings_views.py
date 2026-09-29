@@ -31,9 +31,9 @@ PAGE_ENUMS = {
 }
 # Its rows now live in Quick and three Setup sections, so a single reset
 # across them has no home.
-# The Game Defaults vertical offset can't reach a game (config_defaults_from
-# sets -3 or +0 by the AVE setting), so Game Defaults doesn't show it; each
-# game's own settings still do.
+# Game Defaults doesn't show the vertical offset: every game starts at
+# global.ini's value (+0 unless set there), and each game's own settings
+# still show it.
 DROPPED = {("PAGE_GAME_GLOBAL", "SET_GLOBAL_DEFAULTS"),
            ("PAGE_GAME_DEFAULTS", "SET_DEFAULT_VERT_OFFSET")}
 QUICK = [

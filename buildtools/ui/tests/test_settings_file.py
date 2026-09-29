@@ -512,16 +512,17 @@ class SettingsFileTest(unittest.TestCase):
                     written = pairs(self.run_harness("game", "GALE", "E", stdin=f"{key}={value}"))
                     self.assertEqual(written.get(key, value), value, (key, value))
 
-    def test_vertical_offset_default_never_reaches_a_game(self):
+    def test_vertical_offset_default_reaches_every_game(self):
+        # As upstream since r2092: no -3 for GCVideo or GCDigital.
         with tempfile.NamedTemporaryFile("w", suffix=".ini", delete=False) as handle:
             handle.write("Force Vertical Offset=+5\r\n")
         try:
             fields = pairs(self.run_harness("game-fields", "GALE", "E", handle.name))
-            self.assertEqual(fields["forceVOffset"], "-3")
+            self.assertEqual(fields["forceVOffset"], "5")
             with open(handle.name, "a") as more:
                 more.write("AVECompat=AVE N-DOL\r\n")
             fields = pairs(self.run_harness("game-fields", "GALE", "E", handle.name))
-            self.assertEqual(fields["forceVOffset"], "0")
+            self.assertEqual(fields["forceVOffset"], "5")
         finally:
             os.unlink(handle.name)
 

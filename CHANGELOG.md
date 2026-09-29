@@ -4,6 +4,14 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## Unreleased
+
+- Games start with Swiss's current video timings, as in Swiss r2092 and later
+  (upstream's "Revert certain video timing tweaks"): the timing tables Swiss
+  gives every game, and a +0 vertical offset by default. Indigo was built on
+  the Swiss before that change, so under GCVideo or GCDigital compatibility,
+  the default, every game started at -3 (#42).
+
 ## v2.0.0 — A clear glass cube, a launch screen and new menu music
 
 Indigo 2.0: the Home cube is clear glass all through, a game started from
