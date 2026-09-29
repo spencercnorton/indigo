@@ -1,7 +1,8 @@
-/* Fuzz the poster pack (swiss/ui/posters.pak) as the Library loads it: any
- * file is refused or served without a sanitizer finding, and the cache always
- * tears down cleanly afterwards. Bytes past the header also pick the game IDs
- * the Library asks for, so a fuzzed index gets queried too. */
+/* Fuzz the Library's packs as it loads them: every input goes to the poster
+ * cache (swiss/ui/posters.pak) and to the stills cache (swiss/ui/stills.pak).
+ * Any file is refused or served without a sanitizer finding, and both caches
+ * always tear down cleanly afterwards. Bytes past the header also pick the
+ * game IDs the Library asks for, so a fuzzed index gets queried too. */
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,19 +27,20 @@ static void put32(uint8_t *p, uint32_t v)
  * checks; the checks themselves have their own tests. */
 static void fixCrcs(uint8_t *pack, size_t size)
 {
-	uint32_t count, index, length;
+	uint32_t count, index, length, bytes;
 
 	if (size < 64)
 		return;
 	count = be32(pack + 0x0C);
 	index = be32(pack + 0x10);
+	bytes = be32(pack + 0x20); /* a poster's or a still's, as the header says */
 	if (count > size / 32 || index > size || count * 32u > size - index)
 		return;
 	length = count * 32u;
 	for (uint32_t at = index; at < index + length; at += 32) {
 		uint32_t offset = be32(pack + at + 8);
-		if (offset <= size && UI_ASSETS_POSTER_BYTES <= size - offset)
-			put32(pack + at + 16, (uint32_t)crc32(0, pack + offset, UI_ASSETS_POSTER_BYTES));
+		if (offset <= size && bytes <= size - offset)
+			put32(pack + at + 16, (uint32_t)crc32(0, pack + offset, bytes));
 	}
 	put32(pack + 8, 0);
 	put32(pack + 8, (uint32_t)crc32(crc32(0, pack, 64), pack + index, length));
@@ -77,16 +79,16 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	packData = pack;
 	packSize = size;
 	clockMs = 1000;
-	if (UIAssets_Init(&source, NULL) == UI_ASSETS_OK) {
-		memset(ids, 0, sizeof(ids));
-		for (int i = 0; i < 4; i++) {
-			/* Game IDs taken from the pack's own bytes past the header, so
-			 * the fuzzer can steer a request onto a record it made. */
-			for (int c = 0; c < UI_ASSETS_ID_LEN; c++) {
-				size_t at = 64u + (size_t)i * 16u + (size_t)c;
-				ids[i][c] = at < size ? (char)pack[at] : 'A';
-			}
+	memset(ids, 0, sizeof(ids));
+	for (int i = 0; i < 4; i++) {
+		/* Game IDs taken from the pack's own bytes past the header, so
+		 * the fuzzer can steer a request onto a record it made. */
+		for (int c = 0; c < UI_ASSETS_ID_LEN; c++) {
+			size_t at = 64u + (size_t)i * 16u + (size_t)c;
+			ids[i][c] = at < size ? (char)pack[at] : 'A';
 		}
+	}
+	if (UIAssets_Init(&source, NULL) == UI_ASSETS_OK) {
 		UIAssets_RequestWindow((const char (*)[8])ids, 4, 0);
 		for (int step = 0; step < 32 && UIAssets_Poll(); step++)
 			clockMs += UI_ASSETS_EVICT_QUARANTINE_MS + 1;
@@ -102,9 +104,24 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 			(void)UIAssets_DominantColor(ids[i], UI_ASSETS_ID_LEN, &r, &g, &b);
 		}
 	}
+	if (UIStills_Init(&source, NULL) == UI_ASSETS_OK) {
+		UIStills_RequestWindow((const char (*)[8])ids, 3, 1);
+		for (int step = 0; step < 32 && UIStills_Poll(); step++)
+			clockMs += UI_ASSETS_EVICT_QUARANTINE_MS + 1;
+		for (int i = 0; i < 4; i++) {
+			uiPosterHandle_t handle;
+			u8 r, g, b;
+			uiPosterResult_t result = UIStills_Query(ids[i], UI_ASSETS_ID_LEN, i & 1, &handle);
+			if (result == UI_POSTER_EXACT || result == UI_POSTER_UNIVERSAL)
+				(void)UIStills_Peek(handle);
+			(void)UIStills_DominantColor(ids[i], UI_ASSETS_ID_LEN, &r, &g, &b);
+		}
+	}
 	UIAssets_CancelForDeviceChange();
-	if (UIAssets_DisposeAfterVideoStop() != UI_ASSETS_OK)
-		abort(); /* the cache must always come apart cleanly */
+	UIStills_CancelForDeviceChange();
+	if (UIAssets_DisposeAfterVideoStop() != UI_ASSETS_OK ||
+	    UIStills_DisposeAfterVideoStop() != UI_ASSETS_OK)
+		abort(); /* the caches must always come apart cleanly */
 	free(pack);
 	return 0;
 }

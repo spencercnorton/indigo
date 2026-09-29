@@ -52,7 +52,7 @@ build_binaries() {
 }
 
 make_fixture() {
-	if python3 fixture_pack.py "$TMP/fixture.pak"; then
+	if python3 fixture_pack.py "$TMP/fixture.pak" "$TMP/fixture-stills.pak"; then
 		return 0
 	else
 		status=$?
@@ -75,8 +75,8 @@ run_plain() {
 	./test_ui_saves
 	echo "== ui_assets runtime (plain + target-sync policy) =="
 	if make_fixture; then
-		./test_ui_assets "$TMP/fixture.pak"
-		./test_ui_assets_target_sync "$TMP/fixture.pak"
+		./test_ui_assets "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
+		./test_ui_assets_target_sync "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
 	else
 		status=$?
 		if [ "$status" -ne 3 ] || [ "${UI_TEST_REQUIRE_GXTEXCONV:-0}" = "1" ]; then
@@ -134,8 +134,8 @@ run_sanitized() {
 	./test_ui_saves_san
 	echo "== ui_assets runtime (ASan/UBSan + target-sync policy) =="
 	if make_fixture; then
-		./test_ui_assets_san "$TMP/fixture.pak"
-		./test_ui_assets_target_sync_san "$TMP/fixture.pak"
+		./test_ui_assets_san "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
+		./test_ui_assets_target_sync_san "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
 	else
 		status=$?
 		if [ "$status" -ne 3 ] || [ "${UI_TEST_REQUIRE_GXTEXCONV:-0}" = "1" ]; then

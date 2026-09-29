@@ -1,7 +1,8 @@
 /*
- * ui_assets.c -- bounded poster cache (Phase 4A).
+ * ui_assets.c -- bounded caches for the Library's pack art (Phase 4A):
+ * posters, and gameplay stills.
  *
- * Pack format and budgets: docs/ui-redesign/POSTER_PACK_FORMAT.md.
+ * Pack format and budgets: docs/PACKS.md.
  * Contract, locking rules, and integration sketch: ui_assets.h.
  *
  * Compiles for the GameCube target and, with -DUI_ASSETS_HOST_BUILD, for
@@ -21,6 +22,10 @@
  * can observe it. The arena is freed only by the separate lock-free final
  * disposal after all readers stop. Slot generations are u32 and advance
  * exactly once per new slot ownership (at assignment), never on eviction.
+ *
+ * Two caches run this code: posters (posters.pak) and stills (stills.pak).
+ * They differ only in the texture shape their pack must declare and in
+ * their slot count; each binds its own lock callbacks and owns its arena.
  */
 
 #include <string.h>
@@ -116,37 +121,68 @@ typedef struct {
 	GXTexObj tex;
 } uiAssetSlot_t;
 
-static struct {
+/* The texture a cache's pack must declare, exactly, and how many of them the
+ * cache keeps. A texture with one level is not mipmapped. */
+typedef struct {
+	u32 recordBytes;
+	u16 canvasW;
+	u16 canvasH;
+	u16 contentW;
+	u16 contentH;
+	u8 mipLevels;
+	u8 slotCount; /* <= UI_ASSETS_SLOTS */
+} uiAssetsShape_t;
+
+typedef struct {
+	const uiAssetsShape_t *shape;
 	bool arenaReady;   /* arena allocated (survives CancelForDeviceChange) */
 	bool packOpen;     /* header+index validated, source readable */
 	bool syncBound;    /* exact callback/context triple bound until disposal */
 	uiAssetsSource_t src;
 	uiAssetsSync_t sync;
 	u32 (*nowMs)(void);
-	u8 *arena;         /* UI_ASSETS_SLOTS * UI_ASSETS_POSTER_BYTES, 32-aligned */
+	u8 *arena;         /* slotCount * recordBytes, 32-aligned */
 	u8 *index;         /* recordCount * PAK_RECORD_SIZE raw big-endian records */
 	u32 recordCount;
 	u32 dataOffset;
 	u32 fileLength;
 	uiAssetSlot_t slots[UI_ASSETS_SLOTS];
-} ua;
+} uiAssetsCache_t;
+
+static const uiAssetsShape_t posterShape = {
+	UI_ASSETS_POSTER_BYTES, UI_ASSETS_CANVAS_W, UI_ASSETS_CANVAS_H,
+	UI_ASSETS_CONTENT_W, UI_ASSETS_CONTENT_H, UI_ASSETS_MIP_LEVELS,
+	UI_ASSETS_SLOTS
+};
+
+static const uiAssetsShape_t stillShape = {
+	UI_STILLS_BYTES, UI_STILLS_W, UI_STILLS_H, UI_STILLS_W, UI_STILLS_H, 1,
+	UI_STILLS_SLOTS
+};
+
+_Static_assert(UI_STILLS_SLOTS <= UI_ASSETS_SLOTS, "stills slots overflow");
+_Static_assert(UI_STILLS_BYTES == UI_STILLS_W * UI_STILLS_H / 2,
+               "a CMPR still is half a byte per texel");
+
+static uiAssetsCache_t posters = { .shape = &posterShape };
+static uiAssetsCache_t stills = { .shape = &stillShape };
 
 /* Menu-thread-only critical-section entry/exit. Video APIs never call
  * these: their caller already owns the lock. */
-static void syncLock(void) {
-	if (ua.sync.lock)
-		ua.sync.lock(ua.sync.ctx);
+static void syncLock(uiAssetsCache_t *c) {
+	if (c->sync.lock)
+		c->sync.lock(c->sync.ctx);
 }
 
-static void syncUnlock(void) {
-	if (ua.sync.unlock)
-		ua.sync.unlock(ua.sync.ctx);
+static void syncUnlock(uiAssetsCache_t *c) {
+	if (c->sync.unlock)
+		c->sync.unlock(c->sync.ctx);
 }
 
 /* Init binds one exact critical-section identity for the cache lifetime.
  * Host-only, single-threaded tests may bind the all-zero identity; target
  * builds require a complete callback pair. A half-pair is never valid. */
-static s32 validateSync(const uiAssetsSync_t *sync,
+static s32 validateSync(const uiAssetsCache_t *c, const uiAssetsSync_t *sync,
                         uiAssetsSync_t *requested) {
 	memset(requested, 0, sizeof(*requested));
 	if (sync)
@@ -157,10 +193,10 @@ static s32 validateSync(const uiAssetsSync_t *sync,
 	if (!requested->lock)
 		return UI_ASSETS_ERR_STATE;
 #endif
-	if (ua.syncBound &&
-	    (ua.sync.lock != requested->lock ||
-	     ua.sync.unlock != requested->unlock ||
-	     ua.sync.ctx != requested->ctx))
+	if (c->syncBound &&
+	    (c->sync.lock != requested->lock ||
+	     c->sync.unlock != requested->unlock ||
+	     c->sync.ctx != requested->ctx))
 		return UI_ASSETS_ERR_STATE;
 	return UI_ASSETS_OK;
 }
@@ -194,11 +230,11 @@ static u32 defaultNowMs(void) {
 #endif
 
 /* Binary search for an exact 6-char ID; -1 when absent. */
-static s32 findExact(const char *id) {
-	s32 lo = 0, hi = (s32)ua.recordCount - 1;
+static s32 findExact(const uiAssetsCache_t *c, const char *id) {
+	s32 lo = 0, hi = (s32)c->recordCount - 1;
 	while (lo <= hi) {
 		s32 mid = lo + (hi - lo) / 2;
-		int cmp = memcmp(record(ua.index, mid), id, UI_ASSETS_ID_LEN);
+		int cmp = memcmp(record(c->index, mid), id, UI_ASSETS_ID_LEN);
 		if (cmp == 0)
 			return mid;
 		if (cmp < 0)
@@ -210,11 +246,11 @@ static s32 findExact(const char *id) {
 }
 
 /* First record whose ID is >= the 4-char prefix; recordCount when none. */
-static s32 lowerBound4(const char *id) {
-	s32 lo = 0, hi = (s32)ua.recordCount;
+static s32 lowerBound4(const uiAssetsCache_t *c, const char *id) {
+	s32 lo = 0, hi = (s32)c->recordCount;
 	while (lo < hi) {
 		s32 mid = lo + (hi - lo) / 2;
-		if (memcmp(record(ua.index, mid), id, 4) < 0)
+		if (memcmp(record(c->index, mid), id, 4) < 0)
 			lo = mid + 1;
 		else
 			hi = mid;
@@ -228,15 +264,16 @@ static s32 lowerBound4(const char *id) {
  * *universal reports which path matched. Caller holds the lock (or is the
  * menu thread inside its own locked section).
  */
-static s32 resolveRecord(const char *id, bool *universal) {
-	s32 pos = findExact(id);
+static s32 resolveRecord(const uiAssetsCache_t *c, const char *id,
+                         bool *universal) {
+	s32 pos = findExact(c, id);
 	*universal = false;
 	if (pos >= 0)
 		return pos;
-	for (pos = lowerBound4(id);
-	     pos < (s32)ua.recordCount &&
-	     memcmp(record(ua.index, pos), id, 4) == 0; pos++) {
-		if (record(ua.index, pos)[6] & PAK_FLAG_UNIVERSAL) {
+	for (pos = lowerBound4(c, id);
+	     pos < (s32)c->recordCount &&
+	     memcmp(record(c->index, pos), id, 4) == 0; pos++) {
+		if (record(c->index, pos)[6] & PAK_FLAG_UNIVERSAL) {
 			*universal = true;
 			return pos;
 		}
@@ -244,21 +281,22 @@ static s32 resolveRecord(const char *id, bool *universal) {
 	return -1;
 }
 
-static uiAssetSlot_t *slotForRecord(s32 recordPos) {
+static uiAssetSlot_t *slotForRecord(uiAssetsCache_t *c, s32 recordPos) {
 	int i;
-	for (i = 0; i < UI_ASSETS_SLOTS; i++) {
-		if (ua.slots[i].state != SLOT_EMPTY && ua.slots[i].recordPos == recordPos)
-			return &ua.slots[i];
+	for (i = 0; i < c->shape->slotCount; i++) {
+		if (c->slots[i].state != SLOT_EMPTY && c->slots[i].recordPos == recordPos)
+			return &c->slots[i];
 	}
 	return NULL;
 }
 
 /* Stale handles (evicted, cancelled, shut down) resolve to NULL here. */
-static uiAssetSlot_t *slotFromHandle(uiPosterHandle_t handle) {
+static uiAssetSlot_t *slotFromHandle(uiAssetsCache_t *c,
+                                     uiPosterHandle_t handle) {
 	uiAssetSlot_t *slot;
-	if (handle.slot >= UI_ASSETS_SLOTS)
+	if (handle.slot >= c->shape->slotCount)
 		return NULL;
-	slot = &ua.slots[handle.slot];
+	slot = &c->slots[handle.slot];
 	if (slot->generation != handle.generation)
 		return NULL;
 	return slot;
@@ -267,17 +305,17 @@ static uiAssetSlot_t *slotFromHandle(uiPosterHandle_t handle) {
 /* Inside the critical section. Handles die via the EMPTY state; the
  * generation advances when the slot is next ASSIGNED, keeping exactly one
  * increment per ownership. */
-static void evictSlot(uiAssetSlot_t *slot) {
+static void evictSlot(const uiAssetsCache_t *c, uiAssetSlot_t *slot) {
 	slot->state = SLOT_EMPTY;
 	slot->pinCount = 0;
 	slot->recordPos = -1;
-	slot->quarantineUntil = ua.nowMs ? ua.nowMs() + UI_ASSETS_EVICT_QUARANTINE_MS : 0;
+	slot->quarantineUntil = c->nowMs ? c->nowMs() + UI_ASSETS_EVICT_QUARANTINE_MS : 0;
 }
 
-static void invalidateAll(void) {
+static void invalidateAll(uiAssetsCache_t *c) {
 	int i;
-	for (i = 0; i < UI_ASSETS_SLOTS; i++)
-		evictSlot(&ua.slots[i]);
+	for (i = 0; i < c->shape->slotCount; i++)
+		evictSlot(c, &c->slots[i]);
 }
 
 /*
@@ -285,7 +323,8 @@ static void invalidateAll(void) {
  * Version 1 packs are canonical: the generator emits one exact layout, so
  * validation enforces equality rather than tolerating variants.
  */
-static s32 validateHeaderAndIndex(const u8 *header, const u8 *index,
+static s32 validateHeaderAndIndex(const uiAssetsShape_t *shape,
+                                  const u8 *header, const u8 *index,
                                   u32 srcSize, u32 recordCount,
                                   u32 dataOffset, u32 fileLength) {
 	u32 indexLength = recordCount * PAK_RECORD_SIZE;
@@ -311,9 +350,9 @@ static s32 validateHeaderAndIndex(const u8 *header, const u8 *index,
 			return UI_ASSETS_ERR_FORMAT; /* unsorted or duplicate */
 		if ((rec[6] & ~PAK_FLAGS_KNOWN) != 0 || rec[7] != 0)
 			return UI_ASSETS_ERR_FORMAT;
-		if (be32(rec + 0x08) != dataOffset + i * (u32)UI_ASSETS_POSTER_BYTES)
+		if (be32(rec + 0x08) != dataOffset + i * shape->recordBytes)
 			return UI_ASSETS_ERR_FORMAT; /* overlap/gap/out-of-range */
-		if (be32(rec + 0x0C) != UI_ASSETS_POSTER_BYTES)
+		if (be32(rec + 0x0C) != shape->recordBytes)
 			return UI_ASSETS_ERR_FORMAT;
 		if (be32(rec + 0x1C) != 0)
 			return UI_ASSETS_ERR_FORMAT;
@@ -332,8 +371,9 @@ static s32 validateHeaderAndIndex(const u8 *header, const u8 *index,
 }
 
 /* Header field validation into locals; no global state touched. */
-static s32 validateHeader(const u8 *header, u32 srcSize, u32 *outCount,
-                          u32 *outDataOffset, u32 *outFileLength) {
+static s32 validateHeader(const uiAssetsShape_t *shape, const u8 *header,
+                          u32 srcSize, u32 *outCount, u32 *outDataOffset,
+                          u32 *outFileLength) {
 	u32 recordCount, indexLength, dataOffset, fileLength;
 	u64 expectedLength;
 	u32 i;
@@ -346,18 +386,18 @@ static s32 validateHeader(const u8 *header, u32 srcSize, u32 *outCount,
 	indexLength = recordCount * PAK_RECORD_SIZE;
 	dataOffset = be32(header + 0x18);
 	fileLength = be32(header + 0x1C);
-	expectedLength = (u64)dataOffset + (u64)recordCount * UI_ASSETS_POSTER_BYTES;
+	expectedLength = (u64)dataOffset + (u64)recordCount * shape->recordBytes;
 	if (be32(header + 0x10) != PAK_HEADER_SIZE ||
 	    be32(header + 0x14) != indexLength ||
 	    dataOffset != PAK_HEADER_SIZE + indexLength ||
 	    fileLength != expectedLength ||
 	    fileLength != srcSize ||
-	    be32(header + 0x20) != UI_ASSETS_POSTER_BYTES ||
-	    be16(header + 0x24) != UI_ASSETS_CANVAS_W ||
-	    be16(header + 0x26) != UI_ASSETS_CANVAS_H ||
-	    be16(header + 0x28) != UI_ASSETS_CONTENT_W ||
-	    be16(header + 0x2A) != UI_ASSETS_CONTENT_H ||
-	    header[0x2C] != UI_ASSETS_MIP_LEVELS ||
+	    be32(header + 0x20) != shape->recordBytes ||
+	    be16(header + 0x24) != shape->canvasW ||
+	    be16(header + 0x26) != shape->canvasH ||
+	    be16(header + 0x28) != shape->contentW ||
+	    be16(header + 0x2A) != shape->contentH ||
+	    header[0x2C] != shape->mipLevels ||
 	    header[0x2D] != GX_TF_CMPR ||
 	    be16(header + 0x2E) != 0)
 		return UI_ASSETS_ERR_FORMAT;
@@ -371,7 +411,9 @@ static s32 validateHeader(const u8 *header, u32 srcSize, u32 *outCount,
 	return UI_ASSETS_OK;
 }
 
-s32 UIAssets_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync) {
+static s32 cacheInit(uiAssetsCache_t *c, const uiAssetsSource_t *source,
+                     const uiAssetsSync_t *sync) {
+	const uiAssetsShape_t *shape = c->shape;
 	u8 header[PAK_HEADER_SIZE];
 	u8 *newIndex = NULL;
 	u8 *oldIndex;
@@ -381,12 +423,12 @@ s32 UIAssets_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync) {
 	s32 err;
 	int i;
 
-	err = validateSync(sync, &requestedSync);
+	err = validateSync(c, sync, &requestedSync);
 	if (err != UI_ASSETS_OK)
 		return err;
 	if (!source || !source->read)
 		return UI_ASSETS_ERR_STATE;
-	if (ua.packOpen) /* menu-thread state, menu-thread caller: race-free */
+	if (c->packOpen) /* menu-thread state, menu-thread caller: race-free */
 		return UI_ASSETS_ERR_STATE;
 
 #ifdef UI_ASSETS_HOST_BUILD
@@ -403,8 +445,8 @@ s32 UIAssets_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync) {
 		return UI_ASSETS_ERR_FORMAT;
 	if (source->read(source->ctx, 0, header, PAK_HEADER_SIZE) != PAK_HEADER_SIZE)
 		return UI_ASSETS_ERR_IO;
-	err = validateHeader(header, source->size, &recordCount, &dataOffset,
-	                     &fileLength);
+	err = validateHeader(shape, header, source->size, &recordCount,
+	                     &dataOffset, &fileLength);
 	if (err != UI_ASSETS_OK)
 		return err;
 	indexLength = recordCount * PAK_RECORD_SIZE;
@@ -416,15 +458,15 @@ s32 UIAssets_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync) {
 		err = UI_ASSETS_ERR_IO;
 		goto fail;
 	}
-	err = validateHeaderAndIndex(header, newIndex, source->size, recordCount,
-	                             dataOffset, fileLength);
+	err = validateHeaderAndIndex(shape, header, newIndex, source->size,
+	                             recordCount, dataOffset, fileLength);
 	if (err != UI_ASSETS_OK)
 		goto fail;
 
-	if (!ua.arenaReady) {
-		ua.arena = UIA_ALLOC_ALIGNED32(
-			(u32)UI_ASSETS_SLOTS * UI_ASSETS_POSTER_BYTES);
-		if (!ua.arena) {
+	if (!c->arenaReady) {
+		c->arena = UIA_ALLOC_ALIGNED32(
+			(u32)shape->slotCount * shape->recordBytes);
+		if (!c->arena) {
 			err = UI_ASSETS_ERR_NOMEM;
 			goto fail;
 		}
@@ -433,28 +475,28 @@ s32 UIAssets_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync) {
 	/* Bind once, immediately before the first publication. Cancel keeps the
 	 * binding alive, so every re-Init must present the identical callbacks
 	 * and context. Only DisposeAfterVideoStop clears it. */
-	if (!ua.syncBound) {
-		ua.sync = requestedSync;
-		ua.syncBound = true;
+	if (!c->syncBound) {
+		c->sync = requestedSync;
+		c->syncBound = true;
 	}
 
-	syncLock();
-	ua.src = *source;
-	ua.nowMs = nowMs;
-	if (!ua.arenaReady) {
-		for (i = 0; i < UI_ASSETS_SLOTS; i++)
-			ua.slots[i].data =
-				ua.arena + (size_t)i * UI_ASSETS_POSTER_BYTES;
-		ua.arenaReady = true;
+	syncLock(c);
+	c->src = *source;
+	c->nowMs = nowMs;
+	if (!c->arenaReady) {
+		for (i = 0; i < shape->slotCount; i++)
+			c->slots[i].data =
+				c->arena + (size_t)i * shape->recordBytes;
+		c->arenaReady = true;
 	}
-	oldIndex = ua.index;
-	ua.index = newIndex;
-	ua.recordCount = recordCount;
-	ua.dataOffset = dataOffset;
-	ua.fileLength = fileLength;
-	invalidateAll(); /* new pack: every previous handle goes stale */
-	ua.packOpen = true;
-	syncUnlock();
+	oldIndex = c->index;
+	c->index = newIndex;
+	c->recordCount = recordCount;
+	c->dataOffset = dataOffset;
+	c->fileLength = fileLength;
+	invalidateAll(c); /* new pack: every previous handle goes stale */
+	c->packOpen = true;
+	syncUnlock(c);
 
 	if (oldIndex)
 		UIA_FREE(oldIndex); /* detached above; freed outside the lock */
@@ -465,32 +507,32 @@ fail:
 	return err;
 }
 
-bool UIAssets_Ready(void) {
-	return ua.packOpen;
-}
-
-void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected) {
+static void cacheRequestWindow(uiAssetsCache_t *c, const char (*ids)[8],
+                               int count, int selected) {
 	struct {
 		s32 recordPos;
 		u8 distance;
 	} want[UI_ASSETS_SLOTS];
+	int slotCount = c->shape->slotCount;
 	int wantCount = 0;
 	int i, j;
 
 	if (!ids)
 		return;
+	/* A cache takes at most one window entry per slot: the stills cache's
+	 * caller passes the selected game and its neighbours, nothing more. */
 	if (count < 0)
 		count = 0;
-	if (count > UI_ASSETS_SLOTS)
-		count = UI_ASSETS_SLOTS;
+	if (count > slotCount)
+		count = slotCount;
 	if (selected < 0)
 		selected = 0;
 	if (selected >= count && count > 0)
 		selected = count - 1;
 
-	syncLock();
-	if (!ua.packOpen) {
-		syncUnlock();
+	syncLock(c);
+	if (!c->packOpen) {
+		syncUnlock(c);
 		return;
 	}
 
@@ -502,7 +544,7 @@ void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected) {
 		u8 distance = (u8)(i >= selected ? i - selected : selected - i);
 		if (!idCharsValid(ids[i]))
 			continue;
-		pos = resolveRecord(ids[i], &universal);
+		pos = resolveRecord(c, ids[i], &universal);
 		if (pos < 0)
 			continue;
 		for (j = 0; j < wantCount; j++) {
@@ -522,8 +564,8 @@ void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected) {
 	/* Keep slots already holding wanted records (including FAILED ones:
 	 * a corrupt poster stays corrupt until the pack changes, so don't
 	 * retry-loop); evict unpinned slots that fell out of the window. */
-	for (i = 0; i < UI_ASSETS_SLOTS; i++) {
-		uiAssetSlot_t *slot = &ua.slots[i];
+	for (i = 0; i < slotCount; i++) {
+		uiAssetSlot_t *slot = &c->slots[i];
 		bool wanted = false;
 		if (slot->state == SLOT_EMPTY)
 			continue;
@@ -536,7 +578,7 @@ void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected) {
 			}
 		}
 		if (!wanted && slot->pinCount == 0)
-			evictSlot(slot);
+			evictSlot(c, slot);
 	}
 
 	/* Assign the remaining wanted records to free slots, nearest first.
@@ -553,9 +595,9 @@ void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected) {
 		}
 		if (best < 0)
 			break;
-		for (i = 0; i < UI_ASSETS_SLOTS; i++) {
-			if (ua.slots[i].state == SLOT_EMPTY) {
-				freeSlot = &ua.slots[i];
+		for (i = 0; i < slotCount; i++) {
+			if (c->slots[i].state == SLOT_EMPTY) {
+				freeSlot = &c->slots[i];
 				break;
 			}
 		}
@@ -568,10 +610,11 @@ void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected) {
 		freeSlot->state = SLOT_PENDING;
 		want[best].recordPos = -1;
 	}
-	syncUnlock();
+	syncUnlock(c);
 }
 
-bool UIAssets_Poll(void) {
+static bool cachePoll(uiAssetsCache_t *c) {
+	const uiAssetsShape_t *shape = c->shape;
 	struct {
 		int slotIdx;
 		u32 generation;
@@ -590,14 +633,14 @@ bool UIAssets_Poll(void) {
 	int i;
 
 	/* Phase 1 (locked): pick and capture the nearest pending job. */
-	syncLock();
-	if (!ua.packOpen || !ua.arenaReady) {
-		syncUnlock();
+	syncLock(c);
+	if (!c->packOpen || !c->arenaReady) {
+		syncUnlock(c);
 		return false;
 	}
-	now = ua.nowMs();
-	for (i = 0; i < UI_ASSETS_SLOTS; i++) {
-		uiAssetSlot_t *candidate = &ua.slots[i];
+	now = c->nowMs();
+	for (i = 0; i < shape->slotCount; i++) {
+		uiAssetSlot_t *candidate = &c->slots[i];
 		if (candidate->state != SLOT_PENDING)
 			continue;
 		pending = true;
@@ -607,69 +650,72 @@ bool UIAssets_Poll(void) {
 			slot = candidate;
 	}
 	if (!slot) {
-		syncUnlock();
+		syncUnlock(c);
 		return pending;
 	}
 	{
-		const u8 *rec = record(ua.index, (u32)slot->recordPos);
+		const u8 *rec = record(c->index, (u32)slot->recordPos);
 		slot->state = SLOT_LOADING;
-		job.slotIdx = (int)(slot - ua.slots);
+		job.slotIdx = (int)(slot - c->slots);
 		job.generation = slot->generation;
 		job.recordPos = slot->recordPos;
 		job.dataOffset = be32(rec + 0x08);
 		job.expectedCrc = be32(rec + 0x10);
 		job.data = slot->data;
-		job.read = ua.src.read;
-		job.readCtx = ua.src.ctx;
-		job.fileLength = ua.fileLength;
+		job.read = c->src.read;
+		job.readCtx = c->src.ctx;
+		job.fileLength = c->fileLength;
 	}
-	syncUnlock();
+	syncUnlock(c);
 
 	/* Phase 2 (UNLOCKED): the bounded device read, CRC, and cache flush.
 	 * Writing into the captured arena region is single-writer: Poll runs
 	 * on the menu thread only, and the GPU is fenced by the quarantine. */
 	loadOk = job.read != NULL &&
-	         (u64)job.dataOffset + UI_ASSETS_POSTER_BYTES <= job.fileLength &&
+	         (u64)job.dataOffset + shape->recordBytes <= job.fileLength &&
 	         job.read(job.readCtx, job.dataOffset, job.data,
-	                  UI_ASSETS_POSTER_BYTES) == UI_ASSETS_POSTER_BYTES &&
-	         crc32(0, job.data, UI_ASSETS_POSTER_BYTES) == job.expectedCrc;
+	                  shape->recordBytes) == (s32)shape->recordBytes &&
+	         crc32(0, job.data, shape->recordBytes) == job.expectedCrc;
 	if (loadOk)
-		DCFlushRange(job.data, UI_ASSETS_POSTER_BYTES);
+		DCFlushRange(job.data, shape->recordBytes);
 
 	/* Phase 3 (locked): revalidate ownership, then publish. A slot that
 	 * was cancelled, re-inited, evicted, or reassigned while we were
 	 * reading has a different generation/state and the stale job is
 	 * dropped without publishing anything. */
-	syncLock();
-	slot = &ua.slots[job.slotIdx];
-	if (ua.packOpen && slot->state == SLOT_LOADING &&
+	syncLock(c);
+	slot = &c->slots[job.slotIdx];
+	if (c->packOpen && slot->state == SLOT_LOADING &&
 	    slot->generation == job.generation &&
 	    slot->recordPos == job.recordPos) {
 		if (loadOk) {
-			GX_InitTexObj(&slot->tex, slot->data, UI_ASSETS_CANVAS_W,
-			              UI_ASSETS_CANVAS_H, GX_TF_CMPR, GX_CLAMP,
-			              GX_CLAMP, GX_TRUE);
-			GX_InitTexObjLOD(&slot->tex, GX_LIN_MIP_LIN, GX_LINEAR, 0.0f,
-			                 (float)(UI_ASSETS_MIP_LEVELS - 1), 0.0f,
-			                 GX_FALSE, GX_TRUE, GX_ANISO_1);
+			bool mipmapped = shape->mipLevels > 1;
+			GX_InitTexObj(&slot->tex, slot->data, shape->canvasW,
+			              shape->canvasH, GX_TF_CMPR, GX_CLAMP,
+			              GX_CLAMP, mipmapped ? GX_TRUE : GX_FALSE);
+			if (mipmapped)
+				GX_InitTexObjLOD(&slot->tex, GX_LIN_MIP_LIN, GX_LINEAR,
+				                 0.0f, (float)(shape->mipLevels - 1),
+				                 0.0f, GX_FALSE, GX_TRUE, GX_ANISO_1);
 			slot->state = SLOT_READY;
 		} else {
 			slot->state = SLOT_FAILED;
 		}
 	}
 	pending = false;
-	for (i = 0; i < UI_ASSETS_SLOTS; i++) {
-		if (ua.slots[i].state == SLOT_PENDING) {
+	for (i = 0; i < shape->slotCount; i++) {
+		if (c->slots[i].state == SLOT_PENDING) {
 			pending = true;
 			break;
 		}
 	}
-	syncUnlock();
+	syncUnlock(c);
 	return pending;
 }
 
-uiPosterResult_t UIAssets_Query(const char *gameId, size_t gameIdLen,
-                                bool bnrAvailable, uiPosterHandle_t *out) {
+static uiPosterResult_t cacheQuery(uiAssetsCache_t *c, const char *gameId,
+                                   size_t gameIdLen, bool bnrAvailable,
+                                   uiPosterHandle_t *out) {
 	uiPosterResult_t base;
 	uiAssetSlot_t *slot;
 	bool universal;
@@ -681,20 +727,20 @@ uiPosterResult_t UIAssets_Query(const char *gameId, size_t gameIdLen,
 		out->reserved = 0;
 	}
 	if (!gameId || gameIdLen < UI_ASSETS_ID_LEN || !idCharsValid(gameId) ||
-	    !ua.packOpen)
+	    !c->packOpen)
 		return bnrAvailable ? UI_POSTER_USE_BNR : UI_POSTER_PROCEDURAL_CARD;
 
-	pos = resolveRecord(gameId, &universal);
+	pos = resolveRecord(c, gameId, &universal);
 	if (pos < 0)
 		return bnrAvailable ? UI_POSTER_USE_BNR : UI_POSTER_PROCEDURAL_CARD;
 	base = universal ? UI_POSTER_UNIVERSAL : UI_POSTER_EXACT;
 
-	slot = slotForRecord(pos);
+	slot = slotForRecord(c, pos);
 	if (slot) {
 		if (slot->state == SLOT_FAILED)
 			return UI_POSTER_CORRUPT_OR_UNAVAILABLE;
 		if (out) {
-			out->slot = (u16)(slot - ua.slots);
+			out->slot = (u16)(slot - c->slots);
 			out->generation = slot->generation;
 		}
 	}
@@ -703,51 +749,26 @@ uiPosterResult_t UIAssets_Query(const char *gameId, size_t gameIdLen,
 	return base;
 }
 
-GXTexObj *UIAssets_Peek(uiPosterHandle_t handle) {
-	uiAssetSlot_t *slot = slotFromHandle(handle);
+static GXTexObj *cachePeek(uiAssetsCache_t *c, uiPosterHandle_t handle) {
+	uiAssetSlot_t *slot = slotFromHandle(c, handle);
 	if (!slot || slot->state != SLOT_READY)
 		return NULL;
 	return &slot->tex;
 }
 
-GXTexObj *UIAssets_Acquire(uiPosterHandle_t handle) {
-	uiAssetSlot_t *slot;
-	GXTexObj *tex = NULL;
-	syncLock();
-	slot = slotFromHandle(handle);
-	if (slot && slot->state == SLOT_READY && slot->pinCount < 0xFF) {
-		/* Refuse rather than saturate: an Acquire that returned a texture
-		 * without recording its pin would let paired Releases drive the
-		 * count to zero while a holder still retains the pointer. */
-		slot->pinCount++;
-		tex = &slot->tex;
-	}
-	syncUnlock();
-	return tex;
-}
-
-void UIAssets_Release(uiPosterHandle_t handle) {
-	uiAssetSlot_t *slot;
-	syncLock();
-	slot = slotFromHandle(handle);
-	if (slot && slot->pinCount > 0)
-		slot->pinCount--;
-	syncUnlock();
-}
-
-bool UIAssets_DominantColor(const char *gameId, size_t gameIdLen,
-                            u8 *r, u8 *g, u8 *b) {
+static bool cacheDominantColor(const uiAssetsCache_t *c, const char *gameId,
+                               size_t gameIdLen, u8 *r, u8 *g, u8 *b) {
 	const u8 *rec;
 	bool universal;
 	s32 pos;
 
 	if (!gameId || gameIdLen < UI_ASSETS_ID_LEN || !idCharsValid(gameId) ||
-	    !ua.packOpen)
+	    !c->packOpen)
 		return false;
-	pos = resolveRecord(gameId, &universal);
+	pos = resolveRecord(c, gameId, &universal);
 	if (pos < 0)
 		return false;
-	rec = record(ua.index, (u32)pos);
+	rec = record(c->index, (u32)pos);
 	if (r)
 		*r = rec[0x14];
 	if (g)
@@ -757,18 +778,18 @@ bool UIAssets_DominantColor(const char *gameId, size_t gameIdLen,
 	return true;
 }
 
-void UIAssets_CancelForDeviceChange(void) {
+static void cacheCancel(uiAssetsCache_t *c) {
 	u8 *oldIndex;
-	if (!ua.arenaReady && !ua.packOpen)
+	if (!c->arenaReady && !c->packOpen)
 		return;
-	syncLock();
-	invalidateAll();
-	ua.packOpen = false;
-	ua.recordCount = 0;
-	oldIndex = ua.index;
-	ua.index = NULL;
-	memset(&ua.src, 0, sizeof(ua.src));
-	syncUnlock();
+	syncLock(c);
+	invalidateAll(c);
+	c->packOpen = false;
+	c->recordCount = 0;
+	oldIndex = c->index;
+	c->index = NULL;
+	memset(&c->src, 0, sizeof(c->src));
+	syncUnlock(c);
 	/* Unpublished inside the critical section above: no locked reader can
 	 * still see it. Freed outside so the lock never covers free(). */
 	if (oldIndex)
@@ -777,53 +798,166 @@ void UIAssets_CancelForDeviceChange(void) {
 	 * (stale but intact) texels, and re-Init reuses the allocation. */
 }
 
-s32 UIAssets_DisposeAfterVideoStop(void) {
+static s32 cacheDispose(uiAssetsCache_t *c) {
 	u8 *oldArena;
 	int i;
 
 	/* Disposal is deliberately lock-free: its caller has already stopped
 	 * the video thread and may already have destroyed the video mutex. The
 	 * live-mutex Cancel step must have unpublished and freed the index. */
-	if (ua.packOpen || ua.index != NULL)
+	if (c->packOpen || c->index != NULL)
 		return UI_ASSETS_ERR_STATE;
-	oldArena = ua.arena;
-	ua.arena = NULL;
-	ua.arenaReady = false;
-	for (i = 0; i < UI_ASSETS_SLOTS; i++) {
-		ua.slots[i].state = SLOT_EMPTY;
-		ua.slots[i].pinCount = 0;
-		ua.slots[i].distance = 0;
-		ua.slots[i].recordPos = -1;
-		ua.slots[i].quarantineUntil = 0;
-		ua.slots[i].data = NULL;
-		memset(&ua.slots[i].tex, 0, sizeof(ua.slots[i].tex));
+	oldArena = c->arena;
+	c->arena = NULL;
+	c->arenaReady = false;
+	for (i = 0; i < c->shape->slotCount; i++) {
+		c->slots[i].state = SLOT_EMPTY;
+		c->slots[i].pinCount = 0;
+		c->slots[i].distance = 0;
+		c->slots[i].recordPos = -1;
+		c->slots[i].quarantineUntil = 0;
+		c->slots[i].data = NULL;
+		memset(&c->slots[i].tex, 0, sizeof(c->slots[i].tex));
 	}
-	memset(&ua.src, 0, sizeof(ua.src));
-	ua.recordCount = 0;
-	ua.dataOffset = 0;
-	ua.fileLength = 0;
-	ua.nowMs = NULL;
-	memset(&ua.sync, 0, sizeof(ua.sync));
-	ua.syncBound = false;
+	memset(&c->src, 0, sizeof(c->src));
+	c->recordCount = 0;
+	c->dataOffset = 0;
+	c->fileLength = 0;
+	c->nowMs = NULL;
+	memset(&c->sync, 0, sizeof(c->sync));
+	c->syncBound = false;
 	if (oldArena)
 		UIA_FREE(oldArena);
 	return UI_ASSETS_OK;
 }
 
-u32 UIAssets_MemoryFootprint(void) {
+static u32 cacheFootprint(const uiAssetsCache_t *c) {
 	u32 total = 0;
-	if (ua.arenaReady)
-		total += (u32)UI_ASSETS_SLOTS * UI_ASSETS_POSTER_BYTES;
-	if (ua.index)
-		total += ua.recordCount * PAK_RECORD_SIZE;
+	if (c->arenaReady)
+		total += (u32)c->shape->slotCount * c->shape->recordBytes;
+	if (c->index)
+		total += c->recordCount * PAK_RECORD_SIZE;
 	return total;
+}
+
+/* ---- posters ---- */
+
+s32 UIAssets_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync) {
+	return cacheInit(&posters, source, sync);
+}
+
+bool UIAssets_Ready(void) {
+	return posters.packOpen;
+}
+
+void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected) {
+	cacheRequestWindow(&posters, ids, count, selected);
+}
+
+bool UIAssets_Poll(void) {
+	return cachePoll(&posters);
+}
+
+uiPosterResult_t UIAssets_Query(const char *gameId, size_t gameIdLen,
+                                bool bnrAvailable, uiPosterHandle_t *out) {
+	return cacheQuery(&posters, gameId, gameIdLen, bnrAvailable, out);
+}
+
+GXTexObj *UIAssets_Peek(uiPosterHandle_t handle) {
+	return cachePeek(&posters, handle);
+}
+
+GXTexObj *UIAssets_Acquire(uiPosterHandle_t handle) {
+	uiAssetSlot_t *slot;
+	GXTexObj *tex = NULL;
+	syncLock(&posters);
+	slot = slotFromHandle(&posters, handle);
+	if (slot && slot->state == SLOT_READY && slot->pinCount < 0xFF) {
+		/* Refuse rather than saturate: an Acquire that returned a texture
+		 * without recording its pin would let paired Releases drive the
+		 * count to zero while a holder still retains the pointer. */
+		slot->pinCount++;
+		tex = &slot->tex;
+	}
+	syncUnlock(&posters);
+	return tex;
+}
+
+void UIAssets_Release(uiPosterHandle_t handle) {
+	uiAssetSlot_t *slot;
+	syncLock(&posters);
+	slot = slotFromHandle(&posters, handle);
+	if (slot && slot->pinCount > 0)
+		slot->pinCount--;
+	syncUnlock(&posters);
+}
+
+bool UIAssets_DominantColor(const char *gameId, size_t gameIdLen,
+                            u8 *r, u8 *g, u8 *b) {
+	return cacheDominantColor(&posters, gameId, gameIdLen, r, g, b);
+}
+
+void UIAssets_CancelForDeviceChange(void) {
+	cacheCancel(&posters);
+}
+
+s32 UIAssets_DisposeAfterVideoStop(void) {
+	return cacheDispose(&posters);
+}
+
+u32 UIAssets_MemoryFootprint(void) {
+	return cacheFootprint(&posters);
+}
+
+/* ---- stills ---- */
+
+s32 UIStills_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync) {
+	return cacheInit(&stills, source, sync);
+}
+
+bool UIStills_Ready(void) {
+	return stills.packOpen;
+}
+
+void UIStills_RequestWindow(const char (*ids)[8], int count, int selected) {
+	cacheRequestWindow(&stills, ids, count, selected);
+}
+
+bool UIStills_Poll(void) {
+	return cachePoll(&stills);
+}
+
+uiPosterResult_t UIStills_Query(const char *gameId, size_t gameIdLen,
+                                bool bnrAvailable, uiPosterHandle_t *out) {
+	return cacheQuery(&stills, gameId, gameIdLen, bnrAvailable, out);
+}
+
+GXTexObj *UIStills_Peek(uiPosterHandle_t handle) {
+	return cachePeek(&stills, handle);
+}
+
+bool UIStills_DominantColor(const char *gameId, size_t gameIdLen,
+                            u8 *r, u8 *g, u8 *b) {
+	return cacheDominantColor(&stills, gameId, gameIdLen, r, g, b);
+}
+
+void UIStills_CancelForDeviceChange(void) {
+	cacheCancel(&stills);
+}
+
+s32 UIStills_DisposeAfterVideoStop(void) {
+	return cacheDispose(&stills);
+}
+
+u32 UIStills_MemoryFootprint(void) {
+	return cacheFootprint(&stills);
 }
 
 #ifdef UI_ASSETS_HOST_BUILD
 
 void UIAssetsTest_ForceGeneration(u16 slot, u32 generation) {
 	if (slot < UI_ASSETS_SLOTS)
-		ua.slots[slot].generation = generation;
+		posters.slots[slot].generation = generation;
 }
 
 #else

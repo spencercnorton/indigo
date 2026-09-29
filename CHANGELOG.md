@@ -58,6 +58,12 @@ r2073 and r2092, and has everything upstream changed since:
 - The size tripwires are 6 MiB for the DOL (`verify_dol.py`) and 7 MiB for
   the zip (`check_package.py`), up from 5 and 6: the DOL is about 5.2 MiB
   and the zip about 6.1 MiB with the text-encoding libraries r2119 links.
+- The pack builder makes gameplay stills as well as posters:
+  `poster_pack.py --stills <folder>` writes `stills.pak`, one 320×240
+  screenshot per game in the poster pack's format. The Library's art cache
+  loads a stills pack next to the poster pack, in three slots of its own;
+  nothing shows the stills yet. [docs/PACKS.md](docs/PACKS.md) describes
+  the format, which the source cited but the repository never had.
 
 ## v2.0.1 — The download keeps your games folder
 

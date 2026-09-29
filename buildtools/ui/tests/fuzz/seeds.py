@@ -46,15 +46,17 @@ def saves(out: Path) -> None:
 
 
 def posters(out: Path) -> None:
-    # A real pack from the generator the host tests use; it needs gxtexconv.
-    result = subprocess.run([sys.executable, str(HERE.parent / "fixture_pack.py"), str(out / "fixture.pak")],
+    # Real packs from the generator the host tests use, a poster pack and a
+    # stills pack; it needs gxtexconv.
+    result = subprocess.run([sys.executable, str(HERE.parent / "fixture_pack.py"), str(out / "fixture.pak"),
+                             str(out / "fixture-stills.pak")],
                             capture_output=True, text=True)
     if result.returncode not in (0, 3):
         raise SystemExit(result.stderr)
     for sidecar in out.glob("*.json"):  # the generator's provenance note, not a pack
         sidecar.unlink()
     if result.returncode == 3:
-        print("seeds: no gxtexconv, so no real poster pack seed", file=sys.stderr)
+        print("seeds: no gxtexconv, so no real pack seeds", file=sys.stderr)
         (out / "header-only").write_bytes(b"SWPK" + bytes(60))
 
 

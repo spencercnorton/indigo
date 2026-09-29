@@ -2,11 +2,11 @@
 #define UI_ASSETS_H
 
 /*
- * ui_assets -- bounded poster cache for the future persistent game-flow
- * renderer (Phase 4A: service + tests only, nothing draws yet).
+ * ui_assets -- bounded caches for the Library's pack art: posters, and
+ * gameplay stills (the UIStills_ functions at the end, same contract).
  *
  * Serves 192x256 poster content from an offline-generated
- * /swiss/ui/posters.pak (format: docs/ui-redesign/POSTER_PACK_FORMAT.md).
+ * /swiss/ui/posters.pak (format: docs/PACKS.md).
  * Posters are stored on a 256x256 GX_TF_CMPR canvas with a 5-level mip
  * chain because GX requires power-of-two dimensions for mipmapping; the
  * renderer samples s in [0, UI_ASSETS_CONTENT_W / UI_ASSETS_CANVAS_W].
@@ -263,6 +263,32 @@ s32 UIAssets_DisposeAfterVideoStop(void);
 /* Menu thread only, lock NOT held; do not call concurrently with mutation.
  * Total bytes held (arena + index copy); 0 before Init/after disposal. */
 u32 UIAssets_MemoryFootprint(void);
+
+/*
+ * Gameplay stills: a second cache with the same contract, threads and
+ * lifetime rules as the poster cache above, fed by /swiss/ui/stills.pak.
+ * The pack format is the same; its header declares a still's shape: one
+ * 320x240 GX_TF_CMPR texture per game, no mip chain (it is never drawn
+ * smaller than it is). Three slots, for the selected game and the one
+ * either side of it. Each cache refuses the other's pack.
+ */
+#define UI_STILLS_SLOTS 3
+#define UI_STILLS_W 320
+#define UI_STILLS_H 240
+#define UI_STILLS_BYTES 38400 /* 320 * 240 / 2 */
+
+s32 UIStills_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync);
+bool UIStills_Ready(void);
+void UIStills_RequestWindow(const char (*ids)[8], int count, int selected);
+bool UIStills_Poll(void);
+uiPosterResult_t UIStills_Query(const char *gameId, size_t gameIdLen,
+                                bool bnrAvailable, uiPosterHandle_t *out);
+GXTexObj *UIStills_Peek(uiPosterHandle_t handle);
+bool UIStills_DominantColor(const char *gameId, size_t gameIdLen,
+                            u8 *r, u8 *g, u8 *b);
+void UIStills_CancelForDeviceChange(void);
+s32 UIStills_DisposeAfterVideoStop(void);
+u32 UIStills_MemoryFootprint(void);
 
 #ifdef UI_ASSETS_HOST_BUILD
 /* Host-test seam: force a slot's generation counter (e.g. to the wrap
