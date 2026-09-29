@@ -257,7 +257,7 @@ Passwords are saved as plain text in `global.ini`.
 | Recent List | START shows recently played games. **Lazy** updates it only for new games; **Off** saves SD card writes. |
 | Flatten directory | A folder pattern whose game folders are listed as if their disc images sat directly in it. The default is `*/games`. |
 | Show hidden files | Lists hidden files and folders, such as `/swiss`. |
-| Hide unknown file types | Hides files that aren't games, programs, music or memory card saves. It also stops a stray file hiding the Library. |
+| Hide unknown file types | Hides files that aren't games, programs, music or memory card saves. It also stops a stray text file or picture hiding the Library; folders and programs still do. |
 | File Management | Z in a file list opens actions to copy, move, rename or delete. |
 | Panel Transparency | Translucent panels, like the GameCube menu, or solid ones. |
 | Animated Backdrop | Whether the backdrop behind the cube drifts. |

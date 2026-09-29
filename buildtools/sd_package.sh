@@ -34,8 +34,8 @@ Source: https://github.com/spencercnorton/indigo/tree/$version
 
 INSTALL: DRAG AND DROP
 1. If your SD card already has an ipl.dol in its root, that is your current
-   Swiss. Rename it to z.dol first if you want to keep it; holding Z while
-   you power on starts it.
+   Swiss. Rename it to z.dol first if you want to keep it; with PicoBoot or
+   PicoLoader, holding Z while you power on starts it.
 2. Select everything in this folder and drag it onto the root of your SD
    card. Let it replace files of the same name.
 3. Put the card back and power on. PicoBoot and other modchips boot ipl.dol
@@ -52,13 +52,14 @@ WHAT EACH FILE IS FOR
 
 GAMES
 Put your games in /games, either one folder per game or the disc images
-directly, and keep nothing else in that folder:
+directly, and keep nothing else in /games or in the game folders:
     /games/Super Mario Sunshine [GMSE01]/game.iso
     /games/Super Mario Sunshine.iso
-Disc images end in .iso, .gcm, .tgc or .fdi. Any other file in /games (a
-text file, a cover image, an empty folder) turns the Library back into
-Swiss's plain file list; "Hide unknown file types" in Settings > Setup >
-Library hides stray files. On Home, turn the cube to Library and press A.
+Disc images end in .iso, .gcm, .tgc or .fdi. Anything else there (a text
+file, a cover image, an empty folder) turns the Library back into Swiss's
+plain file list. "Hide unknown file types" in Settings > Setup > Library
+hides stray text files and pictures, but not folders, programs or music.
+On Home, turn the cube to Library and press A.
 
 POSTERS AND CHEATS (optional, also drag and drop)
 Without posters, each game shows its disc banner and its six-character game

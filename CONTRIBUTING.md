@@ -42,7 +42,7 @@ in [docs/RELEASING.md](docs/RELEASING.md).
 ```bash
 # Build the DOL in the image CI uses; writes cube/swiss/swiss.dol
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2 make dev
+  ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575 make dev
 buildtools/sd_package.sh dev cube/swiss/swiss.dol .   # the SD card zip
 buildtools/ui/tests/run_tests.sh all                  # host tests
 buildtools/check_whitespace.sh origin/beta            # lint; CI enforces it

@@ -10,6 +10,7 @@
 - [A game's picture is stretched, shifted or wrong](#a-games-picture-is-stretched-shifted-or-wrong)
 - [My settings don't stick](#my-settings-dont-stick)
 - [My cheats don't show up, or don't work](#my-cheats-dont-show-up-or-dont-work)
+- [Indigo starts, then stock Swiss appears](#indigo-starts-then-stock-swiss-appears)
 - [In-Game Reset takes me to stock Swiss](#in-game-reset-takes-me-to-stock-swiss)
 - [The same game opens every time Indigo starts](#the-same-game-opens-every-time-indigo-starts)
 - [Still stuck](#still-stuck)
@@ -21,10 +22,12 @@
 </p>
 
 The Library appears only when `/games` holds nothing but games: disc images
-(`.iso`, `.gcm`, `.tgc`, `.fdi`) or folders with one in each. A single other
-file, such as a text file or cover image, or an empty folder, brings back the
-file list. Remove it, or turn on **Hide unknown file types** in Settings ›
-Setup › Library. See [Set up the games folder](library.md#set-up-the-games-folder).
+(`.iso`, `.gcm`, `.tgc`, `.fdi`) or folders with one in each and nothing else.
+A single other file, such as a text file or cover image, or an empty folder,
+brings back the file list, whether it is in `/games` or in a game's folder.
+Remove it. **Hide unknown file types** in Settings › Setup › Library hides
+text files and pictures, but not folders, programs or music. See
+[Set up the games folder](library.md#set-up-the-games-folder).
 
 ## Home starts on Source, or Library says Select Source
 
@@ -100,6 +103,14 @@ Leaving with **Discard & Exit** throws away the changes you made.
   have filled the space for cheats. Switch some off; Z in the browser shows
   how much is used.
 
+## Indigo starts, then stock Swiss appears
+
+Indigo 1.25.0 and earlier start a stock Swiss they find in the root of the
+card as `z.dol`, `a.dol`, `b.dol`, `x.dol`, `y.dol`, `start.dol`, `boot.dol`
+or `swiss_r….dol`, in place of themselves, and In-Game Reset lands there too.
+Update Indigo: later releases don't look for them, so stock Swiss can stay on
+the card as `z.dol`.
+
 ## In-Game Reset takes me to stock Swiss
 
 In-Game Reset set to **Apploader** returns to whatever is in
@@ -118,8 +129,8 @@ again and press **Z**: the shortcut changes from "Autoload On" back to
 
 - Questions: [Discussions](https://github.com/spencercnorton/indigo/discussions).
 - Bugs: [open an issue](https://github.com/spencercnorton/indigo/issues/new/choose),
-  with your Indigo version (System › System Information › About Indigo),
-  your loader and what you pressed.
+  with the version you downloaded, or the commit System › System
+  Information › About Indigo shows, your loader and what you pressed.
 - Report problems with Indigo here, not to the Swiss project: Indigo is an
   unofficial fork.
 
