@@ -8,6 +8,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Games start with Swiss's current video timings, as in Swiss r2092 and later
+  (upstream's "Revert certain video timing tweaks"): the timing tables Swiss
+  gives every game, and a +0 vertical offset by default. Indigo was built on
+  the Swiss before that change, so under GCVideo or GCDigital compatibility,
+  the default, every game started at -3 (#42).
 - The download no longer carries an empty `games` folder. On a Mac,
   choosing Replace when dropping it on the card swapped the card's own
   `games` folder, and every game in it, for the empty one. Make `/games` on

@@ -109,7 +109,7 @@ most use the same key there.
 | `Force NTSC Video Mode` | `Auto`, `480i`, `480sf`, `240p`, `960i`, `480p`, `1080i60`, `540p60`. For games that aren't PAL; 50 Hz modes are ignored here. | `Auto` | Force NTSC Video Mode |
 | `Force PAL Video Mode` | `Auto`, `480i`, `480sf`, `240p`, `960i`, `480p`, `1080i60`, `540p60`, `576i`, `576sf`, `288p`, `1152i`, `576p`, `1080i50`, `540p50`. For PAL games. | `Auto` | Force PAL Video Mode |
 | `Force Horizontal Scale` | `Auto`, `1:1`, `11:10`, `9:8`, `640px`, `656px`, `672px`, `704px`, `720px` | `Auto` | Force Horizontal Scale |
-| `Force Vertical Offset` | A signed number. **This one doesn't reach games:** a game starts at `-3` with GCVideo or GCDigital and `+0` otherwise. Set it per game instead. | `+0` | Not shown, since it does nothing |
+| `Force Vertical Offset` | A signed number. Every game starts at this value unless its own settings change it. | `+0` | Not shown; a game's own settings have it |
 | `Force Vertical Filter` | `Auto`, `0`, `1`, `2` | `Auto` | Force Vertical Filter |
 | `Force Field Rendering` | `Auto`, `On`, `Off`, `TAA` | `Auto` | Force Field Rendering |
 | `Fix Pixel Center` | `No`, `1/24`, `1/12` | `No` | Fix Pixel Center |
@@ -250,7 +250,7 @@ way in a game's file.
 | `Game Language` | `English`, `German`, `French`, `Spanish`, `Italian`, `Dutch`, `Japanese`, `English (US)`, `Default`. `Default` uses the System Language. | `Default` |
 | `Force Video Mode` | `Auto`, `480i`, `480sf`, `240p`, `960i`, `480p`, `1080i60`, `540p60`, `576i`, `576sf`, `288p`, `1152i`, `576p`, `1080i50`, `540p50` | `Force NTSC Video Mode` or `Force PAL Video Mode`, by the game's region |
 | `Force Horizontal Scale` | `Auto`, `1:1`, `11:10`, `9:8`, `640px`, `656px`, `672px`, `704px`, `720px` | from global.ini |
-| `Force Vertical Offset` | A signed number, such as `-3` or `+2`. | `-3` with GCVideo or GCDigital, otherwise `+0` |
+| `Force Vertical Offset` | A signed number, such as `-3` or `+2`. | from global.ini |
 | `Force Vertical Filter` | `Auto`, `0`, `1`, `2` | from global.ini |
 | `Force Field Rendering` | `Auto`, `On`, `Off`, `TAA` | from global.ini |
 | `Fix Pixel Center` | `No`, `1/24`, `1/12` | from global.ini |

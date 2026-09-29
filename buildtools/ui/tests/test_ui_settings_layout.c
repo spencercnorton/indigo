@@ -878,8 +878,8 @@ static void test_help_summary_reads_the_current_value(void) {
 	static const char sound[] = "System Sound:\n\nSets the default audio "
 		"output type used by most games";
 	static const char offset[] = "Force Vertical Offset:\n\n+0 - Standard "
-		"value\n-2 - GCVideo-DVI compatible (480i)\n-3 - GCVideo-DVI "
-		"compatible (default)";
+		"value (default)\n-2 - GCVideo-DVI compatible (480i)\n-3 - GCVideo-DVI "
+		"compatible";
 	static const char rt4k[] = "RetroTINK-4K HDMI Input:\n\nFor GCDigital "
 		"compatibility mode:\n Requires FX-Framework firmware version "
 		"3.9.46.178 or later.";
@@ -901,7 +901,8 @@ static void test_help_summary_reads_the_current_value(void) {
 		"entries.");
 	expectSummary(scale, "9:8", "Fixed ratios");
 	expectSummary(scale, "Auto", "Keep the game's own scaling (default)");
-	expectSummary(offset, "-3", "GCVideo-DVI compatible (default)");
+	expectSummary(offset, "-3", "GCVideo-DVI compatible");
+	expectSummary(offset, "+0", "Standard value (default)");
 	/* An unlisted value: the lead sentence, or nothing. */
 	expectSummary(scale, "704px", "How the video output scales the picture "
 		"across.");
