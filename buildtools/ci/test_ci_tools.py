@@ -92,7 +92,8 @@ class Package(unittest.TestCase):
     def test_extra_missing_and_foreign_files_fail(self):
         with tempfile.TemporaryDirectory() as directory:
             here = Path(directory)
-            for case in ({"extra": ".DS_Store"}, {"extra": "games/demo.iso"}, {"drop": "swiss/ui/"},
+            # An empty games/ is refused too: a Mac's Replace would swap the card's games folder for it.
+            for case in ({"extra": ".DS_Store"}, {"extra": "games/"}, {"extra": "games/demo.iso"}, {"drop": "swiss/ui/"},
                          {"drop": "swiss/patches/apploader.img"}, {"ipl": dol(revisions=2)}):
                 self.assertNotEqual(check_package.problems(self.build(here, **case), dol(), "v9.9.9"),
                                     [], case)

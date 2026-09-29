@@ -6,6 +6,13 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ## Unreleased
 
+### Fixes
+
+- The download no longer carries an empty `games` folder. On a Mac,
+  choosing Replace when dropping it on the card swapped the card's own
+  `games` folder, and every game in it, for the empty one. Make `/games` on
+  the card if it has none; the install steps say so.
+
 ### For developers
 
 - A CI machine names its runners "indigo" unless `INDIGO_CI_NAME` says
