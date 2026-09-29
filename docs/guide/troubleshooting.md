@@ -13,6 +13,7 @@
 - [Indigo starts, then stock Swiss appears](#indigo-starts-then-stock-swiss-appears)
 - [In-Game Reset takes me to stock Swiss](#in-game-reset-takes-me-to-stock-swiss)
 - [The same game opens every time Indigo starts](#the-same-game-opens-every-time-indigo-starts)
+- [Indigo stays on a dark screen as it starts](#indigo-stays-on-a-dark-screen-as-it-starts)
 - [There's no Apps face, or an app or its picture is missing](#theres-no-apps-face-or-an-app-or-its-picture-is-missing)
 - [Still stuck](#still-stuck)
 
@@ -147,12 +148,27 @@ are left out. A picture must be a PNG with the program's name, or its
 folder's `icon.png`, up to 2048 pixels a side and 2 MB, and not interlaced.
 [Apps](apps.md#when-apps-doesnt-look-right) has the details.
 
+## Indigo stays on a dark screen as it starts
+
+Before the cube flies in, Indigo finds your devices, reads your settings and
+sets the video mode on a dark screen. When that takes more than a few seconds,
+the step it is on shows at the bottom of the screen, and after five seconds on
+one step, for how long: "Opening SD Card - SD2SP2… 12 s". If it stays there,
+photograph the screen and report it with that step. Holding **B** while it
+starts skips waiting for the disc drive.
+
+A screen that stays black, with no text after a while and no menu music, means
+Indigo stopped before it drew anything. Copy `ipl.dol` onto the card again, or
+try another card; if it still happens, report it with your loader and card.
+
 ## Still stuck
 
 - Questions: [Discussions](https://github.com/spencercnorton/indigo/discussions).
 - Bugs: [open an issue](https://github.com/spencercnorton/indigo/issues/new/choose),
   with the version you downloaded, or the commit System › System
-  Information › About Indigo shows, your loader and what you pressed.
+  Information › About Indigo shows, your loader and what you pressed. If
+  Indigo reaches its menu, save a log there first (**X** on About Indigo) and
+  attach `/swiss/indigo-log.txt`.
 - Report problems with Indigo here, not to the Swiss project: Indigo is an
   unofficial fork.
 

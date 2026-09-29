@@ -576,9 +576,11 @@ for frame_edge in (
 	assert frame_edge in system_motif
 
 
-# --- System Information has one conventional exit: B. ---
+# --- System Information has one conventional exit: B. X on About saves the
+# log and stays. ---
 assert "UISystem_FormatPageStatus(" in info_page
-assert '"L/R  PAGE %d OF %d    B  BACK"' in SYSTEM_INFO
+assert '"L/R  PAGE %d OF %d    %sB  BACK"' in SYSTEM_INFO
+assert 'page == UI_SYSTEM_PAGE_ABOUT ? "X  SAVE LOG    " : ""' in SYSTEM_INFO
 assert "Press A or B" not in info_page
 interactive_info = show_info[show_info.index("while(1)") :]
 assert "BUTTON_A" not in interactive_info

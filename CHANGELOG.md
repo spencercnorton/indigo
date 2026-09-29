@@ -4,6 +4,26 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## Unreleased
+
+### A log for bug reports
+
+- System › System Information › About Indigo: **X** saves a log to
+  `/swiss/indigo-log.txt` on the card that holds your settings. It lists what
+  Indigo did since it started, each line stamped with the seconds since
+  power-on, under the console, the video mode, the source and Indigo's commit.
+  Attach it to a bug report.
+- A start that takes more than a few seconds shows the step it is on at the
+  bottom of the dark screen before the cube, and after five seconds on one
+  step, for how long: a photo of a start that stops says where.
+
+### For developers
+
+- `print_debug` keeps every line in memory whether or not a USB Gecko is
+  attached (`gui/indigo_log.c`: the first 16 KiB of the session and the latest
+  48 KiB, lock-free for any thread), which is what Save log writes; `util.c`
+  is listed in `UPSTREAM` for it. `main.c` names each startup step.
+
 ## v2.1.1 — ipl.dol uncompressed again
 
 2.1.0's compressed `ipl.dol` could leave the console restarting over and over
