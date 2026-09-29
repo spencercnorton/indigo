@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 os.environ["INDIGO_CI_NAME"] = "ci-host"
 import indigo_ci  # noqa: E402
@@ -102,6 +103,45 @@ class Cleanup(unittest.TestCase):
                               cwd=Path(__file__).parent, env=env, capture_output=True, text=True,
                               check=True).stdout.strip()
         self.assertEqual(name, "indigo")
+
+
+class Alerts(unittest.TestCase):
+    def setUp(self):
+        quiet = mock.patch.object(indigo_ci, "log", lambda *_: None)
+        quiet.start()
+        self.addCleanup(quiet.stop)
+
+    def test_github_timing_out_is_retried_then_alerted_once_and_resolved(self):
+        supervisor = indigo_ci.Supervisor({"build": 1})
+        outcomes = [TimeoutError("The read operation timed out")] * (indigo_ci.ALERT_AFTER + 1) + [None, None]
+
+        def tick(now):
+            outcome = outcomes.pop(0)
+            if outcome:
+                raise outcome
+        supervisor.tick = tick
+        alerts = []
+        with mock.patch.object(indigo_ci, "alert", lambda message, key, resolved=False: alerts.append((key, resolved))):
+            for _ in range(indigo_ci.ALERT_AFTER + 3):
+                supervisor.guarded_tick(0)
+        self.assertEqual(alerts, [("supervisor", False), ("supervisor", True)])
+        self.assertEqual(supervisor.tick_failures, 0)
+
+    def test_a_bug_still_stops_the_supervisor(self):
+        supervisor = indigo_ci.Supervisor({"build": 1})
+        supervisor.tick = lambda now: None + 1
+        with self.assertRaises(TypeError):
+            supervisor.guarded_tick(0)
+
+    def test_the_command_hears_what_and_whether_and_a_broken_one_is_survived(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory, "alert")
+            command = f"sh -c 'printf \"%s|%s|%s\" \"$INDIGO_CI_ALERT_KEY\" \"$INDIGO_CI_ALERT_STATE\" \"$0\" > {out}'"
+            with mock.patch.dict(os.environ, {"INDIGO_CI_ALERT": command}):
+                indigo_ci.alert("the build pool starts runners again", "build", resolved=True)
+            self.assertEqual(out.read_text(), "build|resolved|Indigo CI on ci-host: the build pool starts runners again")
+        with mock.patch.dict(os.environ, {"INDIGO_CI_ALERT": "/nonexistent/indigo-ci-alert"}):
+            indigo_ci.alert("the supervisor keeps failing", "supervisor")
 
 
 class Timestamps(unittest.TestCase):

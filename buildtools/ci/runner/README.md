@@ -80,6 +80,11 @@ restarts it unless you `systemctl --user disable --now indigo-ci` first.
 A job that sits in "Queued" is waiting for a runner with its labels. Check
 the service on the runner host, then `indigo_ci.py status`: it lists the
 containers and what GitHub thinks of each runner. The supervisor retries a
-runner that fails to start with a growing delay, and can run a command of
-yours (`INDIGO_CI_ALERT`) when a pool cannot start runners and again when it
-recovers.
+runner that fails to start with a growing delay, and rides out GitHub or
+Docker failing by retrying on its next pass instead of exiting. It can run a
+command of yours (`INDIGO_CI_ALERT`, with the message as its argument) when a
+pool cannot start runners, an image will not build, or it has failed five
+passes in a row, and again when that recovers. The command also gets
+`INDIGO_CI_ALERT_KEY` (what: the pool, `<pool>-image` or `supervisor`) and
+`INDIGO_CI_ALERT_STATE` (`firing` or `resolved`), so it can open one
+notification and close it later.
