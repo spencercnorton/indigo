@@ -3,16 +3,19 @@
 # root of the SD card: unzip it, select everything, drag it onto the card.
 #   Indigo-<version>.zip
 #     Indigo-README.txt              what goes where, in plain words
-#     ipl.dol                        Indigo; PicoBoot and other modchips boot it
+#     ipl.dol                        Indigo, compressed; PicoBoot and other modchips boot it
 #     swiss/patches/apploader.img    In-Game Reset (Apploader) returns to Indigo
 #     swiss/ui/                      posters.pak, if you add one
 #     swiss/indigo/LICENSE.txt, NOTICE.txt
-# Usage: buildtools/sd_package.sh <version> [swiss.dol] [out dir]
+# Usage: buildtools/sd_package.sh <version> [ipl.dol] [out dir]
 # Run `make dev` first (see README, Install); run from the repository root.
+# ipl.dol is cube/packer/swiss.dol: cube/swiss/swiss.dol compressed, half the
+# bytes for a loader to read, with a CRC32 the console checks as it unpacks
+# (it restarts on a bad copy). verify_dol.py --packed proves the two match.
 set -eu
 
-version=${1:?usage: buildtools/sd_package.sh <version> [swiss.dol] [out dir]}
-dol=${2:-cube/swiss/swiss.dol}
+version=${1:?usage: buildtools/sd_package.sh <version> [ipl.dol] [out dir]}
+dol=${2:-cube/packer/swiss.dol}
 out=$(cd "${3:-.}" && pwd)
 [ -f "$dol" ] || { echo "sd_package: no DOL at $dol; build it first" >&2; exit 1; }
 reboot=cube/packer/reboot.dol

@@ -98,6 +98,11 @@ r2073 and r2092, and has everything upstream changed since:
 
 ### Fixes
 
+- `ipl.dol` is compressed, as stock Swiss's own download is: 2.9 MB for a
+  loader to read at power-on instead of 5.5 MB, and the console checks it as
+  it unpacks. A copy the loader read only in part could stop Indigo on a black
+  screen; now the console restarts and the loader reads it again. Unpacking
+  adds a moment before the cube appears.
 - A file in `/games` that isn't a game no longer hides the Library. A text
   file, a cover picture or an empty folder there, or in a game's folder,
   turned the whole Library into Swiss's plain file list, with no sign of
@@ -130,7 +135,15 @@ r2073 and r2092, and has everything upstream changed since:
   the commit, and lists anything left to resolve.
 - The size tripwires are 6 MiB for the DOL (`verify_dol.py`) and 7 MiB for
   the zip (`check_package.py`), up from 5 and 6: the DOL is about 5.2 MiB
-  and the zip about 6.1 MiB with the text-encoding libraries r2119 links.
+  and the zip about 5.5 MiB with the text-encoding libraries r2119 links.
+- The zip's `ipl.dol` is `cube/packer/swiss.dol`: the DOL compressed by
+  upstream's packer, which `make dev` already built for In-Game Reset's
+  `apploader.img`. `verify_dol.py --packed` checks that it unpacks to exactly
+  the DOL CI checks, in the one .xz format the console's decoder reads, and
+  that the unpacker stays clear of what it unpacks and of its stack. The
+  Emulator job boots it through `buildtools/ui/emulator/dolphin_ipl.py`, a copy
+  past the unpacker's console-only check, and Reproducible build compares both
+  files.
 - The pack builder makes gameplay stills as well as posters:
   `poster_pack.py --stills <folder>` writes `stills.pak`, one 320×240
   screenshot per game in the poster pack's format. The Library's art cache

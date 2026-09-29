@@ -3,6 +3,7 @@
 
 import contextlib
 import io
+import lzma
 import re
 import struct
 import subprocess
@@ -64,6 +65,77 @@ class Dol(unittest.TestCase):
             self.assertEqual(cli("--revision", FULL, "--short", SHORT, "--toolchain", IMAGE), 0)
             self.assertEqual(cli("--revision", "f" * 40, "--short", SHORT, "--toolchain", IMAGE), 1)
             self.assertEqual(cli("--revision", FULL, "--short", SHORT, "--toolchain", "libogc2:latest"), 1)
+
+
+PACKER_XZ = [{"id": lzma.FILTER_POWERPC}, {"id": lzma.FILTER_LZMA2, "preset": 6}]
+
+
+def payload(entry: int = 0x80003100, marker: bytes = b"") -> bytes:
+    """A DOL as libogc2's crt0 starts one: the loader's _arg and _env slots up front."""
+    data = bytearray(dol(revisions=0, entry=entry))
+    data[0x104:0x108], data[0x124:0x128] = b"_arg", b"_env"
+    data[0x180:0x189] = b"\0" + SHORT.encode() + b"\0"
+    data[0x1F0:0x1F0 + len(marker)] = marker
+    return bytes(data)
+
+
+def packed(inside: bytes, check: int = lzma.CHECK_CRC32, filters=PACKER_XZ, at: int | None = None,
+           cut: int = 0) -> bytes:
+    """What cube/packer makes: a small unpacker, then the payload's memory image as .xz data."""
+    _, image = verify_dol.memory_image(inside)
+    stream = lzma.compress(image, format=lzma.FORMAT_XZ, check=check, filters=filters)
+    stream = stream[:len(stream) - cut]
+    at = at or (verify_dol.UNPACK_TO + len(image) + 31) & ~31
+    code = b"\x60\0\0\0" * 8
+    data = bytearray(0x100)
+    for index, (offset, address, size) in ((0, (0x100, at, len(code))), (7, (0x120, at + 0x20, len(stream)))):
+        struct.pack_into(">I", data, index * 4, offset)
+        struct.pack_into(">I", data, 0x48 + index * 4, address)
+        struct.pack_into(">I", data, 0x90 + index * 4, size)
+    struct.pack_into(">I", data, 0xE0, at)
+    return bytes(data) + code + stream
+
+
+class Packed(unittest.TestCase):
+    def test_the_packer_output_passes(self):
+        self.assertGreater(verify_dol.check_packed(packed(payload()), payload())["xz_bytes"], 0)
+
+    def test_only_what_the_console_decoder_reads(self):
+        for case in ({"check": lzma.CHECK_CRC64}, {"check": lzma.CHECK_SHA256},
+                     {"filters": [{"id": lzma.FILTER_LZMA2}]},
+                     {"filters": [{"id": lzma.FILTER_X86}, {"id": lzma.FILTER_LZMA2}]}, {"cut": 8}):
+            with self.assertRaises(verify_dol.Invalid, msg=case):
+                verify_dol.check_packed(packed(payload(), **case), payload())
+
+    def test_it_must_unpack_to_this_builds_dol(self):
+        with self.assertRaises(verify_dol.Invalid):
+            verify_dol.check_packed(packed(payload(marker=b"other")), payload())
+
+    def test_the_unpacker_stays_clear_of_its_output_and_its_stack(self):
+        for at in (verify_dol.UNPACK_TO + 0x80, verify_dol.UNPACKER_STACK - 0x100):
+            with self.assertRaises(verify_dol.Invalid, msg=hex(at)):
+                verify_dol.check_packed(packed(payload(), at=at), payload())
+
+    def test_the_unpacker_jumps_to_the_start(self):
+        with self.assertRaises(verify_dol.Invalid):
+            verify_dol.check_packed(packed(payload(entry=0x80003104)), payload(entry=0x80003104))
+
+    def test_cli(self):
+        with tempfile.TemporaryDirectory() as directory:
+            dol_path, ipl_path = Path(directory) / "swiss.dol", Path(directory) / "ipl.dol"
+            dol_path.write_bytes(payload())
+
+            def cli(ipl: bytes) -> int:
+                ipl_path.write_bytes(ipl)
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    return verify_dol.main([str(dol_path), "--packed", str(ipl_path), "--revision", FULL,
+                                            "--short", SHORT, "--toolchain", IMAGE])
+
+            good = packed(payload())
+            self.assertEqual(cli(good), 0)
+            flipped = bytearray(good)
+            flipped[len(good) - 40] ^= 0xFF  # inside the stream: its CRC32 or LZMA2 catches it
+            self.assertEqual(cli(bytes(flipped)), 1)
 
 
 class Package(unittest.TestCase):
