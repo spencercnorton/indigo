@@ -7,7 +7,8 @@
 
 This is one developer's project, maintained in the open; there is no
 support contract and no e-mail address. Issues are answered as time allows,
-and the newest tagged release is the only one that gets fixes.
+and the latest stable release (the one marked Latest) is the only one that
+gets fixes; release candidates and betas are for testing.
 
 If Indigo saves you time, you can [support its development](https://buy.stripe.com/8x26oH2U44f65TRe574wM04).
 

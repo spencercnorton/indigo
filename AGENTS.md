@@ -66,10 +66,11 @@ with a tagged release.
 - `main` holds releases only. A release is a pull request from `beta` into
   `main`, merged with a merge commit, then tagged. Promotion to `main` needs
   the maintainer's explicit go.
-- Tags: `vX.Y.Z-beta.N` on `beta` publishes a pre-release; `vX.Y.Z` on `main`
-  publishes a release. `.github/workflows/release.yml` builds the zip from the
-  tag, attaches it with its SHA-256 and a build provenance attestation, and
-  writes the notes from `CHANGELOG.md`. Tags are immutable.
+- Tags: `vX.Y.Z-beta.N` or `vX.Y.Z-rc.N` on `beta` publishes a pre-release;
+  `vX.Y.Z` on `main` publishes a release. `.github/workflows/release.yml`
+  builds the zip from the tag, attaches it with its SHA-256 and a build
+  provenance attestation, and writes the notes from `CHANGELOG.md`. Tags are
+  immutable.
 - Versions follow [semantic versioning](https://semver.org/). Every pull
   request adds its user-facing change to `## Unreleased` at the top of
   `CHANGELOG.md`; the release renames that heading.
