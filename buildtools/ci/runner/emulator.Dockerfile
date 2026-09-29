@@ -3,7 +3,7 @@
 # OpenGL, FFmpeg and the Python the harness in buildtools/ui/emulator/ uses,
 # gxtexconv for the demonstration disc's posters, and a GitHub Actions runner
 # that takes one job.
-FROM ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575 AS toolchain
+FROM ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f AS toolchain
 
 FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
 

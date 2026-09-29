@@ -21,7 +21,9 @@
 # X and the reset prompt; phase 4 names a new Configuration Device in SRAM
 # only once a save has reached it; phase 1b opens a list of values on A for
 # long choices; on a video row A applies the value Left and Right stepped
-# to, instead of stepping it. It is pinned by content hash rather than
+# to, instead of stepping it; Discard takes the page down last, after the
+# video mode is put back and B is let go, so no frame shows the screen
+# behind it bare. It is pinned by content hash rather than
 # by a base commit, so a rebase cannot break the pin but any further drift
 # still fails until SHOW_ACTIONS_SHA256 is updated deliberately.
 #
@@ -179,7 +181,7 @@ PY
 }
 
 normalize_show_actions "$FILE" "$TMP/head_show_actions"
-SHOW_ACTIONS_SHA256="14277fa817b0de282a1336b5561889d928796827a14bd584e4d6d2297067a508"
+SHOW_ACTIONS_SHA256="870b12f07cd681f113587e9563ee22f729bff9aaab99eb5517c9394167c9075a"
 actual_show_actions=$(shasum -a 256 < "$TMP/head_show_actions" | cut -d' ' -f1)
 if [ "$actual_show_actions" = "$SHOW_ACTIONS_SHA256" ]; then
 	echo "  show actions       B/A/L/R/value semantics match the pinned hash"

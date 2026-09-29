@@ -555,19 +555,18 @@ static void infoDrawAbout(uiDrawObj_t *container,
 		systemValueColor));
 	DrawAddChild(container, DrawStyledLabel(320, 220,
 		"INDIGO - UNOFFICIAL SWISS FORK", 0.66f, ALIGN_CENTER, systemLabelColor));
-	infoAddFitted(container, 320, 246, buildText, 490, 0.72f, ALIGN_CENTER,
-		systemValueColor);
-	infoAddFitted(container, 320, 270, compilerText, 490, 0.66f, ALIGN_CENTER,
-		systemMutedColor);
+	infoAddFitted(container, 320, 246, buildText, UI_SYSTEM_ABOUT_TEXT_WIDTH,
+		0.72f, ALIGN_CENTER, systemValueColor);
+	infoAddFitted(container, 320, 270, compilerText, UI_SYSTEM_ABOUT_TEXT_WIDTH,
+		0.66f, ALIGN_CENTER, systemMutedColor);
 	DrawAddChild(container, DrawStyledLabel(320, 310, "SOURCE / UPDATES",
 		0.66f, ALIGN_CENTER, systemLabelColor));
-	infoAddFitted(container, 320, 331, "GITHUB.COM/SPENCERCNORTON/INDIGO", 490,
-		0.70f, ALIGN_CENTER, systemValueColor);
-	DrawAddChild(container, DrawStyledLabel(320, 354, "COMMUNITY SUPPORT",
-		0.66f, ALIGN_CENTER, systemLabelColor));
-	infoAddFitted(container, 320, 374,
-		"WWW.GC-FOREVER.COM  /  EFNET #GC-FOREVER", 490, 0.70f,
-		ALIGN_CENTER, systemValueColor);
+	infoAddFitted(container, 320, 331, "GITHUB.COM/SPENCERCNORTON/INDIGO",
+		UI_SYSTEM_ABOUT_TEXT_WIDTH, 0.70f, ALIGN_CENTER, systemValueColor);
+	DrawAddChild(container, DrawStyledLabel(320, 354,
+		UI_SYSTEM_ABOUT_HELP_LABEL, 0.66f, ALIGN_CENTER, systemLabelColor));
+	infoAddFitted(container, 320, 374, UI_SYSTEM_ABOUT_HELP_TEXT,
+		UI_SYSTEM_ABOUT_TEXT_WIDTH, 0.70f, ALIGN_CENTER, systemValueColor);
 }
 
 static void infoDrawCredits(uiDrawObj_t *container,

@@ -18,10 +18,17 @@ Environment:
                       serves spencercnorton/norvitech-site
     INDIGO_CI_REPO    default spencercnorton/indigo (its pools, and the images' source)
     INDIGO_CI_REF     the trusted branch images are built from, default beta
-    INDIGO_CI_NAME    this machine in runner names, default the hostname
+    INDIGO_CI_NAME    the prefix of this machine's runner names, default "indigo";
+                      runner names show in public job logs, so never a hostname.
+                      A second machine needs a name of its own ("indigo2"):
+                      cleanup removes offline runners that carry its prefix
     INDIGO_CI_HOME    state and the source checkout, ~/.local/share/indigo-ci
     INDIGO_CI_ALERT   optional command, run with one message argument when a
-                      pool cannot start runners and again when it recovers
+                      pool cannot start runners, an image will not build or the
+                      supervisor keeps failing, and again when it recovers.
+                      INDIGO_CI_ALERT_KEY says what ("build", "build-image",
+                      "supervisor", ...) and INDIGO_CI_ALERT_STATE is "firing"
+                      or "resolved"
 """
 
 from __future__ import annotations
@@ -34,7 +41,6 @@ import re
 import secrets
 import shlex
 import signal
-import socket
 import subprocess
 import sys
 import tempfile
@@ -58,7 +64,7 @@ CLEANUP_EVERY = 300         # drop registrations whose container is gone
 MAX_IDLE_AGE = 12 * 3600    # replace an idle runner this old with a fresh one
 STUCK_AFTER = 180           # a runner still offline this long after it started is replaced
 HEALTH_EVERY = 60           # how often to ask GitHub whether running runners are connected
-ALERT_AFTER = 5             # consecutive failed starts before INDIGO_CI_ALERT
+ALERT_AFTER = 5             # consecutive failed starts, or failed ticks, before INDIGO_CI_ALERT
 
 
 REPO = os.environ.get("INDIGO_CI_REPO", "spencercnorton/indigo")
@@ -85,7 +91,7 @@ POOLS = {
                  "norvitech-site", "2", "2g", repo="spencercnorton/norvitech-site"),
 }
 REF = os.environ.get("INDIGO_CI_REF", "beta")
-NAME = (os.environ.get("INDIGO_CI_NAME") or socket.gethostname().split(".")[0]).lower()
+NAME = (os.environ.get("INDIGO_CI_NAME") or "indigo").lower()
 HOME = Path(os.environ.get("INDIGO_CI_HOME") or Path.home() / ".local/share/indigo-ci")
 SOURCE = HOME / "src"
 SELF = Path(__file__).resolve()
@@ -148,8 +154,8 @@ def ours(runner: dict, live: set[str]) -> bool:
 # ---------------------------------------------------------------- side effects
 
 def run(*command: str, check: bool = True, timeout: float = 120,
-        capture: bool = True) -> subprocess.CompletedProcess:
-    result = subprocess.run(command, text=True, timeout=timeout,
+        capture: bool = True, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    result = subprocess.run(command, text=True, timeout=timeout, env=env,
                             stdout=subprocess.PIPE if capture else None,
                             stderr=subprocess.STDOUT if capture else None)
     if check and result.returncode != 0:
@@ -197,11 +203,17 @@ def image_exists(tag: str) -> bool:
     return docker("image", "inspect", tag, check=False).returncode == 0
 
 
-def alert(message: str) -> None:
+def alert(message: str, key: str, resolved: bool = False) -> None:
     log("ALERT " + message)
     command = os.environ.get("INDIGO_CI_ALERT")
     if command:
-        run(*shlex.split(command), f"Indigo CI on {NAME}: {message}", check=False)
+        env = {**os.environ, "INDIGO_CI_ALERT_KEY": key,
+               "INDIGO_CI_ALERT_STATE": "resolved" if resolved else "firing"}
+        try:
+            run(*shlex.split(command), f"Indigo CI on {NAME}: {message}", check=False, env=env)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            # A broken alert command is logged; it must not take the runners down with it.
+            log(f"INDIGO_CI_ALERT failed: {error}")
 
 
 class Supervisor:
@@ -212,6 +224,8 @@ class Supervisor:
         self.next_source = self.next_release = self.next_cleanup = self.next_health = 0.0
         self.failures: dict[str, int] = {}
         self.backoff: dict[str, float] = {}
+        self.tick_failures = 0
+        self.broken_images: set[str] = set()
         self.stopping = False
 
     # -- images from the trusted branch
@@ -245,8 +259,14 @@ class Supervisor:
                         "--build-arg", f"RUNNER_SHA256={self.runner[1]}",
                         "--label", f"{LABEL}.pool={name}", "--tag", tag, str(context), timeout=5400)
                 except (RuntimeError, subprocess.TimeoutExpired) as error:
-                    alert(f"cannot build the {name} image; keeping {self.images.get(name, 'none')}: {error}")
+                    if name not in self.broken_images:
+                        self.broken_images.add(name)
+                        alert(f"cannot build the {name} image; keeping {self.images.get(name, 'none')}: {error}",
+                              f"{name}-image")
                     continue
+            if name in self.broken_images:
+                self.broken_images.discard(name)
+                alert(f"the {name} image builds again", f"{name}-image", resolved=True)
             if self.images.get(name) != tag:
                 log(f"{name} pool now uses {tag}")
             self.images[name] = tag
@@ -370,7 +390,7 @@ class Supervisor:
                     # and cleanup below must not take that for a dead one.
                     live.add(self.launch(pool, slot))
                     if self.failures.get(pool_name, 0) >= ALERT_AFTER:
-                        alert(f"the {pool_name} pool starts runners again")
+                        alert(f"the {pool_name} pool starts runners again", pool_name, resolved=True)
                     self.failures[pool_name] = 0
                     self.backoff.pop(key, None)
                 except (OSError, RuntimeError, subprocess.TimeoutExpired, urllib.error.URLError,
@@ -380,7 +400,7 @@ class Supervisor:
                     self.backoff[key] = now + min(300, 15 * 2 ** min(count_failed, 5))
                     log(f"cannot start {container}: {error}")
                     if count_failed == ALERT_AFTER:
-                        alert(f"the {pool_name} pool cannot start runners: {error}")
+                        alert(f"the {pool_name} pool cannot start runners: {error}", pool_name)
         if now >= self.next_cleanup:
             self.next_cleanup = now + CLEANUP_EVERY
             try:
@@ -404,12 +424,31 @@ class Supervisor:
                 if error.code != 404:
                     raise
 
+    def guarded_tick(self, now: float) -> None:
+        """A tick that fails on GitHub or Docker is retried on the next one, not fatal.
+
+        On 2026-09-27 one slow GitHub reply in the health check ended the
+        service; had GitHub stayed slow, systemd would have restarted it every
+        few seconds without anyone hearing. A bug still raises.
+        """
+        try:
+            self.tick(now)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired, urllib.error.URLError, KeyError) as error:
+            self.tick_failures += 1
+            log(f"tick failed, retrying: {error}")
+            if self.tick_failures == ALERT_AFTER:
+                alert(f"the supervisor keeps failing: {error}", "supervisor")
+            return
+        if self.tick_failures >= ALERT_AFTER:
+            alert("the supervisor works again", "supervisor", resolved=True)
+        self.tick_failures = 0
+
     def loop(self) -> None:
         signal.signal(signal.SIGTERM, lambda *_: setattr(self, "stopping", True))
         HOME.mkdir(parents=True, exist_ok=True)
         log(f"{NAME}: pools {self.pools}, images from {REPO} {REF}")
         while not self.stopping:
-            self.tick(time.time())
+            self.guarded_tick(time.time())
             for _ in range(TICK_SECONDS):
                 if self.stopping:
                     break

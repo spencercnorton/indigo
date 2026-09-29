@@ -170,7 +170,6 @@ an `Indigo-vX.Y.Z.zip` laid out exactly as it goes on the card:
 ```text
 Indigo-README.txt              what goes where, in plain words
 ipl.dol                        Indigo; PicoBoot and other modchips boot this
-games/                         your games (see Set up your library)
 swiss/patches/apploader.img    Indigo again, for In-Game Reset
 swiss/ui/                      posters.pak, if you add one (see Posters)
 swiss/indigo/                  the licence and notice
@@ -184,10 +183,9 @@ swiss/indigo/                  the licence and notice
 2. Unzip the download, select everything inside and drag it onto the root of
    the card. Let it replace files of the same name. On a Mac, hold Option as
    you drop and choose **Merge**: **Replace** deletes what is already in the
-   card's `games` and `swiss` folders (your games, settings, cheats and
-   saves).
-3. Put your games in `/games`, with nothing else in it or in the game
-   folders, and power on.
+   card's `swiss` folder (your settings, cheats and saves).
+3. Put your games in `/games` (make the folder if the card has none), with
+   nothing else in it or in the game folders, and power on.
 
 **Updating from Indigo 1.x:** `ipl.dol` is already Indigo, so don't rename
 it; copy the new files over it the same way (on a Mac, Merge). If you renamed
@@ -210,7 +208,7 @@ toolchain is installed on your machine:
 git clone https://github.com/spencercnorton/indigo.git
 cd indigo
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575 make dev
+  ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
 # writes cube/swiss/swiss.dol inside this folder, on your computer
 ```
 
@@ -289,7 +287,7 @@ repository, and copy it to `/swiss/ui/posters.pak` on the card:
 
 ```bash
 python3 -m pip install pillow
-docker pull ghcr.io/extremscorner/libogc2@sha256:903b442dfd18cab00b5958726f70b17d95b0cf40c15d01b11e841825489dbe3d
+docker pull ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f
 python3 buildtools/ui/poster_pack.py --covers ~/covers --out posters.pak
 ```
 
@@ -325,7 +323,7 @@ be checked in advance.
 
 ```bash
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575 make dev   # the DOL, as CI builds it
+  ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev   # the DOL, as CI builds it
 buildtools/ui/tests/run_tests.sh all          # host tests: plain, sanitized, contracts
 buildtools/check_whitespace.sh origin/beta    # lint
 buildtools/check_ui_isolation.sh origin/beta  # the change stays in the interface
