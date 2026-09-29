@@ -81,6 +81,9 @@ r2073 and r2092, and has everything upstream changed since:
   the same way. The round ends of the icons' strokes (the controller's
   triggers and X and Y, the disc's glints) had the same fault and are fixed
   too. Dolphin's finer snap hid it.
+- System Information shows the whole date: weekdays and months are three
+  letters (TUE  SEP 29, 2026). A long one, such as a Tuesday in September,
+  ended in an ellipsis.
 
 ### For developers
 

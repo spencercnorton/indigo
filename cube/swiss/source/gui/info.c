@@ -409,7 +409,8 @@ static void infoDrawOverview(uiDrawObj_t *container,
 		ALIGN_LEFT, systemLabelColor));
 	infoAddFitted(container, 181, 188, clockText, 220, 1.45f, ALIGN_CENTER,
 		systemTitleColor);
-	infoAddFitted(container, 181, 218, dateText, 220, 0.66f, ALIGN_CENTER,
+	infoAddFitted(container, 181, 218, dateText, UI_SYSTEM_DATE_WIDTH,
+		UI_SYSTEM_DATE_SCALE, ALIGN_CENTER,
 		systemMutedColor);
 	DrawAddChild(container, DrawStyledLabel(70, 254,
 		"CPU THERMAL / MINUTE SAMPLE", 0.60f,
