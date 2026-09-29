@@ -22,7 +22,13 @@ case $tag in
 	*-rc.*) printf '%s\n\n' "> **Release candidate.** $version as it is meant to ship, for a last round of testing before it does. The current stable release is linked from https://norvitech.com/indigo/." ;;
 	*-*) printf '%s\n\n' "> **Beta.** A pre-release for testing what comes next. The current stable release is linked from https://norvitech.com/indigo/." ;;
 esac
-printf '%s\n' "$notes" | sed -e '/./,$!d'
+# The notes are a copy of CHANGELOG.md, whose relative links name files in the
+# repository; on a release page they would resolve against the page and fail.
+# They go to the file at this tag instead (a folder, ending in /, to its tree).
+repo=https://github.com/spencercnorton/indigo
+printf '%s\n' "$notes" | sed -e '/./,$!d' | sed -E \
+	-e "s#\]\(([A-Za-z0-9._][^):]*/)\)#]($repo/tree/$tag/\1)#g" \
+	-e "s#\]\(([A-Za-z0-9._][^):]*)\)#]($repo/blob/$tag/\1)#g"
 cat <<NOTES
 
 ## Install

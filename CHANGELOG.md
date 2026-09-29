@@ -188,6 +188,9 @@ Changes land under `## Unreleased` until the release names them.
 - Release candidates: a `vX.Y.Z-rc.N` tag on `beta` publishes a pre-release
   like a beta, its notes opening with "Release candidate"
   ([docs/RELEASING.md](docs/RELEASING.md)).
+- Release notes link the repository's files at the release's tag. The links
+  CHANGELOG.md makes to files in the repository used to resolve against the
+  release page, and failed.
 
 ## v1.25.0 — Memory Cards, a cube that flies in, and a drag-and-drop download
 
