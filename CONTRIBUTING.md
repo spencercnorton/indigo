@@ -9,10 +9,14 @@ Development happens here, in the open, on two branches:
 
 - **`beta`** is where changes land. Branch from `beta` (or fork and branch),
   open a pull request into `beta`, and it is squash-merged once CI is green
-  and review is done. Betas are published from it as `vX.Y.Z-beta.N`
-  pre-releases, so a change reaches testers within days.
-- **`main`** holds releases only. When a beta has held up, `beta` is merged
-  into `main` and tagged `vX.Y.Z`; nothing reaches `main` any other way.
+  and review is done. Betas (`vX.Y.Z-beta.N`) and release candidates
+  (`vX.Y.Z-rc.N`) are published from it as pre-releases, so a change reaches
+  testers within days.
+- **`main`** holds releases only. When a release candidate has held up,
+  `beta` is merged into `main` and tagged `vX.Y.Z`. The only other way into
+  `main` is an urgent fix to a release, from a `hotfix/*` branch, which is
+  then merged back into `beta`
+  ([docs/RELEASING.md](docs/RELEASING.md#a-fix-to-a-release)).
 
 Every pull request runs CI: the DOL build and the checks on it, a second
 build that must match it byte for byte, the emulator test (the build boots in

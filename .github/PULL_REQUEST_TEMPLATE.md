@@ -10,7 +10,7 @@
 
 ## Checklist
 
-- [ ] The pull request targets `beta` (a release pull request targets `main`)
+- [ ] The pull request targets `beta` (a release, or a `hotfix/*` fix to a release, targets `main`)
 - [ ] `buildtools/ui/tests/run_tests.sh all` passes, and a fix or feature adds a test
 - [ ] `CHANGELOG.md` has a line under `## Unreleased`
 - [ ] The guide pages and pictures this change affects are updated, or listed here as stale
