@@ -46,7 +46,7 @@ static const struct {
 	{  9,  0, 10 }, /* Quick */
 	{ 21,  1, 22 }, /* Game Defaults: no Vertical Offset, which can't reach a game */
 	{  6,  2,  7 }, /* Setup: one row per section */
-	{ 10,  2, 11 }, /* Display */
+	{ 11,  2, 12 }, /* Display: Menu Screen Size too */
 	{ 10,  2, 11 }, /* Console */
 	{  7,  2,  8 }, /* Storage: its Save Folder too */
 	{ 20,  2, 21 }, /* Network */
@@ -270,6 +270,10 @@ static void test_value_column_and_ellipsize_bounds(void) {
 		CHECK(l.rowValueX - UI_SETLAYOUT_TOGGLE_W == 526);
 		CHECK(l.rowValueWidth >= UI_SETLAYOUT_FIELD_W);
 		CHECK(l.rowValueX - UI_SETLAYOUT_FIELD_W >= l.rowValueX0);
+		/* A focused slider, arrows and all, fits the value column too. */
+		CHECK(UI_SETLAYOUT_PILL_PAD * 2 + UI_SETLAYOUT_ARROW_W * 2 +
+		      UI_SETLAYOUT_SLIDER_W + UI_SETLAYOUT_SLIDER_GAP +
+		      UI_SETLAYOUT_SLIDER_TEXT_W <= l.rowValueWidth);
 	}
 	CHECK(UI_SETLAYOUT_ROW_TEXT_FLOOR >= 0.60f);
 

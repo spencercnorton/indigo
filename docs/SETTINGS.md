@@ -136,6 +136,7 @@ most use the same key there.
 | `Screen Position` | A signed number, such as `+0` or `-2`. | the console's SRAM | Screen Position |
 | `Swiss Video Mode` | `Auto`, `480i`, `480sf`, `480p`, `576i`, `576sf`, `576p` | `Auto` | Swiss Video Mode |
 | `Menu Widescreen` | `Yes`, `No`. `Yes` draws Indigo's own screens for a TV set to 16:9; games follow `Force Widescreen`. | `No` | Menu Widescreen |
+| `Menu Screen Size` | `80%` to `100%`; any other value is ignored. Draws Indigo's own screens smaller, for a CRT that hides the edges of the picture; games are not affected. | `100%` | Menu Screen Size |
 | `AVECompat` | `AVE N-DOL`, `AVE P-DOL`, `CMPV-DOL`, `GCDigital`, `GCVideo`, `AVE-RVL` | `GCVideo`, or what your loader reports | AVE Compatibility |
 | `Force DTV Status` | `No`, `Yes`, `Region Switch` | `No` | Force DTV Status |
 | `RT4KOptim` | `Yes`, `No` | `No` | RetroTINK-4K HDMI Input |

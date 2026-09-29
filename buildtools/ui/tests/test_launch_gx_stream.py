@@ -118,6 +118,7 @@ int main(void)
 		if(sscanf(line, "L %d %u %u", &c, &a, &b) == 3) publish(c, a, b);
 		else if(strcmp(line, "K") == 0) detail();
 		else if(sscanf(line, "W %d", &c) == 1) UIStage_SetWide(c != 0);
+		else if(sscanf(line, "Z %d", &c) == 1) UIStage_SetInset(c);
 		else if(sscanf(line, "M %d", &c) == 1) motionMode = (uiMotionMode_t)c;
 		else if(sscanf(line, "C %d", &c) == 1) packClosed = c != 0;
 		else if(sscanf(line, "D %d", &c) == 1) {
@@ -221,12 +222,17 @@ class LaunchGxStream(unittest.TestCase):
         return frames(result.stdout.decode("latin-1"))
 
     def check_launch_frames(self):
-        """A launch frame in 4:3 and in 16:9."""
+        """A launch frame in 4:3, in 16:9 and at Menu Screen Size 90%."""
         rests = {}
-        for wide, edges in ((0, (0.0, 640.0)), (1, (-320 / 3, 640 + 320 / 3))):
-            rest = self.run_script([f"W {wide}", "L 0 40 18"] + LAUNCH + [
+        shapes = {
+            "4:3": ("W 0", (0.0, 640.0), (0.0, 480.0)),
+            "16:9": ("W 1", (-320 / 3, 640 + 320 / 3), (0.0, 480.0)),
+            "90%": ("Z 10", (320 - 320 / 0.9, 320 + 320 / 0.9), (240 - 240 / 0.9, 240 + 240 / 0.9)),
+        }
+        for shape, (setting, edges, heights) in shapes.items():
+            rest = self.run_script([setting, "L 0 40 18"] + LAUNCH + [
                 "S Checking Game\\205", "N 60 0.0167"])[-1]
-            rests[wide] = rest
+            rests[shape] = rest
             drawn = primitives(rest)
             # First the dim, one quad from edge to edge of the frame.
             veil = drawn[0]
@@ -234,7 +240,8 @@ class LaunchGxStream(unittest.TestCase):
             xs, ys = [p[0] for p in veil["points"]], [p[1] for p in veil["points"]]
             self.assertAlmostEqual(min(xs), edges[0], places=2)
             self.assertAlmostEqual(max(xs), edges[1], places=2)
-            self.assertEqual((min(ys), max(ys)), (0.0, 480.0))
+            self.assertAlmostEqual(min(ys), heights[0], places=2)
+            self.assertAlmostEqual(max(ys), heights[1], places=2)
             self.assertEqual(set(veil["alphas"]), {240})
             # Then the ring: a track and a fill, three bands each, within
             # the budget and on the circle.
@@ -260,10 +267,11 @@ class LaunchGxStream(unittest.TestCase):
                 (320, 360, "Detail title G018E0"), (320, 384, "Detail publisher"),
                 (320, 414, "Checking game")])
             self.assertNotIn("\nH ", "\n" + rest)
-        # The same launch screen in both shapes, but for the dim's reach: its
+        # The same launch screen in every shape, but for the dim's reach: its
         # "B 4" and four vertices of three lines are the first 13 lines.
-        self.assertNotEqual(rests[0], rests[1])
-        self.assertEqual(rests[0].split("\n", 13)[13], rests[1].split("\n", 13)[13])
+        for shape in ("16:9", "90%"):
+            self.assertNotEqual(rests["4:3"], rests[shape])
+            self.assertEqual(rests["4:3"].split("\n", 13)[13], rests[shape].split("\n", 13)[13])
 
     def test_a_launch_frame_in_both_screen_shapes(self):
         self.check_launch_frames()
@@ -350,10 +358,15 @@ class LaunchGxStream(unittest.TestCase):
 
     def test_mutants_fail(self):
         mutants = {
-            "the dim stops at the stage": ("{{{UIStage_Left(), 0.0f},\n\t\t{UIStage_Right(), 0.0f}, "
-                                           "{UIStage_Right(), 480.0f},\n\t\t{UIStage_Left(), 480.0f}}}",
+            "the dim stops at the stage": ("{{{UIStage_Left(), UIStage_Top()},\n\t\t{UIStage_Right(), UIStage_Top()}, "
+                                           "{UIStage_Right(), UIStage_Bottom()},\n\t\t{UIStage_Left(), UIStage_Bottom()}}}",
                                            "{{{0.0f, 0.0f},\n\t\t{640.0f, 0.0f}, "
                                            "{640.0f, 480.0f},\n\t\t{0.0f, 480.0f}}}"),
+            "the dim stops at the stage's top and bottom": (
+                "{{{UIStage_Left(), UIStage_Top()},\n\t\t{UIStage_Right(), UIStage_Top()}, "
+                "{UIStage_Right(), UIStage_Bottom()},\n\t\t{UIStage_Left(), UIStage_Bottom()}}}",
+                "{{{UIStage_Left(), 0.0f},\n\t\t{UIStage_Right(), 0.0f}, "
+                "{UIStage_Right(), 480.0f},\n\t\t{UIStage_Left(), 480.0f}}}"),
             "the pack's closing takes the cover": ("posterTexture = launchActive && launchHasPoster &&",
                                                    "posterTexture = false && launchHasPoster &&"),
             "Detail stays under the launch screen": ("if(frame->launchProgress < 0.999f) {",

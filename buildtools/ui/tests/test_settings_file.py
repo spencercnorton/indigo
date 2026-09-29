@@ -29,6 +29,7 @@ SETTINGS_H = (SWISS / "source/gui/settings.h").read_text()
 SWISS_H = (SWISS / "include/swiss.h").read_text()
 UI_HOME_H = (SWISS / "source/gui/ui_home.h").read_text()
 UI_GAMEFLOW_H = (SWISS / "source/gui/ui_gameflow.h").read_text()
+UI_STAGE_H = (SWISS / "source/gui/ui_stage.h").read_text()
 MAIN_H = (SWISS / "include/main.h").read_text()
 MAIN_C = (SWISS / "source/main.c").read_text()
 SWISS_C = (SWISS / "source/swiss.c").read_text()
@@ -117,6 +118,8 @@ static bool getRawDTVStatus(void) { return false; }
     re.search(r"^#define UI_HOME_ICON_CHOICES \d+$", UI_HOME_H, re.M).group(0),
     # And the Library layouts, through the same header.
     re.search(r"^typedef enum \{[^}]*\} uiGameflowLayout_t;", UI_GAMEFLOW_H, re.M).group(0),
+    # And how much smaller Menu Screen Size may draw the menus.
+    re.search(r"^#define UI_STAGE_MAX_INSET \d+$", UI_STAGE_H, re.M).group(0),
     "\n".join(re.findall(r"^enum \w+\s*\{.*?\};", SWISS_H, re.S | re.M)),
     re.search(r"^enum setupStream\s*\{.*?\};", MAIN_H, re.S | re.M).group(0),
     SWISS_SETTINGS,
@@ -491,6 +494,15 @@ class SettingsFileTest(unittest.TestCase):
                      "# comment\r\n#AutoCheats=No\r\nIGRType=Reboot\r\nAutoCheats=Yes"):
             written = self.global_file(text)
             self.assertEqual((written["IGRType"], written["AutoCheats"]), ("Reboot", "Yes"))
+
+    def test_menu_screen_size_stays_in_range(self):
+        # 80% to 100%; anything else leaves the size as it was.
+        for value, read in (("90%", "90%"), ("80%", "80%"), ("100%", "100%"), ("95", "95%"),
+                            ("79%", "100%"), ("101%", "100%"), ("Nonsense", "100%")):
+            self.assertEqual(self.global_file(f"Menu Screen Size={value}")["Menu Screen Size"],
+                             read, value)
+        self.assertEqual(self.global_file("Menu Screen Size=90%\nMenu Screen Size=50%")
+                         ["Menu Screen Size"], "90%")
 
     def test_old_names_are_still_read(self):
         self.assertEqual(self.global_file("Stop DVD Motor on startup=Yes")["Stop DVD Drive motor"], "Yes")

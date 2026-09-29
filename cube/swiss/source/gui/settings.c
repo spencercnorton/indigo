@@ -24,6 +24,7 @@
 #include "input.h"
 #include "ui_motion.h"
 #include "ui_settings_layout.h"
+#include "ui_stage.h"
 #include "saves.h"
 
 /* Bind the pure layout module's page model to the real option enums: a
@@ -139,6 +140,7 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_FLATTEN_DIR] = "Flatten directory:\n\nFlattens a directory structure matching a glob pattern.",
 	[SET_SHOW_HIDDEN] = "Show hidden files:\n\nLists files and folders marked hidden, such as the /swiss folder\nthat holds Indigo's settings.",
 	[SET_MENU_WIDESCREEN] = "Menu Widescreen:\n\nYes - Drawn for a TV set to 16:9: the background fills the\nscreen and the menus keep their shape.\nNo - Drawn for a 4:3 picture (default)\n\nSet your TV or HDMI adapter to 16:9 too. Games follow Force\nWidescreen in Game Defaults, not this.",
+	[SET_MENU_SCREEN_SIZE] = "Menu Screen Size:\n\nDraws Indigo's own screens smaller, for a CRT TV that hides the\nedges of the picture. Left and Right move the bar; lower it until\nyou can see all four corner marks. 90% keeps everything inside the\npart of the picture nearly every TV shows. 100% fills the screen\n(default).\n\nGames are not affected.",
 	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\n\nThe selected game's title and details show beside its cover in\nVertical and above the controls in Grid. Every layout wraps round\nfrom the last game to the first; L and R jump a page.\nY opens the focused game's settings.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
@@ -260,7 +262,8 @@ typedef enum {
 	SET_ROWKIND_TOGGLE,    /* two values, drawn as ON or OFF */
 	SET_ROWKIND_TEXT,      /* opens the on-screen text editor */
 	SET_ROWKIND_ACTION,    /* row-level action (e.g. Reset to defaults) */
-	SET_ROWKIND_LINK       /* Setup row that opens a section */
+	SET_ROWKIND_LINK,      /* Setup row that opens a section */
+	SET_ROWKIND_SLIDER     /* Left/Right move a bar between two bounds */
 } uiSettingRowKind_t;
 
 static int measureSettingText(const char *text)
@@ -329,6 +332,7 @@ typedef struct {
 	uiSettingRowKind_t kind;
 	bool enabled;
 	bool on;	/* a toggle's state */
+	float fill;	/* a slider's position, 0 to 1 */
 	char text[32];
 } settingRowView_t;
 
@@ -367,6 +371,11 @@ static void drawSettingRow(uiSetPageSnapshot_t *page, int slot,
 		case SET_ROWKIND_LINK:
 			out->kind = UI_SETLAYOUT_ROW_LINK;
 			valueWidth = layout->rowValueWidth - 16;
+			break;
+		case SET_ROWKIND_SLIDER:
+			out->kind = UI_SETLAYOUT_ROW_SLIDER;
+			out->fill = row->fill;
+			valueWidth = UI_SETLAYOUT_SLIDER_TEXT_W;
 			break;
 		default:
 			out->kind = UI_SETLAYOUT_ROW_CHOICE;
@@ -527,6 +536,7 @@ static const settingsRowRef_t setupRows[] = {
 static const settingsRowRef_t displayRows[] = {
 	{PAGE_GLOBAL, SET_SWISS_VIDEOMODE},
 	{PAGE_INTERFACE, SET_MENU_WIDESCREEN},
+	{PAGE_INTERFACE, SET_MENU_SCREEN_SIZE},
 	{PAGE_GLOBAL, SET_SYS_VIDEO},
 	{PAGE_GLOBAL, SET_SCREEN_POS},
 	{PAGE_GLOBAL, SET_AVE_COMPAT},
@@ -884,6 +894,7 @@ static void rowShow(settingRowView_t *row, uiSettingRowKind_t kind,
 	row->value = value;
 	row->enabled = enabled;
 	row->on = false;
+	row->fill = 0.0f;
 }
 
 static void rowCycle(settingRowView_t *row, const char *label,
@@ -912,6 +923,16 @@ static void rowNumber(settingRowView_t *row, const char *label,
 {
 	snprintf(row->text, sizeof(row->text), format, value);
 	rowShow(row, SET_ROWKIND_CYCLE, label, row->text, enabled);
+}
+
+/* A number between two bounds, drawn as a bar that Left and Right move. */
+static void rowSlider(settingRowView_t *row, const char *label,
+	const char *format, int value, int minimum, int maximum, bool enabled)
+{
+	rowNumber(row, label, format, value, enabled);
+	row->kind = SET_ROWKIND_SLIDER;
+	row->fill = value <= minimum ? 0.0f : value >= maximum ? 1.0f :
+		(float)(value - minimum) / (float)(maximum - minimum);
 }
 
 static void rowText(settingRowView_t *row, const char *label,
@@ -1016,6 +1037,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_FLATTEN_DIR: rowText(row, "Flatten directory:", swissSettings.flattenDir, true); break;
 			case SET_LIBRARY_LAYOUT: rowCycle(row, "Library Layout:", libraryLayoutStr[swissSettings.libraryLayout], true); break;
 			case SET_MENU_WIDESCREEN: rowYesNo(row, "Menu Widescreen:", swissSettings.menuWidescreen, true); break;
+			case SET_MENU_SCREEN_SIZE: rowSlider(row, "Menu Screen Size:", "%i%%", 100 - swissSettings.menuScreenInset, 100 - UI_STAGE_MAX_INSET, 100, true); break;
 		}
 	}
 	else if(page == PAGE_NETWORK) {
@@ -1277,6 +1299,14 @@ uiDrawObj_t* settings_draw_page(int view, int option, ConfigEntry *gameConfig) {
 	}
 	settingsDescribeFocus(&page, view, option, gameConfig,
 		tagged ? &gameDefaults : NULL);
+	/* While Menu Screen Size is focused, marks at the menus' corners show
+	 * how much of them the TV shows. */
+	{
+		const settingsRowRef_t *focus = settingsViewRow(view, option);
+
+		page.frameMarks = focus != NULL && focus->page == PAGE_INTERFACE &&
+			focus->option == SET_MENU_SCREEN_SIZE;
+	}
 
 	/* One page for the whole session: published once, then updated in
 	 * place with the color it shows (see show_settings_view). */
@@ -1563,6 +1593,11 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_MENU_WIDESCREEN:
 				swissSettings.menuWidescreen ^= 1;
+			break;
+			case SET_MENU_SCREEN_SIZE:
+				swissSettings.menuScreenInset -= direction;
+				if(swissSettings.menuScreenInset < 0) swissSettings.menuScreenInset = 0;
+				if(swissSettings.menuScreenInset > UI_STAGE_MAX_INSET) swissSettings.menuScreenInset = UI_STAGE_MAX_INSET;
 			break;
 		}
 	}

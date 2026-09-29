@@ -449,8 +449,9 @@ ordered(
 	"data->layout.consequenceCenter.x",
 	"homeRestartConsequence",
 )
-# The scrim darkens the whole frame, widescreen margins too.
-assert "_putFlatRect(UIStage_Left(), 0.0f, UIStage_Right() - UIStage_Left(), 480.0f, scrim);" in draw_modal
+# The scrim darkens the whole frame, its margins too.
+assert ("_putFlatRect(UIStage_Left(), UIStage_Top(), UIStage_Right() - UIStage_Left(),\n"
+        "\t\t\tUIStage_Bottom() - UIStage_Top(), scrim);") in draw_modal
 assert "layout->modalBounds" in draw_modal
 assert "snprintf(" not in draw_modal and "GetTextScale" not in draw_modal
 assert '"HOME   %d / %d"' not in FRAME_C, (

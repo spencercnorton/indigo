@@ -8,6 +8,8 @@
 - [A message says the file is a bad dump](#a-message-says-the-file-is-a-bad-dump)
 - [The screen went dark after I changed a video mode](#the-screen-went-dark-after-i-changed-a-video-mode)
 - [A game's picture is stretched, shifted or wrong](#a-games-picture-is-stretched-shifted-or-wrong)
+- [On a CRT, the menus' edges are cut off](#on-a-crt-the-menus-edges-are-cut-off)
+- [On a CRT with component cables, the screen stays dark](#on-a-crt-with-component-cables-the-screen-stays-dark)
 - [My settings don't stick](#my-settings-dont-stick)
 - [My cheats don't show up, or don't work](#my-cheats-dont-show-up-or-dont-work)
 - [Indigo starts, then stock Swiss appears](#indigo-starts-then-stock-swiss-appears)
@@ -74,6 +76,30 @@ Look at the game's own settings (X on its details) for anything marked
 Vertical Offset** change the picture. X puts a setting back to Game Defaults.
 If every game looks wrong, check Game Defaults instead (Settings, the
 Defaults tab).
+
+## On a CRT, the menus' edges are cut off
+
+A CRT TV hides a little of each edge of the picture (overscan), so the clock
+or the edge of a page can fall off the screen. In Settings, Setup › Display,
+select **Menu Screen Size**: a mark shows at each corner of the menus. Press
+Left until you can see all four; 90% keeps the menus inside the part of the
+picture nearly every TV shows. The background still fills the screen, and
+games are not affected.
+
+## On a CRT with component cables, the screen stays dark
+
+With component cables, **Swiss Video Mode**'s Auto picks 480p, and most
+standard-definition TVs take only 480i on their component inputs. Put the
+card in a computer and, in `/swiss/settings/global.ini`, change the `Swiss
+Video Mode` line (or add it) to:
+
+```ini
+Swiss Video Mode=480i
+```
+
+Or choose 480i in Settings, Setup › Display, on a TV that shows 480p. If a
+game then starts dark, set its **Force Video Mode** to 480i: see
+[The screen went dark after I changed a video mode](#the-screen-went-dark-after-i-changed-a-video-mode).
 
 ## My settings don't stick
 

@@ -35,7 +35,7 @@
 #define UI_SETLAYOUT_ROWS_QUICK 9
 #define UI_SETLAYOUT_ROWS_GAME_DEFAULTS 21
 #define UI_SETLAYOUT_ROWS_SETUP 6
-#define UI_SETLAYOUT_ROWS_DISPLAY 10
+#define UI_SETLAYOUT_ROWS_DISPLAY 11
 #define UI_SETLAYOUT_ROWS_CONSOLE 10
 #define UI_SETLAYOUT_ROWS_STORAGE 7
 #define UI_SETLAYOUT_ROWS_NETWORK 20
@@ -105,6 +105,10 @@
 #define UI_SETLAYOUT_CHIP_GAP 8
 #define UI_SETLAYOUT_SWATCH 14
 #define UI_SETLAYOUT_SWATCH_GAP 6
+/* A slider: its track, and room for its widest value ("100%") beside it. */
+#define UI_SETLAYOUT_SLIDER_W 112
+#define UI_SETLAYOUT_SLIDER_GAP 10
+#define UI_SETLAYOUT_SLIDER_TEXT_W 44
 
 typedef struct {
 	short x, y, w, h;
@@ -238,7 +242,8 @@ typedef enum {
 	UI_SETLAYOUT_ROW_CHOICE,     /* a value pill, < > while focused */
 	UI_SETLAYOUT_ROW_TEXT,       /* A opens the text editor */
 	UI_SETLAYOUT_ROW_LINK,       /* A opens a Setup section */
-	UI_SETLAYOUT_ROW_ACTION      /* A runs it (Reset to defaults) */
+	UI_SETLAYOUT_ROW_ACTION,     /* A runs it (Reset to defaults) */
+	UI_SETLAYOUT_ROW_SLIDER      /* a bar Left and Right move, its value beside it */
 } uiSetLayoutRowKind_t;
 
 #define UI_SETLAYOUT_HINT_ITEMS 4
@@ -257,6 +262,7 @@ typedef struct {
 	unsigned char custom;       /* a game's own value: the CUSTOM chip */
 	unsigned char swatch;       /* Menu Color: a dot of the color shown */
 	unsigned char placeholder;  /* an empty text value, drawn as "Not set" */
+	float fill;                 /* a slider's position, 0 to 1 */
 } uiSetPageRow_t;
 
 typedef struct {
@@ -279,6 +285,7 @@ typedef struct {
 	short hintX[UI_SETLAYOUT_HINT_ITEMS];
 	int hintCount;
 	int view;                   /* a new view snaps the focus card */
+	unsigned char frameMarks;   /* Menu Screen Size is focused: mark the menus' corners */
 	uiSetPageRow_t rows[UI_SETLAYOUT_VISIBLE_ROWS];
 } uiSetPageSnapshot_t;
 

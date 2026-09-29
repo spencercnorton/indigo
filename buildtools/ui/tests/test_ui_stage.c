@@ -52,6 +52,22 @@ static float orthoClipX(float m[4][4], float x)
 	return m[0][0] * x + m[0][3];
 }
 
+static float orthoClipY(float m[4][4], float y)
+{
+	return m[1][1] * y + m[1][3];
+}
+
+/* Frame pixels from clip space: x 0..640 and y 0..480, y down. */
+static float frameX(float clipX)
+{
+	return (clipX + 1.0f) * 320.0f;
+}
+
+static float frameY(float clipY)
+{
+	return (1.0f - clipY) * 240.0f;
+}
+
 int main(void)
 {
 	float m[4][4], plain[4][4];
@@ -102,6 +118,64 @@ int main(void)
 	/* And back to 4:3. */
 	UIStage_SetWide(false);
 	CHECK(UIStage_Left() == 0.0f && UIStage_FrameX(-50.0f) == -50.0f);
+	CHECK(UIStage_Top() == 0.0f && UIStage_Bottom() == 480.0f);
+	CHECK(UIStage_FrameY(-50.0f) == -50.0f && UIStage_ShownRight() == 640.0f);
+
+	/* Menu Screen Size 90%: the stage lands on a CRT's action-safe area,
+	 * 5% in from each edge, and the fills still reach the frame's edges. */
+	UIStage_SetInset(10);
+	ortho(m); ortho(plain); UIStage_Project(m);
+	CHECK(near(frameX(orthoClipX(m, 0.0f)), 32.0f));
+	CHECK(near(frameX(orthoClipX(m, 640.0f)), 608.0f));
+	CHECK(near(frameY(orthoClipY(m, 0.0f)), 24.0f));
+	CHECK(near(frameY(orthoClipY(m, 480.0f)), 456.0f));
+	CHECK(near(orthoClipX(m, UIStage_Left()), -1.0f));
+	CHECK(near(orthoClipX(m, UIStage_Right()), 1.0f));
+	CHECK(near(orthoClipY(m, UIStage_Top()), 1.0f));
+	CHECK(near(orthoClipY(m, UIStage_Bottom()), -1.0f));
+	CHECK(memcmp(m[2], plain[2], sizeof(float[2][4])) == 0);
+	/* The glass reads its copy where the projection drew. */
+	for(size_t i = 0; i < sizeof(xs) / sizeof(xs[0]); i++) {
+		CHECK(near(UIStage_FrameX(xs[i]), frameX(orthoClipX(m, xs[i]))));
+		CHECK(near(UIStage_FrameY(xs[i]), frameY(orthoClipY(m, xs[i]))));
+	}
+	/* The clock stays 40 in from the edge the TV shows, inside the margin. */
+	CHECK(UIStage_ShownRight() == 640.0f);
+	CHECK(near(UIStage_FrameX(UIStage_ShownRight() - 40.0f), 572.0f));
+	/* The cube shrinks with its rails, in x and in y. */
+	perspective(squeezed); perspective(plain); UIStage_Project(squeezed);
+	for(float x = -2.5f; x <= 2.5f; x += 0.5f) {
+		float z = -5.4f + x * 0.3f;
+		float railX = 320.0f + plain[0][0] * 320.0f * x / -z;
+		float railY = 240.0f - plain[1][1] * 240.0f * x / -z;
+		CHECK(near(squeezed[0][0] * x / -z, orthoClipX(m, railX)));
+		CHECK(near(squeezed[1][1] * x / -z, orthoClipY(m, railY)));
+	}
+
+	/* Both together: 16:9 and 85%. */
+	UIStage_SetWide(true);
+	UIStage_SetInset(15);
+	ortho(m); UIStage_Project(m);
+	CHECK(near(orthoClipX(m, UIStage_Left()), -1.0f));
+	CHECK(near(orthoClipX(m, UIStage_Right()), 1.0f));
+	CHECK(near(orthoClipY(m, UIStage_Bottom()), -1.0f));
+	CHECK(near(frameX(orthoClipX(m, UIStage_ShownRight())), 320.0f + 320.0f * 0.85f));
+	CHECK(near(UIStage_ShownRight(), 640.0f + 320.0f / 3.0f));
+
+	/* A value out of range is full size; 0 is back to what 4:3 always drew. */
+	UIStage_SetWide(false);
+	UIStage_SetInset(-1);
+	CHECK(UIStage_Left() == 0.0f && UIStage_Bottom() == 480.0f);
+	UIStage_SetInset(UI_STAGE_MAX_INSET + 1);
+	CHECK(UIStage_Left() == 0.0f && UIStage_Bottom() == 480.0f);
+	UIStage_SetInset(UI_STAGE_MAX_INSET);
+	CHECK(near(UIStage_FrameX(0.0f), 64.0f));
+	UIStage_SetInset(0);
+	CHECK(UIStage_Left() == 0.0f && UIStage_Right() == 640.0f);
+	CHECK(UIStage_Top() == 0.0f && UIStage_Bottom() == 480.0f);
+	CHECK(UIStage_FrameX(123.5f) == 123.5f && UIStage_FrameY(77.25f) == 77.25f);
+	ortho(m); ortho(plain); UIStage_Project(m);
+	CHECK(memcmp(m, plain, sizeof(m)) == 0);
 
 	printf("test_ui_stage: %lu checks passed\n", checks);
 	return 0;

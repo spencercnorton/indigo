@@ -62,8 +62,9 @@ static void UIColor_Apply(u8 *r,u8 *g,u8 *b) {
     (void)g;
     if(recolor) { u8 swap=*r; *r=*b; *b=swap; }
 }
-/* The 4:3 stage; test_ui_stage.c covers widescreen. */
+/* The 4:3 stage at full size; test_ui_stage.c covers the rest. */
 static float UIStage_FrameX(float x) { return x; }
+static float UIStage_FrameY(float y) { return y; }
 static float UIStage_PixelWidth(void) { return 1.0f; }
 static bool active; static int phase,remaining,count,begins,uvs,uvCalls,blendDst;
 static guVector positions[8192];
