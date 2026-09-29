@@ -398,6 +398,21 @@ def validate(files: dict[str, str]) -> list[str]:
          loop.index("DrawDispose(settingsPage);") >
          loop.index("if(option == settingsViews[view].count) {"),
          "the page is disposed outside Save and Discard, so it flickers")
+    # No bare frame between screens: the caller moves the scene to Settings
+    # before this runs and back after it returns, so the page goes up before
+    # the press that opened it is let go, and comes down only after the press
+    # that closes it is, right before returning.
+    need(ordered(show[:show.index("while(1) {")],
+                 "settings_draw_page(view, option, config);",
+                 "if(padsButtonsHeld() & SETTINGS_DIGITAL_INPUT_MASK) {"),
+         "the page waits for the opening press's release, so the screen behind shows bare")
+    for result in ("1", "0"):
+        need("\t\t\t\tsettingsInhibitThroughDigitalRelease(&menuInput,\n"
+             "\t\t\t\t\t&menuInputRetrace);\n"
+             "\t\t\t\tDrawDispose(settingsPage);\n"
+             f"\t\t\t\treturn {result};" in loop,
+             f"the page leaves before the closing press's release (return {result}), "
+             "so the screen behind shows bare")
     need("if(settingsPageEvent == NULL &&" in page_draw and
          "DrawPublish(settingsPageEvent);" in page_draw and
          "DrawUpdateSettingsPage(settingsPageEvent, &page, swissSettings.uiColor);" in page_draw and
@@ -536,6 +551,19 @@ for name, key, old, new in (
     ("page-disposed-each-input", "settings", "\t\tif(view != inputView || inputMayBlock) {",
      "\t\tDrawDispose(settingsPage);\n\t\tif(view != inputView || inputMayBlock) {"),
     ("page-republished", "settings", "if(settingsPageEvent == NULL &&", "if(true &&"),
+    ("page-after-entry-drain", "settings",
+     "\tsettings_draw_page(view, option, config);\n\t/* The press that opened", "\t/* The press that opened"),
+    ("save-leaves-before-release", "settings",
+     "\t\t\t\tsettingsInhibitThroughDigitalRelease(&menuInput,\n\t\t\t\t\t&menuInputRetrace);\n"
+     "\t\t\t\tDrawDispose(settingsPage);\n\t\t\t\treturn 1;",
+     "\t\t\t\tDrawDispose(settingsPage);\n\t\t\t\tsettingsInhibitThroughDigitalRelease(&menuInput,\n"
+     "\t\t\t\t\t&menuInputRetrace);\n\t\t\t\treturn 1;"),
+    ("discard-leaves-before-release", "settings",
+     "\t\t\t\tDrawVideoMode(oldmode);\n\t\t\t\tsettingsInhibitThroughDigitalRelease(&menuInput,\n"
+     "\t\t\t\t\t&menuInputRetrace);\n\t\t\t\tDrawDispose(settingsPage);\n\t\t\t\treturn 0;",
+     "\t\t\t\tDrawDispose(settingsPage);\n\t\t\t\tDrawVideoMode(oldmode);\n"
+     "\t\t\t\tsettingsInhibitThroughDigitalRelease(&menuInput,\n\t\t\t\t\t&menuInputRetrace);\n"
+     "\t\t\t\treturn 0;"),
     ("session-page-kept", "settings", "\tsettingsPageEvent = NULL;\n", ""),
     ("unlocked-page-copy", "framebuffer",
      "\t\t((drawSettingsEvent_t*)page->data)->snapshot = *snapshot;\n", ""),
