@@ -309,6 +309,7 @@ be checked in advance.
 - [Indigo guide](docs/guide/README.md) — install, controls, and every screen and setting, with pictures.
 - [`CHANGELOG.md`](CHANGELOG.md) — what each release contains.
 - [`NOTICE`](NOTICE) — upstream provenance and the third-party components in this tree.
+- [`UPSTREAM`](UPSTREAM) — the upstream Swiss commit Indigo is built on, and the few upstream files it changes.
 - [`docs/screenshots/`](docs/screenshots) — the pictures above, captured in Dolphin.
 - Upstream [Swiss documentation](https://github.com/emukidid/swiss-gc) covers every device handler, patch and boot option; none of it changed here.
 
@@ -326,7 +327,7 @@ docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
   ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev   # the DOL, as CI builds it
 buildtools/ui/tests/run_tests.sh all          # host tests: plain, sanitized, contracts
 buildtools/check_whitespace.sh origin/beta    # lint
-buildtools/check_ui_isolation.sh origin/beta  # the change stays in the interface
+python3 buildtools/ci/check_upstream.py       # upstream's files match UPSTREAM
 ```
 
 Work lands on `beta` by pull request and ships as `vX.Y.Z-beta.N` betas and

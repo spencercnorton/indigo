@@ -124,7 +124,6 @@ FRAME = read(GUI / "FrameBufferMagic.c")
 INDIGO_H = read(GUI / "indigo_background.h")
 INDIGO = read(GUI / "indigo_background.c")
 SWISS = read(ROOT / "cube/swiss/source/swiss.c")
-ISOLATION = read(ROOT / "buildtools/check_ui_isolation.sh")
 
 choose = block(INPUT_C, "s8 __chooseMaxMagnitiude(")
 scan = block(INPUT_C, "void padsScan(void)")
@@ -300,11 +299,6 @@ require("hiddenHand" in motifs and "clockAvailable ?" in motifs,
         "unavailable civil time is not rendered as hidden hands")
 for vector in ("hourX", "hourY", "minuteX", "minuteY", "secondX", "secondY"):
     require(vector in clock_compose, f"clock geometry omits {vector}")
-
-# The device-agnostic UI gate admits only the exact retrace wrapper hunk.
-for token in ("VIDEO_PATH='cube/swiss/source/video.c'", "EXPECTED_VIDEO_SCAN",
-              "unexpected video.c diff", "-\\tPAD_ScanPads();", "+\\tpadsScan();"):
-    require(token in ISOLATION, f"isolation gate omits exact video exception: {token}")
 
 # The two pickers left from Swiss (destination folder, alternate DOL) share
 # the list policy too. A full stick used to move a row every ~24 ms there.

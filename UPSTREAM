@@ -1,0 +1,26 @@
+# The upstream Swiss commit Indigo is built on.
+#
+# Every file outside Indigo's own paths (the interface; see OWN in
+# buildtools/ci/check_upstream.py) matches this commit, line endings aside,
+# except the paths listed below: Indigo's own changes to upstream files, each
+# with the reason. A path ending in / covers its directory. CI checks it both
+# ways: an unlisted change fails, and so does a line that no longer applies.
+#
+# Changing an upstream file: list it here, with why, in the same pull request.
+# Moving to another upstream commit: buildtools/upstream_merge.sh <commit>, in
+# a pull request of its own.
+
+upstream https://github.com/emukidid/swiss-gc.git
+commit 9c94126b9616ac8297325f98a3a2f9cd612cb407 (v0.6r2073 and 16 commits, 2026-07-08)
+
+Makefile                                   make dev also builds the packer, for In-Game Reset's apploader.img
+cube/packer/Makefile                       compresses with xz: the build image has no 7z
+cube/swiss/Makefile                        tags.h leaves out the commit being built
+cube/swiss/source/devices/deviceHandler.c  devices shut down on reset after the interface stops reading them (priority 1)
+cube/swiss/source/gcm.c                    get_fst_details stays inside the file table: a damaged image cannot crash the Library
+cube/swiss/source/video.c                  the retrace callback scans the pads through padsScan(), which the menus read
+cube/swiss/source/fatfs/ffunicode.c        the DBCS code-page tables are removed; code page 437 never compiles them
+cube/swiss/source/nkit.c                   Latin-1 bytes in game titles are written as \x escapes; the same bytes compile
+cube/swiss/source/littlefs/                vendored as files, at the commit upstream's submodule names
+.gitmodules                                no submodule: littlefs is vendored
+cube/swiss/source/resources/               design sources and Windows tools the build never uses are not carried

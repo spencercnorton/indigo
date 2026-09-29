@@ -4,6 +4,20 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## Unreleased
+
+### For developers
+
+- [`UPSTREAM`](UPSTREAM) names the upstream Swiss commit Indigo is built on,
+  `9c94126b` (v0.6r2073 and 16 commits), and lists the upstream files Indigo
+  changes, each with the reason. CI checks it both ways: a change to an
+  upstream file that the list leaves out fails, and so does a listed file
+  that matches upstream again. It replaces the interface-only gate and its
+  exact-line exceptions, which are now lines in that list.
+  `buildtools/upstream_merge.sh <commit>` moves to another upstream commit:
+  it merges upstream's changes over the difference in line endings, updates
+  the commit, and lists anything left to resolve.
+
 ## v2.0.1 — The download keeps your games folder
 
 Three fixes to 2.0: the download, where System Information sends you for help, and a

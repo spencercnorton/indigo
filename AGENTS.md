@@ -10,7 +10,8 @@ Indigo is a fork of [Swiss](https://github.com/emukidid/swiss-gc) for the
 Nintendo GameCube with the interface rebuilt. The fork changes what you look
 at and nothing underneath: device handlers, the patch engine and the loader
 are upstream's, and a change that reaches them is out of scope unless a
-maintainer asked for it.
+maintainer asked for it. [`UPSTREAM`](UPSTREAM) names the upstream commit
+Indigo is built on and lists the upstream files Indigo does change, with why.
 
 - The interface: `cube/swiss/source/gui/` (Home cube, Library, Game Detail,
   cheats, Settings), wired in through `swiss.c`, `main.c` and `config/`.
@@ -37,7 +38,7 @@ buildtools/ui/tests/run_tests.sh all
 
 # Source checks CI runs on a pull request into beta:
 buildtools/check_whitespace.sh origin/beta
-buildtools/check_ui_isolation.sh origin/beta
+python3 buildtools/ci/check_upstream.py   # fetches the upstream commit UPSTREAM names
 buildtools/ci/source_checks.sh   # shell and Python syntax, CI tool tests, workflow policy
 
 # Fuzz the files Indigo reads from a card (poster packs, play history, saves,
@@ -83,9 +84,19 @@ with a tagged release.
   for a settings key) in the same pull request. Pictures are recorded in the
   Dolphin emulator from a real build; say in the pull request which ones are
   stale if you cannot record them.
-- **Stay inside the interface.** `buildtools/check_ui_isolation.sh` fails a
-  change outside its allowlist. Widening it is a deliberate, reviewed edit
-  with an exact-hunk exception and a reason, never a shortcut.
+- **Upstream's files match `UPSTREAM`.** Outside Indigo's own paths (`OWN` in
+  `buildtools/ci/check_upstream.py`), every file matches the upstream commit
+  `UPSTREAM` names, line endings aside, or is listed there with the reason.
+  CI fails an unlisted change, and a listed file that matches upstream again.
+  Changing an upstream file lists it in the same pull request. Moving to
+  another upstream commit is a pull request of its own:
+  `buildtools/upstream_merge.sh <commit>` merges upstream's changes with their
+  carriage returns stripped (Indigo's text files end lines with LF, upstream's
+  often with CRLF) and updates the `commit` line. Resolve what it lists, refresh
+  the two fixtures that copy upstream code for the audits
+  (`buildtools/ui/tests/fixtures/main.base.c`, `settings_toggle.base.c`), and
+  say in `CHANGELOG.md` what the move brings. The whitespace check covers
+  Indigo's own paths only; upstream's lines keep upstream's whitespace.
 - **Keep the draw path cheap.** The interface is drawn with the console's GX
   pipeline at a fixed per-frame budget: no per-frame allocation, no blocking
   read in a draw function.
