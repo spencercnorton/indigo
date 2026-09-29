@@ -170,7 +170,6 @@ an `Indigo-vX.Y.Z.zip` laid out exactly as it goes on the card:
 ```text
 Indigo-README.txt              what goes where, in plain words
 ipl.dol                        Indigo; PicoBoot and other modchips boot this
-games/                         your games (see Set up your library)
 swiss/patches/apploader.img    Indigo again, for In-Game Reset
 swiss/ui/                      posters.pak, if you add one (see Posters)
 swiss/indigo/                  the licence and notice
@@ -184,10 +183,9 @@ swiss/indigo/                  the licence and notice
 2. Unzip the download, select everything inside and drag it onto the root of
    the card. Let it replace files of the same name. On a Mac, hold Option as
    you drop and choose **Merge**: **Replace** deletes what is already in the
-   card's `games` and `swiss` folders (your games, settings, cheats and
-   saves).
-3. Put your games in `/games`, with nothing else in it or in the game
-   folders, and power on.
+   card's `swiss` folder (your settings, cheats and saves).
+3. Put your games in `/games` (make the folder if the card has none), with
+   nothing else in it or in the game folders, and power on.
 
 **Updating from Indigo 1.x:** `ipl.dol` is already Indigo, so don't rename
 it; copy the new files over it the same way (on a Mac, Merge). If you renamed
