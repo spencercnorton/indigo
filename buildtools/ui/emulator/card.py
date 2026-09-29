@@ -6,6 +6,9 @@ system as a device. /games holds small images of fictitious games: a disc
 header, a file table with one file, opening.bnr, and that banner (drawn
 here), which is all the Library reads of a game. Two more images have a
 missing or corrupt file table, which the Library must survive (DAMAGED).
+A text file and an empty folder sit beside them, as they do on real cards:
+the Library skips both (STRAYS), and the text file sorts first, so the
+games move up past it.
 /swiss/ui/posters.pak holds posters drawn here from gradients and shapes, for
 all but two of the games, so the Library shows both kinds of card. Nothing
 in it is anyone else's: no game, no box art, no font.
@@ -34,6 +37,7 @@ GAMES = (
     ("GPLZ01", "Paper Lantern"), ("GRZZ01", "Rally Cross Zero"), ("GSSZ01", "Skyward Salvage"),
 )
 NO_POSTER = frozenset({"GPLZ01", "GSSZ01"})
+STRAYS = ("About these games.txt", "Old saves/")
 DISC = ("QIDC00", "Indigo demonstration disc")
 MAGIC = 0xC2339F3D
 STUB_BYTES = 64 * 1024
@@ -199,6 +203,11 @@ def build(out: Path, posters: bool = True) -> dict[str, object]:
             (root / "games" / f"{title} [{game_id}].iso").write_bytes(game_image(index, game_id, title))
         for game_id, title, image in DAMAGED:
             (root / "games" / f"{title} [{game_id}].iso").write_bytes(image(game_id, title))
+        for name in STRAYS:
+            if name.endswith("/"):
+                (root / "games" / name).mkdir()
+            else:
+                (root / "games" / name).write_text("Not a game.\n")
         with_posters = posters and build_posters(folder, root / "swiss/ui/posters.pak")
         for path in sorted(root.rglob("*")) + [root]:
             os.utime(path, (1000000000, 1000000000))

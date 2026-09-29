@@ -258,7 +258,7 @@ Passwords are saved as plain text in `global.ini`.
 | Load at startup | What Indigo opens when it starts. A chooses a device, then a folder on it: X picks the folder you are in. The row shows the device. Z on a game's details sets a game instead ([Autoload](game-details.md#autoload)); Z on that game again, or on `..` in the folder's file list, turns it off. |
 | Flatten directory | A folder pattern whose game folders are listed as if their disc images sat directly in it. The default is `*/games`. |
 | Show hidden files | Lists hidden files and folders, such as `/swiss`. |
-| Hide unknown file types | Hides files that aren't games, programs, music or memory card saves. It also stops a stray text file or picture hiding the Library; folders and programs still do. |
+| Hide unknown file types | Hides files that aren't games, programs, music or memory card saves from Swiss's file lists. The Library skips them either way. |
 | File Management | Z in a file list opens actions to copy, move, rename or delete. |
 | Panel Transparency | Translucent panels, like the GameCube menu, or solid ones. |
 | Animated Backdrop | Whether the backdrop behind the cube drifts. |

@@ -252,20 +252,17 @@ With In-Game Reset set to **Apploader**, a reset returns to the program in
 ### Games
 
 The Library shows the games in one folder, `/games` at the root of the card.
-Put each game in its own folder or put the disc images there directly, and
-keep nothing else in `/games` or in the game folders:
+Put each game in its own folder or put the disc images there directly:
 
 ```text
 /games/Super Mario Sunshine [GMSE01]/game.iso
 /games/Super Mario Sunshine.iso
 ```
 
-Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. Anything else there (a
-text file, a cover image, an empty folder, a folder inside a game's folder)
-turns the Library back into Swiss's plain file list. "Hide unknown file types"
-in Settings → Setup → Library hides stray text files and pictures, but not
-folders, programs (`.dol`, `.elf`) or music. On Home, turn the cube to Library
-and press A.
+Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. The Library skips
+anything else there, such as a text file, a cover image or an empty folder.
+If `/games` holds no disc images at all, you get Swiss's plain file list
+instead. On Home, turn the cube to Library and press A.
 
 ### Posters
 

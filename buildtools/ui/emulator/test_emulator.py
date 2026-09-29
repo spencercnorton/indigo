@@ -65,6 +65,12 @@ class Disc(unittest.TestCase):
         with self.assertRaises(ValueError):
             card.disc_header("gacz01", "lower case")
 
+    def test_the_stray_file_sorts_before_every_game(self):
+        titles = [title for _, title in card.GAMES] + [title for _, title, _ in card.DAMAGED]
+        self.assertLess(card.STRAYS[0].lower(), min(titles).lower(),
+                        "the Library must skip a stray that Swiss lists ahead of the games")
+        self.assertTrue(card.STRAYS[1].endswith("/"), "and an empty folder")
+
     def test_posters_differ(self):
         self.assertNotEqual(card.poster(0).tobytes(), card.poster(1).tobytes())
 

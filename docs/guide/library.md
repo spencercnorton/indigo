@@ -84,18 +84,16 @@ its own folder, or put the disc images there directly:
 ```
 
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`, in capitals or not.
-Keep nothing else in `/games` or in the game folders: any other file (a text
-file, a cover image), an empty folder or a folder inside a game's folder turns
-the Library back into Swiss's plain file list.
+The Library skips anything else in `/games` or in a game's folder, such as a
+text file, a cover image or an empty folder.
 
 <p align="center">
-  <img alt="Swiss's plain file list of the games folder, one game per row with its banner, name and region flag, which Indigo shows instead of the Library when the folder holds something other than games." src="images/library-file-list.png" width="640">
+  <img alt="Swiss's plain file list of the games folder, one game per row with its banner, name and region flag, which Indigo shows instead of the Library when the folder holds no games." src="images/library-file-list.png" width="640">
 </p>
 
-If you see the list above instead of posters, look in `/games` and its
-folders for what isn't a game. **Hide unknown file types** in Settings ›
-Setup › Library hides stray text files and pictures so the Library can take
-over; it doesn't hide folders, programs (`.dol`, `.elf`) or music.
+If `/games` holds no disc images, you get the list above instead of posters.
+Compressed images (`.rvz`, `.gcz`) don't count: Swiss can't start them, and
+choosing one tells you to decompress it with NKit or Dolphin.
 
 Games on two discs appear twice, once for each disc.
 

@@ -755,6 +755,7 @@ static uiGameflowLibraryMode_t gameflowLibraryMode(file_handle **directory,
 	char gamesRoot[PATHNAME_MAX];
 	uiGameflowLibraryClassifier_t classifier;
 	uiGameflowLibraryLocation_t location;
+	bool flattened;
 	int i;
 
 	if(directory == NULL || numFiles <= 0 || devices[DEVICE_CUR] == NULL ||
@@ -768,16 +769,62 @@ static uiGameflowLibraryMode_t gameflowLibraryMode(file_handle **directory,
 		return UI_GAMEFLOW_LIBRARY_NONE;
 	}
 	UIGameflowLibrary_ClassifierInit(&classifier, location);
+	/* scanFiles lists what a flattened directory's folders hold, so the only
+	 * folders left in it are empty ones: never a game. */
+	flattened = !fnmatch(swissSettings.flattenDir, curDir.name,
+		FNM_PATHNAME | FNM_CASEFOLD);
 
 	for(i = 0; i < numFiles; ++i) {
 		const char *name = directory[i] ?
 			getRelativeName(directory[i]->name) : NULL;
 		uiGameflowLibraryEntryType_t type = gameflowEntryType(directory[i]);
+		if(flattened && type == UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY) {
+			continue;
+		}
 		if(!UIGameflowLibrary_ClassifierAdd(&classifier, type, name)) {
 			return UI_GAMEFLOW_LIBRARY_NONE;
 		}
 	}
 	return UIGameflowLibrary_ClassifierFinish(&classifier);
+}
+
+/* The Library's entries: a Library location's games, after "..", move to the
+ * front of the scanned list in their order, and the Library shows only them,
+ * skipping a stray file or an empty folder instead of giving the whole
+ * folder to Swiss's list. Returns how many to show; curSelection keeps its
+ * entry, so an index means the same game in both lists. Anywhere else the
+ * list is left as it is. */
+static int gameflowLibraryEntries(file_handle **directory, int numFiles)
+{
+	uiGameflowLibraryMode_t mode = gameflowLibraryMode(directory, numFiles);
+	file_handle *selected;
+	int count = 0;
+	int i;
+
+	if(mode == UI_GAMEFLOW_LIBRARY_NONE) {
+		return numFiles;
+	}
+	selected = curSelection >= 0 && curSelection < numFiles ?
+		directory[curSelection] : NULL;
+	for(i = 0; i < numFiles; ++i) {
+		file_handle *entry = directory[i];
+
+		if(entry == NULL || !UIGameflowLibrary_EntryEligible(mode,
+			(uint32_t)count, gameflowEntryType(entry),
+			getRelativeName(entry->name))) {
+			continue;
+		}
+		memmove(&directory[count + 1], &directory[count],
+			(size_t)(i - count) * sizeof(*directory));
+		directory[count++] = entry;
+	}
+	curSelection = 0;
+	for(i = 0; i < count; ++i) {
+		if(directory[i] == selected) {
+			curSelection = i;
+		}
+	}
+	return count;
 }
 
 static bool gameflowEnterLibraryFromHome(void)
@@ -4826,11 +4873,12 @@ void menu_loop()
 			else if(!fnmatch("*/games", curDir.name, FNM_PATHNAME | FNM_CASEFOLD | FNM_LEADING_DIR)) {
 				fileBrowserType = swissSettings.gameBrowserType;
 			}
-			/* A valid strict games layout owns the retained presentation.
+			/* A games folder with a game in it owns the retained presentation.
 			 * Existing configurations default GameBrowserType to Fullwidth;
 			 * allowing that legacy preference to win would make the custom
-			 * Library unreachable on upgraded cards. Mixed/unsupported layouts
-			 * still return NONE and keep their requested legacy browser. */
+			 * Library unreachable on upgraded cards. A folder with no games, or
+			 * loose images beside game folders, still returns NONE and keeps
+			 * its requested legacy browser. */
 			fileBrowserType = UIGameflowLibrary_SelectBrowser(
 				gameflowLibraryMode(getSortedDirEntries(),
 					getSortedDirEntryCount()),
@@ -4840,7 +4888,9 @@ void menu_loop()
 					filePanel = renderFileBrowser(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);
 					break;
 				case BROWSER_CAROUSEL:
-					filePanel = renderFileCarousel(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);
+					filePanel = renderFileCarousel(getSortedDirEntries(),
+						gameflowLibraryEntries(getSortedDirEntries(),
+							getSortedDirEntryCount()), filePanel);
 					break;
 				case BROWSER_FULLWIDTH:
 					filePanel = renderFileFullwidth(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);

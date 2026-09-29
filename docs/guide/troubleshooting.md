@@ -21,13 +21,18 @@
   <img alt="Swiss's plain file list, shown in place of the Library." src="images/library-file-list.png" width="640">
 </p>
 
-The Library appears only when `/games` holds nothing but games: disc images
-(`.iso`, `.gcm`, `.tgc`, `.fdi`) or folders with one in each and nothing else.
-A single other file, such as a text file or cover image, or an empty folder,
-brings back the file list, whether it is in `/games` or in a game's folder.
-Remove it. **Hide unknown file types** in Settings › Setup › Library hides
-text files and pictures, but not folders, programs or music. See
-[Set up the games folder](library.md#set-up-the-games-folder).
+The Library appears when `/games` holds at least one disc image (`.iso`,
+`.gcm`, `.tgc`, `.fdi`), directly or in a game's folder, and it skips
+anything else there. You get the file list when:
+
+- `/games` holds no disc images, for example only compressed `.rvz` or `.gcz`
+  images, which must be decompressed with NKit or Dolphin first.
+- Your games are on another card or drive: choose it on the Source face.
+- **Flatten directory** in Settings › Setup › Library was changed from
+  `*/games`, and `/games` holds loose disc images beside game folders. Set it
+  back to `*/games`.
+
+See [Set up the games folder](library.md#set-up-the-games-folder).
 
 ## Home starts on Source, or Library says Select Source
 

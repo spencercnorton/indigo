@@ -35,6 +35,15 @@ r2073 and r2092, and has everything upstream changed since:
 - The first start from a GC Loader or PicoLoader boot image says that
   System Boot Mode › Production brings back the GameCube logo screen.
 
+### Fixes
+
+- A file in `/games` that isn't a game no longer hides the Library. A text
+  file, a cover picture or an empty folder there, or in a game's folder,
+  turned the whole Library into Swiss's plain file list, with no sign of
+  which file did it, and Library Layout and posters then seemed to do
+  nothing. The Library now skips them and shows the games. Swiss's list
+  comes back only when `/games` holds no disc images at all.
+
 ### For developers
 
 - [`UPSTREAM`](UPSTREAM) names the upstream Swiss commit Indigo is built on,

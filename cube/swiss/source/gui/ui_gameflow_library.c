@@ -171,52 +171,47 @@ void UIGameflowLibrary_ClassifierInit(uiGameflowLibraryClassifier_t *state,
 	state->location = location;
 	state->valid = location == UI_GAMEFLOW_LIBRARY_LOCATION_ROOT ||
 		location == UI_GAMEFLOW_LIBRARY_LOCATION_STRICT_LEAF;
-	if(location == UI_GAMEFLOW_LIBRARY_LOCATION_STRICT_LEAF) {
-		state->mode = UI_GAMEFLOW_LIBRARY_IMAGE_FILES;
-	}
 }
 
 bool UIGameflowLibrary_ClassifierAdd(uiGameflowLibraryClassifier_t *state,
 	uiGameflowLibraryEntryType_t type, const char *name)
 {
-	uiGameflowLibraryMode_t entryMode = UI_GAMEFLOW_LIBRARY_NONE;
 	uint32_t index;
 
 	if(state == NULL || !state->valid) {
 		return false;
 	}
 	index = state->entryCount++;
-	if(state->location == UI_GAMEFLOW_LIBRARY_LOCATION_ROOT &&
-		type != UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL) {
-		if(type == UI_GAMEFLOW_LIBRARY_ENTRY_FILE) {
-			entryMode = UI_GAMEFLOW_LIBRARY_IMAGE_FILES;
-		}
-		else if(type == UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY) {
-			entryMode = UI_GAMEFLOW_LIBRARY_GAME_FOLDERS;
-		}
-		if(entryMode == UI_GAMEFLOW_LIBRARY_NONE ||
-			(state->mode != UI_GAMEFLOW_LIBRARY_NONE &&
-			state->mode != entryMode)) {
-			state->valid = false;
-			return false;
-		}
-		state->mode = entryMode;
+	if(type == UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL) {
+		state->valid = index == 0u;
+		return state->valid;
 	}
-	if(!UIGameflowLibrary_EntryEligible(state->mode, index, type, name)) {
-		state->valid = false;
-		return false;
+	if(UIGameflowLibrary_EntryEligible(UI_GAMEFLOW_LIBRARY_IMAGE_FILES,
+		index, type, name)) {
+		state->imageCount++;
 	}
-	if(type != UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL) {
-		state->hasGame = true;
+	else if(state->location == UI_GAMEFLOW_LIBRARY_LOCATION_ROOT &&
+		UIGameflowLibrary_EntryEligible(UI_GAMEFLOW_LIBRARY_GAME_FOLDERS,
+			index, type, name)) {
+		state->folderCount++;
 	}
+	/* Anything else isn't a game: the Library skips it. */
 	return true;
 }
 
 uiGameflowLibraryMode_t UIGameflowLibrary_ClassifierFinish(
 	const uiGameflowLibraryClassifier_t *state)
 {
-	return state != NULL && state->valid && state->hasGame ?
-		state->mode : UI_GAMEFLOW_LIBRARY_NONE;
+	if(state == NULL || !state->valid) {
+		return UI_GAMEFLOW_LIBRARY_NONE;
+	}
+	if(state->imageCount > 0u && state->folderCount == 0u) {
+		return UI_GAMEFLOW_LIBRARY_IMAGE_FILES;
+	}
+	if(state->folderCount > 0u && state->imageCount == 0u) {
+		return UI_GAMEFLOW_LIBRARY_GAME_FOLDERS;
+	}
+	return UI_GAMEFLOW_LIBRARY_NONE;
 }
 
 int UIGameflowLibrary_SelectBrowser(uiGameflowLibraryMode_t mode,
