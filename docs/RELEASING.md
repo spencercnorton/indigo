@@ -7,6 +7,7 @@ mistake is fixed by the next version, never by moving a tag.
 | Channel | Branch | Tag | GitHub Release |
 | --- | --- | --- | --- |
 | Beta | `beta` | `vX.Y.Z-beta.N` | Pre-release |
+| Release candidate | `beta` | `vX.Y.Z-rc.N` | Pre-release |
 | Stable | `main` | `vX.Y.Z` | Latest |
 
 Pushing a tag runs `.github/workflows/release.yml`. It checks that the tag
@@ -29,6 +30,14 @@ publishing, run the workflow by hand with an existing tag.
    ```
 3. The pre-release appears with the `## Unreleased` notes. Later betas of
    the same version count up: `-beta.2`, `-beta.3`.
+
+## A release candidate
+
+When a version is complete and a beta of it has held up, tag the tip of
+`beta` `vX.Y.Z-rc.1` the same way. It is a pre-release like a beta, with the
+same notes, opening with "Release candidate" instead of "Beta". A fix found
+in it lands on `beta` as usual and ships as `-rc.2`; the release is then
+promoted from the last candidate unchanged.
 
 ## A release
 

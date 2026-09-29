@@ -165,6 +165,9 @@ Changes land under `## Unreleased` until the release names them.
   again and the fuzzers run for ten minutes each.
 - The emulator test also opens Change Source: the device picker shows a
   device's name, RIGHT shows another, and B leaves it.
+- Release candidates: a `vX.Y.Z-rc.N` tag on `beta` publishes a pre-release
+  like a beta, its notes opening with "Release candidate"
+  ([docs/RELEASING.md](docs/RELEASING.md)).
 
 ## v1.25.0 — Memory Cards, a cube that flies in, and a drag-and-drop download
 

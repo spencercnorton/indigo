@@ -3,7 +3,9 @@
 
 import contextlib
 import io
+import re
 import struct
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -161,6 +163,41 @@ class Workflows(unittest.TestCase):
                     good.replace("    steps:\n      - uses", "    container: debian\n    steps:\n      - uses", 1),
                     good.replace("1" * 64, "2" * 64, 1)):
             self.assertNotEqual(self.check(bad), [], bad)
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class Release(unittest.TestCase):
+    """release.yml sends vX.Y.Z to main and betas and release candidates to beta,
+    and release_notes.sh says which kind of pre-release a tag is."""
+
+    def channel(self, tag: str):
+        text = (ROOT / ".github/workflows/release.yml").read_text()
+        stable, pre = re.findall(r"grep -Eqx '([^']+)'", text)[:2]
+        if re.fullmatch(stable, tag):
+            return "main"
+        return "beta" if re.fullmatch(pre, tag) else None
+
+    def test_tags_and_their_channels(self):
+        for tag, channel in (("v2.0.0", "main"), ("v2.0.0-beta.3", "beta"), ("v2.0.0-rc.1", "beta"),
+                             ("v2.0.0-rc", None), ("v2.0-rc.1", None), ("v2.0.0-RC.1", None),
+                             ("2.0.0", None)):
+            self.assertEqual(self.channel(tag), channel, tag)
+
+    def notes(self, tag: str) -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "CHANGELOG.md").write_text("# Changelog\n\n## Unreleased\n\n- Something new.\n")
+            return subprocess.run(["sh", str(ROOT / "buildtools/release_notes.sh"), tag], cwd=tmp,
+                                  capture_output=True, text=True, check=True).stdout
+
+    def test_each_pre_release_says_what_it_is(self):
+        self.assertIn("> **Release candidate.** v2.0.0 as it is meant to ship", self.notes("v2.0.0-rc.1"))
+        self.assertIn("> **Beta.** A pre-release", self.notes("v2.0.0-beta.1"))
+        for tag in ("v2.0.0-rc.1", "v2.0.0-beta.1"):
+            notes = self.notes(tag)
+            self.assertIn("- Something new.", notes)
+            self.assertIn(f"Indigo-{tag}.zip", notes)
 
 
 if __name__ == "__main__":
