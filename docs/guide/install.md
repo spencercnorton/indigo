@@ -22,7 +22,7 @@ installing is drag and drop:
 Indigo-README.txt              what goes where, in plain words
 ipl.dol                        Indigo
 swiss/patches/apploader.img    Indigo again, for In-Game Reset
-swiss/ui/                      posters.pak, if you add one (see Posters)
+swiss/ui/                      the poster pack, if you add it (see Posters)
 swiss/indigo/                  the licence and notice
 ```
 

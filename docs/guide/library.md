@@ -103,7 +103,7 @@ The Library skips anything else in `/games` or in a game's folder, such as a
 text file, a cover image or an empty folder.
 
 <p align="center">
-  <img alt="Swiss's plain file list of the games folder, one game per row with its banner, name and region flag, which Indigo shows instead of the Library when the folder holds no games." src="images/library-file-list.png" width="640">
+  <img alt="Swiss's plain file list of a games folder, one entry per row with its banner, name and region flag." src="images/library-file-list.png" width="640">
 </p>
 
 If `/games` holds no disc images, you get the list above instead of posters.
