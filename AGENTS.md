@@ -26,12 +26,13 @@ Indigo is built on and lists the upstream files Indigo does change, with why.
 ## Build and test
 
 ```bash
-# The DOL, in the pinned image CI uses (writes cube/swiss/swiss.dol):
+# The DOL, in the pinned image CI uses (writes cube/swiss/swiss.dol, and
+# cube/packer/swiss.dol: the same DOL compressed, the card's ipl.dol):
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
   ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
 
 # The SD card zip for that build (after make dev):
-buildtools/sd_package.sh dev cube/swiss/swiss.dol .
+buildtools/sd_package.sh dev cube/packer/swiss.dol .
 
 # Host tests: lanes plain, sanitized, contracts, or all. Needs Python 3 with
 # Pillow and NumPy, a C compiler and zlib; the poster tests also need
@@ -51,11 +52,15 @@ buildtools/ui/tests/fuzz/run_fuzz.sh 30
 ```
 
 CI (`.github/workflows/ci.yml`) also checks the DOL (`buildtools/ci/verify_dol.py`:
-structure, size budget, the commit it names) and the zip's exact layout
+structure, size budget, the commit it names) and `ipl.dol`, the DOL compressed
+by `cube/packer` that the card gets (`--packed`: it unpacks to exactly that
+DOL, in the one .xz format the console reads), the zip's exact layout
 (`buildtools/ci/check_package.py`), builds a second time in a fresh
-container to prove the build is reproducible, and boots the DOL in Dolphin
-and walks its menus with a controller (`buildtools/ui/emulator/`: every
-face, the Library, no crash). "CI passed" sums every job up.
+container to prove both files are reproducible, and boots `ipl.dol` in
+Dolphin and walks its menus with a controller (`buildtools/ui/emulator/`:
+every face, the Library, no crash). Dolphin can't pass the unpacker's first
+check, which only a console passes, so `dolphin_ipl.py` turns that one
+branch off in a copy. "CI passed" sums every job up.
 Every job runs on self-hosted runners, one throwaway container per job:
 [buildtools/ci/runner/README.md](buildtools/ci/runner/README.md).
 

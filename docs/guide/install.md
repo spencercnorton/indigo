@@ -126,8 +126,10 @@ docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
   ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
 ```
 
-This writes `cube/swiss/swiss.dol`. That is the same program as `ipl.dol`
-in the release zip; copy it to the card under the name your loader expects.
+This writes `cube/packer/swiss.dol`, the same file as `ipl.dol` in the
+release zip: copy it to the card under the name your loader expects. It is
+compressed, and the console unpacks it as it starts. `cube/swiss/swiss.dol`
+is the same program uncompressed, the one to run in the Dolphin emulator.
 `buildtools/sd_package.sh vX.Y.Z` packs it into the zip, with the
 `apploader.img` In-Game Reset returns to.
 
