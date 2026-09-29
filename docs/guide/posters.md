@@ -15,17 +15,20 @@ banner and its six-character game ID.
 
 Ready-made packs are made from GameTDB's cover art:
 
+- [Posters: every region](https://indigo.norvitech.com/indigo-posters-all.zip), for games from any region
 - [Posters: USA & Japan](https://indigo.norvitech.com/indigo-posters-ntsc.zip) (NTSC)
 - [Posters: Europe & Australia](https://indigo.norvitech.com/indigo-posters-pal.zip) (PAL)
 
 Unzip the one you want into the root of the card; it holds
-`swiss/ui/posters.pak`. Indigo reads one pack at a time, so pick the region
-most of your games are from. Checksums are in
+`swiss/ui/posters.pak`. Indigo reads one pack at a time. The every-region
+pack covers every game GameTDB has art for; the regional packs are smaller,
+and are the ones Indigo 2.0 and earlier can read. Checksums are in
 [SHA256SUMS.txt](https://indigo.norvitech.com/SHA256SUMS.txt), and the
 [Indigo page](https://norvitech.com/indigo/) has the details.
 
-A game gets its poster when its game ID is in the pack. Games from the other
-region, and the few games GameTDB has no art for, keep their banner card.
+A game gets its poster when its game ID is in the pack. With a regional pack,
+games from the other region keep their banner card, as do the few games
+GameTDB has no art for.
 
 ## Build your own pack
 
@@ -47,7 +50,8 @@ You can make a pack from your own cover images, from this repository:
    Files that aren't named by a game ID are skipped and listed.
 3. Copy `posters.pak` to `/swiss/ui/posters.pak` on the card.
 
-A pack holds up to 1,024 covers.
+A pack holds up to 2,048 covers. Indigo 2.0 and earlier read up to 1,024 and
+show banners with a bigger pack.
 
 ## Gameplay stills
 

@@ -57,6 +57,13 @@ r2073 and r2092, and has everything upstream changed since:
   [Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight) by mvizensk,
   with its author's permission. System › Credits and `NOTICE` thank them.
 
+### Posters for every region
+
+- One poster pack can hold every GameCube cover: a pack holds up to 2,048
+  games, up from 1,024. The new every-region pack has box art for games from
+  any region, so a card mixing USA, Japanese and European games no longer
+  has to choose. The two regional packs stay, for Indigo 2.0 and earlier.
+
 ### Fixes
 
 - A file in `/games` that isn't a game no longer hides the Library. A text

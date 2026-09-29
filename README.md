@@ -274,10 +274,12 @@ ID, such as `GMSE01`. For box art like the screenshots above, download a
 ready-made pack and unzip it into the root of the card; it holds
 `swiss/ui/posters.pak`:
 
+- [Posters: every region](https://indigo.norvitech.com/indigo-posters-all.zip), for games from any region
 - [Posters: USA & Japan](https://indigo.norvitech.com/indigo-posters-ntsc.zip) (NTSC)
 - [Posters: Europe & Australia](https://indigo.norvitech.com/indigo-posters-pal.zip) (PAL)
 
-Indigo reads one pack, so pick the region most of your games are from.
+Indigo reads one pack. The every-region pack is the one to pick; the two
+regional packs are smaller, and are the ones Indigo 2.0 and earlier can read.
 Checksums are in [SHA256SUMS.txt](https://indigo.norvitech.com/SHA256SUMS.txt); the
 [Indigo page](https://norvitech.com/indigo/) has the details.
 

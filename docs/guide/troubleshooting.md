@@ -45,8 +45,9 @@ also lists the devices that weren't detected, and A on one tries again.
 
 A game shows its banner card when its game ID isn't in your poster pack:
 it's from the other region, or GameTDB has no cover for it. The card shows
-the ID, so you can check. Use the pack for the region most of your games are
-from, or [build your own](posters.md#build-your-own-pack).
+the ID, so you can check. Use the every-region pack, or the one for the
+region most of your games are from, or
+[build your own](posters.md#build-your-own-pack).
 
 ## A message says the file is a bad dump
 

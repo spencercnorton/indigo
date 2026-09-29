@@ -349,9 +349,10 @@ static u8 *buildShapedPack(const testRec_t *recs, int count, size_t *outLen,
 	u32 dataOffset = HDR + (u32)count * REC;
 	size_t len = dataOffset + (size_t)count * shape->bytes;
 	u8 *pack = calloc(1, len);
-	int order[1100];
+	int order[UI_ASSETS_MAX_RECORDS + 1];
 	int i, j;
 
+	CHECK(count <= UI_ASSETS_MAX_RECORDS + 1);
 	for (i = 0; i < count; i++)
 		order[i] = i;
 	if (!(flags & BUILD_NOSORT)) {
@@ -828,16 +829,17 @@ static void test_short_read_fails_poster(void) {
 	free(pack);
 }
 
-/* n < 1000 -> G###E0, n >= 1000 -> H###E0: unique, valid charset, and
- * lexicographic order matches numeric order up to 1999 titles. */
+/* Each thousand takes the next letter from G: G###E0, H###E0, I###E0...
+ * Unique, valid charset, and lexicographic order matches numeric order up
+ * to 19,999 titles (G to Z), past UI_ASSETS_MAX_RECORDS. */
 static void nthId(char *dst, int n) {
 	unsigned int value;
 	memset(dst, 0, 8);
-	CHECK(n >= 0 && n < 2000);
-	if (n < 0 || n >= 2000)
+	CHECK(n >= 0 && n < 20000);
+	if (n < 0 || n >= 20000)
 		return;
 	value = (unsigned int)n % 1000u;
-	dst[0] = n < 1000 ? 'G' : 'H';
+	dst[0] = (char)('G' + n / 1000);
 	dst[1] = (char)('0' + value / 100u);
 	dst[2] = (char)('0' + value / 10u % 10u);
 	dst[3] = (char)('0' + value % 10u);
@@ -856,6 +858,10 @@ static void test_nth_id_boundaries(void) {
 	CHECK(strcmp(id, "H000E0") == 0);
 	nthId(id, 1999);
 	CHECK(strcmp(id, "H999E0") == 0);
+	nthId(id, 2047);
+	CHECK(strcmp(id, "I047E0") == 0);
+	nthId(id, 19999);
+	CHECK(strcmp(id, "Z999E0") == 0);
 }
 
 static void makeIds(char ids[][8], int first, int count) {
@@ -1365,7 +1371,7 @@ static void test_max_records_boundary(void) {
 	u8 *pack = buildPack(recs, count, &len, 0);
 	uiAssetsSource_t src = memSource(pack, len);
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
-	/* Ceiling holds at the largest legal pack: arena + full 32 KiB index. */
+	/* Ceiling holds at the largest legal pack: arena + full 64 KiB index. */
 	CHECK(UIAssets_MemoryFootprint() ==
 	      UI_ASSETS_SLOTS * UI_ASSETS_POSTER_BYTES +
 	      (u32)UI_ASSETS_MAX_RECORDS * REC);
@@ -1378,7 +1384,8 @@ static void test_max_records_boundary(void) {
 	}
 	UIAssets_CancelForDeviceChange();
 	CHECK(UIAssets_DisposeAfterVideoStop() == UI_ASSETS_OK);
-	/* count = 1025 must be rejected before anything else is trusted. */
+	/* One record over the limit must be rejected before anything else is
+	 * trusted. */
 	wbe32(pack + 0x0C, UI_ASSETS_MAX_RECORDS + 1);
 	src = memSource(pack, len);
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_ERR_FORMAT);

@@ -126,7 +126,9 @@ typedef struct {
 #define UI_ASSETS_CONTENT_H 256
 #define UI_ASSETS_MIP_LEVELS 5
 #define UI_ASSETS_POSTER_BYTES 43648
-#define UI_ASSETS_MAX_RECORDS 1024
+/* Every GameCube game GameTDB lists (about 1,700) fits in one pack. The
+ * index costs 32 bytes a record in RAM: 64 KiB at the limit. */
+#define UI_ASSETS_MAX_RECORDS 2048
 #define UI_ASSETS_ID_LEN 6
 /* One video frame must pass between evicting a slot and rewriting its
  * texels so the GPU never samples a half-written poster; 40 ms covers a
