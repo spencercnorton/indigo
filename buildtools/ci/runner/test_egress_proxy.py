@@ -20,7 +20,7 @@ class Rules(unittest.TestCase):
 
     def test_everything_else_is_refused(self):
         for host in ("", "evilgithub.com", "github.com.evil.net", "githubusercontent.com.evil.net",
-                     "example.com", "localhost", "portainer", "140.82.112.3", "10.0.0.1",
+                     "example.com", "localhost", "intranet", "140.82.112.3", "10.0.0.1",
                      "[::1]", "git.hub.com", "github.com:443", "sigstore.dev.evil.net"):
             self.assertFalse(host_allowed(host), host)
 
@@ -34,9 +34,9 @@ class Rules(unittest.TestCase):
     def test_only_public_addresses(self):
         for address in ("140.82.112.3", "2606:50c0:8000::153"):
             self.assertTrue(public_address(address), address)
-        for address in ("10.1.2.3", "172.17.0.1", "192.168.1.8", "100.88.3.84", "127.0.0.1",
+        for address in ("10.1.2.3", "172.17.0.1", "192.168.0.1", "100.64.0.1", "127.0.0.1",
                         "169.254.169.254", "0.0.0.0", "224.0.0.1", "::1", "fe80::1%eth0",
-                        "fd7a:115c:a1e0::1"):
+                        "fd00::1"):
             self.assertFalse(public_address(address), address)
 
 
