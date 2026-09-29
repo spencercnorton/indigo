@@ -44,11 +44,16 @@ also lists the devices that weren't detected, and A on one tries again.
 
 ## Some games have no box art
 
-A game shows its banner card when its game ID isn't in your poster pack:
-it's from the other region, or GameTDB has no cover for it. The card shows
-the ID, so you can check. Use the every-region pack, or the one for the
-region most of your games are from, or
-[build your own](posters.md#build-your-own-pack).
+A game shows its banner card when its game ID isn't in your poster pack.
+The card shows the ID, so you can check:
+
+- GameTDB has no cover for it, or it's a homebrew or translated disc with an
+  ID of its own: [build your own pack](posters.md#build-your-own-pack).
+- The card still has a pack from before Indigo 2.1, which covered one region:
+  replace it with [the poster pack](posters.md#download-the-pack), which
+  covers every region.
+- Every game shows its banner: check that `/swiss/ui/posters.pak` is there
+  and that Indigo is 2.1 or later. 2.0 and earlier refuse a pack this big.
 
 ## A message says the file is a bad dump
 

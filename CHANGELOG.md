@@ -45,11 +45,11 @@ r2073 and r2092, and has everything upstream changed since:
   for its details. Choose it in Settings › Setup › Library › Library
   Layout.
 - Spotlight's stills come from `/swiss/ui/stills.pak`, a second pack next to
-  the posters: one 320×240 screenshot per game. The ready-made downloads
-  carry it beside `posters.pak`, made from the libretro-thumbnails project's
+  the posters: one 320×240 screenshot per game. The poster pack carries it
+  beside `posters.pak`, made from the libretro-thumbnails project's
   GameCube screenshots; `poster_pack.py --stills` builds one from your own.
 - Spotlight describes every game: a few sentences from
-  `/swiss/ui/descriptions.txt`, which the ready-made downloads carry too
+  `/swiss/ui/descriptions.txt`, which the poster pack carries too
   (English descriptions from GameTDB), else the description on the game's
   disc banner. A game with neither says so. The file is plain text you can
   edit, one game per line.
@@ -57,12 +57,14 @@ r2073 and r2092, and has everything upstream changed since:
   [Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight) by mvizensk,
   with its author's permission. System › Credits and `NOTICE` thank them.
 
-### Posters for every region
+### One poster pack
 
-- One poster pack can hold every GameCube cover: a pack holds up to 2,048
-  games, up from 1,024. The new every-region pack has box art for games from
-  any region, so a card mixing USA, Japanese and European games no longer
-  has to choose. The two regional packs stay, for Indigo 2.0 and earlier.
+- Posters are one download now, for every region: box art for every
+  GameCube game GameTDB has a cover for, with Spotlight's stills and
+  descriptions. There is no region to choose, and a card that mixes USA,
+  Japanese and European games gets posters for all of them. A pack holds up
+  to 2,048 games, up from 1,024. Indigo 2.0 and earlier refuse a pack this
+  big; the regional packs their release notes link stay online for them.
 
 ### Apps
 
@@ -132,8 +134,8 @@ r2073 and r2092, and has everything upstream changed since:
 - The pack builder makes gameplay stills as well as posters:
   `poster_pack.py --stills <folder>` writes `stills.pak`, one 320×240
   screenshot per game in the poster pack's format. The Library's art cache
-  loads a stills pack next to the poster pack, in three slots of its own;
-  nothing shows the stills yet. [docs/PACKS.md](docs/PACKS.md) describes
+  loads a stills pack next to the poster pack, in three slots of its own.
+  [docs/PACKS.md](docs/PACKS.md) describes
   the format, which the source cited but the repository never had.
 - Game details read no further than a disc banner's 128-character
   description, which need not end in a NUL; they could read on into the

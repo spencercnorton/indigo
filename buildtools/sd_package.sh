@@ -60,7 +60,7 @@ it by itself.
 WHAT EACH FILE IS FOR
   ipl.dol                      Indigo itself
   swiss/patches/apploader.img  In-Game Reset returns to Indigo (see below)
-  swiss/ui/                    posters.pak goes here, if you add one
+  swiss/ui/                    the poster pack goes here, if you add it
   swiss/indigo/                Indigo's licence (GPL-2.0-or-later) and notice
 
 GAMES
@@ -75,7 +75,7 @@ On Home, turn the cube to Library and press A.
 
 POSTERS AND CHEATS (optional, also drag and drop)
 Without posters, each game shows its disc banner and its six-character game
-ID (GMSE01). Poster packs and a cheat pack are on https://norvitech.com/indigo/
+ID (GMSE01). The poster pack and the cheat pack are on https://norvitech.com/indigo/
 - unzip one and drag its swiss folder onto the root of the card, choosing
 Merge on a Mac.
 

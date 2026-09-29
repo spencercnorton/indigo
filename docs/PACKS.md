@@ -64,7 +64,7 @@ of the file.
 | 0x00 | 4 | magic | `SWPK` |
 | 0x04 | 4 | version | 1 |
 | 0x08 | 4 | CRC-32 | of the header (with this field as zero), then the index |
-| 0x0C | 4 | record count | 1 to 1,024 |
+| 0x0C | 4 | record count | 1 to 2,048 (Indigo 2.0 and earlier: 1,024) |
 | 0x10 | 4 | index offset | 64 |
 | 0x14 | 4 | index length | record count × 32 |
 | 0x18 | 4 | data offset | 64 + index length |

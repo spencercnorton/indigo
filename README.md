@@ -279,17 +279,12 @@ cube to Library and press A.
 ### Posters
 
 Without posters, each game shows its disc banner and its six-character game
-ID, such as `GMSE01`. For box art like the screenshots above, download a
-ready-made pack and unzip it into the root of the card; it holds
-`swiss/ui/posters.pak`:
-
-- [Posters: every region](https://indigo.norvitech.com/indigo-posters-all.zip), for games from any region
-- [Posters: USA & Japan](https://indigo.norvitech.com/indigo-posters-ntsc.zip) (NTSC)
-- [Posters: Europe & Australia](https://indigo.norvitech.com/indigo-posters-pal.zip) (PAL)
-
-Indigo reads one pack. The every-region pack is the one to pick; the two
-regional packs are smaller, and are the ones Indigo 2.0 and earlier can read.
-Checksums are in [SHA256SUMS.txt](https://indigo.norvitech.com/SHA256SUMS.txt); the
+ID, such as `GMSE01`. For box art like the screenshots above, download
+[the poster pack](https://indigo.norvitech.com/indigo-posters-all.zip) and
+unzip it into the root of the card. One pack covers games from every region,
+so there is nothing to choose; it holds `swiss/ui/posters.pak` and the stills
+and descriptions Spotlight shows (below). Checksums are in
+[SHA256SUMS.txt](https://indigo.norvitech.com/SHA256SUMS.txt); the
 [Indigo page](https://norvitech.com/indigo/) has the details.
 
 To make your own, name front-cover images after the game IDs (`GMSE01.png`,
@@ -307,9 +302,9 @@ skipped and listed.
 
 The Spotlight layout also shows each game's gameplay still from
 `swiss/ui/stills.pak` and a few sentences about it from
-`swiss/ui/descriptions.txt`, which the ready-made packs carry beside the
-posters. The packs' covers and descriptions come from
-[GameTDB](https://www.gametdb.com/), and their stills from
+`swiss/ui/descriptions.txt`, which the poster pack carries beside the
+posters. Its covers and descriptions come from
+[GameTDB](https://www.gametdb.com/), and its stills from
 [libretro-thumbnails](https://github.com/libretro-thumbnails/Nintendo_-_GameCube),
 as do the screenshots above. The descriptions file is plain text you can
 edit (see [Posters](docs/guide/posters.md#game-descriptions)).
