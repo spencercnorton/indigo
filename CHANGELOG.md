@@ -4,6 +4,14 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## Unreleased
+
+### Fixes
+
+- System Information › About Indigo sends bug reports and questions to
+  Indigo's GitHub issues and discussions. It pointed to upstream Swiss's
+  community, which does not support Indigo.
+
 ## v2.0.0 — A clear glass cube, a launch screen and new menu music
 
 Indigo 2.0: the Home cube is clear glass all through, a game started from

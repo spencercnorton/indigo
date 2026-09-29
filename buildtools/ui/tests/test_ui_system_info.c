@@ -176,11 +176,42 @@ static void testTextFit(void)
 	CHECK(text[0] == '\0');
 }
 
+/* The console's IPL font is wider than Dolphin's and than a computer's: the
+ * settings layout test models it as 1.75 times its testMeasure (9 px a
+ * character, 13 for W and M, 5 for I, 4 for a space). About's help line must
+ * fit that font at its full size, as the source line above it does. */
+static int consoleMeasure(const char *text)
+{
+	int width = 0;
+
+	for(; *text != '\0'; text++) {
+		char ch = *text;
+		width += (ch == 'W' || ch == 'M') ? 13 :
+			(ch == 'I') ? 5 : (ch == ' ') ? 4 : 9;
+	}
+	return (width * 7 + 3) / 4;
+}
+
+static void testAboutHelpFitsTheConsoleFont(void)
+{
+	char text[64];
+	bool ellipsized = true;
+
+	CHECK(UISystem_CopyFitted(text, sizeof(text), UI_SYSTEM_ABOUT_HELP_TEXT,
+		UI_SYSTEM_ABOUT_TEXT_WIDTH, 0.70f, consoleMeasure, &ellipsized) ==
+		0.70f);
+	CHECK(!ellipsized);
+	CHECK(strcmp(text, UI_SYSTEM_ABOUT_HELP_TEXT) == 0);
+	CHECK((float)consoleMeasure(UI_SYSTEM_ABOUT_HELP_LABEL) * 0.66f <=
+		(float)UI_SYSTEM_ABOUT_TEXT_WIDTH);
+}
+
 int main(void)
 {
 	testPagesAndLayout();
 	testFormatting();
 	testTextFit();
+	testAboutHelpFitsTheConsoleFont();
 	printf("ui_system_info: %u checks passed\n", checks);
 	return 0;
 }

@@ -20,6 +20,13 @@
 #define UI_SYSTEM_SAFE_X1 608
 #define UI_SYSTEM_SAFE_Y1 438
 
+/* About Indigo's help line. Indigo's problems go to Indigo's own GitHub, not
+ * to upstream Swiss's community; the host test fits both in the console's
+ * font. */
+#define UI_SYSTEM_ABOUT_TEXT_WIDTH 490
+#define UI_SYSTEM_ABOUT_HELP_LABEL "BUG REPORTS / QUESTIONS"
+#define UI_SYSTEM_ABOUT_HELP_TEXT "GITHUB ISSUES  /  DISCUSSIONS"
+
 typedef enum {
 	UI_SYSTEM_PAGE_OVERVIEW = 0,
 	UI_SYSTEM_PAGE_CONSOLE,
