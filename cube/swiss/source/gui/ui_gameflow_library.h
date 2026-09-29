@@ -36,10 +36,10 @@ typedef enum {
 
 typedef struct {
 	uiGameflowLibraryLocation_t location;
-	uiGameflowLibraryMode_t mode;
 	uint32_t entryCount;
+	uint32_t imageCount;
+	uint32_t folderCount;
 	bool valid;
-	bool hasGame;
 } uiGameflowLibraryClassifier_t;
 
 /* relativeSlot is the card's place on the ring, or its row in a grid window
@@ -123,6 +123,12 @@ bool UIGameflowLibrary_IsGamesRootEntry(const char *gamesRoot,
 bool UIGameflowLibrary_ShouldStartHome(bool hasAutoload, bool hasRecent,
 	bool recentAutoEnabled);
 
+/* The Library shows a location's games and skips everything else there: a
+ * text file, a picture, a folder that isn't a game. Games are disc images,
+ * or at the root "Title [ABC123]" folders; one Library can't show both, so a
+ * root with loose images beside game folders stays Swiss's list, as does a
+ * location with no games. ClassifierAdd returns false only when the list
+ * can't be a Library at all (outside /games, or ".." not first). */
 void UIGameflowLibrary_ClassifierInit(uiGameflowLibraryClassifier_t *state,
 	uiGameflowLibraryLocation_t location);
 bool UIGameflowLibrary_ClassifierAdd(uiGameflowLibraryClassifier_t *state,
@@ -130,9 +136,9 @@ bool UIGameflowLibrary_ClassifierAdd(uiGameflowLibraryClassifier_t *state,
 uiGameflowLibraryMode_t UIGameflowLibrary_ClassifierFinish(
 	const uiGameflowLibraryClassifier_t *state);
 
-/* Eligible strict libraries always use the retained presentation. Unknown or
- * mixed layouts preserve the caller's requested legacy browser. Browser
- * values remain opaque here so this pure policy is host-testable. */
+/* A Library location always uses the retained presentation. Anywhere else
+ * keeps the caller's requested legacy browser. Browser values remain opaque
+ * here so this pure policy is host-testable. */
 int UIGameflowLibrary_SelectBrowser(uiGameflowLibraryMode_t mode,
 	int requestedBrowser, int retainedBrowser);
 

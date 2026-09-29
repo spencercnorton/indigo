@@ -46,16 +46,28 @@ def saves(out: Path) -> None:
 
 
 def posters(out: Path) -> None:
-    # A real pack from the generator the host tests use; it needs gxtexconv.
-    result = subprocess.run([sys.executable, str(HERE.parent / "fixture_pack.py"), str(out / "fixture.pak")],
+    # Real packs from the generator the host tests use, a poster pack and a
+    # stills pack; it needs gxtexconv.
+    result = subprocess.run([sys.executable, str(HERE.parent / "fixture_pack.py"), str(out / "fixture.pak"),
+                             str(out / "fixture-stills.pak")],
                             capture_output=True, text=True)
     if result.returncode not in (0, 3):
         raise SystemExit(result.stderr)
     for sidecar in out.glob("*.json"):  # the generator's provenance note, not a pack
         sidecar.unlink()
     if result.returncode == 3:
-        print("seeds: no gxtexconv, so no real poster pack seed", file=sys.stderr)
+        print("seeds: no gxtexconv, so no real pack seeds", file=sys.stderr)
         (out / "header-only").write_bytes(b"SWPK" + bytes(60))
+
+
+def about(out: Path) -> None:
+    # Game descriptions as the downloads write them, and as a person might.
+    (out / "descriptions.txt").write_bytes(
+        b"# Indigo game descriptions\n"
+        b"GAFE01 Welcome to Animal Crossing, where something happens every day.\n"
+        b"GMSE01 Clean up Isle Delfino with FLUDD, a water pack.\n"
+        b"GTEE01 Wax your board. This is the sickest ride ever!\n")
+    (out / "hand-written").write_bytes(b"GZLE01\tSail the Great Sea.\r\n\r\ngale01 not an ID\nGALE01 Melee\nGALE01 again")
 
 
 def settings(out: Path) -> None:
@@ -77,9 +89,38 @@ def fst(out: Path) -> None:
     (out / "runaway-count").write_bytes(root + struct.pack("=I", 0x00FFFFFF) + entry)
 
 
+def png(out: Path) -> None:
+    # An app's picture, in each colour type Pillow writes, small so the
+    # fuzzer's mutations reach every chunk, and one it must refuse.
+    from PIL import Image
+    gradient = Image.linear_gradient("L").resize((24, 32))
+    shapes = {
+        "rgb.png": Image.merge("RGB", (gradient, gradient.transpose(Image.Transpose.FLIP_LEFT_RIGHT), gradient)),
+        "rgba.png": Image.merge("RGBA", (gradient, gradient, gradient, gradient.rotate(90))),
+        "gray.png": gradient,
+        "bilevel.png": gradient.convert("1"),
+        "palette.png": gradient.convert("RGB").quantize(16),
+        "banner.png": Image.new("RGB", (32, 12), (200, 40, 60)),
+    }
+    for name, image in shapes.items():
+        image.save(out / name)
+    palette = shapes["palette.png"].copy()
+    palette.info["transparency"] = 0
+    palette.save(out / "palette-trns.png", transparency=0)
+    Image.new("I;16", (8, 8), 40000).save(out / "gray16.png")
+    shapes["rgb.png"].save(out / "interlaced.png", interlace=1)
+    # Stored, not compressed: a mutation there is a changed filter or pixel.
+    for name in ("rgba", "palette", "bilevel"):
+        shapes[f"{name}.png"].save(out / f"{name}-stored.png", compress_level=0)
+    # 'N' and an app's name: its poster of the name.
+    (out / "name-variant").write_bytes(b"Ngbihf-ossc+carby")
+    (out / "name-long").write_bytes(b"N" + b"swiss_r2119-" * 8)
+    (out / "name-separators").write_bytes(b"N-_. +a")
+
+
 def main() -> int:
     out = Path(sys.argv[1])
-    for target in (history, saves, posters, settings, fst):
+    for target in (history, saves, posters, about, settings, fst, png):
         folder = out / target.__name__
         folder.mkdir(parents=True, exist_ok=True)
         target(folder)

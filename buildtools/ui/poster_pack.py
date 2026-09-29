@@ -1,28 +1,33 @@
 #!/usr/bin/env python3
-"""poster_pack.py -- offline generator for Swiss UI poster packs.
+"""poster_pack.py -- offline generator for Indigo's Library packs.
 
-Builds /swiss/ui/posters.pak from a local JSON manifest and user-supplied
-source art. Fully offline: never scrapes, downloads, or calls any network
-service. Output is byte-for-byte deterministic for the same inputs and
-toolchain (gxtexconv + Pillow versions are recorded in the provenance
-sidecar; they are inputs to that determinism contract).
+Builds /swiss/ui/posters.pak (box art) or /swiss/ui/stills.pak (gameplay
+stills) from a local JSON manifest and user-supplied source art. Fully
+offline: never scrapes, downloads, or calls any network service. Output is
+byte-for-byte deterministic for the same inputs and toolchain (gxtexconv +
+Pillow versions are recorded in the provenance sidecar; they are inputs to
+that determinism contract).
 
-Binary format: docs/ui-redesign/POSTER_PACK_FORMAT.md (version 1).
+Binary format: docs/PACKS.md (version 1).
 
 Texture geometry: GX hardware (and gxtexconv) require power-of-two
 dimensions for mipmapped textures, so the 192x256 poster content is
 composited onto a 256x256 canvas (right band edge-extended to keep deep
 mip levels from bleeding) and encoded as GX_TF_CMPR with a 5-level mip
-chain (256..16). The runtime samples s in [0, 192/256].
+chain (256..16). The runtime samples s in [0, 192/256]. A still is never
+drawn smaller than itself, so it is one 320x240 GX_TF_CMPR level, 4:3.
 
 Usage:
   poster_pack.py --covers DIR --out posters.pak
+  poster_pack.py --stills DIR --out stills.pak
   poster_pack.py --manifest manifest.json --out posters.pak [--art-root DIR]
                  [--gxtexconv CMD] [--staging DIR]
 
 --covers takes a folder of front-cover images named by game ID (GMSE01.png,
-GALE01.jpg; at least 192x256, cropped to 3:4) and needs Pillow plus either
-gxtexconv or Docker.
+GALE01.jpg; at least 192x256, cropped to 3:4); --stills a folder of gameplay
+screenshots named the same way (at least 320x240, cropped to 4:3). Both need
+Pillow plus either gxtexconv or Docker. A manifest makes stills with
+"kind": "stills".
 
 gxtexconv resolution order: --gxtexconv / $GXTEXCONV, `gxtexconv` on PATH,
 then the repo's libogc2 Docker image (one container run for the whole batch).
@@ -46,13 +51,30 @@ VERSION = 1
 HEADER_SIZE = 64
 RECORD_SIZE = 32
 INDEX_OFFSET = HEADER_SIZE
-MAX_RECORDS = 1024
+MAX_RECORDS = 2048  # UI_ASSETS_MAX_RECORDS: Indigo refuses a bigger pack
 
 CANVAS_W, CANVAS_H = 256, 256
 CONTENT_W, CONTENT_H = 192, 256
 MIP_LEVELS = 5          # LOD0..LOD4: 256,128,64,32,16
 TEX_FORMAT = 14         # GX_TF_CMPR
 POSTER_BYTES = 43648    # sum of CMPR mip levels 256^2/2 + 128^2/2 + ... + 16^2/2
+
+
+class Shape:
+    """The texture every record of a pack holds, as its header declares it."""
+
+    def __init__(self, kind, canvas, content, mips, record_bytes):
+        self.kind = kind
+        self.canvas_w, self.canvas_h = canvas
+        self.content_w, self.content_h = content
+        self.mips = mips
+        self.bytes = record_bytes
+
+
+POSTER = Shape("posters", (CANVAS_W, CANVAS_H), (CONTENT_W, CONTENT_H),
+               MIP_LEVELS, POSTER_BYTES)
+STILL = Shape("stills", (320, 240), (320, 240), 1, 320 * 240 // 2)
+SHAPES = {shape.kind: shape for shape in (POSTER, STILL)}
 
 FLAG_UNIVERSAL = 0x01
 
@@ -83,6 +105,11 @@ def _require(cond, msg):
 
 def load_manifest(path):
     """Parse and strictly validate the manifest. Returns records sorted by ID."""
+    return read_manifest(path)[0]
+
+
+def read_manifest(path):
+    """load_manifest, plus the Shape its "kind" names (posters by default)."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             doc = json.load(f)
@@ -91,8 +118,11 @@ def load_manifest(path):
 
     _require(isinstance(doc, dict), "manifest root must be an object")
     _require(doc.get("version") == 1, "manifest version must be 1")
-    _require(set(doc) <= {"version", "records"},
-             f"unknown manifest keys: {sorted(set(doc) - {'version', 'records'})}")
+    known = {"version", "kind", "records"}
+    _require(set(doc) <= known,
+             f"unknown manifest keys: {sorted(set(doc) - known)}")
+    kind = doc.get("kind", "posters")
+    _require(kind in SHAPES, f"manifest kind must be one of {sorted(SHAPES)}")
     records = doc.get("records")
     _require(isinstance(records, list) and records, "manifest needs a non-empty records list")
     _require(len(records) <= MAX_RECORDS, f"pack overflow: {len(records)} records > {MAX_RECORDS}")
@@ -155,13 +185,13 @@ def load_manifest(path):
         })
 
     out.sort(key=lambda r: r["game_id"])
-    return out
+    return out, SHAPES[kind]
 
 
-def covers_manifest(covers_dir):
-    """--covers: a version-1 manifest with one record per GAMEID.png/.jpg in
-    covers_dir. Returns (manifest, skipped) where skipped lists the visible
-    files whose names are not a game ID."""
+def covers_manifest(covers_dir, kind="posters"):
+    """--covers (or --stills, with kind="stills"): a version-1 manifest with
+    one record per GAMEID.png/.jpg in covers_dir. Returns (manifest, skipped)
+    where skipped lists the visible files whose names are not a game ID."""
     records, skipped = [], []
     for name in sorted(os.listdir(covers_dir)):
         m = COVER_NAME_RE.fullmatch(name)
@@ -173,25 +203,28 @@ def covers_manifest(covers_dir):
             digest = hashlib.sha256(f.read()).hexdigest()
         records.append({"game_id": m.group(1).upper(), "source": name,
                         "universal": False, "source_sha256": digest,
-                        "note": f"covers folder: {name}"})
-    return {"version": 1, "records": records}, skipped
+                        "note": f"{'covers' if kind == 'posters' else kind} "
+                                f"folder: {name}"})
+    return {"version": 1, "kind": kind, "records": records}, skipped
 
 
-def focal_crop(im, focal):
-    """Largest 3:4 window inside im, positioned so the focal point stays
-    proportionally placed, then resized to CONTENT_W x CONTENT_H."""
+def focal_crop(im, focal, shape=POSTER):
+    """Largest window of the content's aspect (3:4 poster, 4:3 still) inside
+    im, positioned so the focal point stays proportionally placed, then
+    resized to the content size."""
+    cw, ch = shape.content_w, shape.content_h
     w, h = im.size
-    if w * CONTENT_H > h * CONTENT_W:      # wider than 3:4 -- full height
+    if w * ch > h * cw:                     # wider than the content -- full height
         crop_h = h
-        crop_w = h * CONTENT_W // CONTENT_H
-    else:                                   # taller than 3:4 -- full width
+        crop_w = h * cw // ch
+    else:                                   # taller than the content -- full width
         crop_w = w
-        crop_h = w * CONTENT_H // CONTENT_W
+        crop_h = w * ch // cw
     left = min(max(round(focal[0] * w - crop_w / 2), 0), w - crop_w)
     top = min(max(round(focal[1] * h - crop_h / 2), 0), h - crop_h)
     from PIL import Image
     return im.crop((left, top, left + crop_w, top + crop_h)).resize(
-        (CONTENT_W, CONTENT_H), Image.LANCZOS)
+        (cw, ch), Image.LANCZOS)
 
 
 def dominant_color(im):
@@ -213,7 +246,7 @@ def compose_canvas(content):
     return canvas
 
 
-def prepare_images(records, art_root, staging):
+def prepare_images(records, art_root, staging, shape=POSTER):
     """Validate art, crop/compose, write staging PNG + .scf per record.
     Fills in computed dominant_rgb. Hard-errors on any bad input."""
     from PIL import Image, UnidentifiedImageError
@@ -234,17 +267,22 @@ def prepare_images(records, art_root, staging):
         except (UnidentifiedImageError, OSError) as e:
             raise PackError(f"{gid}: corrupt source image {src}: {e}")
         im = im.convert("RGB")
-        _require(im.width >= CONTENT_W and im.height >= CONTENT_H,
+        _require(im.width >= shape.content_w and im.height >= shape.content_h,
                  f"{gid}: bad dimensions {im.width}x{im.height} "
-                 f"(need at least {CONTENT_W}x{CONTENT_H}, no upscaling)")
-        content = focal_crop(im, rec["focal"])
+                 f"(need at least {shape.content_w}x{shape.content_h}, "
+                 f"no upscaling)")
+        content = focal_crop(im, rec["focal"], shape)
         if rec["dominant_rgb"] is None:
             rec["dominant_rgb"] = dominant_color(content)
-        compose_canvas(content).save(os.path.join(staging, f"{gid}.png"))
+        if shape is POSTER:
+            content = compose_canvas(content)
+        content.save(os.path.join(staging, f"{gid}.png"))
+        mips = (f"mipmap=yes minlod=0 maxlod={shape.mips - 1}"
+                if shape.mips > 1 else "mipmap=no")
         with open(os.path.join(staging, f"{gid}.scf"), "w", encoding="utf-8",
                   newline="\n") as f:
-            f.write(f'<filepath="{gid}.png" id="poster" colfmt={TEX_FORMAT} '
-                    f'mipmap=yes minlod=0 maxlod={MIP_LEVELS - 1} />\n')
+            f.write(f'<filepath="{gid}.png" id="{shape.kind}" '
+                    f'colfmt={TEX_FORMAT} {mips} />\n')
 
 
 def resolve_gxtexconv(explicit):
@@ -290,7 +328,7 @@ def run_gxtexconv(records, staging, resolver):
         raise PackError(f"gxtexconv batch failed:\n{proc.stdout}\n{proc.stderr}")
 
 
-def extract_tpl_payload(path, gid):
+def extract_tpl_payload(path, gid, shape=POSTER):
     """Parse a single-texture TPL and return the raw CMPR mip payload,
     validating geometry and exact payload length."""
     try:
@@ -305,28 +343,30 @@ def extract_tpl_payload(path, gid):
     _require(tex_off + 12 <= len(data),
              f"{gid}: TPL texture header offset {tex_off} out of bounds")
     height, width, fmt, data_off = struct.unpack(">HHII", data[tex_off:tex_off + 12])
-    _require((width, height, fmt) == (CANVAS_W, CANVAS_H, TEX_FORMAT),
+    _require((width, height, fmt) ==
+             (shape.canvas_w, shape.canvas_h, TEX_FORMAT),
              f"{gid}: TPL is {width}x{height} fmt {fmt}, expected "
-             f"{CANVAS_W}x{CANVAS_H} fmt {TEX_FORMAT}")
+             f"{shape.canvas_w}x{shape.canvas_h} fmt {TEX_FORMAT}")
     payload = data[data_off:]
-    _require(len(payload) == POSTER_BYTES,
-             f"{gid}: TPL payload {len(payload)} bytes, expected {POSTER_BYTES} "
+    _require(len(payload) == shape.bytes,
+             f"{gid}: TPL payload {len(payload)} bytes, expected {shape.bytes} "
              f"(mip chain missing? gxtexconv needs power-of-two input)")
     return payload
 
 
-def build_pack(records, staging):
+def build_pack(records, staging, shape=POSTER):
     """Assemble the deterministic pak bytes from converted payloads."""
     count = len(records)
     data_offset = HEADER_SIZE + count * RECORD_SIZE   # both 32-multiples
-    file_length = data_offset + count * POSTER_BYTES
+    file_length = data_offset + count * shape.bytes
     _require(file_length < 2**32, "pack overflow: file length exceeds 32 bits")
 
     index = bytearray()
     payloads = []
     for i, rec in enumerate(records):
         payload = extract_tpl_payload(
-            os.path.join(staging, f"{rec['game_id']}.tpl"), rec["game_id"])
+            os.path.join(staging, f"{rec['game_id']}.tpl"), rec["game_id"],
+            shape)
         payloads.append(payload)
         crc = zlib.crc32(payload)
         rec["poster_crc32"] = f"{crc:08x}"
@@ -336,8 +376,8 @@ def build_pack(records, staging):
             rec["game_id"].encode("ascii"),
             FLAG_UNIVERSAL if rec["universal"] else 0,
             0,
-            data_offset + i * POSTER_BYTES,
-            POSTER_BYTES,
+            data_offset + i * shape.bytes,
+            shape.bytes,
             crc,
             bytes([dom[0], dom[1], dom[2], 0xFF]),
             round(rec["focal"][0] * 65535),
@@ -349,8 +389,8 @@ def build_pack(records, staging):
         return struct.pack(
             ">4sIIIIIIIIHHHHBBH", MAGIC, VERSION, crc_field, count,
             INDEX_OFFSET, count * RECORD_SIZE, data_offset, file_length,
-            POSTER_BYTES, CANVAS_W, CANVAS_H, CONTENT_W, CONTENT_H,
-            MIP_LEVELS, TEX_FORMAT, 0,
+            shape.bytes, shape.canvas_w, shape.canvas_h, shape.content_w,
+            shape.content_h, shape.mips, TEX_FORMAT, 0,
         ) + bytes(16)
 
     crc = zlib.crc32(header(0) + index)
@@ -391,9 +431,10 @@ def toolchain_info(resolver):
     }
 
 
-def write_provenance(records, out_path, resolver):
+def write_provenance(records, out_path, resolver, shape=POSTER):
     doc = {
         "pack": os.path.basename(out_path),
+        "kind": shape.kind,
         "format_version": VERSION,
         "toolchain": toolchain_info(resolver),
         "records": [
@@ -417,7 +458,7 @@ def write_provenance(records, out_path, resolver):
 
 def generate(manifest_path, out_path, art_root=None, gxtexconv=None, staging=None):
     """Full pipeline. Returns the pak bytes (also written to out_path)."""
-    records = load_manifest(manifest_path)
+    records, shape = read_manifest(manifest_path)
     art_root = art_root or os.path.dirname(os.path.abspath(manifest_path))
     resolver = resolve_gxtexconv(gxtexconv)
     own_staging = staging is None
@@ -425,15 +466,15 @@ def generate(manifest_path, out_path, art_root=None, gxtexconv=None, staging=Non
     staging = os.path.abspath(staging)  # docker -v needs an absolute path
     os.makedirs(staging, exist_ok=True)
     try:
-        prepare_images(records, art_root, staging)
+        prepare_images(records, art_root, staging, shape)
         run_gxtexconv(records, staging, resolver)
-        pack = build_pack(records, staging)
+        pack = build_pack(records, staging, shape)
     finally:
         if own_staging:
             shutil.rmtree(staging, ignore_errors=True)
     with open(out_path, "wb") as f:
         f.write(pack)
-    write_provenance(records, out_path, resolver)
+    write_provenance(records, out_path, resolver, shape)
     return pack
 
 
@@ -443,6 +484,8 @@ def main(argv=None):
     source.add_argument("--manifest")
     source.add_argument("--covers", help="folder of cover images named by game "
                                          "ID, e.g. GMSE01.png or GALE01.jpg")
+    source.add_argument("--stills", help="folder of gameplay screenshots named "
+                                         "by game ID, for stills.pak")
     ap.add_argument("--out", required=True)
     ap.add_argument("--art-root", help="base dir for manifest source paths "
                                        "(default: manifest's directory)")
@@ -451,18 +494,20 @@ def main(argv=None):
     ap.add_argument("--staging", help="keep intermediates in this directory")
     args = ap.parse_args(argv)
     try:
-        if args.covers:
-            manifest, skipped = covers_manifest(args.covers)
+        folder = args.covers or args.stills
+        if folder:
+            kind = "posters" if args.covers else "stills"
+            manifest, skipped = covers_manifest(folder, kind)
             for name in skipped:
                 print(f"poster_pack: skipped {name} (name it GAMEID.png or "
                       f"GAMEID.jpg)", file=sys.stderr)
             _require(manifest["records"],
-                     f"no GAMEID.png/.jpg cover images in {args.covers}")
+                     f"no GAMEID.png/.jpg images in {folder}")
             with tempfile.TemporaryDirectory(prefix="poster_covers_") as tmp:
                 manifest_path = os.path.join(tmp, "manifest.json")
                 with open(manifest_path, "w", encoding="utf-8") as f:
                     json.dump(manifest, f)
-                pack = generate(manifest_path, args.out, args.covers,
+                pack = generate(manifest_path, args.out, folder,
                                 args.gxtexconv, args.staging)
         else:
             pack = generate(args.manifest, args.out, args.art_root,

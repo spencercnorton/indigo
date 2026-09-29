@@ -409,7 +409,8 @@ static void infoDrawOverview(uiDrawObj_t *container,
 		ALIGN_LEFT, systemLabelColor));
 	infoAddFitted(container, 181, 188, clockText, 220, 1.45f, ALIGN_CENTER,
 		systemTitleColor);
-	infoAddFitted(container, 181, 218, dateText, 220, 0.66f, ALIGN_CENTER,
+	infoAddFitted(container, 181, 218, dateText, UI_SYSTEM_DATE_WIDTH,
+		UI_SYSTEM_DATE_SCALE, ALIGN_CENTER,
 		systemMutedColor);
 	DrawAddChild(container, DrawStyledLabel(70, 254,
 		"CPU THERMAL / MINUTE SAMPLE", 0.60f,
@@ -573,33 +574,40 @@ static void infoDrawCredits(uiDrawObj_t *container,
 	const uiSystemLayout_t *layout)
 {
 	infoAddCard(container, &layout->wideCard, infoCardColor());
-	DrawAddChild(container, DrawStyledLabel(320, 154, "CURRENT PATREON SUPPORTERS",
+	DrawAddChild(container, DrawStyledLabel(320, 150, "CURRENT PATREON SUPPORTERS",
 		0.66f, ALIGN_CENTER, systemLabelColor));
-	infoAddFitted(container, 320, 178,
+	infoAddFitted(container, 320, 171,
 		"BORG NUMBER ONE (STEVEN WEISER), ROMAN ANTONACCI, 8BITMODS,", 500,
 		0.60f, ALIGN_CENTER, systemValueColor);
-	infoAddFitted(container, 320, 197,
+	infoAddFitted(container, 320, 189,
 		"CASTLEMANIA RYAN, DAN KUNZ, FERNANDO AVELINO, HAKANAISEISHIN, HAYMOSE,",
 		500, 0.60f, ALIGN_CENTER, systemValueColor);
-	infoAddFitted(container, 320, 216,
+	infoAddFitted(container, 320, 207,
 		"ALEX MITCHELL, BADSECTOR, JEFFREY PIERCE, JON MOON, KEVIN,", 500,
 		0.60f, ALIGN_CENTER, systemValueColor);
-	infoAddFitted(container, 320, 235,
+	infoAddFitted(container, 320, 225,
 		"KORY, MARLON, SILVERSTEEL, WILLIAM FOWLER", 500, 0.60f,
 		ALIGN_CENTER, systemValueColor);
-	DrawAddChild(container, DrawStyledLabel(320, 263,
+	DrawAddChild(container, DrawStyledLabel(320, 248,
 		"HISTORICAL PATREON SUPPORTERS", 0.66f, ALIGN_CENTER,
 		systemLabelColor));
-	infoAddFitted(container, 320, 287,
+	infoAddFitted(container, 320, 269,
 		"MENEERBEER, SUBELEMENT, KIROVAIR, CRISTOFER CRUZ,", 500, 0.60f,
 		ALIGN_CENTER, systemValueColor);
-	infoAddFitted(container, 320, 306,
+	infoAddFitted(container, 320, 287,
 		"RAMBLINGOKIE, LINDH0LM154, FINNYGUY, CTPG", 500, 0.60f,
 		ALIGN_CENTER, systemValueColor);
-	infoAddFitted(container, 320, 336,
+	/* Gameplay Spotlight (github.com/mvizensk/gameplay-spotlight): its author
+	 * let Indigo take its design for the Spotlight layout. See NOTICE. */
+	DrawAddChild(container, DrawStyledLabel(320, 310,
+		"SPOTLIGHT LIBRARY DESIGN", 0.66f, ALIGN_CENTER, systemLabelColor));
+	infoAddFitted(container, 320, 330,
+		"GAMEPLAY SPOTLIGHT BY MVIZENSK", 500, 0.60f,
+		ALIGN_CENTER, systemValueColor);
+	infoAddFitted(container, 320, 349,
 		"EXTRA GREETZ: FIX94, MEGALOMANIAC, SEPP256, NOVENARY", 500, 0.60f,
 		ALIGN_CENTER, systemMutedColor);
-	DrawAddChild(container, DrawStyledLabel(320, 365,
+	DrawAddChild(container, DrawStyledLabel(320, 369,
 		"AND A BIG THANKS TO YOU, FOR USING SWISS!", 0.70f, ALIGN_CENTER,
 		systemTitleColor));
 }

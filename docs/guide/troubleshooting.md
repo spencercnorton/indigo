@@ -13,6 +13,7 @@
 - [Indigo starts, then stock Swiss appears](#indigo-starts-then-stock-swiss-appears)
 - [In-Game Reset takes me to stock Swiss](#in-game-reset-takes-me-to-stock-swiss)
 - [The same game opens every time Indigo starts](#the-same-game-opens-every-time-indigo-starts)
+- [There's no Apps face, or an app or its picture is missing](#theres-no-apps-face-or-an-app-or-its-picture-is-missing)
 - [Still stuck](#still-stuck)
 
 ## I see Swiss's file list instead of the Library
@@ -21,13 +22,18 @@
   <img alt="Swiss's plain file list, shown in place of the Library." src="images/library-file-list.png" width="640">
 </p>
 
-The Library appears only when `/games` holds nothing but games: disc images
-(`.iso`, `.gcm`, `.tgc`, `.fdi`) or folders with one in each and nothing else.
-A single other file, such as a text file or cover image, or an empty folder,
-brings back the file list, whether it is in `/games` or in a game's folder.
-Remove it. **Hide unknown file types** in Settings › Setup › Library hides
-text files and pictures, but not folders, programs or music. See
-[Set up the games folder](library.md#set-up-the-games-folder).
+The Library appears when `/games` holds at least one disc image (`.iso`,
+`.gcm`, `.tgc`, `.fdi`), directly or in a game's folder, and it skips
+anything else there. You get the file list when:
+
+- `/games` holds no disc images, for example only compressed `.rvz` or `.gcz`
+  images, which must be decompressed with NKit or Dolphin first.
+- Your games are on another card or drive: choose it on the Source face.
+- **Flatten directory** in Settings › Setup › Library was changed from
+  `*/games`, and `/games` holds loose disc images beside game folders. Set it
+  back to `*/games`.
+
+See [Set up the games folder](library.md#set-up-the-games-folder).
 
 ## Home starts on Source, or Library says Select Source
 
@@ -40,8 +46,9 @@ also lists the devices that weren't detected, and A on one tries again.
 
 A game shows its banner card when its game ID isn't in your poster pack:
 it's from the other region, or GameTDB has no cover for it. The card shows
-the ID, so you can check. Use the pack for the region most of your games are
-from, or [build your own](posters.md#build-your-own-pack).
+the ID, so you can check. Use the every-region pack, or the one for the
+region most of your games are from, or
+[build your own](posters.md#build-your-own-pack).
 
 ## A message says the file is a bad dump
 
@@ -126,6 +133,15 @@ That game is set to Autoload. Press B to go to the Library, open the game
 again and press **Z**: the shortcut changes from "Autoload On" back to
 "Autoload".
 
+## There's no Apps face, or an app or its picture is missing
+
+The Apps face shows only when `/apps`, at the root of the source, holds a
+program: a `.dol`, `.dol+cli` or `.elf` that isn't called `boot.dol` (the
+Wii's), and Settings › Setup › Console › Apps Face is On. Programs two folders deep, hidden ones and names starting with a dot
+are left out. A picture must be a PNG with the program's name, or its
+folder's `icon.png`, up to 2048 pixels a side and 2 MB, and not interlaced.
+[Apps](apps.md#when-apps-doesnt-look-right) has the details.
+
 ## Still stuck
 
 - Questions: [Discussions](https://github.com/spencercnorton/indigo/discussions).
@@ -137,4 +153,4 @@ again and press **Z**: the shortcut changes from "Autoload On" back to
 
 ---
 
-<p align="center"><a href="posters.md">← Posters</a> · <a href="README.md">Guide</a></p>
+<p align="center"><a href="apps.md">← Apps</a> · <a href="README.md">Guide</a></p>

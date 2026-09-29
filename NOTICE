@@ -18,6 +18,15 @@ This is an unofficial fork. It is not endorsed by, affiliated with, or
 supported by the Swiss project, and issues found here should not be reported
 upstream.
 
+The Library's Spotlight layout, a game's gameplay still and details above a
+row of disc banners, takes its design from Gameplay Spotlight, a
+gameplay-first GameCube launcher by mvizensk, with its author's permission:
+
+    Gameplay Spotlight — https://github.com/mvizensk/gameplay-spotlight
+    Licensed under the GNU General Public License, version 2.
+
+Indigo's code for the layout is its own. System › Credits thanks mvizensk too.
+
 Third-party components redistributed in this tree:
 
   littlefs — https://github.com/littlefs-project/littlefs

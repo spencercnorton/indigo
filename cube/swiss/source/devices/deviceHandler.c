@@ -3,6 +3,7 @@
 	by emu_kidid
  */
 
+#include <stdcountof.h>
 #include <stdio.h>
 #include <ogcsys.h>
 #include <unistd.h>
@@ -118,10 +119,10 @@ DEVICEHANDLER_INTERFACE* getDeviceFromPath(char *path) {
 		return NULL;	// garbage
 	}
 	for(int i = 0; i < MAX_DEVICES; i++) {
-		if(allDevices[i] != NULL && !strncmp(&allDevices[i]->initial->name[0], path, devpos-path) && deviceHandler_getDeviceAvailable(allDevices[i])) {
+		if(allDevices[i] != NULL && allDevices[i]->initial != NULL && !strncmp(allDevices[i]->initial->name, path, devpos-path)) {
 			return allDevices[i];
 		}
-	}	
+	}
 	return NULL;
 }
 
@@ -238,7 +239,7 @@ bool getFragments(int deviceSlot, file_handle *file, file_frag **fragList, u32 *
 		// fatfs - Cluster link table map buffer
 		DWORD clmt[(MAX_FRAGS+1)*2];
 		file->ffsFp->cltbl = clmt;
-		*file->ffsFp->cltbl = sizeof(clmt)/sizeof(DWORD);
+		*file->ffsFp->cltbl = countof(clmt);
 		if(f_lseek(file->ffsFp, CREATE_LINKMAP) != FR_OK) {
 			file->ffsFp->cltbl = NULL;
 			return false;	// Too many fragments for our buffer

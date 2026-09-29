@@ -236,8 +236,9 @@ static void testClassifierFallbackMatrix(void)
 		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
 	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
 		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "game.iso"));
-	CHECK(!UIGameflowLibrary_ClassifierAdd(&classifier,
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
 		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Other [GALE01]"));
+	/* Loose images beside game folders: one Library can't show both. */
 	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
 		UI_GAMEFLOW_LIBRARY_NONE);
 
@@ -259,6 +260,76 @@ static void testClassifierFallbackMatrix(void)
 		UI_GAMEFLOW_LIBRARY_LOCATION_NONE);
 	CHECK(UIGameflowLibrary_Locate(NULL, "gcldr:/games") ==
 		UI_GAMEFLOW_LIBRARY_LOCATION_NONE);
+}
+
+/* Anything in /games that isn't a game is skipped, not a reason to give the
+ * whole folder to Swiss's list; only a folder with no games falls back. */
+static void testClassifierSkipsStrays(void)
+{
+	uiGameflowLibraryClassifier_t classifier;
+	uiGameflowLibraryLocation_t root = UIGameflowLibrary_Locate(
+		"sd:/games", "sd:/games");
+	uiGameflowLibraryLocation_t leaf = UIGameflowLibrary_Locate(
+		"sd:/games", "sd:/games/Super Mario Sunshine [GMSE01]");
+
+	UIGameflowLibrary_ClassifierInit(&classifier, root);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Old saves"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "About these games.txt"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "Pikmin.iso"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "cover.png"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "Zelda.rvz"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+
+	UIGameflowLibrary_ClassifierInit(&classifier, root);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Pikmin [GPIE01]"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Old saves"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "readme.txt"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_GAME_FOLDERS);
+
+	UIGameflowLibrary_ClassifierInit(&classifier, leaf);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Other [GALE01]"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "game.iso"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "cover.jpg"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+
+	/* No games: Swiss's list, which is where "decompress this" and the
+	 * other messages about a file that isn't a disc image come from. */
+	UIGameflowLibrary_ClassifierInit(&classifier, root);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "Zelda.rvz"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Old saves"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_NONE);
+
+	/* ".." anywhere but first is not a directory Swiss listed. */
+	UIGameflowLibrary_ClassifierInit(&classifier, root);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "game.iso"));
+	CHECK(!UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_NONE);
 }
 
 static void testHomeLibraryStartupRoute(void)
@@ -726,6 +797,7 @@ int main(void)
 	testArtworkFallbackPolicy();
 	testProductionFlattenedUpgrade();
 	testClassifierFallbackMatrix();
+	testClassifierSkipsStrays();
 	testHomeLibraryStartupRoute();
 	testWindow();
 	testWindowScaleMatrix();

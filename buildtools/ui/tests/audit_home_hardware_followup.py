@@ -130,12 +130,12 @@ scan = block(INPUT_C, "void padsScan(void)")
 poll = block(INPUT_C, "uiMenuInputDirection_t padsMenuInputPoll(")
 post_retrace = block(VIDEO, "static void ProperScanPADS(")
 update = block(MENU_C, "uiMenuInputDirection_t UIMenuInput_Update(")
-elapsed = block(SWISS, "static u32 menuInputElapsedMicroseconds(u32 *lastRetrace)\n{")
+elapsed = block(SWISS, "\nu32 menuInputElapsedMicroseconds(u32 *lastRetrace)\n{")
 menu_loop = block(SWISS, "void menu_loop()")
 home_input = block(menu_loop, "else if (curMenuLocation==ON_OPTIONS)")
 recent = block(SWISS, "void select_recent_entry()")
 browser = block(SWISS, "uiDrawObj_t* renderFileBrowser(")
-carousel = (block(SWISS, "static u32 gameflowMenuInputPolicy(") + "\n" +
+carousel = (block(SWISS, "\nu32 gameflowMenuInputPolicy(") + "\n" +
             block(SWISS, "uiDrawObj_t* renderFileCarousel("))
 fullwidth = block(SWISS, "uiDrawObj_t* renderFileFullwidth(")
 
@@ -312,7 +312,7 @@ def check_pickers(dest_dir: str, alt_dol: str) -> None:
                 f"{name} still times the stick itself")
 
 
-dest_dir = block(SWISS, "bool select_dest_dir(file_handle* initial, file_handle* selection)")
+dest_dir = block(SWISS, "bool select_dest_dir(file_handle* initial, char* selection)")
 alt_dol = block(SWISS, "ExecutableFile* select_alt_dol(")
 check_pickers(dest_dir, alt_dol)
 picker_mutants = (

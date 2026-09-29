@@ -44,7 +44,7 @@ cat <<NOTES
 
 PicoBoot and PicoLoader boot \`ipl.dol\`. FlippyDrive boots \`boot.dol\`, and with GC Loader or another loader that boots a disc image you start \`ipl.dol\` from Swiss: the [install guide]($repo/blob/$tag/docs/guide/install.md) covers every loader, updating and going back to stock Swiss.
 
-**Posters and cheats** (optional; unzip one and drag its \`swiss\` folder onto the card the same way): [Posters: USA & Japan](https://indigo.norvitech.com/indigo-posters-ntsc.zip) · [Posters: Europe & Australia](https://indigo.norvitech.com/indigo-posters-pal.zip) · [Cheats](https://indigo.norvitech.com/indigo-cheats.zip)
+**Posters and cheats** (optional; unzip one and drag its \`swiss\` folder onto the card the same way): [Posters: every region](https://indigo.norvitech.com/indigo-posters-all.zip) · [Posters: USA & Japan](https://indigo.norvitech.com/indigo-posters-ntsc.zip) · [Posters: Europe & Australia](https://indigo.norvitech.com/indigo-posters-pal.zip) · [Cheats](https://indigo.norvitech.com/indigo-cheats.zip)
 
 **Verify:** \`SHA256SUMS.txt\` lists the zip's SHA-256, and the zip carries a build provenance attestation: \`gh attestation verify Indigo-$tag.zip --repo spencercnorton/indigo\`.
 NOTES

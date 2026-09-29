@@ -14,7 +14,10 @@ maintainer asked for it. [`UPSTREAM`](UPSTREAM) names the upstream commit
 Indigo is built on and lists the upstream files Indigo does change, with why.
 
 - The interface: `cube/swiss/source/gui/` (Home cube, Library, Game Detail,
-  cheats, Settings), wired in through `swiss.c`, `main.c` and `config/`.
+  cheats, Settings, Apps), wired in through `swiss.c`, `main.c` and
+  `config/`. Apps (`apps.c`) draws with the Library's renderer: a card
+  flagged `UI_GAMEFLOW_CARD_APP` takes its poster from Apps, not the pack:
+  the app's own picture, or its name drawn in the IPL font (`ui_png.c`).
 - Host tests: `buildtools/ui/tests/` (C unit tests, GX vertex-stream checks
   and source audits; no console needed).
 - User documentation: `README.md`, `docs/guide/` (every screen and setting,
@@ -118,8 +121,9 @@ with a tagged release.
   updates those boxes, and a change that adds a screen or a control can add a
   step to the route.
 - **A file from the card is untrusted.** Code that reads a poster pack, the
-  play history, a save, a settings file or a disc image's file table has a
-  fuzzer in `buildtools/ui/tests/fuzz/`; a new format gets one too. A crash
+  play history, a save, a settings file, a disc image's file table or an
+  app's picture (a PNG) has a fuzzer in `buildtools/ui/tests/fuzz/`; a new
+  format gets one too. A crash
   the fuzzer finds is fixed with the input kept in `corpus/<target>/`.
 - **Tests with every change.** A bug fix carries a regression test; a feature
   carries the smallest test that fails without it. Pinned hashes in the audits
@@ -127,7 +131,9 @@ with a tagged release.
   red test go green.
 - **Public-repository hygiene.** Nothing in a commit, a file or a pull request
   may name a private host, an internal tracker or ticket, a personal path, a
-  credential, or a real person other than the maintainer. Screenshots come
+  credential, or a real person other than the maintainer, except a credit
+  the maintainer asks for, which goes in `NOTICE` and System › Credits.
+  Screenshots come
   from Dolphin with demonstration data. GitHub push protection scans for
   secrets; do not rely on it.
 - **Never contact upstream.** Indigo sends the Swiss project nothing: no pull

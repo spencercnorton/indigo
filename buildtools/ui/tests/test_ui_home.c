@@ -45,6 +45,14 @@ static uiHomeCapabilities_t capabilities(bool hasSource, bool hasRecent)
 
 	value.hasSource = hasSource;
 	value.hasRecent = hasRecent;
+	value.hasApps = false;
+	return value;
+}
+
+/* The same with an app on the source: the ring has five faces. */
+static uiHomeCapabilities_t withApps(uiHomeCapabilities_t value)
+{
+	value.hasApps = true;
 	return value;
 }
 
@@ -84,6 +92,7 @@ static void checkSameState(const uiHomeState_t *actual,
 	CHECK(actual->selection == expected->selection);
 	CHECK(actual->turnOrdinal == expected->turnOrdinal);
 	CHECK(actual->revision == expected->revision);
+	CHECK(actual->faceCount == expected->faceCount);
 	CHECK(actual->turnAxis == expected->turnAxis);
 	CHECK(actual->turnDirection == expected->turnDirection);
 	CHECK(memcmp(&actual->orientation, &expected->orientation,
@@ -159,6 +168,7 @@ static void testLabelsHintsAndRows(void)
 	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_SOURCE), "SOURCE");
 	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_SETTINGS), "SETTINGS");
 	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_SYSTEM), "SYSTEM");
+	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_APPS), "APPS");
 	CHECK_TEXT(UIHome_FaceLabel((uiHomeFace_t)-1), "");
 	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_COUNT), "");
 
@@ -174,6 +184,8 @@ static void testLabelsHintsAndRows(void)
 		"A  OPEN");
 	CHECK_TEXT(UIHome_PrimaryHint(UI_HOME_FACE_SYSTEM, withSource),
 		"A  ENTER");
+	CHECK_TEXT(UIHome_PrimaryHint(UI_HOME_FACE_APPS, withApps(withSource)),
+		"A  OPEN");
 	CHECK_TEXT(UIHome_PrimaryHint((uiHomeFace_t)-1, withSource), "");
 
 	CHECK_TEXT(UIHome_SurfaceTitle(UI_HOME_SURFACE_RING), "HOME");
@@ -245,10 +257,22 @@ static void testFaceMappingAndSignedTurns(void)
 	int index;
 
 	for(index = -1; index <= 5; ++index) {
-		CHECK(UIHome_FaceForTurn((int32_t)index) == aroundZero[index + 1]);
+		CHECK(UIHome_FaceForTurn((int32_t)index, 4) == aroundZero[index + 1]);
+		/* A count that is neither ring is the ring without Apps. */
+		CHECK(UIHome_FaceForTurn((int32_t)index, 7) == aroundZero[index + 1]);
+		CHECK(UIHome_FaceForTurn((int32_t)index, 0) == aroundZero[index + 1]);
 	}
-	CHECK(UIHome_FaceForTurn(INT32_MIN) == UI_HOME_FACE_LIBRARY);
-	CHECK(UIHome_FaceForTurn(INT32_MAX) == UI_HOME_FACE_SYSTEM);
+	CHECK(UIHome_FaceForTurn(INT32_MIN, 4) == UI_HOME_FACE_LIBRARY);
+	CHECK(UIHome_FaceForTurn(INT32_MAX, 4) == UI_HOME_FACE_SYSTEM);
+	/* With Apps the ring is five faces, Apps just before Library. */
+	CHECK(UIHome_FaceForTurn(-1, 5) == UI_HOME_FACE_APPS);
+	CHECK(UIHome_FaceForTurn(4, 5) == UI_HOME_FACE_APPS);
+	CHECK(UIHome_FaceForTurn(5, 5) == UI_HOME_FACE_LIBRARY);
+	CHECK(UIHome_FaceForTurn(-6, 5) == UI_HOME_FACE_APPS);
+	CHECK(UIHome_FaceForTurn(INT32_MAX, 5) == UI_HOME_FACE_SETTINGS);
+	CHECK(UIHome_FaceForTurn(INT32_MIN, 5) == UI_HOME_FACE_SETTINGS);
+	CHECK(UIHome_FaceCount(caps) == 4);
+	CHECK(UIHome_FaceCount(withApps(caps)) == 5);
 
 	UIHome_Init(&right, caps);
 	CHECK(UIHome_Apply(&right, UI_HOME_INPUT_RIGHT, caps) ==
@@ -270,7 +294,7 @@ static void testFaceMappingAndSignedTurns(void)
 
 	UIHome_Init(&right, caps);
 	UIHome_Init(&left, caps);
-	for(index = 0; index < (int)UI_HOME_FACE_COUNT; ++index) {
+	for(index = 0; index < 4; ++index) {
 		CHECK(UIHome_Apply(&right, UI_HOME_INPUT_RIGHT, caps) ==
 			UI_HOME_EFFECT_NONE);
 		CHECK(UIHome_Apply(&left, UI_HOME_INPUT_LEFT, caps) ==
@@ -280,30 +304,115 @@ static void testFaceMappingAndSignedTurns(void)
 		4, 5u);
 	checkState(&left, UI_HOME_FACE_LIBRARY, UI_HOME_SURFACE_RING, 0,
 		-4, 5u);
+
+	/* Five turns either way round the ring with Apps. */
+	caps = withApps(caps);
+	UIHome_Init(&right, caps);
+	UIHome_Init(&left, caps);
+	CHECK(right.faceCount == 5);
+	CHECK(UIHome_Apply(&left, UI_HOME_INPUT_LEFT, caps) ==
+		UI_HOME_EFFECT_NONE);
+	checkState(&left, UI_HOME_FACE_APPS, UI_HOME_SURFACE_RING, 0, -1, 2u);
+	CHECK(UIHome_Apply(&right, UI_HOME_INPUT_RIGHT, caps) ==
+		UI_HOME_EFFECT_NONE);
+	checkState(&right, UI_HOME_FACE_SOURCE, UI_HOME_SURFACE_RING, 0, 1, 2u);
+	for(index = 1; index < 5; ++index) {
+		CHECK(UIHome_Apply(&right, UI_HOME_INPUT_RIGHT, caps) ==
+			UI_HOME_EFFECT_NONE);
+		CHECK(UIHome_Apply(&left, UI_HOME_INPUT_LEFT, caps) ==
+			UI_HOME_EFFECT_NONE);
+	}
+	checkState(&right, UI_HOME_FACE_LIBRARY, UI_HOME_SURFACE_RING, 0,
+		5, 6u);
+	checkState(&left, UI_HOME_FACE_LIBRARY, UI_HOME_SURFACE_RING, 0,
+		-5, 6u);
+}
+
+/* Apps comes and goes with the source's apps, publication-only like the
+ * selection's repair: the cube keeps its place and the revision its count,
+ * and standing on Apps as it goes lands on Library. */
+static void testAppsFaceComesAndGoes(void)
+{
+	uiHomeCapabilities_t plain = capabilities(true, false);
+	uiHomeCapabilities_t apps = withApps(plain);
+	uiHomeState_t state;
+	uiHomeState_t before;
+
+	UIHome_Init(&state, apps);
+	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_LEFT, apps) ==
+		UI_HOME_EFFECT_NONE);
+	checkState(&state, UI_HOME_FACE_APPS, UI_HOME_SURFACE_RING, 0, -1, 2u);
+	before = state;
+	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_ACTIVATE, apps) ==
+		UI_HOME_EFFECT_OPEN_APPS);
+	checkSameState(&state, &before);
+
+	/* The apps go while Apps is in front: Library, and a ring of four. */
+	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_NONE, plain) ==
+		UI_HOME_EFFECT_NONE);
+	checkState(&state, UI_HOME_FACE_LIBRARY, UI_HOME_SURFACE_RING, 0, 0, 2u);
+	CHECK(state.faceCount == 4);
+	CHECK(memcmp(&state.orientation, &before.orientation,
+		sizeof(state.orientation)) == 0);
+	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_LEFT, plain) ==
+		UI_HOME_EFFECT_NONE);
+	checkState(&state, UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_RING, 0, -1, 3u);
+
+	/* They come while System is in front: System stays, its ordinal now
+	 * counts in a ring of five, and Left reaches Settings, Right Apps. */
+	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_NONE, apps) ==
+		UI_HOME_EFFECT_NONE);
+	checkState(&state, UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_RING, 0, 3, 3u);
+	CHECK(state.faceCount == 5);
+	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_RIGHT, apps) ==
+		UI_HOME_EFFECT_NONE);
+	checkState(&state, UI_HOME_FACE_APPS, UI_HOME_SURFACE_RING, 0, 4, 4u);
+
+	/* A list open on another face keeps its row. */
+	state = stateAt(UI_HOME_FACE_SOURCE, UI_HOME_SURFACE_SOURCE, 1, 1);
+	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_NONE, apps) ==
+		UI_HOME_EFFECT_NONE);
+	checkState(&state, UI_HOME_FACE_SOURCE, UI_HOME_SURFACE_SOURCE, 1, 1, 41u);
+	CHECK(state.faceCount == 5);
+
+	/* Apps in front of a ring of four is repaired to Library. */
+	state = stateAt(UI_HOME_FACE_APPS, UI_HOME_SURFACE_RING, 0, 4);
+	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_ACTIVATE, plain) ==
+		UI_HOME_EFFECT_OPEN_LIBRARY);
+	checkState(&state, UI_HOME_FACE_LIBRARY, UI_HOME_SURFACE_RING, 0, 0, 41u);
+	CHECK(state.faceCount == 4);
 }
 
 static void testEveryRingFaceAndInput(void)
 {
-	uiHomeCapabilities_t caps = capabilities(true, true);
 	int faceIndex;
 	int inputIndex;
+	int ring;
 
-	for(faceIndex = 0; faceIndex < (int)UI_HOME_FACE_COUNT; ++faceIndex) {
+	for(ring = 0; ring < 2; ++ring) {
+	uiHomeCapabilities_t caps = ring ? withApps(capabilities(true, true)) :
+		capabilities(true, true);
+	int faceCount = UIHome_FaceCount(caps);
+
+	for(faceIndex = 0; faceIndex < faceCount; ++faceIndex) {
 		uiHomeFace_t face = (uiHomeFace_t)faceIndex;
 		for(inputIndex = (int)UI_HOME_INPUT_NONE;
 			inputIndex <= (int)UI_HOME_INPUT_RECENT; ++inputIndex) {
 			uiHomeInput_t input = (uiHomeInput_t)inputIndex;
 			uiHomeState_t state = stateAt(face, UI_HOME_SURFACE_RING, 0,
 				(int32_t)faceIndex);
-			uiHomeState_t before = state;
-			uiHomeEffect_t effect = UIHome_Apply(&state, input, caps);
+			uiHomeState_t before;
+			uiHomeEffect_t effect;
 
+			state.faceCount = faceCount;
+			before = state;
+			effect = UIHome_Apply(&state, input, caps);
 			switch(input) {
 				case UI_HOME_INPUT_LEFT:
 				case UI_HOME_INPUT_UP:
 					CHECK(effect == UI_HOME_EFFECT_NONE);
 					checkState(&state,
-						UIHome_FaceForTurn((int32_t)faceIndex - 1),
+						UIHome_FaceForTurn((int32_t)faceIndex - 1, faceCount),
 						UI_HOME_SURFACE_RING, 0,
 						(int32_t)faceIndex - 1, 42u);
 					break;
@@ -311,12 +420,16 @@ static void testEveryRingFaceAndInput(void)
 				case UI_HOME_INPUT_DOWN:
 					CHECK(effect == UI_HOME_EFFECT_NONE);
 					checkState(&state,
-						UIHome_FaceForTurn((int32_t)faceIndex + 1),
+						UIHome_FaceForTurn((int32_t)faceIndex + 1, faceCount),
 						UI_HOME_SURFACE_RING, 0,
 						(int32_t)faceIndex + 1, 42u);
 					break;
 				case UI_HOME_INPUT_ACTIVATE:
-					if(face == UI_HOME_FACE_LIBRARY) {
+					if(face == UI_HOME_FACE_APPS) {
+						CHECK(effect == UI_HOME_EFFECT_OPEN_APPS);
+						checkSameState(&state, &before);
+					}
+					else if(face == UI_HOME_FACE_LIBRARY) {
 						CHECK(effect == UI_HOME_EFFECT_OPEN_LIBRARY);
 						checkSameState(&state, &before);
 					}
@@ -352,11 +465,17 @@ static void testEveryRingFaceAndInput(void)
 		{
 			uiHomeState_t state = stateAt(face, UI_HOME_SURFACE_RING, 0,
 				(int32_t)faceIndex);
-			uiHomeState_t before = state;
-			CHECK(UIHome_Apply(&state, UI_HOME_INPUT_RECENT,
-				capabilities(true, false)) == UI_HOME_EFFECT_NONE);
+			uiHomeState_t before;
+			uiHomeCapabilities_t noRecent = capabilities(true, false);
+
+			noRecent.hasApps = caps.hasApps;
+			state.faceCount = faceCount;
+			before = state;
+			CHECK(UIHome_Apply(&state, UI_HOME_INPUT_RECENT, noRecent) ==
+				UI_HOME_EFFECT_NONE);
 			checkSameState(&state, &before);
 		}
+	}
 	}
 }
 
@@ -603,7 +722,8 @@ static void testLongRunOrdinalAndRevision(void)
 	for(index = 0; index < 40000; ++index) {
 		CHECK(UIHome_Apply(&state, UI_HOME_INPUT_RIGHT, caps) ==
 			UI_HOME_EFFECT_NONE);
-		CHECK(state.face == UIHome_FaceForTurn(state.turnOrdinal));
+		CHECK(state.face == UIHome_FaceForTurn(state.turnOrdinal,
+			state.faceCount));
 	}
 	checkState(&state, UI_HOME_FACE_LIBRARY, UI_HOME_SURFACE_RING, 0,
 		40000, 40001u);
@@ -611,7 +731,8 @@ static void testLongRunOrdinalAndRevision(void)
 	for(index = 0; index < 80003; ++index) {
 		CHECK(UIHome_Apply(&state, UI_HOME_INPUT_LEFT, caps) ==
 			UI_HOME_EFFECT_NONE);
-		CHECK(state.face == UIHome_FaceForTurn(state.turnOrdinal));
+		CHECK(state.face == UIHome_FaceForTurn(state.turnOrdinal,
+			state.faceCount));
 	}
 	checkState(&state, UI_HOME_FACE_SOURCE, UI_HOME_SURFACE_RING, 0,
 		-40003, 120004u);
@@ -663,6 +784,25 @@ static int oracleRowCount(uiHomeSurface_t surface,
 	return 0;
 }
 
+/* The ring the capabilities make: Apps is a fifth face while there are apps.
+ * A ring of another size, or a face outside it, is set to it: Library when
+ * the face in front is gone, the ordinal restarted at the face. */
+static void oracleReconcileRing(uiHomeState_t *state,
+	uiHomeCapabilities_t caps)
+{
+	int ring = caps.hasApps ? 5 : 4;
+
+	if(state->faceCount != ring || (int)state->face >= ring) {
+		if((int)state->face >= ring) {
+			state->face = UI_HOME_FACE_LIBRARY;
+			state->surface = UI_HOME_SURFACE_RING;
+			state->selection = 0;
+		}
+		state->turnOrdinal = (int32_t)state->face;
+		state->faceCount = ring;
+	}
+}
+
 /* Capability reconciliation is intentionally publication-only in the current
  * API: it repairs a stale selection but does not create an input revision.
  * homePublish() publishes the reconciled snapshot unconditionally. */
@@ -709,11 +849,11 @@ static void oracleMoveFace(uiHomeState_t *state, uiHomeTurnAxis_t axis, int dire
 	state->turnDirection = direction;
 	if((state->turnOrdinal == INT32_MAX && step > 0) ||
 		(state->turnOrdinal == INT32_MIN && step < 0))
-		state->turnOrdinal %= 4;
+		state->turnOrdinal %= state->faceCount;
 	state->turnOrdinal += step;
 	state->face = (uiHomeFace_t)oraclePositiveModulo(
-		(int)(state->turnOrdinal % (int32_t)UI_HOME_FACE_COUNT),
-		(int)UI_HOME_FACE_COUNT);
+		(int)(state->turnOrdinal % (int32_t)state->faceCount),
+		state->faceCount);
 	state->surface = UI_HOME_SURFACE_RING;
 	state->selection = 0;
 	state->revision++;
@@ -747,6 +887,7 @@ static uiHomeEffect_t oracleApply(uiHomeState_t *state, uiHomeInput_t input,
 			!UIHome_IsSurface((int)state->surface)) {
 		return UI_HOME_EFFECT_NONE;
 	}
+	oracleReconcileRing(state, caps);
 	oracleNormalizeSelection(state, caps);
 
 	if(state->surface == UI_HOME_SURFACE_RING) {
@@ -778,6 +919,9 @@ static uiHomeEffect_t oracleApply(uiHomeState_t *state, uiHomeInput_t input,
 			}
 			else if(state->face == UI_HOME_FACE_SYSTEM) {
 				oracleEnterSurface(state, UI_HOME_SURFACE_SYSTEM, 0);
+			}
+			else if(state->face == UI_HOME_FACE_APPS) {
+				return UI_HOME_EFFECT_OPEN_APPS;
 			}
 		}
 		return UI_HOME_EFFECT_NONE;
@@ -860,7 +1004,10 @@ static void checkOracleTransition(uiHomeState_t before, uiHomeInput_t input,
 	CHECK(actualEffect == expectedEffect);
 	checkSameState(&actual, &expected);
 	CHECK((int)actualEffect >= (int)UI_HOME_EFFECT_NONE);
-	CHECK((int)actualEffect <= (int)UI_HOME_EFFECT_OPEN_SAVES);
+	CHECK((int)actualEffect <= (int)UI_HOME_EFFECT_OPEN_APPS);
+	CHECK((int)actual.face < actual.faceCount);
+	CHECK(UIHome_FaceForTurn(actual.turnOrdinal, actual.faceCount) ==
+		actual.face);
 	if(actualEffect == UI_HOME_EFFECT_RESTART) {
 		CHECK(before.surface == UI_HOME_SURFACE_RESTART_CONFIRM);
 		CHECK(input == UI_HOME_INPUT_ACTIVATE);
@@ -882,14 +1029,21 @@ static void testExhaustiveReducerOracle(void)
 				(int)UI_HOME_SURFACE_COUNT; ++surfaceIndex) {
 			for(inputIndex = (int)UI_HOME_INPUT_NONE;
 					inputIndex <= (int)UI_HOME_INPUT_RECENT; ++inputIndex) {
-				for(capsMask = 0; capsMask < 4; ++capsMask) {
+				for(capsMask = 0; capsMask < 16; ++capsMask) {
 					uiHomeCapabilities_t caps = capabilities(
 						(capsMask & 1) != 0, (capsMask & 2) != 0);
+					/* The state's ring, and the capabilities' ring, each
+					 * four or five faces. */
+					int stateRing = (capsMask & 8) != 0 ? 5 : 4;
 					int rowCount = oracleRowCount(
 						(uiHomeSurface_t)surfaceIndex, caps);
 					int selectionCount = rowCount > 0 ? rowCount : 1;
 					int selection;
 
+					caps.hasApps = (capsMask & 4) != 0;
+					if(faceIndex >= stateRing) {
+						continue;
+					}
 					for(selection = 0; selection < selectionCount;
 							++selection) {
 						for(cycleIndex = 0; cycleIndex <
@@ -897,12 +1051,13 @@ static void testExhaustiveReducerOracle(void)
 								sizeof(ordinalCycles[0])); ++cycleIndex) {
 							int32_t ordinal = (int32_t)faceIndex +
 								(int32_t)(ordinalCycles[cycleIndex] *
-								(int)UI_HOME_FACE_COUNT);
+								stateRing);
 							uiHomeState_t state = stateAt(
 								(uiHomeFace_t)faceIndex,
 								(uiHomeSurface_t)surfaceIndex,
 								selection, ordinal);
 
+							state.faceCount = stateRing;
 							checkOracleTransition(state,
 								(uiHomeInput_t)inputIndex, caps);
 						}
@@ -935,9 +1090,10 @@ static void testInvalidInputAndStateOracle(void)
 	for(faceIndex = 0; faceIndex < (int)UI_HOME_FACE_COUNT; ++faceIndex) {
 		for(surfaceIndex = 0; surfaceIndex <
 				(int)UI_HOME_SURFACE_COUNT; ++surfaceIndex) {
-			for(capsMask = 0; capsMask < 4; ++capsMask) {
+			for(capsMask = 0; capsMask < 8; ++capsMask) {
 				caps = capabilities((capsMask & 1) != 0,
 					(capsMask & 2) != 0);
+				caps.hasApps = (capsMask & 4) != 0;
 				for(valueIndex = 0; valueIndex <
 						(int)(sizeof(invalidInputs) /
 						sizeof(invalidInputs[0])); ++valueIndex) {
@@ -1087,6 +1243,11 @@ static void testRestartReachabilityOracle(void)
 	restartReachableCount = 0u;
 	bruteForceRestart(state, caps, sequence, 0);
 	CHECK(restartReachableCount == 8u);
+	/* With Apps between Library and System, six samples never restart. */
+	UIHome_Init(&state, withApps(caps));
+	restartReachableCount = 0u;
+	bruteForceRestart(state, withApps(caps), sequence, 0);
+	CHECK(restartReachableCount == 0u);
 
 	/* The canonical six distinct samples expose each safe stage.  No prefix
 	 * emits Restart; the final, fresh A is the only destructive effect. */
@@ -1172,6 +1333,7 @@ int main(void)
 	testValidationAndInitialization();
 	testLabelsHintsAndRows();
 	testFaceMappingAndSignedTurns();
+	testAppsFaceComesAndGoes();
 	testEveryRingFaceAndInput();
 	testNoSourceRedirect();
 	testSourceSurface();

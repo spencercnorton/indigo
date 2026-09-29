@@ -239,7 +239,8 @@ assert "record->gameId[sizeof(record->gameId) - 1u] = '\\0';" in snapshot_record
 def check_layouts(swiss: str) -> None:
     carousel = extract_function(swiss, "uiDrawObj_t* renderFileCarousel(")
     build = extract_function(swiss, "static bool gameflowBuildSnapshot(")
-    layout_of = extract_function(swiss, "static uiGameflowLayout_t gameflowLayout(")
+    # Apps (gui/apps.c) lays itself out and moves as the Library does.
+    layout_of = extract_function(swiss, "\nuiGameflowLayout_t gameflowLayout(")
     detail = extract_function(swiss[swiss.rindex("static int gameflow_info_game"):],
                               "static int gameflow_info_game")
     folder = extract_function(swiss, "static bool gameflowResolveAndLoadFolder(")

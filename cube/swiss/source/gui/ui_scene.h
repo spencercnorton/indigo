@@ -48,7 +48,9 @@ typedef struct {
 	float homeOrientation[3][3];
 	float homeTargetOrientation[3][3];
 	float homeMotifBasis[UI_HOME_FACE_COUNT][3][3];
-	float homeMotifAlpha;
+	/* Each face's glyph fades on its own (gui/ui_cube_motif.h); 0 for a
+	 * face with no side, such as Apps outside a ring of four. */
+	float homeMotifAlpha[UI_HOME_FACE_COUNT];
 	float homeFocusProgress;
 	float homeIdleBlend;
 	uint32_t homeRevision;
@@ -65,8 +67,8 @@ void UIScene_Request(uiSceneId_t scene);
  * axis commands even when several menu updates coalesce before one frame. */
 void UIScene_RequestHome(const uiHomeState_t *home);
 /* The Library's cube pose follows its layout: Horizontal keeps the
- * carousel's, Vertical tucks the cube behind the selected cover and Grid
- * moves it out of the grid's way. Unknown layouts are Horizontal. */
+ * carousel's, Vertical tucks the cube behind the selected cover, and Grid
+ * and Spotlight move it out of their way. Unknown layouts are Horizontal. */
 void UIScene_RequestLibraryLayout(uiGameflowLayout_t layout);
 void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode);
 const uiSceneFrame_t *UIScene_Frame(void);

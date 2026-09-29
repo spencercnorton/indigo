@@ -9,17 +9,18 @@ static const uiSystemPageDesc_t PAGES[UI_SYSTEM_PAGE_COUNT] = {
 	{ "CONNECTIONS", "Storage and peripherals captured on page entry." },
 	{ "INPUT / OUTPUT", "Controller sockets and active video state." },
 	{ "ABOUT INDIGO", "Version, toolchain, source, and support identity." },
-	{ "CREDITS", "People who made Swiss possible." },
+	{ "CREDITS", "People who made Swiss and Indigo possible." },
 };
 
+/* Short names: "WEDNESDAY  SEPTEMBER 30, 2026" is far wider than the
+ * Overview's date line, which cut it short on a console. */
 static const char *const WEEKDAYS[7] = {
-	"SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY",
-	"THURSDAY", "FRIDAY", "SATURDAY"
+	"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"
 };
 
 static const char *const MONTHS[12] = {
-	"JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
-	"JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"
+	"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+	"JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
 };
 
 static int clampPage(int page)

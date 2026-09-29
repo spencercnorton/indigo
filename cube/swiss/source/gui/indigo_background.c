@@ -47,7 +47,7 @@ typedef struct indigoPoint {
 typedef struct cubeRasterTransform {
 	Mtx model;
 	Mtx semanticFaces[UI_HOME_FACE_COUNT];
-	float motifAlpha;
+	float motifAlpha[UI_HOME_FACE_COUNT];
 	float scaleX;
 	float scaleY;
 } cubeRasterTransform_t;
@@ -530,7 +530,8 @@ static void setupCubePipeline(const uiSceneFrame_t *scene, float seconds, bool a
 				raster->semanticFaces[face][row][column] =
 					scene->homeMotifBasis[face][row][column];
 	}
-	raster->motifAlpha = scene->homeMotifAlpha;
+	for(int face = 0; face < UI_HOME_FACE_COUNT; face++)
+		raster->motifAlpha[face] = scene->homeMotifAlpha[face];
 	guMtxScaleApply(rotation, rotation, scene->cubeScale, scene->cubeScale, scene->cubeScale);
 	guMtxIdentity(translation);
 	guMtxTransApply(translation, translation, scene->cubeX, scene->cubeY + bob,
@@ -863,7 +864,7 @@ static guVector semanticFacePoint(const cubeRasterTransform_t *raster,
 static void putSemanticMotifQuad(const cubeRasterTransform_t *raster, int face,
 		const indigoPoint_t corners[4], float plane, GXColor color)
 {
-	color.a = (u8)((float)color.a * raster->motifAlpha);
+	color.a = (u8)((float)color.a * raster->motifAlpha[face]);
 	guVector eyes[4];
 	indigoPoint_t points[4], joins[4], center = {0.0f, 0.0f};
 	float area = 0.0f, clearance = 1000.0f;
@@ -984,7 +985,7 @@ static void drawFacePolygon(const cubeRasterTransform_t *raster, int face,
 	indigoPoint_t center = {0.0f, 0.0f};
 	float area = 0.0f, clearance = 1000.0f;
 
-	color.a = (u8)((float)color.a * raster->motifAlpha);
+	color.a = (u8)((float)color.a * raster->motifAlpha[face]);
 	if(count < 3 || count > FACE_POLYGON_MAX || color.a == 0) return;
 	for(int i = 0; i < count; i++) {
 		guVector point = semanticFacePoint(raster, face, corners[i].x, corners[i].y, plane);
@@ -1042,7 +1043,7 @@ static void drawFaceBand(const cubeRasterTransform_t *raster, int face,
 	indigoPoint_t points[2][FACE_BAND_MAX], joins[2][FACE_BAND_MAX];
 	float area = 0.0f;
 
-	color.a = (u8)((float)color.a * raster->motifAlpha);
+	color.a = (u8)((float)color.a * raster->motifAlpha[face]);
 	if(count < 3 || count > FACE_BAND_MAX || color.a == 0) return;
 	for(int i = 0; i < count; i++) {
 		indigoPoint_t prev = centre[(i + count - 1) % count];
@@ -1166,16 +1167,15 @@ static void drawFaceArc(const cubeRasterTransform_t *raster, int face,
 {
 	enum { CAP = 5 };
 	const int POINTS = 2 * ARC + 2 * CAP;
-	indigoPoint_t outline[2 * FACE_ARC_MAX + 2 * CAP + 2];
-	guVector eyes[2 * FACE_ARC_MAX + 2 * CAP + 2];
-	indigoPoint_t points[2 * FACE_ARC_MAX + 2 * CAP + 2], joins[2 * FACE_ARC_MAX + 2 * CAP];
+	indigoPoint_t outline[2 * FACE_ARC_MAX + 2 * CAP];
+	guVector eyes[2 * FACE_ARC_MAX + 2 * CAP];
+	indigoPoint_t points[2 * FACE_ARC_MAX + 2 * CAP], joins[2 * FACE_ARC_MAX + 2 * CAP];
 	float area = 0.0f;
 	int count = 0;
 
-	color.a = (u8)((float)color.a * raster->motifAlpha);
+	color.a = (u8)((float)color.a * raster->motifAlpha[face]);
 	if(color.a == 0 || ARC < 1 || ARC > FACE_ARC_MAX) return;
-	/* Outer arc, the a1 end cap, the inner arc back, then the a0 end cap;
-	 * the two cap centres follow for their fans. */
+	/* Outer arc, the a1 end cap, the inner arc back, then the a0 end cap. */
 	for(int i = 0; i <= ARC; i++) {
 		float angle = a0 + (a1 - a0) * (float)i / ARC;
 		outline[count++] = (indigoPoint_t) {cx + (radius + halfWidth) * cosf(angle),
@@ -1196,9 +1196,7 @@ static void drawFaceArc(const cubeRasterTransform_t *raster, int face,
 		outline[count++] = (indigoPoint_t) {cx + radius * cosf(a0) + halfWidth * cosf(angle),
 			cy + radius * sinf(a0) + halfWidth * sinf(angle)};
 	}
-	outline[POINTS] = (indigoPoint_t) {cx + radius * cosf(a1), cy + radius * sinf(a1)};
-	outline[POINTS + 1] = (indigoPoint_t) {cx + radius * cosf(a0), cy + radius * sinf(a0)};
-	for(int i = 0; i < POINTS + 2; i++) {
+	for(int i = 0; i < POINTS; i++) {
 		guVector point = semanticFacePoint(raster, face, outline[i].x, outline[i].y, plane);
 		if(!projectRailPoint(raster, point.x, point.y, point.z,
 			&eyes[i], &points[i])) return;
@@ -1225,11 +1223,13 @@ static void drawFaceArc(const cubeRasterTransform_t *raster, int face,
 			joins[2 * ARC + CAP - i], 0.0f, color);
 	}
 	GX_End();
-	/* Each round end fans from its centre across outer end, cap, inner end. */
+	/* Each round end fans from the strip's corner there, round the cap to
+	 * its other corner, so the fan and the strip share their whole edge. A
+	 * fan from the cap's centre put a vertex in the middle of that edge, a
+	 * T-junction the console's 1/16-pixel vertex snap opened into sparkles. */
 	for(int end = 0; end < 2; end++) {
 		int first = end == 0 ? ARC : 2 * ARC + CAP;
-		GX_Begin(GX_TRIANGLEFAN, GX_VTXFMT0, CAP + 2);
-		putProjectedRailVertex(raster, eyes[POINTS + end], joins[0], 0.0f, color);
+		GX_Begin(GX_TRIANGLEFAN, GX_VTXFMT0, CAP + 1);
 		for(int j = 0; j <= CAP; j++) {
 			int index = (first + j) % POINTS;
 			putProjectedRailVertex(raster, eyes[index], joins[index], 0.0f, color);
@@ -1907,6 +1907,20 @@ static void drawChipIcon(const cubeRasterTransform_t *raster, int face, GXColor 
 	}
 }
 
+/* Apps: four app tiles, two by two. */
+static void drawAppsIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = 1.012f;
+
+	for(int tile = 0; tile < 4; tile++) {
+		float u = (tile & 1) ? 0.10f : -0.40f;
+		float v = (tile & 2) ? -0.40f : 0.10f;
+
+		drawRoundedRect(raster, face, u, v, u + 0.30f, v + 0.30f, 0.07f, 0.018f,
+			plane, glow);
+	}
+}
+
 /* Every face shows the icon chosen for it in Settings: choices[face] picks
  * one of that face's own four (uiHomeIcon_t face * UI_HOME_ICON_CHOICES +
  * choice). One additive pass without depth writes, every icon in the same
@@ -1955,6 +1969,7 @@ static void drawFaceIcons(float seconds, bool animated,
 			case UI_HOME_ICON_INFO: drawInfoIcon(raster, face, glow); break;
 			case UI_HOME_ICON_POWER: drawPowerIcon(raster, face, glow); break;
 			case UI_HOME_ICON_CHIP: drawChipIcon(raster, face, glow); break;
+			case UI_HOME_ICON_APPS: drawAppsIcon(raster, face, glow); break;
 			default: break;
 		}
 	}
@@ -2192,6 +2207,77 @@ static guVector glassBilinear(const guVector corner[4], float u, float v)
 	};
 }
 
+/* The point k/steps of the way along a side from p to q, made the same way
+ * whichever surface asks and whichever way round it walks the side: the
+ * ends in one fixed order, one copy of the arithmetic (the console's
+ * compiler fuses multiply-adds, so one sum written two ways can round
+ * apart). Surfaces that meet at a side cut it the same number of times, so
+ * they share every point on it bit for bit. A point that only one of them
+ * has there (a T-junction) is snapped to the console's 1/16 pixel apart from
+ * the other's straight side, and single pixels along the seam open and
+ * close as the cube moves: sparkles, which Dolphin's finer snap all but
+ * hides. */
+static guVector glassSidePoint(guVector p, guVector q, int k, int steps)
+{
+	if(q.x < p.x || (q.x == p.x && (q.y < p.y || (q.y == p.y && q.z < p.z)))) {
+		guVector swap = p;
+
+		p = q;
+		q = swap;
+		k = steps - k;
+	}
+	if(k <= 0) return p;
+	if(k >= steps) return q;
+	float t = (float)k / (float)steps;
+	return (guVector) {p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t,
+		p.z + (q.z - p.z) * t};
+}
+
+/* Point (column, row) of a surface cut columns by rows: on its sides from
+ * glassSidePoint, so the surface beside it has the same points, and
+ * bilinear only inside. */
+static guVector glassGridPoint(const guVector corner[4], int column, int columns,
+		int row, int rows)
+{
+	if(row == 0) return glassSidePoint(corner[0], corner[1], column, columns);
+	if(row == rows) return glassSidePoint(corner[3], corner[2], column, columns);
+	if(column == 0) return glassSidePoint(corner[0], corner[3], row, rows);
+	if(column == columns) return glassSidePoint(corner[1], corner[2], row, rows);
+	return glassBilinear(corner, (float)column / columns, (float)row / rows);
+}
+
+/* Point k of a corner triangle drawn as a fan: 0 is its middle, and 1 to
+ * 3 * cuts go round its sides from corner 0, each side cut as the bevel end
+ * it closes is cut across, so the two share every point. */
+static void glassFanPoint(const guVector corner[3], const guVector eyes[3],
+		const guVector normals[3], int cuts, int k, guVector *body, guVector *eye,
+		guVector *normal)
+{
+	guVector n;
+	float length;
+
+	if(k == 0) {
+		*body = (guVector) {(corner[0].x + corner[1].x + corner[2].x) / 3.0f,
+			(corner[0].y + corner[1].y + corner[2].y) / 3.0f,
+			(corner[0].z + corner[1].z + corner[2].z) / 3.0f};
+		*eye = (guVector) {(eyes[0].x + eyes[1].x + eyes[2].x) / 3.0f,
+			(eyes[0].y + eyes[1].y + eyes[2].y) / 3.0f,
+			(eyes[0].z + eyes[1].z + eyes[2].z) / 3.0f};
+		n = (guVector) {normals[0].x + normals[1].x + normals[2].x,
+			normals[0].y + normals[1].y + normals[2].y,
+			normals[0].z + normals[1].z + normals[2].z};
+	}
+	else {
+		int side = (k - 1) / cuts, next = (side + 1) % 3, cut = (k - 1) % cuts;
+
+		*body = glassSidePoint(corner[side], corner[next], cut, cuts);
+		*eye = glassSidePoint(eyes[side], eyes[next], cut, cuts);
+		n = glassSidePoint(normals[side], normals[next], cut, cuts);
+	}
+	length = sqrtf(n.x * n.x + n.y * n.y + n.z * n.z);
+	*normal = (guVector) {n.x / length, n.y / length, n.z / length};
+}
+
 /* One reflecting vertex: its body position, where it looks in the studio
  * and how much it reflects. */
 typedef struct glassMirrorVertex {
@@ -2213,13 +2299,13 @@ static void putGlassMirrorVertex(const glassMirrorVertex_t *vertex)
  * slides across the glass as it turns; the vertices only need to follow
  * the reflected ray: faces in a coarse grid for perspective, bevels finely
  * across their width, where the normal rolls. Cells that reflect nothing at
- * all four corners (turned away or grazing) are skipped. Corner triangles,
- * which always face the camera at one vertex at least, mirror at their
- * three. */
+ * all four corners (turned away or grazing) are skipped. Corner triangles
+ * are fans cut as the bevel ends they close, and mirror at every point. */
 static void drawGlassReflection(const cubeRasterTransform_t *raster,
 		const cubeSurfaceQuad_t *quads, int count, int vertexCount, float outer)
 {
-	enum { FACE_STEPS = 4, ACROSS_STEPS = 6, ALONG_STEPS = 2, GRID = 7 };
+	/* A bevel is cut along as often as the face beside it (glassSidePoint). */
+	enum { FACE_STEPS = 4, ACROSS_STEPS = 6, ALONG_STEPS = FACE_STEPS, GRID = 7 };
 	const guVector centre = {raster->model[0][3], raster->model[1][3], raster->model[2][3]};
 	const float size = sqrtf(raster->model[0][0] * raster->model[0][0] +
 		raster->model[1][0] * raster->model[1][0] + raster->model[2][0] * raster->model[2][0]);
@@ -2241,15 +2327,28 @@ static void drawGlassReflection(const cubeRasterTransform_t *raster,
 		}
 		if(area >= -0.001f) continue;
 		if(vertexCount == 3) {
-			for(int vertex = 0; vertex < 3; vertex++) {
-				guVector e = eyes[vertex];
-				grid[vertex].body = quads[quad].point[vertex];
-				grid[vertex].alpha = glassReflect(e, normals[vertex],
-					(guVector) {(e.x - centre.x) / size, (e.y - centre.y) / size,
-					(e.z - centre.z) / size}, &grid[vertex].s, &grid[vertex].t);
+			/* A fan, its sides cut as the bevel ends it closes are cut
+			 * across; a triangle that reflects nothing is skipped. */
+			const int points = 1 + 3 * ACROSS_STEPS;
+			int lit = 0;
+			for(int k = 0; k < points; k++) {
+				guVector e, n;
+				glassFanPoint(quads[quad].point, eyes, normals, ACROSS_STEPS, k,
+					&grid[k].body, &e, &n);
+				grid[k].alpha = glassReflect(e, n, (guVector) {(e.x - centre.x) / size,
+					(e.y - centre.y) / size, (e.z - centre.z) / size}, &grid[k].s, &grid[k].t);
 			}
-			GX_Begin(GX_TRIANGLES, GX_VTXFMT0, 3);
-			for(int vertex = 0; vertex < 3; vertex++) putGlassMirrorVertex(&grid[vertex]);
+			for(int k = 1; k < points; k++)
+				lit += (grid[0].alpha | grid[k].alpha | grid[k + 1 < points ? k + 1 : 1].alpha) != 0;
+			if(lit == 0) continue;
+			GX_Begin(GX_TRIANGLES, GX_VTXFMT0, (u16)(lit * 3));
+			for(int k = 1; k < points; k++) {
+				const glassMirrorVertex_t *next = &grid[k + 1 < points ? k + 1 : 1];
+				if((grid[0].alpha | grid[k].alpha | next->alpha) == 0) continue;
+				putGlassMirrorVertex(&grid[0]);
+				putGlassMirrorVertex(&grid[k]);
+				putGlassMirrorVertex(next);
+			}
 			GX_End();
 			continue;
 		}
@@ -2264,7 +2363,7 @@ static void drawGlassReflection(const cubeRasterTransform_t *raster,
 			guVector n = glassBilinear(normals, u, v), e = glassBilinear(eyes, u, v);
 			float length = sqrtf(n.x * n.x + n.y * n.y + n.z * n.z);
 			n = (guVector) {n.x / length, n.y / length, n.z / length};
-			at->body = glassBilinear(quads[quad].point, u, v);
+			at->body = glassGridPoint(quads[quad].point, column, columns, row, rows);
 			at->alpha = glassReflect(e, n, (guVector) {(e.x - centre.x) / size,
 				(e.y - centre.y) / size, (e.z - centre.z) / size}, &at->s, &at->t);
 		}
@@ -2524,7 +2623,8 @@ static void drawGlassRefraction(const cubeRasterTransform_t *raster,
 		const glassRefraction_t *glass, const cubeSurfaceQuad_t *quads, int count,
 		int vertexCount, float outer, glassSun_t *sun, bool emit)
 {
-	enum { FACE_STEPS = 4, ACROSS_STEPS = 6, ALONG_STEPS = 3, GRID = 7 };
+	/* A bevel is cut along as often as the face beside it (glassSidePoint). */
+	enum { FACE_STEPS = 4, ACROSS_STEPS = 6, ALONG_STEPS = FACE_STEPS, GRID = 7 };
 
 	for(int quad = 0; quad < count; quad++) {
 		guVector eyes[4], normals[4];
@@ -2542,12 +2642,21 @@ static void drawGlassRefraction(const cubeRasterTransform_t *raster,
 		}
 		if(area >= -0.001f) continue;
 		if(vertexCount == 3) {
-			for(int vertex = 0; vertex < 3; vertex++)
-				refractGlassVertex(raster, glass, quads[quad].point[vertex],
-					eyes[vertex], normals[vertex], sun, &grid[vertex]);
+			/* A fan, its sides cut as the bevel ends it closes are cut across. */
+			const int points = 1 + 3 * ACROSS_STEPS;
+			for(int k = 0; k < points; k++) {
+				guVector body, e, n;
+				glassFanPoint(quads[quad].point, eyes, normals, ACROSS_STEPS, k,
+					&body, &e, &n);
+				refractGlassVertex(raster, glass, body, e, n, sun, &grid[k]);
+			}
 			if(!emit) continue;
-			GX_Begin(GX_TRIANGLES, GX_VTXFMT0, 3);
-			for(int vertex = 0; vertex < 3; vertex++) putGlassRefractedVertex(&grid[vertex]);
+			GX_Begin(GX_TRIANGLES, GX_VTXFMT0, (u16)((points - 1) * 3));
+			for(int k = 1; k < points; k++) {
+				putGlassRefractedVertex(&grid[0]);
+				putGlassRefractedVertex(&grid[k]);
+				putGlassRefractedVertex(&grid[k + 1 < points ? k + 1 : 1]);
+			}
 			GX_End();
 			continue;
 		}
@@ -2562,7 +2671,8 @@ static void drawGlassRefraction(const cubeRasterTransform_t *raster,
 				normal.z * normal.z);
 			normal = (guVector) {normal.x / normalLength, normal.y / normalLength,
 				normal.z / normalLength};
-			refractGlassVertex(raster, glass, glassBilinear(quads[quad].point, u, v),
+			refractGlassVertex(raster, glass,
+				glassGridPoint(quads[quad].point, column, columns, row, rows),
 				glassBilinear(eyes, u, v), normal, sun, &grid[row * GRID + column]);
 		}
 		if(!emit) continue;
@@ -2590,7 +2700,8 @@ static void drawGlassSheen(const cubeRasterTransform_t *raster,
 		const cubeSurfaceQuad_t *quads, int count, int vertexCount, float outer,
 		float front, float width, float weight)
 {
-	enum { FACE_STEPS = 8, ACROSS_STEPS = 6, ALONG_STEPS = 4, GRID = 9 };
+	/* A bevel is cut along as often as the face beside it (glassSidePoint). */
+	enum { FACE_STEPS = 8, ACROSS_STEPS = 6, ALONG_STEPS = FACE_STEPS, GRID = 9 };
 	const guVector axis = {0.8908f, 0.4543f, 0.0f};
 	guVector center = {raster->model[0][3], raster->model[1][3], raster->model[2][3]};
 
@@ -2624,7 +2735,7 @@ static void drawGlassSheen(const cubeRasterTransform_t *raster,
 			float d = ((eye.x - center.x) * axis.x + (eye.y - center.y) * axis.y) - front;
 			float bump = 1.0f - (d * d) / (width * width);
 			bump = bump <= 0.0f ? 0.0f : bump * bump;
-			body[at] = glassBilinear(quads[quad].point, u, v);
+			body[at] = glassGridPoint(quads[quad].point, column, columns, row, rows);
 			color[at] = (GXColor) {236, 230, 255,
 				(u8)(255.0f * fminf(1.0f, 0.24f * weight * bump *
 				glassSmoothstep(0.0f, 0.30f, facing)) + 0.5f)};

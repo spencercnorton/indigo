@@ -65,13 +65,12 @@ WHAT EACH FILE IS FOR
 
 GAMES
 Put your games in /games, either one folder per game or the disc images
-directly, and keep nothing else in /games or in the game folders:
+directly:
     /games/Super Mario Sunshine [GMSE01]/game.iso
     /games/Super Mario Sunshine.iso
-Disc images end in .iso, .gcm, .tgc or .fdi. Anything else there (a text
-file, a cover image, an empty folder) turns the Library back into Swiss's
-plain file list. "Hide unknown file types" in Settings > Setup > Library
-hides stray text files and pictures, but not folders, programs or music.
+Disc images end in .iso, .gcm, .tgc or .fdi. The Library skips anything
+else there (a text file, a cover image, an empty folder). If /games holds
+no disc images, you get Swiss's plain file list instead.
 On Home, turn the cube to Library and press A.
 
 POSTERS AND CHEATS (optional, also drag and drop)

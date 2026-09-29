@@ -41,7 +41,8 @@ typedef struct { u8 r,g,b,a; } GXColor;
 typedef float Mtx[3][4];
 typedef struct { float x,y,z; } guVector;
 typedef struct { float x,y; } indigoPoint_t;
-typedef struct { Mtx model,semanticFaces[4]; float motifAlpha,scaleX,scaleY; } cubeRasterTransform_t;
+typedef struct { Mtx model,semanticFaces[UI_HOME_FACE_COUNT];
+    float motifAlpha[UI_HOME_FACE_COUNT],scaleX,scaleY; } cubeRasterTransform_t;
 typedef struct { guVector point[4]; GXColor color[4]; } cubeSurfaceQuad_t;
 typedef struct { indigoPoint_t point[24]; int count; } cubeOutline_t;
 typedef struct { void *data; u16 w, h; u8 fmt; } GXTexObj;
@@ -238,8 +239,9 @@ static void test_refraction_stream(void) {
         poses++;
     }
     CHECK(poses==1152,"pose sweep incomplete");
-    /* Measured 700 at the worst pose; the video thread pays for each. */
-    CHECK(most>300 && most<=900,"refraction vertex budget");
+    /* Measured 930 at the worst pose (700 before bevels were cut along as
+     * often as faces and corners became fans); the video thread pays for each. */
+    CHECK(most>300 && most<=1200,"refraction vertex budget");
 }
 static void test_soft_glow(void) {
     reset(1);
@@ -406,9 +408,64 @@ static void test_scene_strength(void) {
     s.introProgress=(BOOT_CUBE_HANDOFF+1)/2; float half=glassSceneStrength(&s);
     CHECK(half>0.3f && half<0.7f,"the light does not fade in after the handoff");
 }
+/* The glass passes' surfaces meet without a T-junction: no vertex lies
+ * inside another cell's side, and no point two surfaces share is made twice
+ * and rounded apart. The console snaps vertices to 1/16 pixel, so a point on
+ * a shared side that one surface has and its neighbour lacks opens single
+ * pixels along the seam, which sparkle as the cube moves. */
+static void check_seams(const char *pass) {
+    int at=0;
+    for(int p=0;p<begins;p++) {
+        int sides=primitives[p]==GX_TRIANGLES?3:4;
+        for(int first=at;first<at+primitiveSizes[p];first+=sides) for(int v=0;v<sides;v++) {
+            guVector a=positions[first+v], b=positions[first+(v+1)%sides];
+            guVector ab={b.x-a.x,b.y-a.y,b.z-a.z};
+            float length2=ab.x*ab.x+ab.y*ab.y+ab.z*ab.z;
+            for(int i=0;i<count;i++) {
+                guVector q=positions[i], aq={q.x-a.x,q.y-a.y,q.z-a.z};
+                guVector c={ab.y*aq.z-ab.z*aq.y,ab.z*aq.x-ab.x*aq.z,ab.x*aq.y-ab.y*aq.x};
+                float along=aq.x*ab.x+aq.y*ab.y+aq.z*ab.z;
+                if(aq.x*aq.x+aq.y*aq.y+aq.z*aq.z<1e-10f && (aq.x!=0||aq.y!=0||aq.z!=0)) {
+                    fprintf(stderr,"%s: ",pass); CHECK(0,"a shared point was made twice and rounded apart");
+                }
+                if(along>1e-4f*length2 && along<(1-1e-4f)*length2 &&
+                    c.x*c.x+c.y*c.y+c.z*c.z<1e-9f*length2) {
+                    fprintf(stderr,"%s: ",pass); CHECK(0,"a vertex lies inside another cell's side (a T-junction)");
+                }
+            }
+        }
+        at+=primitiveSizes[p];
+    }
+}
+static void test_seams(void) {
+    const GXColor tint[6]={{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4}};
+    cubeSurfaceQuad_t shell[6],strips[12],corners[8];
+    int poses=0;
+    buildCubeFaces(shell,1,.78f,tint); buildChamferStrips(strips,1,.78f,tint,NULL); buildCubeCorners(corners,1,.78f);
+    for(int yaw=0;yaw<360;yaw+=45) for(int pitch=-30;pitch<=30;pitch+=15) {
+        cubeRasterTransform_t r; glassSun_t sun={0,0,0,0};
+        pose(&r,yaw*INDIGO_TAU/360,pitch*INDIGO_TAU/360,0,1);
+        reset(3);
+        drawGlassRefraction(&r,&glass0,shell,6,4,1,&sun,true);
+        drawGlassRefraction(&r,&glass0,strips,12,4,1,&sun,true);
+        drawGlassRefraction(&r,&glass0,corners,8,3,1,&sun,true);
+        CHECK(count>0,"no refraction to check"); check_seams("refraction");
+        reset(1);
+        drawGlassReflection(&r,shell,6,4,1); drawGlassReflection(&r,strips,12,4,1);
+        drawGlassReflection(&r,corners,8,3,1);
+        CHECK(count>0,"no reflection to check"); check_seams("reflection");
+        /* A band wide enough to light the whole cube. */
+        reset(0);
+        drawGlassSheen(&r,shell,6,4,1,0,4.0f,1); drawGlassSheen(&r,strips,12,4,1,0,4.0f,1);
+        CHECK(count>0,"no sheen to check"); check_seams("sheen");
+        poses++;
+    }
+    CHECK(poses==40,"seam pose sweep incomplete");
+}
 int main(void) {
     test_vertex_optics(); test_sun(); test_refraction_stream(); test_soft_glow();
     test_flare(); test_rim(); test_copy(); test_scene_strength(); test_sheen(); test_studio();
+    test_seams();
     puts("glass light: refraction, dispersion, glint, studio, glows, rim and copies hold");
     return 0;
 }
@@ -422,7 +479,8 @@ FUNCTIONS = [
     "static void buildChamferStrips(", "static void buildCubeCorners(",
     "static float glassSmoothstep(", "static guVector glassVertexNormal(",
     "static bool glassSameNormal(", "static guVector glassBilinear(",
-    "static float glassSceneStrength(", "static bool glassCopyFrame(",
+    "static guVector glassSidePoint(", "static guVector glassGridPoint(",
+    "static void glassFanPoint(", "static float glassSceneStrength(", "static bool glassCopyFrame(",
     "static float glassCopyS(", "static float glassCopyT(",
     "static void refractGlassVertex(", "static void putGlassRefractedVertex(",
     "static void drawGlassRefraction(", "static void drawSoftGlow(",
@@ -430,6 +488,8 @@ FUNCTIONS = [
     "static bool glassCellLit(", "static void drawGlassSheen(",
     "static GXColor glassStudioLight(", "static void glassStudioCoords(",
     "static guVector glassStudioDirection(", "static bool prepareGlassStudio(",
+    "static u8 glassReflect(", "static void putGlassMirrorVertex(",
+    "static void drawGlassReflection(",
 ]
 
 
@@ -438,7 +498,7 @@ class GlassLightTests(unittest.TestCase):
     def setUpClass(cls):
         cls.source = (GUI / "indigo_background.c").read_text()
         blocks = []
-        for name in ("glassSun", "glassRefraction", "glassRefractedVertex"):
+        for name in ("glassSun", "glassRefraction", "glassRefractedVertex", "glassMirrorVertex"):
             blocks.append(re.search(r"typedef struct " + name + r" \{.*?\} \w+;",
                 cls.source, re.S).group(0))
         blocks.append(re.search(r"static const guVector glassSunDirection = \{.*?\};",
@@ -582,8 +642,19 @@ class GlassLightTests(unittest.TestCase):
             "no magnification": ("(sx - glass->centerX) * (1.0f - glass->magnify)",
                 "(sx - glass->centerX)"),
             "broad glint": ("glassSmoothstep(0.955f, 0.9985f, d)", "glassSmoothstep(0.2f, 0.9985f, d)"),
-            "back-facing refraction": ("\t\tif(area >= -0.001f) continue;\n\t\tif(vertexCount == 3) {\n\t\t\tfor",
-                "\t\tif(area >= 1e30f) continue;\n\t\tif(vertexCount == 3) {\n\t\t\tfor"),
+            "back-facing refraction": ("\t\tif(area >= -0.001f) continue;\n\t\tif(vertexCount == 3) {\n"
+                "\t\t\t/* A fan, its sides cut as the bevel ends it closes are cut across. */",
+                "\t\tif(area >= 1e30f) continue;\n\t\tif(vertexCount == 3) {\n"
+                "\t\t\t/* A fan, its sides cut as the bevel ends it closes are cut across. */"),
+            # Sparkles: a bevel cut along apart from the face beside it, or a
+            # corner fan that misses the bevel ends' cuts, is a T-junction.
+            "bevel cut apart from its face": ("ACROSS_STEPS = 6, ALONG_STEPS = FACE_STEPS, GRID = 7 };",
+                "ACROSS_STEPS = 6, ALONG_STEPS = 3, GRID = 7 };"),
+            "sheen bevel cut apart from its face": ("ACROSS_STEPS = 6, ALONG_STEPS = FACE_STEPS, GRID = 9 };",
+                "ACROSS_STEPS = 6, ALONG_STEPS = 4, GRID = 9 };"),
+            "corner fan cut apart from its bevels": (
+                "*body = glassSidePoint(corner[side], corner[next], cut, cuts);",
+                "*body = glassSidePoint(corner[side], corner[next], cut, cuts + 1);"),
             "measuring walk draws": ("\t\t\tif(!emit) continue;\n\t\t\tGX_Begin(GX_TRIANGLES",
                 "\t\t\tGX_Begin(GX_TRIANGLES"),
             "copy clears the frame": ("GX_CopyTex(glassTexels, GX_FALSE);", "GX_CopyTex(glassTexels, GX_TRUE);"),

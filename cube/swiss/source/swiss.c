@@ -53,6 +53,7 @@
 #include "aram/sidestep.h"
 #include "gui/FrameBufferMagic.h"
 #include "gui/IPLFontWrite.h"
+#include "gui/apps.h"
 #include "gui/ui_gameflow_detail.h"
 #include "gui/ui_gameflow_library.h"
 #include "gui/ui_gameflow_ownership.h"
@@ -94,16 +95,19 @@ static uiMenuInputState_t homeMenuInput;
 static bool homeMenuInputVisible;
 static u32 homeMenuInputRetrace;
 
-static u32 menuInputElapsedMicroseconds(u32 *lastRetrace);
-
 /* Mount truth is bound to the exact handler pointer. A newly assigned source
  * therefore starts unmounted and can never inherit a predecessor's state. */
 static uiHomeSourceLifecycle_t homeSourceLifecycle;
+
+/* Whether the source has apps, looked for once per mount and refresh. */
+static bool homeAppsKnown;
+static bool homeAppsFound;
 
 static void homeSourceRecord(DEVICEHANDLER_INTERFACE *handler,
 	uiHomeSourceMountState_t state)
 {
 	UIHomeSafety_RecordSource(&homeSourceLifecycle, handler, state);
+	homeAppsKnown = false;
 }
 
 static bool homeSourceLifecycleMounted(void)
@@ -168,6 +172,14 @@ static uiHomeCapabilities_t homeCapabilities(void)
 		.hasRecent = swissSettings.recentListLevel > 0 &&
 			swissSettings.recent[0][0] != '\0'
 	};
+	/* The Apps face shows while the mounted source has an app, unless
+	 * Setup > Console > Apps Face is Off; then the card isn't read for it. */
+	if(capabilities.hasSource && !swissSettings.hideAppsFace && !homeAppsKnown) {
+		homeAppsFound = apps_available(devices[DEVICE_CUR]);
+		homeAppsKnown = true;
+	}
+	capabilities.hasApps = capabilities.hasSource && !swissSettings.hideAppsFace &&
+		homeAppsFound;
 	return capabilities;
 }
 
@@ -219,43 +231,46 @@ void ogc_video__reset()
 	/* set TV mode for current game */
 	switch(swissSettings.gameVMode) {
 		case -2:
-			sprintf(txtbuffer, "Video Mode: %s", "PAL 576p");
 			newmode = &TVPal576ProgScale;
 			break;
 		case -1:
-			sprintf(txtbuffer, "Video Mode: %s", "NTSC 480p");
 			newmode = &TVNtsc480Prog;
 			break;
 		case 0:
 			switch(swissSettings.sramVideo) {
 				case SYS_VIDEO_PAL:
-					sprintf(txtbuffer, "Video Mode: %s", "PAL 576i");
 					newmode = &TVPal576IntDfScale;
 					break;
 				case SYS_VIDEO_MPAL:
-					sprintf(txtbuffer, "Video Mode: %s", "PAL-M 480i");
 					newmode = &TVMpal480IntDf;
 					break;
 				default:
-					sprintf(txtbuffer, "Video Mode: %s", "NTSC 480i");
 					newmode = &TVNtsc480IntDf;
 					break;
 			}
 			break;
-		case 1 ... 3:
-			sprintf(txtbuffer, "Video Mode: %s %s", "NTSC", gameVModeStr[swissSettings.gameVMode]);
+		case 1:
 			newmode = &TVNtsc480IntDf;
 			break;
+		case 2:
+			newmode = &TVNtsc480Int;
+			break;
+		case 3:
+			newmode = &TVNtsc240DsVf;
+			break;
 		case 4 ... 7:
-			sprintf(txtbuffer, "Video Mode: %s %s", "NTSC", gameVModeStr[swissSettings.gameVMode]);
 			newmode = &TVNtsc480Prog;
 			break;
-		case 8 ... 10:
-			sprintf(txtbuffer, "Video Mode: %s %s\n%s Mode selected.", "PAL", gameVModeStr[swissSettings.gameVMode], swissSettings.sram60Hz ? "60Hz":"50Hz");
+		case 8:
 			newmode = &TVPal576IntDfScale;
 			break;
+		case 9:
+			newmode = &TVPal576IntScale;
+			break;
+		case 10:
+			newmode = &TVPal288DsVfScale;
+			break;
 		case 11 ... 14:
-			sprintf(txtbuffer, "Video Mode: %s %s\n%s Mode selected.", "PAL", gameVModeStr[swissSettings.gameVMode], swissSettings.sram60Hz ? "60Hz":"50Hz");
 			newmode = &TVPal576ProgScale;
 			break;
 		default:
@@ -263,6 +278,11 @@ void ogc_video__reset()
 			break;
 	}
 	if((newmode != NULL) && (newmode != getVideoMode())) {
+		if((newmode->viTVMode >> 2) == VI_PAL) {
+			sprintf(txtbuffer, "Video Mode: %s\n%s Mode selected.", getVideoModeString(newmode), swissSettings.sram60Hz ? "60Hz":"50Hz");
+		} else {
+			sprintf(txtbuffer, "Video Mode: %s", getVideoModeString(newmode));
+		}
 		DrawVideoMode(newmode);
 		/* The launch screen shows it as a step, without the wait. */
 		if(!DrawLaunchStep(txtbuffer)) {
@@ -542,7 +562,7 @@ uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj
 		filePanel = DrawRepublish(filePanel, newPanel);
 		DrawUpdateProgressLoading(loadingBox, -1);
 		
-		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z;
+		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP;
 		u32 browserButtons;
 		uiMenuInputDirection_t analog;
 		while(1) {
@@ -574,6 +594,11 @@ uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj
 			else {
 				curSelection = (curSelection + FILES_PER_PAGE > num_files-1) ? num_files-1 : (curSelection + FILES_PER_PAGE) % num_files;
 			}
+		}
+		if(padsButtonsHeld() & BUTTON_CLAP) {
+			DrawUpdateProgressLoading(loadingBox, +1);
+			curSelection = meta_find_barrel_game(curSelection);
+			DrawUpdateProgressLoading(loadingBox, -1);
 		}
 		
 		if(browserButtons & BUTTON_A) {
@@ -742,6 +767,7 @@ static uiGameflowLibraryMode_t gameflowLibraryMode(file_handle **directory,
 	char gamesRoot[PATHNAME_MAX];
 	uiGameflowLibraryClassifier_t classifier;
 	uiGameflowLibraryLocation_t location;
+	bool flattened;
 	int i;
 
 	if(directory == NULL || numFiles <= 0 || devices[DEVICE_CUR] == NULL ||
@@ -755,16 +781,62 @@ static uiGameflowLibraryMode_t gameflowLibraryMode(file_handle **directory,
 		return UI_GAMEFLOW_LIBRARY_NONE;
 	}
 	UIGameflowLibrary_ClassifierInit(&classifier, location);
+	/* scanFiles lists what a flattened directory's folders hold, so the only
+	 * folders left in it are empty ones: never a game. */
+	flattened = !fnmatch(swissSettings.flattenDir, curDir.name,
+		FNM_PATHNAME | FNM_CASEFOLD);
 
 	for(i = 0; i < numFiles; ++i) {
 		const char *name = directory[i] ?
 			getRelativeName(directory[i]->name) : NULL;
 		uiGameflowLibraryEntryType_t type = gameflowEntryType(directory[i]);
+		if(flattened && type == UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY) {
+			continue;
+		}
 		if(!UIGameflowLibrary_ClassifierAdd(&classifier, type, name)) {
 			return UI_GAMEFLOW_LIBRARY_NONE;
 		}
 	}
 	return UIGameflowLibrary_ClassifierFinish(&classifier);
+}
+
+/* The Library's entries: a Library location's games, after "..", move to the
+ * front of the scanned list in their order, and the Library shows only them,
+ * skipping a stray file or an empty folder instead of giving the whole
+ * folder to Swiss's list. Returns how many to show; curSelection keeps its
+ * entry, so an index means the same game in both lists. Anywhere else the
+ * list is left as it is. */
+static int gameflowLibraryEntries(file_handle **directory, int numFiles)
+{
+	uiGameflowLibraryMode_t mode = gameflowLibraryMode(directory, numFiles);
+	file_handle *selected;
+	int count = 0;
+	int i;
+
+	if(mode == UI_GAMEFLOW_LIBRARY_NONE) {
+		return numFiles;
+	}
+	selected = curSelection >= 0 && curSelection < numFiles ?
+		directory[curSelection] : NULL;
+	for(i = 0; i < numFiles; ++i) {
+		file_handle *entry = directory[i];
+
+		if(entry == NULL || !UIGameflowLibrary_EntryEligible(mode,
+			(uint32_t)count, gameflowEntryType(entry),
+			getRelativeName(entry->name))) {
+			continue;
+		}
+		memmove(&directory[count + 1], &directory[count],
+			(size_t)(i - count) * sizeof(*directory));
+		directory[count++] = entry;
+	}
+	curSelection = 0;
+	for(i = 0; i < count; ++i) {
+		if(directory[i] == selected) {
+			curSelection = i;
+		}
+	}
+	return count;
 }
 
 static bool gameflowEnterLibraryFromHome(void)
@@ -808,6 +880,8 @@ static bool gameflowEnterLibraryFromHome(void)
 static void homeRefreshLibrary(void)
 {
 	DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];
+	/* Refresh reads the card again, /apps included. */
+	homeAppsKnown = false;
 	if(source == NULL) {
 		needsRefresh = 0;
 		return;
@@ -903,7 +977,7 @@ static void homeRestartSwiss(void)
 #define SELECTOR_RELEASE_BUTTONS (HOME_CONFIRMATION_BUTTONS | BUTTON_X | \
 	BUTTON_Y | BUTTON_L | BUTTON_R | BUTTON_Z)
 
-static u32 menuInputElapsedMicroseconds(u32 *lastRetrace)
+u32 menuInputElapsedMicroseconds(u32 *lastRetrace)
 {
 	u32 currentRetrace;
 	u32 elapsedRetraces;
@@ -1012,6 +1086,10 @@ static void homeDispatchEffect(uiHomeEffect_t effect)
 		case UI_HOME_EFFECT_OPEN_SAVES:
 			UIScene_Request(UI_SCENE_SYSTEM);
 			show_saves();
+			UIScene_Request(UI_SCENE_HOME);
+			break;
+		case UI_HOME_EFFECT_OPEN_APPS:
+			show_apps();
 			UIScene_Request(UI_SCENE_HOME);
 			break;
 		case UI_HOME_EFFECT_RESTART:
@@ -1269,6 +1347,27 @@ static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 		lockFile(file);
 		gameflowSnapshotRecord(record, file, mode);
 		unlockFile(file);
+	}
+	/* Spotlight shows the selected game's description: the card's
+	 * descriptions file's, else its disc banner's. */
+	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
+		file_handle *file = directory[curSelection];
+		const char *gameId = NULL;
+		for(i = 0u; i < count; ++i) {
+			if(snapshot->records[i].libraryIndex == (u32)curSelection) {
+				gameId = snapshot->records[i].gameId;
+			}
+		}
+		if(gameId == NULL || !DrawGameflowDescription(devices[DEVICE_CUR],
+			gameId, snapshot->description, sizeof(snapshot->description))) {
+			lockFile(file);
+			if(file->meta != NULL) {
+				gameflowCopyText(snapshot->description,
+					sizeof(snapshot->description),
+					file->meta->bannerDesc.description, BNR_DESC_LEN);
+			}
+			unlockFile(file);
+		}
 	}
 	return count > 0u;
 }
@@ -1757,7 +1856,7 @@ void drawFilesCarousel(file_handle** directory, int num_files, uiDrawObj_t *cont
 }
 
 /* The Library's layout from Setup; anything unknown is the carousel. */
-static uiGameflowLayout_t gameflowLayout(void)
+uiGameflowLayout_t gameflowLayout(void)
 {
 	return swissSettings.libraryLayout > UI_GAMEFLOW_LAYOUT_HORIZONTAL &&
 		swissSettings.libraryLayout < UI_GAMEFLOW_LAYOUT_COUNT ?
@@ -1767,7 +1866,7 @@ static uiGameflowLayout_t gameflowLayout(void)
 
 /* The stick follows the layout: across the carousel, up and down the
  * column, both ways in the grid. */
-static u32 gameflowMenuInputPolicy(uiGameflowLayout_t layout)
+u32 gameflowMenuInputPolicy(uiGameflowLayout_t layout)
 {
 	switch(layout) {
 		case UI_GAMEFLOW_LAYOUT_VERTICAL:
@@ -1813,7 +1912,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 		useGameflow = false;
 		UIScene_RequestLibraryLayout(UI_GAMEFLOW_LAYOUT_HORIZONTAL);
 	}
-	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPRIGHT);
+	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPLEFT);
 	DrawPublish(loadingBox);
 	meta_thread_start(loadingBox);
 	uiMenuInputState_t menuInput;
@@ -1859,7 +1958,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 		}
 		DrawUpdateProgressLoading(loadingBox, -1);
 		
-		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|
+		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP|
 			(useGameflow ? PAD_BUTTON_Y : 0u);
 		u32 menuInputPolicy = gameflowMenuInputPolicy(layout);
 		u32 browserButtons;
@@ -1951,6 +2050,11 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				gameflowDirection = step.direction;
 				gameflowSnapTransition = step.snap;
 			}
+		}
+		if(padsButtonsHeld() & BUTTON_CLAP) {
+			DrawUpdateProgressLoading(loadingBox, +1);
+			curSelection = meta_find_barrel_game(curSelection);
+			DrawUpdateProgressLoading(loadingBox, -1);
 		}
 		
 		if((browserButtons & BUTTON_A) || openSettings) {
@@ -2136,7 +2240,7 @@ uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawO
 	if(curSelection == 0 && num_files > 1 && directory[0]->fileType==IS_SPECIAL) {
 		curSelection = 1; // skip the ".." by default
 	}
-	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPRIGHT);
+	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPLEFT);
 	DrawPublish(loadingBox);
 	meta_thread_start(loadingBox);
 	uiMenuInputState_t menuInput;
@@ -2149,7 +2253,7 @@ uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawO
 		filePanel = DrawRepublish(filePanel, newPanel);
 		DrawUpdateProgressLoading(loadingBox, -1);
 		
-		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z;
+		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP;
 		u32 browserButtons;
 		uiMenuInputDirection_t analog;
 		while(1) {
@@ -2181,6 +2285,11 @@ uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawO
 			else {
 				curSelection = (curSelection + FILES_PER_PAGE_FULLWIDTH > num_files-1) ? num_files-1 : (curSelection + FILES_PER_PAGE_FULLWIDTH) % num_files;
 			}
+		}
+		if(padsButtonsHeld() & BUTTON_CLAP) {
+			DrawUpdateProgressLoading(loadingBox, +1);
+			curSelection = meta_find_barrel_game(curSelection);
+			DrawUpdateProgressLoading(loadingBox, -1);
 		}
 		
 		if(browserButtons & BUTTON_A) {
@@ -2272,12 +2381,12 @@ uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawO
 	return filePanel;
 }
 
-bool select_dest_dir(file_handle* initial, file_handle* selection)
+bool select_dest_dir(file_handle* initial, char* selection)
 {
 	file_handle **directory = NULL;
 	file_handle *curDirEntries = NULL;
 	file_handle curDir;
-	memcpy(&curDir, initial, sizeof(file_entry));
+	memcpy(&curDir, initial, sizeof(file_handle));
 	int i = 0, j = 0, max = 0, refresh = 1, num_files =0, idx = 0;
 	const u32 waitButtons = BUTTON_X | BUTTON_A | BUTTON_B | BUTTON_UP | BUTTON_DOWN;
 	uiMenuInputState_t menuInput;
@@ -2300,7 +2409,7 @@ bool select_dest_dir(file_handle* initial, file_handle* selection)
 			num_files = devices[DEVICE_DEST]->readDir(&curDir, &curDirEntries, IS_DIR);
 			num_files = sortFiles(curDirEntries, num_files, &directory);
 			if(num_files <= 1 && destDirBox == NULL) {
-				memcpy(selection, &curDir, sizeof(file_handle));
+				strcpy(selection, curDir.name);
 				break;
 			}
 			refresh = idx = 0;
@@ -2343,7 +2452,7 @@ bool select_dest_dir(file_handle* initial, file_handle* selection)
 			}
 		}
 		if(buttons & BUTTON_X)	{
-			memcpy(selection, &curDir, sizeof(file_handle));
+			strcpy(selection, curDir.name);
 			break;
 		}
 		if(buttons & BUTTON_B)	{
@@ -3080,16 +3189,16 @@ bool manage_file() {
 		if(devices[DEVICE_DEST] == NULL) return false;
 
 		// If the devices are not the same, init the destination, fail on non-existing device/etc
-		if(devices[DEVICE_CUR] != devices[DEVICE_DEST]) {
+		if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
 			devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );	
 			deviceHandler_setStatEnabled(0);
 			if(devices[DEVICE_DEST]->init( devices[DEVICE_DEST]->initial )) {
+				deviceHandler_setStatEnabled(1);
 				sprintf(txtbuffer, "Failed to init destination device! (%u)\nPress A to continue.",ret);
 				uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,txtbuffer);
 				DrawPublish(msgBox);
 				wait_press_A();
 				DrawDispose(msgBox);
-				deviceHandler_setStatEnabled(1);
 				return false;
 			}
 			deviceHandler_setStatEnabled(1);
@@ -3098,11 +3207,12 @@ bool manage_file() {
 		file_handle *destFile = calloc(1, sizeof(file_handle));
 		
 		// Show a directory only browser and get the destination file location
-		ret = select_dest_dir(devices[DEVICE_DEST]->initial, destFile);
+		ret = select_dest_dir(devices[DEVICE_DEST]->initial, destFile->name);
 		if(ret) {
 			if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
 				devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );
 			}
+			devices[DEVICE_DEST] = NULL;
 			return false;
 		}
 		
@@ -3110,12 +3220,6 @@ bool manage_file() {
 		u32 isSrcCard = devices[DEVICE_CUR] == &__device_card_a || devices[DEVICE_CUR] == &__device_card_b;
 		
 		concat_path(destFile->name, destFile->name, stripInvalidChars(getRelativeName(curFile.name)));
-		destFile->fp = 0;
-		destFile->ffsFp = 0;
-		destFile->fileBase = 0;
-		destFile->offset = 0;
-		destFile->size = 0;
-		destFile->fileType = IS_FILE;
 		// Create a GCI if something is coming out from CARD to another device
 		if(isSrcCard && !isDestCard) {
 			strlcat(destFile->name, ".gci", PATHNAME_MAX);
@@ -3161,6 +3265,7 @@ bool manage_file() {
 							extension_start = -1;
 						name_backup[cursor] = destFile->name[cursor];
 					}
+					name_backup[cursor] = 0;
 
 					devices[DEVICE_DEST]->closeFile(destFile);
 
@@ -3191,8 +3296,7 @@ bool manage_file() {
 						strcpy(destFile->name + cursor, name_backup + extension_start);
 					}
 
-					while(devices[DEVICE_DEST]->readFile(destFile, NULL, 0) == 0) {
-						devices[DEVICE_DEST]->closeFile(destFile);
+					while(!devices[DEVICE_DEST]->statFile(destFile)) {
 						copy_num++;
 						if(copy_num > 99) {
 							DrawDispose(dupeBox);
@@ -3515,7 +3619,7 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 			DrawDispose(msgBox);
 			goto exit;
 		}
-		else if(is_nkit_format(&GCMDisk) && !valid_gcm_boot(&GCMDisk)) {
+		else if((is_artx_disc(&GCMDisk) || !valid_gcm_boot(&GCMDisk)) && is_nkit_format(&GCMDisk)) {
 			msgBox = DrawRepublish(msgBox, DrawMessageBox(D_WARN, "File is not playable in NKit.iso format.\nPlease convert back to ISO using NKit."));
 			sleep(5);
 			DrawDispose(msgBox);
@@ -4808,11 +4912,12 @@ void menu_loop()
 			else if(!fnmatch("*/games", curDir.name, FNM_PATHNAME | FNM_CASEFOLD | FNM_LEADING_DIR)) {
 				fileBrowserType = swissSettings.gameBrowserType;
 			}
-			/* A valid strict games layout owns the retained presentation.
+			/* A games folder with a game in it owns the retained presentation.
 			 * Existing configurations default GameBrowserType to Fullwidth;
 			 * allowing that legacy preference to win would make the custom
-			 * Library unreachable on upgraded cards. Mixed/unsupported layouts
-			 * still return NONE and keep their requested legacy browser. */
+			 * Library unreachable on upgraded cards. A folder with no games, or
+			 * loose images beside game folders, still returns NONE and keeps
+			 * its requested legacy browser. */
 			fileBrowserType = UIGameflowLibrary_SelectBrowser(
 				gameflowLibraryMode(getSortedDirEntries(),
 					getSortedDirEntryCount()),
@@ -4822,7 +4927,9 @@ void menu_loop()
 					filePanel = renderFileBrowser(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);
 					break;
 				case BROWSER_CAROUSEL:
-					filePanel = renderFileCarousel(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);
+					filePanel = renderFileCarousel(getSortedDirEntries(),
+						gameflowLibraryEntries(getSortedDirEntries(),
+							getSortedDirEntryCount()), filePanel);
 					break;
 				case BROWSER_FULLWIDTH:
 					filePanel = renderFileFullwidth(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);

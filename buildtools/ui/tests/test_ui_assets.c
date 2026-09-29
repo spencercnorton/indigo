@@ -8,7 +8,7 @@
  * only need byte-exact transport, not real textures. One optional argv[1]
  * points at a real generator-produced .pak for an end-to-end pass.
  *
- * Usage: ./test_ui_assets [real-pack.pak]
+ * Usage: ./test_ui_assets [real-pack.pak [real-stills.pak]]
  */
 
 #define _POSIX_C_SOURCE 200112L
@@ -68,6 +68,9 @@ typedef struct {
 	int result;
 	const GXTexObj *tex;
 	int ready;
+	int stillResult;
+	const GXTexObj *stillTex;
+	int stillReady;
 } probeSnap_t;
 
 static probeSnap_t probeLastUnlock;
@@ -78,6 +81,9 @@ static probeSnap_t probeSample(void) {
 	snap.result = (int)UIAssets_Query(probeId, 6, true, &h);
 	snap.tex = UIAssets_Peek(h);
 	snap.ready = UIAssets_Ready() ? 1 : 0;
+	snap.stillResult = (int)UIStills_Query(probeId, 6, true, &h);
+	snap.stillTex = UIStills_Peek(h);
+	snap.stillReady = UIStills_Ready() ? 1 : 0;
 	return snap;
 }
 
@@ -92,7 +98,10 @@ static void fakeLock(void *ctx) {
 		probeSnap_t now = probeSample();
 		if (now.result != probeLastUnlock.result ||
 		    now.tex != probeLastUnlock.tex ||
-		    now.ready != probeLastUnlock.ready) {
+		    now.ready != probeLastUnlock.ready ||
+		    now.stillResult != probeLastUnlock.stillResult ||
+		    now.stillTex != probeLastUnlock.stillTex ||
+		    now.stillReady != probeLastUnlock.stillReady) {
 			fprintf(stderr,
 			        "FAIL [%s] observable state mutated outside the "
 			        "critical section (probe %s)\n", currentTest, probeId);
@@ -231,7 +240,7 @@ void uiAssetsHostFlush(void *ptr, u32 len) {
 		        "section\n", currentTest);
 		failures++;
 	}
-	if (len != UI_ASSETS_POSTER_BYTES) {
+	if (len != UI_ASSETS_POSTER_BYTES && len != UI_STILLS_BYTES) {
 		fprintf(stderr, "FAIL [%s] flush of %u bytes\n", currentTest,
 		        (unsigned)len);
 		failures++;
@@ -294,15 +303,19 @@ static u32 rbe32(const u8 *p) {
 }
 
 /* Deterministic per-ID payload so slot contents are verifiable. */
-static void fillPayload(u8 *dst, const char *id) {
+static void fillPayloadLen(u8 *dst, const char *id, u32 len) {
 	u32 x = 2166136261u;
 	u32 i;
 	for (i = 0; i < UI_ASSETS_ID_LEN; i++)
 		x = (x ^ (u8)id[i]) * 16777619u;
-	for (i = 0; i < UI_ASSETS_POSTER_BYTES; i++) {
+	for (i = 0; i < len; i++) {
 		x ^= x << 13; x ^= x >> 17; x ^= x << 5;
 		dst[i] = (u8)x;
 	}
+}
+
+static void fillPayload(u8 *dst, const char *id) {
+	fillPayloadLen(dst, id, UI_ASSETS_POSTER_BYTES);
 }
 
 /* count is passed explicitly: corruption tests mutate the stored count and
@@ -316,13 +329,30 @@ static void packFixCrc(u8 *pack, u32 count) {
 
 #define BUILD_NOSORT 1
 
-static u8 *buildPack(const testRec_t *recs, int count, size_t *outLen, int flags) {
+/* The texture shape a pack declares: posters.pak's or stills.pak's. */
+typedef struct {
+	u32 bytes;
+	u16 canvasW, canvasH, contentW, contentH;
+	u8 mips;
+} packShape_t;
+
+static const packShape_t POSTER_SHAPE = {
+	UI_ASSETS_POSTER_BYTES, UI_ASSETS_CANVAS_W, UI_ASSETS_CANVAS_H,
+	UI_ASSETS_CONTENT_W, UI_ASSETS_CONTENT_H, UI_ASSETS_MIP_LEVELS
+};
+static const packShape_t STILL_SHAPE = {
+	UI_STILLS_BYTES, UI_STILLS_W, UI_STILLS_H, UI_STILLS_W, UI_STILLS_H, 1
+};
+
+static u8 *buildShapedPack(const testRec_t *recs, int count, size_t *outLen,
+                           int flags, const packShape_t *shape) {
 	u32 dataOffset = HDR + (u32)count * REC;
-	size_t len = dataOffset + (size_t)count * UI_ASSETS_POSTER_BYTES;
+	size_t len = dataOffset + (size_t)count * shape->bytes;
 	u8 *pack = calloc(1, len);
-	int order[1100];
+	int order[UI_ASSETS_MAX_RECORDS + 1];
 	int i, j;
 
+	CHECK(count <= UI_ASSETS_MAX_RECORDS + 1);
 	for (i = 0; i < count; i++)
 		order[i] = i;
 	if (!(flags & BUILD_NOSORT)) {
@@ -342,24 +372,24 @@ static u8 *buildPack(const testRec_t *recs, int count, size_t *outLen, int flags
 	wbe32(pack + 0x14, (u32)count * REC);
 	wbe32(pack + 0x18, dataOffset);
 	wbe32(pack + 0x1C, (u32)len);
-	wbe32(pack + 0x20, UI_ASSETS_POSTER_BYTES);
-	wbe16(pack + 0x24, UI_ASSETS_CANVAS_W);
-	wbe16(pack + 0x26, UI_ASSETS_CANVAS_H);
-	wbe16(pack + 0x28, UI_ASSETS_CONTENT_W);
-	wbe16(pack + 0x2A, UI_ASSETS_CONTENT_H);
-	pack[0x2C] = UI_ASSETS_MIP_LEVELS;
+	wbe32(pack + 0x20, shape->bytes);
+	wbe16(pack + 0x24, shape->canvasW);
+	wbe16(pack + 0x26, shape->canvasH);
+	wbe16(pack + 0x28, shape->contentW);
+	wbe16(pack + 0x2A, shape->contentH);
+	pack[0x2C] = shape->mips;
 	pack[0x2D] = 14; /* GX_TF_CMPR */
 
 	for (i = 0; i < count; i++) {
 		const testRec_t *r = &recs[order[i]];
 		u8 *rec = pack + HDR + (size_t)i * REC;
-		u8 *payload = pack + dataOffset + (size_t)i * UI_ASSETS_POSTER_BYTES;
+		u8 *payload = pack + dataOffset + (size_t)i * shape->bytes;
 		memcpy(rec, r->id, UI_ASSETS_ID_LEN);
 		rec[6] = r->universal ? 0x01 : 0x00;
-		wbe32(rec + 0x08, dataOffset + (u32)i * UI_ASSETS_POSTER_BYTES);
-		wbe32(rec + 0x0C, UI_ASSETS_POSTER_BYTES);
-		fillPayload(payload, r->id);
-		wbe32(rec + 0x10, crc32(0, payload, UI_ASSETS_POSTER_BYTES));
+		wbe32(rec + 0x08, dataOffset + (u32)i * shape->bytes);
+		wbe32(rec + 0x0C, shape->bytes);
+		fillPayloadLen(payload, r->id, shape->bytes);
+		wbe32(rec + 0x10, crc32(0, payload, shape->bytes));
 		rec[0x14] = r->dom[0]; rec[0x15] = r->dom[1]; rec[0x16] = r->dom[2];
 		rec[0x17] = 0xFF;
 		wbe16(rec + 0x18, 0x8000);
@@ -368,6 +398,14 @@ static u8 *buildPack(const testRec_t *recs, int count, size_t *outLen, int flags
 	packFixCrc(pack, (u32)count);
 	*outLen = len;
 	return pack;
+}
+
+static u8 *buildPack(const testRec_t *recs, int count, size_t *outLen, int flags) {
+	return buildShapedPack(recs, count, outLen, flags, &POSTER_SHAPE);
+}
+
+static u8 *buildStillPack(const testRec_t *recs, int count, size_t *outLen) {
+	return buildShapedPack(recs, count, outLen, 0, &STILL_SHAPE);
 }
 
 /* ---- in-memory source with fault injection ---- */
@@ -422,6 +460,12 @@ static void resetWorld(void) {
 	UIAssets_CancelForDeviceChange();
 	if (UIAssets_DisposeAfterVideoStop() != UI_ASSETS_OK) {
 		fprintf(stderr, "FAIL [%s] reset could not dispose poster cache\n",
+		        currentTest ? currentTest : "startup");
+		failures++;
+	}
+	UIStills_CancelForDeviceChange();
+	if (UIStills_DisposeAfterVideoStop() != UI_ASSETS_OK) {
+		fprintf(stderr, "FAIL [%s] reset could not dispose stills cache\n",
 		        currentTest ? currentTest : "startup");
 		failures++;
 	}
@@ -785,16 +829,17 @@ static void test_short_read_fails_poster(void) {
 	free(pack);
 }
 
-/* n < 1000 -> G###E0, n >= 1000 -> H###E0: unique, valid charset, and
- * lexicographic order matches numeric order up to 1999 titles. */
+/* Each thousand takes the next letter from G: G###E0, H###E0, I###E0...
+ * Unique, valid charset, and lexicographic order matches numeric order up
+ * to 19,999 titles (G to Z), past UI_ASSETS_MAX_RECORDS. */
 static void nthId(char *dst, int n) {
 	unsigned int value;
 	memset(dst, 0, 8);
-	CHECK(n >= 0 && n < 2000);
-	if (n < 0 || n >= 2000)
+	CHECK(n >= 0 && n < 20000);
+	if (n < 0 || n >= 20000)
 		return;
 	value = (unsigned int)n % 1000u;
-	dst[0] = n < 1000 ? 'G' : 'H';
+	dst[0] = (char)('G' + n / 1000);
 	dst[1] = (char)('0' + value / 100u);
 	dst[2] = (char)('0' + value / 10u % 10u);
 	dst[3] = (char)('0' + value % 10u);
@@ -813,6 +858,10 @@ static void test_nth_id_boundaries(void) {
 	CHECK(strcmp(id, "H000E0") == 0);
 	nthId(id, 1999);
 	CHECK(strcmp(id, "H999E0") == 0);
+	nthId(id, 2047);
+	CHECK(strcmp(id, "I047E0") == 0);
+	nthId(id, 19999);
+	CHECK(strcmp(id, "Z999E0") == 0);
 }
 
 static void makeIds(char ids[][8], int first, int count) {
@@ -1322,7 +1371,7 @@ static void test_max_records_boundary(void) {
 	u8 *pack = buildPack(recs, count, &len, 0);
 	uiAssetsSource_t src = memSource(pack, len);
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
-	/* Ceiling holds at the largest legal pack: arena + full 32 KiB index. */
+	/* Ceiling holds at the largest legal pack: arena + full 64 KiB index. */
 	CHECK(UIAssets_MemoryFootprint() ==
 	      UI_ASSETS_SLOTS * UI_ASSETS_POSTER_BYTES +
 	      (u32)UI_ASSETS_MAX_RECORDS * REC);
@@ -1335,7 +1384,8 @@ static void test_max_records_boundary(void) {
 	}
 	UIAssets_CancelForDeviceChange();
 	CHECK(UIAssets_DisposeAfterVideoStop() == UI_ASSETS_OK);
-	/* count = 1025 must be rejected before anything else is trusted. */
+	/* One record over the limit must be rejected before anything else is
+	 * trusted. */
 	wbe32(pack + 0x0C, UI_ASSETS_MAX_RECORDS + 1);
 	src = memSource(pack, len);
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_ERR_FORMAT);
@@ -1719,6 +1769,281 @@ static void test_acquire_pin_saturation(void) {
 	free(pack);
 }
 
+/* ---- stills (stills.pak): the second cache ---- */
+
+/* A second in-memory source: the stills cache and the poster cache can be
+ * open at once, and memSource() serves only one pack. */
+typedef struct {
+	const u8 *data;
+	size_t len;
+} testBuf_t;
+
+static s32 bufRead(void *ctx, u32 offset, void *dst, u32 len) {
+	const testBuf_t *buf = (const testBuf_t *)ctx;
+	if (lockDepth != 0) {
+		fprintf(stderr, "FAIL [%s] source read under the lock (depth %d)\n",
+		        currentTest, lockDepth);
+		failures++;
+	}
+	if ((size_t)offset + len > buf->len)
+		return UI_ASSETS_ERR_IO;
+	memcpy(dst, buf->data + offset, len);
+	return (s32)len;
+}
+
+static uiAssetsSource_t bufSource(testBuf_t *buf) {
+	uiAssetsSource_t src;
+	src.read = bufRead;
+	src.size = (u32)buf->len;
+	src.ctx = buf;
+	src.nowMs = fakeNow;
+	return src;
+}
+
+/* The selected game and the one either side, as the Library asks. */
+static void requestStills(const char *before, const char *selected,
+                          const char *after) {
+	char ids[3][8];
+	memset(ids, 0, sizeof(ids));
+	memcpy(ids[0], before, UI_ASSETS_ID_LEN);
+	memcpy(ids[1], selected, UI_ASSETS_ID_LEN);
+	memcpy(ids[2], after, UI_ASSETS_ID_LEN);
+	UIStills_RequestWindow(ids, 3, 1);
+}
+
+static void pollStills(void) {
+	int guard = 64;
+	fakeNowValue += UI_ASSETS_EVICT_QUARANTINE_MS + 1;
+	while (UIStills_Poll() && guard-- > 0)
+		fakeNowValue += UI_ASSETS_EVICT_QUARANTINE_MS + 1;
+}
+
+static bool stillReady(const char *id) {
+	uiPosterHandle_t h;
+	UIStills_Query(id, 6, true, &h);
+	return UIStills_Peek(h) != NULL;
+}
+
+/* A still is one 320x240 CMPR texture with no mip chain, byte for byte as
+ * the pack holds it, looked up as a poster is. */
+static void test_stills_load_one_texture_each(void) {
+	size_t len;
+	u8 *pack = buildStillPack(BASIC, 3, &len);
+	uiAssetsSource_t src = memSource(pack, len);
+	uiPosterHandle_t h;
+	GXTexObj *tex;
+	u8 r = 0, g = 0, b = 0;
+	static u8 full[UI_STILLS_BYTES];
+	CHECK(UIStills_Init(&src, &testSync) == UI_ASSETS_OK);
+	CHECK(UIStills_Ready());
+	CHECK(!UIAssets_Ready()); /* a cache of its own */
+	CHECK(UIStills_MemoryFootprint() ==
+	      UI_STILLS_SLOTS * UI_STILLS_BYTES + 3 * REC);
+	requestStills("GALE01", "GC6E01", "GZLE01");
+	pollStills();
+	CHECK(flushCalls == 3);
+	CHECK(UIStills_Query("GC6E01", 6, true, &h) == UI_POSTER_EXACT);
+	tex = UIStills_Peek(h);
+	CHECK(tex != NULL);
+	if (tex) {
+		CHECK(tex->width == UI_STILLS_W && tex->height == UI_STILLS_H);
+		CHECK(tex->format == 14 && !tex->mipmap && !tex->lodConfigured);
+		fillPayloadLen(full, "GC6E01", UI_STILLS_BYTES);
+		CHECK(memcmp(tex->data, full, UI_STILLS_BYTES) == 0);
+	}
+	CHECK(UIStills_Query("GZLE69", 6, true, &h) == UI_POSTER_UNIVERSAL);
+	CHECK(UIStills_Peek(h) != NULL);
+	CHECK(UIStills_Query("GC6E69", 6, false, &h) ==
+	      UI_POSTER_PROCEDURAL_CARD);
+	CHECK(UIStills_DominantColor("GALE01", 6, &r, &g, &b));
+	CHECK(r == 10 && g == 20 && b == 30);
+	free(pack);
+}
+
+/* posters.pak and stills.pak declare different textures, and each cache
+ * refuses the other's pack before it allocates anything. */
+static void test_stills_and_posters_refuse_each_other(void) {
+	size_t posterLen, stillLen;
+	u8 *posterPack = buildPack(BASIC, 3, &posterLen, 0);
+	u8 *stillPack = buildStillPack(BASIC, 3, &stillLen);
+	uiAssetsSource_t src = memSource(posterPack, posterLen);
+	CHECK(UIStills_Init(&src, &testSync) == UI_ASSETS_ERR_FORMAT);
+	CHECK(!UIStills_Ready());
+	src = memSource(stillPack, stillLen);
+	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_ERR_FORMAT);
+	CHECK(!UIAssets_Ready());
+	CHECK(liveAllocs == 0);
+	free(posterPack);
+	free(stillPack);
+}
+
+/* Three slots: a longer window is cut to its first three entries, and
+ * moving one game on reads only the still that came into the window. */
+static void test_stills_window_of_three(void) {
+	int count = 7;
+	testRec_t *recs = makeRecs(count);
+	size_t len;
+	u8 *pack = buildStillPack(recs, count, &len);
+	uiAssetsSource_t src = memSource(pack, len);
+	char ids[7][8];
+	int i, ready = 0;
+	CHECK(UIStills_Init(&src, &testSync) == UI_ASSETS_OK);
+	memset(ids, 0, sizeof(ids));
+	for (i = 0; i < count; i++)
+		memcpy(ids[i], recs[i].id, UI_ASSETS_ID_LEN);
+	UIStills_RequestWindow((const char (*)[8])ids, count, 1);
+	pollStills();
+	for (i = 0; i < count; i++)
+		ready += stillReady(ids[i]) ? 1 : 0;
+	CHECK(ready == 3);
+	CHECK(stillReady(ids[0]) && stillReady(ids[1]) && stillReady(ids[2]));
+	CHECK(flushCalls == 3);
+	UIStills_RequestWindow((const char (*)[8])&ids[1], 3, 1);
+	pollStills();
+	CHECK(!stillReady(ids[0]));
+	CHECK(stillReady(ids[1]) && stillReady(ids[2]) && stillReady(ids[3]));
+	CHECK(flushCalls == 4);
+	free(recs);
+	free(pack);
+}
+
+/* A damaged still fails alone, as a damaged poster does. */
+static void test_stills_payload_corrupt(void) {
+	size_t len;
+	u8 *pack = buildStillPack(BASIC, 3, &len);
+	uiAssetsSource_t src;
+	uiPosterHandle_t h;
+	/* GC6E01 is the second record; flip a byte inside its still. */
+	pack[HDR + 3 * REC + UI_STILLS_BYTES + 100] ^= 0xFF;
+	src = memSource(pack, len);
+	CHECK(UIStills_Init(&src, &testSync) == UI_ASSETS_OK);
+	requestStills("GALE01", "GC6E01", "GZLE01");
+	pollStills();
+	CHECK(UIStills_Query("GC6E01", 6, true, &h) ==
+	      UI_POSTER_CORRUPT_OR_UNAVAILABLE);
+	CHECK(UIStills_Peek(h) == NULL);
+	CHECK(stillReady("GALE01") && stillReady("GZLE01"));
+	free(pack);
+}
+
+/* Either cache can close for a device change and be disposed without the
+ * other noticing: each has its own pack, arena and lifetime. */
+static void test_stills_independent_of_posters(void) {
+	size_t posterLen, stillLen;
+	u8 *posterPack = buildPack(BASIC, 3, &posterLen, 0);
+	u8 *stillPack = buildStillPack(BASIC, 3, &stillLen);
+	testBuf_t stillBuf;
+	uiAssetsSource_t posterSrc = memSource(posterPack, posterLen);
+	uiAssetsSource_t stillSrc;
+	uiPosterHandle_t h;
+	stillBuf.data = stillPack;
+	stillBuf.len = stillLen;
+	stillSrc = bufSource(&stillBuf);
+	CHECK(UIAssets_Init(&posterSrc, &testSync) == UI_ASSETS_OK);
+	CHECK(UIStills_Init(&stillSrc, &testSync) == UI_ASSETS_OK);
+	requestOne("GALE01");
+	pollAll();
+	requestStills("GALE01", "GC6E01", "GZLE01");
+	pollStills();
+	UIAssets_CancelForDeviceChange();
+	CHECK(!UIAssets_Ready());
+	CHECK(UIStills_Ready() && stillReady("GC6E01"));
+	CHECK(UIAssets_Query("GALE01", 6, true, &h) == UI_POSTER_USE_BNR);
+	CHECK(UIAssets_DisposeAfterVideoStop() == UI_ASSETS_OK);
+	CHECK(UIAssets_MemoryFootprint() == 0);
+	CHECK(UIStills_MemoryFootprint() ==
+	      UI_STILLS_SLOTS * UI_STILLS_BYTES + 3 * REC);
+	UIStills_CancelForDeviceChange();
+	CHECK(UIStills_DisposeAfterVideoStop() == UI_ASSETS_OK);
+	CHECK(liveAllocs == 0);
+	/* And the other way round. */
+	posterSrc = memSource(posterPack, posterLen);
+	stillSrc = bufSource(&stillBuf);
+	CHECK(UIAssets_Init(&posterSrc, &testSync) == UI_ASSETS_OK);
+	CHECK(UIStills_Init(&stillSrc, &testSync) == UI_ASSETS_OK);
+	requestOne("GALE01");
+	pollAll();
+	UIStills_CancelForDeviceChange();
+	CHECK(UIAssets_Query("GALE01", 6, true, &h) == UI_POSTER_EXACT);
+	CHECK(UIAssets_Peek(h) != NULL);
+	free(posterPack);
+	free(stillPack);
+}
+
+/* 3 x 38,400 bytes, only once a stills pack opens, and nothing allocated
+ * after that. */
+static void test_stills_memory_budget(void) {
+	size_t len;
+	u8 *pack = buildStillPack(BASIC, 3, &len);
+	uiAssetsSource_t src = memSource(pack, len);
+	uiPosterHandle_t h;
+	int allocsBefore;
+	CHECK(UIStills_MemoryFootprint() == 0);
+	CHECK(UIStills_Init(&src, &testSync) == UI_ASSETS_OK);
+	CHECK(UI_STILLS_SLOTS * UI_STILLS_BYTES == 115200);
+	allocsBefore = allocCalls;
+	allocsFrozen = 1;
+	requestStills("GALE01", "GC6E01", "GZLE01");
+	pollStills();
+	UIStills_Query("GC6E01", 6, true, &h);
+	UIStills_Peek(h);
+	UIStills_DominantColor("GC6E01", 6, NULL, NULL, NULL);
+	allocsFrozen = 0;
+	CHECK(allocCalls == allocsBefore);
+	free(pack);
+}
+
+static u8 *readWholeFile(const char *path, long *outLen) {
+	FILE *f = fopen(path, "rb");
+	u8 *data;
+	long len;
+	if (!f)
+		return NULL;
+	fseek(f, 0, SEEK_END);
+	len = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	data = malloc(len > 0 ? (size_t)len : 1u);
+	if (!data || len <= 0 || fread(data, 1, (size_t)len, f) != (size_t)len) {
+		fclose(f);
+		free(data);
+		return NULL;
+	}
+	fclose(f);
+	*outLen = len;
+	return data;
+}
+
+/* The generator's own stills pack (fixture_pack.py --stills), end to end. */
+static void test_real_stills_pack(const char *path) {
+	long len = 0;
+	u8 *data = readWholeFile(path, &len);
+	uiAssetsSource_t src;
+	uiPosterHandle_t h;
+	int failuresBefore = failures;
+
+	currentTest = "test_real_stills_pack";
+	if (!data) {
+		fprintf(stderr, "FAIL cannot read real stills pack %s\n", path);
+		failures++;
+		return;
+	}
+	resetWorld();
+	src = memSource(data, (size_t)len);
+	CHECK(UIStills_Init(&src, &testSync) == UI_ASSETS_OK);
+	/* fixture_pack.py --stills writes GALE01 (universal), GC6E01, GM4E01. */
+	requestStills("GALE01", "GC6E01", "GM4E01");
+	pollStills();
+	CHECK(UIStills_Query("GC6E01", 6, true, &h) == UI_POSTER_EXACT);
+	CHECK(UIStills_Peek(h) != NULL);
+	CHECK(UIStills_Query("GALE69", 6, true, &h) == UI_POSTER_UNIVERSAL);
+	CHECK(UIStills_Query("GM4E69", 6, true, &h) == UI_POSTER_USE_BNR);
+	UIStills_CancelForDeviceChange();
+	CHECK(UIStills_DisposeAfterVideoStop() == UI_ASSETS_OK);
+	free(data);
+	printf("  %-44s %s\n", "test_real_stills_pack",
+	       failures == failuresBefore ? "ok" : "see above");
+}
+
 static void test_real_pack(const char *path) {
 	FILE *f = fopen(path, "rb");
 	u8 *data;
@@ -1863,11 +2188,19 @@ int main(int argc, char **argv) {
 	RUN(test_short_id_rejected_before_read);
 	RUN(test_request_window_mid_read_no_stale_publish);
 	RUN(test_acquire_pin_saturation);
+	RUN(test_stills_load_one_texture_each);
+	RUN(test_stills_and_posters_refuse_each_other);
+	RUN(test_stills_window_of_three);
+	RUN(test_stills_payload_corrupt);
+	RUN(test_stills_independent_of_posters);
+	RUN(test_stills_memory_budget);
 
 	if (argc > 2 && strcmp(argv[1], "--exact-pack") == 0)
 		test_exact_pack(argv[2], argc - 3, &argv[3]);
 	else if (argc > 1)
 		test_real_pack(argv[1]);
+	if (argc > 2 && strcmp(argv[1], "--exact-pack") != 0)
+		test_real_stills_pack(argv[2]);
 
 	resetWorld();
 	printf("%d checks, %d failures\n", checks, failures);

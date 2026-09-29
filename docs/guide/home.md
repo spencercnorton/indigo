@@ -2,14 +2,15 @@
 
 # Home
 
-Home is a glass cube with one destination on each of its four faces. Turn the
-cube to the face you want and press A.
+Home is a glass cube with one destination on each of its faces: four, and a
+fifth, Apps, when your card has apps. Turn the cube to the face you want and
+press A.
 
 <p align="center">
   <img alt="The Home cube turning sideways and tipping up and down between its faces, the name of the face in front written underneath." src="../screenshots/home.png" width="640">
 </p>
 
-## The four faces
+## The faces
 
 <p align="center">
   <img alt="The four faces of the cube, each named underneath: Library shows a GameCube controller, Source a hub, Settings three sliders and System a clock." src="images/home-faces.png" width="640">
@@ -21,6 +22,7 @@ cube to the face you want and press A.
 | **Source** | A short list: **Change Source** picks the device your games come from, and **Refresh Library** reads it again, for example after you swap the disc. See [Source](source.md). |
 | **Settings** | Settings. See [Settings](settings.md). |
 | **System** | A short list: **System Information**, **Memory Cards** and **Restart Indigo**. See [System](system.md) and [Memory Cards](memory-cards.md). |
+| **Apps** | Your emulators and other programs, as posters. Only there when the card's `/apps` folder has a program; it comes one turn left of Library. Settings › Setup › Console › Apps Face turns it off. See [Apps](apps.md). |
 
 Left and Right turn the cube sideways; Up and Down tip it over. Either way you
 reach the next face, and the name under the cube tells you which face is in

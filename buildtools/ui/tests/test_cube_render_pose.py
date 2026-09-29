@@ -51,7 +51,8 @@ static void frameFor(uiSceneFrame_t *frame,const uiHomeState_t *home) {
  memset(frame,0,sizeof(*frame)); frame->cubeScale=1; frame->cubePitch=-0.09f;
  UIHome_OrientationMatrix(&home->orientation,frame->homeOrientation);
  uiCubeMotifBasis_t basis; UICubeMotif_Build(home,&basis);
- memcpy(frame->homeMotifBasis,basis.face,sizeof(basis.face)); frame->homeMotifAlpha=0.7f;
+ memcpy(frame->homeMotifBasis,basis.face,sizeof(basis.face));
+ for(int f=0;f<UI_HOME_FACE_COUNT;++f) frame->homeMotifAlpha[f]=basis.shown[f]?0.7f:0.0f;
 }
 static guVector transformed(guVector p) {
  guVector q={loaded[0][0]*p.x+loaded[0][1]*p.y+loaded[0][2]*p.z,
@@ -67,9 +68,10 @@ int main(void) {
  }
  CHECK(count==24);
  for(int i=0;i<count;i++) for(int face=0;face<4;face++) for(int axis=1;axis<=2;axis++) {
-  uiHomeState_t home;UIHome_Init(&home,(uiHomeCapabilities_t){true,false});home.orientation=orientations[i];home.face=(uiHomeFace_t)face;home.turnAxis=(uiHomeTurnAxis_t)axis;
+  uiHomeState_t home;UIHome_Init(&home,(uiHomeCapabilities_t){.hasSource=true});home.orientation=orientations[i];home.face=(uiHomeFace_t)face;home.turnAxis=(uiHomeTurnAxis_t)axis;
   uiSceneFrame_t frame;frameFor(&frame,&home);cubeRasterTransform_t raster;memset(&raster,0,sizeof(raster));setupCubePipeline(&frame,0,false,&raster);
-  CHECK(fabsf(raster.motifAlpha-.7f)<.0001f);
+  /* Each face carries its own glyph opacity; Apps, outside the ring, none. */
+  for(int f=0;f<UI_HOME_FACE_COUNT;f++) CHECK(fabsf(raster.motifAlpha[f]-(f<4?.7f:0.0f))<.0001f);
   for(int r=0;r<3;r++) for(int c=0;c<3;c++) CHECK(fabsf(loaded[r][c]-(float)home.orientation.m[r][c])<.0001f);
   guVector right=transformed(semanticFacePoint(&raster,face,1,0,0));
   guVector up=transformed(semanticFacePoint(&raster,face,0,1,0));
@@ -81,7 +83,7 @@ int main(void) {
  /* An actual half-completed vertical turn moves the front normal vertically,
     while an equivalent horizontal turn moves it sideways. */
  for(int vertical=0;vertical<2;vertical++) for(int sign=-1;sign<=1;sign+=2) {
-  uiHomeState_t home; UIHome_Init(&home,(uiHomeCapabilities_t){true,false});uiSceneFrame_t frame;frameFor(&frame,&home);
+  uiHomeState_t home; UIHome_Init(&home,(uiHomeCapabilities_t){.hasSource=true});uiSceneFrame_t frame;frameFor(&frame,&home);
   Mtx turn;guVector axis=vertical?(guVector){1,0,0}:(guVector){0,1,0};guMtxRotAxisRad(turn,&axis,(float)sign*0.7853981634f);
   for(int r=0;r<3;r++) for(int c=0;c<3;c++) frame.homeOrientation[r][c]=turn[r][c];
   cubeRasterTransform_t raster;setupCubePipeline(&frame,0,false,&raster);guVector normal=transformed((guVector){0,0,1});
@@ -91,7 +93,7 @@ int main(void) {
  /* The boot fly-in: the cube starts farther off along the camera axis,
     spun about its vertical axis and then tumbled about its horizontal one. */
  {
-  uiHomeState_t home;UIHome_Init(&home,(uiHomeCapabilities_t){true,false});uiSceneFrame_t frame;frameFor(&frame,&home);
+  uiHomeState_t home;UIHome_Init(&home,(uiHomeCapabilities_t){.hasSource=true});uiSceneFrame_t frame;frameFor(&frame,&home);
   frame.introDistance=12.0f;frame.introSpin=0.7f;
   cubeRasterTransform_t raster;setupCubePipeline(&frame,0,false,&raster);
   CHECK(fabsf(loaded[0][3])<.0001f && fabsf(loaded[1][3])<.0001f && fabsf(loaded[2][3]-(CUBE_CAMERA_Z-12.0f))<.0001f);

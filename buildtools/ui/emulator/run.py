@@ -9,14 +9,20 @@ same run, never with stored pictures, so a redesign does not break the test
 while a crash, a hang, a black screen or a broken control does:
 
   - Home appears after boot, with a face's name under the cube;
-  - turning the cube changes the name, four turns come back to the first,
-    turning back undoes a turn, and the four names differ;
+  - turning the cube changes the name, five turns come back to the first
+    (the disc has apps, so Apps is a fifth face), turning back undoes a
+    turn, and the five names differ;
   - A on a face opens another screen, and B comes back to the same face;
   - in the Library, RIGHT and LEFT move between games and back again, and
     A opens a game's details; there UP and A open the game's settings, B
     comes back to the details, and B again to the game;
   - on the Source face, Change Source opens the device picker, RIGHT shows
     another device and B leaves it;
+  - on the Settings face, Setup > Console > Apps Face Off takes Apps off the
+    cube (System's next face is Library) and On puts it back;
+  - on Apps, RIGHT and LEFT move between the disc's apps and back, and A
+    starts one: the launch screen comes up (Dolphin can't take a launch
+    further, see start_an_app);
   - nothing crashes: Dolphin emulates the MMU, so an invalid memory access
     stops Indigo on its exception screen as it would on a console, and
     Dolphin's own log reports no exception or invalid access.
@@ -259,28 +265,119 @@ class Route:
     def smoke(self) -> None:
         home = self.boot()
         faces = [home]
-        for n in range(1, 4):
+        # The disc has apps: Library, Source, Settings, System and Apps.
+        for n in range(1, 5):
             faces.append(self.turn(faces, "RIGHT", f"right-{n}"))
-        back = self.turn(faces, "RIGHT", "right-4")
-        self.check("four turns come back to the first face", overlap(back, home) >= SAME,
+        back = self.turn(faces, "RIGHT", "right-5")
+        self.check("five turns come back to the first face", overlap(back, home) >= SAME,
                    overlap=round(overlap(back, home), 3))
         distinct = min(overlap(a, b) for i, a in enumerate(faces) for b in faces[i + 1:])
-        self.check("the four faces have four different names", distinct < DIFFERENT,
+        self.check("the five faces have five different names", distinct < DIFFERENT,
                    largest_overlap=round(distinct, 3))
         left = self.turn([back], "LEFT", "left-1")
-        self.check("LEFT turns the other way", overlap(left, faces[3]) >= SAME,
-                   overlap=round(overlap(left, faces[3]), 3))
+        self.check("LEFT turns the other way", overlap(left, faces[-1]) >= SAME,
+                   overlap=round(overlap(left, faces[-1]), 3))
         self.press("RIGHT")
         mask, _ = self.settled_label(like=home)
         self.check("RIGHT undoes LEFT", mask is not None)
-        for n, face in enumerate(faces):
-            # Home starts on the Library face: browse it while it is open, and
-            # change the source on the Source face.
-            inside = {0: self.browse_library, 1: self.change_source}.get(n)
-            self.open_and_close(face, n, inside)
+        for n, face in enumerate(faces[:4]):
+            # Home starts on the Library face: browse it while it is open,
+            # change the source on the Source face, and turn Apps Face off
+            # and on again in Settings.
+            if n == 2:
+                self.apps_face_off_and_on(faces)
+            else:
+                inside = {0: self.browse_library, 1: self.change_source}.get(n)
+                self.open_and_close(face, n, inside)
             self.press("RIGHT")
-            mask, _ = self.settled_label(like=faces[(n + 1) % 4])
+            mask, _ = self.settled_label(like=faces[n + 1])
             self.check("the cube turns on to the next face", mask is not None, face=n + 1)
+        # Apps last: a launch never comes back.
+        self.start_an_app(faces[4])
+
+    def start_an_app(self, face: np.ndarray) -> None:
+        """A on Apps shows the disc's apps as the Library shows games: RIGHT
+        and LEFT move between them and back. A starts one: the Apps screen
+        gives way to the launch screen, dimmed but for the app's card, its
+        name and the ring. The route stops there. Dolphin as CI runs it
+        cannot take a program's launch further: its HLE DSP never answers
+        AESND when Swiss stops the menu audio before the hand-off, and a
+        hand-off it does reach (with the LLE DSP) never runs the program,
+        from Swiss's own file list either.
+
+        The A that opens Apps is held longer than Apps takes to read /apps:
+        on a console an SD card is read before a thumb lets go, and that A
+        once started the first app with no chance to choose."""
+        self.pad.press("A", 2.5)
+        opened = self.covered(face)
+        self.shot("apps", self.last_rgb)
+        self.check("A opens Apps", opened)
+        first, _ = self.settled_label(box=TITLE_BOX)
+        self.check("Apps shows an app's name", first is not None)
+        self.press("RIGHT")
+        other, _ = self.settled_label(unlike=first, box=TITLE_BOX)
+        self.shot("apps-right", self.last_rgb)
+        self.check("RIGHT moves to the next app", other is not None)
+        self.press("LEFT")
+        again, _ = self.settled_label(like=first, box=TITLE_BOX)
+        self.check("LEFT goes back an app", again is not None)
+        apps = float(self.emulator.frame().mean())
+        self.press("A")
+        launched, deadline = False, time.monotonic() + SETTLE_SECONDS
+        while not launched and time.monotonic() < deadline:
+            time.sleep(0.3)
+            rgb = self.emulator.frame()
+            self.last_rgb = rgb
+            launched = 0.02 < float(rgb.mean()) < 0.6 * apps
+        self.shot("app-launch", self.last_rgb)
+        self.check("A starts the app: the launch screen dims the Apps screen", launched,
+                   apps=round(apps, 1), now=round(float(self.last_rgb.mean()), 1))
+
+    def flip_apps_face(self, settings: np.ndarray, tag: str) -> None:
+        """From the Settings face: R and R to Setup, DOWN and A into Console,
+        five DOWNs to Apps Face and RIGHT to flip it. B goes back to Setup and
+        B again saves and exits (the demo disc can't keep the file; the
+        setting holds until Indigo restarts), back to the Settings face."""
+        self.press("A")
+        opened = self.covered(settings)
+        self.shot(f"settings-apps-face-{tag}", self.last_rgb)
+        self.check("A opens Settings", opened, apps_face=tag)
+        for button, pause in (("R", 1.0), ("R", 1.0), ("DOWN", 0.6), ("A", 1.5)):
+            self.press(button)
+            time.sleep(pause)
+        for _ in range(5):
+            self.press("DOWN")
+            time.sleep(0.4)
+        self.press("RIGHT")
+        time.sleep(1.0)
+        self.shot(f"apps-face-{tag}", self.emulator.frame())
+        self.press("B")
+        time.sleep(1.0)
+        self.press("B")
+        mask, _ = self.settled_label(like=settings)
+        self.shot(f"apps-face-{tag}-home", self.last_rgb)
+        self.check("Save & Exit comes back to the Settings face", mask is not None, apps_face=tag)
+
+    def apps_face_off_and_on(self, faces: list[np.ndarray]) -> None:
+        """Setup > Console > Apps Face: Off takes Apps off the cube, so the
+        face after System is Library; On puts it back after System."""
+        library, settings, system, apps = faces[0], faces[2], faces[3], faces[4]
+        for tag, after_system in (("off", library), ("on", apps)):
+            self.flip_apps_face(settings, tag)
+            self.press("RIGHT")
+            self.check("RIGHT turns to System", self.settled_label(like=system)[0] is not None,
+                       apps_face=tag)
+            self.press("RIGHT")
+            mask, _ = self.settled_label(unlike=system)
+            self.shot(f"after-system-apps-face-{tag}", self.last_rgb)
+            self.check(f"Apps Face {tag.title()}: after System comes "
+                       f"{'Library' if tag == 'off' else 'Apps'}",
+                       mask is not None and overlap(mask, after_system) >= SAME,
+                       overlap=round(overlap(mask, after_system), 3) if mask is not None else None)
+            for back in (system, settings):
+                self.press("LEFT")
+                self.check("LEFT turns back a face", self.settled_label(like=back)[0] is not None,
+                           apps_face=tag)
 
     def covered(self, reference: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX) -> bool:
         """Wait for the text in a box to stop matching reference: another screen opened over it."""

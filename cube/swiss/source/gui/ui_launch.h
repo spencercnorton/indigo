@@ -52,6 +52,9 @@ float UILaunch_Target(uiLaunchStep_t step, int index, int count);
 
 /* The one line the launch screen shows for a step. */
 const char *UILaunch_Caption(uiLaunchStep_t step);
+/* The same for an app from Apps, which boot_dol starts: its steps are an
+ * app's, not a game's. */
+const char *UILaunch_AppCaption(uiLaunchStep_t step);
 
 /* A launch has started: an empty ring, "Starting game". */
 void UILaunch_Begin(uiLaunch_t *launch);

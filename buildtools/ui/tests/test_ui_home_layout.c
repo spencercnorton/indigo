@@ -42,6 +42,7 @@ static uiHomeCapabilities_t capabilities(bool hasSource, bool hasRecent)
 
 	value.hasSource = hasSource;
 	value.hasRecent = hasRecent;
+	value.hasApps = false;
 	return value;
 }
 
