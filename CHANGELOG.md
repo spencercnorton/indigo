@@ -20,8 +20,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
   logs.
 - The build uses libogc2's toolchain image of 2026-09-28
   (`sha256:e6531ec…`), up from 2026-07-05's. CI, releases, both runner
-  images and the build commands in the README, the guide and AGENTS.md name
-  it.
+  images, the poster pack builder and the build commands in the README, the
+  guide and AGENTS.md all name it. The poster builder had its own older pin.
+  The new image has an arm64 build as well, so it runs natively on
+  Apple-silicon Macs.
 
 ## v2.0.0 — A clear glass cube, a launch screen and new menu music
 
