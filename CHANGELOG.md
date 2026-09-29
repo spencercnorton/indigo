@@ -4,6 +4,19 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## Unreleased
+
+### Fixes
+
+- Opening a game's settings from its details and leaving them no longer
+  flashes the empty background in between. The details went away as the
+  button went down, but the settings page came up only once it was let go,
+  and on the way back the page went first; for as long as the button was
+  held, about a tenth of a second on a quick press, only the background and
+  the cube showed. The page now comes up on the press and stays until the
+  button is let go. Opening and leaving Settings from Home flashed the same
+  way and is fixed too.
+
 ## v2.0.0 — A clear glass cube, a launch screen and new menu music
 
 Indigo 2.0: the Home cube is clear glass all through, a game started from

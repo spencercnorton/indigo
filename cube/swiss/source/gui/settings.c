@@ -2608,6 +2608,10 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 	settingsPageEvent = NULL;
 	menuInputRetrace = VIDEO_GetRetraceCount();
 	UIMenuInput_Init(&menuInput);
+	/* The caller has already moved the scene to Settings, which hides the
+	 * screen it came from: the page goes up now, not once the press that
+	 * opened it is let go, or the bare background shows in between. */
+	settings_draw_page(view, option, config);
 	/* The press that opened Settings (A on Home, X on Game Detail) must not
 	 * also act here: a held X would put a game's first row back to its
 	 * default. */
@@ -2765,9 +2769,11 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 					sleep(1);
 					DrawDispose(msgBox);
 				}
-				DrawDispose(settingsPage);
+				/* The page stays up until the press is let go: the
+				 * caller's scene takes over only once this returns. */
 				settingsInhibitThroughDigitalRelease(&menuInput,
 					&menuInputRetrace);
+				DrawDispose(settingsPage);
 				return 1;
 			}
 			if(option == settingsViews[view].count + 1) {
@@ -2779,10 +2785,10 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 				menuaudio_apply_settings();
 				VIDEO_SetAdjustingValues(swissSettings.sramHOffset, 0);
 				__SYS_SetTAUCalibration(swissSettings.sramTemperature);
-				DrawDispose(settingsPage);
 				DrawVideoMode(oldmode);
 				settingsInhibitThroughDigitalRelease(&menuInput,
 					&menuInputRetrace);
+				DrawDispose(settingsPage);
 				return 0;
 			}
 			// A opens a Setup section, runs a text or reset row, applies
