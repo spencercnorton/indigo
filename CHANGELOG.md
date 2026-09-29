@@ -4,6 +4,14 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## Unreleased
+
+### For developers
+
+- A CI machine names its runners "indigo" unless `INDIGO_CI_NAME` says
+  otherwise, instead of after its hostname: runner names show in public job
+  logs.
+
 ## v2.0.0 — A clear glass cube, a launch screen and new menu music
 
 Indigo 2.0: the Home cube is clear glass all through, a game started from

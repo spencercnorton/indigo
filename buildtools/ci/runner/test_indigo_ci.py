@@ -2,6 +2,8 @@
 """The supervisor's decisions, without Docker or GitHub."""
 
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -92,6 +94,14 @@ class Cleanup(unittest.TestCase):
     def test_names(self):
         self.assertRegex(indigo_ci.runner_name("build", 2), r"^ci-host-build-2-[0-9a-f]{6}$")
         self.assertEqual(indigo_ci.container_name("emulator", 1), "indigo-ci-emulator-1")
+
+    def test_unnamed_machine_is_not_named_after_its_host(self):
+        """Runner names are public in job logs, so without INDIGO_CI_NAME they say indigo."""
+        env = {k: v for k, v in os.environ.items() if k != "INDIGO_CI_NAME"}
+        name = subprocess.run([sys.executable, "-c", "import indigo_ci; print(indigo_ci.NAME)"],
+                              cwd=Path(__file__).parent, env=env, capture_output=True, text=True,
+                              check=True).stdout.strip()
+        self.assertEqual(name, "indigo")
 
 
 class Timestamps(unittest.TestCase):
