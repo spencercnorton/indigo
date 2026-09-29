@@ -1,8 +1,8 @@
 # Changelog
 
 Versions follow [semantic versioning](https://semver.org/). Each release is a
-`vX.Y.Z` tag on `main`; betas before it are `vX.Y.Z-beta.N` tags on `beta`.
-Changes land under `## Unreleased` until the release names them.
+`vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
+tag on `beta`. The newest changes are at the top until their release is named.
 
 ## Unreleased
 
