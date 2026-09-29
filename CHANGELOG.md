@@ -4,7 +4,10 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
-## Unreleased
+## v2.0.1 — The download keeps your games folder
+
+Three fixes to 2.0: the download, where System Information sends you for help, and a
+flash between a game's details and its settings.
 
 ### Fixes
 
