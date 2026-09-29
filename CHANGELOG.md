@@ -21,6 +21,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - A CI machine names its runners "indigo" unless `INDIGO_CI_NAME` says
   otherwise, instead of after its hostname: runner names show in public job
   logs.
+- The CI runner supervisor keeps running when GitHub or Docker fails, and
+  retries on its next pass. It used to exit on one slow GitHub reply. After
+  five failed passes in a row it runs `INDIGO_CI_ALERT`, and it runs it again
+  when it recovers. The command now also gets `INDIGO_CI_ALERT_KEY` and
+  `INDIGO_CI_ALERT_STATE`, so it can close its own notification.
 - The build uses libogc2's toolchain image of 2026-09-28
   (`sha256:e6531ec…`), up from 2026-07-05's. CI, releases, both runner
   images, the poster pack builder and the build commands in the README, the
