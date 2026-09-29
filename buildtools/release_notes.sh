@@ -23,8 +23,9 @@ case $tag in
 	*-*) printf '%s\n\n' "> **Beta.** A pre-release for testing what comes next. The current stable release is linked from https://norvitech.com/indigo/." ;;
 esac
 # The notes are a copy of CHANGELOG.md, whose relative links name files in the
-# repository; on a release page they would resolve against the page and fail.
-# They go to the file at this tag instead (a folder, ending in /, to its tree).
+# repository. GitHub's release page and feed rewrite them, but the API and gh
+# pass them on as written, so each goes to the file at this tag by full URL
+# (a folder, ending in /, to its tree).
 repo=https://github.com/spencercnorton/indigo
 printf '%s\n' "$notes" | sed -e '/./,$!d' | sed -E \
 	-e "s#\]\(([A-Za-z0-9._][^):]*/)\)#]($repo/tree/$tag/\1)#g" \
@@ -33,13 +34,17 @@ cat <<NOTES
 
 ## Install
 
-1. Download \`Indigo-$tag.zip\` below.
-2. Unzip it, select everything inside and drag it onto the root of your SD card. If the card already has an \`ipl.dol\`, that is your current Swiss: rename it to \`z.dol\` first to keep it.
-3. Put your games in \`/games\` and power on.
+**New to Indigo:**
 
-The [install guide](https://norvitech.com/indigo/guide/install/) covers every loader, updating and going back to stock Swiss.
+1. First, before you copy anything: if the card already has an \`ipl.dol\` in its root, that is your current Swiss. Rename it to \`z.dol\` to keep it; with PicoBoot or PicoLoader, holding Z at power-on starts it.
+2. Unzip \`Indigo-$tag.zip\` (below), select everything inside and drag it onto the root of the card. Let it replace files of the same name. On a Mac, hold Option as you drop and choose **Merge**: **Replace** deletes what is already in the card's \`games\` and \`swiss\` folders (your games, settings, cheats and saves).
+3. Put your games in \`/games\`, with nothing else in it or in the game folders, and power on.
 
-**Posters and cheats** (optional, also drag and drop): [Posters: USA & Japan](https://indigo.norvitech.com/indigo-posters-ntsc.zip) · [Posters: Europe & Australia](https://indigo.norvitech.com/indigo-posters-pal.zip) · [Cheats](https://indigo.norvitech.com/indigo-cheats.zip)
+**Updating from Indigo 1.x:** \`ipl.dol\` is already Indigo, so don't rename it; copy the new files over the old ones, choosing Merge on a Mac. If 1.25.0 made you rename stock Swiss to \`swiss.dol\`, you can rename it back to \`z.dol\`: since 2.0, Indigo doesn't start it by itself ([#3](https://github.com/spencercnorton/indigo/issues/3)).
+
+PicoBoot and PicoLoader boot \`ipl.dol\`. FlippyDrive boots \`boot.dol\`, and with GC Loader or another loader that boots a disc image you start \`ipl.dol\` from Swiss: the [install guide]($repo/blob/$tag/docs/guide/install.md) covers every loader, updating and going back to stock Swiss.
+
+**Posters and cheats** (optional; unzip one and drag its \`swiss\` folder onto the card the same way): [Posters: USA & Japan](https://indigo.norvitech.com/indigo-posters-ntsc.zip) · [Posters: Europe & Australia](https://indigo.norvitech.com/indigo-posters-pal.zip) · [Cheats](https://indigo.norvitech.com/indigo-cheats.zip)
 
 **Verify:** \`SHA256SUMS.txt\` lists the zip's SHA-256, and the zip carries a build provenance attestation: \`gh attestation verify Indigo-$tag.zip --repo spencercnorton/indigo\`.
 NOTES
