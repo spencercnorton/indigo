@@ -32,10 +32,12 @@ swiss/indigo/                  the licence and notice
 Pick the line that matches how your console starts Swiss.
 
 **PicoBoot, PicoLoader, and other modchips that boot `ipl.dol` from the card.**
-If the root of the card already has an `ipl.dol`, that is your current Swiss:
-rename it to `z.dol`. Then unzip the download, select everything inside and
-drag it onto the root of the card. PicoBoot and PicoLoader start `z.dol` when
-you hold Z at power-on, so stock Swiss stays one button away.
+First, before you copy anything: if the root of the card already has an
+`ipl.dol`, that is your current Swiss. Rename it to `z.dol` to keep it.
+PicoBoot and PicoLoader start `z.dol` when you hold Z at power-on, so stock
+Swiss stays one button away. Then unzip the download, select everything
+inside and drag it onto the root of the card, and let it replace files of
+the same name.
 
 **PicoBoot or PicoLoader with no `ipl.dol` on the card.** Swiss is in the
 chip's flash. First flash the firmware that starts the card's `ipl.dol`:
@@ -50,6 +52,13 @@ with `ipl.dol`, keeping the old file's name. FlippyDrive, for one, boots
 **GC Loader, or a loader that boots a disc image.** Drag everything in the
 download onto the root of the card, start Swiss the way you do now, and open
 `ipl.dol` from Swiss's file list. Indigo doesn't build a `boot.iso`.
+
+**On a Mac**, hold Option as you drop the files on the card and choose
+**Merge**. **Replace** deletes what is already in the card's `games` and
+`swiss` folders: your games, settings, cheats and saves.
+
+Then put your games in `/games`, with nothing else in it or in the game
+folders: see [Set up the games folder](library.md#set-up-the-games-folder).
 
 ## 3. First boot
 
@@ -71,9 +80,15 @@ Next:
 
 ## Update Indigo
 
-Download the new release and replace `ipl.dol` (or the file you replaced in
-step 2) and `swiss/patches/apploader.img` with the new ones. Your settings,
-poster pack and cheats stay where they are.
+Don't rename anything this time: your `ipl.dol` (or the file you replaced
+in step 2) is already Indigo. Unzip the new release and copy its files over
+the old ones as in step 2, letting them replace files of the same name (on a
+Mac, choose **Merge**). Your settings, poster pack, cheats and saves stay
+where they are.
+
+Updating from Indigo 1.x: if you renamed stock Swiss to `swiss.dol` for
+1.25.0, you can rename it back to `z.dol`. 2.0 no longer starts it by itself
+([#3](https://github.com/spencercnorton/indigo/issues/3)).
 
 ## Go back to stock Swiss
 

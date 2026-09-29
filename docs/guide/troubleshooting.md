@@ -72,7 +72,8 @@ X, highlight **Force Video Mode** and press X to put it back to the default.
 Look at the game's own settings (X on its details) for anything marked
 **Custom**: **Force Widescreen**, **Force Horizontal Scale** and **Force
 Vertical Offset** change the picture. X puts a setting back to Game Defaults.
-If every game looks wrong, check Settings › Game Defaults instead.
+If every game looks wrong, check Game Defaults instead (Settings, the
+Defaults tab).
 
 ## My settings don't stick
 
