@@ -250,13 +250,21 @@ static void test_controller(void) {
     CHECK(points<=FACE_BAND_MAX && area<0,"controller outline is not a clockwise loop within a band");
     /* Bands: 12 vertices per point, one primitive. Fills: a fan plus a fringe
      * quad per corner, two primitives. Beans (X, Y, L, R): a 10-quad strip, two
-     * 7-vertex cap fans and a 30-quad fringe, four primitives. */
-    int bands=12*(points+8+8), fills=5*(20+14+24+16+12+4*4), beans=4*(4*10+2*7+4*30);
+     * 6-vertex cap fans and a 30-quad fringe, four primitives. */
+    int bands=12*(points+8+8), fills=5*(20+14+24+16+12+4*4), beans=4*(4*10+2*6+4*30);
     indigoPadFrame_t rest={true,0,0,0,0,0u};
     reset(false); drawController(&r,0.0f,false,&rest);
     CHECK(count==bands+fills+beans && begins==3+2*9+4*4 && matrixLoads==2,
         "controller budget: a part is hidden, overlapping or wound backwards");
     CHECK(culling==GX_CULL_BACK && memcmp(loaded,r.model,sizeof(Mtx))==0,"controller state restore");
+    /* Every vertex a stroke emits is shared: a round end fans from the strip's
+     * corners, so it has no vertex of its own in the middle of the edge it
+     * shares with the strip (a T-junction, which sparkles on a console). */
+    for(int i=0;i<count;i++) {
+        int same=0;
+        for(int j=0;j<count && same<2;j++) same+=memcmp(&positions[i],&positions[j],sizeof(guVector))==0;
+        CHECK(same>1,"a stroke vertex belongs to one primitive alone");
+    }
     int front=count;
     memcpy(neutral,positions,sizeof(guVector)*front);
     memcpy(neutralAlphas,alphas,front);
@@ -420,7 +428,7 @@ static void test_icons_on_their_faces(void) {
         /* drawFaceBand folds a short-sided band at corners past 45 degrees. */
         if(view==0) CHECK(sharpestBandTurn(78)<45.0f,"gear teeth turn too sharply for a band");
         reset(false); drawDiscIcon(&r,UI_HOME_FACE_LIBRARY,glow,step*INDIGO_TAU/48);
-        CHECK(count==12*(32+16)+2*(4*10+2*7+4*30) && begins==2+2*4,"disc lost a ring or glint");
+        CHECK(count==12*(32+16)+2*(4*10+2*6+4*30) && begins==2+2*4,"disc lost a ring or glint");
     }
 }
 static void surface_pose(cubeRasterTransform_t *r,float yaw,float pitch,float roll,float scale) {
@@ -810,9 +818,10 @@ static void test_glass(void) {
         check_glass_stream(&r,corners,8,3,&total);
         if(total>most) most=total;
     }
-    /* Measured 449 at the worst sweep pose (1,381 when the light was shaded
-     * per vertex); the video thread pays for each. */
-    CHECK(most>200 && most<=600,"reflection vertex budget");
+    /* Measured 856 at the worst sweep pose (449 before bevels were cut along
+     * as often as faces and corners became fans, 1,381 when the light was
+     * shaded per vertex); the video thread pays for each. */
+    CHECK(most>200 && most<=1100,"reflection vertex budget");
 }
 int main(void) {
     test_dial(); test_rail_joins(); test_motifs(); test_controller(); test_rounded_outlines();
@@ -876,6 +885,8 @@ class StrokeGXStreamTests(unittest.TestCase):
             "static void glassStudioCoords(", "static guVector glassStudioDirection(",
             "static u8 glassReflect(", "static guVector glassVertexNormal(",
             "static bool glassSameNormal(", "static guVector glassBilinear(",
+            "static guVector glassSidePoint(", "static guVector glassGridPoint(",
+            "static void glassFanPoint(",
             "static void putGlassMirrorVertex(", "static void drawGlassReflection(")]
         blocks += [frame[frame.index("typedef struct systemDialPoint"):frame.index("static void _SetupRasterColor(")]]
         blocks += [extract_function(frame, "static void " + name + "(")

@@ -72,6 +72,15 @@ r2073 and r2092, and has everything upstream changed since:
   which file did it, and Library Layout and posters then seemed to do
   nothing. The Library now skips them and shows the games. Swiss's list
   comes back only when `/games` holds no disc images at all.
+- The glass cube no longer sparkles along its edges on a console. Single
+  pixels flickered where a face meets a bevel and where a bevel meets a
+  corner: the glass's refraction, reflection and sheen cut a face's side and
+  the bevel beside it at different points, and the GameCube snaps every
+  point to a sixteenth of a pixel, which opened and closed pixels along the
+  seam as the cube moved. Both sides are now cut at the same points, made
+  the same way. The round ends of the icons' strokes (the controller's
+  triggers and X and Y, the disc's glints) had the same fault and are fixed
+  too. Dolphin's finer snap hid it.
 
 ### For developers
 
