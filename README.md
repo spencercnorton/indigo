@@ -208,7 +208,7 @@ toolchain is installed on your machine:
 git clone https://github.com/spencercnorton/indigo.git
 cd indigo
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575 make dev
+  ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
 # writes cube/swiss/swiss.dol inside this folder, on your computer
 ```
 
@@ -323,7 +323,7 @@ be checked in advance.
 
 ```bash
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575 make dev   # the DOL, as CI builds it
+  ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev   # the DOL, as CI builds it
 buildtools/ui/tests/run_tests.sh all          # host tests: plain, sanitized, contracts
 buildtools/check_whitespace.sh origin/beta    # lint
 buildtools/check_ui_isolation.sh origin/beta  # the change stays in the interface
