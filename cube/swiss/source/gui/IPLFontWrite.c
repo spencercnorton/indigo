@@ -14,6 +14,7 @@
 #include <string.h>
 #include "IPLFontWrite.h"
 #include "ui_color.h"
+#include "ui_stage.h"
 
 static u8 fontData[SYS_FONTSIZE_ANSI] ATTRIBUTE_ALIGN (32);
 static sys_fontheader *font = (sys_fontheader *)fontData;
@@ -46,6 +47,7 @@ void drawFontInit(void)
 	GX_LoadTexMtxImm(GXmodelView2D,GX_TEXMTX0,GX_MTX2x4);
 	GX_LoadPosMtxImm(GXmodelView2D,GX_PNMTX0);
 	guOrtho(GXprojection2D, 0, 480, 0, 640, 0, 1);
+	UIStage_Project(GXprojection2D);
 	GX_LoadProjectionMtx(GXprojection2D, GX_ORTHOGRAPHIC);
 
 	GX_SetZMode(GX_DISABLE,GX_ALWAYS,GX_FALSE);

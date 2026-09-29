@@ -1,7 +1,227 @@
 # Changelog
 
-Versions follow [semantic versioning](https://semver.org/); each release is a
-tag on `main`.
+Versions follow [semantic versioning](https://semver.org/). Each release is a
+`vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
+tag on `beta`. The newest changes are at the top until their release is named.
+
+## v2.0.0 — A clear glass cube, a launch screen and new menu music
+
+Indigo 2.0: the Home cube is clear glass all through, a game started from
+the Library opens on a launch screen with its cover instead of Swiss's
+progress boxes, Change Source shows the devices themselves, and the menus
+have new music. Everything below was tested together on a GameCube as
+2.0.0-rc.1, and every picture in the README and the guide is recorded again
+on it.
+
+### Menu music
+
+- New menu music: "Up in the Sky" by Memoraphile (CC0), given the console's
+  sound: the GameCube's 32 kHz, a gentle top end and its own DSP-ADPCM
+  compression. The track's quiet intro plays once, then an 85-second section
+  loops without a seam.
+- The music streams: a decoder thread feeds the audio DSP a frame at a time,
+  so the two-minute piece takes less memory than the old 16-second loop,
+  which decoded 2 MB of sound up front. The DOL grows by 1.1 MB, the MP3.
+
+### Menu Widescreen
+
+- New setting, Setup › Display › Menu Widescreen, for a TV set to 16:9.
+  Indigo's own screens are drawn narrower so the TV's stretch gives them
+  back their shape: the background and its waves fill the whole screen, and
+  the cube, the text and the menus keep their size in the middle. The clock
+  moves into the corner. It changes as soon as you switch it. Games still
+  follow Force Widescreen.
+
+### Library
+
+- The Horizontal layout shows two covers either side of the selected game
+  instead of one. The second on each side, until now a thin strip seen
+  edge-on, is a smaller card turned away with its box art, or its disc banner
+  when the poster pack has none, and covers fade in at the edges as you move.
+
+### Game details
+
+- Up and down on the D-pad or the control stick move between Launch Game,
+  Cheats and Settings on a game's details, and A opens the one you're on. A
+  bright frame shows where you are: it starts on Launch Game, passes over
+  Cheats when the game has none, and is still there when you come back from
+  Settings or Cheats. X, Y, Z, R, L + A and B work as before, wherever the
+  frame is. The hint line reads D-pad Move, A Select, B Library, X Settings,
+  Y Cheats.
+- Game details play the menu's sounds: moving the frame blips, and every
+  action, the shortcuts too, plays the select sound. They made none before.
+
+### Launch screen
+
+- Starting a game from the Library no longer shows Swiss's progress boxes,
+  with their file names, sizes and bar that starts over for every file. The
+  details make way for the game's cover, centred in a ring that fills as
+  Indigo checks, prepares and loads the game, and one line under the title
+  says which step it's on. When the ring is full the screen fades to black
+  and the game starts. A card that must stay in its slot is still named. It
+  is the same with Boot without prompts. With UI Motion set to Off the ring
+  fills in steps, without its glint, and the screen goes straight to black.
+- The video mode and the number of cheats applied are steps on the ring
+  instead of notices that held the start for two seconds and one second.
+
+### Source picker
+
+- Change Source shows the devices themselves. The cube lifts out of the way
+  and the devices Indigo found line up under it on glass tiles, each with
+  its picture: the one in the middle larger and framed, its neighbours
+  smaller and dimmer. The row slides from one device to the next and goes
+  round. Under the middle one, the picker says what the device can do
+  (Boot + Stream, Boot or Files, where 1.25.0 said Boot Ready and Files
+  Ready), where it plugs in (Slot A, Serial Port 2, Disc Drive and so on),
+  whether Indigo detected it, and whether it is the current source or holds
+  your settings.
+- With no device detected that can do the job, the picker lists every one
+  that could, as Z does. It used to search for one forever.
+- The control stick changes the device too, and holding it keeps going; the
+  D-pad, L and R still work. The bottom line shows the buttons, the stick
+  and D-pad that change the device among them, and the picker plays the
+  menu's sounds.
+- Copy and Move choose where to put a file in the same picker.
+
+### Home cube
+
+- The cube's edges no longer look jagged on a large or upscaled TV. Where a
+  face met one of its rounded edges the glass changed colour in one step,
+  which the picture drew as a staircase; the colour now blends across. The
+  cube's outline, its rim of light, the face icons and the waves behind
+  fade over one whole pixel, with Menu Widescreen too, which had narrowed
+  them to three quarters of one, and the rim keeps one brightness along its
+  length.
+- The cube is clear glass all through: the solid cube inside it is gone.
+  Its far edges show through, bent by the front, and a smoked panel under
+  each face's icon keeps the icon easy to read. The glass mirrors soft
+  lights around it, a gradient and a brighter window on the faces and thin
+  glints along the rounded edges, drawn sharp to the pixel; they slide
+  across the glass as the cube turns and drift a little while Home rests
+  (not with UI Motion set to Reduced or Off).
+
+### Fixes
+
+- Indigo stays on screen when stock Swiss is kept on the card as `z.dol`, as
+  the install guide says. At startup Indigo still ran Swiss's search for a
+  newer Swiss in the root of the card (`z.dol`, `a.dol`, `start.dol`,
+  `boot.dol` and similar names) and took any stock Swiss it found for one, so
+  PicoBoot and PicoLoader started Indigo only for it to start stock Swiss
+  straight away. Indigo no longer runs that search, which also made a copy of
+  Indigo named `boot.dol` start itself over and over
+  ([#3](https://github.com/spencercnorton/indigo/issues/3)).
+- Settings › Setup › Storage no longer offers A Edit on Save Folder while it
+  is dimmed. Without a Configuration Device there are no folders to list, so
+  A does nothing there. Dimmed network settings keep A Edit: A still opens
+  their editor.
+- The Library no longer crashes on a damaged disc image. It reads each
+  listed image's file table to find the game's banner, and a header-only
+  dump, a truncated download or a corrupt table could send that read past the
+  end of the table and crash the console. Indigo now checks every entry
+  against the table's size; such an image shows without its banner.
+- Settings' middle tab reads Defaults. "Game Defaults" is wider in the
+  console's font than on a computer and showed cut short, as "Game Def…";
+  the page it opens is still called Game Defaults.
+- Video settings no longer switch the picture at every step. On Swiss Video
+  Mode, System Video, AVE Compatibility, Force DTV Status and RetroTINK-4K
+  HDMI Input, Left and Right now only choose a value, so holding them steps
+  through the values; A switches to the one shown and asks, as before,
+  whether to keep it. Moving to another setting or leaving without A puts the
+  old value back.
+- A game whose launch cannot read the console's BS2 says "Failed to read
+  BS2!" and comes back to the Library, as Swiss means it to. It crashed
+  instead: the failure freed a pointer the launch had never set.
+
+### Documentation
+
+- The guide's example of a dimmed setting is Save Folder with no
+  Configuration Device. IPv4 Address, the old example, doesn't dim while DHCP
+  is on.
+- The install instructions were checked against the code and against
+  PicoBoot's, PicoLoader's, FlippyDrive's and Swiss's own documentation:
+  - PicoLoader sits beside PicoBoot. A chip with Swiss in its flash names the
+    firmware to flash instead (`picoboot_full_pico.uf2`,
+    `picoloader_gekkoboot.uf2`); FlippyDrive boots `boot.dol`.
+  - SD2SP2 and SD Gecko are named as what reads the card, not as ways to
+    start Swiss, and a Wii needs GameCube ports and an SD Gecko.
+  - A stray file or folder inside a game's folder also brings back Swiss's
+    file list, and Hide unknown file types hides text files and pictures but
+    not folders, programs or music.
+  - Home faces Library when Indigo has a device to read from, whether or not
+    it found games.
+  - Stock Swiss drops Indigo's own settings, such as Menu Color, when it
+    saves.
+  - The build commands name the image CI uses, pinned by digest; there is no
+    `make dist`.
+  - Troubleshooting covers stock Swiss taking over at startup in 1.25.0 and
+    earlier.
+  - The README's release badge links the latest release rather than the list
+    of tags.
+- Every picture in the guide and the README is recorded again: the clear
+  glass cube, the Defaults tab, two covers either side in the Library, the
+  frame on a game's details and the new source picker. Game details has a
+  picture of the launch screen, and the button icons keep their colors in
+  the animations, where the green A had turned teal.
+- The install steps start by renaming the card's `ipl.dol`, before anything
+  is copied, and say how to update from Indigo 1.x. They warn that on a Mac,
+  Finder's Replace deletes what is in the card's `games` and `swiss`
+  folders: hold Option and choose Merge. The README, the guide, the release
+  notes and the zip's `Indigo-README.txt` say the same.
+- The README describes 2.0's screens.
+- The guide's Game details page no longer says Indigo can't read memory
+  cards.
+- SECURITY.md, SUPPORT.md and CONTRIBUTING.md name release candidates, and
+  CONTRIBUTING.md the route for a fix to a release.
+- The issue forms are brought up to date for 2.0.
+
+### For developers
+
+- Indigo is developed on GitHub. Changes land on the `beta` branch by pull
+  request, betas ship as `vX.Y.Z-beta.N` pre-releases, and a release
+  candidate that holds up is promoted to `main` as a release.
+  [docs/RELEASING.md](docs/RELEASING.md) has the procedure and
+  [AGENTS.md](AGENTS.md) the working detail.
+- GitHub Actions builds the DOL and the SD card zip for every push and pull
+  request, runs the three host-test lanes and the source checks (whitespace
+  and the UI isolation guardrail), and keeps the zip as an artifact to try on
+  a console. A pushed tag publishes its release from the tagged commit, with
+  `SHA256SUMS.txt` and a build provenance attestation.
+- The issue forms are the two Indigo ones; upstream's duplicates are gone.
+- `make clean` in `buildtools/ui/tests/` removes every test it builds. It
+  used to leave the cube-motif tests behind and listed others twice; it now
+  removes the Makefile's own target lists, so a new test is cleaned too.
+- CI and releases run on the maintainer's own machines: every job gets a
+  fresh container that takes that one job and is thrown away, runs without
+  privileges, and can reach GitHub and nothing else
+  ([buildtools/ci/runner/](buildtools/ci/runner/README.md)).
+- CI checks more: the DOL's structure, size and the commit it names; the
+  zip's exact layout; a second build that must match the first byte for
+  byte; the host tests under Clang's sanitizers as well as GCC's; and a
+  policy check on the workflows themselves. One "CI passed" check sums up
+  every job.
+- CI boots every build in Dolphin and walks its menus with a controller:
+  the cube turns through its four faces, each face opens and closes, and the
+  Library moves between games and opens one's details, where UP and A open
+  the game's settings, on a demonstration disc of fictitious games.
+  Dolphin emulates the MMU, so a crash stops the test as it would stop a
+  console. Every step's picture is kept with the run
+  ([buildtools/ui/emulator/](buildtools/ui/emulator/README.md)).
+- CI fuzzes the files Indigo reads from a card: poster packs, the play
+  history, saves, settings files and disc images' file tables, each with
+  AddressSanitizer and UBSan, starting from real files of each kind. The
+  settings and file-table fuzzers run Swiss's own code as the console does:
+  with its `strtok_r`, and with its unsigned `char`. The emulator test's disc
+  also carries two damaged images the Library must list without crashing. Weekly on `main`, every check runs
+  again and the fuzzers run for ten minutes each.
+- The emulator test also opens Change Source: the device picker shows a
+  device's name, RIGHT shows another, and B leaves it.
+- Release candidates: a `vX.Y.Z-rc.N` tag on `beta` publishes a pre-release
+  like a beta, its notes opening with "Release candidate"
+  ([docs/RELEASING.md](docs/RELEASING.md)).
+- Release notes link the repository's files by full URL at the release's
+  tag, so the links also work where GitHub doesn't rewrite them: through the
+  API and `gh`.
+- The test fixtures use neutral machine names and generic addresses.
 
 ## v1.25.0 — Memory Cards, a cube that flies in, and a drag-and-drop download
 

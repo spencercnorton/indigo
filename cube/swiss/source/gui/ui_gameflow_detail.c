@@ -202,9 +202,11 @@ static void buildPresentation(uiGameflowDetailSnapshot_t *snapshot)
 
 	copyText(snapshot->launchLabel, sizeof(snapshot->launchLabel),
 		(flags & UI_GAMEFLOW_DETAIL_CLEAN_BOOT_DEFAULT) != 0u ?
-		"A  CLEAN BOOT" : "A  LAUNCH GAME");
+		"CLEAN BOOT" : "LAUNCH GAME");
 	appendText(snapshot->primaryActions, sizeof(snapshot->primaryActions),
-		"A  LAUNCH");
+		"D-PAD  MOVE");
+	appendText(snapshot->primaryActions, sizeof(snapshot->primaryActions),
+		"A  SELECT");
 	if((flags & UI_GAMEFLOW_DETAIL_CAN_LIBRARY) != 0u) {
 		appendText(snapshot->primaryActions,
 			sizeof(snapshot->primaryActions), "B  LIBRARY");
@@ -350,8 +352,39 @@ bool UIGameflowDetail_Matches(const uiGameflowDetailSnapshot_t *snapshot,
 			UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0;
 }
 
+static bool focusable(uint32_t flags, int row)
+{
+	return row == UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH ||
+		(row == UI_GAMEFLOW_DETAIL_FOCUS_CHEATS &&
+			(flags & UI_GAMEFLOW_DETAIL_CAN_CHEATS) != 0u) ||
+		(row == UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS &&
+			(flags & UI_GAMEFLOW_DETAIL_CAN_SETTINGS) != 0u);
+}
+
+uiGameflowDetailFocus_t UIGameflowDetail_MoveFocus(
+	const uiGameflowDetailSnapshot_t *snapshot, uiGameflowDetailFocus_t focus,
+	uint32_t input)
+{
+	int step = (input & UI_GAMEFLOW_DETAIL_INPUT_UP) != 0u ? 1 :
+		(input & UI_GAMEFLOW_DETAIL_INPUT_DOWN) != 0u ? -1 : 0;
+	int row;
+
+	if(snapshot == NULL ||
+		(snapshot->flags & UI_GAMEFLOW_DETAIL_VALID) == 0u || step == 0) {
+		return focus;
+	}
+	for(row = (int)focus + step; row >= UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH &&
+		row <= UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS; row += step) {
+		if(focusable(snapshot->flags, row)) {
+			return (uiGameflowDetailFocus_t)row;
+		}
+	}
+	return focus;
+}
+
 uiGameflowDetailAction_t UIGameflowDetail_ResolveAction(
-	const uiGameflowDetailSnapshot_t *snapshot, uint32_t input)
+	const uiGameflowDetailSnapshot_t *snapshot, uiGameflowDetailFocus_t focus,
+	uint32_t input)
 {
 	uint32_t flags;
 
@@ -361,11 +394,23 @@ uiGameflowDetailAction_t UIGameflowDetail_ResolveAction(
 	}
 	flags = snapshot->flags;
 	if((input & UI_GAMEFLOW_DETAIL_INPUT_A) != 0u) {
+		/* L is Clean Boot's modifier only where Clean Boot is offered. */
 		if((input & UI_GAMEFLOW_DETAIL_INPUT_L) != 0u &&
 			(flags & UI_GAMEFLOW_DETAIL_CAN_CLEAN_BOOT) != 0u) {
 			return UI_GAMEFLOW_DETAIL_ACTION_CLEAN_BOOT;
 		}
-		return UI_GAMEFLOW_DETAIL_ACTION_BOOT;
+		if(focus == UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH) {
+			return UI_GAMEFLOW_DETAIL_ACTION_BOOT;
+		}
+		if(focus == UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS &&
+			(flags & UI_GAMEFLOW_DETAIL_CAN_SETTINGS) != 0u) {
+			return UI_GAMEFLOW_DETAIL_ACTION_SETTINGS;
+		}
+		if(focus == UI_GAMEFLOW_DETAIL_FOCUS_CHEATS &&
+			(flags & UI_GAMEFLOW_DETAIL_CAN_CHEATS) != 0u) {
+			return UI_GAMEFLOW_DETAIL_ACTION_CHEATS;
+		}
+		return UI_GAMEFLOW_DETAIL_ACTION_NONE;
 	}
 	if((input & UI_GAMEFLOW_DETAIL_INPUT_B) != 0u &&
 		(flags & UI_GAMEFLOW_DETAIL_CAN_LIBRARY) != 0u) {

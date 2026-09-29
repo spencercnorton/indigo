@@ -1,0 +1,22 @@
+# Keeps the pinned GitHub Actions and the runner images' base images current:
+# one pull request a week each, into beta, where CI runs on it like any other
+# change. A new runner image applies from the first run after it merges.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: beta
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+  - package-ecosystem: docker
+    directory: /buildtools/ci/runner
+    target-branch: beta
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci

@@ -164,8 +164,18 @@ uiDrawObj_t* DrawLabel(int x, int y, const char *string);
 uiDrawObj_t* DrawFadingLabel(int x, int y, const char *string, float size);
 uiDrawObj_t* DrawDynamicLabel(int x, int y, const char *(*getString)(void), float size, int align, GXColor color);
 uiDrawObj_t* DrawHome(void);
-uiDrawObj_t* DrawDeviceSelectorCard(DEVICEHANDLER_INTERFACE *device,
-	bool destination, bool showAllDevices, bool inAdvanced);
+/* The Source picker, and Copy/Move's destination: one event while it is
+ * open. Each update copies what the picker shows of every listed device (its
+ * name, picture, what it can do, where it plugs in and whether it was
+ * detected), so the video thread never reads a device handler. travel is
+ * the focus, unwrapped: a step changes it by one and the row slides that
+ * way. */
+uiDrawObj_t* DrawDeviceSelector(bool destination);
+void DrawUpdateDeviceSelector(uiDrawObj_t *selector,
+	DEVICEHANDLER_INTERFACE *const *listed, int count, int travel,
+	const DEVICEHANDLER_INTERFACE *current,
+	const DEVICEHANDLER_INTERFACE *settings, bool showAllDevices,
+	bool inAdvanced);
 uiDrawObj_t* DrawTooltip(const char *tooltip);
 uiDrawObj_t* DrawTitleBar();
 uiDrawObj_t* DrawGameflow(const uiGameflowRenderSnapshot_t *snapshot);
@@ -187,6 +197,13 @@ void DrawUpdateFileBrowserButton(uiDrawObj_t *evt, int mode);
 bool DrawUpdateGameflow(uiDrawObj_t *evt,
 	const uiGameflowRenderSnapshot_t *snapshot);
 bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode);
+/* The Detail row the D-pad rests on. */
+bool DrawSetGameflowDetailFocus(uiDrawObj_t *evt,
+	uiGameflowDetailFocus_t focus);
+/* While Launch mode is on, the launch screen shows message as its step and
+ * this returns true; otherwise it returns false and the caller shows its own
+ * box. DrawProgressBar sends it every looping bar's message. */
+bool DrawLaunchStep(const char *message);
 bool DrawUpdateGameflowDetail(uiDrawObj_t *evt,
 	const uiGameflowDetailSnapshot_t *snapshot);
 void DrawClearGameflowDetail(uiDrawObj_t *evt);
@@ -267,5 +284,6 @@ void DrawInit(GXRModeObj *videoMode, bool black);
 void DrawLoadBackdrop(DEVICEHANDLER_INTERFACE *device);
 void DrawShutdown();
 void DrawVideoMode(GXRModeObj *videoMode);
+void DrawVideoModeDefer(bool defer);
 
 #endif

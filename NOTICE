@@ -30,5 +30,10 @@ Third-party components redistributed in this tree:
     The DBCS conversion tables are removed; see the note in
     cube/swiss/source/fatfs/ffunicode.c.
 
+  Up in the Sky — https://opengameart.org/content/up-in-the-sky
+    Music by Memoraphile, released under CC0 1.0 (also offered under CC-BY 4.0
+    and OGA-BY 3.0). Indigo's menu music is made from it; see
+    buildtools/audio/README.md.
+
   XZ Embedded, and the other upstream third-party sources under cube/, carry
   their own notices in place.

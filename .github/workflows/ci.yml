@@ -1,0 +1,241 @@
+# Every push to main or beta and every pull request: build the DOL and the SD
+# card zip and check both, build again in a fresh container to prove the build
+# is reproducible, boot the build in Dolphin and walk its menus with a
+# controller (buildtools/ui/emulator/), run the host tests (plain, GCC and
+# Clang sanitizers, contracts) and the source checks. Every job runs on our own machines, in a
+# fresh container that takes one job and is then thrown away
+# (buildtools/ci/runner/README.md). The zip is kept as an artifact, so any
+# pull request can be tried on a console before it merges.
+name: CI
+
+on:
+  push:
+    branches: [main, beta]
+  pull_request:
+  workflow_dispatch:
+  # Weekly on main: the same checks on the release, which catches a change in
+  # the runners themselves, and a longer fuzzing run.
+  schedule:
+    - cron: '23 9 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The image every DOL is built in. The build runner is built on it, and
+  # buildtools/ci/check_workflows.py keeps this line and its Dockerfile equal.
+  TOOLCHAIN: ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575
+
+jobs:
+  build:
+    name: Build
+    runs-on: [self-hosted, indigo-build]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Toolchain
+        run: buildtools/ci/toolchain.sh "$TOOLCHAIN"
+      - name: Build Indigo
+        run: make dev
+      - name: Check the DOL
+        run: |
+          mkdir -p dist
+          python3 buildtools/ci/verify_dol.py cube/swiss/swiss.dol --toolchain "$TOOLCHAIN" \
+            --revision "$(git rev-parse HEAD)" --short "$(git rev-parse --short HEAD)" \
+            --out dist/provenance.json
+          cp cube/swiss/swiss.dol dist/swiss.dol
+          git show-ref --tags > dist/tags.txt || true  # the DOL lists every tag (tags.h)
+      - name: Package and check the SD card zip
+        run: |
+          version="ci-$(git rev-parse --short=8 HEAD)"
+          buildtools/sd_package.sh "$version" cube/swiss/swiss.dol dist
+          python3 buildtools/ci/check_package.py "dist/Indigo-$version.zip" \
+            --dol cube/swiss/swiss.dol --version "$version"
+          {
+            echo "### Build"
+            echo "| | bytes | SHA-256 |"
+            echo "| --- | ---: | --- |"
+            for file in dist/swiss.dol "dist/Indigo-$version.zip"; do
+              echo "| \`${file#dist/}\` | $(wc -c < "$file") | \`$(sha256sum "$file" | cut -c1-64)\` |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: indigo-sd-card-${{ github.sha }}
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dol-${{ github.sha }}
+          path: |
+            dist/swiss.dol
+            dist/provenance.json
+            dist/tags.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  reproducible:
+    name: Reproducible build
+    needs: build
+    runs-on: [self-hosted, indigo-build]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Toolchain
+        run: buildtools/ci/toolchain.sh "$TOOLCHAIN"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dol-${{ github.sha }}
+          path: first
+      - name: The tags the first build saw
+        # The DOL lists every tag, so a tag pushed between the two builds would
+        # make them differ. Tags never move (they are immutable), so dropping the
+        # ones the first build did not have leaves exactly its set.
+        run: |
+          cut -d' ' -f2 first/tags.txt > first/tag-refs.txt
+          git tag -l | while read -r tag; do
+            grep -qxF "refs/tags/$tag" first/tag-refs.txt || git tag -d "$tag" > /dev/null
+          done
+      - name: Build Indigo again, in a fresh container
+        run: make dev
+      - name: Both builds are the same bytes
+        run: |
+          sha256sum first/swiss.dol cube/swiss/swiss.dol
+          if ! cmp first/swiss.dol cube/swiss/swiss.dol; then
+            echo "::error::Two builds of the same commit in the same toolchain differ. Something in the build depends on the machine, the time or the order of files."
+            exit 1
+          fi
+          echo "Reproducible: two independent builds are byte for byte the same." >> "$GITHUB_STEP_SUMMARY"
+
+  emulator:
+    name: Emulator
+    needs: build
+    runs-on: [self-hosted, indigo-emulator]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dol-${{ github.sha }}
+          path: build
+      - name: Boot the build in Dolphin and walk its menus
+        run: python3 buildtools/ui/emulator/run.py build/swiss.dol --out emulator
+      - name: Summary
+        if: always()
+        run: cat emulator/summary.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: emulator-${{ github.sha }}
+          path: emulator/
+          if-no-files-found: warn
+          retention-days: 14
+
+  host-tests:
+    name: Host tests (${{ matrix.name }})
+    runs-on: [self-hosted, indigo-build]
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: plain, lane: plain, cc: gcc }
+          - { name: sanitized, lane: sanitized, cc: gcc }
+          - { name: "sanitized, Clang", lane: sanitized, cc: clang }
+          - { name: contracts, lane: contracts, cc: gcc }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Run the ${{ matrix.name }} lane
+        env:
+          CC: ${{ matrix.cc }}
+          LANE: ${{ matrix.lane }}
+          UI_TEST_JOBS: "8"
+          UI_TEST_REQUIRE_GXTEXCONV: "1"
+        run: buildtools/ui/tests/run_tests.sh "$LANE"
+
+  fuzz:
+    # Not in "CI passed": a fuzzer can find an old bug on any pull request, so
+    # a red Fuzz is a real parser bug to fix, not a verdict on this change.
+    name: Fuzz
+    runs-on: [self-hosted, indigo-build]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fuzz the files Indigo reads from a card
+        env:
+          SECONDS_EACH: ${{ github.event_name == 'schedule' && '600' || '30' }}
+        run: buildtools/ui/tests/fuzz/run_fuzz.sh "$SECONDS_EACH" fuzz-out
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: fuzz-crashes-${{ github.sha }}
+          path: |
+            fuzz-out/crashes/
+            fuzz-out/*.log
+          retention-days: 30
+
+  target:
+    name: Target branch
+    if: github.event_name == 'pull_request'
+    runs-on: [self-hosted, indigo-build]
+    timeout-minutes: 2
+    steps:
+      - name: Changes go to beta; main takes only beta or a hotfix
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          [ "$BASE_REF" != main ] && exit 0
+          if [ "$SAME_REPO" = true ]; then
+            case "$HEAD_REF" in beta|hotfix/*) exit 0 ;; esac
+          fi
+          echo "Pull requests go to beta. main takes only beta (a release) or a hotfix/* branch; see docs/RELEASING.md." >&2
+          exit 1
+
+  source:
+    name: Source checks
+    runs-on: [self-hosted, indigo-build]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Whitespace and line endings
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then base="origin/$BASE_REF"; else base="HEAD^"; fi
+          buildtools/check_whitespace.sh "$base"
+      - name: UI isolation (a pull request changes the interface, not the loader)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: buildtools/check_ui_isolation.sh "origin/$BASE_REF"
+      - name: Scripts, CI tools and workflows
+        run: buildtools/ci/source_checks.sh
+
+  passed:
+    name: CI passed
+    if: always()
+    needs: [build, reproducible, emulator, host-tests, target, source]
+    runs-on: [self-hosted, indigo-build]
+    timeout-minutes: 2
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")' > /dev/null

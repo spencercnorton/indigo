@@ -20,8 +20,9 @@ get them is the ready-made pack, which covers every region:
   and unzip it into the root of the card.
 
 Cheats that the pack's checks show would break Indigo are switched off in
-the file and marked; the [Indigo page](https://norvitech.com/indigo/) says
-what the checks can't cover.
+the file and marked; the
+[Indigo page](https://norvitech.com/indigo/#downloads) says what the checks
+can't cover.
 
 A game without a file says "No cheats found" on its detail screen.
 
@@ -53,8 +54,7 @@ Cheats on a read-only device, such as a data disc, work but aren't saved.
 Normally the cheats that are on apply when you start the game after opening
 the browser. Turn on **Auto-load cheats** in Settings › Quick and Indigo
 applies your saved cheats whenever the game starts, without opening the
-browser. It shows "Applied 3 cheats" (or however many) for a second as the
-game starts.
+browser, and says "Applying cheats" as the game starts.
 
 ## Advanced
 

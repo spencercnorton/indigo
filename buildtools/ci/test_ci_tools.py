@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+"""The DOL, package and workflow checks catch what they are for."""
+
+import contextlib
+import io
+import re
+import struct
+import subprocess
+import tempfile
+import unittest
+import zipfile
+from pathlib import Path
+
+import check_package
+import check_workflows
+import verify_dol
+
+SHORT = "0a2edf3"
+FULL = SHORT + "7" * 33
+IMAGE = "example.invalid/libogc2@sha256:" + "1" * 64
+
+
+def dol(revisions: int = 1, entry: int = 0x80003100, text_offset: int = 0x100) -> bytes:
+    data = bytearray(0x200)
+    struct.pack_into(">I", data, 0x00, text_offset)
+    struct.pack_into(">I", data, 0x48, 0x80003100)
+    struct.pack_into(">I", data, 0x90, 0x100)
+    struct.pack_into(">I", data, 0xE0, entry)
+    for n in range(revisions):
+        at = 0x120 + n * 16
+        data[at:at + 9] = b"\0" + SHORT.encode() + b"\0"
+    return bytes(data)
+
+
+class Dol(unittest.TestCase):
+    def test_a_good_dol(self):
+        self.assertEqual(verify_dol.check(dol(), SHORT)["sections"], 1)
+
+    def test_the_commit_must_appear_exactly_once(self):
+        for count in (0, 2):
+            with self.assertRaises(verify_dol.Invalid):
+                verify_dol.check(dol(revisions=count), SHORT)
+
+    def test_structure(self):
+        for bad in (dol(entry=0x90000000), dol(text_offset=0x180), dol()[:0x80]):
+            with self.assertRaises((verify_dol.Invalid, struct.error)):
+                verify_dol.check(bad, SHORT)
+
+    def test_size_budget(self):
+        with self.assertRaises(verify_dol.Invalid):
+            verify_dol.check(dol() + bytes(verify_dol.MAX_DOL_BYTES), SHORT)
+
+    def test_cli_refuses_a_mismatched_or_unpinned_build(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "swiss.dol"
+            path.write_bytes(dol())
+
+            def cli(*args: str) -> int:
+                # Quiet: an ::error:: line in a CI log becomes an annotation.
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    return verify_dol.main([str(path), *args])
+
+            self.assertEqual(cli("--revision", FULL, "--short", SHORT, "--toolchain", IMAGE), 0)
+            self.assertEqual(cli("--revision", "f" * 40, "--short", SHORT, "--toolchain", IMAGE), 1)
+            self.assertEqual(cli("--revision", FULL, "--short", SHORT, "--toolchain", "libogc2:latest"), 1)
+
+
+class Package(unittest.TestCase):
+    def build(self, directory: Path, extra: str | None = None, drop: str | None = None,
+              ipl: bytes | None = None) -> Path:
+        path = directory / "Indigo-v9.9.9.zip"
+        with zipfile.ZipFile(path, "w") as archive:
+            for name in sorted(check_package.LAYOUT | ({extra} if extra else set())):
+                if name == drop:
+                    continue
+                if name.endswith("/"):
+                    archive.writestr(name, b"")
+                elif name == "ipl.dol":
+                    archive.writestr(name, ipl if ipl is not None else dol())
+                elif name == "swiss/patches/apploader.img":
+                    archive.writestr(name, b"*indigo-v9.9.9".ljust(32, b"\0") + b"image")
+                elif name == "Indigo-README.txt":
+                    archive.writestr(name, "Indigo v9.9.9 - an unofficial fork\n")
+                else:
+                    archive.writestr(name, b"text")
+        return path
+
+    def test_the_layout_passes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(check_package.problems(self.build(Path(directory)), dol(), "v9.9.9"), [])
+
+    def test_extra_missing_and_foreign_files_fail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            here = Path(directory)
+            for case in ({"extra": ".DS_Store"}, {"extra": "games/demo.iso"}, {"drop": "swiss/ui/"},
+                         {"drop": "swiss/patches/apploader.img"}, {"ipl": dol(revisions=2)}):
+                self.assertNotEqual(check_package.problems(self.build(here, **case), dol(), "v9.9.9"),
+                                    [], case)
+
+    def test_a_long_version_is_cut_to_the_header_field(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "Indigo-ci-d87bcf54.zip"
+            with zipfile.ZipFile(path, "w") as archive:
+                for name in sorted(check_package.LAYOUT):
+                    archive.writestr(name, {
+                        "ipl.dol": dol(),
+                        "swiss/patches/apploader.img": b"*indigo-ci-d87bc" + bytes(16) + b"image",
+                        "Indigo-README.txt": b"Indigo ci-d87bcf54 - an unofficial fork\n",
+                    }.get(name, b""))
+            self.assertEqual(check_package.problems(path, dol(), "ci-d87bcf54"), [])
+
+    def test_the_version_must_match(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(len(check_package.problems(self.build(Path(directory)), dol(), "v1.0.0")), 2)
+
+
+GOOD_WORKFLOW = """\
+on:
+  pull_request:
+env:
+  TOOLCHAIN: example.invalid/libogc2@sha256:{digest}
+jobs:
+  build:
+    runs-on: [self-hosted, indigo-build]
+    steps:
+      - uses: actions/checkout@{sha} # v7
+  emulator:
+    runs-on:
+      - self-hosted
+      - indigo-emulator
+    steps:
+      - run: true
+"""
+
+
+class Workflows(unittest.TestCase):
+    def root(self, directory: Path, workflow: str) -> Path:
+        (directory / "buildtools/ci/runner").mkdir(parents=True)
+        (directory / ".github/workflows").mkdir(parents=True)
+        image = "example.invalid/libogc2@sha256:" + "1" * 64
+        (directory / "buildtools/ci/runner/build.Dockerfile").write_text(
+            f'FROM {image}\nRUN echo "{image}" > /etc/indigo-ci/toolchain\n')
+        (directory / ".github/workflows/ci.yml").write_text(workflow)
+        return directory
+
+    def check(self, workflow: str) -> list[str]:
+        with tempfile.TemporaryDirectory() as directory:
+            return check_workflows.problems(self.root(Path(directory), workflow))
+
+    def good(self) -> str:
+        return GOOD_WORKFLOW.format(digest="1" * 64, sha="a" * 40)
+
+    def test_our_runners_pinned_actions_and_the_runner_toolchain_pass(self):
+        self.assertEqual(self.check(self.good()), [])
+
+    def test_each_breach_is_caught(self):
+        good = self.good()
+        for bad in (good.replace("[self-hosted, indigo-build]", "ubuntu-24.04"),
+                    good.replace("[self-hosted, indigo-build]", "[self-hosted]"),
+                    good.replace("      - indigo-emulator\n", ""),
+                    good.replace("@" + "a" * 40, "@v7"),
+                    good.replace("  pull_request:", "  pull_request_target:"),
+                    good.replace("    steps:\n      - uses", "    container: debian\n    steps:\n      - uses", 1),
+                    good.replace("1" * 64, "2" * 64, 1)):
+            self.assertNotEqual(self.check(bad), [], bad)
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class Release(unittest.TestCase):
+    """release.yml sends vX.Y.Z to main and betas and release candidates to beta,
+    and release_notes.sh says which kind of pre-release a tag is."""
+
+    def channel(self, tag: str):
+        text = (ROOT / ".github/workflows/release.yml").read_text()
+        stable, pre = re.findall(r"grep -Eqx '([^']+)'", text)[:2]
+        if re.fullmatch(stable, tag):
+            return "main"
+        return "beta" if re.fullmatch(pre, tag) else None
+
+    def test_tags_and_their_channels(self):
+        for tag, channel in (("v2.0.0", "main"), ("v2.0.0-beta.3", "beta"), ("v2.0.0-rc.1", "beta"),
+                             ("v2.0.0-rc", None), ("v2.0-rc.1", None), ("v2.0.0-RC.1", None),
+                             ("2.0.0", None)):
+            self.assertEqual(self.channel(tag), channel, tag)
+
+    def notes(self, tag: str, entry: str = "- Something new.") -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "CHANGELOG.md").write_text(f"# Changelog\n\n## Unreleased\n\n{entry}\n")
+            return subprocess.run(["sh", str(ROOT / "buildtools/release_notes.sh"), tag], cwd=tmp,
+                                  capture_output=True, text=True, check=True).stdout
+
+    def test_each_pre_release_says_what_it_is(self):
+        self.assertIn("> **Release candidate.** v2.0.0 as it is meant to ship", self.notes("v2.0.0-rc.1"))
+        self.assertIn("> **Beta.** A pre-release", self.notes("v2.0.0-beta.1"))
+        for tag in ("v2.0.0-rc.1", "v2.0.0-beta.1"):
+            notes = self.notes(tag)
+            self.assertIn("- Something new.", notes)
+            self.assertIn(f"Indigo-{tag}.zip", notes)
+
+    def test_changelog_links_name_the_file_at_the_tag(self):
+        """The API and gh pass a relative link on as written, so a file in the
+        repository is linked at the tag by full URL; anchors and full URLs stay as written."""
+        notes = self.notes("v2.0.0-rc.1", "- See [RELEASING](docs/RELEASING.md), [the examples](docs/examples/),"
+                                          " [AGENTS.md](AGENTS.md#rules), [above](#install) and"
+                                          " [the site](https://norvitech.com/indigo/).")
+        repo = "https://github.com/spencercnorton/indigo"
+        self.assertIn(f"[RELEASING]({repo}/blob/v2.0.0-rc.1/docs/RELEASING.md)", notes)
+        self.assertIn(f"[the examples]({repo}/tree/v2.0.0-rc.1/docs/examples/)", notes)
+        self.assertIn(f"[AGENTS.md]({repo}/blob/v2.0.0-rc.1/AGENTS.md#rules)", notes)
+        self.assertIn("[above](#install)", notes)
+        self.assertIn("[the site](https://norvitech.com/indigo/)", notes)
+        self.assertNotIn("](docs/", notes)
+
+    def test_install_keeps_the_card_safe(self):
+        """Someone new to Indigo renames the Swiss already on the card before anything
+        is copied over it, and a Mac's Replace, which deletes the card's games and
+        swiss folders, is warned about."""
+        install = self.notes("v2.0.0-rc.1").split("## Install", 1)[1]
+        self.assertLess(install.index("**New to Indigo:**"), install.index("Rename it to `z.dol`"))
+        self.assertLess(install.index("Rename it to `z.dol`"), install.index("drag it onto the root"))
+        self.assertIn("choose **Merge**", install)
+        self.assertIn("nothing else in it or in the game folders", install)
+        self.assertIn("Updating from Indigo 1.x", install)
+
+
+if __name__ == "__main__":
+    unittest.main()

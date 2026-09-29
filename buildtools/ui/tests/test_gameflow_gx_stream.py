@@ -8,7 +8,8 @@ and log what is drawn. The tests then check:
 
 - Horizontal draws exactly what the base commit's renderer drew, frame for
   frame, through moves, wraps, pages, Detail and every motion mode: only the
-  Library's command line is new.
+  Library's command line and the edits in BASE_EDITS are new.
+- Horizontal shows two covers either side of the selected one.
 - Vertical and Grid place their cards where the layouts say, show every card
   a user can see with its cover, never draw a card twice at rest, and move
   without a card jumping when the selection changes (a small grid wraps round
@@ -33,8 +34,25 @@ GUI = ROOT / "cube/swiss/source/gui"
 # reference the Horizontal layout must reproduce. Move it forward on purpose,
 # and only when the carousel's own drawing changes.
 BASE = "v1.22.0"
+# The carousel's deliberate changes since BASE, made to its tree before it is
+# built: (file, text found exactly once, replacement). The second card either
+# side became a receding card with its cover (or banner) and settings mark.
+BASE_EDITS = (
+    ("FrameBufferMagic.c",
+     "{{{32.0f, 159.0f}, {52.0f, 151.0f}, {52.0f, 266.0f}, {32.0f, 258.0f}}},",
+     "{{{14.0f, 151.0f}, {72.0f, 143.0f}, {72.0f, 273.0f}, {14.0f, 265.0f}}},"),
+    ("FrameBufferMagic.c",
+     "{{{588.0f, 151.0f}, {608.0f, 159.0f}, {608.0f, 258.0f}, {588.0f, 266.0f}}},",
+     "{{{568.0f, 143.0f}, {626.0f, 151.0f}, {626.0f, 265.0f}, {568.0f, 273.0f}}},"),
+    ("FrameBufferMagic.c", "if(distance >= 1.5f) {", "if(distance >= 3.0f) {"),
+    ("FrameBufferMagic.c", "if(fabsf(cards[i].visualSlot) < 1.5f &&",
+     "if(fabsf(cards[i].visualSlot) < 3.0f &&"),
+    ("ui_gameflow_library.c", "if(distance >= 1.5f) {", "if(distance >= 3.0f) {"),
+)
 PURE = ("ui_gameflow.c", "ui_motion.c", "ui_gameflow_library.c",
         "ui_command_rail.c", "ui_gameflow_detail.c", "ui_game_history.c")
+# The current renderer also draws the launch screen (test_launch_gx_stream.py).
+LAUNCH = ("ui_launch.c", "ui_stage.c")
 
 
 def between(source: str, start: str, end: str, inclusive: bool = False) -> str:
@@ -70,6 +88,10 @@ PRELUDE = r"""
 #include "ui_gameflow_library.h"
 #include "ui_command_rail.h"
 #include "ui_scene.h"
+#if LAYOUTS
+#include "ui_launch.h"
+#include "ui_stage.h"
+#endif
 
 typedef int8_t s8;
 typedef struct { u8 r, g, b, a; } GXColor;
@@ -78,7 +100,7 @@ typedef struct { u8 r, g, b, a; } GXColor;
 #define ALIGN_CENTER 1
 #define ALIGN_RIGHT 2
 #define UI_COLOR_INDIGO 0
-enum { GX_QUADS = 0x80, GX_VTXFMT0 = 0, GX_TEXMAP0 = 0, GX_BM_BLEND = 1,
+enum { GX_QUADS = 0x80, GX_TRIANGLESTRIP = 0x98, GX_VTXFMT0 = 0, GX_TEXMAP0 = 0, GX_BM_BLEND = 1,
 	GX_BL_SRCALPHA = 4, GX_BL_INVSRCALPHA = 5, GX_LO_CLEAR = 0,
 	GX_TF_RGB5A3 = 5, GX_CLAMP = 0, GX_FALSE = 0, GX_LINEAR = 1, GX_NEAR = 0 };
 static struct { int uiColor; } swissSettings;
@@ -96,9 +118,10 @@ static void GX_InvalidateTexAll(void) { CHECK(!active); }
 static void GX_LoadTexObj(GXTexObj *texture, int map) { CHECK(!active); (void)map; fprintf(out, "X %s\n", (const char *)texture->data); }
 static void GX_Begin(int primitive, int format, int count)
 {
-	CHECK(!active && primitive == GX_QUADS && format == GX_VTXFMT0 && count > 0 && count % 4 == 0);
+	CHECK(!active && format == GX_VTXFMT0 && count > 0 && (primitive == GX_QUADS ?
+		count % 4 == 0 : primitive == GX_TRIANGLESTRIP && count >= 4 && count % 2 == 0));
 	active = true; declared = count; emitted = 0; phase = 0;
-	fprintf(out, "B %d\n", count);
+	fprintf(out, primitive == GX_QUADS ? "B %d\n" : "B %d strip\n", count);
 }
 static void GX_Position3f32(float x, float y, float z)
 {
@@ -129,13 +152,16 @@ static float GetTextScaleToFitInWidthWithMax(const char *text, int width, float 
 	float scale = size < (float)width ? 1.0f : (float)width / size;
 	return scale < maximum ? scale : maximum;
 }
-/* Every seventh game has no cover, so the fallback art is drawn too. */
+/* Every seventh game has no cover, so the fallback art is drawn too. The
+ * launch test closes the pack, as the hand-off does. */
 static GXTexObj covers[1000];
 static char coverIds[1000][8];
+static bool packClosed;
 uiPosterResult_t UIAssets_Query(const char *id, size_t length, bool bnr, uiPosterHandle_t *handle)
 {
 	int n = atoi(id + 1);
 	(void)bnr;
+	if(packClosed) return UI_POSTER_CORRUPT_OR_UNAVAILABLE;
 	if(length < 6 || id[0] != 'G' || n % 7 == 3) return UI_POSTER_PROCEDURAL_CARD;
 	handle->slot = (u16)n; handle->generation = 1u;
 	return UI_POSTER_EXACT;
@@ -256,9 +282,10 @@ int main(void)
 """
 
 
-def build(work: Path, gui: Path, frame_c: str, frame_h: str, layouts: bool, name: str) -> Path:
+def build(work: Path, gui: Path, frame_c: str, frame_h: str, layouts: bool, name: str,
+          driver: str = DRIVER) -> Path:
     source = work / f"{name}.c"
-    source.write_text(PRELUDE + renderer(frame_c, frame_h) + DRIVER)
+    source.write_text(PRELUDE + renderer(frame_c, frame_h) + driver)
     binary = work / name
     flags = ["-std=gnu11", "-O1", "-Wall", "-Wextra", "-Wno-unused-function",
              "-Wno-unused-parameter", "-fsanitize=address,undefined",
@@ -268,7 +295,8 @@ def build(work: Path, gui: Path, frame_c: str, frame_h: str, layouts: bool, name
         flags += ["-fno-pie", "-no-pie"]
     result = subprocess.run(shlex.split(os.environ.get("CC", "cc")) + flags +
                             ["-o", str(binary), str(source)] +
-                            [str(gui / pure) for pure in PURE] + ["-lm"],
+                            [str(gui / pure) for pure in PURE + (LAUNCH if layouts else ())] +
+                            ["-lm"],
                             capture_output=True, text=True, timeout=180)
     if result.returncode:
         raise AssertionError(result.stderr[-4000:])
@@ -333,6 +361,11 @@ class GameflowGxStream(unittest.TestCase):
             raise AssertionError(archive.stderr.decode()[-2000:])
         subprocess.run(["tar", "-x", "-C", str(base)], input=archive.stdout, check=True)
         base_gui = base / "cube/swiss/source/gui"
+        for name, old, new in BASE_EDITS:
+            text = (base_gui / name).read_text()
+            if text.count(old) != 1:
+                raise AssertionError(f"{BASE} {name}: {old!r} is not there exactly once")
+            (base_gui / name).write_text(text.replace(old, new))
         cls.base = build(work, base_gui, (base_gui / "FrameBufferMagic.c").read_text(),
                          (base_gui / "FrameBufferMagic.h").read_text(), False, "base")
 
@@ -364,6 +397,24 @@ class GameflowGxStream(unittest.TestCase):
                     hints += 1
         self.assertEqual(len(frames(now)), len(frames(before)))
         self.assertGreater(hints, 300)
+
+    def test_horizontal_shows_two_covers_either_side(self):
+        log = self.run_script(["L 0 40 20", "N 40 0.0167"])
+        rest = covers(frames(log)[-1])
+        games = [f"G{i:03d}E0" for i in range(18, 23)]
+        self.assertEqual(set(rest), set(games))
+        for game in games:
+            self.assertEqual(len(rest[game]), 1, game)
+            self.assertTrue(0 <= rest[game][0][0] and rest[game][0][2] <= 640, game)
+        self.assertEqual([centre(rest[g][0])[0] for g in games],
+                         sorted(centre(rest[g][0])[0] for g in games))
+        # The second either side is a card turned away, not an edge-on sliver.
+        for game in (games[0], games[-1]):
+            self.assertGreaterEqual(rest[game][0][2] - rest[game][0][0], 50, game)
+        # A game without a cover shows its banner or emblem there instead.
+        log = self.run_script(["L 0 40 19", "N 40 0.0167"])
+        self.assertNotIn("G017E0", covers(frames(log)[-1]))
+        self.assertEqual(frames(log)[-1].count("B 24\n"), 1)
 
     def test_vertical_column(self):
         log = self.run_script(["L 1 40 12", "N 40 0.0167"])
@@ -520,9 +571,11 @@ class GameflowGxStream(unittest.TestCase):
                                                      "_GameflowSamplePose(slot) :"),
             "the highlight stays put": ("_GameflowGridQuad(frame->columnPosition, 0.0f,\n\t\t1.0f);",
                                         "_GameflowGridQuad(0.0f, 0.0f,\n\t\t1.0f);"),
+            "the row's second covers stay hidden": ("fabsf(slot) < 1.5f : fabsf(slot) < 3.0f;",
+                                                    "fabsf(slot) < 1.5f : fabsf(slot) < 1.5f;"),
         }
         tests = (self.test_grid_rows_and_highlight, self.check_all_grid_moves,
-                 self.test_vertical_column)
+                 self.test_vertical_column, self.test_horizontal_shows_two_covers_either_side)
         original = self.binary
         try:
             for index, (name, (old, new)) in enumerate(mutants.items()):

@@ -6,7 +6,7 @@ A on a game in the [Library](library.md) opens its details: everything about
 that one game, and every way to start it, on one screen.
 
 <p align="center">
-  <img alt="The detail screen for 1080° Avalanche: the cover on the left; on the right the title, the publisher, Audio Streaming, Last played, Save data, Settings reading Game Defaults with X Change for this game, Cheats with 2 of 12 enabled and the first of them named, and a Launch Game button; below the cover a Shortcuts box with R Verify and L + A Clean Boot; the hint line reads A Launch, B Library, X Settings, Y Cheats." src="images/game-details.png" width="640">
+  <img alt="The detail screen for 1080° Avalanche: the cover on the left; on the right the title, the publisher, Audio Streaming, Last played, Save data, Settings reading Game Defaults with X Change for this game, Cheats with 2 of 12 enabled and the first of them named, and a Launch Game button in a bright frame, the row the D-pad is on; below the cover a Shortcuts box with R Verify and L + A Clean Boot; the hint line reads D-pad Move, A Select, B Library, X Settings, Y Cheats." src="images/game-details.png" width="640">
 </p>
 
 ## What's on the screen
@@ -21,33 +21,55 @@ that one game, and every way to start it, on one screen.
   play recorded". Indigo records it when your settings live on the card the
   game starts from, as with a single SD card. With no settings device to
   read it from, it says "History unavailable".
-- **Save data**: "Check in game". Indigo doesn't read your memory cards, so
-  the game itself is where to look.
+- **Save data**: "Check in game". This screen doesn't look for the game's
+  saves; System › [Memory Cards](memory-cards.md) lists the saves on your
+  memory cards.
 - **Settings**: "Game Defaults" while the game follows them, or how many of
   its settings are its own and the first of them, such as "1 custom" and
   "Force Video Mode: 480p". See [below](#this-games-own-settings).
 - **Cheats**: how many of the game's cheats are on and the names of the first
   ones, or "Y Choose cheats" when none are. It reads "No cheats found" when
   there's no cheat file for the game. See [Cheats](cheats.md).
-- **Launch Game**, the button A presses.
+- **Launch Game**, where the screen opens (below).
 - **Shortcuts**: the extra ways to start or check the game (below).
 
 ## Start the game
 
-Press **A**. Indigo applies the game's settings and your cheats, then starts
-it.
+The screen opens with a bright frame on **Launch Game**: press **A** to
+start the game. The details make way for the game's cover, centred in a
+ring that fills as Indigo applies the game's settings and your cheats,
+prepares the game and loads it. One line under the title says which step
+it's on, such as "Checking game" or "Loading game". If the game's patches
+live on another card than the game, that card is named under it ("Do not
+remove SD Card - SD2SP2"): leave it in until the game is running. When the
+ring is full the screen fades to black and the game starts. With
+[UI Motion](personalize.md#motion) set to Off, the ring fills in steps
+without its glint, and the screen goes straight to black.
+
+<p align="center">
+  <img alt="A on Launch Game for 1080° Avalanche: the details have made way for its cover, centred in a ring that is filling, with the title, the publisher and the step under it, Loading game." src="images/game-details-launch.png" width="640">
+</p>
+
+If the game can't start, a message says why, and then the Library comes
+back.
+
+Up and down on the D-pad or the control stick move the frame between
+**Launch Game**, **Cheats** and **Settings**, and **A** opens the one it's
+on. Cheats is passed over when the game has none. The other buttons on this
+page (X, Y, Z, R, L + A and B) work wherever the frame is, and the frame is
+still where you left it when you come back from Settings or Cheats.
 
 **L + A** is a clean boot, shown when the game is in the disc drive (or a
 drive replacement that sits in its place). The console resets and starts the
 game the normal way, with nothing changed: no patches, cheats or forced
 video modes. Region restrictions apply. If a game should always start this
-way, turn on **Prefer Clean Boot** in its own settings; A then reads
-**Clean Boot**.
+way, turn on **Prefer Clean Boot** in its own settings; Launch Game then
+reads **Clean Boot**.
 
 To start games straight from the Library without this screen, turn on
-**Boot without prompts** in Settings › Quick. Hold B while you choose a game
-to see its details anyway; that turns Boot without prompts off until you
-restart.
+**Boot without prompts** in Settings › Quick; the cover and its ring show
+all the same. Hold B while you choose a game to see its details anyway; that
+turns Boot without prompts off until you restart.
 
 ## This game's own settings
 

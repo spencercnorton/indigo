@@ -72,11 +72,14 @@ char *get_fst(file_handle *file, u32 file_offset, u32 file_size) {
 }
 
 // Populate the file_offset and file_size for searchFileName from the GCM FST
-void get_fst_details(char *FST, char *searchFileName, u32 *file_offset, u32 *file_size) {
+void get_fst_details(char *FST, u32 fst_size, char *searchFileName, u32 *file_offset, u32 *file_size) {
 	u32 filename_offset, entries, string_table_offset, offset, i;
-	char filename[256];
-	// number of entries and string table location
+	*file_offset = -1;
+	// number of entries and string table location, both inside the FST: a
+	// damaged or header-only image can declare an FST of any size
+	if(fst_size < 12) return;
 	entries = *(unsigned int*)&FST[8];
+	if(entries > fst_size / 12) return;
 	string_table_offset=12*entries; 
     
 	// go through every entry
@@ -86,9 +89,11 @@ void get_fst_details(char *FST, char *searchFileName, u32 *file_offset, u32 *fil
 		if(FST[offset]==0) //skip directories
 		{ 
 			filename_offset=(unsigned int)FST[offset+1]*256*256+(unsigned int)FST[offset+2]*256+(unsigned int)FST[offset+3]; 
-			memset(filename,0,256);
-			strcpy(filename,&FST[string_table_offset+filename_offset]); 
-			if(!strcasecmp(filename,searchFileName)) 
+			// the name must start and end inside the string table
+			if(filename_offset >= fst_size - string_table_offset ||
+			   !memchr(&FST[string_table_offset+filename_offset], 0, fst_size - string_table_offset - filename_offset))
+				continue;
+			if(!strcasecmp(&FST[string_table_offset+filename_offset],searchFileName))
 			{
 				memcpy(file_offset,&FST[offset+4],4);
 				memcpy(file_size,&FST[offset+8],4);
@@ -96,7 +101,6 @@ void get_fst_details(char *FST, char *searchFileName, u32 *file_offset, u32 *fil
 			}		
 		} 
 	}
-	*file_offset = -1;
 }
 
 //Lets parse the entire game FST in search for the banner
@@ -104,7 +108,7 @@ void get_gcm_banner(file_handle *file, DiskHeader *diskHeader, u32 *file_offset,
 	char *FST = get_fst(file, diskHeader->FSTOffset, diskHeader->FSTSize);
 	if(!FST) return;
 	
-	get_fst_details(FST, "opening.bnr", file_offset, file_size);
+	get_fst_details(FST, diskHeader->FSTSize, "opening.bnr", file_offset, file_size);
 	free(FST);
 }
 
@@ -117,7 +121,7 @@ void parse_gcm_add(file_handle *file, ExecutableFile *filesToPatch, int *numToPa
 	if(!FST) return;
 	
 	u32 file_offset, file_size;
-	get_fst_details(FST, fileName, &file_offset, &file_size);
+	get_fst_details(FST, diskHeader->FSTSize, fileName, &file_offset, &file_size);
 	free(FST);
 	free(diskHeader);
 	if(file_offset != -1) {

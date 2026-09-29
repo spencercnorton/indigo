@@ -98,6 +98,9 @@ run_plain() {
 	./test_ui_clock
 	./test_ui_hint
 
+	echo "== widescreen stage (plain) =="
+	./test_ui_stage
+
 	echo "== Home reducer, lifecycle, layout, scene, and command rail (plain) =="
 	./test_ui_home
 	./test_ui_cube_motif
@@ -119,6 +122,9 @@ run_plain() {
 
 	echo "== cheat identity, launch policy, and bounded writer (plain) =="
 	./test_cheat_policy
+
+	echo "== launch screen steps, pinned to Swiss's messages (plain) =="
+	./test_ui_launch
 }
 
 run_sanitized() {
@@ -151,6 +157,9 @@ run_sanitized() {
 	./test_ui_clock_san
 	./test_ui_hint_san
 
+	echo "== widescreen stage (ASan/UBSan) =="
+	./test_ui_stage_san
+
 	echo "== Home reducer, lifecycle, layout, scene, and command rail (ASan/UBSan) =="
 	./test_ui_home_san
 	./test_ui_cube_motif_san
@@ -172,6 +181,9 @@ run_sanitized() {
 
 	echo "== cheat identity, launch policy, and bounded writer (ASan/UBSan) =="
 	./test_cheat_policy_san
+
+	echo "== launch screen steps, pinned to Swiss's messages (ASan/UBSan) =="
+	./test_ui_launch_san
 }
 
 run_contracts() {
@@ -179,6 +191,8 @@ run_contracts() {
 	python3 ./test_history_persistence.py
 	echo "== cheat panel GX vertex stream and geometry =="
 	python3 ./test_cheats_gx_stream.py
+	echo "== Source picker: GX stream, sliding row, both screen shapes =="
+	python3 ./test_source_picker_gx_stream.py
 	echo "== native stroke GX stream and perspective coverage =="
 	python3 ./test_stroke_gx_stream.py
 	echo "== wave and grid native coverage =="
@@ -189,6 +203,8 @@ run_contracts() {
 	python3 ./test_frame_copy_clear.py
 	echo "== Library layouts: GX stream, poses, motion, Horizontal unchanged =="
 	python3 ./test_gameflow_gx_stream.py
+	echo "== launch screen: GX stream in both screen shapes =="
+	python3 ./test_launch_gx_stream.py
 	echo "== Library layouts: navigation and state mutants =="
 	python3 ./test_gameflow_layout_mutants.py
 	echo "== cube orientation and visible face binding =="
@@ -199,6 +215,8 @@ run_contracts() {
 	python3 ./test_settings_views.py
 	echo "== Menu Color: Indigo's colors turn, meanings and neutrals stay =="
 	python3 ./test_ui_color.py
+	echo "== menu music: a stream the console can seek and loop =="
+	python3 ./test_menu_music.py
 	echo "== settings semantics audit =="
 	./audit_settings_semantics.sh
 

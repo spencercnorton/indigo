@@ -37,6 +37,7 @@
 #include "ui_color.h"
 #include "ui_perf.h"
 #include "ui_scene.h"
+#include "ui_stage.h"
 #include "ui_hint.h"
 #include "ui_assets.h"
 #include "ui_command_rail.h"
@@ -46,6 +47,7 @@
 #include "ui_gameflow_detail.h"
 #include "ui_gameflow_library.h"
 #include "ui_cheats.h"
+#include "ui_launch.h"
 
 #define GUI_MSGBOX_ALPHA 225
 #define GUI_PANEL_ALPHA 150	// Phase 2: translucent content panels (config-gated; dialogs stay at GUI_MSGBOX_ALPHA)
@@ -289,20 +291,36 @@ static const char homeConfirmCommand[] =
 static const char homeRestartConsequence[] =
 	"RELOADS INDIGO AND ENDS THIS SESSION";
 
-typedef struct drawDeviceSelectorEvent {
-	DEVICEHANDLER_INTERFACE *device;
-	bool destination;
+/* One device the Source picker lists, copied when the menu thread publishes:
+ * FTP, SMB and FSP change their picture, name and place as they probe, so
+ * the video thread never reads a device handler. */
+typedef struct {
+	textureImage picture;
+	char name[40];
+	char facts[48];		/* what it can do, and where it plugs in */
+	char status[48];	/* DETECTED or NOT DETECTED, CURRENT, SETTINGS */
+	float nameScale;
+	bool detected;
+} drawDeviceTile_t;
+
+typedef struct {
+	drawDeviceTile_t tiles[MAX_DEVICES];
+	char hint[112];
+	float hintScale;
+	int count;
+	int travel;	/* the focus, unwrapped: a step moves it by one */
 	bool showAllDevices;
 	bool inAdvanced;
-	bool exiSpeed;
-	bool available;
-	char capability[64];
-	char actionHint[64];
-	char auxiliaryHint[48];
-	float deviceNameScale;
-	float capabilityScale;
-	float actionScale;
-	float auxiliaryScale;
+	bool exiFast;
+} drawDeviceSelectorSnapshot_t;
+
+typedef struct drawDeviceSelectorEvent {
+	drawDeviceSelectorSnapshot_t snapshot;
+	bool destination;
+	/* The video thread's own. */
+	uiMotionSpring_t position;
+	bool started;
+	bool shownAll;
 } drawDeviceSelectorEvent_t;
 
 typedef struct drawTooltipEvent {
@@ -342,6 +360,8 @@ typedef struct drawGameflowEvent {
 	drawGameflowCardPresentation_t
 		cardPresentation[UI_GAMEFLOW_RENDER_SLOTS];
 	GXTexObj detailBannerTexObj;
+	/* Outside the snapshot, so a republished Detail keeps it. */
+	uiGameflowDetailFocus_t detailFocus;
 } drawGameflowEvent_t;
 
 typedef struct drawPresentationEvent {
@@ -368,6 +388,7 @@ typedef struct drawMsgBoxEvent {
 typedef struct drawProgressEvent {
 	bool indeterminate;
 	bool miniMode;
+	bool hidden;	/* a launch's: the launch screen shows its step */
 	int miniModePos;
 	int miniModeAlpha;
 	int percent;
@@ -600,6 +621,7 @@ static void drawInit()
 	GX_LoadTexMtxImm(GXmodelView2D,GX_TEXMTX0,GX_MTX2x4);
 	GX_LoadPosMtxImm(GXmodelView2D,GX_PNMTX0);
 	guOrtho(GXprojection2D, 0, 480, 0, 640, 0, 1);
+	UIStage_Project(GXprojection2D);
 	GX_LoadProjectionMtx(GXprojection2D, GX_ORTHOGRAPHIC);
 
 	GX_SetZMode(GX_DISABLE,GX_ALWAYS,GX_FALSE);
@@ -928,124 +950,6 @@ const char *DeviceDisplayName(const DEVICEHANDLER_INTERFACE *device)
 }
 
 
-static void _DrawDeviceSelectorCard(uiDrawObj_t *evt)
-{
-	drawDeviceSelectorEvent_t *data = (drawDeviceSelectorEvent_t*)evt->data;
-	DEVICEHANDLER_INTERFACE *device = data->device;
-	float reveal = UIScene_Frame()->chromeProgress;
-	int offsetY;
-	u8 alpha;
-	GXColor primary;
-	GXColor secondary;
-	GXColor muted;
-
-	if(!device || reveal <= 0.0f) {
-		return;
-	}
-	if(reveal > 1.0f) {
-		reveal = 1.0f;
-	}
-	offsetY = (int)((1.0f - reveal) * 20.0f);
-	alpha = (u8)(255.0f * reveal);
-	primary = (GXColor) {246, 243, 255, alpha};
-	secondary = (GXColor) {216, 207, 255, (u8)(alpha * 0.96f)};
-	muted = (GXColor) {178, 166, 224, (u8)(alpha * 0.88f)};
-
-	/* The IPL font remains a crisp screen-space overlay. Thin rails visually
-	 * attach it to the cube without perspective-distorting text at 480i. */
-	drawStringMedium(320, 70 + offsetY,
-		data->destination ? "DEST" : "SOURCE",
-		0.62f, ALIGN_CENTER, secondary);
-	if(data->inAdvanced) {
-		drawStringMedium(174, 220, "\213", 0.90f, ALIGN_RIGHT, muted);
-		drawStringMedium(502, 220, "\233", 0.90f, ALIGN_LEFT, muted);
-	}
-	else {
-		drawStringMedium(174, 220, "\213", 0.90f, ALIGN_RIGHT, secondary);
-		drawStringMedium(502, 220, "\233", 0.90f, ALIGN_LEFT, secondary);
-	}
-
-	drawStringMedium(320, 379 + offsetY, DeviceDisplayName(device),
-		data->deviceNameScale, ALIGN_CENTER, primary);
-	drawStringMedium(320, 398 + offsetY, data->capability,
-		data->capabilityScale, ALIGN_CENTER,
-		data->available ? secondary : muted);
-	_DrawHintText(320, 419 + offsetY, data->actionHint,
-		data->actionScale,
-		ALIGN_CENTER, muted);
-
-	_DrawHintText(28, 446,
-		data->showAllDevices ? "Z  ONLY" : "Z  ALL",
-		0.48f, ALIGN_LEFT,
-		data->showAllDevices ? primary : muted);
-	_DrawHintText(320, 446, "B  BACK", 0.48f, ALIGN_CENTER, muted);
-	if(data->auxiliaryHint[0]) {
-		_DrawHintText(612, 446, data->auxiliaryHint, data->auxiliaryScale,
-			ALIGN_RIGHT,
-			data->inAdvanced ? primary : muted);
-	}
-}
-
-uiDrawObj_t* DrawDeviceSelectorCard(DEVICEHANDLER_INTERFACE *device,
-		bool destination, bool showAllDevices, bool inAdvanced)
-{
-	drawDeviceSelectorEvent_t *eventData = calloc(1, sizeof(drawDeviceSelectorEvent_t));
-	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
-
-	eventData->device = device;
-	eventData->destination = destination;
-	eventData->showAllDevices = showAllDevices;
-	eventData->inAdvanced = inAdvanced;
-	eventData->exiSpeed = !!swissSettings.exiSpeed;
-	eventData->available = deviceHandler_getDeviceAvailable(device);
-	if(!eventData->available) {
-		strcpy(eventData->capability, "NOT DETECTED");
-	}
-	else if(inAdvanced && (device->features & FEAT_EXI_SPEED)) {
-		snprintf(eventData->capability, sizeof(eventData->capability),
-			"EXI  %s", eventData->exiSpeed ? "27 MHz" : "13.5 MHz");
-	}
-	else if(device->features & FEAT_BOOT_GCM) {
-		strcpy(eventData->capability,
-			(device->features & FEAT_AUDIO_STREAMING) ?
-			"BOOT + STREAM" : "BOOT READY");
-	}
-	else {
-		strcpy(eventData->capability, "FILES READY");
-	}
-	if(inAdvanced) {
-		strcpy(eventData->actionHint, "A  DONE");
-	}
-	else if(!eventData->available) {
-		strcpy(eventData->actionHint, "A  TRY");
-	}
-	else if(destination) {
-		strcpy(eventData->actionHint, "A  SELECT");
-	}
-	else {
-		strcpy(eventData->actionHint, "A  OPEN");
-	}
-	if((device->features & FEAT_EXI_SPEED) && device->details) {
-		strcpy(eventData->auxiliaryHint, "X  EXI  \267  Y  INFO");
-	}
-	else if(device->features & FEAT_EXI_SPEED) {
-		strcpy(eventData->auxiliaryHint, "X  EXI");
-	}
-	else if(device->details) {
-		strcpy(eventData->auxiliaryHint, "Y  INFO");
-	}
-	eventData->deviceNameScale =
-		GetTextScaleToFitInWidthWithMax(DeviceDisplayName(device), 280, 0.76f);
-	eventData->capabilityScale =
-		GetTextScaleToFitInWidthWithMax(eventData->capability, 300, 0.52f);
-	eventData->actionScale = GetHintScaleToFitInWidthWithMax(eventData->actionHint, 280, 0.50f);
-	eventData->auxiliaryScale = eventData->auxiliaryHint[0] ?
-		GetHintScaleToFitInWidthWithMax(eventData->auxiliaryHint, 190, 0.48f) : 0.0f;
-	event->type = EV_DEVICESELECTOR;
-	event->data = eventData;
-	return event;
-}
-
 // External
 uiDrawObj_t* DrawImage(int textureId, int x, int y, int width, int height, int depth, float s1, float s2, float t1, float t2, int centered)
 {
@@ -1129,6 +1033,9 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 	int y1 = ((480/2) - (PROGRESS_BOX_HEIGHT/2));
 	int y2 = ((480/2) + (PROGRESS_BOX_HEIGHT/2));
 
+	if(data->hidden) {
+		return;
+	}
 	if(data->miniMode) {	
 		int x = 30, y = 420;
 		if(data->miniModePos == PROGRESS_BOX_TOPRIGHT) {
@@ -1206,6 +1113,11 @@ uiDrawObj_t* DrawProgressBar(bool indeterminate, int percent, const char *messag
 	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
 	event->type = EV_PROGRESS;
 	event->data = eventData;
+	/* During a launch the launch screen shows a looping bar's step. */
+	if(indeterminate && DrawLaunchStep(message)) {
+		eventData->hidden = true;
+		return event;
+	}
 	if(message && strlen(message) > 0) {
 		sprintf(txtbuffer, "%s", message);
 		// Add child component(s) for label(s)
@@ -1305,6 +1217,7 @@ static void _DrawPresentation(uiDrawObj_t *evt)
 	uiMotionMode_t motionMode;
 	u32 activeCell = 0u;
 	u32 i;
+	int scrimLeft;
 
 	if(data == NULL) {
 		return;
@@ -1319,7 +1232,10 @@ static void _DrawPresentation(uiDrawObj_t *evt)
 	}
 
 	drawInit();
-	_DrawSimpleBox(0, 0, 640, 480, 0, scrim, transparent);
+	/* The scrim covers the whole frame, the widescreen margins too. */
+	scrimLeft = (int)floorf(UIStage_Left());
+	_DrawSimpleBox(scrimLeft, 0, (int)ceilf(UIStage_Right()) - scrimLeft, 480, 0,
+		scrim, transparent);
 	_DrawSimpleBox(68, 115, 504, 254, 0, shadow, transparent);
 	_DrawSimpleBox(72, 111, 496, 254, 0, panel, border);
 	_DrawSimpleBox(72, 111, 6, 254, 0, accent, transparent);
@@ -2448,6 +2364,8 @@ static void _UpdateSystemInstrument(void)
 // Internal
 static void _DrawTitleBar(uiDrawObj_t *evt) {
 	float reveal = UIScene_Frame()->chromeProgress;
+	/* The dial sits 40 in from the right edge the frame shows. */
+	int dialX = (int)(UIStage_Right() - 40.0f);
 	int offsetY;
 	GXColor textColor;
 
@@ -2462,14 +2380,14 @@ static void _DrawTitleBar(uiDrawObj_t *evt) {
 	textColor = (GXColor) {209, 201, 255, (u8)(232.0f * reveal)};
 
 	/* A single pre-traversal instrument snapshot owns both header and cube. */
-	_DrawSystemDial(600.0f, 43.0f + offsetY, systemInstrument.coreTemperature, (u8)(255.0f * reveal));
+	_DrawSystemDial((float)dialX, 43.0f + offsetY, systemInstrument.coreTemperature, (u8)(255.0f * reveal));
 	if(systemInstrument.temperatureText[0]) {
-		drawStringMedium(600, 43 + offsetY,
+		drawStringMedium(dialX, 43 + offsetY,
 			systemInstrument.temperatureText,
 			0.42f, ALIGN_CENTER, textColor);
 	}
 	if(systemInstrument.clock.available) {
-		drawStringMedium(568, 43 + offsetY, systemInstrument.timeText,
+		drawStringMedium(dialX - 32, 43 + offsetY, systemInstrument.timeText,
 			0.54f, ALIGN_RIGHT, textColor);
 	}
 }
@@ -2516,11 +2434,11 @@ typedef struct gameflowRenderCard {
 
 static const gameflowQuad_t gameflowSlotPoses[7] = {
 	{{{-28.0f, 185.0f}, {10.0f, 174.0f}, {10.0f, 244.0f}, {-28.0f, 233.0f}}},
-	{{{32.0f, 159.0f}, {52.0f, 151.0f}, {52.0f, 266.0f}, {32.0f, 258.0f}}},
+	{{{14.0f, 151.0f}, {72.0f, 143.0f}, {72.0f, 273.0f}, {14.0f, 265.0f}}},
 	{{{78.0f, 132.0f}, {208.0f, 121.0f}, {208.0f, 295.0f}, {78.0f, 284.0f}}},
 	{{{230.0f, 88.0f}, {410.0f, 88.0f}, {410.0f, 328.0f}, {230.0f, 328.0f}}},
 	{{{432.0f, 121.0f}, {562.0f, 132.0f}, {562.0f, 284.0f}, {432.0f, 295.0f}}},
-	{{{588.0f, 151.0f}, {608.0f, 159.0f}, {608.0f, 258.0f}, {588.0f, 266.0f}}},
+	{{{568.0f, 143.0f}, {626.0f, 151.0f}, {626.0f, 265.0f}, {568.0f, 273.0f}}},
 	{{{630.0f, 174.0f}, {668.0f, 185.0f}, {668.0f, 233.0f}, {630.0f, 244.0f}}}
 };
 
@@ -3237,11 +3155,25 @@ static void _GameflowPutDetailPanel(int x, int y, int width, int height,
 		(float)y + (float)height}, edge);
 }
 
+static gameflowQuad_t _GameflowGrowQuad(const gameflowQuad_t *quad, float by);
+
 static void _GameflowDrawDetailPlanes(
 	const uiGameflowDetailSnapshot_t *detail,
 	const drawGameflowDetailPresentation_t *presentation,
-	const uiGameflowFrame_t *frame, float alpha)
+	const uiGameflowFrame_t *frame, float alpha,
+	uiGameflowDetailFocus_t focusRow)
 {
+	/* The rows the focus moves between, bottom up: Launch, Cheats, Settings. */
+	static const int rowTop[] = {348, 281, 232};
+	static const int rowHeight[] = {43, 59, 42};
+	float litTop = (float)rowTop[focusRow];
+	float litBottom = litTop + (float)rowHeight[focusRow];
+	gameflowQuad_t litRow = {{{260.0f, litTop}, {590.0f, litTop},
+		{590.0f, litBottom}, {260.0f, litBottom}}};
+	gameflowQuad_t litInner = _GameflowGrowQuad(&litRow, -2.0f);
+	gameflowQuad_t litGlow = _GameflowGrowQuad(&litRow, 2.0f);
+	gameflowQuad_t litHalo = _GameflowGrowQuad(&litGlow, 3.0f);
+	int row;
 	bool hasAdvanced = detail->advancedLineOne[0] != '\0' ||
 		detail->advancedLineTwo[0] != '\0';
 	float focus = _CurrentMotionMode() == UI_MOTION_FULL ?
@@ -3261,6 +3193,12 @@ static void _GameflowDrawDetailPlanes(
 		(u8)(((u16)presentation->accent.g + 255u) / 2u),
 		(u8)(((u16)presentation->accent.b + 255u) / 2u),
 		_GameflowAlpha(255.0f * alpha * focus)};
+	/* The Library grid's highlight colors: it reads across the room. */
+	GXColor litEdgeColor = {244, 239, 255, _GameflowAlpha(245.0f * alpha)};
+	GXColor litGlowColor = {196, 177, 255,
+		_GameflowAlpha(150.0f * alpha * focus)};
+	GXColor litHaloColor = {117, 88, 244,
+		_GameflowAlpha(78.0f * alpha * focus)};
 	bool hasSettings = detail->settingsSummary[0] != '\0';
 	u16 panelCount = (u16)(3u + (hasAdvanced ? 1u : 0u) +
 		(hasSettings ? 1u : 0u));
@@ -3272,17 +3210,26 @@ static void _GameflowDrawDetailPlanes(
 	ctaGlow.a = _GameflowAlpha(92.0f * alpha * focus);
 	drawInit();
 	_SetupRasterColor();
-	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(panelCount * 12u));
+	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(panelCount * 12u + 48u));
 		_GameflowPutDetailPanel(246, 76, 358, 328, 2,
 			panelGlow, panelFill, panelEdge);
-		if(hasSettings) {
-			_GameflowPutDetailPanel(260, 232, 330, 42, 2,
-				insetGlow, insetFill, insetEdge);
+		/* The focused row takes the bright edge and the glow, and the
+		 * grid's frame round it; Launch keeps its button fill. */
+		for(row = UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH;
+			row <= UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS; ++row) {
+			bool lit = row == (int)focusRow;
+
+			if(row == UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS && !hasSettings) {
+				continue;
+			}
+			_GameflowPutDetailPanel(260, rowTop[row], 330, rowHeight[row],
+				lit ? 4 : 2, lit ? ctaGlow : insetGlow,
+				row == UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH ? ctaFill : insetFill,
+				lit ? ctaEdge : insetEdge);
 		}
-		_GameflowPutDetailPanel(260, 281, 330, 59, 2,
-			insetGlow, insetFill, insetEdge);
-		_GameflowPutDetailPanel(260, 348, 330, 43, 4,
-			ctaGlow, ctaFill, ctaEdge);
+		_GameflowPutBorder(&litHalo, &litGlow, litHaloColor);
+		_GameflowPutBorder(&litGlow, &litRow, litGlowColor);
+		_GameflowPutBorder(&litRow, &litInner, litEdgeColor);
 		if(hasAdvanced) {
 			_GameflowPutDetailPanel(48, 350, 180, 52, 2,
 				insetGlow, insetFill, insetEdge);
@@ -3295,7 +3242,7 @@ static void _GameflowDrawDetailDashboard(
 	const uiGameflowDetailSnapshot_t *detail,
 	const drawGameflowDetailPresentation_t *presentation,
 	const uiGameflowFrame_t *frame, float reveal,
-	const uiCommandRailFrame_t *commandRail)
+	const uiCommandRailFrame_t *commandRail, uiGameflowDetailFocus_t focusRow)
 {
 	const char *launchText;
 	float launchScale;
@@ -3314,7 +3261,7 @@ static void _GameflowDrawDetailDashboard(
 	secondary = (GXColor) {202, 192, 244, _GameflowAlpha(235.0f * alpha)};
 	muted = (GXColor) {165, 158, 201, _GameflowAlpha(218.0f * alpha)};
 	focus = (GXColor) {244, 239, 255, _GameflowAlpha(255.0f * alpha)};
-	_GameflowDrawDetailPlanes(detail, presentation, frame, alpha);
+	_GameflowDrawDetailPlanes(detail, presentation, frame, alpha, focusRow);
 
 	drawStringMedium(264, 95, frame->launchProgress > 0.02f ?
 		"LAUNCHING" : "GAME DETAIL", 0.42f, ALIGN_LEFT, secondary);
@@ -3374,7 +3321,9 @@ static void _GameflowDrawDetailDashboard(
 		"STARTING GAME..." : detail->launchLabel;
 	launchScale = frame->launchProgress > 0.02f ?
 		0.56f : presentation->launchScale;
-	drawStringMedium(278, 369, "\267", 0.58f, ALIGN_LEFT, focus);
+	if(focusRow == UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH) {
+		drawStringMedium(278, 369, "\267", 0.58f, ALIGN_LEFT, focus);
+	}
 	_DrawHintText(425, 369, launchText, launchScale, ALIGN_CENTER, focus);
 
 	if(detail->advancedLineOne[0] != '\0' ||
@@ -3445,6 +3394,192 @@ static void _GameflowDrawGridHighlight(const uiGameflowFrame_t *frame,
 	drawInit();
 }
 
+/* The launch screen. From the A that starts a game to the hand-off, Game
+ * Detail gives way to the cover alone, centred in a glass ring that fills as
+ * Swiss works: its progress boxes become the ring's steps and one caption
+ * (_GameflowLaunchMessage), and only its warnings and failures still show as
+ * boxes. Launch mode turns it on and off; its state is written under
+ * _videomutex. */
+#define GAMEFLOW_LAUNCH_X 320.0f
+#define GAMEFLOW_LAUNCH_Y 188.0f
+#define GAMEFLOW_LAUNCH_RADIUS 136.0f
+/* The whole ring's segments: under a third of a pixel from a circle. */
+#define GAMEFLOW_LAUNCH_SEGMENTS 48
+#define GAMEFLOW_TURN 6.2831853f
+
+/* The cover, centred in the ring with a clear margin at its corners. */
+static const gameflowQuad_t gameflowLaunchPose = {{{248.0f, 92.0f},
+	{392.0f, 92.0f}, {392.0f, 284.0f}, {248.0f, 284.0f}}};
+static bool launchActive;
+static uiLaunch_t launchState;
+static GXTexObj launchPoster;
+static bool launchHasPoster;
+static float launchWarningScale;
+
+/* A launch starts from an empty ring and keeps the cover Detail shows now:
+ * ui_assets keeps a poster's texels until the video thread stops, so closing
+ * the pack for the hand-off can't swap it for the banner. */
+static void _GameflowSetLaunch(drawGameflowEvent_t *data, bool on)
+{
+	if(on && !launchActive) {
+		const uiGameflowCardSnapshot_t *record = _GameflowFindRecord(
+			&data->snapshot, UIGameflow_Frame(&data->state)->focusIndex, NULL);
+		GXTexObj *poster = record != NULL ?
+			_GameflowPosterTexture(record) : NULL;
+
+		UILaunch_Begin(&launchState);
+		launchWarningScale = 0.0f;
+		launchHasPoster = poster != NULL;
+		if(poster != NULL) {
+			launchPoster = *poster;
+		}
+	}
+	launchActive = on;
+}
+
+static void _GameflowLaunchMessage(const char *message)
+{
+	if(UILaunch_Message(&launchState, message) &&
+		launchState.warning[0] != '\0') {
+		launchWarningScale = _GameflowPrepareDetailText(launchState.warning,
+			sizeof(launchState.warning), 520, 0.50f, 0.42f);
+	}
+}
+
+static GXColor _GameflowMixColor(GXColor from, GXColor to, float amount)
+{
+	GXColor mixed = {
+		(u8)((float)from.r + ((float)to.r - (float)from.r) * amount + 0.5f),
+		(u8)((float)from.g + ((float)to.g - (float)from.g) * amount + 0.5f),
+		(u8)((float)from.b + ((float)to.b - (float)from.b) * amount + 0.5f),
+		(u8)((float)from.a + ((float)to.a - (float)from.a) * amount + 0.5f)
+	};
+	return mixed;
+}
+
+/* The ring from turn `from` to `to` (0 is twelve o'clock, clockwise): a core
+ * halfWidth either side of the radius and a pixel fading to clear at each
+ * edge, like the title bar's dial. Its color runs from tail to head, and
+ * where the glint passes it turns towards light by glint. */
+static void _GameflowPutLaunchArc(float from, float to, float halfWidth,
+	GXColor tail, GXColor head, GXColor light, float glintTurn, float glint)
+{
+	const float edge[4] = {-halfWidth - 1.0f, -halfWidth, halfWidth,
+		halfWidth + 1.0f};
+	gameflowPoint_t direction[GAMEFLOW_LAUNCH_SEGMENTS + 1];
+	GXColor color[GAMEFLOW_LAUNCH_SEGMENTS + 1];
+	int segments = (int)ceilf((to - from) * (float)GAMEFLOW_LAUNCH_SEGMENTS);
+	int band;
+	int i;
+
+	segments = segments < 1 ? 1 : (segments > GAMEFLOW_LAUNCH_SEGMENTS ?
+		GAMEFLOW_LAUNCH_SEGMENTS : segments);
+	for(i = 0; i <= segments; ++i) {
+		float along = (float)i / (float)segments;
+		float turn = from + (to - from) * along;
+		float angle = (turn - 0.25f) * GAMEFLOW_TURN;
+		float away = fabsf(turn - glintTurn);
+		float shine;
+
+		away = away > 0.5f ? 1.0f - away : away;
+		shine = away < 0.1f ? 1.0f - away / 0.1f : 0.0f;
+		direction[i] = (gameflowPoint_t) {cosf(angle), sinf(angle)};
+		color[i] = _GameflowMixColor(_GameflowMixColor(tail, head, along),
+			light, shine * shine * glint);
+	}
+	for(band = 0; band < 3; ++band) {
+		float inside = GAMEFLOW_LAUNCH_RADIUS + edge[band];
+		float outside = GAMEFLOW_LAUNCH_RADIUS + edge[band + 1];
+
+		GX_Begin(GX_TRIANGLESTRIP, GX_VTXFMT0, (u16)((segments + 1) * 2));
+		for(i = 0; i <= segments; ++i) {
+			GXColor inner = color[i];
+			GXColor outer = color[i];
+
+			inner.a = band == 0 ? 0 : inner.a;
+			outer.a = band == 2 ? 0 : outer.a;
+			_GameflowPutVertex((gameflowPoint_t) {
+				GAMEFLOW_LAUNCH_X + direction[i].x * inside,
+				GAMEFLOW_LAUNCH_Y + direction[i].y * inside}, inner);
+			_GameflowPutVertex((gameflowPoint_t) {
+				GAMEFLOW_LAUNCH_X + direction[i].x * outside,
+				GAMEFLOW_LAUNCH_Y + direction[i].y * outside}, outer);
+		}
+		GX_End();
+	}
+}
+
+/* Under the cover: the screen dimmed to its edges, the ring, and below it
+ * the title, the publisher, the step and any "Do not remove" line. */
+static void _GameflowDrawLaunch(const drawGameflowEvent_t *data,
+	const uiGameflowDetailSnapshot_t *detail,
+	const uiGameflowCardSnapshot_t *record, u32 recordIndex, float launch,
+	float reveal)
+{
+	uiMotionMode_t motion = _CurrentMotionMode();
+	float alpha = _GameflowClamp(launch * reveal, 0.0f, 1.0f);
+	gameflowQuad_t screen = {{{UIStage_Left(), 0.0f},
+		{UIStage_Right(), 0.0f}, {UIStage_Right(), 480.0f},
+		{UIStage_Left(), 480.0f}}};
+	/* The screen darkens ahead of the cover, which leaves nothing behind. */
+	GXColor dim = {5, 4, 17,
+		_GameflowAlpha(240.0f * _GameflowClamp(2.0f * alpha, 0.0f, 1.0f))};
+	GXColor track = {122, 112, 201, _GameflowAlpha(76.0f * alpha)};
+	GXColor tail = {139, 124, 226, _GameflowAlpha(214.0f * alpha)};
+	GXColor head = {232, 226, 255, _GameflowAlpha(255.0f * alpha)};
+	GXColor light = {250, 248, 255, _GameflowAlpha(210.0f * alpha)};
+	GXColor primary = {246, 243, 255, _GameflowAlpha(255.0f * alpha)};
+	GXColor secondary = {190, 181, 231, _GameflowAlpha(224.0f * alpha)};
+	GXColor step = {196, 177, 255, _GameflowAlpha(240.0f * alpha)};
+	GXColor warning = {255, 207, 139, _GameflowAlpha(255.0f * alpha)};
+	float glint = motion == UI_MOTION_OFF ? 0.0f : 0.8f;
+	float glintTurn = fmodf(UIAnim_Seconds() *
+		(motion == UI_MOTION_REDUCED ? 0.12f : 0.3f), 1.0f);
+	float fill;
+
+	if(alpha <= 0.001f) {
+		return;
+	}
+	/* The fill moves while the launch runs; a launch that failed fades out
+	 * where it stopped. Animations Off: no glint, and the fill steps. */
+	fill = launchActive ? UILaunch_Update(&launchState, UIAnim_Delta(),
+		motion != UI_MOTION_OFF) : launchState.fill;
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+		_GameflowPutQuad(&screen, dim, dim);
+	GX_End();
+	_GameflowPutLaunchArc(0.0f, 1.0f, 1.5f, track, track, light, glintTurn,
+		glint);
+	if(fill > 0.001f) {
+		_GameflowPutLaunchArc(0.0f, fill, 2.0f, tail, head, light, glintTurn,
+			glint);
+	}
+	drawInit();
+	if(record != NULL) {
+		const char *company = detail != NULL ? detail->company :
+			record->company;
+
+		drawStringMedium(320, 360, detail != NULL ? detail->title :
+			record->title, detail != NULL ?
+			data->detailPresentation.titleScale :
+			data->cardPresentation[recordIndex].titleScale,
+			ALIGN_CENTER, primary);
+		if(company[0] != '\0') {
+			drawStringMedium(320, 384, company, detail != NULL ?
+				data->detailPresentation.companyScale :
+				data->cardPresentation[recordIndex].companyScale,
+				ALIGN_CENTER, secondary);
+		}
+	}
+	drawStringMedium(320, 414, UILaunch_Caption(launchState.step), 0.52f,
+		ALIGN_CENTER, step);
+	if(launchState.warning[0] != '\0') {
+		drawStringMedium(320, 438, launchState.warning, launchWarningScale,
+			ALIGN_CENTER, warning);
+	}
+}
+
 static void _DrawGameflow(uiDrawObj_t *evt)
 {
 	drawGameflowEvent_t *data = (drawGameflowEvent_t*)evt->data;
@@ -3468,6 +3603,7 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 	u32 i;
 	u32 selectedRecordIndex = 0u;
 	u32 previousRecordIndex = 0u;
+	u32 focusRecordIndex = 0u;
 
 	if(data == NULL || (scene->scene != UI_SCENE_LIBRARY &&
 		scene->scene != UI_SCENE_GAME_DETAIL)) {
@@ -3485,7 +3621,7 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		return;
 	}
 	focusRecord = _GameflowFindRecord(&data->snapshot, frame->focusIndex,
-		NULL);
+		&focusRecordIndex);
 	if(focusRecord != NULL && UIGameflowDetail_Matches(&data->detail,
 		frame->generation, frame->focusIndex, focusRecord->gameId,
 		strnlen(focusRecord->gameId, sizeof(focusRecord->gameId)))) {
@@ -3534,7 +3670,10 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 				card->visualSlot = slot;
 				card->artSlot = slot;
 				card->focus = 1.0f - _GameflowClamp(fabsf(slot), 0.0f, 1.0f);
-				card->art = fabsf(slot) < 1.5f;
+				/* The row shows two covers either side, fading in from the
+				 * third; the column's second covers are slivers. */
+				card->art = layout == UI_GAMEFLOW_LAYOUT_VERTICAL ?
+					fabsf(slot) < 1.5f : fabsf(slot) < 3.0f;
 				card->quad = layout == UI_GAMEFLOW_LAYOUT_VERTICAL ?
 					_GameflowSamplePoseIn(gameflowVerticalPoses, slot) :
 					_GameflowSamplePose(slot);
@@ -3562,6 +3701,15 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 						frame->detailProgress);
 				}
 			}
+			if(frame->launchProgress > 0.0f && focused) {
+				int vertex;
+				for(vertex = 0; vertex < 4; ++vertex) {
+					card->quad.point[vertex] = _GameflowLerpPoint(
+						card->quad.point[vertex],
+						gameflowLaunchPose.point[vertex],
+						frame->launchProgress);
+				}
+			}
 			count++;
 		}
 	}
@@ -3578,6 +3726,8 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		cards[j] = card;
 	}
 
+	_GameflowDrawLaunch(data, detail, focusRecord, focusRecordIndex,
+		frame->launchProgress, reveal);
 	drawInit();
 	_SetupRasterColor();
 	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 4u));
@@ -3625,7 +3775,9 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		if(!cards[i].art) {
 			continue;
 		}
-		posterTexture = _GameflowPosterTexture(cards[i].record);
+		posterTexture = launchActive && launchHasPoster &&
+			cards[i].record->libraryIndex == frame->focusIndex ?
+			&launchPoster : _GameflowPosterTexture(cards[i].record);
 		if(cards[i].record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) {
 			bannerTexture = &data->bannerTexObj[cards[i].recordIndex];
 		}
@@ -3676,8 +3828,12 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		layout);
 
 	UICommandRail_Gameflow(frame->detailProgress, &commandRail);
-	_GameflowDrawDetailDashboard(detail, &data->detailPresentation,
-		frame, reveal, &commandRail);
+	/* Launching, Detail's panels give way to the launch screen. */
+	if(frame->launchProgress < 0.999f) {
+		_GameflowDrawDetailDashboard(detail, &data->detailPresentation,
+			frame, reveal * (1.0f - frame->launchProgress), &commandRail,
+			data->detailFocus);
+	}
 	if(frame->detailProgress < 0.999f) {
 		GXColor label = {177, 168, 220,
 			_GameflowAlpha(180.0f * reveal *
@@ -3785,7 +3941,7 @@ static void _DrawHomeModalDepth(const uiHomeLayout_t *layout, float reveal)
 		GX_LO_CLEAR);
 	GX_SetZMode(GX_DISABLE, GX_ALWAYS, GX_FALSE);
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 12);
-		_putFlatRect(0.0f, 0.0f, 640.0f, 480.0f, scrim);
+		_putFlatRect(UIStage_Left(), 0.0f, UIStage_Right() - UIStage_Left(), 480.0f, scrim);
 		_putFlatRect((float)layout->modalBounds.left,
 			(float)layout->modalBounds.top, (float)width, (float)height,
 			card);
@@ -3943,6 +4099,300 @@ uiDrawObj_t* DrawHome(void)
 	event->type = EV_HOME;
 	event->data = eventData;
 	return event;
+}
+
+/* The Source picker: the focused device's tile in the middle of a row
+ * under the cube, up to two more each side, smaller and dimmer the farther
+ * out. The row slides on a spring and wraps round. */
+#define DEVICE_ROW_Y 262.0f
+#define DEVICE_TILE_W 168.0f
+#define DEVICE_TILE_H 124.0f
+#define DEVICE_NEAR_STEP 158.0f
+#define DEVICE_FAR_STEP 80.0f
+#define DEVICE_ROW_SLOTS 5
+
+/* The device a place in the unwrapped row shows. */
+static int _DeviceIndex(int travel, int count)
+{
+	int index = travel % count;
+
+	return index < 0 ? index + count : index;
+}
+
+static void _DeviceRect(float cx, float cy, float width, float height,
+	GXColor top, GXColor bottom)
+{
+	float x = cx - width / 2.0f;
+	float y = cy - height / 2.0f;
+
+	_putFlatVertex(x, y, top);
+	_putFlatVertex(x + width, y, top);
+	_putFlatVertex(x + width, y + height, bottom);
+	_putFlatVertex(x, y + height, bottom);
+}
+
+/* A frame thickness wide just inside a centred rectangle: four quads. */
+static void _DeviceFrame(float cx, float cy, float width, float height,
+	float thickness, GXColor color)
+{
+	float x = cx - width / 2.0f;
+	float y = cy - height / 2.0f;
+
+	_putFlatRect(x, y, width, thickness, color);
+	_putFlatRect(x, y + height - thickness, width, thickness, color);
+	_putFlatRect(x, y + thickness, thickness, height - thickness * 2.0f, color);
+	_putFlatRect(x + width - thickness, y + thickness, thickness,
+		height - thickness * 2.0f, color);
+}
+
+/* One glass tile, place steps from the middle, and its device's picture. */
+static void _DrawDeviceTile(const drawDeviceTile_t *tile, float place,
+	float y, float alpha)
+{
+	const textureImage *picture = &tile->picture;
+	float offset = fabsf(place);
+	float side = offset < 1.0f ? offset : 1.0f;
+	float beyond = offset > 1.0f ? offset - 1.0f : 0.0f;
+	float scale = 1.0f - 0.30f * side - 0.18f * beyond;
+	float focus = 1.0f - side;
+	float x = 320.0f + copysignf(DEVICE_NEAR_STEP * side +
+		DEVICE_FAR_STEP * beyond, place);
+	float width = DEVICE_TILE_W * scale;
+	float height = DEVICE_TILE_H * scale;
+
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 28);
+		_DeviceRect(x, y, width, height,
+			(GXColor) {104, 88, 190, (u8)((96.0f + 72.0f * focus) * alpha)},
+			(GXColor) {10, 8, 30, (u8)(214.0f * alpha)});
+		_DeviceRect(x, y, width - 10.0f * scale, height - 10.0f * scale,
+			(GXColor) {49, 43, 92, (u8)(130.0f * alpha)},
+			(GXColor) {12, 10, 34, (u8)(190.0f * alpha)});
+		_DeviceFrame(x, y, width, height, 2.0f,
+			(GXColor) {220, 214, 255, (u8)((90.0f + 140.0f * focus) * alpha)});
+		/* Light along the glass's top edge. */
+		_putFlatRect(x - width / 2.0f + 4.0f, y - height / 2.0f + 3.0f,
+			width - 8.0f, 1.0f,
+			(GXColor) {255, 255, 255, (u8)((34.0f + 56.0f * focus) * alpha)});
+	GX_End();
+	drawInit();
+	if(picture->width > 0 && picture->height > 0) {
+		/* drawCurrentDevice's sizing, in a box that shrinks with the tile. */
+		float fit = fminf(fminf(120.0f / picture->width,
+			84.0f / picture->height), 1.0f) * scale;
+		int w = (int)(picture->realWidth * fit);
+		int h = (int)(picture->realHeight * fit);
+		float light = (0.5f + 0.5f * focus) * (1.0f - 0.35f * beyond) *
+			(tile->detected ? 1.0f : 0.45f);
+
+		_DrawImageNow(picture->textureId, (int)lrintf(x - w / 2.0f),
+			(int)lrintf(y - h / 2.0f), w, h, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0,
+			(u8)(255.0f * light * alpha));
+		drawInit();
+	}
+}
+
+static void _DrawDeviceSelector(uiDrawObj_t *evt)
+{
+	drawDeviceSelectorEvent_t *data = (drawDeviceSelectorEvent_t*)evt->data;
+	const drawDeviceSelectorSnapshot_t *s = &data->snapshot;
+	const drawDeviceTile_t *tile;
+	uiMotionMode_t motion = _CurrentMotionMode();
+	struct {
+		float place;
+		float presence;
+		int device;
+	} row[DEVICE_ROW_SLOTS];
+	const uiSceneFrame_t *scene = UIScene_Frame();
+	/* The row rises into view as the cube lifts and shrinks out of its way,
+	 * as the Library's posters follow the cube's retreat. */
+	float rise = fminf(fmaxf((0.92f - scene->cubeScale) / 0.30f, 0.0f), 1.0f);
+	float reveal = fminf(scene->chromeProgress, 1.0f);
+	float position, first, last, y, pulse, labels;
+	int tiles = 0;
+	int nearest, k, i;
+
+	rise = rise * rise * (3.0f - 2.0f * rise);
+	reveal *= rise;
+	if(s->count <= 0 || reveal <= 0.0f) {
+		return;
+	}
+	/* A new list (Z) snaps into place: its travel counts from its start. */
+	if(!data->started || data->shownAll != s->showAllDevices) {
+		UIMotion_SpringInit(&data->position, (float)s->travel, 13.0f);
+		data->shownAll = s->showAllDevices;
+		data->started = true;
+	}
+	UIMotion_SpringRetarget(&data->position, (float)s->travel, motion);
+	position = UIMotion_SpringUpdate(&data->position, UIAnim_Delta(), motion);
+	y = DEVICE_ROW_Y + (1.0f - rise) * 24.0f;
+
+	/* Copy/Move's destination opens over the file list: a page behind it. */
+	if(data->destination) {
+		drawInit();
+		_SetupRasterColor();
+		GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+			_putFlatRect(UIStage_Left(), 0.0f, UIStage_Right() - UIStage_Left(),
+				480.0f, (GXColor) {8, 12, 27, (u8)(236.0f * reveal)});
+		GX_End();
+	}
+
+	/* The places that show a device at rest: two each side, or as many as
+	 * there are other devices, so none shows twice. A tile leaving them
+	 * fades out over half a place. */
+	last = s->count >= DEVICE_ROW_SLOTS ? 2.0f : (float)(s->count / 2);
+	first = s->count >= DEVICE_ROW_SLOTS ? -2.0f : -(float)((s->count - 1) / 2);
+	for(k = (int)floorf(position + first - 0.5f);
+			k <= (int)ceilf(position + last + 0.5f); ++k) {
+		float place = (float)k - position;
+		float presence = place < first ? 1.0f - 2.0f * (first - place) :
+			place > last ? 1.0f - 2.0f * (place - last) : 1.0f;
+
+		if(presence <= 0.001f || tiles == DEVICE_ROW_SLOTS) {
+			continue;
+		}
+		/* Painter's order: the farthest first, the middle one last. */
+		for(i = tiles++; i > 0 && fabsf(row[i - 1].place) < fabsf(place); --i) {
+			row[i] = row[i - 1];
+		}
+		row[i].place = place;
+		row[i].presence = presence;
+		row[i].device = _DeviceIndex(k, s->count);
+	}
+	for(i = 0; i < tiles; ++i) {
+		_DrawDeviceTile(&s->tiles[row[i].device], row[i].place, y,
+			row[i].presence * reveal);
+	}
+
+	/* The focus frame stays in the middle while the tiles slide through. */
+	pulse = motion == UI_MOTION_FULL ?
+		0.84f + 0.16f * sinf(UIAnim_Seconds() * 3.0f) : 1.0f;
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 48);
+		_DeviceFrame(320.0f, y, DEVICE_TILE_W + 14.0f, DEVICE_TILE_H + 14.0f,
+			3.0f, (GXColor) {117, 88, 244, (u8)(78.0f * reveal * pulse)});
+		_DeviceFrame(320.0f, y, DEVICE_TILE_W + 8.0f, DEVICE_TILE_H + 8.0f,
+			2.0f, (GXColor) {196, 177, 255, (u8)(150.0f * reveal * pulse)});
+		_DeviceFrame(320.0f, y, DEVICE_TILE_W + 4.0f, DEVICE_TILE_H + 4.0f,
+			2.0f, (GXColor) {244, 239, 255, (u8)(245.0f * reveal)});
+	GX_End();
+	drawInit();
+
+	/* The words are the middle tile's: they fade out, and the next tile's
+	 * in, as the row slides. */
+	nearest = (int)floorf(position + 0.5f);
+	labels = reveal * (1.0f - 2.0f * fabsf(position - (float)nearest));
+	tile = &s->tiles[_DeviceIndex(nearest, s->count)];
+	drawStringMedium(40, 44, data->destination ? "DESTINATION" : "SOURCE",
+		0.50f, ALIGN_LEFT, (GXColor) {216, 207, 255, (u8)(230.0f * reveal)});
+	drawStringMedium(320, (int)(y + 88.0f), tile->name, tile->nameScale,
+		ALIGN_CENTER, (GXColor) {246, 243, 255, (u8)(255.0f * labels)});
+	drawStringMedium(320, (int)(y + 110.0f), !s->inAdvanced ? tile->facts :
+		s->exiFast ? "\213  EXI  27 MHz  \233" : "\213  EXI  13.5 MHz  \233",
+		0.50f, ALIGN_CENTER, (GXColor) {216, 207, 255, (u8)(245.0f * labels)});
+	drawStringMedium(320, (int)(y + 130.0f), tile->status, 0.44f,
+		ALIGN_CENTER, tile->detected ?
+		(GXColor) {178, 166, 224, (u8)(230.0f * labels)} :
+		(GXColor) {255, 207, 139, (u8)(240.0f * labels)});
+	_DrawHintText(320, 440, s->hint, s->hintScale, ALIGN_CENTER,
+		(GXColor) {178, 166, 224, (u8)(225.0f * reveal)});
+	drawInit();
+}
+
+/* What a device can do, where it plugs in and whether it's there, in the
+ * picker's words. Menu thread only: it reads the device's handler. */
+static void _DeviceSelectorTile(drawDeviceTile_t *tile,
+	DEVICEHANDLER_INTERFACE *device, bool current, bool settings)
+{
+	static const struct {
+		u32 location;
+		const char *name;
+	} places[] = {
+		{LOC_MEMCARD_SLOT_A, "SLOT A"}, {LOC_MEMCARD_SLOT_B, "SLOT B"},
+		{LOC_SERIAL_PORT_1, "SERIAL PORT 1"},
+		{LOC_SERIAL_PORT_2, "SERIAL PORT 2"}, {LOC_HSP, "HI-SPEED PORT"},
+		{LOC_DVD_CONNECTOR, "DISC DRIVE"}, {LOC_SYSTEM, "CONSOLE"}
+	};
+	const char *place = "";
+	size_t i;
+
+	for(i = 0; i < sizeof(places) / sizeof(places[0]); ++i) {
+		if(device->location & places[i].location) {
+			place = places[i].name;
+			break;
+		}
+	}
+	tile->picture = device->deviceTexture;
+	snprintf(tile->name, sizeof(tile->name), "%s", DeviceDisplayName(device));
+	snprintf(tile->facts, sizeof(tile->facts), "%s%s%s",
+		!(device->features & FEAT_BOOT_GCM) ? "FILES" :
+		(device->features & FEAT_AUDIO_STREAMING) ? "BOOT + STREAM" : "BOOT",
+		place[0] ? "  \267  " : "", place);
+	tile->detected = deviceHandler_getDeviceAvailable(device);
+	snprintf(tile->status, sizeof(tile->status), "%s%s%s",
+		tile->detected ? "DETECTED" : "NOT DETECTED",
+		current ? "  \267  CURRENT" : "", settings ? "  \267  SETTINGS" : "");
+	tile->nameScale = GetTextScaleToFitInWidthWithMax(tile->name, 300, 0.76f);
+}
+
+uiDrawObj_t* DrawDeviceSelector(bool destination)
+{
+	drawDeviceSelectorEvent_t *eventData = calloc(1, sizeof(drawDeviceSelectorEvent_t));
+	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
+
+	eventData->destination = destination;
+	event->type = EV_DEVICESELECTOR;
+	event->data = eventData;
+	return event;
+}
+
+void DrawUpdateDeviceSelector(uiDrawObj_t *selector,
+	DEVICEHANDLER_INTERFACE *const *listed, int count, int travel,
+	const DEVICEHANDLER_INTERFACE *current,
+	const DEVICEHANDLER_INTERFACE *settings, bool showAllDevices,
+	bool inAdvanced)
+{
+	/* Built outside the video lock, then copied in one step. */
+	static drawDeviceSelectorSnapshot_t snapshot;
+	drawDeviceSelectorEvent_t *data = (drawDeviceSelectorEvent_t*)selector->data;
+	const DEVICEHANDLER_INTERFACE *device;
+	const drawDeviceTile_t *tile;
+	int i;
+
+	if(count <= 0 || count > MAX_DEVICES) {
+		return;
+	}
+	memset(&snapshot, 0, sizeof(snapshot));
+	for(i = 0; i < count; ++i) {
+		_DeviceSelectorTile(&snapshot.tiles[i], listed[i],
+			listed[i] == current, listed[i] == settings);
+	}
+	device = listed[_DeviceIndex(travel, count)];
+	tile = &snapshot.tiles[_DeviceIndex(travel, count)];
+	snapshot.count = count;
+	snapshot.travel = travel;
+	snapshot.showAllDevices = showAllDevices;
+	snapshot.inAdvanced = inAdvanced;
+	snapshot.exiFast = swissSettings.exiSpeed != 0;
+	if(inAdvanced) {
+		strcpy(snapshot.hint, "STICK / D-PAD  SPEED   A  DONE   B  BACK");
+	}
+	else {
+		snprintf(snapshot.hint, sizeof(snapshot.hint),
+			"%sA  %s%s%s   Z  %s   B  BACK",
+			count > 1 ? "STICK / D-PAD  CHANGE   " : "",
+			!tile->detected ? "TRY" : data->destination ? "SELECT" : "OPEN",
+			device->details ? "   Y  INFO" : "",
+			(device->features & FEAT_EXI_SPEED) ? "   X  EXI" : "",
+			showAllDevices ? "DETECTED" : "ALL");
+	}
+	snapshot.hintScale = GetHintScaleToFitInWidthWithMax(snapshot.hint, 600,
+		0.46f);
+	LWP_MutexLock(_videomutex);
+	data->snapshot = snapshot;
+	LWP_MutexUnlock(_videomutex);
 }
 
 void DrawUpdateProgressBar(uiDrawObj_t *evt, int percent) {
@@ -4326,10 +4776,62 @@ bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode)
 	if(!evt->disposed && evt->type == EV_GAMEFLOW && evt->data != NULL) {
 		drawGameflowEvent_t *data = (drawGameflowEvent_t*)evt->data;
 		UIGameflow_SetMode(&data->state, mode, _CurrentMotionMode());
+		_GameflowSetLaunch(data, UIGameflow_Frame(&data->state)->mode ==
+			UI_GAMEFLOW_MODE_LAUNCH);
 		updated = true;
 	}
 	LWP_MutexUnlock(_videomutex);
 	return updated;
+}
+
+bool DrawSetGameflowDetailFocus(uiDrawObj_t *evt,
+	uiGameflowDetailFocus_t focus)
+{
+	bool updated = false;
+
+	if(evt == NULL || focus > UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS) {
+		return false;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!evt->disposed && evt->type == EV_GAMEFLOW && evt->data != NULL) {
+		((drawGameflowEvent_t*)evt->data)->detailFocus = focus;
+		updated = true;
+	}
+	LWP_MutexUnlock(_videomutex);
+	return updated;
+}
+
+bool DrawLaunchStep(const char *message)
+{
+	/* Only this thread turns a launch on or off. */
+	if(!launchActive) {
+		return false;
+	}
+	LWP_MutexLock(_videomutex);
+	_GameflowLaunchMessage(message);
+	LWP_MutexUnlock(_videomutex);
+	return true;
+}
+
+/* The hand-off: DrawShutdown fades a launch to black over this long. */
+#define GAMEFLOW_LAUNCH_FADE_SECONDS 0.25f
+static bool launchFading;
+static float launchFade;
+
+static void _DrawLaunchFade(void)
+{
+	GXColor black = {0, 0, 0, 0};
+
+	launchFade = fminf(1.0f,
+		launchFade + UIAnim_Delta() / GAMEFLOW_LAUNCH_FADE_SECONDS);
+	black.a = (u8)(255.0f * launchFade + 0.5f);
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+		_putFlatRect(UIStage_Left(), 0.0f, UIStage_Right() - UIStage_Left(),
+			480.0f, black);
+	GX_End();
+	drawInit();
 }
 
 bool DrawUpdateGameflowDetail(uiDrawObj_t *evt,
@@ -4626,6 +5128,15 @@ static void _CheatsPanel(int x, int y, int width, int height, GXColor color)
 	drawInit();
 }
 
+/* A page that covers the screen, and in widescreen the margins beside it. */
+static void _PagePanel(int x, int y, int width, int height, GXColor color)
+{
+	int left = (int)floorf(UIStage_Left());
+	int right = (int)ceilf(UIStage_Right());
+
+	_CheatsPanel(x + left, y, width + (right - 640) - left, height, color);
+}
+
 /* Message and progress boxes, in the Settings pages' card language: a flat
  * rounded card with a hairline edge and, for a message, an accent bar that
  * says what kind it is (a warning's amber, a failure's red, otherwise
@@ -4681,7 +5192,7 @@ static void _DrawCheats(uiDrawObj_t *evt)
 	focusY = (int)lrintf(UIMotion_SpringUpdate(&data->focusY,
 		UIAnim_Delta(), motion));
 
-	_CheatsPanel(-6, -6, 652, 492, (GXColor){8, 12, 27, 254});
+	_PagePanel(-6, -6, 652, 492, (GXColor){8, 12, 27, 254});
 	_CheatsPanel(40, 30, 40, 3, accent);
 	drawStringMedium(40, 63, "Cheats", 1.05f, ALIGN_LEFT, primary);
 	drawStringMedium(600, 63, s->enabledText, 0.54f, ALIGN_RIGHT, accent);
@@ -5060,7 +5571,7 @@ static void _DrawSettingsPage(uiDrawObj_t *evt)
 	UISettingsFocus_Update(&data->focus, UIAnim_Delta(), motion, &frame);
 
 	back.a = UI_SETLAYOUT_PAGE_ALPHA;
-	_CheatsPanel(UI_SETLAYOUT_PAGE_X, UI_SETLAYOUT_PAGE_Y, UI_SETLAYOUT_PAGE_W,
+	_PagePanel(UI_SETLAYOUT_PAGE_X, UI_SETLAYOUT_PAGE_Y, UI_SETLAYOUT_PAGE_W,
 		UI_SETLAYOUT_PAGE_H, back);
 	_SettingsBox(&l->accentBar, settingsAccent);
 	drawStringMedium(l->titleX, l->titleY, s->title, s->titleScale,
@@ -5419,7 +5930,7 @@ static void _DrawSaves(uiDrawObj_t *evt)
 	focusY = (int)lrintf(UIMotion_SpringUpdate(&data->focusY,
 		UIAnim_Delta(), motion));
 
-	_CheatsPanel(-6, -6, 652, 492, settingsBack);
+	_PagePanel(-6, -6, 652, 492, settingsBack);
 	_CheatsPanel(40, 30, 40, 3, settingsAccent);
 	drawStringMedium(40, 63, s->title, 1.05f, ALIGN_LEFT, settingsInk);
 	drawStringMedium(600, 63, s->status, 0.54f, ALIGN_RIGHT, settingsAccent);
@@ -5843,7 +6354,7 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 			_DrawHome(videoEvent);
 			break;
 		case EV_DEVICESELECTOR:
-			_DrawDeviceSelectorCard(videoEvent);
+			_DrawDeviceSelector(videoEvent);
 			break;
 		case EV_TOOLTIP:
 			_DrawTooltip(videoEvent);
@@ -5952,12 +6463,17 @@ static void *videoUpdate(void *videoEventQueue) {
 		if(vmode->field_rendering) {
 			GX_SetViewportJitter(0.0f, 0.0f, vmode->fbWidth, vmode->efbHeight, 0.0f, 1.0f, VIDEO_GetNextField());
 		}
+		/* One shape for the whole frame, whatever Settings does meanwhile. */
+		UIStage_SetWide(swissSettings.menuWidescreen);
 		// Draw out every event
 		videoEventQueueEntry = (uiDrawObjQueue_t*)videoEventQueue;
 		while(videoEventQueueEntry != NULL) {
 			uiDrawObj_t *videoEvent = videoEventQueueEntry->event;
 			videoDrawEvent(videoEvent);
 			videoEventQueueEntry = videoEventQueueEntry->next;
+		}
+		if(launchFading) {
+			_DrawLaunchFade();
 		}
 		/* During the short boot reveal, veil the already-published legacy widgets
 		 * and redraw the cube above them. Animations Off skips this pass entirely. */
@@ -6150,6 +6666,24 @@ void DrawShutdown() {
 	mutex_t mutex;
 	lwp_t thread = video_thread;
 
+	/* A launch ends on black: the ring completes while the screen fades
+	 * out. Animations Off cuts to black as it always did. */
+	if(launchActive && thread != LWP_THREAD_NULL &&
+		_CurrentMotionMode() != UI_MOTION_OFF) {
+		bool faded = false;
+		int frames;
+
+		LWP_MutexLock(_videomutex);
+		UILaunch_Finish(&launchState);
+		launchFading = true;
+		LWP_MutexUnlock(_videomutex);
+		for(frames = 0; frames < 30 && !faded; ++frames) {
+			VIDEO_WaitVSync();
+			LWP_MutexLock(_videomutex);
+			faded = launchFade >= 1.0f;
+			LWP_MutexUnlock(_videomutex);
+		}
+	}
 	/* Cancel while the source device and shared mutex are still live. */
 	DrawGameflowCancelPosters();
 	if(gameflowResetRegistered) {
@@ -6160,6 +6694,10 @@ void DrawShutdown() {
 	if(thread != LWP_THREAD_NULL) {
 		LWP_JoinThread(thread, NULL);
 	}
+	/* The last frame kept the launch's cover; nothing draws now. */
+	launchActive = false;
+	launchFading = false;
+	launchFade = 0.0f;
 	/* Cancellation above unpublished the pack while the mutex was live.
 	 * With video readers joined, final arena disposal is intentionally
 	 * lock-free and remains safe before the mutex is destroyed. */
@@ -6173,8 +6711,20 @@ void DrawShutdown() {
 	unsetVideoMode();
 }
 
+/* Settings steps a video row's value without switching to it: while
+ * deferred, DrawVideoMode leaves the mode as it is. */
+static bool videoModeDeferred;
+
+void DrawVideoModeDefer(bool defer)
+{
+	videoModeDeferred = defer;
+}
+
 void DrawVideoMode(GXRModeObj *videoMode)
 {
+	if(videoModeDeferred) {
+		return;
+	}
 	LWP_MutexLock(_videomutex);
 	if(getVideoMode() != videoMode) {
 		setVideoMode(videoMode);

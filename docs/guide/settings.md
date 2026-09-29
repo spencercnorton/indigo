@@ -26,7 +26,7 @@ one you're on lit.
 | Tab | Holds |
 | --- | --- |
 | **Quick** | Nine settings you might change any day: menu music and sounds, UI motion, rumble, In-Game Reset, the GameCube main menu, memory card emulation, auto-loaded cheats and booting without prompts. |
-| **Game Defaults** | What every game starts with: video modes, widescreen, polling rate, the camera stick, compatibility and picture options. A game's own settings can differ from these. |
+| **Defaults** | **Game Defaults**, what every game starts with: video modes, widescreen, polling rate, the camera stick, compatibility and picture options. A game's own settings can differ from these. |
 | **Setup** | Everything you set once, in six sections: Display, Console, Storage, Network, Library and Developer. A opens a section and B goes back to the list. |
 
 <p align="center">
@@ -37,7 +37,8 @@ one you're on lit.
 
 - **Up and Down** move between settings. Hold to scroll.
 - **Left and Right** step the highlighted setting to its previous or next
-  value, with the change on screen at once.
+  value, with the change on screen at once. Video settings wait for A: see
+  [Video changes ask first](#video-changes-ask-first).
 - **A** changes it too.
 - **Y** explains the highlighted setting. Every setting has help; Y or B
   closes it.
@@ -59,8 +60,8 @@ modes your cable can't show stay out of it.
   <img alt="Help for Force Widescreen over the settings list: it stretches games made for 4:3 to fill a 16:9 screen; 3D widens the 3D view only; 2D+3D also widens 2D menus and on-screen displays." src="images/settings-help.png" width="640">
 </p>
 
-A dimmed setting doesn't apply to your setup right now, such as IPv4 Address
-while DHCP is on.
+A dimmed setting doesn't apply to your setup right now, such as Save Folder
+when there's no Configuration Device.
 
 ## Leave: keep or discard
 
@@ -73,9 +74,11 @@ them. In a Setup section, B first goes back to the list of sections.
 
 ## Video changes ask first
 
-After you change **Swiss Video Mode**, **System Video**, **AVE
-Compatibility**, **Force DTV Status** or **RetroTINK-4K HDMI Input**,
-Indigo shows the new picture and asks whether to keep it:
+On **Swiss Video Mode**, **System Video**, **AVE Compatibility**, **Force
+DTV Status** and **RetroTINK-4K HDMI Input**, Left and Right only choose a
+value. The setting shows it and the line above the buttons reads "Not
+applied yet", but the picture stays as it is. Step to the one you want and
+press **A**: Indigo switches to it and asks whether to keep it:
 
 ```text
 Keep Swiss Video Mode: PAL 576i?
@@ -85,6 +88,8 @@ It changes back by itself in 10 s.
 
 Press **A** to keep it. Press **B**, or just wait, and the old mode comes
 back: if your TV can't show the new one, you only have to wait ten seconds.
+Moving to another setting or leaving before you press A puts the old value
+back.
 
 ## A game's own settings
 
@@ -136,7 +141,7 @@ Press Y on any row for the same explanations on the console.
 
 | Setting | What it does |
 | --- | --- |
-| Menu Music | Indigo's ambient music loop. Changes at once. |
+| Menu Music | "Up in the Sky", Indigo's menu music: a quiet intro, then a loop. Changes at once. |
 | Menu Sounds | The soft sounds as you move and choose. |
 | UI Motion | **Full**: calm motion and ambient detail. **Reduced**: faster transitions, no decorative movement. **Off**: everything moves instantly. |
 | Controller Rumble | Whether controllers can rumble in games. |
@@ -183,7 +188,8 @@ Press Y on any row for the same explanations on the console.
 
 | Setting | What it does |
 | --- | --- |
-| Swiss Video Mode | The video mode of Indigo's own screens. Auto picks 480p with a digital cable and otherwise follows the console's region. Asks before it keeps a change. |
+| Swiss Video Mode | The video mode of Indigo's own screens. Auto picks 480p with a digital cable and otherwise follows the console's region. A switches to a new mode and asks before it keeps it. |
+| Menu Widescreen | Draws Indigo's own screens for a TV set to 16:9: the background fills the screen and the menus keep their shape in the middle. Set your TV or HDMI adapter to 16:9 too. Games follow **Force Widescreen** instead. |
 | System Video | NTSC, PAL or PAL-M, mainly for the Brazilian console. |
 | Screen Position | Moves the picture left or right in games. |
 | AVE Compatibility | Workarounds for your video encoder or digital video mod, such as GCVideo or GCDigital. |
@@ -251,7 +257,7 @@ Passwords are saved as plain text in `global.ini`.
 | Recent List | START shows recently played games. **Lazy** updates it only for new games; **Off** saves SD card writes. |
 | Flatten directory | A folder pattern whose game folders are listed as if their disc images sat directly in it. The default is `*/games`. |
 | Show hidden files | Lists hidden files and folders, such as `/swiss`. |
-| Hide unknown file types | Hides files that aren't games, programs, music or memory card saves. It also stops a stray file hiding the Library. |
+| Hide unknown file types | Hides files that aren't games, programs, music or memory card saves. It also stops a stray text file or picture hiding the Library; folders and programs still do. |
 | File Management | Z in a file list opens actions to copy, move, rename or delete. |
 | Panel Transparency | Translucent panels, like the GameCube menu, or solid ones. |
 | Animated Backdrop | Whether the backdrop behind the cube drifts. |

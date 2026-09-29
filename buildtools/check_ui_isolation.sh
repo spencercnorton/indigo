@@ -20,10 +20,12 @@ BASE="${1:-origin/master}"
 # include/callback. util.c likewise permits only deletion of its superseded GUI
 # include/callback. No added dependency, callback, driver, or behavior change is
 # accepted through either exception.
-# main.c has one narrowly audited startup exception: a failed boot-device init
-# clears DEVICE_CUR so Home cannot inherit a detected-but-unmounted handler.
-# audit_routing_safety.py locks that hunk against the accepted base. No loader
-# or driver behavior is allowed through this exception.
+# main.c has two narrowly audited startup exceptions: a failed boot-device init
+# clears DEVICE_CUR so Home cannot inherit a detected-but-unmounted handler, and
+# the startup DOL autoload is dropped, because upstream's boots any official
+# Swiss in the root of the card (z.dol, a.dol, boot.dol...) in place of Indigo.
+# audit_routing_safety.py locks both hunks against the accepted base. No other
+# loader or driver behavior is allowed through this exception.
 # video.c has one mechanical input exception: the existing post-retrace callback
 # calls padsScan(), whose wrapper performs the same PAD_ScanPads call and
 # atomically publishes its low-bit validity mask for menu navigation.
@@ -56,6 +58,10 @@ BASE="${1:-origin/master}"
 # because the pinned libogc2 image has no 7z (same PowerPC BCJ + LZMA2 chain,
 # CRC32 check). Neither changes swiss.dol, the packer's code, a driver, the
 # patch engine or IPL code.
+# gcm.c has one mechanically checked exception: get_fst_details, which the
+# Library runs on every disc image it lists to find the banner, takes the file
+# table's size and refuses an entry count or a name outside it, so a damaged or
+# header-only image cannot crash the Library. No other gcm.c change passes.
 ALLOW='^(cube/swiss/source/gui/|cube/swiss/source/images/|cube/swiss/source/swiss\.[ch]$|cube/swiss/source/main\.c$|cube/swiss/include/swiss\.h$|cube/swiss/include/input\.h$|cube/swiss/include/mp3\.h$|cube/swiss/source/input\.c$|cube/swiss/source/mp3\.c$|cube/swiss/source/wiiload\.c$|cube/swiss/source/cheats/(cheats|cheat_policy)\.[ch]$|cube/swiss/source/config/|docs/|AGENTS/|buildtools/|\.gitlab-ci\.yml$|\.public-release\.toml$|\.gitignore$|NOTICE$|\.github/|[^/]*\.md$)'
 
 CHANGED=$(git diff --name-only "$BASE"...HEAD --)
@@ -171,6 +177,42 @@ if printf '%s\n' "$VIOLATIONS" | grep -qx "$VIDEO_PATH"; then
 	else
 		echo "ISOLATION VIDEO EXCEPTION FAILED — unexpected video.c diff:" >&2
 		printf '%s\n' "$VIDEO_CHANGES" | sed 's/^/  /' >&2
+	fi
+fi
+
+FST_PATH='cube/swiss/source/gcm.c'
+if printf '%s\n' "$VIOLATIONS" | grep -qx "$FST_PATH"; then
+	FST_CHANGES=$(git diff --unified=0 "$BASE"...HEAD -- "$FST_PATH" |
+		sed -n '/^[+-]/p' | grep -Ev '^(---|\+\+\+)' || true)
+	EXPECTED_FST_BOUNDS=$(printf '%b\n' \
+		'-void get_fst_details(char *FST, char *searchFileName, u32 *file_offset, u32 *file_size) {' \
+		'+void get_fst_details(char *FST, u32 fst_size, char *searchFileName, u32 *file_offset, u32 *file_size) {' \
+		'-\tchar filename[256];' \
+		'-\t// number of entries and string table location' \
+		'+\t*file_offset = -1;' \
+		'+\t// number of entries and string table location, both inside the FST: a' \
+		'+\t// damaged or header-only image can declare an FST of any size' \
+		'+\tif(fst_size < 12) return;' \
+		'+\tif(entries > fst_size / 12) return;' \
+		'-\t\t\tmemset(filename,0,256);' \
+		'-\t\t\tstrcpy(filename,&FST[string_table_offset+filename_offset]); ' \
+		'-\t\t\tif(!strcasecmp(filename,searchFileName)) ' \
+		'+\t\t\t// the name must start and end inside the string table' \
+		'+\t\t\tif(filename_offset >= fst_size - string_table_offset ||' \
+		'+\t\t\t   !memchr(&FST[string_table_offset+filename_offset], 0, fst_size - string_table_offset - filename_offset))' \
+		'+\t\t\t\tcontinue;' \
+		'+\t\t\tif(!strcasecmp(&FST[string_table_offset+filename_offset],searchFileName))' \
+		'-\t*file_offset = -1;' \
+		'-\tget_fst_details(FST, "opening.bnr", file_offset, file_size);' \
+		'+\tget_fst_details(FST, diskHeader->FSTSize, "opening.bnr", file_offset, file_size);' \
+		'-\tget_fst_details(FST, fileName, &file_offset, &file_size);' \
+		'+\tget_fst_details(FST, diskHeader->FSTSize, fileName, &file_offset, &file_size);')
+	if [ "$FST_CHANGES" = "$EXPECTED_FST_BOUNDS" ]; then
+		VIOLATIONS=$(printf '%s\n' "$VIOLATIONS" |
+			grep -vx "$FST_PATH" || true)
+	else
+		echo "ISOLATION FST EXCEPTION FAILED — unexpected gcm.c diff:" >&2
+		printf '%s\n' "$FST_CHANGES" | sed 's/^/  /' >&2
 	fi
 fi
 

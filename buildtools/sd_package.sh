@@ -33,15 +33,28 @@ Guide:  https://norvitech.com/indigo/
 Source: https://github.com/spencercnorton/indigo/tree/$version
 
 INSTALL: DRAG AND DROP
-1. If your SD card already has an ipl.dol in its root, that is your current
-   Swiss. Rename it to z.dol first if you want to keep it; holding Z while
-   you power on starts it.
-2. Select everything in this folder and drag it onto the root of your SD
-   card. Let it replace files of the same name.
-3. Put the card back and power on. PicoBoot and other modchips boot ipl.dol
-   from the root of the card. With GC Loader or another loader that boots a
-   disc image, start ipl.dol from Swiss's file browser instead.
+New to Indigo:
+1. First, before you copy anything: if your SD card already has an ipl.dol
+   in its root, that is your current Swiss. Rename it to z.dol to keep it;
+   with PicoBoot or PicoLoader, holding Z while you power on starts it.
+2. Select everything in this folder and drag it onto the root of the card.
+   Let it replace files of the same name. On a Mac, hold Option as you drop
+   and choose Merge: Replace deletes what is already in the card's games
+   and swiss folders (your games, settings, cheats and saves).
+3. Put your games in /games, with nothing else in it or in the game
+   folders (see GAMES), put the card back and power on.
 Your Swiss settings carry over.
+
+PicoBoot and PicoLoader boot ipl.dol. FlippyDrive boots boot.dol, and with
+GC Loader or another loader that boots a disc image you start ipl.dol from
+Swiss's file browser. The install guide covers every loader:
+https://norvitech.com/indigo/guide/install/
+
+UPDATING FROM INDIGO 1.x
+ipl.dol is already Indigo, so don't rename it: copy these files over the
+old ones, choosing Merge on a Mac. If 1.25.0 made you rename stock Swiss to
+swiss.dol, you can rename it back to z.dol: since 2.0, Indigo doesn't start
+it by itself.
 
 WHAT EACH FILE IS FOR
   ipl.dol                      Indigo itself
@@ -52,18 +65,20 @@ WHAT EACH FILE IS FOR
 
 GAMES
 Put your games in /games, either one folder per game or the disc images
-directly, and keep nothing else in that folder:
+directly, and keep nothing else in /games or in the game folders:
     /games/Super Mario Sunshine [GMSE01]/game.iso
     /games/Super Mario Sunshine.iso
-Disc images end in .iso, .gcm, .tgc or .fdi. Any other file in /games (a
-text file, a cover image, an empty folder) turns the Library back into
-Swiss's plain file list; "Hide unknown file types" in Settings > Setup >
-Library hides stray files. On Home, turn the cube to Library and press A.
+Disc images end in .iso, .gcm, .tgc or .fdi. Anything else there (a text
+file, a cover image, an empty folder) turns the Library back into Swiss's
+plain file list. "Hide unknown file types" in Settings > Setup > Library
+hides stray text files and pictures, but not folders, programs or music.
+On Home, turn the cube to Library and press A.
 
 POSTERS AND CHEATS (optional, also drag and drop)
 Without posters, each game shows its disc banner and its six-character game
 ID (GMSE01). Poster packs and a cheat pack are on https://norvitech.com/indigo/
-- unzip one and drag its swiss folder onto the root of the card.
+- unzip one and drag its swiss folder onto the root of the card, choosing
+Merge on a Mac.
 
 IN-GAME RESET
 With In-Game Reset set to Apploader (Settings > Quick), A + Z + START

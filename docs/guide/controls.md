@@ -7,7 +7,7 @@ every screen shows the buttons that work there, drawn as the controller's
 own buttons.
 
 <p align="center">
-  <img alt="The hint lines of five screens, one above the other: Home (the stick and D-pad to turn, A Open), the Library (D-pad Browse, A Open, Y Settings, X Back, B Home), game details (A Launch, B Library, X Settings, Y Cheats), the cheat browser (A Toggle, B Done, X Enabled only, Z Advanced) and a list of choices in Settings (A Choose, B Cancel)." src="images/controls-hints.png" width="640">
+  <img alt="The hint lines of five screens, one above the other: Home (the stick and D-pad to turn, A Open), the Library (D-pad Browse, A Open, Y Settings, X Back, B Home), game details (D-pad Move, A Select, B Library, X Settings, Y Cheats), the cheat browser (A Toggle, B Done, X Enabled only, Z Advanced) and a list of choices in Settings (A Choose, B Cancel)." src="images/controls-hints.png" width="640">
 </p>
 
 ## The short version
@@ -39,7 +39,7 @@ B goes back. See [Home](home.md).
 
 | Button | Does |
 | --- | --- |
-| Left, Right | Show the next device. |
+| Left, Right, L, R | Slide the previous or next device into the middle. The stick works too: hold it to keep going. |
 | A | Open the device, or try again if it wasn't detected. |
 | Z | Show every device, or only the ones detected. |
 | X | Change an SD adapter's speed. |
@@ -72,7 +72,8 @@ See [Library](library.md).
 
 | Button | Does |
 | --- | --- |
-| A | Launch the game. |
+| Up, Down | Move between Launch Game, Cheats and Settings. |
+| A | Open the one you're on: launch the game, or its cheats or settings. |
 | L + A | Clean boot: start the disc with no changes applied (disc drive only). |
 | B | Back to the Library. |
 | X | This game's own settings. |
@@ -80,8 +81,8 @@ See [Library](library.md).
 | Z | Autoload: open this game every time Indigo starts. Press again to turn it off. |
 | R | Check the disc image's data, for discs Indigo can verify. |
 
-Z appears when Indigo has a device to save settings to. See
-[Game details](game-details.md).
+The other buttons work wherever you are on the screen. Z appears when Indigo
+has a device to save settings to. See [Game details](game-details.md).
 
 ### Cheats
 
@@ -99,10 +100,10 @@ See [Cheats](cheats.md).
 | Button | Does |
 | --- | --- |
 | Up, Down | Move between settings. Hold to scroll. |
-| Left, Right | Step the highlighted setting to its previous or next value. |
-| A | Change the value. On a setting with four or more choices, list them all. |
+| Left, Right | Step the highlighted setting to its previous or next value. A video setting waits for A. |
+| A | Change the value. On a setting with four or more choices, list them all. On a video setting, switch to the value shown. |
 | Y | Explain the highlighted setting. Y or B closes it. |
-| L, R | Switch between Quick, Game Defaults and Setup. |
+| L, R | Switch between the Quick, Defaults and Setup tabs. |
 | X | In a game's own settings: put the setting back to Game Defaults. |
 | B | Leave Settings, keeping your changes. In a Setup section, go back to the list of sections. |
 

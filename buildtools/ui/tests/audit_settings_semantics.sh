@@ -9,8 +9,10 @@
 # its colors, the four new face icon arms (SET_*_ICON) each only step
 # their own face's icon round that face's own four, the Library Layout arm
 # (SET_LIBRARY_LAYOUT) only steps swissSettings.libraryLayout round its
-# three layouts, and the Save Folder arm (SET_SAVE_FOLDER) only sets
-# swissSettings.saveFolder to the folder Memory Cards' chooser returns.
+# three layouts, the Save Folder arm (SET_SAVE_FOLDER) only sets
+# swissSettings.saveFolder to the folder Memory Cards' chooser returns, and
+# the Menu Widescreen arm (SET_MENU_WIDESCREEN) only flips
+# swissSettings.menuWidescreen.
 #
 # The Right/Left/Up/Down/L/R/B/A action block changed on purpose in the Settings redesign:
 # phase 1 made B leave (Save & Exit when something changed), A advance choice
@@ -18,7 +20,8 @@
 # Game Defaults, Setup and its sections, one game's settings); phase 3 added
 # X and the reset prompt; phase 4 names a new Configuration Device in SRAM
 # only once a save has reached it; phase 1b opens a list of values on A for
-# long choices. It is pinned by content hash rather than
+# long choices; on a video row A applies the value Left and Right stepped
+# to, instead of stepping it. It is pinned by content hash rather than
 # by a base commit, so a rebase cannot break the pin but any further drift
 # still fails until SHOW_ACTIONS_SHA256 is updated deliberately.
 #
@@ -103,6 +106,12 @@ normalized = re.sub(
     r"\t+\}\n"
     r"\t+break;\n",
     "", normalized, count=1)
+# And the Menu Widescreen arm, a flip.
+normalized = re.sub(
+    r"(?ms)^\t+case SET_MENU_WIDESCREEN:\n"
+    r"\t+swissSettings\.menuWidescreen \^= 1;\n"
+    r"\t+break;\n",
+    "", normalized, count=1)
 normalized = re.sub(r"[ \t]+(?=\n|$)", "", normalized)
 Path(sys.argv[2]).write_text(normalized)
 PY
@@ -120,9 +129,9 @@ for fn in settings_toggle; do
 			normalize_intended_changes "$TMP/base_$fn" "$TMP/base_${fn}_normalized"
 			normalize_intended_changes "$TMP/head_$fn" "$TMP/head_${fn}_normalized"
 			if cmp -s "$TMP/base_${fn}_normalized" "$TMP/head_${fn}_normalized"; then
-				printf '  %-18s unchanged outside motion, color, icon, layout and save folder arms and game reset\n' "$fn"
+				printf '  %-18s unchanged outside motion, color, icon, layout, save folder and widescreen arms and game reset\n' "$fn"
 			else
-				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_SAVE_FOLDER and the game reset" >&2
+				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN and the game reset" >&2
 				diff -u "$TMP/base_${fn}_normalized" \
 					"$TMP/head_${fn}_normalized" | head -40 >&2 || true
 				fail=1
@@ -170,7 +179,7 @@ PY
 }
 
 normalize_show_actions "$FILE" "$TMP/head_show_actions"
-SHOW_ACTIONS_SHA256="836a8708d15f0cb53182815bbb80987c9098962fef053aefd6f0975404afab32"
+SHOW_ACTIONS_SHA256="14277fa817b0de282a1336b5561889d928796827a14bd584e4d6d2297067a508"
 actual_show_actions=$(shasum -a 256 < "$TMP/head_show_actions" | cut -d' ' -f1)
 if [ "$actual_show_actions" = "$SHOW_ACTIONS_SHA256" ]; then
 	echo "  show actions       B/A/L/R/value semantics match the pinned hash"

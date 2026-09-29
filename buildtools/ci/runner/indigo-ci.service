@@ -1,0 +1,19 @@
+# Indigo's self-hosted GitHub Actions runners on this machine, as a systemd
+# user service. install.sh puts it in ~/.config/systemd/user/. The supervisor
+# runs from its own checkout of the trusted branch and restarts itself when
+# that branch changes it. GH_TOKEN must reach it: put it in the environment
+# file below (mode 0600), or override ExecStart with a drop-in that fetches it
+# from your secret store.
+[Unit]
+Description=Indigo CI: self-hosted GitHub Actions runners in one-job containers
+Documentation=https://github.com/spencercnorton/indigo/blob/beta/buildtools/ci/runner/README.md
+
+[Service]
+EnvironmentFile=-%h/.config/indigo-ci.env
+ExecStart=/usr/bin/python3 %h/.local/share/indigo-ci/src/buildtools/ci/runner/indigo_ci.py run
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

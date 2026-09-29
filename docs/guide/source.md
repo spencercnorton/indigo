@@ -10,24 +10,31 @@ change it.
 ## Change the source
 
 1. On Home, turn the cube to **Source** and press A.
-2. Choose **Change Source**.
-3. Press **Left** or **Right** until the device you want is on the cube,
-   then press **A**.
+2. Choose **Change Source**. The cube lifts out of the way and the devices
+   Indigo found line up under it, each with its picture.
+3. Push the control stick or the D-pad **Left** or **Right** (or press **L**
+   or **R**) until the device you want is in the middle, then press **A**.
+   Hold the stick to keep moving; the row goes round.
 4. You're back on Home, now reading from that device. Turn the cube to
    **Library** and press A to see what's on it.
 
 <p align="center">
-  <img alt="On the Source face, A shows Change Source and Refresh Library. Change Source shows Game Disc, Boot + Stream, on the cube; Right shows Memory Card Slot A, Files Ready; Z shows every device, so Right reaches Memory Card Slot B, Not Detected; B goes back." src="images/source-picker.png" width="640">
+  <img alt="On the Source face, A shows Change Source and Refresh Library. Change Source lifts the cube and lines up the devices under it, Game Disc in the middle: Boot + Stream, Disc Drive, Detected, Current. Right slides Memory Card - Slot A into the middle: Files, Slot A. Z shows every device, so Right reaches Memory Card - Slot B, Not Detected; B goes back." src="images/source-picker.png" width="640">
 </p>
 
-Under each device's name, the picker says what it can do:
+Under the device in the middle, the picker says what it can do, where it
+plugs in, and whether Indigo found it:
 
 | It says | Meaning |
 | --- | --- |
 | Boot + Stream | Games start from it, with the disc audio some games stream. |
-| Boot Ready | Games start from it. |
-| Files Ready | It holds files you can browse and open. |
+| Boot | Games start from it. |
+| Files | It holds files you can browse and open. |
+| Slot A, Slot B, Serial Port 1, Serial Port 2, Hi-Speed Port, Disc Drive, Console | Where it plugs in. |
+| Detected | Indigo found it. |
 | Not Detected | Indigo can't find it right now. A tries again. |
+| Current | You're reading from it now. |
+| Settings | Your settings are saved on it. |
 
 - **Z** shows every device Indigo supports, not only the ones it found. Z
   again goes back to the ones it found.
@@ -48,7 +55,8 @@ programs (`.dol`, `.elf`) and MP3s:
 
 - **A** opens a file or folder, and **X** goes up a folder.
 - With **File Management** on (Settings › Setup › Library), **Z** on a file
-  offers to copy, move, rename, hide or delete it.
+  offers to copy, move, rename, hide or delete it. Copy and Move choose the
+  device to put it on in the same picker, headed Destination.
 - Settings › Setup › Library › **File Browser Type** changes how the list
   looks.
 

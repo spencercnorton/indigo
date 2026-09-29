@@ -21,7 +21,7 @@ if not __debug__:
 
 
 ROOT = Path(__file__).resolve().parents[3]
-# The accepted base main.c, before the one failed-startup pointer clear.
+# The accepted base main.c, before Indigo's two startup edits.
 BASE_MAIN = Path(__file__).resolve().parent / "fixtures/main.base.c"
 SWISS_PATH = ROOT / "cube/swiss/source/swiss.c"
 MAIN_PATH = ROOT / "cube/swiss/source/main.c"
@@ -102,7 +102,22 @@ def check_helper(source: str) -> None:
     )
 
 
+# Upstream's startup autoload boots any official Swiss in the root of the card
+# (z.dol, a.dol, boot.dol...) in place of Indigo, so Indigo's main.c drops it.
+UPSTREAM_AUTOLOAD = (
+    "\t\t\tif((devices[DEVICE_CUR]->features & FEAT_AUTOLOAD_DOL) && getenv(\"WIILOAD\") == NULL) {\n"
+    "\t\t\t\tload_auto_dol(argc, argv);\n"
+    "\t\t\t}\n"
+)
+NO_AUTOLOAD = (
+    "\t\t\t/* No startup DOL autoload: upstream's boots any official Swiss in the\n"
+    "\t\t\t * root (z.dol, a.dol, boot.dol...) in place of Indigo. */\n"
+)
+
+
 def expected_main(base: str) -> str:
+    assert base.count(UPSTREAM_AUTOLOAD) == 1
+    base = base.replace(UPSTREAM_AUTOLOAD, NO_AUTOLOAD, 1)
     anchor = "\t\t\tDrawLoadBackdrop(devices[DEVICE_CUR]);\n\t\t}\n\t}\n"
     replacement = (
         "\t\t\tDrawLoadBackdrop(devices[DEVICE_CUR]);\n\t\t}\n"
@@ -125,10 +140,10 @@ def trailing_blank_free(text: str) -> str:
 def check_runtime(swiss: str, main: str, isolation: str) -> None:
     assert trailing_blank_free(main) == trailing_blank_free(
         expected_main(base_file("cube/swiss/source/main.c"))), (
-        "main.c changed outside the exact failed-startup pointer clear"
+        "main.c changed outside its two audited startup edits"
     )
     assert "cube/swiss/source/main\\.c$" in isolation
-    assert "audit_routing_safety.py locks that hunk" in isolation
+    assert "audit_routing_safety.py locks both hunks" in isolation
     assert '#include "gui/ui_home_safety.h"' in swiss
 
     lifecycle_mounted = extract_block(swiss, "static bool homeSourceLifecycleMounted(")
@@ -385,6 +400,8 @@ for label, mutant in helper_mutants:
 runtime_mutants = [
     ("startup failure pointer retained", MAIN.replace(
         "\t\t\tdevices[DEVICE_CUR] = NULL;\n", "", 1), SWISS),
+    ("startup DOL autoload restored", MAIN.replace(
+        NO_AUTOLOAD, UPSTREAM_AUTOLOAD, 1), SWISS),
     ("Recent same-handler retry removed", MAIN, SWISS.replace(
         "if(forceReinit) {", "if(false) {", 1)),
     ("unavailable Recent path fallback removed", MAIN, SWISS.replace(

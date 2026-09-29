@@ -82,10 +82,9 @@ static const uiScenePose_t poses[UI_SCENE_COUNT] = {
 	/* The cube flies in at its Home size and turn, seen a little from above. */
 	[UI_SCENE_BOOT] = {0.0f, 0.22f, 0.92f, 0.22f, 0.28f, 0.0f},
 	[UI_SCENE_HOME] = {0.0f, 0.22f, 0.92f, 0.0f, 0.28f, 1.0f},
-	/* Source is a Home context, not a separate authored destination. Its
-	 * distinct scene id hides root composition while retaining the live Home
-	 * face/row pose resolved below. */
-	[UI_SCENE_SOURCE] = {0.0f, 0.22f, 0.92f, 0.0f, 0.28f, 1.0f},
+	/* The Source picker keeps the Home face's turn and lifts the cube,
+	 * smaller and tipped towards the viewer, above its row of devices. */
+	[UI_SCENE_SOURCE] = {0.0f, 1.10f, 0.50f, 0.18f, 0.28f, 0.72f},
 	[UI_SCENE_LIBRARY] = {-1.08f, 0.0f, 0.56f, -0.08f, 0.32f, 0.72f},
 	[UI_SCENE_GAME_DETAIL] = {-1.30f, 0.0f, 0.44f, 0.10f, 0.58f, 0.48f},
 	[UI_SCENE_SYSTEM] = {0.0f, -0.02f, 0.70f, -0.10f, -0.18f, 1.0f},
@@ -410,7 +409,8 @@ static void retargetPose(uiSceneId_t scene, uiMotionMode_t motionMode)
 	float cubeYaw;
 
 	if(isHomeYawScene(scene)) {
-		resolvedHomePose = homePose();
+		resolvedHomePose = scene == UI_SCENE_SOURCE ?
+			poses[UI_SCENE_SOURCE] : homePose();
 		pose = &resolvedHomePose;
 		cubeYaw = pose->cubeYaw;
 	}

@@ -126,10 +126,15 @@ def check_detail_input(controller: str, mapping: str) -> None:
     # Host policy tests exercise the edges. Bind the actual controller to that
     # policy, including the entry/modal quarantine and physical face buttons.
     assert "const u32 detailButtons = PAD_BUTTON_X | BUTTON_B | BUTTON_A |" in controller
-    assert "PAD_BUTTON_Y | BUTTON_Z | BUTTON_R;" in controller
+    assert "PAD_BUTTON_Y | BUTTON_Z | BUTTON_R | BUTTON_UP | BUTTON_DOWN;" in controller
     assert "buttons = UIMenuAction_Update(&detailInput, padsButtonsHeld()," in controller
     assert "detailButtons, BUTTON_L, BUTTON_B);" in controller
     assert controller.count("UIMenuAction_Init(&detailInput, padsButtonsHeld());") == 2
+    # The stick steps like the D-pad: vertical, once a push (no repeat), quiet
+    # while a button is down, and re-armed with the buttons after a modal.
+    assert ("padsMenuInputPoll(&detailStick, 0u,\n\t\t\t\t\tUI_MENU_INPUT_AXIS_VERTICAL,\n"
+            "\t\t\t\t\t(padsButtonsHeld() & detailButtons) != 0u);") in controller
+    assert controller.count("UIMenuInput_Init(&detailStick);") == 2
     assert "gameflowWaitDetailButtonsReleased" not in controller
     assert "while(!(padsButtonsHeld() & detailButtons))" not in controller
     assert "if(buttons & PAD_BUTTON_X) input |= UI_GAMEFLOW_DETAIL_INPUT_X;" in mapping
@@ -137,6 +142,8 @@ def check_detail_input(controller: str, mapping: str) -> None:
     assert "if(buttons & BUTTON_X)" not in mapping
     assert "if(buttons & BUTTON_Y)" not in mapping
     assert "if(buttons & BUTTON_L) input |= UI_GAMEFLOW_DETAIL_INPUT_L;" in mapping
+    assert "if(buttons & BUTTON_UP) input |= UI_GAMEFLOW_DETAIL_INPUT_UP;" in mapping
+    assert "if(buttons & BUTTON_DOWN) input |= UI_GAMEFLOW_DETAIL_INPUT_DOWN;" in mapping
     library_exit = extract_function(
         controller, "if(action == UI_GAMEFLOW_DETAIL_ACTION_LIBRARY)"
     )
@@ -154,6 +161,12 @@ detail_input_mutants = (
     (detail.replace("PAD_BUTTON_X", "BUTTON_X", 1), detail_mapping),
     (detail, detail_mapping.replace("PAD_BUTTON_Y", "BUTTON_Y", 1)),
     (detail, detail_mapping.replace("if(buttons & BUTTON_L)", "if(false)", 1)),
+    (detail.replace(" | BUTTON_UP | BUTTON_DOWN;", ";", 1), detail_mapping),
+    (detail, detail_mapping.replace("if(buttons & BUTTON_DOWN)", "if(false)", 1)),
+    (detail.replace("UI_MENU_INPUT_AXIS_VERTICAL,",
+                    "UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,", 1), detail_mapping),
+    (detail.replace("(padsButtonsHeld() & detailButtons) != 0u);", "false);", 1), detail_mapping),
+    (detail.replace("UIMenuInput_Init(&detailStick);", "", 1), detail_mapping),
 )
 for mutant_controller, mutant_mapping in detail_input_mutants:
     try:

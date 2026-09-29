@@ -7,14 +7,15 @@
 
 <p align="center">
   <a href="https://norvitech.com"><img alt="NorviTech Suite" src="https://img.shields.io/badge/NorviTech-Suite-FD8024.svg"></a>
-  <a href="https://github.com/spencercnorton/indigo/tags"><img alt="Latest release" src="https://img.shields.io/github/v/tag/spencercnorton/indigo?label=release&sort=semver"></a>
+  <a href="https://github.com/spencercnorton/indigo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/spencercnorton/indigo/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/spencercnorton/indigo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/spencercnorton/indigo?label=release"></a>
   <a href="https://github.com/spencercnorton/indigo/releases/latest"><img alt="Download for your SD card" src="https://img.shields.io/badge/download-SD%20card%20zip-2D2D2D.svg"></a>
   <a href="LICENSE"><img alt="Licence" src="https://img.shields.io/badge/licence-GPL--2.0--or--later-blue.svg"></a>
   <a href="https://buy.stripe.com/8x26oH2U44f65TRe574wM04"><img alt="Donate" src="https://img.shields.io/badge/donate-Stripe-635bff.svg?logo=stripe&logoColor=white"></a>
 </p>
 
 <p align="center">
-  <img alt="The Indigo Home screen: a glass cube turning sideways and tipping up and down between its Library, Source, Settings and System faces on a dark starfield. Its far edges bend through the front glass, the rounded edges show faint prism colours, and the icons sit sharp on the glass. The Library face shows a GameCube controller, only the face you are on is named underneath, and its controls are shown as GameCube buttons." src="docs/screenshots/home.png" width="640">
+  <img alt="The Indigo Home screen: a clear glass cube turning sideways and tipping up and down between its Library, Source, Settings and System faces over dark waves. Its far edges bend through the front glass, soft lights mirrored in the glass slide across it as it turns, the rounded edges show faint prism colours, and the icons sit sharp on the glass. The Library face shows a GameCube controller, only the face you are on is named underneath, and its controls are shown as GameCube buttons." src="docs/screenshots/home.png" width="640">
 </p>
 
 Captured in the Dolphin emulator. The library and game detail pictures show a real poster pack and cheat file in use; box art belongs to its publishers.
@@ -35,11 +36,12 @@ hardware and want it to feel like it belongs on the console.
 right turn it sideways, up and down tip it over. When Indigo starts, the cube
 flies in from the distance, spinning, and comes to rest on the face you
 start on. It is glass, like the
-GameCube's own menu, and it treats light the way glass does. Through the front
-you see the cube's far edges and its inner cube, bent and slightly magnified,
-and the rounded edges part the light into colour like a prism. Highlights
-glow, a fine rim lights the edges that face the light, and the face icons sit
-sharp on the glass. Each face carries its own
+GameCube's own menu, and it treats light the way glass does. Through the clear
+front you see the cube's far edges, bent and slightly magnified, and a smoked
+panel under each face's icon; the rounded edges part the light into colour
+like a prism. Soft lights mirrored in the glass slide across it as it turns.
+Highlights glow, a fine rim lights the edges that face the light, and the face
+icons sit sharp on the glass. Each face carries its own
 emblem, and only the face you are on is named, under the cube. The Library face is a GameCube
 controller that mirrors yours: its sticks lean with your sticks and its
 buttons light as you press them, and when you leave it alone it plays by
@@ -50,42 +52,62 @@ the palette — is the reference, not a desktop launcher.
   <img alt="Indigo starting: a small cube spins in from the distance in the middle of the screen, tumbles toward you and comes to rest on the Library face; the glass lights up, and LIBRARY and the controls fade in." src="docs/screenshots/intro.png" width="640">
 </p>
 
-**The library retains its posters.** A grid over whatever device you booted
-from, with artwork kept across navigation rather than re-read per frame, and
-your selection restored when you come back from a game's details. Lay it
-out as a carousel, a column with the title beside the cover, or a grid five
-covers wide (Setup › Library › Library Layout); Y on a cover opens that
-game's own settings. Cover art comes from a pack you build yourself (see
-[Posters](#posters)); without one, each game gets a generated card.
+**It has its own music.** The menus play "Up in the Sky" by Memoraphile
+(CC0; see [`NOTICE`](NOTICE)): a quiet intro once, then a section that loops.
+Settings › Quick › Menu Music turns it off.
+
+**The library retains its posters.** The games in `/games` on the current
+source, with artwork kept across navigation rather than re-read per frame,
+and your selection restored when you come back from a game's details. It
+opens as a row, with two covers either side of the game in the middle; it
+can also be a column with the title beside the cover, or a grid five covers
+wide (Setup › Library › Library Layout). Y on a cover opens that game's own
+settings. Cover art comes from a ready-made pack or one you build yourself
+(see [Posters](#posters)); without one, each game gets a card with its disc
+banner.
 
 <p align="center">
-  <img alt="The game library in its three layouts in turn. Horizontal: a row of GameCube box art, the selected cover raised with its title and publisher below it. Vertical: a column of covers down the left, the selected one large with its title, publisher and game ID beside it. Grid: five covers across and three rows on screen, a lit frame sliding to the selected cover as the rows scroll. The controls are shown as GameCube buttons along the bottom." src="docs/screenshots/library.png" width="640">
+  <img alt="The game library in its three layouts in turn. Horizontal: a row of GameCube box art, the selected cover raised between two covers either side, with its title and publisher below it. Vertical: a column of covers down the left, the selected one large with its title, publisher and game ID beside it. Grid: five covers across and three rows on screen, a lit frame sliding to the selected cover as the rows scroll. The controls are shown as GameCube buttons along the bottom." src="docs/screenshots/library.png" width="640">
 </p>
+
+**Change Source shows the devices themselves.** Choose it on the Source
+face: the cube lifts out of the way and the devices Indigo found line up
+under it on glass tiles, each with its picture. Under the one in the middle, the picker says
+what it can do, where it plugs in and whether Indigo detected it; the stick,
+the D-pad, L and R slide the row. See [Source](docs/guide/source.md).
 
 **Game details are a surface, not a dialogue.** Artwork, last played, save
 data, cheats and the boot options for that title in one place, with the same
-controller grammar as every other screen.
+controller grammar as every other screen. A bright frame shows where you are:
+the D-pad or the stick moves it between Launch Game, Cheats and Settings, and
+A selects.
 
 <p align="center">
   <img alt="The game detail screen for LEGO Star Wars II: Y opens the cheat browser, three cheats are switched on and one switched back off, and the detail screen then reads 2 of 130 enabled." src="docs/screenshots/game-detail.png" width="640">
 </p>
+
+**Starting a game from the Library shows its cover**, not Swiss's progress
+boxes. The cover sits in a ring that fills as Indigo checks, prepares and
+loads the game, one line under the title says which step it's on, and the
+screen fades to black as the game starts.
 
 **Cheats read clearly.** The cheat browser shows per-cheat state plainly, and
 the runtime handling around it is stricter about what it will apply.
 
 **Settings opens on what you change between games**, and reads like the
 cheat browser: cards with ON and OFF switches, a line that says what the
-highlighted setting does, and the buttons that work shown as icons. Quick
-settings fit on one screen: menu music and sounds, In-Game Reset, memory-card
-emulation, auto-loaded cheats and a few more. R moves to Game Defaults, what every game
-starts with, and to Setup, which holds video, console, storage, network,
-library and developer options in six sections. X on a game's detail screen,
-or Y on its cover in the Library, opens that game's own settings, where
+highlighted setting does, and the buttons that work shown as icons. Its
+first tab, Quick, holds nine: menu music and sounds, UI motion, rumble,
+In-Game Reset, the GameCube main menu, memory-card emulation, auto-loaded
+cheats and booting without prompts. R moves to the Defaults tab: Game Defaults, what every game
+starts with. R again moves to Setup, which holds video, console, storage,
+network, library and developer options in six sections. X on a game's detail
+screen, or Y on its cover in the Library, opens that game's own settings, where
 anything that differs from Game Defaults is marked Custom and X puts it back.
 Holding the D-pad scrolls, A changes a value
 (or, for a setting with many choices, lists them all), and B leaves and keeps
-your changes. A new video mode only stays if you press
-A within ten seconds. Settings can also be written ahead of time in a file on
+your changes. A new video mode waits for A, and only stays if you press
+A again within ten seconds. Settings can also be written ahead of time in a file on
 the SD card: see [docs/SETTINGS.md](docs/SETTINGS.md). Setup › Storage says
 whether that file loaded.
 
@@ -113,6 +135,11 @@ move through the list. B keeps the color you had; A chooses the one you are on.
 <p align="center">
   <img alt="Settings, Setup, Console: A on Menu Color opens a list of the eight colors with Indigo marked Current. Moving down, the whole screen turns Azure, Emerald, Gold, Spice, Crimson, Rose and Jet Black in turn; moving back up to Emerald and pressing A chooses it, and the row reads Emerald." src="docs/screenshots/color-menu.png" width="640">
 </p>
+
+**Widescreen TVs get the whole screen.** Setup › Display › Menu Widescreen
+draws Indigo for a TV set to 16:9: the background and its waves reach both
+edges, and the cube, the text and every menu keep their shape in the middle.
+Games have their own setting, Force Widescreen.
 
 **Each face of the cube shows the picture you choose.** Setup › Console has a
 row per face (Library Icon, Source Icon, Settings Icon and System Icon), and
@@ -149,15 +176,30 @@ swiss/ui/                      posters.pak, if you add one (see Posters)
 swiss/indigo/                  the licence and notice
 ```
 
-1. If your card already has an `ipl.dol` in its root, that is your current
-   Swiss: rename it to `z.dol` first (holding Z at power-on starts it).
-2. Unzip the download, select everything inside and drag it onto the root of
-   the card. Let it replace files of the same name.
-3. Put your games in `/games` and power on.
+**New to Indigo:**
 
-With GC Loader or another loader that boots a disc image, start `ipl.dol` from
-Swiss instead. The [install guide](docs/guide/install.md) covers every loader,
-updating and going back to stock Swiss.
+1. First, before you copy anything: if your card already has an `ipl.dol` in
+   its root, that is your current Swiss. Rename it to `z.dol` to keep it; with
+   PicoBoot or PicoLoader, holding Z at power-on starts it.
+2. Unzip the download, select everything inside and drag it onto the root of
+   the card. Let it replace files of the same name. On a Mac, hold Option as
+   you drop and choose **Merge**: **Replace** deletes what is already in the
+   card's `games` and `swiss` folders (your games, settings, cheats and
+   saves).
+3. Put your games in `/games`, with nothing else in it or in the game
+   folders, and power on.
+
+**Updating from Indigo 1.x:** `ipl.dol` is already Indigo, so don't rename
+it; copy the new files over it the same way (on a Mac, Merge). If you renamed
+stock Swiss to `swiss.dol` for 1.25.0, you can rename it back to `z.dol`: 2.0
+no longer starts it by itself
+([#3](https://github.com/spencercnorton/indigo/issues/3)).
+
+FlippyDrive boots `boot.dol`: replace that file with `ipl.dol`, keeping the
+name `boot.dol`. With GC Loader and other loaders that boot a disc image,
+start `ipl.dol` from Swiss instead. The
+[install guide](docs/guide/install.md) covers every loader, updating and
+going back to stock Swiss.
 
 ### Any platform — from source
 
@@ -168,14 +210,14 @@ toolchain is installed on your machine:
 git clone https://github.com/spencercnorton/indigo.git
 cd indigo
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2 make dev
+  ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575 make dev
 # writes cube/swiss/swiss.dol inside this folder, on your computer
 ```
 
 The download above is this build at the release tag, packaged by
 `buildtools/sd_package.sh`.
 
-The release packaging targets (`make dist` and friends) are not supported
+Upstream's packaging targets (`make all`, `make package`) are not supported
 here: they need prebuilt tools and device firmware images that this fork does
 not redistribute. `make dev` builds the executable, which is what the fork
 changes.
@@ -186,15 +228,18 @@ changes.
 SD card. On the card, Indigo takes the place of the file your loader already
 boots, under that file's name. Your Swiss settings carry over.
 
-- **PicoBoot** boots `ipl.dol` from the root of the card. Rename that file to
-  `z.dol`, then copy `swiss.dol` to the root as `ipl.dol`. PicoBoot starts
-  `z.dol` when Z is held at power-on, so stock Swiss stays one button away.
-- **PicoBoot with no `ipl.dol` on the card** has Swiss flashed onto the Pico
-  itself. Flash PicoBoot's standard firmware (see its
+- **PicoBoot and PicoLoader** boot `ipl.dol` from the root of the card.
+  If that file is your current Swiss, rename it to `z.dol`; then copy
+  `swiss.dol` to the root as `ipl.dol`.
+  They start `z.dol` when Z is held at power-on, so stock Swiss stays one
+  button away.
+- **PicoBoot or PicoLoader with no `ipl.dol` on the card** has Swiss in the
+  chip's flash. First flash the firmware that starts the card's `ipl.dol`:
+  PicoBoot's `picoboot_full_pico.uf2` or `picoboot_full_pico2.uf2` (see its
   [installation guide](https://support.webhdx.dev/gc/picoboot/installation-guide)),
-  then do the step above.
+  or PicoLoader's `picoloader_gekkoboot.uf2`. Then do the step above.
 - **Another loader that boots a `.dol` from the card by name**: replace that
-  file the same way, keeping its name.
+  file the same way, keeping its name (FlippyDrive boots `boot.dol`).
 - **GC Loader, and other loaders that boot a disc image**: start `swiss.dol`
   from Swiss's file browser. This fork does not build `boot.iso` or the other
   packaged formats.
@@ -210,17 +255,19 @@ With In-Game Reset set to **Apploader**, a reset returns to the program in
 
 The Library shows the games in one folder, `/games` at the root of the card.
 Put each game in its own folder or put the disc images there directly, and
-keep nothing else in that folder:
+keep nothing else in `/games` or in the game folders:
 
 ```text
 /games/Super Mario Sunshine [GMSE01]/game.iso
 /games/Super Mario Sunshine.iso
 ```
 
-Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. Any other file in
-`/games` (a text file, a cover image, an empty folder) turns the Library back
-into Swiss's plain file list; "Hide unknown file types" in Settings → Setup →
-Library hides stray files. On Home, turn the cube to Library and press A.
+Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. Anything else there (a
+text file, a cover image, an empty folder, a folder inside a game's folder)
+turns the Library back into Swiss's plain file list. "Hide unknown file types"
+in Settings → Setup → Library hides stray text files and pictures, but not
+folders, programs (`.dol`, `.elf`) or music. On Home, turn the cube to Library
+and press A.
 
 ### Posters
 
@@ -251,11 +298,13 @@ skipped and listed.
 
 ### Cheats
 
-Indigo runs Gecko codes from `/swiss/cheats/<game ID>.txt`.
+Indigo runs Gecko codes from `/swiss/cheats/<game ID>.txt`, or from
+`<game ID>_v102.txt` and the like for one revision of a disc.
 [Download the cheat pack](https://indigo.norvitech.com/indigo-cheats.zip)
 (every region), unzip it into the root of the card, open a game and press Y. Cheats that the files show
-would break Indigo are switched off and marked; the page says what can't be
-checked in advance.
+would break Indigo are switched off and marked;
+[the download page](https://norvitech.com/indigo/#downloads) says what can't
+be checked in advance.
 
 ## Documentation
 
@@ -269,16 +318,23 @@ checked in advance.
 
 - Bugs and feature requests: [open an issue](https://github.com/spencercnorton/indigo/issues/new/choose). Questions: [Discussions](https://github.com/spencercnorton/indigo/discussions). Do not report fork issues to the upstream project.
 - Security reports: [private vulnerability reporting](https://github.com/spencercnorton/indigo/security/advisories/new) — see [SECURITY.md](SECURITY.md). There is no e-mail address; that is deliberate.
-- Pull requests are welcome; read [CONTRIBUTING.md](CONTRIBUTING.md) first — this repository is a release mirror, and accepted changes ship in the next tagged release.
+- Pull requests are welcome: they go to the `beta` branch, and CI builds a test zip for each one. Read [CONTRIBUTING.md](CONTRIBUTING.md) first; [docs/RELEASING.md](docs/RELEASING.md) says how betas and release candidates become releases.
 - If Indigo saves you time, you can [support its development](https://buy.stripe.com/8x26oH2U44f65TRe574wM04).
 
 ## Development
 
 ```bash
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2 make dev      # what CI builds
-buildtools/check_whitespace.sh
+  ghcr.io/extremscorner/libogc2@sha256:84dcb9aa7c9ee716d4953a3985a9551996cdb7a24c2d95e32153ad0da83da575 make dev   # the DOL, as CI builds it
+buildtools/ui/tests/run_tests.sh all          # host tests: plain, sanitized, contracts
+buildtools/check_whitespace.sh origin/beta    # lint
+buildtools/check_ui_isolation.sh origin/beta  # the change stays in the interface
 ```
+
+Work lands on `beta` by pull request and ships as `vX.Y.Z-beta.N` betas and
+`vX.Y.Z-rc.N` release candidates, both pre-releases; a release candidate
+that holds up is promoted to `main` as a release. See
+[AGENTS.md](AGENTS.md) for the working detail.
 
 ## Licence
 

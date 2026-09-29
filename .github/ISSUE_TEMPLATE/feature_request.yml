@@ -1,4 +1,3 @@
-# Baseline: the helios public feature_request.yml, which passed the gate.
 name: Feature request
 description: Propose a change to how Indigo works.
 labels: ["enhancement", "needs-triage"]
@@ -21,7 +20,7 @@ body:
     id: area
     attributes:
       label: Area
-      options: ["Home and navigation", "Library and posters", "Game details", "Cheats", "Settings", "Device handlers", "Booting a game", "Other / not sure"]
+      options: ["Home and navigation", "Source picker", "Library and posters", "Game details", "Cheats", "Launch screen", "Memory Cards", "Music and sounds", "Settings", "Device handlers", "Booting a game", "Other / not sure"]
   - type: textarea
     id: alternatives
     attributes:

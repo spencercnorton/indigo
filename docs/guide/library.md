@@ -7,7 +7,7 @@ or in a grid, as you choose. On Home, turn the cube to **Library** and press
 A.
 
 <p align="center">
-  <img alt="The Library: moving right through the James Bond games to 1080° Avalanche, each cover raised in turn with its title and publisher below; A opens its details, B returns to the Library, and 1080° Avalanche is still selected." src="images/library-browse.png" width="640">
+  <img alt="The Library: moving right through the James Bond games to 1080° Avalanche, each cover raised in turn between two covers either side, with its title and publisher below; A opens its details, B returns to the Library, and 1080° Avalanche is still selected." src="images/library-browse.png" width="640">
 </p>
 
 ## Choose a layout
@@ -20,9 +20,9 @@ through the three, and the line above the buttons says how each one moves.
   <img alt="Settings, Setup, Library: Library Layout is the first row. Right steps it from Horizontal to Vertical to Grid, and the line above the buttons reads A row of covers; Left and Right move (default), then A column of covers; Up and Down move, then Rows of five covers; every direction moves." src="images/library-layout-setting.png" width="640">
 </p>
 
-- **Horizontal**, the default: a row of covers. The game in the middle is
-  raised, with its title and publisher underneath, as the disc's own banner
-  gives them.
+- **Horizontal**, the default: a row of covers, two either side of the
+  game in the middle. That one is raised, with its title and publisher
+  underneath, as the disc's own banner gives them.
 - **Vertical**: a column of covers down the left of the screen, turning like
   a wheel. The selected cover is large, with its title, publisher and game ID
   beside it.
@@ -84,16 +84,18 @@ its own folder, or put the disc images there directly:
 ```
 
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`, in capitals or not.
-Keep nothing else in `/games`: any other file (a text file, a cover image)
-or an empty folder turns the Library back into Swiss's plain file list.
+Keep nothing else in `/games` or in the game folders: any other file (a text
+file, a cover image), an empty folder or a folder inside a game's folder turns
+the Library back into Swiss's plain file list.
 
 <p align="center">
   <img alt="Swiss's plain file list of the games folder, one game per row with its banner, name and region flag, which Indigo shows instead of the Library when the folder holds something other than games." src="images/library-file-list.png" width="640">
 </p>
 
-If you see the list above instead of posters, look in `/games` for the file
-that isn't a game. Or turn on **Hide unknown file types** in Settings ›
-Setup › Library, which hides stray files so the Library can take over.
+If you see the list above instead of posters, look in `/games` and its
+folders for what isn't a game. **Hide unknown file types** in Settings ›
+Setup › Library hides stray text files and pictures so the Library can take
+over; it doesn't hide folders, programs (`.dol`, `.elf`) or music.
 
 Games on two discs appear twice, once for each disc.
 

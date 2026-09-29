@@ -153,9 +153,19 @@ require("hasSettings" in extract_function(framebuffer,
 presentation = extract_function(detail_source, "static void buildPresentation(")
 require("CUSTOM)" not in presentation,
         "the X action repeats the custom count the settings inset shows")
-for primary in ('"A  LAUNCH"', '"B  LIBRARY"', '"X  SETTINGS"',
+for primary in ('"D-PAD  MOVE"', '"A  SELECT"', '"B  LIBRARY"', '"X  SETTINGS"',
                 '"Y  CHEATS"'):
     require(primary in presentation, f"primary action {primary} missing")
+
+# The focused row carries the highlight, and Launch's dot only when focused.
+planes = extract_function(framebuffer, "static void _GameflowDrawDetailPlanes(")
+require("_GameflowPutBorder(&litRow, &litInner, litEdgeColor);" in planes and
+        "rowTop[focusRow]" in planes, "the focused row has no bright frame")
+require("_GameflowDrawDetailPlanes(detail, presentation, frame, alpha, focusRow);"
+        in renderer, "the planes do not know the focus")
+require("if(focusRow == UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH) {\n"
+        "\t\tdrawStringMedium(278, 369, \"\\267\"" in renderer,
+        "Launch's dot does not follow the focus")
 for advanced in ('"Z  AUTOLOAD"', '"R  VERIFY"', '"L+A  CLEAN BOOT"'):
     require(advanced in presentation, f"advanced shortcut {advanced} missing")
 
