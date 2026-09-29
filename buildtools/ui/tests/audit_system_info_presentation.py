@@ -174,8 +174,13 @@ require('"REOPEN PAGE TO REFRESH"' in input_output,
         "Input / Output page-entry snapshot is not disclosed")
 for identity in ("SWISS 0.6", "INDIGO - UNOFFICIAL SWISS FORK", "GIT_COMMIT",
                  "GIT_REVISION", "_V_STRING", "GITHUB.COM/SPENCERCNORTON/INDIGO",
-                 "EFNET #GC-FOREVER"):
+                 "UI_SYSTEM_ABOUT_HELP_LABEL", "UI_SYSTEM_ABOUT_HELP_TEXT"):
     require(identity in about, f"About page omits {identity}")
+# Indigo's problems are Indigo's: About sends nobody to upstream's community.
+require("GC-FOREVER" not in info and "EFNET" not in info,
+        "About page points Indigo users to upstream Swiss's community")
+require('#define UI_SYSTEM_ABOUT_HELP_TEXT "GITHUB ISSUES  /  DISCUSSIONS"'
+        in header, "About's help line does not name Indigo's GitHub")
 for credit in (
     "CURRENT PATREON SUPPORTERS",
     "HISTORICAL PATREON SUPPORTERS",

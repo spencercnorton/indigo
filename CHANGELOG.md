@@ -12,6 +12,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   choosing Replace when dropping it on the card swapped the card's own
   `games` folder, and every game in it, for the empty one. Make `/games` on
   the card if it has none; the install steps say so.
+- System Information › About Indigo sends bug reports and questions to
+  Indigo's GitHub issues and discussions. It pointed to upstream Swiss's
+  community, which does not support Indigo.
 - Opening a game's settings from its details and leaving them no longer
   flashes the empty background in between. The details went away as the
   button went down, but the settings page came up only once it was let go,
