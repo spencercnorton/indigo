@@ -70,9 +70,9 @@ banner.
   <img alt="The game library in its three layouts in turn. Horizontal: a row of GameCube box art, the selected cover raised with its title and publisher below it. Vertical: a column of covers down the left, the selected one large with its title, publisher and game ID beside it. Grid: five covers across and three rows on screen, a lit frame sliding to the selected cover as the rows scroll. The controls are shown as GameCube buttons along the bottom." src="docs/screenshots/library.png" width="640">
 </p>
 
-**Change Source shows the devices themselves.** On the Source face, the cube
-lifts out of the way and the devices Indigo found line up under it on glass
-tiles, each with its picture. Under the one in the middle, the picker says
+**Change Source shows the devices themselves.** Choose it on the Source
+face: the cube lifts out of the way and the devices Indigo found line up
+under it on glass tiles, each with its picture. Under the one in the middle, the picker says
 what it can do, where it plugs in and whether Indigo detected it; the stick,
 the D-pad, L and R slide the row. See [Source](docs/guide/source.md).
 
@@ -86,20 +86,20 @@ A selects.
   <img alt="The game detail screen for LEGO Star Wars II: Y opens the cheat browser, three cheats are switched on and one switched back off, and the detail screen then reads 2 of 130 enabled." src="docs/screenshots/game-detail.png" width="640">
 </p>
 
-**Starting a game shows its cover.** Swiss's progress boxes are gone: the
-game's cover sits in a ring that fills as Indigo checks, prepares and loads
-the game, one line under the title says which step it's on, and the screen
-fades to black as the game starts.
+**Starting a game from the Library shows its cover**, not Swiss's progress
+boxes. The cover sits in a ring that fills as Indigo checks, prepares and
+loads the game, one line under the title says which step it's on, and the
+screen fades to black as the game starts.
 
 **Cheats read clearly.** The cheat browser shows per-cheat state plainly, and
 the runtime handling around it is stricter about what it will apply.
 
 **Settings opens on what you change between games**, and reads like the
 cheat browser: cards with ON and OFF switches, a line that says what the
-highlighted setting does, and the buttons that work shown as icons. Quick
-holds nine: menu music and sounds, UI motion, rumble, In-Game Reset, the
-GameCube main menu, memory-card emulation, auto-loaded cheats and booting
-without prompts. R moves to the Defaults tab: Game Defaults, what every game
+highlighted setting does, and the buttons that work shown as icons. Its
+first tab, Quick, holds nine: menu music and sounds, UI motion, rumble,
+In-Game Reset, the GameCube main menu, memory-card emulation, auto-loaded
+cheats and booting without prompts. R moves to the Defaults tab: Game Defaults, what every game
 starts with. R again moves to Setup, which holds video, console, storage,
 network, library and developer options in six sections. X on a game's detail
 screen, or Y on its cover in the Library, opens that game's own settings, where
@@ -195,8 +195,9 @@ stock Swiss to `swiss.dol` for 1.25.0, you can rename it back to `z.dol`: 2.0
 no longer starts it by itself
 ([#3](https://github.com/spencercnorton/indigo/issues/3)).
 
-FlippyDrive boots `boot.dol`, and GC Loader and other loaders that boot a
-disc image start `ipl.dol` from Swiss. The
+FlippyDrive boots `boot.dol`: replace that file with `ipl.dol`, keeping the
+name `boot.dol`. With GC Loader and other loaders that boot a disc image,
+start `ipl.dol` from Swiss instead. The
 [install guide](docs/guide/install.md) covers every loader, updating and
 going back to stock Swiss.
 
