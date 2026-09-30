@@ -36,7 +36,7 @@
 #define UI_SETLAYOUT_ROWS_GAME_DEFAULTS 21
 #define UI_SETLAYOUT_ROWS_SETUP 6
 #define UI_SETLAYOUT_ROWS_DISPLAY 10
-#define UI_SETLAYOUT_ROWS_CONSOLE 11
+#define UI_SETLAYOUT_ROWS_CONSOLE 13
 #define UI_SETLAYOUT_ROWS_STORAGE 7
 #define UI_SETLAYOUT_ROWS_NETWORK 20
 #define UI_SETLAYOUT_ROWS_LIBRARY 12
@@ -255,7 +255,7 @@ typedef struct {
 	unsigned char on;           /* a toggle's state */
 	unsigned char enabled;
 	unsigned char custom;       /* a game's own value: the CUSTOM chip */
-	unsigned char swatch;       /* Menu Color: a dot of the color shown */
+	unsigned char swatch;       /* 0, or 1 + the UI_COLOR_LAYER_ a dot shows */
 	unsigned char placeholder;  /* an empty text value, drawn as "Not set" */
 } uiSetPageRow_t;
 

@@ -148,6 +148,8 @@ most use the same key there.
 | Key | Values | Default | On screen |
 | --- | --- | --- | --- |
 | `Menu Color` | `Indigo`, `Azure`, `Emerald`, `Gold`, `Spice`, `Crimson`, `Rose`, `Jet Black` | `Indigo` | Menu Color |
+| `Backdrop Color` | `Menu Color`, `Indigo`, `Azure`, `Emerald`, `Gold`, `Spice`, `Crimson`, `Rose`, `Jet Black`. The backdrop behind the cube and its rings; `Menu Color` follows Menu Color. | `Menu Color` | Backdrop Color |
+| `Wave Color` | `Menu Color`, `Indigo`, `Azure`, `Emerald`, `Gold`, `Spice`, `Crimson`, `Rose`, `Jet Black`. The waves behind the cube; `Menu Color` follows Menu Color. | `Menu Color` | Wave Color |
 | `Library Icon` | `Controller`, `Books`, `Covers`, `Play`. The picture on the cube's Library face, from its own four icons. A name from another face's list is ignored. | `Controller` | Library Icon |
 | `Source Icon` | `Hub`, `Disc`, `SD Card`, `Folder`. The picture on the Source face, from its own four icons. | `Hub` | Source Icon |
 | `Settings Icon` | `Sliders`, `Gear`, `Toggles`, `Dial`. The picture on the Settings face, from its own four icons. | `Sliders` | Settings Icon |

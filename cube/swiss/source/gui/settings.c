@@ -22,6 +22,7 @@
 #include "sram.h"
 #include "rt4k.h"
 #include "input.h"
+#include "ui_color.h"
 #include "ui_motion.h"
 #include "ui_settings_layout.h"
 #include "saves.h"
@@ -74,6 +75,9 @@ char *bs2BootStr[] = {"No", "Yes", "Sound 1", "Sound 2"};
 char *recentListLevelStr[] = {"Off", "Lazy", "On"};
 char *uiColorStr[] = {"Indigo", "Azure", "Emerald", "Gold", "Spice", "Crimson", "Rose", "Jet Black"};
 _Static_assert(sizeof(uiColorStr) / sizeof(uiColorStr[0]) == UI_COLOR_MAX, "Menu Color names drift");
+/* Backdrop and Wave Color: 0 follows Menu Color, then uiColorStr's colors. */
+char *uiLayerColorStr[] = {"Menu Color", "Indigo", "Azure", "Emerald", "Gold", "Spice", "Crimson", "Rose", "Jet Black"};
+_Static_assert(sizeof(uiLayerColorStr) / sizeof(uiLayerColorStr[0]) == UI_COLOR_MAX + 1, "layer color names drift");
 char *libraryIconStr[] = {"Controller", "Books", "Covers", "Play"};
 char *sourceIconStr[] = {"Hub", "Disc", "SD Card", "Folder"};
 char *settingsIconStr[] = {"Sliders", "Gear", "Toggles", "Dial"};
@@ -127,7 +131,9 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_RECENT_LIST] = "Recent List:\n\n(On) - Press Start while browsing to show a recent list.\n(Lazy) - Same as On but list updates only for new entries.\n(Off) - Recent list is completely disabled.\n\nThe lazy/off options exist to minimise SD card writes.",
 	[SET_HIDE_UNK] = "Hide unknown file types:\n\nDisabled - Show all files (default)\nEnabled - Hide unknown file types from being displayed\n\nKnown file types are:\n GameCube Executables (.bin/.dol/.elf)\n Disc images (.gcm/.iso/.nkit.iso/.tgc)\n MP3 Music (.mp3)\n WASP/WKF Flash files (.fzn)\n GameCube Memory Card files (.gci/.gcs/.sav)\n GameCube Executables with parameters appended (.dol+cli)",
 	[SET_UI_ANIMS] = "UI Motion:\n\nFull - Calm spatial motion and ambient detail (default)\nReduced - Faster transitions without decorative travel\nOff - Menu elements move instantly\n\nMotion never delays input or changes the destination.",
-	[SET_UI_COLOR] = "Menu Color:\n\nColors the cube, its light, the panels and the text.\nIndigo (default) is the GameCube's own color; Spice and\nJet Black are GameCube colors too.\n\nCover art, button icons, warnings and enabled cheats\nkeep their own colors.",
+	[SET_UI_COLOR] = "Menu Color:\n\nColors the cube, its light, the panels and the text, and\nthe backdrop and waves while they follow it.\nIndigo (default) is the GameCube's own color; Spice and\nJet Black are GameCube colors too.\n\nCover art, button icons, warnings and enabled cheats\nkeep their own colors.",
+	[SET_UI_BACKDROP_COLOR] = "Backdrop Color:\n\nColors the backdrop behind the cube and its faint rings.\nMenu Color (default) - The backdrop follows Menu Color.\nA color - The backdrop keeps that color whatever Menu\nColor is.\n\nEvery color keeps the backdrop as dark, so the cube and\nthe text stand out as before.",
+	[SET_UI_WAVE_COLOR] = "Wave Color:\n\nColors the waves that drift behind the cube.\nMenu Color (default) - The waves follow Menu Color.\nA color - The waves keep that color whatever Menu Color\nis.",
 	[SET_LIBRARY_ICON] = "Library Icon:\n\nThe picture on the cube's Library face: Controller (default),\nBooks, Covers or Play. Each face has its own four icons.\n\nController mirrors your controller.\nEvery icon glows in the same shade, and the face keeps its\nname and what A opens.",
 	[SET_SOURCE_ICON] = "Source Icon:\n\nThe picture on the cube's Source face: Hub (default),\nDisc, SD Card or Folder. Each face has its own four icons.\n\nThe Disc's glints turn while the menu moves.\nEvery icon glows in the same shade, and the face keeps its\nname and what A opens.",
 	[SET_SETTINGS_ICON] = "Settings Icon:\n\nThe picture on the cube's Settings face: Sliders (default),\nGear, Toggles or Dial. Each face has its own four icons.\n\nSliders, Gear and Dial move while the menu does.\nEvery icon glows in the same shade, and the face keeps its\nname and what A opens.",
@@ -339,11 +345,25 @@ typedef struct {
 	char text[32];
 } settingRowView_t;
 
+/* The UI_COLOR_LAYER_ a color row sets, or -1 for any other row. */
+static int settingsColorLayer(int page, int option)
+{
+	if(page == PAGE_INTERFACE) {
+		switch(option) {
+			case SET_UI_COLOR: return UI_COLOR_LAYER_MENU;
+			case SET_UI_BACKDROP_COLOR: return UI_COLOR_LAYER_BACKDROP;
+			case SET_UI_WAVE_COLOR: return UI_COLOR_LAYER_WAVES;
+		}
+	}
+	return -1;
+}
+
 /* One row of the snapshot. The value is drawn as its kind reads: a toggle's
  * ON/OFF pill, a choice's value pill (< > while focused), a text field, a
- * Setup section's summary, or an action's label alone. */
+ * Setup section's summary, or an action's label alone. A color row's pill
+ * starts with a dot of its layer's color: swatch is 1 + the layer, else 0. */
 static void drawSettingRow(uiSetPageSnapshot_t *page, int slot,
-	const settingRowView_t *row, bool custom, bool swatch)
+	const settingRowView_t *row, bool custom, int swatch)
 {
 	const uiSetLayout_t *layout = &page->layout;
 	uiSetPageRow_t *out = &page->rows[slot];
@@ -377,7 +397,7 @@ static void drawSettingRow(uiSetPageSnapshot_t *page, int slot,
 			break;
 		default:
 			out->kind = UI_SETLAYOUT_ROW_CHOICE;
-			/* Menu Color's swatch sits in the pill, before the name. */
+			/* A color row's swatch sits in the pill, before the name. */
 			if(swatch) {
 				valueWidth -= UI_SETLAYOUT_SWATCH + UI_SETLAYOUT_SWATCH_GAP;
 			}
@@ -546,6 +566,8 @@ static const settingsRowRef_t displayRows[] = {
 
 static const settingsRowRef_t consoleRows[] = {
 	{PAGE_INTERFACE, SET_UI_COLOR},
+	{PAGE_INTERFACE, SET_UI_BACKDROP_COLOR},
+	{PAGE_INTERFACE, SET_UI_WAVE_COLOR},
 	{PAGE_INTERFACE, SET_LIBRARY_ICON},
 	{PAGE_INTERFACE, SET_SOURCE_ICON},
 	{PAGE_INTERFACE, SET_SETTINGS_ICON},
@@ -1013,6 +1035,8 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 					swissSettings.disableUIAnimations, swissSettings.reduceUIAnimations)], true);
 			break;
 			case SET_UI_COLOR: rowCycle(row, "Menu Color:", uiColorStr[swissSettings.uiColor], true); break;
+			case SET_UI_BACKDROP_COLOR: rowCycle(row, "Backdrop Color:", uiLayerColorStr[swissSettings.uiBackdropColor], true); break;
+			case SET_UI_WAVE_COLOR: rowCycle(row, "Wave Color:", uiLayerColorStr[swissSettings.uiWaveColor], true); break;
 			case SET_LIBRARY_ICON: rowCycle(row, "Library Icon:", libraryIconStr[swissSettings.libraryIcon], true); break;
 			case SET_SOURCE_ICON: rowCycle(row, "Source Icon:", sourceIconStr[swissSettings.sourceIcon], true); break;
 			case SET_SETTINGS_ICON: rowCycle(row, "Settings Icon:", settingsIconStr[swissSettings.settingsIcon], true); break;
@@ -1284,7 +1308,7 @@ uiDrawObj_t* settings_draw_page(int view, int option, ConfigEntry *gameConfig) {
 		/* A game's own values are marked; the rest follow Game Defaults. */
 		drawSettingRow(&page, i, &row, tagged &&
 			settingsGameRowCustom(gameConfig, &gameDefaults, ref->option),
-			ref->page == PAGE_INTERFACE && ref->option == SET_UI_COLOR);
+			settingsColorLayer(ref->page, ref->option) + 1);
 	}
 	settingsDescribeFocus(&page, view, option, gameConfig,
 		tagged ? &gameDefaults : NULL);
@@ -1295,7 +1319,8 @@ uiDrawObj_t* settings_draw_page(int view, int option, ConfigEntry *gameConfig) {
 		(settingsPageEvent = DrawSettingsPage(&page)) != NULL) {
 		DrawPublish(settingsPageEvent);
 	}
-	DrawUpdateSettingsPage(settingsPageEvent, &page, swissSettings.uiColor);
+	DrawUpdateSettingsPage(settingsPageEvent, &page, (const int[UI_COLOR_LAYERS]) {
+		swissSettings.uiColor, swissSettings.uiBackdropColor, swissSettings.uiWaveColor});
 	return settingsPageEvent;
 }
 
@@ -1531,6 +1556,14 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			case SET_UI_COLOR:
 				swissSettings.uiColor += direction;
 				swissSettings.uiColor = (swissSettings.uiColor + UI_COLOR_MAX) % UI_COLOR_MAX;
+			break;
+			case SET_UI_BACKDROP_COLOR:
+				swissSettings.uiBackdropColor += direction;
+				swissSettings.uiBackdropColor = (swissSettings.uiBackdropColor + UI_COLOR_MAX + 1) % (UI_COLOR_MAX + 1);
+			break;
+			case SET_UI_WAVE_COLOR:
+				swissSettings.uiWaveColor += direction;
+				swissSettings.uiWaveColor = (swissSettings.uiWaveColor + UI_COLOR_MAX + 1) % (UI_COLOR_MAX + 1);
 			break;
 			case SET_LIBRARY_ICON:
 				swissSettings.libraryIcon += direction;
@@ -2331,6 +2364,8 @@ static const settingsPickerRow_t settingsPickerRows[] = {
 	PICK_SETTING(PAGE_GLOBAL, SET_ENABLE_USBGECKO, enableUSBGecko),
 	PICK_SETTING(PAGE_GLOBAL, SET_SIMMEMSIZE, simulatedMemSize),
 	PICK_SETTING(PAGE_INTERFACE, SET_UI_COLOR, uiColor),
+	PICK_SETTING(PAGE_INTERFACE, SET_UI_BACKDROP_COLOR, uiBackdropColor),
+	PICK_SETTING(PAGE_INTERFACE, SET_UI_WAVE_COLOR, uiWaveColor),
 	PICK_SETTING(PAGE_INTERFACE, SET_LIBRARY_LAYOUT, libraryLayout),
 	PICK_SETTING(PAGE_INTERFACE, SET_LIBRARY_ICON, libraryIcon),
 	PICK_SETTING(PAGE_INTERFACE, SET_SOURCE_ICON, sourceIcon),
@@ -2528,10 +2563,9 @@ static bool settingsPick(const settingsPickerRow_t *pick, ConfigEntry *config,
 		if(box == NULL && (box = DrawSettingsList(&shown)) != NULL) {
 			DrawPublish(box);
 		}
-		/* Menu Color's list shows each color as the focus reaches it. */
+		/* A color's list shows each color as the focus reaches it. */
 		DrawUpdateSettingsList(box, &shown,
-			pick->page == PAGE_INTERFACE && pick->option == SET_UI_COLOR ?
-			(int)list.value[focus] : -1);
+			settingsColorLayer(pick->page, pick->option), (int)list.value[focus]);
 		btns = settingsWaitForInput(menuInput, lastRetrace, &wasDigital);
 		if(btns & BUTTON_UP) {
 			focus = MAX(0, focus - 1);

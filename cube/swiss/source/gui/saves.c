@@ -215,7 +215,7 @@ static int savesPick(const char *title, const char *const *items, int count,
 			}
 		}
 		else {
-			DrawUpdateSettingsList(box, &list, -1);
+			DrawUpdateSettingsList(box, &list, -1, -1);
 		}
 		pressed = inputNext(&input);
 		if(pressed & BUTTON_UP) {

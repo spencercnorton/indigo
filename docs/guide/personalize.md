@@ -29,6 +29,24 @@ Every color keeps Indigo's brightness, so text stays as easy to read. Cover
 art, disc banners, the controller buttons in the hints, warnings and cheats
 that are on keep their own colors.
 
+## Backdrop and Wave Color
+
+Under Menu Color, **Backdrop Color** colors the dark backdrop behind the cube
+and its faint rings, and **Wave Color** the waves that drift in front of it.
+Each is **Menu Color** by default, following Menu Color as it always has, or
+one of the same eight colors to keep whatever Menu Color is. So the cube, the
+backdrop and the waves can each have a color of their own: a Gold cube over
+Azure waves on a Jet Black backdrop, say.
+
+<p align="center">
+  <img alt="The Home cube in Gold on its Library face, over a Jet Black backdrop with Azure waves drifting behind it." src="../screenshots/layer-colors.png" width="640">
+</p>
+
+They work like Menu Color: Right steps round the choices, and **A** lists them
+with the screen showing each one as you move through the list. The backdrop
+keeps its darkness in every color, so the cube and the text stand out as
+before.
+
 ## Cube icons
 
 Each face of the Home cube shows a picture, and you can pick it:

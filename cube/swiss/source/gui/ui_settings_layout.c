@@ -76,7 +76,7 @@ static const uiSetLayoutPage_t PAGES[UI_SETLAYOUT_PAGE_COUNT] = {
 	  "Video mode, cable, and TV.",
 	  UI_SETLAYOUT_ROWS_DISPLAY, UI_SETLAYOUT_TAB_SETUP, 0 },
 	{ "Setup", "Console",
-	  "Menu color, cube icons, sound, language, and system.",
+	  "Colors, cube icons, sound, language, and system.",
 	  UI_SETLAYOUT_ROWS_CONSOLE, UI_SETLAYOUT_TAB_SETUP, 0 },
 	{ "Setup", "Storage",
 	  "Settings device, SD cards, and the disc drive.",

@@ -15,6 +15,7 @@
 #include "ui_gameflow.h"
 #include "ui_home.h"
 #include "ui_presentation.h"
+#include "ui_color.h"
 #include "ui_settings_layout.h"
 
 #define D_WARN  0
@@ -233,16 +234,18 @@ uiDrawObj_t* DrawRepublish(uiDrawObj_t *old, uiDrawObj_t *new);
 void DrawDispose(uiDrawObj_t *evt);
 /* Settings: one page event for the whole session, drawn from a snapshot in
  * the cheat browser's language. Each update copies the snapshot and keeps
- * the screen in the Menu Color it was built with (menuColor), in one step,
- * until the page is disposed. */
+ * the screen in the colors it was built with (colors: the Menu, Backdrop and
+ * Wave Color settings, one per UI_COLOR_LAYER_), in one step, until the page
+ * is disposed. */
 uiDrawObj_t* DrawSettingsPage(const uiSetPageSnapshot_t *snapshot);
 void DrawUpdateSettingsPage(uiDrawObj_t *page,
-	const uiSetPageSnapshot_t *snapshot, int menuColor);
-/* The value list over the page. previewColor >= 0 shows that Menu Color
- * while the list has it focused; the page's next update ends it. */
+	const uiSetPageSnapshot_t *snapshot, const int colors[UI_COLOR_LAYERS]);
+/* The value list over the page. With previewLayer >= 0 the screen shows
+ * previewColor, a value of that layer's setting, while the list has it
+ * focused; the page's next update ends it. */
 uiDrawObj_t* DrawSettingsList(const uiSetListSnapshot_t *snapshot);
 void DrawUpdateSettingsList(uiDrawObj_t *list,
-	const uiSetListSnapshot_t *snapshot, int previewColor);
+	const uiSetListSnapshot_t *snapshot, int previewLayer, int previewColor);
 /* A row's help (its tooltip) as a card over the page. */
 uiDrawObj_t* DrawSettingsHelp(const char *help);
 
