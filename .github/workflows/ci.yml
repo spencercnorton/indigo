@@ -46,24 +46,22 @@ jobs:
       - name: Check the DOL
         run: |
           mkdir -p dist
-          python3 buildtools/ci/verify_dol.py cube/swiss/swiss.dol --packed cube/packer/swiss.dol \
-            --toolchain "$TOOLCHAIN" \
+          python3 buildtools/ci/verify_dol.py cube/swiss/swiss.dol --toolchain "$TOOLCHAIN" \
             --revision "$(git rev-parse HEAD)" --short "$(git rev-parse --short HEAD)" \
             --out dist/provenance.json
           cp cube/swiss/swiss.dol dist/swiss.dol
-          cp cube/packer/swiss.dol dist/ipl.dol
           git show-ref --tags > dist/tags.txt || true  # the DOL lists every tag (tags.h)
       - name: Package and check the SD card zip
         run: |
           version="ci-$(git rev-parse --short=8 HEAD)"
-          buildtools/sd_package.sh "$version" cube/packer/swiss.dol dist
+          buildtools/sd_package.sh "$version" cube/swiss/swiss.dol dist
           python3 buildtools/ci/check_package.py "dist/Indigo-$version.zip" \
-            --dol cube/packer/swiss.dol --version "$version"
+            --dol cube/swiss/swiss.dol --version "$version"
           {
             echo "### Build"
             echo "| | bytes | SHA-256 |"
             echo "| --- | ---: | --- |"
-            for file in dist/swiss.dol dist/ipl.dol "dist/Indigo-$version.zip"; do
+            for file in dist/swiss.dol "dist/Indigo-$version.zip"; do
               echo "| \`${file#dist/}\` | $(wc -c < "$file") | \`$(sha256sum "$file" | cut -c1-64)\` |"
             done
           } >> "$GITHUB_STEP_SUMMARY"
@@ -78,7 +76,6 @@ jobs:
           name: dol-${{ github.sha }}
           path: |
             dist/swiss.dol
-            dist/ipl.dol
             dist/provenance.json
             dist/tags.txt
           if-no-files-found: error
@@ -112,8 +109,8 @@ jobs:
         run: make dev
       - name: Both builds are the same bytes
         run: |
-          sha256sum first/swiss.dol cube/swiss/swiss.dol first/ipl.dol cube/packer/swiss.dol
-          if ! cmp first/swiss.dol cube/swiss/swiss.dol || ! cmp first/ipl.dol cube/packer/swiss.dol; then
+          sha256sum first/swiss.dol cube/swiss/swiss.dol
+          if ! cmp first/swiss.dol cube/swiss/swiss.dol; then
             echo "::error::Two builds of the same commit in the same toolchain differ. Something in the build depends on the machine, the time or the order of files."
             exit 1
           fi
@@ -130,13 +127,8 @@ jobs:
         with:
           name: dol-${{ github.sha }}
           path: build
-      - name: Boot ipl.dol in Dolphin and walk its menus
-        # Dolphin can't boot ipl.dol as it ships: its unpacker first checks
-        # for the bus error only a GameCube raises. The copy skips that one
-        # check; the unpacker, its .xz stream and Indigo are the card's bytes.
-        run: |
-          python3 buildtools/ui/emulator/dolphin_ipl.py build/ipl.dol build/ipl-dolphin.dol
-          python3 buildtools/ui/emulator/run.py build/ipl-dolphin.dol --out emulator
+      - name: Boot the build in Dolphin and walk its menus
+        run: python3 buildtools/ui/emulator/run.py build/swiss.dol --out emulator
       - name: Summary
         if: always()
         run: cat emulator/summary.md >> "$GITHUB_STEP_SUMMARY" || true

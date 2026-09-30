@@ -4,6 +4,27 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## v2.1.1 — ipl.dol uncompressed again
+
+2.1.0's compressed `ipl.dol` could leave the console restarting over and over
+at power-on instead of starting Indigo. 2.1.1 is 2.1.0 with `ipl.dol`
+uncompressed again, as it was in 2.0.1; everything else is the same.
+
+### Fixes
+
+- `ipl.dol` is the uncompressed DOL again (5.5 MB). The compressed one in
+  2.1.0 did not start on a GameCube booted from a GC Loader: it failed to
+  unpack, the console restarted, the loader read it again and it looped. If
+  you installed 2.1.0, copy 2.1.1's files over it the same way.
+
+### For developers
+
+- The zip's `ipl.dol` is `cube/swiss/swiss.dol` again, and the packing from
+  #57 (`verify_dol.py --packed`, `dolphin_ipl.py`, the compressed file in
+  Reproducible build and the Emulator job) is reverted. The compressed DOL
+  passed CI and Dolphin but not a console, so it ships again only after a
+  console test.
+
 ## v2.1.0 — Spotlight, Apps and one poster pack for every region
 
 A fourth Library layout, Spotlight, with a gameplay still and a description
