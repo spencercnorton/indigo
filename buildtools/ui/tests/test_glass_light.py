@@ -570,7 +570,12 @@ class GlassLightTests(unittest.TestCase):
         home = extract_function(self.source, "void IndigoBackground_Draw(")
         self.assertIn("drawCube(scene, seconds, cubeMotionActive, clock, pad, icons, true);", home)
         self.assertLess(home.index("drawCubeLight("), home.index("drawCube(scene,"),
-            "the halo and caustic belong behind the cube")
+            "the halo belongs behind the cube")
+        # The halo is two soft glows behind the cube; the glow spot on the
+        # floor under it is gone (Spencer, 2026-09-30).
+        light = extract_function(self.source, "static void drawCubeLight(")
+        self.assertEqual(light.count("drawSoftGlow("), 2)
+        self.assertNotRegex(light, r"floor[XYS]")
 
     def test_the_glass_is_clear(self):
         # No solid cube inside: no pass writes depth or draws opaque, and the

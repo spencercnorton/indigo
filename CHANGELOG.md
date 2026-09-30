@@ -8,12 +8,22 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### New
 
+- Settings › Setup › Console › **Clock** puts the time and the temperature
+  dial in the top right corner (the default), the top left, or nowhere. The
+  loading spinner and the Source screen's label move to the other corner.
 - Settings › Setup › Console has **Backdrop Color** and **Wave Color** under
   Menu Color. The backdrop behind the cube and the waves in front of it can
   each keep a color of their own, one of Menu Color's eight, or follow Menu
   Color as before (the default). Like Menu Color, A lists the colors and the
   screen shows each one as you move through the list. In `global.ini` they are
   `Backdrop Color` and `Wave Color`.
+
+### Changes
+
+- A Jet Black backdrop is nearly black now. Gray at Indigo's brightness read
+  light on a TV.
+- The glow spot on the floor under the Home cube is gone; the halo behind the
+  cube stays.
 
 ## v2.1.1 — ipl.dol uncompressed again
 

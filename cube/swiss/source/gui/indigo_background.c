@@ -136,19 +136,23 @@ static void setupRasterPipeline(void)
 }
 
 /* The stage, and at boot the veil over it: a veil in the stage's own colors
- * shows no step when the menu activates, and lifts to show the scene. */
-static void drawIndigoWash(u8 alpha)
+ * shows no step when the menu activates, and lifts to show the scene.
+ * shade darkens it (UIColor_BackdropShade). */
+static void drawIndigoWash(u8 alpha, float shade)
 {
 	float left = UIStage_Left(), right = UIStage_Right();
+#define WASH(r, g, b) (GXColor) {(u8)((r) * shade + 0.5f), (u8)((g) * shade + 0.5f), \
+	(u8)((b) * shade + 0.5f), alpha}
 
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
 		/* This pass deliberately replaces the legacy grey backdrop rather than
 		 * tinting it. The cube needs a clean, high-contrast stage. */
-		putVertex((indigoPoint_t) {left, 0.0f}, (GXColor) {6, 6, 22, alpha});
-		putVertex((indigoPoint_t) {right, 0.0f}, (GXColor) {9, 7, 27, alpha});
-		putVertex((indigoPoint_t) {right, 480.0f}, (GXColor) {29, 19, 65, alpha});
-		putVertex((indigoPoint_t) {left, 480.0f}, (GXColor) {19, 14, 48, alpha});
+		putVertex((indigoPoint_t) {left, 0.0f}, WASH(6, 6, 22));
+		putVertex((indigoPoint_t) {right, 0.0f}, WASH(9, 7, 27));
+		putVertex((indigoPoint_t) {right, 480.0f}, WASH(29, 19, 65));
+		putVertex((indigoPoint_t) {left, 480.0f}, WASH(19, 14, 48));
 	GX_End();
+#undef WASH
 }
 
 static void initWaveOscillator(waveOscillator_t *oscillator, float phase,
@@ -3182,8 +3186,7 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
  * light stood behind the glass, and a caustic where the glass focuses that
  * light on the floor inside its shadow. The caustic swells as a face turns
  * square to the light and the lens it makes is strongest. */
-static void drawCubeLight(const uiSceneFrame_t *scene, float seconds, bool animated,
-		float floorX, float floorY, float floorScale)
+static void drawCubeLight(const uiSceneFrame_t *scene, float seconds, bool animated)
 {
 	const float perUnit = 1.0f / tanf(21.0f * INDIGO_TAU / 360.0f) * 240.0f /
 		-CUBE_CAMERA_Z;
@@ -3193,7 +3196,6 @@ static void drawCubeLight(const uiSceneFrame_t *scene, float seconds, bool anima
 	float y = 240.0f - (scene->cubeY + bob) * perUnit;
 	float radius = scene->cubeScale * perUnit;
 	float breath = animated ? 0.92f + 0.08f * sinf(seconds * 0.9f) : 1.0f;
-	float focus = 0.55f + 0.45f * fabsf(cosf(2.0f * scene->cubeYaw));
 
 	if(strength <= 0.01f) return;
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
@@ -3201,10 +3203,8 @@ static void drawCubeLight(const uiSceneFrame_t *scene, float seconds, bool anima
 		(GXColor) {138, 116, 255, 255}, 0.14f * strength * breath);
 	drawSoftGlow(x, y, radius * 1.42f, radius * 1.36f,
 		(GXColor) {172, 150, 255, 255}, 0.09f * strength * breath);
-	drawSoftGlow(floorX - 14.0f * floorScale, floorY, 74.0f * floorScale, 9.5f * floorScale,
-		(GXColor) {214, 202, 255, 255}, 0.20f * strength * focus);
-	drawSoftGlow(floorX - 20.0f * floorScale, floorY - 1.0f, 26.0f * floorScale,
-		4.0f * floorScale, (GXColor) {244, 238, 255, 255}, 0.24f * strength * focus);
+	/* Spencer took the glow spot on the floor under the cube out
+	 * (2026-09-30): it added nothing. */
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 }
 
@@ -3238,7 +3238,7 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 	/* The backdrop and the waves have colors of their own; the cube and
 	 * everything after it take the menus'. */
 	UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);
-	drawIndigoWash(255);
+	drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));
 	drawGlobeGrid(320.0f, 212.0f, drift * 0.18f);
 	if(scene->visible) {
 		UIColor_Select(layerColors[UI_COLOR_LAYER_WAVES]);
@@ -3253,8 +3253,7 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 		(GXColor) {3, 2, 12, (u8)(92.0f * orbitStrength)},
 		(GXColor) {3, 2, 12, 0});
 	if(scene->introProgress >= BOOT_CUBE_HANDOFF) {
-		drawCubeLight(scene, seconds, cubeMotionActive, centerX,
-			centerY + 132.0f * orbitScale, orbitScale);
+		drawCubeLight(scene, seconds, cubeMotionActive);
 		drawCube(scene, seconds, cubeMotionActive, clock, pad, icons, true);
 	}
 }
@@ -3288,6 +3287,6 @@ void IndigoBackground_DrawBootOverlay(float seconds, bool animated,
 	}
 	setupRasterPipeline();
 	UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);
-	drawIndigoWash(veilAlpha);
+	drawIndigoWash(veilAlpha, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));
 	UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);
 }

@@ -54,9 +54,8 @@ The cube is clear glass, and it treats light the way glass does:
   glass as the cube turns, and while Home rests they drift a little, so the
   glass is never quite still.
 - **It glows.** Highlights and glints have a soft glow, a fine rim lights
-  the edges that face the light, and a halo sits behind the cube with a patch
-  of focused light on the floor under it. The face icons stay sharp on top
-  of the glass.
+  the edges that face the light, and a halo sits behind the cube. The face
+  icons stay sharp on top of the glass.
 
 Every part follows your [Menu Color](personalize.md), except the prism's
 fringes, which keep their own colors. With UI Motion set
@@ -79,7 +78,8 @@ never plays by itself. UI Motion is in Settings › Quick.
 
 ## Around the cube
 
-- **Top right:** the time and the console's CPU temperature. The
+- **Top right:** the time and the console's CPU temperature. Settings ›
+  Setup › Console › Clock moves them to the top left or hides them. The
   temperature has no factory calibration; adjust it in Settings › Setup ›
   Console › CPU Temperature Calibration.
 - **Bottom:** the buttons that work here.

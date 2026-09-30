@@ -1048,6 +1048,18 @@ uiDrawObj_t* DrawTexObj(GXTexObj *texObj, int x, int y, int width, int height, i
 	return event;
 }
 
+/* The top corner the clock and its temperature dial take (Clock): 1 the
+ * right (the default), -1 the left, 0 neither. The header's other corner
+ * items take the corner it leaves free. */
+static int _ClockCorner(void)
+{
+	switch(swissSettings.clockPosition) {
+		case CLOCK_LEFT: return -1;
+		case CLOCK_OFF: return 0;
+		default: return 1;
+	}
+}
+
 // Internal
 static void _DrawProgressBar(uiDrawObj_t *evt) {
 	
@@ -1062,10 +1074,11 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 	}
 	if(data->miniMode) {	
 		int x = 30, y = 420;
-		/* The header's left corner, level with the clock on the right and
-		 * as far in from the edge the frame shows. */
+		/* The header's corner the clock leaves free, level with the clock
+		 * and as far in from the edge the frame shows. */
 		if(data->miniModePos == PROGRESS_BOX_TOPLEFT) {
-			x = (int)(UIStage_Left() + 44.0f); y = 43;
+			x = (int)(_ClockCorner() < 0 ? UIStage_Right() - 44.0f : UIStage_Left() + 44.0f);
+			y = 43;
 		}
 		GXColor loadingColor = (GXColor) {255,255,255,data->miniModeAlpha};
 		int numSegments = (data->percent*8)/100;
@@ -2389,13 +2402,15 @@ static void _UpdateSystemInstrument(void)
 // Internal
 static void _DrawTitleBar(uiDrawObj_t *evt) {
 	float reveal = UIScene_Frame()->chromeProgress;
-	/* The dial sits 40 in from the right edge the frame shows. */
-	int dialX = (int)(UIStage_Right() - 40.0f);
+	int corner = _ClockCorner();
+	/* The dial sits 40 in from the edge the frame shows, the time on its
+	 * inner side. */
+	int dialX = (int)(corner < 0 ? UIStage_Left() + 40.0f : UIStage_Right() - 40.0f);
 	int offsetY;
 	GXColor textColor;
 
 	(void)evt;
-	if(reveal <= 0.0f) {
+	if(reveal <= 0.0f || corner == 0) {
 		return;
 	}
 	if(reveal > 1.0f) {
@@ -2412,8 +2427,8 @@ static void _DrawTitleBar(uiDrawObj_t *evt) {
 			0.42f, ALIGN_CENTER, textColor);
 	}
 	if(systemInstrument.clock.available) {
-		drawStringMedium(dialX - 32, 43 + offsetY, systemInstrument.timeText,
-			0.54f, ALIGN_RIGHT, textColor);
+		drawStringMedium(dialX - 32 * corner, 43 + offsetY, systemInstrument.timeText,
+			0.54f, corner < 0 ? ALIGN_LEFT : ALIGN_RIGHT, textColor);
 	}
 }
 
@@ -4625,8 +4640,11 @@ static void _DrawDeviceSelector(uiDrawObj_t *evt)
 	nearest = (int)floorf(position + 0.5f);
 	labels = reveal * (1.0f - 2.0f * fabsf(position - (float)nearest));
 	tile = &s->tiles[_DeviceIndex(nearest, s->count)];
-	drawStringMedium(40, 44, data->destination ? "DESTINATION" : "SOURCE",
-		0.50f, ALIGN_LEFT, (GXColor) {216, 207, 255, (u8)(230.0f * reveal)});
+	/* In the header's corner the clock leaves free. */
+	drawStringMedium(_ClockCorner() < 0 ? 600 : 40, 44,
+		data->destination ? "DESTINATION" : "SOURCE", 0.50f,
+		_ClockCorner() < 0 ? ALIGN_RIGHT : ALIGN_LEFT,
+		(GXColor) {216, 207, 255, (u8)(230.0f * reveal)});
 	drawStringMedium(320, (int)(y + 88.0f), tile->name, tile->nameScale,
 		ALIGN_CENTER, (GXColor) {246, 243, 255, (u8)(255.0f * labels)});
 	drawStringMedium(320, (int)(y + 110.0f), !s->inAdvanced ? tile->facts :
