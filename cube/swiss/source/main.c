@@ -38,6 +38,7 @@
 #include "devices/fat/ata.h"
 #include "aram/sidestep.h"
 #include "devices/filemeta.h"
+#include "gui/indigo_log.h"
 
 dvdcmdblk DVDCommandBlock;
 dvdcmdblk DVDInquiryBlock;
@@ -185,6 +186,14 @@ void __SYS_PreInit(void)
 	__PADFixBits = PAD_CHAN0_BIT | PAD_CHAN1_BIT | PAD_CHAN2_BIT | PAD_CHAN3_BIT;
 }
 
+/* What startup is doing: the log keeps it with the time since power-on, and
+ * the screen shows it if startup runs long, until menu_loop reveals Home. */
+static void startupStage(const char *stage)
+{
+	IndigoLog_SetStage(stage);
+	print_debug("Startup: %s\n", stage);
+}
+
 uiDrawObj_t *configProgBar = NULL;
 void config_migration(char* text, int state, int percent) {
 	if(state) {
@@ -272,6 +281,8 @@ int main(int argc, char *argv[])
 	memset(&swissSettings.recent[0][0], 0, PATHNAME_MAX);
 	config_init_environ();
 
+	/* The first line's time is how long the loader took to start Indigo. */
+	startupStage("Starting");
 	Initialise();
 	needsDeviceChange = 1;
 	needsRefresh = 1;
@@ -290,6 +301,7 @@ int main(int argc, char *argv[])
 	print_debug("GIT Revision: %s\n", GIT_REVISION);
 	
 	// Go through all devices with FEAT_BOOT_DEVICE feature and set it as current if one is available
+	startupStage("Looking for devices");
 	for(i = 0; i < MAX_DEVICES; i++) {
 		if(allDevices[i] != NULL && (allDevices[i]->features & FEAT_BOOT_DEVICE)) {
 			print_debug("Testing device %s\n", allDevices[i]->deviceName);
@@ -301,7 +313,10 @@ int main(int argc, char *argv[])
 		}
 	}
 	if(devices[DEVICE_CUR] != NULL) {
+		static char openingStage[80];
 		print_debug("Detected %s\n", devices[DEVICE_CUR]->deviceName);
+		snprintf(openingStage, sizeof(openingStage), "Opening %s", DeviceDisplayName(devices[DEVICE_CUR]));
+		startupStage(openingStage);
 		if(!devices[DEVICE_CUR]->init(devices[DEVICE_CUR]->initial)) {
 			/* No startup DOL autoload: upstream's boots any official Swiss in the
 			 * root (z.dol, a.dol, boot.dol...) in place of Indigo. */
@@ -317,9 +332,11 @@ int main(int argc, char *argv[])
 	}
 
 	// Scan here since some devices would already be initialised (faster)
+	startupStage("Checking the other devices");
 	populateDeviceAvailability();
 
 	// Read Swiss settings
+	startupStage("Reading settings");
 	if(!config_init(&config_migration)) {
 		swissSettings.configDeviceId = DEVICE_ID_UNK;
 	}
@@ -352,6 +369,7 @@ int main(int argc, char *argv[])
 	
 	// Swiss video mode force
 	GXRModeObj *forcedMode = getVideoModeFromSwissSetting(swissSettings.uiVMode);
+	startupStage("Setting the video mode");
 	DrawVideoMode(forcedMode);
 	
 	// Save settings to SRAM
@@ -369,6 +387,7 @@ int main(int argc, char *argv[])
 	}
 	
 	DEVICEHANDLER_INTERFACE *device = getDeviceByLocation(LOC_DVD_CONNECTOR);
+	startupStage("Checking the disc drive");
 	if(device == &__device_dvd) {
 		if(swissSettings.initDVDDriveAtStart) {
 			DVD_Reset(DVD_RESETNONE);
@@ -424,10 +443,12 @@ int main(int argc, char *argv[])
 	// Check for autoload entry
 	if(swissSettings.autoload[0]) {
 		// Check that the path in the autoload entry points at a device that has been detected
+		startupStage("Opening the Autoload entry");
 		print_debug("Autoload entry detected [%s]\n", swissSettings.autoload);
 		find_existing_entry(&swissSettings.autoload[0], true);
 	}
 	else if(swissSettings.recent[0][0] && swissSettings.recentListLevel > 1) {
+		startupStage("Opening the last game's folder");
 		find_existing_entry(&swissSettings.recent[0][0], false);
 	}
 

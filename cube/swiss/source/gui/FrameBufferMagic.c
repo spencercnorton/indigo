@@ -50,6 +50,7 @@
 #include "ui_about.h"
 #include "ui_launch.h"
 #include "apps.h"
+#include "indigo_log.h"
 
 #define GUI_MSGBOX_ALPHA 225
 #define GUI_PANEL_ALPHA 150	// Phase 2: translucent content panels (config-gated; dialogs stay at GUI_MSGBOX_ALPHA)
@@ -5272,6 +5273,39 @@ bool DrawLaunchStep(const char *message)
 static bool launchFading;
 static float launchFade;
 
+/* Until the menu appears the screen is the dark stage alone, so a long
+ * startup looks like a dead console. After STARTUP_STAGE_DELAY seconds the
+ * stage main.c is in shows at the bottom, and once one stage runs long, for
+ * how long: a photo of a start that stops then says where. */
+#define STARTUP_STAGE_DELAY 3.0f
+#define STARTUP_STAGE_COUNT_AFTER 5.0f
+
+static void _DrawStartupStage(void)
+{
+	static unsigned seenSerial;
+	static float stageSince;
+	unsigned serial;
+	const char *stage = IndigoLog_Stage(&serial);
+	float now = UIAnim_Seconds();
+	char text[96];
+
+	if(serial != seenSerial) {
+		seenSerial = serial;
+		stageSince = now;
+	}
+	if(stage == NULL || now < STARTUP_STAGE_DELAY) {
+		return;
+	}
+	if(now - stageSince >= STARTUP_STAGE_COUNT_AFTER) {
+		snprintf(text, sizeof(text), "%s\205  %u s", stage, (unsigned)(now - stageSince));
+	}
+	else {
+		snprintf(text, sizeof(text), "%s\205", stage);
+	}
+	drawInit();
+	drawString(320, 424, text, 0.66f, ALIGN_CENTER, (GXColor) {174, 163, 224, 255});
+}
+
 static void _DrawLaunchFade(void)
 {
 	GXColor black = {0, 0, 0, 0};
@@ -6928,6 +6962,9 @@ static void *videoUpdate(void *videoEventQueue) {
 		}
 		if(launchFading) {
 			_DrawLaunchFade();
+		}
+		if(!UIScene_Frame()->visible) {
+			_DrawStartupStage();
 		}
 		/* During the short boot reveal, veil the already-published legacy widgets
 		 * and redraw the cube above them. Animations Off skips this pass entirely. */

@@ -54,6 +54,7 @@
 #include "gui/FrameBufferMagic.h"
 #include "gui/IPLFontWrite.h"
 #include "gui/apps.h"
+#include "gui/indigo_log.h"
 #include "gui/ui_gameflow_detail.h"
 #include "gui/ui_gameflow_library.h"
 #include "gui/ui_gameflow_ownership.h"
@@ -4771,6 +4772,11 @@ void select_device(int type)
 
 void menu_loop()
 {
+	/* Startup's last stages, then the stage line gives way to Home. */
+	if(IndigoLog_Stage(NULL) != NULL) {
+		IndigoLog_SetStage("Starting audio");
+		print_debug("Startup: starting audio\n");
+	}
 	menuaudio_init();
 	homeSourceObserveStartup();
 	while(padsButtonsHeld() & BUTTON_A) { VIDEO_WaitVSync (); }
@@ -4778,6 +4784,10 @@ void menu_loop()
 	 * has not yet published. Starting here keeps the visible reveal aligned
 	 * with the interactive menu and its audio lifecycle. */
 	UIScene_Activate();
+	if(IndigoLog_Stage(NULL) != NULL) {
+		IndigoLog_SetStage(NULL);
+		print_debug("Startup: Home\n");
+	}
 	if(gameflowStartupSurfacePending) {
 		gameflowStartupSurfacePending = false;
 		if(UIGameflowLibrary_ShouldStartHome(

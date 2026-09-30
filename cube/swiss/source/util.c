@@ -9,6 +9,8 @@
 #include "dvd.h"
 #include "aram/sidestep.h"
 #include "devices/filemeta.h"
+#include "gui/indigo_log.h"
+#include <ogc/lwp_watchdog.h>
 
 
 /* File name helper functions */
@@ -230,8 +232,24 @@ void load_auto_dol(int argc, char *argv[]) {
 /* Print over USB Gecko if enabled */
 void print_debug(const char *fmt, ...)
 {
+	/* Indigo: every line also goes to the in-memory log that System
+	 * Information saves, stamped with the time since power-on. */
+	char line[256];
+	u64 ms = ticks_to_millisecs(gettime());
+	int prefix = snprintf(line, sizeof(line), "[%5u.%03u] ", (unsigned)(ms / 1000), (unsigned)(ms % 1000));
+	va_list arglist;
+	va_start(arglist, fmt);
+	int length = vsnprintf(line + prefix, sizeof(line) - (size_t)prefix, fmt, arglist);
+	va_end(arglist);
+	if (length >= 0) {
+		size_t total = (size_t)prefix + (size_t)length;
+		if (total >= sizeof(line)) {
+			total = sizeof(line) - 1;
+			line[total - 1] = '\n';
+		}
+		IndigoLog_Append(line, total);
+	}
 	if (swissSettings.sramBoot == SYS_BOOT_DEVELOPMENT) {
-		va_list arglist;
 		va_start(arglist, fmt);
 		SYS_EnableGecko(swissSettings.enableUSBGecko - USBGECKO_MEMCARD_SLOT_A, swissSettings.waitForUSBGecko);
 		SYS_Reportv(fmt, arglist);

@@ -99,6 +99,7 @@ run_plain() {
 	echo "== per-port menu input policy and live clock geometry (plain) =="
 	./test_ui_menu_input
 	./test_ui_clock
+	./test_indigo_log
 	./test_ui_hint
 
 	echo "== widescreen stage (plain) =="
@@ -162,6 +163,7 @@ run_sanitized() {
 	echo "== per-port menu input policy and live clock geometry (ASan/UBSan) =="
 	./test_ui_menu_input_san
 	./test_ui_clock_san
+	./test_indigo_log_san
 	./test_ui_hint_san
 
 	echo "== widescreen stage (ASan/UBSan) =="

@@ -49,6 +49,10 @@ int config_update_game(ConfigEntry *entry, ConfigEntry *defaults, bool checkConf
  * lets it go again. */
 bool config_set_device(void);
 void config_unset_device(void);
+/* System Information's Save log: text as /swiss/indigo-log.txt on the
+ * settings device, replacing the last one. where (PATHNAME_MAX) gets the
+ * full path to show. */
+bool config_save_log(const char *text, char *where);
 int config_update_global(bool checkConfigDevice);
 int config_update_autoload(bool checkConfigDevice);
 bool config_global_file_loaded(void);

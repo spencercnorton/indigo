@@ -21,6 +21,8 @@
 #include "gcloader.h"
 #include "wkf.h"
 #include "ui_system_info.h"
+#include "indigo_log.h"
+#include "config.h"
 
 #define INFO_TEXT_CAPACITY 256u
 #define INFO_FITTED_CAPACITY 192u
@@ -672,6 +674,54 @@ uiDrawObj_t * info_draw_page(int page_num)
 	return container;
 }
 
+/* About, X: the log for a bug report, with what System Information shows
+ * about this console at the top. */
+static void infoSaveLog(void)
+{
+	char model[INFO_TEXT_CAPACITY];
+	char ipl[INFO_TEXT_CAPACITY];
+	char video[INFO_TEXT_CAPACITY];
+	char when[32] = "unknown";
+	char where[PATHNAME_MAX] = "";
+	char message[PATHNAME_MAX + 64];
+	time_t now = time(NULL);
+	size_t used;
+	char *text = malloc(INDIGO_LOG_COPY_BYTES + 1024u);
+	uiDrawObj_t *box = DrawPublish(DrawProgressBar(true, 0, "Saving the log\205"));
+	bool saved = false;
+
+	if(text != NULL) {
+		infoGetConsoleModel(model, sizeof(model));
+		infoGetIplVersion(ipl, sizeof(ipl));
+		infoGetVideoMode(video, sizeof(video));
+		if(now != (time_t)-1) {
+			strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", localtime(&now));
+		}
+		used = (size_t)snprintf(text, 1024u,
+			"Indigo log, commit %s, revision %s\n"
+			"Console: %s, IPL %s, %s\n"
+			"Video: %s\n"
+			"Source: %s\n"
+			"Saved: %s\n\n",
+			GIT_COMMIT, GIT_REVISION, model, ipl,
+			UISystem_RegionName(infoGetRegion()), video,
+			devices[DEVICE_CUR] != NULL ? DeviceDisplayName(devices[DEVICE_CUR]) : "none",
+			when);
+		IndigoLog_Copy(text + used, INDIGO_LOG_COPY_BYTES);
+		saved = config_save_log(text, where);
+		free(text);
+	}
+	if(saved) {
+		snprintf(message, sizeof(message), "Saved the log to\n%s\nAttach it to your bug report.", where);
+	}
+	else {
+		snprintf(message, sizeof(message), "The log could not be saved.\nIs a writable card in the console?");
+	}
+	box = DrawRepublish(box, DrawMessageBox(D_INFO, message));
+	wait_press_A();
+	DrawDispose(box);
+}
+
 static time_t infoCurrentMinute(void)
 {
 	time_t now = time(NULL);
@@ -695,6 +745,7 @@ void show_info()
 		publishedMinute = infoCurrentMinute();
 		while(!refreshOverview && !((padsButtonsHeld() & BUTTON_RIGHT) ||
 			(padsButtonsHeld() & BUTTON_LEFT) ||
+			(padsButtonsHeld() & BUTTON_X) ||
 			(padsButtonsHeld() & BUTTON_B) ||
 			(padsButtonsHeld() & BUTTON_R) ||
 			(padsButtonsHeld() & BUTTON_L))) {
@@ -720,8 +771,12 @@ void show_info()
 		if(btns & PAD_BUTTON_B) {
 			break;
 		}
+		if((btns & BUTTON_X) && page == UI_SYSTEM_PAGE_ABOUT) {
+			infoSaveLog();
+		}
 		while((padsButtonsHeld() & BUTTON_RIGHT) ||
 			(padsButtonsHeld() & BUTTON_LEFT) ||
+			(padsButtonsHeld() & BUTTON_X) ||
 			(padsButtonsHeld() & BUTTON_B) ||
 			(padsButtonsHeld() & BUTTON_R) ||
 			(padsButtonsHeld() & BUTTON_L)) {

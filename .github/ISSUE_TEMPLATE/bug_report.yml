@@ -41,5 +41,5 @@ body:
     id: logs
     attributes:
       label: Log excerpt
-      description: "What was on screen, and the last thing you did before it happened. Scrubbed."
+      description: "If Indigo reaches its menu, save a log (System › System Information › About Indigo, X) and paste /swiss/indigo-log.txt here. Otherwise, what was on screen and the last thing you did before it happened. Scrubbed."
       render: text

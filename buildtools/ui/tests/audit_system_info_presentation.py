@@ -79,8 +79,9 @@ require("UISystem_ComputeLayout(page_num, &layout);" in draw_page,
         "renderer bypasses pure layout")
 require("UISystem_FormatPageStatus(" in draw_page,
         "single command rail is not policy-owned")
-require("L/R  PAGE %d OF %d    B  BACK" in policy,
-        "command rail does not expose page navigation and B-only exit")
+require('"L/R  PAGE %d OF %d    %sB  BACK"' in policy
+        and 'page == UI_SYSTEM_PAGE_ABOUT ? "X  SAVE LOG    " : ""' in policy,
+        "command rail does not expose page navigation, About's Save log and B-only exit")
 
 # Every boxed surface is validated with its implicit border expansion by the
 # pure test; essential dynamic values retain a 0.60 native-grid floor.
@@ -195,8 +196,11 @@ for credit in (
 for credit in ('"SPOTLIGHT LIBRARY DESIGN"', '"GAMEPLAY SPOTLIGHT BY MVIZENSK"'):
     require(credit in credits, "Credits page omits Gameplay Spotlight's author")
 
-# Input remains exactly the established B-only, one-level return contract.
+# Input remains the established B-only, one-level return contract; X, on
+# About only, saves the log and stays on the page.
 interactive = show_info[show_info.index("while(1)") :]
+require("if((btns & BUTTON_X) && page == UI_SYSTEM_PAGE_ABOUT) {\n\t\t\tinfoSaveLog();\n\t\t}"
+        in interactive, "X acts outside About or does more than save the log")
 require("BUTTON_A" not in interactive, "A exits or acts inside System Information")
 require("if(btns & PAD_BUTTON_B)" in interactive, "B exit is missing")
 require(interactive.count("break;") == 1, "more than one exit path exists")

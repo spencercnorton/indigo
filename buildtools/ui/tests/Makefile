@@ -16,7 +16,7 @@ GAMEFLOW_CFLAGS := -std=c11 -Wall -Wextra -Werror -Wconversion \
 
 PLAIN_TARGETS := test_ui_cube_motif test_ui_game_history test_ui_about test_ui_cheats test_ui_saves test_ui_assets test_ui_assets_target_sync \
 	test_ui_settings_layout test_ui_settings_focus test_ui_system_info \
-	test_ui_menu_input test_ui_clock test_ui_hint test_ui_stage \
+	test_ui_menu_input test_ui_clock test_ui_hint test_ui_stage test_indigo_log \
 	test_ui_home test_ui_presentation \
 	test_ui_home_layout test_ui_home_safety test_ui_scene \
 	test_ui_command_rail test_gameflow_state test_gameflow_library \
@@ -25,7 +25,7 @@ PLAIN_TARGETS := test_ui_cube_motif test_ui_game_history test_ui_about test_ui_c
 
 SANITIZED_TARGETS := test_ui_cube_motif_san test_ui_game_history_san test_ui_about_san test_ui_cheats_san test_ui_saves_san test_ui_assets_san test_ui_assets_target_sync_san \
 	test_ui_settings_layout_san test_ui_settings_focus_san \
-	test_ui_menu_input_san test_ui_clock_san test_ui_hint_san test_ui_stage_san \
+	test_ui_menu_input_san test_ui_clock_san test_ui_hint_san test_ui_stage_san test_indigo_log_san \
 	test_ui_system_info_san test_ui_home_san test_ui_presentation_san \
 	test_ui_home_layout_san test_ui_home_safety_san test_ui_scene_san \
 	test_ui_command_rail_san test_gameflow_state_san \
@@ -180,6 +180,12 @@ test_ui_clock: test_ui_clock.c $(GUI)/ui_clock.c $(GUI)/ui_clock.h
 test_ui_clock_san: test_ui_clock.c $(GUI)/ui_clock.c $(GUI)/ui_clock.h
 	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_clock.c \
 		$(GUI)/ui_clock.c -lm
+
+test_indigo_log: test_indigo_log.c $(GUI)/indigo_log.c $(GUI)/indigo_log.h
+	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_indigo_log.c $(GUI)/indigo_log.c
+
+test_indigo_log_san: test_indigo_log.c $(GUI)/indigo_log.c $(GUI)/indigo_log.h
+	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_indigo_log.c $(GUI)/indigo_log.c
 
 test_ui_home: test_ui_home.c $(GUI)/ui_home.c $(GUI)/ui_home.h
 	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_home.c \

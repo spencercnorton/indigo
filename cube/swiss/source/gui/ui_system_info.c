@@ -240,8 +240,9 @@ void UISystem_FormatPageStatus(char *out, size_t capacity, int page)
 		return;
 	}
 	page = clampPage(page);
-	(void)snprintf(out, capacity, "L/R  PAGE %d OF %d    B  BACK",
-		page + 1, UI_SYSTEM_PAGE_COUNT);
+	(void)snprintf(out, capacity, "L/R  PAGE %d OF %d    %sB  BACK",
+		page + 1, UI_SYSTEM_PAGE_COUNT,
+		page == UI_SYSTEM_PAGE_ABOUT ? "X  SAVE LOG    " : "");
 }
 
 const char *UISystem_SourceHealth(bool configured, bool available)

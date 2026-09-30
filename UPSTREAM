@@ -19,6 +19,7 @@ cube/swiss/Makefile                        tags.h leaves out the commit being bu
 cube/swiss/source/devices/deviceHandler.c  devices shut down on reset after the interface stops reading them (priority 1)
 cube/swiss/source/gcm.c                    get_fst_details stays inside the file table: a damaged image cannot crash the Library
 cube/swiss/source/video.c                  the retrace callback scans the pads through padsScan(), which the menus read
+cube/swiss/source/util.c                   print_debug also keeps each line in the log System Information saves
 cube/swiss/source/fatfs/ffunicode.c        the DBCS code-page tables are removed; code page 437 never compiles them
 cube/swiss/source/nkit.c                   Latin-1 bytes in game titles are written as \x escapes; the same bytes compile
 cube/swiss/source/littlefs/                vendored as files, at the commit upstream's submodule names

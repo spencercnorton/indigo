@@ -192,6 +192,21 @@ int config_file_write(char* filename, char* contents) {
 	return 0;
 }
 
+bool config_save_log(const char *text, char *where) {
+	char path[PATHNAME_MAX];
+	bool saved;
+
+	if(!config_set_device()) {
+		return false;
+	}
+	ensure_path(DEVICE_CONFIG, SWISS_BASE_DIR, NULL, true);
+	concat_path(path, SWISS_BASE_DIR, "indigo-log.txt");
+	saved = config_file_write(path, (char *)text) == 1;
+	concat_path(where, devices[DEVICE_CONFIG]->initial->name, path);
+	config_unset_device();
+	return saved;
+}
+
 /* Slots alternate so a short/failed write cannot destroy the last complete
  * record. Startup accepts only bounded, checksummed files and chooses the
  * newest valid generation. Unknown read failures never mean "never played". */

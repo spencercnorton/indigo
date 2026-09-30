@@ -114,6 +114,48 @@ NO_AUTOLOAD = (
 )
 
 
+# Indigo names each startup step for its log and for the screen before Home
+# (gui/indigo_log.h): lines are only added, each next to the step it names.
+STAGE = "\tstartupStage(\"{}\");\n"
+STARTUP_STEPS = (
+    ('#include "devices/filemeta.h"\n',
+     '#include "devices/filemeta.h"\n#include "gui/indigo_log.h"\n'),
+    ("uiDrawObj_t *configProgBar = NULL;\n",
+     "/* What startup is doing: the log keeps it with the time since power-on, and\n"
+     " * the screen shows it if startup runs long, until menu_loop reveals Home. */\n"
+     "static void startupStage(const char *stage)\n{\n"
+     "\tIndigoLog_SetStage(stage);\n\tprint_debug(\"Startup: %s\\n\", stage);\n}\n\n"
+     "uiDrawObj_t *configProgBar = NULL;\n"),
+    ("\tconfig_init_environ();\n\n\tInitialise();\n",
+     "\tconfig_init_environ();\n\n"
+     "\t/* The first line's time is how long the loader took to start Indigo. */\n"
+     + STAGE.format("Starting") + "\tInitialise();\n"),
+    ("\tfor(i = 0; i < MAX_DEVICES; i++) {\n\t\tif(allDevices[i] != NULL && (allDevices[i]->features & FEAT_BOOT_DEVICE)) {\n",
+     STAGE.format("Looking for devices")
+     + "\tfor(i = 0; i < MAX_DEVICES; i++) {\n\t\tif(allDevices[i] != NULL && (allDevices[i]->features & FEAT_BOOT_DEVICE)) {\n"),
+    ("\t\tprint_debug(\"Detected %s\\n\", devices[DEVICE_CUR]->deviceName);\n",
+     "\t\tstatic char openingStage[80];\n"
+     "\t\tprint_debug(\"Detected %s\\n\", devices[DEVICE_CUR]->deviceName);\n"
+     "\t\tsnprintf(openingStage, sizeof(openingStage), \"Opening %s\", DeviceDisplayName(devices[DEVICE_CUR]));\n"
+     "\t\tstartupStage(openingStage);\n"),
+    ("\tpopulateDeviceAvailability();\n",
+     STAGE.format("Checking the other devices") + "\tpopulateDeviceAvailability();\n"),
+    ("\t// Read Swiss settings\n",
+     "\t// Read Swiss settings\n" + STAGE.format("Reading settings")),
+    ("\tDrawVideoMode(forcedMode);\n",
+     STAGE.format("Setting the video mode") + "\tDrawVideoMode(forcedMode);\n"),
+    ("\tDEVICEHANDLER_INTERFACE *device = getDeviceByLocation(LOC_DVD_CONNECTOR);\n",
+     "\tDEVICEHANDLER_INTERFACE *device = getDeviceByLocation(LOC_DVD_CONNECTOR);\n"
+     + STAGE.format("Checking the disc drive")),
+    ("\t\tprint_debug(\"Autoload entry detected [%s]\\n\", swissSettings.autoload);\n",
+     "\t" + STAGE.format("Opening the Autoload entry")
+     + "\t\tprint_debug(\"Autoload entry detected [%s]\\n\", swissSettings.autoload);\n"),
+    ("\t\tfind_existing_entry(&swissSettings.recent[0][0], false);\n",
+     "\t" + STAGE.format("Opening the last game's folder")
+     + "\t\tfind_existing_entry(&swissSettings.recent[0][0], false);\n"),
+)
+
+
 def expected_main(base: str) -> str:
     assert base.count(UPSTREAM_AUTOLOAD) == 1
     base = base.replace(UPSTREAM_AUTOLOAD, NO_AUTOLOAD, 1)
@@ -127,7 +169,11 @@ def expected_main(base: str) -> str:
         "\t\t}\n\t}\n"
     )
     assert base.count(anchor) == 1
-    return base.replace(anchor, replacement, 1)
+    base = base.replace(anchor, replacement, 1)
+    for step_anchor, step_replacement in STARTUP_STEPS:
+        assert base.count(step_anchor) == 1, step_anchor
+        base = base.replace(step_anchor, step_replacement, 1)
+    return base
 
 
 def trailing_blank_free(text: str) -> str:
@@ -139,7 +185,7 @@ def trailing_blank_free(text: str) -> str:
 def check_runtime(swiss: str, main: str) -> None:
     assert trailing_blank_free(main) == trailing_blank_free(
         expected_main(base_file("cube/swiss/source/main.c"))), (
-        "main.c changed outside its two audited startup edits"
+        "main.c changed outside its audited startup edits"
     )
     assert '#include "gui/ui_home_safety.h"' in swiss
 

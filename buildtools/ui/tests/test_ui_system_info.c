@@ -132,6 +132,9 @@ static void testFormatting(void)
 	CHECK(strcmp(text, "L/R  PAGE 1 OF 6    B  BACK") == 0);
 	UISystem_FormatPageStatus(text, sizeof(text), 999);
 	CHECK(strcmp(text, "L/R  PAGE 6 OF 6    B  BACK") == 0);
+	/* About offers the log for a bug report. */
+	UISystem_FormatPageStatus(text, sizeof(text), UI_SYSTEM_PAGE_ABOUT);
+	CHECK(strcmp(text, "L/R  PAGE 5 OF 6    X  SAVE LOG    B  BACK") == 0);
 	UISystem_FormatPageStatus(NULL, 0u, 0);
 
 	CHECK(strcmp(UISystem_SourceHealth(false, false), "NOT MOUNTED") == 0);
