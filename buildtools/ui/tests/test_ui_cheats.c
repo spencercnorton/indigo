@@ -81,6 +81,17 @@ int main(void)
     assert(strcmp(lines[2], "five six") == 0);
     UICheats_Wrap(lines, longName, 100, 1.0f, measure);
     for(total = 0; total < 3; ++total) assert(measure(lines[total]) <= 100);
+    {
+        /* Any number of lines: a text that fits uses what it needs, and one
+         * that runs on ends its last line in "...". */
+        char six[6][UI_CHEATS_TEXT_CAPACITY];
+        UICheats_WrapLines(six, 6u, "One two three four five six", 100, 1.0f, measure);
+        assert(strcmp(six[0], "One two") == 0 && strcmp(six[2], "five six") == 0);
+        assert(six[3][0] == '\0' && six[5][0] == '\0');
+        UICheats_WrapLines(six, 6u, longName, 100, 1.0f, measure);
+        for(total = 0; total < 6; ++total) assert(six[total][0] != '\0' && measure(six[total]) <= 100);
+        assert(strcmp(six[5] + strlen(six[5]) - 3u, "...") == 0);
+    }
 
     for(mask = 0u; mask < 256u; ++mask) {
         for(total = 0; total <= 8; ++total) {

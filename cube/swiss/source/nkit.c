@@ -269,6 +269,7 @@ static const struct {
 
 	const char *title;
 } nkit_dat[] = {
+	{{ "000801\x00\x00" }, true,  0xAC, 0xB329, 0x0E0756FC, 0x2541648547EA120F, 1354366976,  +105611264, {         ~0,          +0,    0, 0xFFFF }, "Diag 2001/03/29" },
 	{{ "101E01\x00\x05" }, true,  0xB0, 0xB6FD, 0x4BB518CD, 0x27CFAD706924A030, 1435981824,   +23996416, {         ~0,          +0,    0, 0xFFFF }, "Hontai Kensa Disc DOL-USA" },
 	{{ "101J01\x00\x03" }, true,  0xC6, 0xA361, 0x1A7B7608, 0x6E2DA2E062EF73BA, 1459486720,     +491520, {         ~0,          +0,    0, 0xFFFF }, "Hontai Kensa Disc DOL" },
 	{{ "101J01\x00\x06" }, true,  0x3D, 0x402F, 0xC3C5D3D6, 0x946298C97236262D, 1459486720,     +491520, {         ~0,          +0,    0, 0xFFFF }, "Hontai Kensa Disc DOL" },
@@ -405,6 +406,7 @@ static const struct {
 	{{ "DFSJ13\x00\x00" }, false, 0x67, 0x9E10, 0x1B8A38DF, 0xF4B5773C928E207A, 1173227520,  +286750720, { 1170843900,      +59128, 6496, 0xF9A7 }, "FIFA 2002: Road to FIFA World Cup" },
 	{{ "DGAJB2\x00\x00" }, true,  0x97, 0x5F59, 0x05458FAD, 0xEC3C56AA5A9CDE26,  716726272,  +743251968, {  716719748,  +743251996, 6496, 0x81D4 }, "Kidou Senshi Gundam: Senshitachi no Kiseki" },
 	{{ "DKNJ01\x00\x00" }, false, 0x50, 0xBAC0, 0x915156C6, 0xB5E976D396698FBF,  894486528,  +565491712, {  885347632,    +1125388, 6496, 0x53F0 }, "Kinnikuman Nisei: Shinsedai Choujin vs. Densetsu Choujin Event-you Disc" },
+	{{ "DKWJ18\x00\x00" }, true,  0xB6, 0x5DD0, 0x4A7D3D1A, 0xD79A4ADD5EB45DCA,  409311232, +1050667008, {  363412804,          +0, 6496, 0xA2B2 }, "Dream Mix TV: World Fighters" },
 	{{ "DLSE64\x00\x00" }, true,  0x31, 0x9B82, 0x1621D87A, 0x0EF434C4F59AA81D, 1007726592,  +452251648, {  369815476,  +451573484, 6496, 0xCC14 }, "Star Wars: Rogue Squadron III: Rebel Strike" },
 	{{ "DLSP64\x00\x00" }, true,  0x4A, 0xB5CA, 0x3657BA07, 0xDCEEF3970A1C9674,  687478784,  +772499456, {  404997056,  +772481952, 6496, 0xCC14 }, "Star Wars: Rogue Squadron III: Rebel Strike" },
 	{{ "DM2J8P\x00\x00" }, true,  0x96, 0x6274, 0xA589AF5A, 0x0D2CD0B64E89D021, 1004939264,  +455038976, {   79151836,  +455021220, 6496, 0x4FD6 }, "Super Monkey Ball 2" },
@@ -415,7 +417,7 @@ static const struct {
 	{{ "DPNJ01\x00\x00" }, true,  0xDC, 0xA906, 0x4E8EB4F0, 0x307795BC0687C4F8,  299180032, +1160798208, {  293840904, +1160798348, 6496, 0x9D4C }, "P.N. 03" },
 	{{ "DPNP08\x00\x00" }, false, 0x47, 0x77F0, 0x965F3101, 0x4945ADA61679CADB,  216182784, +1243795456, {  167287440, +1243796560, 6496, 0xE91E }, "P.N. 03" },
 	{{ "DPOJ8P\x00\x00" }, false, 0xB3, 0x5AB5, 0x53A6F59C, 0xE9929B0A79056A82,  900478976,  +559499264, {  106240124,  +559501268, 6496, 0xED80 }, "Phantasy Star Online Episode I & II: Trial Edition" },
-	{{ "DPSJ8P\x00\x00" }, false, 0x28, 0xB3B1, 0x230570E1, 0xD6B9904CBD23766F, 1143683072,  +316295168, {  287886316,  +316295196, 6496, 0xD936 }, "Phantasy Star Online Episode III: C.A.R.D. Revolution: Trial Edition" },
+	{{ "DPSJ8P\x00\x00" }, false, 0x28, 0xB3B1, 0x230570E1, 0xD6B9904CBD23766F, 1143683072,  +316295168, {  287886316,  +316295196, 6496, 0xD936 }, "Phantasy Star Online Episode III: C.A.R.D. Revolution" },
 	{{ "DR2JCQ\x00\x00" }, false, 0xE4, 0xFE97, 0xE3295A1A, 0x5AADCAB50FE80160,  394209280, +1065768960, {  231032552,       +6424, 6496, 0x3C3C }, "Rune II: Koruten no Kagi no Himitsu" },
 	{{ "DRSEAF\x00\x00" }, false, 0x57, 0xF2AF, 0x989E11D9, 0xA60F5B909DC1B199,  126695424, +1333282816, {   39425384, +1333283128, 6496, 0x8804 }, "Soulcalibur II" },
 	{{ "DSTJ13\x00\x00" }, false, 0xBB, 0x45BC, 0x190F43D4, 0x682095BA117EDC39, 1066573824,  +393404416, { 1066566848,     +102184, 6496, 0x7461 }, "SSX Tricky" },
@@ -2288,7 +2290,7 @@ static const struct {
 	{{ "UGPP01\x00\x01" }, false, 0x2A, 0x6D4F, 0x5ECD9681, 0x4E9244DEFB94F10C,    5079040, +1454899200, {    2317764,       +8764, 8096, 0x8972 }, "Game Boy Player Start-Up Disc" },
 	{{ "UGPP01\x00\x02" }, false, 0x3A, 0xCA50, 0x1E26380C, 0x483B4CE794041533,    5079040, +1454899200, {    2317764,       +8764, 8096, 0x8972 }, "Game Boy Player Start-Up Disc" },
 	{{ "XXXXXX\x00\x01" }, false, 0x83, 0x7056, 0x5995AC59, 0x5CBC3D9F00D75112, 1287913472,  +172064768, {         ~0,          +0,    0, 0xFFFF }, "LEGO Super Soccer Adventure" },
-#define REDUMP_COUNT (2019)
+#define REDUMP_COUNT (2021)
 	{{"00\0E01\x00\x00" }, false, 0x8B, 0x42A2, 0x499CF1AB, 0xC1BAC83BFBED3EDB,   31170560, +1428807680, {    7795364,      +23900, 6496, 0xBBEA }, "Nintendo Developer Demo" },
 	{{"00\0E01\x00\x00" }, false, 0xD9, 0x21CF, 0xBF114CB3, 0xC1BAC83BFBED3EDB,   31170560, +1428807680, {    7795364,      +23900, 6496, 0xBBEA }, "Nintendo Developer Demo" },
 	{{ "060J01\x00\x00" }, true,  0x7E, 0x27AC, 0x94C088DF, 0x55221BF909AB54CC,  171485184, +1288493056, {     238648, +1288483336, 6496, 0xFD76 }, "Diag Ver 3.1.1" },
@@ -2385,6 +2387,7 @@ static const struct {
 	{{ "GD5JB2\x00\x00" }, true,  0x49, 0x6440, 0x382C043E, 0x10D31372560E0AAA, 1023129600,  +436848640, { 1023122892,          +0, 6496, 0x1CF2 }, "Dragon Drive: D-Masters Shot" },
 	{{ "GD5JB2\x00\x00" }, true,  0x6A, 0x6440, 0xD0EB8A56, 0x10D31372560E0AAA, 1023129600,          +0, { 1023122892,          +0, 6496, 0x1CF2 }, "Dragon Drive: D-Masters Shot" },
 	{{ "GDEE71\x00\x00" }, false, 0x65, 0xC228, 0xC2C80167, 0x616D2EAD3B11D74F, 1358307328,  +101670912, {  914092380,       +7536, 6496, 0x2D5A }, "Baldur's Gate: Dark Alliance" },
+	{{ "GDPEAF\x00\x00" }, false, 0x74, 0x1069, 0x75C63FBA, 0xF24E56AE954EEDA4,  895551488,  +564426752, {  524379884,  +564425460, 6496, 0x7780 }, "Mr. Driller: Drill Land" },
 	{{ "GDPJAF\x00\x00" }, false, 0x85, 0x5BBF, 0xEEAD97CB, 0xF5236848D65E4FF3,  913614848,  +546363392, {  542371948,  +546337144, 6496, 0x7780 }, "Mr. Driller: Drill Land" },
 	{{ "GEAE8P\x00\x00" }, false, 0x16, 0x4329, 0x22E6FE4B, 0x776C0A056378855A, 1421514752,   +38463488, { 1206244016,   +36660560, 6496, 0x51AD }, "Skies of Arcadia: Legends Maeson" },
 	{{ "GEAE8P\x00\x00" }, false, 0x66, 0xE528, 0xEE8698CB, 0xEE3D9D60D95DC4D8, 1441400832,   +18577408, { 1206239432,   +16754488, 6496, 0xCB3E }, "Skies of Arcadia: Legends" },
@@ -2532,7 +2535,8 @@ static const struct {
 	{{ "SG4JDA\x00\x00" }, true,  0x52, 0xF019, 0x4BB4830A, 0x3645CAE26589C220, 1272594432,  +187383808, { 1272587604,  +187384140, 6496, 0x015D }, "Naruto: Clash of Ninja 4" },
 	{{ "SG4JDA\x00\x00" }, true,  0x9D, 0xB3B3, 0x424A4760, 0x38394EDF8E58393A, 1261602816,  +198375424, { 1261594344,  +198377400, 6496, 0x015D }, "Naruto: Clash of Ninja 4" },
 	{{ "TESTNA\x00\x00" }, false, 0xD2, 0x0C28, 0x6254FB97, 0xAA2E5EDD0EF81992,   26834944,       -1658, {         ~0,          +0,    0, 0xFFFF }, "Dodger Demo" },
-#define VALID_GCM_COUNT (REDUMP_COUNT + 243)
+#define VALID_GCM_COUNT (REDUMP_COUNT + 244)
+	{{ "000801\x00\x00" }, true,  0x72, 0xB329, 0x0E0756FC, 0x2541648547EA120F, 1354366976,  +105611264, {         ~0,          +0,    0, 0xFFFF }, "Diag 2001/03/29" },
 	{{ "101E01\x00\x05" }, true,  0x88, 0xB6FD, 0x4BB518CD, 0x27CFAD706924A030, 1435949056,   +24029184, {         ~0,          +0,    0, 0xFFFF }, "Hontai Kensa Disc DOL-USA" },
 	{{ "101E01\x00\x05" }, true,  0xC6, 0xB6FD, 0x4BB518CD, 0x27CFAD706924A030, 1435949056,   +24029184, {         ~0,          +0,    0, 0xFFFF }, "Hontai Kensa Disc DOL-USA" },
 	{{ "101J01\x00\x03" }, true,  0x67, 0xA361, 0x1A7B7608, 0x6E2DA2E062EF73BA, 1459453952,     +524288, {         ~0,          +0,    0, 0xFFFF }, "Hontai Kensa Disc DOL" },
@@ -2608,7 +2612,7 @@ static const struct {
 	{{ "RELSAB\x00\x00" }, false, 0xAC, 0xBA9E, 0x1D74AD4A, 0x1A5F0EA47A582D7E, 1455841280,    +4136960, {         ~0,          +0,    0, 0xFFFF }, "Memory Card Utility Program" },
 	{{ "RELSAB\x00\x00" }, true,  0x44, 0xFCCE, 0x146E4A5A, 0x1E9563341CFB48F4, 1459947520,      +30720, { 1193673280,          +0, 6496, 0x8F7A }, "Summoner: The Prophecy" },
 	{{ "RELSAB\x00\x00" }, true,  0xD6, 0xD9CE, 0x16D7BCCE, 0xB64ADF7A4E8423B8, 1459978240,          +0, { 1193214528,          +0, 6496, 0x1458 }, "Summoner: The Prophecy" },
-#define TOTAL_GCM_COUNT (VALID_GCM_COUNT + 75)
+#define TOTAL_GCM_COUNT (VALID_GCM_COUNT + 76)
 };
 
 uint8_t fletcher8(const void *buffer, size_t size)
@@ -2635,6 +2639,11 @@ uint16_t fletcher16(const void *buffer, size_t size)
 	}
 
 	return sum[1] << 8 | sum[0];
+}
+
+bool is_artx_disc(const DiskHeader *header)
+{
+	return is_diag_disc(header) && !memcmp(&header->ApploaderSize, "BB1 Dummy Data\r\n", 16);
 }
 
 bool is_datel_disc(const DiskHeader *header)

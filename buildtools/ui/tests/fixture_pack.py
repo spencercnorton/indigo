@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Build a small real posters.pak for the C harness end-to-end pass.
+"""Build a small real posters.pak (and optionally a stills.pak) for the C
+harness end-to-end pass.
 
-Usage: fixture_pack.py <output.pak>
+Usage: fixture_pack.py <output.pak> [<stills.pak>]
 Exits 3 (distinct from generator errors) when no encoder is available so
 run_tests.sh can skip the real-pak pass loudly instead of failing.
 """
@@ -19,8 +20,9 @@ from test_poster_pack import flat_image, gradient_image, sha256_file
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("usage: fixture_pack.py <output.pak>", file=sys.stderr)
+    if len(sys.argv) not in (2, 3):
+        print("usage: fixture_pack.py <output.pak> [<stills.pak>]",
+              file=sys.stderr)
         return 2
     try:
         pp.resolve_gxtexconv(None)
@@ -34,24 +36,32 @@ def main():
     gradient_image(384, 512).save(os.path.join(art, "GALE01.png"))
     flat_image(256, 342, (60, 60, 140)).save(os.path.join(art, "GC6E01.png"))
     gradient_image(192, 256).save(os.path.join(art, "GM4E01.png"))
+    gradient_image(640, 480).save(os.path.join(art, "still-GALE01.png"))
+    flat_image(512, 384, (40, 160, 60)).save(
+        os.path.join(art, "still-GC6E01.png"))
+    gradient_image(320, 240).save(os.path.join(art, "still-GM4E01.png"))
 
-    records = []
-    for gid, universal in (("GALE01", True), ("GC6E01", False),
-                           ("GM4E01", False)):
-        records.append({
-            "game_id": gid,
-            "source": os.path.join("art", f"{gid}.png"),
-            "universal": universal,
-            "source_sha256": sha256_file(os.path.join(art, f"{gid}.png")),
-            "note": "C-harness fixture, synthetic art",
-        })
-    manifest = os.path.join(workdir, "manifest.json")
-    with open(manifest, "w", encoding="utf-8") as f:
-        json.dump({"version": 1, "records": records}, f)
-
-    pack = pp.generate(manifest, sys.argv[1], art_root=workdir)
-    print(f"fixture_pack: {sys.argv[1]} "
-          f"({len(pack)} bytes, sha256 {hashlib.sha256(pack).hexdigest()})")
+    outputs = [("posters", "", sys.argv[1])]
+    if len(sys.argv) == 3:
+        outputs.append(("stills", "still-", sys.argv[2]))
+    for kind, prefix, out in outputs:
+        records = []
+        for gid, universal in (("GALE01", True), ("GC6E01", False),
+                               ("GM4E01", False)):
+            source = os.path.join(art, f"{prefix}{gid}.png")
+            records.append({
+                "game_id": gid,
+                "source": os.path.relpath(source, workdir),
+                "universal": universal,
+                "source_sha256": sha256_file(source),
+                "note": "C-harness fixture, synthetic art",
+            })
+        manifest = os.path.join(workdir, f"{kind}.json")
+        with open(manifest, "w", encoding="utf-8") as f:
+            json.dump({"version": 1, "kind": kind, "records": records}, f)
+        pack = pp.generate(manifest, out, art_root=workdir)
+        print(f"fixture_pack: {out} "
+              f"({len(pack)} bytes, sha256 {hashlib.sha256(pack).hexdigest()})")
     return 0
 
 

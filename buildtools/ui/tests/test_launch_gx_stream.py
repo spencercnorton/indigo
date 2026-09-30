@@ -29,6 +29,8 @@ static drawGameflowEvent_t *eventData;
 static uiDrawObj_t event;
 static uiGameflowRenderSnapshot_t snapshot;
 static uint32_t generation;
+/* Y: the cards are apps, as Apps shows them. */
+static bool apps;
 
 /* L layout count selected | K (Detail's snapshot) | W wide | M motion
  * | D mode | S message (\n and \205 escaped) | C packClosed | E (hand-off)
@@ -61,6 +63,11 @@ static void publish(int layout, uint32_t count, uint32_t selected)
 		snprintf(record->gameId, sizeof(record->gameId), "G%03uE0", slots[i].index);
 		snprintf(record->title, sizeof(record->title), "Game number %u", slots[i].index);
 		snprintf(record->company, sizeof(record->company), "Company %u", slots[i].index % 9u);
+		if(apps) {
+			record->flags |= UI_GAMEFLOW_CARD_APP;
+			memset(record->gameId, 0, sizeof(record->gameId));
+			snprintf(record->title, sizeof(record->title), "App %u", slots[i].index);
+		}
 	}
 	CHECK(_GameflowSnapshotValid(&snapshot));
 	memset(eventData, 0, sizeof(*eventData));
@@ -117,6 +124,7 @@ int main(void)
 		line[strcspn(line, "\n")] = '\0';
 		if(sscanf(line, "L %d %u %u", &c, &a, &b) == 3) publish(c, a, b);
 		else if(strcmp(line, "K") == 0) detail();
+		else if(strcmp(line, "Y") == 0) apps = true;
 		else if(sscanf(line, "W %d", &c) == 1) UIStage_SetWide(c != 0);
 		else if(sscanf(line, "M %d", &c) == 1) motionMode = (uiMotionMode_t)c;
 		else if(sscanf(line, "C %d", &c) == 1) packClosed = c != 0;
@@ -270,7 +278,7 @@ class LaunchGxStream(unittest.TestCase):
 
     def check_glides(self):
         """From every layout, Detail's cover glides to the centre."""
-        for layout in (0, 1, 2):
+        for layout in (0, 1, 2, 3):
             shots = self.run_script([f"L {layout} 40 18"] + LAUNCH + ["N 60 0.0167"])
             boxes = [covers(f)["G018E0"][0] for f in shots[39:]]
             # Detail's pose, then a glide that never jumps.
@@ -290,6 +298,16 @@ class LaunchGxStream(unittest.TestCase):
         self.assertEqual(strings(rest), [(320, 360, "Game number 18"),
                                          (320, 384, "Company 0"),
                                          (320, 414, "Starting game")])
+
+    def test_autoboot_from_spotlight_glides_from_its_picture(self):
+        # Boot without prompts in Spotlight: the cover leaves the middle of
+        # the picture panel and glides to the centre without a jump.
+        shots = self.run_script(["L 3 40 18", "N 10 0.0167", "D 2", "N 60 0.0167"])
+        boxes = [covers(f)["G018E0"][0] for f in shots[10:] if "G018E0" in covers(f)]
+        self.assertAlmostEqual(boxes[0][0], 106 + 6, delta=12.0)
+        for a, b in zip(boxes, boxes[1:]):
+            self.assertLess(max(abs(p - q) for p, q in zip(a, b)), 40.0)
+        self.assertAlmostEqual((boxes[-1][0] + boxes[-1][2]) / 2, 320.0, delta=0.5)
 
     def test_the_fill_never_falls_and_the_caption_follows(self):
         messages = ["Saving recent list\\205", "Video Mode: NTSC 480p", "Applied 2 cheats",
@@ -336,6 +354,21 @@ class LaunchGxStream(unittest.TestCase):
         self.assertAlmostEqual(ring(shots[-1])[1], 0.14, delta=0.005)
         self.assertAlmostEqual((covers(shots[-1])["G018E0"][0][0] +
                                 covers(shots[-1])["G018E0"][0][2]) / 2, 320.0, delta=0.5)
+
+    def test_an_app_launches_from_apps(self):
+        """A on an app launches it from the cards, with no Detail: its own
+        poster flies to the centre, the others fade, the launch says app,
+        and boot_dol's "Loading DOL" moves the ring on."""
+        shots = self.run_script(["Y", "L 0 12 4", "N 20 0.0167", "D 2", "N 40 0.0167",
+                                 "S Loading DOL", "N 40 0.0167"])
+        start, loading = shots[55], shots[-1]
+        self.assertTrue(any(text == "Starting app" for _, _, text in strings(start)))
+        self.assertTrue(any(text == "Loading app" for _, _, text in strings(loading)))
+        for frame in (start, loading):
+            self.assertFalse([text for _, _, text in strings(frame) if "game" in text.lower()])
+        self.assertEqual(dim(loading), 240)
+        self.assertEqual(set(covers(loading)), {"APP004"})
+        self.assertGreater(ring(loading)[1], ring(start)[1])
 
     def test_a_failed_launch_goes_back_to_the_library(self):
         shots = self.run_script(["L 0 40 18"] + LAUNCH + [

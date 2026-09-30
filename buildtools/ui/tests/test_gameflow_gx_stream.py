@@ -14,6 +14,9 @@ and log what is drawn. The tests then check:
   a user can see with its cover, never draw a card twice at rest, and move
   without a card jumping when the selection changes (a small grid wraps round
   the screen, so a row can leave at one edge while it arrives at the other).
+- Spotlight lays the ring out as a row of banners under the selected game's
+  gameplay still (its cover, else its banner card, when it has no still), with
+  its title, publisher, description and facts in the column beside it.
 - From every layout the focused card flies to Detail's pose.
 """
 
@@ -51,8 +54,9 @@ BASE_EDITS = (
 )
 PURE = ("ui_gameflow.c", "ui_motion.c", "ui_gameflow_library.c",
         "ui_command_rail.c", "ui_gameflow_detail.c", "ui_game_history.c")
-# The current renderer also draws the launch screen (test_launch_gx_stream.py).
-LAUNCH = ("ui_launch.c", "ui_stage.c")
+# The current renderer also draws the launch screen (test_launch_gx_stream.py),
+# and wraps Spotlight's description as the cheat browser wraps its names.
+LAUNCH = ("ui_launch.c", "ui_stage.c", "ui_cheats.c")
 
 
 def between(source: str, start: str, end: str, inclusive: bool = False) -> str:
@@ -89,6 +93,7 @@ PRELUDE = r"""
 #include "ui_command_rail.h"
 #include "ui_scene.h"
 #if LAYOUTS
+#include "ui_cheats.h"
 #include "ui_launch.h"
 #include "ui_stage.h"
 #endif
@@ -175,6 +180,35 @@ GXTexObj *UIAssets_Peek(uiPosterHandle_t handle)
 }
 bool UIAssets_DominantColor(const char *id, size_t length, u8 *r, u8 *g, u8 *b)
 { (void)id; (void)length; (void)r; (void)g; (void)b; return false; }
+#if LAYOUTS
+/* Every third game has no gameplay still, so Spotlight shows its cover. */
+static GXTexObj stills[1000];
+static char stillIds[1000][16];
+uiPosterResult_t UIStills_Query(const char *id, size_t length, bool bnr, uiPosterHandle_t *handle)
+{
+	int n = atoi(id + 1);
+	(void)bnr;
+	if(packClosed || length < 6 || id[0] != 'G' || n % 3 == 2) return UI_POSTER_USE_BNR;
+	handle->slot = (u16)n; handle->generation = 1u;
+	return UI_POSTER_EXACT;
+}
+GXTexObj *UIStills_Peek(uiPosterHandle_t handle)
+{
+	snprintf(stillIds[handle.slot], sizeof(stillIds[0]), "still:G%03uE0", handle.slot);
+	stills[handle.slot].data = stillIds[handle.slot];
+	return &stills[handle.slot];
+}
+#endif
+/* Apps' posters (gui/apps.c): every third app has none. */
+static GXTexObj appPosters[64];
+static char appPosterNames[64][8];
+static GXTexObj *apps_poster(u32 app)
+{
+	if(app >= 64u || app % 3u == 2u) return NULL;
+	snprintf(appPosterNames[app], sizeof(appPosterNames[0]), "APP%03u", app);
+	appPosters[app].data = appPosterNames[app];
+	return &appPosters[app];
+}
 static uiSceneFrame_t sceneFrame;
 const uiSceneFrame_t *UIScene_Frame(void) { return &sceneFrame; }
 static float animDelta, animSeconds;
@@ -189,8 +223,10 @@ static drawGameflowEvent_t *eventData;
 static uiDrawObj_t event;
 static uiGameflowRenderSnapshot_t snapshot;
 static uint32_t generation;
+/* A: the cards are apps, as Apps shows them. */
+static bool apps;
 
-/* L layout count selected | P selected hint rowDirection snap
+/* L layout count selected (A: apps) | P selected hint rowDirection snap
  * | M motion | D mode | N frames dt  -- the log has one "F" per frame. */
 static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 	int rowDirection, int snap, bool first)
@@ -230,7 +266,34 @@ static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 		snprintf(record->title, sizeof(record->title), "Game number %u", slots[i].index);
 		snprintf(record->company, sizeof(record->company), "Company %u", slots[i].index % 9u);
 		snprintf(record->facts, sizeof(record->facts), "%s  |  1.4 GB", record->gameId);
+#if LAYOUTS
+		if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
+			record->flags |= UI_GAMEFLOW_CARD_HAS_BANNER;
+			snprintf((char *)record->banner, 16, "banner:%s", record->gameId);
+		}
+#endif
+#ifdef UI_GAMEFLOW_CARD_APP	/* the reference renderer has no Apps */
+		if(apps) {
+			record->flags = UI_GAMEFLOW_CARD_VALID | UI_GAMEFLOW_CARD_APP;
+			memset(record->gameId, 0, sizeof(record->gameId));
+			/* Short names, and long ones a card cuts. */
+			snprintf(record->title, sizeof(record->title), slots[i].index % 2u ?
+				"Game Boy Interface %u" : "gbi%u", slots[i].index);
+			snprintf(record->company, sizeof(record->company), "app%u.dol", slots[i].index);
+		}
+#endif
 	}
+#if LAYOUTS
+	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT && selected != 27u) {
+		/* Padded with spaces and no NUL, as a banner's may be: anything
+		 * read past it would show as a word. Game 27 has none. */
+		memset(snapshot.description, ' ', sizeof(snapshot.description));
+		snprintf(snapshot.description, sizeof(snapshot.description),
+			"The story of game number %u,\ntold in a banner that\n"
+			"breaks its lines   the way discs do.", selected);
+		snapshot.description[strlen(snapshot.description)] = ' ';
+	}
+#endif
 	CHECK(_GameflowSnapshotValid(&snapshot));
 	if(first) {
 		memset(eventData, 0, sizeof(*eventData));
@@ -258,7 +321,10 @@ int main(void)
 	while(fgets(line, sizeof(line), stdin)) {
 		unsigned a, b; int c, d, e; float dt;
 		if(sscanf(line, "L %d %u %u", &layout, &a, &b) == 3) {
-			count = a; publish(layout, count, b, 0, 0, 0, true);
+			count = a; apps = false; publish(layout, count, b, 0, 0, 0, true);
+		}
+		else if(sscanf(line, "A %d %u %u", &layout, &a, &b) == 3) {
+			count = a; apps = true; publish(layout, count, b, 0, 0, 0, true);
 		}
 		else if(sscanf(line, "P %u %d %d %d", &a, &c, &d, &e) == 4) {
 			publish(layout, count, a, c, d, e, false);
@@ -416,6 +482,44 @@ class GameflowGxStream(unittest.TestCase):
         self.assertNotIn("G017E0", covers(frames(log)[-1]))
         self.assertEqual(frames(log)[-1].count("B 24\n"), 1)
 
+    def test_apps_show_as_the_library(self):
+        """Cards of apps are the Apps screen, in every layout: its heading,
+        its controls (A starts, nothing opens settings or goes back a
+        folder), each app's own poster, and on an app without one its name,
+        cut to what a card holds, where a game's ID goes."""
+        for layout, heading in ((0, "S 320 70 0.500 1"), (1, "S 262 177 0.420 0"),
+                                (2, "S 320 40 0.460 1")):
+            with self.subTest(layout=layout):
+                result = subprocess.run([str(self.binary)], input=f"A {layout} 12 4\nN 40 0.0167\n",
+                                        capture_output=True, encoding="latin-1", timeout=120)
+                self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+                last = frames(result.stdout)[-1]
+                self.assertIn(" APPS\n", last)
+                self.assertTrue(any(l.startswith(heading) and l.endswith(" APPS")
+                                    for l in last.splitlines()), heading)
+                self.assertNotIn("GAME LIBRARY", last)
+                self.assertIn("D-PAD  BROWSE   A  START   B  HOME", last)
+                self.assertNotIn("SETTINGS", last)
+                drawn = set(covers(last))
+                self.assertIn("APP004", drawn)
+                self.assertFalse({name for name in drawn if not name.startswith("APP")})
+                self.assertFalse({f"APP{n:03d}" for n in range(12) if n % 3 == 2} & drawn)
+                texts = [l.split(" ", 6)[6] for l in last.splitlines() if l.startswith("S ")]
+                self.assertIn("gbi4", texts)
+        # In front, an app without a picture (every third) shows its name
+        # where a game's ID goes, cut to eight letters, over "APP".
+        for selected, name in ((2, "GBI2"), (5, "GAME BOY\x85")):
+            result = subprocess.run([str(self.binary)], input=f"A 0 12 {selected}\nN 40 0.0167\n",
+                                    capture_output=True, encoding="latin-1", timeout=120)
+            self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+            last = frames(result.stdout)[-1]
+            # split, not splitlines: the IPL font's ellipsis is U+0085, a
+            # line break to Python.
+            texts = [l.split(" ", 6)[6] for l in last.split("\n") if l.startswith("S ")]
+            self.assertIn(name, texts)
+            self.assertIn("APP", texts)
+            self.assertNotIn(f"APP{selected:03d}", covers(last))
+
     def test_vertical_column(self):
         log = self.run_script(["L 1 40 12", "N 40 0.0167"])
         rest = covers(frames(log)[-1])
@@ -524,7 +628,7 @@ class GameflowGxStream(unittest.TestCase):
                 self.check_grid_move(count, start, move)
 
     def test_tiny_grids_and_columns_draw_each_game_once(self):
-        for layout in (1, 2):
+        for layout in (1, 2, 3):
             for count in range(1, 11):
                 for selected in range(count):
                     with self.subTest(layout=layout, count=count, selected=selected):
@@ -536,8 +640,116 @@ class GameflowGxStream(unittest.TestCase):
                         if layout == 2 and count <= 5:
                             self.assertEqual(len(rest), sum(1 for i in range(count) if i % 7 != 3))
 
+    PANEL = (36.0, 78.0, 356.0, 318.0)
+
+    def column(self, frame):
+        """Spotlight's column: y -> text of each line drawn at x 380."""
+        lines = [l.split(None, 6) for l in frame.splitlines() if l.startswith("S 380 ")]
+        return {int(parts[2]): parts[6] for parts in lines}
+
+    def test_spotlight_row_picture_and_column(self):
+        log = self.run_script(["L 3 40 21", "N 40 0.0167"])
+        rest = covers(frames(log)[-1])
+        games = [f"G{i:03d}E0" for i in range(19, 24)]
+        # The row: the selected banner and two either side, left to right, a
+        # banner pixel for pixel and the selected one a quarter larger.
+        self.assertEqual({g for g in rest if g.startswith("banner:")},
+                         {f"banner:{g}" for g in games})
+        for game, x in zip(games, (80, 200, 320, 440, 560)):
+            boxes = rest[f"banner:{game}"]
+            self.assertEqual(len(boxes), 1, game)
+            self.assertAlmostEqual(centre(boxes[0])[0], x, delta=1.0, msg=game)
+            self.assertAlmostEqual(centre(boxes[0])[1], 372, delta=1.0, msg=game)
+            self.assertAlmostEqual(boxes[0][2] - boxes[0][0],
+                                   120 if game == "G021E0" else 96, delta=0.5, msg=game)
+        # The picture: the selected game's still, 320x240, pixel for pixel,
+        # and nothing else: no cover, no other still.
+        self.assertEqual(rest.get("still:G021E0"), [self.PANEL])
+        self.assertEqual({g for g in rest if not g.startswith("banner:")}, {"still:G021E0"})
+        # Inside a CRT's action-safe area, 5% in from each edge: overscan
+        # never hides the still or a banner.
+        for game, boxes in rest.items():
+            for x0, y0, x1, y1 in boxes:
+                self.assertTrue(32 <= x0 and x1 <= 608 and 24 <= y0 and y1 <= 456, game)
+        # The column: title, publisher, description and facts.
+        column = self.column(frames(log)[-1])
+        self.assertEqual(column[92], "Game number 21")
+        self.assertEqual(column[118], "Company 3")
+        self.assertEqual(column[306], "G021E0  |  1.4 GB")
+        described = [column[y] for y in range(154, 154 + 6 * 22, 22) if y in column]
+        self.assertGreaterEqual(len(described), 2)
+        prose = " ".join(described)
+        # The banner's line breaks and runs of spaces are gone, and nothing
+        # past its 128 characters is read.
+        self.assertEqual(prose, "The story of game number 21, told in a banner "
+                                "that breaks its lines the way discs do.")
+        self.assertNotIn("  ", prose)
+        self.assertNotIn("banner:", prose)
+        self.assertIn("H 320 428", frames(log)[-1])
+        # Game 21 has settings of its own: its still carries the mark a cover
+        # does (a plate, three bars and three knobs), at the panel's top
+        # right and sized to it; the banners on the row carry none.
+        marks = [l.split() for l in frames(log)[-1].splitlines() if l.startswith("R ")]
+        self.assertEqual(len(marks), 7)
+        x, y, size = (float(v) for v in marks[0][1:4])
+        self.assertAlmostEqual(x, 36 + 0.85 * 320, delta=1.0)
+        self.assertAlmostEqual(y, 78 + 0.085 * 240, delta=1.0)
+        self.assertAlmostEqual(size, 0.13 * 240, delta=0.5)
+
+    def test_spotlight_marks_only_a_game_with_its_own_settings(self):
+        # Game 22 has none, and game 21's banner beside it carries no mark.
+        rest = frames(self.run_script(["L 3 40 22", "N 40 0.0167"]))[-1]
+        self.assertIn("banner:G021E0", rest)
+        self.assertNotIn("\nR ", "\n" + rest)
+        # Game 26 has no still but its settings: its cover carries the mark.
+        rest = frames(self.run_script(["L 3 40 26", "N 40 0.0167"]))[-1]
+        marks = [l.split() for l in rest.splitlines() if l.startswith("R ")]
+        self.assertEqual(len(marks), 7)
+        self.assertAlmostEqual(float(marks[0][1]), 106 + 0.85 * 180, delta=6.0)
+
+    def test_spotlight_never_leaves_the_column_blank(self):
+        # Game 27's snapshot carries no description: the column says so.
+        column = self.column(frames(self.run_script(["L 3 40 27", "N 40 0.0167"]))[-1])
+        self.assertEqual(column[92], "Game number 27")
+        self.assertEqual(column.get(154), "No description for this game.")
+        self.assertNotIn(176, column)
+
+    def test_spotlight_without_a_still(self):
+        # Game 23 has no still but a cover: the cover stands in the middle of
+        # the panel, where it leaves for Detail from.
+        rest = covers(frames(self.run_script(["L 3 40 23", "N 40 0.0167"]))[-1])
+        self.assertNotIn("still:G023E0", rest)
+        box = rest["G023E0"][0]
+        self.assertAlmostEqual(box[0], 106 + 6, delta=1.0)
+        self.assertAlmostEqual(box[2], 286 - 6, delta=1.0)
+        self.assertAlmostEqual(box[1], 78 + 8, delta=1.0)
+        self.assertAlmostEqual(box[3], 318 - 8, delta=1.0)
+        # Game 17 has neither: its banner card stands there instead, as in
+        # Detail, as well as its banner on the row.
+        rest = covers(frames(self.run_script(["L 3 40 17", "N 40 0.0167"]))[-1])
+        self.assertNotIn("G017E0", rest)
+        panel, row = sorted(rest["banner:G017E0"], key=lambda box: box[1])
+        self.assertTrue(106 <= panel[0] and panel[2] <= 286 and panel[3] <= 318, panel)
+        self.assertAlmostEqual(centre(row)[1], 372, delta=1.0)
+
+    def test_spotlight_moves_never_jump(self):
+        log = self.run_script(["L 3 40 21", "N 40 0.0167", "P 22 1 0 0", "N 1 0.0",
+                               "N 40 0.0167"])
+        before, after = covers(frames(log)[39]), covers(frames(log)[40])
+        for game, boxes in before.items():
+            if game.startswith("banner:") and game in after:
+                self.assertEqual(boxes, after[game], game)
+        # The old still fades out as the new one fades in.
+        self.assertTrue(any("X still:G021E0" in f and "X still:G022E0" in f
+                            for f in frames(log)[41:]))
+        rest = covers(frames(log)[-1])
+        self.assertEqual(rest["still:G022E0"], [self.PANEL])
+        self.assertNotIn("still:G021E0", rest)
+        self.assertAlmostEqual(centre(rest["banner:G022E0"][0])[0], 320, delta=1.0)
+        self.assertEqual(self.column(frames(log)[-1])[92], "Game number 22")
+
     def test_every_layout_flies_to_detail(self):
-        for layout in (0, 1, 2):
+        for layout in (0, 1, 2, 3):
             with self.subTest(layout=layout):
                 log = self.run_script([f"L {layout} 40 18", "N 30 0.0167", "D 1",
                                        "N 60 0.0167"])
@@ -551,7 +763,7 @@ class GameflowGxStream(unittest.TestCase):
                 self.assertNotIn("H 320 428", frames(log)[-1])
 
     def test_off_and_reduced_snap_like_the_carousel(self):
-        for layout in (1, 2):
+        for layout in (1, 2, 3):
             with self.subTest(layout=layout):
                 log = self.run_script(["M 2", f"L {layout} 40 17", "N 5 0.0167",
                                        "P 22 1 1 0", "N 1 0.0167"])
@@ -573,9 +785,24 @@ class GameflowGxStream(unittest.TestCase):
                                         "_GameflowGridQuad(0.0f, 0.0f,\n\t\t1.0f);"),
             "the row's second covers stay hidden": ("fabsf(slot) < 1.5f : fabsf(slot) < 3.0f;",
                                                     "fabsf(slot) < 1.5f : fabsf(slot) < 1.5f;"),
+            "Spotlight's row uses the carousel's poses": (
+                "_GameflowSamplePoseIn(gameflowSpotlightPoses, slot) :", "_GameflowSamplePose(slot) :"),
+            "Spotlight's picture ignores the still": (
+                "texture = _GameflowStillTexture(record);", "texture = NULL;"),
+            "the description is wrapped too wide": (
+                "text, GAMEFLOW_SPOTLIGHT_COLUMN_W, GAMEFLOW_SPOTLIGHT_TEXT_SCALE,",
+                "text, 4 * GAMEFLOW_SPOTLIGHT_COLUMN_W, GAMEFLOW_SPOTLIGHT_TEXT_SCALE,"),
+            "a game without a description leaves the column blank": (
+                "memcpy(text, GAMEFLOW_SPOTLIGHT_NO_DESCRIPTION,", "(void)(text, GAMEFLOW_SPOTLIGHT_NO_DESCRIPTION,"),
+            "the banner's line breaks stay": ("if(c == '\\r' || c == '\\n' || c == '\\t') {",
+                                             "if(false) {"),
+            "the description is read past the banner": ("in < sizeof(text) && description[in]",
+                                                       "in < 2u * sizeof(text) && description[in]"),
         }
         tests = (self.test_grid_rows_and_highlight, self.check_all_grid_moves,
-                 self.test_vertical_column, self.test_horizontal_shows_two_covers_either_side)
+                 self.test_vertical_column, self.test_horizontal_shows_two_covers_either_side,
+                 self.test_spotlight_row_picture_and_column, self.test_spotlight_moves_never_jump,
+                 self.test_spotlight_never_leaves_the_column_blank)
         original = self.binary
         try:
             for index, (name, (old, new)) in enumerate(mutants.items()):

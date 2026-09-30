@@ -18,6 +18,7 @@
 
 static u8 fontData[SYS_FONTSIZE_ANSI] ATTRIBUTE_ALIGN (32);
 static sys_fontheader *font = (sys_fontheader *)fontData;
+static bool fontReady;
 
 GXTexObj fontTexObj;
 GXColor defaultColor = (GXColor) {255,255,255,255};
@@ -28,9 +29,59 @@ void init_font(void)
 {
 	SYS_SetFontEncoding(SYS_FONTENC_ANSI);
 	if(SYS_InitFont(font)) {
+		fontReady = true;
 		GX_InitTexObj(&fontTexObj, NULL, font->sheet_width, font->sheet_height, font->sheet_format, GX_CLAMP, GX_CLAMP, GX_FALSE);
 		GX_InitTexObjLOD(&fontTexObj, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f, GX_TRUE, GX_TRUE, GX_ANISO_4);
 	}
+}
+
+int fontCellHeight(void)
+{
+	return fontReady ? font->cell_height : 0;
+}
+
+/* The font sheet's texel (x, y) as coverage: I4 in 8x8 tiles, I8 and IA4
+ * (alpha in the high nibble) in 8x4, as GX lays them out. */
+static u8 fontTexel(const u8 *sheet, int x, int y)
+{
+	int tiles = font->sheet_width / 8;
+
+	switch(font->sheet_format) {
+		case GX_TF_I4: {
+			u8 pair = sheet[((y / 8) * tiles + x / 8) * 32 + (y % 8) * 4 + (x % 8) / 2];
+
+			return (u8)(((x & 1) ? pair & 15 : pair >> 4) * 17);
+		}
+		case GX_TF_I8:
+			return sheet[((y / 4) * tiles + x / 8) * 32 + (y % 4) * 8 + x % 8];
+		case GX_TF_IA4:
+			return (u8)((sheet[((y / 4) * tiles + x / 8) * 32 + (y % 4) * 8 + x % 8] >> 4) * 17);
+		default:
+			return 0;
+	}
+}
+
+bool fontGlyph(unsigned char c, u8 *coverage, int stride, int maxWidth,
+	int *width)
+{
+	void *image;
+	int s0, t0, w, x, y;
+
+	if(!fontReady || (font->sheet_format != GX_TF_I4 &&
+		font->sheet_format != GX_TF_I8 && font->sheet_format != GX_TF_IA4)) {
+		return false;
+	}
+	SYS_GetFontTexture(c, &image, &s0, &t0, &w);
+	if(image == NULL || w < 1 || w > maxWidth) {
+		return false;
+	}
+	for(y = 0; y < font->cell_height; y++) {
+		for(x = 0; x < w; x++) {
+			coverage[y * stride + x] = fontTexel(image, s0 + x, t0 + y);
+		}
+	}
+	*width = w;
+	return true;
 }
 
 void drawFontInit(void)

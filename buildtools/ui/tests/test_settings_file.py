@@ -107,6 +107,11 @@ static size_t harness_strlcpy(char *dst, const char *src, size_t size)
 	return length;
 }
 #define strlcpy harness_strlcpy
+/* Upstream counts its tables with C2y's countof (<stdcountof.h>), which a
+ * host compiler may not have yet. */
+#ifndef countof
+#define countof(a) (sizeof(a) / sizeof((a)[0]))
+#endif
 /* A retail GameCube: 24 MiB, no digital-AV cable detected. */
 static u32 SYS_GetPhysicalMemSize(void) { return 24u << 20; }
 static bool getRawDTVStatus(void) { return false; }
@@ -124,7 +129,7 @@ static bool getRawDTVStatus(void) { return false; }
     CONFIG_ENTRY,
     "\n".join(STRING_ARRAYS),
     re.search(r"^const int simulatedMemSizeInt\[\] = \{.*?\};", SETTINGS_C, re.S | re.M).group(0),
-    "\n".join(re.findall(r"^static char \w+Entries\[\]\[4\] = \{.*?\};$", CONFIG_C, re.M)),
+    "\n".join(re.findall(r"^static char \w+Entries\[\]\[[45]\] = \{.*?\};$", CONFIG_C, re.M)),
     extract_function(CONFIG_C, "void config_defaults_from("),
     extract_function(CONFIG_C, "void config_defaults("),
     "#include <stddef.h>",
@@ -512,16 +517,17 @@ class SettingsFileTest(unittest.TestCase):
                     written = pairs(self.run_harness("game", "GALE", "E", stdin=f"{key}={value}"))
                     self.assertEqual(written.get(key, value), value, (key, value))
 
-    def test_vertical_offset_default_never_reaches_a_game(self):
+    def test_vertical_offset_default_reaches_every_game(self):
+        # As upstream since r2092: no -3 for GCVideo or GCDigital.
         with tempfile.NamedTemporaryFile("w", suffix=".ini", delete=False) as handle:
             handle.write("Force Vertical Offset=+5\r\n")
         try:
             fields = pairs(self.run_harness("game-fields", "GALE", "E", handle.name))
-            self.assertEqual(fields["forceVOffset"], "-3")
+            self.assertEqual(fields["forceVOffset"], "5")
             with open(handle.name, "a") as more:
                 more.write("AVECompat=AVE N-DOL\r\n")
             fields = pairs(self.run_harness("game-fields", "GALE", "E", handle.name))
-            self.assertEqual(fields["forceVOffset"], "0")
+            self.assertEqual(fields["forceVOffset"], "5")
         finally:
             os.unlink(handle.name)
 

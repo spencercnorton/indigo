@@ -87,6 +87,9 @@ float UISystem_CopyFitted(char *destination, size_t capacity,
 
 bool UISystem_FormatClock(char *out, size_t capacity, int hour, int minute,
 	bool available);
+/* The Overview's date line: every date FormatDate writes fits it whole. */
+#define UI_SYSTEM_DATE_WIDTH 220
+#define UI_SYSTEM_DATE_SCALE 0.66f
 bool UISystem_FormatDate(char *out, size_t capacity, int weekday, int month,
 	int day, int year, bool available);
 bool UISystem_FormatTemperature(char *out, size_t capacity,

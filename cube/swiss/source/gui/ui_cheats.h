@@ -18,6 +18,10 @@ void UICheats_Fit(char *out, size_t capacity, const char *source,
     int maxWidth, float scale, uiCheatsMeasureFn measure);
 void UICheats_Wrap(char lines[3][UI_CHEATS_TEXT_CAPACITY],
     const char *source, int maxWidth, float scale, uiCheatsMeasureFn measure);
+/* The same over count lines; the last line ends in "..." when the text runs
+ * on past it. */
+void UICheats_WrapLines(char (*lines)[UI_CHEATS_TEXT_CAPACITY], size_t count,
+    const char *source, int maxWidth, float scale, uiCheatsMeasureFn measure);
 
 int UICheats_Count(int total, bool enabledOnly, uiCheatsEnabledFn enabled,
     const void *context);

@@ -11,21 +11,23 @@ banner and its six-character game ID.
   <img alt="1080° Avalanche in the Library twice: on the left without a poster pack, a card with its disc banner and game ID, GTEE01; on the right with one, its box art." src="images/posters-compare.png" width="640">
 </p>
 
-## Download a pack
+## Download the pack
 
-Ready-made packs are made from GameTDB's cover art:
+The ready-made pack is made from GameTDB's cover art, and one pack covers
+every region:
 
-- [Posters: USA & Japan](https://indigo.norvitech.com/indigo-posters-ntsc.zip) (NTSC)
-- [Posters: Europe & Australia](https://indigo.norvitech.com/indigo-posters-pal.zip) (PAL)
+- [Download the poster pack](https://indigo.norvitech.com/indigo-posters-all.zip) (about 90 MB)
 
-Unzip the one you want into the root of the card; it holds
-`swiss/ui/posters.pak`. Indigo reads one pack at a time, so pick the region
-most of your games are from. Checksums are in
+Unzip it into the root of the card. It holds `swiss/ui/posters.pak`, with the
+[gameplay stills](#gameplay-stills) and [descriptions](#game-descriptions)
+Spotlight shows beside it. Checksums are in
 [SHA256SUMS.txt](https://indigo.norvitech.com/SHA256SUMS.txt), and the
 [Indigo page](https://norvitech.com/indigo/) has the details.
 
-A game gets its poster when its game ID is in the pack. Games from the other
-region, and the few games GameTDB has no art for, keep their banner card.
+A game gets its poster when its game ID is in the pack: every game GameTDB has
+a cover for, from any region. The few it has none for keep their banner card.
+The pack needs Indigo 2.1 or later: 2.0 and earlier refuse a pack this big and
+show banners.
 
 ## Build your own pack
 
@@ -47,7 +49,42 @@ You can make a pack from your own cover images, from this repository:
    Files that aren't named by a game ID are skipped and listed.
 3. Copy `posters.pak` to `/swiss/ui/posters.pak` on the card.
 
-A pack holds up to 1,024 covers.
+A pack holds up to 2,048 covers. Indigo 2.0 and earlier read up to 1,024 and
+show banners with a bigger pack.
+
+## Gameplay stills
+
+The **Spotlight** layout (Settings › Setup › Library › Library Layout) shows
+the selected game's gameplay still, a 320×240 screenshot, from a second file
+next to the posters, `/swiss/ui/stills.pak`. It's optional too: without it,
+or for a game it has no still for, Spotlight shows the game's cover instead.
+The poster pack above carries both files, so unzipping it gives you posters
+and stills together. The stills come from the
+[libretro-thumbnails](https://github.com/libretro-thumbnails/Nintendo_-_GameCube)
+project's GameCube screenshots.
+
+To build your own, put screenshots in one folder, each named after its game
+ID and at least 320×240 (Dolphin saves one with F9), and build the pack as
+you would posters:
+
+```bash
+python3 buildtools/ui/poster_pack.py --stills ~/screenshots --out stills.pak
+```
+
+Screenshots are cropped to 4:3 from the center. Copy `stills.pak` to
+`/swiss/ui/stills.pak` on the card.
+
+## Game descriptions
+
+Spotlight shows a few sentences about the selected game beside its still.
+They come from `/swiss/ui/descriptions.txt`, which the poster pack carries
+too: English descriptions from [GameTDB](https://www.gametdb.com/), for
+every game it knows. Without the file, or for a game it doesn't list,
+Spotlight shows the description from the game's disc banner.
+
+It's a text file you can edit: one game per line, its game ID, a space, then
+the description. Add lines for games it doesn't know, such as homebrew or a
+translation. The format is in [PACKS.md](../PACKS.md#game-descriptions).
 
 ## Where the game ID comes from
 
@@ -58,4 +95,4 @@ on [GameTDB](https://www.gametdb.com/).
 
 ---
 
-<p align="center"><a href="memory-cards.md">← Memory Cards</a> · <a href="troubleshooting.md">Troubleshooting →</a></p>
+<p align="center"><a href="memory-cards.md">← Memory Cards</a> · <a href="apps.md">Apps →</a></p>

@@ -106,24 +106,45 @@ info_page = extract_function(INFO, "uiDrawObj_t * info_draw_page(")
 show_info = extract_function(INFO, "void show_info()")
 
 
-# --- Canonical semantic model: exactly four clockwise faces. ---
+# --- Canonical semantic model: four clockwise faces, and Apps. ---
+# Apps is the fifth face only while the source has an app (hasApps) and
+# Setup > Console > Apps Face is On: the ring is otherwise exactly the four,
+# and it comes last so their order and numbers never change (2026-09-29, the
+# maintainer's choice).
 face_enum = re.search(
     r"typedef\s+enum\s*\{\s*"
     r"UI_HOME_FACE_LIBRARY\s*=\s*0\s*,\s*"
     r"UI_HOME_FACE_SOURCE\s*,\s*"
     r"UI_HOME_FACE_SETTINGS\s*,\s*"
     r"UI_HOME_FACE_SYSTEM\s*,\s*"
+    r"(?:/\*.*?\*/\s*)?UI_HOME_FACE_APPS\s*,\s*"
     r"UI_HOME_FACE_COUNT\s*\}\s*uiHomeFace_t\s*;",
     HOME_H,
     re.S,
 )
-assert face_enum, "Home faces are not exactly Library/Source/Settings/System"
+assert face_enum, "Home faces are not Library/Source/Settings/System, then Apps"
 assert re.search(
     r"faceLabels\s*\[UI_HOME_FACE_COUNT\]\s*=\s*\{\s*"
-    r'"LIBRARY"\s*,\s*"SOURCE"\s*,\s*"SETTINGS"\s*,\s*"SYSTEM"\s*\}',
+    r'"LIBRARY"\s*,\s*"SOURCE"\s*,\s*"SETTINGS"\s*,\s*"SYSTEM"\s*,\s*"APPS"\s*\}',
     HOME_C,
     re.S,
 ), "visible Home labels no longer match the semantic enum order"
+count_of = extract_function(HOME_C, "int UIHome_FaceCount(")
+assert "capabilities.hasApps ? UI_HOME_FACE_COUNT : UI_HOME_FACE_APPS" in count_of, (
+    "the ring is no longer four faces without apps and five with them"
+)
+assert "reconcileFaces(state, capabilities);" in HOME_C
+assert "case UI_HOME_FACE_APPS:\n\t\t\t\treturn UI_HOME_EFFECT_OPEN_APPS;" in apply_ring
+assert re.search(
+    r"capabilities\.hasApps = capabilities\.hasSource && !swissSettings\.hideAppsFace &&\s*homeAppsFound;",
+    capabilities,
+), "Apps Face > Off no longer keeps the Apps face off Home"
+assert re.search(
+    r"if\(capabilities\.hasSource && !swissSettings\.hideAppsFace && !homeAppsKnown\)",
+    capabilities,
+), "Apps Face > Off no longer keeps Home from reading /apps"
+ordered(dispatch, "case UI_HOME_EFFECT_OPEN_APPS:", "show_apps();",
+        "UIScene_Request(UI_SCENE_HOME);")
 assert "#define UI_HOME_QUARTER_TURN_RADIANS 1.57079632679f" in HOME_H
 
 legacy_scope = "\n".join((HOME_H, HOME_C, SCENE_H, SCENE_C, FRAME_H, home_input))

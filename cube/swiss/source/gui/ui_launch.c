@@ -165,6 +165,16 @@ const char *UILaunch_Caption(uiLaunchStep_t step)
 	return captions[step];
 }
 
+const char *UILaunch_AppCaption(uiLaunchStep_t step)
+{
+	switch(step) {
+		case UI_LAUNCH_STEP_START: return "Starting app";
+		case UI_LAUNCH_STEP_RECENT: return "Saving recent list";
+		case UI_LAUNCH_STEP_LOAD: return "Loading app";
+		default: return UILaunch_Caption(step);
+	}
+}
+
 void UILaunch_Begin(uiLaunch_t *launch)
 {
 	if(launch == NULL) {

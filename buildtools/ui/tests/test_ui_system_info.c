@@ -15,6 +15,11 @@ static unsigned int checks;
 	} \
 } while(0)
 
+static int iplMeasure(const char *text)
+{
+	return text != NULL ? (int)strlen(text) * 16 : 0;
+}
+
 static int monoMeasure(const char *text)
 {
 	size_t length = text != NULL ? strlen(text) : 0u;
@@ -88,7 +93,21 @@ static void testFormatting(void)
 	CHECK(!UISystem_FormatClock(NULL, 0u, 10, 30, true));
 
 	CHECK(UISystem_FormatDate(text, sizeof(text), 1, 6, 13, 2026, true));
-	CHECK(strcmp(text, "MONDAY  JULY 13, 2026") == 0);
+	CHECK(strcmp(text, "MON  JUL 13, 2026") == 0);
+	/* The IPL font's capitals and digits average about 16 pixels at scale 1
+	 * ("TUESDAY  SEPTEMBER 29, 2026" was cut short on a console even at the
+	 * 0.60 floor): every date fits the Overview's line whole. */
+	for(int weekday = 0; weekday < 7; weekday++) {
+		for(int month = 0; month < 12; month++) {
+			char fitted[64];
+			bool cut = true;
+
+			CHECK(UISystem_FormatDate(text, sizeof(text), weekday, month, 30, 2026, true));
+			(void)UISystem_CopyFitted(fitted, sizeof(fitted), text,
+				UI_SYSTEM_DATE_WIDTH, UI_SYSTEM_DATE_SCALE, iplMeasure, &cut);
+			CHECK(!cut);
+		}
+	}
 	CHECK(!UISystem_FormatDate(text, sizeof(text), 7, 0, 1, 2026, true));
 	CHECK(strcmp(text, "DATE UNAVAILABLE") == 0);
 	CHECK(!UISystem_FormatDate(text, sizeof(text), 0, 0, 1, 1999, true));

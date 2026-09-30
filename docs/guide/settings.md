@@ -208,6 +208,7 @@ Press Y on any row for the same explanations on the console.
 | --- | --- |
 | Menu Color | The color of the whole interface. See [Make it yours](personalize.md#menu-color). |
 | Library Icon, Source Icon, Settings Icon, System Icon | The icon on each face of the Home cube. See [Make it yours](personalize.md#cube-icons). |
+| Apps Face | **On** shows [Apps](apps.md) on Home while the card has a program in `/apps`; **Off** never shows it. |
 | System Sound | The audio output most games use: mono or stereo. |
 | System Language | The language games use, mainly multi-language PAL games. |
 | System Boot Mode | On development hardware, development or production mode. With GC Loader or PicoLoader on a retail console, the default skips the GameCube logo. |
@@ -252,12 +253,13 @@ Passwords are saved as plain text in `global.ini`.
 
 | Setting | What it does |
 | --- | --- |
-| Library Layout | How the poster Library lays out your games: **Horizontal**, a row (the default); **Vertical**, a column with the title beside the cover; or **Grid**, rows of five. See [Library](library.md#choose-a-layout). |
+| Library Layout | How the poster Library lays out your games: **Horizontal**, a row (the default); **Vertical**, a column with the title beside the cover; **Grid**, rows of five; or **Spotlight**, the selected game's gameplay still and details over a row of disc banners. See [Library](library.md#choose-a-layout). |
 | File Browser Type for games, for apps, and for everything else | How Swiss's file lists look: Standard, Fullwidth or Carousel. The poster Library isn't affected. |
 | Recent List | START shows recently played games. **Lazy** updates it only for new games; **Off** saves SD card writes. |
+| Load at startup | What Indigo opens when it starts. A chooses a device, then a folder on it: X picks the folder you are in. The row shows the device. Z on a game's details sets a game instead ([Autoload](game-details.md#autoload)); Z on that game again, or on `..` in the folder's file list, turns it off. |
 | Flatten directory | A folder pattern whose game folders are listed as if their disc images sat directly in it. The default is `*/games`. |
 | Show hidden files | Lists hidden files and folders, such as `/swiss`. |
-| Hide unknown file types | Hides files that aren't games, programs, music or memory card saves. It also stops a stray text file or picture hiding the Library; folders and programs still do. |
+| Hide unknown file types | Hides files that aren't games, programs, music or memory card saves from Swiss's file lists. The Library skips them either way. |
 | File Management | Z in a file list opens actions to copy, move, rename or delete. |
 | Panel Transparency | Translucent panels, like the GameCube menu, or solid ones. |
 | Animated Backdrop | Whether the backdrop behind the cube drifts. |

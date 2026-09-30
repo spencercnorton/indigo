@@ -4,6 +4,162 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## v2.1.0 — Spotlight, Apps and one poster pack for every region
+
+A fourth Library layout, Spotlight, with a gameplay still and a description
+for every game; Apps, a fifth face of the cube for your emulators and other
+programs, with your own pictures as posters; one poster pack for every
+region; and everything upstream Swiss changed up to r2119. The code is
+2.1.0-rc.1's, unchanged.
+
+### Swiss r2119
+
+Indigo is built on upstream Swiss r2119 now, up from a July build between
+r2073 and r2092, and has everything upstream changed since:
+
+- Games start with Swiss's current video timings: the timing tables Swiss
+  gives every game, and a +0 vertical offset by default. Under GCVideo or
+  GCDigital compatibility, the default, every game started at -3 (#42).
+- Turning off controller rumble no longer makes games reset after 32
+  minutes.
+- Neighbours from Hell returns to its menu. Animal Crossing Deluxe starts
+  without disc read speed emulation, and discs with Kawasedo's NES emulator
+  without the forced anisotropic filter.
+- Swiss Video Mode offers 240p and 288p.
+- Setup › Library › Load at startup chooses a device and a folder for Indigo
+  to open when it starts. Z on a game's details still sets a game.
+- A game's name and description from its banner, when written in another
+  encoding such as Japanese Shift JIS, show far fewer garbled characters.
+- In the file lists, a clap on the DK Bongos jumps to the next game that
+  uses them.
+- Fixes to the SD card file system (FatFs R0.16-p2), the FTP client,
+  copying a file onto a name that already exists, and the stub that
+  reloads Swiss.
+- An NKit.iso of an ArtX diagnostic disc says it can't be played in that
+  format.
+- The Redump and [T-En] Collection game databases are current.
+- The first start from a GC Loader or PicoLoader boot image says that
+  System Boot Mode › Production brings back the GameCube logo screen.
+
+### Library
+
+- A fourth Library Layout, **Spotlight**: the selected game's gameplay still
+  fills a 4:3 panel, with its title, publisher, a description and its game
+  ID in the column beside it, over a row of disc banners, the selected
+  game's in the middle and a little larger. Left and Right move along the
+  row, as in Horizontal; the still changes with the title. A game without a still shows its cover there, and leaves from it
+  for its details. Choose it in Settings › Setup › Library › Library
+  Layout.
+- Spotlight's stills come from `/swiss/ui/stills.pak`, a second pack next to
+  the posters: one 320×240 screenshot per game. The poster pack carries it
+  beside `posters.pak`, made from the libretro-thumbnails project's
+  GameCube screenshots; `poster_pack.py --stills` builds one from your own.
+- Spotlight describes every game: a few sentences from
+  `/swiss/ui/descriptions.txt`, which the poster pack carries too
+  (English descriptions from GameTDB), else the description on the game's
+  disc banner. A game with neither says so. The file is plain text you can
+  edit, one game per line.
+- The Spotlight layout's design comes from
+  [Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight) by mvizensk,
+  with its author's permission. System › Credits and `NOTICE` thank them.
+
+### One poster pack
+
+- Posters are one download now, for every region: box art for every
+  GameCube game GameTDB has a cover for, with Spotlight's stills and
+  descriptions. There is no region to choose, and a card that mixes USA,
+  Japanese and European games gets posters for all of them. A pack holds up
+  to 2,048 games, up from 1,024. Indigo 2.0 and earlier refuse a pack this
+  big; the regional packs their release notes link stay online for them.
+
+### Apps
+
+- New: Apps, for the programs on your card that aren't games (emulators,
+  Game Boy Interface, tools). Put their `.dol`, `.dol+cli` or `.elf` files in
+  `/apps` at the root of the card, loose or each in a folder of its own, and
+  Home gets a fifth face, Apps, one turn left of Library. A on it shows them
+  as posters in your Library Layout, moving the same way; A starts one, with
+  the launch screen games have, and B goes back to Home. Swiss's `.cli` and
+  `.dcp` files beside a program still work. Without apps on the card, Home is
+  the four faces it was.
+- Setup › Console › Apps Face (`Hide Apps Face` in `global.ini`) turns the
+  Apps face off, and Indigo then doesn't look in `/apps` at all. It is On by
+  default.
+- Each app's poster is your own picture: a PNG beside the program with its
+  name (`gbi.png` for `gbi.dol`), or its folder's `icon.png`, up to 2048
+  pixels a side. Indigo converts it on the console, so there is no pack to
+  build. A poster-shaped picture fills the card; a square icon or a Homebrew
+  Channel banner sits in the middle over a backdrop in its own colours.
+- An app without a picture gets a poster of its name, in big letters split
+  where the name has a `-`, `_` or space, in a colour picked from its first
+  word: Game Boy Interface's `gbihf-ossc` and `gbihf-direct-hdmi` share one,
+  and its `gbisr` variants have another.
+- `boot.dol` is left out of Apps, since the Wii's Homebrew Channel layout uses
+  that name for the Wii program, and so are hidden files and names starting
+  with a dot.
+- The cube's icons fade one by one. When a turn has to move an icon to
+  another side, as turning sideways and then tipping at once does, only that
+  icon fades out and back in, where every icon used to. With five faces the
+  icons you can see never have to move: only ones facing away do.
+
+### Fixes
+
+- `ipl.dol` is compressed, as stock Swiss's own download is: 2.9 MB for a
+  loader to read at power-on instead of 5.5 MB, and the console checks it as
+  it unpacks. A copy the loader read only in part could stop Indigo on a black
+  screen; now the console restarts and the loader reads it again. Unpacking
+  adds a moment before the cube appears.
+- A file in `/games` that isn't a game no longer hides the Library. A text
+  file, a cover picture or an empty folder there, or in a game's folder,
+  turned the whole Library into Swiss's plain file list, with no sign of
+  which file did it, and Library Layout and posters then seemed to do
+  nothing. The Library now skips them and shows the games. Swiss's list
+  comes back only when `/games` holds no disc images at all.
+- The glass cube no longer sparkles along its edges on a console. Single
+  pixels flickered where a face meets a bevel and where a bevel meets a
+  corner: the glass's refraction, reflection and sheen cut a face's side and
+  the bevel beside it at different points, and the GameCube snaps every
+  point to a sixteenth of a pixel, which opened and closed pixels along the
+  seam as the cube moved. Both sides are now cut at the same points, made
+  the same way. The round ends of the icons' strokes (the controller's
+  triggers and X and Y, the disc's glints) had the same fault and are fixed
+  too. Dolphin's finer snap hid it.
+- System Information shows the whole date: weekdays and months are three
+  letters (TUE  SEP 29, 2026). A long one, such as a Tuesday in September,
+  ended in an ellipsis.
+
+### For developers
+
+- [`UPSTREAM`](UPSTREAM) names the upstream Swiss commit Indigo is built on,
+  now r2119, and lists the upstream files Indigo changes, each with the
+  reason. CI checks it both ways: a change to an
+  upstream file that the list leaves out fails, and so does a listed file
+  that matches upstream again. It replaces the interface-only gate and its
+  exact-line exceptions, which are now lines in that list.
+  `buildtools/upstream_merge.sh <commit>` moves to another upstream commit:
+  it merges upstream's changes over the difference in line endings, updates
+  the commit, and lists anything left to resolve.
+- The size tripwires are 6 MiB for the DOL (`verify_dol.py`) and 7 MiB for
+  the zip (`check_package.py`), up from 5 and 6: the DOL is about 5.2 MiB
+  and the zip about 5.5 MiB with the text-encoding libraries r2119 links.
+- The zip's `ipl.dol` is `cube/packer/swiss.dol`: the DOL compressed by
+  upstream's packer, which `make dev` already built for In-Game Reset's
+  `apploader.img`. `verify_dol.py --packed` checks that it unpacks to exactly
+  the DOL CI checks, in the one .xz format the console's decoder reads, and
+  that the unpacker stays clear of what it unpacks and of its stack. The
+  Emulator job boots it through `buildtools/ui/emulator/dolphin_ipl.py`, a copy
+  past the unpacker's console-only check, and Reproducible build compares both
+  files.
+- The pack builder makes gameplay stills as well as posters:
+  `poster_pack.py --stills <folder>` writes `stills.pak`, one 320×240
+  screenshot per game in the poster pack's format. The Library's art cache
+  loads a stills pack next to the poster pack, in three slots of its own.
+  [docs/PACKS.md](docs/PACKS.md) describes
+  the format, which the source cited but the repository never had.
+- Game details read no further than a disc banner's 128-character
+  description, which need not end in a NUL; they could read on into the
+  memory after it.
+
 ## v2.0.1 — The download keeps your games folder
 
 Three fixes to 2.0: the download, where System Information sends you for help, and a

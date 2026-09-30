@@ -22,11 +22,11 @@
   <tr>
     <td width="50%" valign="top">
       <a href="home.md"><img alt="Home on the Library face." src="images/home-library-face.png" width="100%"></a><br>
-      <b><a href="home.md">Home</a></b>: the cube and its four faces.
+      <b><a href="home.md">Home</a></b>: the cube and its faces.
     </td>
     <td width="50%" valign="top">
       <a href="library.md"><img alt="The Library with 1080° Avalanche selected, its box art raised and its title underneath." src="images/library-posters.png" width="100%"></a><br>
-      <b><a href="library.md">Library</a></b>: your games as posters, in a row, a column or a grid.
+      <b><a href="library.md">Library</a></b>: your games as posters, in a row, a column or a grid, or as gameplay stills in Spotlight.
     </td>
   </tr>
   <tr>
@@ -71,10 +71,13 @@
   </tr>
   <tr>
     <td valign="top">
-      <a href="troubleshooting.md"><img alt="Swiss's plain file list, which appears when the games folder holds other files." src="images/library-file-list.png" width="100%"></a><br>
+      <a href="troubleshooting.md"><img alt="Swiss's plain file list, which appears when the games folder holds no disc images." src="images/library-file-list.png" width="100%"></a><br>
       <b><a href="troubleshooting.md">Troubleshooting</a></b>: fixes for the common surprises.
     </td>
-    <td valign="top"></td>
+    <td valign="top">
+      <a href="apps.md"><img alt="Apps: four programs as posters, Starfield in front." src="images/apps.png" width="100%"></a><br>
+      <b><a href="apps.md">Apps</a></b>: your emulators and other programs, with your own pictures.
+    </td>
   </tr>
 </table>
 

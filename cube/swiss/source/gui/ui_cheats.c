@@ -133,16 +133,23 @@ void UICheats_Fit(char *out, size_t capacity, const char *source,
 void UICheats_Wrap(char lines[3][UI_CHEATS_TEXT_CAPACITY],
     const char *source, int maxWidth, float scale, uiCheatsMeasureFn measure)
 {
+    UICheats_WrapLines(lines, 3u, source, maxWidth, scale, measure);
+}
+
+void UICheats_WrapLines(char (*lines)[UI_CHEATS_TEXT_CAPACITY], size_t count,
+    const char *source, int maxWidth, float scale, uiCheatsMeasureFn measure)
+{
     size_t length = boundedLength(source);
     size_t offset = 0u;
-    int row;
-    memset(lines, 0, 3u * UI_CHEATS_TEXT_CAPACITY);
+    size_t row;
+    if(lines == NULL || count == 0u) return;
+    memset(lines, 0, count * UI_CHEATS_TEXT_CAPACITY);
     if(source == NULL || measure == NULL || maxWidth <= 0 || !(scale > 0.0f)) return;
-    for(row = 0; row < 3 && offset < length; ++row) {
+    for(row = 0u; row < count && offset < length; ++row) {
         size_t used = 0u;
         size_t wordBreak = 0u;
         while(offset < length && source[offset] == ' ') ++offset;
-        if(row == 2) {
+        if(row == count - 1u) {
             char tail[UI_CHEATS_SOURCE_LIMIT + 1u];
             copyRange(tail, sizeof(tail), source, offset, length);
             UICheats_Fit(lines[row], UI_CHEATS_TEXT_CAPACITY, tail,

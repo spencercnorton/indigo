@@ -48,7 +48,7 @@ ConfigEntry tempConfig;
 SwissSettings tempSettings;
 char *enableUSBGeckoStr[] = {"No", "Slot A", "Slot B", "Serial Port 2"};
 char *simulatedMemSizeStr[] = {"None", "16 MiB", "24 MiB", "32 MiB", "48 MiB", "64 MiB"};
-char *uiVModeStr[] = {"Auto", "480i", "480sf", "480p", "576i", "576sf", "576p"};
+char *uiVModeStr[] = {"Auto", "480i", "480sf", "240p", "480p", "576i", "576sf", "288p", "576p"};
 char *gameVModeStr[] = {"Auto", "480i", "480sf", "240p", "960i", "480p", "1080i60", "540p60", "576i", "576sf", "288p", "1152i", "576p", "1080i50", "540p50"};
 char *forceHScaleStr[] = {"Auto", "1:1", "11:10", "9:8", "640px", "656px", "672px", "704px", "720px"};
 char *forceVFilterStr[] = {"Auto", "0", "1", "2"};
@@ -82,7 +82,7 @@ _Static_assert(sizeof(libraryIconStr) / sizeof(libraryIconStr[0]) == UI_HOME_ICO
 _Static_assert(sizeof(sourceIconStr) / sizeof(sourceIconStr[0]) == UI_HOME_ICON_CHOICES, "source icon names drift");
 _Static_assert(sizeof(settingsIconStr) / sizeof(settingsIconStr[0]) == UI_HOME_ICON_CHOICES, "settings icon names drift");
 _Static_assert(sizeof(systemIconStr) / sizeof(systemIconStr[0]) == UI_HOME_ICON_CHOICES, "system icon names drift");
-char *libraryLayoutStr[] = {"Horizontal", "Vertical", "Grid"};
+char *libraryLayoutStr[] = {"Horizontal", "Vertical", "Grid", "Spotlight"};
 _Static_assert(sizeof(libraryLayoutStr) / sizeof(libraryLayoutStr[0]) == UI_GAMEFLOW_LAYOUT_COUNT, "library layout names drift");
 static const char *uiMotionModeStr[] = {"Full", "Reduced", "Off"};
 
@@ -120,7 +120,7 @@ static char *tooltips_global[PAGE_GLOBAL_MAX+1] = {
 };
 
 static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
-	[SET_FILEBROWSER_TYPE] = "File Browser Type:\n\nStandard - Displays files with minimal detail (default)\n\nCarousel - Suited towards Game/DOL only use, consider combining\nthis option with the File Management setting turned off\nand Hide Unknown File Types turned on for a better experience.",
+	[SET_FILEBROWSER_TYPE] = "File Browser Type:\n\nStandard - Displays files with minimal detail. (default)\n\nFullwidth - Displays files across the entire screen while hiding\nside information panels.\n\nCarousel - Suited towards Game/DOL only use, consider combining\nthis option with the \223File Management\224 setting turned off and\n\223Hide unknown file types\224 turned on for a better experience.",
 	[SET_APPSBROWSER_TYPE] = "File Browser Type for apps:\n\nApplicable to the /apps directory.",
 	[SET_GAMEBROWSER_TYPE] = "File Browser Type for games:\n\nApplicable to the /games directory.",
 	[SET_FILE_MGMT] = "File Management:\n\nWhen enabled, pressing Z on an entry in the file browser will\nallow it to be managed.",
@@ -136,10 +136,12 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_ANIMATED_BACKDROP] = "Animated Backdrop:\n\nEnabled - The backdrop gently drifts (default)\nDisabled - The backdrop is static.",
 	[SET_MENU_MUSIC] = "Menu Music:\n\nEnabled - Play Up in the Sky, Indigo's menu music (default)\nDisabled - Silent.\n\nChanges take effect immediately.",
 	[SET_MENU_SFX] = "Menu Sounds:\n\nEnabled - Soft blip/confirm sounds on navigation (default)\nDisabled - Silent.",
+	[SET_AUTOLOAD] = "Load at startup:\n\nWhat Indigo opens when it starts.\n\nA chooses a device, then a folder on it: X picks the folder\nyou are in. Z on a game's details sets a game instead; Z on\nthat game again, or on .. in the folder's file list, turns\nit off.",
 	[SET_FLATTEN_DIR] = "Flatten directory:\n\nFlattens a directory structure matching a glob pattern.",
 	[SET_SHOW_HIDDEN] = "Show hidden files:\n\nLists files and folders marked hidden, such as the /swiss folder\nthat holds Indigo's settings.",
 	[SET_MENU_WIDESCREEN] = "Menu Widescreen:\n\nYes - Drawn for a TV set to 16:9: the background fills the\nscreen and the menus keep their shape.\nNo - Drawn for a 4:3 picture (default)\n\nSet your TV or HDMI adapter to 16:9 too. Games follow Force\nWidescreen in Game Defaults, not this.",
-	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\n\nThe selected game's title and details show beside its cover in\nVertical and above the controls in Grid. Every layout wraps round\nfrom the last game to the first; L and R jump a page.\nY opens the focused game's settings.",
+	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\nSpotlight - A gameplay still over banners; Left and Right move\n\nThe selected game's title and details show beside its cover in\nVertical and its still in Spotlight, and above the controls in Grid.\nEvery layout wraps round from the last game to the first; L and R\njump a page. Y opens the focused game's settings.",
+	[SET_APPS_FACE] = "Apps Face:\n\nOn - Home shows Apps, one turn left of Library, while the\nsource has a program in /apps (default)\nOff - Home never shows Apps. The programs stay in /apps,\nand the file list still starts them.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
 
@@ -179,7 +181,7 @@ static char *tooltips_game_global[PAGE_GAME_GLOBAL_MAX+1] = {
 };
 
 static char *tooltips_game[PAGE_GAME_DEFAULTS_MAX+1] = {
-	[SET_VERT_OFFSET] = "Force Vertical Offset:\n\n+0 - Standard value\n-2 - GCVideo-DVI compatible (480i)\n-3 - GCVideo-DVI compatible (default)\n-4 - GCVideo-DVI compatible (240p)\n-12 - Datapath VisionRGB (480p)",
+	[SET_VERT_OFFSET] = "Force Vertical Offset:\n\n+0 - Standard value (default)\n-2 - GCVideo-DVI compatible (480i)\n-3 - GCVideo-DVI compatible\n-4 - GCVideo-DVI compatible (240p)\n-12 - Datapath VisionRGB (480p)",
 	[SET_VERT_FILTER] = "Force Vertical Filter:\n\nFor 480i & 576i:\n Auto - Do nothing (default)\n\nFor 240p & 288p:\n Auto - Equivalent to 0 (default)\n 0 - 50%/50% blend with lower lines\n 1 - 50%/50% blend with upper lines\n 2 - Discard even lines\n\nFor other video modes:\n Auto - Equivalent to 0 (default)\n 0 - 3\327MSAA resolve only\n 1 - 18.75%/62.5%/18.75% blend\n 2 - 25%/50%/25% blend (deflicker)",
 	[SET_PIXEL_CENTER] = "Fix Pixel Center:\n\nNot to be confused with the \223480p Pixel Fix\224 on Wii.",
 	[SET_ANISO_FILTER] = "Force Anisotropic Filter:\n\nThe GameCube's texture sampling hardware is optimised for the\ntrilinear filtering of 16 bpp textures and the bilinear filtering of\n32 bpp textures.\n\nIt is not unusual for the performance to randomly plummet once\nanisotropic filtering is enabled, so do so sparingly.",
@@ -208,6 +210,11 @@ static char *tooltips_game[PAGE_GAME_DEFAULTS_MAX+1] = {
 char* getConfigDeviceName(SwissSettings *settings) {
 	DEVICEHANDLER_INTERFACE *configDevice = getDeviceByUniqueId(settings->configDeviceId);
 	return configDevice != NULL ? (char*)(configDevice->deviceName) : "None";
+}
+
+char* getAutoLoadDeviceName(SwissSettings *settings) {
+	DEVICEHANDLER_INTERFACE *entryDevice = getDeviceFromPath(settings->autoload);
+	return entryDevice != NULL ? (char*)(entryDevice->deviceName) : "None";
 }
 
 char* getGameVideoModeString(int gameVMode) {
@@ -503,9 +510,9 @@ static const settingsRowRef_t gameDefaultsRows[] = {
 	{PAGE_GAME_DEFAULTS, SET_DEFAULT_EMULATE_ETHERNET},
 	{PAGE_GAME_DEFAULTS, SET_DEFAULT_DISABLE_MEMCARD},
 	{PAGE_GAME_DEFAULTS, SET_DEFAULT_HORIZ_SCALE},
-	/* No SET_DEFAULT_VERT_OFFSET: config_defaults_from gives every game -3 or
-	 * +0 by the AVE setting, so a Game Defaults value would do nothing. It
-	 * stays in global.ini and in each game's own settings. */
+	/* No SET_DEFAULT_VERT_OFFSET: every game starts at global.ini's Force
+	 * Vertical Offset (+0 unless set there), and a game's own settings can
+	 * change it. */
 	{PAGE_GAME_DEFAULTS, SET_DEFAULT_VERT_FILTER},
 	{PAGE_GAME_DEFAULTS, SET_DEFAULT_FIELD_RENDER},
 	{PAGE_GAME_DEFAULTS, SET_DEFAULT_PIXEL_CENTER},
@@ -543,6 +550,7 @@ static const settingsRowRef_t consoleRows[] = {
 	{PAGE_INTERFACE, SET_SOURCE_ICON},
 	{PAGE_INTERFACE, SET_SETTINGS_ICON},
 	{PAGE_INTERFACE, SET_SYSTEM_ICON},
+	{PAGE_INTERFACE, SET_APPS_FACE},
 	{PAGE_GLOBAL, SET_SYS_SOUND},
 	{PAGE_GLOBAL, SET_SYS_LANG},
 	{PAGE_GLOBAL, SET_SYS_BOOTMODE},
@@ -589,6 +597,7 @@ static const settingsRowRef_t libraryRows[] = {
 	{PAGE_INTERFACE, SET_APPSBROWSER_TYPE},
 	{PAGE_INTERFACE, SET_FILEBROWSER_TYPE},
 	{PAGE_INTERFACE, SET_RECENT_LIST},
+	{PAGE_INTERFACE, SET_AUTOLOAD},
 	{PAGE_INTERFACE, SET_FLATTEN_DIR},
 	{PAGE_INTERFACE, SET_SHOW_HIDDEN},
 	{PAGE_INTERFACE, SET_HIDE_UNK},
@@ -1008,11 +1017,13 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_SOURCE_ICON: rowCycle(row, "Source Icon:", sourceIconStr[swissSettings.sourceIcon], true); break;
 			case SET_SETTINGS_ICON: rowCycle(row, "Settings Icon:", settingsIconStr[swissSettings.settingsIcon], true); break;
 			case SET_SYSTEM_ICON: rowCycle(row, "System Icon:", systemIconStr[swissSettings.systemIcon], true); break;
+			case SET_APPS_FACE: rowOnOff(row, "Apps Face:", !swissSettings.hideAppsFace, true); break;
 			case SET_PANEL_TRANSPARENCY: rowYesNo(row, "Panel Transparency:", !swissSettings.disablePanelTransparency, true); break;
 			case SET_ANIMATED_BACKDROP: rowYesNo(row, "Animated Backdrop:", !swissSettings.disableAnimatedBackdrop, true); break;
 			case SET_MENU_MUSIC: rowYesNo(row, "Menu Music:", !swissSettings.disableMenuMusic, true); break;
 			case SET_MENU_SFX: rowYesNo(row, "Menu Sounds:", !swissSettings.disableMenuSFX, true); break;
 			case SET_AUTOBOOT: rowYesNo(row, "Boot without prompts:", swissSettings.autoBoot, true); break;
+			case SET_AUTOLOAD: rowText(row, "Load at startup:", getAutoLoadDeviceName(&swissSettings), true); break;
 			case SET_FLATTEN_DIR: rowText(row, "Flatten directory:", swissSettings.flattenDir, true); break;
 			case SET_LIBRARY_LAYOUT: rowCycle(row, "Library Layout:", libraryLayoutStr[swissSettings.libraryLayout], true); break;
 			case SET_MENU_WIDESCREEN: rowYesNo(row, "Menu Widescreen:", swissSettings.menuWidescreen, true); break;
@@ -1379,7 +1390,7 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 						curDevicePos = allDevices[curDevicePos+1] == NULL ? 0 : curDevicePos+1;
 					}
 					else {
-						curDevicePos = curDevicePos > 0 ? curDevicePos-1 : 0;
+						curDevicePos = curDevicePos > 0 ? curDevicePos-1 : MAX_DEVICES-1;
 					}
 					// Go to next writable device
 					while((allDevices[curDevicePos] == NULL) || !(allDevices[curDevicePos]->features & FEAT_CONFIG_DEVICE)) {
@@ -1394,7 +1405,7 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_SWISS_VIDEOMODE:
 				swissSettings.uiVMode += direction;
-				swissSettings.uiVMode = (swissSettings.uiVMode + 7) % 7;
+				swissSettings.uiVMode = (swissSettings.uiVMode + 9) % 9;
 			break;
 			case SET_INIT_DRIVE:
 				if(deviceHandler_getDeviceAvailable(&__device_dvd))
@@ -1537,6 +1548,9 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 				swissSettings.systemIcon += direction;
 				swissSettings.systemIcon = (swissSettings.systemIcon + UI_HOME_ICON_CHOICES) % UI_HOME_ICON_CHOICES;
 			break;
+			case SET_APPS_FACE:
+				swissSettings.hideAppsFace ^= 1;
+			break;
 			case SET_PANEL_TRANSPARENCY:
 				swissSettings.disablePanelTransparency ^= 1;
 			break;
@@ -1553,6 +1567,26 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_AUTOBOOT:
 				swissSettings.autoBoot ^= 1;
+			break;
+			case SET_AUTOLOAD:
+				select_device(DEVICE_DEST);
+				if(devices[DEVICE_DEST] != NULL) {
+					if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
+						deviceHandler_setStatEnabled(0);
+						if(devices[DEVICE_DEST]->init(devices[DEVICE_DEST]->initial)) {
+							deviceHandler_setStatEnabled(1);
+							strlcpy(swissSettings.autoload, devices[DEVICE_DEST]->initial->name, sizeof(swissSettings.autoload));
+							return;
+						}
+						deviceHandler_setStatEnabled(1);
+					}
+					select_dest_dir(devices[DEVICE_DEST]->initial, swissSettings.autoload);
+
+					if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
+						devices[DEVICE_DEST]->deinit(devices[DEVICE_DEST]->initial);
+					}
+					devices[DEVICE_DEST] = NULL;
+				}
 			break;
 			case SET_FLATTEN_DIR:
 				DrawGetTextEntry(ENTRYMODE_NUMERIC|ENTRYMODE_ALPHA, "Flatten directory", &swissSettings.flattenDir, sizeof(swissSettings.flattenDir) - 1);
@@ -2109,7 +2143,7 @@ static bool settingsRowIsAction(int page, int option)
 		case PAGE_GLOBAL:
 			return option == SET_SAVE_FOLDER;
 		case PAGE_INTERFACE:
-			return option == SET_FLATTEN_DIR;
+			return in_range(option, SET_AUTOLOAD, SET_FLATTEN_DIR);
 		case PAGE_NETWORK:
 			return in_range(option, SET_BBA_LOCALIP, SET_BBA_GATEWAY) ||
 				in_range(option, SET_FSP_HOSTIP, SET_FTP_PASS) ||
@@ -2297,6 +2331,7 @@ static const settingsPickerRow_t settingsPickerRows[] = {
 	PICK_SETTING(PAGE_GLOBAL, SET_ENABLE_USBGECKO, enableUSBGecko),
 	PICK_SETTING(PAGE_GLOBAL, SET_SIMMEMSIZE, simulatedMemSize),
 	PICK_SETTING(PAGE_INTERFACE, SET_UI_COLOR, uiColor),
+	PICK_SETTING(PAGE_INTERFACE, SET_LIBRARY_LAYOUT, libraryLayout),
 	PICK_SETTING(PAGE_INTERFACE, SET_LIBRARY_ICON, libraryIcon),
 	PICK_SETTING(PAGE_INTERFACE, SET_SOURCE_ICON, sourceIcon),
 	PICK_SETTING(PAGE_INTERFACE, SET_SETTINGS_ICON, settingsIcon),
@@ -2549,7 +2584,7 @@ static bool settingsInputMayBlock(int page, int option, u32 buttons)
 			(activate && settingsIsLiveVideoRow(page, option));
 	}
 	if(page == PAGE_INTERFACE) {
-		return (horizontal || activate) && option == SET_FLATTEN_DIR;
+		return (horizontal || activate) && in_range(option, SET_AUTOLOAD, SET_FLATTEN_DIR);
 	}
 	if(page == PAGE_NETWORK && (horizontal || activate)) {
 		return in_range(option, SET_BBA_LOCALIP, SET_BBA_GATEWAY) ||

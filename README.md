@@ -32,8 +32,9 @@ hardware and want it to feel like it belongs on the console.
 
 ## What it does
 
-**Home is an animated cube.** Four faces, one destination each: left and
-right turn it sideways, up and down tip it over. When Indigo starts, the cube
+**Home is an animated cube.** Four faces, one destination each, and a fifth,
+Apps, when your card has programs in `/apps`: left and right turn it
+sideways, up and down tip it over. When Indigo starts, the cube
 flies in from the distance, spinning, and comes to rest on the face you
 start on. It is glass, like the
 GameCube's own menu, and it treats light the way glass does. Through the clear
@@ -60,15 +61,25 @@ Settings › Quick › Menu Music turns it off.
 source, with artwork kept across navigation rather than re-read per frame,
 and your selection restored when you come back from a game's details. It
 opens as a row, with two covers either side of the game in the middle; it
-can also be a column with the title beside the cover, or a grid five covers
-wide (Setup › Library › Library Layout). Y on a cover opens that game's own
-settings. Cover art comes from a ready-made pack or one you build yourself
-(see [Posters](#posters)); without one, each game gets a card with its disc
-banner.
+can also be a column with the title beside the cover, a grid five covers
+wide, or Spotlight: the selected game's gameplay still and description over
+a row of disc banners (Setup › Library › Library Layout), a design that
+comes from mvizensk's
+[Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight), with
+their permission. Y on a game opens its own settings. Cover art comes from a
+ready-made pack or one you build yourself (see [Posters](#posters)); without
+one, each game gets a card with its disc banner.
 
 <p align="center">
-  <img alt="The game library in its three layouts in turn. Horizontal: a row of GameCube box art, the selected cover raised between two covers either side, with its title and publisher below it. Vertical: a column of covers down the left, the selected one large with its title, publisher and game ID beside it. Grid: five covers across and three rows on screen, a lit frame sliding to the selected cover as the rows scroll. The controls are shown as GameCube buttons along the bottom." src="docs/screenshots/library.png" width="640">
+  <img alt="The game library in its four layouts in turn. Horizontal: a row of GameCube box art, the selected cover raised between two covers either side, with its title and publisher below it; two steps right. Vertical: a column of covers down the left, the selected one large with its title, publisher and game ID beside it; three steps down. Grid: five covers across and three rows on screen, a lit frame moving right, right, down and down. Spotlight: the selected game's gameplay still fills a framed panel, with its title, publisher, a few sentences about it and its game ID beside it, over a row of disc banners; two steps right bring 007: Everything or Nothing's and From Russia With Love's stills and text." src="docs/screenshots/library.png" width="640">
 </p>
+
+**Apps keeps your other programs apart.** Emulators, Game Boy Interface,
+tools: put their `.dol` files in `/apps` and they get their own face of the
+cube, shown as posters and started the way games are, never mixed in with
+your games. Each app's picture is any PNG you put beside it (`gbi.png` for
+`gbi.dol`); Indigo turns it into a poster on the console. See
+[Apps](docs/guide/apps.md).
 
 **Change Source shows the devices themselves.** Choose it on the Source
 face: the cube lifts out of the way and the devices Indigo found line up
@@ -209,7 +220,7 @@ git clone https://github.com/spencercnorton/indigo.git
 cd indigo
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
   ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
-# writes cube/swiss/swiss.dol inside this folder, on your computer
+# writes cube/packer/swiss.dol (and cube/swiss/swiss.dol) in this folder
 ```
 
 The download above is this build at the release tag, packaged by
@@ -222,9 +233,12 @@ changes.
 
 ### On the console
 
-`cube/swiss/swiss.dol` is where the build leaves the file, not a path on your
-SD card. On the card, Indigo takes the place of the file your loader already
-boots, under that file's name. Your Swiss settings carry over.
+`cube/packer/swiss.dol` is where the build leaves the file for your card, not
+a path on the card: it is the release's `ipl.dol`, compressed, and the console
+unpacks it as it starts. (`cube/swiss/swiss.dol` is the same program
+uncompressed; Dolphin boots only that one.) On the card, Indigo takes the
+place of the file your loader already boots, under that file's name. Your
+Swiss settings carry over.
 
 - **PicoBoot and PicoLoader** boot `ipl.dol` from the root of the card.
   If that file is your current Swiss, rename it to `z.dol`; then copy
@@ -252,33 +266,28 @@ With In-Game Reset set to **Apploader**, a reset returns to the program in
 ### Games
 
 The Library shows the games in one folder, `/games` at the root of the card.
-Put each game in its own folder or put the disc images there directly, and
-keep nothing else in `/games` or in the game folders:
+Put each game in its own folder or put the disc images there directly:
 
 ```text
 /games/Super Mario Sunshine [GMSE01]/game.iso
 /games/Super Mario Sunshine.iso
 ```
 
-Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. Anything else there (a
-text file, a cover image, an empty folder, a folder inside a game's folder)
-turns the Library back into Swiss's plain file list. "Hide unknown file types"
-in Settings → Setup → Library hides stray text files and pictures, but not
-folders, programs (`.dol`, `.elf`) or music. On Home, turn the cube to Library
-and press A.
+Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. The Library skips
+anything else there, such as a text file, a cover image or an empty folder.
+If `/games` holds no disc images at all, you get Swiss's plain file list
+instead. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn the
+cube to Library and press A.
 
 ### Posters
 
 Without posters, each game shows its disc banner and its six-character game
-ID, such as `GMSE01`. For box art like the screenshots above, download a
-ready-made pack and unzip it into the root of the card; it holds
-`swiss/ui/posters.pak`:
-
-- [Posters: USA & Japan](https://indigo.norvitech.com/indigo-posters-ntsc.zip) (NTSC)
-- [Posters: Europe & Australia](https://indigo.norvitech.com/indigo-posters-pal.zip) (PAL)
-
-Indigo reads one pack, so pick the region most of your games are from.
-Checksums are in [SHA256SUMS.txt](https://indigo.norvitech.com/SHA256SUMS.txt); the
+ID, such as `GMSE01`. For box art like the screenshots above, download
+[the poster pack](https://indigo.norvitech.com/indigo-posters-all.zip) and
+unzip it into the root of the card. One pack covers games from every region,
+so there is nothing to choose; it holds `swiss/ui/posters.pak` and the stills
+and descriptions Spotlight shows (below). Checksums are in
+[SHA256SUMS.txt](https://indigo.norvitech.com/SHA256SUMS.txt); the
 [Indigo page](https://norvitech.com/indigo/) has the details.
 
 To make your own, name front-cover images after the game IDs (`GMSE01.png`,
@@ -293,6 +302,35 @@ python3 buildtools/ui/poster_pack.py --covers ~/covers --out posters.pak
 
 Covers are cropped to 3:4 from the centre. Files not named by a game ID are
 skipped and listed.
+
+The Spotlight layout also shows each game's gameplay still from
+`swiss/ui/stills.pak` and a few sentences about it from
+`swiss/ui/descriptions.txt`, which the poster pack carries beside the
+posters. Its covers and descriptions come from
+[GameTDB](https://www.gametdb.com/), and its stills from
+[libretro-thumbnails](https://github.com/libretro-thumbnails/Nintendo_-_GameCube),
+as do the screenshots above. The descriptions file is plain text you can
+edit (see [Posters](docs/guide/posters.md#game-descriptions)).
+To build one from your own screenshots (at least 320×240, named like the
+covers): `poster_pack.py --stills ~/screenshots --out stills.pak`. See
+[Posters](docs/guide/posters.md#gameplay-stills).
+
+### Apps
+
+Put other programs (`.dol`, `.dol+cli` or `.elf`) in `/apps` at the root of
+the card, loose or each in a folder of its own, and a picture beside each,
+a PNG with the program's name. Home then gets an Apps face:
+
+```text
+/apps/gbi.dol
+/apps/gbi.png
+/apps/Genesis Plus GX/genplus_cube.dol
+/apps/Genesis Plus GX/icon.png
+```
+
+A file called `boot.dol` is left out: in the Wii's Homebrew Channel layout it
+is the Wii program. Settings › Setup › Console › Apps Face turns the face
+off. [Apps](docs/guide/apps.md) has the rest.
 
 ### Cheats
 
@@ -309,6 +347,7 @@ be checked in advance.
 - [Indigo guide](docs/guide/README.md) — install, controls, and every screen and setting, with pictures.
 - [`CHANGELOG.md`](CHANGELOG.md) — what each release contains.
 - [`NOTICE`](NOTICE) — upstream provenance and the third-party components in this tree.
+- [`UPSTREAM`](UPSTREAM) — the upstream Swiss commit Indigo is built on, and the few upstream files it changes.
 - [`docs/screenshots/`](docs/screenshots) — the pictures above, captured in Dolphin.
 - Upstream [Swiss documentation](https://github.com/emukidid/swiss-gc) covers every device handler, patch and boot option; none of it changed here.
 
@@ -326,7 +365,7 @@ docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
   ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev   # the DOL, as CI builds it
 buildtools/ui/tests/run_tests.sh all          # host tests: plain, sanitized, contracts
 buildtools/check_whitespace.sh origin/beta    # lint
-buildtools/check_ui_isolation.sh origin/beta  # the change stays in the interface
+python3 buildtools/ci/check_upstream.py       # upstream's files match UPSTREAM
 ```
 
 Work lands on `beta` by pull request and ships as `vX.Y.Z-beta.N` betas and
@@ -343,6 +382,10 @@ Indigo is a modified version of [Swiss](https://github.com/emukidid/swiss-gc)
 licence. Provenance, the modified surface and the third-party components in
 this tree are recorded in [`NOTICE`](NOTICE). This fork is unofficial and is
 not endorsed by or affiliated with the Swiss project.
+
+The Library's Spotlight layout takes its design from
+[Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight) by mvizensk
+(GPL-2.0), with its author's permission; Indigo's code for it is its own.
 
 Indigo's interface was built with [Claude Code](https://claude.com/claude-code).
 

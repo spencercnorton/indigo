@@ -3,8 +3,8 @@
 # Library
 
 The Library shows the games on your card as posters: in a row, in a column
-or in a grid, as you choose. On Home, turn the cube to **Library** and press
-A.
+or in a grid, or as a gameplay still over a row of disc banners, as you
+choose. On Home, turn the cube to **Library** and press A.
 
 <p align="center">
   <img alt="The Library: moving right through the James Bond games to 1080° Avalanche, each cover raised in turn between two covers either side, with its title and publisher below; A opens its details, B returns to the Library, and 1080° Avalanche is still selected." src="images/library-browse.png" width="640">
@@ -14,10 +14,11 @@ A.
 
 **Library Layout**, the first row of [Settings](settings.md) › Setup ›
 Library, sets how the Library lays out your games. Left and Right on it step
-through the three, and the line above the buttons says how each one moves.
+through the four, A lists them, and the line above the buttons says how each
+one moves.
 
 <p align="center">
-  <img alt="Settings, Setup, Library: Library Layout is the first row. Right steps it from Horizontal to Vertical to Grid, and the line above the buttons reads A row of covers; Left and Right move (default), then A column of covers; Up and Down move, then Rows of five covers; every direction moves." src="images/library-layout-setting.png" width="640">
+  <img alt="Settings, Setup, Library: Library Layout is the first row. Right steps it from Horizontal to Vertical to Grid to Spotlight and back, and the line above the buttons reads A row of covers; Left and Right move (default), then A column of covers; Up and Down move, then Rows of five covers; every direction moves, then A gameplay still over banners; Left and Right move." src="images/library-layout-setting.png" width="640">
 </p>
 
 - **Horizontal**, the default: a row of covers, two either side of the
@@ -29,6 +30,20 @@ through the three, and the line above the buttons says how each one moves.
 - **Grid**: rows of five covers, three rows on screen. The selected cover is
   lit and a little larger, and its title and publisher are shown above the
   controls.
+- **Spotlight**: the selected game's gameplay still, large, with its title,
+  publisher, a description and its game ID beside it, over a row of disc
+  banners: the selected game's in the middle, a little larger, and two
+  either side. The still comes from the
+  [stills pack](posters.md#gameplay-stills); a game without one shows its
+  cover there, or its banner card. The description comes from the
+  [descriptions file](posters.md#game-descriptions), else from the game's
+  disc banner. Spotlight's design comes from mvizensk's
+  [Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight), with their
+  permission.
+
+<p align="center">
+  <img alt="The Spotlight layout, moving right through four games and back one: each game's gameplay still fills a framed panel at the left, with its title, publisher, a few sentences about it and its game ID and size beside it; below, a row of disc banners, the selected one in the middle a little larger and framed brighter. James Bond 007 in Agent Under Fire, 007: Everything or Nothing, From Russia With Love, 007: NightFire and 1080° Avalanche in turn, each still fading into the next; the controls are shown as GameCube buttons along the bottom." src="images/library-spotlight.png" width="640">
+</p>
 
 <p align="center">
   <img alt="The Vertical layout: the selected cover large at the left, the covers before and after it tipped back above and below, and its title, publisher, game ID and size beside it. Down moves through 007: Everything or Nothing, From Russia With Love, NightFire and 1080° Avalanche; Right jumps nine games to The Legend of Zelda: Ocarina of Time, and Down moves on to The Wind Waker." src="images/library-vertical.png" width="640">
@@ -42,7 +57,7 @@ Every layout wraps round: after the last game comes the first.
 
 ## Moving around
 
-| To move | Horizontal | Vertical | Grid |
+| To move | Horizontal, Spotlight | Vertical | Grid |
 | --- | --- | --- | --- |
 | To the next or previous game | Left, Right | Up, Down | Left, Right |
 | To the game above or below | | | Up, Down |
@@ -84,18 +99,16 @@ its own folder, or put the disc images there directly:
 ```
 
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`, in capitals or not.
-Keep nothing else in `/games` or in the game folders: any other file (a text
-file, a cover image), an empty folder or a folder inside a game's folder turns
-the Library back into Swiss's plain file list.
+The Library skips anything else in `/games` or in a game's folder, such as a
+text file, a cover image or an empty folder.
 
 <p align="center">
-  <img alt="Swiss's plain file list of the games folder, one game per row with its banner, name and region flag, which Indigo shows instead of the Library when the folder holds something other than games." src="images/library-file-list.png" width="640">
+  <img alt="Swiss's plain file list of a games folder, one entry per row with its banner, name and region flag." src="images/library-file-list.png" width="640">
 </p>
 
-If you see the list above instead of posters, look in `/games` and its
-folders for what isn't a game. **Hide unknown file types** in Settings ›
-Setup › Library hides stray text files and pictures so the Library can take
-over; it doesn't hide folders, programs (`.dol`, `.elf`) or music.
+If `/games` holds no disc images, you get the list above instead of posters.
+Compressed images (`.rvz`, `.gcz`) don't count: Swiss can't start them, and
+choosing one tells you to decompress it with NKit or Dolphin.
 
 Games on two discs appear twice, once for each disc.
 

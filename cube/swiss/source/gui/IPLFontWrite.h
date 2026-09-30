@@ -24,6 +24,14 @@ extern GXColor deSelectedColor;
 extern char txtbuffer[2048];
 
 void init_font(void);
+/* The font as the CPU reads it, for text drawn into a picture (Apps'
+ * posters of names): a line's height in pixels (0 without the font), and
+ * character c's width and coverage, 0 to 255, stride bytes a row. False
+ * without the font, for a glyph wider than maxWidth or a sheet format it
+ * doesn't read. */
+int fontCellHeight(void);
+bool fontGlyph(unsigned char c, u8 *coverage, int stride, int maxWidth,
+	int *width);
 void drawString(int x, int y, const char *string, float scale, int align, GXColor fontColor);
 void drawStringMedium(int x, int y, const char *string, float scale, int align, GXColor fontColor);
 void drawStringMediumUntinted(int x, int y, const char *string, float scale, int align, GXColor fontColor);

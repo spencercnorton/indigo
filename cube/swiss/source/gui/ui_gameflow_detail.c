@@ -273,6 +273,7 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 {
 	size_t i;
 	size_t enabledNameIndex = 0u;
+	char description[UI_GAMEFLOW_DETAIL_DESCRIPTION_SOURCE + 1u];
 
 	if(snapshot == NULL) {
 		return false;
@@ -295,7 +296,8 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 	copyText(snapshot->title, sizeof(snapshot->title), source->title);
 	copyText(snapshot->company, sizeof(snapshot->company), source->company);
 	copyText(snapshot->facts, sizeof(snapshot->facts), source->facts);
-	wrapDescription(snapshot->description, source->description);
+	copyText(description, sizeof(description), source->description);
+	wrapDescription(snapshot->description, description);
 
 	if(source->banner != NULL &&
 		source->bannerSize == UI_GAMEFLOW_DETAIL_BANNER_BYTES) {

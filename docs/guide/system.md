@@ -26,7 +26,7 @@ and **R** move between them, and **B** goes back.
 | **Connections** | What's in the memory card slots, serial ports, the disc drive interface and the high-speed port, plus a live look at the slots, the current source and the configuration device. |
 | **Input / Output** | What's plugged into the four controller sockets, and the video mode, progressive scan, region, audio and language. |
 | **About Indigo** | The Swiss version Indigo is built on, the exact commit and revision, where the source lives, and where to report a bug or ask a question: Indigo's GitHub issues and discussions. |
-| **Credits** | The people who made Swiss possible. |
+| **Credits** | The people who made Swiss and Indigo possible, and where the Spotlight layout's design comes from: Gameplay Spotlight by mvizensk. |
 
 Connections and Input / Output are read when you open the page; open it again
 to see a change.

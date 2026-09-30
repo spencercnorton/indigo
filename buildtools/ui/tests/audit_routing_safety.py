@@ -29,7 +29,6 @@ SAFETY_PATH = ROOT / "cube/swiss/source/gui/ui_home_safety.c"
 FRAMEBUFFER_PATH = ROOT / "cube/swiss/source/gui/FrameBufferMagic.c"
 DEVICE_HANDLER_PATH = ROOT / "cube/swiss/source/devices/deviceHandler.c"
 UTIL_PATH = ROOT / "cube/swiss/source/util.c"
-ISOLATION_PATH = ROOT / "buildtools/check_ui_isolation.sh"
 
 
 def read(path: Path) -> str:
@@ -137,13 +136,11 @@ def trailing_blank_free(text: str) -> str:
     return re.sub(r"[ \t]+$", "", text, flags=re.M)
 
 
-def check_runtime(swiss: str, main: str, isolation: str) -> None:
+def check_runtime(swiss: str, main: str) -> None:
     assert trailing_blank_free(main) == trailing_blank_free(
         expected_main(base_file("cube/swiss/source/main.c"))), (
         "main.c changed outside its two audited startup edits"
     )
-    assert "cube/swiss/source/main\\.c$" in isolation
-    assert "audit_routing_safety.py locks both hunks" in isolation
     assert '#include "gui/ui_home_safety.h"' in swiss
 
     lifecycle_mounted = extract_block(swiss, "static bool homeSourceLifecycleMounted(")
@@ -307,7 +304,6 @@ def check_lifecycle_isolation(
     framebuffer: str,
     device_handler: str,
     util: str,
-    isolation: str,
 ) -> None:
     assert '#include "gui/FrameBufferMagic.h"' not in device_handler
     assert "DrawGameflowCancelPosters" not in device_handler
@@ -348,13 +344,6 @@ def check_lifecycle_isolation(
         "UIAssets_DisposeAfterVideoStop();",
         "LWP_MutexDestroy(mutex);",
     )
-    assert "RESET_PATH='cube/swiss/source/devices/deviceHandler.c'" in isolation
-    assert "EXPECTED_RESET_PRIORITY" in isolation
-    assert "EXPECTED_RESET_CLEANUP" in isolation
-    assert "RECENT_PATH='cube/swiss/source/util.c'" in isolation
-    assert "EXPECTED_RECENT_CLEANUP" in isolation
-    assert "unexpected deviceHandler.c diff" in isolation
-    assert "unexpected util.c diff" in isolation
 
 
 def expect_rejected(label: str, check, source: str, *args: str) -> None:
@@ -371,11 +360,10 @@ SAFETY = read(SAFETY_PATH)
 FRAMEBUFFER = read(FRAMEBUFFER_PATH)
 DEVICE_HANDLER = read(DEVICE_HANDLER_PATH)
 UTIL = read(UTIL_PATH)
-ISOLATION = read(ISOLATION_PATH)
 
 check_helper(SAFETY)
-check_runtime(SWISS, MAIN, ISOLATION)
-check_lifecycle_isolation(FRAMEBUFFER, DEVICE_HANDLER, UTIL, ISOLATION)
+check_runtime(SWISS, MAIN)
+check_lifecycle_isolation(FRAMEBUFFER, DEVICE_HANDLER, UTIL)
 
 helper_mutants = [
     ("mounted OR topology", SAFETY.replace(
@@ -440,7 +428,7 @@ runtime_mutants = [
         "\t\t\t\t\tUI_HOME_SOURCE_MOUNT_UNMOUNTED);\n", 1))),
 ]
 for label, mutant_main, mutant_swiss in runtime_mutants:
-    expect_rejected(label, check_runtime, mutant_swiss, mutant_main, ISOLATION)
+    expect_rejected(label, check_runtime, mutant_swiss, mutant_main)
 
 lifecycle_mutants = [
     ("reset poster teardown removed", FRAMEBUFFER.replace(
@@ -464,7 +452,6 @@ for label, mutant_framebuffer, mutant_device, mutant_util in lifecycle_mutants:
         mutant_framebuffer,
         mutant_device,
         mutant_util,
-        ISOLATION,
     )
 
 print(

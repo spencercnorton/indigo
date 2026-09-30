@@ -11,8 +11,10 @@
 - [My settings don't stick](#my-settings-dont-stick)
 - [My cheats don't show up, or don't work](#my-cheats-dont-show-up-or-dont-work)
 - [Indigo starts, then stock Swiss appears](#indigo-starts-then-stock-swiss-appears)
+- [The console restarts when Indigo starts](#the-console-restarts-when-indigo-starts)
 - [In-Game Reset takes me to stock Swiss](#in-game-reset-takes-me-to-stock-swiss)
 - [The same game opens every time Indigo starts](#the-same-game-opens-every-time-indigo-starts)
+- [There's no Apps face, or an app or its picture is missing](#theres-no-apps-face-or-an-app-or-its-picture-is-missing)
 - [Still stuck](#still-stuck)
 
 ## I see Swiss's file list instead of the Library
@@ -21,13 +23,18 @@
   <img alt="Swiss's plain file list, shown in place of the Library." src="images/library-file-list.png" width="640">
 </p>
 
-The Library appears only when `/games` holds nothing but games: disc images
-(`.iso`, `.gcm`, `.tgc`, `.fdi`) or folders with one in each and nothing else.
-A single other file, such as a text file or cover image, or an empty folder,
-brings back the file list, whether it is in `/games` or in a game's folder.
-Remove it. **Hide unknown file types** in Settings › Setup › Library hides
-text files and pictures, but not folders, programs or music. See
-[Set up the games folder](library.md#set-up-the-games-folder).
+The Library appears when `/games` holds at least one disc image (`.iso`,
+`.gcm`, `.tgc`, `.fdi`), directly or in a game's folder, and it skips
+anything else there. You get the file list when:
+
+- `/games` holds no disc images, for example only compressed `.rvz` or `.gcz`
+  images, which must be decompressed with NKit or Dolphin first.
+- Your games are on another card or drive: choose it on the Source face.
+- **Flatten directory** in Settings › Setup › Library was changed from
+  `*/games`, and `/games` holds loose disc images beside game folders. Set it
+  back to `*/games`.
+
+See [Set up the games folder](library.md#set-up-the-games-folder).
 
 ## Home starts on Source, or Library says Select Source
 
@@ -38,10 +45,16 @@ also lists the devices that weren't detected, and A on one tries again.
 
 ## Some games have no box art
 
-A game shows its banner card when its game ID isn't in your poster pack:
-it's from the other region, or GameTDB has no cover for it. The card shows
-the ID, so you can check. Use the pack for the region most of your games are
-from, or [build your own](posters.md#build-your-own-pack).
+A game shows its banner card when its game ID isn't in your poster pack.
+The card shows the ID, so you can check:
+
+- GameTDB has no cover for it, or it's a homebrew or translated disc with an
+  ID of its own: [build your own pack](posters.md#build-your-own-pack).
+- The card still has a pack from before Indigo 2.1, which covered one region:
+  replace it with [the poster pack](posters.md#download-the-pack), which
+  covers every region.
+- Every game shows its banner: check that `/swiss/ui/posters.pak` is there
+  and that Indigo is 2.1 or later. 2.0 and earlier refuse a pack this big.
 
 ## A message says the file is a bad dump
 
@@ -112,6 +125,17 @@ or `swiss_r….dol`, in place of themselves, and In-Game Reset lands there too.
 Update Indigo: later releases don't look for them, so stock Swiss can stay on
 the card as `z.dol`.
 
+## The console restarts when Indigo starts
+
+`ipl.dol` checks itself as the console unpacks it at power-on. When the copy
+is damaged, or the card could not be read in full, the console restarts and
+your loader reads the file again: a restart now and then is that check at
+work, where Indigo 2.0 and earlier could stop on a black screen.
+
+If it restarts every time, copy `ipl.dol` from the release zip onto the card
+again. If it still does, the card or its adapter isn't reading reliably:
+reseat the adapter, or try another card.
+
 ## In-Game Reset takes me to stock Swiss
 
 In-Game Reset set to **Apploader** returns to whatever is in
@@ -126,6 +150,15 @@ That game is set to Autoload. Press B to go to the Library, open the game
 again and press **Z**: the shortcut changes from "Autoload On" back to
 "Autoload".
 
+## There's no Apps face, or an app or its picture is missing
+
+The Apps face shows only when `/apps`, at the root of the source, holds a
+program: a `.dol`, `.dol+cli` or `.elf` that isn't called `boot.dol` (the
+Wii's), and Settings › Setup › Console › Apps Face is On. Programs two folders deep, hidden ones and names starting with a dot
+are left out. A picture must be a PNG with the program's name, or its
+folder's `icon.png`, up to 2048 pixels a side and 2 MB, and not interlaced.
+[Apps](apps.md#when-apps-doesnt-look-right) has the details.
+
 ## Still stuck
 
 - Questions: [Discussions](https://github.com/spencercnorton/indigo/discussions).
@@ -137,4 +170,4 @@ again and press **Z**: the shortcut changes from "Autoload On" back to
 
 ---
 
-<p align="center"><a href="posters.md">← Posters</a> · <a href="README.md">Guide</a></p>
+<p align="center"><a href="apps.md">← Apps</a> · <a href="README.md">Guide</a></p>

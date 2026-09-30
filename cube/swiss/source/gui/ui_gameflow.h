@@ -24,11 +24,14 @@ typedef enum {
 
 /* Setup > Library > Library Layout: how the Library lays out the games.
  * Horizontal is the original carousel and the default; Vertical is the same
- * ring on end; Grid is rows of posters that scroll up and down. */
+ * ring on end; Grid is rows of posters that scroll up and down. Spotlight is
+ * the ring again as a row of disc banners, under the selected game's
+ * gameplay still and details. */
 typedef enum {
 	UI_GAMEFLOW_LAYOUT_HORIZONTAL = 0,
 	UI_GAMEFLOW_LAYOUT_VERTICAL,
 	UI_GAMEFLOW_LAYOUT_GRID,
+	UI_GAMEFLOW_LAYOUT_SPOTLIGHT,
 	UI_GAMEFLOW_LAYOUT_COUNT
 } uiGameflowLayout_t;
 

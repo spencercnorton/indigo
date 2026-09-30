@@ -52,7 +52,7 @@ build_binaries() {
 }
 
 make_fixture() {
-	if python3 fixture_pack.py "$TMP/fixture.pak"; then
+	if python3 fixture_pack.py "$TMP/fixture.pak" "$TMP/fixture-stills.pak"; then
 		return 0
 	else
 		status=$?
@@ -73,10 +73,13 @@ run_plain() {
 	./test_ui_cheats
 	echo "== Memory Cards save files and destinations (plain) =="
 	./test_ui_saves
+	echo "== Apps: what is an app, its picture, its poster slots (plain) =="
+	./test_ui_apps
+	python3 ./test_ui_png.py ./test_ui_png
 	echo "== ui_assets runtime (plain + target-sync policy) =="
 	if make_fixture; then
-		./test_ui_assets "$TMP/fixture.pak"
-		./test_ui_assets_target_sync "$TMP/fixture.pak"
+		./test_ui_assets "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
+		./test_ui_assets_target_sync "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
 	else
 		status=$?
 		if [ "$status" -ne 3 ] || [ "${UI_TEST_REQUIRE_GXTEXCONV:-0}" = "1" ]; then
@@ -118,6 +121,7 @@ run_plain() {
 	./test_gameflow_resolver
 	./test_gameflow_detail
 	./test_ui_game_history
+	./test_ui_about
 	./test_gameflow_ownership
 
 	echo "== cheat identity, launch policy, and bounded writer (plain) =="
@@ -132,10 +136,13 @@ run_sanitized() {
 	./test_ui_cheats_san
 	echo "== Memory Cards save files and destinations (ASan/UBSan) =="
 	./test_ui_saves_san
+	echo "== Apps: what is an app, its picture, its poster slots (ASan/UBSan) =="
+	./test_ui_apps_san
+	python3 ./test_ui_png.py ./test_ui_png_san
 	echo "== ui_assets runtime (ASan/UBSan + target-sync policy) =="
 	if make_fixture; then
-		./test_ui_assets_san "$TMP/fixture.pak"
-		./test_ui_assets_target_sync_san "$TMP/fixture.pak"
+		./test_ui_assets_san "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
+		./test_ui_assets_target_sync_san "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
 	else
 		status=$?
 		if [ "$status" -ne 3 ] || [ "${UI_TEST_REQUIRE_GXTEXCONV:-0}" = "1" ]; then
@@ -177,6 +184,7 @@ run_sanitized() {
 	./test_gameflow_resolver_san
 	./test_gameflow_detail_san
 	./test_ui_game_history_san
+	./test_ui_about_san
 	./test_gameflow_ownership_san
 
 	echo "== cheat identity, launch policy, and bounded writer (ASan/UBSan) =="

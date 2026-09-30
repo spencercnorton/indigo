@@ -1,5 +1,6 @@
 #include <argz.h>
 #include <langinfo.h>
+#include <stdcountof.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <time.h>
@@ -520,6 +521,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Source Icon=%s\r\n", sourceIconStr[swissSettings.sourceIcon]);
 	fprintf(fp, "Settings Icon=%s\r\n", settingsIconStr[swissSettings.settingsIcon]);
 	fprintf(fp, "System Icon=%s\r\n", systemIconStr[swissSettings.systemIcon]);
+	fprintf(fp, "Hide Apps Face=%s\r\n", swissSettings.hideAppsFace ? "Yes":"No");
 	fprintf(fp, "Library Layout=%s\r\n", libraryLayoutStr[swissSettings.libraryLayout]);
 	fprintf(fp, "Init DVD Drive at startup=%s\r\n", swissSettings.initDVDDriveAtStart ? "Yes":"No");
 	fprintf(fp, "Stop DVD Drive motor=%s\r\n", swissSettings.stopMotor ? "Yes":"No");
@@ -729,11 +731,12 @@ int config_update_game(ConfigEntry *entry, ConfigEntry *defaults, bool checkConf
 	return res;
 }
 
-static char fixPixelCenterEntries[][4] = {"00\0E", "DNDD", "G2BE", "G2BP", "GD7E", "GD7P", "GEME", "GEMJ", "GEMP", "GNBE", "GNBJ", "GNBP", "GZBJ"};
-static char triggerLevelEntries[][4] = {"GKGE", "GKGJ", "GKGP", "GY2E", "GY2J", "GY2P", "GY3E", "GY3J", "GYBE", "GYBJ", "GYBP"};
-static char emulateAudioStreamEntries[][4] = {"UFZE", "UFZJ", "UFZP"};
-static char emulateReadSpeedEntries[][4] = {"DRSE", "GQSD", "GQSE", "GQSF", "GQSI", "GQSP", "GQSS", "GRSE", "GRSJ", "GRSP", "GTOJ"};
-static char emulateEthernetEntries[][4] = {"DPSJ", "GHEE", "GHEJ", "GKYE", "GKYJ", "GKYP", "GM4E", "GM4J", "GM4P", "GPJJ", "GPOE", "GPOJ", "GPOP", "GPSE", "GPSJ", "GPSP", "GTEE", "GTEJ", "GTEP", "GTEW", "PHEJ"};
+static char fixPixelCenterEntries[][5] = {"00\0E\1", "DNDD\1", "G2BE\1", "G2BP\1", "GD7E\1", "GD7P\1", "GEME\1", "GEMJ\1", "GEMP\1", "GNBE\1", "GNBJ\1", "GNBP\1", "GZBJ\1"};
+static char forceAnisotropyEntries[][5] = {"GADE\0", "GAEE\0", "GAEJ\0", "GAFE\0", "GAFJ\0", "GAFP\0", "GAFU\0", "GM8E\0", "GM8J\0", "GM8P\0", "PGSE\0", "PKBJ\0", "PZLE\0", "PZLJ\0", "PZLP\0"};
+static char triggerLevelEntries[][5] = {"GKGE\0", "GKGJ\0", "GKGP\0", "GY2E\0", "GY2J\0", "GY2P\0", "GY3E\0", "GY3J\0", "GYBE\0", "GYBJ\0", "GYBP\0"};
+static char emulateAudioStreamEntries[][5] = {"UFZE\0", "UFZJ\0", "UFZP\0"};
+static char emulateReadSpeedEntries[][5] = {"DRSE\1", "GADE\0", "GQSD\1", "GQSE\1", "GQSF\1", "GQSI\1", "GQSP\1", "GQSS\1", "GRSE\1", "GRSJ\1", "GRSP\1", "GTOJ\1"};
+static char emulateEthernetEntries[][5] = {"DPSJ\1", "GHEE\1", "GHEJ\1", "GKYE\1", "GKYJ\1", "GKYP\1", "GM4E\1", "GM4J\1", "GM4P\1", "GPJJ\1", "GPOE\1", "GPOJ\1", "GPOP\1", "GPSE\1", "GPSJ\1", "GPSP\1", "GTEE\1", "GTEJ\1", "GTEP\1", "GTEW\1", "PHEJ\1"};
 
 /* Game defaults as a given settings snapshot defines them. Settings compares
  * a game against the snapshot it opened with, so changing a default there
@@ -745,7 +748,6 @@ void config_defaults_from(ConfigEntry *entry, const SwissSettings *settings) {
 	entry->gameVMode = entry->region == 'P' ? settings->gameVModePal : settings->gameVModeNtsc;
 	entry->forceHScale = settings->forceHScale;
 	entry->forceVOffset = settings->forceVOffset;
-	entry->forceVOffset = in_range(settings->aveCompat, GCDIGITAL_COMPAT, GCVIDEO_COMPAT) ? -3:0;
 	entry->forceVFilter = settings->forceVFilter;
 	entry->forceVJitter = settings->forceVJitter;
 	entry->fixPixelCenter = settings->fixPixelCenter;
@@ -764,33 +766,39 @@ void config_defaults_from(ConfigEntry *entry, const SwissSettings *settings) {
 	entry->preferCleanBoot = settings->preferCleanBoot;
 	entry->rt4kProfile = settings->rt4kProfile;
 
-	for(int i = 0; i < sizeof(fixPixelCenterEntries) / sizeof(*fixPixelCenterEntries); i++) {
+	for(int i = 0; i < countof(fixPixelCenterEntries); i++) {
 		if(!strncmp(entry->game_id, fixPixelCenterEntries[i], 4)) {
-			entry->fixPixelCenter = 1;
+			entry->fixPixelCenter = fixPixelCenterEntries[i][4];
 			break;
 		}
 	}
-	for(int i = 0; i < sizeof(triggerLevelEntries) / sizeof(*triggerLevelEntries); i++) {
+	for(int i = 0; i < countof(forceAnisotropyEntries); i++) {
+		if(!strncmp(entry->game_id, forceAnisotropyEntries[i], 4)) {
+			entry->forceAnisotropy = forceAnisotropyEntries[i][4];
+			break;
+		}
+	}
+	for(int i = 0; i < countof(triggerLevelEntries); i++) {
 		if(!strncmp(entry->game_id, triggerLevelEntries[i], 4)) {
-			entry->triggerLevel = 0;
+			entry->triggerLevel = triggerLevelEntries[i][4];
 			break;
 		}
 	}
-	for(int i = 0; i < sizeof(emulateAudioStreamEntries) / sizeof(*emulateAudioStreamEntries); i++) {
+	for(int i = 0; i < countof(emulateAudioStreamEntries); i++) {
 		if(!strncmp(entry->game_id, emulateAudioStreamEntries[i], 4)) {
-			entry->emulateAudioStream = 0;
+			entry->emulateAudioStream = emulateAudioStreamEntries[i][4];
 			break;
 		}
 	}
-	for(int i = 0; i < sizeof(emulateReadSpeedEntries) / sizeof(*emulateReadSpeedEntries); i++) {
+	for(int i = 0; i < countof(emulateReadSpeedEntries); i++) {
 		if(!strncmp(entry->game_id, emulateReadSpeedEntries[i], 4)) {
-			entry->emulateReadSpeed = 1;
+			entry->emulateReadSpeed = emulateReadSpeedEntries[i][4];
 			break;
 		}
 	}
-	for(int i = 0; i < sizeof(emulateEthernetEntries) / sizeof(*emulateEthernetEntries); i++) {
+	for(int i = 0; i < countof(emulateEthernetEntries); i++) {
 		if(!strncmp(entry->game_id, emulateEthernetEntries[i], 4)) {
-			entry->emulateEthernet = 1;
+			entry->emulateEthernet = emulateEthernetEntries[i][4];
 			break;
 		}
 	}
@@ -856,12 +864,6 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 						}
 					}
 				}
-				else if(!strcmp("Force Vertical Offset", name)) {
-					if(defaultPassed)
-						configEntries[configEntriesCount].forceVOffset = atoi(value);
-					else
-						swissSettings.forceVOffset = atoi(value);
-				}
 				else if(!strcmp("Force Vertical Filter", name)) {
 					int *ptr = !defaultPassed ? &swissSettings.forceVFilter : &configEntries[configEntriesCount].forceVFilter;
 					for(int i = 0; i < 4; i++) {
@@ -919,7 +921,7 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 					swissSettings.exiSpeed = !strcmp("32MHz", value);
 				}
 				else if(!strcmp("Swiss Video Mode", name)) {
-					for(int i = 0; i < 7; i++) {
+					for(int i = 0; i < 9; i++) {
 						if(!strcmp(uiVModeStr[i], value)) {
 							swissSettings.uiVMode = i;
 							break;
@@ -1276,7 +1278,7 @@ void config_parse_global(char *configData) {
 					}
 				}
 				else if(!strcmp("Swiss Video Mode", name)) {
-					for(int i = 0; i < 7; i++) {
+					for(int i = 0; i < 9; i++) {
 						if(!strcmp(uiVModeStr[i], value)) {
 							swissSettings.uiVMode = i;
 							break;
@@ -1375,6 +1377,9 @@ void config_parse_global(char *configData) {
 							break;
 						}
 					}
+				}
+				else if(!strcmp("Hide Apps Face", name)) {
+					swissSettings.hideAppsFace = !strcmp("Yes", value);
 				}
 				else if(!strcmp("Library Layout", name)) {
 					for(int i = 0; i < UI_GAMEFLOW_LAYOUT_COUNT; i++) {
@@ -1980,7 +1985,7 @@ void config_load_current(ConfigEntry *entry) {
 		swissSettings.sramProgressive = in_range(swissSettings.gameVMode, 4, 7) || in_range(swissSettings.gameVMode, 11, 14);
 		
 		if(swissSettings.sram60Hz) {
-			for(int i = 0; i < sizeof(gameVModePalEntries) / sizeof(*gameVModePalEntries); i++) {
+			for(int i = 0; i < countof(gameVModePalEntries); i++) {
 				if(!strncmp(entry->game_id, gameVModePalEntries[i], 4)) {
 					swissSettings.gameVMode += 7;
 					break;

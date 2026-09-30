@@ -63,6 +63,10 @@ class Fixtures:
         flat_image(512, 512, (200, 40, 40)).save(self.path("GC6E01.png"))
         gradient_image(192, 256).save(self.path("GM4E01.png"))
         flat_image(100, 100, (0, 0, 0)).save(self.path("small.png"))
+        # Screenshots for stills: 4:3, 4:3 flat, and 16:9 to be cropped.
+        gradient_image(640, 480).save(self.path("still-GALE01.png"))
+        flat_image(512, 384, (40, 160, 60)).save(self.path("still-GC6E01.png"))
+        gradient_image(854, 480).save(self.path("still-GM4E01.png"))
         with open(self.path("corrupt.png"), "wb") as f:
             f.write(b"this is not a png at all")
 
@@ -82,10 +86,13 @@ class Fixtures:
         rec.update(overrides)
         return rec
 
-    def write_manifest(self, records, version=1):
+    def write_manifest(self, records, version=1, kind=None):
         path = os.path.join(self.dir, "manifest.json")
+        doc = {"version": version, "records": records}
+        if kind is not None:
+            doc["kind"] = kind
         with open(path, "w", encoding="utf-8") as f:
-            json.dump({"version": version, "records": records}, f)
+            json.dump(doc, f)
         return path
 
     def cleanup(self):
@@ -175,6 +182,19 @@ class ManifestValidation(unittest.TestCase):
     def test_empty_records(self):
         self.expect_error([], "non-empty records")
 
+    def test_kind_names_the_shape(self):
+        manifest = FX.write_manifest([FX.record("GALE01")])
+        self.assertIs(pp.read_manifest(manifest)[1], pp.POSTER)
+        manifest = FX.write_manifest([FX.record("GALE01")], kind="stills")
+        self.assertIs(pp.read_manifest(manifest)[1], pp.STILL)
+        manifest = FX.write_manifest([FX.record("GALE01")], kind="posters")
+        self.assertIs(pp.read_manifest(manifest)[1], pp.POSTER)
+
+    def test_unknown_kind_rejected(self):
+        manifest = FX.write_manifest([FX.record("GALE01")], kind="videos")
+        with self.assertRaisesRegex(pp.PackError, "manifest kind must be"):
+            pp.load_manifest(manifest)
+
     def test_wrong_version(self):
         self.expect_error([FX.record("GALE01")], "version", version=2)
 
@@ -198,6 +218,22 @@ class CoversFolder(unittest.TestCase):
         self.assertEqual(loaded[1]["source"], "gmse01.PNG")
         self.assertEqual(loaded[1]["source_sha256"],
                          sha256_file(os.path.join(d, "gmse01.PNG")))
+
+    def test_stills_folder_becomes_stills_manifest(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        for name in ("GALE01.png", "notes.txt"):
+            with open(os.path.join(d, name), "wb") as f:
+                f.write(name.encode())
+        manifest, skipped = pp.covers_manifest(d, "stills")
+        self.assertEqual(manifest["kind"], "stills")
+        self.assertEqual(skipped, ["notes.txt"])
+        self.assertEqual(manifest["records"][0]["note"],
+                         "stills folder: GALE01.png")
+        path = os.path.join(d, "manifest.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(manifest, f)
+        self.assertIs(pp.read_manifest(path)[1], pp.STILL)
 
     def test_duplicate_id_across_extensions_is_rejected(self):
         d = tempfile.mkdtemp()
@@ -287,6 +323,30 @@ class ImageValidation(unittest.TestCase):
         self.assertLess(sum(left.getpixel((0, 128))),
                         sum(right.getpixel((0, 128))))
 
+    def test_still_crop_is_4_3(self):
+        wide = gradient_image(854, 480)   # 16:9 loses its sides, not its top
+        for im in (gradient_image(640, 480), wide):
+            self.assertEqual(pp.focal_crop(im, [0.5, 0.5], pp.STILL).size,
+                             (320, 240))
+        left = pp.focal_crop(wide, [0.0, 0.5], pp.STILL)
+        right = pp.focal_crop(wide, [1.0, 0.5], pp.STILL)
+        self.assertLess(sum(left.getpixel((0, 120))),
+                        sum(right.getpixel((0, 120))))
+
+    def test_stills_need_320x240(self):
+        staging = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, staging)
+        manifest = FX.write_manifest([FX.record("GM4E01")], kind="stills")
+        records, shape = pp.read_manifest(manifest)
+        with self.assertRaisesRegex(pp.PackError,
+                                    "need at least 320x240"):
+            pp.prepare_images(records, FX.dir, staging, shape)
+
+    def test_still_is_one_cmpr_level(self):
+        self.assertEqual((pp.STILL.canvas_w, pp.STILL.canvas_h), (320, 240))
+        self.assertEqual(pp.STILL.mips, 1)
+        self.assertEqual(pp.STILL.bytes, 320 * 240 // 2)
+
     def test_truncated_tpl_is_packerror(self):
         # A garbage tex_off in a short TPL must surface as PackError (the
         # tool's error contract), not a raw struct.error traceback.
@@ -370,17 +430,17 @@ def parse_pack(data):
     return fields, records
 
 
-def decode_cmpr_average(payload, x0, x1):
-    """Average RGB over columns [x0, x1) of the 256x256 LOD0 CMPR level.
-    Minimal GX CMPR decode, palette-weighted; good enough for orientation
-    and color assertions."""
+def decode_cmpr_average(payload, x0, x1, width=None, height=None):
+    """Average RGB over columns [x0, x1) of the LOD0 CMPR level (256x256
+    unless given). Minimal GX CMPR decode, palette-weighted; good enough for
+    orientation and color assertions."""
     def c565(v):
         return ((v >> 11) << 3, ((v >> 5) & 0x3F) << 2, (v & 0x1F) << 3)
 
     totals = [0, 0, 0]
     count = 0
-    tiles_per_row = pp.CANVAS_W // 8
-    for ty in range(pp.CANVAS_H // 8):
+    tiles_per_row = (width or pp.CANVAS_W) // 8
+    for ty in range((height or pp.CANVAS_H) // 8):
         for tx in range(tiles_per_row):
             tile = (ty * tiles_per_row + tx) * 32
             for sub in range(4):
@@ -506,3 +566,67 @@ class PackGeneration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+@NEEDS_ENCODER
+class StillsGeneration(unittest.TestCase):
+    """stills.pak: the same format, one 320x240 CMPR level per record."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.workdir = tempfile.mkdtemp(prefix="pp_stills_")
+        cls.records = [
+            FX.record("GALE01", source="still-GALE01.png", universal=True),
+            FX.record("GC6E01", source="still-GC6E01.png"),
+            FX.record("GM4E01", source="still-GM4E01.png"),
+        ]
+        manifest = FX.write_manifest(cls.records, kind="stills")
+        cls.pak_path = os.path.join(cls.workdir, "stills.pak")
+        cls.pack = pp.generate(manifest, cls.pak_path, art_root=FX.dir)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.workdir, ignore_errors=True)
+
+    def test_header_declares_a_still(self):
+        fields, records = parse_pack(self.pack)
+        self.assertEqual(fields["magic"], b"SWPK")
+        self.assertEqual(fields["version"], 1)
+        self.assertEqual(fields["poster_bytes"], 38400)
+        self.assertEqual(fields["canvas"], (320, 240))
+        self.assertEqual(fields["content"], (320, 240))
+        self.assertEqual(fields["mips"], 1)
+        self.assertEqual(fields["fmt"], 14)
+        self.assertEqual(fields["file_length"], len(self.pack))
+        self.assertEqual(fields["file_length"], 160 + 3 * 38400)
+        self.assertEqual([r["id"] for r in records],
+                         ["GALE01", "GC6E01", "GM4E01"])
+        self.assertEqual(records[0]["flags"], 1)
+        for i, rec in enumerate(records):
+            self.assertEqual(rec["offset"], 160 + i * 38400)
+            self.assertEqual(rec["length"], 38400)
+            payload = self.pack[rec["offset"]:rec["offset"] + rec["length"]]
+            self.assertEqual(zlib.crc32(payload), rec["crc"])
+
+    def test_deterministic_rebuild(self):
+        manifest = FX.write_manifest(self.records, kind="stills")
+        again = pp.generate(manifest, os.path.join(self.workdir, "again.pak"),
+                            art_root=FX.dir)
+        self.assertEqual(self.pack, again)
+
+    def test_content_orientation_and_color(self):
+        fields, records = parse_pack(self.pack)
+        rec = records[0]   # left-dark -> right-bright gradient
+        payload = self.pack[rec["offset"]:rec["offset"] + rec["length"]]
+        left = decode_cmpr_average(payload, 0, 80, 320, 240)
+        right = decode_cmpr_average(payload, 240, 320, 320, 240)
+        self.assertLess(left[0] + 40, right[0])
+        rec = records[1]   # flat (40,160,60)
+        payload = self.pack[rec["offset"]:rec["offset"] + rec["length"]]
+        avg = decode_cmpr_average(payload, 0, 320, 320, 240)
+        for got, want in zip(avg, (40, 160, 60)):
+            self.assertLess(abs(got - want), 12)
+
+    def test_provenance_names_the_kind(self):
+        with open(self.pak_path + ".provenance.json", encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["kind"], "stills")

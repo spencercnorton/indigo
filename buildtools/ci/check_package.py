@@ -5,7 +5,7 @@ The zip's root is the root of an SD card, so every entry matters: an extra
 file lands on someone's card, a missing folder breaks the Library, and an
 ipl.dol that is not the DOL CI built and tested is not the release.
 
-usage: check_package.py ZIP --dol cube/swiss/swiss.dol --version <version>
+usage: check_package.py ZIP --dol cube/packer/swiss.dol --version <version>
 """
 
 from __future__ import annotations
@@ -21,7 +21,10 @@ LAYOUT = {
     "swiss/patches/apploader.img", "swiss/indigo/", "swiss/indigo/LICENSE.txt",
     "swiss/indigo/NOTICE.txt",
 }
-MAX_ZIP_BYTES = 6 * 1024 * 1024  # a tripwire; the zip is about 5 MB since the menu music
+# A tripwire: the zip is about 5.5 MiB, ipl.dol and apploader.img each 2.9 MB of
+# compressed Indigo since upstream Swiss r2119's text-encoding libraries. Raise
+# it on purpose.
+MAX_ZIP_BYTES = 7 * 1024 * 1024
 
 
 def problems(zip_path: Path, dol: bytes, version: str) -> list[str]:

@@ -8,7 +8,7 @@ and answers the controller.
 | File | What it is |
 | --- | --- |
 | [`run.py`](run.py) | The test: starts Dolphin, plugs a controller in, walks the route, checks every step |
-| [`card.py`](card.py) | The demonstration disc it boots with: fictitious games with banners, two damaged images, and posters |
+| [`card.py`](card.py) | The demonstration disc it boots with: fictitious games with banners, two damaged images, posters, and apps with pictures |
 | [`dsu_pad.py`](dsu_pad.py) | The controller: a pad served to Dolphin over its DSU protocol |
 | [`test_emulator.py`](test_emulator.py) | Tests for those three, without Dolphin |
 
@@ -19,8 +19,9 @@ and emulates the MMU, so an invalid memory access stops Indigo on its
 exception screen as it would on a console. The route:
 
 1. **Boot.** Home appears, with a face's name under the cube.
-2. **Turn.** RIGHT four times: each turn shows another name, the fourth
-   comes back to the first, and the four names differ. LEFT turns back.
+2. **Turn.** RIGHT five times: each turn shows another name, the fifth
+   comes back to the first, and the five names differ (the disc has apps, so
+   Apps is a fifth face). LEFT turns back.
 3. **Every face.** A opens it and B comes back to the same face. In the
    Library, RIGHT twice and LEFT twice move between games and back, and A
    opens a game's details. There UP moves to Settings and A opens them, B
@@ -29,7 +30,13 @@ exception screen as it would on a console. The route:
    must say so and come back to the Library once A dismisses it. On the Source
    face, A on Change Source opens the device picker, RIGHT shows another
    device and B leaves the picker.
-4. **Nothing crashed.** No step lands on the exception screen or a black
+4. **Apps, last.** RIGHT and LEFT move between the disc's apps and back, and
+   A on one brings up the launch screen. The route stops there: Dolphin as
+   CI runs it can't take any program's launch further (its HLE DSP never
+   answers when Swiss stops the menu audio, and with the LLE DSP the
+   hand-off runs no program, from Swiss's own file list either). A console
+   proves the rest.
+5. **Nothing crashed.** No step lands on the exception screen or a black
    screen, and Dolphin's log reports no exception or invalid access.
 
 Every check compares the screen with itself earlier in the same run (the
@@ -46,6 +53,12 @@ and names the crash when there is one.
 In CI it is the **Emulator** job. Its summary lists every check, and the
 `emulator-<commit>` artifact holds a picture of every step (`sheet.png` has
 them all), Dolphin's output and `report.json`.
+
+CI boots `ipl.dol`, the compressed file the card gets. Its unpacker first
+checks for the bus error only a GameCube raises, which Dolphin never does, so
+`dolphin_ipl.py IPL OUT` writes a copy with that one branch turned off; the
+unpacker, its data and Indigo are the card's bytes. `cube/swiss/swiss.dol`,
+the uncompressed build, boots in Dolphin as it is.
 
 On a machine with Docker, in the emulator runner's image
 ([`buildtools/ci/runner/emulator.Dockerfile`](../../ci/runner/emulator.Dockerfile)),

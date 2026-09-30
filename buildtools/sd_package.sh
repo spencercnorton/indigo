@@ -3,16 +3,19 @@
 # root of the SD card: unzip it, select everything, drag it onto the card.
 #   Indigo-<version>.zip
 #     Indigo-README.txt              what goes where, in plain words
-#     ipl.dol                        Indigo; PicoBoot and other modchips boot it
+#     ipl.dol                        Indigo, compressed; PicoBoot and other modchips boot it
 #     swiss/patches/apploader.img    In-Game Reset (Apploader) returns to Indigo
 #     swiss/ui/                      posters.pak, if you add one
 #     swiss/indigo/LICENSE.txt, NOTICE.txt
-# Usage: buildtools/sd_package.sh <version> [swiss.dol] [out dir]
+# Usage: buildtools/sd_package.sh <version> [ipl.dol] [out dir]
 # Run `make dev` first (see README, Install); run from the repository root.
+# ipl.dol is cube/packer/swiss.dol: cube/swiss/swiss.dol compressed, half the
+# bytes for a loader to read, with a CRC32 the console checks as it unpacks
+# (it restarts on a bad copy). verify_dol.py --packed proves the two match.
 set -eu
 
-version=${1:?usage: buildtools/sd_package.sh <version> [swiss.dol] [out dir]}
-dol=${2:-cube/swiss/swiss.dol}
+version=${1:?usage: buildtools/sd_package.sh <version> [ipl.dol] [out dir]}
+dol=${2:-cube/packer/swiss.dol}
 out=$(cd "${3:-.}" && pwd)
 [ -f "$dol" ] || { echo "sd_package: no DOL at $dol; build it first" >&2; exit 1; }
 reboot=cube/packer/reboot.dol
@@ -60,23 +63,22 @@ it by itself.
 WHAT EACH FILE IS FOR
   ipl.dol                      Indigo itself
   swiss/patches/apploader.img  In-Game Reset returns to Indigo (see below)
-  swiss/ui/                    posters.pak goes here, if you add one
+  swiss/ui/                    the poster pack goes here, if you add it
   swiss/indigo/                Indigo's licence (GPL-2.0-or-later) and notice
 
 GAMES
 Put your games in /games, either one folder per game or the disc images
-directly, and keep nothing else in /games or in the game folders:
+directly:
     /games/Super Mario Sunshine [GMSE01]/game.iso
     /games/Super Mario Sunshine.iso
-Disc images end in .iso, .gcm, .tgc or .fdi. Anything else there (a text
-file, a cover image, an empty folder) turns the Library back into Swiss's
-plain file list. "Hide unknown file types" in Settings > Setup > Library
-hides stray text files and pictures, but not folders, programs or music.
+Disc images end in .iso, .gcm, .tgc or .fdi. The Library skips anything
+else there (a text file, a cover image, an empty folder). If /games holds
+no disc images, you get Swiss's plain file list instead.
 On Home, turn the cube to Library and press A.
 
 POSTERS AND CHEATS (optional, also drag and drop)
 Without posters, each game shows its disc banner and its six-character game
-ID (GMSE01). Poster packs and a cheat pack are on https://norvitech.com/indigo/
+ID (GMSE01). The poster pack and the cheat pack are on https://norvitech.com/indigo/
 - unzip one and drag its swiss folder onto the root of the card, choosing
 Merge on a Mac.
 

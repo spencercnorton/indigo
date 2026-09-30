@@ -6,9 +6,18 @@ system as a device. /games holds small images of fictitious games: a disc
 header, a file table with one file, opening.bnr, and that banner (drawn
 here), which is all the Library reads of a game. Two more images have a
 missing or corrupt file table, which the Library must survive (DAMAGED).
+A text file and an empty folder sit beside them, as they do on real cards:
+the Library skips both (STRAYS), and the text file sorts first, so the
+games move up past it.
 /swiss/ui/posters.pak holds posters drawn here from gradients and shapes, for
-all but two of the games, so the Library shows both kinds of card. Nothing
-in it is anyone else's: no game, no box art, no font.
+all but two of the games, so the Library shows both kinds of card, and
+/swiss/ui/stills.pak gameplay stills drawn the same way for all but three, so
+Spotlight shows a still, a cover and a banner card, and
+/swiss/ui/descriptions.txt a line about all but one, which keeps its
+banner's. /apps holds stand-in programs for Apps, beside pictures drawn here
+in each shape Indigo fits to a card, one in a Homebrew Channel folder whose
+boot.dol Apps must leave out. Nothing in it is anyone else's: no game, no
+box art, no screenshot, no text, no font.
 
 usage: card.py OUT.iso [--no-posters]
 Needs genisoimage; the posters need gxtexconv (see buildtools/ui/poster_pack.py)
@@ -34,6 +43,19 @@ GAMES = (
     ("GPLZ01", "Paper Lantern"), ("GRZZ01", "Rally Cross Zero"), ("GSSZ01", "Skyward Salvage"),
 )
 NO_POSTER = frozenset({"GPLZ01", "GSSZ01"})
+STRAYS = ("About these games.txt", "Old saves/")
+NO_STILL = frozenset({"GDRZ01", "GPLZ01", "GSSZ01"})
+# Spotlight's descriptions; Rally Cross Zero keeps its banner's.
+DESCRIPTIONS = {
+    "GACZ01": "Race through orbiting circuits where every lap rewires the track, and the fastest line is the one nobody has drawn yet.",
+    "GCHZ01": "Fly a patched-up harrier over a cobalt sea, trading cargo between islands that move a little further apart every night.",
+    "GDRZ01": "Cross an ever-shifting desert in a rally car held together by tape and optimism. Dunes remember every wheel that crossed them.",
+    "GEIZ01": "Two gardeners, one of fire and one of vines, tend a greenhouse at the end of the world. Neither can finish it alone.",
+    "GGPZ01": "Guide a team of climbers to a summit that is never where the map says. Weather, rope and trust run short in turn.",
+    "GNTZ01": "Dive among the glowing tidepools of a city that sank long ago, and bring its lights back to the surface one by one.",
+    "GPLZ01": "Carry a paper lantern through a town of folded houses, where every door opens onto another story.",
+    "GSSZ01": "Salvage what fell from the sky cities, then decide whether to sell it, keep it, or send it back up.",
+}
 DISC = ("QIDC00", "Indigo demonstration disc")
 MAGIC = 0xC2339F3D
 STUB_BYTES = 64 * 1024
@@ -41,6 +63,7 @@ FST_OFFSET = 0x5000       # the outer disc's (empty) file table
 GAME_FST = 0x4000         # a game's file table, and its banner after it
 GAME_BANNER = 0x5000
 BANNER_BYTES = 0x1960     # BNR1: magic, padding, 96x32 RGB5A3 pixels, one description
+DESCRIPTION = "A fictitious game on the disc Indigo's emulator test boots with."
 SYSTEM_AREA = 0x8000  # ISO 9660 leaves the first 32 KiB to the platform
 
 
@@ -71,9 +94,11 @@ def banner(index: int, title: str) -> bytes:
                     r, g, b = (round(a + (c - a) * t) >> 3 for a, c in zip(left, right))
                     struct.pack_into(">H", data, offset, 0x8000 | r << 10 | g << 5 | b)
                     offset += 2
+    # Swiss's BNRDesc: a short name and publisher, then the full ones, then
+    # the description, each field after the last (include/bnr.h).
     for field, text, size in ((0x1820, title, 0x20), (0x1840, "Indigo test disc", 0x20),
-                              (0x1860, title, 0x40), (0x1880, "Indigo demonstration disc", 0x40),
-                              (0x18C0, "A fictitious game on the disc Indigo's emulator test boots with.", 0x80)):
+                              (0x1860, title, 0x40), (0x18A0, "Indigo demonstration disc", 0x40),
+                              (0x18E0, DESCRIPTION, 0x80)):
         encoded = text.encode("ascii")[:size - 1]
         data[field:field + len(encoded)] = encoded
     return bytes(data)
@@ -156,35 +181,111 @@ def poster(index: int):
     return image
 
 
+def still(index: int):
+    """A gameplay still for one fictitious game: a sky, hills and a sun."""
+    from PIL import Image, ImageDraw
+
+    width, height = 640, 480
+    hue = (index * 67) % 360
+    sky, horizon = _rgb(hue, 0.45, 0.35), _rgb((hue + 30) % 360, 0.35, 0.9)
+    image = Image.new("RGB", (width, height))
+    draw = ImageDraw.Draw(image)
+    for y in range(height):
+        t = y / (height - 1)
+        draw.line([(0, y), (width, y)], fill=tuple(round(a + (b - a) * t) for a, b in zip(sky, horizon)))
+    sun = _rgb((hue + 180) % 360, 0.3, 0.98)
+    draw.ellipse([420 - index * 12, 70, 500 - index * 12, 150], fill=sun)
+    for n, (base, rise) in enumerate(((330, 90), (370, 60), (410, 40))):
+        ground = _rgb((hue + 90 + n * 20) % 360, 0.6, 0.25 + n * 0.12)
+        points = [(x, base - rise * abs(((x + index * 40 + n * 90) % 320) - 160) / 160)
+                  for x in range(0, width + 1, 32)]
+        draw.polygon([(0, height)] + points + [(width, height)], fill=ground)
+    return image
+
+
 def _rgb(hue: float, saturation: float, value: float) -> tuple[int, int, int]:
     import colorsys
     return tuple(round(c * 255) for c in colorsys.hsv_to_rgb(hue / 360, saturation, value))
 
 
-def build_posters(folder: Path, pak: Path) -> bool:
+def build_pack(folder: Path, pak: Path, kind: str) -> bool:
+    """posters.pak or stills.pak, from pictures drawn here."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import poster_pack
 
     try:
         poster_pack.resolve_gxtexconv(None)
     except poster_pack.PackError as error:
-        print(f"card.py: no posters ({error})", file=sys.stderr)
+        print(f"card.py: no {kind} ({error})", file=sys.stderr)
         return False
-    art = folder / "art"
+    draw, missing = (poster, NO_POSTER) if kind == "posters" else (still, NO_STILL)
+    art = folder / kind
     art.mkdir()
     records = []
     for index, (game_id, _) in enumerate(GAMES):
-        if game_id in NO_POSTER:
+        if game_id in missing:
             continue
         path = art / f"{game_id}.png"
-        poster(index).save(path)
-        records.append({"game_id": game_id, "source": f"art/{game_id}.png", "universal": False,
+        draw(index).save(path)
+        records.append({"game_id": game_id, "source": f"{kind}/{game_id}.png", "universal": False,
                         "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                         "note": "Drawn by buildtools/ui/emulator/card.py for the emulator test"})
-    manifest = folder / "manifest.json"
-    manifest.write_text(json.dumps({"version": 1, "records": records}))
+    manifest = folder / f"{kind}.json"
+    manifest.write_text(json.dumps({"version": 1, "kind": kind, "records": records}))
     poster_pack.generate(str(manifest), str(pak), art_root=str(folder))
     return True
+
+
+# Apps, sorted as Apps shows them. Arcade, first, has no picture.
+APPS = ("Arcade", "Pixel Painter", "Starfield", "toolbox")
+APP_STUB = b"a stand-in for a program: Apps lists it, nothing can run it"
+
+
+def app_picture(kind: str):
+    """An app's picture: a small pixel-art icon, a poster, or a Homebrew
+    Channel banner, so Apps shows each shape Indigo fits to a card."""
+    from PIL import Image, ImageDraw
+
+    if kind == "painter":
+        image = Image.new("RGB", (16, 16), _rgb(260, 0.5, 0.3))
+        for y in range(16):
+            for x in range(16):
+                if (x - 7.5) ** 2 + (y - 7.5) ** 2 < 36:
+                    image.putpixel((x, y), _rgb((x * 24 + y * 8) % 360, 0.7, 0.95))
+        return image
+    if kind == "starfield":
+        width, height = 300, 400
+        image = Image.new("RGB", (width, height))
+        draw = ImageDraw.Draw(image)
+        for y in range(height):
+            draw.line([(0, y), (width, y)], fill=_rgb(230, 0.8, 0.12 + 0.3 * y / height))
+        for n in range(60):
+            x, y = (n * 97) % width, (n * 53) % (height - 60)
+            draw.ellipse([x, y, x + 2 + n % 3, y + 2 + n % 3], fill=(255, 250, 220))
+        draw.polygon([(150, 250), (190, 330), (110, 330)], fill=_rgb(20, 0.6, 0.9))
+        return image
+    image = Image.new("RGB", (128, 48), _rgb(150, 0.6, 0.45))
+    draw = ImageDraw.Draw(image)
+    for n in range(4):
+        draw.rectangle([10 + n * 30, 12, 30 + n * 30, 36], outline=(240, 240, 240), width=3)
+    return image
+
+
+def build_apps(apps: Path) -> int:
+    """/apps, as Apps reads it; returns how many apps it should list."""
+    apps.mkdir()
+    (apps / "Arcade.dol").write_bytes(APP_STUB)
+    for name, kind in (("Pixel Painter", "painter"), ("Starfield", "starfield")):
+        (apps / f"{name}.dol").write_bytes(APP_STUB)
+        app_picture(kind).save(apps / f"{name}.png")
+    toolbox = apps / "Toolbox"
+    toolbox.mkdir()
+    (toolbox / "toolbox.dol").write_bytes(APP_STUB)
+    (toolbox / "boot.dol").write_bytes(APP_STUB)  # the Wii's
+    (toolbox / "meta.xml").write_text("<app><name>Toolbox</name></app>\n")
+    app_picture("banner").save(toolbox / "icon.png")
+    (apps / "readme.txt").write_text("Not a program: Apps leaves it out.\n")
+    return len(APPS)
 
 
 def build(out: Path, posters: bool = True) -> dict[str, object]:
@@ -199,7 +300,17 @@ def build(out: Path, posters: bool = True) -> dict[str, object]:
             (root / "games" / f"{title} [{game_id}].iso").write_bytes(game_image(index, game_id, title))
         for game_id, title, image in DAMAGED:
             (root / "games" / f"{title} [{game_id}].iso").write_bytes(image(game_id, title))
-        with_posters = posters and build_posters(folder, root / "swiss/ui/posters.pak")
+        for name in STRAYS:
+            if name.endswith("/"):
+                (root / "games" / name).mkdir()
+            else:
+                (root / "games" / name).write_text("Not a game.\n")
+        with_posters = posters and build_pack(folder, root / "swiss/ui/posters.pak", "posters")
+        with_stills = posters and build_pack(folder, root / "swiss/ui/stills.pak", "stills")
+        (root / "swiss/ui/descriptions.txt").write_text(
+            "# Descriptions of the demonstration disc's fictitious games\n" +
+            "".join(f"{game_id} {text}\n" for game_id, text in sorted(DESCRIPTIONS.items())))
+        apps = build_apps(root / "apps")
         for path in sorted(root.rglob("*")) + [root]:
             os.utime(path, (1000000000, 1000000000))
         subprocess.run(["genisoimage", "-quiet", "-R", "-J", "-V", "INDIGO_DEMO", "-o", str(out), str(root)],
@@ -211,7 +322,9 @@ def build(out: Path, posters: bool = True) -> dict[str, object]:
     image[:len(header)] = header
     out.write_bytes(image)
     return {"games": len(GAMES), "damaged": len(DAMAGED),
-            "posters": len(GAMES) - len(NO_POSTER) if with_posters else 0, "bytes": len(image)}
+            "posters": len(GAMES) - len(NO_POSTER) if with_posters else 0,
+            "stills": len(GAMES) - len(NO_STILL) if with_stills else 0, "apps": apps,
+            "bytes": len(image)}
 
 
 def main(argv: list[str] | None = None) -> int:

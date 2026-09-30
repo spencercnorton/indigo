@@ -10,10 +10,14 @@ Indigo is a fork of [Swiss](https://github.com/emukidid/swiss-gc) for the
 Nintendo GameCube with the interface rebuilt. The fork changes what you look
 at and nothing underneath: device handlers, the patch engine and the loader
 are upstream's, and a change that reaches them is out of scope unless a
-maintainer asked for it.
+maintainer asked for it. [`UPSTREAM`](UPSTREAM) names the upstream commit
+Indigo is built on and lists the upstream files Indigo does change, with why.
 
 - The interface: `cube/swiss/source/gui/` (Home cube, Library, Game Detail,
-  cheats, Settings), wired in through `swiss.c`, `main.c` and `config/`.
+  cheats, Settings, Apps), wired in through `swiss.c`, `main.c` and
+  `config/`. Apps (`apps.c`) draws with the Library's renderer: a card
+  flagged `UI_GAMEFLOW_CARD_APP` takes its poster from Apps, not the pack:
+  the app's own picture, or its name drawn in the IPL font (`ui_png.c`).
 - Host tests: `buildtools/ui/tests/` (C unit tests, GX vertex-stream checks
   and source audits; no console needed).
 - User documentation: `README.md`, `docs/guide/` (every screen and setting,
@@ -22,12 +26,13 @@ maintainer asked for it.
 ## Build and test
 
 ```bash
-# The DOL, in the pinned image CI uses (writes cube/swiss/swiss.dol):
+# The DOL, in the pinned image CI uses (writes cube/swiss/swiss.dol, and
+# cube/packer/swiss.dol: the same DOL compressed, the card's ipl.dol):
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
   ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
 
 # The SD card zip for that build (after make dev):
-buildtools/sd_package.sh dev cube/swiss/swiss.dol .
+buildtools/sd_package.sh dev cube/packer/swiss.dol .
 
 # Host tests: lanes plain, sanitized, contracts, or all. Needs Python 3 with
 # Pillow and NumPy, a C compiler and zlib; the poster tests also need
@@ -37,7 +42,7 @@ buildtools/ui/tests/run_tests.sh all
 
 # Source checks CI runs on a pull request into beta:
 buildtools/check_whitespace.sh origin/beta
-buildtools/check_ui_isolation.sh origin/beta
+python3 buildtools/ci/check_upstream.py   # fetches the upstream commit UPSTREAM names
 buildtools/ci/source_checks.sh   # shell and Python syntax, CI tool tests, workflow policy
 
 # Fuzz the files Indigo reads from a card (poster packs, play history, saves,
@@ -47,11 +52,15 @@ buildtools/ui/tests/fuzz/run_fuzz.sh 30
 ```
 
 CI (`.github/workflows/ci.yml`) also checks the DOL (`buildtools/ci/verify_dol.py`:
-structure, size budget, the commit it names) and the zip's exact layout
+structure, size budget, the commit it names) and `ipl.dol`, the DOL compressed
+by `cube/packer` that the card gets (`--packed`: it unpacks to exactly that
+DOL, in the one .xz format the console reads), the zip's exact layout
 (`buildtools/ci/check_package.py`), builds a second time in a fresh
-container to prove the build is reproducible, and boots the DOL in Dolphin
-and walks its menus with a controller (`buildtools/ui/emulator/`: every
-face, the Library, no crash). "CI passed" sums every job up.
+container to prove both files are reproducible, and boots `ipl.dol` in
+Dolphin and walks its menus with a controller (`buildtools/ui/emulator/`:
+every face, the Library, no crash). Dolphin can't pass the unpacker's first
+check, which only a console passes, so `dolphin_ipl.py` turns that one
+branch off in a copy. "CI passed" sums every job up.
 Every job runs on self-hosted runners, one throwaway container per job:
 [buildtools/ci/runner/README.md](buildtools/ci/runner/README.md).
 
@@ -83,9 +92,19 @@ with a tagged release.
   for a settings key) in the same pull request. Pictures are recorded in the
   Dolphin emulator from a real build; say in the pull request which ones are
   stale if you cannot record them.
-- **Stay inside the interface.** `buildtools/check_ui_isolation.sh` fails a
-  change outside its allowlist. Widening it is a deliberate, reviewed edit
-  with an exact-hunk exception and a reason, never a shortcut.
+- **Upstream's files match `UPSTREAM`.** Outside Indigo's own paths (`OWN` in
+  `buildtools/ci/check_upstream.py`), every file matches the upstream commit
+  `UPSTREAM` names, line endings aside, or is listed there with the reason.
+  CI fails an unlisted change, and a listed file that matches upstream again.
+  Changing an upstream file lists it in the same pull request. Moving to
+  another upstream commit is a pull request of its own:
+  `buildtools/upstream_merge.sh <commit>` merges upstream's changes with their
+  carriage returns stripped (Indigo's text files end lines with LF, upstream's
+  often with CRLF) and updates the `commit` line. Resolve what it lists, refresh
+  the two fixtures that copy upstream code for the audits
+  (`buildtools/ui/tests/fixtures/main.base.c`, `settings_toggle.base.c`), and
+  say in `CHANGELOG.md` what the move brings. The whitespace check covers
+  Indigo's own paths only; upstream's lines keep upstream's whitespace.
 - **Keep the draw path cheap.** The interface is drawn with the console's GX
   pipeline at a fixed per-frame budget: no per-frame allocation, no blocking
   read in a draw function.
@@ -107,8 +126,9 @@ with a tagged release.
   updates those boxes, and a change that adds a screen or a control can add a
   step to the route.
 - **A file from the card is untrusted.** Code that reads a poster pack, the
-  play history, a save, a settings file or a disc image's file table has a
-  fuzzer in `buildtools/ui/tests/fuzz/`; a new format gets one too. A crash
+  play history, a save, a settings file, a disc image's file table or an
+  app's picture (a PNG) has a fuzzer in `buildtools/ui/tests/fuzz/`; a new
+  format gets one too. A crash
   the fuzzer finds is fixed with the input kept in `corpus/<target>/`.
 - **Tests with every change.** A bug fix carries a regression test; a feature
   carries the smallest test that fails without it. Pinned hashes in the audits
@@ -116,7 +136,9 @@ with a tagged release.
   red test go green.
 - **Public-repository hygiene.** Nothing in a commit, a file or a pull request
   may name a private host, an internal tracker or ticket, a personal path, a
-  credential, or a real person other than the maintainer. Screenshots come
+  credential, or a real person other than the maintainer, except a credit
+  the maintainer asks for, which goes in `NOTICE` and System › Credits.
+  Screenshots come
   from Dolphin with demonstration data. GitHub push protection scans for
   secrets; do not rely on it.
 - **Never contact upstream.** Indigo sends the Swiss project nothing: no pull
