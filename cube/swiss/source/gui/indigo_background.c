@@ -3208,6 +3208,15 @@ static void drawCubeLight(const uiSceneFrame_t *scene, float seconds, bool anima
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 }
 
+static int layerColors[UI_COLOR_LAYERS];
+
+void IndigoBackground_SetColors(const int colors[UI_COLOR_LAYERS])
+{
+	for(int i = 0; i < UI_COLOR_LAYERS; i++) {
+		layerColors[i] = colors[i];
+	}
+}
+
 void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 	bool cubeAnimated, const uiSceneFrame_t *scene,
 	const uiClockFrame_t *clock, const indigoPadFrame_t *pad,
@@ -3226,12 +3235,19 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 		orbitStrength * HOME_DECORATIVE_STRENGTH : orbitStrength;
 
 	setupRasterPipeline();
+	/* The backdrop and the waves have colors of their own; the cube and
+	 * everything after it take the menus'. */
+	UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);
 	drawIndigoWash(255);
 	drawGlobeGrid(320.0f, 212.0f, drift * 0.18f);
+	if(scene->visible) {
+		UIColor_Select(layerColors[UI_COLOR_LAYER_WAVES]);
+		drawSilkWaves(seconds, backdropMotionActive, decorativeStrength);
+	}
+	UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);
 	if(!scene->visible) {
 		return;
 	}
-	drawSilkWaves(seconds, backdropMotionActive, decorativeStrength);
 	drawRadialDisc(centerX, centerY + 132.0f * orbitScale,
 		104.0f * orbitScale, 14.0f * orbitScale,
 		(GXColor) {3, 2, 12, (u8)(92.0f * orbitStrength)},
@@ -3271,5 +3287,7 @@ void IndigoBackground_DrawBootOverlay(float seconds, bool animated,
 		drawCube(scene, seconds, animated, clock, NULL, icons, false);
 	}
 	setupRasterPipeline();
+	UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);
 	drawIndigoWash(veilAlpha);
+	UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);
 }

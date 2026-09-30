@@ -335,7 +335,7 @@ class Route:
 
     def flip_apps_face(self, settings: np.ndarray, tag: str) -> None:
         """From the Settings face: R and R to Setup, DOWN and A into Console,
-        five DOWNs to Apps Face and RIGHT to flip it. B goes back to Setup and
+        seven DOWNs to Apps Face and RIGHT to flip it. B goes back to Setup and
         B again saves and exits (the demo disc can't keep the file; the
         setting holds until Indigo restarts), back to the Settings face."""
         self.press("A")
@@ -345,7 +345,7 @@ class Route:
         for button, pause in (("R", 1.0), ("R", 1.0), ("DOWN", 0.6), ("A", 1.5)):
             self.press(button)
             time.sleep(pause)
-        for _ in range(5):
+        for _ in range(7):
             self.press("DOWN")
             time.sleep(0.4)
         self.press("RIGHT")

@@ -48,6 +48,11 @@ void UIColor_Select(int color)
 	chroma[1][1] = chroma[0][0];
 }
 
+int UIColor_Layer(int setting, int menuColor)
+{
+	return setting > 0 ? setting - 1 : menuColor;
+}
+
 static uint8_t clampChannel(int32_t value)
 {
 	return (uint8_t)(value < 0 ? 0 : (value > 255 ? 255 : value));

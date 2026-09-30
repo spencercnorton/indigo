@@ -174,10 +174,11 @@ class SettingsViewsTest(unittest.TestCase):
                 "SET_FORCE_DTVSTATUS", "SET_RT4K_OPTIM"}
         cycles = {}
         for name, arm in arms.items():
-            modulo = re.search(r"% (\w+);", arm)
+            # % COUNT; or, for Backdrop and Wave Color, % (COUNT + 1);
+            modulo = re.search(r"% \(?(\w+)(?: \+ (\d+)\))?;", arm)
             if "+= direction" in arm and modulo:
-                size = modulo.group(1)
-                cycles[name] = int(size) if size.isdigit() else constant(size)
+                size, extra = modulo.group(1), int(modulo.group(2) or 0)
+                cycles[name] = (int(size) if size.isdigit() else constant(size)) + extra
         expected = {name for name, size in cycles.items() if 4 <= size <= 16 and name not in live}
         table_text = re.search(r"settingsPickerRows\[\] = \{(.*?)\n\};", SETTINGS_C, re.S).group(1)
         picker = re.findall(r"PICK_(SETTING|GAME)\((?:(PAGE_\w+), )?(SET_\w+), (\w+)\)", table_text)

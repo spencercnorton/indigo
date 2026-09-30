@@ -415,13 +415,15 @@ def validate(files: dict[str, str]) -> list[str]:
              "so the screen behind shows bare")
     need("if(settingsPageEvent == NULL &&" in page_draw and
          "DrawPublish(settingsPageEvent);" in page_draw and
-         "DrawUpdateSettingsPage(settingsPageEvent, &page, swissSettings.uiColor);" in page_draw and
+         "DrawUpdateSettingsPage(settingsPageEvent, &page, (const int[UI_COLOR_LAYERS]) {\n"
+         "\t\tswissSettings.uiColor, swissSettings.uiBackdropColor, swissSettings.uiWaveColor});"
+         in page_draw and
          "DrawContainer(" not in page_draw,
          "the page is rebuilt and republished instead of updated in place")
     locked = page_update[page_update.index("LWP_MutexLock(_videomutex);"):
                          page_update.index("LWP_MutexUnlock(_videomutex);")]
-    need("->snapshot = *snapshot;" in locked and "menuColorPinned = menuColor;" in locked,
-         "the page's text and its Menu Color are not replaced in one step")
+    need("->snapshot = *snapshot;" in locked and "menuColorPinned[i] = colors[i];" in locked,
+         "the page's text and its colors are not replaced in one step")
     need("DrawFadingLabel" not in settings,
          "Help discoverability returned to a continuously fading label")
     need("UI_SETLAYOUT_ROW_TEXT_FLOOR 0.60f" in layout_h,

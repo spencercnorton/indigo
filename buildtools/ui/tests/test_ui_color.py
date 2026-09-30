@@ -135,7 +135,7 @@ class MenuColorTest(unittest.TestCase):
         return [tuple(int(part) for part in line.split())
                 for line in result.stdout.splitlines()]
 
-    def test_the_three_tables_agree(self):
+    def test_the_color_tables_agree(self):
         names = re.findall(r'"([^"]+)"', re.search(r"char \*uiColorStr\[\] = \{(.*?)\};",
                                                     SETTINGS_C).group(1))
         rows = re.findall(r"^\t\{\s*-?[\d.]+f,\s*[\d.]+f\s*\},\t/\* ([\w ]+?)(?:,.*?)? \*/$",
@@ -146,6 +146,10 @@ class MenuColorTest(unittest.TestCase):
         self.assertEqual([m.replace("_", " ").lower() for m in members],
                          [name.lower() for name in names])
         self.assertEqual(names[0], "Indigo")
+        # Backdrop and Wave Color: following Menu Color first, then the colors.
+        layers = re.findall(r'"([^"]+)"', re.search(r"char \*uiLayerColorStr\[\] = \{(.*?)\};",
+                                                     SETTINGS_C).group(1))
+        self.assertEqual(layers, ["Menu Color"] + names)
 
     def test_controller_buttons_keep_their_colors(self):
         vertex = extract_function(FRAME_C, "static void _HintVertex(")
@@ -161,42 +165,141 @@ class MenuColorTest(unittest.TestCase):
                      "void drawStringWithCaret(", "void drawStringEllipsis("):
             self.assertIn("UIColor_Apply(&fontColor.r", extract_function(FONT_C, name), name)
 
-    def test_the_list_previews_each_color(self):
+    def test_the_lists_preview_each_color(self):
         settings = (GUI / "settings.c").read_text()
         pick = extract_function(settings, "static bool settingsPick(")
         update = pick.index("DrawUpdateSettingsList(box, &shown,")
-        # Only Menu Color's list previews, the value it has focused, with the
-        # list's redraw.
+        # Menu, Backdrop and Wave Color's lists preview the value they have
+        # focused, in their own layer, with the list's redraw; any other list
+        # has no layer (-1) and previews nothing.
         self.assertRegex(pick[update:], r"^DrawUpdateSettingsList\(box, &shown,\s*"
-                         r"pick->page == PAGE_INTERFACE && pick->option == SET_UI_COLOR \?"
-                         r"\s*\(int\)list\.value\[focus\] : -1\);")
+                         r"settingsColorLayer\(pick->page, pick->option\), "
+                         r"\(int\)list\.value\[focus\]\);")
         self.assertLess(pick.index("settingsDrawPicker(row.label, &list, focus, &shown);"),
                         update)
         self.assertEqual(settings.count("DrawUpdateSettingsList("), 1)
+        layer = extract_function(settings, "static int settingsColorLayer(")
+        self.assertIn("if(page == PAGE_INTERFACE) {", layer)
+        for option, name in (("SET_UI_COLOR", "MENU"), ("SET_UI_BACKDROP_COLOR", "BACKDROP"),
+                             ("SET_UI_WAVE_COLOR", "WAVES")):
+            self.assertIn(f"case {option}: return UI_COLOR_LAYER_{name};", layer)
+        # Each color row's swatch shows its own layer.
+        self.assertIn("settingsColorLayer(ref->page, ref->option) + 1);", settings)
+        swatch = extract_function(FRAME_C, "static void _SettingsSwatch(")
+        order = [swatch.index(token) for token in (
+            "UIColor_Select(frameColors[layer]);", "UIColor_Apply(&color.r",
+            "UIColor_Select(frameColors[UI_COLOR_LAYER_MENU]);")]
+        self.assertEqual(order, sorted(order))
+        self.assertIn("(float)y, row->swatch - 1);", FRAME_C)
         # The list's new focus and its color change in one step...
         listed = extract_function(FRAME_C, "void DrawUpdateSettingsList(")
         locked = listed[listed.index("LWP_MutexLock(_videomutex);"):
                         listed.index("LWP_MutexUnlock(_videomutex);")]
         self.assertIn("*(uiSetListSnapshot_t*)list->data = *snapshot;", locked)
-        self.assertIn("if(previewColor >= 0) {\n\t\t\tmenuColorPreview = previewColor;", locked)
-        # ... and so do a page's text and the color it pins, which ends any
-        # preview. Disposing the page lets the color go.
+        self.assertIn("if(previewLayer >= 0 && previewLayer < UI_COLOR_LAYERS) {\n"
+                      "\t\t\tmenuColorPreview[previewLayer] = previewColor;", locked)
+        # ... and so do a page's text and the colors it pins, which ends any
+        # preview. Disposing the page lets the colors go.
         paged = extract_function(FRAME_C, "void DrawUpdateSettingsPage(")
         locked = paged[paged.index("LWP_MutexLock(_videomutex);"):
                        paged.index("LWP_MutexUnlock(_videomutex);")]
         for token in ("->snapshot = *snapshot;", "menuColorPage = page;",
-                      "menuColorPinned = menuColor;", "menuColorPreview = -1;"):
+                      "menuColorPinned[i] = colors[i];", "menuColorPreview[i] = -1;"):
             self.assertIn(token, locked)
         dispose = extract_function(FRAME_C, "void DrawDispose(")
-        self.assertIn("menuColorPreview = -1;", dispose)
-        self.assertIn("menuColorPinned = -1;", dispose)
-        self.assertIn("int menuColor = menuColorPreview >= 0 ? menuColorPreview : menuColorPinned;",
-                      FRAME_C)
-        # settings.c pins the color each page was built with, once published.
+        self.assertIn("menuColorPreview[i] = -1;", dispose)
+        self.assertIn("menuColorPinned[i] = -1;", dispose)
+        # The frame takes its colors with the page they go with, before it draws.
+        loop = extract_function(FRAME_C, "static void *videoUpdate(")
+        order = [loop.index(token) for token in (
+            "LWP_MutexLock(_videomutex);", "_SelectFrameColors();", "UIScene_Update(")]
+        self.assertEqual(order, sorted(order))
+        # settings.c pins the colors each page was built with, once published.
         page = extract_function(settings, "uiDrawObj_t* settings_draw_page(")
         self.assertLess(page.index("DrawPublish(settingsPageEvent);"),
                         page.index("DrawUpdateSettingsPage(settingsPageEvent, &page, "
-                                   "swissSettings.uiColor);"))
+                                   "(const int[UI_COLOR_LAYERS]) {\n\t\tswissSettings.uiColor, "
+                                   "swissSettings.uiBackdropColor, swissSettings.uiWaveColor});"))
+
+    def test_the_backdrop_and_the_waves_take_their_own_colors(self):
+        """The real _SelectFrameColors and UIColor_Layer: a list's focus beats
+        its page's color, which beats the setting, and a backdrop or wave
+        setting of 0 follows whatever the menus show."""
+        harness = "\n".join([
+            "#include <stdio.h>",
+            '#include "ui_color.h"',
+            "static struct { int uiColor, uiBackdropColor, uiWaveColor; } swissSettings;",
+            "static int menuColorPinned[UI_COLOR_LAYERS], menuColorPreview[UI_COLOR_LAYERS];",
+            "static int frameColors[UI_COLOR_LAYERS], selected, drawn[UI_COLOR_LAYERS];",
+            "void UIColor_Select(int color) { selected = color; }",
+            "void IndigoBackground_SetColors(const int colors[UI_COLOR_LAYERS])",
+            "{ for(int i = 0; i < UI_COLOR_LAYERS; i++) drawn[i] = colors[i]; }",
+            extract_function(UI_COLOR_C, "int UIColor_Layer("),
+            extract_function(FRAME_C, "static void _SelectFrameColors("),
+            "int main(void) {",
+            "\twhile(scanf(\"%d %d %d %d %d %d %d %d %d\", &swissSettings.uiColor,",
+            "\t\t&swissSettings.uiBackdropColor, &swissSettings.uiWaveColor,",
+            "\t\t&menuColorPinned[0], &menuColorPinned[1], &menuColorPinned[2],",
+            "\t\t&menuColorPreview[0], &menuColorPreview[1], &menuColorPreview[2]) == 9) {",
+            "\t\t_SelectFrameColors();",
+            "\t\tprintf(\"%d %d %d %d %d %d %d\\n\", selected, frameColors[0], frameColors[1],",
+            "\t\t\tframeColors[2], drawn[0], drawn[1], drawn[2]);",
+            "\t}",
+            "\treturn 0;",
+            "}", ""])
+        work = Path(self.tmp.name)
+        (work / "frame.c").write_text(harness)
+        result = subprocess.run(shlex.split(os.environ.get("CC", "cc")) +
+            ["-std=c99", "-Wall", "-Wextra", "-Werror", "-I" + str(GUI),
+             str(work / "frame.c"), "-o", str(work / "frame")],
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        def expect(settings, pinned, preview):
+            chosen = [p if p >= 0 else (q if q >= 0 else s)
+                      for s, q, p in zip(settings, pinned, preview)]
+            menu = chosen[0]
+            colors = [menu] + [c - 1 if c > 0 else menu for c in chosen[1:]]
+            return (colors[0], *colors, *colors)
+
+        none = (-1, -1, -1)
+        cases = []
+        for settings in [(m, b, w) for m in (0, 1, 7) for b in (0, 1, 4, 8) for w in (0, 3, 8)]:
+            for pinned in (none, settings, (2, 0, 5)):
+                for preview in (none, (5, -1, -1), (-1, 7, -1), (-1, -1, 1)):
+                    cases.append((settings, pinned, preview))
+        text = "".join(" ".join(map(str, s + q + p)) + "\n" for s, q, p in cases)
+        run = subprocess.run([str(work / "frame")], input=text, capture_output=True,
+                             text=True, timeout=30)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        got = [tuple(int(v) for v in line.split()) for line in run.stdout.splitlines()]
+        self.assertEqual(got, [expect(*case) for case in cases])
+        # Read plainly: by default the backdrop and waves are the menus' color;
+        # Backdrop Color Gold (1 + 3) keeps the backdrop Gold under Azure menus;
+        # previewing Menu Color takes a following backdrop along, and
+        # previewing Backdrop Color leaves the menus alone.
+        self.assertEqual(expect((1, 0, 0), none, none), (1, 1, 1, 1, 1, 1, 1))
+        self.assertEqual(expect((1, 4, 0), none, none)[:4], (1, 1, 3, 1))
+        self.assertEqual(expect((1, 0, 4), (1, 0, 4), (6, -1, -1))[:4], (6, 6, 6, 3))
+        self.assertEqual(expect((1, 0, 0), (1, 0, 0), (-1, 8, -1))[:4], (1, 1, 7, 1))
+
+    def test_each_layer_is_drawn_in_its_own_color(self):
+        background = (GUI / "indigo_background.c").read_text()
+        draw = extract_function(background, "void IndigoBackground_Draw(")
+        order = [draw.index(token) for token in (
+            "UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);", "drawIndigoWash(255);",
+            "drawGlobeGrid(", "UIColor_Select(layerColors[UI_COLOR_LAYER_WAVES]);",
+            "drawSilkWaves(", "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);",
+            "if(!scene->visible) {", "drawRadialDisc(", "drawCubeLight(", "drawCube(scene,")]
+        self.assertEqual(order, sorted(order))
+        self.assertEqual(draw.count("UIColor_Select("), 3)
+        # The boot veil is the backdrop too; the cube under it is the menus'.
+        boot = extract_function(background, "void IndigoBackground_DrawBootOverlay(")
+        order = [boot.index(token) for token in (
+            "drawCube(scene,", "UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);",
+            "drawIndigoWash(veilAlpha);", "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);")]
+        self.assertEqual(order, sorted(order))
+        self.assertEqual(background.count("drawIndigoWash("), 3)   # its definition and these two
 
     def test_indigo_is_exactly_as_designed(self):
         colors = list(self.literals) + NEUTRALS + sorted(SEMANTIC)

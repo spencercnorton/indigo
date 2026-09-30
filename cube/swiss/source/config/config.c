@@ -516,6 +516,8 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Disable Menu Music=%s\r\n", swissSettings.disableMenuMusic ? "Yes":"No");
 	fprintf(fp, "Disable Menu SFX=%s\r\n", swissSettings.disableMenuSFX ? "Yes":"No");
 	fprintf(fp, "Menu Color=%s\r\n", uiColorStr[swissSettings.uiColor]);
+	fprintf(fp, "Backdrop Color=%s\r\n", uiLayerColorStr[swissSettings.uiBackdropColor]);
+	fprintf(fp, "Wave Color=%s\r\n", uiLayerColorStr[swissSettings.uiWaveColor]);
 	fprintf(fp, "Menu Widescreen=%s\r\n", swissSettings.menuWidescreen ? "Yes":"No");
 	fprintf(fp, "Library Icon=%s\r\n", libraryIconStr[swissSettings.libraryIcon]);
 	fprintf(fp, "Source Icon=%s\r\n", sourceIconStr[swissSettings.sourceIcon]);
@@ -1339,6 +1341,22 @@ void config_parse_global(char *configData) {
 					for(int i = 0; i < UI_COLOR_MAX; i++) {
 						if(!strcmp(uiColorStr[i], value)) {
 							swissSettings.uiColor = i;
+							break;
+						}
+					}
+				}
+				else if(!strcmp("Backdrop Color", name)) {
+					for(int i = 0; i <= UI_COLOR_MAX; i++) {
+						if(!strcmp(uiLayerColorStr[i], value)) {
+							swissSettings.uiBackdropColor = i;
+							break;
+						}
+					}
+				}
+				else if(!strcmp("Wave Color", name)) {
+					for(int i = 0; i <= UI_COLOR_MAX; i++) {
+						if(!strcmp(uiLayerColorStr[i], value)) {
+							swissSettings.uiWaveColor = i;
 							break;
 						}
 					}
