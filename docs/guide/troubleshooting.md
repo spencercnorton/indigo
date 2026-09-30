@@ -11,7 +11,6 @@
 - [My settings don't stick](#my-settings-dont-stick)
 - [My cheats don't show up, or don't work](#my-cheats-dont-show-up-or-dont-work)
 - [Indigo starts, then stock Swiss appears](#indigo-starts-then-stock-swiss-appears)
-- [The console restarts when Indigo starts](#the-console-restarts-when-indigo-starts)
 - [In-Game Reset takes me to stock Swiss](#in-game-reset-takes-me-to-stock-swiss)
 - [The same game opens every time Indigo starts](#the-same-game-opens-every-time-indigo-starts)
 - [There's no Apps face, or an app or its picture is missing](#theres-no-apps-face-or-an-app-or-its-picture-is-missing)
@@ -124,17 +123,6 @@ card as `z.dol`, `a.dol`, `b.dol`, `x.dol`, `y.dol`, `start.dol`, `boot.dol`
 or `swiss_r….dol`, in place of themselves, and In-Game Reset lands there too.
 Update Indigo: later releases don't look for them, so stock Swiss can stay on
 the card as `z.dol`.
-
-## The console restarts when Indigo starts
-
-`ipl.dol` checks itself as the console unpacks it at power-on. When the copy
-is damaged, or the card could not be read in full, the console restarts and
-your loader reads the file again: a restart now and then is that check at
-work, where Indigo 2.0 and earlier could stop on a black screen.
-
-If it restarts every time, copy `ipl.dol` from the release zip onto the card
-again. If it still does, the card or its adapter isn't reading reliably:
-reseat the adapter, or try another card.
 
 ## In-Game Reset takes me to stock Swiss
 

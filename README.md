@@ -220,7 +220,7 @@ git clone https://github.com/spencercnorton/indigo.git
 cd indigo
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
   ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
-# writes cube/packer/swiss.dol (and cube/swiss/swiss.dol) in this folder
+# writes cube/swiss/swiss.dol inside this folder, on your computer
 ```
 
 The download above is this build at the release tag, packaged by
@@ -233,12 +233,9 @@ changes.
 
 ### On the console
 
-`cube/packer/swiss.dol` is where the build leaves the file for your card, not
-a path on the card: it is the release's `ipl.dol`, compressed, and the console
-unpacks it as it starts. (`cube/swiss/swiss.dol` is the same program
-uncompressed; Dolphin boots only that one.) On the card, Indigo takes the
-place of the file your loader already boots, under that file's name. Your
-Swiss settings carry over.
+`cube/swiss/swiss.dol` is where the build leaves the file, not a path on your
+SD card. On the card, Indigo takes the place of the file your loader already
+boots, under that file's name. Your Swiss settings carry over.
 
 - **PicoBoot and PicoLoader** boot `ipl.dol` from the root of the card.
   If that file is your current Swiss, rename it to `z.dol`; then copy
