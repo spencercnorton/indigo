@@ -4,7 +4,13 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
-## Unreleased
+## v2.1.0 — Spotlight, Apps and one poster pack for every region
+
+A fourth Library layout, Spotlight, with a gameplay still and a description
+for every game; Apps, a fifth face of the cube for your emulators and other
+programs, with your own pictures as posters; one poster pack for every
+region; and everything upstream Swiss changed up to r2119. The code is
+2.1.0-rc.1's, unchanged.
 
 ### Swiss r2119
 

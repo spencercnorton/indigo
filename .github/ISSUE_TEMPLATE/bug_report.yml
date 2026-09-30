@@ -34,7 +34,7 @@ body:
     attributes:
       label: Versions
       description: "The Indigo release you downloaded (or the commit under System › System Information › About Indigo), the console model, and how you boot it."
-      placeholder: "Indigo v2.0.0, NTSC-U DOL-001, PicoBoot + SD2SP2"
+      placeholder: "Indigo v2.1.0, NTSC-U DOL-001, PicoBoot + SD2SP2"
     validations:
       required: true
   - type: textarea
