@@ -54,12 +54,6 @@ In CI it is the **Emulator** job. Its summary lists every check, and the
 `emulator-<commit>` artifact holds a picture of every step (`sheet.png` has
 them all), Dolphin's output and `report.json`.
 
-CI boots `ipl.dol`, the compressed file the card gets. Its unpacker first
-checks for the bus error only a GameCube raises, which Dolphin never does, so
-`dolphin_ipl.py IPL OUT` writes a copy with that one branch turned off; the
-unpacker, its data and Indigo are the card's bytes. `cube/swiss/swiss.dol`,
-the uncompressed build, boots in Dolphin as it is.
-
 On a machine with Docker, in the emulator runner's image
 ([`buildtools/ci/runner/emulator.Dockerfile`](../../ci/runner/emulator.Dockerfile)),
 after `make dev`:
