@@ -19,7 +19,7 @@ from pathlib import Path
 LAYOUT = {
     "Indigo-README.txt", "ipl.dol", "swiss/", "swiss/ui/", "swiss/patches/",
     "swiss/patches/apploader.img", "swiss/indigo/", "swiss/indigo/LICENSE.txt",
-    "swiss/indigo/NOTICE.txt",
+    "swiss/indigo/NOTICE.txt", "swiss/indigo/menu-music.mp3",
 }
 # A tripwire: the zip is about 6.1 MiB since upstream Swiss r2119's text-encoding
 # libraries (5 MB before, with the menu music). Raise it on purpose.

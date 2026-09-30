@@ -7,6 +7,7 @@
 #     swiss/patches/apploader.img    In-Game Reset (Apploader) returns to Indigo
 #     swiss/ui/                      posters.pak, if you add one
 #     swiss/indigo/LICENSE.txt, NOTICE.txt
+#     swiss/indigo/menu-music.mp3    the menu music (buildtools/audio/); without it the menus are silent
 # Usage: buildtools/sd_package.sh <version> [swiss.dol] [out dir]
 # Run `make dev` first (see README, Install); run from the repository root.
 set -eu
@@ -27,6 +28,8 @@ cp "$dol" "$card/ipl.dol"
 python3 buildtools/dol2ipl.py "$card/swiss/patches/apploader.img" "$reboot" "*indigo-$version" >/dev/null
 cp LICENSE "$card/swiss/indigo/LICENSE.txt"
 cp NOTICE "$card/swiss/indigo/NOTICE.txt"
+# The menu music is a file on the card, not part of ipl.dol: MENU_MUSIC_MP3_PATH.
+cp buildtools/audio/menu-music.mp3 "$card/swiss/indigo/menu-music.mp3"
 cat > "$card/Indigo-README.txt" <<TXT
 Indigo $version - an unofficial fork of Swiss with the interface rebuilt
 Guide:  https://norvitech.com/indigo/
@@ -61,7 +64,9 @@ WHAT EACH FILE IS FOR
   ipl.dol                      Indigo itself
   swiss/patches/apploader.img  In-Game Reset returns to Indigo (see below)
   swiss/ui/                    the poster pack goes here, if you add it
-  swiss/indigo/                Indigo's licence (GPL-2.0-or-later) and notice
+  swiss/indigo/                Indigo's licence (GPL-2.0-or-later) and notice,
+                               and menu-music.mp3, the menu music (without it
+                               the menus are silent)
 
 GAMES
 Put your games in /games, either one folder per game or the disc images

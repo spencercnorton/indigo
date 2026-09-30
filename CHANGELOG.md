@@ -4,6 +4,24 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## Unreleased
+
+### Changes
+
+- The menu music is a file on the card, `swiss/indigo/menu-music.mp3`,
+  instead of part of `ipl.dol`, which is 1.4 MB smaller (4.1 MB) for a loader
+  to read at power-on. The zip puts the file there, so copying it over an
+  older install adds it. Without the file, or with another file in its place,
+  the menus are silent; the menu sounds and everything else work as before.
+
+### For developers
+
+- `buildtools/audio/menu-music.mp3` is the music. `make_header.py` writes it,
+  with its length, CRC-32 and loop points in `menu_music_mp3.h`, and
+  `sd_package.sh` copies it into the zip. `gui/menuaudio.c` reads it once from
+  the settings device when the menus first start and plays it only if its
+  length and CRC-32 match; `check_package.py` expects it in the zip.
+
 ## v2.1.1 — ipl.dol uncompressed again
 
 2.1.0's compressed `ipl.dol` could leave the console restarting over and over

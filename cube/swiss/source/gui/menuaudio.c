@@ -6,6 +6,11 @@
 #include <malloc.h>
 #include <string.h>
 #include <math.h>
+#include <zlib.h>
+#include "deviceHandler.h"
+#include "config.h"
+#include "files.h"
+#include "util.h"
 #include "swiss.h"
 #include "menuaudio.h"
 #include "menu_music_mp3.h"
@@ -17,7 +22,7 @@
 #define SR                  32000
 #define VOL_UNITY           256
 
-// The menu music streams. A decoder thread turns the bundled MP3 into blocks
+// The menu music streams. A decoder thread turns the MP3 into blocks
 // and the music voice's stream callback plays them, so only a few blocks of
 // PCM are ever in memory however long the piece is. AESND copies a voice's
 // buffer in DSP_STREAMBUFFER_SIZE chunks and pads a short last chunk with
@@ -30,12 +35,12 @@
 #define MUSIC_STACK_SIZE    16384
 #define MUSIC_PRIORITY      80    // above the menus, like libaesnd's own MP3 player
 
-_Static_assert(sizeof(menu_music_mp3) >= MENU_MUSIC_MP3_LEN + MAD_BUFFER_GUARD,
-               "libmad reads MAD_BUFFER_GUARD bytes past the last frame");
 _Static_assert(MENU_MUSIC_LOOP_START < MENU_MUSIC_LOOP_END, "the loop must have a length");
 
 static bool inited = false;
 static bool musicPlaying = false;
+static u8 *musicData = NULL;            // the MP3, then MAD_BUFFER_GUARD zeros; NULL: silent menus
+static bool musicLoadTried = false;
 static bool suspended = false;
 static bool resumeMusic = false;
 static AESNDPB *musicVoice = NULL;
@@ -69,12 +74,12 @@ static s16 mf2s16(mad_fixed_t f) {
 	return (s16)(f >> (MAD_F_FRACBITS + 1 - 16));
 }
 
-// Point the decoder at an MP3 frame. The bundled stream is constant bitrate
+// Point the decoder at an MP3 frame. The stream is constant bitrate
 // with no tags (buildtools/audio/make_header.py checks), so frame n starts at
 // n * MENU_MUSIC_FRAME_BYTES.
 static void music_seek(u32 frame) {
 	u32 offset = frame * MENU_MUSIC_FRAME_BYTES;
-	mad_stream_buffer(&musicStream, menu_music_mp3 + offset,
+	mad_stream_buffer(&musicStream, musicData + offset,
 	                  MENU_MUSIC_MP3_LEN - offset + MAD_BUFFER_GUARD);
 	mad_frame_mute(&musicFrame);
 	mad_synth_mute(&musicSynth);
@@ -100,7 +105,7 @@ static void *music_decode(void *arg) {
 			wrap = true;    // the end of the data, or a broken stream
 		}
 		else {
-			u32 first = (u32)(musicStream.this_frame - menu_music_mp3) / MENU_MUSIC_FRAME_BYTES * MUSIC_FRAME_SAMPLES;
+			u32 first = (u32)(musicStream.this_frame - musicData) / MENU_MUSIC_FRAME_BYTES * MUSIC_FRAME_SAMPLES;
 			mad_synth_frame(&musicSynth, &musicFrame);
 			const struct mad_pcm *pcm = &musicSynth.pcm;
 			int right = pcm->channels > 1;
@@ -235,8 +240,47 @@ static s16 *synth_chime(u32 *outBytes) {
 	return buf;
 }
 
+// The menu music is MENU_MUSIC_MP3_PATH on the card that holds the settings,
+// read whole the first time the menus start. The seeking and loop points above
+// are that one file's, so it plays only if its length and CRC-32 are the
+// header's. Without it (not on the card, another file, a failed read, no
+// memory), the menus are silent and everything else carries on.
+static void music_load(void) {
+	if(musicLoadTried) return;
+	musicLoadTried = true;
+	const char *why = "no settings device";
+	u8 *data = NULL;
+	if(config_set_device()) {
+		DEVICEHANDLER_INTERFACE *device = devices[DEVICE_CONFIG];
+		file_handle *file = calloc(1, sizeof(file_handle));
+		why = "out of memory";
+		if(file) {
+			concat_path(file->name, device->initial->name, MENU_MUSIC_MP3_PATH);
+			file->device = device;
+			if(device->statFile(file) != 0) why = "not on the card";
+			else {
+				if(file->size != MENU_MUSIC_MP3_LEN) why = "another file";
+				else if(!(data = malloc(MENU_MUSIC_MP3_LEN + MAD_BUFFER_GUARD))) why = "out of memory";
+				else if(device->readFile(file, data, MENU_MUSIC_MP3_LEN) != (s32)MENU_MUSIC_MP3_LEN) why = "unreadable";
+				else if(crc32(0L, data, MENU_MUSIC_MP3_LEN) != MENU_MUSIC_MP3_CRC32) why = "another file";
+				else why = NULL;
+				device->closeFile(file);
+			}
+			free(file);
+		}
+		config_unset_device();
+	}
+	if(why) {
+		free(data);
+		print_debug("Menu music: %s %s, the menus are silent\n", MENU_MUSIC_MP3_PATH, why);
+		return;
+	}
+	memset(data + MENU_MUSIC_MP3_LEN, 0, MAD_BUFFER_GUARD);
+	musicData = data;
+}
+
 static void start_music(void) {
-	if(!inited || suspended || musicPlaying || swissSettings.disableMenuMusic) return;
+	if(!inited || suspended || musicPlaying || swissSettings.disableMenuMusic || !musicData) return;
 	if(!musicVoice) {
 		musicVoice = AESND_AllocateVoice(music_voice);
 		if(!musicVoice) return;
@@ -277,6 +321,7 @@ void menuaudio_init(void) {
 	if(blipBuf) DCFlushRange(blipBuf, blipBytes);
 	if(selBuf) DCFlushRange(selBuf, selBytes);
 	sfxVoice = AESND_AllocateVoice(NULL);
+	music_load();
 	menuaudio_apply_settings();
 }
 

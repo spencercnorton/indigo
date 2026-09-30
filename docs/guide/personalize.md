@@ -76,6 +76,11 @@ you move and choose. The music is "Up in the Sky" by Memoraphile (CC0): a
 quiet intro, then a section that loops. It starts or stops the moment you
 switch it, and starts again from the intro.
 
+The music is the file `swiss/indigo/menu-music.mp3` on the card, which the
+download puts there. If it's missing, or another file has taken its place,
+the menus are silent and everything else works as usual: copy the file back
+from the download to hear the music again.
+
 ---
 
 <p align="center"><a href="settings.md">← Settings</a> · <a href="source.md">Source →</a></p>
