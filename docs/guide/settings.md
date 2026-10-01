@@ -67,7 +67,7 @@ when there's no Configuration Device.
 
 - **B** leaves Settings and keeps your changes, the same as **Save & Exit**.
 - **Discard & Exit** puts back everything you changed since you opened
-  Settings, including Menu Color.
+  Settings, including the colors.
 
 Both buttons sit under the list; move down past the last setting to reach
 them. In a Setup section, B first goes back to the list of sections.
@@ -207,8 +207,10 @@ Press Y on any row for the same explanations on the console.
 | Setting | What it does |
 | --- | --- |
 | Menu Color | The color of the whole interface. See [Make it yours](personalize.md#menu-color). |
+| Backdrop Color, Wave Color | The backdrop behind the cube and the waves in front of it, each in Menu Color or a color of its own. See [Make it yours](personalize.md#backdrop-and-wave-color). |
 | Library Icon, Source Icon, Settings Icon, System Icon | The icon on each face of the Home cube. See [Make it yours](personalize.md#cube-icons). |
 | Apps Face | **On** shows [Apps](apps.md) on Home while the card has a program in `/apps`; **Off** never shows it. |
+| Clock | Where the time and the temperature dial sit: **Right** (the top right corner), **Left**, or **Off** to hide them. |
 | System Sound | The audio output most games use: mono or stereo. |
 | System Language | The language games use, mainly multi-language PAL games. |
 | System Boot Mode | On development hardware, development or production mode. With GC Loader or PicoLoader on a retail console, the default skips the GameCube logo. |

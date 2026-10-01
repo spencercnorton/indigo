@@ -56,7 +56,10 @@ typedef struct { u8 r, g, b, a; } GXColor;
 typedef struct uiDrawObj { int type; void *data; struct uiDrawObj *child; bool disposed; } uiDrawObj_t;
 #define ALIGN_LEFT 0
 #define ALIGN_CENTER 1
+#define ALIGN_RIGHT 2
 enum { GX_QUADS = 0x80, GX_VTXFMT0 = 0 };
+/* The clock in its default corner, the right; test_clock_corner.py covers the others. */
+static int _ClockCorner(void) { return 1; }
 
 #define CHECK(c) do { if(!(c)) { fprintf(stderr, "failed %d: %s\n", __LINE__, #c); exit(73); } } while(0)
 /* What the last call left GX ready for: drawInit's textured pipeline, the

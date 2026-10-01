@@ -4,6 +4,39 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## v2.2.0 — Backdrop and Wave Color, a Clock setting and a cleaner cube
+
+The backdrop and the waves can each have a color of their own, the clock can
+move to the top left or go, and the cube draws cleaner on a console: no glow
+spot under it, smoother edges, and side faces that show clear glass at rest
+instead of broken icons. A Jet Black backdrop is nearly black now.
+
+### New
+
+- Settings › Setup › Console › **Clock** puts the time and the temperature
+  dial in the top right corner (the default), the top left, or nowhere. The
+  loading spinner and the Source screen's label move to the other corner.
+- Settings › Setup › Console has **Backdrop Color** and **Wave Color** under
+  Menu Color. The backdrop behind the cube and the waves in front of it can
+  each keep a color of their own, one of Menu Color's eight, or follow Menu
+  Color as before (the default). Like Menu Color, A lists the colors and the
+  screen shows each one as you move through the list. In `global.ini` they are
+  `Backdrop Color` and `Wave Color`.
+
+### Changes
+
+- A Jet Black backdrop is nearly black now. Gray at Indigo's brightness read
+  light on a TV.
+- The glow spot on the floor under the Home cube is gone; the halo behind the
+  cube stays.
+- The cube's edges are smoother on a console. The lights mirrored in the glass
+  no longer break into a dashed line along a bevel seen nearly edge-on, and the
+  rim of light on the top right corner no longer stair-steps.
+- The icons on the cube's side faces no longer break into fragments, such as
+  the Settings face's sliders showing as crosses. An icon fades as its face
+  turns edge-on and comes back as the face turns round, so at rest the faces
+  to either side show clear glass.
+
 ## v2.1.1 — ipl.dol uncompressed again
 
 2.1.0's compressed `ipl.dol` could leave the console restarting over and over

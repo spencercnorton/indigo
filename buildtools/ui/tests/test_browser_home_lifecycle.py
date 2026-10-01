@@ -53,8 +53,9 @@ enum { ON_FILLIST, ON_OPTIONS, B_SELECTED, B_NOSELECT, BUTTON_B = 16 };
 static uiDrawObjQueue_t *videoEventQueue;
 static int curMenuLocation, curSelection, needsDeviceChange, publications, disposals;
 static const char *curDir = "dvd:/";
-/* DrawDispose lets go of a Settings page's Menu Color; no route here pins one. */
-uiDrawObj_t *menuColorPage; int menuColorPinned = -1, menuColorPreview = -1;
+/* DrawDispose lets go of a Settings page's colors; no route here pins them. */
+#define UI_COLOR_LAYERS 3
+uiDrawObj_t *menuColorPage; int menuColorPinned[UI_COLOR_LAYERS], menuColorPreview[UI_COLOR_LAYERS];
 #define LWP_MutexLock(unused) ((void)0)
 #define LWP_MutexUnlock(unused) ((void)0)
 static void clearNestedEvent(uiDrawObj_t *event) { free(event); }

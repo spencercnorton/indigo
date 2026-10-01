@@ -120,12 +120,15 @@ static lwp_t video_thread = LWP_THREAD_NULL;
 static mutex_t _videomutex = LWP_MUTEX_NULL;
 static bool sceneRenderingEnabled;
 static u32 videoFrameSerial;
-/* While a Settings page is up, the screen keeps the Menu Color that page was
- * drawn with (DrawUpdateSettingsPage); disposing the page lets it go. While
- * the Menu Color list is open, the color it has focused shows instead. */
+/* While a Settings page is up, the screen keeps the colors that page was
+ * drawn with (DrawUpdateSettingsPage): Menu, Backdrop and Wave Color, one per
+ * UI_COLOR_LAYER_; disposing the page lets them go. While one of their lists
+ * is open, the color it has focused shows instead. -1: none. */
 static uiDrawObj_t *menuColorPage;
-static int menuColorPinned = -1;
-static int menuColorPreview = -1;
+static int menuColorPinned[UI_COLOR_LAYERS] = {-1, -1, -1};
+static int menuColorPreview[UI_COLOR_LAYERS] = {-1, -1, -1};
+/* The UI_COLOR_ value each layer shows this frame. */
+static int frameColors[UI_COLOR_LAYERS];
 
 typedef struct {
 	uiClockFrame_t clock;
@@ -1045,6 +1048,18 @@ uiDrawObj_t* DrawTexObj(GXTexObj *texObj, int x, int y, int width, int height, i
 	return event;
 }
 
+/* The top corner the clock and its temperature dial take (Clock): 1 the
+ * right (the default), -1 the left, 0 neither. The header's other corner
+ * items take the corner it leaves free. */
+static int _ClockCorner(void)
+{
+	switch(swissSettings.clockPosition) {
+		case CLOCK_LEFT: return -1;
+		case CLOCK_OFF: return 0;
+		default: return 1;
+	}
+}
+
 // Internal
 static void _DrawProgressBar(uiDrawObj_t *evt) {
 	
@@ -1059,10 +1074,11 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 	}
 	if(data->miniMode) {	
 		int x = 30, y = 420;
-		/* The header's left corner, level with the clock on the right and
-		 * as far in from the edge the frame shows. */
+		/* The header's corner the clock leaves free, level with the clock
+		 * and as far in from the edge the frame shows. */
 		if(data->miniModePos == PROGRESS_BOX_TOPLEFT) {
-			x = (int)(UIStage_Left() + 44.0f); y = 43;
+			x = (int)(_ClockCorner() < 0 ? UIStage_Right() - 44.0f : UIStage_Left() + 44.0f);
+			y = 43;
 		}
 		GXColor loadingColor = (GXColor) {255,255,255,data->miniModeAlpha};
 		int numSegments = (data->percent*8)/100;
@@ -2386,13 +2402,15 @@ static void _UpdateSystemInstrument(void)
 // Internal
 static void _DrawTitleBar(uiDrawObj_t *evt) {
 	float reveal = UIScene_Frame()->chromeProgress;
-	/* The dial sits 40 in from the right edge the frame shows. */
-	int dialX = (int)(UIStage_Right() - 40.0f);
+	int corner = _ClockCorner();
+	/* The dial sits 40 in from the edge the frame shows, the time on its
+	 * inner side. */
+	int dialX = (int)(corner < 0 ? UIStage_Left() + 40.0f : UIStage_Right() - 40.0f);
 	int offsetY;
 	GXColor textColor;
 
 	(void)evt;
-	if(reveal <= 0.0f) {
+	if(reveal <= 0.0f || corner == 0) {
 		return;
 	}
 	if(reveal > 1.0f) {
@@ -2409,8 +2427,8 @@ static void _DrawTitleBar(uiDrawObj_t *evt) {
 			0.42f, ALIGN_CENTER, textColor);
 	}
 	if(systemInstrument.clock.available) {
-		drawStringMedium(dialX - 32, 43 + offsetY, systemInstrument.timeText,
-			0.54f, ALIGN_RIGHT, textColor);
+		drawStringMedium(dialX - 32 * corner, 43 + offsetY, systemInstrument.timeText,
+			0.54f, corner < 0 ? ALIGN_LEFT : ALIGN_RIGHT, textColor);
 	}
 }
 
@@ -4622,8 +4640,11 @@ static void _DrawDeviceSelector(uiDrawObj_t *evt)
 	nearest = (int)floorf(position + 0.5f);
 	labels = reveal * (1.0f - 2.0f * fabsf(position - (float)nearest));
 	tile = &s->tiles[_DeviceIndex(nearest, s->count)];
-	drawStringMedium(40, 44, data->destination ? "DESTINATION" : "SOURCE",
-		0.50f, ALIGN_LEFT, (GXColor) {216, 207, 255, (u8)(230.0f * reveal)});
+	/* In the header's corner the clock leaves free. */
+	drawStringMedium(_ClockCorner() < 0 ? 600 : 40, 44,
+		data->destination ? "DESTINATION" : "SOURCE", 0.50f,
+		_ClockCorner() < 0 ? ALIGN_RIGHT : ALIGN_LEFT,
+		(GXColor) {216, 207, 255, (u8)(230.0f * reveal)});
 	drawStringMedium(320, (int)(y + 88.0f), tile->name, tile->nameScale,
 		ALIGN_CENTER, (GXColor) {246, 243, 255, (u8)(255.0f * labels)});
 	drawStringMedium(320, (int)(y + 110.0f), !s->inAdvanced ? tile->facts :
@@ -5908,15 +5929,17 @@ static void _SettingsArrow(float x, float y, float direction, GXColor color)
 	drawInit();
 }
 
-/* Menu Color's swatch: saturated Indigo turns to the color the screen
- * shows, which is the one its row names. The hint icons' disc, feathered one
- * pixel, draws it round; those keep the controller's own colors, so the
- * swatch is recolored here. */
-static void _SettingsSwatch(float cx, float cy)
+/* A color row's swatch: saturated Indigo turns to the color its layer shows
+ * on the screen, which is the one its row names. The hint icons' disc,
+ * feathered one pixel, draws it round; those keep the controller's own
+ * colors, so the swatch is recolored here. */
+static void _SettingsSwatch(float cx, float cy, int layer)
 {
 	GXColor color = settingsSwatch;
 
+	UIColor_Select(frameColors[layer]);
 	UIColor_Apply(&color.r, &color.g, &color.b);
+	UIColor_Select(frameColors[UI_COLOR_LAYER_MENU]);
 	drawInit();
 	_SetupRasterColor();
 	_HintDisc(cx, cy, (float)UI_SETLAYOUT_SWATCH * 0.5f, color);
@@ -5971,7 +5994,7 @@ static void _SettingsRow(const uiSetLayout_t *layout, int slot,
 			}
 			if(row->swatch) {
 				_SettingsSwatch((float)text + UI_SETLAYOUT_SWATCH * 0.5f,
-					(float)y);
+					(float)y, row->swatch - 1);
 			}
 			drawStringMedium(text + swatch, y, row->value, row->valueScale,
 				ALIGN_LEFT, ink);
@@ -6103,13 +6126,13 @@ uiDrawObj_t* DrawSettingsPage(const uiSetPageSnapshot_t *snapshot)
 	return event;
 }
 
-/* The copy and the Menu Color it was built with change in one step, so the
- * page never shows a label in another color. Settings changes a value on the
+/* The copy and the colors it was built with change in one step, so the page
+ * never shows a label in another color. Settings changes a value on the
  * press but draws on the release, and its value list steps the live value
  * through every choice while it builds, so the screen follows the page, not
  * swissSettings. */
 void DrawUpdateSettingsPage(uiDrawObj_t *page,
-	const uiSetPageSnapshot_t *snapshot, int menuColor)
+	const uiSetPageSnapshot_t *snapshot, const int colors[UI_COLOR_LAYERS])
 {
 	if(page == NULL) {
 		return;
@@ -6118,8 +6141,10 @@ void DrawUpdateSettingsPage(uiDrawObj_t *page,
 	if(!page->disposed && page->type == EV_SETTINGS && page->data != NULL) {
 		((drawSettingsEvent_t*)page->data)->snapshot = *snapshot;
 		menuColorPage = page;
-		menuColorPinned = menuColor;
-		menuColorPreview = -1;
+		for(int i = 0; i < UI_COLOR_LAYERS; i++) {
+			menuColorPinned[i] = colors[i];
+			menuColorPreview[i] = -1;
+		}
 	}
 	LWP_MutexUnlock(_videomutex);
 }
@@ -6189,7 +6214,7 @@ uiDrawObj_t* DrawSettingsList(const uiSetListSnapshot_t *snapshot)
 }
 
 void DrawUpdateSettingsList(uiDrawObj_t *list,
-	const uiSetListSnapshot_t *snapshot, int previewColor)
+	const uiSetListSnapshot_t *snapshot, int previewLayer, int previewColor)
 {
 	if(list == NULL) {
 		return;
@@ -6197,8 +6222,8 @@ void DrawUpdateSettingsList(uiDrawObj_t *list,
 	LWP_MutexLock(_videomutex);
 	if(!list->disposed && list->type == EV_SETTINGSLIST && list->data != NULL) {
 		*(uiSetListSnapshot_t*)list->data = *snapshot;
-		if(previewColor >= 0) {
-			menuColorPreview = previewColor;
+		if(previewLayer >= 0 && previewLayer < UI_COLOR_LAYERS) {
+			menuColorPreview[previewLayer] = previewColor;
 		}
 	}
 	LWP_MutexUnlock(_videomutex);
@@ -6865,6 +6890,30 @@ static void copyDisplayFrame(void *framebuffer)
 	GX_CopyDisp(framebuffer, GX_TRUE);
 }
 
+/* Each layer shows the color its list has focused, else the one its page
+ * was drawn with, else its setting. The backdrop and the waves follow the
+ * menus' color unless they are set to one of their own. */
+static void _SelectFrameColors(void)
+{
+	int setting[UI_COLOR_LAYERS] = {swissSettings.uiColor,
+		swissSettings.uiBackdropColor, swissSettings.uiWaveColor};
+
+	for(int i = 0; i < UI_COLOR_LAYERS; i++) {
+		if(menuColorPreview[i] >= 0) {
+			setting[i] = menuColorPreview[i];
+		}
+		else if(menuColorPinned[i] >= 0) {
+			setting[i] = menuColorPinned[i];
+		}
+	}
+	frameColors[UI_COLOR_LAYER_MENU] = setting[UI_COLOR_LAYER_MENU];
+	for(int i = UI_COLOR_LAYER_BACKDROP; i < UI_COLOR_LAYERS; i++) {
+		frameColors[i] = UIColor_Layer(setting[i], setting[UI_COLOR_LAYER_MENU]);
+	}
+	UIColor_Select(frameColors[UI_COLOR_LAYER_MENU]);
+	IndigoBackground_SetColors(frameColors);
+}
+
 static void *videoUpdate(void *videoEventQueue) {
 	GX_SetCurrentGXThread();
 	
@@ -6874,12 +6923,13 @@ static void *videoUpdate(void *videoEventQueue) {
 	while(video_thread == LWP_GetSelf()) {
 		whichfb ^= 1;
 		UIAnim_BeginFrame();
-		/* One Menu Color per frame: every emitter recolors with it. */
-		int menuColor = menuColorPreview >= 0 ? menuColorPreview : menuColorPinned;
-		UIColor_Select(menuColor >= 0 ? menuColor : swissSettings.uiColor);
 		UI_PERF_BEGIN(frameWorkStart);
 		//frames++;
 		LWP_MutexLock(_videomutex);
+		/* One color per layer a frame, taken with the page it goes with:
+		 * every emitter recolors with the menus', the backdrop and its waves
+		 * with their own. */
+		_SelectFrameColors();
 		UIScene_Update(UIAnim_Delta(), _CurrentMotionMode());
 		/* Sample once before EV_BACKGROUND so the cube and later title bar read
 		 * the exact same numeric civil-time frame. */
@@ -7016,8 +7066,10 @@ void DrawDispose(uiDrawObj_t *evt)
 	evt->disposed = true;
 	if(evt == menuColorPage) {
 		menuColorPage = NULL;
-		menuColorPinned = -1;
-		menuColorPreview = -1;
+		for(int i = 0; i < UI_COLOR_LAYERS; i++) {
+			menuColorPinned[i] = -1;
+			menuColorPreview[i] = -1;
+		}
 	}
 	LWP_MutexUnlock(_videomutex);
 }

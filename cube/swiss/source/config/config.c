@@ -516,12 +516,15 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Disable Menu Music=%s\r\n", swissSettings.disableMenuMusic ? "Yes":"No");
 	fprintf(fp, "Disable Menu SFX=%s\r\n", swissSettings.disableMenuSFX ? "Yes":"No");
 	fprintf(fp, "Menu Color=%s\r\n", uiColorStr[swissSettings.uiColor]);
+	fprintf(fp, "Backdrop Color=%s\r\n", uiLayerColorStr[swissSettings.uiBackdropColor]);
+	fprintf(fp, "Wave Color=%s\r\n", uiLayerColorStr[swissSettings.uiWaveColor]);
 	fprintf(fp, "Menu Widescreen=%s\r\n", swissSettings.menuWidescreen ? "Yes":"No");
 	fprintf(fp, "Library Icon=%s\r\n", libraryIconStr[swissSettings.libraryIcon]);
 	fprintf(fp, "Source Icon=%s\r\n", sourceIconStr[swissSettings.sourceIcon]);
 	fprintf(fp, "Settings Icon=%s\r\n", settingsIconStr[swissSettings.settingsIcon]);
 	fprintf(fp, "System Icon=%s\r\n", systemIconStr[swissSettings.systemIcon]);
 	fprintf(fp, "Hide Apps Face=%s\r\n", swissSettings.hideAppsFace ? "Yes":"No");
+	fprintf(fp, "Clock=%s\r\n", clockPositionStr[swissSettings.clockPosition]);
 	fprintf(fp, "Library Layout=%s\r\n", libraryLayoutStr[swissSettings.libraryLayout]);
 	fprintf(fp, "Init DVD Drive at startup=%s\r\n", swissSettings.initDVDDriveAtStart ? "Yes":"No");
 	fprintf(fp, "Stop DVD Drive motor=%s\r\n", swissSettings.stopMotor ? "Yes":"No");
@@ -1343,6 +1346,22 @@ void config_parse_global(char *configData) {
 						}
 					}
 				}
+				else if(!strcmp("Backdrop Color", name)) {
+					for(int i = 0; i <= UI_COLOR_MAX; i++) {
+						if(!strcmp(uiLayerColorStr[i], value)) {
+							swissSettings.uiBackdropColor = i;
+							break;
+						}
+					}
+				}
+				else if(!strcmp("Wave Color", name)) {
+					for(int i = 0; i <= UI_COLOR_MAX; i++) {
+						if(!strcmp(uiLayerColorStr[i], value)) {
+							swissSettings.uiWaveColor = i;
+							break;
+						}
+					}
+				}
 				else if(!strcmp("Menu Widescreen", name)) {
 					swissSettings.menuWidescreen = !strcmp("Yes", value);
 				}
@@ -1380,6 +1399,14 @@ void config_parse_global(char *configData) {
 				}
 				else if(!strcmp("Hide Apps Face", name)) {
 					swissSettings.hideAppsFace = !strcmp("Yes", value);
+				}
+				else if(!strcmp("Clock", name)) {
+					for(int i = 0; i < CLOCK_POSITION_MAX; i++) {
+						if(!strcmp(clockPositionStr[i], value)) {
+							swissSettings.clockPosition = i;
+							break;
+						}
+					}
 				}
 				else if(!strcmp("Library Layout", name)) {
 					for(int i = 0; i < UI_GAMEFLOW_LAYOUT_COUNT; i++) {

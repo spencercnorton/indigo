@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 #include "ui_clock.h"
+#include "ui_color.h"
 #include "ui_scene.h"
 
 /* One controller sample per video frame, taken beside the clock so the
@@ -21,6 +22,10 @@ typedef struct indigoPadFrame {
 /* The EFB the frame is drawn in, for the glass's screen copies; the
  * default is 640 x 480. */
 void IndigoBackground_SetFramebuffer(u16 width, u16 height);
+/* This frame's UI_COLOR_ value for each UI_COLOR_LAYER_: the backdrop and
+ * its rings, the waves, and the menus' for the cube. Set once a frame,
+ * before either draw below. */
+void IndigoBackground_SetColors(const int colors[UI_COLOR_LAYERS]);
 /* Drawn after the configured backdrop and before every foreground widget.
  * pad may be NULL: the Controller icon then plays only its idle motion.
  * icons holds a uiHomeIcon_t for each uiHomeFace_t. */

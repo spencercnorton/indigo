@@ -136,19 +136,23 @@ static void setupRasterPipeline(void)
 }
 
 /* The stage, and at boot the veil over it: a veil in the stage's own colors
- * shows no step when the menu activates, and lifts to show the scene. */
-static void drawIndigoWash(u8 alpha)
+ * shows no step when the menu activates, and lifts to show the scene.
+ * shade darkens it (UIColor_BackdropShade). */
+static void drawIndigoWash(u8 alpha, float shade)
 {
 	float left = UIStage_Left(), right = UIStage_Right();
+#define WASH(r, g, b) (GXColor) {(u8)((r) * shade + 0.5f), (u8)((g) * shade + 0.5f), \
+	(u8)((b) * shade + 0.5f), alpha}
 
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
 		/* This pass deliberately replaces the legacy grey backdrop rather than
 		 * tinting it. The cube needs a clean, high-contrast stage. */
-		putVertex((indigoPoint_t) {left, 0.0f}, (GXColor) {6, 6, 22, alpha});
-		putVertex((indigoPoint_t) {right, 0.0f}, (GXColor) {9, 7, 27, alpha});
-		putVertex((indigoPoint_t) {right, 480.0f}, (GXColor) {29, 19, 65, alpha});
-		putVertex((indigoPoint_t) {left, 480.0f}, (GXColor) {19, 14, 48, alpha});
+		putVertex((indigoPoint_t) {left, 0.0f}, WASH(6, 6, 22));
+		putVertex((indigoPoint_t) {right, 0.0f}, WASH(9, 7, 27));
+		putVertex((indigoPoint_t) {right, 480.0f}, WASH(29, 19, 65));
+		putVertex((indigoPoint_t) {left, 480.0f}, WASH(19, 14, 48));
 	GX_End();
+#undef WASH
 }
 
 static void initWaveOscillator(waveOscillator_t *oscillator, float phase,
@@ -1934,6 +1938,28 @@ static void drawFaceIcons(float seconds, bool animated,
 	float slider = animated ? sinf(seconds * 0.43f) * 0.12f : 0.0f;
 	GXColor glow = {196, 177, 255, (u8)(142.0f + pulse * 42.0f)};
 	Mtx identity;
+	/* Static: the video thread's stack is small. */
+	static cubeRasterTransform_t faded;
+
+	/* A face turned nearly edge-on squeezes its icon's strokes below a pixel,
+	 * which the console's rasterizer breaks into fragments. An icon fades
+	 * out as its face turns away: gone while the face points more than ~71
+	 * degrees from the camera (Home's side faces rest 72 to 76 degrees
+	 * away), whole again inside 53. The faces' plates keep their opacity. */
+	faded = *raster;
+	for(int face = 0; face < UI_HOME_FACE_COUNT; face++) {
+		const float (*basis)[4] = raster->semanticFaces[face];
+		const float (*m)[4] = raster->model;
+		float x = m[0][0] * basis[0][2] + m[0][1] * basis[1][2] + m[0][2] * basis[2][2];
+		float y = m[1][0] * basis[0][2] + m[1][1] * basis[1][2] + m[1][2] * basis[2][2];
+		float z = m[2][0] * basis[0][2] + m[2][1] * basis[1][2] + m[2][2] * basis[2][2];
+		float length = sqrtf(x * x + y * y + z * z);
+		float t = length > 0.0001f ? (z / length - 0.33f) / 0.27f : 0.0f;
+
+		t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+		faded.motifAlpha[face] *= t * t * (3.0f - 2.0f * t);
+	}
+	raster = &faded;
 
 	guMtxIdentity(identity);
 	GX_LoadPosMtxImm(identity, GX_PNMTX0);
@@ -2096,8 +2122,16 @@ static u8 glassReflect(guVector eye, guVector n, guVector offset, float *s, floa
  * It is baked on the CPU once, and again whenever Menu Color recolours the
  * cards. */
 #define GLASS_STUDIO_SIZE 64
+/* Its mipmaps: 32, 16, 8, 4, 2 and 1 texels square, each in whole tiles.
+ * On a bevel the mirrored ray sweeps the studio within a pixel or two; the
+ * GPU then reads a smaller level instead of catching a card's edge in one
+ * pixel and missing it in the next, which reads as a dashed line. */
+#define GLASS_STUDIO_LEVELS 7
+#define GLASS_STUDIO_BYTES (64 * 64 * 4 + 32 * 32 * 4 + 16 * 16 * 4 + 8 * 8 * 4 + 3 * 64)
 
-static u8 glassStudioTexels[GLASS_STUDIO_SIZE * GLASS_STUDIO_SIZE * 4] ATTRIBUTE_ALIGN(32);
+_Static_assert(GLASS_STUDIO_SIZE == 64, "GLASS_STUDIO_BYTES counts a 64-texel studio's levels");
+static u8 glassStudioTexels[GLASS_STUDIO_BYTES] ATTRIBUTE_ALIGN(32);
+static GXColor glassStudioLevel[GLASS_STUDIO_SIZE * GLASS_STUDIO_SIZE];
 static GXTexObj glassStudioTexObj;
 static GXColor glassStudioColors[GLASS_LIGHTS];
 static bool glassStudioBaked;
@@ -2118,20 +2152,39 @@ static bool prepareGlassStudio(void)
 	}
 	if(same) return false;
 	for(int y = 0; y < GLASS_STUDIO_SIZE; y++) for(int x = 0; x < GLASS_STUDIO_SIZE; x++) {
-		GXColor light = glassStudioLight(glassStudioDirection(
+		glassStudioLevel[y * GLASS_STUDIO_SIZE + x] = glassStudioLight(glassStudioDirection(
 			((float)x + 0.5f) / GLASS_STUDIO_SIZE, ((float)y + 0.5f) / GLASS_STUDIO_SIZE), colors);
-		u8 *tile = glassStudioTexels + ((y >> 2) * (GLASS_STUDIO_SIZE >> 2) + (x >> 2)) * 64;
-		int at = ((y & 3) * 4 + (x & 3)) * 2;
-		tile[at] = light.a;
-		tile[at + 1] = light.r;
-		tile[32 + at] = light.g;
-		tile[32 + at + 1] = light.b;
+	}
+	u8 *level = glassStudioTexels;
+	for(int size = GLASS_STUDIO_SIZE; size > 0; size >>= 1) {
+		int tiles = size < 4 ? 1 : size >> 2;
+		for(int y = 0; y < size; y++) for(int x = 0; x < size; x++) {
+			GXColor light = glassStudioLevel[y * size + x];
+			u8 *tile = level + ((y >> 2) * tiles + (x >> 2)) * 64;
+			int at = ((y & 3) * 4 + (x & 3)) * 2;
+			tile[at] = light.a;
+			tile[at + 1] = light.r;
+			tile[32 + at] = light.g;
+			tile[32 + at + 1] = light.b;
+		}
+		level += tiles * tiles * 64;
+		/* The next level in place: each texel averages the four it covers,
+		 * all read before anything at or after its own index is written. */
+		int half = size >> 1;
+		for(int y = 0; y < half; y++) for(int x = 0; x < half; x++) {
+			const GXColor *a = &glassStudioLevel[2 * y * size + 2 * x], *b = a + size;
+			glassStudioLevel[y * half + x] = (GXColor) {
+				(u8)((a[0].r + a[1].r + b[0].r + b[1].r + 2) >> 2),
+				(u8)((a[0].g + a[1].g + b[0].g + b[1].g + 2) >> 2),
+				(u8)((a[0].b + a[1].b + b[0].b + b[1].b + 2) >> 2),
+				(u8)((a[0].a + a[1].a + b[0].a + b[1].a + 2) >> 2)};
+		}
 	}
 	DCFlushRange(glassStudioTexels, sizeof(glassStudioTexels));
 	GX_InitTexObj(&glassStudioTexObj, glassStudioTexels, GLASS_STUDIO_SIZE,
-		GLASS_STUDIO_SIZE, GX_TF_RGBA8, GX_CLAMP, GX_CLAMP, GX_FALSE);
-	GX_InitTexObjLOD(&glassStudioTexObj, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f,
-		GX_FALSE, GX_FALSE, GX_ANISO_1);
+		GLASS_STUDIO_SIZE, GX_TF_RGBA8, GX_CLAMP, GX_CLAMP, GX_TRUE);
+	GX_InitTexObjLOD(&glassStudioTexObj, GX_LIN_MIP_LIN, GX_LINEAR, 0.0f,
+		(float)(GLASS_STUDIO_LEVELS - 1), 0.0f, GX_FALSE, GX_TRUE, GX_ANISO_1);
 	GX_InvalidateTexAll();
 	for(int i = 0; i < GLASS_LIGHTS; i++) glassStudioColors[i] = colors[i];
 	glassStudioBaked = true;
@@ -2827,10 +2880,13 @@ static void drawGlassRim(const cubeOutline_t *outline, float strength)
 		{1.35f, 0.12f, {255, 184, 150, 255}},
 		{-1.35f, 0.13f, {90, 224, 246, 255}}
 	};
-	/* A solid core one pixel across between one-pixel fades: some pixel
-	 * centre always lands in the core, so the rim keeps one brightness
-	 * wherever the edge falls instead of beading along it. */
-	static const float profile[4] = {-1.5f, -0.5f, 0.5f, 1.5f};
+	/* Brightest on the edge, fading to nothing two pixels either side: as
+	 * much light as the old solid one-pixel core between one-pixel fades,
+	 * and any pixel centre within half a pixel of the edge still gets three
+	 * quarters of it, so the rim does not bead along the edge. A solid core
+	 * stair-stepped on the console where the rim runs at an angle (the top
+	 * right corner). */
+	static const float profile[3] = {-2.0f, 0.0f, 2.0f};
 	const float lightX = 0.68f, lightY = -0.73f;
 	indigoPoint_t points[25], joins[25];
 	GXColor colors[25];
@@ -2858,7 +2914,7 @@ static void drawGlassRim(const cubeOutline_t *outline, float strength)
 			shifted[i] = (indigoPoint_t) {points[i].x + nx * layers[layer].offset,
 				points[i].y + ny * layers[layer].offset};
 		}
-		drawRasterStroke(shifted, joins, colors, count + 1, profile, 3);
+		drawRasterStroke(shifted, joins, colors, count + 1, profile, 2);
 	}
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 }
@@ -3182,8 +3238,7 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
  * light stood behind the glass, and a caustic where the glass focuses that
  * light on the floor inside its shadow. The caustic swells as a face turns
  * square to the light and the lens it makes is strongest. */
-static void drawCubeLight(const uiSceneFrame_t *scene, float seconds, bool animated,
-		float floorX, float floorY, float floorScale)
+static void drawCubeLight(const uiSceneFrame_t *scene, float seconds, bool animated)
 {
 	const float perUnit = 1.0f / tanf(21.0f * INDIGO_TAU / 360.0f) * 240.0f /
 		-CUBE_CAMERA_Z;
@@ -3193,7 +3248,6 @@ static void drawCubeLight(const uiSceneFrame_t *scene, float seconds, bool anima
 	float y = 240.0f - (scene->cubeY + bob) * perUnit;
 	float radius = scene->cubeScale * perUnit;
 	float breath = animated ? 0.92f + 0.08f * sinf(seconds * 0.9f) : 1.0f;
-	float focus = 0.55f + 0.45f * fabsf(cosf(2.0f * scene->cubeYaw));
 
 	if(strength <= 0.01f) return;
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
@@ -3201,11 +3255,18 @@ static void drawCubeLight(const uiSceneFrame_t *scene, float seconds, bool anima
 		(GXColor) {138, 116, 255, 255}, 0.14f * strength * breath);
 	drawSoftGlow(x, y, radius * 1.42f, radius * 1.36f,
 		(GXColor) {172, 150, 255, 255}, 0.09f * strength * breath);
-	drawSoftGlow(floorX - 14.0f * floorScale, floorY, 74.0f * floorScale, 9.5f * floorScale,
-		(GXColor) {214, 202, 255, 255}, 0.20f * strength * focus);
-	drawSoftGlow(floorX - 20.0f * floorScale, floorY - 1.0f, 26.0f * floorScale,
-		4.0f * floorScale, (GXColor) {244, 238, 255, 255}, 0.24f * strength * focus);
+	/* Spencer took the glow spot on the floor under the cube out
+	 * (2026-09-30): it added nothing. */
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
+}
+
+static int layerColors[UI_COLOR_LAYERS];
+
+void IndigoBackground_SetColors(const int colors[UI_COLOR_LAYERS])
+{
+	for(int i = 0; i < UI_COLOR_LAYERS; i++) {
+		layerColors[i] = colors[i];
+	}
 }
 
 void IndigoBackground_Draw(float seconds, bool backdropAnimated,
@@ -3226,19 +3287,25 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 		orbitStrength * HOME_DECORATIVE_STRENGTH : orbitStrength;
 
 	setupRasterPipeline();
-	drawIndigoWash(255);
+	/* The backdrop and the waves have colors of their own; the cube and
+	 * everything after it take the menus'. */
+	UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);
+	drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));
 	drawGlobeGrid(320.0f, 212.0f, drift * 0.18f);
+	if(scene->visible) {
+		UIColor_Select(layerColors[UI_COLOR_LAYER_WAVES]);
+		drawSilkWaves(seconds, backdropMotionActive, decorativeStrength);
+	}
+	UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);
 	if(!scene->visible) {
 		return;
 	}
-	drawSilkWaves(seconds, backdropMotionActive, decorativeStrength);
 	drawRadialDisc(centerX, centerY + 132.0f * orbitScale,
 		104.0f * orbitScale, 14.0f * orbitScale,
 		(GXColor) {3, 2, 12, (u8)(92.0f * orbitStrength)},
 		(GXColor) {3, 2, 12, 0});
 	if(scene->introProgress >= BOOT_CUBE_HANDOFF) {
-		drawCubeLight(scene, seconds, cubeMotionActive, centerX,
-			centerY + 132.0f * orbitScale, orbitScale);
+		drawCubeLight(scene, seconds, cubeMotionActive);
 		drawCube(scene, seconds, cubeMotionActive, clock, pad, icons, true);
 	}
 }
@@ -3271,5 +3338,7 @@ void IndigoBackground_DrawBootOverlay(float seconds, bool animated,
 		drawCube(scene, seconds, animated, clock, NULL, icons, false);
 	}
 	setupRasterPipeline();
-	drawIndigoWash(veilAlpha);
+	UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);
+	drawIndigoWash(veilAlpha, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));
+	UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);
 }

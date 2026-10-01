@@ -148,10 +148,13 @@ most use the same key there.
 | Key | Values | Default | On screen |
 | --- | --- | --- | --- |
 | `Menu Color` | `Indigo`, `Azure`, `Emerald`, `Gold`, `Spice`, `Crimson`, `Rose`, `Jet Black` | `Indigo` | Menu Color |
+| `Backdrop Color` | `Menu Color`, `Indigo`, `Azure`, `Emerald`, `Gold`, `Spice`, `Crimson`, `Rose`, `Jet Black`. The backdrop behind the cube and its rings; `Menu Color` follows Menu Color. | `Menu Color` | Backdrop Color |
+| `Wave Color` | `Menu Color`, `Indigo`, `Azure`, `Emerald`, `Gold`, `Spice`, `Crimson`, `Rose`, `Jet Black`. The waves behind the cube; `Menu Color` follows Menu Color. | `Menu Color` | Wave Color |
 | `Library Icon` | `Controller`, `Books`, `Covers`, `Play`. The picture on the cube's Library face, from its own four icons. A name from another face's list is ignored. | `Controller` | Library Icon |
 | `Source Icon` | `Hub`, `Disc`, `SD Card`, `Folder`. The picture on the Source face, from its own four icons. | `Hub` | Source Icon |
 | `Settings Icon` | `Sliders`, `Gear`, `Toggles`, `Dial`. The picture on the Settings face, from its own four icons. | `Sliders` | Settings Icon |
 | `System Icon` | `Clock`, `Info`, `Power`, `Chip`. The picture on the System face, from its own four icons. | `Clock` | System Icon |
+| `Clock` | `Right`, `Left`, `Off`. Where the time and the temperature dial sit: the top right or top left corner, or neither. | `Right` | Clock |
 | `Hide Apps Face` | `Yes`, `No`. `Yes` shows as Apps Face › Off: Home never shows Apps, even with programs in `/apps`. | `No` | Apps Face |
 | `System Boot Mode` | `Default`, `Production`. Any other value means `Default`. | the console's SRAM | System Boot Mode |
 | `System Sound` | `Mono`, `Stereo`. Any other value means `Mono`. | the console's SRAM | System Sound |

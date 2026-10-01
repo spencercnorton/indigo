@@ -147,6 +147,15 @@ move through the list. B keeps the color you had; A chooses the one you are on.
   <img alt="Settings, Setup, Console: A on Menu Color opens a list of the eight colors with Indigo marked Current. Moving down, the whole screen turns Azure, Emerald, Gold, Spice, Crimson, Rose and Jet Black in turn; moving back up to Emerald and pressing A chooses it, and the row reads Emerald." src="docs/screenshots/color-menu.png" width="640">
 </p>
 
+Backdrop Color and Wave Color, under Menu Color, give the backdrop behind the
+cube and the waves in front of it a color of their own, or let them follow
+Menu Color as before: a Gold cube can sit over Azure waves on a Jet Black
+backdrop.
+
+<p align="center">
+  <img alt="The Home cube in Gold on its Library face, over a Jet Black backdrop with Azure waves drifting behind it." src="docs/screenshots/layer-colors.png" width="640">
+</p>
+
 **Widescreen TVs get the whole screen.** Setup › Display › Menu Widescreen
 draws Indigo for a TV set to 16:9: the background and its waves reach both
 edges, and the cube, the text and every menu keep their shape in the middle.
@@ -156,7 +165,9 @@ Games have their own setting, Force Widescreen.
 row per face (Library Icon, Source Icon, Settings Icon and System Icon), and
 each face has four icons of its own. Library has Controller, Books, Covers
 and Play; Source has Hub, Disc, SD Card and Folder; Settings has Sliders,
-Gear, Toggles and Dial; System has Clock, Info, Power and Chip.
+Gear, Toggles and Dial; System has Clock, Info, Power and Chip. The time
+and the temperature sit in the top right corner; Setup › Console › Clock
+moves them to the top left or hides them.
 
 **Memory Cards moves your saves, like the GameCube's own screen.** System ›
 Memory Cards lists the saves on the cards in Slot A and Slot B, each with its

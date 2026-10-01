@@ -27,4 +27,23 @@ void UIColor_Select(int color);
  * color exactly as designed. */
 void UIColor_Apply(uint8_t *r, uint8_t *g, uint8_t *b);
 
+/* What Settings colors on its own: the menus (the cube, its light, the
+ * panels and the text), the backdrop behind the cube with its rings, and
+ * the waves in front of the backdrop. */
+enum {
+	UI_COLOR_LAYER_MENU,
+	UI_COLOR_LAYER_BACKDROP,
+	UI_COLOR_LAYER_WAVES,
+	UI_COLOR_LAYERS
+};
+
+/* The UI_COLOR_ value a backdrop or wave setting shows: 0 follows the menu
+ * color, anything else is 1 + a UI_COLOR_ value. */
+int UIColor_Layer(int setting, int menuColor);
+
+/* How bright the backdrop is drawn in a color, 1 as designed. Jet Black has
+ * no hue to carry the backdrop's depth: gray at Indigo's brightness reads
+ * light on a TV, so its backdrop is drawn darker. */
+float UIColor_BackdropShade(int color);
+
 #endif
