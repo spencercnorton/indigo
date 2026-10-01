@@ -20,6 +20,10 @@ while a crash, a hang, a black screen or a broken control does:
     another device and B leaves it;
   - on the Settings face, Setup > Console > Apps Face Off takes Apps off the
     cube (System's next face is Library) and On puts it back;
+  - Setup > Library > Library Folders On shows the disc's folders in the
+    Library: A opens a folder and a folder in it, which lists the game a
+    level further down too, and B goes back up a folder at a time to the
+    same card, then Home;
   - on Apps, RIGHT and LEFT move between the disc's apps and back, and A
     starts one: the launch screen comes up (Dolphin can't take a launch
     further, see start_an_app);
@@ -286,6 +290,7 @@ class Route:
             # and on again in Settings.
             if n == 2:
                 self.apps_face_off_and_on(faces)
+                self.library_folders(faces)
             else:
                 inside = {0: self.browse_library, 1: self.change_source}.get(n)
                 self.open_and_close(face, n, inside)
@@ -378,6 +383,73 @@ class Route:
                 self.press("LEFT")
                 self.check("LEFT turns back a face", self.settled_label(like=back)[0] is not None,
                            apps_face=tag)
+
+    def library_folders(self, faces: list[np.ndarray]) -> None:
+        """From the Settings face: R and R to Setup, four DOWNs and A into
+        Library, DOWN to Library Folders and RIGHT to turn it on; B and B save
+        and exit. Then on Library, RIGHT from the empty Old saves folder to
+        Racing, A into it and A into Classics, which holds three cards (a game,
+        the game in Old below it, and the way back): RIGHT twice is not back at
+        the first, a third RIGHT is. B goes back to the same folder card each
+        level up, and from /games to Home. Back on the Settings face after."""
+        library, source, settings = faces[0], faces[1], faces[2]
+        self.press("A")
+        self.check("A opens Settings", self.covered(settings), library_folders="on")
+        for button, pause in (("R", 1.0), ("R", 1.0), ("DOWN", 0.4), ("DOWN", 0.4),
+                              ("DOWN", 0.4), ("DOWN", 0.6), ("A", 1.5), ("DOWN", 0.6),
+                              ("RIGHT", 1.0)):
+            self.press(button)
+            time.sleep(pause)
+        self.shot("library-folders-on", self.emulator.frame())
+        self.press("B")
+        time.sleep(1.0)
+        self.press("B")
+        mask, _ = self.settled_label(like=settings)
+        self.check("Save & Exit comes back to the Settings face", mask is not None,
+                   library_folders="on")
+        for back in (source, library):
+            self.press("LEFT")
+            self.check("LEFT turns back a face", self.settled_label(like=back)[0] is not None,
+                       library_folders="on")
+        self.press("A")
+        stray, _ = self.settled_label(box=TITLE_BOX)
+        self.shot("folders-games", self.last_rgb)
+        self.check("the Library shows a folder's name", stray is not None)
+        self.press("RIGHT")
+        racing, _ = self.settled_label(unlike=stray, box=TITLE_BOX)
+        self.check("RIGHT moves to the next folder", racing is not None)
+        self.press("A")
+        classics, _ = self.settled_label(unlike=racing, box=TITLE_BOX)
+        self.shot("folders-racing", self.last_rgb)
+        self.check("A opens a folder", classics is not None)
+        self.press("A")
+        first, _ = self.settled_label(unlike=classics, box=TITLE_BOX)
+        self.shot("folders-classics", self.last_rgb)
+        self.check("A opens a folder in it", first is not None)
+        shown = first
+        for n in (1, 2):
+            self.press("RIGHT")
+            shown, _ = self.settled_label(unlike=shown, box=TITLE_BOX)
+            self.shot(f"folders-classics-right-{n}", self.last_rgb)
+            self.check("RIGHT moves to the next card", shown is not None, step=n)
+        self.check("the folder lists the game a level down: RIGHT twice is not back at the first",
+                   overlap(shown, first) < DIFFERENT, overlap=round(overlap(shown, first), 3))
+        self.press("RIGHT")
+        self.check("a third RIGHT is back at the first card",
+                   self.settled_label(like=first, box=TITLE_BOX)[0] is not None)
+        for name, expected in (("Classics", classics), ("Racing", racing)):
+            self.press("B")
+            back, _ = self.settled_label(like=expected, box=TITLE_BOX)
+            self.shot(f"folders-back-to-{name.lower()}", self.last_rgb)
+            self.check("B goes up a folder, to the same card", back is not None, card=name)
+        self.press("B")
+        mask, _ = self.settled_label(like=library)
+        self.shot("folders-home", self.last_rgb)
+        self.check("B from /games goes Home", mask is not None, library_folders="on")
+        for ahead in (source, settings):
+            self.press("RIGHT")
+            self.check("RIGHT turns on a face", self.settled_label(like=ahead)[0] is not None,
+                       library_folders="on")
 
     def covered(self, reference: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX) -> bool:
         """Wait for the text in a box to stop matching reference: another screen opened over it."""

@@ -8,7 +8,9 @@ here), which is all the Library reads of a game. Two more images have a
 missing or corrupt file table, which the Library must survive (DAMAGED).
 A text file and an empty folder sit beside them, as they do on real cards:
 the Library skips both (STRAYS), and the text file sorts first, so the
-games move up past it.
+games move up past it. Three games sit in folders (FOLDERS), one of them three
+levels down: Swiss's default flattening lists them with the rest, and Library
+Folders shows the folders, two levels deep.
 /swiss/ui/posters.pak holds posters drawn here from gradients and shapes, for
 all but two of the games, so the Library shows both kinds of card, and
 /swiss/ui/stills.pak gameplay stills drawn the same way for all but three, so
@@ -44,6 +46,8 @@ GAMES = (
 )
 NO_POSTER = frozenset({"GPLZ01", "GSSZ01"})
 STRAYS = ("About these games.txt", "Old saves/")
+# Games in folders below /games, the last one past the second level.
+FOLDERS = {"GRZZ01": "Racing", "GNTZ01": "Racing/Classics", "GPLZ01": "Racing/Classics/Old"}
 NO_STILL = frozenset({"GDRZ01", "GPLZ01", "GSSZ01"})
 # Spotlight's descriptions; Rally Cross Zero keeps its banner's.
 DESCRIPTIONS = {
@@ -297,7 +301,9 @@ def build(out: Path, posters: bool = True) -> dict[str, object]:
         (root / "games").mkdir(parents=True)
         (root / "swiss/ui").mkdir(parents=True)
         for index, (game_id, title) in enumerate(GAMES):
-            (root / "games" / f"{title} [{game_id}].iso").write_bytes(game_image(index, game_id, title))
+            where = root / "games" / FOLDERS.get(game_id, "")
+            where.mkdir(parents=True, exist_ok=True)
+            (where / f"{title} [{game_id}].iso").write_bytes(game_image(index, game_id, title))
         for game_id, title, image in DAMAGED:
             (root / "games" / f"{title} [{game_id}].iso").write_bytes(image(game_id, title))
         for name in STRAYS:
