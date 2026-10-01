@@ -15,10 +15,6 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Changes
 
-- The waves' light spreads like smoke. Soft wisps drift away from the bright
-  line on both sides and change shape as they go, where a flat band of glow
-  sat before, with a gentle glow along the line itself. They take Wave Color
-  and Wave Speed, and stop with the waves.
 - Every face of the Home cube shows its icon as the cube turns, animated, the
   side faces at rest included. An icon on a face turned away from the screen
   is drawn at twice the size and scaled down, so its thinnest lines keep

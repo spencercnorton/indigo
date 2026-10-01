@@ -79,7 +79,6 @@ static void GX_End(void) {
     CHECK(active && phase==0 && remaining==0,"incomplete GX vertex/primitive"); active=false;
 }
 /* EMITTERS */
-static indigoPoint_t crestOut[PRIMARY_WAVE_SEGMENTS+1];
 static bool closef(float a,float b) { return fabsf(a-b)<.003f; }
 static bool same(indigoPoint_t a,indigoPoint_t b) { return closef(a.x,b.x)&&closef(a.y,b.y); }
 /* In frame pixels: widescreen draws x through a 3/4 squeeze. */
@@ -116,7 +115,7 @@ static void checkWave(float seconds,bool animated,float strength) {
     static const GXColor palette[2][4]={
         {{55,47,140,4},{128,105,232,48},{42,31,105,4},{0,0,0,0}},
         {{86,60,168,6},{196,178,255,82},{113,85,210,46},{45,31,103,6}}};
-    reset(); drawSilkWaves(seconds,animated,strength,crestOut);
+    reset(); drawSilkWaves(seconds,animated,strength);
     if(strength<=0) { CHECK(count==0 && begins==0,"hidden wave emitted geometry"); return; }
     if(strength>1) strength=1;
     if(!animated) seconds=0;
@@ -182,12 +181,12 @@ static void testWaves(void) {
     for(int motion=0;motion<2;motion++) for(int t=0;t<3;t++) for(int s=0;s<6;s++)
         checkWave(times[t],motion,strengths[s]);
     indigoPoint_t saved[510]; GXColor savedColors[510];
-    reset(); drawSilkWaves(0,false,.76f,crestOut);
+    reset(); drawSilkWaves(0,false,.76f);
     memcpy(saved,positions,sizeof(saved)); memcpy(savedColors,colors,sizeof(savedColors));
-    reset(); drawSilkWaves(817.25f,false,.76f,crestOut);
+    reset(); drawSilkWaves(817.25f,false,.76f);
     CHECK(!memcmp(saved,positions,sizeof(saved)) && !memcmp(savedColors,colors,sizeof(savedColors)),
         "disabled background animation still moves");
-    reset(); drawSilkWaves(817.25f,true,.76f,crestOut);
+    reset(); drawSilkWaves(817.25f,true,.76f);
     CHECK(memcmp(saved,positions,sizeof(saved)),"enabled wave animation stopped");
 }
 static void testGrid(void) {
@@ -261,7 +260,7 @@ class BackgroundGXStreamTests(unittest.TestCase):
             ("void", ("putVertex", "initWaveOscillator", "advanceWaveOscillator", "buildWavePath")),
             ("float", ("waveEdgeFade",)), ("GXColor", ("waveVertexColor",)),
             ("bool", ("buildRasterJoins",)),
-            ("void", ("drawRasterStroke", "drawWaveFeather", "drawGlobeGrid")), ("bool", ("drawSilkWaves",)),
+            ("void", ("drawRasterStroke", "drawWaveFeather", "drawSilkWaves", "drawGlobeGrid")),
         ]:
             blocks += [extract_function(source, f"static {result} {name}(") for name in names]
         cls.emitters = "\n".join(blocks)

@@ -205,8 +205,6 @@ run_contracts() {
 	python3 ./test_stroke_gx_stream.py
 	echo "== wave and grid native coverage =="
 	python3 ./test_background_gx_stream.py
-	echo "== wave smoke: cloud noise, a band from the crest, bounded drift =="
-	python3 ./test_wave_smoke.py
 	echo "== turned faces' icon pictures: doubled, copied, laid on the glass =="
 	python3 ./test_face_pictures.py
 	echo "== cube glass light: refraction, dispersion, bloom, rim, glint =="

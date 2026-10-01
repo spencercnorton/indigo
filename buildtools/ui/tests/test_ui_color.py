@@ -294,7 +294,7 @@ class MenuColorTest(unittest.TestCase):
                 "UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);",
                 "drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));",
                 "drawGlobeGrid(", "UIColor_Select(layerColors[UI_COLOR_LAYER_WAVES]);",
-                "drawSilkWaves(", "drawWaveSmoke(", "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);",
+                "drawSilkWaves(", "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);",
                 "if(!scene->visible) {", "drawRadialDisc(", "drawCubeLight(", "drawCube(scene,"):
             at = draw.index(token, at) + 1
         self.assertEqual(draw.count("UIColor_Select("), 4)
