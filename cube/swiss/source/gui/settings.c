@@ -145,10 +145,11 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_MENU_MUSIC] = "Menu Music:\n\nEnabled - Play Up in the Sky, Indigo's menu music (default)\nDisabled - Silent.\n\nChanges take effect immediately.",
 	[SET_MENU_SFX] = "Menu Sounds:\n\nEnabled - Soft blip/confirm sounds on navigation (default)\nDisabled - Silent.",
 	[SET_AUTOLOAD] = "Load at startup:\n\nWhat Indigo opens when it starts.\n\nA chooses a device, then a folder on it: X picks the folder\nyou are in. Z on a game's details sets a game instead; Z on\nthat game again, or on .. in the folder's file list, turns\nit off.",
-	[SET_FLATTEN_DIR] = "Flatten directory:\n\nFlattens a directory structure matching a glob pattern.",
+	[SET_FLATTEN_DIR] = "Flatten directory:\n\nFlattens a directory structure matching a glob pattern.\n\nWhile Library Folders is on, it sets this itself.",
 	[SET_SHOW_HIDDEN] = "Show hidden files:\n\nLists files and folders marked hidden, such as the /swiss folder\nthat holds Indigo's settings.",
 	[SET_MENU_WIDESCREEN] = "Menu Widescreen:\n\nYes - Drawn for a TV set to 16:9: the background fills the\nscreen and the menus keep their shape.\nNo - Drawn for a 4:3 picture (default)\n\nSet your TV or HDMI adapter to 16:9 too. Games follow Force\nWidescreen in Game Defaults, not this.",
 	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\nSpotlight - A gameplay still over banners; Left and Right move\n\nThe selected game's title and details show beside its cover in\nVertical and its still in Spotlight, and above the controls in Grid.\nEvery layout wraps round from the last game to the first; L and R\njump a page. Y opens the focused game's settings.",
+	[SET_LIBRARY_FOLDERS] = "Library Folders:\n\nOff - The Library is one list of every game in /games, however\nthey sit in folders there (default)\nOn - The Library shows the folders in /games beside the games:\nA opens one, B goes back. A folder in a folder is the deepest;\nit lists every game below it.\n\nKeep a game's discs in the same folder.",
 	[SET_CLOCK_POSITION] = "Clock:\n\nRight - The time and the temperature dial sit in the top\nright corner (default)\nLeft - They sit in the top left corner instead\nOff - Neither is shown.",
 	[SET_APPS_FACE] = "Apps Face:\n\nOn - Home shows Apps, one turn left of Library, while the\nsource has a program in /apps (default)\nOff - Home never shows Apps. The programs stay in /apps,\nand the file list still starts them.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
@@ -619,6 +620,7 @@ static const settingsRowRef_t networkRows[] = {
 
 static const settingsRowRef_t libraryRows[] = {
 	{PAGE_INTERFACE, SET_LIBRARY_LAYOUT},
+	{PAGE_INTERFACE, SET_LIBRARY_FOLDERS},
 	{PAGE_INTERFACE, SET_GAMEBROWSER_TYPE},
 	{PAGE_INTERFACE, SET_APPSBROWSER_TYPE},
 	{PAGE_INTERFACE, SET_FILEBROWSER_TYPE},
@@ -1053,8 +1055,9 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_MENU_SFX: rowYesNo(row, "Menu Sounds:", !swissSettings.disableMenuSFX, true); break;
 			case SET_AUTOBOOT: rowYesNo(row, "Boot without prompts:", swissSettings.autoBoot, true); break;
 			case SET_AUTOLOAD: rowText(row, "Load at startup:", getAutoLoadDeviceName(&swissSettings), true); break;
-			case SET_FLATTEN_DIR: rowText(row, "Flatten directory:", swissSettings.flattenDir, true); break;
+			case SET_FLATTEN_DIR: rowText(row, "Flatten directory:", swissSettings.flattenDir, !swissSettings.libraryFolders); break;
 			case SET_LIBRARY_LAYOUT: rowCycle(row, "Library Layout:", libraryLayoutStr[swissSettings.libraryLayout], true); break;
+			case SET_LIBRARY_FOLDERS: rowOnOff(row, "Library Folders:", swissSettings.libraryFolders, true); break;
 			case SET_MENU_WIDESCREEN: rowYesNo(row, "Menu Widescreen:", swissSettings.menuWidescreen, true); break;
 		}
 	}
@@ -1592,6 +1595,9 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			case SET_CLOCK_POSITION:
 				swissSettings.clockPosition += direction;
 				swissSettings.clockPosition = (swissSettings.clockPosition + CLOCK_POSITION_MAX) % CLOCK_POSITION_MAX;
+			break;
+			case SET_LIBRARY_FOLDERS:
+				config_set_library_folders(!swissSettings.libraryFolders);
 			break;
 			case SET_PANEL_TRANSPARENCY:
 				swissSettings.disablePanelTransparency ^= 1;
@@ -2306,10 +2312,21 @@ static void settingsVideoRestore(void)
 	settingsVideo.pending = false;
 }
 
+/* A row another setting owns for now: Flatten directory while Library
+ * Folders sets it. */
+static bool settingsRowLocked(int page, int option)
+{
+	return page == PAGE_INTERFACE && option == SET_FLATTEN_DIR &&
+		swissSettings.libraryFolders;
+}
+
 /* Changes one row's value. A video row only steps it; A applies it. */
 static void settingsChangeValue(int page, int option, int direction,
 	ConfigEntry *config)
 {
+	if(settingsRowLocked(page, option)) {
+		return;
+	}
 	if(!settingsIsLiveVideoRow(page, option)) {
 		settings_toggle(page, option, direction, config);
 		return;
@@ -2875,6 +2892,9 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 			if(view == inputView && option == inputOption && ref != NULL) {
 				if(ref->page == SETTINGS_ROW_LINK) {
 					view = ref->option; option = 0;
+				}
+				else if(settingsRowLocked(ref->page, ref->option)) {
+					/* Another setting owns it for now: nothing to do. */
 				}
 				else if(settingsRowIsAction(ref->page, ref->option)) {
 					if(!settingsRowIsReset(ref->page, ref->option) ||

@@ -4,6 +4,17 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## Unreleased
+
+### New
+
+- Settings › Setup › Library › **Library Folders** lets you sort your games
+  into folders. On, the Library shows the folders in `/games` as cards beside
+  the games, two levels deep: A opens one, B goes back up, and the heading
+  names the folder you are in. A folder in a folder shows every game below
+  it. Off (the default), the Library is one list of every game, as before.
+  In `global.ini` it is `Library Folders`.
+
 ## v2.2.0 — Backdrop and Wave Color, a Clock setting and a cleaner cube
 
 The backdrop and the waves can each have a color of their own, the clock can

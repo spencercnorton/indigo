@@ -287,6 +287,11 @@ If `/games` holds no disc images at all, you get Swiss's plain file list
 instead. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn the
 cube to Library and press A.
 
+To sort your games into folders, turn on Settings › Setup › Library ›
+**Library Folders**: the Library then shows the folders in `/games` as cards
+you open, two levels deep. See
+[Folders of games](docs/guide/library.md#folders-of-games).
+
 ### Posters
 
 Without posters, each game shows its disc banner and its six-character game

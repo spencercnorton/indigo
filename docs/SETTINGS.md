@@ -201,6 +201,7 @@ most use the same key there.
 
 | Key | Values | Default | On screen |
 | --- | --- | --- | --- |
+| `Library Folders` | `Yes`, `No`. `Yes` shows as Library Folders › On: the Library shows the folders in `/games`, two levels deep. While it is `Yes`, Indigo flattens by `*/games/*/*` and `FlattenDir` keeps the value it replaced. | `No` | Library Folders |
 | `Library Layout` | `Horizontal`, `Vertical`, `Grid`, `Spotlight`. How the Library shows your games: a row, a column, rows of five, or a gameplay still over a row of banners. | `Horizontal` | Library Layout |
 | `FileBrowserType` | `Standard`, `Fullwidth`, `Carousel` | `Standard` | File Browser Type |
 | `AppsBrowserType` | `Standard`, `Fullwidth`, `Carousel` | `Fullwidth` | File Browser Type for apps |
@@ -212,7 +213,7 @@ most use the same key there.
 | `Disable Panel Transparency` | `Yes`, `No`. `Yes` shows as Panel Transparency › Off. | `No` | Panel Transparency |
 | `Disable Animated Backdrop` | `Yes`, `No`. `Yes` shows as Animated Backdrop › Off. | `No` | Animated Backdrop |
 | `Autoload` | The path of the game or folder to open when Indigo starts. Z on a game's detail screen sets a game and saves only this key. | empty | Load at startup |
-| `FlattenDir` | A folder pattern, such as `*/games`. | `*/games` | Flatten directory |
+| `FlattenDir` | A folder pattern, such as `*/games`. While `Library Folders` is `Yes`, Indigo uses its own pattern and this key keeps yours. | `*/games` | Flatten directory |
 
 ### Setup › Developer
 

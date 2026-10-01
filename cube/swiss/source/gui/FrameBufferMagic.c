@@ -2971,11 +2971,13 @@ static void _GameflowDrawFallback(const gameflowRenderCard_t *card,
 		const char *regionText = card->record->flags & UI_GAMEFLOW_CARD_PARENT ?
 			"GAME LIBRARY" :
 			UIGameflowLibrary_RegionLabel(card->record->gameId);
-		/* An app whose poster isn't made yet: its name where a game's ID
-		 * goes, cut to what a card holds, so the cards tell apart. */
+		/* An app whose poster isn't made yet, or a folder of games: its
+		 * name where a game's ID goes, cut to what a card holds, so the
+		 * cards tell apart. */
 		char appName[12];
 
-		if(card->record->flags & UI_GAMEFLOW_CARD_APP) {
+		if(card->record->flags & UI_GAMEFLOW_CARD_APP ||
+			card->record->subfolder) {
 			size_t k;
 
 			for(k = 0; k < 8u && card->record->title[k] != '\0'; ++k) {
@@ -2987,7 +2989,7 @@ static void _GameflowDrawFallback(const gameflowRenderCard_t *card,
 			}
 			appName[k] = '\0';
 			identityText = appName;
-			regionText = "APP";
+			regionText = card->record->subfolder ? "FOLDER" : "APP";
 		}
 		gameflowPoint_t idPoint = _GameflowQuadPoint(&card->quad, 0.5f,
 			layout.idBaseline);
@@ -4186,7 +4188,10 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		 * and with their own controls: A starts one, and that is all. */
 		bool apps = (data->snapshot.records[0].flags &
 			UI_GAMEFLOW_CARD_APP) != 0u;
-		const char *heading = apps ? "APPS" : "GAME LIBRARY";
+		/* Inside a Library Folders folder the heading names it. */
+		const char *heading = apps ? "APPS" :
+			data->snapshot.folder[0] ? data->snapshot.folder :
+			"GAME LIBRARY";
 
 		if(layout == UI_GAMEFLOW_LAYOUT_VERTICAL) {
 			drawStringMedium(262, 177, heading, 0.42f, ALIGN_LEFT,
@@ -4197,7 +4202,7 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 				label);
 		}
 		else if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
-			drawStringMedium(36, 62, "GAME LIBRARY", 0.42f, ALIGN_LEFT,
+			drawStringMedium(36, 62, heading, 0.42f, ALIGN_LEFT,
 				label);
 		}
 		else {
@@ -4210,6 +4215,8 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			command.a = _GameflowAlpha(180.0f * reveal * commandRail.alpha);
 			_DrawHintText(320, 428, apps ?
 				"D-PAD  BROWSE   A  START   B  HOME" :
+				data->snapshot.folder[0] ?
+				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   B  BACK" :
 				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   X  BACK   B  HOME",
 				0.46f, ALIGN_CENTER, command);
 		}

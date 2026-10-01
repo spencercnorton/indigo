@@ -50,7 +50,7 @@ static const struct {
 	{ 14,  2, 15 }, /* Console: Apps Face, Backdrop and Wave Color, Clock too */
 	{  7,  2,  8 }, /* Storage: its Save Folder too */
 	{ 20,  2, 21 }, /* Network */
-	{ 12,  2, 13 }, /* Library: Load at startup too */
+	{ 13,  2, 14 }, /* Library: Load at startup and Library Folders too */
 	{  4,  2,  5 }, /* Developer */
 	{ 22, -1, 23 }, /* one game's own settings: no tabs */
 };

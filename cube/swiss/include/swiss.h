@@ -141,6 +141,8 @@ typedef struct {
 	int hideAppsFace;	// 0 = Home shows Apps while /apps has a program (default); 1 = never
 	int clockPosition;	// CLOCK_RIGHT (default), CLOCK_LEFT or CLOCK_OFF: the clock and temperature dial
 	int libraryLayout;	// uiGameflowLayout_t (gui/ui_gameflow.h): Horizontal (default), Vertical, Grid or Spotlight
+	int libraryFolders;	// 1 = the Library shows folders in /games, two deep; 0 = one list of games (default)
+	char libraryFoldersFlattenDir[PATHNAME_MAX];	// FlattenDir as saved, while Library Folders sets its own
 	int sram60Hz;
 	int sramProgressive;
 	int sramStereo;
