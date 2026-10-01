@@ -39,6 +39,7 @@
 #include "ui_scene.h"
 #include "ui_stage.h"
 #include "ui_hint.h"
+#include "ui_system_info.h"
 #include "ui_assets.h"
 #include "ui_command_rail.h"
 #include "ui_home_layout.h"
@@ -139,6 +140,7 @@ typedef struct {
 	char timeText[9];
 	char temperatureText[8];
 	s8 coreTemperature;
+	uiSystemTemperature_t temperatureFilter;
 	bool civilSecondSampled;
 	bool civilTimeAvailable;
 	bool temperatureSampled;
@@ -943,6 +945,8 @@ static void _HomeFaceIcons(int icons[UI_HOME_FACE_COUNT])
 
 static void _DrawBackground(uiDrawObj_t *evt)
 {
+	/* Wave Speed, in swiss.h's order: Normal, Fast, Slow. */
+	static const float waveSpeeds[WAVE_SPEED_MAX] = {1.0f, 3.0f, 0.5f};
 	bool decorativeAnimated = _CurrentMotionMode() == UI_MOTION_FULL;
 	int icons[UI_HOME_FACE_COUNT];
 
@@ -953,6 +957,7 @@ static void _DrawBackground(uiDrawObj_t *evt)
 	/* The glass copies the frame it is drawn in. */
 	IndigoBackground_SetFramebuffer(getVideoMode()->fbWidth,
 		getVideoMode()->efbHeight);
+	IndigoBackground_SetWaveSpeed(waveSpeeds[swissSettings.waveSpeed]);
 	IndigoBackground_Draw(UIAnim_Seconds(),
 		decorativeAnimated && !swissSettings.disableAnimatedBackdrop,
 		decorativeAnimated,
@@ -2334,6 +2339,28 @@ static void _DrawSystemDial(float centerX, float centerY, s8 coreTemperature,
 	drawInit();
 }
 
+/* A sensor reading into the dial, smoothed: the sensor answers in 4 degree
+ * steps (UISystem_SmoothTemperature). */
+static void _SetCoreTemperature(int reading)
+{
+	systemInstrument.coreTemperature = (s8)UISystem_SmoothTemperature(
+		&systemInstrument.temperatureFilter, reading);
+	if(systemInstrument.coreTemperature >= 0) {
+		(void)snprintf(systemInstrument.temperatureText,
+			sizeof(systemInstrument.temperatureText), "%i\260C",
+			systemInstrument.coreTemperature);
+	}
+	else {
+		systemInstrument.temperatureText[0] = '\0';
+	}
+	systemInstrument.temperatureSampled = true;
+}
+
+int CoreTemperature(void)
+{
+	return systemInstrument.coreTemperature;
+}
+
 static void _UpdateSystemInstrument(void)
 {
 	struct timeval now;
@@ -2341,16 +2368,7 @@ static void _UpdateSystemInstrument(void)
 	if(gettimeofday(&now, NULL) != 0) {
 		/* Civil time and thermal telemetry are independent instruments. */
 		if(!systemInstrument.temperatureSampled) {
-			systemInstrument.coreTemperature = SYS_GetCoreTemperature();
-			if(systemInstrument.coreTemperature >= 0) {
-				(void)snprintf(systemInstrument.temperatureText,
-					sizeof(systemInstrument.temperatureText), "%i\260C",
-					systemInstrument.coreTemperature);
-			}
-			else {
-				systemInstrument.temperatureText[0] = '\0';
-			}
-			systemInstrument.temperatureSampled = true;
+			_SetCoreTemperature(SYS_GetCoreTemperature());
 		}
 		(void)UIClock_Compose(&systemInstrument.clock, -1, -1, -1.0f);
 		systemInstrument.civilSecondSampled = false;
@@ -2375,16 +2393,7 @@ static void _UpdateSystemInstrument(void)
 			systemInstrument.civilTimeAvailable = false;
 			memcpy(systemInstrument.timeText, "--:--:--", 9u);
 		}
-		systemInstrument.coreTemperature = SYS_GetCoreTemperature();
-		if(systemInstrument.coreTemperature >= 0) {
-			(void)snprintf(systemInstrument.temperatureText,
-				sizeof(systemInstrument.temperatureText), "%i\260C",
-				systemInstrument.coreTemperature);
-		}
-		else {
-			systemInstrument.temperatureText[0] = '\0';
-		}
-		systemInstrument.temperatureSampled = true;
+		_SetCoreTemperature(SYS_GetCoreTemperature());
 		systemInstrument.sampledSecond = now.tv_sec;
 		systemInstrument.civilSecondSampled = true;
 	}

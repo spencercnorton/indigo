@@ -79,6 +79,7 @@ static void GX_End(void) {
     CHECK(active && phase==0 && remaining==0,"incomplete GX vertex/primitive"); active=false;
 }
 /* EMITTERS */
+static indigoPoint_t crestOut[PRIMARY_WAVE_SEGMENTS+1];
 static bool closef(float a,float b) { return fabsf(a-b)<.003f; }
 static bool same(indigoPoint_t a,indigoPoint_t b) { return closef(a.x,b.x)&&closef(a.y,b.y); }
 /* In frame pixels: widescreen draws x through a 3/4 squeeze. */
@@ -115,7 +116,7 @@ static void checkWave(float seconds,bool animated,float strength) {
     static const GXColor palette[2][4]={
         {{55,47,140,4},{128,105,232,48},{42,31,105,4},{0,0,0,0}},
         {{86,60,168,6},{196,178,255,82},{113,85,210,46},{45,31,103,6}}};
-    reset(); drawSilkWaves(seconds,animated,strength);
+    reset(); drawSilkWaves(seconds,animated,strength,crestOut);
     if(strength<=0) { CHECK(count==0 && begins==0,"hidden wave emitted geometry"); return; }
     if(strength>1) strength=1;
     if(!animated) seconds=0;
@@ -181,12 +182,12 @@ static void testWaves(void) {
     for(int motion=0;motion<2;motion++) for(int t=0;t<3;t++) for(int s=0;s<6;s++)
         checkWave(times[t],motion,strengths[s]);
     indigoPoint_t saved[510]; GXColor savedColors[510];
-    reset(); drawSilkWaves(0,false,.76f);
+    reset(); drawSilkWaves(0,false,.76f,crestOut);
     memcpy(saved,positions,sizeof(saved)); memcpy(savedColors,colors,sizeof(savedColors));
-    reset(); drawSilkWaves(817.25f,false,.76f);
+    reset(); drawSilkWaves(817.25f,false,.76f,crestOut);
     CHECK(!memcmp(saved,positions,sizeof(saved)) && !memcmp(savedColors,colors,sizeof(savedColors)),
         "disabled background animation still moves");
-    reset(); drawSilkWaves(817.25f,true,.76f);
+    reset(); drawSilkWaves(817.25f,true,.76f,crestOut);
     CHECK(memcmp(saved,positions,sizeof(saved)),"enabled wave animation stopped");
 }
 static void testGrid(void) {
@@ -217,8 +218,25 @@ static void testGrid(void) {
         }
     }
 }
+/* Wave Speed: Normal keeps the menu's clock, and a change moves the waves at
+ * the new pace from where they are. */
+static float waveSpeedSetting=1, waveSpeedApplied=1, waveClockOffset;
+/* WAVE CLOCK */
+static void testWaveClock(void) {
+    CHECK(closef(waveClock(10),10) && closef(waveClock(1035.75f),1035.75f),
+        "Normal Wave Speed moved the waves off the menu clock");
+    IndigoBackground_SetWaveSpeed(3);
+    CHECK(closef(waveClock(1035.75f),1035.75f),"a new Wave Speed made the waves jump");
+    CHECK(closef(waveClock(1036.75f),1038.75f),"Fast is not three times the pace");
+    IndigoBackground_SetWaveSpeed(.5f);
+    CHECK(closef(waveClock(1036.75f),1038.75f) && closef(waveClock(1038.75f),1039.75f),
+        "Slow is not half the pace");
+    IndigoBackground_SetWaveSpeed(1);
+    CHECK(closef(waveClock(1038.75f),1039.75f) && closef(waveClock(1040.75f),1041.75f),
+        "back to Normal jumped or kept the old pace");
+}
 int main(void) {
-    testWaves(); testGrid();
+    testWaves(); testGrid(); testWaveClock();
     /* Menu Widescreen: every fade still spans one frame pixel. */
     pixelWidth=4.0f/3; squeeze=.75f;
     for(int t=0;t<3;t++) checkWave(t*400.5f,true,.76f);
@@ -243,16 +261,19 @@ class BackgroundGXStreamTests(unittest.TestCase):
             ("void", ("putVertex", "initWaveOscillator", "advanceWaveOscillator", "buildWavePath")),
             ("float", ("waveEdgeFade",)), ("GXColor", ("waveVertexColor",)),
             ("bool", ("buildRasterJoins",)),
-            ("void", ("drawRasterStroke", "drawWaveFeather", "drawSilkWaves", "drawGlobeGrid")),
+            ("void", ("drawRasterStroke", "drawWaveFeather", "drawGlobeGrid")), ("bool", ("drawSilkWaves",)),
         ]:
             blocks += [extract_function(source, f"static {result} {name}(") for name in names]
         cls.emitters = "\n".join(blocks)
+        cls.wave_clock = "\n".join([extract_function(source, "void IndigoBackground_SetWaveSpeed("),
+            extract_function(source, "static float waveClock(")])
 
     def run_emitters(self, emitters):
         with tempfile.TemporaryDirectory(prefix="swiss-background-gx-") as directory:
             root = Path(directory)
             source, binary = root / "background.c", root / "background"
-            source.write_text(HARNESS.replace("/* EMITTERS */", emitters))
+            source.write_text(HARNESS.replace("/* EMITTERS */", emitters)
+                .replace("/* WAVE CLOCK */", self.wave_clock))
             result = subprocess.run(shlex.split(os.environ.get("CC", "cc")) +
                 ["-std=c99", "-Wall", "-Wextra", "-Werror", str(source), "-o", str(binary), "-lm"],
                 capture_output=True, text=True, timeout=30)

@@ -95,6 +95,19 @@ bool UISystem_FormatDate(char *out, size_t capacity, int weekday, int month,
 bool UISystem_FormatTemperature(char *out, size_t capacity,
 	int degreesCelsius, bool available);
 bool UISystem_FormatCalibration(char *out, size_t capacity, int offsetCelsius);
+
+/* The CPU's thermal sensor answers in 4 degree steps (the library's search
+ * stops there), so a CPU that sits on a step reads one side of it, then the
+ * other, from one second to the next. The dial shows a running average of
+ * the readings instead (about the last eight), moved only once it is a whole
+ * degree from what it shows. A reading below 0 (no sensor) passes through
+ * and starts the average again. */
+typedef struct {
+	float average;
+	int shown;
+	bool primed;
+} uiSystemTemperature_t;
+int UISystem_SmoothTemperature(uiSystemTemperature_t *state, int reading);
 void UISystem_FormatPageStatus(char *out, size_t capacity, int page);
 
 const char *UISystem_SourceHealth(bool configured, bool available);

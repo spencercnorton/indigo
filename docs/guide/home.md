@@ -55,8 +55,9 @@ The cube is clear glass, and it treats light the way glass does:
   glass is never quite still.
 - **It glows.** Highlights and glints have a soft glow, a fine rim lights
   the edges that face the light, and a halo sits behind the cube. The face
-  icons stay sharp on top of the glass, and each fades as its face turns
-  away, so the faces to either side show clear glass.
+  icons stay sharp on top of the glass. Every face shows its icon, moving,
+  as the cube turns: the faces to either side show theirs too, narrowed by
+  the angle.
 
 Every part follows your [Menu Color](personalize.md), except the prism's
 fringes, which keep their own colors. With UI Motion set
@@ -81,8 +82,10 @@ never plays by itself. UI Motion is in Settings › Quick.
 
 - **Top right:** the time and the console's CPU temperature. Settings ›
   Setup › Console › Clock moves them to the top left or hides them. The
-  temperature has no factory calibration; adjust it in Settings › Setup ›
-  Console › CPU Temperature Calibration.
+  CPU's sensor reads in 4 degree steps, so the temperature shown is an
+  average of the last few seconds' readings: it holds steady and moves a
+  degree at a time. It has no factory calibration; adjust it in Settings ›
+  Setup › Console › CPU Temperature Calibration.
 - **Bottom:** the buttons that work here.
 - **Music and sounds:** Indigo plays its own menu music and soft navigation
   sounds. Turn either off in Settings › Quick.

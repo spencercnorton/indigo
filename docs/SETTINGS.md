@@ -154,6 +154,7 @@ most use the same key there.
 | `Source Icon` | `Hub`, `Disc`, `SD Card`, `Folder`. The picture on the Source face, from its own four icons. | `Hub` | Source Icon |
 | `Settings Icon` | `Sliders`, `Gear`, `Toggles`, `Dial`. The picture on the Settings face, from its own four icons. | `Sliders` | Settings Icon |
 | `System Icon` | `Clock`, `Info`, `Power`, `Chip`. The picture on the System face, from its own four icons. | `Clock` | System Icon |
+| `Wave Speed` | `Normal`, `Fast`, `Slow`. How fast the waves drift: `Fast` three times as fast, `Slow` half as fast. | `Normal` | Wave Speed |
 | `Clock` | `Right`, `Left`, `Off`. Where the time and the temperature dial sit: the top right or top left corner, or neither. | `Right` | Clock |
 | `Hide Apps Face` | `Yes`, `No`. `Yes` shows as Apps Face › Off: Home never shows Apps, even with programs in `/apps`. | `No` | Apps Face |
 | `System Boot Mode` | `Default`, `Production`. Any other value means `Default`. | the console's SRAM | System Boot Mode |

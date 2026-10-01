@@ -117,7 +117,7 @@ require("pollFrames >= 50u" in show_info and "infoCurrentMinute()" in show_info,
 for token in (
     "UISystem_FormatClock",
     "UISystem_FormatDate",
-    "SYS_GetCoreTemperature",
+    "CoreTemperature()",
     "UISystem_FormatTemperature",
     "UISystem_FormatCalibration",
     "deviceHandler_getDeviceAvailable",

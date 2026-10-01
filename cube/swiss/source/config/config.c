@@ -525,6 +525,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "System Icon=%s\r\n", systemIconStr[swissSettings.systemIcon]);
 	fprintf(fp, "Hide Apps Face=%s\r\n", swissSettings.hideAppsFace ? "Yes":"No");
 	fprintf(fp, "Clock=%s\r\n", clockPositionStr[swissSettings.clockPosition]);
+	fprintf(fp, "Wave Speed=%s\r\n", waveSpeedStr[swissSettings.waveSpeed]);
 	fprintf(fp, "Library Layout=%s\r\n", libraryLayoutStr[swissSettings.libraryLayout]);
 	fprintf(fp, "Init DVD Drive at startup=%s\r\n", swissSettings.initDVDDriveAtStart ? "Yes":"No");
 	fprintf(fp, "Stop DVD Drive motor=%s\r\n", swissSettings.stopMotor ? "Yes":"No");
@@ -1404,6 +1405,14 @@ void config_parse_global(char *configData) {
 					for(int i = 0; i < CLOCK_POSITION_MAX; i++) {
 						if(!strcmp(clockPositionStr[i], value)) {
 							swissSettings.clockPosition = i;
+							break;
+						}
+					}
+				}
+				else if(!strcmp("Wave Speed", name)) {
+					for(int i = 0; i < WAVE_SPEED_MAX; i++) {
+						if(!strcmp(waveSpeedStr[i], value)) {
+							swissSettings.waveSpeed = i;
 							break;
 						}
 					}

@@ -90,6 +90,7 @@ enum SETTINGS_INTERFACE {
 	SET_UI_BACKDROP_COLOR,
 	SET_UI_WAVE_COLOR,
 	SET_CLOCK_POSITION,
+	SET_WAVE_SPEED,
 	SET_PAGE_2_BACK,
 	SET_PAGE_2_NEXT,
 	SET_PAGE_2_SAVE,
@@ -233,6 +234,7 @@ extern char *recentListLevelStr[];
 extern char *uiColorStr[];
 extern char *uiLayerColorStr[];
 extern char *clockPositionStr[];
+extern char *waveSpeedStr[];
 extern char *libraryIconStr[];
 extern char *sourceIconStr[];
 extern char *settingsIconStr[];

@@ -26,6 +26,10 @@ void IndigoBackground_SetFramebuffer(u16 width, u16 height);
  * its rings, the waves, and the menus' for the cube. Set once a frame,
  * before either draw below. */
 void IndigoBackground_SetColors(const int colors[UI_COLOR_LAYERS]);
+/* Wave Speed: how fast the waves drift, as a multiple of their normal pace.
+ * Set once a frame, before the draw below; a change speeds the waves up or
+ * slows them down from where they are, without a jump. */
+void IndigoBackground_SetWaveSpeed(float speed);
 /* Drawn after the configured backdrop and before every foreground widget.
  * pad may be NULL: the Controller icon then plays only its idle motion.
  * icons holds a uiHomeIcon_t for each uiHomeFace_t. */

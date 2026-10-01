@@ -150,6 +150,35 @@ static void testFormatting(void)
 		"REGION UNKNOWN") == 0);
 }
 
+/* A CPU on the 40/44 step: the dial settles on 42 and holds there, a real
+ * rise still comes through, and a lost sensor shows at once. */
+static void testTemperatureSmoothing(void)
+{
+	uiSystemTemperature_t state = {0.0f, 0, false};
+	int i, shown = 0, changes = 0, last;
+
+	CHECK(UISystem_SmoothTemperature(&state, 44) == 44);
+	for(i = 0; i < 40; i++) {
+		shown = UISystem_SmoothTemperature(&state, i % 2 ? 40 : 44);
+	}
+	CHECK(shown == 42);
+	last = shown;
+	for(i = 0; i < 400; i++) {
+		/* Uneven flicker: two 44s, then a 40. */
+		shown = UISystem_SmoothTemperature(&state, i % 3 == 2 ? 40 : 44);
+		changes += shown != last;
+		last = shown;
+	}
+	CHECK(changes <= 2);
+	CHECK(shown >= 41 && shown <= 43);
+	for(i = 0; i < 40; i++) {
+		shown = UISystem_SmoothTemperature(&state, 52);
+	}
+	CHECK(shown == 51 || shown == 52);
+	CHECK(UISystem_SmoothTemperature(&state, -1) == -1);
+	CHECK(UISystem_SmoothTemperature(&state, 36) == 36);
+}
+
 static void testTextFit(void)
 {
 	char text[64];
@@ -229,6 +258,7 @@ int main(void)
 {
 	testPagesAndLayout();
 	testFormatting();
+	testTemperatureSmoothing();
 	testTextFit();
 	testAboutHelpFitsTheConsoleFont();
 	printf("ui_system_info: %u checks passed\n", checks);

@@ -9,7 +9,9 @@
 # its colors, the Backdrop and Wave Color arms (SET_UI_BACKDROP_COLOR,
 # SET_UI_WAVE_COLOR) each only step their own setting round Menu Color and
 # the colors, the Clock arm (SET_CLOCK_POSITION) only steps
-# swissSettings.clockPosition round Right, Left and Off, the four new face icon arms (SET_*_ICON) each only step
+# swissSettings.clockPosition round Right, Left and Off, the Wave Speed arm
+# (SET_WAVE_SPEED) only steps swissSettings.waveSpeed round Normal, Fast and
+# Slow, the four new face icon arms (SET_*_ICON) each only step
 # their own face's icon round that face's own four, the Library Layout arm
 # (SET_LIBRARY_LAYOUT) only steps swissSettings.libraryLayout round its
 # three layouts, the Save Folder arm (SET_SAVE_FOLDER) only sets
@@ -100,6 +102,13 @@ normalized = re.sub(
     r"\t+swissSettings\.clockPosition = \(swissSettings\.clockPosition \+ CLOCK_POSITION_MAX\) % CLOCK_POSITION_MAX;\n"
     r"\t+break;\n",
     "", normalized, count=1)
+# So is the Wave Speed arm, round Normal, Fast and Slow.
+normalized = re.sub(
+    r"(?ms)^\t+case SET_WAVE_SPEED:\n"
+    r"\t+swissSettings\.waveSpeed \+= direction;\n"
+    r"\t+swissSettings\.waveSpeed = \(swissSettings\.waveSpeed \+ WAVE_SPEED_MAX\) % WAVE_SPEED_MAX;\n"
+    r"\t+break;\n",
+    "", normalized, count=1)
 # So are the four face icon arms, one per Home face.
 normalized, icons = re.subn(
     r"(?ms)^\t+case SET_(LIBRARY|SOURCE|SETTINGS|SYSTEM)_ICON:\n"
@@ -156,9 +165,9 @@ for fn in settings_toggle; do
 			normalize_intended_changes "$TMP/base_$fn" "$TMP/base_${fn}_normalized"
 			normalize_intended_changes "$TMP/head_$fn" "$TMP/head_${fn}_normalized"
 			if cmp -s "$TMP/base_${fn}_normalized" "$TMP/head_${fn}_normalized"; then
-				printf '  %-18s unchanged outside motion, color, backdrop and wave color, clock, icon, layout, save folder, widescreen and apps face arms and game reset\n' "$fn"
+				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, icon, layout, save folder, widescreen and apps face arms and game reset\n' "$fn"
 			else
-				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_CLOCK_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_APPS_FACE and the game reset" >&2
+				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_APPS_FACE and the game reset" >&2
 				diff -u "$TMP/base_${fn}_normalized" \
 					"$TMP/head_${fn}_normalized" | head -40 >&2 || true
 				fail=1

@@ -4,6 +4,33 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## Unreleased
+
+### New
+
+- Settings › Setup › Console › **Wave Speed** sets how fast the waves drift:
+  Slow (half as fast), Normal (the default) or Fast (three times as fast). A
+  new speed picks up from where the waves are. In `global.ini` it is
+  `Wave Speed`.
+
+### Changes
+
+- The waves' light spreads like smoke. Soft wisps drift away from the bright
+  line on both sides and change shape as they go, where a flat band of glow
+  sat before, with a gentle glow along the line itself. They take Wave Color
+  and Wave Speed, and stop with the waves.
+- Every face of the Home cube shows its icon as the cube turns, animated, the
+  side faces at rest included. An icon on a face turned away from the screen
+  is drawn at twice the size and scaled down, so its thinnest lines keep
+  their light instead of breaking into fragments or fading out. Mostly
+  horizontal icons, such as Settings' sliders, still look narrow on a face
+  seen nearly edge-on.
+- The CPU temperature holds steady. The console's sensor reads in 4 degree
+  steps, so a CPU sitting on a step showed one side and then the other every
+  second (40 °C, 44 °C, 40 °C...). Indigo now shows an average of the last few
+  seconds' readings, which moves a degree at a time, at the top of the screen
+  and in System Information alike.
+
 ## v2.2.0 — Backdrop and Wave Color, a Clock setting and a cleaner cube
 
 The backdrop and the waves can each have a color of their own, the clock can
