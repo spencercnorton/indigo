@@ -41,4 +41,9 @@ enum {
  * color, anything else is 1 + a UI_COLOR_ value. */
 int UIColor_Layer(int setting, int menuColor);
 
+/* How bright the backdrop is drawn in a color, 1 as designed. Jet Black has
+ * no hue to carry the backdrop's depth: gray at Indigo's brightness reads
+ * light on a TV, so its backdrop is drawn darker. */
+float UIColor_BackdropShade(int color);
+
 #endif

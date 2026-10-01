@@ -45,7 +45,7 @@ Azure waves on a Jet Black backdrop, say.
 They work like Menu Color: Right steps round the choices, and **A** lists them
 with the screen showing each one as you move through the list. The backdrop
 keeps its darkness in every color, so the cube and the text stand out as
-before.
+before, and Jet Black draws it nearly black.
 
 ## Cube icons
 

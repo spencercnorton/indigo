@@ -287,7 +287,8 @@ class MenuColorTest(unittest.TestCase):
         background = (GUI / "indigo_background.c").read_text()
         draw = extract_function(background, "void IndigoBackground_Draw(")
         order = [draw.index(token) for token in (
-            "UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);", "drawIndigoWash(255);",
+            "UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);",
+            "drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));",
             "drawGlobeGrid(", "UIColor_Select(layerColors[UI_COLOR_LAYER_WAVES]);",
             "drawSilkWaves(", "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);",
             "if(!scene->visible) {", "drawRadialDisc(", "drawCubeLight(", "drawCube(scene,")]
@@ -297,9 +298,35 @@ class MenuColorTest(unittest.TestCase):
         boot = extract_function(background, "void IndigoBackground_DrawBootOverlay(")
         order = [boot.index(token) for token in (
             "drawCube(scene,", "UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);",
-            "drawIndigoWash(veilAlpha);", "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);")]
+            "drawIndigoWash(veilAlpha, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));",
+            "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);")]
         self.assertEqual(order, sorted(order))
         self.assertEqual(background.count("drawIndigoWash("), 3)   # its definition and these two
+        # The wash's four corners all go through the shade.
+        wash = extract_function(background, "static void drawIndigoWash(")
+        self.assertEqual(wash.count("WASH("), 5)   # the macro and its four corners
+
+    def test_a_jet_black_backdrop_is_darker(self):
+        """Jet Black, the color with no saturation, shades the backdrop to about a
+        third; every other color and anything out of range draws it as designed."""
+        work = Path(self.tmp.name)
+        (work / "shade.c").write_text("\n".join([
+            "#include <stdio.h>", '#include "ui_color.h"',
+            "int main(void) { for(int c = -1; c <= 9; c++) printf(\"%d %.3f\\n\", c, "
+            "UIColor_BackdropShade(c)); return 0; }", ""]))
+        result = subprocess.run(shlex.split(os.environ.get("CC", "cc")) +
+            ["-std=c99", "-Wall", "-Wextra", "-Werror", "-I" + str(GUI), str(work / "shade.c"),
+             str(GUI / "ui_color.c"), "-o", str(work / "shade"), "-lm"],
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        shades = dict(line.split() for line in subprocess.run(
+            [str(work / "shade")], capture_output=True, text=True, timeout=30).stdout.splitlines())
+        jet_black = str(self.count - 1)
+        self.assertLess(float(shades[jet_black]), 0.5)
+        self.assertGreater(float(shades[jet_black]), 0.0)
+        for color, shade in shades.items():
+            if color != jet_black:
+                self.assertEqual(float(shade), 1.0, color)
 
     def test_indigo_is_exactly_as_designed(self):
         colors = list(self.literals) + NEUTRALS + sorted(SEMANTIC)

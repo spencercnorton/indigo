@@ -53,6 +53,16 @@ int UIColor_Layer(int setting, int menuColor)
 	return setting > 0 ? setting - 1 : menuColor;
 }
 
+/* Tuned by eye on Spencer's TV (2026-09-30: "not nearly as dark as it
+ * should be"); lower is blacker. */
+#define JET_BLACK_BACKDROP_SHADE 0.35f
+
+float UIColor_BackdropShade(int color)
+{
+	return color >= 0 && color < UI_COLOR_COUNT && uiColors[color].saturation == 0.0f ?
+		JET_BLACK_BACKDROP_SHADE : 1.0f;
+}
+
 static uint8_t clampChannel(int32_t value)
 {
 	return (uint8_t)(value < 0 ? 0 : (value > 255 ? 255 : value));

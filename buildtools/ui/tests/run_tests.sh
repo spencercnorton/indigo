@@ -223,6 +223,8 @@ run_contracts() {
 	python3 ./test_settings_views.py
 	echo "== Menu Color: Indigo's colors turn, meanings and neutrals stay =="
 	python3 ./test_ui_color.py
+	echo "== Clock: the time and its dial take the corner Settings names =="
+	python3 ./test_clock_corner.py
 	echo "== menu music: a stream the console can seek and loop =="
 	python3 ./test_menu_music.py
 	echo "== settings semantics audit =="

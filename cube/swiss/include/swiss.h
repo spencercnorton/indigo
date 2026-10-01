@@ -139,6 +139,7 @@ typedef struct {
 	int settingsIcon;
 	int systemIcon;
 	int hideAppsFace;	// 0 = Home shows Apps while /apps has a program (default); 1 = never
+	int clockPosition;	// CLOCK_RIGHT (default), CLOCK_LEFT or CLOCK_OFF: the clock and temperature dial
 	int libraryLayout;	// uiGameflowLayout_t (gui/ui_gameflow.h): Horizontal (default), Vertical, Grid or Spotlight
 	int sram60Hz;
 	int sramProgressive;
@@ -215,6 +216,14 @@ enum enableUSBGecko
 	USBGECKO_MEMCARD_SLOT_B,
 	USBGECKO_SERIAL_PORT_2,
 	USBGECKO_MAX
+};
+
+enum clockPosition
+{
+	CLOCK_RIGHT=0,
+	CLOCK_LEFT,
+	CLOCK_OFF,
+	CLOCK_POSITION_MAX
 };
 
 enum uiColor
