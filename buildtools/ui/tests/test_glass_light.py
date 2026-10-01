@@ -45,7 +45,7 @@ typedef struct { Mtx model,semanticFaces[UI_HOME_FACE_COUNT];
     float motifAlpha[UI_HOME_FACE_COUNT],scaleX,scaleY; } cubeRasterTransform_t;
 typedef struct { guVector point[4]; GXColor color[4]; } cubeSurfaceQuad_t;
 typedef struct { indigoPoint_t point[24]; int count; } cubeOutline_t;
-typedef struct { void *data; u16 w, h; u8 fmt; } GXTexObj;
+typedef struct { void *data; u16 w, h; u8 fmt, mip, minFilter; float maxLod; } GXTexObj;
 #define CHECK(c,m) do { if(!(c)) { fprintf(stderr,"%s\n",m); exit(73); } } while(0)
 #define INDIGO_TAU 6.28318530718f
 #define RADIAL_SEGMENTS 24
@@ -54,7 +54,7 @@ typedef struct { void *data; u16 w, h; u8 fmt; } GXTexObj;
 #define ATTRIBUTE_ALIGN(v) __attribute__((aligned(v)))
 enum { GX_QUADS=1, GX_TRIANGLESTRIP=2, GX_TRIANGLES=3, GX_VTXFMT0=0,
     GX_BM_BLEND=1, GX_BL_SRCALPHA=2, GX_BL_ONE=3, GX_BL_INVSRCALPHA=4, GX_LO_CLEAR=0,
-    GX_TF_RGBA8=6, GX_CLAMP=0, GX_LINEAR=1, GX_ANISO_1=0, GX_TRUE=1, GX_FALSE=0,
+    GX_TF_RGBA8=6, GX_CLAMP=0, GX_LINEAR=1, GX_LIN_MIP_LIN=5, GX_ANISO_1=0, GX_TRUE=1, GX_FALSE=0,
     GX_TEXMAP0=0 };
 /* Menu Color is Indigo here, so the emitters' recolor passes colors through,
  * unless a test turns recolor on: then it swaps red and blue. */
@@ -112,8 +112,8 @@ static void GX_SetTexCopySrc(u16 l,u16 t,u16 w,u16 h) { copyL=l; copyT=t; copyW=
 static void GX_SetTexCopyDst(u16 w,u16 h,u32 f,u8 m) { dstW=w; dstH=h; dstFmt=(int)f; dstMip=m; }
 static void GX_CopyTex(void *d,u8 clear) { CHECK(d!=NULL,"copy target"); CHECK(flushes==1,"copy before its cache flush"); clearFlag=clear; copies++; }
 static void GX_PixModeSync(void) {}
-static void GX_InitTexObj(GXTexObj *o,void *d,u16 w,u16 h,u8 f,u8 a,u8 b,u8 m) { (void)a;(void)b;(void)m; o->data=d; o->w=w; o->h=h; o->fmt=f; }
-static void GX_InitTexObjLOD(GXTexObj *o,u8 a,u8 b,float c,float d,float e,u8 f,u8 g,u8 h) { (void)o;(void)a;(void)b;(void)c;(void)d;(void)e;(void)f;(void)g;(void)h; }
+static void GX_InitTexObj(GXTexObj *o,void *d,u16 w,u16 h,u8 f,u8 a,u8 b,u8 m) { (void)a;(void)b; o->data=d; o->w=w; o->h=h; o->fmt=f; o->mip=m; }
+static void GX_InitTexObjLOD(GXTexObj *o,u8 a,u8 b,float c,float d,float e,u8 f,u8 g,u8 h) { (void)b;(void)c;(void)e;(void)f;(void)g;(void)h; o->minFilter=a; o->maxLod=d; }
 static void GX_InvalidateTexAll(void) { invalidations++; }
 static void GX_LoadTexObj(const GXTexObj *o,u8 map) { CHECK(o->data!=NULL && map==GX_TEXMAP0,"texture load"); }
 static void putCubeVertex(float x,float y,float z,GXColor c) {
@@ -281,7 +281,7 @@ static void test_flare(void) {
 static void test_rim(void) {
     cubeOutline_t o={{{-100,-100},{100,-100},{100,100},{-100,100}},4};
     reset(1); drawGlassRim(&o,1);
-    CHECK(begins==9 && count==3*3*5*2,"rim is not three feathered closed strokes");
+    CHECK(begins==6 && count==3*2*5*2,"rim is not three feathered closed strokes");
     CHECK(blendDst==GX_BL_INVSRCALPHA,"rim left additive blending on");
     /* Outline corners in screen space: (420,340) (420,140) (220,140) (220,340).
      * The upper right faces the key light, the lower left does not. */
@@ -292,12 +292,14 @@ static void test_rim(void) {
         if(positions[i].x<=230 && positions[i].y>=330) dark++;
     }
     CHECK(lit>0 && dark==0,"rim does not follow the key light");
-    /* The lit rim's solid core is a whole pixel across, so a pixel centre
-     * always lands in it and the rim holds one brightness along its edge. */
-    for(int i=10;i<20;i+=2) {
-        CHECK(colors[i].a==colors[i+1].a,"rim core is not solid");
+    /* The lit rim peaks on the edge and fades to nothing two pixels out on
+     * either side, with no solid core to stair-step: the first band rises
+     * from its outer edge, the second falls to its inner one. */
+    for(int i=0;i<10;i+=2) {
+        CHECK(colors[i].a==0 && colors[10+i+1].a==0,"rim does not fade to nothing");
+        CHECK(colors[i+1].a==colors[10+i].a,"rim's two bands disagree on the edge");
         CHECK(near(fmaxf(fabsf(positions[i+1].x-positions[i].x),
-            fabsf(positions[i+1].y-positions[i].y)),1.0f,.01f),"rim core is not one pixel across");
+            fabsf(positions[i+1].y-positions[i].y)),2.0f,.01f),"rim does not fade over two pixels");
     }
     reset(1); drawGlassRim(&o,0); CHECK(count==0,"a scene without light drew a rim");
 }
@@ -337,7 +339,33 @@ static void test_studio(void) {
         "the studio was not baked, written back and invalidated");
     CHECK(glassStudioTexObj.data==glassStudioTexels && glassStudioTexObj.w==GLASS_STUDIO_SIZE &&
         glassStudioTexObj.h==GLASS_STUDIO_SIZE && glassStudioTexObj.fmt==GX_TF_RGBA8 &&
-        sizeof(glassStudioTexels)==16384,"the studio is not a 16 KB RGBA8 texture");
+        sizeof(glassStudioTexels)==21952,"the studio is not a mipmapped 64-texel RGBA8 texture");
+    /* Mipmapped, so a bevel sweeping the studio reads a smaller level instead
+     * of catching a card's edge in one pixel and missing it in the next. */
+    CHECK(glassStudioTexObj.mip==GX_TRUE && glassStudioTexObj.minFilter==GX_LIN_MIP_LIN &&
+        near(glassStudioTexObj.maxLod,GLASS_STUDIO_LEVELS-1,1e-6f),"the studio is not mipmapped");
+    /* Each level halves the one before, every texel the rounded mean of the
+     * four it covers, one whole tile at least per level, in GX's order. */
+    {
+        const u8 *level=glassStudioTexels;
+        for(int size=GLASS_STUDIO_SIZE,n=0;size>1;size>>=1,n++) {
+            int tiles=size<4?1:size/4, half=size/2, halfTiles=half<4?1:half/4;
+            const u8 *next=level+tiles*tiles*64;
+            for(int y=0;y<half;y++) for(int x=0;x<half;x++) for(int c=0;c<4;c++) {
+                static const int offset[4]={1,32,33,0};   /* r, g, b, a within a pair */
+                int sum=0;
+                for(int k=0;k<4;k++) {
+                    int sx=2*x+(k&1), sy=2*y+(k>>1);
+                    sum+=level[((sy/4)*tiles+sx/4)*64+((sy%4)*4+sx%4)*2+offset[c]];
+                }
+                CHECK(next[((y/4)*halfTiles+x/4)*64+((y%4)*4+x%4)*2+offset[c]]==(sum+2)/4,
+                    "a studio mip texel is not the mean of the four it covers");
+            }
+            level=next;
+            CHECK(n<GLASS_STUDIO_LEVELS,"more studio levels than it declares");
+        }
+        CHECK(level+64==glassStudioTexels+sizeof(glassStudioTexels),"the studio's levels do not fill it");
+    }
     /* Every texel holds the light its direction receives. */
     for(int y=0;y<GLASS_STUDIO_SIZE;y++) for(int x=0;x<GLASS_STUDIO_SIZE;x++) {
         GXColor c=glassStudioLight(glassStudioDirection((x+.5f)/GLASS_STUDIO_SIZE,
@@ -672,7 +700,6 @@ class GlassLightTests(unittest.TestCase):
             "open glow ring": ("for(int i = 0; i <= RADIAL_SEGMENTS; i++) {\n\t\t\tputVertex((indigoPoint_t) {x + radiusX * ring",
                 "for(int i = 0; i < RADIAL_SEGMENTS; i++) {\n\t\t\tputVertex((indigoPoint_t) {x + radiusX * ring"),
             "rim on the dark side": ("float lit = nx * lightX + ny * lightY;", "float lit = -(nx * lightX + ny * lightY);"),
-            "rim core under a pixel": ("{-1.5f, -0.5f, 0.5f, 1.5f}", "{-1.0f, -0.25f, 0.25f, 1.0f}"),
             "flare stays additive": ("\t\t\tghosts[ghost].color, ghosts[ghost].alpha * intensity);\n\t}\n\tGX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);",
                 "\t\t\tghosts[ghost].color, ghosts[ghost].alpha * intensity);\n\t}"),
             "sheen everywhere": ("bump = bump <= 0.0f ? 0.0f : bump * bump;", "bump = 1.0f;"),
@@ -682,8 +709,14 @@ class GlassLightTests(unittest.TestCase):
                 "return strength;"),
             "Settings keeps screen glass": ("\t\treturn 0.0f;\n\t}\n\t/* During the boot reveal",
                 "\t\treturn strength;\n\t}\n\t/* During the boot reveal"),
-            "studio untiled": ("\t\ttile[at] = light.a;\n\t\ttile[at + 1] = light.r;",
-                "\t\ttile[at] = light.r;\n\t\ttile[at + 1] = light.a;"),
+            "studio untiled": ("\t\t\ttile[at] = light.a;\n\t\t\ttile[at + 1] = light.r;",
+                "\t\t\ttile[at] = light.r;\n\t\t\ttile[at + 1] = light.a;"),
+            "studio without mipmaps": ("GLASS_STUDIO_SIZE, GX_TF_RGBA8, GX_CLAMP, GX_CLAMP, GX_TRUE);",
+                "GLASS_STUDIO_SIZE, GX_TF_RGBA8, GX_CLAMP, GX_CLAMP, GX_FALSE);"),
+            "studio mips not averaged": ("(u8)((a[0].r + a[1].r + b[0].r + b[1].r + 2) >> 2),",
+                "(u8)(a[0].r),"),
+            "rim fades too sharply": ("static const float profile[3] = {-2.0f, 0.0f, 2.0f};",
+                "static const float profile[3] = {-1.0f, 0.0f, 1.0f};"),
             "studio not written back": ("\tDCFlushRange(glassStudioTexels, sizeof(glassStudioTexels));\n", ""),
             "studio baked every frame": ("\tif(same) return false;", "\tif(same && recolor > 1) return false;"),
             "studio stale after Menu Color": (

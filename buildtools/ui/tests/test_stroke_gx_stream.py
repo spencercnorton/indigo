@@ -173,6 +173,7 @@ static void test_motifs(void) {
     memcpy(r.semanticFaces,semanticFaces,sizeof(semanticFaces)); lightAll(&r);
     uiClockFrame_t clock={true,0,1,1,0,0.70710678f,0.70710678f};
     r.scaleX=r.scaleY=625.221f;
+    long glowAt25=0, glowAt90=0;
     for(int angle=0;angle<360;angle+=5) {
         float yaw=angle*INDIGO_TAU/360,c=cosf(yaw),s=sinf(yaw);
         guMtxIdentity(r.model);
@@ -193,12 +194,20 @@ static void test_motifs(void) {
                     "semantic polygon fringe must reach zero");
             }
         }
-        /* Within ~10.5 degrees of Library-front, perspective hides both side
-         * faces, and the Library face shows None here. */
-        CHECK(lit>0 || angle<=10 || angle>=350,"all face motifs vanished");
+        /* A side face's icon fades out as the face turns edge-on, gone more
+         * than ~71 degrees from the camera, so within 20 degrees of
+         * Library-front nothing draws: the Library face shows None here. */
+        CHECK(lit>0 || angle<=20 || angle>=340,"all face motifs vanished");
         if(angle==0) CHECK(lit==0,"None on the Library face drew something");
+        if(angle==15 || angle==345) CHECK(lit==0,"an icon drew on a face 75 degrees from the camera");
         if(angle==90) CHECK(lit==11,"front System must show its clock and all three hands");
+        long glow=0; for(int i=0;i<count;i++) glow+=alphas[i];
+        if(angle==25) glowAt25=glow;
+        if(angle==90) glowAt90=glow;
     }
+    /* At 65 degrees from the camera the System icon is on its way in:
+     * lit, but fainter than facing the camera. */
+    CHECK(glowAt25>0 && glowAt25<glowAt90/2,"a turning face's icon did not fade in");
     /* Subpixel-width geometry stays ordered and fades instead of inverting. */
     guMtxIdentity(r.model); r.model[2][3]=-5.4f;
     reset(false); GX_Begin(GX_QUADS,0,20);

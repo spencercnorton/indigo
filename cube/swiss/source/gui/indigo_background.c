@@ -1938,6 +1938,28 @@ static void drawFaceIcons(float seconds, bool animated,
 	float slider = animated ? sinf(seconds * 0.43f) * 0.12f : 0.0f;
 	GXColor glow = {196, 177, 255, (u8)(142.0f + pulse * 42.0f)};
 	Mtx identity;
+	/* Static: the video thread's stack is small. */
+	static cubeRasterTransform_t faded;
+
+	/* A face turned nearly edge-on squeezes its icon's strokes below a pixel,
+	 * which the console's rasterizer breaks into fragments. An icon fades
+	 * out as its face turns away: gone while the face points more than ~71
+	 * degrees from the camera (Home's side faces rest 72 to 76 degrees
+	 * away), whole again inside 53. The faces' plates keep their opacity. */
+	faded = *raster;
+	for(int face = 0; face < UI_HOME_FACE_COUNT; face++) {
+		const float (*basis)[4] = raster->semanticFaces[face];
+		const float (*m)[4] = raster->model;
+		float x = m[0][0] * basis[0][2] + m[0][1] * basis[1][2] + m[0][2] * basis[2][2];
+		float y = m[1][0] * basis[0][2] + m[1][1] * basis[1][2] + m[1][2] * basis[2][2];
+		float z = m[2][0] * basis[0][2] + m[2][1] * basis[1][2] + m[2][2] * basis[2][2];
+		float length = sqrtf(x * x + y * y + z * z);
+		float t = length > 0.0001f ? (z / length - 0.33f) / 0.27f : 0.0f;
+
+		t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+		faded.motifAlpha[face] *= t * t * (3.0f - 2.0f * t);
+	}
+	raster = &faded;
 
 	guMtxIdentity(identity);
 	GX_LoadPosMtxImm(identity, GX_PNMTX0);
@@ -2100,8 +2122,16 @@ static u8 glassReflect(guVector eye, guVector n, guVector offset, float *s, floa
  * It is baked on the CPU once, and again whenever Menu Color recolours the
  * cards. */
 #define GLASS_STUDIO_SIZE 64
+/* Its mipmaps: 32, 16, 8, 4, 2 and 1 texels square, each in whole tiles.
+ * On a bevel the mirrored ray sweeps the studio within a pixel or two; the
+ * GPU then reads a smaller level instead of catching a card's edge in one
+ * pixel and missing it in the next, which reads as a dashed line. */
+#define GLASS_STUDIO_LEVELS 7
+#define GLASS_STUDIO_BYTES (64 * 64 * 4 + 32 * 32 * 4 + 16 * 16 * 4 + 8 * 8 * 4 + 3 * 64)
 
-static u8 glassStudioTexels[GLASS_STUDIO_SIZE * GLASS_STUDIO_SIZE * 4] ATTRIBUTE_ALIGN(32);
+_Static_assert(GLASS_STUDIO_SIZE == 64, "GLASS_STUDIO_BYTES counts a 64-texel studio's levels");
+static u8 glassStudioTexels[GLASS_STUDIO_BYTES] ATTRIBUTE_ALIGN(32);
+static GXColor glassStudioLevel[GLASS_STUDIO_SIZE * GLASS_STUDIO_SIZE];
 static GXTexObj glassStudioTexObj;
 static GXColor glassStudioColors[GLASS_LIGHTS];
 static bool glassStudioBaked;
@@ -2122,20 +2152,39 @@ static bool prepareGlassStudio(void)
 	}
 	if(same) return false;
 	for(int y = 0; y < GLASS_STUDIO_SIZE; y++) for(int x = 0; x < GLASS_STUDIO_SIZE; x++) {
-		GXColor light = glassStudioLight(glassStudioDirection(
+		glassStudioLevel[y * GLASS_STUDIO_SIZE + x] = glassStudioLight(glassStudioDirection(
 			((float)x + 0.5f) / GLASS_STUDIO_SIZE, ((float)y + 0.5f) / GLASS_STUDIO_SIZE), colors);
-		u8 *tile = glassStudioTexels + ((y >> 2) * (GLASS_STUDIO_SIZE >> 2) + (x >> 2)) * 64;
-		int at = ((y & 3) * 4 + (x & 3)) * 2;
-		tile[at] = light.a;
-		tile[at + 1] = light.r;
-		tile[32 + at] = light.g;
-		tile[32 + at + 1] = light.b;
+	}
+	u8 *level = glassStudioTexels;
+	for(int size = GLASS_STUDIO_SIZE; size > 0; size >>= 1) {
+		int tiles = size < 4 ? 1 : size >> 2;
+		for(int y = 0; y < size; y++) for(int x = 0; x < size; x++) {
+			GXColor light = glassStudioLevel[y * size + x];
+			u8 *tile = level + ((y >> 2) * tiles + (x >> 2)) * 64;
+			int at = ((y & 3) * 4 + (x & 3)) * 2;
+			tile[at] = light.a;
+			tile[at + 1] = light.r;
+			tile[32 + at] = light.g;
+			tile[32 + at + 1] = light.b;
+		}
+		level += tiles * tiles * 64;
+		/* The next level in place: each texel averages the four it covers,
+		 * all read before anything at or after its own index is written. */
+		int half = size >> 1;
+		for(int y = 0; y < half; y++) for(int x = 0; x < half; x++) {
+			const GXColor *a = &glassStudioLevel[2 * y * size + 2 * x], *b = a + size;
+			glassStudioLevel[y * half + x] = (GXColor) {
+				(u8)((a[0].r + a[1].r + b[0].r + b[1].r + 2) >> 2),
+				(u8)((a[0].g + a[1].g + b[0].g + b[1].g + 2) >> 2),
+				(u8)((a[0].b + a[1].b + b[0].b + b[1].b + 2) >> 2),
+				(u8)((a[0].a + a[1].a + b[0].a + b[1].a + 2) >> 2)};
+		}
 	}
 	DCFlushRange(glassStudioTexels, sizeof(glassStudioTexels));
 	GX_InitTexObj(&glassStudioTexObj, glassStudioTexels, GLASS_STUDIO_SIZE,
-		GLASS_STUDIO_SIZE, GX_TF_RGBA8, GX_CLAMP, GX_CLAMP, GX_FALSE);
-	GX_InitTexObjLOD(&glassStudioTexObj, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f,
-		GX_FALSE, GX_FALSE, GX_ANISO_1);
+		GLASS_STUDIO_SIZE, GX_TF_RGBA8, GX_CLAMP, GX_CLAMP, GX_TRUE);
+	GX_InitTexObjLOD(&glassStudioTexObj, GX_LIN_MIP_LIN, GX_LINEAR, 0.0f,
+		(float)(GLASS_STUDIO_LEVELS - 1), 0.0f, GX_FALSE, GX_TRUE, GX_ANISO_1);
 	GX_InvalidateTexAll();
 	for(int i = 0; i < GLASS_LIGHTS; i++) glassStudioColors[i] = colors[i];
 	glassStudioBaked = true;
@@ -2831,10 +2880,13 @@ static void drawGlassRim(const cubeOutline_t *outline, float strength)
 		{1.35f, 0.12f, {255, 184, 150, 255}},
 		{-1.35f, 0.13f, {90, 224, 246, 255}}
 	};
-	/* A solid core one pixel across between one-pixel fades: some pixel
-	 * centre always lands in the core, so the rim keeps one brightness
-	 * wherever the edge falls instead of beading along it. */
-	static const float profile[4] = {-1.5f, -0.5f, 0.5f, 1.5f};
+	/* Brightest on the edge, fading to nothing two pixels either side: as
+	 * much light as the old solid one-pixel core between one-pixel fades,
+	 * and any pixel centre within half a pixel of the edge still gets three
+	 * quarters of it, so the rim does not bead along the edge. A solid core
+	 * stair-stepped on the console where the rim runs at an angle (the top
+	 * right corner). */
+	static const float profile[3] = {-2.0f, 0.0f, 2.0f};
 	const float lightX = 0.68f, lightY = -0.73f;
 	indigoPoint_t points[25], joins[25];
 	GXColor colors[25];
@@ -2862,7 +2914,7 @@ static void drawGlassRim(const cubeOutline_t *outline, float strength)
 			shifted[i] = (indigoPoint_t) {points[i].x + nx * layers[layer].offset,
 				points[i].y + ny * layers[layer].offset};
 		}
-		drawRasterStroke(shifted, joins, colors, count + 1, profile, 3);
+		drawRasterStroke(shifted, joins, colors, count + 1, profile, 2);
 	}
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 }

@@ -24,6 +24,13 @@ tag on `beta`. The newest changes are at the top until their release is named.
   light on a TV.
 - The glow spot on the floor under the Home cube is gone; the halo behind the
   cube stays.
+- The cube's edges are smoother on a console. The lights mirrored in the glass
+  no longer break into a dashed line along a bevel seen nearly edge-on, and the
+  rim of light on the top right corner no longer stair-steps.
+- The icons on the cube's side faces no longer break into fragments, such as
+  the Settings face's sliders showing as crosses. An icon fades as its face
+  turns edge-on and comes back as the face turns round, so at rest the faces
+  to either side show clear glass.
 
 ## v2.1.1 — ipl.dol uncompressed again
 

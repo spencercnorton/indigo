@@ -55,7 +55,8 @@ The cube is clear glass, and it treats light the way glass does:
   glass is never quite still.
 - **It glows.** Highlights and glints have a soft glow, a fine rim lights
   the edges that face the light, and a halo sits behind the cube. The face
-  icons stay sharp on top of the glass.
+  icons stay sharp on top of the glass, and each fades as its face turns
+  away, so the faces to either side show clear glass.
 
 Every part follows your [Menu Color](personalize.md), except the prism's
 fringes, which keep their own colors. With UI Motion set
