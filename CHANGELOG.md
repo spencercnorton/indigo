@@ -4,7 +4,12 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
-## Unreleased
+## v2.2.0 — Backdrop and Wave Color, a Clock setting and a cleaner cube
+
+The backdrop and the waves can each have a color of their own, the clock can
+move to the top left or go, and the cube draws cleaner on a console: no glow
+spot under it, smoother edges, and side faces that show clear glass at rest
+instead of broken icons. A Jet Black backdrop is nearly black now.
 
 ### New
 
