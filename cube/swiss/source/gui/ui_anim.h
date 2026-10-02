@@ -15,6 +15,5 @@ void UIAnim_Reset(void);
 void UIAnim_BeginFrame(void);
 float UIAnim_Seconds(void);
 float UIAnim_Delta(void);
-float UIAnim_Approach(float current, float target, float response);
 
 #endif

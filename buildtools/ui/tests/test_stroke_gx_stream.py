@@ -930,7 +930,8 @@ class StrokeGXStreamTests(unittest.TestCase):
     def setUpClass(cls):
         indigo=(GUI / "indigo_background.c").read_text()
         frame=(GUI / "FrameBufferMagic.c").read_text()
-        blocks=[extract_function(indigo, "static float fastSqrt(")]
+        blocks=[extract_function(indigo, "static float fastSqrt("),
+                extract_function((GUI / "ui_motion.c").read_text(), "float UIMotion_Smoothstep(")]
         blocks += [extract_function(indigo, "static void " + name + "(")
                    for name in ("putCubeVertex",)]
         blocks += [extract_function(indigo[indigo.rindex("static bool " + name + "("):], "static bool " + name + "(")

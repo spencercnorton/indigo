@@ -1996,8 +1996,7 @@ static void drawFaceIcons(float seconds, bool animated,
 		float length = fastSqrt(x * x + y * y + z * z);
 		float t = length > 0.0001f ? (z / length - 0.33f) / 0.27f : 0.0f;
 
-		t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
-		faded.motifAlpha[face] *= t * t * (3.0f - 2.0f * t);
+		faded.motifAlpha[face] *= UIMotion_Smoothstep(t);
 	}
 	raster = &faded;
 
@@ -2052,9 +2051,7 @@ static void drawFaceIcons(float seconds, bool animated,
 
 static float glassSmoothstep(float edge0, float edge1, float x)
 {
-	float t = (x - edge0) / (edge1 - edge0);
-	t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
-	return t * t * (3.0f - 2.0f * t);
+	return UIMotion_Smoothstep((x - edge0) / (edge1 - edge0));
 }
 
 /* The studio the glass mirrors: soft light cards fixed to the camera,
@@ -3246,14 +3243,7 @@ void IndigoBackground_DrawBootOverlay(float seconds, bool animated,
 		return;
 	}
 
-	reveal = scene->introProgress / BOOT_VEIL_LIFT;
-	if(reveal < 0.0f) {
-		reveal = 0.0f;
-	}
-	else if(reveal > 1.0f) {
-		reveal = 1.0f;
-	}
-	reveal = reveal * reveal * (3.0f - 2.0f * reveal);
+	reveal = UIMotion_Smoothstep(scene->introProgress / BOOT_VEIL_LIFT);
 	hidden = 1.0f - reveal;
 	veilAlpha = (u8)(hidden * 255.0f);
 	if(scene->visible && scene->introProgress < BOOT_CUBE_HANDOFF) {

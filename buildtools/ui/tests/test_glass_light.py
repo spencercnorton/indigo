@@ -492,6 +492,8 @@ class GlassLightTests(unittest.TestCase):
             r"\{.*?\n\};", cls.source, re.S).group(0))
         blocks.append(re.search(r"static u8 glassStudioTexels\[.*?;\n(?:static .*?;\n)+",
             cls.source).group(0))
+        blocks.append(extract_function((GUI / "ui_motion.c").read_text(),
+                                       "float UIMotion_Smoothstep("))
         for signature in FUNCTIONS:
             text = cls.source
             if signature == "static bool railJoin(":

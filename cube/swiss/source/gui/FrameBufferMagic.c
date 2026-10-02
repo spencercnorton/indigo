@@ -4351,9 +4351,7 @@ static void _DrawHomeRoot(const drawHomeEvent_t *data,
 	GXColor incoming;
 	uiMotionMode_t motionMode = _CurrentMotionMode();
 
-	if(progress < 0.0f) progress = 0.0f;
-	if(progress > 1.0f) progress = 1.0f;
-	eased = progress * progress * (3.0f - 2.0f * progress);
+	eased = UIMotion_Smoothstep(progress);
 
 	/* The ring names only the selected face, under the cube. Nothing sits
 	 * above or beside it: a label the cube does not carry through the turn
@@ -4590,13 +4588,12 @@ static void _DrawDeviceSelector(uiDrawObj_t *evt)
 	const uiSceneFrame_t *scene = UIScene_Frame();
 	/* The row rises into view as the cube lifts and shrinks out of its way,
 	 * as the Library's posters follow the cube's retreat. */
-	float rise = fminf(fmaxf((0.92f - scene->cubeScale) / 0.30f, 0.0f), 1.0f);
+	float rise = UIMotion_Smoothstep((0.92f - scene->cubeScale) / 0.30f);
 	float reveal = fminf(scene->chromeProgress, 1.0f);
 	float position, first, last, y, pulse, labels;
 	int tiles = 0;
 	int nearest, k, i;
 
-	rise = rise * rise * (3.0f - 2.0f * rise);
 	reveal *= rise;
 	if(s->count <= 0 || reveal <= 0.0f) {
 		return;

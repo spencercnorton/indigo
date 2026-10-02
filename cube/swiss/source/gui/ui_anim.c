@@ -43,9 +43,3 @@ float UIAnim_Delta(void)
 {
 	return frameDelta;
 }
-
-float UIAnim_Approach(float current, float target, float response)
-{
-	float blend = 1.0f - expf(-response * frameDelta);
-	return current + ((target - current) * blend);
-}
