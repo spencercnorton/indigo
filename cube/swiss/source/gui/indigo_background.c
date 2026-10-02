@@ -2904,6 +2904,19 @@ static void drawGlassBloom(float left, float top, float right, float bottom,
 	setupRasterPipeline();
 }
 
+/* The cube's silhouette lies wholly left or right of the stage. */
+static bool cubeOffStage(const cubeOutline_t *outline)
+{
+	float left = 1e9f, right = -1e9f;
+	if(outline->count < 3) return false;
+	for(int i = 0; i < outline->count; i++) {
+		float x = 320.0f + outline->point[i].x;
+		if(x < left) left = x;
+		if(x > right) right = x;
+	}
+	return right <= UIStage_Left() || left >= UIStage_Right();
+}
+
 static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 		const uiClockFrame_t *clock, const indigoPadFrame_t *pad,
 		const int icons[UI_HOME_FACE_COUNT], bool screenGlass)
@@ -2953,6 +2966,13 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	buildChamferStrips(bevels, outer, inset, rear, lit);
 	buildCornerFans(fans, outer, inset, rear, lit);
 	buildCubeOutline(&raster, shell, &shellOutline);
+	if(cubeOffStage(&shellOutline)) {
+		/* Parked beside the stage (Grid and Spotlight in 4:3): none of it
+		 * shows. The Library emblem still follows the pad. */
+		controllerPose_t pose;
+		controllerPose(pad, seconds, animated, &controllerIdle, &pose);
+		return;
+	}
 
 	/* Far structural surfaces must precede the transparent shell; otherwise
 	 * rear rails and caps visibly composite across the front pane. */

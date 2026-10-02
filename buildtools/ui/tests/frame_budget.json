@@ -77,15 +77,15 @@
   "vertices": 6102
  },
  "library-grid": {
-  "begins": 111,
-  "copy_pixels": 614400,
-  "hash": "8fb651ce6b539c10",
-  "minmax": 374,
+  "begins": 28,
+  "copy_pixels": 0,
+  "hash": "26d3bdc6c4a70169",
+  "minmax": 0,
   "scene": "library-grid",
-  "sqrtf": 3776,
-  "state": 322,
-  "trig": 545,
-  "vertices": 6690
+  "sqrtf": 494,
+  "state": 53,
+  "trig": 32,
+  "vertices": 1440
  },
  "library-grid-wide": {
   "begins": 111,
@@ -110,15 +110,15 @@
   "vertices": 6118
  },
  "library-spotlight": {
-  "begins": 111,
-  "copy_pixels": 614400,
-  "hash": "d2b983de6cf206ca",
-  "minmax": 374,
+  "begins": 28,
+  "copy_pixels": 0,
+  "hash": "a489a6fab7c8d345",
+  "minmax": 0,
   "scene": "library-spotlight",
-  "sqrtf": 3776,
-  "state": 322,
-  "trig": 545,
-  "vertices": 6690
+  "sqrtf": 494,
+  "state": 53,
+  "trig": 32,
+  "vertices": 1440
  },
  "library-spotlight-wide": {
   "begins": 111,
