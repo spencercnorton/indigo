@@ -305,6 +305,8 @@ static void scene(const char *name, uiSceneId_t id)
 
 static void hintRoundRect(void)
 {
+	/* One call to warm up, then the steady call a frame makes. */
+	_HintRoundRect(100.0f, 100.0f, 22.0f, 22.0f, 11.0f, (GXColor) {0, 170, 122, 255});
 	memset(&cost, 0, sizeof(cost));
 	cost.hash = 1469598103934665603ULL;
 	stubStateCalls = 0;

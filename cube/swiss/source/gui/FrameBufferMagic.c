@@ -2148,24 +2148,41 @@ static void _HintShape(float cx, float cy, const float (*points)[2], int count,
 }
 
 /* A rectangle with round corners; radius = half the height makes a pill. */
+#define HINT_CORNER_STEPS 6
 static void _HintRoundRect(float cx, float cy, float width, float height,
 	float radius, GXColor color)
 {
-	static const int steps = 6;
+	/* The corners' points on a unit circle, worked out on the first call:
+	 * cosf and sinf are software on the console, and every disc, pill and
+	 * badge in a hint line draws through here each frame. */
+	static float unit[4 * (HINT_CORNER_STEPS + 1)][2];
+	static bool unitReady = false;
 	float points[HINT_POINTS_MAX][2];
 	float halfW = width / 2.0f - radius;
 	float halfH = height / 2.0f - radius;
 	int corner, i, count = 0;
 
+	if(!unitReady) {
+		for(corner = 0; corner < 4; corner++) {
+			for(i = 0; i <= HINT_CORNER_STEPS; i++) {
+				float angle = HINT_QUARTER_TURN *
+					((float)corner + (float)i / (float)HINT_CORNER_STEPS);
+
+				unit[count][0] = cosf(angle);
+				unit[count][1] = sinf(angle);
+				count++;
+			}
+		}
+		unitReady = true;
+		count = 0;
+	}
 	for(corner = 0; corner < 4; corner++) {
 		float ox = (corner == 0 || corner == 3) ? halfW : -halfW;
 		float oy = (corner < 2) ? halfH : -halfH;
 
-		for(i = 0; i <= steps; i++) {
-			float angle = HINT_QUARTER_TURN * ((float)corner + (float)i / (float)steps);
-
-			points[count][0] = cx + ox + radius * cosf(angle);
-			points[count][1] = cy + oy + radius * sinf(angle);
+		for(i = 0; i <= HINT_CORNER_STEPS; i++) {
+			points[count][0] = cx + ox + radius * unit[count][0];
+			points[count][1] = cy + oy + radius * unit[count][1];
 			count++;
 		}
 	}
