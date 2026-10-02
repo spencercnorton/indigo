@@ -43,6 +43,7 @@ static uiHomeCapabilities_t capabilities(bool hasSource, bool hasRecent)
 	value.hasSource = hasSource;
 	value.hasRecent = hasRecent;
 	value.hasApps = false;
+	value.style = UI_HOME_CUBE_INFINITE;
 	return value;
 }
 

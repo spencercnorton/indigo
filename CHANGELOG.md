@@ -29,6 +29,14 @@ tag on `beta`. The newest changes are at the top until their release is named.
   time now. In the same corner the time sits beside the dial as before; apart,
   each sits in its own corner. In `global.ini` it is `Temperature`; settings
   saved by 2.2, which has no `Temperature`, keep the dial with the clock.
+- Settings › Setup › Console › **Cube** chooses how Home's cube turns.
+  Infinite (the default) turns round every face in a ring, as before. Classic
+  lays the faces out like the GameCube's own menu: Library in front, Settings
+  on the left, System on the right, Source on top and Apps underneath. From
+  Library a direction turns to that side; from a side, only the way back or
+  B returns to Library. The icons stay on their sides as the cube turns, and
+  a Classic turn arrives in about a quarter of a second. In `global.ini` it
+  is `Cube`.
 
 ### Changes
 

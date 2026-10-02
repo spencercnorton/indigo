@@ -30,10 +30,13 @@ own buttons.
 | Left, Right | Turn the cube to the next face. |
 | Up, Down | Tip the cube over to the next face. |
 | A | Open the face you're on. |
+| B | With Setup › Console › Cube at Classic, turn back to Library. |
 | START | Recently played games (Setup › Library › Recent List). |
 
 The Source and System faces open a short list: move with the D-pad, A opens,
-B goes back. See [Home](home.md).
+B goes back. See [Home](home.md). With a Classic cube, a direction turns
+only from Library to a side and back: see
+[Infinite or Classic](home.md#infinite-or-classic).
 
 ### Source picker
 

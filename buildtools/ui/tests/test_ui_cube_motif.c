@@ -9,9 +9,9 @@ static unsigned long checks;
 #define CHECK(c) do { ++checks; if(!(c)) { \
 	fprintf(stderr,"CHECK %s:%d: %s\n",__FILE__,__LINE__,#c); exit(1); \
 } } while(0)
-static const uiHomeCapabilities_t caps = {true, true, false};
+static const uiHomeCapabilities_t caps = {true, true, false, UI_HOME_CUBE_INFINITE};
 /* With an app on the source: a ring of five faces. */
-static const uiHomeCapabilities_t appsCaps = {true, true, true};
+static const uiHomeCapabilities_t appsCaps = {true, true, true, UI_HOME_CUBE_INFINITE};
 
 static bool placed_alike(const uiCubeMotifBasis_t *a, const uiCubeMotifBasis_t *b, int f)
 {
@@ -256,6 +256,79 @@ static void same_axis_four_turns_leave_physical_glyphs_unchanged(void)
 	}
 }
 
+/* Classic: each face's glyph has a side of the cube for good, written from
+ * the GameCube's menu: Library front, Source top, Settings left, System right
+ * and Apps bottom, each reading upright once Library's turn to it brings it
+ * to the front. Wherever the cube is turned and whichever face is in front,
+ * the glyphs stay put; the reducer's turns therefore never fade one. */
+static void classic_fixed_sides(void)
+{
+	/* right, up and normal, per face. */
+	static const int sides[UI_HOME_FACE_COUNT][3][3]={
+		{{1,0,0},{0,1,0},{0,0,1}},
+		{{1,0,0},{0,0,-1},{0,1,0}},
+		{{0,0,1},{0,1,0},{-1,0,0}},
+		{{0,0,-1},{0,1,0},{1,0,0}},
+		{{1,0,0},{0,0,1},{0,-1,0}}
+	};
+	uiHomeOrientation_t all[24];
+	size_t count=orientations(all);
+	for(int ring=4;ring<=5;++ring)
+	for(size_t o=0u;o<count;++o) for(int f=0;f<ring;++f) for(int a=0;a<3;++a) {
+		uiHomeCapabilities_t with=ring==5 ? appsCaps:caps;
+		uiHomeState_t home;
+		uiCubeMotifBasis_t map;
+		with.style=UI_HOME_CUBE_CLASSIC;
+		UIHome_Init(&home,with); home.orientation=all[o];
+		home.face=(uiHomeFace_t)f; home.turnOrdinal=(int32_t)f;
+		home.turnAxis=(uiHomeTurnAxis_t)a;
+		UICubeMotif_Build(&home,&map); proper_basis(&map);
+		CHECK(map.faceCount==ring);
+		for(int glyph=0;glyph<UI_HOME_FACE_COUNT;++glyph) {
+			CHECK(map.shown[glyph]==(glyph<ring));
+			for(int r=0;r<3;++r) for(int c=0;c<3;++c)
+				CHECK(map.face[glyph][r][c]==(float)sides[glyph][c][r]);
+		}
+	}
+	/* Every Classic turn the reducer makes, from Library and back, with
+	 * and without Apps: the requested map never differs, so nothing fades. */
+	for(int ring=4;ring<=5;++ring) {
+		static const uiHomeInput_t out[4]={UI_HOME_INPUT_LEFT,UI_HOME_INPUT_RIGHT,
+			UI_HOME_INPUT_UP,UI_HOME_INPUT_DOWN};
+		uiHomeCapabilities_t with=ring==5 ? appsCaps:caps;
+		uiHomeState_t home;
+		uiCubeMotifState_t state;
+		uiCubeMotifBasis_t first;
+		with.style=UI_HOME_CUBE_CLASSIC;
+		UIHome_Init(&home,with);
+		UICubeMotif_Reset(&state); UICubeMotif_Request(&state,&home,UI_MOTION_OFF);
+		first=state.basis;
+		for(int i=0;i<4;++i) for(int back=0;back<2;++back) {
+			(void)UIHome_Apply(&home,back ? UI_HOME_INPUT_BACK:out[i],with);
+			UICubeMotif_Request(&state,&home,UI_MOTION_FULL);
+			CHECK(!state.changing && same(&state.basis,&first));
+			update_without_visible_basis_swap(&state,0.02f,UI_MOTION_FULL);
+			CHECK(UICubeMotif_Settled(&state));
+		}
+		CHECK(home.revision==(ring==5 ? 9u:7u));
+	}
+	/* Changing the style does move glyphs: they fade over to their sides. */
+	{
+		uiHomeCapabilities_t with=caps;
+		uiHomeState_t home;
+		uiCubeMotifState_t state;
+		UIHome_Init(&home,caps);
+		UICubeMotif_Reset(&state); UICubeMotif_Request(&state,&home,UI_MOTION_OFF);
+		with.style=UI_HOME_CUBE_CLASSIC;
+		(void)UIHome_Apply(&home,UI_HOME_INPUT_NONE,with);
+		UICubeMotif_Request(&state,&home,UI_MOTION_FULL);
+		CHECK(state.changing && state.alpha[UI_HOME_FACE_LIBRARY]==1.0f);
+		for(int i=0;i<10;++i) update_without_visible_basis_swap(&state,0.02f,UI_MOTION_FULL);
+		CHECK(UICubeMotif_Settled(&state));
+		CHECK(state.basis.face[UI_HOME_FACE_SOURCE][1][2]==1.0f);
+	}
+}
+
 static void update_without_visible_basis_swap(uiCubeMotifState_t *state,float dt,uiMotionMode_t mode)
 {
 	uiCubeMotifState_t before=*state;
@@ -398,6 +471,14 @@ static void malformed_request_falls_back(void)
 	UIHome_Init(&home,caps); home.face=UI_HOME_FACE_APPS;
 	UICubeMotif_Build(&home,&actual); CHECK(same(&authored,&actual));
 	CHECK(actual.faceCount==4);
+	/* A cube style that is neither Infinite nor Classic, on a face whose
+	 * own map differs from the authored one. */
+	UIHome_Init(&home,caps); (void)UIHome_Apply(&home,UI_HOME_INPUT_UP,caps);
+	UICubeMotif_Build(&home,&actual); CHECK(!same(&authored,&actual));
+	home.style=UI_HOME_CUBE_COUNT;
+	UICubeMotif_Build(&home,&actual); CHECK(same(&authored,&actual));
+	home.style=(uiHomeCubeStyle_t)-1;
+	UICubeMotif_Build(&home,&actual); CHECK(same(&authored,&actual));
 }
 
 int main(void)
@@ -405,6 +486,7 @@ int main(void)
 	all_orientations_and_semantic_faces();
 	five_face_ring_glyphs();
 	same_axis_four_turns_leave_physical_glyphs_unchanged();
+	classic_fixed_sides();
 	mixed_halfway_retarget_and_latest_pending();
 	frame_rate_and_motion_modes();
 	malformed_request_falls_back();
