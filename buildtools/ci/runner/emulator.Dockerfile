@@ -26,9 +26,10 @@ RUN git init --quiet /src && cd /src \
  && git checkout --quiet FETCH_HEAD \
  && git submodule update --quiet --init --recursive --depth 1 --jobs 8
 
-COPY dolphin/0001-sd2sp2-adapter.patch dolphin/0002-flush-sd-writes.patch dolphin/0003-controller-no-response.patch dolphin/0004-sd-faults.patch dolphin/0005-emulated-clock.patch /src/patches/
+COPY dolphin/0001-sd2sp2-adapter.patch dolphin/0002-flush-sd-writes.patch dolphin/0003-controller-no-response.patch dolphin/0004-sd-faults.patch dolphin/0005-emulated-clock.patch dolphin/0006-gcloader.patch /src/patches/
 RUN cd /src && git apply patches/0001-sd2sp2-adapter.patch patches/0002-flush-sd-writes.patch \
       patches/0003-controller-no-response.patch patches/0004-sd-faults.patch patches/0005-emulated-clock.patch \
+      patches/0006-gcloader.patch \
  && cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/dolphin \
       -DENABLE_QT=OFF -DENABLE_NOGUI=ON -DENABLE_TESTS=OFF -DENABLE_AUTOUPDATE=OFF \
       -DENABLE_ANALYTICS=OFF -DUSE_DISCORD_PRESENCE=OFF -DUSE_RETRO_ACHIEVEMENTS=OFF \

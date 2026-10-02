@@ -12,8 +12,9 @@ the headless front end is built (`dolphin-emu-nogui`).
 | [`0003-controller-no-response.patch`](0003-controller-no-response.patch) | A controller answers the serial commands a real one ignores with no response. Dolphin answered nothing, which kept the transfer pending forever: Swiss stalled starting up with a controller connected (libogc's steering wheel probe, `0x30`), and again before a launch (the GameID packet Swiss sends for BlueRetro adapters). |
 | [`0004-sd-faults.patch`](0004-sd-faults.patch) | Faults a test asks for in `DOLPHIN_SD_FAULTS`: sectors that fail to read or write, or every write after a number of them, so the test can see what Indigo does with a failing card. A write the card could not make is answered as one, where 0001 answered "accepted" whatever happened. |
 | [`0005-emulated-clock.patch`](0005-emulated-clock.patch) | With `DOLPHIN_TICKS` set, the emulated clock and the CPU's PC and LR on stderr ten times a second: the emulator test times its waits in the console's own seconds, so a busy machine slows a run instead of failing it, and a hang says where it is. |
+| [`0006-gcloader.patch`](0006-gcloader.patch) | With `DOLPHIN_GCLOADER` naming a card image, the drive is a GC Loader (HW2, firmware 1.0.1, writes enabled): Swiss and libogc2 read and write its SD card through the drive's commands, and it serves up to two discs from fragment tables of at most 40 entries each, as [its API](https://github.com/danielkraak/GC-Loader/blob/master/API.md) describes. Until a table is in use it serves the inserted disc, as a GC Loader serves its `boot.iso`. |
 
-All five are under Dolphin's licence, the GNU General Public License
+All six are under Dolphin's licence, the GNU General Public License
 version 2 or later.
 
 Without them CI could boot Indigo only from a disc: Dolphin has no GameCube
