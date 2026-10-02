@@ -7024,7 +7024,7 @@ static void *videoUpdate(void *videoEventQueue) {
 			_HomeFaceIcons(icons);
 			drawInit();
 			IndigoBackground_DrawBootOverlay(UIAnim_Seconds(),
-				!swissSettings.disableUIAnimations, UIScene_Frame(),
+				_CurrentMotionMode() == UI_MOTION_FULL, UIScene_Frame(),
 				&systemInstrument.clock, icons);
 			drawInit();
 		}

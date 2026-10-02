@@ -289,6 +289,9 @@ require("&systemInstrument.clock" in background,
 require("IndigoBackground_DrawBootOverlay" in video_loop and
         "&systemInstrument.clock" in video_loop,
         "boot cube does not receive shared clock frame")
+require("IndigoBackground_DrawBootOverlay(UIAnim_Seconds(),\n"
+        "\t\t\t\t_CurrentMotionMode() == UI_MOTION_FULL," in video_loop,
+        "boot cube moves under Reduced motion, unlike the cube it hands over to")
 require("const uiClockFrame_t *clock" in INDIGO_H,
         "Indigo API omits numeric clock frame")
 require("GX_Begin(GX_QUADS, GX_VTXFMT0, 220);" in motifs,
