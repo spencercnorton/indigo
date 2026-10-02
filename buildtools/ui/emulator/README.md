@@ -44,8 +44,10 @@ text under the cube, a game's title), never with stored pictures, so a
 redesign does not break the test and a crash, a hang, a black screen or a
 dead control does. Only where that text sits is fixed (`LABEL_BOX`,
 `TITLE_BOX` and `DETAIL_TITLE_BOX` in `run.py`): a change that moves it
-updates them. The test waits for what it expects to see, not for a fixed
-time, so a busy machine makes it slower, not flaky. A failed step says why,
+updates them. Text is the same text a pair of rows at a time: a slow frame
+can leave the 480i picture half a line higher. The test waits for what it
+expects to see, not for a fixed time, so a busy machine makes it slower, not
+flaky. A failed step says why,
 and names the crash when there is one.
 
 ## Running it
