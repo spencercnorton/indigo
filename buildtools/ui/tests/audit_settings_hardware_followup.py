@@ -375,7 +375,7 @@ def validate(files: dict[str, str]) -> list[str]:
         "UI_SETLAYOUT_PAGE_Y (-6)",
         "UI_SETLAYOUT_PAGE_W 652",
         "UI_SETLAYOUT_PAGE_H 492",
-        "UI_SETLAYOUT_PAGE_ALPHA 254",
+        "UI_SETLAYOUT_PAGE_ALPHA 255",
     ):
         need(token in layout_h, f"the page no longer covers the screen: {token}")
     need("back.a = UI_SETLAYOUT_PAGE_ALPHA;" in page_render and

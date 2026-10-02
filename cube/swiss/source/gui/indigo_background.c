@@ -1342,14 +1342,17 @@ static GXColor controllerGlow(GXColor color, float weight, bool pressed)
 	return color;
 }
 
+/* When the Library emblem last saw the pad in use: kept while its face is
+ * turned away and while a page covers the cube, so idle play keeps time. */
+static controllerIdle_t controllerIdle;
+
 static void drawControllerIcon(const cubeRasterTransform_t *raster, int face,
 		GXColor glow, float seconds, bool animated, const indigoPadFrame_t *pad)
 {
-	static controllerIdle_t idle;
 	const float plane = 1.012f;
 	controllerPose_t pose;
 
-	controllerPose(pad, seconds, animated, &idle, &pose);
+	controllerPose(pad, seconds, animated, &controllerIdle, &pose);
 	if(raster->motifAlpha[face] <= 0.0f) return;
 	bool l = (pose.pressed & PAD_TRIGGER_L) != 0u;
 	bool r = (pose.pressed & PAD_TRIGGER_R) != 0u;
@@ -3132,6 +3135,14 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 		drawCubeLight(scene, seconds, cubeMotionActive);
 		drawCube(scene, seconds, cubeMotionActive, clock, pad, icons, true);
 	}
+}
+
+void IndigoBackground_TrackPad(float seconds, bool animated,
+	const indigoPadFrame_t *pad)
+{
+	controllerPose_t pose;
+
+	controllerPose(pad, seconds, animated, &controllerIdle, &pose);
 }
 
 void IndigoBackground_DrawBootOverlay(float seconds, bool animated,

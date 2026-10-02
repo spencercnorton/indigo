@@ -57,6 +57,7 @@ typedef struct { bool available; float hourX,hourY,minuteX,minuteY,secondX,secon
 typedef struct { bool available; s8 stickX,stickY,substickX,substickY; u32 buttons; } indigoPadFrame_t;
 typedef struct { float stickX,stickY,substickX,substickY; u32 pressed; } controllerPose_t;
 typedef struct { float lastLiveInput; bool liveSeen; } controllerIdle_t;
+static controllerIdle_t controllerIdle;
 enum { PAD_BUTTON_LEFT=0x0001, PAD_BUTTON_RIGHT=0x0002, PAD_BUTTON_DOWN=0x0004, PAD_BUTTON_UP=0x0008,
     PAD_TRIGGER_Z=0x0010, PAD_TRIGGER_R=0x0020, PAD_TRIGGER_L=0x0040, PAD_BUTTON_A=0x0100,
     PAD_BUTTON_B=0x0200, PAD_BUTTON_X=0x0400, PAD_BUTTON_Y=0x0800, PAD_BUTTON_START=0x1000 };

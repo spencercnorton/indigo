@@ -147,6 +147,8 @@ typedef struct {
 static uiSystemInstrument_t systemInstrument;
 static void _UpdateSystemInstrument(void);
 static indigoPadFrame_t padInstrument;
+/* This frame shows a full-screen page over everything before it. */
+static bool backgroundCovered;
 static file_handle posterPackFile;
 static DEVICEHANDLER_INTERFACE *posterPackDevice;
 static bool posterPackAttempted;
@@ -987,6 +989,12 @@ static void _DrawBackground(uiDrawObj_t *evt)
 	bool decorativeAnimated = _CurrentMotionMode() == UI_MOTION_FULL;
 	int icons[UI_HOME_FACE_COUNT];
 
+	if(backgroundCovered) {
+		/* Not a pixel of it would show. */
+		IndigoBackground_TrackPad(UIAnim_Seconds(),
+			decorativeAnimated && UIScene_Frame()->visible, &padInstrument);
+		return;
+	}
 	UI_PERF_BEGIN(backgroundStart);
 
 	(void)evt;
@@ -5725,7 +5733,7 @@ static void _DrawCheats(uiDrawObj_t *evt)
 	focusY = (int)lrintf(UIMotion_SpringUpdate(&data->focusY,
 		UIAnim_Delta(), motion));
 
-	_PagePanel(-6, -6, 652, 492, (GXColor){8, 12, 27, 254});
+	_PagePanel(-6, -6, 652, 492, (GXColor){8, 12, 27, 255});
 	_CheatsPanel(40, 30, 40, 3, accent);
 	drawStringMedium(40, 63, "Cheats", 1.05f, ALIGN_LEFT, primary);
 	drawStringMedium(600, 63, s->enabledText, 0.54f, ALIGN_RIGHT, accent);
@@ -6972,6 +6980,20 @@ static void _SelectFrameColors(void)
 	IndigoBackground_SetColors(frameColors);
 }
 
+/* Settings, the cheats and Memory Cards are opaque pages over the whole
+ * stage (_PagePanel), so while one is up nothing drawn before it shows. */
+static bool _FrameCovered(uiDrawObjQueue_t *queue)
+{
+	for(; queue != NULL; queue = queue->next) {
+		const uiDrawObj_t *event = queue->event;
+		if(!event->disposed && (event->type == EV_SETTINGS ||
+			event->type == EV_CHEATS || event->type == EV_SAVES)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 static void *videoUpdate(void *videoEventQueue) {
 	GX_SetCurrentGXThread();
 	
@@ -7024,6 +7046,7 @@ static void *videoUpdate(void *videoEventQueue) {
 			videoEventQueueEntry = videoEventQueueEntry->next;
 		}
 		
+		backgroundCovered = _FrameCovered((uiDrawObjQueue_t*)videoEventQueue);
 		GXRModeObj *vmode = getVideoMode();
 		if(vmode->field_rendering) {
 			GX_SetViewportJitter(0.0f, 0.0f, vmode->fbWidth, vmode->efbHeight, 0.0f, 1.0f, VIDEO_GetNextField());
