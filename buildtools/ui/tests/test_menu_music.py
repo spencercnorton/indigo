@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """The bundled menu music is a stream the console can loop.
 
-gui/menuaudio.c streams menu_music_mp3.h and loops it by seeking straight to
+gui/menuaudio.c streams menu_music.mp3 (menu_music_mp3.h embeds it) and loops
+it by seeking straight to
 an MP3 frame: frame n must start at n * MENU_MUSIC_FRAME_BYTES, so every
 frame is MPEG-1 Layer III at the header's rate and bitrate, unpadded, with no
 tag or Xing frame in front. The loop must fit inside the decoded stream, and
@@ -14,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 HEADER = (ROOT / "cube/swiss/source/gui/menu_music_mp3.h").read_text()
+MP3 = (ROOT / "cube/swiss/source/gui/menu_music.mp3").read_bytes()
 AUDIO = (ROOT / "cube/swiss/source/gui/menuaudio.c").read_text()
 FRAME_SAMPLES = 1152
 GUARD = 8
@@ -26,8 +28,10 @@ def define(name: str) -> int:
 
 
 def stream() -> bytes:
-    body = HEADER.split("= {", 1)[1].split("};", 1)[0]
-    return bytes(int(v) for v in body.replace("\n", "").split(","))
+    """What the array holds: the file, then the zeros #embed's suffix adds."""
+    embed = re.search(r'#embed "menu_music.mp3" limit\(MENU_MUSIC_MP3_LEN \+ 1\) suffix\(([^)]*)\)', HEADER)
+    zeros = [int(v) for v in embed.group(1).split(",") if v.strip()]
+    return MP3[:define("MENU_MUSIC_MP3_LEN") + 1] + bytes(zeros)
 
 
 def frame_sizes(data: bytes) -> list[int]:
