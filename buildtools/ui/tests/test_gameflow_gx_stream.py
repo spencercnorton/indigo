@@ -76,15 +76,16 @@ BASE_EDITS = (
      "#define UI_GAMEFLOW_RENDER_SLOTS 9u"),
     ("FrameBufferMagic.c", "record->relativeSlot < -3 || record->relativeSlot > 3) {",
      "record->relativeSlot < -4 || record->relativeSlot > 4) {"),
-    # A moving card rounds its first corner and the distances from it, so
-    # its size changes one way.
-    ("FrameBufferMagic.c", "\t\tresult.point[i].x = _GameflowRound(result.point[i].x);\n"
-     "\t\tresult.point[i].y = _GameflowRound(result.point[i].y);\n\t}\n\treturn result;",
-     "\t}\n\tfor(i = 3; i >= 0; --i) {\n"
-     "\t\tresult.point[i].x = _GameflowRound(result.point[0].x) +\n"
-     "\t\t\t_GameflowRound(result.point[i].x - result.point[0].x);\n"
-     "\t\tresult.point[i].y = _GameflowRound(result.point[0].y) +\n"
-     "\t\t\t_GameflowRound(result.point[i].y - result.point[0].y);\n\t}\n\treturn result;"),
+    # A moving card goes a whole pixel of its farthest-moving corner at a
+    # time, so each edge moves one way and its size changes one way.
+    ("FrameBufferMagic.c", "\tfloat progress = clamped - (float)lower;\n\tint i;\n",
+     "\tfloat progress = clamped - (float)lower;\n\tint i;\n\tfloat travel = 0.0f;\n"
+     "\tfor(i = 0; i < 4; ++i) {\n"
+     "\t\ttravel = fmaxf(travel, fabsf(gameflowSlotPoses[upper + 3].point[i].x -\n"
+     "\t\t\tgameflowSlotPoses[lower + 3].point[i].x));\n"
+     "\t\ttravel = fmaxf(travel, fabsf(gameflowSlotPoses[upper + 3].point[i].y -\n"
+     "\t\t\tgameflowSlotPoses[lower + 3].point[i].y));\n\t}\n"
+     "\tif(travel > 0.0f) {\n\t\tprogress = _GameflowRound(progress * travel) / travel;\n\t}\n"),
 )
 PURE = ("ui_gameflow.c", "ui_motion.c", "ui_gameflow_library.c",
         "ui_command_rail.c", "ui_gameflow_detail.c", "ui_game_history.c")
@@ -464,6 +465,27 @@ def covers(frame: str) -> dict:
 
 def centre(box):
     return ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+
+
+def shells(frame: str) -> dict:
+    """gameId -> the corners of its card in one frame: of the quads every card
+    is drawn as first, its foot dark, the one nearest the middle of its cover."""
+    lines = frame.splitlines()
+    quads = []
+    for i, line in enumerate(lines):
+        block = lines[i + 1:i + 1 + 3 * int(line.split()[1])] if line.startswith("B ") else []
+        if block and "strip" not in line and block[7].startswith("C 10 8 30 "):
+            points = [tuple(map(float, block[k].split()[1:])) for k in range(0, len(block), 3)]
+            quads = [points[k:k + 4] for k in range(0, len(points), 4)]
+            break
+    found = {}
+    for game, boxes in covers(frame).items():
+        if game.startswith("still:"):  # Spotlight's picture, not a card
+            continue
+        x, y = centre(boxes[0])
+        found[game] = min(quads, key=lambda q: (sum(p[0] for p in q) / 4 - x) ** 2 +
+                          (sum(p[1] for p in q) / 4 - y) ** 2)
+    return found
 
 
 # Horizontal through moves, wraps, page snaps, Detail and back, in each
@@ -973,7 +995,8 @@ class GameflowGxStream(unittest.TestCase):
     def test_moving_cards_change_size_one_way(self):
         """A step moves every card between two poses: its size along the
         strip changes one way, never a pixel back and forth as its corners
-        round. Each card's corners round from its first corner."""
+        round. Each card goes a whole pixel of its farthest-moving corner at
+        a time."""
         width = lambda box: box[2] - box[0]
         height = lambda box: box[3] - box[1]
         for script, sizes in ((["L 0 40 20", "P 21 1 0 0"], (width,)),
@@ -991,6 +1014,30 @@ class GameflowGxStream(unittest.TestCase):
                         steps = [b - a for a, b in zip(seen, seen[1:]) if abs(b - a) > 0.001]
                         self.assertTrue(all(step > 0 for step in steps) or
                                         all(step < 0 for step in steps), (game, seen))
+
+    def test_moving_cards_edges_move_one_way(self):
+        """Through a step each corner of every card moves one way to rest,
+        never a pixel back as the spring's tail crosses half pixels: a card
+        whose edge steps back and forth shakes before it stops."""
+        for script in (["L 0 40 20", "P 21 1 0 0"], ["L 0 40 20", "P 19 -1 0 0"],
+                       ["L 1 40 20", "P 21 1 0 0"], ["L 3 40 20", "P 21 1 0 0"],
+                       ["L 2 40 12", "P 13 1 0 0"], ["L 2 40 12", "P 17 1 0 0"]):
+            with self.subTest(script=script):
+                log = frames(self.run_script([script[0], "N 40 0.0167", script[1],
+                                              "N 50 0.0167"]))[40:]
+                corners = [shells(f) for f in log]
+                games = set.intersection(*({game for game, boxes in covers(f).items()
+                                            if len(boxes) == 1} & set(c)
+                                           for f, c in zip(log, corners)))
+                self.assertGreater(len(games), 1)
+                for game in games:
+                    for corner in range(4):
+                        for axis in (0, 1):
+                            seen = [f[game][corner][axis] for f in corners]
+                            steps = [b - a for a, b in zip(seen, seen[1:]) if b != a]
+                            self.assertTrue(all(step > 0 for step in steps) or
+                                            all(step < 0 for step in steps),
+                                            (game, corner, "xy"[axis], seen))
 
     def test_spotlight_mixes_stills_without_a_dip(self):
         """Still to still, the old one stays whole under the new one as it

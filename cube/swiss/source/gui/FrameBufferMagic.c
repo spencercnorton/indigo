@@ -2590,25 +2590,11 @@ static gameflowPoint_t _GameflowLerpPoint(gameflowPoint_t from,
 	return point;
 }
 
-/* Whole pixels: the first corner rounded, and each other corner the
- * rounded distance from it, so a moving card's size changes one way rather
- * than flickering a pixel either way as its corners round apart. */
-static gameflowQuad_t _GameflowRoundQuad(gameflowQuad_t quad)
-{
-	gameflowPoint_t origin = quad.point[0];
-	int i;
-
-	quad.point[0].x = _GameflowRound(origin.x);
-	quad.point[0].y = _GameflowRound(origin.y);
-	for(i = 1; i < 4; ++i) {
-		quad.point[i].x = quad.point[0].x +
-			_GameflowRound(quad.point[i].x - origin.x);
-		quad.point[i].y = quad.point[0].y +
-			_GameflowRound(quad.point[i].y - origin.y);
-	}
-	return quad;
-}
-
+/* A card between two poses, in whole pixels. It goes from one pose to the
+ * next a whole pixel of its farthest-moving corner at a time, and each corner
+ * rounds on its own there: every edge moves one way through a move, never a
+ * pixel back as the spring's tail crosses half pixels, and the card's size
+ * from that corner changes one way too. */
 static gameflowQuad_t _GameflowSamplePoseIn(const gameflowQuad_t poses[7],
 	float slot)
 {
@@ -2616,15 +2602,26 @@ static gameflowQuad_t _GameflowSamplePoseIn(const gameflowQuad_t poses[7],
 	float clamped = _GameflowClamp(slot, -3.0f, 3.0f);
 	int lower = (int)floorf(clamped);
 	int upper = lower < 3 ? lower + 1 : lower;
+	const gameflowQuad_t *from = &poses[lower + 3];
+	const gameflowQuad_t *to = &poses[upper + 3];
 	float progress = clamped - (float)lower;
+	float travel = 0.0f;
 	int i;
 
 	for(i = 0; i < 4; ++i) {
-		result.point[i] = _GameflowLerpPoint(
-			poses[lower + 3].point[i],
-			poses[upper + 3].point[i], progress);
+		travel = fmaxf(travel, fabsf(to->point[i].x - from->point[i].x));
+		travel = fmaxf(travel, fabsf(to->point[i].y - from->point[i].y));
 	}
-	return _GameflowRoundQuad(result);
+	if(travel > 0.0f) {
+		progress = _GameflowRound(progress * travel) / travel;
+	}
+	for(i = 0; i < 4; ++i) {
+		result.point[i] = _GameflowLerpPoint(from->point[i], to->point[i],
+			progress);
+		result.point[i].x = _GameflowRound(result.point[i].x);
+		result.point[i].y = _GameflowRound(result.point[i].y);
+	}
+	return result;
 }
 
 static gameflowQuad_t _GameflowSamplePose(float slot)
