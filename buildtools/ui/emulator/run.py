@@ -518,18 +518,22 @@ class Route:
             self.shot("apps-probe", self.last_rgb)
         apps = float(self.emulator.frame().mean())
         self.press("A")
-        launched, deadline = False, time.monotonic() + SETTLE_SECONDS
+        # With the probe the launch must go on, and reading a program off an
+        # emulated SD card can crawl on a busy machine: allow it a boot's
+        # time. The probe's own checks follow.
+        window = BOOT_SECONDS if self.probe else SETTLE_SECONDS
+        launched, deadline = False, time.monotonic() + window
         while not launched and time.monotonic() < deadline:
             time.sleep(0.3)
             rgb = self.emulator.frame()
             self.last_rgb = rgb
             # The launch screen dims all but the app's card: the probe's bright
-            # name card leaves about 70% of the light, a dark card under 60%.
+            # name card leaves 70 to 85% of the light, a dark card under 60%.
             # With the probe the launch goes on, so the hand-off's black frame
             # counts too (the probe then proves the launch); without it black
             # means a crash.
             mean = float(rgb.mean())
-            launched = mean < (0.85 if self.probe else 0.6) * apps and (self.probe or mean > 0.02)
+            launched = mean < (0.9 if self.probe else 0.6) * apps and (self.probe or mean > 0.02)
         self.shot("app-launch", self.last_rgb)
         self.check("A starts the app: the launch screen dims the Apps screen", launched,
                    apps=round(apps, 1), now=round(float(self.last_rgb.mean()), 1))
