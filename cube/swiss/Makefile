@@ -60,8 +60,9 @@ INCLUDES	:=	include $(SOURCES) .. aesnd/libogc2/include
 # UI_PERF=1 builds the frame-time and GPU-counter overlay (gui/ui_perf.h).
 UI_PERF		?= 0
 # No unwind tables: nothing in Swiss unwinds (no C++, and a crash report walks
-# the stack's back chain), and they were about 100 KB of the DOL.
-CFLAGS		= -g -O2 -Wall -Wno-format-truncation -Wno-scalar-storage-order -fno-strict-aliasing -fno-asynchronous-unwind-tables -fno-unwind-tables -D_GNU_SOURCE $(MACHDEP) $(INCLUDE) $(shell $(PREFIX)pkg-config --cflags libdeflate iconv mad uchardet libxxhash zlib) -D'GIT_COMMIT="$(shell git rev-parse HEAD | cut -c1-7)"' -D'GIT_REVISION="$(shell git rev-list HEAD | wc -l)"' -DLFS_MULTIVERSION -DUI_PERF_CAPTURE=$(UI_PERF)
+# the stack's back chain), and they were about 100 KB of the DOL. Source paths
+# are named from this folder, so the DOL is the same wherever it is built.
+CFLAGS		= -g -O2 -Wall -Wno-format-truncation -Wno-scalar-storage-order -fno-strict-aliasing -fno-asynchronous-unwind-tables -fno-unwind-tables -ffile-prefix-map=$(abspath $(CURDIR)/..)/= -D_GNU_SOURCE $(MACHDEP) $(INCLUDE) $(shell $(PREFIX)pkg-config --cflags libdeflate iconv mad uchardet libxxhash zlib) -D'GIT_COMMIT="$(shell git rev-parse HEAD | cut -c1-7)"' -D'GIT_REVISION="$(shell git rev-list HEAD | wc -l)"' -DLFS_MULTIVERSION -DUI_PERF_CAPTURE=$(UI_PERF)
 CXXFLAGS	= $(CFLAGS)
 
 ASFLAGS		= $(MACHDEP) -mregnames -D_LANGUAGE_ASSEMBLY $(INCLUDE)
@@ -180,7 +181,7 @@ $(OFILES_SOURCES) : $(HFILES)
 tags.h :
 #---------------------------------------------------------------------------------
 	$(SILENTMSG) $(notdir $@)
-	$(SILENTCMD)git for-each-ref --format='"%(objectname:short)",' refs/tags | grep -vx '"$(shell git rev-parse --short HEAD)",' > $@ || true
+	$(SILENTCMD): > $@  # the tags load_auto_dol would skip: it never runs in Indigo
 
 #---------------------------------------------------------------------------------
 # libogc2's AESND: the copy in aesnd/libogc2, with the patches beside it
