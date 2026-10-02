@@ -916,6 +916,28 @@ class GameflowGxStream(unittest.TestCase):
                         self.assertTrue(all(step > 0 for step in steps) or
                                         all(step < 0 for step in steps), (game, seen))
 
+    def test_spotlight_mixes_stills_without_a_dip(self):
+        """Still to still, the old one stays whole under the new one as it
+        fades in, so the panel never shows through half way; still to cover,
+        the old still fades out round the smaller cover."""
+        log = frames(self.run_script(["L 3 40 21", "N 40 0.0167", "P 22 1 0 0",
+                                      "N 40 0.0167"]))[40:]
+        mixed = [(self.texture_alpha(f, "still:G021E0"), self.texture_alpha(f, "still:G022E0"))
+                 for f in log]
+        during = [(old, new) for old, new in mixed if old is not None]
+        self.assertGreater(len(during), 5)
+        self.assertTrue(all(old == 255 for old, _ in during), during)
+        news = [new for _, new in mixed]
+        self.assertEqual(news, sorted(news))
+        self.assertEqual(mixed[-1], (None, 255))
+        log = frames(self.run_script(["L 3 40 22", "N 40 0.0167", "P 23 1 0 0",
+                                      "N 40 0.0167"]))[40:]
+        olds = [self.texture_alpha(f, "still:G022E0") for f in log]
+        olds = [alpha for alpha in olds if alpha is not None]
+        self.assertGreater(len(olds), 5)
+        self.assertEqual(olds, sorted(olds, reverse=True))
+        self.assertLess(olds[-1], 128)
+
     def test_every_layout_flies_to_detail(self):
         for layout in (0, 1, 2, 3):
             with self.subTest(layout=layout):

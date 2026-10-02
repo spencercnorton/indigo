@@ -4207,12 +4207,25 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 	titleTravel = _GameflowClamp(titleTravel, 0.0f, 1.0f);
 	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
 		/* The picture changes with the title: the old game's fades out as
-		 * the row moves and the new game's fades in. */
+		 * the row moves and the new game's fades in. A new still fills the
+		 * panel, so it fades in over the old picture left whole: a true
+		 * mix, with no dip to the empty panel half way. A new cover is
+		 * smaller, so the old picture fades out around it. */
 		float heroAlpha = reveal * (1.0f - frame->detailProgress) *
 			(1.0f - frame->launchProgress);
+		bool fills = selectedRecord != NULL &&
+			_GameflowStillTexture(selectedRecord) != NULL &&
+			_GameflowStillArrival(selectedRecord) >= 1.0f;
+		float previousAlpha = heroAlpha * titleTravel;
+
+		/* Under a new still the old picture is whole, until the still is
+		 * within half a step of alpha of whole itself. */
+		if(fills) {
+			previousAlpha = titleTravel * 255.0f >= 0.5f ? heroAlpha : 0.0f;
+		}
 		_GameflowDrawSpotlightPanel(heroAlpha);
 		_GameflowDrawSpotlightArt(data, previousRecord, previousRecordIndex,
-			heroAlpha * titleTravel);
+			previousAlpha);
 		_GameflowDrawSpotlightArt(data, selectedRecord, selectedRecordIndex,
 			heroAlpha * (1.0f - titleTravel));
 	}
