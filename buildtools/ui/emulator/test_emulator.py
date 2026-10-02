@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 import zipfile
 import zlib
 from pathlib import Path
@@ -179,6 +180,42 @@ class Card(unittest.TestCase):
             self.assertIn(card.game_file(*card.PROBE_GAME), games)
             self.assertIn(card.game_file(*card.GAMES[0]), games)
             self.assertIsNone(card.read_card(image, "swiss/settings/global.ini"), "a new card has no settings")
+            self.assertIsNone(card.read_card(image, "boot.iso"), "only a GC Loader's card has a boot.iso")
+            card.build_card(image, package, posters=False, settings="# start\nClock=Left\n", boot_iso=True)
+            self.assertEqual(card.read_card(image, "swiss/settings/global.ini"), b"# start\r\nClock=Left\r\n")
+            boot = card.read_card(image, "boot.iso")
+            self.assertEqual(boot[:6], card.BOOT_ISO[0].encode())
+            self.assertEqual(boot[card.PROBE_DOL_OFFSET:card.PROBE_DOL_OFFSET + 17], b"the release's DOL")
+
+    @unittest.skipUnless(shutil.which("mkfs.fat") and shutil.which("mcopy"), "needs dosfstools and mtools")
+    def test_a_file_in_pieces(self):
+        """fragment() leaves a file in that many runs of clusters, its bytes
+        and the file system whole."""
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            package, image = folder / "Indigo-test.zip", folder / "card.img"
+            size = card.MAX_FRAGMENTS * card.CLUSTER_BYTES + 1000
+            data = (bytes(range(251)) * (size // 251 + 1))[:size]  # no two clusters alike
+            with zipfile.ZipFile(package, "w") as z:
+                z.writestr("ipl.dol", b"the release's DOL")
+                z.writestr("swiss/patches/game.bin", data)
+            card.build_card(image, package, posters=False)
+            self.assertEqual(card.fragment(image, "swiss/patches/game.bin", card.MAX_FRAGMENTS + 1),
+                             card.MAX_FRAGMENTS + 1)
+            self.assertEqual(card.read_card(image, "swiss/patches/game.bin"), data)
+            self.assertEqual(card.read_card(image, "ipl.dol"), b"the release's DOL")
+            check = subprocess.run(["fsck.fat", "-n", str(image)], capture_output=True, text=True)
+            self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
+            with self.assertRaises(ValueError):
+                card.fragment(image, "ipl.dol", 2)  # one cluster can't be two pieces
+
+    def test_settings_to_start_with(self):
+        text = (run.SETTINGS / "non-default.ini").read_text()
+        pairs = run.seeded(text)
+        self.assertEqual(pairs["Clock"], "Left")
+        self.assertNotIn("Menu Widescreen", pairs)
+        self.assertTrue(all(not key.startswith("#") for key in pairs))
+        self.assertEqual(run.seeded("# Clock=Right\nClock = Off\r\n"), {"Clock": "Off"})
 
 
 class Pad(unittest.TestCase):
@@ -300,6 +337,58 @@ class Screen(unittest.TestCase):
         words = [int.from_bytes(pal60[i:i + 2], "big") for i in range(0x10, 0x18, 2)]
         self.assertEqual(int.from_bytes(pal60[4:6], "big"), sum(words) & 0xFFFF)
 
+    def test_the_consoles_clock_times_a_wait(self):
+        """Waits count the console's seconds from Dolphin's TICKS lines (patch 0005)."""
+        with tempfile.TemporaryDirectory() as directory:
+            emulator = run.Emulator.__new__(run.Emulator)
+            emulator.log = Path(directory) / "dolphin.log"
+            self.assertIsNone(emulator.emulated(), "no log yet")
+            emulator.log.write_text("Booting\nTICKS 486000000 PC 80003100 LR 00000000\n")
+            self.assertEqual(emulator.emulated(), 1.0)
+            wait = run.Deadline(emulator, 2.0)
+            self.assertFalse(wait.expired())
+            with emulator.log.open("a") as log:
+                log.write("N[OSREPORT]: a line between\nTICKS 1701000000 PC 801179a0 LR 8011774c\n")
+            self.assertAlmostEqual(wait.elapsed(), 2.5)
+            self.assertTrue(wait.expired())
+            self.assertEqual(emulator.where(), "PC 801179a0 LR 8011774c at 3.5 s")
+
+    def test_without_the_consoles_clock_a_wait_counts_the_machines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            emulator = run.Emulator.__new__(run.Emulator)
+            emulator.log = Path(directory) / "dolphin.log"
+            emulator.log.write_text("Booting\n")
+            wait = run.Deadline(emulator, 0.05)
+            self.assertFalse(wait.expired())
+            time.sleep(0.06)
+            self.assertTrue(wait.expired())
+            self.assertIsNone(emulator.where())
+
+    def press_until(self, screens, answers):
+        """press_until with the screen's text and settled_label's answers scripted."""
+        route = run.Route.__new__(run.Route)
+        route.pressed_again, presses = [], []
+        route.press = lambda button, seconds=0: presses.append(button)
+        route.gray = lambda: None
+        route.settled_label = lambda *args, **kwargs: next(answers)
+        with mock.patch.object(run, "text_mask", lambda frame, box=None: next(screens)):
+            found = route.press_until("RIGHT")[0]
+        return found, presses, route.pressed_again
+
+    def test_a_press_the_menu_missed_is_pressed_again(self):
+        """Nothing changed after the press: press again, and say so."""
+        face = np.ones((4, 4), bool)
+        found, presses, again = self.press_until(iter([face, face]), iter([(None, 0.0), (face, 1.0)]))
+        self.assertIs(found, face)
+        self.assertEqual((presses, again), (["RIGHT", "RIGHT"], ["RIGHT"]))
+
+    def test_a_press_that_changed_the_screen_is_never_repeated(self):
+        """The screen moved, just not yet to what was wanted: wait, never press twice."""
+        before, moved = np.ones((4, 4), bool), np.zeros((4, 4), bool)
+        found, presses, again = self.press_until(iter([before, moved]), iter([(None, 0.0), (None, 1.0)]))
+        self.assertIsNone(found)
+        self.assertEqual((presses, again), (["RIGHT"], []))
+
     def test_fatal_lines(self):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "dolphin.log"
@@ -308,6 +397,9 @@ class Screen(unittest.TestCase):
             self.assertEqual(run.fatal_lines(log), [])
             log.write_text("Invalid read from 0x05117080, PC = 0x8016cd18; the game probably would have crashed\n")
             self.assertEqual(len(run.fatal_lines(log)), 1)
+            log.write_text("MMU.cpp:599 N[PowerPC]: DABR: write to 0x8082f278 at PC 0x8018e9c0, "
+                           "the doubleword the DABR guards\n")
+            self.assertEqual(len(run.fatal_lines(log)), 1, "a stack reached its guard")
 
 
 if __name__ == "__main__":

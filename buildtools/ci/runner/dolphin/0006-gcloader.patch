@@ -1,0 +1,254 @@
+Indigo's change: with DOLPHIN_GCLOADER naming an SD card image, the drive
+answers as a GC Loader (HW2, firmware 1.0.1, writes enabled): the drive
+replacement that serves discs from the files on its SD card. Swiss and
+libogc2 read and write the card through its commands (B2 read, B9/BC and
+BA/BD write), and it serves up to two discs from fragment tables of at most
+40 entries (B3), as its API describes (github.com/danielkraak/GC-Loader,
+API.md). Until a table is in use the inserted disc is served, as a GC Loader
+serves its boot.iso. GNU General Public License version 2 or later, as
+Dolphin.
+
+diff --git a/Source/Core/Core/HW/DVD/DVDInterface.cpp b/Source/Core/Core/HW/DVD/DVDInterface.cpp
+index 376aeb4..9c61e83 100644
+--- a/Source/Core/Core/HW/DVD/DVDInterface.cpp
++++ b/Source/Core/Core/HW/DVD/DVDInterface.cpp
+@@ -5,6 +5,8 @@
+ 
+ #include <algorithm>
+ #include <array>
++#include <cstdlib>
++#include <cstring>
+ #include <memory>
+ #include <optional>
+ #include <string>
+@@ -16,6 +18,7 @@
+ #include "Common/BitField.h"
+ #include "Common/ChunkFile.h"
+ #include "Common/CommonTypes.h"
++#include "Common/IOFile.h"
+ #include "Common/Config/Config.h"
+ #include "Common/Logging/Log.h"
+ 
+@@ -81,6 +84,203 @@ constexpr u32 DI_DMA_CONTROL_REGISTER = 0x1C;
+ constexpr u32 DI_IMMEDIATE_DATA_BUFFER = 0x20;
+ constexpr u32 DI_CONFIG_REGISTER = 0x24;
+ 
++namespace
++{
++// A GC Loader: a drive replacement that serves discs from the files on its SD
++// card (its API, github.com/danielkraak/GC-Loader API.md, and libogc2's
++// __io_gcode, which reads and writes the card through it). With
++// DOLPHIN_GCLOADER naming a card image the drive answers as a HW2 GC Loader
++// with firmware 1.0.1 that can write: the card's sectors are read and written
++// through the drive's commands, and up to two discs are served from fragment
++// tables of at most 40 entries each. Until a table is in use the inserted
++// disc is served, as a GC Loader serves its boot.iso. Audio streaming still
++// reads the inserted disc.
++struct GCLoaderFragment
++{
++  u32 offset;  // in the disc, in bytes
++  u32 size;    // in bytes
++  u32 sector;  // where it starts on the card
++};
++
++struct GCLoader
++{
++  File::IOFile card;
++  std::array<std::vector<GCLoaderFragment>, 2> discs;
++  int receiving = -1;  // the disc whose fragment table is arriving, one entry a command
++  u32 expected = 0;
++  int active = -1;           // the disc served: -1 for the inserted one
++  std::vector<u8> buffer;    // sectors sent to the drive, not yet on the card
++};
++
++constexpr u32 GCLOADER_SECTOR_SIZE = 512;
++constexpr u32 GCLOADER_FRAGMENTS = 40;
++constexpr char GCLOADER_VERSION[] = "1.0.1";
++
++GCLoader* GetGCLoader()
++{
++  static const std::unique_ptr<GCLoader> gcloader = [] {
++    const char* path = std::getenv("DOLPHIN_GCLOADER");
++    if (path == nullptr || *path == '\0')
++      return std::unique_ptr<GCLoader>();
++    auto drive = std::make_unique<GCLoader>();
++    if (!drive->card.Open(path, "r+b"))
++    {
++      ERROR_LOG_FMT(DVDINTERFACE, "GC Loader: cannot open the card {}", path);
++      return std::unique_ptr<GCLoader>();
++    }
++    NOTICE_LOG_FMT(DVDINTERFACE, "GC Loader: the card is {}", path);
++    return drive;
++  }();
++  return gcloader.get();
++}
++
++bool GCLoaderReadCard(GCLoader& drive, u64 position, u8* out, u32 length)
++{
++  return drive.card.Seek(static_cast<s64>(position), File::SeekOrigin::Begin) &&
++         drive.card.ReadBytes(out, length);
++}
++
++// A read of the served disc, through its fragment table.
++bool GCLoaderReadDisc(GCLoader& drive, u64 offset, u8* out, u32 length)
++{
++  const std::vector<GCLoaderFragment>& fragments = drive.discs[drive.active];
++  while (length != 0)
++  {
++    const auto fragment =
++        std::find_if(fragments.begin(), fragments.end(), [offset](const GCLoaderFragment& f) {
++          return offset >= f.offset && offset < u64{f.offset} + f.size;
++        });
++    if (fragment == fragments.end())
++      return false;
++    const u32 part = static_cast<u32>(std::min<u64>(length, u64{fragment->offset} + fragment->size - offset));
++    if (!GCLoaderReadCard(drive, u64{fragment->sector} * GCLOADER_SECTOR_SIZE + (offset - fragment->offset),
++                          out, part))
++      return false;
++    offset += part;
++    out += part;
++    length -= part;
++  }
++  return true;
++}
++
++// The GC Loader's answer to a command, or false for the drive's own.
++// *immediate is what the command leaves in the immediate buffer, and a
++// command that fails ends with an error interrupt.
++bool GCLoaderCommand(GCLoader& drive, Memory::MemoryManager& memory, const std::array<u32, 3>& cmd,
++                     u32 address, u32 length, bool to_drive, u32* immediate,
++                     DIInterruptType* interrupt_type)
++{
++  if (drive.receiving >= 0)
++  {
++    drive.discs[drive.receiving].push_back({cmd[0], cmd[1], cmd[2]});
++    if (--drive.expected == 0)
++      drive.receiving = -1;
++    *immediate = drive.receiving < 0 ? 0 : 2;  // done, or more to come
++    return true;
++  }
++  const auto fail = [interrupt_type] {
++    *interrupt_type = DIInterruptType::DEINT;
++    return true;
++  };
++  switch (cmd[0] >> 24)
++  {
++  case 0x12:  // Inquiry: the release date names a GC Loader; 'w' it writes, then HW2, one sector buffered
++  {
++    std::array<u8, 32> info{};
++    const std::array<u8, 8> words{0x20, 0x19, 0x6c, 0x64, 'a', 'w', 1, 0};
++    std::memcpy(&info[4], words.data(), words.size());
++    memory.CopyToEmu(address, info.data(), std::min<u32>(length, info.size()));
++    return true;
++  }
++  case 0xB0:  // ID
++    *immediate = 0xAAAAAAAA;
++    return true;
++  case 0xB1:  // firmware version: its length, or its text
++    if ((cmd[0] & 0xFF) != 0)
++    {
++      *immediate = sizeof(GCLOADER_VERSION) - 1;
++    }
++    else
++    {
++      std::vector<u8> text(length);
++      std::memcpy(text.data(), GCLOADER_VERSION, std::min<size_t>(length, sizeof(GCLOADER_VERSION)));
++      memory.CopyToEmu(address, text.data(), length);
++    }
++    return true;
++  case 0xB2:  // read the card: from sector cmd[1], cmd[2] bytes
++  {
++    std::vector<u8> data(length);
++    if (!GCLoaderReadCard(drive, u64{cmd[1]} * GCLOADER_SECTOR_SIZE, data.data(), length))
++      return fail();
++    memory.CopyToEmu(address, data.data(), length);
++    return true;
++  }
++  case 0xB3:  // disc cmd[1]: 0x01 starts its table of cmd[2] entries, 0x02 serves it
++    if (cmd[1] > 1)
++    {
++      *immediate = 4;
++    }
++    else if ((cmd[0] & 0xFF) == 0x01)
++    {
++      if (cmd[2] > GCLOADER_FRAGMENTS)
++      {
++        *immediate = 3;
++        return true;
++      }
++      drive.discs[cmd[1]].clear();
++      drive.receiving = cmd[2] != 0 ? static_cast<int>(cmd[1]) : -1;
++      drive.expected = cmd[2];
++      *immediate = 0;
++    }
++    else
++    {
++      drive.active = static_cast<int>(cmd[1]);
++      INFO_LOG_FMT(DVDINTERFACE, "GC Loader: serving disc {} ({} fragments)", drive.active,
++                   drive.discs[drive.active].size());
++      *immediate = 0;
++    }
++    return true;
++  case 0xB9:  // one sector to write, into the buffer
++  case 0xBC:  // sectors to write, into the buffer
++    if (!to_drive)
++      return fail();
++    drive.buffer.resize(length);
++    memory.CopyFromEmu(drive.buffer.data(), address, length);
++    return true;
++  case 0xBA:  // write the buffered sector at sector cmd[1]
++  case 0xBD:  // write cmd[2] buffered sectors from sector cmd[1]
++  {
++    const size_t bytes = size_t{(cmd[0] >> 24) == 0xBA ? 1 : cmd[2]} * GCLOADER_SECTOR_SIZE;
++    const bool written =
++        bytes <= drive.buffer.size() &&
++        drive.card.Seek(static_cast<s64>(u64{cmd[1]} * GCLOADER_SECTOR_SIZE), File::SeekOrigin::Begin) &&
++        drive.card.WriteBytes(drive.buffer.data(), bytes) && drive.card.Flush();
++    *immediate = written ? 0 : 1;  // libogc2 takes any other answer for a failed write
++    return true;
++  }
++  case 0xA8:  // a read of the disc a fragment table serves
++  {
++    if (drive.active < 0)
++      return false;
++    const bool disc_id = (cmd[0] & 0xFF) == 0x40;
++    const u64 offset = disc_id ? 0 : u64{cmd[1]} << 2;
++    const u32 bytes = std::min<u32>(disc_id ? 0x20 : cmd[2], length);
++    std::vector<u8> data(bytes);
++    if (!GCLoaderReadDisc(drive, offset, data.data(), bytes))
++    {
++      ERROR_LOG_FMT(DVDINTERFACE, "GC Loader: no fragment of disc {} holds {:#x}+{:#x}",
++                    drive.active, offset, bytes);
++      return fail();
++    }
++    memory.CopyToEmu(address, data.data(), bytes);
++    return true;
++  }
++  default:
++    return false;
++  }
++}
++}  // namespace
++
+ DVDInterface::DVDInterface(Core::System& system) : m_system(system)
+ {
+ }
+@@ -805,6 +1005,18 @@ void DVDInterface::ExecuteCommand(ReplyType reply_type)
+   if (static_cast<DICommand>(m_DICMDBUF[0] >> 24) != DICommand::RequestError)
+     SetDriveError(DriveError::None);
+ 
++  if (GCLoader* const gcloader = GetGCLoader();
++      gcloader != nullptr && GCLoaderCommand(*gcloader, m_system.GetMemory(), m_DICMDBUF, m_DIMAR,
++                                             m_DILENGTH, m_DICR.RW != 0, &m_DIIMMBUF, &interrupt_type))
++  {
++    if (interrupt_type == DIInterruptType::DEINT)
++      SetDriveError(DriveError::ReadError);
++    m_system.GetCoreTiming().ScheduleEvent(
++        MINIMUM_COMMAND_LATENCY_US * (m_system.GetSystemTimers().GetTicksPerSecond() / 1000000),
++        m_finish_executing_command, PackFinishExecutingCommandUserdata(reply_type, interrupt_type));
++    return;
++  }
++
+   switch (static_cast<DICommand>(m_DICMDBUF[0] >> 24))
+   {
+   // Used by both GC and Wii

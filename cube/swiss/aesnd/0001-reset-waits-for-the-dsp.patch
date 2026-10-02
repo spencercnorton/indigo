@@ -1,0 +1,37 @@
+Indigo's change: AESND_Reset lets the DSP finish before it stops it.
+
+AESND_Reset turned interrupts off and mailed the DSP to stop at once. But
+the mixer takes no mail until the CPU has read the one it sent last, and
+the CPU reads it in the DSP interrupt: a frame still being mixed answered,
+its answer was never read, and both sides waited for ever. A game's launch
+froze until the console was switched off. Everywhere else, AESND mails the
+DSP only once __aesnddspcomplete says the last frame is done; the reset now
+waits for that too, and for the task to have started (__aesnddspinit),
+letting the DSP interrupt in while it waits. Under libogc2's licence
+(libogc2/libogc2_license.txt).
+
+--- a/libaesnd/aesndlib.c
++++ b/libaesnd/aesndlib.c
+@@ -1,3 +1,5 @@
++/* Altered for Indigo: AESND_Reset lets the DSP finish before it stops it
++ * (cube/swiss/aesnd/0001-reset-waits-for-the-dsp.patch). */
+ #include <stdio.h>
+ #include <unistd.h>
+ #include <string.h>
+@@ -467,6 +469,16 @@
+ 	if(__aesndinit) {
+ 		AUDIO_StopDMA();
+ 		AUDIO_RegisterDMACallback(NULL);
++
++		/* The mixer takes no mail until the CPU has read the one it sent
++		 * last (wait_mail_sent, then wait_mail_recv), and the CPU reads it in
++		 * the DSP interrupt, which is off here: a frame still being mixed
++		 * would answer, its answer would never be read, and the stop below
++		 * would never be taken. Let the DSP interrupt see the task started
++		 * and the last frame finish; the DSP then waits for mail, and takes
++		 * the stop at once. */
++		while(!__aesnddspinit || !__aesnddspcomplete)
++			_CPU_ISR_Flash(level);
+ 
+ 		DSP_SendMailTo(0xfacedead);
+ 		while(DSP_CheckMailTo());

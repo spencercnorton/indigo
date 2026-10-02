@@ -12,9 +12,10 @@ up in starts, draws, answers the controller and hands over cleanly.
 | [`card.py`](card.py) | The demonstration disc it boots with: fictitious games with banners, two damaged images, posters, and apps with pictures |
 | [`dsu_pad.py`](dsu_pad.py) | The controller: a pad served to Dolphin over its DSU protocol |
 | [`probe/`](probe/probe.c) | The program the launches reach: it reports what the hand-off left it |
+| [`aesnd/`](aesnd/aesnd.c), [`aesnd_test.py`](aesnd_test.py) | AESND stopped hundreds of times, as a launch stops the menu's audio: see [AESND](#aesnd) |
+| [`test_emulator.py`](test_emulator.py) | Tests for those three, without Dolphin |
 
 `card.py` also makes the SD card (`build_card`): see [An SD card](#an-sd-card).
-| [`test_emulator.py`](test_emulator.py) | Tests for those three, without Dolphin |
 
 ## What it checks
 
@@ -49,15 +50,16 @@ probe's game and launches it from its details: the probe must see the game's
 own disc ID, the 24 MB a game is promised, the music stopped and memory
 quiet.
 
-CI runs four jobs, the first of them the required **Emulator** check, each in
-a video mode of its own:
+CI runs six jobs, the first of them the required **Emulator** check:
 
 | Job | Console | Video | Storage |
 | --- | --- | --- | --- |
 | Emulator (smoke) | PAL, composite | 576i | disc |
 | game, PAL, component | PAL, component | 480p | disc |
-| smoke, NTSC, component, SD2SP2 | NTSC, component | 480p | SD2SP2 |
-| game, NTSC, SD2SP2 | NTSC, composite | 480i | SD2SP2 |
+| smoke, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the card with `non-default.ini` |
+| game, NTSC, SD2SP2 | NTSC, composite | 480i | SD2SP2, a new card |
+| save, NTSC, SD2SP2, failing card | NTSC, composite | 480i | SD2SP2, writes failing after 13 |
+| game, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the game in 40 pieces |
 
 `--region pal|pal60|ntsc` is the console: the region Dolphin starts the video
 hardware in, and an SRAM (`GC/SRAM.raw`) with the same video format, as a
@@ -76,9 +78,19 @@ dead control does. Only where that text sits is fixed (`LABEL_BOX`,
 `TITLE_BOX` and `DETAIL_TITLE_BOX` in `run.py`): a change that moves it
 updates them. Text is the same text a pair of rows at a time: a slow frame
 can leave the 480i picture half a line higher. The test waits for what it
-expects to see, not for a fixed time, so a busy machine makes it slower, not
-flaky. A failed step says why,
-and names the crash when there is one.
+expects to see, not for a fixed time, and counts the console's own seconds,
+which the runner's Dolphin reports, for every wait and press, so a busy
+machine makes it slower, not flaky. A thread whose stack overflows crashes,
+as on a console: libogc
+guards the lowest doubleword of the running thread's stack with the CPU's data
+address breakpoint, which the runner's Dolphin emulates (patch 0007), so the
+overrun raises a DSI and libogc's exception screen, and Dolphin logs the hit.
+A press the menu was too busy to see, loading something, changes
+nothing on the screen: for a turn of the cube or a step along a row, the route
+presses again, as a person would, and the report lists each such press
+(`pressed_again`), so the misses stay in sight. A press that changed the
+screen is never repeated. A failed step says why, names the crash when there
+is one, and where the console's CPU was.
 
 ## Running it
 
@@ -120,10 +132,55 @@ on a console. `--storage sdgecko-b` puts the card in Memory Card Slot B
 instead.
 
 A new card has no settings, so the route starts in Settings: it must open on
-its own, and Save & Exit must write the file and go Home. At the end the
+its own, and Save & Exit must write the file and go Home. With `--settings
+<name>` the card starts with [`settings/<name>.ini`](settings/) as its
+`global.ini` instead and Indigo goes straight Home; at the end every line of
+it must still be on the card, through Indigo's own saves. CI's GC Loader smoke
+job starts with [`non-default.ini`](settings/non-default.ini): colours, icons,
+the clock on the left, no menu music or sounds, reduced motion, In-Game Reset. At the end the
 test reads the card back: the settings Indigo saved (with Apps Face as the
 route left it), and after the game route the launched game first in the
 recent list and in Indigo's play history.
+
+A card can fail: `--sd-faults` sets which sectors fail to read or write
+(`read-error=FIRST-LAST`, `write-error=FIRST-LAST`) or that every write fails
+once some have succeeded (`write-error-after=N`), comma separated. The save
+route (`--route save`, with `--settings`) changes a setting on such a card,
+then powers off and boots the same card again, with no faults: Indigo must
+still start at Home with its settings, in the colours they chose (a broken
+settings file boots Home too, on the defaults). The second boot's output is
+in `next-boot/`. CI's save job fails writes after 13, the moment of a save
+when only `global.ini.new` is whole on the card.
+
+## A GC Loader
+
+`--storage gcloader` puts the same card in a GC Loader, the drive
+replacement that serves games from the files on its SD card. The runner's
+Dolphin answers as one (HW2, firmware 1.0.1, writes enabled;
+`buildtools/ci/runner/dolphin/0006-gcloader.patch`): Indigo finds it by
+asking the drive, reads and writes the card through the drive's commands,
+and launches a game by sending the drive the game file's fragments, which it
+then serves as the disc, 40 at most. The card has a `boot.iso`, the zip's
+`ipl.dol` made into a disc, which the drive serves until a game's fragments
+are set, as a GC Loader does at power on; Dolphin starts `ipl.dol` itself.
+
+A game file in many pieces is what a copy onto a card that has seen
+deletions can leave, and neither Swiss nor a GC Loader can launch one in more
+than 40. `--fragments N` moves the probe's game into N pieces on the card
+(`card.fragment`): up to 40 the game route launches it, past that Indigo
+must refuse it, say why, and come back to the Library. CI's GC Loader job
+launches it in 40.
+
+## AESND
+
+A launch stops the menu's music and sounds, and once froze there until the
+console was switched off: libogc2's `AESND_Reset` waited, interrupts off, for
+a DSP that takes no mail while an answer of its own is unread. Swiss now
+builds AESND from `cube/swiss/aesnd`, with a fix (see its README).
+[`aesnd/aesnd.c`](aesnd/aesnd.c) links the `aesndlib.o` that build made and
+stops AESND 300 times, each a varying part of an audio period after a voice
+started; `aesnd_test.py` fails if its round count stops. libogc2's own
+`AESND_Reset` froze within 50 rounds. CI runs it in the PAL game job.
 
 ## The probe
 

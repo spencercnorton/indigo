@@ -76,16 +76,28 @@ LABEL_BOX = (200, 372, 440, 396)
 TITLE_BOX = (200, 338, 440, 362)
 # The page title Settings opens with on a new card ("Storage").
 SETTINGS_TITLE_BOX = (30, 46, 230, 80)
+COUNTER_BOX = (560, 120, 610, 142)  # Settings' "row / rows", shown while a row has the focus
 DETAIL_TITLE_BOX = (264, 106, 600, 134)
 TEXT_LEVEL = 160          # label text is bright; the waves behind it are not
 SAME, DIFFERENT = 0.85, 0.5  # intersection over union of two label masks
+# Waits count the console's own seconds (Emulator.emulated) when Dolphin
+# reports them, so a busy machine slows a run instead of failing it; the
+# machine's seconds still end a wait at WALL_FACTOR times as many.
 BOOT_SECONDS = 120
 SETTLE_SECONDS = 10
+WALL_FACTOR = 5
+TICKS_PER_SECOND = 486_000_000  # the GameCube's CPU clock, which Dolphin's ticks count
+PRESS_SECONDS = 0.1  # of the console's time a button stays down, and up after
+# A press the menu was too busy to see changes nothing on the screen; a person
+# presses again, and press_until does, after MISSED_SECONDS, up to PRESSES times.
+MISSED_SECONDS = 3
+PRESSES = 3
 FATAL = re.compile("|".join((
     r"(?:DSI|ISI|Program|Machine Check|Alignment) Exception", r"Unhandled exception",
     r"Segmentation fault", r"core dumped", r"\bPANIC\b", r"ASSERT(?:ION)? FAILED",
     r"Invalid (?:read|write) (?:from|to)", r"Unknown (?:opcode|instruction)",
     r"FIFO (?:is )?(?:overflowed|desync)", r"failed to compile shader", r"device lost",
+    r"DABR: (?:write to|read of)",  # a thread's stack reached its guard (patch 0007)
 )), re.I)
 # The DSP runs its real microcode (LLE): Dolphin's high-level stand-ins know
 # libogc's audio library but not libogc2's, so the menu music's stop before a
@@ -129,11 +141,22 @@ FOREIGN = {"ntsc": 2, "pal": 1, "pal60": 1}
 CABLES = {"composite": False, "component": True}
 # Where the SD card goes: SD2SP2 in Serial Port 2, or an SD Gecko in Memory
 # Card Slot B. 15 is the SD card adapter the emulator runner's Dolphin adds
-# (buildtools/ci/runner/dolphin/).
-STORAGES = {"dvd": None, "sd2sp2": "SerialPort2", "sdgecko-b": "SlotB"}
+# (buildtools/ci/runner/dolphin/). In a GC Loader, the card is the drive's,
+# which serves its boot.iso as the disc (DOLPHIN_GCLOADER, patch 0006).
+STORAGES = {"dvd": None, "sd2sp2": "SerialPort2", "sdgecko-b": "SlotB", "gcloader": None}
 SD_CARD_DEVICE = 15
 # Rows on Settings' Storage page: DOWN past them reaches Save & Exit.
 STORAGE_ROWS = 7
+# Lit pixels in COUNTER_BOX that are its digits rather than nothing (19 for "1 / 7").
+COUNTER_PIXELS = 6
+# Settings to start with, put on the card as swiss/settings/global.ini (--settings).
+SETTINGS = Path(__file__).resolve().parent / "settings"
+
+
+def seeded(text: str) -> dict[str, str]:
+    """The Key=Value lines of a settings file."""
+    pairs = (line.split("=", 1) for line in text.splitlines() if "=" in line and not line.startswith("#"))
+    return {key.strip(): value.strip() for key, value in pairs}
 
 # The probe's report, in the order of its strip (probe.c).
 PROBE_WORDS = ("magic", "version", "id0", "id1", "memsize", "console", "video", "bus", "core",
@@ -154,6 +177,13 @@ class Broken(Exception):
 def text_mask(frame: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX) -> np.ndarray:
     x0, y0, x1, y1 = box
     return frame[y0:y1, x0:x1] >= TEXT_LEVEL
+
+
+def backdrop(rgb: np.ndarray) -> np.ndarray:
+    """The menu's backdrop colour, from the screen's bottom corners, where
+    nothing else is drawn: settings/non-default.ini's Emerald, not Indigo's
+    default purple."""
+    return np.concatenate([rgb[-40:, :60].reshape(-1, 3), rgb[-40:, -60:].reshape(-1, 3)]).mean(axis=0)
 
 
 def diagnose(rgb: np.ndarray) -> str:
@@ -260,9 +290,31 @@ def printable(data: bytes) -> str:
     return "".join(chr(b) if 32 <= b < 127 else "." for b in data)
 
 
+class Deadline:
+    """A wait of some seconds of the console's own time when Dolphin reports
+    it (patch 0005, DOLPHIN_TICKS), else of the machine's."""
+
+    def __init__(self, emulator: "Emulator", seconds: float) -> None:
+        self.emulator, self.seconds = emulator, seconds
+        self.wall = time.monotonic()
+        self.start = emulator.emulated()
+
+    def elapsed(self) -> float:
+        now = self.emulator.emulated()
+        if now is not None and self.start is None:
+            self.start = now  # Dolphin began reporting after the wait began
+        if now is not None:
+            return now - self.start
+        return time.monotonic() - self.wall
+
+    def expired(self) -> bool:
+        return self.elapsed() >= self.seconds or time.monotonic() - self.wall >= self.seconds * WALL_FACTOR
+
+
 class Emulator:
     def __init__(self, dol: Path, disc: Path | None, work: Path, out: Path, region: str = "pal",
-                 storage: str = "dvd", card: Path | None = None, cable: str = "composite") -> None:
+                 storage: str = "dvd", card: Path | None = None, cable: str = "composite",
+                 faults: str | None = None) -> None:
         self.out = out
         self.user = work / "dolphin"
         (self.user / "Config").mkdir(parents=True)
@@ -271,6 +323,9 @@ class Emulator:
             ini = ini.replace("[Core]\n", f"[Core]\n{STORAGES[storage]} = {SD_CARD_DEVICE}\n"
                                           f"SP2SDCardImage = {card}\n", 1)
         (self.user / "Config/Dolphin.ini").write_text(ini)
+        # Swiss's own debug output (its OSReport lines) goes to dolphin.log.
+        (self.user / "Config/Logger.ini").write_text(
+            "[Logs]\nOSREPORT = True\nPOWERPC = True\n[Options]\nVerbosity = 1\nWriteToConsole = True\nWriteToFile = False\n")
         (self.user / "GC").mkdir()
         (self.user / "GC/SRAM.raw").write_bytes(sram(*REGIONS[region][1:]))
         (self.user / "Config/GFX.ini").write_text("[Settings]\nInternalResolution = 1\nShowFPS = False\n")
@@ -292,6 +347,14 @@ class Emulator:
             raise Broken("Xvfb did not start")
         self.display = f":{number}"
         env = dict(os.environ, DISPLAY=self.display, LIBGL_ALWAYS_SOFTWARE="1")
+        env["DOLPHIN_TICKS"] = "1"  # the console's clock and PC in dolphin.log (patch 0005)
+        env["DOLPHIN_DABR"] = "1"  # a thread's stack guarded, as on a console (patch 0007)
+        env.pop("DOLPHIN_SD_FAULTS", None)
+        env.pop("DOLPHIN_GCLOADER", None)
+        if storage == "gcloader":
+            env["DOLPHIN_GCLOADER"] = str(card)
+        if faults:  # the SD card fails as asked (buildtools/ci/runner/dolphin/0004)
+            env["DOLPHIN_SD_FAULTS"] = faults
         self.log = out / "dolphin.log"
         self.dolphin = subprocess.Popen(
             ["dolphin-emu-nogui", "-u", str(self.user), "-p", "x11", "-v", "OGL",
@@ -313,6 +376,28 @@ class Emulator:
             raise Broken(f"cannot read the screen: {raw.stderr.decode(errors='replace')[-200:]}")
         return np.frombuffer(raw.stdout, np.uint8).reshape(HEIGHT, WIDTH, 3)
 
+    def _ticks(self) -> tuple[float, str] | None:
+        """The last TICKS line in Dolphin's output: the console's seconds, and its PC and LR."""
+        try:
+            with open(self.log, "rb") as log:
+                log.seek(0, os.SEEK_END)
+                log.seek(max(0, log.tell() - 4096))
+                tail = log.read().decode(errors="replace")
+        except OSError:
+            return None
+        found = re.findall(r"^TICKS (\d+) (PC \S+ LR \S+)", tail, re.M)
+        return (int(found[-1][0]) / TICKS_PER_SECOND, found[-1][1]) if found else None
+
+    def emulated(self) -> float | None:
+        """The console's own seconds since it started, or None from a Dolphin without patch 0005."""
+        ticks = self._ticks()
+        return ticks[0] if ticks else None
+
+    def where(self) -> str | None:
+        """Where the console's CPU was last seen, and when, for a check that failed."""
+        ticks = self._ticks()
+        return f"{ticks[1]} at {ticks[0]:.1f} s" if ticks else None
+
     def close(self) -> None:
         for process in (self.dolphin, self.xvfb):
             if process.poll() is None:
@@ -328,14 +413,16 @@ class Route:
     """Steps through the menus and records every checkpoint."""
 
     def __init__(self, emulator: Emulator, out: Path, probe: bool = False, fresh_card: bool = False,
-                 cable: str = "composite", region: str = "pal") -> None:
+                 cable: str = "composite", region: str = "pal", fragments: int = 0) -> None:
         self.emulator = emulator
+        self.fragments = fragments  # the pieces the probe's game is in on the card
         self.cable = cable
         self.region = region
         self.out = out
         self.probe = probe
         self.fresh_card = fresh_card
         self.report: dict[str, object] | None = None
+        self.pressed_again: list[str] = []  # presses the menu missed, pressed again
         self.checks: list[dict[str, object]] = []
         self.shots: list[tuple[str, Path]] = []
         self.pad = emulator.pad
@@ -348,9 +435,12 @@ class Route:
         return frame
 
     def check(self, name: str, passed: bool, **detail: object) -> None:
-        if not passed and getattr(self, "last_rgb", None) is not None:
+        probe_up = bool(self.report and self.report["valid"])  # the probe's screen is no crash
+        if not passed and getattr(self, "last_rgb", None) is not None and not probe_up:
             if why := diagnose(self.last_rgb):
                 detail["screen"] = why
+        if not passed and (where := self.emulator.where()):
+            detail["console"] = where
         self.checks.append({"check": name, "passed": bool(passed), **detail})
         print(f"{'PASS' if passed else 'FAIL'} {name} {json.dumps(detail) if detail else ''}", flush=True)
         if not passed:
@@ -366,9 +456,9 @@ class Route:
                       like: np.ndarray | None = None,
                       box: tuple[int, int, int, int] = LABEL_BOX) -> tuple[np.ndarray | None, float]:
         """Wait for steady text in a box (the face's name by default), optionally unlike or like a given one."""
-        deadline = time.monotonic() + seconds
+        deadline = Deadline(self.emulator, seconds)
         previous, steady = None, 0
-        while time.monotonic() < deadline:
+        while not deadline.expired():
             mask = text_mask(self.gray(), box)
             ok = has_label(mask)
             if ok and unlike is not None:
@@ -382,8 +472,39 @@ class Route:
             time.sleep(0.15)
         return None, time.monotonic()
 
-    def press(self, button: str) -> None:
-        self.pad.press(button, 0.1)
+    def press_until(self, button: str, seconds: float = SETTLE_SECONDS, unlike: np.ndarray | None = None,
+                    like: np.ndarray | None = None,
+                    box: tuple[int, int, int, int] = LABEL_BOX) -> tuple[np.ndarray | None, float]:
+        """Press a button, then wait for steady text in a box as settled_label does.
+        A press the menu was too busy to see leaves the box as it was, and a person
+        presses again: so does this, noting each in the report. A press that
+        changed the box, to anything, is never repeated."""
+        before = text_mask(self.gray(), box)
+        for attempt in range(1, PRESSES + 1):
+            self.press(button)
+            last = attempt == PRESSES
+            mask, now = self.settled_label(seconds if last else MISSED_SECONDS, unlike, like, box)
+            if mask is not None or last:
+                return mask, now
+            if overlap(text_mask(self.gray(), box), before) < SAME:
+                return self.settled_label(seconds, unlike, like, box)  # it moved: let it arrive
+            self.pressed_again.append(button)
+        return None, time.monotonic()
+
+    def press(self, button: str, seconds: float = PRESS_SECONDS) -> None:
+        """Hold a button for some of the console's time, then leave it up for
+        a little: a busy machine must not shorten a press below a frame."""
+        self.pad.hold(button)
+        self.pause(seconds)
+        self.pad.hold()
+        self.pause(PRESS_SECONDS)
+
+    def pause(self, seconds: float) -> None:
+        """Let some of the console's time pass: a menu's animation takes as
+        much of it however busy the machine is."""
+        wait = Deadline(self.emulator, seconds)
+        while not wait.expired():
+            time.sleep(0.02)
 
     # -- the route
     def boot(self) -> np.ndarray:
@@ -399,15 +520,26 @@ class Route:
     def first_run(self) -> np.ndarray:
         """A new card has no swiss/settings/global.ini: Indigo starts in
         Settings, on Storage, and says so. DOWN past the page's rows reaches
-        Save & Exit, and A writes the settings to the card and goes Home."""
+        Save & Exit, and A writes the settings to the card and goes Home.
+
+        DOWN is pressed while the rows' counter shows, so one the menu was too
+        busy to see (a new card's first moments) is pressed again; then LEFT
+        twice, which ends on Save & Exit even from Discard & Exit, one row on."""
         title, now = self.settled_label(BOOT_SECONDS, box=SETTINGS_TITLE_BOX)
         self.shot("first-run", self.last_rgb)
         self.check("a new card opens Settings first", title is not None,
                    seconds=round(now - self.emulator.started, 1))
         self.plug_in()
-        for _ in range(STORAGE_ROWS):
+        for _ in range(STORAGE_ROWS + 4):
+            if text_mask(self.gray(), COUNTER_BOX).sum() < COUNTER_PIXELS:
+                break
             self.press("DOWN")
-            time.sleep(0.4)
+            self.pause(0.4)
+        self.check("DOWN takes the focus past the page's rows",
+                   text_mask(self.gray(), COUNTER_BOX).sum() < COUNTER_PIXELS)
+        for _ in range(2):
+            self.press("LEFT")
+            self.pause(0.3)
         self.shot("first-run-save", self.emulator.frame())
         self.press("A")
         mask, now = self.settled_label(BOOT_SECONDS)
@@ -418,22 +550,27 @@ class Route:
 
     def plug_in(self) -> None:
         self.pad.plug_in()
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + 30  # Dolphin's own polling, in the machine's time
         while not self.pad.streaming and time.monotonic() < deadline:
             time.sleep(0.1)
         if not self.pad.streaming:
             raise Broken("Dolphin never asked for the controller")
         time.sleep(0.5)
 
-    def card_checks(self, image: Path, route: str) -> None:
-        """What Indigo wrote to the SD card, read back from its image."""
+    def card_checks(self, image: Path, route: str, start: dict[str, str] | None = None) -> None:
+        """What Indigo wrote to the SD card, read back from its image. Settings
+        the card started with must have lasted through Indigo's own saves."""
         def text(path: str) -> str:
             return (card.read_card(image, path) or b"").decode("latin-1")
 
         settings = text("swiss/settings/global.ini")
         self.check("the settings Indigo saved are on the card",
                    "Swiss Video Mode=" in settings and "Hide Apps Face=No" in settings, bytes=len(settings))
-        if route != "game":
+        if start:
+            kept = seeded(settings)
+            lost = {key: value for key, value in start.items() if kept.get(key) != value}
+            self.check("the settings the card started with are all still there", not lost, lost=lost)
+        if route != "game" or not self.report:  # no game started
             return
         recent = text("swiss/settings/recent.ini").split("Recent_1=")[0]
         self.check("the launched game is first in the recent list",
@@ -442,8 +579,7 @@ class Route:
         self.check("Indigo's play history records the game", f"\n{card.PROBE_GAME[0]}=" in played)
 
     def turn(self, faces: list[np.ndarray], button: str, name: str) -> np.ndarray:
-        self.press(button)
-        mask, _ = self.settled_label(unlike=faces[-1])
+        mask, _ = self.press_until(button, unlike=faces[-1])
         self.shot(name, self.last_rgb)
         self.check(f"{button} turns the cube to another face", mask is not None, after=name)
         return mask
@@ -463,8 +599,7 @@ class Route:
         left = self.turn([back], "LEFT", "left-1")
         self.check("LEFT turns the other way", same_text(left, faces[-1]),
                    overlap=round(overlap(left, faces[-1]), 3))
-        self.press("RIGHT")
-        mask, _ = self.settled_label(like=home)
+        mask, _ = self.press_until("RIGHT", like=home)
         self.check("RIGHT undoes LEFT", mask is not None)
         for n, face in enumerate(faces[:4]):
             # Home starts on the Library face: browse it while it is open,
@@ -475,8 +610,7 @@ class Route:
             else:
                 inside = {0: self.browse_library, 1: self.change_source}.get(n)
                 self.open_and_close(face, n, inside)
-            self.press("RIGHT")
-            mask, _ = self.settled_label(like=faces[n + 1])
+            mask, _ = self.press_until("RIGHT", like=faces[n + 1])
             self.check("the cube turns on to the next face", mask is not None, face=n + 1)
         # Apps last: a launch never comes back.
         self.start_an_app(faces[4])
@@ -492,40 +626,41 @@ class Route:
         The A that opens Apps is held longer than Apps takes to read /apps:
         on a console an SD card is read before a thumb lets go, and that A
         once started the first app with no chance to choose."""
-        self.pad.press("A", 2.5)
+        self.press("A", 2.5)
         opened = self.covered(face)
         self.shot("apps", self.last_rgb)
         self.check("A opens Apps", opened)
         first, _ = self.settled_label(box=TITLE_BOX)
         self.check("Apps shows an app's name", first is not None)
-        self.press("RIGHT")
-        other, _ = self.settled_label(unlike=first, box=TITLE_BOX)
+        other, _ = self.press_until("RIGHT", unlike=first, box=TITLE_BOX)
         self.shot("apps-right", self.last_rgb)
         self.check("RIGHT moves to the next app", other is not None)
-        self.press("LEFT")
-        again, _ = self.settled_label(like=first, box=TITLE_BOX)
+        again, _ = self.press_until("LEFT", like=first, box=TITLE_BOX)
         self.check("LEFT goes back an app", again is not None)
         if self.probe:
             name = again
             for n in range(card.app_order(True).index(card.PROBE_APP[:-4])):
-                self.press("RIGHT")
-                name, _ = self.settled_label(unlike=name, box=TITLE_BOX)
+                name, _ = self.press_until("RIGHT", unlike=name, box=TITLE_BOX)
                 self.check("RIGHT moves to the next app", name is not None, step=n + 1)
             self.shot("apps-probe", self.last_rgb)
         apps = float(self.emulator.frame().mean())
         self.press("A")
-        launched, deadline = False, time.monotonic() + SETTLE_SECONDS
-        while not launched and time.monotonic() < deadline:
+        # With the probe the launch must go on, and reading a program off an
+        # emulated SD card can crawl on a busy machine: allow it a boot's
+        # time. The probe's own checks follow.
+        window = BOOT_SECONDS if self.probe else SETTLE_SECONDS
+        launched, deadline = False, Deadline(self.emulator, window)
+        while not launched and not deadline.expired():
             time.sleep(0.3)
             rgb = self.emulator.frame()
             self.last_rgb = rgb
             # The launch screen dims all but the app's card: the probe's bright
-            # name card leaves about 70% of the light, a dark card under 60%.
+            # name card leaves 70 to 85% of the light, a dark card under 60%.
             # With the probe the launch goes on, so the hand-off's black frame
             # counts too (the probe then proves the launch); without it black
             # means a crash.
             mean = float(rgb.mean())
-            launched = mean < (0.85 if self.probe else 0.6) * apps and (self.probe or mean > 0.02)
+            launched = mean < (0.9 if self.probe else 0.6) * apps and (self.probe or mean > 0.02)
         self.shot("app-launch", self.last_rgb)
         self.check("A starts the app: the launch screen dims the Apps screen", launched,
                    apps=round(apps, 1), now=round(float(self.last_rgb.mean()), 1))
@@ -545,8 +680,8 @@ class Route:
     def handoff(self, tag: str) -> dict[str, object]:
         """After a launch, wait for the probe's screen and check what the
         hand-off left it. The controller stays connected, as on a console."""
-        report, deadline = None, time.monotonic() + BOOT_SECONDS
-        while not (report and report["valid"]) and time.monotonic() < deadline:
+        report, deadline = None, Deadline(self.emulator, BOOT_SECONDS)
+        while not (report and report["valid"]) and not deadline.expired():
             time.sleep(0.5)
             rgb = self.emulator.frame()
             self.last_rgb = rgb
@@ -554,12 +689,36 @@ class Route:
         self.shot(f"{tag}-probe", self.last_rgb)
         self.report = report
         self.check("the launch reaches the probe, and its report reads back", bool(report and report["valid"]),
-                   seconds_waited=round(BOOT_SECONDS - (deadline - time.monotonic()), 1))
+                   seconds_waited=round(deadline.elapsed(), 1))
         self.check("the menu music is stopped before the hand-off",
                    not int(report["ai_dma"]) & AI_DMA_ENABLE, audio_dma=f"{report['ai_dma']:04X}")
         self.check("nothing writes to memory after the hand-off", report["stray_writes"] == 0,
                    words_changed=report["stray_writes"])
         return report
+
+    def save(self) -> None:
+        """Change one setting and save it: Settings > Setup > Console > Apps
+        Face Off, then Save & Exit. Run on a card that fails (--sd-faults), the
+        next boot of the same card (main) shows whether the settings survived."""
+        home = self.boot()
+        self.home_label, self.home_backdrop = home, backdrop(self.last_rgb)
+        face = home
+        for n in (1, 2):  # Library, Source, Settings
+            face = self.turn([face], "RIGHT", f"right-{n}")
+        self.flip_apps_face(face, "off")
+
+    def boot_again(self) -> None:
+        """The same card's next boot: its settings must still load, so Indigo
+        starts at Home, not in Settings as on a card without them."""
+        # Home is the face name the first boot showed; Settings' rows can put
+        # text in that box too, but not that word.
+        home, _ = self.settled_label(BOOT_SECONDS, like=self.home_label)
+        self.shot("next-boot", self.last_rgb)
+        self.check("the next boot still has the card's settings: Indigo starts at Home", home is not None)
+        # A settings file that reads back broken boots Home too, on the defaults.
+        drift = float(np.linalg.norm(backdrop(self.last_rgb) - self.home_backdrop))
+        self.check("... in the colours the card's settings chose, not the defaults", drift < 15,
+                   drift=round(drift, 1))
 
     def game(self) -> None:
         """Boot, open the Library, move to the probe's game, open its details
@@ -573,14 +732,17 @@ class Route:
         title, _ = self.settled_label(box=TITLE_BOX)
         self.check("the Library shows a game's title", title is not None)
         for n in range(card.library_order(True).index(card.PROBE_GAME[1])):
-            self.press("RIGHT")
-            title, _ = self.settled_label(unlike=title, box=TITLE_BOX)
+            title, _ = self.press_until("RIGHT", unlike=title, box=TITLE_BOX)
             self.check("RIGHT moves to the next game", title is not None, step=n + 1)
         self.shot("library-probe", self.last_rgb)
         self.press("A")
         self.check("A opens the game's details", self.covered(title, TITLE_BOX))
         self.shot("probe-details", self.last_rgb)
         self.press("A")
+        if self.fragments > card.MAX_FRAGMENTS:
+            self.check("a game in more pieces than can be served is refused, and the Library comes back",
+                       self.back_to_library(title, "launch-refused"), pieces=self.fragments)
+            return
         report = self.handoff("game")
         self.check("the game starts with its own disc ID", report["disc_id"] == card.PROBE_GAME[0],
                    disc_id=report["disc_id"])
@@ -598,15 +760,15 @@ class Route:
         self.check("A opens Settings", opened, apps_face=tag)
         for button, pause in (("R", 1.0), ("R", 1.0), ("DOWN", 0.6), ("A", 1.5)):
             self.press(button)
-            time.sleep(pause)
+            self.pause(pause)
         for _ in range(8):
             self.press("DOWN")
-            time.sleep(0.4)
+            self.pause(0.4)
         self.press("RIGHT")
-        time.sleep(1.0)
+        self.pause(1.0)
         self.shot(f"apps-face-{tag}", self.emulator.frame())
         self.press("B")
-        time.sleep(1.0)
+        self.pause(1.0)
         self.press("B")
         mask, _ = self.settled_label(like=settings)
         self.shot(f"apps-face-{tag}-home", self.last_rgb)
@@ -618,28 +780,25 @@ class Route:
         library, settings, system, apps = faces[0], faces[2], faces[3], faces[4]
         for tag, after_system in (("off", library), ("on", apps)):
             self.flip_apps_face(settings, tag)
-            self.press("RIGHT")
-            self.check("RIGHT turns to System", self.settled_label(like=system)[0] is not None,
+            self.check("RIGHT turns to System", self.press_until("RIGHT", like=system)[0] is not None,
                        apps_face=tag)
-            self.press("RIGHT")
-            mask, _ = self.settled_label(unlike=system)
+            mask, _ = self.press_until("RIGHT", unlike=system)
             self.shot(f"after-system-apps-face-{tag}", self.last_rgb)
             self.check(f"Apps Face {tag.title()}: after System comes "
                        f"{'Library' if tag == 'off' else 'Apps'}",
                        mask is not None and same_text(mask, after_system),
                        overlap=round(overlap(mask, after_system), 3) if mask is not None else None)
             for back in (system, settings):
-                self.press("LEFT")
-                self.check("LEFT turns back a face", self.settled_label(like=back)[0] is not None,
+                self.check("LEFT turns back a face", self.press_until("LEFT", like=back)[0] is not None,
                            apps_face=tag)
 
     def covered(self, reference: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX) -> bool:
         """Wait for the text in a box to stop matching reference: another screen opened over it."""
-        deadline = time.monotonic() + SETTLE_SECONDS
-        while time.monotonic() < deadline:
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        while not deadline.expired():
             time.sleep(0.3)
             if overlap(text_mask(self.gray(), box), reference) < DIFFERENT:
-                time.sleep(1.0)  # let the screen finish arriving before the picture
+                self.pause(1.0)  # let the screen finish arriving before the picture
                 self.gray()
                 return True
         return False
@@ -666,14 +825,12 @@ class Route:
         self.check("the Library shows a game's title", first is not None)
         titles.append(first)
         for n in (1, 2):
-            self.press("RIGHT")
-            title, _ = self.settled_label(unlike=titles[-1], box=TITLE_BOX)
+            title, _ = self.press_until("RIGHT", unlike=titles[-1], box=TITLE_BOX)
             self.shot(f"library-right-{n}", self.last_rgb)
             self.check("RIGHT moves to the next game", title is not None, step=n)
             titles.append(title)
         for n, expected in ((1, titles[1]), (2, titles[0])):
-            self.press("LEFT")
-            title, _ = self.settled_label(like=expected, box=TITLE_BOX)
+            title, _ = self.press_until("LEFT", like=expected, box=TITLE_BOX)
             self.shot(f"library-left-{n}", self.last_rgb)
             self.check("LEFT goes back a game", title is not None, step=n)
         self.press("A")
@@ -685,7 +842,7 @@ class Route:
         # Two presses reach Settings whether or not a Cheats row sits between.
         for _ in range(2):
             self.press("UP")
-            time.sleep(0.3)
+            self.pause(0.3)
         self.press("A")
         opened = self.covered(details, DETAIL_TITLE_BOX)
         self.shot("game-settings", self.last_rgb)
@@ -712,17 +869,23 @@ class Route:
         self.press("A")
         self.check("A opens the game's details again", self.covered(title, TITLE_BOX))
         self.press("A")
-        back, deadline = None, time.monotonic() + BOOT_SECONDS / 2
-        while back is None and time.monotonic() < deadline:
+        self.check("a launch that cannot read BS2 comes back to the Library",
+                   self.back_to_library(title, "launch-failure"))
+
+    def back_to_library(self, title: np.ndarray, tag: str) -> bool:
+        """After a launch that fails: A dismisses its message, and the Library
+        must come back on the same game."""
+        back, deadline = None, Deadline(self.emulator, BOOT_SECONDS / 2)
+        while back is None and not deadline.expired():
             time.sleep(2.0)
             self.gray()
-            self.shot("launch-failure", self.last_rgb)
+            self.shot(tag, self.last_rgb)
             if diagnose(self.last_rgb):
                 break  # a crash or a black screen: check() reports which
             self.press("A")  # dismisses the failure message once it is up
             back, _ = self.settled_label(4, like=title, box=TITLE_BOX)
-        self.shot("launch-failed-back", self.last_rgb)
-        self.check("a launch that cannot read BS2 comes back to the Library", back is not None)
+        self.shot(f"{tag}-back", self.last_rgb)
+        return back is not None
 
     def change_source(self) -> None:
         """A on Change Source opens the device picker, RIGHT shows the next device
@@ -732,8 +895,7 @@ class Route:
         first, _ = self.settled_label(unlike=before, box=TITLE_BOX)
         self.shot("source-picker", self.last_rgb)
         self.check("Change Source opens the device picker", first is not None)
-        self.press("RIGHT")
-        name, _ = self.settled_label(unlike=first, box=TITLE_BOX)
+        name, _ = self.press_until("RIGHT", unlike=first, box=TITLE_BOX)
         self.shot("source-picker-right", self.last_rgb)
         self.check("RIGHT shows the next device", name is not None)
         self.press("B")
@@ -766,21 +928,35 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dol", type=Path)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--route", choices=("smoke", "tour", "game"), default="smoke")
+    parser.add_argument("--route", choices=("smoke", "tour", "game", "save"), default="smoke")
     parser.add_argument("--probe", type=Path, help="the probe DOL (probe/), launched as an app and a game")
     parser.add_argument("--region", choices=tuple(REGIONS), default="pal")
     parser.add_argument("--storage", choices=tuple(STORAGES), default="dvd")
     parser.add_argument("--cable", choices=tuple(CABLES), default="composite")
     parser.add_argument("--card-zip", type=Path, help="the release zip, unpacked onto the SD card")
+    parser.add_argument("--settings", help="start the card with settings/<name>.ini as its global.ini")
+    parser.add_argument("--sd-faults", help="the SD card's faults (DOLPHIN_SD_FAULTS), such as write-error-after=4")
+    parser.add_argument("--fragments", type=int, default=0,
+                        help=f"the probe's game in that many pieces on the card; over {card.MAX_FRAGMENTS} "
+                             "its launch must be refused")
     parser.add_argument("--disc", type=Path, help="a disc to use instead of building card.py's")
     args = parser.parse_args(argv)
     if args.route == "game" and not args.probe:
         parser.error("the game route launches the probe: give --probe")
     if (args.storage != "dvd") != bool(args.card_zip):
         parser.error("an SD card (--storage) is made from the release zip (--card-zip), and only then")
+    if args.settings and not args.card_zip:
+        parser.error("settings to start with go on the SD card (--storage)")
+    if args.route == "save" and not args.settings:
+        parser.error("the save route changes settings a card starts with: give --settings")
+    if args.fragments and not (args.card_zip and args.probe and args.route == "game"):
+        parser.error("--fragments splits the probe's game on the SD card for the game route")
+    start = (SETTINGS / f"{args.settings}.ini").read_text() if args.settings else None
     args.out.mkdir(parents=True, exist_ok=True)
     report: dict[str, object] = {"schema": "indigo.emulator-test.v1", "route": args.route,
                                  "region": args.region, "storage": args.storage, "cable": args.cable,
+                                 "settings": args.settings, "sd_faults": args.sd_faults,
+                                 "fragments": args.fragments,
                                  "dol": str(args.dol),
                                  "dolphin": _version()}
     status, emulator, route = 0, None, None
@@ -791,7 +967,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.card_zip:
                 sd = work / "card.img"
                 report["card"] = card.build_card(sd, args.card_zip, probe=args.probe,
-                                                 foreign=FOREIGN[args.region])
+                                                 foreign=FOREIGN[args.region], settings=start,
+                                                 boot_iso=args.storage == "gcloader", fragments=args.fragments)
+                if args.storage == "gcloader":  # the drive's disc until a game's is set
+                    disc = work / "boot.iso"
+                    disc.write_bytes(card.read_card(sd, "boot.iso"))
                 dol = work / "ipl.dol"  # what a loader starts: the zip's own
                 with zipfile.ZipFile(args.card_zip) as package:
                     dol.write_bytes(package.read("ipl.dol"))
@@ -800,12 +980,21 @@ def main(argv: list[str] | None = None) -> int:
                 disc = work / "demo.iso"
                 report["disc"] = card.build(disc, probe=args.probe, foreign=FOREIGN[args.region])
             emulator = Emulator(dol, disc.resolve() if disc else None, work, args.out, args.region,
-                                args.storage, sd, args.cable)
-            route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd), cable=args.cable,
-                          region=args.region)
+                                args.storage, sd, args.cable, args.sd_faults)
+            route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd) and start is None,
+                          cable=args.cable, region=args.region, fragments=args.fragments)
             getattr(route, args.route)()
-            if sd:
-                route.card_checks(sd, args.route)
+            if args.route == "save":
+                # Power off and on again, with a card that works.
+                emulator.close()
+                (work / "again").mkdir()
+                (args.out / "next-boot").mkdir(exist_ok=True)  # Dolphin's output of the second boot
+                emulator = Emulator(dol, disc.resolve() if disc else None, work / "again",
+                                    args.out / "next-boot", args.region, args.storage, sd, args.cable)
+                route.emulator, route.pad = emulator, emulator.pad
+                route.boot_again()
+            elif sd:
+                route.card_checks(sd, args.route, seeded(start) if start else None)
         except Failed as failure:
             status = 1
             report["failure"] = str(failure)
@@ -824,6 +1013,7 @@ def main(argv: list[str] | None = None) -> int:
         "checks": route.checks if route else [],
         "fatal_log_lines": fatal,
         "probe": route.report if route else None,
+        "pressed_again": route.pressed_again if route else [],
         "pictures": [path.name for _, path in (route.shots if route else [])],
     })
     (args.out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -849,6 +1039,10 @@ def summary(report: dict[str, object]) -> str:
             lines.append(f"\n**{key.capitalize()}:** {report[key]}")
     if report["fatal_log_lines"]:
         lines.append("\n**Dolphin reported:**\n```\n" + "\n".join(report["fatal_log_lines"]) + "\n```")
+    if report.get("pressed_again"):
+        lines.append(f"\n**Pressed again:** {len(report['pressed_again'])} press(es) the menu was too busy "
+                     f"to see ({', '.join(report['pressed_again'])}): the screen had not changed, so the "
+                     f"route pressed again, as a person would.")
     probe = report.get("probe")
     if probe:
         lines.append(f"\n**The probe reported:** disc `{probe['disc_id']}`, memory `{probe['memsize']:08X}`, "

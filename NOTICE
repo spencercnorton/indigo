@@ -39,6 +39,13 @@ Third-party components redistributed in this tree:
     A patch CI applies to Dolphin when it builds the emulator test's runner;
     see buildtools/ci/runner/dolphin/. Nothing of it is in Indigo's DOL.
 
+  AESND, libogc2's audio library — https://github.com/extremscorner/libogc2
+    Copyright (C) 2004 - 2026 Michael Wiedenbauer (shagkur), Dave Murphy
+    (WinterMute), Extrems' Corner.org. A zlib-style licence; see
+    cube/swiss/aesnd/libogc2/libogc2_license.txt. Copied at commit
+    34a540d9ed2f99249bd11e200aa979afe62789ba and built into Indigo's DOL with
+    one alteration, to AESND_Reset; see cube/swiss/aesnd/README.md.
+
   FatFs — http://elm-chan.org/fsw/ff/
     Copyright (C) ChaN. One-clause BSD-style licence, retained in the source.
     The DBCS conversion tables are removed; see the note in

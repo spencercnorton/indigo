@@ -1,0 +1,141 @@
+Indigo's change: faults a test can ask the SD card for, to see what a program
+does with a failing card. DOLPHIN_SD_FAULTS, comma separated:
+read-error=FIRST-LAST and write-error=FIRST-LAST (sector ranges), and
+write-error-after=N (every write once N have succeeded). A write the card
+could not make is answered with the write error data response (0x0D), where
+0001 answered "accepted" whatever happened. GNU General Public License
+version 2 or later, as Dolphin.
+
+diff --git a/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.cpp b/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.cpp
+index 47fc1ae..edc9083 100644
+--- a/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.cpp
++++ b/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.cpp
+@@ -4,6 +4,8 @@
+ #include "Core/HW/EXI/EXI_DeviceSDCard.h"
+ 
+ #include <algorithm>
++#include <cstdio>
++#include <cstdlib>
+ #include <cstring>
+ #include <string>
+ 
+@@ -49,9 +51,13 @@ enum : u8
+ constexpr u8 DATA_START_TOKEN = 0xFE;
+ constexpr u8 STOP_TRAN_TOKEN = 0xFD;
+ constexpr u8 DATA_ACCEPTED = 0x05;  // xxx0_0101
++constexpr u8 DATA_WRITE_ERROR = 0x0D;  // xxx0_1101
+ 
+ CEXISDCard::CEXISDCard(Core::System& system) : IEXIDevice(system)
+ {
++  if (const char* faults = std::getenv("DOLPHIN_SD_FAULTS"))
++    ParseFaults(faults);
++
+   const std::string image_path = Config::Get(Config::MAIN_SP2_SD_CARD_IMAGE);
+   INFO_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: Device created, image path='{}'", image_path);
+   if (!image_path.empty())
+@@ -217,9 +223,37 @@ void CEXISDCard::BuildCID()
+   m_data_buf[17] = static_cast<u8>(crc & 0xFF);
+ }
+ 
++void CEXISDCard::ParseFaults(const char* faults)
++{
++  std::string spec(faults);
++  size_t start = 0;
++  while (start <= spec.size())
++  {
++    const size_t end = std::min(spec.find(',', start), spec.size());
++    const std::string item = spec.substr(start, end - start);
++    u32 first = 0, last = 0, count = 0;
++    if (std::sscanf(item.c_str(), "read-error=%u-%u", &first, &last) == 2)
++      m_read_errors.push_back({first, last});
++    else if (std::sscanf(item.c_str(), "write-error=%u-%u", &first, &last) == 2)
++      m_write_errors.push_back({first, last});
++    else if (std::sscanf(item.c_str(), "write-error-after=%u", &count) == 1)
++      m_write_error_after = count;
++    else if (!item.empty())
++      WARN_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: unknown fault '{}'", item);
++    start = end + 1;
++  }
++  NOTICE_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: faults '{}'", spec);
++}
++
++bool CEXISDCard::InRanges(const std::vector<SectorRange>& ranges, u32 sector)
++{
++  return std::any_of(ranges.begin(), ranges.end(),
++                     [sector](const SectorRange& r) { return sector >= r.first && sector <= r.last; });
++}
++
+ bool CEXISDCard::ReadSector(u32 sector, u8* buf)
+ {
+-  if (!m_card || sector >= m_card_size_blocks)
++  if (!m_card || sector >= m_card_size_blocks || InRanges(m_read_errors, sector))
+     return false;
+ 
+   m_card.Seek(static_cast<u64>(sector) * 512, File::SeekOrigin::Begin);
+@@ -249,8 +283,10 @@ bool CEXISDCard::ReadSector(u32 sector, u8* buf)
+ 
+ bool CEXISDCard::WriteSector(u32 sector, const u8* buf)
+ {
+-  if (!m_card || sector >= m_card_size_blocks)
++  if (!m_card || sector >= m_card_size_blocks || InRanges(m_write_errors, sector) ||
++      m_writes_done >= m_write_error_after)
+     return false;
++  m_writes_done++;
+ 
+   m_card.Seek(static_cast<u64>(sector) * 512, File::SeekOrigin::Begin);
+   // Every write reaches the image file at once, so whatever reads the image
+@@ -609,21 +645,24 @@ void CEXISDCard::TransferByte(u8& byte)
+ 
+     if (m_data_byte_idx >= m_data_size + 2)
+     {
+-      if (!WriteSector(m_current_sector, m_data_buf.data()))
++      // A card that could not write the block says so in its data response.
++      const bool written = WriteSector(m_current_sector, m_data_buf.data());
++      if (!written)
+         WARN_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: Write failed at sector {}", m_current_sector);
++      const u8 data_response = written ? DATA_ACCEPTED : DATA_WRITE_ERROR;
+ 
+       if (m_multi_block)
+       {
+         m_current_sector++;
+         // Send write response then go back to wait for next block
+         m_pending_write = true;
+-        m_response = {DATA_ACCEPTED, 0xFF};
++        m_response = {data_response, 0xFF};
+         m_response_idx = 0;
+         m_state = State::Response;
+       }
+       else
+       {
+-        m_response = {DATA_ACCEPTED, 0xFF};
++        m_response = {data_response, 0xFF};
+         m_response_idx = 0;
+         m_state = State::Response;
+       }
+diff --git a/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.h b/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.h
+index 93c83b4..a5421ee 100644
+--- a/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.h
++++ b/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.h
+@@ -36,6 +36,22 @@ private:
+   bool ReadSector(u32 sector, u8* buf);
+   bool WriteSector(u32 sector, const u8* buf);
+ 
++  // Faults to inject, for testing what a program does with a failing card:
++  // DOLPHIN_SD_FAULTS, comma separated, read-error=FIRST-LAST,
++  // write-error=FIRST-LAST (sector ranges) and write-error-after=N (every
++  // write once N have succeeded).
++  struct SectorRange
++  {
++    u32 first;
++    u32 last;
++  };
++  void ParseFaults(const char* faults);
++  static bool InRanges(const std::vector<SectorRange>& ranges, u32 sector);
++  std::vector<SectorRange> m_read_errors;
++  std::vector<SectorRange> m_write_errors;
++  u32 m_write_error_after = 0xFFFFFFFF;
++  u32 m_writes_done = 0;
++
+   enum class State
+   {
+     Idle,

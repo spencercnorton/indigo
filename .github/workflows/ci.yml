@@ -67,10 +67,12 @@ jobs:
               echo "| \`${file#dist/}\` | $(wc -c < "$file") | \`$(sha256sum "$file" | cut -c1-64)\` |"
             done
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Build the emulator test's probe
+      - name: Build the emulator test's programs
         run: |
           make -C buildtools/ui/emulator/probe
           cp buildtools/ui/emulator/probe/probe.dol dist/probe.dol
+          make -C buildtools/ui/emulator/aesnd
+          cp buildtools/ui/emulator/aesnd/aesnd.dol dist/aesnd.dol
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: indigo-sd-card-${{ github.sha }}
@@ -83,6 +85,7 @@ jobs:
           path: |
             dist/swiss.dol
             dist/probe.dol
+            dist/aesnd.dol
             dist/provenance.json
             dist/tags.txt
           if-no-files-found: error
@@ -127,7 +130,7 @@ jobs:
     name: ${{ matrix.name }}
     needs: build
     runs-on: [self-hosted, indigo-emulator]
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -137,14 +140,28 @@ jobs:
           # console's region and cable decide the video mode: PAL composite
           # 576i, NTSC composite 480i, a component cable 480p. dvd boots with
           # the demonstration disc in the drive; sd2sp2 from an SD card made
-          # from this build's zip, as someone sets one up.
+          # from this build's zip, as someone sets one up; gcloader from such a
+          # card in a GC Loader, which serves the game from its fragments.
           - { name: Emulator, route: smoke, region: pal, cable: composite, storage: dvd, artifact: emulator }
+          # It also stops AESND hundreds of times, as a launch does (aesnd_test.py).
           - { name: "Emulator (game, PAL, component)", route: game, region: pal, cable: component,
-              storage: dvd, artifact: emulator-game-pal-component }
-          - { name: "Emulator (smoke, NTSC, component, SD2SP2)", route: smoke, region: ntsc,
-              cable: component, storage: sd2sp2, artifact: emulator-smoke-ntsc-component-sd2sp2 }
+              storage: dvd, aesnd: true, artifact: emulator-game-pal-component }
+          # The GC Loader smoke job's card starts with settings/non-default.ini;
+          # the game jobs' cards are new, so they start in Settings.
+          - { name: "Emulator (smoke, NTSC, component, GC Loader)", route: smoke, region: ntsc,
+              cable: component, storage: gcloader, settings: non-default,
+              artifact: emulator-smoke-ntsc-component-gcloader }
           - { name: "Emulator (game, NTSC, SD2SP2)", route: game, region: ntsc, cable: composite,
               storage: sd2sp2, artifact: emulator-game-ntsc-sd2sp2 }
+          # A save on a card whose writes fail after 13, then the same card
+          # booted again: the settings must still load, in their colours.
+          - { name: "Emulator (save, NTSC, SD2SP2, failing card)", route: save, region: ntsc,
+              cable: composite, storage: sd2sp2, settings: non-default, sd_faults: write-error-after=13,
+              artifact: emulator-save-ntsc-sd2sp2-faults }
+          # Its game is in 40 pieces on the card, the most a GC Loader serves.
+          - { name: "Emulator (game, NTSC, component, GC Loader)", route: game, region: ntsc,
+              cable: component, storage: gcloader, fragments: 40,
+              artifact: emulator-game-ntsc-component-gcloader }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -162,12 +179,27 @@ jobs:
           REGION: ${{ matrix.region }}
           CABLE: ${{ matrix.cable }}
           STORAGE: ${{ matrix.storage }}
+          SETTINGS: ${{ matrix.settings }}
+          FRAGMENTS: ${{ matrix.fragments }}
+          SD_FAULTS: ${{ matrix.sd_faults }}
         run: |
           set -- --probe build/probe.dol --route "$ROUTE" --region "$REGION" --cable "$CABLE"
           if [ "$STORAGE" != dvd ]; then
             set -- "$@" --storage "$STORAGE" --card-zip card/Indigo-*.zip
           fi
+          if [ -n "$SETTINGS" ]; then
+            set -- "$@" --settings "$SETTINGS"
+          fi
+          if [ -n "$FRAGMENTS" ]; then
+            set -- "$@" --fragments "$FRAGMENTS"
+          fi
+          if [ -n "$SD_FAULTS" ]; then
+            set -- "$@" --sd-faults "$SD_FAULTS"
+          fi
           python3 buildtools/ui/emulator/run.py build/swiss.dol "$@" --out emulator
+      - name: Stop AESND hundreds of times, as a launch does
+        if: matrix.aesnd
+        run: python3 buildtools/ui/emulator/aesnd_test.py build/aesnd.dol --out emulator/aesnd
       - name: Summary
         if: always()
         run: cat emulator/summary.md >> "$GITHUB_STEP_SUMMARY" || true
@@ -259,6 +291,8 @@ jobs:
           buildtools/check_whitespace.sh "$base"
       - name: Upstream (outside the interface, the Swiss commit UPSTREAM names, or listed there)
         run: python3 buildtools/ci/check_upstream.py
+      - name: AESND (libogc2's, byte for byte, at the toolchain's commit; Indigo's changes as patches)
+        run: python3 buildtools/ci/check_aesnd.py
       - name: Scripts, CI tools and workflows
         run: buildtools/ci/source_checks.sh
 
