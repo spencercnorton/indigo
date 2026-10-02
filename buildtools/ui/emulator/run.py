@@ -21,13 +21,18 @@ while a crash, a hang, a black screen or a broken control does:
   - on the Settings face, Setup > Console > Apps Face Off takes Apps off the
     cube (System's next face is Library) and On puts it back;
   - on Apps, RIGHT and LEFT move between the disc's apps and back, and A
-    starts one: the launch screen comes up (Dolphin can't take a launch
-    further, see start_an_app);
+    starts the probe (probe/probe.c), which reports what the hand-off left
+    it: the menu music stopped, nothing still writing to memory, and its own
+    path to start from;
   - nothing crashes: Dolphin emulates the MMU, so an invalid memory access
     stops Indigo on its exception screen as it would on a console, and
     Dolphin's own log reports no exception or invalid access.
 
-usage: run.py DOL --out DIR [--route smoke|tour] [--disc ISO] [--keep-going]
+The game route launches the probe from the Library as a game instead: the
+probe must see the game's ID, the full 24 MB and the music stopped.
+
+usage: run.py DOL --out DIR [--route smoke|tour|game] [--probe DOL] [--region pal|ntsc]
+              [--disc ISO]
 Writes DIR/report.json, DIR/summary.md, DIR/sheet.png (every checkpoint),
 the checkpoint pictures and Dolphin's output. Exit 0: passed. 1: Indigo
 failed a check. 2: the harness or the emulator could not run.
@@ -44,6 +49,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -71,7 +77,11 @@ FATAL = re.compile("|".join((
     r"Invalid (?:read|write) (?:from|to)", r"Unknown (?:opcode|instruction)",
     r"FIFO (?:is )?(?:overflowed|desync)", r"failed to compile shader", r"device lost",
 )), re.I)
+# The DSP runs its real microcode (LLE): Dolphin's high-level stand-ins know
+# libogc's audio library but not libogc2's, so the menu music's stop before a
+# launch would never be answered.
 DOLPHIN_INI = """[Core]
+DSPHLE = False
 MMU = True
 GFXBackend = OGL
 SIDevice0 = 6
@@ -90,6 +100,18 @@ BackgroundInput = True
 Fullscreen = True
 RenderToMain = True
 """
+
+
+# Dolphin's region for a program without one (a DOL): what the console's video
+# hardware starts in. Its own default depends on the machine.
+REGIONS = {"ntsc": 1, "pal": 2}
+
+# The probe's report, in the order of its strip (probe.c).
+PROBE_WORDS = ("magic", "version", "id0", "id1", "memsize", "console", "video", "bus", "core",
+               "arena_lo", "arena_hi", "top", "ai_dma", "ai_cr", "stray_writes", "argc",
+               "argv0", "argv1", "argv2", "argv3", "crc")
+PROBE_MAGIC = 0x1D160B0E
+AI_DMA_ENABLE = 0x8000
 
 
 class Failed(Exception):
@@ -139,8 +161,50 @@ def has_label(mask: np.ndarray) -> bool:
     return columns.size > 0 and 20 <= columns[-1] - columns[0] <= mask.shape[1] - 4
 
 
+def probe_field(rgb: np.ndarray) -> np.ndarray:
+    """The probe's signature colour, an azure no screen of Indigo's uses."""
+    r, g, b = (rgb[..., i].astype(np.int16) for i in range(3))
+    return (b > 190) & (r < 80) & (g > 80) & (g < 180)
+
+
+def probe_report(rgb: np.ndarray) -> dict[str, object] | None:
+    """The probe's results, read from a picture of its screen, or None when
+    the screen is not the probe's. The strip is found in the picture itself
+    (the black and white rectangle inside the azure field), so the scale
+    Dolphin or a capture card draws it at does not matter."""
+    azure = probe_field(rgb)
+    if azure.mean() < 0.1:
+        return None
+    rows = azure.mean(axis=1)
+    field = np.flatnonzero(rows > 0.5)
+    strip = [y for y in range(int(field[0]), rgb.shape[0]) if 0.05 < rows[y] < 0.45] if field.size else []
+    if not strip:
+        return None
+    y0, y1 = strip[0], strip[-1] + 1
+    edge = np.flatnonzero(azure[field[0]:y0].mean(axis=0) > 0.9)
+    columns = azure[y0:y1].mean(axis=0)
+    xs = [x for x in range(int(edge[0]), int(edge[-1]) + 1) if columns[x] < 0.1] if edge.size else []
+    if not xs:
+        return None
+    x0, x1 = xs[0], xs[-1] + 1
+    width, height = (x1 - x0) / 32, (y1 - y0) / len(PROBE_WORDS)
+    words = []
+    for row in range(len(PROBE_WORDS)):
+        value = 0
+        for bit in range(32):
+            pixel = rgb[int(y0 + (row + 0.5) * height), int(x0 + (bit + 0.5) * width)]
+            value = value << 1 | int(pixel.mean() > 128)
+        words.append(value)
+    report: dict[str, object] = dict(zip(PROBE_WORDS, words))
+    packed = b"".join(w.to_bytes(4, "big") for w in words)
+    report["valid"] = words[0] == PROBE_MAGIC and zlib.crc32(packed[:-4]) == words[-1]
+    report["disc_id"] = packed[8:14].decode("latin-1")
+    report["path"] = packed[64:80].rstrip(b"\0").decode("latin-1")
+    return report
+
+
 class Emulator:
-    def __init__(self, dol: Path, disc: Path, work: Path, out: Path) -> None:
+    def __init__(self, dol: Path, disc: Path, work: Path, out: Path, region: str = "pal") -> None:
         self.out = out
         self.user = work / "dolphin"
         (self.user / "Config").mkdir(parents=True)
@@ -167,7 +231,8 @@ class Emulator:
         self.log = out / "dolphin.log"
         self.dolphin = subprocess.Popen(
             ["dolphin-emu-nogui", "-u", str(self.user), "-p", "x11", "-v", "OGL",
-             "-C", f"Dolphin.Core.DefaultISO={disc}", "-e", str(dol)],
+             "-C", f"Dolphin.Core.DefaultISO={disc}",
+             "-C", f"Dolphin.Core.FallbackRegion={REGIONS[region]}", "-e", str(dol)],
             stdout=open(self.log, "w"), stderr=subprocess.STDOUT, env=env)
         self.started = time.monotonic()
 
@@ -197,9 +262,11 @@ class Emulator:
 class Route:
     """Steps through the menus and records every checkpoint."""
 
-    def __init__(self, emulator: Emulator, out: Path) -> None:
+    def __init__(self, emulator: Emulator, out: Path, probe: bool = False) -> None:
         self.emulator = emulator
         self.out = out
+        self.probe = probe
+        self.report: dict[str, object] | None = None
         self.checks: list[dict[str, object]] = []
         self.shots: list[tuple[str, Path]] = []
         self.pad = emulator.pad
@@ -308,11 +375,9 @@ class Route:
         """A on Apps shows the disc's apps as the Library shows games: RIGHT
         and LEFT move between them and back. A starts one: the Apps screen
         gives way to the launch screen, dimmed but for the app's card, its
-        name and the ring. The route stops there. Dolphin as CI runs it
-        cannot take a program's launch further: its HLE DSP never answers
-        AESND when Swiss stops the menu audio before the hand-off, and a
-        hand-off it does reach (with the LLE DSP) never runs the program,
-        from Swiss's own file list either.
+        name and the ring. With the probe on the disc, the app started is the
+        probe, and the hand-off must reach it (handoff); without it the
+        route stops at the launch screen.
 
         The A that opens Apps is held longer than Apps takes to read /apps:
         on a console an SD card is read before a thumb lets go, and that A
@@ -330,6 +395,13 @@ class Route:
         self.press("LEFT")
         again, _ = self.settled_label(like=first, box=TITLE_BOX)
         self.check("LEFT goes back an app", again is not None)
+        if self.probe:
+            name = again
+            for n in range(card.app_order(True).index(card.PROBE_APP[:-4])):
+                self.press("RIGHT")
+                name, _ = self.settled_label(unlike=name, box=TITLE_BOX)
+                self.check("RIGHT moves to the next app", name is not None, step=n + 1)
+            self.shot("apps-probe", self.last_rgb)
         apps = float(self.emulator.frame().mean())
         self.press("A")
         launched, deadline = False, time.monotonic() + SETTLE_SECONDS
@@ -341,6 +413,58 @@ class Route:
         self.shot("app-launch", self.last_rgb)
         self.check("A starts the app: the launch screen dims the Apps screen", launched,
                    apps=round(apps, 1), now=round(float(self.last_rgb.mean()), 1))
+        if self.probe:
+            report = self.handoff("app")
+            self.check("the app starts with its own path", str(report["path"]).lower().endswith("probe.dol"),
+                       path=report["path"], argc=report["argc"])
+
+    def handoff(self, tag: str) -> dict[str, object]:
+        """After a launch, wait for the probe's screen and check what the
+        hand-off left it. Swiss's shutdown before a launch stalls in Dolphin
+        while a controller is connected, as its startup does (a console is
+        fine), so the pad is unplugged once the launching A is in."""
+        self.pad.unplug()
+        report, deadline = None, time.monotonic() + BOOT_SECONDS
+        while not (report and report["valid"]) and time.monotonic() < deadline:
+            time.sleep(0.5)
+            rgb = self.emulator.frame()
+            self.last_rgb = rgb
+            report = probe_report(rgb)
+        self.shot(f"{tag}-probe", self.last_rgb)
+        self.report = report
+        self.check("the launch reaches the probe, and its report reads back", bool(report and report["valid"]),
+                   seconds_waited=round(BOOT_SECONDS - (deadline - time.monotonic()), 1))
+        self.check("the menu music is stopped before the hand-off",
+                   not int(report["ai_dma"]) & AI_DMA_ENABLE, audio_dma=f"{report['ai_dma']:04X}")
+        self.check("nothing writes to memory after the hand-off", report["stray_writes"] == 0,
+                   words_changed=report["stray_writes"])
+        return report
+
+    def game(self) -> None:
+        """Boot, open the Library, move to the probe's game, open its details
+        and launch it. The probe must see the game's own disc ID and the
+        24 MB a game is promised."""
+        home = self.boot()
+        self.press("A")
+        opened = self.covered(home)
+        self.shot("library", self.last_rgb)
+        self.check("A opens the Library", opened)
+        title, _ = self.settled_label(box=TITLE_BOX)
+        self.check("the Library shows a game's title", title is not None)
+        for n in range(card.library_order(True).index(card.PROBE_GAME[1])):
+            self.press("RIGHT")
+            title, _ = self.settled_label(unlike=title, box=TITLE_BOX)
+            self.check("RIGHT moves to the next game", title is not None, step=n + 1)
+        self.shot("library-probe", self.last_rgb)
+        self.press("A")
+        self.check("A opens the game's details", self.covered(title, TITLE_BOX))
+        self.shot("probe-details", self.last_rgb)
+        self.press("A")
+        report = self.handoff("game")
+        self.check("the game starts with its own disc ID", report["disc_id"] == card.PROBE_GAME[0],
+                   disc_id=report["disc_id"])
+        self.check("the game is given the full 24 MB", report["memsize"] == 0x01800000,
+                   memory=f"{report['memsize']:08X}")
 
     def flip_apps_face(self, settings: np.ndarray, tag: str) -> None:
         """From the Settings face: R and R to Setup, DOWN and A into Console,
@@ -517,12 +641,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dol", type=Path)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--route", choices=("smoke", "tour"), default="smoke")
+    parser.add_argument("--route", choices=("smoke", "tour", "game"), default="smoke")
+    parser.add_argument("--probe", type=Path, help="the probe DOL (probe/), launched as an app and a game")
+    parser.add_argument("--region", choices=tuple(REGIONS), default="pal")
     parser.add_argument("--disc", type=Path, help="a disc to use instead of building card.py's")
     args = parser.parse_args(argv)
+    if args.route == "game" and not args.probe:
+        parser.error("the game route launches the probe: give --probe")
     args.out.mkdir(parents=True, exist_ok=True)
     report: dict[str, object] = {"schema": "indigo.emulator-test.v1", "route": args.route,
-                                 "dol": str(args.dol), "dolphin": _version()}
+                                 "region": args.region, "dol": str(args.dol), "dolphin": _version()}
     status, emulator, route = 0, None, None
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
@@ -530,9 +658,9 @@ def main(argv: list[str] | None = None) -> int:
             disc = args.disc
             if disc is None:
                 disc = work / "demo.iso"
-                report["disc"] = card.build(disc)
-            emulator = Emulator(args.dol.resolve(), disc.resolve(), work, args.out)
-            route = Route(emulator, args.out)
+                report["disc"] = card.build(disc, probe=args.probe)
+            emulator = Emulator(args.dol.resolve(), disc.resolve(), work, args.out, args.region)
+            route = Route(emulator, args.out, probe=bool(args.probe))
             getattr(route, args.route)()
         except Failed as failure:
             status = 1
@@ -551,6 +679,7 @@ def main(argv: list[str] | None = None) -> int:
         "passed": status == 0,
         "checks": route.checks if route else [],
         "fatal_log_lines": fatal,
+        "probe": route.report if route else None,
         "pictures": [path.name for _, path in (route.shots if route else [])],
     })
     (args.out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -561,7 +690,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def summary(report: dict[str, object]) -> str:
-    lines = [f"### Emulator ({report['route']}): {'passed' if report['passed'] else 'failed'}", "",
+    lines = [f"### Emulator ({report['route']}, {report['region'].upper()}): "
+             f"{'passed' if report['passed'] else 'failed'}", "",
              f"{report['dolphin']}, the demonstration disc, a controller plugged in once Home is up.", "",
              "| Check | Result | Detail |", "| --- | --- | --- |"]
     for check in report["checks"]:
@@ -572,6 +702,11 @@ def summary(report: dict[str, object]) -> str:
             lines.append(f"\n**{key.capitalize()}:** {report[key]}")
     if report["fatal_log_lines"]:
         lines.append("\n**Dolphin reported:**\n```\n" + "\n".join(report["fatal_log_lines"]) + "\n```")
+    probe = report.get("probe")
+    if probe:
+        lines.append(f"\n**The probe reported:** disc `{probe['disc_id']}`, memory `{probe['memsize']:08X}`, "
+                     f"video mode {probe['video']}, audio DMA `{probe['ai_dma']:04X}`, "
+                     f"{probe['stray_writes']} stray writes, started as `{probe['path'] or '(no path)'}`.")
     lines.append("\nEvery checkpoint is in the `sheet.png` of this run's `emulator` artifact.")
     return "\n".join(lines) + "\n"
 

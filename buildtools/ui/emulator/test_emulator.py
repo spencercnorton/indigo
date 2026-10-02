@@ -108,6 +108,28 @@ class Disc(unittest.TestCase):
                     self.assertFalse(image.info.get("interlace"), picture)
             self.assertFalse((apps / "Arcade.png").exists())  # a card with its name
 
+    def test_the_probe_as_a_game(self):
+        dol = bytes(range(256)) * 64
+        image = card.probe_image(dol)
+        self.assertEqual(image[:6], card.PROBE_GAME[0].encode())
+        self.assertEqual(len(image) % 0x8000, 0)
+        dol_offset, fst_offset, fst_size = struct.unpack_from(">III", image, 0x420)
+        self.assertEqual(image[dol_offset:dol_offset + len(dol)], dol)
+        self.assertEqual(struct.unpack_from(">II", image, 0x2440 + 0x10), (0x81200000, 0x20))
+        fst = image[fst_offset:fst_offset + fst_size]
+        self.assertEqual(fst[24:].split(b"\0")[0], b"opening.bnr")
+        where, length = struct.unpack_from(">II", fst, 16)
+        self.assertEqual(image[where:where + 4], b"BNR1")
+        self.assertGreaterEqual(where, dol_offset + len(dol))
+
+    def test_where_the_probe_sits_in_the_library_and_in_apps(self):
+        order = card.library_order(True)
+        self.assertEqual(order[:3], card.library_order(False)[:3],
+                         "the probe stays out of the games the route browses")
+        self.assertIn(card.PROBE_GAME[1], order[3:])
+        self.assertEqual(card.app_order(False), sorted(card.APPS, key=str.lower))
+        self.assertEqual(card.app_order(True).index("Probe"), 2)
+
     def test_posters_differ(self):
         self.assertNotEqual(card.poster(0).tobytes(), card.poster(1).tobytes())
 
@@ -157,6 +179,16 @@ class Pad(unittest.TestCase):
             self.assertEqual(client.recv(128)[50], 255)
             with self.assertRaises(ValueError):
                 pad.hold("SELECT")
+            pad.unplug()
+            self.assertFalse(pad.streaming)
+            client.settimeout(0.3)
+            try:
+                while client.recv(128):
+                    pass  # pad data already on its way
+            except socket.timeout:
+                pass
+            send(dsu_pad.PORT_INFO, struct.pack("<I4B", 4, 0, 1, 2, 3))
+            self.assertEqual(client.recv(64)[21], 0, "the port reads unplugged again")
         finally:
             client.close()
             pad.close()
@@ -197,6 +229,39 @@ class Screen(unittest.TestCase):
         self.assertIn("black", run.diagnose(np.zeros((run.HEIGHT, run.WIDTH, 3), np.uint8)))
         indigo = np.full((run.HEIGHT, run.WIDTH, 3), (35, 25, 60), np.uint8)
         self.assertEqual(run.diagnose(indigo), "")
+
+    @staticmethod
+    def probe_screen(words) -> np.ndarray:
+        """The probe's screen as probe.c draws it into a 640x480 framebuffer."""
+        rgb = np.zeros((480, 640, 3), np.uint8)
+        rgb[104:] = (0, 128, 255)
+        for row, word in enumerate(words):
+            for bit in range(32):
+                if word >> (31 - bit) & 1:
+                    rgb[128 + row * 16:144 + row * 16, 64 + bit * 16:80 + bit * 16] = 235
+                else:
+                    rgb[128 + row * 16:144 + row * 16, 64 + bit * 16:80 + bit * 16] = 16
+        return rgb
+
+    def test_the_probe_report_reads_back_at_any_scale(self):
+        from PIL import Image
+        words = [run.PROBE_MAGIC, 1, int.from_bytes(b"GPRE", "big"), int.from_bytes(b"01\0\0", "big"),
+                 0x01800000, 3, 0, 162000000, 486000000, 0x80040000, 0x817FFFC0, 0x81800000, 0x8004, 0x42,
+                 0, 1] + [int.from_bytes(b"apps/Probe.dol\0\0"[i:i + 4], "big") for i in range(0, 16, 4)]
+        words.append(zlib.crc32(b"".join(w.to_bytes(4, "big") for w in words)))
+        screen = self.probe_screen(words)
+        report = run.probe_report(screen)
+        self.assertTrue(report["valid"])
+        self.assertEqual((report["disc_id"], report["memsize"], report["path"]),
+                         ("GPRE01", 0x01800000, "apps/Probe.dol"))
+        self.assertTrue(report["ai_dma"] & run.AI_DMA_ENABLE)
+        # Dolphin draws a PAL picture squashed into the window, inside black borders.
+        squashed = np.zeros_like(screen)
+        squashed[40:440, 29:611] = np.asarray(Image.fromarray(screen).resize((582, 400), Image.NEAREST))
+        self.assertEqual(run.probe_report(squashed)["disc_id"], "GPRE01")
+        words[4] ^= 1
+        self.assertFalse(run.probe_report(self.probe_screen(words))["valid"], "a misread fails its CRC")
+        self.assertIsNone(run.probe_report(np.full((480, 640, 3), (35, 25, 60), np.uint8)))
 
     def test_fatal_lines(self):
         with tempfile.TemporaryDirectory() as directory:
