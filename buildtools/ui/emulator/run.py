@@ -76,6 +76,7 @@ LABEL_BOX = (200, 372, 440, 396)
 TITLE_BOX = (200, 338, 440, 362)
 # The page title Settings opens with on a new card ("Storage").
 SETTINGS_TITLE_BOX = (30, 46, 230, 80)
+COUNTER_BOX = (560, 120, 610, 142)  # Settings' "row / rows", shown while a row has the focus
 DETAIL_TITLE_BOX = (264, 106, 600, 134)
 TEXT_LEVEL = 160          # label text is bright; the waves behind it are not
 SAME, DIFFERENT = 0.85, 0.5  # intersection over union of two label masks
@@ -141,6 +142,8 @@ STORAGES = {"dvd": None, "sd2sp2": "SerialPort2", "sdgecko-b": "SlotB", "gcloade
 SD_CARD_DEVICE = 15
 # Rows on Settings' Storage page: DOWN past them reaches Save & Exit.
 STORAGE_ROWS = 7
+# Lit pixels in COUNTER_BOX that are its digits rather than nothing (19 for "1 / 7").
+COUNTER_PIXELS = 6
 # Settings to start with, put on the card as swiss/settings/global.ini (--settings).
 SETTINGS = Path(__file__).resolve().parent / "settings"
 
@@ -482,15 +485,26 @@ class Route:
     def first_run(self) -> np.ndarray:
         """A new card has no swiss/settings/global.ini: Indigo starts in
         Settings, on Storage, and says so. DOWN past the page's rows reaches
-        Save & Exit, and A writes the settings to the card and goes Home."""
+        Save & Exit, and A writes the settings to the card and goes Home.
+
+        DOWN is pressed while the rows' counter shows, so one the menu was too
+        busy to see (a new card's first moments) is pressed again; then LEFT
+        twice, which ends on Save & Exit even from Discard & Exit, one row on."""
         title, now = self.settled_label(BOOT_SECONDS, box=SETTINGS_TITLE_BOX)
         self.shot("first-run", self.last_rgb)
         self.check("a new card opens Settings first", title is not None,
                    seconds=round(now - self.emulator.started, 1))
         self.plug_in()
-        for _ in range(STORAGE_ROWS):
+        for _ in range(STORAGE_ROWS + 4):
+            if text_mask(self.gray(), COUNTER_BOX).sum() < COUNTER_PIXELS:
+                break
             self.press("DOWN")
             self.pause(0.4)
+        self.check("DOWN takes the focus past the page's rows",
+                   text_mask(self.gray(), COUNTER_BOX).sum() < COUNTER_PIXELS)
+        for _ in range(2):
+            self.press("LEFT")
+            self.pause(0.3)
         self.shot("first-run-save", self.emulator.frame())
         self.press("A")
         mask, now = self.settled_label(BOOT_SECONDS)
