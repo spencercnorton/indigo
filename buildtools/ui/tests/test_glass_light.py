@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[3]
 GUI = ROOT / "cube/swiss/source/gui"
 
 HARNESS = r"""
+#include <float.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -453,6 +454,7 @@ int main(void) {
 """
 
 FUNCTIONS = [
+    "static float fastSqrt(",
     "static bool railJoin(", "static bool buildRasterJoins(", "static void drawRasterStroke(",
     "static bool projectRailPoint(", "static guVector cubeViewNormal(",
     "static void buildCubeFaces(", "static void buildChamferStrip(",

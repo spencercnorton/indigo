@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[3]
 GUI = ROOT / "cube/swiss/source/gui"
 
 HARNESS = r"""
+#include <float.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -139,6 +140,16 @@ static void GX_LoadPosMtxImm(const Mtx m,int slot) {
 }
 /* EMITTERS */
 static bool closef(float a,float b) { return fabsf(a-b)<0.002f; }
+static void test_fast_sqrt(void) {
+    /* The estimate's error repeats every two binades, so [1, 4) bounds it
+     * everywhere (every 64th float: 262,144 of them); special values stay
+     * sqrtf's. */
+    union { float f; u32 i; } x={1.0f};
+    for(;x.f<4.0f;x.i+=64)
+        CHECK(fabs(fastSqrt(x.f)-sqrt(x.f))<=5e-6*sqrt(x.f),"fast square root drifted");
+    CHECK(fastSqrt(0.0f)==0.0f && fastSqrt(INFINITY)==INFINITY && isnan(fastSqrt(-1.0f)) &&
+        fastSqrt(FLT_MIN/4)==sqrtf(FLT_MIN/4),"fast square root's special values");
+}
 static void test_dial(void) {
     for(int segments=1;segments<=24;segments++) {
         reset(true);
@@ -884,7 +895,7 @@ static void test_glass(void) {
     CHECK(most>200 && most<=1100,"reflection vertex budget");
 }
 int main(void) {
-    test_dial(); test_rail_joins(); test_motifs(); test_controller(); test_rounded_outlines();
+    test_fast_sqrt(); test_dial(); test_rail_joins(); test_motifs(); test_controller(); test_rounded_outlines();
     test_icons_on_their_faces(); test_hidden_controller_reads_the_pad();
     test_closed_cube(); test_seamless_mesh(); test_chamfer_color_pairs(); test_surfaces(); test_glass();
     puts("native strokes: bounded complete GX streams, perspective coverage and closed seams");
@@ -897,8 +908,9 @@ class StrokeGXStreamTests(unittest.TestCase):
     def setUpClass(cls):
         indigo=(GUI / "indigo_background.c").read_text()
         frame=(GUI / "FrameBufferMagic.c").read_text()
-        blocks=[extract_function(indigo, "static void " + name + "(")
-                for name in ("putCubeVertex",)]
+        blocks=[extract_function(indigo, "static float fastSqrt(")]
+        blocks += [extract_function(indigo, "static void " + name + "(")
+                   for name in ("putCubeVertex",)]
         blocks += [extract_function(indigo[indigo.rindex("static bool " + name + "("):], "static bool " + name + "(")
                    for name in ("projectRailPoint", "railJoin")]
         blocks += [extract_function(indigo, "static void " + name + "(")
@@ -1114,6 +1126,9 @@ class StrokeGXStreamTests(unittest.TestCase):
             "studio follows the glass out along its normal": (
                 "float out = offset.x * n.x + offset.y * n.y + offset.z * n.z;", "float out = 0.0f;"),
             "studio map upside down": ("*t = 0.5f - r.y / m;", "*t = 0.5f + r.y / m;"),
+            "one Newton step": ("\ty *= 1.5f - 0.5f * x * y * y;\n\ty *= 1.5f - 0.5f * x * y * y;\n",
+                "\ty *= 1.5f - 0.5f * x * y * y;\n"),
+            "estimate past its range": ("if(!(x >= FLT_MIN && x <= FLT_MAX)) return sqrtf(x);", ""),
         }
         for name,(old,new) in mutants.items():
             with self.subTest(name=name):

@@ -1,4 +1,5 @@
 #include <gccore.h>
+#include <float.h>
 #include <math.h>
 
 #include "indigo_background.h"
@@ -92,6 +93,23 @@ typedef struct waveOscillator {
 	float stepSine;
 	float stepCosine;
 } waveOscillator_t;
+
+/* Gekko has no square-root instruction: newlib's sqrtf works bit by bit,
+ * some 300 instructions a call, and a frame takes thousands. Two Newton
+ * steps from the classic estimate land within 5 parts in a million, under
+ * a sixty-fourth of a pixel anywhere on the stage. */
+static float fastSqrt(float x)
+{
+	union { float f; u32 i; } bits = {x};
+	float y;
+
+	if(!(x >= FLT_MIN && x <= FLT_MAX)) return sqrtf(x);
+	bits.i = 0x5f3759dfu - (bits.i >> 1);
+	y = bits.f;
+	y *= 1.5f - 0.5f * x * y * y;
+	y *= 1.5f - 0.5f * x * y * y;
+	return x * y;
+}
 
 static void putVertex(indigoPoint_t point, GXColor color)
 {
@@ -588,7 +606,7 @@ static guVector cubeViewNormal(const cubeRasterTransform_t *raster, guVector n)
 		raster->model[1][0] * n.x + raster->model[1][1] * n.y + raster->model[1][2] * n.z,
 		raster->model[2][0] * n.x + raster->model[2][1] * n.y + raster->model[2][2] * n.z
 	};
-	float length = sqrtf(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z);
+	float length = fastSqrt(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z);
 	if(length < 0.0001f) return (guVector) {0.0f, 0.0f, 1.0f};
 	return (guVector) {eye.x / length, eye.y / length, eye.z / length};
 }
@@ -670,7 +688,7 @@ static bool railJoin(indigoPoint_t previous, indigoPoint_t point,
 	float across = UIStage_PixelWidth();
 	float ax = (point.x - previous.x) / across, ay = point.y - previous.y;
 	float bx = (next.x - point.x) / across, by = next.y - point.y;
-	float a = sqrtf(ax * ax + ay * ay), b = sqrtf(bx * bx + by * by);
+	float a = fastSqrt(ax * ax + ay * ay), b = fastSqrt(bx * bx + by * by);
 	if(a < 0.001f || b < 0.001f) return false;
 	ax /= a; ay /= a; bx /= b; by /= b;
 	float denominator = 1.0f + ax * bx + ay * by;
@@ -741,8 +759,8 @@ static void buildCubeOutline(const cubeRasterTransform_t *raster,
 		indigoPoint_t p = outline->point[i], q = outline->point[(i + 1) % outline->count];
 		indigoPoint_t inward;
 		float dx = q.x - p.x, dy = q.y - p.y;
-		outline->length[i] = sqrtf(dx * dx + dy * dy);
-		outline->pixels[i] = sqrtf(dx * dx / (across * across) + dy * dy);
+		outline->length[i] = fastSqrt(dx * dx + dy * dy);
+		outline->pixels[i] = fastSqrt(dx * dx / (across * across) + dy * dy);
 		outline->joined[i] = railJoin(outline->point[(i + outline->count - 1) % outline->count],
 			p, q, &inward);
 		if(outline->joined[i]) outline->corner[i] = (indigoPoint_t) {-inward.x, -inward.y};
@@ -900,7 +918,7 @@ static void putSemanticMotifQuad(const cubeRasterTransform_t *raster, int face,
 		int next = (i + 1) % 4;
 		float dx = points[next].x - points[i].x;
 		float dy = points[next].y - points[i].y;
-		float length = sqrtf(dx * dx + dy * dy);
+		float length = fastSqrt(dx * dx + dy * dy);
 		if(!railJoin(points[(i + 3) % 4], points[i], points[next], &joins[i])) goto hidden;
 		float distance = fabsf(dx * (center.y - points[i].y) -
 			dy * (center.x - points[i].x)) / length;
@@ -1017,7 +1035,7 @@ static void drawFacePolygon(const cubeRasterTransform_t *raster, int face,
 		int next = (i + 1) % count;
 		float dx = points[next].x - points[i].x;
 		float dy = points[next].y - points[i].y;
-		float length = sqrtf(dx * dx + dy * dy);
+		float length = fastSqrt(dx * dx + dy * dy);
 		if(length <= 0.0f || !railJoin(points[(i + count - 1) % count],
 			points[i], points[next], &joins[i])) return;
 		float distance = fabsf(dx * (center.y - points[i].y) -
@@ -1064,11 +1082,11 @@ static void drawFaceBand(const cubeRasterTransform_t *raster, int face,
 		indigoPoint_t next = centre[(i + 1) % count];
 		float ax = centre[i].x - prev.x, ay = centre[i].y - prev.y;
 		float bx = next.x - centre[i].x, by = next.y - centre[i].y;
-		float al = sqrtf(ax * ax + ay * ay), bl = sqrtf(bx * bx + by * by);
+		float al = fastSqrt(ax * ax + ay * ay), bl = fastSqrt(bx * bx + by * by);
 		if(al <= 0.0f || bl <= 0.0f) return;
 		/* Clockwise with v up: each edge's outward normal is its left side. */
 		float nx = -ay / al - by / bl, ny = ax / al + bx / bl;
-		float nl = sqrtf(nx * nx + ny * ny);
+		float nl = fastSqrt(nx * nx + ny * ny);
 		if(nl <= 0.0f) return;
 		nx /= nl; ny /= nl;
 		float miter = nx * (-ay / al) + ny * (ax / al);
@@ -1361,8 +1379,8 @@ static void drawControllerIcon(const cubeRasterTransform_t *raster, int face,
 	bool x = (pose.pressed & PAD_BUTTON_X) != 0u;
 	bool y = (pose.pressed & PAD_BUTTON_Y) != 0u;
 	bool start = (pose.pressed & PAD_BUTTON_START) != 0u;
-	float magnitude = sqrtf(pose.stickX * pose.stickX + pose.stickY * pose.stickY);
-	float cMagnitude = sqrtf(pose.substickX * pose.substickX +
+	float magnitude = fastSqrt(pose.stickX * pose.stickX + pose.stickY * pose.stickY);
+	float cMagnitude = fastSqrt(pose.substickX * pose.substickX +
 		pose.substickY * pose.substickY);
 	/* A cap travels until a small gap remains inside its gate's inner edge. */
 	float reach = (magnitude > 1.0f ? 1.0f / magnitude : 1.0f) * 0.030f;
@@ -1739,7 +1757,7 @@ static int roundedOutline(const indigoPoint_t *corners, int count, float radius,
 		indigoPoint_t p = corners[(i + count - 1) % count], c = corners[i];
 		indigoPoint_t q = corners[(i + 1) % count];
 		float ax = c.x - p.x, ay = c.y - p.y, bx = q.x - c.x, by = q.y - c.y;
-		float al = sqrtf(ax * ax + ay * ay), bl = sqrtf(bx * bx + by * by);
+		float al = fastSqrt(ax * ax + ay * ay), bl = fastSqrt(bx * bx + by * by);
 		if(al <= 0.0f || bl <= 0.0f) return 0;
 		ax /= al; ay /= al; bx /= bl; by /= bl;
 		float turn = acosf(fmaxf(-1.0f, fminf(1.0f, ax * bx + ay * by)));
@@ -1967,7 +1985,7 @@ static void drawFaceIcons(float seconds, bool animated,
 		float x = m[0][0] * basis[0][2] + m[0][1] * basis[1][2] + m[0][2] * basis[2][2];
 		float y = m[1][0] * basis[0][2] + m[1][1] * basis[1][2] + m[1][2] * basis[2][2];
 		float z = m[2][0] * basis[0][2] + m[2][1] * basis[1][2] + m[2][2] * basis[2][2];
-		float length = sqrtf(x * x + y * y + z * z);
+		float length = fastSqrt(x * x + y * y + z * z);
 		float t = length > 0.0001f ? (z / length - 0.33f) / 0.27f : 0.0f;
 
 		t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
@@ -2081,7 +2099,7 @@ static GXColor glassStudioLight(guVector r, const GXColor colors[GLASS_LIGHTS])
  * direction is the middle, the one straight behind the cube the rim. */
 static void glassStudioCoords(guVector r, float *s, float *t)
 {
-	float m = 2.0f * sqrtf(r.x * r.x + r.y * r.y + (r.z + 1.0f) * (r.z + 1.0f));
+	float m = 2.0f * fastSqrt(r.x * r.x + r.y * r.y + (r.z + 1.0f) * (r.z + 1.0f));
 	if(m < 0.0001f) {
 		*s = 0.5f;
 		*t = 0.0f;
@@ -2117,7 +2135,7 @@ static guVector glassStudioDirection(float s, float t)
  * reflection never draws a hard aliased rim. 0 where the glass faces away. */
 static u8 glassReflect(guVector eye, guVector n, guVector offset, float *s, float *t)
 {
-	float length = sqrtf(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z);
+	float length = fastSqrt(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z);
 	guVector view = {-eye.x / length, -eye.y / length, -eye.z / length};
 	float facing = n.x * view.x + n.y * view.y + n.z * view.z;
 	*s = 0.5f;
@@ -2129,7 +2147,7 @@ static u8 glassReflect(guVector eye, guVector n, guVector offset, float *s, floa
 	guVector r = {2.0f * facing * n.x - view.x + (offset.x - out * n.x) / GLASS_STUDIO_REACH,
 		2.0f * facing * n.y - view.y + (offset.y - out * n.y) / GLASS_STUDIO_REACH,
 		2.0f * facing * n.z - view.z + (offset.z - out * n.z) / GLASS_STUDIO_REACH};
-	float reach = sqrtf(r.x * r.x + r.y * r.y + r.z * r.z);
+	float reach = fastSqrt(r.x * r.x + r.y * r.y + r.z * r.z);
 	float glancing = 1.0f - facing;
 	float fresnel = 0.35f + 0.65f * glancing * glancing;
 	glassStudioCoords((guVector) {r.x / reach, r.y / reach, r.z / reach}, s, t);
@@ -2340,7 +2358,7 @@ static void glassFanPoint(const guVector corner[3], const guVector eyes[3],
 		*eye = glassSidePoint(eyes[side], eyes[next], cut, cuts);
 		n = glassSidePoint(normals[side], normals[next], cut, cuts);
 	}
-	length = sqrtf(n.x * n.x + n.y * n.y + n.z * n.z);
+	length = fastSqrt(n.x * n.x + n.y * n.y + n.z * n.z);
 	*normal = (guVector) {n.x / length, n.y / length, n.z / length};
 }
 
@@ -2373,7 +2391,7 @@ static void drawGlassReflection(const cubeRasterTransform_t *raster,
 	/* A bevel is cut along as often as the face beside it (glassSidePoint). */
 	enum { FACE_STEPS = 4, ACROSS_STEPS = 6, ALONG_STEPS = FACE_STEPS, GRID = 7 };
 	const guVector centre = {raster->model[0][3], raster->model[1][3], raster->model[2][3]};
-	const float size = sqrtf(raster->model[0][0] * raster->model[0][0] +
+	const float size = fastSqrt(raster->model[0][0] * raster->model[0][0] +
 		raster->model[1][0] * raster->model[1][0] + raster->model[2][0] * raster->model[2][0]);
 
 	for(int quad = 0; quad < count; quad++) {
@@ -2427,7 +2445,7 @@ static void drawGlassReflection(const cubeRasterTransform_t *raster,
 			float u = (float)column / columns, v = (float)row / rows;
 			glassMirrorVertex_t *at = &grid[row * GRID + column];
 			guVector n = glassBilinear(normals, u, v), e = glassBilinear(eyes, u, v);
-			float length = sqrtf(n.x * n.x + n.y * n.y + n.z * n.z);
+			float length = fastSqrt(n.x * n.x + n.y * n.y + n.z * n.z);
 			n = (guVector) {n.x / length, n.y / length, n.z / length};
 			at->body = glassGridPoint(quads[quad].point, column, columns, row, rows);
 			at->alpha = glassReflect(e, n, (guVector) {(e.x - centre.x) / size,
@@ -2661,7 +2679,7 @@ static void refractGlassVertex(const cubeRasterTransform_t *raster,
 		const glassRefraction_t *glass, guVector body, guVector eye, guVector n,
 		glassRefractedVertex_t *out)
 {
-	float length = sqrtf(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z);
+	float length = fastSqrt(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z);
 	guVector view = {-eye.x / length, -eye.y / length, -eye.z / length};
 	float facing = n.x * view.x + n.y * view.y + n.z * view.z;
 	float sx = 320.0f + raster->scaleX * eye.x / -eye.z;
@@ -2741,7 +2759,7 @@ static void drawGlassRefraction(const cubeRasterTransform_t *raster,
 		for(int row = 0; row <= rows; row++) for(int column = 0; column <= columns; column++) {
 			float u = (float)column / columns, v = (float)row / rows;
 			guVector normal = glassBilinear(normals, u, v);
-			float normalLength = sqrtf(normal.x * normal.x + normal.y * normal.y +
+			float normalLength = fastSqrt(normal.x * normal.x + normal.y * normal.y +
 				normal.z * normal.z);
 			normal = (guVector) {normal.x / normalLength, normal.y / normalLength,
 				normal.z / normalLength};
@@ -2832,7 +2850,7 @@ static void drawGlassRim(const cubeOutline_t *outline, float strength)
 		indigoPoint_t shifted[25];
 		for(int i = 0; i <= count; i++) {
 			/* The joins point along the outline's outward normal. */
-			float length = sqrtf(joins[i].x * joins[i].x + joins[i].y * joins[i].y);
+			float length = fastSqrt(joins[i].x * joins[i].x + joins[i].y * joins[i].y);
 			float nx = length > 0.0f ? joins[i].x / length : 0.0f;
 			float ny = length > 0.0f ? joins[i].y / length : 0.0f;
 			float lit = nx * lightX + ny * lightY;
