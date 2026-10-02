@@ -76,9 +76,10 @@ test_ui_apps: test_ui_apps.c $(GUI)/ui_apps.c $(GUI)/ui_apps.h
 test_ui_apps_san: test_ui_apps.c $(GUI)/ui_apps.c $(GUI)/ui_apps.h
 	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_apps.c $(GUI)/ui_apps.c
 
-# test_ui_png.py drives these with the pictures it writes.
+# test_ui_png.py drives these with the pictures it writes. The plain one
+# builds ui_png.c in and counts what it allocates, for the memory tests.
 test_ui_png: test_ui_png.c $(GUI)/ui_png.c $(GUI)/ui_png.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_png.c $(GUI)/ui_png.c -lz -lm
+	$(CC) $(GAMEFLOW_CFLAGS) -DUI_PNG_COUNT -I$(GUI) -o $@ test_ui_png.c -lz -lm
 
 test_ui_png_san: test_ui_png.c $(GUI)/ui_png.c $(GUI)/ui_png.h
 	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_png.c $(GUI)/ui_png.c -lz -lm

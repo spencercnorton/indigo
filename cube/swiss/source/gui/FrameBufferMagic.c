@@ -49,7 +49,7 @@
 #include "ui_cheats.h"
 #include "ui_about.h"
 #include "ui_launch.h"
-#include "apps.h"
+#include "card_art.h"
 
 #define GUI_MSGBOX_ALPHA 225
 #define GUI_PANEL_ALPHA 150	// Phase 2: translucent content panels (config-gated; dialogs stay at GUI_MSGBOX_ALPHA)
@@ -3027,9 +3027,10 @@ static GXTexObj *_GameflowPosterTexture(
 	uiPosterHandle_t handle;
 	uiPosterResult_t result;
 
-	/* An app's poster is its own picture, from Apps' slots. */
-	if(record->flags & UI_GAMEFLOW_CARD_APP) {
-		return apps_poster(record->libraryIndex);
+	/* An app's poster, or a folder of games', is made on the console from
+	 * its own picture or its name (card_art.c). */
+	if((record->flags & UI_GAMEFLOW_CARD_APP) || record->subfolder) {
+		return CardArt_Poster((int32_t)record->libraryIndex);
 	}
 	/* _DrawGameflow runs under _videomutex. Query and Peek deliberately do
 	 * not lock and the borrowed texture is consumed before that lock drops. */

@@ -14,6 +14,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
   names the folder you are in. A folder in a folder shows every game below
   it. Off (the default), the Library is one list of every game, as before.
   In `global.ini` it is `Library Folders`.
+- A folder can have a picture: a PNG beside it with its name, such as
+  `Nintendo.png` for the Nintendo folder, becomes its poster, as an app's
+  picture does. A folder without one shows a poster of its name. A picture
+  over 2 MB is never read, and posters are made one at a time on a thread of
+  their own, so a large picture neither holds up a button nor runs the
+  console short of memory.
 
 ### For developers
 

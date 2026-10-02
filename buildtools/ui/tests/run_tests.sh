@@ -76,6 +76,8 @@ run_plain() {
 	echo "== Apps: what is an app, its picture, its poster slots (plain) =="
 	./test_ui_apps
 	python3 ./test_ui_png.py ./test_ui_png
+	echo "== card_art: posters of apps and folders, their guards (plain) =="
+	python3 ./test_card_art.py
 	echo "== ui_assets runtime (plain + target-sync policy) =="
 	if make_fixture; then
 		./test_ui_assets "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
@@ -139,6 +141,8 @@ run_sanitized() {
 	echo "== Apps: what is an app, its picture, its poster slots (ASan/UBSan) =="
 	./test_ui_apps_san
 	python3 ./test_ui_png.py ./test_ui_png_san
+	echo "== card_art: posters of apps and folders, their guards (ASan/UBSan) =="
+	python3 ./test_card_art.py --sanitize
 	echo "== ui_assets runtime (ASan/UBSan + target-sync policy) =="
 	if make_fixture; then
 		./test_ui_assets_san "$TMP/fixture.pak" "$TMP/fixture-stills.pak"

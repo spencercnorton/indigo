@@ -10,7 +10,10 @@ A text file and an empty folder sit beside them, as they do on real cards:
 the Library skips both (STRAYS), and the text file sorts first, so the
 games move up past it. Three games sit in folders (FOLDERS), one of them three
 levels down: Swiss's default flattening lists them with the rest, and Library
-Folders shows the folders, two levels deep.
+Folders shows the folders, two levels deep, with the pictures beside them
+(FOLDER_PICTURES) as their posters: Racing's, in a colour nothing else on the
+disc has, and two that must never show, in another: Old saves', a picture
+past the 2 MB one may have, and Classics', damaged.
 /swiss/ui/posters.pak holds posters drawn here from gradients and shapes, for
 all but two of the games, so the Library shows both kinds of card, and
 /swiss/ui/stills.pak gameplay stills drawn the same way for all but three, so
@@ -56,6 +59,10 @@ NO_POSTER = frozenset({"GPLZ01", "GSSZ01"})
 STRAYS = ("About these games.txt", "Old saves/")
 # Games in folders below /games, the last one past the second level.
 FOLDERS = {"GRZZ01": "Racing", "GNTZ01": "Racing/Classics", "GPLZ01": "Racing/Classics/Old"}
+# Pictures beside folders, each a poster-shaped field of one colour: the one
+# Library Folders shows, and the ones it must refuse (run.py looks for both).
+FOLDER_PICTURES = {"Racing": "shown", "Old saves": "too big", "Racing/Classics": "damaged"}
+SHOWN_PICTURE, REFUSED_PICTURE = (255, 0, 255), (0, 255, 255)
 NO_STILL = frozenset({"GDRZ01", "GPLZ01", "GSSZ01"})
 # Spotlight's descriptions; Rally Cross Zero keeps its banner's.
 DESCRIPTIONS = {
@@ -218,6 +225,27 @@ def outer_header() -> bytes:
     return bytes(area)
 
 
+def folder_picture(kind: str) -> bytes:
+    """A folder's picture: shown, or a picture Indigo can read but must not
+    (too big: 3 MB, padded with a chunk a reader skips), or one it can't
+    (damaged: a bit of its image data flipped, so its CRC fails)."""
+    import io
+    import zlib
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (192, 256), SHOWN_PICTURE if kind == "shown" else REFUSED_PICTURE).save(out, "PNG")
+    data = out.getvalue()
+    if kind == "too big":
+        pad = bytes(3 << 20)
+        data = (data[:-12] + struct.pack(">I", len(pad)) + b"paDd" + pad +
+                struct.pack(">I", zlib.crc32(b"paDd" + pad)) + data[-12:])
+    elif kind == "damaged":
+        at = data.index(b"IDAT") + 8
+        data = data[:at] + bytes([data[at] ^ 1]) + data[at + 1:]
+    return data
+
+
 def poster(index: int):
     """Poster art for one fictitious game: a gradient and a few shapes."""
     from PIL import Image, ImageDraw
@@ -374,6 +402,8 @@ def populate(root: Path, work: Path, posters: bool = True, probe: Path | None = 
             (root / "games" / name).mkdir()
         else:
             (root / "games" / name).write_text("Not a game.\n")
+    for folder, kind in FOLDER_PICTURES.items():
+        (root / "games" / f"{folder}.png").write_bytes(folder_picture(kind))
     with_posters = posters and build_pack(work, root / "swiss/ui/posters.pak", "posters")
     with_stills = posters and build_pack(work, root / "swiss/ui/stills.pak", "stills")
     (root / "swiss/ui/descriptions.txt").write_text(

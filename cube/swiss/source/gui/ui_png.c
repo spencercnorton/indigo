@@ -1,4 +1,5 @@
-/* ui_png.c - an app's picture, from a PNG on the card to a Library poster.
+/* ui_png.c - an app's or a folder's picture, from a PNG on the card to a
+   Library poster.
 
    See ui_png.h. The PNG is decoded a row at a time: each row is inflated,
    unfiltered, expanded to RGBA and added into a picture reduced by a whole
@@ -54,6 +55,20 @@ typedef struct {
 static bool stopped(const volatile bool *stop)
 {
 	return stop != NULL && *stop;
+}
+
+/* zlib's memory comes from the same calloc and free as the rest, so all a
+ * poster holds is ui_png's own, and counted as UI_PNG_MAX_WORK. */
+static voidpf zlibAlloc(voidpf opaque, uInt items, uInt size)
+{
+	(void)opaque;
+	return calloc(items, size);
+}
+
+static void zlibFree(voidpf opaque, voidpf address)
+{
+	(void)opaque;
+	free(address);
 }
 
 static uint32_t be32(const uint8_t *p)
@@ -490,6 +505,8 @@ static bool decodeRows(const uint8_t *png, size_t size, size_t idatStart,
 	bool streamOpen = false;
 
 	memset(&zs, 0, sizeof(zs));
+	zs.zalloc = zlibAlloc;
+	zs.zfree = zlibFree;
 	if(current == NULL || previous == NULL || rgba == NULL || sums == NULL ||
 		inflateInit(&zs) != Z_OK) {
 		goto done;
@@ -1239,13 +1256,17 @@ bool UIPng_Poster(const uint8_t *png, size_t size, uint8_t *out)
 bool UIPng_PosterUntil(const uint8_t *png, size_t size, uint8_t *out,
 	const volatile bool *stop)
 {
-	pngHeader_t *header = malloc(sizeof(pngHeader_t));
+	pngHeader_t *header;
 	uint8_t *reduced = NULL;
 	uint8_t *levels[2] = {NULL, NULL};
 	size_t next, idatStart, idatEnd;
 	pngFit_t fit;
 	bool ok = false;
 
+	if(size > UI_PNG_MAX_FILE) {
+		return false;
+	}
+	header = malloc(sizeof(pngHeader_t));
 	if(header == NULL || out == NULL || !readHeader(png, size, header, &next) ||
 		!readChunks(png, size, next, header, &idatStart, &idatEnd)) {
 		goto done;

@@ -146,6 +146,23 @@ While Library Folders is on, it sets **Flatten directory** itself, and the
 row can't be changed. Turn Library Folders off and your own value comes
 back.
 
+### Give a folder a picture
+
+Put a PNG beside the folder, with the folder's name: `Nintendo.png` in
+`/games` for the Nintendo folder, `Zelda.png` in `/games/Nintendo` for Zelda.
+It becomes the folder's poster, made on the console the first time the
+folder is shown, as an app's picture is (see
+[Give an app a picture](apps.md#give-an-app-a-picture)):
+
+- Any size up to 2048 × 2048 pixels, and up to 2 MB.
+- Any PNG, but not interlaced.
+- A picture shaped like a poster (3:4, such as 600 × 800) fills the card;
+  any other shape sits whole in the middle of it.
+
+A folder without a picture, or with one Indigo can't read, gets a poster of
+its name. Indigo never reads a picture over 2 MB, and makes one poster at a
+time, so even a very large picture can't use up the console's memory.
+
 ## Posters
 
 The box art comes from a poster pack, which is optional. Without one, each

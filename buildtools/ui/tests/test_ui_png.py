@@ -607,5 +607,129 @@ class EncoderTests(unittest.TestCase):
         self.assertTrue((got[..., 3] == 255).all())
 
 
+# -- memory -------------------------------------------------------------------
+
+def plain_png(width: int, height: int, colour_type: int, depth: int, pixels: bytes | None = None,
+              extra: int = 0, level: int = 9) -> bytes:
+    """A PNG of unfiltered rows, quick to make at any size: pixels is every
+    row's bytes end to end (zeros when None), extra how many more bytes the
+    data holds past its last row. A palette PNG gets a one-colour palette."""
+    channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[colour_type]
+    row = (width * channels * depth + 7) // 8
+    if pixels is None:
+        raw = (bytes(row + 1)) * height
+    else:
+        raw = b"".join(b"\0" + pixels[y * row:(y + 1) * row] for y in range(height))
+    ihdr = struct.pack(">IIBBBBB", width, height, depth, colour_type, 0, 0, 0)
+    palette = chunk(b"PLTE", b"\x20\x40\x60") if colour_type == 3 else b""
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + palette +
+            chunk(b"IDAT", zlib.compress(raw + bytes(extra), level)) + chunk(b"IEND", b""))
+
+
+class MemoryTests(unittest.TestCase):
+    """What making a poster holds, counted by the driver (ui_png's every
+    allocation, zlib's included): never more than UI_PNG_MAX_WORK at once,
+    whatever the picture, and all of it given back, made or not. A file over
+    UI_PNG_MAX_FILE is refused before anything is allocated, and a picture
+    over UI_PNG_MAX_SIDE before its rows are."""
+
+    @classmethod
+    def setUpClass(cls):
+        limits = subprocess.run([BINARY, "limits"], capture_output=True, text=True, check=True)
+        cls.max_file, cls.max_side, cls.max_work = map(int, limits.stdout.split())
+        probe = subprocess.run([BINARY, "peak-name", "x"], capture_output=True, text=True)
+        if probe.returncode == 4 and BINARY.endswith("_san"):
+            raise unittest.SkipTest("the sanitizer build counts nothing: the plain build runs these")
+        if probe.returncode != 0:
+            raise AssertionError(f"{BINARY} doesn't count allocations: {probe.stderr}")
+        cls.dir = tempfile.TemporaryDirectory()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.dir.cleanup()
+
+    def peak(self, data: bytes, mode: str = "peak") -> tuple[bool, int, int]:
+        """Made or not, the most ui_png held at once, and what it still holds."""
+        path = os.path.join(self.dir.name, "peak.png")
+        with open(path, "wb") as f:
+            f.write(data)
+        result = subprocess.run([BINARY, mode, path], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        made, peak, live = map(int, result.stdout.split())
+        return bool(made), peak, live
+
+    def test_the_largest_pictures_stay_within_the_bound(self):
+        # The canvas and its first mipmap are held for every poster: a peak
+        # above them shows the driver counts.
+        levels = CANVAS * CANVAS * 3 + (CANVAS // 2) ** 2 * 3
+        cases = {
+            # The widest rows: 2048 pixels of 16-bit RGBA, 16 KB a row.
+            "2048x2048 RGBA, 16 bits": plain_png(2048, 2048, 6, 16),
+            "2048x2048 grey, 16 bits": plain_png(2048, 2048, 0, 16),
+            "2048x2048 palette, 1 bit": plain_png(2048, 2048, 3, 1),
+            "2048x1536 RGB": plain_png(2048, 1536, 2, 8),
+            "1536x2048 RGBA, poster-shaped": plain_png(1536, 2048, 6, 8),
+            "2048x1": plain_png(2048, 1, 6, 16),
+            "1x2048": plain_png(1, 2048, 6, 16),
+            # The largest pictures kept whole (reduced by 1): poster-shaped,
+            # just over half the poster's scale.
+            "383x583 RGBA, 16 bits": plain_png(383, 583, 6, 16),
+            "438x511 RGBA, 16 bits": plain_png(438, 511, 6, 16),
+            # Data past the last row is never inflated into anything.
+            "4 MB more data than its rows": plain_png(64, 64, 2, 8, extra=4 << 20),
+        }
+        for name, data in cases.items():
+            with self.subTest(name):
+                made, peak, live = self.peak(data)
+                self.assertTrue(made)
+                self.assertLessEqual(peak, self.max_work)
+                self.assertGreater(peak, levels)
+                self.assertEqual(live, 0)
+
+    def test_a_file_over_the_limit_is_refused_at_once(self):
+        noise = np.random.default_rng(7).integers(0, 256, 1024 * 1024 * 3, np.uint8).tobytes()
+        over = plain_png(1024, 1024, 2, 8, noise, level=1)
+        self.assertGreater(len(over), self.max_file)
+        self.assertEqual(self.peak(over), (False, 0, 0))
+        # The same noise, less of it, is under the limit and makes a poster.
+        under = plain_png(800, 800, 2, 8, noise, level=1)
+        self.assertLess(len(under), self.max_file)
+        made, peak, live = self.peak(under)
+        self.assertTrue(made)
+        self.assertLessEqual(peak, self.max_work)
+        self.assertEqual(live, 0)
+
+    def test_a_picture_too_big_is_refused_from_its_header(self):
+        for width, height in ((4096, 4096), (self.max_side + 1, 1), (1, self.max_side + 1),
+                              (0xFFFFFFFF, 0xFFFFFFFF), (0, 0)):
+            with self.subTest(f"{width}x{height}"):
+                made, peak, live = self.peak(PosterTests.header_only(width, height, 8, 6))
+                self.assertFalse(made)
+                self.assertLessEqual(peak, 4096)  # the header, nothing for rows
+                self.assertEqual(live, 0)
+
+    def test_what_fails_partway_gives_everything_back(self):
+        whole = plain_png(2048, 2048, 6, 16)
+        data = zlib.compress(bytes(2048 * (2048 * 8 + 1)), 9)
+        cut = (whole[:33] + chunk(b"IDAT", data[:len(data) // 2]) + chunk(b"IEND", b""))
+        for name, png, mode in (("data cut short", cut, "peak"),
+                                ("stopped", whole, "peak-stopped")):
+            with self.subTest(name):
+                made, peak, live = self.peak(png, mode)
+                self.assertFalse(made)
+                self.assertLessEqual(peak, self.max_work)
+                self.assertEqual(live, 0)
+
+    def test_a_name_poster_stays_within_the_bound(self):
+        result = subprocess.run([BINARY, "peak-name", "Old saves of every racing game I own"],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        made, peak, live = map(int, result.stdout.split())
+        self.assertEqual(made, 1)
+        self.assertLessEqual(peak, self.max_work)
+        self.assertGreater(peak, 0)
+        self.assertEqual(live, 0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

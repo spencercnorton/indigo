@@ -200,6 +200,15 @@ bool UIGameflowLibrary_IsInsideFolder(uiGameflowLibraryLocation_t location)
 		location == UI_GAMEFLOW_LIBRARY_LOCATION_SUBFOLDER;
 }
 
+bool UIGameflowLibrary_IsFolderPicture(const char *folder, const char *file)
+{
+	size_t length = trimmedPathLength(folder);
+
+	return length > 0u && file != NULL && strlen(file) == length + 4u &&
+		asciiPrefixEquals(folder, file, length) &&
+		asciiPrefixEquals(".png", &file[length], 4u);
+}
+
 /* Copies count bytes of a path into heading at length, in capitals and with
  * each '/' as " / ", stopping while one byte is left for the NUL. */
 static size_t headingPut(char *heading, size_t size, size_t length,

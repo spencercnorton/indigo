@@ -74,7 +74,8 @@ no disc images, you get Swiss's plain file list instead.
 On Home, turn the cube to Library and press A.
 To sort your games into folders, turn on Settings > Setup > Library >
 Library Folders: the Library then shows the folders in /games, two levels
-deep. A opens a folder and B goes back. Keep a game's discs together.
+deep. A opens a folder and B goes back. Keep a game's discs together. A PNG
+beside a folder with its name (Nintendo.png for Nintendo) is its poster.
 
 POSTERS AND CHEATS (optional, also drag and drop)
 Without posters, each game shows its disc banner and its six-character game

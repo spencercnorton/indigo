@@ -199,15 +199,16 @@ GXTexObj *UIStills_Peek(uiPosterHandle_t handle)
 	return &stills[handle.slot];
 }
 #endif
-/* Apps' posters (gui/apps.c): every third app has none. */
-static GXTexObj appPosters[64];
-static char appPosterNames[64][8];
-static GXTexObj *apps_poster(u32 app)
+/* Posters made on the console (gui/card_art.c), an app's or a folder of
+ * games': every third card has none. */
+static GXTexObj artPosters[64];
+static char artPosterNames[64][8];
+static GXTexObj *CardArt_Poster(int32_t card)
 {
-	if(app >= 64u || app % 3u == 2u) return NULL;
-	snprintf(appPosterNames[app], sizeof(appPosterNames[0]), "APP%03u", app);
-	appPosters[app].data = appPosterNames[app];
-	return &appPosters[app];
+	if(card < 0 || card >= 64 || card % 3 == 2) return NULL;
+	snprintf(artPosterNames[card], sizeof(artPosterNames[0]), "ART%03d", (int)card);
+	artPosters[card].data = artPosterNames[card];
+	return &artPosters[card];
 }
 static uiSceneFrame_t sceneFrame;
 const uiSceneFrame_t *UIScene_Frame(void) { return &sceneFrame; }
@@ -522,9 +523,9 @@ class GameflowGxStream(unittest.TestCase):
                 self.assertIn("D-PAD  BROWSE   A  START   B  HOME", last)
                 self.assertNotIn("SETTINGS", last)
                 drawn = set(covers(last))
-                self.assertIn("APP004", drawn)
-                self.assertFalse({name for name in drawn if not name.startswith("APP")})
-                self.assertFalse({f"APP{n:03d}" for n in range(12) if n % 3 == 2} & drawn)
+                self.assertIn("ART004", drawn)
+                self.assertFalse({name for name in drawn if not name.startswith("ART")})
+                self.assertFalse({f"ART{n:03d}" for n in range(12) if n % 3 == 2} & drawn)
                 texts = [l.split(" ", 6)[6] for l in last.splitlines() if l.startswith("S ")]
                 self.assertIn("gbi4", texts)
         # In front, an app without a picture (every third) shows its name
@@ -539,14 +540,15 @@ class GameflowGxStream(unittest.TestCase):
             texts = [l.split(" ", 6)[6] for l in last.split("\n") if l.startswith("S ")]
             self.assertIn(name, texts)
             self.assertIn("APP", texts)
-            self.assertNotIn(f"APP{selected:03d}", covers(last))
+            self.assertNotIn(f"ART{selected:03d}", covers(last))
 
     def test_a_folder_of_games(self):
         """Library Folders, inside a folder: in every layout the heading names
         the folder and B goes back up it. A folder of games without art shows
         its name cut to a card's eight letters over FOLDER, on a cover card and
         on Spotlight's row alike; selected in Spotlight, the column holds no
-        description line, since a folder has none."""
+        description line, since a folder has none. A folder with a picture
+        shows its poster, as an app does."""
         def last_frame(script):
             result = subprocess.run([str(self.binary)], input=script, capture_output=True,
                                     encoding="latin-1", timeout=120)
@@ -571,19 +573,23 @@ class GameflowGxStream(unittest.TestCase):
         self.assertIn("FOLDER O\x85", shown)
         self.assertIn("FOLDER", shown)
         self.assertNotIn("Folder of games 2", [t for t in shown if t.startswith("FOLDER")])
-        # Spotlight: folder 22 selected. Its tile on the row has its short
+        # Spotlight: folder 26 selected. Its tile on the row has its short
         # name, never the whole one, and the column no description line.
-        frame = last_frame("O 3 40 22\nN 40 0.0167\n")
+        frame = last_frame("O 3 40 26\nN 40 0.0167\n")
         whole = [l.split(" ")[1] for l in frame.split("\n")
-                 if l.startswith("S ") and l.split(" ", 6)[6] == "Folder of games 22"]
+                 if l.startswith("S ") and l.split(" ", 6)[6] == "Folder of games 26"]
         self.assertEqual(whole, ["380"])  # only the column's title, not the row
         self.assertGreaterEqual(texts(frame).count("FOLDER O\x85"), 2)  # panel and tile
         column = self.column(frame)
-        self.assertEqual(column[92], "Folder of games 22")
+        self.assertEqual(column[92], "Folder of games 26")
         self.assertNotIn(154, column)
         # A game beside it still says when it has no description.
         self.assertEqual(self.column(last_frame("O 3 40 27\nN 40 0.0167\n")).get(154),
                          "No description for this game.")
+        # Folder 6 has a picture: its poster, in front and in Spotlight's
+        # panel.
+        for script in ("O 0 12 6\nN 40 0.0167\n", "O 3 40 6\nN 40 0.0167\n"):
+            self.assertIn("ART006", covers(last_frame(script)))
 
     def test_vertical_column(self):
         log = self.run_script(["L 1 40 12", "N 40 0.0167"])

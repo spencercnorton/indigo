@@ -23,7 +23,8 @@ while a crash, a hang, a black screen or a broken control does:
   - Setup > Library > Library Folders On shows the disc's folders in the
     Library: an empty folder opens with only its way back, A opens a folder
     and a folder in it, which lists the game a level further down too, and B
-    goes back up a folder at a time to the same card, then Home;
+    goes back up a folder at a time to the same card, then Home; a folder's
+    picture shows as its poster, and a picture too big or damaged never does;
   - on Apps, RIGHT and LEFT move between the disc's apps and back, and A
     starts the probe (probe/probe.c), which reports what the hand-off left
     it: the menu music stopped, nothing still writing to memory, and its own
@@ -85,8 +86,10 @@ SAME, DIFFERENT = 0.85, 0.5  # intersection over union of two label masks
 BOOT_SECONDS = 120
 SETTLE_SECONDS = 10
 # Library Folders: how long the route holds a press that opens or leaves a
-# folder (library_folders).
+# folder (library_folders), and how many pixels of a folder picture's colour
+# make it on screen: a card in front is tens of thousands.
 FOLDER_PRESS_SECONDS = 0.5
+PICTURE_PIXELS = 3000
 FATAL = re.compile("|".join((
     r"(?:DSI|ISI|Program|Machine Check|Alignment) Exception", r"Unhandled exception",
     r"Segmentation fault", r"core dumped", r"\bPANIC\b", r"ASSERT(?:ION)? FAILED",
@@ -162,6 +165,12 @@ def diagnose(rgb: np.ndarray) -> str:
     if black > 0.95:
         return "the screen went black"
     return ""
+
+
+def coloured(frame: np.ndarray, colour: tuple[int, int, int]) -> int:
+    """How many pixels are within 55 of colour in every channel: card.py's
+    folder pictures are pure colours nothing else on screen comes near."""
+    return int((np.abs(frame.astype(np.int16) - np.array(colour, np.int16)) <= 55).all(axis=2).sum())
 
 
 def overlap(a: np.ndarray, b: np.ndarray) -> float:
@@ -590,6 +599,21 @@ class Route:
                 self.check("LEFT turns back a face", self.settled_label(like=back)[0] is not None,
                            apps_face=tag)
 
+    def pictures(self, seconds: float, until_shown: bool = False) -> tuple[int, int]:
+        """Watches the screen for up to seconds, or until the shown folder
+        picture is up: its pixels in the last frame, and the most of a refused
+        picture's in any."""
+        deadline = time.monotonic() + seconds
+        shown = refused = 0
+        while time.monotonic() < deadline:
+            self.last_rgb = self.emulator.frame()
+            shown = coloured(self.last_rgb, card.SHOWN_PICTURE)
+            refused = max(refused, coloured(self.last_rgb, card.REFUSED_PICTURE))
+            if until_shown and shown >= PICTURE_PIXELS:
+                break
+            time.sleep(0.25)
+        return shown, refused
+
     def library_folders(self, faces: list[np.ndarray]) -> None:
         """From the Settings face: R and R to Setup, four DOWNs and A into
         Library, DOWN to Library Folders and RIGHT to turn it on; B and B save
@@ -598,7 +622,9 @@ class Route:
         RIGHT from there to Racing, A into it and A into Classics, which holds three cards (a game,
         the game in Old below it, and the way back): RIGHT twice is not back at
         the first, a third RIGHT is. B goes back to the same folder card each
-        level up, and from /games to Home. Back on the Settings face after."""
+        level up, and from /games to Home. Back on the Settings face after.
+        Racing's picture is its poster; Old saves' (too big) and Classics'
+        (damaged) never show, while their cards are in front."""
         library, source, settings = faces[0], faces[1], faces[2]
         self.press("A")
         self.check("A opens Settings", self.covered(settings), library_folders="on")
@@ -622,6 +648,9 @@ class Route:
         stray, _ = self.settled_label(box=TITLE_BOX)
         self.shot("folders-games", self.last_rgb)
         self.check("the Library shows a folder's name", stray is not None)
+        _, refused = self.pictures(8.0)
+        self.check("a folder's picture too big to read never shows", refused < PICTURE_PIXELS,
+                   pixels=refused)
         # Old saves is empty: it opens in the Library with only the way back,
         # and B comes back to its card (Swiss's list would go Home). The
         # presses that open or leave a folder are held: the Library is still
@@ -638,10 +667,16 @@ class Route:
         self.press("RIGHT")
         racing, _ = self.settled_label(unlike=stray, box=TITLE_BOX)
         self.check("RIGHT moves to the next folder", racing is not None)
+        shown, refused = self.pictures(30.0, until_shown=True)
+        self.shot("folders-picture", self.last_rgb)
+        self.check("a folder's picture is its poster", shown >= PICTURE_PIXELS, pixels=shown)
+        self.check("no refused picture shows beside it", refused < PICTURE_PIXELS, pixels=refused)
         self.pad.press("A", FOLDER_PRESS_SECONDS)
         classics, _ = self.settled_label(unlike=racing, box=TITLE_BOX)
         self.shot("folders-racing", self.last_rgb)
         self.check("A opens a folder", classics is not None)
+        _, refused = self.pictures(8.0)
+        self.check("a damaged folder picture never shows", refused < PICTURE_PIXELS, pixels=refused)
         self.pad.press("A", FOLDER_PRESS_SECONDS)
         first, _ = self.settled_label(unlike=classics, box=TITLE_BOX)
         self.shot("folders-classics", self.last_rgb)

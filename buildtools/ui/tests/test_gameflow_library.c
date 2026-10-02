@@ -848,6 +848,40 @@ static void testLibraryFoldersLocations(void)
 		FNM_PATHNAME | FNM_CASEFOLD | FNM_LEADING_DIR) == 0);
 }
 
+/* A folder's picture: the folder's own path and ".png", case aside. */
+static void testLibraryFoldersPicture(void)
+{
+	CHECK(UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintendo.png"));
+	CHECK(UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"SD:/GAMES/nintendo.PNG"));
+	CHECK(UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo/",
+		"sd:/games/Nintendo.png"));
+	CHECK(UIGameflowLibrary_IsFolderPicture("sd:/games/RPGs/Old saves",
+		"sd:/games/RPGs/Old saves.png"));
+	/* Only the folder's own name, beside it. */
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintendo.jpg"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintendo 2.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintend.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintendo.png.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintendo/Nintendo.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Other/Nintendo.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/RPGs/Nintendo",
+		"sd:/games/Nintendo.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintendo"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("", ".png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("/", "/.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture(NULL, "sd:/games/x.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/x", NULL));
+}
+
 static void testLibraryFoldersHeading(void)
 {
 	char heading[64];
@@ -1042,6 +1076,7 @@ int main(void)
 	testClassifierFallbackMatrix();
 	testClassifierSkipsStrays();
 	testLibraryFoldersLocations();
+	testLibraryFoldersPicture();
 	testLibraryFoldersHeading();
 	testLibraryFoldersClassifier();
 	testLibraryFoldersEntries();

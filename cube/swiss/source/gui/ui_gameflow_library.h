@@ -135,6 +135,12 @@ uiGameflowLibraryLocation_t UIGameflowLibrary_LocateFolders(
 /* True for the two locations below /games, where B goes up a folder. */
 bool UIGameflowLibrary_IsInsideFolder(uiGameflowLibraryLocation_t location);
 
+/* Library Folders: whether file is folder's picture, its poster: the
+ * folder's own path with ".png" on the end, case aside, so the picture sits
+ * beside the folder as an app's sits beside its program (sd:/games/Nintendo
+ * and sd:/games/Nintendo.png). Both are paths as the listing gives them. */
+bool UIGameflowLibrary_IsFolderPicture(const char *folder, const char *file);
+
 /* The Library's heading inside a Library Folders folder: currentPath below
  * gamesRoot in capitals, its folders joined by " / ", as "RPGS / JRPG". When
  * that is longer than size holds, the start gives way to an ellipsis so the

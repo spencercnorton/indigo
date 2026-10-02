@@ -3,8 +3,8 @@
    The programs in /apps on the source, and in the folders in it, shown the
    way the Library shows games: its layouts, cards, controls and launch
    screen, with each app's own picture as its poster, or its name when it
-   has none. ui_apps decides what is an app and which posters the slots
-   hold, ui_png makes the posters, and Swiss's boot_dol starts the app,
+   has none. ui_apps decides what is an app, card_art makes the posters
+   (with ui_png), and Swiss's boot_dol starts the app,
    reading its .cli arguments and offering its .dcp choices as it does from
    the file list. This file reads the card and runs the screen. */
 
@@ -16,8 +16,6 @@
 #include <strings.h>
 #include <unistd.h>
 #include <gccore.h>
-#include <ogc/semaphore.h>
-#include <ogc/lwp_watchdog.h>
 #include "deviceHandler.h"
 #include "FrameBufferMagic.h"
 #include "IPLFontWrite.h"
@@ -30,30 +28,21 @@
 #include "ui_gameflow_library.h"
 #include "ui_menu_input.h"
 #include "ui_png.h"
+#include "card_art.h"
 #include "ui_scene.h"
 #include "apps.h"
 
 #define APPS_FOLDER "apps"
 
-/* The list shown and its device, each app's program and picture as the
- * device listed them (two a app, the picture's empty without one), and the
- * posters of the apps on screen: UI_APPS_ART_SLOTS of them, each in the
- * poster pack's texture layout. */
+/* The list shown and its device, and each app's program and picture as
+ * the device listed them (two a app, the picture's empty without one). */
 static uiApp_t *apps;
 static u32 appCount;
 static DEVICEHANDLER_INTERFACE *appsDevice;
 static file_handle *appsFiles;
-static uiAppsArt_t art;
-static u8 *artTexels;
-static GXTexObj artTexture[UI_APPS_ART_SLOTS];
 /* The app last selected, by path, so Apps opens where it was left. */
 static char lastProgram[UI_APPS_PATH_LENGTH];
 static u32 snapshotGeneration;
-
-static u32 nowMs(void)
-{
-	return (u32)ticks_to_millisecs(gettime());
-}
 
 /* A copy of a listed entry, nothing of it open: every device reads a file or
  * a folder from its own entry (the disc drive by position, not by path). */
@@ -217,223 +206,35 @@ bool apps_available(DEVICEHANDLER_INTERFACE *device)
 	return count > 0u;
 }
 
-GXTexObj *apps_poster(u32 app)
+/* Apps' cards for card_art: card i is apps[i], and its picture the file
+ * the device listed beside its program. */
+static uint32_t appPictureSize(int32_t card)
 {
-	int slot = UIAppsArt_Find(&art, (int32_t)app);
+	const uiApp_t *app = &apps[card];
 
-	return slot >= 0 ? &artTexture[slot] : NULL;
+	return app->picture[0] == '\0' || app->pictureFailed ? 0u : app->pictureSize;
 }
 
-/* The picture of the app at index, read whole: its bytes in *data (the
- * caller frees them) and their count in *size. False, *data NULL, when it
- * has none or it can't be read, and then it isn't tried again. */
-static bool readPicture(u32 index, u8 **data, u32 *size)
+static bool appReadPicture(int32_t card, uint8_t *data, uint32_t size)
 {
-	uiApp_t *app = &apps[index];
 	file_handle file;
 	s32 read;
 
-	*data = NULL;
-	if(app->picture[0] == '\0' || app->pictureFailed) {
-		return false;
-	}
-	if(app->pictureSize == 0u || app->pictureSize > UI_PNG_MAX_FILE ||
-		(*data = malloc(app->pictureSize)) == NULL) {
-		app->pictureFailed = true;
-		return false;
-	}
-	takeEntry(&file, &appsFiles[index * 2u + 1u]);
-	read = appsDevice->readFile(&file, *data, app->pictureSize);
+	takeEntry(&file, &appsFiles[(u32)card * 2u + 1u]);
+	read = appsDevice->readFile(&file, data, size);
 	appsDevice->closeFile(&file);
-	if(read != (s32)app->pictureSize) {
-		free(*data);
-		*data = NULL;
-		app->pictureFailed = true;
-		return false;
-	}
-	*size = app->pictureSize;
-	return true;
+	return read == (s32)size;
 }
 
-/* The IPL font, as a poster of a name draws it. */
-static bool appsGlyph(void *context, unsigned char c,
-	uint8_t coverage[UI_PNG_GLYPH_MAX * UI_PNG_GLYPH_MAX], int *width)
+static const char *appName(int32_t card)
 {
-	(void)context;
-	return fontGlyph(c, coverage, UI_PNG_GLYPH_MAX, UI_PNG_GLYPH_MAX, width);
+	return apps[card].name;
 }
 
-/* Posters are made on a thread of their own, below the menus' priority. A
- * poster keeps the console busy for a good part of a second (a PNG's
- * decoding, then 1364 blocks of CMPR, while the video thread draws), and
- * made on the menu thread it held up every button that long. The menu
- * thread picks the next slot; the poster thread reads its picture, makes
- * the poster, and the slot takes it if it still waits for that app. One at
- * a time. A device that isn't thread-safe (the disc drive) is read by the
- * menu thread instead, as the file list's banners are. */
-typedef struct {
-	int slot;
-	int32_t app;
-	u8 *data;	/* the picture's bytes, or NULL: its name */
-	u32 size;
-	bool read;	/* the poster thread reads the picture */
-	bool ok;
-} posterJob_t;
-
-#define POSTER_STACK_SIZE (32 * 1024)
-#define POSTER_PRIORITY (LWP_PRIO_NORMAL - 1)	/* as the file list's banners */
-
-static lwp_t posterThread = LWP_THREAD_NULL;
-static sem_t posterStart;
-static posterJob_t posterJob;
-/* Set by the menu thread as it hands posterJob over, cleared by the poster
- * thread once the slot has it. */
-static volatile bool posterBusy;
-static volatile bool posterStop;
-
-typedef struct {
-	const int32_t *apps;
-	u32 count;
-} artWant_t;
-
-static void wantPosters(void *context)
+/* A picture that made no poster isn't tried again. */
+static void appVerdict(int32_t card, bool ok)
 {
-	artWant_t *want = context;
-
-	UIAppsArt_Want(&art, want->apps, want->count, nowMs());
-}
-
-static void nextPoster(void *context)
-{
-	posterJob_t *job = context;
-
-	job->slot = UIAppsArt_Next(&art, nowMs());
-	job->app = job->slot >= 0 ? art.slots[job->slot].app : -1;
-}
-
-static void posterDone(void *context)
-{
-	posterJob_t *job = context;
-
-	if(UIAppsArt_Done(&art, job->slot, job->app, job->ok) && job->ok) {
-		/* As the poster cache binds a pack record: CMPR, five levels. */
-		GX_InitTexObj(&artTexture[job->slot], artTexels +
-			(size_t)job->slot * UI_PNG_POSTER_BYTES, UI_PNG_CANVAS,
-			UI_PNG_CANVAS, GX_TF_CMPR, GX_CLAMP, GX_CLAMP, GX_TRUE);
-		GX_InitTexObjLOD(&artTexture[job->slot], GX_LIN_MIP_LIN, GX_LINEAR,
-			0.0f, 4.0f, 0.0f, GX_FALSE, GX_TRUE, GX_ANISO_1);
-	}
-}
-
-static void forgetPosters(void *context)
-{
-	(void)context;
-	UIAppsArt_Init(&art, nowMs());
-}
-
-/* The poster thread: each job's poster, from its picture, or when it has
- * none or it can't be read, from its name. */
-static void *posterMain(void *unused)
-{
-	uiPngFont_t font = {fontCellHeight(), appsGlyph, NULL};
-
-	(void)unused;
-	for(;;) {
-		posterJob_t *job = &posterJob;
-		uiApp_t *app;
-		u8 *out;
-
-		LWP_SemWait(posterStart);
-		if(posterStop) {
-			break;
-		}
-		app = &apps[job->app];
-		out = artTexels + (size_t)job->slot * UI_PNG_POSTER_BYTES;
-		if(job->read) {
-			(void)readPicture((u32)job->app, &job->data, &job->size);
-		}
-		/* stopPosters sets posterStop and waits: the poster in hand stops
-		 * between rows and blocks, so leaving Apps or starting an app
-		 * never waits for a big picture. A poster stopped so is no
-		 * verdict on the picture, and its slot keeps waiting for it. */
-		job->ok = false;
-		if(job->data != NULL) {
-			job->ok = UIPng_PosterUntil(job->data, job->size, out, &posterStop);
-			if(!posterStop) {
-				app->pictureFailed = !job->ok;
-			}
-			free(job->data);
-			job->data = NULL;
-		}
-		if(!job->ok) {
-			job->ok = UIPng_NamePosterUntil(app->name, &font, out, &posterStop);
-		}
-		if(posterStop) {
-			break;
-		}
-		if(job->ok) {
-			DCFlushRange(out, UI_PNG_POSTER_BYTES);
-		}
-		DrawWithVideoLocked(posterDone, job);
-		posterBusy = false;
-	}
-	return NULL;
-}
-
-static void startPosters(void)
-{
-	posterStop = false;
-	posterBusy = false;
-	if(artTexels == NULL || LWP_SemInit(&posterStart, 0, 1) < 0) {
-		return;
-	}
-	if(LWP_CreateThread(&posterThread, posterMain, NULL, NULL,
-		POSTER_STACK_SIZE, POSTER_PRIORITY) < 0) {
-		posterThread = LWP_THREAD_NULL;
-		LWP_SemDestroy(posterStart);
-	}
-}
-
-/* Stops the poster thread, and the poster it is making. */
-static void stopPosters(void)
-{
-	if(posterThread == LWP_THREAD_NULL) {
-		return;
-	}
-	posterStop = true;
-	LWP_SemPost(posterStart);
-	LWP_JoinThread(posterThread, NULL);
-	posterThread = LWP_THREAD_NULL;
-	LWP_SemDestroy(posterStart);
-	/* A job handed over as it was told to stop. */
-	free(posterJob.data);
-	posterJob.data = NULL;
-	posterBusy = false;
-}
-
-/* Hands the poster thread the nearest poster still wanted, when it is free.
- * Called between the frames that wait for a button. */
-static void pollPosters(void)
-{
-	posterJob_t job;
-
-	if(posterThread == LWP_THREAD_NULL || posterBusy) {
-		return;
-	}
-	DrawWithVideoLocked(nextPoster, &job);
-	if(job.slot < 0) {
-		return;
-	}
-	job.data = NULL;
-	job.size = 0u;
-	job.read = (appsDevice->features & FEAT_THREAD_SAFE) != 0u;
-	if(!job.read) {
-		(void)readPicture((u32)job.app, &job.data, &job.size);
-	}
-	job.ok = false;
-	posterJob = job;
-	posterBusy = true;
-	LWP_SemPost(posterStart);
+	apps[card].pictureFailed = !ok;
 }
 
 /* The Library's snapshot of the cards around selected, and their apps,
@@ -497,7 +298,7 @@ static void launchApp(uiDrawObj_t *panel, u32 index)
 	uiDrawObj_t *box;
 
 	/* The DOL needs the device and the memory: no poster is made meanwhile. */
-	stopPosters();
+	CardArt_Pause();
 	takeEntry(&curFile, &appsFiles[index * 2u]);
 	DrawSetGameflowMode(panel, UI_GAMEFLOW_MODE_LAUNCH);
 	while(padsButtonsHeld() & BUTTON_A) {
@@ -509,7 +310,7 @@ static void launchApp(uiDrawObj_t *panel, u32 index)
 	sleep(2);
 	DrawDispose(box);
 	DrawSetGameflowMode(panel, UI_GAMEFLOW_MODE_LIBRARY);
-	startPosters();
+	CardArt_Resume();
 }
 
 /* One sample's presses in layout, as the Library takes them (its browser in
@@ -611,10 +412,12 @@ void show_apps(void)
 		}
 	}
 	snapshot = memalign(32, sizeof(*snapshot));
-	/* Without room for posters every card shows its name instead. */
-	artTexels = memalign(32, UI_APPS_ART_SLOTS * UI_PNG_POSTER_BYTES);
-	UIAppsArt_Init(&art, nowMs());
-	startPosters();
+	{
+		cardArtSource_t cards = {appPictureSize, appReadPicture, appName,
+			appVerdict, (appsDevice->features & FEAT_THREAD_SAFE) != 0u};
+
+		CardArt_Open(&cards);
+	}
 	UIMenuInput_Init(&menuInput);
 	menuInputRetrace = VIDEO_GetRetraceCount();
 	/* Home opens Apps on A's press and calls this before that A is let go,
@@ -628,13 +431,13 @@ void show_apps(void)
 	}
 	while(snapshot != NULL) {
 		int32_t want[UI_APPS_ART_SLOTS];
-		artWant_t wanted = {want, 0u};
+		u32 wanted = 0u;
 		u32 policy = gameflowMenuInputPolicy(layout);
 		uiMenuInputDirection_t analog;
 		u32 buttons;
 
 		if(!buildSnapshot(snapshot, selected, layout, direction, rowDirection,
-			snap, want, &wanted.count)) {
+			snap, want, &wanted)) {
 			break;
 		}
 		direction = UI_GAMEFLOW_DIRECTION_NONE;
@@ -648,7 +451,7 @@ void show_apps(void)
 			panel = panel == NULL ? DrawPublish(fresh) :
 				DrawRepublish(panel, fresh);
 		}
-		DrawWithVideoLocked(wantPosters, &wanted);
+		CardArt_Want(want, wanted);
 		for(;;) {
 			buttons = padsButtonsHeld();
 			analog = padsMenuInputPoll(&menuInput,
@@ -658,7 +461,7 @@ void show_apps(void)
 				break;
 			}
 			VIDEO_WaitVSync();
-			pollPosters();
+			CardArt_Poll();
 		}
 		if(buttons & BUTTON_B) {
 			break;
@@ -679,16 +482,9 @@ void show_apps(void)
 		}
 	}
 	snprintf(lastProgram, sizeof(lastProgram), "%s", apps[selected].program);
-	/* Nothing draws a poster once the panel is gone and the slots are
-	 * empty; the GPU finishes a frame that did before the texels go. */
-	stopPosters();
+	CardArt_Pause();
 	DrawDispose(panel);
-	DrawWithVideoLocked(forgetPosters, NULL);
-	for(i = 0u; i < 3u; ++i) {
-		VIDEO_WaitVSync();
-	}
-	free(artTexels);
-	artTexels = NULL;
+	CardArt_Close();
 	free(snapshot);
 	free(apps);
 	free(appsFiles);
