@@ -4182,15 +4182,20 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			reveal * (1.0f - frame->detailProgress));
 	}
 
+	/* The old game's words fade out over the first half of a move and the
+	 * new game's in over the second, as the Source picker's names do: never
+	 * the two at once. */
 	_GameflowDrawMetadata(previousRecord, previousRecord != NULL ?
 		&data->cardPresentation[previousRecordIndex] : NULL,
-		titleTravel * (1.0f - frame->detailProgress), reveal, layout);
+		_GameflowClamp(2.0f * titleTravel - 1.0f, 0.0f, 1.0f) *
+		(1.0f - frame->detailProgress), reveal, layout);
 	_GameflowDrawMetadata(selectedRecord, selectedRecord != NULL ?
 		&data->cardPresentation[selectedRecordIndex] : NULL,
-		(1.0f - titleTravel) * (1.0f - frame->detailProgress), reveal,
-		layout);
+		_GameflowClamp(1.0f - 2.0f * titleTravel, 0.0f, 1.0f) *
+		(1.0f - frame->detailProgress), reveal, layout);
 	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
-		_GameflowDrawSpotlightDescription(data, (1.0f - titleTravel) *
+		_GameflowDrawSpotlightDescription(data,
+			_GameflowClamp(1.0f - 2.0f * titleTravel, 0.0f, 1.0f) *
 			(1.0f - frame->detailProgress), reveal);
 	}
 
