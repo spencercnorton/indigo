@@ -186,6 +186,28 @@ class Card(unittest.TestCase):
             self.assertEqual(boot[:6], card.BOOT_ISO[0].encode())
             self.assertEqual(boot[card.PROBE_DOL_OFFSET:card.PROBE_DOL_OFFSET + 17], b"the release's DOL")
 
+    @unittest.skipUnless(shutil.which("mkfs.fat") and shutil.which("mcopy"), "needs dosfstools and mtools")
+    def test_a_file_in_pieces(self):
+        """fragment() leaves a file in that many runs of clusters, its bytes
+        and the file system whole."""
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            package, image = folder / "Indigo-test.zip", folder / "card.img"
+            size = card.MAX_FRAGMENTS * card.CLUSTER_BYTES + 1000
+            data = (bytes(range(251)) * (size // 251 + 1))[:size]  # no two clusters alike
+            with zipfile.ZipFile(package, "w") as z:
+                z.writestr("ipl.dol", b"the release's DOL")
+                z.writestr("swiss/patches/game.bin", data)
+            card.build_card(image, package, posters=False)
+            self.assertEqual(card.fragment(image, "swiss/patches/game.bin", card.MAX_FRAGMENTS + 1),
+                             card.MAX_FRAGMENTS + 1)
+            self.assertEqual(card.read_card(image, "swiss/patches/game.bin"), data)
+            self.assertEqual(card.read_card(image, "ipl.dol"), b"the release's DOL")
+            check = subprocess.run(["fsck.fat", "-n", str(image)], capture_output=True, text=True)
+            self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
+            with self.assertRaises(ValueError):
+                card.fragment(image, "ipl.dol", 2)  # one cluster can't be two pieces
+
     def test_settings_to_start_with(self):
         text = (run.SETTINGS / "non-default.ini").read_text()
         pairs = run.seeded(text)

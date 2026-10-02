@@ -15,6 +15,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- The emulator test can put the probe's game in pieces on the SD card
+  (`run.py --fragments N`), as a copy onto a used card can leave a game: in
+  40 it must launch, the most Swiss and a GC Loader can serve, and in more it
+  must be refused with a message. CI's GC Loader job launches it in 40.
 - The emulator test can put the SD card in a GC Loader (`run.py --storage
   gcloader`): the runner's Dolphin answers as one, so Indigo finds it, keeps
   its settings on its card and launches a game by the game file's fragments,
