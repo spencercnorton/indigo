@@ -352,6 +352,12 @@ uiGameflowLibraryMode_t UIGameflowLibrary_ClassifierFinish(
 	if(state->folderCount > 0u && state->imageCount == 0u) {
 		return UI_GAMEFLOW_LIBRARY_GAME_FOLDERS;
 	}
+	/* Inside a folder of games, an empty one or one of pictures stays in the
+	 * Library with only its way back, rather than going to Swiss's list. */
+	if(state->location == UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER ||
+		state->location == UI_GAMEFLOW_LIBRARY_LOCATION_SUBFOLDER) {
+		return UI_GAMEFLOW_LIBRARY_IMAGE_FILES;
+	}
 	return UI_GAMEFLOW_LIBRARY_NONE;
 }
 

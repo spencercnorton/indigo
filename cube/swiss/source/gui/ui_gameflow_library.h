@@ -164,7 +164,8 @@ bool UIGameflowLibrary_ShouldStartHome(bool hasAutoload, bool hasRecent,
  * Library Folders' locations take images, game folders and folders of games
  * together (FOLDERS), or images alone as IMAGE_FILES, the same Library a
  * flattened /games shows; the deepest folder takes images only, since Swiss
- * lists what its folders hold. */
+ * lists what its folders hold. A folder below /games with no games is still a
+ * Library (IMAGE_FILES), with only its way back. */
 void UIGameflowLibrary_ClassifierInit(uiGameflowLibraryClassifier_t *state,
 	uiGameflowLibraryLocation_t location);
 bool UIGameflowLibrary_ClassifierAdd(uiGameflowLibraryClassifier_t *state,

@@ -140,7 +140,7 @@ Mario Sunshine and a **Zelda** folder.
   games: it shows as that game, as it does in `/games`.
 - Keep a game's discs in the same folder. Indigo looks for the other disc
   next to the one you start.
-- A folder with no games in it opens in Swiss's file list.
+- A folder with no games in it shows only the way back.
 
 While Library Folders is on, it sets **Flatten directory** itself, and the
 row can't be changed. Turn Library Folders off and your own value comes

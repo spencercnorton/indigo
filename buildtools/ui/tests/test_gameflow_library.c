@@ -938,9 +938,30 @@ static void testLibraryFoldersClassifier(void)
 	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
 		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
 
-	/* Nothing to show: Swiss's list, as for an empty /games. */
+	/* A folder with no games stays a Library with only its way back, at
+	 * either level; an empty /games is still Swiss's list. */
 	UIGameflowLibrary_ClassifierInit(&classifier,
 		UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "notes.txt"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+	CHECK(UIGameflowLibrary_EntryEligible(UI_GAMEFLOW_LIBRARY_IMAGE_FILES, 0u,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(!UIGameflowLibrary_EntryEligible(UI_GAMEFLOW_LIBRARY_IMAGE_FILES, 1u,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "notes.txt"));
+	UIGameflowLibrary_ClassifierInit(&classifier,
+		UI_GAMEFLOW_LIBRARY_LOCATION_SUBFOLDER);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Empty"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+	UIGameflowLibrary_ClassifierInit(&classifier,
+		UI_GAMEFLOW_LIBRARY_LOCATION_FOLDERS_ROOT);
 	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
 		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
 	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,

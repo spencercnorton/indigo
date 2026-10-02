@@ -21,9 +21,9 @@ while a crash, a hang, a black screen or a broken control does:
   - on the Settings face, Setup > Console > Apps Face Off takes Apps off the
     cube (System's next face is Library) and On puts it back;
   - Setup > Library > Library Folders On shows the disc's folders in the
-    Library: A opens a folder and a folder in it, which lists the game a
-    level further down too, and B goes back up a folder at a time to the
-    same card, then Home;
+    Library: an empty folder opens with only its way back, A opens a folder
+    and a folder in it, which lists the game a level further down too, and B
+    goes back up a folder at a time to the same card, then Home;
   - on Apps, RIGHT and LEFT move between the disc's apps and back, and A
     starts one: the launch screen comes up (Dolphin can't take a launch
     further, see start_an_app);
@@ -387,8 +387,9 @@ class Route:
     def library_folders(self, faces: list[np.ndarray]) -> None:
         """From the Settings face: R and R to Setup, four DOWNs and A into
         Library, DOWN to Library Folders and RIGHT to turn it on; B and B save
-        and exit. Then on Library, RIGHT from the empty Old saves folder to
-        Racing, A into it and A into Classics, which holds three cards (a game,
+        and exit. Then on Library, A opens the empty Old saves folder, which
+        stays in the Library with only its way back, and B returns to it;
+        RIGHT from there to Racing, A into it and A into Classics, which holds three cards (a game,
         the game in Old below it, and the way back): RIGHT twice is not back at
         the first, a third RIGHT is. B goes back to the same folder card each
         level up, and from /games to Home. Back on the Settings face after."""
@@ -415,6 +416,15 @@ class Route:
         stray, _ = self.settled_label(box=TITLE_BOX)
         self.shot("folders-games", self.last_rgb)
         self.check("the Library shows a folder's name", stray is not None)
+        # Old saves is empty: it opens in the Library with only the way back,
+        # and B comes back to its card (Swiss's list would go Home).
+        self.press("A")
+        empty, _ = self.settled_label(unlike=stray, box=TITLE_BOX)
+        self.shot("folders-empty", self.last_rgb)
+        self.check("an empty folder opens with only the way back", empty is not None)
+        self.press("B")
+        self.check("B comes back to the empty folder's card",
+                   self.settled_label(like=stray, box=TITLE_BOX)[0] is not None)
         self.press("RIGHT")
         racing, _ = self.settled_label(unlike=stray, box=TITLE_BOX)
         self.check("RIGHT moves to the next folder", racing is not None)

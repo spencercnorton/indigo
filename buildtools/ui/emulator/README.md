@@ -31,9 +31,10 @@ exception screen as it would on a console. The route:
    face, A on Change Source opens the device picker, RIGHT shows another
    device and B leaves the picker. On the Settings face, Setup › Console › Apps
    Face Off takes Apps off the cube and On puts it back, and Setup › Library
-   › Library Folders On shows the disc's folders in the Library: A opens a
-   folder and a folder in it, which also lists the game a level further
-   down, and B goes back up a folder at a time to the same card, then Home.
+   › Library Folders On shows the disc's folders in the Library: an empty
+   folder opens with only its way back, A opens a folder and a folder in it,
+   which also lists the game a level further down, and B goes back up a
+   folder at a time to the same card, then Home.
 4. **Apps, last.** RIGHT and LEFT move between the disc's apps and back, and
    A on one brings up the launch screen. The route stops there: Dolphin as
    CI runs it can't take any program's launch further (its HLE DSP never
