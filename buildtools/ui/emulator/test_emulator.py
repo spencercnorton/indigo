@@ -272,6 +272,14 @@ class Screen(unittest.TestCase):
         self.assertLess(run.overlap(a, b), run.DIFFERENT)
         self.assertFalse(run.has_label(run.text_mask(self.frame())))
 
+    def test_a_label_half_a_line_lower_is_the_same(self):
+        library = self.frame([(292, 346)])
+        a = run.text_mask(library)
+        lower = run.text_mask(np.roll(library, 1, axis=0))
+        self.assertLess(run.overlap(a, lower), run.SAME)
+        self.assertTrue(run.same_text(a, lower))
+        self.assertFalse(run.same_text(a, run.text_mask(self.frame([(300, 336)]))))
+
     def test_waves_behind_the_label_do_not_count(self):
         waves = self.frame()
         waves[372:396, 200:440] = 120

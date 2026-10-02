@@ -547,13 +547,9 @@ class GlassLightTests(unittest.TestCase):
             "the boot overlay must never copy the frame: widgets sit under it")
         home = extract_function(self.source, "void IndigoBackground_Draw(")
         self.assertIn("drawCube(scene, seconds, cubeMotionActive, clock, pad, icons, true);", home)
-        self.assertLess(home.index("drawCubeLight("), home.index("drawCube(scene,"),
-            "the halo belongs behind the cube")
-        # The halo is two soft glows behind the cube; the glow spot on the
-        # floor under it is gone (Spencer, 2026-09-30).
-        light = extract_function(self.source, "static void drawCubeLight(")
-        self.assertEqual(light.count("drawSoftGlow("), 2)
-        self.assertNotRegex(light, r"floor[XYS]")
+        # No light behind the cube: Spencer took out the glow spot on the
+        # floor (2026-09-30) and then the halo round it (2026-10-01).
+        self.assertNotIn("drawCubeLight", self.source)
 
     def test_the_glass_is_clear(self):
         # No solid cube inside: no pass writes depth or draws opaque, and the

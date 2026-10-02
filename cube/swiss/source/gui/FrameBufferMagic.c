@@ -38,6 +38,7 @@
 #include "ui_scene.h"
 #include "ui_stage.h"
 #include "ui_hint.h"
+#include "ui_system_info.h"
 #include "ui_assets.h"
 #include "ui_command_rail.h"
 #include "ui_home_layout.h"
@@ -126,6 +127,7 @@ typedef struct {
 	char timeText[9];
 	char temperatureText[8];
 	s8 coreTemperature;
+	uiSystemTemperature_t temperatureFilter;
 	bool civilSecondSampled;
 	bool civilTimeAvailable;
 	bool temperatureSampled;
@@ -900,6 +902,8 @@ static void _HomeFaceIcons(int icons[UI_HOME_FACE_COUNT])
 
 static void _DrawBackground(uiDrawObj_t *evt)
 {
+	/* Wave Speed, in swiss.h's order: Normal, Fast, Slow. */
+	static const float waveSpeeds[WAVE_SPEED_MAX] = {1.0f, 3.0f, 0.5f};
 	bool decorativeAnimated = _CurrentMotionMode() == UI_MOTION_FULL;
 	int icons[UI_HOME_FACE_COUNT];
 
@@ -916,6 +920,7 @@ static void _DrawBackground(uiDrawObj_t *evt)
 	/* The glass copies the frame it is drawn in. */
 	IndigoBackground_SetFramebuffer(getVideoMode()->fbWidth,
 		getVideoMode()->efbHeight);
+	IndigoBackground_SetWaveSpeed(waveSpeeds[swissSettings.waveSpeed]);
 	IndigoBackground_Draw(UIAnim_Seconds(),
 		decorativeAnimated && !swissSettings.disableAnimatedBackdrop,
 		decorativeAnimated,
@@ -1011,16 +1016,30 @@ uiDrawObj_t* DrawTexObj(GXTexObj *texObj, int x, int y, int width, int height, i
 	return event;
 }
 
-/* The top corner the clock and its temperature dial take (Clock): 1 the
- * right (the default), -1 the left, 0 neither. The header's other corner
- * items take the corner it leaves free. */
-static int _ClockCorner(void)
+/* The top corner Clock or Temperature puts its instrument in: 1 the right
+ * (the default), -1 the left, 0 neither. */
+static int _Corner(int position)
 {
-	switch(swissSettings.clockPosition) {
+	switch(position) {
 		case CLOCK_LEFT: return -1;
 		case CLOCK_OFF: return 0;
 		default: return 1;
 	}
+}
+
+/* The top corner the header's other items take (the loading spinner, the
+ * Source picker's label): the left while the time and the dial leave it,
+ * else the right; when they hold a corner each, the dial's, inside it. */
+static int _FreeCorner(float *inset)
+{
+	int clock = _Corner(swissSettings.clockPosition);
+	int dial = _Corner(swissSettings.temperaturePosition);
+
+	*inset = 0.0f;
+	if(clock != -1 && dial != -1) return -1;
+	if(clock != 1 && dial != 1) return 1;
+	*inset = 48.0f;
+	return dial;
 }
 
 // Internal
@@ -1037,11 +1056,13 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 	}
 	data->seconds += UIAnim_Delta();
 	if(data->miniMode) {	
-		int x = 30, y = 420;
-		/* The header's corner the clock leaves free, level with the clock
-		 * and as far in from the edge the frame shows. */
+		int x = 30, y = 420, corner = -1;
+		/* The header's free corner, level with the clock and as far in from
+		 * the edge the frame shows; the word on the wheel's inner side. */
 		if(data->miniModePos == PROGRESS_BOX_TOPLEFT) {
-			x = (int)(_ClockCorner() < 0 ? UIStage_Right() - 44.0f : UIStage_Left() + 44.0f);
+			float inset;
+			corner = _FreeCorner(&inset);
+			x = (int)(corner > 0 ? UIStage_Right() - 44.0f - inset : UIStage_Left() + 44.0f + inset);
 			y = 43;
 		}
 		GXColor loadingColor = (GXColor) {255,255,255,(u8)data->miniModeAlpha};
@@ -1057,7 +1078,8 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 		GX_InvalidateTexAll();
 		GX_LoadTexObj(&loadingTexObj, GX_TEXMAP0);
 		_drawRect(x-8, y-8, 16, 16, 0, loadingColor, (float) (numSegments)/8, (float) (numSegments+1)/8, 0.0f, 1.0f);
-		drawString(x+8, y, "Loading\205", 0.55f, ALIGN_LEFT, loadingColor);
+		drawString(x - 8 * corner, y, "Loading\205", 0.55f,
+			corner > 0 ? ALIGN_RIGHT : ALIGN_LEFT, loadingColor);
 		return;
 	}
 	_DrawDialogCard(x1, y1, x2-x1, y2-y1, -1);
@@ -2317,6 +2339,28 @@ static void _DrawSystemDial(float centerX, float centerY, s8 coreTemperature,
 	drawInit();
 }
 
+/* A sensor reading into the dial, smoothed: the sensor answers in 4 degree
+ * steps (UISystem_SmoothTemperature). */
+static void _SetCoreTemperature(int reading)
+{
+	systemInstrument.coreTemperature = (s8)UISystem_SmoothTemperature(
+		&systemInstrument.temperatureFilter, reading);
+	if(systemInstrument.coreTemperature >= 0) {
+		(void)snprintf(systemInstrument.temperatureText,
+			sizeof(systemInstrument.temperatureText), "%i\260C",
+			systemInstrument.coreTemperature);
+	}
+	else {
+		systemInstrument.temperatureText[0] = '\0';
+	}
+	systemInstrument.temperatureSampled = true;
+}
+
+int CoreTemperature(void)
+{
+	return systemInstrument.coreTemperature;
+}
+
 static void _UpdateSystemInstrument(void)
 {
 	struct timeval now;
@@ -2324,16 +2368,7 @@ static void _UpdateSystemInstrument(void)
 	if(gettimeofday(&now, NULL) != 0) {
 		/* Civil time and thermal telemetry are independent instruments. */
 		if(!systemInstrument.temperatureSampled) {
-			systemInstrument.coreTemperature = SYS_GetCoreTemperature();
-			if(systemInstrument.coreTemperature >= 0) {
-				(void)snprintf(systemInstrument.temperatureText,
-					sizeof(systemInstrument.temperatureText), "%i\260C",
-					systemInstrument.coreTemperature);
-			}
-			else {
-				systemInstrument.temperatureText[0] = '\0';
-			}
-			systemInstrument.temperatureSampled = true;
+			_SetCoreTemperature(SYS_GetCoreTemperature());
 		}
 		(void)UIClock_Compose(&systemInstrument.clock, -1, -1, -1.0f);
 		systemInstrument.civilSecondSampled = false;
@@ -2358,16 +2393,7 @@ static void _UpdateSystemInstrument(void)
 			systemInstrument.civilTimeAvailable = false;
 			memcpy(systemInstrument.timeText, "--:--:--", 9u);
 		}
-		systemInstrument.coreTemperature = SYS_GetCoreTemperature();
-		if(systemInstrument.coreTemperature >= 0) {
-			(void)snprintf(systemInstrument.temperatureText,
-				sizeof(systemInstrument.temperatureText), "%i\260C",
-				systemInstrument.coreTemperature);
-		}
-		else {
-			systemInstrument.temperatureText[0] = '\0';
-		}
-		systemInstrument.temperatureSampled = true;
+		_SetCoreTemperature(SYS_GetCoreTemperature());
 		systemInstrument.sampledSecond = now.tv_sec;
 		systemInstrument.civilSecondSampled = true;
 	}
@@ -2385,15 +2411,18 @@ static void _UpdateSystemInstrument(void)
 // Internal
 static void _DrawTitleBar(uiDrawObj_t *evt) {
 	float reveal = UIScene_Frame()->chromeProgress;
-	int corner = _ClockCorner();
-	/* The dial sits 40 in from the edge the frame shows, the time on its
-	 * inner side. */
-	int dialX = (int)(corner < 0 ? UIStage_Left() + 40.0f : UIStage_Right() - 40.0f);
+	int clock = _Corner(swissSettings.clockPosition);
+	int dial = _Corner(swissSettings.temperaturePosition);
+	/* The dial sits 40 in from the edge the frame shows; the time on its
+	 * inner side in the same corner, else 40 in itself. */
+	int dialX = (int)(dial < 0 ? UIStage_Left() + 40.0f : UIStage_Right() - 40.0f);
+	int timeX = clock == dial ? dialX - 32 * clock :
+		(int)(clock < 0 ? UIStage_Left() + 40.0f : UIStage_Right() - 40.0f);
 	int offsetY;
 	GXColor textColor;
 
 	(void)evt;
-	if(reveal <= 0.0f || corner == 0) {
+	if(reveal <= 0.0f || (clock == 0 && dial == 0)) {
 		return;
 	}
 	if(reveal > 1.0f) {
@@ -2403,15 +2432,17 @@ static void _DrawTitleBar(uiDrawObj_t *evt) {
 	textColor = (GXColor) {209, 201, 255, (u8)(232.0f * reveal)};
 
 	/* A single pre-traversal instrument snapshot owns both header and cube. */
-	_DrawSystemDial((float)dialX, 43.0f + offsetY, systemInstrument.coreTemperature, (u8)(255.0f * reveal));
-	if(systemInstrument.temperatureText[0]) {
-		drawStringMedium(dialX, 43 + offsetY,
-			systemInstrument.temperatureText,
-			0.42f, ALIGN_CENTER, textColor);
+	if(dial != 0) {
+		_DrawSystemDial((float)dialX, 43.0f + offsetY, systemInstrument.coreTemperature, (u8)(255.0f * reveal));
+		if(systemInstrument.temperatureText[0]) {
+			drawStringMedium(dialX, 43 + offsetY,
+				systemInstrument.temperatureText,
+				0.42f, ALIGN_CENTER, textColor);
+		}
 	}
-	if(systemInstrument.clock.available) {
-		drawStringMedium(dialX - 32 * corner, 43 + offsetY, systemInstrument.timeText,
-			0.54f, corner < 0 ? ALIGN_LEFT : ALIGN_RIGHT, textColor);
+	if(clock != 0 && systemInstrument.clock.available) {
+		drawStringMedium(timeX, 43 + offsetY, systemInstrument.timeText,
+			0.54f, clock < 0 ? ALIGN_LEFT : ALIGN_RIGHT, textColor);
 	}
 }
 
@@ -4550,9 +4581,9 @@ static void _DrawDeviceSelector(uiDrawObj_t *evt)
 	 * as the Library's posters follow the cube's retreat. */
 	float rise = UIMotion_Smoothstep((0.92f - scene->cubeScale) / 0.30f);
 	float reveal = fminf(scene->chromeProgress, 1.0f);
-	float position, first, last, y, pulse, labels;
+	float position, first, last, y, pulse, labels, inset;
 	int tiles = 0;
-	int nearest, k, i;
+	int nearest, k, i, corner;
 
 	reveal *= rise;
 	if(s->count <= 0 || reveal <= 0.0f) {
@@ -4625,10 +4656,11 @@ static void _DrawDeviceSelector(uiDrawObj_t *evt)
 	nearest = (int)floorf(position + 0.5f);
 	labels = reveal * (1.0f - 2.0f * fabsf(position - (float)nearest));
 	tile = &s->tiles[_DeviceIndex(nearest, s->count)];
-	/* In the header's corner the clock leaves free. */
-	drawStringMedium(_ClockCorner() < 0 ? 600 : 40, 44,
+	/* In the header's free corner. */
+	corner = _FreeCorner(&inset);
+	drawStringMedium((int)(corner > 0 ? 600.0f - inset : 40.0f + inset), 44,
 		data->destination ? "DESTINATION" : "SOURCE", 0.50f,
-		_ClockCorner() < 0 ? ALIGN_RIGHT : ALIGN_LEFT,
+		corner > 0 ? ALIGN_RIGHT : ALIGN_LEFT,
 		(GXColor) {216, 207, 255, (u8)(230.0f * reveal)});
 	drawStringMedium(320, (int)(y + 88.0f), tile->name, tile->nameScale,
 		ALIGN_CENTER, (GXColor) {246, 243, 255, (u8)(255.0f * labels)});

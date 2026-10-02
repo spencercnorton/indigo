@@ -6,8 +6,40 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ## Unreleased
 
+### New
+
+- Settings › Setup › Console › **Wave Speed** sets how fast the waves drift:
+  Slow (half as fast), Normal (the default) or Fast (three times as fast). A
+  new speed picks up from where the waves are. In `global.ini` it is
+  `Wave Speed`.
+- Settings › Setup › Console › **Temperature** places the temperature dial on
+  its own: Right, Left or Off, as Clock places the time. Clock moves only the
+  time now. In the same corner the time sits beside the dial as before; apart,
+  each sits in its own corner. In `global.ini` it is `Temperature`; settings
+  saved by 2.2, which has no `Temperature`, keep the dial with the clock.
+
 ### Changes
 
+- Every face of the Home cube shows its icon as the cube turns, animated, the
+  side faces at rest included. An icon on a face turned away from the screen
+  is drawn four times as wide and twice as tall, then scaled down, so its
+  thinnest lines keep their light, without breaking into fragments, fading
+  out or flickering as the cube sways. Mostly horizontal icons, such as
+  Settings' sliders, still look narrow on a face seen nearly edge-on.
+- A slanted line on a face seen nearly edge-on, such as the clock's minute
+  hand at ten to the hour, no longer disappears at some angles as the cube
+  sways. Its corners were too sharp for its soft edge, and it was skipped;
+  it is drawn plain now.
+- The halo around the Home cube is gone, as the glow spot under it went in
+  2.2.
+- The CPU temperature holds steady. The console's sensor reads in 4 degree
+  steps, so a CPU sitting on a step showed one side and then the other every
+  second (40 °C, 44 °C, 40 °C...). Indigo now shows an average of the last few
+  seconds' readings, which moves a degree at a time, at the top of the screen
+  and in System Information alike.
+- With Clock at Left, the loading spinner at the top right ran its word
+  "Loading" from the wheel out to the screen's edge, where a TV can crop it.
+  It reads inward from the wheel now, in either corner.
 - The menus' animated background costs the console far less each frame: the
   cube works out its square roots without newlib's slow loop, keeps its
   outline's lengths, skips icons that can't be seen, copies only the part of

@@ -119,6 +119,8 @@ run_contracts() {
 	python3 ./test_stroke_gx_stream.py
 	echo "== wave and grid native coverage =="
 	python3 ./test_background_gx_stream.py
+	echo "== turned faces' icon pictures: doubled, copied, laid on the glass =="
+	python3 ./test_face_pictures.py
 	echo "== cube glass light: refraction, dispersion, bloom, rim, glint =="
 	python3 ./test_glass_light.py
 	echo "== display copy clear and poster retreat =="

@@ -422,6 +422,32 @@ static void drawSilkWaves(float seconds, bool animated, float strength)
 		GX_LO_CLEAR);
 }
 
+
+/* The waves' clock: the menu clock's steps at Wave Speed's pace, so a new
+ * speed counts from where the waves are. It wraps where the menu clock does
+ * (ui_anim.c): every wave rate is a multiple of 0.001 rad/s, so no phase
+ * jumps there at any speed, where scaling the menu clock itself would jump
+ * at its wrap unless the speed kept every rate a multiple. */
+#define WAVE_CLOCK_WRAP 6283.18530718f
+static float waveSpeedSetting = 1.0f, waveLastSeconds = -1.0f, waveSeconds;
+
+void IndigoBackground_SetWaveSpeed(float speed)
+{
+	waveSpeedSetting = speed;
+}
+
+static float waveClock(float seconds)
+{
+	float step = waveLastSeconds < 0.0f ? seconds : seconds - waveLastSeconds;
+
+	if(step < 0.0f) {
+		step += WAVE_CLOCK_WRAP;  /* the menu clock wrapped */
+	}
+	waveLastSeconds = seconds;
+	waveSeconds = fmodf(waveSeconds + step * waveSpeedSetting, WAVE_CLOCK_WRAP);
+	return waveSeconds;
+}
+
 static void drawGlobeGrid(float centerX, float centerY, float drift)
 {
 	static const float radii[6][2] = {
@@ -904,6 +930,7 @@ static void putSemanticMotifQuad(const cubeRasterTransform_t *raster, int face,
 	guVector eyes[4];
 	indigoPoint_t points[4], joins[4], center = {0.0f, 0.0f};
 	float area = 0.0f, clearance = 1000.0f;
+	bool sharp = false;
 	for(int i = 0; i < 4; i++) {
 		guVector point = semanticFacePoint(raster, face, corners[i].x, corners[i].y, plane);
 		if(!projectRailPoint(raster, point.x, point.y, point.z,
@@ -923,7 +950,10 @@ static void putSemanticMotifQuad(const cubeRasterTransform_t *raster, int face,
 		float dx = points[next].x - points[i].x;
 		float dy = points[next].y - points[i].y;
 		float length = fastSqrt(dx * dx + dy * dy);
-		if(!railJoin(points[(i + 3) % 4], points[i], points[next], &joins[i])) goto hidden;
+		if(length < 0.001f) goto hidden;
+		/* A slanted stroke on a face seen nearly edge-on, such as the clock's
+		 * minute hand on a side face, has corners too sharp to mitre. */
+		if(!railJoin(points[(i + 3) % 4], points[i], points[next], &joins[i])) sharp = true;
 		float distance = fabsf(dx * (center.y - points[i].y) -
 			dy * (center.x - points[i].x)) / length;
 		if(distance < clearance) clearance = distance;
@@ -932,7 +962,15 @@ static void putSemanticMotifQuad(const cubeRasterTransform_t *raster, int face,
 	 * retain area through alpha instead of inverting their inner polygon. */
 	float inset = fminf(0.5f, clearance * 0.5f);
 	float outside = 1.0f - inset;
-	color.a = (u8)((float)color.a * fminf(1.0f, clearance * 2.0f));
+	if(sharp) {
+		/* Its exact outline instead, unfeathered and at full strength: the
+		 * rasterizer's coverage is its brightness, and a turned face is drawn
+		 * as a supersampled picture (renderFacePictures), which smooths it. */
+		for(int i = 0; i < 4; i++) joins[i] = (indigoPoint_t) {0.0f, 0.0f};
+	}
+	else {
+		color.a = (u8)((float)color.a * fminf(1.0f, clearance * 2.0f));
+	}
 	GXColor transparent = color;
 	transparent.a = 0;
 	for(int i = 0; i < 4; i++) {
@@ -1970,34 +2008,82 @@ static void drawAppsIcon(const cubeRasterTransform_t *raster, int face, GXColor 
  * choice). One additive pass without depth writes, every icon in the same
  * lilac. Each icon's primitive count is fixed, so a face turning away draws
  * transparent degenerates or nothing; a choice out of range draws nothing. */
-static void drawFaceIcons(float seconds, bool animated,
-		const uiClockFrame_t *clock, const indigoPadFrame_t *pad,
-		const int choices[UI_HOME_FACE_COUNT], const cubeRasterTransform_t *raster)
+/* How squarely a semantic face looks at the camera: the eye-space z of its
+ * outward normal, 1 square on, 0 edge-on, below 0 turned away. */
+static float faceFacing(const cubeRasterTransform_t *raster, int face)
+{
+	const float (*basis)[4] = raster->semanticFaces[face];
+	const float (*m)[4] = raster->model;
+	float x = m[0][0] * basis[0][2] + m[0][1] * basis[1][2] + m[0][2] * basis[2][2];
+	float y = m[1][0] * basis[0][2] + m[1][1] * basis[1][2] + m[1][2] * basis[2][2];
+	float z = m[2][0] * basis[0][2] + m[2][1] * basis[1][2] + m[2][2] * basis[2][2];
+	float length = fastSqrt(x * x + y * y + z * z);
+
+	return length > 0.0001f ? z / length : 0.0f;
+}
+
+/* A face turned nearly edge-on squeezes its icon's strokes below a pixel,
+ * which the console's rasterizer breaks into fragments. So the strokes fade
+ * out as a face turns away, gone while it points more than ~71 degrees from
+ * the camera (Home's side faces rest 72 to 76 degrees away), whole inside
+ * 53; the rest of the icon is its picture (drawFacePictures). */
+static float faceStrokeShare(float facing)
+{
+	return UIMotion_Smoothstep((facing - 0.33f) / 0.27f);
+}
+
+/* One face's icon, choice one of that face's four. */
+static void drawOneFaceIcon(const cubeRasterTransform_t *raster, int face,
+		int choice, float seconds, bool animated, const uiClockFrame_t *clock,
+		const indigoPadFrame_t *pad)
 {
 	float pulse = animated ? 0.5f + sinf(seconds * 1.10f) * 0.5f : 0.62f;
 	float slider = animated ? sinf(seconds * 0.43f) * 0.12f : 0.0f;
 	GXColor glow = {196, 177, 255, (u8)(142.0f + pulse * 42.0f)};
+
+	if(choice < 0 || choice >= UI_HOME_ICON_CHOICES) return;
+	switch(face * UI_HOME_ICON_CHOICES + choice) {
+		case UI_HOME_ICON_CONTROLLER:
+			drawControllerIcon(raster, face, glow, seconds, animated, pad);
+			break;
+		case UI_HOME_ICON_BOOKS: drawBooksIcon(raster, face, glow); break;
+		case UI_HOME_ICON_COVERS: drawCoversIcon(raster, face, glow); break;
+		case UI_HOME_ICON_PLAY: drawPlayIcon(raster, face, glow); break;
+		case UI_HOME_ICON_HUB: drawHubIcon(raster, face, glow); break;
+		case UI_HOME_ICON_DISC:
+			drawDiscIcon(raster, face, glow, animated ? seconds * 0.6f : 0.0f);
+			break;
+		case UI_HOME_ICON_SD_CARD: drawSdCardIcon(raster, face, glow); break;
+		case UI_HOME_ICON_FOLDER: drawFolderIcon(raster, face, glow); break;
+		case UI_HOME_ICON_SLIDERS: drawSlidersIcon(raster, face, glow, slider); break;
+		case UI_HOME_ICON_GEAR:
+			drawGearIcon(raster, face, glow, animated ? seconds * 0.2f : 0.0f);
+			break;
+		case UI_HOME_ICON_TOGGLES: drawTogglesIcon(raster, face, glow); break;
+		case UI_HOME_ICON_DIAL:
+			drawDialIcon(raster, face, glow, animated ? sinf(seconds * 0.4f) * 25.0f : 0.0f);
+			break;
+		case UI_HOME_ICON_CLOCK: drawClockIcon(raster, face, glow, clock); break;
+		case UI_HOME_ICON_INFO: drawInfoIcon(raster, face, glow); break;
+		case UI_HOME_ICON_POWER: drawPowerIcon(raster, face, glow); break;
+		case UI_HOME_ICON_CHIP: drawChipIcon(raster, face, glow); break;
+		case UI_HOME_ICON_APPS: drawAppsIcon(raster, face, glow); break;
+		default: break;
+	}
+}
+
+static void drawFaceIcons(float seconds, bool animated,
+		const uiClockFrame_t *clock, const indigoPadFrame_t *pad,
+		const int choices[UI_HOME_FACE_COUNT], const cubeRasterTransform_t *raster)
+{
 	Mtx identity;
 	/* Static: the video thread's stack is small. */
 	static cubeRasterTransform_t faded;
 
-	/* A face turned nearly edge-on squeezes its icon's strokes below a pixel,
-	 * which the console's rasterizer breaks into fragments. An icon fades
-	 * out as its face turns away: gone while the face points more than ~71
-	 * degrees from the camera (Home's side faces rest 72 to 76 degrees
-	 * away), whole again inside 53. The faces' plates keep their opacity. */
+	/* The faces' plates keep their opacity; only the strokes fade. */
 	faded = *raster;
-	for(int face = 0; face < UI_HOME_FACE_COUNT; face++) {
-		const float (*basis)[4] = raster->semanticFaces[face];
-		const float (*m)[4] = raster->model;
-		float x = m[0][0] * basis[0][2] + m[0][1] * basis[1][2] + m[0][2] * basis[2][2];
-		float y = m[1][0] * basis[0][2] + m[1][1] * basis[1][2] + m[1][2] * basis[2][2];
-		float z = m[2][0] * basis[0][2] + m[2][1] * basis[1][2] + m[2][2] * basis[2][2];
-		float length = fastSqrt(x * x + y * y + z * z);
-		float t = length > 0.0001f ? (z / length - 0.33f) / 0.27f : 0.0f;
-
-		faded.motifAlpha[face] *= UIMotion_Smoothstep(t);
-	}
+	for(int face = 0; face < UI_HOME_FACE_COUNT; face++)
+		faded.motifAlpha[face] *= faceStrokeShare(faceFacing(raster, face));
 	raster = &faded;
 
 	guMtxIdentity(identity);
@@ -2006,42 +2092,12 @@ static void drawFaceIcons(float seconds, bool animated,
 	GX_SetCullMode(GX_CULL_NONE);
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
 	for(int face = 0; face < UI_HOME_FACE_COUNT; face++) {
-		int choice = choices[face];
-
-		if(choice < 0 || choice >= UI_HOME_ICON_CHOICES) continue;
 		/* A face turned away draws nothing. The controller still reads the
 		 * pad (it returns before drawing), so its idle play does not start
 		 * the moment its face comes back. */
 		if(raster->motifAlpha[face] <= 0.0f &&
-			face * UI_HOME_ICON_CHOICES + choice != UI_HOME_ICON_CONTROLLER) continue;
-		switch(face * UI_HOME_ICON_CHOICES + choice) {
-			case UI_HOME_ICON_CONTROLLER:
-				drawControllerIcon(raster, face, glow, seconds, animated, pad);
-				break;
-			case UI_HOME_ICON_BOOKS: drawBooksIcon(raster, face, glow); break;
-			case UI_HOME_ICON_COVERS: drawCoversIcon(raster, face, glow); break;
-			case UI_HOME_ICON_PLAY: drawPlayIcon(raster, face, glow); break;
-			case UI_HOME_ICON_HUB: drawHubIcon(raster, face, glow); break;
-			case UI_HOME_ICON_DISC:
-				drawDiscIcon(raster, face, glow, animated ? seconds * 0.6f : 0.0f);
-				break;
-			case UI_HOME_ICON_SD_CARD: drawSdCardIcon(raster, face, glow); break;
-			case UI_HOME_ICON_FOLDER: drawFolderIcon(raster, face, glow); break;
-			case UI_HOME_ICON_SLIDERS: drawSlidersIcon(raster, face, glow, slider); break;
-			case UI_HOME_ICON_GEAR:
-				drawGearIcon(raster, face, glow, animated ? seconds * 0.2f : 0.0f);
-				break;
-			case UI_HOME_ICON_TOGGLES: drawTogglesIcon(raster, face, glow); break;
-			case UI_HOME_ICON_DIAL:
-				drawDialIcon(raster, face, glow, animated ? sinf(seconds * 0.4f) * 25.0f : 0.0f);
-				break;
-			case UI_HOME_ICON_CLOCK: drawClockIcon(raster, face, glow, clock); break;
-			case UI_HOME_ICON_INFO: drawInfoIcon(raster, face, glow); break;
-			case UI_HOME_ICON_POWER: drawPowerIcon(raster, face, glow); break;
-			case UI_HOME_ICON_CHIP: drawChipIcon(raster, face, glow); break;
-			case UI_HOME_ICON_APPS: drawAppsIcon(raster, face, glow); break;
-			default: break;
-		}
+			face * UI_HOME_ICON_CHOICES + choices[face] != UI_HOME_ICON_CONTROLLER) continue;
+		drawOneFaceIcon(raster, face, choices[face], seconds, animated, clock, pad);
 	}
 	GX_LoadPosMtxImm(raster->model, GX_PNMTX0);
 	GX_SetCullMode(GX_CULL_BACK);
@@ -2623,6 +2679,200 @@ static void restoreCubeRaster(void)
 	GX_SetTevKAlphaSel(GX_TEVSTAGE0, GX_TEV_KASEL_1);
 }
 
+/* A face turned away from the camera shows its icon as a picture instead of
+ * as strokes: the strokes drawn four times as wide and twice as tall into
+ * the top left of the frame before the backdrop (which then paints over the
+ * corner), halved both ways by the copy's 2x2 box filter and laid where the
+ * icon sits, two texels to a pixel across, so each pixel averages four
+ * samples across and two down. A face turned away is squeezed across: a
+ * line thinner than a pixel there keeps its light, spread evenly, where
+ * drawn at size it breaks into fragments, and it no longer pops in and out
+ * as the cube sways; so every face's icon shows, and keeps moving, as the
+ * cube turns. At most three faces of a cube face the camera. */
+#define FACE_PICTURE_SLOTS 3
+#define FACE_PICTURE_MAX_W 128
+#define FACE_PICTURE_MAX_H 224
+/* The square a face's icon fits, a little past the plate so a stroke's fade
+ * fits too, at the icons' plane. */
+#define FACE_PICTURE_REACH 0.76f
+#define FACE_PICTURE_PLANE 1.012f
+
+typedef struct facePicture {
+	GXTexObj texture;
+	float weight;
+	u16 x, y, width, height;
+} facePicture_t;
+
+static u8 facePictureTexels[FACE_PICTURE_SLOTS][2 * FACE_PICTURE_MAX_W * FACE_PICTURE_MAX_H * 2]
+	ATTRIBUTE_ALIGN(32);
+static facePicture_t facePictures[FACE_PICTURE_SLOTS];
+static int facePictureCount;
+static bool facePictureTexelsFlushed;
+
+/* The cube's projection, scaled about frame pixel (x, y) by four across and
+ * two down: what lands there lands at the frame's top left instead. */
+static void facePictureProjection(Mtx44 projection, int x, int y)
+{
+	float shiftX = 3.0f - 8.0f * (float)x / glassEfbWidth;
+	float shiftY = -1.0f + 4.0f * (float)y / glassEfbHeight;
+
+	for(int row = 0; row < 4; row++)
+		for(int column = 0; column < 4; column++)
+			projection[row][column] = cubeProjection[row][column];
+	UIStage_Project(projection);
+	for(int column = 0; column < 4; column++) {
+		projection[0][column] = 4.0f * projection[0][column] + shiftX * projection[3][column];
+		projection[1][column] = 2.0f * projection[1][column] + shiftY * projection[3][column];
+	}
+}
+
+/* Before the frame: a picture of each turned face's icon. */
+static void renderFacePictures(const uiSceneFrame_t *scene, float seconds,
+		bool animated, const uiClockFrame_t *clock, const indigoPadFrame_t *pad,
+		const int icons[UI_HOME_FACE_COUNT])
+{
+	/* Static: the video thread's stack is small. */
+	static cubeRasterTransform_t raster, fine;
+	float frameX = glassEfbWidth / 640.0f, frameY = glassEfbHeight / 480.0f;
+	Mtx44 projection;
+	Mtx identity;
+
+	facePictureCount = 0;
+	setupCubePipeline(scene, seconds, animated, &raster);
+	guMtxIdentity(identity);
+	GX_LoadPosMtxImm(identity, GX_PNMTX0);
+	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
+	GX_SetCullMode(GX_CULL_NONE);
+	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
+	for(int face = 0; face < UI_HOME_FACE_COUNT && facePictureCount < FACE_PICTURE_SLOTS; face++) {
+		float facing = faceFacing(&raster, face);
+		float weight = raster.motifAlpha[face] * (1.0f - faceStrokeShare(facing));
+		float left = 1.0e9f, top = 1.0e9f, right = -1.0e9f, bottom = -1.0e9f;
+		bool seen = true;
+
+		if(icons[face] < 0 || icons[face] >= UI_HOME_ICON_CHOICES ||
+			facing <= 0.0f || weight < 1.0f / 255.0f) {
+			continue;
+		}
+		for(int corner = 0; corner < 4 && seen; corner++) {
+			guVector body = semanticFacePoint(&raster, face,
+				corner & 1 ? FACE_PICTURE_REACH : -FACE_PICTURE_REACH,
+				corner & 2 ? FACE_PICTURE_REACH : -FACE_PICTURE_REACH, FACE_PICTURE_PLANE);
+			guVector eye;
+			indigoPoint_t at;
+			seen = projectRailPoint(&raster, body.x, body.y, body.z, &eye, &at);
+			float x = UIStage_FrameX(320.0f + at.x) * frameX, y = (240.0f - at.y) * frameY;
+			left = fminf(left, x);
+			right = fmaxf(right, x);
+			top = fminf(top, y);
+			bottom = fmaxf(bottom, y);
+		}
+		int x0 = (int)floorf(left) - 1, y0 = (int)floorf(top) - 1;
+		int width = ((int)ceilf(right) + 1 - x0 + 3) & ~3;
+		int height = ((int)ceilf(bottom) + 1 - y0 + 3) & ~3;
+		/* Off the frame's edge, too big for a slot or for the corner it is
+		 * drawn in: the strokes alone. */
+		if(!seen || x0 < 0 || y0 < 0 || x0 + width > glassEfbWidth ||
+			y0 + height > glassEfbHeight || width > FACE_PICTURE_MAX_W ||
+			height > FACE_PICTURE_MAX_H || 4 * width > glassEfbWidth ||
+			2 * height > glassEfbHeight) {
+			continue;
+		}
+
+		facePicture_t *picture = &facePictures[facePictureCount];
+		fine = raster;
+		fine.scaleX *= 4.0f;
+		fine.scaleY *= 2.0f;
+		fine.motifAlpha[face] = 1.0f;
+		if(!facePictureTexelsFlushed) {
+			DCFlushRange(facePictureTexels, sizeof(facePictureTexels));
+			facePictureTexelsFlushed = true;
+		}
+		/* The legacy backdrop image is already in the frame: a first copy
+		 * clears the corner to black (each copy clears what it read). */
+		GX_SetTexCopySrc(0, 0, (u16)(width * 4), (u16)(height * 2));
+		GX_SetTexCopyDst((u16)(width * 2), (u16)height, GX_TF_RGB565, GX_TRUE);
+		GX_CopyTex(facePictureTexels[facePictureCount], GX_TRUE);
+		facePictureProjection(projection, x0, y0);
+		GX_LoadProjectionMtx(projection, GX_PERSPECTIVE);
+		GX_SetScissor(0, 0, (u32)width * 4u, (u32)height * 2u);
+		drawOneFaceIcon(&fine, face, icons[face], seconds, animated, clock, pad);
+		GX_CopyTex(facePictureTexels[facePictureCount], GX_TRUE);
+		/* Two texels to a pixel across: a pixel's centre falls between two,
+		 * and the bilinear read averages them. */
+		GX_InitTexObj(&picture->texture, facePictureTexels[facePictureCount],
+			(u16)(width * 2), (u16)height, GX_TF_RGB565, GX_CLAMP, GX_CLAMP, GX_FALSE);
+		GX_InitTexObjLOD(&picture->texture, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f,
+			GX_FALSE, GX_FALSE, GX_ANISO_1);
+		picture->weight = weight;
+		picture->x = (u16)x0;
+		picture->y = (u16)y0;
+		picture->width = (u16)width;
+		picture->height = (u16)height;
+		facePictureCount++;
+	}
+	GX_SetScissor(0, 0, glassEfbWidth, glassEfbHeight);
+	if(facePictureCount > 0) {
+		GX_PixModeSync();
+		GX_InvalidateTexAll();
+	}
+}
+
+/* The pictures laid on the glass, added like the strokes; each one's weight
+ * is the share of its icon the strokes leave. */
+static void drawFacePictures(const cubeRasterTransform_t *raster)
+{
+	Mtx44 projection;
+	Mtx identity;
+
+	if(facePictureCount == 0) return;
+	guOrtho(projection, 0.0f, (f32)glassEfbHeight, 0.0f, (f32)glassEfbWidth, 0.0f, 1.0f);
+	GX_LoadProjectionMtx(projection, GX_ORTHOGRAPHIC);
+	guMtxIdentity(identity);
+	GX_LoadPosMtxImm(identity, GX_PNMTX0);
+	GX_ClearVtxDesc();
+	GX_SetVtxDesc(GX_VA_POS, GX_DIRECT);
+	GX_SetVtxDesc(GX_VA_CLR0, GX_DIRECT);
+	GX_SetVtxDesc(GX_VA_TEX0, GX_DIRECT);
+	GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_TEX0, GX_TEX_ST, GX_F32, 0);
+	GX_SetNumTexGens(1);
+	GX_SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_IDENTITY);
+	GX_SetNumTevStages(1);
+	GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP3, GX_COLOR0A0);
+	GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_TEXC);
+	GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
+	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
+	GX_SetCullMode(GX_CULL_NONE);
+	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
+	for(int i = 0; i < facePictureCount; i++) {
+		const facePicture_t *picture = &facePictures[i];
+		float x0 = picture->x, y0 = picture->y;
+		float x1 = x0 + picture->width, y1 = y0 + picture->height;
+		u8 alpha = (u8)(255.0f * fminf(1.0f, picture->weight) + 0.5f);
+
+		GX_LoadTexObj((GXTexObj *)&picture->texture, GX_TEXMAP3);
+		GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+			GX_Position3f32(x0, y0, 0.0f);
+			GX_Color4u8(255, 255, 255, alpha);
+			GX_TexCoord2f32(0.0f, 0.0f);
+			GX_Position3f32(x1, y0, 0.0f);
+			GX_Color4u8(255, 255, 255, alpha);
+			GX_TexCoord2f32(1.0f, 0.0f);
+			GX_Position3f32(x1, y1, 0.0f);
+			GX_Color4u8(255, 255, 255, alpha);
+			GX_TexCoord2f32(1.0f, 1.0f);
+			GX_Position3f32(x0, y1, 0.0f);
+			GX_Color4u8(255, 255, 255, alpha);
+			GX_TexCoord2f32(0.0f, 1.0f);
+		GX_End();
+	}
+	loadCubeProjection();
+	restoreCubeRaster();
+	GX_LoadPosMtxImm(raster->model, GX_PNMTX0);
+	GX_SetCullMode(GX_CULL_BACK);
+	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
+}
+
 /* Dispersion: three samples of the copy, one per channel, each bent a
  * little further than the last, so edges part into red, green and blue the
  * way a prism does. Stage 3 multiplies the vertex tint in at double scale,
@@ -3139,36 +3389,13 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	}
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 	drawFaceIcons(seconds, animated, clock, pad, icons, &raster);
+	if(screenGlass) {
+		drawFacePictures(&raster);
+	}
 	if(light) {
 		setupRasterPipeline();
 		drawGlassRim(&shellOutline, strength);
 	}
-}
-
-/* The light around the cube, drawn behind it: a wide halo, as if the key
- * light stood behind the glass, and a caustic where the glass focuses that
- * light on the floor inside its shadow. The caustic swells as a face turns
- * square to the light and the lens it makes is strongest. */
-static void drawCubeLight(const uiSceneFrame_t *scene, float seconds, bool animated)
-{
-	const float perUnit = 1.0f / tanf(21.0f * INDIGO_TAU / 360.0f) * 240.0f /
-		-CUBE_CAMERA_Z;
-	float strength = glassSceneStrength(scene);
-	float bob = animated ? sinf(seconds * 0.62f) * 0.035f : 0.0f;
-	float x = 320.0f + scene->cubeX * perUnit;
-	float y = 240.0f - (scene->cubeY + bob) * perUnit;
-	float radius = scene->cubeScale * perUnit;
-	float breath = animated ? 0.92f + 0.08f * sinf(seconds * 0.9f) : 1.0f;
-
-	if(strength <= 0.01f) return;
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
-	drawSoftGlow(x + radius * 0.16f, y - radius * 0.10f, radius * 2.35f, radius * 2.10f,
-		(GXColor) {138, 116, 255, 255}, 0.14f * strength * breath);
-	drawSoftGlow(x, y, radius * 1.42f, radius * 1.36f,
-		(GXColor) {172, 150, 255, 255}, 0.09f * strength * breath);
-	/* Spencer took the glow spot on the floor under the cube out
-	 * (2026-09-30): it added nothing. */
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 }
 
 static int layerColors[UI_COLOR_LAYERS];
@@ -3197,6 +3424,15 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 		scene->scene == UI_SCENE_SOURCE ?
 		orbitStrength * HOME_DECORATIVE_STRENGTH : orbitStrength;
 
+	/* The turned faces' icon pictures go first: the backdrop paints over
+	 * the corner of the frame they are drawn in. */
+	if(scene->visible && scene->introProgress >= BOOT_CUBE_HANDOFF) {
+		UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);
+		renderFacePictures(scene, seconds, cubeMotionActive, clock, pad, icons);
+	}
+	else {
+		facePictureCount = 0;
+	}
 	setupRasterPipeline();
 	/* The backdrop and the waves have colors of their own; the cube and
 	 * everything after it take the menus'. */
@@ -3205,7 +3441,7 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 	drawGlobeGrid(320.0f, 212.0f, drift * 0.18f);
 	if(scene->visible) {
 		UIColor_Select(layerColors[UI_COLOR_LAYER_WAVES]);
-		drawSilkWaves(seconds, backdropMotionActive, decorativeStrength);
+		drawSilkWaves(waveClock(seconds), backdropMotionActive, decorativeStrength);
 	}
 	UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);
 	if(!scene->visible) {
@@ -3216,7 +3452,6 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 		(GXColor) {3, 2, 12, (u8)(92.0f * orbitStrength)},
 		(GXColor) {3, 2, 12, 0});
 	if(scene->introProgress >= BOOT_CUBE_HANDOFF) {
-		drawCubeLight(scene, seconds, cubeMotionActive);
 		drawCube(scene, seconds, cubeMotionActive, clock, pad, icons, true);
 	}
 }
