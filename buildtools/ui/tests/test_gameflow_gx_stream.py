@@ -939,6 +939,37 @@ class GameflowGxStream(unittest.TestCase):
         self.assertIsNone(self.texture_alpha(log[-1], "G022E0"))
         self.assertTrue(all(b >= a - 0.005 for a, b in zip(shown, shown[1:])), shown)
 
+    def test_spotlight_keeps_the_old_picture_as_a_new_still_arrives(self):
+        """The old picture only ever fades as the row moves: when the new
+        still arrives part way through the move and takes over from its
+        cover, the old one does not step back up under it; and opening
+        Detail part way through fades it with the new one, rather than
+        showing more of it as the panel fades."""
+        def old_shown(log):
+            shown = []
+            for frame in log:
+                old = (self.texture_alpha(frame, "still:G021E0") or 0) / 255
+                new = (self.texture_alpha(frame, "still:G022E0") or 0) / 255
+                shown.append(round(old * (1 - new), 3))
+            return shown
+        shown = old_shown(frames(self.run_script(
+            ["L 3 40 21", "N 40 0.0167", "P 22 1 0 0", "Y 22", "N 60 0.0167"]))[40:])
+        self.assertGreater(shown[0], 0.9)
+        self.assertEqual(shown[-1], 0)
+        self.assertTrue(all(b <= a + 0.005 for a, b in zip(shown, shown[1:])), shown)
+        # The old picture against the new one: their share of the mix is
+        # the move's, however far the panel has faded.
+        mix = []
+        for frame in frames(self.run_script(
+                ["L 3 40 21", "N 40 0.0167", "P 22 1 0 0", "N 6 0.0167", "D 1",
+                 "N 30 0.0167"]))[45:]:
+            old = (self.texture_alpha(frame, "still:G021E0") or 0) / 255
+            new = (self.texture_alpha(frame, "still:G022E0") or 0) / 255
+            if new > 0.05:
+                mix.append(round(old * (1 - new) / new, 3))
+        self.assertGreater(len(mix), 10)
+        self.assertTrue(all(b <= a + 0.01 for a, b in zip(mix, mix[1:])), mix)
+
     def test_moving_cards_change_size_one_way(self):
         """A step moves every card between two poses: its size along the
         strip changes one way, never a pixel back and forth as its corners

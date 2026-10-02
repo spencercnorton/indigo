@@ -4220,20 +4220,25 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
 		/* The picture changes with the title: the old game's fades out as
 		 * the row moves and the new game's fades in. A new still fills the
-		 * panel, so it fades in over the old picture left whole: a true
-		 * mix, with no dip to the empty panel half way. A new cover is
-		 * smaller, so the old picture fades out around it. */
+		 * panel, so it fades in over the old picture, which keeps what of
+		 * the mix the still leaves: a true mix at the panel's strength, with
+		 * no dip to the empty panel half way. A new cover is smaller, so
+		 * the old picture fades out around it; a still arriving over its
+		 * cover moves from the one to the other as it fades in. */
 		float heroAlpha = reveal * (1.0f - frame->detailProgress) *
 			(1.0f - frame->launchProgress);
-		bool fills = selectedRecord != NULL &&
-			_GameflowStillTexture(selectedRecord) != NULL &&
-			_GameflowStillArrival(selectedRecord) >= 1.0f;
 		float previousAlpha = heroAlpha * titleTravel;
 
-		/* Under a new still the old picture is whole, until the still is
-		 * within half a step of alpha of whole itself. */
-		if(fills) {
-			previousAlpha = titleTravel * 255.0f >= 0.5f ? heroAlpha : 0.0f;
+		if(selectedRecord != NULL &&
+			_GameflowStillTexture(selectedRecord) != NULL) {
+			float arrival = _GameflowStillArrival(selectedRecord);
+			float mixed = heroAlpha *
+				_GameflowUnderneath(heroAlpha, 1.0f - titleTravel);
+
+			/* Nothing of it shows once the still over it is opaque. */
+			previousAlpha = _GameflowAlpha(255.0f * heroAlpha *
+				(1.0f - titleTravel) * arrival) == 255u ? 0.0f :
+				previousAlpha + (mixed - previousAlpha) * arrival;
 		}
 		_GameflowDrawSpotlightPanel(heroAlpha);
 		_GameflowDrawSpotlightArt(data, previousRecord, previousRecordIndex,
