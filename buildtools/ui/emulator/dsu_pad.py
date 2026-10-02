@@ -105,6 +105,12 @@ class Pad:
         with self._lock:
             self._connected = True
 
+    def unplug(self) -> None:
+        """Report the pad gone; Dolphin notices within a second."""
+        with self._lock:
+            self._connected = False
+            self._clients.clear()
+
     @property
     def streaming(self) -> bool:
         """True once Dolphin has asked for the plugged-in pad's data."""

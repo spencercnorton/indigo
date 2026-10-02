@@ -21,7 +21,11 @@ in each shape Indigo fits to a card, one in a Homebrew Channel folder whose
 boot.dol Apps must leave out. Nothing in it is anyone else's: no game, no
 box art, no screenshot, no text, no font.
 
-usage: card.py OUT.iso [--no-posters]
+Given the probe (probe/probe.c, built with the toolchain), the disc also holds
+it twice, as a real program Indigo can launch: a game image whose boot program
+is the probe (PROBE_GAME) and an app (PROBE_APP).
+
+usage: card.py OUT.iso [--no-posters] [--probe probe.dol]
 Needs genisoimage; the posters need gxtexconv (see buildtools/ui/poster_pack.py)
 and are left out, with a notice, when it is missing.
 """
@@ -150,6 +154,57 @@ def runaway_table(game_id: str, title: str) -> bytes:
 DAMAGED = (("GBHZ01", "Broken Header", header_only), ("GCTZ01", "Corrupt Table", runaway_table))
 
 
+# The probe, as a game: an ID with a real region letter, and a title that
+# sorts among the games the route does not browse.
+PROBE_GAME = ("GPRE01", "Indigo Probe")
+PROBE_APP = "Probe.dol"
+PROBE_DOL_OFFSET = 0x10000
+
+
+def probe_image(dol: bytes, game_id: str = PROBE_GAME[0], title: str = PROBE_GAME[1]) -> bytes:
+    """A disc image whose boot program is the probe, laid out as Swiss reads a
+    game: header, an apploader header at 0x2440 (Swiss patches the apploader
+    too, but boots the DOL itself), the DOL, and a file table with the banner."""
+    header = disc_header(game_id, title)
+    apploader = bytearray(0x40)
+    apploader[0:10] = b"2026/10/01"
+    struct.pack_into(">IIII", apploader, 0x10, 0x81200000, 0x20, 0, 0)
+    struct.pack_into(">I", apploader, 0x20, 0x4E800020)  # blr: never run
+    bnr = banner(len(GAMES), title)
+    bnr_offset = (PROBE_DOL_OFFSET + len(dol) + 0xFFF) & ~0xFFF
+    fst_offset = (bnr_offset + len(bnr) + 0xFFF) & ~0xFFF
+    fst = struct.pack(">BBHII", 1, 0, 0, 0, 2) + struct.pack(">BBHII", 0, 0, 0, bnr_offset, len(bnr))
+    fst += b"opening.bnr\0"
+    struct.pack_into(">IIII", header, 0x420, PROBE_DOL_OFFSET, fst_offset, len(fst), len(fst))
+    image = bytearray((fst_offset + len(fst) + 0x7FFF) & ~0x7FFF)
+    image[:0x440] = header
+    image[0x2440:0x2440 + len(apploader)] = apploader
+    image[PROBE_DOL_OFFSET:PROBE_DOL_OFFSET + len(dol)] = dol
+    image[bnr_offset:bnr_offset + len(bnr)] = bnr
+    image[fst_offset:fst_offset + len(fst)] = fst
+    return bytes(image)
+
+
+def game_file(game_id: str, title: str) -> str:
+    return f"{title} [{game_id}].iso"
+
+
+def game_path(game_id: str, title: str) -> str:
+    """A game's image below /games: in its folder (FOLDERS), if it has one."""
+    folder = FOLDERS.get(game_id)
+    return f"{folder}/{game_file(game_id, title)}" if folder else game_file(game_id, title)
+
+
+def library_order(probe: bool) -> list[str]:
+    """The titles in the order the Library lists them. Swiss flattens the
+    folders in /games into one list and sorts it by path, case aside
+    (files.c), so a game in a folder sorts by its folder's name."""
+    games = [(game_id, title) for game_id, title in GAMES] + [(i, t) for i, t, _ in DAMAGED]
+    if probe:
+        games.append(PROBE_GAME)
+    return [title for game_id, title in sorted(games, key=lambda g: game_path(*g).lower())]
+
+
 def outer_header() -> bytes:
     """The disc itself: a header Dolphin accepts, with an empty file table."""
     area = bytearray(FST_OFFSET + 12)
@@ -275,6 +330,11 @@ def app_picture(kind: str):
     return image
 
 
+def app_order(probe: bool) -> list[str]:
+    """The apps in the order Apps lists them: by name."""
+    return sorted(APPS + ((PROBE_APP[:-4],) if probe else ()), key=str.lower)
+
+
 def build_apps(apps: Path) -> int:
     """/apps, as Apps reads it; returns how many apps it should list."""
     apps.mkdir()
@@ -292,7 +352,7 @@ def build_apps(apps: Path) -> int:
     return len(APPS)
 
 
-def build(out: Path, posters: bool = True) -> dict[str, object]:
+def build(out: Path, posters: bool = True, probe: Path | None = None) -> dict[str, object]:
     if not shutil.which("genisoimage"):
         raise SystemExit("card.py: genisoimage is missing")
     with tempfile.TemporaryDirectory() as directory:
@@ -301,11 +361,14 @@ def build(out: Path, posters: bool = True) -> dict[str, object]:
         (root / "games").mkdir(parents=True)
         (root / "swiss/ui").mkdir(parents=True)
         for index, (game_id, title) in enumerate(GAMES):
-            where = root / "games" / FOLDERS.get(game_id, "")
-            where.mkdir(parents=True, exist_ok=True)
-            (where / f"{title} [{game_id}].iso").write_bytes(game_image(index, game_id, title))
+            path = root / "games" / game_path(game_id, title)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(game_image(index, game_id, title))
         for game_id, title, image in DAMAGED:
-            (root / "games" / f"{title} [{game_id}].iso").write_bytes(image(game_id, title))
+            (root / "games" / game_file(game_id, title)).write_bytes(image(game_id, title))
+        if probe:
+            dol = probe.read_bytes()
+            (root / "games" / game_file(*PROBE_GAME)).write_bytes(probe_image(dol))
         for name in STRAYS:
             if name.endswith("/"):
                 (root / "games" / name).mkdir()
@@ -317,6 +380,9 @@ def build(out: Path, posters: bool = True) -> dict[str, object]:
             "# Descriptions of the demonstration disc's fictitious games\n" +
             "".join(f"{game_id} {text}\n" for game_id, text in sorted(DESCRIPTIONS.items())))
         apps = build_apps(root / "apps")
+        if probe:
+            (root / "apps" / PROBE_APP).write_bytes(probe.read_bytes())
+            apps += 1
         for path in sorted(root.rglob("*")) + [root]:
             os.utime(path, (1000000000, 1000000000))
         subprocess.run(["genisoimage", "-quiet", "-R", "-J", "-V", "INDIGO_DEMO", "-o", str(out), str(root)],
@@ -330,15 +396,16 @@ def build(out: Path, posters: bool = True) -> dict[str, object]:
     return {"games": len(GAMES), "damaged": len(DAMAGED),
             "posters": len(GAMES) - len(NO_POSTER) if with_posters else 0,
             "stills": len(GAMES) - len(NO_STILL) if with_stills else 0, "apps": apps,
-            "bytes": len(image)}
+            "probe": bool(probe), "bytes": len(image)}
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("out", type=Path)
     parser.add_argument("--no-posters", action="store_true")
+    parser.add_argument("--probe", type=Path, help="the probe DOL, to add as a game and an app")
     args = parser.parse_args(argv)
-    print(json.dumps(build(args.out, posters=not args.no_posters)))
+    print(json.dumps(build(args.out, posters=not args.no_posters, probe=args.probe)))
     return 0
 
 

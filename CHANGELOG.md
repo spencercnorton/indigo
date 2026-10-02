@@ -15,6 +15,21 @@ tag on `beta`. The newest changes are at the top until their release is named.
   it. Off (the default), the Library is one list of every game, as before.
   In `global.ini` it is `Library Folders`.
 
+### For developers
+
+- The emulator test launches a game and an app all the way. A small program,
+  the probe ([`buildtools/ui/emulator/probe/`](buildtools/ui/emulator/probe/probe.c)),
+  sits on the demonstration disc as a game and as an app. Launched, it
+  reports what the hand-off left it, drawn as blocks the test reads back
+  from the screen: the menu music stopped, nothing still writing to memory,
+  a game's own disc ID and its 24 MB, an app's own path. Launches used to
+  stop at the launch screen in Dolphin: its stand-ins for the DSP don't know
+  libogc2's audio library, so the DSP now runs its own microcode, and Swiss's
+  shutdown stalls there while a controller is connected, so the test pulls
+  the controller as a launch begins.
+- CI runs the emulator test four times: every menu, and a game's launch from
+  the Library, each in PAL and in NTSC. Dolphin's own default had been PAL.
+
 ## v2.2.0 — Backdrop and Wave Color, a Clock setting and a cleaner cube
 
 The backdrop and the waves can each have a color of their own, the clock can
