@@ -118,6 +118,8 @@ run_contracts() {
 	python3 ./test_cheats_gx_stream.py
 	echo "== Source picker: GX stream, sliding row, both screen shapes =="
 	python3 ./test_source_picker_gx_stream.py
+	echo "== Home: its name, hint and rows fade in, never pop =="
+	python3 ./test_home_gx_stream.py
 	echo "== native stroke GX stream and perspective coverage =="
 	python3 ./test_stroke_gx_stream.py
 	echo "== wave and grid native coverage =="

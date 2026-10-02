@@ -82,6 +82,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - The waves behind the menus ease between Home's quieter strength and the
   other screens' as the cube moves, instead of brightening or dimming in one
   frame as you leave or come back to Home.
+- Coming back to Home, the face's name and the hint under the cube fade in
+  as the cube grows back to its place, instead of appearing at once over a
+  cube still on its way.
 
 ### Fixes
 

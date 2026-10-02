@@ -4467,7 +4467,11 @@ static void _DrawHome(uiDrawObj_t *evt)
 {
 	drawHomeEvent_t *data = (drawHomeEvent_t*)evt->data;
 	const uiSceneFrame_t *scene = UIScene_Frame();
-	float reveal = scene->chromeProgress;
+	/* Back from another screen the name and hint fade in as the cube grows
+	 * to its Home size (every other scene's is 0.70 or less), as the Source
+	 * row rises with it. Off snaps the cube, so they show at once. */
+	float reveal = scene->chromeProgress *
+		UIMotion_Smoothstep((scene->cubeScale - 0.70f) / 0.18f);
 
 	if(!data->visible || !data->layoutValid || reveal <= 0.0f ||
 		scene->scene != UI_SCENE_HOME || scene->homeFace != data->state.face ||
