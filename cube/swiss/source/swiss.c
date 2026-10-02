@@ -3876,6 +3876,13 @@ fail:
 	gameID_unset();
 	rt4k_load_profile(swissSettings.rt4kProfile);
 	config_unload_current();
+	/* The launch switched to the game's video mode before anything could
+	 * fail: go back to the menu's, or a game from another region leaves the
+	 * menu at its rate (PAL's 50 Hz on an NTSC TV) and a component cable's
+	 * 480p at the game's 480i. */
+	GXRModeObj *menuMode = getVideoModeFromSwissSetting(swissSettings.uiVMode);
+	if(menuMode != getVideoMode())
+		DrawVideoMode(menuMode);
 	free(config);
 exit:
 	if(context == NULL) {

@@ -134,15 +134,17 @@ jobs:
         include:
           # smoke: every menu, then the probe launched as an app. game: the
           # Library to a game's launch, the probe launched as a game. The
-          # region decides the console's video mode (PAL 576i, NTSC 480i).
-          # dvd boots with the demonstration disc in the drive; sd2sp2 from
-          # an SD card made from this build's zip, as someone sets one up.
-          - { name: Emulator, route: smoke, region: pal, storage: dvd, artifact: emulator }
-          - { name: "Emulator (game, PAL)", route: game, region: pal, storage: dvd, artifact: emulator-game-pal }
-          - { name: "Emulator (smoke, NTSC, SD2SP2)", route: smoke, region: ntsc, storage: sd2sp2,
-              artifact: emulator-smoke-ntsc-sd2sp2 }
-          - { name: "Emulator (game, NTSC, SD2SP2)", route: game, region: ntsc, storage: sd2sp2,
-              artifact: emulator-game-ntsc-sd2sp2 }
+          # console's region and cable decide the video mode: PAL composite
+          # 576i, NTSC composite 480i, a component cable 480p. dvd boots with
+          # the demonstration disc in the drive; sd2sp2 from an SD card made
+          # from this build's zip, as someone sets one up.
+          - { name: Emulator, route: smoke, region: pal, cable: composite, storage: dvd, artifact: emulator }
+          - { name: "Emulator (game, PAL, component)", route: game, region: pal, cable: component,
+              storage: dvd, artifact: emulator-game-pal-component }
+          - { name: "Emulator (smoke, NTSC, component, SD2SP2)", route: smoke, region: ntsc,
+              cable: component, storage: sd2sp2, artifact: emulator-smoke-ntsc-component-sd2sp2 }
+          - { name: "Emulator (game, NTSC, SD2SP2)", route: game, region: ntsc, cable: composite,
+              storage: sd2sp2, artifact: emulator-game-ntsc-sd2sp2 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -158,9 +160,10 @@ jobs:
         env:
           ROUTE: ${{ matrix.route }}
           REGION: ${{ matrix.region }}
+          CABLE: ${{ matrix.cable }}
           STORAGE: ${{ matrix.storage }}
         run: |
-          set -- --probe build/probe.dol --route "$ROUTE" --region "$REGION"
+          set -- --probe build/probe.dol --route "$ROUTE" --region "$REGION" --cable "$CABLE"
           if [ "$STORAGE" != dvd ]; then
             set -- "$@" --storage "$STORAGE" --card-zip card/Indigo-*.zip
           fi

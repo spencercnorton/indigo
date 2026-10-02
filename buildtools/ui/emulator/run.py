@@ -37,7 +37,8 @@ zip's own ipl.dol. A new card has no settings yet, so Indigo starts in
 Settings and the route saves them first; afterwards it reads back from the
 card what Indigo wrote there.
 
-usage: run.py DOL --out DIR [--route smoke|tour|game] [--probe DOL] [--region pal|ntsc]
+usage: run.py DOL --out DIR [--route smoke|tour|game] [--probe DOL] [--region pal|pal60|ntsc]
+              [--cable composite|component]
               [--storage dvd|sd2sp2|sdgecko-b --card-zip ZIP] [--disc ISO]
 Writes DIR/report.json, DIR/summary.md, DIR/sheet.png (every checkpoint),
 the checkpoint pictures and Dolphin's output. Exit 0: passed. 1: Indigo
@@ -114,9 +115,18 @@ RenderToMain = True
 """
 
 
-# Dolphin's region for a program without one (a DOL): what the console's video
-# hardware starts in. Its own default depends on the machine.
-REGIONS = {"ntsc": 1, "pal": 2}
+# A console's region: Dolphin's region for a program without one (a DOL), which
+# the video hardware starts in, and the video format and 60 Hz flag in its
+# SRAM, which Swiss reads its video mode from. Dolphin's own SRAM is an NTSC
+# console's whatever the region, so a PAL run would turn NTSC once Settings
+# saved; each run gets the SRAM of the console it is.
+REGIONS = {"ntsc": (1, 0, False), "pal": (2, 1, False), "pal60": (2, 1, True)}
+# The region of the game whose launch the route lets fail: the console's
+# other one (card.REGION_CODES), so the menu must return from its video mode.
+FOREIGN = {"ntsc": 2, "pal": 1, "pal60": 1}
+# The video cable Dolphin reports: with a component cable (its "progressive
+# scan"), Swiss's Auto video mode is 480p; without one, interlaced.
+CABLES = {"composite": False, "component": True}
 # Where the SD card goes: SD2SP2 in Serial Port 2, or an SD Gecko in Memory
 # Card Slot B. 15 is the SD card adapter the emulator runner's Dolphin adds
 # (buildtools/ci/runner/dolphin/).
@@ -213,6 +223,29 @@ def probe_report(rgb: np.ndarray) -> dict[str, object] | None:
     return report
 
 
+def sram(video: int, sixty_hz: bool) -> bytes:
+    """A GameCube's SRAM (as Dolphin keeps it in GC/SRAM.raw): Dolphin's own
+    defaults, with the video format and PAL's 60 Hz flag set and the
+    checksums over them made again."""
+    data = bytearray(0x44)
+    data[0x17] = 0x2C | video          # flags: stereo, set up; bits 0-1 the format
+    data[0x15] = 0x40 if sixty_hz else 0  # ntd: bit 6, PAL at 60 Hz
+    data[0x18:0x30] = b"DOLPHINSLOTADOLPHINSLOTB"
+    data[0x3E:0x40] = b"\x6e\x6d"
+    words = [int.from_bytes(data[i:i + 2], "big") for i in range(0x10, 0x18, 2)]
+    data[0x04:0x06] = (sum(words) & 0xFFFF).to_bytes(2, "big")
+    data[0x06:0x08] = (sum(~w & 0xFFFF for w in words) & 0xFFFF).to_bytes(2, "big")
+    return bytes(data)
+
+
+def video_mode(report: dict[str, object]) -> str:
+    """The video mode the probe found the screen in, in words."""
+    dcr, clock = int(report["vi_dcr"]), int(report["vi_clk_dtv"])
+    scan = "progressive" if clock >> 16 & 1 else "double-strike" if dcr >> 2 & 1 else "interlaced"
+    timing = ("NTSC", "PAL", "MPAL", "debug")[dcr >> 8 & 3]
+    return f"{scan}, {timing} timing, {'a' if clock & 1 else 'no'} component cable"
+
+
 def printable(data: bytes) -> str:
     """Bytes as text for a report: anything outside printable ASCII as a dot."""
     return "".join(chr(b) if 32 <= b < 127 else "." for b in data)
@@ -220,7 +253,7 @@ def printable(data: bytes) -> str:
 
 class Emulator:
     def __init__(self, dol: Path, disc: Path | None, work: Path, out: Path, region: str = "pal",
-                 storage: str = "dvd", card: Path | None = None) -> None:
+                 storage: str = "dvd", card: Path | None = None, cable: str = "composite") -> None:
         self.out = out
         self.user = work / "dolphin"
         (self.user / "Config").mkdir(parents=True)
@@ -229,6 +262,8 @@ class Emulator:
             ini = ini.replace("[Core]\n", f"[Core]\n{STORAGES[storage]} = {SD_CARD_DEVICE}\n"
                                           f"SP2SDCardImage = {card}\n", 1)
         (self.user / "Config/Dolphin.ini").write_text(ini)
+        (self.user / "GC").mkdir()
+        (self.user / "GC/SRAM.raw").write_bytes(sram(*REGIONS[region][1:]))
         (self.user / "Config/GFX.ini").write_text("[Settings]\nInternalResolution = 1\nShowFPS = False\n")
         (self.user / "Config/GCPadNew.ini").write_text(dsu_pad.GCPAD_INI)
         self.pad = dsu_pad.Pad(0)  # any free port; Dolphin is told which
@@ -252,7 +287,8 @@ class Emulator:
         self.dolphin = subprocess.Popen(
             ["dolphin-emu-nogui", "-u", str(self.user), "-p", "x11", "-v", "OGL",
              *(["-C", f"Dolphin.Core.DefaultISO={disc}"] if disc else []),
-             "-C", f"Dolphin.Core.FallbackRegion={REGIONS[region]}", "-e", str(dol)],
+             "-C", f"Dolphin.Core.FallbackRegion={REGIONS[region][0]}",
+             "-C", f"SYSCONF.IPL.PGS={CABLES[cable]}", "-e", str(dol)],
             stdout=open(self.log, "w"), stderr=subprocess.STDOUT, env=env)
         self.started = time.monotonic()
 
@@ -282,8 +318,11 @@ class Emulator:
 class Route:
     """Steps through the menus and records every checkpoint."""
 
-    def __init__(self, emulator: Emulator, out: Path, probe: bool = False, fresh_card: bool = False) -> None:
+    def __init__(self, emulator: Emulator, out: Path, probe: bool = False, fresh_card: bool = False,
+                 cable: str = "composite", region: str = "pal") -> None:
         self.emulator = emulator
+        self.cable = cable
+        self.region = region
         self.out = out
         self.probe = probe
         self.fresh_card = fresh_card
@@ -471,11 +510,13 @@ class Route:
             time.sleep(0.3)
             rgb = self.emulator.frame()
             self.last_rgb = rgb
-            # The launch screen dims all but the app's card. With the probe the
-            # launch goes on, so the hand-off's black frame counts as well (the
-            # probe then proves the launch); without it black means a crash.
+            # The launch screen dims all but the app's card: the probe's bright
+            # name card leaves about 70% of the light, a dark card under 60%.
+            # With the probe the launch goes on, so the hand-off's black frame
+            # counts too (the probe then proves the launch); without it black
+            # means a crash.
             mean = float(rgb.mean())
-            launched = mean < 0.6 * apps and (self.probe or mean > 0.02)
+            launched = mean < (0.85 if self.probe else 0.6) * apps and (self.probe or mean > 0.02)
         self.shot("app-launch", self.last_rgb)
         self.check("A starts the app: the launch screen dims the Apps screen", launched,
                    apps=round(apps, 1), now=round(float(self.last_rgb.mean()), 1))
@@ -483,6 +524,14 @@ class Route:
             report = self.handoff("app")
             self.check("the app starts with its own path", str(report["path"]).lower().endswith("probe.dol"),
                        path=report["path"], argc=report["argc"])
+            # Settings' Video Mode is Auto: 480p with a component cable, else
+            # interlaced, at 50 Hz (PAL timing) only on a PAL console set to 50.
+            progressive = bool(int(report["vi_clk_dtv"]) >> 16 & 1)
+            pal_timing = int(report["vi_dcr"]) >> 8 & 3 == 1
+            self.check("the menu ran in the video mode its console and cable ask for",
+                       progressive == CABLES[self.cable] and
+                       pal_timing == (self.region == "pal" and not CABLES[self.cable]),
+                       region=self.region, cable=self.cable, video=video_mode(report))
 
     def handoff(self, tag: str) -> dict[str, object]:
         """After a launch, wait for the probe's screen and check what the
@@ -646,7 +695,11 @@ class Route:
         """A and A launch the game. Dolphin has no IPL ROM and the demo disc no
         swiss/patches/ipl.bin, so the launch cannot read BS2: it must say so and,
         once A dismisses the message, come back to the same game in the Library.
-        It used to free a pointer it had never set and crash."""
+        It used to free a pointer it had never set and crash. The game is from
+        the console's other region, so the launch switches to that region's
+        video mode first; the menu must switch back, which the probe checks at
+        the end of the route (a launch that failed used to leave the menu at a
+        PAL game's 50 Hz on an NTSC console)."""
         self.press("A")
         self.check("A opens the game's details again", self.covered(title, TITLE_BOX))
         self.press("A")
@@ -708,6 +761,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--probe", type=Path, help="the probe DOL (probe/), launched as an app and a game")
     parser.add_argument("--region", choices=tuple(REGIONS), default="pal")
     parser.add_argument("--storage", choices=tuple(STORAGES), default="dvd")
+    parser.add_argument("--cable", choices=tuple(CABLES), default="composite")
     parser.add_argument("--card-zip", type=Path, help="the release zip, unpacked onto the SD card")
     parser.add_argument("--disc", type=Path, help="a disc to use instead of building card.py's")
     args = parser.parse_args(argv)
@@ -717,7 +771,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("an SD card (--storage) is made from the release zip (--card-zip), and only then")
     args.out.mkdir(parents=True, exist_ok=True)
     report: dict[str, object] = {"schema": "indigo.emulator-test.v1", "route": args.route,
-                                 "region": args.region, "storage": args.storage, "dol": str(args.dol),
+                                 "region": args.region, "storage": args.storage, "cable": args.cable,
+                                 "dol": str(args.dol),
                                  "dolphin": _version()}
     status, emulator, route = 0, None, None
     with tempfile.TemporaryDirectory() as directory:
@@ -726,17 +781,19 @@ def main(argv: list[str] | None = None) -> int:
             dol, disc, sd = args.dol.resolve(), args.disc, None
             if args.card_zip:
                 sd = work / "card.img"
-                report["card"] = card.build_card(sd, args.card_zip, probe=args.probe)
+                report["card"] = card.build_card(sd, args.card_zip, probe=args.probe,
+                                                 foreign=FOREIGN[args.region])
                 dol = work / "ipl.dol"  # what a loader starts: the zip's own
                 with zipfile.ZipFile(args.card_zip) as package:
                     dol.write_bytes(package.read("ipl.dol"))
                 report["dol"] = f"{args.card_zip.name}:ipl.dol"
             elif disc is None:
                 disc = work / "demo.iso"
-                report["disc"] = card.build(disc, probe=args.probe)
+                report["disc"] = card.build(disc, probe=args.probe, foreign=FOREIGN[args.region])
             emulator = Emulator(dol, disc.resolve() if disc else None, work, args.out, args.region,
-                                args.storage, sd)
-            route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd))
+                                args.storage, sd, args.cable)
+            route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd), cable=args.cable,
+                          region=args.region)
             getattr(route, args.route)()
             if sd:
                 route.card_checks(sd, args.route)
@@ -786,7 +843,7 @@ def summary(report: dict[str, object]) -> str:
     probe = report.get("probe")
     if probe:
         lines.append(f"\n**The probe reported:** disc `{probe['disc_id']}`, memory `{probe['memsize']:08X}`, "
-                     f"video mode {probe['video']}, audio DMA `{probe['ai_dma']:04X}`, "
+                     f"the screen {video_mode(probe)}, audio DMA `{probe['ai_dma']:04X}`, "
                      f"{probe['stray_writes']} stray writes, started as `{probe['path'] or '(no path)'}`.")
     lines.append("\nEvery checkpoint is in the `sheet.png` of this run's `emulator` artifact.")
     return "\n".join(lines) + "\n"
