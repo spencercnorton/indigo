@@ -84,7 +84,11 @@ dead control does. Only where that text sits is fixed (`LABEL_BOX`,
 updates them. The test waits for what it expects to see, not for a fixed
 time, and counts the console's own seconds, which the runner's Dolphin
 reports, for every wait and press, so a busy machine makes it slower, not
-flaky. A press the menu was too busy to see, loading something, changes
+flaky. A thread whose stack overflows crashes, as on a console: libogc
+guards the lowest doubleword of the running thread's stack with the CPU's data
+address breakpoint, which the runner's Dolphin emulates (patch 0007), so the
+overrun raises a DSI and libogc's exception screen, and Dolphin logs the hit.
+A press the menu was too busy to see, loading something, changes
 nothing on the screen: for a turn of the cube or a step along a row, the route
 presses again, as a person would, and the report lists each such press
 (`pressed_again`), so the misses stay in sight. A press that changed the

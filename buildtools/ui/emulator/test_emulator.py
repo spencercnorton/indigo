@@ -406,6 +406,9 @@ class Screen(unittest.TestCase):
             self.assertEqual(run.fatal_lines(log), [])
             log.write_text("Invalid read from 0x05117080, PC = 0x8016cd18; the game probably would have crashed\n")
             self.assertEqual(len(run.fatal_lines(log)), 1)
+            log.write_text("MMU.cpp:599 N[PowerPC]: DABR: write to 0x8082f278 at PC 0x8018e9c0, "
+                           "the doubleword the DABR guards\n")
+            self.assertEqual(len(run.fatal_lines(log)), 1, "a stack reached its guard")
 
 
 if __name__ == "__main__":

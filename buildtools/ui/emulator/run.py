@@ -108,11 +108,12 @@ FATAL = re.compile("|".join((
     r"Invalid (?:read|write) (?:from|to)", r"Unknown (?:opcode|instruction)",
     r"FIFO (?:is )?(?:overflowed|desync)", r"failed to compile shader", r"device lost",
     r"poster stack .*\(overrun\)",
+    r"DABR: (?:write to|read of)",  # a thread's stack reached its guard (patch 0007)
 )), re.I)
 # card_art's poster thread reports how much of its stack it used each time it
-# stops (Indigo's debug output, a development console's): Dolphin doesn't
-# stop at an overrun as a console does, so a run that used more than this
-# share of it fails.
+# stops (Indigo's debug output, a development console's). An overrun stops at
+# the stack's guard (DABR, above); this catches one that came close: a run
+# that used more than this share of it fails.
 POSTER_STACK_SHARE = 0.75
 POSTER_STACK = re.compile(r"card_art: poster stack (\d+) of (\d+) bytes used")
 # The DSP runs its real microcode (LLE): Dolphin's high-level stand-ins know
@@ -338,7 +339,7 @@ class Emulator:
         (self.user / "Config/Dolphin.ini").write_text(ini)
         # Swiss's own debug output (its OSReport lines) goes to dolphin.log.
         (self.user / "Config/Logger.ini").write_text(
-            "[Logs]\nOSREPORT = True\n[Options]\nVerbosity = 1\nWriteToConsole = True\nWriteToFile = False\n")
+            "[Logs]\nOSREPORT = True\nPOWERPC = True\n[Options]\nVerbosity = 1\nWriteToConsole = True\nWriteToFile = False\n")
         (self.user / "GC").mkdir()
         (self.user / "GC/SRAM.raw").write_bytes(sram(*REGIONS[region][1:]))
         (self.user / "Config/GFX.ini").write_text("[Settings]\nInternalResolution = 1\nShowFPS = False\n")
@@ -361,6 +362,7 @@ class Emulator:
         self.display = f":{number}"
         env = dict(os.environ, DISPLAY=self.display, LIBGL_ALWAYS_SOFTWARE="1")
         env["DOLPHIN_TICKS"] = "1"  # the console's clock and PC in dolphin.log (patch 0005)
+        env["DOLPHIN_DABR"] = "1"  # a thread's stack guarded, as on a console (patch 0007)
         env.pop("DOLPHIN_SD_FAULTS", None)
         env.pop("DOLPHIN_GCLOADER", None)
         if storage == "gcloader":

@@ -41,6 +41,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- A thread whose stack overflows now crashes in the emulator test as it does on
+  a console: the runner's Dolphin emulates the data address breakpoint libogc
+  guards each thread's stack with, where it used to let the overrun corrupt
+  memory unseen. A stack overflow that crashed a console, but passed CI, now
+  fails there too.
 - The emulator test presses a cube turn or a step along a row again when the
   menu was too busy to see the press and the screen did not change, as a
   person would; the report lists each such press.
