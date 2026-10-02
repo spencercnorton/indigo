@@ -68,6 +68,8 @@ SYSTEM_INFO = read(GUI / "ui_system_info.c")
 SWISS = read(ROOT / "cube/swiss/source/swiss.c")
 
 apply_ring = extract_function(HOME_C, "static uiHomeEffect_t applyRing(")
+apply_classic = extract_function(HOME_C, "static uiHomeEffect_t applyClassic(")
+home_apply = extract_function(HOME_C, "uiHomeEffect_t UIHome_Apply(")
 apply_source = extract_function(HOME_C, "static uiHomeEffect_t applySource(")
 apply_system = extract_function(HOME_C, "static uiHomeEffect_t applySystem(")
 apply_confirm = extract_function(HOME_C, "static uiHomeEffect_t applyRestartConfirm(")
@@ -183,7 +185,8 @@ ordered(scene_apply_home, "request.orientation", "state.home = request;",
         "state.homeTurnDirection = request.turnDirection;")
 scene_request_home = extract_function(SCENE_C, "void UIScene_RequestHome(")
 scene_load_home = extract_function(SCENE_C, "static uiSceneHomeRequest_t loadHomeRequest(")
-for field in ("requestedHomeOrientation", "requestedHomeTurnAxis", "requestedHomeTurnDirection"):
+for field in ("requestedHomeOrientation", "requestedHomeTurnAxis", "requestedHomeTurnDirection",
+              "requestedHomeStyle"):
     assert field in scene_request_home and field in scene_load_home
 assert "__ATOMIC_ACQ_REL" in scene_request_home
 assert "__atomic_thread_fence(__ATOMIC_ACQUIRE)" in scene_load_home
@@ -202,8 +205,22 @@ for field in ("homeFace", "homeTurnDirection", "homeTurnAxis", "homeFocusProgres
     assert f"state.frame.{field} =" in scene_update, f"video thread does not publish {field}"
 
 
-# --- Root B is inert; all Home actions flow through one reducer effect. ---
-assert "UI_HOME_INPUT_BACK" not in apply_ring, "root reducer B is no longer inert"
+# --- Root B is inert on the Infinite ring; all Home actions flow through one
+# reducer effect. Setup > Console > Cube > Classic lays the faces out as the
+# GameCube's menu does, Library the way between them, and there B turns back
+# to Library from a side face, as the GameCube's does (2026-10-02, the
+# maintainer's choice). That B lives in Classic's own reducer, never in the
+# ring's, and the ring surface picks one of the two by the state's style. ---
+assert "UI_HOME_INPUT_BACK" not in apply_ring, "Infinite's root B is no longer inert"
+assert "UI_HOME_INPUT_BACK" in apply_classic, "Classic's B no longer turns back to Library"
+assert "return applyRing(state, input, capabilities);" in apply_classic, (
+    "Classic no longer leaves A and Start to the ring"
+)
+ordered(home_apply, "case UI_HOME_SURFACE_RING:",
+        "state->style == UI_HOME_CUBE_CLASSIC ?",
+        "applyClassic(state, input, capabilities) :",
+        "applyRing(state, input, capabilities);",
+        "case UI_HOME_SURFACE_SOURCE:")
 ordered(
     home_input,
     "if(btns & BUTTON_B)",

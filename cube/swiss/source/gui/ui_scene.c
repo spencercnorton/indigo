@@ -75,6 +75,7 @@ static uint32_t requestedHomeRevision;
 static int32_t requestedHomeOrientation[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
 static uint32_t requestedHomeTurnAxis;
 static int32_t requestedHomeTurnDirection;
+static uint32_t requestedHomeStyle = UI_HOME_CUBE_INFINITE;
 static uint32_t sceneReady;
 static uint32_t requestedLibraryLayout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
 static uiSceneState_t state;
@@ -156,6 +157,9 @@ static bool homeRequestValid(const uiHomeState_t *home)
 			face == UI_HOME_FACE_SYSTEM);
 
 	if(faceCount != UI_HOME_FACE_APPS && faceCount != UI_HOME_FACE_COUNT)
+		return false;
+	if(home->style != UI_HOME_CUBE_INFINITE &&
+		home->style != UI_HOME_CUBE_CLASSIC)
 		return false;
 	return isHomeFace((int)face) && (int32_t)face < faceCount &&
 		faceForTurn(turnOrdinal, faceCount) == face &&
@@ -241,6 +245,8 @@ static uiSceneHomeRequest_t loadHomeRequest(void)
 			&requestedHomeTurnAxis, __ATOMIC_RELAXED);
 		request.turnDirection = __atomic_load_n(&requestedHomeTurnDirection,
 			__ATOMIC_RELAXED);
+		request.style = (uiHomeCubeStyle_t)__atomic_load_n(
+			&requestedHomeStyle, __ATOMIC_RELAXED);
 		for(row = 0; row < 3; ++row) {
 			for(col = 0; col < 3; ++col) {
 				request.orientation.m[row][col] = (int8_t)__atomic_load_n(
@@ -449,7 +455,10 @@ static void retargetPose(uiSceneId_t scene, uiMotionMode_t motionMode)
 	UIMotion_SpringRetarget(&state.cubeYaw, cubeYaw, motionMode);
 	UIMotion_SpringRetarget(&state.orbitStrength, pose->orbitStrength, motionMode);
 	retargetOrientation(scene, motionMode);
-	UICubeMotif_Request(&state.motifs, isHomeYawScene(scene) ? &state.home : NULL,
+	/* Classic's glyphs keep their sides in every scene, so leaving Home
+	 * moves none of them. */
+	UICubeMotif_Request(&state.motifs, isHomeYawScene(scene) ||
+		state.home.style == UI_HOME_CUBE_CLASSIC ? &state.home : NULL,
 		motionMode);
 	state.appliedScene = scene;
 }
@@ -465,6 +474,7 @@ static void applyHomeRequest(uiMotionMode_t motionMode)
 		request.revision == state.appliedHomeRevision &&
 		request.turnAxis == state.homeTurnAxis &&
 		request.turnDirection == state.homeTurnDirection &&
+		request.style == state.home.style &&
 		memcmp(&request.orientation, &state.homeTarget, sizeof(state.homeTarget)) == 0)
 		return;
 	state.home = request;
@@ -542,6 +552,7 @@ void UIScene_Reset(void)
 			UI_SCENE_HOME_TURN_RESPONSE);
 	__atomic_store_n(&requestedHomeTurnAxis, UI_HOME_TURN_NONE, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeTurnDirection, 0, __ATOMIC_RELAXED);
+	__atomic_store_n(&requestedHomeStyle, UI_HOME_CUBE_INFINITE, __ATOMIC_RELAXED);
 	for(int row = 0; row < 3; ++row)
 		for(int col = 0; col < 3; ++col)
 			__atomic_store_n(&requestedHomeOrientation[row][col], row == col ? 1 : 0,
@@ -620,6 +631,7 @@ void UIScene_RequestHome(const uiHomeState_t *home)
 	__atomic_store_n(&requestedHomeRevision, home->revision, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeTurnAxis, (uint32_t)home->turnAxis, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeTurnDirection, home->turnDirection, __ATOMIC_RELAXED);
+	__atomic_store_n(&requestedHomeStyle, (uint32_t)home->style, __ATOMIC_RELAXED);
 	for(int row = 0; row < 3; ++row)
 		for(int col = 0; col < 3; ++col)
 			__atomic_store_n(&requestedHomeOrientation[row][col],
