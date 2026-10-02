@@ -127,7 +127,7 @@ jobs:
     name: ${{ matrix.name }}
     needs: build
     runs-on: [self-hosted, indigo-emulator]
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -141,8 +141,11 @@ jobs:
           - { name: Emulator, route: smoke, region: pal, cable: composite, storage: dvd, artifact: emulator }
           - { name: "Emulator (game, PAL, component)", route: game, region: pal, cable: component,
               storage: dvd, artifact: emulator-game-pal-component }
+          # The SD2SP2 smoke job's card starts with settings/non-default.ini;
+          # the game job's card is new, so it starts in Settings.
           - { name: "Emulator (smoke, NTSC, component, SD2SP2)", route: smoke, region: ntsc,
-              cable: component, storage: sd2sp2, artifact: emulator-smoke-ntsc-component-sd2sp2 }
+              cable: component, storage: sd2sp2, settings: non-default,
+              artifact: emulator-smoke-ntsc-component-sd2sp2 }
           - { name: "Emulator (game, NTSC, SD2SP2)", route: game, region: ntsc, cable: composite,
               storage: sd2sp2, artifact: emulator-game-ntsc-sd2sp2 }
     steps:
@@ -162,10 +165,14 @@ jobs:
           REGION: ${{ matrix.region }}
           CABLE: ${{ matrix.cable }}
           STORAGE: ${{ matrix.storage }}
+          SETTINGS: ${{ matrix.settings }}
         run: |
           set -- --probe build/probe.dol --route "$ROUTE" --region "$REGION" --cable "$CABLE"
           if [ "$STORAGE" != dvd ]; then
             set -- "$@" --storage "$STORAGE" --card-zip card/Indigo-*.zip
+          fi
+          if [ -n "$SETTINGS" ]; then
+            set -- "$@" --settings "$SETTINGS"
           fi
           python3 buildtools/ui/emulator/run.py build/swiss.dol "$@" --out emulator
       - name: Summary

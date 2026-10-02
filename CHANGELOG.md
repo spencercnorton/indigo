@@ -30,11 +30,21 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- The emulator test counts the console's own seconds, which the runner's
+  Dolphin now reports, for its waits and presses, so a busy machine slows a
+  run instead of failing it; a failed step says where the console's CPU was.
+- The emulated SD card can fail as a test asks (`run.py --sd-faults`), and
+  `--route save` checks that settings saved to a failing card are still there
+  on the next boot.
 - The emulator test runs each job in a video mode of its own: PAL composite
   576i, NTSC composite 480i and a component cable's 480p, in both regions. A
   console's SRAM now matches its region, and the probe reports the mode the
   menu was in, which the smoke route checks after a failed launch of a game
   from the other region. Until now every job ran interlaced: 480p never ran.
+- An SD card can start with settings (`run.py --settings <name>`, from
+  `buildtools/ui/emulator/settings/`), which must all survive Indigo's own
+  saves. CI's SD2SP2 smoke job starts with every setting of Indigo's own away
+  from its default, but Menu Widescreen.
 - The emulator test launches a game and an app all the way. A small program,
   the probe ([`buildtools/ui/emulator/probe/`](buildtools/ui/emulator/probe/probe.c)),
   sits on the demonstration disc as a game and as an app. Launched, it

@@ -80,8 +80,10 @@ redesign does not break the test and a crash, a hang, a black screen or a
 dead control does. Only where that text sits is fixed (`LABEL_BOX`,
 `TITLE_BOX` and `DETAIL_TITLE_BOX` in `run.py`): a change that moves it
 updates them. The test waits for what it expects to see, not for a fixed
-time, so a busy machine makes it slower, not flaky. A failed step says why,
-and names the crash when there is one.
+time, and counts the console's own seconds, which the runner's Dolphin
+reports, for every wait and press, so a busy machine makes it slower, not
+flaky. A failed step says why, names the crash when there is one, and where
+the console's CPU was.
 
 ## Running it
 
@@ -123,12 +125,25 @@ on a console. `--storage sdgecko-b` puts the card in Memory Card Slot B
 instead.
 
 A new card has no settings, so the route starts in Settings: it must open on
-its own, and Save & Exit must write the file and go Home. At the end the
+its own, and Save & Exit must write the file and go Home. With `--settings
+<name>` the card starts with [`settings/<name>.ini`](settings/) as its
+`global.ini` instead and Indigo goes straight Home; at the end every line of
+it must still be on the card, through Indigo's own saves. CI's SD2SP2 smoke
+job starts with [`non-default.ini`](settings/non-default.ini): colours, icons,
+the clock on the left, no menu music or sounds, reduced motion, In-Game Reset. At the end the
 test reads the card back: the settings Indigo saved (with Apps Face as the
 route left it, and Library Folders saved on with the card's own
 `FlattenDir=*/games` kept beside it), and after the game route the launched
 game first in the recent list and in Indigo's play history. The card holds
 the same folders as the disc, so the Library Folders step runs on FAT too.
+
+A card can fail: `--sd-faults` sets which sectors fail to read or write
+(`read-error=FIRST-LAST`, `write-error=FIRST-LAST`) or that every write fails
+once some have succeeded (`write-error-after=N`), comma separated. The save
+route (`--route save`, with `--settings`) changes a setting on such a card,
+then powers off and boots the same card again, with no faults: Indigo must
+still start at Home with its settings. The second boot's output is in
+`next-boot/`.
 
 ## The probe
 
