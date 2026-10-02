@@ -18,7 +18,9 @@
 typedef enum {
 	UI_GAMEFLOW_LIBRARY_NONE = 0,
 	UI_GAMEFLOW_LIBRARY_IMAGE_FILES,
-	UI_GAMEFLOW_LIBRARY_GAME_FOLDERS
+	UI_GAMEFLOW_LIBRARY_GAME_FOLDERS,
+	/* Library Folders: folders of games beside the games themselves. */
+	UI_GAMEFLOW_LIBRARY_FOLDERS
 } uiGameflowLibraryMode_t;
 
 typedef enum {
@@ -31,14 +33,26 @@ typedef enum {
 typedef enum {
 	UI_GAMEFLOW_LIBRARY_LOCATION_NONE = 0,
 	UI_GAMEFLOW_LIBRARY_LOCATION_ROOT,
-	UI_GAMEFLOW_LIBRARY_LOCATION_STRICT_LEAF
+	UI_GAMEFLOW_LIBRARY_LOCATION_STRICT_LEAF,
+	/* With Library Folders on: /games itself, a folder in it, and a
+	 * folder in that, the deepest. */
+	UI_GAMEFLOW_LIBRARY_LOCATION_FOLDERS_ROOT,
+	UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER,
+	UI_GAMEFLOW_LIBRARY_LOCATION_SUBFOLDER
 } uiGameflowLibraryLocation_t;
+
+/* Library Folders goes two folders deep. Swiss flattens a directory that
+ * matches FlattenDir, so this pattern lists everything below a second-level
+ * folder in that folder: nothing deeper is ever out of reach. */
+#define UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN "*/games/*/*"
 
 typedef struct {
 	uiGameflowLibraryLocation_t location;
 	uint32_t entryCount;
 	uint32_t imageCount;
 	uint32_t folderCount;
+	/* Library Folders: folders that aren't games. */
+	uint32_t subfolderCount;
 	bool valid;
 } uiGameflowLibraryClassifier_t;
 
@@ -112,6 +126,30 @@ bool UIGameflowLibrary_EntryEligible(uiGameflowLibraryMode_t mode,
 uiGameflowLibraryLocation_t UIGameflowLibrary_Locate(
 	const char *gamesRoot, const char *currentPath);
 
+/* Locate with Library Folders on: /games, a folder in it or a folder in
+ * that. A "Title [ABC123]" folder is a game, never a folder of games, so
+ * inside one is STRICT_LEAF as Locate has it; anywhere else is NONE. */
+uiGameflowLibraryLocation_t UIGameflowLibrary_LocateFolders(
+	const char *gamesRoot, const char *currentPath);
+
+/* True for the two locations below /games, where B goes up a folder. */
+bool UIGameflowLibrary_IsInsideFolder(uiGameflowLibraryLocation_t location);
+
+/* Library Folders: whether file is folder's picture, its poster: the
+ * folder's own path with ".png" on the end, case aside, so the picture sits
+ * beside the folder as an app's sits beside its program (sd:/games/Nintendo
+ * and sd:/games/Nintendo.png). Both are paths as the listing gives them. */
+bool UIGameflowLibrary_IsFolderPicture(const char *folder, const char *file);
+
+/* The Library's heading inside a Library Folders folder: currentPath below
+ * gamesRoot in capitals, its folders joined by " / ", as "RPGS / JRPG". When
+ * that is longer than size holds, the start gives way to an ellipsis so the
+ * folder shown still ends it ("\205 / JRPG"), and a name too long even alone
+ * is cut at its end. Returns false, with heading empty, anywhere but below
+ * gamesRoot. */
+bool UIGameflowLibrary_FolderHeading(const char *gamesRoot,
+	const char *currentPath, char *heading, size_t size);
+
 /* Home's B LIBRARY route may promote an exact root /games directory from an
  * already-scanned device root. Files, lookalike names, and deeper paths are
  * rejected before production copies a directory handle. */
@@ -128,13 +166,25 @@ bool UIGameflowLibrary_ShouldStartHome(bool hasAutoload, bool hasRecent,
  * or at the root "Title [ABC123]" folders; one Library can't show both, so a
  * root with loose images beside game folders stays Swiss's list, as does a
  * location with no games. ClassifierAdd returns false only when the list
- * can't be a Library at all (outside /games, or ".." not first). */
+ * can't be a Library at all (outside /games, or ".." not first).
+ * Library Folders' locations take images, game folders and folders of games
+ * together (FOLDERS), or images alone as IMAGE_FILES, the same Library a
+ * flattened /games shows; the deepest folder takes images only, since Swiss
+ * lists what its folders hold. A folder below /games with no games is still a
+ * Library (IMAGE_FILES), with only its way back. */
 void UIGameflowLibrary_ClassifierInit(uiGameflowLibraryClassifier_t *state,
 	uiGameflowLibraryLocation_t location);
 bool UIGameflowLibrary_ClassifierAdd(uiGameflowLibraryClassifier_t *state,
 	uiGameflowLibraryEntryType_t type, const char *name);
 uiGameflowLibraryMode_t UIGameflowLibrary_ClassifierFinish(
 	const uiGameflowLibraryClassifier_t *state);
+
+/* How one entry of a Library behaves: an image as IMAGE_FILES, a game
+ * folder as GAME_FOLDERS, and, in FOLDERS, any other folder as NONE (A
+ * opens it). Outside FOLDERS every entry takes the Library's mode. */
+uiGameflowLibraryMode_t UIGameflowLibrary_EntryMode(
+	uiGameflowLibraryMode_t mode, uiGameflowLibraryEntryType_t type,
+	const char *name);
 
 /* A Library location always uses the retained presentation. Anywhere else
  * keeps the caller's requested legacy browser. Browser values remain opaque

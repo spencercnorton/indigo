@@ -35,7 +35,12 @@ exception screen as it would on a console. The route:
    back to the IPL's, and Dolphin has no IPL ROM): Indigo
    must say so and come back to the Library once A dismisses it. On the Source
    face, A on Change Source opens the device picker, RIGHT shows another
-   device and B leaves the picker.
+   device and B leaves the picker. On the Settings face, Setup › Console › Apps
+   Face Off takes Apps off the cube and On puts it back, and Setup › Library
+   › Library Folders On shows the disc's folders in the Library: an empty
+   folder opens with only its way back, A opens a folder and a folder in it,
+   which also lists the game a level further down, and B goes back up a
+   folder at a time to the same card, then Home.
 4. **Apps, last.** RIGHT and LEFT move between the disc's apps and back, and
    A on the probe brings up the launch screen and then the probe itself,
    which must report that the menu music stopped before the hand-off, that
@@ -139,8 +144,10 @@ it must still be on the card, through Indigo's own saves. CI's GC Loader smoke
 job starts with [`non-default.ini`](settings/non-default.ini): colours, icons,
 the clock on the left, no menu music or sounds, reduced motion, In-Game Reset. At the end the
 test reads the card back: the settings Indigo saved (with Apps Face as the
-route left it), and after the game route the launched game first in the
-recent list and in Indigo's play history.
+route left it, and Library Folders saved on with the card's own
+`FlattenDir=*/games` kept beside it), and after the game route the launched
+game first in the recent list and in Indigo's play history. The card holds
+the same folders as the disc, so the Library Folders step runs on FAT too.
 
 A card can fail: `--sd-faults` sets which sectors fail to read or write
 (`read-error=FIRST-LAST`, `write-error=FIRST-LAST`) or that every write fails

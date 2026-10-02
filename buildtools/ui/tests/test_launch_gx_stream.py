@@ -367,7 +367,7 @@ class LaunchGxStream(unittest.TestCase):
         for frame in (start, loading):
             self.assertFalse([text for _, _, text in strings(frame) if "game" in text.lower()])
         self.assertEqual(dim(loading), 240)
-        self.assertEqual(set(covers(loading)), {"APP004"})
+        self.assertEqual(set(covers(loading)), {"ART004"})
         self.assertGreater(ring(loading)[1], ring(start)[1])
 
     def test_a_failed_launch_goes_back_to_the_library(self):

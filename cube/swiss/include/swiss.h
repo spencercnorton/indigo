@@ -143,6 +143,8 @@ typedef struct {
 	int temperaturePosition;	// the same three for the temperature dial
 	int waveSpeed;	// WAVE_SPEED_NORMAL (default), WAVE_SPEED_FAST or WAVE_SPEED_SLOW: how fast the waves drift
 	int libraryLayout;	// uiGameflowLayout_t (gui/ui_gameflow.h): Horizontal (default), Vertical, Grid or Spotlight
+	int libraryFolders;	// 1 = the Library shows folders in /games, two deep; 0 = one list of games (default)
+	char libraryFoldersFlattenDir[PATHNAME_MAX];	// FlattenDir as saved, while Library Folders sets its own
 	int sram60Hz;
 	int sramProgressive;
 	int sramStereo;

@@ -6,10 +6,11 @@
 #include <stdint.h>
 
 /*
- * ui_png -- an app's picture, from a PNG on the card to a Library poster.
+ * ui_png -- an app's or a folder's picture, from a PNG on the card to a
+ * Library poster.
  *
- * Pure: no GX, no I/O, no locks. apps.c reads the file and hands its bytes
- * here. The result has the poster pack's texture layout (a 256x256
+ * Pure: no GX, no I/O, no locks. card_art.c reads the file and hands its
+ * bytes here. The result has the poster pack's texture layout (a 256x256
  * GX_TF_CMPR canvas and its four mipmaps, 192x256 of it shown, the right
  * band repeating the last column), so the Library's renderer draws it as
  * it draws a poster.
@@ -18,12 +19,20 @@
  * each chunk's CRC must match, nothing is read past size, the image is
  * decoded a row at a time into a picture a few times the poster's size,
  * and a PNG this can't read is refused whole (false), never shown in part.
- * Interlaced PNGs are refused.
+ * Interlaced PNGs are refused, and so are a file over UI_PNG_MAX_FILE, at
+ * once, and a picture over UI_PNG_MAX_SIDE a side, from its header, before
+ * any of its rows are.
+ * Whatever the PNG, making its poster never holds more than UI_PNG_MAX_WORK
+ * at once (zlib's window included) besides the PNG's bytes and out, and
+ * gives all of it back, and it needs little stack (card_art's thread has
+ * 32 KB): zlib is never asked for a CRC of more than 8 KB at once.
+ * test_ui_png.py counts both.
  */
 
 #define UI_PNG_POSTER_BYTES 43648u	/* the poster pack's record */
 #define UI_PNG_MAX_FILE (2u * 1024u * 1024u)
 #define UI_PNG_MAX_SIDE 2048u
+#define UI_PNG_MAX_WORK (1536u * 1024u)
 
 /* The poster: 192x256 of a 256x256 canvas. */
 #define UI_PNG_POSTER_W 192u
@@ -42,11 +51,11 @@ bool UIPng_Info(const uint8_t *png, size_t size, uint32_t *width,
  * unspecified, when the PNG can't be read or memory runs out. */
 bool UIPng_Poster(const uint8_t *png, size_t size, uint8_t *out);
 
-/* An app without a picture gets its name as a poster: the name in big
+/* A card without a picture gets its name as a poster: the name in big
  * letters, in up to four lines broken at its spaces, '-', '_' and '.' and
  * before a '+', over a backdrop whose colour comes from its first word, so
  * gbihf-ossc and gbihf-direct-hdmi share one and gbisr-ossc has another.
- * The font is the caller's: apps.c passes the IPL font. */
+ * The font is the caller's: card_art.c passes the IPL font. */
 #define UI_PNG_GLYPH_MAX 32	/* the widest and tallest glyph a font may have */
 
 typedef struct {

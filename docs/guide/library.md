@@ -112,6 +112,57 @@ choosing one tells you to decompress it with NKit or Dolphin.
 
 Games on two discs appear twice, once for each disc.
 
+## Folders of games
+
+With **Library Folders** off (the default), the Library is one list of every
+game in `/games`, however you have sorted them into folders there. To browse
+by folder instead, turn on Settings › Setup › Library › **Library Folders**.
+The Library then shows the folders in `/games` as cards beside the games:
+
+```text
+/games/Pikmin.iso
+/games/Nintendo/Super Mario Sunshine [GMSE01]/game.iso
+/games/Nintendo/Zelda/The Wind Waker.iso
+/games/Nintendo/Zelda/Older/Ocarina of Time.iso
+```
+
+Here `/games` shows Pikmin and a **Nintendo** folder; Nintendo shows Super
+Mario Sunshine and a **Zelda** folder.
+
+- **A** on a folder opens it. The heading names the folder you are in, such
+  as `NINTENDO / ZELDA`.
+- **B**, or A on the first card, goes back up a folder; from `/games`, B goes
+  back to Home.
+- Folders go two levels deep. A folder in a folder is the last level: it
+  shows every game below it, in folders of its own or not, so Zelda above
+  shows both The Wind Waker and Ocarina of Time.
+- A folder named like a game, `Title [GAMEID]`, is a game, not a folder of
+  games: it shows as that game, as it does in `/games`.
+- Keep a game's discs in the same folder. Indigo looks for the other disc
+  next to the one you start.
+- A folder with no games in it shows only the way back.
+
+While Library Folders is on, it sets **Flatten directory** itself, and the
+row can't be changed. Turn Library Folders off and your own value comes
+back.
+
+### Give a folder a picture
+
+Put a PNG beside the folder, with the folder's name: `Nintendo.png` in
+`/games` for the Nintendo folder, `Zelda.png` in `/games/Nintendo` for Zelda.
+It becomes the folder's poster, made on the console the first time the
+folder is shown, as an app's picture is (see
+[Give an app a picture](apps.md#give-an-app-a-picture)):
+
+- Any size up to 2048 × 2048 pixels, and up to 2 MB.
+- Any PNG, but not interlaced.
+- A picture shaped like a poster (3:4, such as 600 × 800) fills the card;
+  any other shape sits whole in the middle of it.
+
+A folder without a picture, or with one Indigo can't read, gets a poster of
+its name. Indigo never reads a picture over 2 MB, and makes one poster at a
+time, so even a very large picture can't use up the console's memory.
+
 ## Posters
 
 The box art comes from a poster pack, which is optional. Without one, each

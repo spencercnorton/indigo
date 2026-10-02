@@ -20,6 +20,11 @@ while a crash, a hang, a black screen or a broken control does:
     another device and B leaves it;
   - on the Settings face, Setup > Console > Apps Face Off takes Apps off the
     cube (System's next face is Library) and On puts it back;
+  - Setup > Library > Library Folders On shows the disc's folders in the
+    Library: an empty folder opens with only its way back, A opens a folder
+    and a folder in it, which lists the game a level further down too, and B
+    goes back up a folder at a time to the same card, then Home; a folder's
+    picture shows as its poster, and a picture too big or damaged never does;
   - on Apps, RIGHT and LEFT move between the disc's apps and back, and A
     starts the probe (probe/probe.c), which reports what the hand-off left
     it: the menu music stopped, nothing still writing to memory, and its own
@@ -88,6 +93,11 @@ SETTLE_SECONDS = 10
 WALL_FACTOR = 5
 TICKS_PER_SECOND = 486_000_000  # the GameCube's CPU clock, which Dolphin's ticks count
 PRESS_SECONDS = 0.1  # of the console's time a button stays down, and up after
+# Library Folders: how long the route holds a press that opens or leaves a
+# folder (library_folders), and how many pixels of a folder picture's colour
+# make it on screen: a card in front is tens of thousands.
+FOLDER_PRESS_SECONDS = 0.5
+PICTURE_PIXELS = 3000
 # A press the menu was too busy to see changes nothing on the screen; a person
 # presses again, and press_until does, after MISSED_SECONDS, up to PRESSES times.
 MISSED_SECONDS = 3
@@ -97,8 +107,15 @@ FATAL = re.compile("|".join((
     r"Segmentation fault", r"core dumped", r"\bPANIC\b", r"ASSERT(?:ION)? FAILED",
     r"Invalid (?:read|write) (?:from|to)", r"Unknown (?:opcode|instruction)",
     r"FIFO (?:is )?(?:overflowed|desync)", r"failed to compile shader", r"device lost",
+    r"poster stack .*\(overrun\)",
     r"DABR: (?:write to|read of)",  # a thread's stack reached its guard (patch 0007)
 )), re.I)
+# card_art's poster thread reports how much of its stack it used each time it
+# stops (Indigo's debug output, a development console's). An overrun stops at
+# the stack's guard (DABR, above); this catches one that came close: a run
+# that used more than this share of it fails.
+POSTER_STACK_SHARE = 0.75
+POSTER_STACK = re.compile(r"card_art: poster stack (\d+) of (\d+) bytes used")
 # The DSP runs its real microcode (LLE): Dolphin's high-level stand-ins know
 # libogc's audio library but not libogc2's, so the menu music's stop before a
 # launch would never be answered. It runs in step with the CPU, not on a thread
@@ -195,6 +212,12 @@ def diagnose(rgb: np.ndarray) -> str:
     if black > 0.95:
         return "the screen went black"
     return ""
+
+
+def coloured(frame: np.ndarray, colour: tuple[int, int, int]) -> int:
+    """How many pixels are within 55 of colour in every channel: card.py's
+    folder pictures are pure colours nothing else on screen comes near."""
+    return int((np.abs(frame.astype(np.int16) - np.array(colour, np.int16)) <= 55).all(axis=2).sum())
 
 
 def overlap(a: np.ndarray, b: np.ndarray) -> float:
@@ -422,6 +445,7 @@ class Route:
         self.probe = probe
         self.fresh_card = fresh_card
         self.report: dict[str, object] | None = None
+        self.folders_on = False  # the route turned Library Folders on and saved it
         self.pressed_again: list[str] = []  # presses the menu missed, pressed again
         self.checks: list[dict[str, object]] = []
         self.shots: list[tuple[str, Path]] = []
@@ -570,6 +594,14 @@ class Route:
             kept = seeded(settings)
             lost = {key: value for key, value in start.items() if kept.get(key) != value}
             self.check("the settings the card started with are all still there", not lost, lost=lost)
+        if self.folders_on:
+            # Library Folders, turned on by the route (library_folders): saved
+            # on, and the card keeps its own FlattenDir, not the pattern Library
+            # Folders uses while it is on, for when it goes off again.
+            self.check("Library Folders is saved on, and the card keeps its own FlattenDir",
+                       "\nLibrary Folders=Yes\r" in settings and "\nFlattenDir=*/games\r" in settings,
+                       lines=[line.strip() for line in settings.splitlines()
+                              if line.startswith(("Library Folders=", "FlattenDir="))])
         if route != "game" or not self.report:  # no game started
             return
         recent = text("swiss/settings/recent.ini").split("Recent_1=")[0]
@@ -607,6 +639,7 @@ class Route:
             # and on again in Settings.
             if n == 2:
                 self.apps_face_off_and_on(faces)
+                self.library_folders(faces)
             else:
                 inside = {0: self.browse_library, 1: self.change_source}.get(n)
                 self.open_and_close(face, n, inside)
@@ -792,6 +825,109 @@ class Route:
                 self.check("LEFT turns back a face", self.press_until("LEFT", like=back)[0] is not None,
                            apps_face=tag)
 
+    def pictures(self, seconds: float, until_shown: bool = False) -> tuple[int, int]:
+        """Watches the screen for up to seconds of the console's time, or
+        until the shown folder picture is up: its pixels in the last frame,
+        and the most of a refused picture's in any."""
+        deadline = Deadline(self.emulator, seconds)
+        shown = refused = 0
+        while not deadline.expired():
+            self.last_rgb = self.emulator.frame()
+            shown = coloured(self.last_rgb, card.SHOWN_PICTURE)
+            refused = max(refused, coloured(self.last_rgb, card.REFUSED_PICTURE))
+            if until_shown and shown >= PICTURE_PIXELS:
+                break
+            time.sleep(0.25)
+        return shown, refused
+
+    def library_folders(self, faces: list[np.ndarray]) -> None:
+        """From the Settings face: R and R to Setup, four DOWNs and A into
+        Library, DOWN to Library Folders and RIGHT to turn it on; B and B save
+        and exit. Then on Library, A opens the empty Old saves folder, which
+        stays in the Library with only its way back, and B returns to it;
+        RIGHT from there to Racing, A into it and A into Classics, which holds three cards (a game,
+        the game in Old below it, and the way back): RIGHT twice is not back at
+        the first, a third RIGHT is. B goes back to the same folder card each
+        level up, and from /games to Home. Back on the Settings face after.
+        Racing's picture is its poster; Old saves' (too big) and Classics'
+        (damaged) never show, while their cards are in front."""
+        library, source, settings = faces[0], faces[1], faces[2]
+        self.press("A")
+        self.check("A opens Settings", self.covered(settings), library_folders="on")
+        for button, pause in (("R", 1.0), ("R", 1.0), ("DOWN", 0.4), ("DOWN", 0.4),
+                              ("DOWN", 0.4), ("DOWN", 0.6), ("A", 1.5), ("DOWN", 0.6),
+                              ("RIGHT", 1.0)):
+            self.press(button)
+            self.pause(pause)
+        self.shot("library-folders-on", self.emulator.frame())
+        self.press("B")
+        self.pause(1.0)
+        self.press("B")
+        mask, _ = self.settled_label(like=settings)
+        self.check("Save & Exit comes back to the Settings face", mask is not None,
+                   library_folders="on")
+        self.folders_on = True
+        for back in (source, library):
+            self.check("LEFT turns back a face", self.press_until("LEFT", like=back)[0] is not None,
+                       library_folders="on")
+        self.press("A")
+        stray, _ = self.settled_label(box=TITLE_BOX)
+        self.shot("folders-games", self.last_rgb)
+        self.check("the Library shows a folder's name", stray is not None)
+        _, refused = self.pictures(8.0)
+        self.check("a folder's picture too big to read never shows", refused < PICTURE_PIXELS,
+                   pixels=refused)
+        # Old saves is empty: it opens in the Library with only the way back,
+        # and B comes back to its card (Swiss's list would go Home). The
+        # presses that open or leave a folder are held for half a second of
+        # the console's time: the Library is still reading covers then, and a
+        # tap can fall between two of its pad reads. Indigo waits for the
+        # release after a folder changes, so a held press acts once.
+        self.press("A", FOLDER_PRESS_SECONDS)
+        empty, _ = self.settled_label(unlike=stray, box=TITLE_BOX)
+        self.shot("folders-empty", self.last_rgb)
+        self.check("an empty folder opens with only the way back", empty is not None)
+        self.press("B", FOLDER_PRESS_SECONDS)
+        self.check("B comes back to the empty folder's card",
+                   self.settled_label(like=stray, box=TITLE_BOX)[0] is not None)
+        racing, _ = self.press_until("RIGHT", unlike=stray, box=TITLE_BOX)
+        self.check("RIGHT moves to the next folder", racing is not None)
+        shown, refused = self.pictures(30.0, until_shown=True)
+        self.shot("folders-picture", self.last_rgb)
+        self.check("a folder's picture is its poster", shown >= PICTURE_PIXELS, pixels=shown)
+        self.check("no refused picture shows beside it", refused < PICTURE_PIXELS, pixels=refused)
+        self.press("A", FOLDER_PRESS_SECONDS)
+        classics, _ = self.settled_label(unlike=racing, box=TITLE_BOX)
+        self.shot("folders-racing", self.last_rgb)
+        self.check("A opens a folder", classics is not None)
+        _, refused = self.pictures(8.0)
+        self.check("a damaged folder picture never shows", refused < PICTURE_PIXELS, pixels=refused)
+        self.press("A", FOLDER_PRESS_SECONDS)
+        first, _ = self.settled_label(unlike=classics, box=TITLE_BOX)
+        self.shot("folders-classics", self.last_rgb)
+        self.check("A opens a folder in it", first is not None)
+        shown = first
+        for n in (1, 2):
+            shown, _ = self.press_until("RIGHT", unlike=shown, box=TITLE_BOX)
+            self.shot(f"folders-classics-right-{n}", self.last_rgb)
+            self.check("RIGHT moves to the next card", shown is not None, step=n)
+        self.check("the folder lists the game a level down: RIGHT twice is not back at the first",
+                   overlap(shown, first) < DIFFERENT, overlap=round(overlap(shown, first), 3))
+        self.check("a third RIGHT is back at the first card",
+                   self.press_until("RIGHT", like=first, box=TITLE_BOX)[0] is not None)
+        for name, expected in (("Classics", classics), ("Racing", racing)):
+            self.press("B", FOLDER_PRESS_SECONDS)
+            back, _ = self.settled_label(like=expected, box=TITLE_BOX)
+            self.shot(f"folders-back-to-{name.lower()}", self.last_rgb)
+            self.check("B goes up a folder, to the same card", back is not None, card=name)
+        self.press("B", FOLDER_PRESS_SECONDS)
+        mask, _ = self.settled_label(like=library)
+        self.shot("folders-home", self.last_rgb)
+        self.check("B from /games goes Home", mask is not None, library_folders="on")
+        for ahead in (source, settings):
+            self.check("RIGHT turns on a face", self.press_until("RIGHT", like=ahead)[0] is not None,
+                       library_folders="on")
+
     def covered(self, reference: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX) -> bool:
         """Wait for the text in a box to stop matching reference: another screen opened over it."""
         deadline = Deadline(self.emulator, SETTLE_SECONDS)
@@ -924,6 +1060,14 @@ def fatal_lines(log: Path) -> list[str]:
     return [line.strip() for line in text.splitlines() if FATAL.search(line)][:20]
 
 
+def poster_stack(log: Path) -> dict[str, int] | None:
+    """The most of its stack the poster thread used in a run, or None when
+    it never ran."""
+    text = log.read_text(errors="replace") if log.exists() else ""
+    used = [(int(m.group(1)), int(m.group(2))) for m in POSTER_STACK.finditer(text)]
+    return {"most": max(u for u, _ in used), "of": used[0][1], "stops": len(used)} if used else None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dol", type=Path)
@@ -1008,6 +1152,12 @@ def main(argv: list[str] | None = None) -> int:
     if fatal and status == 0:
         status = 1
         report["failure"] = "Dolphin reported a crash or an invalid access"
+    stack = poster_stack(args.out / "dolphin.log")
+    if stack and stack["most"] > POSTER_STACK_SHARE * stack["of"] and status == 0:
+        status = 1
+        report["failure"] = (f"the poster thread used {stack['most']} of its {stack['of']} bytes of "
+                             f"stack, more than {POSTER_STACK_SHARE:.0%}")
+    report["poster_stack"] = stack
     report.update({
         "passed": status == 0,
         "checks": route.checks if route else [],

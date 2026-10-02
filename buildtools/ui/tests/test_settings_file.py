@@ -29,6 +29,7 @@ SETTINGS_H = (SWISS / "source/gui/settings.h").read_text()
 SWISS_H = (SWISS / "include/swiss.h").read_text()
 UI_HOME_H = (SWISS / "source/gui/ui_home.h").read_text()
 UI_GAMEFLOW_H = (SWISS / "source/gui/ui_gameflow.h").read_text()
+UI_GAMEFLOW_LIBRARY_H = (SWISS / "source/gui/ui_gameflow_library.h").read_text()
 MAIN_H = (SWISS / "include/main.h").read_text()
 MAIN_C = (SWISS / "source/main.c").read_text()
 SWISS_C = (SWISS / "source/swiss.c").read_text()
@@ -157,6 +158,10 @@ static bool getRawDTVStatus(void) { return false; }
     between(SETTINGS_C, "typedef struct {\n\tchar gameId[4];",
             "/* X in a game's settings: this row follows Game Defaults again. */"),
     "#undef config_parse_game",
+    # Library Folders sets FlattenDir to its own pattern while it is on.
+    re.search(r"^#define UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN .*$",
+              UI_GAMEFLOW_LIBRARY_H, re.M).group(0),
+    extract_function(CONFIG_C, "void config_set_library_folders("),
     GLOBAL_PARSER,
     GAME_PARSER,
     # The legacy swiss.ini migration, counting the files it would write.
@@ -508,6 +513,23 @@ class SettingsFileTest(unittest.TestCase):
         self.assertEqual(len(seen), len(set(seen)), "two faces offer the same icon")
         for face, array in faces.items():
             self.assertEqual(len(VALUES[array]), 4, face)
+
+    def test_library_folders_keeps_the_flatten_dir_it_replaces(self):
+        # While Library Folders is on, Swiss flattens by its own pattern, but
+        # global.ini keeps the FlattenDir it replaced, ready for when it goes off.
+        text = "Library Folders=Yes\r\nFlattenDir=*/isos\r\n"
+        written = self.global_file(text)
+        self.assertEqual(written["Library Folders"], "Yes")
+        self.assertEqual(written["FlattenDir"], "*/isos")
+        fields = self.run_harness("global-fields", stdin=text)
+        self.assertIn("\nflattenDir=*/games/*/*\n", fields)
+        self.assertIn("\nlibraryFoldersFlattenDir=*/isos\n", fields)
+        # The order of the keys doesn't matter.
+        self.assertEqual(self.global_file("FlattenDir=*/isos\r\nLibrary Folders=Yes\r\n"),
+                         written)
+        # Off, FlattenDir is the file's own.
+        off = self.run_harness("global-fields", stdin="Library Folders=No\r\nFlattenDir=*/isos\r\n")
+        self.assertIn("\nflattenDir=*/isos\n", off)
 
     def test_an_unknown_value_keeps_the_previous_one(self):
         defaults = self.global_file()

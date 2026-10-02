@@ -89,6 +89,9 @@ run_binaries() {
 			*) "./$test$suffix" ;;
 		esac
 	done
+	# card_art builds its own binaries: posters of apps and folders, their guards.
+	echo "== test_card_art$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_card_art.py; else python3 ./test_card_art.py --sanitize; fi
 }
 
 # The fuzzers (fuzz/) must build on every change, since a Fuzz run is not

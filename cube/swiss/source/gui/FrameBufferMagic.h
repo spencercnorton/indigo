@@ -82,7 +82,9 @@ typedef struct {
 	s8 relativeSlot;
 	u8 flags;
 	u8 column;	/* grid only */
-	u8 reserved[9];
+	/* Library Folders: a folder of games, which A opens, not a game. */
+	u8 subfolder;
+	u8 reserved[8];
 } uiGameflowCardSnapshot_t;
 
 typedef struct {
@@ -92,8 +94,11 @@ typedef struct {
 	u8 layout;	/* uiGameflowLayout_t */
 	u8 columns;	/* the grid's row length, 0 for a ring */
 	u8 reserved[6];
+	/* Library Folders: the folder shown, as the heading names it, or empty
+	 * at /games. */
+	char folder[64];
 	/* Spotlight: the selected game's description. Keeps the records at
-	 * offset 416, a multiple of 32. */
+	 * offset 480, a multiple of 32. */
 	char description[UI_GAMEFLOW_DESCRIPTION_LENGTH];
 	uiGameflowCardSnapshot_t records[UI_GAMEFLOW_RENDER_SLOTS];
 } uiGameflowRenderSnapshot_t;

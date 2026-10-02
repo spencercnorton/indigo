@@ -31,8 +31,9 @@ TESTS := test_ui_cheats test_ui_saves test_ui_apps test_ui_png \
 test_ui_cheats.src := $(GUI)/ui_cheats.c
 test_ui_saves.src := $(GUI)/ui_saves.c
 test_ui_apps.src := $(GUI)/ui_apps.c
-# test_ui_png.py drives these with the pictures it writes.
-test_ui_png.src := $(GUI)/ui_png.c
+# test_ui_png.py drives these with the pictures it writes. test_ui_png.c
+# builds ui_png.c in, to count what it allocates for the memory tests.
+test_ui_png.flags = $(GAMEFLOW_CFLAGS) -DUI_PNG_COUNT
 test_ui_png.libs := -lz -lm
 test_ui_assets.src := $(GUI)/ui_assets.c
 test_ui_assets.flags = $(CFLAGS) -DUI_ASSETS_HOST_BUILD

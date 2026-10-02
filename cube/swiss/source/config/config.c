@@ -19,6 +19,7 @@
 #include "bba.h"
 #include "deviceHandler-FAT.h"
 #include "ui_game_history.h"
+#include "ui_gameflow_library.h"
 
 // This is an example Swiss settings entry (sits at the top of global.ini)
 //!!Swiss Settings Start!!
@@ -564,6 +565,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Temperature=%s\r\n", clockPositionStr[swissSettings.temperaturePosition]);
 	fprintf(fp, "Wave Speed=%s\r\n", waveSpeedStr[swissSettings.waveSpeed]);
 	fprintf(fp, "Library Layout=%s\r\n", libraryLayoutStr[swissSettings.libraryLayout]);
+	fprintf(fp, "Library Folders=%s\r\n", swissSettings.libraryFolders ? "Yes":"No");
 	fprintf(fp, "Init DVD Drive at startup=%s\r\n", swissSettings.initDVDDriveAtStart ? "Yes":"No");
 	fprintf(fp, "Stop DVD Drive motor=%s\r\n", swissSettings.stopMotor ? "Yes":"No");
 	fprintf(fp, "Configure Audio Buffer=%s\r\n", configAudioBufferStr[swissSettings.configAudioBuffer]);
@@ -609,7 +611,8 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "GCLoaderHWVersion=%i\r\n", swissSettings.gcloaderHwVersion);
 	fprintf(fp, "GCLoaderTopVersion=%s\r\n", swissSettings.gcloaderTopVersion);
 	fprintf(fp, "Autoload=%s\r\n", swissSettings.autoload);
-	fprintf(fp, "FlattenDir=%s\r\n", swissSettings.flattenDir);
+	fprintf(fp, "FlattenDir=%s\r\n", swissSettings.libraryFolders ?
+		swissSettings.libraryFoldersFlattenDir : swissSettings.flattenDir);
 	fprintf(fp, "Save Folder=%s\r\n", swissSettings.saveFolder);
 
 	// Write out the default game config portion too
@@ -1163,6 +1166,7 @@ void config_parse_global(char *configData) {
 	/* Before Temperature had its own line, Clock placed the dial too. */
 	int clockRead = -1;
 	bool temperatureRead = false;
+	bool libraryFolders = false;
 	line = strtok_r( configData, "\r\n", &linectx );
 	while( line != NULL ) {
 		//print_debug("Line [%s]\n", line);
@@ -1479,6 +1483,9 @@ void config_parse_global(char *configData) {
 						}
 					}
 				}
+				else if(!strcmp("Library Folders", name)) {
+					libraryFolders = !strcmp("Yes", value);
+				}
 				else if(!strcmp("Library Layout", name)) {
 					for(int i = 0; i < UI_GAMEFLOW_LAYOUT_COUNT; i++) {
 						if(!strcmp(libraryLayoutStr[i], value)) {
@@ -1691,6 +1698,27 @@ void config_parse_global(char *configData) {
 	if(clockRead >= 0 && !temperatureRead) {
 		swissSettings.temperaturePosition = clockRead;
 	}
+	// FlattenDir was just read as saved: Library Folders takes it from there
+	swissSettings.libraryFolders = 0;
+	config_set_library_folders(libraryFolders);
+}
+
+void config_set_library_folders(bool on) {
+	// Keep the FlattenDir it replaces, to save and to put back
+	if(on && !swissSettings.libraryFolders &&
+		strcmp(swissSettings.flattenDir, UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN)) {
+		strlcpy(swissSettings.libraryFoldersFlattenDir, swissSettings.flattenDir,
+			sizeof(swissSettings.libraryFoldersFlattenDir));
+	}
+	if(on) {
+		strlcpy(swissSettings.flattenDir, UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN,
+			sizeof(swissSettings.flattenDir));
+	}
+	else if(swissSettings.libraryFolders) {
+		strlcpy(swissSettings.flattenDir, swissSettings.libraryFoldersFlattenDir,
+			sizeof(swissSettings.flattenDir));
+	}
+	swissSettings.libraryFolders = on;
 }
 
 void config_parse_args(int argc, char *argv[]) {

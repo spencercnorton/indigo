@@ -66,10 +66,20 @@ static unsigned activeType(int type)
         result += !q->event->disposed && q->event->type == type;
     return result;
 }
+static bool homeShown;
+static int folderArtCloses;
 static void homePublish(bool visible)
 {
     ++publications;
+    homeShown = visible;
     if(visible) CHECK(activeType(1) == 0 && activeType(3) == 0);
+}
+/* Home taking over closes the Library's folder posters: only then, and
+ * once Home is up (closing waits a few frames for the GPU). */
+static void folderArtClose(void)
+{
+    CHECK(homeShown && curMenuLocation == ON_OPTIONS);
+    ++folderArtCloses;
 }
 static void DrawUpdateFileBrowserButton(uiDrawObj_t *event, int mode)
 { CHECK(event != NULL && !event->disposed); CHECK(mode == B_NOSELECT); }
@@ -91,6 +101,7 @@ static void retrace(void)
 }
 int main(void)
 {
+    (void)folderArtClose; /* still a function when a mutant drops its call */
     panel(0); /* permanent background/Home root */
     for(int browser = 0; browser < 4; ++browser) {
         uiDrawObj_t *filePanel = panel(browser == 3 ? 3 : 1);
@@ -128,6 +139,7 @@ int main(void)
     }
     homePublishBrowserTransition(NULL);
     CHECK(disposals == 804 && publications == 1605);
+    CHECK(folderArtCloses == 1205); /* every publication with Home visible */
     CHECK(videoEventQueue->next == NULL);
     free(videoEventQueue->event); free(videoEventQueue);
     puts("browser/Home lifecycle: 400 legacy and retained returns passed");
@@ -213,7 +225,9 @@ class BrowserHomeLifecycle(unittest.TestCase):
 
     def test_regression_mutants_fail(self):
         for old, new in (('DrawDispose(*filePanel);', ''), ('*filePanel = NULL;', ''),
-                         ('if(visible &&', 'if(!visible &&')):
+                         ('if(visible &&', 'if(!visible &&'), ('folderArtClose();', ''),
+                         ('\thomePublish(visible);\n\tif(visible) {\n\t\tfolderArtClose();\n\t}',
+                          '\tif(visible) {\n\t\tfolderArtClose();\n\t}\n\thomePublish(visible);')):
             with self.subTest(mutation=old):
                 result = self.run_harness(self.helper.replace(old, new), True)
                 self.assertNotEqual(result.returncode, 0)

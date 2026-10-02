@@ -75,6 +75,14 @@ class Disc(unittest.TestCase):
         with self.assertRaises(ValueError):
             card.disc_header("gacz01", "lower case")
 
+    def test_folders_go_past_the_second_level(self):
+        games = {game_id for game_id, _ in card.GAMES}
+        self.assertLessEqual(set(card.FOLDERS), games)
+        depths = sorted(path.count("/") + 1 for path in card.FOLDERS.values())
+        self.assertEqual(depths, [1, 2, 3], "a folder, a folder in it, and one past the second level")
+        # The route reaches Racing with one RIGHT from the empty stray folder.
+        self.assertLess(card.STRAYS[1].lower(), "racing/")
+
     def test_the_stray_file_sorts_before_every_game(self):
         titles = [title for _, title in card.GAMES] + [title for _, title, _ in card.DAMAGED]
         self.assertLess(card.STRAYS[0].lower(), min(titles).lower(),
@@ -143,6 +151,15 @@ class Disc(unittest.TestCase):
         self.assertIn(card.PROBE_GAME[1], order[3:])
         self.assertEqual(card.app_order(False), sorted(card.APPS, key=str.lower))
         self.assertEqual(card.app_order(True).index("Probe"), 2)
+
+    def test_the_library_order_follows_paths(self):
+        # Swiss sorts the flattened /games by path, case aside: a game in a
+        # folder sorts by its folder, and a folder's own games by theirs.
+        order = card.library_order(True)
+        foldered = {title for game_id, title in card.GAMES if game_id in card.FOLDERS}
+        self.assertEqual([title for title in order if title in foldered],
+                         ["Neon Tidepool", "Paper Lantern", "Rally Cross Zero"])
+        self.assertLess(order.index(card.PROBE_GAME[1]), order.index("Neon Tidepool"))
 
     def test_posters_differ(self):
         self.assertNotEqual(card.poster(0).tobytes(), card.poster(1).tobytes())
