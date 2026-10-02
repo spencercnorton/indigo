@@ -124,6 +124,16 @@ class Disc(unittest.TestCase):
         where, length = struct.unpack_from(">II", fst, 16)
         self.assertEqual(image[where:where + 4], b"BNR1")
         self.assertGreaterEqual(where, dol_offset + len(dol))
+        self.assertEqual(struct.unpack_from(">I", image, card.REGION_CODE_AT)[0], 1, "GPRE01 is a US game")
+
+    def test_the_launch_that_fails_is_a_game_from_the_other_region(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, work = Path(directory) / "root", Path(directory)
+            card.populate(root, work, posters=False, foreign=card.REGION_CODES["P"])
+            region = lambda game: struct.unpack_from(">I", (root / "games" / card.game_file(*game)).read_bytes(),
+                                                     card.REGION_CODE_AT)[0]
+            self.assertEqual(card.library_order(False)[0], card.GAMES[0][1], "the route launches the first game")
+            self.assertEqual((region(card.GAMES[0]), region(card.GAMES[1])), (2, 0))
 
     def test_where_the_probe_sits_in_the_library_and_in_apps(self):
         order = card.library_order(True)
@@ -242,20 +252,19 @@ class Screen(unittest.TestCase):
     def probe_screen(words) -> np.ndarray:
         """The probe's screen as probe.c draws it into a 640x480 framebuffer."""
         rgb = np.zeros((480, 640, 3), np.uint8)
-        rgb[104:] = (0, 128, 255)
+        rgb[88:] = (0, 128, 255)
         for row, word in enumerate(words):
             for bit in range(32):
-                if word >> (31 - bit) & 1:
-                    rgb[128 + row * 16:144 + row * 16, 64 + bit * 16:80 + bit * 16] = 235
-                else:
-                    rgb[128 + row * 16:144 + row * 16, 64 + bit * 16:80 + bit * 16] = 16
+                rgb[112 + row * 16:128 + row * 16, 64 + bit * 16:80 + bit * 16] = \
+                    235 if word >> (31 - bit) & 1 else 16
         return rgb
 
     def test_the_probe_report_reads_back_at_any_scale(self):
         from PIL import Image
-        words = [run.PROBE_MAGIC, 1, int.from_bytes(b"GPRE", "big"), int.from_bytes(b"01\0\0", "big"),
+        words = [run.PROBE_MAGIC, 2, int.from_bytes(b"GPRE", "big"), int.from_bytes(b"01\0\0", "big"),
                  0x01800000, 3, 0, 162000000, 486000000, 0x80040000, 0x817FFFC0, 0x81800000, 0x8004, 0x42,
                  0, 1] + [int.from_bytes(b"apps/Probe.dol\0\0"[i:i + 4], "big") for i in range(0, 16, 4)]
+        words += [0x0005, 0x00010001]  # VI: enabled, non-interlaced, 54 MHz, a component cable
         words.append(zlib.crc32(b"".join(w.to_bytes(4, "big") for w in words)))
         screen = self.probe_screen(words)
         report = run.probe_report(screen)
@@ -263,6 +272,9 @@ class Screen(unittest.TestCase):
         self.assertEqual((report["disc_id"], report["memsize"], report["path"]),
                          ("GPRE01", 0x01800000, "apps/Probe.dol"))
         self.assertTrue(report["ai_dma"] & run.AI_DMA_ENABLE)
+        self.assertEqual(run.video_mode(report), "progressive, NTSC timing, a component cable")
+        self.assertEqual(run.video_mode({"vi_dcr": 0x0101, "vi_clk_dtv": 0}),
+                         "interlaced, PAL timing, no component cable")
         # Dolphin draws a PAL picture squashed into the window, inside black borders.
         squashed = np.zeros_like(screen)
         squashed[40:440, 29:611] = np.asarray(Image.fromarray(screen).resize((582, 400), Image.NEAREST))
@@ -270,6 +282,15 @@ class Screen(unittest.TestCase):
         words[4] ^= 1
         self.assertFalse(run.probe_report(self.probe_screen(words))["valid"], "a misread fails its CRC")
         self.assertIsNone(run.probe_report(np.full((480, 640, 3), (35, 25, 60), np.uint8)))
+
+    def test_sram_matches_dolphins_own_and_sets_the_region(self):
+        ntsc = run.sram(0, False)
+        self.assertEqual(len(ntsc), 0x44)
+        self.assertEqual(ntsc[0x04:0x08], bytes.fromhex("002cffd0"), "Dolphin's default SRAM, checksums and all")
+        pal60 = run.sram(1, True)
+        self.assertEqual((pal60[0x17] & 3, pal60[0x15] >> 6 & 1), (1, 1))
+        words = [int.from_bytes(pal60[i:i + 2], "big") for i in range(0x10, 0x18, 2)]
+        self.assertEqual(int.from_bytes(pal60[4:6], "big"), sum(words) & 0xFFFF)
 
     def test_fatal_lines(self):
         with tempfile.TemporaryDirectory() as directory:

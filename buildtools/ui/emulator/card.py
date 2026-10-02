@@ -75,6 +75,12 @@ DESCRIPTION = "A fictitious game on the disc Indigo's emulator test boots with."
 SYSTEM_AREA = 0x8000  # ISO 9660 leaves the first 32 KiB to the platform
 
 
+# A disc's region code (0x458, in bi2 after the header), which Swiss takes a
+# game's region from: 0 Japan, 1 the Americas, 2 PAL.
+REGION_CODES = {"J": 0, "E": 1, "P": 2}
+REGION_CODE_AT = 0x458
+
+
 def disc_header(game_id: str, title: str) -> bytearray:
     """The start of a GameCube disc: ID, magic, and the game's name."""
     if len(game_id) != 6 or not game_id.isalnum() or not game_id.isupper():
@@ -112,10 +118,11 @@ def banner(index: int, title: str) -> bytes:
     return bytes(data)
 
 
-def game_image(index: int, game_id: str, title: str) -> bytes:
+def game_image(index: int, game_id: str, title: str, region: int = 0) -> bytes:
     """A game as the Library reads it: its header, a one-file table, its banner."""
     image = bytearray(STUB_BYTES)
     image[:0x440] = disc_header(game_id, title)
+    struct.pack_into(">I", image, REGION_CODE_AT, region)
     fst = struct.pack(">BBHII", 1, 0, 0, 0, 2) + struct.pack(">BBHII", 0, 0, 0, GAME_BANNER, BANNER_BYTES)
     fst += b"opening.bnr\0"
     struct.pack_into(">III", image, 0x424, GAME_FST, len(fst), len(fst))
@@ -178,6 +185,7 @@ def probe_image(dol: bytes, game_id: str = PROBE_GAME[0], title: str = PROBE_GAM
     struct.pack_into(">IIII", header, 0x420, PROBE_DOL_OFFSET, fst_offset, len(fst), len(fst))
     image = bytearray((fst_offset + len(fst) + 0x7FFF) & ~0x7FFF)
     image[:0x440] = header
+    struct.pack_into(">I", image, REGION_CODE_AT, REGION_CODES[game_id[3]])
     image[0x2440:0x2440 + len(apploader)] = apploader
     image[PROBE_DOL_OFFSET:PROBE_DOL_OFFSET + len(dol)] = dol
     image[bnr_offset:bnr_offset + len(bnr)] = bnr
@@ -344,13 +352,17 @@ def build_apps(apps: Path) -> int:
     return len(APPS)
 
 
-def populate(root: Path, work: Path, posters: bool = True, probe: Path | None = None) -> dict[str, object]:
+def populate(root: Path, work: Path, posters: bool = True, probe: Path | None = None,
+             foreign: int = 0) -> dict[str, object]:
     """What the disc and the card both hold: /games, the packs and
-    descriptions in /swiss/ui, and /apps."""
+    descriptions in /swiss/ui, and /apps. The first game, whose launch the
+    route lets fail, has the region code foreign: a console's other region,
+    so the menu must come back from that region's video mode."""
     (root / "games").mkdir(parents=True, exist_ok=True)
     (root / "swiss/ui").mkdir(parents=True, exist_ok=True)
     for index, (game_id, title) in enumerate(GAMES):
-        (root / "games" / game_file(game_id, title)).write_bytes(game_image(index, game_id, title))
+        (root / "games" / game_file(game_id, title)).write_bytes(
+            game_image(index, game_id, title, foreign if index == 0 else 0))
     for game_id, title, image in DAMAGED:
         (root / "games" / game_file(game_id, title)).write_bytes(image(game_id, title))
     if probe:
@@ -375,13 +387,13 @@ def populate(root: Path, work: Path, posters: bool = True, probe: Path | None = 
             "probe": bool(probe)}
 
 
-def build(out: Path, posters: bool = True, probe: Path | None = None) -> dict[str, object]:
+def build(out: Path, posters: bool = True, probe: Path | None = None, foreign: int = 0) -> dict[str, object]:
     if not shutil.which("genisoimage"):
         raise SystemExit("card.py: genisoimage is missing")
     with tempfile.TemporaryDirectory() as directory:
         folder = Path(directory)
         root = folder / "root"
-        info = populate(root, folder, posters, probe)
+        info = populate(root, folder, posters, probe, foreign)
         for path in sorted(root.rglob("*")) + [root]:
             os.utime(path, (1000000000, 1000000000))
         subprocess.run(["genisoimage", "-quiet", "-R", "-J", "-V", "INDIGO_DEMO", "-o", str(out), str(root)],
@@ -401,7 +413,8 @@ CARD_BYTES = 8 << 30
 MTOOLS = dict(os.environ, MTOOLS_SKIP_CHECK="1")
 
 
-def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | None = None) -> dict[str, object]:
+def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | None = None,
+               foreign: int = 0) -> dict[str, object]:
     """A FAT32 SD card image set up as someone would: the release zip
     unpacked onto it, then games, the packs and apps beside it. It has no
     swiss/settings/global.ini, so Indigo starts in Settings, as on a new card."""
@@ -415,7 +428,7 @@ def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | No
         root.mkdir()
         with zipfile.ZipFile(card_zip) as package:
             package.extractall(root)
-        info = populate(root, folder, posters, probe)
+        info = populate(root, folder, posters, probe, foreign)
         with open(out, "wb") as image:
             image.truncate(CARD_BYTES)
         subprocess.run(["mkfs.fat", "-F", "32", "-s", "64", "-n", "INDIGO", str(out)], check=True,
