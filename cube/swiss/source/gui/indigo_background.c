@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include "indigo_background.h"
+#include "ui_anim.h"
 #include "ui_color.h"
 #include "ui_stage.h"
 
@@ -34,6 +35,9 @@
 #define FACE_BAND_MAX 80
 #define FACE_ARC_MAX 24
 #define CONTROLLER_IDLE_HOLD 2.0f
+/* The idle presses' cycle: six seconds, give or take a millisecond, so that
+ * the clock's wrap holds a whole number of them. */
+#define CONTROLLER_PRESS_CYCLE (UI_ANIM_TIME_WRAP_SECONDS / 1047.0f)
 
 typedef struct indigoPoint {
 	float x;
@@ -1317,6 +1321,7 @@ static void controllerPose(const indigoPadFrame_t *pad, float seconds,
 		PAD_BUTTON_Y | PAD_BUTTON_START | PAD_BUTTON_UP | PAD_BUTTON_DOWN |
 		PAD_BUTTON_LEFT | PAD_BUTTON_RIGHT | PAD_TRIGGER_L | PAD_TRIGGER_R;
 	float idleWeight;
+	float since;
 
 	*pose = (controllerPose_t) {0.0f, 0.0f, 0.0f, 0.0f, 0u};
 	if(pad != NULL && pad->available) {
@@ -1332,8 +1337,11 @@ static void controllerPose(const indigoPadFrame_t *pad, float seconds,
 			idle->liveSeen = true;
 		}
 	}
+	/* An input from before the clock wrapped was still that long ago. */
+	since = seconds - idle->lastLiveInput;
+	if(since < 0.0f) since += UI_ANIM_TIME_WRAP_SECONDS;
 	idleWeight = !animated ? 0.0f : (!idle->liveSeen ? 1.0f :
-		(seconds - idle->lastLiveInput - CONTROLLER_IDLE_HOLD) / 0.8f);
+		(since - CONTROLLER_IDLE_HOLD) / 0.8f);
 	if(idleWeight <= 0.0f) return;
 	if(idleWeight > 1.0f) idleWeight = 1.0f;
 	pose->stickX += idleWeight * 0.38f * sinf(seconds * 0.8f);
@@ -1341,7 +1349,7 @@ static void controllerPose(const indigoPadFrame_t *pad, float seconds,
 	pose->substickX += idleWeight * 0.34f * sinf(seconds * 1.3f + 2.0f);
 	pose->substickY += idleWeight * 0.30f * cosf(seconds * 0.9f);
 	if(idleWeight < 1.0f) return;
-	float phase = fmodf(seconds, 6.0f);
+	float phase = fmodf(seconds, CONTROLLER_PRESS_CYCLE);
 	for(unsigned i = 0; i < sizeof(presses) / sizeof(presses[0]); i++) {
 		if(phase >= presses[i].start &&
 			phase < presses[i].start + presses[i].length) {

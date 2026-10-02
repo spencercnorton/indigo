@@ -618,6 +618,27 @@ static void test_hidden_controller_reads_the_pad(void) {
     CHECK(count==n && memcmp(live,positions,sizeof(guVector)*(size_t)n)==0,
         "the controller missed a press while its face was turned away");
 }
+static void test_controller_across_the_clock_wrap(void) {
+    /* The animation clock wraps to 0 every 2000 pi s. The stick, held until
+     * just before the wrap, is still released 3.5 s later after it: idle
+     * play is back. And the presses' cycle goes on across the wrap: the
+     * cycle before it plays every press where the first cycle does. */
+    static const struct { u32 button; float at; } presses[]={
+        {PAD_BUTTON_A,0.43f},{PAD_BUTTON_B,1.31f},{PAD_BUTTON_Y,2.31f},
+        {PAD_BUTTON_X,2.91f},{PAD_BUTTON_RIGHT,3.9f},{PAD_BUTTON_DOWN,4.3f},
+        {PAD_BUTTON_START,5.21f}};
+    indigoPadFrame_t held={true,60,0,0,0,0u},rest={true,0,0,0,0,0u};
+    controllerIdle_t idle={0.0f,false};
+    controllerPose_t pose;
+    controllerPose(&held,UI_ANIM_TIME_WRAP_SECONDS-0.5f,true,&idle,&pose);
+    controllerPose(&rest,3.0f,true,&idle,&pose);
+    CHECK(pose.stickX!=0.0f || pose.stickY!=0.0f,"idle play stopped at the clock's wrap");
+    for(unsigned i=0;i<sizeof(presses)/sizeof(presses[0]);i++) {
+        controllerPose(&rest,UI_ANIM_TIME_WRAP_SECONDS-CONTROLLER_PRESS_CYCLE+presses[i].at,
+            true,&idle,&pose);
+        CHECK(pose.pressed&presses[i].button,"the presses jump at the clock's wrap");
+    }
+}
 static void test_closed_cube(void) {
     cubeSurfaceQuad_t mesh[26];
     const GXColor color[6]={{19,15,54,255},{28,20,76,255},{50,36,111,255},
@@ -897,6 +918,7 @@ static void test_glass(void) {
 int main(void) {
     test_fast_sqrt(); test_dial(); test_rail_joins(); test_motifs(); test_controller(); test_rounded_outlines();
     test_icons_on_their_faces(); test_hidden_controller_reads_the_pad();
+    test_controller_across_the_clock_wrap();
     test_closed_cube(); test_seamless_mesh(); test_chamfer_color_pairs(); test_surfaces(); test_glass();
     puts("native strokes: bounded complete GX streams, perspective coverage and closed seams");
     return 0;
@@ -968,8 +990,10 @@ class StrokeGXStreamTests(unittest.TestCase):
         # The controller's sizing constants and the bevels' seam blend come
         # from the source, never a copy.
         cls.defines="\n".join(re.findall(
+            r"^#define (?:UI_ANIM_TIME_WRAP_SECONDS) .*$",
+            (GUI / "ui_anim.h").read_text(), re.MULTILINE) + re.findall(
             r"^#define (?:FACE_POLYGON_MAX|FACE_BAND_MAX|FACE_ARC_MAX|CONTROLLER_IDLE_HOLD|"
-            r"BEVEL_SEAM_BLEND) .*$", indigo, re.MULTILINE))
+            r"CONTROLLER_PRESS_CYCLE|BEVEL_SEAM_BLEND) .*$", indigo, re.MULTILINE))
         # The face and icon lists come from the source, never a copy.
         home=(GUI / "ui_home.h").read_text()
         cls.enums="\n".join([re.search(r"^#define UI_HOME_ICON_CHOICES \d+$", home, re.M).group(0)] +
@@ -1042,7 +1066,7 @@ class StrokeGXStreamTests(unittest.TestCase):
             return subprocess.run([str(binary)],capture_output=True,text=True,timeout=5)
 
     def test_controller_defines_come_from_the_source(self):
-        self.assertEqual(self.defines.count("#define"), 5)
+        self.assertEqual(self.defines.count("#define"), 7)
 
     def test_native_emitters(self):
         result=self.run_emitters(self.emitters)
