@@ -460,7 +460,7 @@ static void test_icons_on_their_faces(void) {
                 float ex=positions[i].x,ey=positions[i].y,ez=positions[i].z+5.4f;
                 float bx=c*ex-s*ez,by=ey,bz=s*ex+c*ez;
                 float plane=bx*semanticFaces[face][0][2]+by*semanticFaces[face][1][2]+bz*nz;
-                CHECK(fabsf(plane-1.012f)<0.1f,"an icon drew off its own face");
+                CHECK(fabsf(plane-FACE_ICON_PLANE)<0.1f,"an icon drew off its own face");
                 if(!shaded) { shade=colors[i]; shaded=true; }
                 CHECK(colors[i].r==shade.r && colors[i].g==shade.g && colors[i].b==shade.b,
                     "icons glow in different shades");
@@ -607,6 +607,52 @@ static int compare_point(guVector a,guVector b) {
     if(a.y!=b.y) return a.y<b.y?-1:1;
     if(a.z!=b.z) return a.z<b.z?-1:1;
     return 0;
+}
+/* The Home faces' bases, and a turn about the vertical axis, scaled. */
+static const Mtx homeFaces[UI_HOME_FACE_COUNT]={
+    {{1,0,0,0},{0,1,0,0},{0,0,1,0}},
+    {{0,0,1,0},{0,1,0,0},{-1,0,0,0}},
+    {{-1,0,0,0},{0,1,0,0},{0,0,-1,0}},
+    {{0,0,-1,0},{0,1,0,0},{1,0,0,0}},
+    {{1,0,0,0},{0,1,0,0},{0,0,1,0}}
+};
+static void turnTo(cubeRasterTransform_t *r,float degrees,float scale) {
+    float yaw=degrees*INDIGO_TAU/360,c=cosf(yaw),s=sinf(yaw);
+    guMtxIdentity(r->model);
+    r->model[0][0]=c*scale; r->model[0][2]=s*scale; r->model[1][1]=scale;
+    r->model[2][0]=-s*scale; r->model[2][2]=c*scale; r->model[2][3]=-5.4f;
+}
+/* A face square on lifts its icon FACE_ICON_LIFT off FACE_ICON_PLANE, so it
+ * floats clear of the glass (1.0), some five pixels at Home's size; a face
+ * turned 60 degrees, as side faces rest, keeps its icon at FACE_ICON_PLANE,
+ * close to the glass. Read at each Books quad's core, whose half-pixel inset
+ * cancels across its corners. */
+static void test_lift(void) {
+    const int books[UI_HOME_FACE_COUNT]={1,-1,-1,-1,-1};
+    uiClockFrame_t clock={true,0,1,1,0,0.70710678f,0.70710678f};
+    cubeRasterTransform_t r;
+    memcpy(r.semanticFaces,homeFaces,sizeof(homeFaces)); lightAll(&r);
+    r.scaleX=r.scaleY=625.221f;
+    for(int angle=0;angle<=60;angle+=60) {
+        float yaw=angle*INDIGO_TAU/360,c=cosf(yaw),s=sinf(yaw);
+        float want=angle==0?FACE_ICON_PLANE+FACE_ICON_LIFT:FACE_ICON_PLANE;
+        int quads=0;
+        CHECK(angle==0?want>1.03f:want<1.02f,
+            angle?"a side face's icon stands off the glass":"a front face's icon lies on the glass");
+        turnTo(&r,(float)angle,1);
+        reset(false); drawFaceIcons(1.0f,false,&clock,NULL,books,&r);
+        CHECK(count==260,"Books did not draw");
+        for(int i=0;i<count;i+=20) {
+            float x=0,z=0;
+            if(!alphas[i]) continue;
+            for(int k=0;k<4;k++) { x+=positions[i+k].x/4; z+=(positions[i+k].z+5.4f)/4; }
+            /* Back to body space, along the Library face's normal (z). */
+            CHECK(fabsf(s*x+c*z-want)<(angle?2e-3f:1e-4f),
+                angle?"a turned face lifted its icon":"a face square on did not lift its icon");
+            ++quads;
+        }
+        CHECK(quads==13,"a Books quad went missing");
+    }
 }
 static void test_hidden_controller_reads_the_pad(void) {
     /* Library's face turns away while A is held, then back with the pad at
@@ -937,7 +983,7 @@ static void test_glass(void) {
 }
 int main(void) {
     test_fast_sqrt(); test_dial(); test_rail_joins(); test_motifs(); test_controller(); test_rounded_outlines();
-    test_icons_on_their_faces(); test_hidden_controller_reads_the_pad();
+    test_icons_on_their_faces(); test_lift(); test_hidden_controller_reads_the_pad();
     test_controller_across_the_clock_wrap();
     test_closed_cube(); test_seamless_mesh(); test_chamfer_color_pairs(); test_surfaces(); test_glass();
     puts("native strokes: bounded complete GX streams, perspective coverage and closed seams");
@@ -980,6 +1026,8 @@ class StrokeGXStreamTests(unittest.TestCase):
             "drawAppsIcon")]
         blocks += [extract_function(indigo, "static float faceFacing(")]
         blocks += [extract_function(indigo, "static float faceStrokeShare(")]
+        blocks += [extract_function(indigo, "static float faceIconLift(")]
+        blocks += [extract_function(indigo, "static void liftFaceIcon(")]
         blocks += [extract_function(indigo, "static void drawOneFaceIcon(")]
         blocks += [extract_function(indigo, "static void drawFaceIcons(")]
         blocks += [extract_function(indigo, "static float outlineCross(")]
@@ -1011,13 +1059,14 @@ class StrokeGXStreamTests(unittest.TestCase):
         blocks += [extract_function(frame, "static void " + name + "(")
                    for name in ("_PutSystemDialVertex", "_DrawSystemRing")]
         cls.emitters="\n".join(blocks)
-        # The controller's sizing constants and the bevels' seam blend come
-        # from the source, never a copy.
+        # The controller's sizing constants, the icons' plane and lift, and
+        # the bevels' seam blend come from the source, never a copy.
         cls.defines="\n".join(re.findall(
             r"^#define (?:UI_ANIM_TIME_WRAP_SECONDS) .*$",
             (GUI / "ui_anim.h").read_text(), re.MULTILINE) + re.findall(
             r"^#define (?:FACE_POLYGON_MAX|FACE_BAND_MAX|FACE_ARC_MAX|CONTROLLER_IDLE_HOLD|"
-            r"CONTROLLER_PRESS_CYCLE|BEVEL_SEAM_BLEND) .*$", indigo, re.MULTILINE))
+            r"CONTROLLER_PRESS_CYCLE|BEVEL_SEAM_BLEND|FACE_ICON_\w+) .*$",
+            indigo, re.MULTILINE))
         # The face and icon lists come from the source, never a copy.
         home=(GUI / "ui_home.h").read_text()
         cls.enums="\n".join([re.search(r"^#define UI_HOME_ICON_CHOICES \d+$", home, re.M).group(0)] +
@@ -1090,7 +1139,7 @@ class StrokeGXStreamTests(unittest.TestCase):
             return subprocess.run([str(binary)],capture_output=True,text=True,timeout=5)
 
     def test_controller_defines_come_from_the_source(self):
-        self.assertEqual(self.defines.count("#define"), 7)
+        self.assertEqual(self.defines.count("#define"), 9)
 
     def test_native_emitters(self):
         result=self.run_emitters(self.emitters)
@@ -1178,6 +1227,9 @@ class StrokeGXStreamTests(unittest.TestCase):
             "one Newton step": ("\ty *= 1.5f - 0.5f * x * y * y;\n\ty *= 1.5f - 0.5f * x * y * y;\n",
                 "\ty *= 1.5f - 0.5f * x * y * y;\n"),
             "estimate past its range": ("if(!(x >= FLT_MIN && x <= FLT_MAX)) return sqrtf(x);", ""),
+            "icons not lifted": ("liftFaceIcon(&faded, face, faceIconLift(facing));",
+                "liftFaceIcon(&faded, face, 0.0f * faceIconLift(facing));"),
+            "side faces lifted": ("(facing - 0.80f) / 0.15f", "(facing - 0.33f) / 0.27f"),
         }
         for name,(old,new) in mutants.items():
             with self.subTest(name=name):
