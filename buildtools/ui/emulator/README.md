@@ -49,15 +49,16 @@ probe's game and launches it from its details: the probe must see the game's
 own disc ID, the 24 MB a game is promised, the music stopped and memory
 quiet.
 
-CI runs four jobs, the first of them the required **Emulator** check, each in
-a video mode of its own:
+CI runs six jobs, the first of them the required **Emulator** check:
 
 | Job | Console | Video | Storage |
 | --- | --- | --- | --- |
 | Emulator (smoke) | PAL, composite | 576i | disc |
 | game, PAL, component | PAL, component | 480p | disc |
-| smoke, NTSC, component, SD2SP2 | NTSC, component | 480p | SD2SP2 |
-| game, NTSC, SD2SP2 | NTSC, composite | 480i | SD2SP2 |
+| smoke, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the card with `non-default.ini` |
+| game, NTSC, SD2SP2 | NTSC, composite | 480i | SD2SP2, a new card |
+| save, NTSC, SD2SP2, failing card | NTSC, composite | 480i | SD2SP2, writes failing after 13 |
+| game, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the game in 40 pieces |
 
 `--region pal|pal60|ntsc` is the console: the region Dolphin starts the video
 hardware in, and an SRAM (`GC/SRAM.raw`) with the same video format, as a
@@ -123,7 +124,7 @@ A new card has no settings, so the route starts in Settings: it must open on
 its own, and Save & Exit must write the file and go Home. With `--settings
 <name>` the card starts with [`settings/<name>.ini`](settings/) as its
 `global.ini` instead and Indigo goes straight Home; at the end every line of
-it must still be on the card, through Indigo's own saves. CI's SD2SP2 smoke
+it must still be on the card, through Indigo's own saves. CI's GC Loader smoke
 job starts with [`non-default.ini`](settings/non-default.ini): colours, icons,
 the clock on the left, no menu music or sounds, reduced motion, In-Game Reset. At the end the
 test reads the card back: the settings Indigo saved (with Apps Face as the
@@ -135,8 +136,10 @@ A card can fail: `--sd-faults` sets which sectors fail to read or write
 once some have succeeded (`write-error-after=N`), comma separated. The save
 route (`--route save`, with `--settings`) changes a setting on such a card,
 then powers off and boots the same card again, with no faults: Indigo must
-still start at Home with its settings. The second boot's output is in
-`next-boot/`.
+still start at Home with its settings, in the colours they chose (a broken
+settings file boots Home too, on the defaults). The second boot's output is
+in `next-boot/`. CI's save job fails writes after 13, the moment of a save
+when only `global.ini.new` is whole on the card.
 
 ## A GC Loader
 
