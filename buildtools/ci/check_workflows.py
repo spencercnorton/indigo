@@ -5,7 +5,9 @@
 - Every action is pinned to a full commit SHA.
 - No job asks for Docker (container:, services:): our runners have none.
 - No pull_request_target: a fork's code never runs with this repository's rights.
-- The toolchain a workflow names is the one the build runner image is built on.
+- The toolchain a workflow names is the one the build runner image is built on,
+  and so is every other copy of its digest, in the docs and scripts too:
+  Dependabot leaves it alone, and it moves by hand, all at once.
 
 usage: check_workflows.py [repository root]
 """
@@ -17,6 +19,10 @@ import sys
 from pathlib import Path
 
 POOLS = {"indigo-build", "indigo-emulator"}
+# A copy of the toolchain's digest, written whole or split over two string
+# literals.
+DIGEST = re.compile(r"libogc2@sha256:[\"'\s]*([0-9a-f]{64})")
+COPIES = (".md", ".py", ".sh", ".yml", ".yaml", ".Dockerfile")
 FORBIDDEN = {
     "pull_request_target": "pull_request_target runs fork code with this repository's rights",
     "container:": "our runners have no Docker; the build runner already is the toolchain image",
@@ -83,6 +89,15 @@ def problems(root: Path) -> list[str]:
         toolchain = re.search(r"^\s*TOOLCHAIN:\s*(\S+)", text, re.M)
         if toolchain and base and toolchain.group(1) != base.group(1):
             found.append(f"{name}: TOOLCHAIN {toolchain.group(1)} is not build.Dockerfile's {base.group(1)}")
+    if base and "@sha256:" in base.group(1):
+        pinned = base.group(1).rsplit("@sha256:", 1)[1]
+        for path in sorted(root.rglob("*")):
+            if ".git" in path.parts or path.suffix not in COPIES or not path.is_file():
+                continue
+            for digest in DIGEST.findall(path.read_text(errors="replace")):
+                if digest != pinned:
+                    found.append(f"{path.relative_to(root)}: libogc2 {digest[:12]} is not "
+                                 f"build.Dockerfile's {pinned[:12]}")
     return found
 
 

@@ -44,15 +44,21 @@ jobs:
       - name: Toolchain
         run: buildtools/ci/toolchain.sh "$TOOLCHAIN"
       - name: Build Indigo
-        run: make dev
+        # Eight jobs, one a runner CPU: the top Makefile runs its steps in
+        # order (.NOTPARALLEL) and each step builds in parallel. Reproducible
+        # build makes its copy one file at a time, as the README does.
+        run: make -j8 dev
       - name: Check the DOL
         run: |
           mkdir -p dist
           python3 buildtools/ci/verify_dol.py cube/swiss/swiss.dol --toolchain "$TOOLCHAIN" \
-            --revision "$(git rev-parse HEAD)" --short "$(git rev-parse --short HEAD)" \
+            --revision "$(git rev-parse HEAD)" --short "$(git rev-parse HEAD | cut -c1-7)" \
             --out dist/provenance.json
           cp cube/swiss/swiss.dol dist/swiss.dol
-          git show-ref --tags > dist/tags.txt || true  # the DOL lists every tag (tags.h)
+          if grep -qF "$PWD" cube/swiss/swiss.dol; then
+            echo "::error::The DOL names the folder it was built in ($PWD): a build elsewhere would differ."
+            exit 1
+          fi
       - name: Package and check the SD card zip
         run: |
           version="ci-$(git rev-parse --short=8 HEAD)"
@@ -87,7 +93,6 @@ jobs:
             dist/probe.dol
             dist/aesnd.dol
             dist/provenance.json
-            dist/tags.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -97,34 +102,43 @@ jobs:
     runs-on: [self-hosted, indigo-build]
     timeout-minutes: 20
     steps:
+      # In another folder than Build's: the bytes must not care where.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          path: elsewhere
       - name: Toolchain
+        working-directory: elsewhere
         run: buildtools/ci/toolchain.sh "$TOOLCHAIN"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dol-${{ github.sha }}
           path: first
-      - name: The tags the first build saw
-        # The DOL lists every tag, so a tag pushed between the two builds would
-        # make them differ. Tags never move (they are immutable), so dropping the
-        # ones the first build did not have leaves exactly its set.
-        run: |
-          cut -d' ' -f2 first/tags.txt > first/tag-refs.txt
-          git tag -l | while read -r tag; do
-            grep -qxF "refs/tags/$tag" first/tag-refs.txt || git tag -d "$tag" > /dev/null
-          done
-      - name: Build Indigo again, in a fresh container
-        run: make dev
+      - name: Build Indigo again, in a fresh container, another folder and another locale
+        # The toolchain image's own locale, which a build that follows the
+        # README gets; this image's is C.UTF-8. The bytes must not care.
+        working-directory: elsewhere
+        run: LC_ALL=en_US.UTF-8 make dev
       - name: Both builds are the same bytes
         run: |
-          sha256sum first/swiss.dol cube/swiss/swiss.dol
-          if ! cmp first/swiss.dol cube/swiss/swiss.dol; then
+          sha256sum first/swiss.dol elsewhere/cube/swiss/swiss.dol
+          if ! cmp first/swiss.dol elsewhere/cube/swiss/swiss.dol; then
             echo "::error::Two builds of the same commit in the same toolchain differ. Something in the build depends on the machine, the time or the order of files."
             exit 1
           fi
           echo "Reproducible: two independent builds are byte for byte the same." >> "$GITHUB_STEP_SUMMARY"
+      - name: The performance build
+        # Frame times and the GPU's counters drawn over the menus
+        # (UI_PERF=1), to measure a change on a console. It runs here, beside
+        # the Emulator job, so it adds nothing to the time CI takes.
+        working-directory: elsewhere
+        run: make -C cube/swiss -j8 BUILD=build-perf TARGET=swiss-perf UI_PERF=1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dol-perf-${{ github.sha }}
+          path: elsewhere/cube/swiss/swiss-perf.dol
+          if-no-files-found: error
+          retention-days: 14
 
   emulator:
     name: ${{ matrix.name }}
@@ -233,19 +247,25 @@ jobs:
           LANE: ${{ matrix.lane }}
           UI_TEST_JOBS: "8"
           UI_TEST_REQUIRE_GXTEXCONV: "1"
+          UI_TEST_REQUIRE_FUZZERS: "1"
         run: buildtools/ui/tests/run_tests.sh "$LANE"
 
   fuzz:
     # Not in "CI passed": a fuzzer can find an old bug on any pull request, so
     # a red Fuzz is a real parser bug to fix, not a verdict on this change.
+    # It runs once CI passed has, so it never holds a runner a required job
+    # is waiting for, even with other pull requests' jobs queued for the
+    # same runners.
     name: Fuzz
+    needs: passed
     runs-on: [self-hosted, indigo-build]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Fuzz the files Indigo reads from a card
         env:
-          SECONDS_EACH: ${{ github.event_name == 'schedule' && '600' || '30' }}
+          # The weekly run shares 55 of its 60 minutes between the targets.
+          SECONDS_EACH: ${{ github.event_name == 'schedule' && 'total:3300' || '30' }}
         run: buildtools/ui/tests/fuzz/run_fuzz.sh "$SECONDS_EACH" fuzz-out
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()

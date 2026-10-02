@@ -741,11 +741,13 @@ int settings_game_custom_count(const ConfigEntry *game)
 
 /* The Library marks the covers of games that have settings of their own.
  * Each card on screen asks again on every step of the carousel, so the
- * settings files are read once (one mount, one folder listing) and kept
- * until the next save changes them. */
+ * settings files are read once (one mount, one folder listing) and kept,
+ * each with its answer once worked out, until the next save changes them. */
 typedef struct {
 	char gameId[4];
 	char *text;
+	char markRegion;	/* the region mark was worked out for; 0 before */
+	bool mark;
 } settingsGameFile_t;
 
 static settingsGameFile_t *settingsGameFiles;
@@ -766,6 +768,7 @@ static void settingsKeepGameFile(const char *gameId, char *text, void *context)
 	}
 	settingsGameFiles = grown;
 	memcpy(grown[settingsGameFileCount].gameId, gameId, 4);
+	grown[settingsGameFileCount].markRegion = 0;
 	grown[settingsGameFileCount].text = strdup(text);
 	if(grown[settingsGameFileCount].text != NULL) {
 		settingsGameFileCount++;
@@ -810,7 +813,8 @@ void settings_game_files_load(void)
 
 /* Whether a game has any row that differs from Game Defaults, as Game
  * Detail counts it. region is 'P' for PAL discs, whose video mode default
- * differs. Reads nothing: settings_game_files_load did. */
+ * differs. Reads nothing: settings_game_files_load did; and parses a game's
+ * file once, until a save forgets the files. */
 bool settings_game_has_custom(const char *gameId, char region)
 {
 	static ConfigEntry game;
@@ -828,6 +832,9 @@ bool settings_game_has_custom(const char *gameId, char region)
 	if(i == settingsGameFileCount) {
 		return false;
 	}
+	if(settingsGameFiles[i].markRegion == region) {
+		return settingsGameFiles[i].mark;
+	}
 	/* config_parse_game cuts its input into lines, so parse a copy. */
 	text = strdup(settingsGameFiles[i].text);
 	if(text == NULL) {
@@ -839,7 +846,9 @@ bool settings_game_has_custom(const char *gameId, char region)
 	config_defaults(&game);
 	config_parse_game(text, &game);
 	free(text);
-	return settings_game_custom_count(&game) > 0;
+	settingsGameFiles[i].mark = settings_game_custom_count(&game) > 0;
+	settingsGameFiles[i].markRegion = region;
+	return settingsGameFiles[i].mark;
 }
 
 /* X in a game's settings: this row follows Game Defaults again. */

@@ -61,7 +61,7 @@
 #define UI_SETLAYOUT_PAGE_Y (-6)
 #define UI_SETLAYOUT_PAGE_W 652
 #define UI_SETLAYOUT_PAGE_H 492
-#define UI_SETLAYOUT_PAGE_ALPHA 254
+#define UI_SETLAYOUT_PAGE_ALPHA 255
 
 /* Display values are bounded before font measurement or Draw* allocation.
  * The setting itself is never modified; only its one-frame presentation is

@@ -74,4 +74,12 @@ bool UIGameflowResolver_IsOppositeDisc(
 	const uiGameflowResolverEntry_t *primary,
 	const uiGameflowResolverEntry_t *candidate);
 
+/* Whether an image could be primary's other disc before its header is read:
+ * knownId is the disc ID its metadata already holds (UI_GAMEFLOW_RESOLVER_
+ * ID_LENGTH bytes, unterminated), or NULL. An image with no metadata, or
+ * metadata naming no disc (all zero, as a TGC's), has to be read; one
+ * naming another game cannot be the other disc. */
+bool UIGameflowResolver_MayBeOppositeDisc(
+	const uiGameflowResolverEntry_t *primary, const char *knownId);
+
 #endif

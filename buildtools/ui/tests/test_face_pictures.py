@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[3]
 SOURCE = ROOT / "cube/swiss/source/gui/indigo_background.c"
 
 HARNESS = r"""
+#include <float.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -242,7 +243,10 @@ class FacePictureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         source = SOURCE.read_text()
-        blocks = [extract_function(source, s) for s in (
+        blocks = [extract_function((SOURCE.parent / "ui_motion.c").read_text(),
+                                   "float UIMotion_Smoothstep(")]
+        blocks += [extract_function(source, s) for s in (
+            "static float fastSqrt(",
             "static bool projectRailPoint(", "static guVector semanticFacePoint(",
             "static float faceFacing(", "static float faceStrokeShare(")]
         blocks += re.findall(r"^#define FACE_PICTURE_\w+ .*$", source, re.M)
