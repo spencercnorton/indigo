@@ -2803,7 +2803,7 @@ static void renderFacePictures(const uiSceneFrame_t *scene, float seconds,
 			(u16)(width * 2), (u16)height, GX_TF_RGB565, GX_CLAMP, GX_CLAMP, GX_FALSE);
 		GX_InitTexObjLOD(&picture->texture, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f,
 			GX_FALSE, GX_FALSE, GX_ANISO_1);
-		picture->weight = weight;
+		picture->weight = weight * glassSmoothstep(BOOT_CUBE_HANDOFF, 1.0f, scene->introProgress);
 		picture->x = (u16)x0;
 		picture->y = (u16)y0;
 		picture->width = (u16)width;

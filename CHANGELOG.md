@@ -88,6 +88,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - On Home, Source's and System's rows and the restart question fade in when
   they open, and the highlight fades from row to row as you move instead of
   jumping.
+- As the boot's cube lands on Home, the icon on the face beside the front
+  one fades in with the glass's light instead of appearing in one frame.
 
 ### Fixes
 
