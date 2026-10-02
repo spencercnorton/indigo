@@ -156,7 +156,7 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_CLOCK_POSITION] = "Clock:\n\nRight - The time sits in the top right corner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nTemperature places the temperature dial on its own.",
 	[SET_TEMPERATURE_POSITION] = "Temperature:\n\nRight - The CPU temperature dial sits in the top right\ncorner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nIn the clock's corner, the dial sits nearer the edge.",
 	[SET_APPS_FACE] = "Apps Face:\n\nOn - Home shows Apps, one turn from Library, while the\nsource has a program in /apps (default)\nOff - Home never shows Apps. The programs stay in /apps,\nand the file list still starts them.",
-	[SET_CUBE] = "Cube:\n\nInfinite - Left and Right turn round every face in a ring (default)\nClassic - Every menu sits on its own side of the cube, as on\nthe GameCube: turn to a side, and back to Library to reach\nthe others.\n\nIn Classic, Settings is left of Library, System right, Source\nabove and Apps below. B turns back to Library.",
+	[SET_CUBE] = "Cube:\n\nInfinite - Left and Right turn round every face in a ring (default)\nClassic - Every menu sits on its own side of the cube, as on\nthe GameCube\n\nIn Classic, turn to a side, and back to Library to reach the\nothers: Settings is left of Library, System right, Source\nabove and Apps below. B turns back to Library.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
 
