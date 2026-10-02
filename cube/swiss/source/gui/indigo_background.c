@@ -2139,6 +2139,73 @@ static void drawFaceIcons(float seconds, bool animated,
 		GX_LO_CLEAR);
 }
 
+/* Each icon's shadow on the glass under it. The light comes from the upper
+ * right, as the rim's does (drawGlassRim), so the shadow falls down and to
+ * the left, further the higher the icon floats. It is the icon drawn again
+ * before it, sheared onto the glass and darkening what is there: its fades
+ * three times as wide (a lower scale widens every fringe on screen and
+ * moves no core), so it reads as a soft shadow under a sharp icon, never
+ * as a blur of the icon itself. */
+#define FACE_SHADOW_PLANE 1.0f
+#define FACE_SHADOW_FEATHER 3.0f
+#define FACE_SHADOW_ALPHA 0.45f
+/* How far a fully lifted icon's shadow falls, in cube sizes: about four
+ * pixels at Home. */
+#define FACE_SHADOW_DROP 0.034f
+static void drawFaceShadows(float seconds, bool animated,
+		const uiClockFrame_t *clock, const indigoPadFrame_t *pad,
+		const int choices[UI_HOME_FACE_COUNT], const cubeRasterTransform_t *raster,
+		float strength)
+{
+	/* Down and to the left in eye space, y up. */
+	const float fallX = -0.68f, fallY = -0.73f;
+	const float (*m)[4] = raster->model;
+	float scale = fastSqrt(m[0][0] * m[0][0] + m[1][0] * m[1][0] + m[2][0] * m[2][0]);
+	Mtx identity;
+	/* Static: the video thread's stack is small. */
+	static cubeRasterTransform_t shadow;
+
+	if(strength <= 0.0f || scale < 0.0001f) return;
+	/* The fall in body space: the model turns, then scales by scale. */
+	guVector fall = {(m[0][0] * fallX + m[1][0] * fallY) / scale,
+		(m[0][1] * fallX + m[1][1] * fallY) / scale,
+		(m[0][2] * fallX + m[1][2] * fallY) / scale};
+	shadow = *raster;
+	shadow.scaleX /= FACE_SHADOW_FEATHER;
+	shadow.scaleY /= FACE_SHADOW_FEATHER;
+	for(int face = 0; face < UI_HOME_FACE_COUNT; face++) {
+		const float (*basis)[4] = raster->semanticFaces[face];
+		float facing = faceFacing(raster, face);
+		float drop = FACE_SHADOW_DROP *
+			(FACE_ICON_PLANE + faceIconLift(facing) - FACE_SHADOW_PLANE) /
+			(FACE_ICON_PLANE + FACE_ICON_LIFT - FACE_SHADOW_PLANE);
+		float du = (basis[0][0] * fall.x + basis[1][0] * fall.y + basis[2][0] * fall.z) * drop;
+		float dv = (basis[0][1] * fall.x + basis[1][1] * fall.y + basis[2][1] * fall.z) * drop;
+
+		/* Only as much as the strokes show: none on a face turned away. */
+		shadow.motifAlpha[face] *= FACE_SHADOW_ALPHA * strength * faceStrokeShare(facing);
+		/* Every icon is drawn at FACE_ICON_PLANE: through this normal its
+		 * (u, v) lands on the glass at (u + du, v + dv). faceFacing cannot
+		 * read a sheared normal, so the fades above come from raster. */
+		for(int row = 0; row < 3; row++)
+			shadow.semanticFaces[face][row][2] = (basis[row][2] * FACE_SHADOW_PLANE +
+				basis[row][0] * du + basis[row][1] * dv) / FACE_ICON_PLANE;
+	}
+	guMtxIdentity(identity);
+	GX_LoadPosMtxImm(identity, GX_PNMTX0);
+	GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
+	GX_SetCullMode(GX_CULL_NONE);
+	/* The frame times one minus the shadow's alpha. */
+	GX_SetBlendMode(GX_BM_BLEND, GX_BL_ZERO, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
+	for(int face = 0; face < UI_HOME_FACE_COUNT; face++) {
+		if(shadow.motifAlpha[face] > 0.0f)
+			drawOneFaceIcon(&shadow, face, choices[face], seconds, animated, clock, pad);
+	}
+	GX_LoadPosMtxImm(raster->model, GX_PNMTX0);
+	GX_SetCullMode(GX_CULL_BACK);
+	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
+}
+
 static float glassSmoothstep(float edge0, float edge1, float x)
 {
 	return UIMotion_Smoothstep((x - edge0) / (edge1 - edge0));
@@ -3415,7 +3482,8 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	restoreCubeRaster();
 	/* Light leaving the finished glass: its bloom first, then the icons, so
 	 * their strokes stay sharp instead of blurring with it (Spencer found
-	 * them hard to read), then the rim. */
+	 * them hard to read), then the rim. Each icon's shadow lands on the
+	 * glass between the bloom and the icon. */
 	bool light = strength > 0.01f && shellOutline.count >= 3;
 	if(light && screenGlass) {
 		drawGlassBloom(boxLeft - 28.0f, boxTop - 28.0f, boxRight + 28.0f,
@@ -3423,6 +3491,7 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 		loadCubeProjection();
 		restoreCubeRaster();
 	}
+	drawFaceShadows(seconds, animated, clock, pad, icons, &raster, strength);
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 	drawFaceIcons(seconds, animated, clock, pad, icons, &raster);
 	if(screenGlass) {

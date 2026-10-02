@@ -67,7 +67,7 @@ enum { PAD_BUTTON_LEFT=0x0001, PAD_BUTTON_RIGHT=0x0002, PAD_BUTTON_DOWN=0x0004, 
 #define CUBE_CAMERA_Z -5.4f
 #define CHECK(c,m) do { if(!(c)) { fprintf(stderr,"%s\n",m); exit(73); } } while(0)
 static bool active, uv, surfaceTest, studio;
-static int phase, remaining, count, begins, matrixLoads, firstPrimitive;
+static int phase, remaining, count, begins, matrixLoads, firstPrimitive, litBegins;
 static guVector positions[4096];
 static u8 alphas[4096];
 static GXColor colors[4096];
@@ -80,13 +80,18 @@ static void GX_SetZMode(int enable,int comparison,int write) {
         "glass depth policy: a pass writes depth");
     depthWrites=write;
 }
+/* Light adds or covers; only the icons' shadows multiply what is there. */
+static int blendSource=GX_BL_SRCALPHA, blendDestination=GX_BL_INVSRCALPHA;
 static void GX_SetBlendMode(int mode,int source,int destination,int operation) {
-    CHECK(operation==GX_LO_CLEAR && mode==GX_BM_BLEND && source==GX_BL_SRCALPHA &&
-        (destination==GX_BL_ONE || destination==GX_BL_INVSRCALPHA),"glass blend policy");
+    CHECK(operation==GX_LO_CLEAR && mode==GX_BM_BLEND &&
+        ((source==GX_BL_SRCALPHA && (destination==GX_BL_ONE || destination==GX_BL_INVSRCALPHA)) ||
+         (source==GX_BL_ZERO && destination==GX_BL_INVSRCALPHA)),"glass blend policy");
+    blendSource=source; blendDestination=destination;
 }
 static void reset(bool textured) {
     CHECK(!active,"previous primitive unfinished");
-    uv=textured; surfaceTest=studio=false; phase=remaining=count=begins=matrixLoads=firstPrimitive=0;
+    uv=textured; surfaceTest=studio=false;
+    phase=remaining=count=begins=matrixLoads=firstPrimitive=litBegins=0;
 }
 static void GX_Begin(int primitive,int format,int vertices) {
     CHECK(!active && phase==0,"nested begin or partial vertex");
@@ -105,6 +110,7 @@ static void GX_Begin(int primitive,int format,int vertices) {
         }
     }
     if(begins==0) firstPrimitive=primitive;
+    if(blendSource!=GX_BL_ZERO) ++litBegins;
     active=true; remaining=vertices; ++begins;
 }
 static void GX_Position3f32(float x,float y,float z) {
@@ -654,6 +660,64 @@ static void test_lift(void) {
         CHECK(quads==13,"a Books quad went missing");
     }
 }
+/* Where a stream lands on screen: its alpha-weighted centre, its strongest
+ * alpha and the width of its first quad's fade, from a core corner out to
+ * the fringe's clear edge. */
+static void streamSpread(const cubeRasterTransform_t *r,float *x,float *y,int *peak,float *fade) {
+    float weight=0;
+    *x=*y=0; *peak=0;
+    for(int i=0;i<count;i++) {
+        indigoPoint_t p=projected(r,positions[i]);
+        *x+=p.x*alphas[i]; *y+=p.y*alphas[i]; weight+=alphas[i];
+        if(alphas[i]>*peak) *peak=alphas[i];
+    }
+    *x/=weight; *y/=weight;
+    indigoPoint_t core=projected(r,positions[4]),edge=projected(r,positions[5]);
+    *fade=hypotf(edge.x-core.x,edge.y-core.y);
+}
+/* A face square on casts its icon's shadow onto the glass: down and to the
+ * left, away from the light, a few pixels at Home's size, three times as
+ * soft as the icon and well under its strength, multiplied into the frame.
+ * Faces turned away cast none, and nothing draws at all while the scene
+ * keeps its glass plain (strength 0). */
+static void test_shadows(void) {
+    /* Books on Library, square on; the faces either side are edge-on. */
+    const int choices[UI_HOME_FACE_COUNT]={1,0,0,0,-1};
+    const int books[UI_HOME_FACE_COUNT]={1,-1,-1,-1,-1};
+    uiClockFrame_t clock={true,0,1,1,0,0.70710678f,0.70710678f};
+    indigoPadFrame_t pad={true,0,0,0,0,0u};
+    cubeRasterTransform_t r;
+    float ix,iy,sx,sy,iFade,sFade;
+    int iPeak,sPeak,halfPeak;
+    memcpy(r.semanticFaces,homeFaces,sizeof(homeFaces)); lightAll(&r);
+    r.scaleX=r.scaleY=625.221f;
+    turnTo(&r,0,0.92f);
+    reset(false); drawFaceIcons(1.0f,false,&clock,&pad,choices,&r);
+    int icon=count;
+    CHECK(icon==260 && begins==1,"Books alone should draw");
+    streamSpread(&r,&ix,&iy,&iPeak,&iFade);
+    reset(false); drawFaceShadows(1.0f,false,&clock,&pad,choices,&r,1.0f);
+    CHECK(count==icon && begins==1,"a face turned away cast a shadow, or the front none");
+    CHECK(litBegins==0,"the shadow adds light instead of multiplying");
+    CHECK(matrixLoads==2 && culling==GX_CULL_BACK && memcmp(loaded,r.model,sizeof(Mtx))==0 &&
+        blendSource==GX_BL_SRCALPHA && blendDestination==GX_BL_INVSRCALPHA,"shadow state restore");
+    streamSpread(&r,&sx,&sy,&sPeak,&sFade);
+    /* y is up on this screen. */
+    CHECK(sx-ix<-1.5f && sy-iy<-1.5f && hypotf(sx-ix,sy-iy)<8.0f,
+        "the shadow does not fall down and to the left of its icon");
+    CHECK(sPeak<=FACE_SHADOW_ALPHA*iPeak+1,"the shadow is as strong as its icon");
+    CHECK(sFade>(FACE_SHADOW_FEATHER-0.2f)*iFade && sFade<(FACE_SHADOW_FEATHER+0.2f)*iFade,
+        "the shadow is not soft");
+    reset(false); drawFaceShadows(1.0f,false,&clock,&pad,choices,&r,0.5f);
+    streamSpread(&r,&sx,&sy,&halfPeak,&sFade);
+    CHECK(abs(2*halfPeak-sPeak)<=2,"the shadow does not follow the glass light's strength");
+    reset(false); drawFaceShadows(1.0f,false,&clock,&pad,choices,&r,0.0f);
+    CHECK(count==0 && begins==0 && matrixLoads==0,"a shadow drew on plain glass");
+    /* Turned 75 degrees its strokes are gone, and so is its shadow. */
+    turnTo(&r,75,0.92f);
+    reset(false); drawFaceShadows(1.0f,false,&clock,&pad,books,&r,1.0f);
+    CHECK(count==0 && begins==0,"a face turned edge-on cast a shadow");
+}
 static void test_hidden_controller_reads_the_pad(void) {
     /* Library's face turns away while A is held, then back with the pad at
      * rest: the press was seen, so the emblem has not begun its idle play
@@ -983,7 +1047,7 @@ static void test_glass(void) {
 }
 int main(void) {
     test_fast_sqrt(); test_dial(); test_rail_joins(); test_motifs(); test_controller(); test_rounded_outlines();
-    test_icons_on_their_faces(); test_lift(); test_hidden_controller_reads_the_pad();
+    test_icons_on_their_faces(); test_lift(); test_shadows(); test_hidden_controller_reads_the_pad();
     test_controller_across_the_clock_wrap();
     test_closed_cube(); test_seamless_mesh(); test_chamfer_color_pairs(); test_surfaces(); test_glass();
     puts("native strokes: bounded complete GX streams, perspective coverage and closed seams");
@@ -1030,6 +1094,7 @@ class StrokeGXStreamTests(unittest.TestCase):
         blocks += [extract_function(indigo, "static void liftFaceIcon(")]
         blocks += [extract_function(indigo, "static void drawOneFaceIcon(")]
         blocks += [extract_function(indigo, "static void drawFaceIcons(")]
+        blocks += [extract_function(indigo, "static void drawFaceShadows(")]
         blocks += [extract_function(indigo, "static float outlineCross(")]
         blocks += [extract_function(indigo, "static void buildCubeOutline(")]
         blocks += [extract_function(indigo, "static indigoPoint_t cubeOutlineNormal(")]
@@ -1059,13 +1124,14 @@ class StrokeGXStreamTests(unittest.TestCase):
         blocks += [extract_function(frame, "static void " + name + "(")
                    for name in ("_PutSystemDialVertex", "_DrawSystemRing")]
         cls.emitters="\n".join(blocks)
-        # The controller's sizing constants, the icons' plane and lift, and
-        # the bevels' seam blend come from the source, never a copy.
+        # The controller's sizing constants, the icons' plane, lift and
+        # shadow, and the bevels' seam blend come from the source, never a
+        # copy.
         cls.defines="\n".join(re.findall(
             r"^#define (?:UI_ANIM_TIME_WRAP_SECONDS) .*$",
             (GUI / "ui_anim.h").read_text(), re.MULTILINE) + re.findall(
             r"^#define (?:FACE_POLYGON_MAX|FACE_BAND_MAX|FACE_ARC_MAX|CONTROLLER_IDLE_HOLD|"
-            r"CONTROLLER_PRESS_CYCLE|BEVEL_SEAM_BLEND|FACE_ICON_\w+) .*$",
+            r"CONTROLLER_PRESS_CYCLE|BEVEL_SEAM_BLEND|FACE_ICON_\w+|FACE_SHADOW_\w+) .*$",
             indigo, re.MULTILINE))
         # The face and icon lists come from the source, never a copy.
         home=(GUI / "ui_home.h").read_text()
@@ -1139,7 +1205,7 @@ class StrokeGXStreamTests(unittest.TestCase):
             return subprocess.run([str(binary)],capture_output=True,text=True,timeout=5)
 
     def test_controller_defines_come_from_the_source(self):
-        self.assertEqual(self.defines.count("#define"), 9)
+        self.assertEqual(self.defines.count("#define"), 13)
 
     def test_native_emitters(self):
         result=self.run_emitters(self.emitters)
@@ -1230,6 +1296,20 @@ class StrokeGXStreamTests(unittest.TestCase):
             "icons not lifted": ("liftFaceIcon(&faded, face, faceIconLift(facing));",
                 "liftFaceIcon(&faded, face, 0.0f * faceIconLift(facing));"),
             "side faces lifted": ("(facing - 0.80f) / 0.15f", "(facing - 0.33f) / 0.27f"),
+            "shadow adds light": ("GX_BL_ZERO, GX_BL_INVSRCALPHA", "GX_BL_SRCALPHA, GX_BL_ONE"),
+            "shadow on turned faces": ("FACE_SHADOW_ALPHA * strength * faceStrokeShare(facing);",
+                "FACE_SHADOW_ALPHA * strength;"),
+            "shadow ignores the glass light": ("FACE_SHADOW_ALPHA * strength *", "FACE_SHADOW_ALPHA *"),
+            "shadow on plain glass": ("if(strength <= 0.0f || scale < 0.0001f) return;",
+                "if(scale < 0.0001f) return;"),
+            "shadow falls toward the light": ("const float fallX = -0.68f, fallY = -0.73f;",
+                "const float fallX = 0.68f, fallY = 0.73f;"),
+            "sharp shadow": ("\tshadow.scaleX /= FACE_SHADOW_FEATHER;\n\tshadow.scaleY /= FACE_SHADOW_FEATHER;\n",
+                ""),
+            "shadow state left": ("clock, pad);\n\t}\n\tGX_LoadPosMtxImm(raster->model, GX_PNMTX0);\n"
+                "\tGX_SetCullMode(GX_CULL_BACK);\n"
+                "\tGX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);",
+                "clock, pad);\n\t}"),
         }
         for name,(old,new) in mutants.items():
             with self.subTest(name=name):

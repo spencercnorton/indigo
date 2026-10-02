@@ -46,8 +46,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   2.2.
 - The Home cube's icons stand a little off the glass instead of lying in it:
   the face you are on lifts its icon, which shifts against the glass as the
-  cube turns and sways. Faces turned away keep their icons down, so none
-  hangs past the cube's edge.
+  cube turns and sways. Under it a soft shadow falls on the glass, down and
+  to the left, away from the light; the icon itself stays sharp. Faces turned
+  away keep their icons down, so none hangs past the cube's edge.
 - The CPU temperature holds steady. The console's sensor reads in 4 degree
   steps, so a CPU sitting on a step showed one side and then the other every
   second (40 °C, 44 °C, 40 °C...). Indigo now shows an average of the last few
