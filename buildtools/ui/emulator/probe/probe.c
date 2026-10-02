@@ -17,13 +17,13 @@
 #include <string.h>
 
 #define PROBE_MAGIC 0x1D160B0Eu
-#define PROBE_VERSION 1u
+#define PROBE_VERSION 2u
 
 /* The words in the strip, top to bottom. run.py's PROBE_WORDS names them. */
 enum {
 	W_MAGIC, W_VERSION, W_ID0, W_ID1, W_MEMSIZE, W_CONSOLE, W_VIDEO, W_BUS,
 	W_CORE, W_ARENA_LO, W_ARENA_HI, W_TOP, W_AI_DMA, W_AI_CR, W_STRAY, W_ARGC,
-	W_ARGV0, W_ARGV1, W_ARGV2, W_ARGV3, W_CRC, W_COUNT
+	W_ARGV0, W_ARGV1, W_ARGV2, W_ARGV3, W_VI_DCR, W_VI_CLK_DTV, W_CRC, W_COUNT
 };
 
 static u32 word[W_COUNT];
@@ -84,6 +84,11 @@ void __SYS_PreInit(void)
 	word[W_CORE] = *(vu32 *)0x800000FC;
 	word[W_AI_DMA] = *(vu16 *)0xCC005036;
 	word[W_AI_CR] = *(vu32 *)0xCC006C00;
+	/* The video mode the screen was left in: the display configuration
+	 * (interlaced or not, the TV format), and the 27/54 MHz clock with the
+	 * component cable bit beside it. */
+	word[W_VI_DCR] = *(vu16 *)0xCC002002;
+	word[W_VI_CLK_DTV] = (u32)*(vu16 *)0xCC00206C << 16 | *(vu16 *)0xCC00206E;
 }
 
 /* A running DMA, or a thread the hand-off failed to stop, changes memory
@@ -114,7 +119,7 @@ static u32 stray_writes(void)
 #define BLACK 0x10801080
 #define CELL 16
 #define STRIP_X 64
-#define STRIP_Y 128
+#define STRIP_Y 112
 
 static void fill(u32 *xfb, int stride, int x, int y, int w, int h, u32 colour)
 {
@@ -155,11 +160,16 @@ int main(int argc, char **argv)
 	word[W_STRAY] = stray_writes();
 	word[W_CRC] = crc32(word, W_CRC);
 
-	printf("\n  Indigo probe: the launch reached this program.\n");
-	printf("  disc %.6s  memory %08X  video mode %u\n", (const char *)&word[W_ID0], word[W_MEMSIZE],
-	       word[W_VIDEO]);
-	printf("  audio DMA %04X  stray writes %u  argc %u\n", word[W_AI_DMA], word[W_STRAY], word[W_ARGC]);
-	fill(xfb, stride, 0, 104, mode->fbWidth, mode->xfbHeight - 104, AZURE);
+	char path[17] = {0};
+	for (int i = 0; i < 16; i++)
+		path[i] = (char)(word[W_ARGV0 + i / 4] >> (24 - 8 * (i % 4)));
+	printf(" Indigo probe %u: the launch reached this program.\n", PROBE_VERSION);
+	printf(" disc %.6s  memory %08X  video %u  console %08X\n", (const char *)&word[W_ID0],
+	       word[W_MEMSIZE], word[W_VIDEO], word[W_CONSOLE]);
+	printf(" audio DMA %04X/%08X  stray %u  arena %08X-%08X top %08X\n", word[W_AI_DMA], word[W_AI_CR],
+	       word[W_STRAY], word[W_ARENA_LO], word[W_ARENA_HI], word[W_TOP]);
+	printf(" VI %04X %08X  argc %u %.16s\n", word[W_VI_DCR], word[W_VI_CLK_DTV], word[W_ARGC], path);
+	fill(xfb, stride, 0, 88, mode->fbWidth, mode->xfbHeight - 88, AZURE);
 	for (int w = 0; w < W_COUNT; w++)
 		for (int b = 0; b < 32; b++)
 			fill(xfb, stride, STRIP_X + b * CELL, STRIP_Y + w * CELL, CELL, CELL,

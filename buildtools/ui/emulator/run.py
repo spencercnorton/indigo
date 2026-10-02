@@ -128,7 +128,7 @@ STORAGE_ROWS = 7
 # The probe's report, in the order of its strip (probe.c).
 PROBE_WORDS = ("magic", "version", "id0", "id1", "memsize", "console", "video", "bus", "core",
                "arena_lo", "arena_hi", "top", "ai_dma", "ai_cr", "stray_writes", "argc",
-               "argv0", "argv1", "argv2", "argv3", "crc")
+               "argv0", "argv1", "argv2", "argv3", "vi_dcr", "vi_clk_dtv", "crc")
 PROBE_MAGIC = 0x1D160B0E
 AI_DMA_ENABLE = 0x8000
 
