@@ -78,6 +78,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Since 2.3.0-rc.1: a loader that starts Indigo with settings as arguments no
+  longer turns Library Folders off and loses the FlattenDir it keeps, and a
+  Clock argument no longer moves the temperature dial. Turning Library
+  Folders on over a FlattenDir that was empty or already its own pattern now
+  comes back to `*/games` when it goes off.
 - Apps: a picture with a long block of data in it, more than 256 KB in one
   piece (some programs save a PNG that way, or put a large block of
   metadata in it), crashed Indigo while it made the app's poster. The
