@@ -54,16 +54,20 @@ static char *copy(const uint8_t *data, size_t size)
 
 /* A global.ini, a game's settings file and a legacy swiss.ini are the same
  * text to the fuzzer. A save merges what Swiss writes over the file on the
- * card: here the input's second half over its first. */
+ * card: here the input's second half over its first. A loader's arguments
+ * are parsed like a global.ini but change only what they name: the second half
+ * again. */
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
 	char *global = copy(data, size), *game = copy(data, size), *legacy = copy(data, size);
 	char *card = copy(data, size / 2), *written = copy(data + size / 2, size - size / 2);
+	char *arguments = copy(data + size / 2, size - size / 2);
 	ConfigEntry entry;
 
-	if(global && game && legacy && card && written) {
+	if(global && game && legacy && card && written && arguments) {
 		set_defaults();
-		config_parse_global(global);
+		config_parse_global(global, true);
+		config_parse_global(arguments, false);
 		memset(&entry, 0, sizeof(entry));
 		config_parse_game(game, &entry);
 		free(config_merge_file(card, written, globalOldKeys));
@@ -75,6 +79,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	free(legacy);
 	free(card);
 	free(written);
+	free(arguments);
 	return 0;
 }
 """

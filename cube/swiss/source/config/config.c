@@ -1161,12 +1161,14 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 	 free(configEntries);
 }
 
-void config_parse_global(char *configData) {
+/* settingsFile: configData is a whole global.ini. Otherwise it is a loader's
+ * arguments, which change only the settings they name. */
+void config_parse_global(char *configData, bool settingsFile) {
 	char *line, *linectx = NULL;
 	/* Before Temperature had its own line, Clock placed the dial too. */
 	int clockRead = -1;
 	bool temperatureRead = false;
-	bool libraryFolders = false;
+	int libraryFolders = -1;	/* -1: not named */
 	line = strtok_r( configData, "\r\n", &linectx );
 	while( line != NULL ) {
 		//print_debug("Line [%s]\n", line);
@@ -1695,19 +1697,29 @@ void config_parse_global(char *configData) {
 		// And round we go again
 		line = strtok_r( NULL, "\r\n", &linectx);
 	}
-	if(clockRead >= 0 && !temperatureRead) {
+	if(settingsFile && clockRead >= 0 && !temperatureRead) {
 		swissSettings.temperaturePosition = clockRead;
 	}
-	// FlattenDir was just read as saved: Library Folders takes it from there
-	swissSettings.libraryFolders = 0;
-	config_set_library_folders(libraryFolders);
+	if(settingsFile) {
+		// FlattenDir was just read as saved: Library Folders takes it from there
+		swissSettings.libraryFolders = 0;
+		config_set_library_folders(libraryFolders == 1);
+	}
+	else if(libraryFolders >= 0) {
+		config_set_library_folders(libraryFolders);
+	}
 }
 
 void config_set_library_folders(bool on) {
 	// Keep the FlattenDir it replaces, to save and to put back
-	if(on && !swissSettings.libraryFolders &&
-		strcmp(swissSettings.flattenDir, UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN)) {
-		strlcpy(swissSettings.libraryFoldersFlattenDir, swissSettings.flattenDir,
+	if(on && !swissSettings.libraryFolders) {
+		/* Off is one list of every game: a FlattenDir that is empty or
+		 * already the folders' own pattern keeps the default instead. */
+		const char *own = swissSettings.flattenDir;
+		if(!own[0] || !strcmp(own, UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN)) {
+			own = "*/games";
+		}
+		strlcpy(swissSettings.libraryFoldersFlattenDir, own,
 			sizeof(swissSettings.libraryFoldersFlattenDir));
 	}
 	if(on) {
@@ -1730,7 +1742,7 @@ void config_parse_args(int argc, char *argv[]) {
 	argz_create(&argv[1], &argz, &argz_len);
 	argz_stringify(argz, argz_len, '\n');
 	if(argz != NULL) {
-		config_parse_global(argz);
+		config_parse_global(argz, false);
 		free(argz);
 	}
 }
@@ -1965,7 +1977,7 @@ int config_init(void (*progress_indicator)(char*, int, int)) {
 	configData = config_file_read(txtbuffer);
 	globalFileLoaded = configData != NULL;
 	if(configData != NULL) {
-		config_parse_global(configData);
+		config_parse_global(configData, true);
 		free(configData);
 		res = 1;
 	}

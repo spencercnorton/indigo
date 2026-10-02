@@ -214,7 +214,7 @@ static void parse_global_file(const char *path)
 	if(!file) exit(66);
 	char *global = read_stream(file);
 	fclose(file);
-	config_parse_global(global);
+	config_parse_global(global, true);
 	free(global);
 }
 
@@ -241,7 +241,9 @@ static char *read_path(const char *path)
  *   whether it then deletes swiss.ini.
  * custom-mark ID4 REGION [global.ini] < game ini: whether the Library marks
  *   that game's cover as having settings of its own.
- * scan-retry: how many scans the Library makes around a failed one. */
+ * scan-retry: how many scans the Library makes around a failed one.
+ * args|args-fields booted.ini < arguments: the settings after a loader starts
+ *   Swiss with these arguments on a card holding booted.ini. */
 int main(int argc, char **argv)
 {
 	if(argc < 2) return 64;
@@ -253,8 +255,8 @@ int main(int argc, char **argv)
 		char *generated = NULL;
 		size_t length = 0;
 		FILE *fp;
-		config_parse_global(booted);
-		config_parse_global(input);
+		config_parse_global(booted, true);
+		config_parse_global(input, true);
 		fp = open_memstream(&generated, &length);
 		write_global(fp);
 		fclose(fp);
@@ -356,8 +358,14 @@ int main(int argc, char **argv)
 		settings_game_files_load();
 		printf("%d\n", harness_scans);
 	}
+	else if(argc >= 3 && (!strcmp(argv[1], "args") || !strcmp(argv[1], "args-fields"))) {
+		parse_global_file(argv[2]);
+		config_parse_global(input, false);
+		if(!strcmp(argv[1], "args")) write_global(stdout);
+		else dump_settings(stdout);
+	}
 	else if(!strcmp(argv[1], "global") || !strcmp(argv[1], "global-fields")) {
-		config_parse_global(input);
+		config_parse_global(input, true);
 		if(!strcmp(argv[1], "global")) write_global(stdout);
 		else dump_settings(stdout);
 	}
@@ -529,6 +537,44 @@ class SettingsFileTest(unittest.TestCase):
                          written)
         # Off, FlattenDir is the file's own.
         off = self.run_harness("global-fields", stdin="Library Folders=No\r\nFlattenDir=*/isos\r\n")
+        self.assertIn("\nflattenDir=*/isos\n", off)
+
+    def test_library_folders_never_keeps_its_own_pattern(self):
+        # Off is one list of every game, so a FlattenDir that is empty or already
+        # Library Folders' own pattern comes back as the default.
+        for flatten in ("*/games/*/*", ""):
+            text = f"FlattenDir={flatten}\r\nLibrary Folders=Yes\r\n"
+            self.assertIn("\nlibraryFoldersFlattenDir=*/games\n",
+                          self.run_harness("global-fields", stdin=text), flatten)
+            self.assertEqual(self.global_file(text)["FlattenDir"], "*/games", flatten)
+
+    def boot_with_arguments(self, booted, arguments, fields=False):
+        with tempfile.NamedTemporaryFile("w", suffix=".ini", delete=False) as handle:
+            handle.write(booted)
+        path = Path(handle.name)
+        try:
+            return self.run_harness("args-fields" if fields else "args", str(path), stdin=arguments)
+        finally:
+            path.unlink()
+
+    def test_boot_arguments_change_only_what_they_name(self):
+        # A loader can start Indigo with settings as arguments. Library Folders,
+        # its FlattenDir and the temperature dial stay as global.ini has them
+        # unless an argument names them.
+        booted = ("Library Folders=Yes\r\nFlattenDir=*/isos\r\n"
+                  "Clock=Left\r\nTemperature=Right\r\n")
+        fields = self.boot_with_arguments(booted, "IGRType=Reboot\nClock=Right\n", fields=True)
+        self.assertIn("\nlibraryFolders=1\n", fields)
+        self.assertIn("\nflattenDir=*/games/*/*\n", fields)
+        self.assertIn("\nlibraryFoldersFlattenDir=*/isos\n", fields)
+        written = pairs(self.boot_with_arguments(booted, "IGRType=Reboot\nClock=Right\n"))
+        self.assertEqual((written["Library Folders"], written["FlattenDir"]), ("Yes", "*/isos"))
+        self.assertEqual((written["Clock"], written["Temperature"]), ("Right", "Right"))
+        self.assertEqual(written["IGRType"], "Reboot")
+        # An argument that names Library Folders still turns it off, and the
+        # FlattenDir it replaced comes back.
+        off = self.boot_with_arguments(booted, "Library Folders=No\n", fields=True)
+        self.assertIn("\nlibraryFolders=0\n", off)
         self.assertIn("\nflattenDir=*/isos\n", off)
 
     def test_an_unknown_value_keeps_the_previous_one(self):
