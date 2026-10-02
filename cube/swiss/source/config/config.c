@@ -113,12 +113,24 @@ void config_unset_device() {
 	}
 }
 
+/* A save writes NAME.new and closes it, then swaps it in for NAME, so power
+ * lost at any point leaves one whole copy: NAME until the swap, NAME.new
+ * alone during it. */
+static void config_name_new(char name[PATHNAME_MAX]) {
+	size_t used = strlen(name);
+	snprintf(name + used, PATHNAME_MAX - used, ".new");
+}
+
 // Reads from a file and returns a populated buffer, NULL if anything goes wrong.
 char* config_file_read(char* filename) {
 	char* readBuffer = NULL;
 	file_handle *configFile = (file_handle*)calloc(1, sizeof(file_handle));
 	concat_path(configFile->name, devices[DEVICE_CONFIG]->initial->name, filename);
 	print_debug("config_file_read: looking for %s\n", configFile->name);
+	if(devices[DEVICE_CONFIG]->statFile(configFile)) {
+		/* A save that lost power mid-swap left the settings in NAME.new. */
+		config_name_new(configFile->name);
+	}
 	if(!devices[DEVICE_CONFIG]->statFile(configFile) && configFile->size) {
 		readBuffer = (char*)calloc(1, configFile->size + 1);
 		if (readBuffer) {
@@ -176,20 +188,41 @@ int config_each_game_file(void (*visit)(const char *gameId, char *text, void *co
 }
 
 int config_file_write(char* filename, char* contents) {
+	DEVICEHANDLER_INTERFACE *device = devices[DEVICE_CONFIG];
 	file_handle *configFile = (file_handle*)calloc(1, sizeof(file_handle));
-	concat_path(configFile->name, devices[DEVICE_CONFIG]->initial->name, filename);
+	file_handle *newFile = (file_handle*)calloc(1, sizeof(file_handle));
+	int written = 0;
+
+	if(configFile == NULL || newFile == NULL) {
+		free(configFile);
+		free(newFile);
+		return 0;
+	}
+	concat_path(configFile->name, device->initial->name, filename);
+	strcpy(newFile->name, configFile->name);
+	config_name_new(newFile->name);
 
 	u32 len = strlen(contents);
 	print_debug("config_file_write: writing %i bytes to %s\n", len, configFile->name);
-	devices[DEVICE_CONFIG]->deleteFile(configFile);
-	if(devices[DEVICE_CONFIG]->writeFile(configFile, contents, len) == len &&
-		!devices[DEVICE_CONFIG]->closeFile(configFile)) {
-		free(configFile);
-		return 1;
+	/* NAME.new alone is the settings: make it NAME before writing over it. */
+	if(device->statFile(configFile) && !device->statFile(newFile)) {
+		device->renameFile(newFile, configFile->name);
+		strcpy(newFile->name, configFile->name);
+		config_name_new(newFile->name);
 	}
-	devices[DEVICE_CONFIG]->closeFile(configFile);
+	device->deleteFile(newFile);
+	if(device->writeFile(newFile, contents, len) == len &&
+		!device->closeFile(newFile)) {
+		/* FatFs will not rename onto a file that exists. */
+		device->deleteFile(configFile);
+		written = !device->renameFile(newFile, configFile->name);
+	}
+	else {
+		device->closeFile(newFile);
+	}
+	free(newFile);
 	free(configFile);
-	return 0;
+	return written;
 }
 
 /* Slots alternate so a short/failed write cannot destroy the last complete
@@ -308,6 +341,9 @@ void config_file_delete(char* filename) {
 	file_handle *configFile = (file_handle*)calloc(1, sizeof(file_handle));
 	concat_path(configFile->name, devices[DEVICE_CONFIG]->initial->name, filename);
 	print_debug("config_file_delete: deleting %s\n", configFile->name);
+	devices[DEVICE_CONFIG]->deleteFile(configFile);
+	/* And a NAME.new, which a read would take for it. */
+	config_name_new(configFile->name);
 	devices[DEVICE_CONFIG]->deleteFile(configFile);
 	free(configFile);
 }
