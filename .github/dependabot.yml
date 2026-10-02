@@ -18,5 +18,9 @@ updates:
     target-branch: beta
     schedule:
       interval: weekly
+    # The toolchain changes the DOL's bytes and is pinned in 13 places that
+    # check_workflows.py holds equal: it moves by hand, all at once.
+    ignore:
+      - dependency-name: extremscorner/libogc2
     commit-message:
       prefix: ci

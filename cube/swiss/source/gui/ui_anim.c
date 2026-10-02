@@ -6,10 +6,6 @@
 #include "ui_perf.h"
 
 #define UI_ANIM_MAX_DELTA_SECONDS 0.050f
-/* Every ambient angular rate is an integer multiple of 0.001 rad/s. Wrapping
- * at 1000 * 2pi therefore preserves every phase instead of producing a rare
- * long-soak jump when the float clock is reduced. */
-#define UI_ANIM_TIME_WRAP_SECONDS 6283.18530718f
 
 static u64 lastTicks;
 static float frameDelta;
@@ -46,10 +42,4 @@ float UIAnim_Seconds(void)
 float UIAnim_Delta(void)
 {
 	return frameDelta;
-}
-
-float UIAnim_Approach(float current, float target, float response)
-{
-	float blend = 1.0f - expf(-response * frameDelta);
-	return current + ((target - current) * blend);
 }

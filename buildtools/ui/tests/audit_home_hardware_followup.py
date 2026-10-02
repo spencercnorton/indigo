@@ -283,12 +283,15 @@ require("gettimeofday" not in title and "localtime" not in title,
 require("gettimeofday" not in INDIGO and "localtime" not in INDIGO,
         "cube renderer samples wall time directly")
 ordered(video_loop, "UIScene_Update", "_UpdateSystemInstrument();",
-        "videoFrameSerial++", "videoDrawEvent(videoEvent)")
+        "videoDrawEvent(videoEvent)")
 require("&systemInstrument.clock" in background,
         "background cube does not receive shared clock frame")
 require("IndigoBackground_DrawBootOverlay" in video_loop and
         "&systemInstrument.clock" in video_loop,
         "boot cube does not receive shared clock frame")
+require("IndigoBackground_DrawBootOverlay(UIAnim_Seconds(),\n"
+        "\t\t\t\t_CurrentMotionMode() == UI_MOTION_FULL," in video_loop,
+        "boot cube moves under Reduced motion, unlike the cube it hands over to")
 require("const uiClockFrame_t *clock" in INDIGO_H,
         "Indigo API omits numeric clock frame")
 require("GX_Begin(GX_QUADS, GX_VTXFMT0, 220);" in motifs,

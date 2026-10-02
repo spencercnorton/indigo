@@ -87,6 +87,16 @@ bool UIGameflowResolver_IsOppositeDisc(
 			UI_GAMEFLOW_RESOLVER_ID_LENGTH) == 0;
 }
 
+bool UIGameflowResolver_MayBeOppositeDisc(
+	const uiGameflowResolverEntry_t *primary, const char *knownId)
+{
+	static const char unknown[UI_GAMEFLOW_RESOLVER_ID_LENGTH];
+
+	return primary != NULL && (knownId == NULL ||
+		memcmp(knownId, unknown, sizeof(unknown)) == 0 ||
+		memcmp(knownId, primary->gameId, sizeof(unknown)) == 0);
+}
+
 static bool duplicateSupportedSource(
 	const uiGameflowResolverEntry_t *entries, size_t entryCount)
 {

@@ -1,0 +1,353 @@
+/*
+ * Frame budget: the cube renderer (gui/indigo_background.c) and the hint
+ * icons (gui/FrameBufferMagic.c) run against counting GX stubs, one steady
+ * frame per scene, posed by the real scene module. It counts what a frame
+ * costs the console: software maths on the CPU (Gekko has no square-root
+ * instruction, so sqrtf is newlib's integer loop; sinf, cosf, fminf and
+ * friends are calls too) and the GPU's work (vertices, primitives, the
+ * pixels each EFB copy reads). Each scene prints one JSON line;
+ * test_frame_budget.py compares them with frame_budget.json.
+ *
+ * hash covers what the frame shows: every vertex with some alpha, its screen
+ * position to 1/64 pixel and its color. An optimization that changes no
+ * pixel keeps it.
+ */
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <gccore.h>
+
+typedef struct {
+	long sqrtCalls, trigCalls, minMaxCalls, vertices, begins;
+	double copyPixels;
+	unsigned long long hash;
+} frameCost_t;
+
+static frameCost_t cost;
+long stubStateCalls;
+
+static float countSqrtf(float x) { cost.sqrtCalls++; return sqrtf(x); }
+static float countSinf(float x) { cost.trigCalls++; return sinf(x); }
+static float countCosf(float x) { cost.trigCalls++; return cosf(x); }
+static float countTanf(float x) { cost.trigCalls++; return tanf(x); }
+static float countTanhf(float x) { cost.trigCalls++; return tanhf(x); }
+static float countAcosf(float x) { cost.trigCalls++; return acosf(x); }
+static float countFmodf(float x, float y) { cost.trigCalls++; return fmodf(x, y); }
+static float countCeilf(float x) { cost.trigCalls++; return ceilf(x); }
+static float countFminf(float x, float y) { cost.minMaxCalls++; return fminf(x, y); }
+static float countFmaxf(float x, float y) { cost.minMaxCalls++; return fmaxf(x, y); }
+#define sqrtf countSqrtf
+#define sinf countSinf
+#define cosf countCosf
+#define tanf countTanf
+#define tanhf countTanhf
+#define acosf countAcosf
+#define fmodf countFmodf
+#define ceilf countCeilf
+#define fminf countFminf
+#define fmaxf countFmaxf
+#include "indigo_background.c"
+#include "hint_source.c"	/* written by test_frame_budget.py */
+#undef sqrtf
+#undef sinf
+#undef cosf
+#undef tanf
+#undef tanhf
+#undef acosf
+#undef fmodf
+#undef ceilf
+#undef fminf
+#undef fmaxf
+
+/* ---- GX: count, and project each vertex the way the console would ---- */
+static Mtx position;
+static Mtx44 projection;
+static int orthographic;
+static int primitive, declared, emitted;
+static float lastX, lastY;
+static u16 copyWidth, copyHeight;
+
+void GX_LoadPosMtxImm(const float m[3][4], u32 index) { (void)index; memcpy(position, m, sizeof(Mtx)); }
+void GX_LoadProjectionMtx(Mtx44 m, u8 type)
+{
+	memcpy(projection, m, sizeof(Mtx44));
+	orthographic = type == GX_ORTHOGRAPHIC;
+}
+void GX_LoadTexMtxImm(Mtx m, u32 index, u8 type) { (void)m; (void)index; (void)type; }
+void GX_SetNumTevStages(u8 count) { (void)count; stubStateCalls++; }
+void GX_SetBlendMode(u8 a, u8 b, u8 c, u8 d) { (void)a; (void)b; (void)c; (void)d; stubStateCalls++; }
+void GX_InvalidateTexAll(void) {}
+void GX_PixModeSync(void) {}
+void GX_InitTexObj(GXTexObj *o, void *p, u16 w, u16 h, u8 f, u8 s, u8 t, u8 m)
+{
+	(void)o; (void)p; (void)w; (void)h; (void)f; (void)s; (void)t; (void)m;
+}
+void GX_InitTexObjLOD(GXTexObj *o, u8 a, u8 b, float c, float d, float e, u8 f, u8 g, u8 h)
+{
+	(void)o; (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; (void)h;
+}
+void GX_LoadTexObj(GXTexObj *o, u8 map) { (void)o; (void)map; }
+void GX_SetTevKColor(u8 index, GXColor color) { (void)index; (void)color; }
+void DCFlushRange(void *p, u32 n) { (void)p; (void)n; }
+void GX_SetTexCopySrc(u16 l, u16 t, u16 w, u16 h) { (void)l; (void)t; copyWidth = w; copyHeight = h; }
+void GX_SetTexCopyDst(u16 w, u16 h, u32 f, u8 m) { (void)w; (void)h; (void)f; (void)m; }
+void GX_CopyTex(void *dst, u8 clear) { (void)dst; (void)clear; cost.copyPixels += (double)copyWidth * copyHeight; }
+
+void GX_Begin(u8 type, u8 format, u16 count)
+{
+	(void)format;
+	primitive = type;
+	declared = count;
+	emitted = 0;
+	cost.begins++;
+}
+
+void GX_End(void)
+{
+	if(emitted != declared) {
+		fprintf(stderr, "GX_Begin declared %d vertices, %d were sent (primitive 0x%x)\n",
+			declared, emitted, primitive);
+		exit(2);
+	}
+}
+
+void GX_Position3f32(float x, float y, float z)
+{
+	float eye[3], clipX, clipY, w;
+	int row;
+
+	for(row = 0; row < 3; row++) {
+		eye[row] = position[row][0] * x + position[row][1] * y +
+			position[row][2] * z + position[row][3];
+	}
+	clipX = projection[0][0] * eye[0] + projection[0][1] * eye[1] +
+		projection[0][2] * eye[2] + projection[0][3];
+	clipY = projection[1][0] * eye[0] + projection[1][1] * eye[1] +
+		projection[1][2] * eye[2] + projection[1][3];
+	w = orthographic ? 1.0f : -eye[2];
+	lastX = 320.0f + 320.0f * clipX / w;
+	lastY = 240.0f - 240.0f * clipY / w;
+	emitted++;
+	cost.vertices++;
+}
+
+static void hashBytes(const void *data, size_t size)
+{
+	const unsigned char *bytes = data;
+	size_t i;
+
+	for(i = 0; i < size; i++) {
+		cost.hash ^= bytes[i];
+		cost.hash *= 1099511628211ULL;
+	}
+}
+
+void GX_Color4u8(u8 r, u8 g, u8 b, u8 a)
+{
+	long point[2];
+	u8 rgba[4] = {r, g, b, a};
+
+	if(a == 0) {
+		return;
+	}
+	point[0] = lroundf(lastX * 64.0f);
+	point[1] = lroundf(lastY * 64.0f);
+	hashBytes(point, sizeof(point));
+	hashBytes(rgba, sizeof(rgba));
+}
+
+void GX_TexCoord2f32(float s, float t) { (void)s; (void)t; }
+
+/* ---- gu ---- */
+void guMtxIdentity(Mtx m)
+{
+	memset(m, 0, sizeof(Mtx));
+	m[0][0] = m[1][1] = m[2][2] = 1.0f;
+}
+void guMtxCopy(Mtx a, Mtx b) { memcpy(b, a, sizeof(Mtx)); }
+void guMtxConcat(Mtx a, Mtx b, Mtx out)
+{
+	Mtx n = {{0}};
+	int i, j, k;
+
+	for(i = 0; i < 3; i++) {
+		for(j = 0; j < 4; j++) {
+			for(k = 0; k < 3; k++) n[i][j] += a[i][k] * b[k][j];
+		}
+		n[i][3] += a[i][3];
+	}
+	memcpy(out, n, sizeof(Mtx));
+}
+void guMtxRotAxisRad(Mtx m, const guVector *axis, float radians)
+{
+	float c = cosf(radians), s = sinf(radians), t = 1.0f - c;
+	float x = axis->x, y = axis->y, z = axis->z;
+
+	guMtxIdentity(m);
+	m[0][0] = t * x * x + c; m[0][1] = t * x * y - s * z; m[0][2] = t * x * z + s * y;
+	m[1][0] = t * x * y + s * z; m[1][1] = t * y * y + c; m[1][2] = t * y * z - s * x;
+	m[2][0] = t * x * z - s * y; m[2][1] = t * y * z + s * x; m[2][2] = t * z * z + c;
+}
+void guMtxScaleApply(Mtx src, Mtx dst, float x, float y, float z)
+{
+	float scale[3] = {x, y, z};
+	int i, j;
+
+	for(i = 0; i < 3; i++) {
+		for(j = 0; j < 4; j++) dst[i][j] = src[i][j] * scale[i];
+	}
+}
+void guMtxTransApply(Mtx src, Mtx dst, float x, float y, float z)
+{
+	memcpy(dst, src, sizeof(Mtx));
+	dst[0][3] += x; dst[1][3] += y; dst[2][3] += z;
+}
+void guPerspective(Mtx44 p, float fovy, float aspect, float n, float f)
+{
+	float c = 1.0f / tanf(fovy * 0.5f * 3.14159265f / 180.0f);
+
+	memset(p, 0, sizeof(Mtx44));
+	p[0][0] = c / aspect; p[1][1] = c;
+	p[2][2] = -n / (f - n); p[2][3] = -(f * n) / (f - n); p[3][2] = -1.0f;
+}
+void guOrtho(Mtx44 p, float t, float b, float l, float r, float n, float f)
+{
+	memset(p, 0, sizeof(Mtx44));
+	p[0][0] = 2.0f / (r - l); p[0][3] = -(r + l) / (r - l);
+	p[1][1] = 2.0f / (t - b); p[1][3] = -(t + b) / (t - b);
+	p[2][2] = -1.0f / (f - n); p[2][3] = -f / (f - n); p[3][3] = 1.0f;
+}
+
+/* ---- scenes ---- */
+#define DT (1.0f / 60.0f)
+
+static float seconds;
+static uiClockFrame_t clock;
+static const indigoPadFrame_t pad = {true, 0, 0, 0, 0, 0};
+static int icons[UI_HOME_FACE_COUNT] = {0, 0, 0, 0, -1};
+
+static void settle(int frames)
+{
+	while(frames-- > 0) {
+		UIScene_Update(DT, UI_MOTION_FULL);
+		seconds += DT;
+	}
+}
+
+static void drawFrame(bool bootOverlay)
+{
+	IndigoBackground_Draw(seconds, true, true, UIScene_Frame(), &clock, &pad, icons);
+	if(bootOverlay) {
+		IndigoBackground_DrawBootOverlay(seconds, true, UIScene_Frame(), &clock, icons);
+	}
+}
+
+/* One steady frame: a warm-up draw (the studio map bakes on the first),
+ * then the measured one. */
+static void measure(const char *name, bool bootOverlay)
+{
+	drawFrame(bootOverlay);
+	settle(1);
+	memset(&cost, 0, sizeof(cost));
+	cost.hash = 1469598103934665603ULL;
+	stubStateCalls = 0;
+	drawFrame(bootOverlay);
+	printf("{\"scene\": \"%s\", \"sqrtf\": %ld, \"trig\": %ld, \"minmax\": %ld, "
+		"\"vertices\": %ld, \"begins\": %ld, \"copy_pixels\": %.0f, \"state\": %ld, "
+		"\"hash\": \"%016llx\"}\n", name, cost.sqrtCalls, cost.trigCalls,
+		cost.minMaxCalls, cost.vertices, cost.begins, cost.copyPixels,
+		stubStateCalls, cost.hash);
+}
+
+static void startScene(void)
+{
+	UIScene_Reset();
+	UIScene_Activate();
+	settle(600);
+}
+
+static void home(const char *name, int turns, int framesAfter)
+{
+	static const uiHomeCapabilities_t capabilities = {true, true, false};
+	uiHomeState_t state;
+	int i;
+
+	startScene();
+	UIHome_Init(&state, capabilities);
+	for(i = 0; i < turns; i++) {
+		UIHome_Apply(&state, UI_HOME_INPUT_RIGHT, capabilities);
+	}
+	UIScene_Request(UI_SCENE_HOME);
+	UIScene_RequestHome(&state);
+	settle(framesAfter);
+	measure(name, false);
+}
+
+static void library(const char *name, uiGameflowLayout_t layout, bool wide)
+{
+	startScene();
+	UIScene_Request(UI_SCENE_LIBRARY);
+	UIScene_RequestLibraryLayout(layout);
+	settle(600);
+	UIStage_SetWide(wide);
+	measure(name, false);
+	UIStage_SetWide(false);
+}
+
+static void scene(const char *name, uiSceneId_t id)
+{
+	startScene();
+	UIScene_Request(id);
+	settle(600);
+	measure(name, false);
+}
+
+static void hintRoundRect(void)
+{
+	/* One call to warm up, then the steady call a frame makes. */
+	_HintRoundRect(100.0f, 100.0f, 22.0f, 22.0f, 11.0f, (GXColor) {0, 170, 122, 255});
+	memset(&cost, 0, sizeof(cost));
+	cost.hash = 1469598103934665603ULL;
+	stubStateCalls = 0;
+	_HintRoundRect(100.0f, 100.0f, 22.0f, 22.0f, 11.0f, (GXColor) {0, 170, 122, 255});
+	printf("{\"scene\": \"hint-round-rect\", \"sqrtf\": %ld, \"trig\": %ld, \"minmax\": %ld, "
+		"\"vertices\": %ld, \"begins\": %ld, \"copy_pixels\": 0, \"state\": %ld, "
+		"\"hash\": \"%016llx\"}\n", cost.sqrtCalls, cost.trigCalls, cost.minMaxCalls,
+		cost.vertices, cost.begins, stubStateCalls, cost.hash);
+}
+
+int main(void)
+{
+	int colors[UI_COLOR_LAYERS] = {0};
+
+	IndigoBackground_SetFramebuffer(640, 480);
+	IndigoBackground_SetColors(colors);
+	UIColor_Select(0);
+	UIClock_Compose(&clock, 10, 9, 30.5f);
+
+	home("home-library", 0, 600);
+	home("home-source", 1, 600);
+	home("home-settings", 2, 600);
+	home("home-system", 3, 600);
+	home("home-turning", 1, 6);
+	library("library-horizontal", UI_GAMEFLOW_LAYOUT_HORIZONTAL, false);
+	library("library-vertical", UI_GAMEFLOW_LAYOUT_VERTICAL, false);
+	library("library-grid", UI_GAMEFLOW_LAYOUT_GRID, false);
+	library("library-grid-wide", UI_GAMEFLOW_LAYOUT_GRID, true);
+	library("library-spotlight", UI_GAMEFLOW_LAYOUT_SPOTLIGHT, false);
+	library("library-spotlight-wide", UI_GAMEFLOW_LAYOUT_SPOTLIGHT, true);
+	scene("settings", UI_SCENE_SETTINGS);
+	scene("system", UI_SCENE_SYSTEM);
+
+	/* The boot reveal at the handoff, overlay and background both. */
+	UIScene_Reset();
+	UIScene_Activate();
+	for(int frame = 0; frame < 600 && UIScene_Frame()->introProgress < 0.5f; frame++) {
+		settle(1);
+	}
+	measure("boot-handoff", true);
+
+	hintRoundRect();
+	return 0;
+}
