@@ -409,7 +409,8 @@ typedef struct drawProgressEvent {
 	bool miniMode;
 	bool hidden;	/* a launch's: the launch screen shows its step */
 	int miniModePos;
-	int miniModeAlpha;
+	float miniModeAlpha;
+	float seconds;	/* shown for: the spinner's and sweep's clock */
 	int percent;
 	int speed;	// in bytes
 	int timestart;
@@ -1074,6 +1075,7 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 	if(data->hidden) {
 		return;
 	}
+	data->seconds += UIAnim_Delta();
 	if(data->miniMode) {	
 		int x = 30, y = 420;
 		/* The header's corner the clock leaves free, level with the clock
@@ -1082,14 +1084,15 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 			x = (int)(_ClockCorner() < 0 ? UIStage_Right() - 44.0f : UIStage_Left() + 44.0f);
 			y = 43;
 		}
-		GXColor loadingColor = (GXColor) {255,255,255,data->miniModeAlpha};
-		int numSegments = (data->percent*8)/100;
-		data->percent += (data->percent + 2 > 200 ? -200 : 2);
+		GXColor loadingColor = (GXColor) {255,255,255,(u8)data->miniModeAlpha};
+		/* In seconds, the same at 50 Hz and 60 Hz: a turn of the eight
+		 * segments every 5/6 s, a fade in or out over 1.4 s. */
+		int numSegments = (int)(data->seconds * 9.6f) % 8;
 		if(data->speed != 0) {
-			data->miniModeAlpha = MIN(255, data->miniModeAlpha + 3);
+			data->miniModeAlpha = MIN(255.0f, data->miniModeAlpha + UIAnim_Delta() * 180.0f);
 		}
 		else {
-			data->miniModeAlpha = MAX(0, data->miniModeAlpha - 3);
+			data->miniModeAlpha = MAX(0.0f, data->miniModeAlpha - UIAnim_Delta() * 180.0f);
 		}
 		GX_InvalidateTexAll();
 		GX_LoadTexObj(&loadingTexObj, GX_TEXMAP0);
@@ -1101,7 +1104,8 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 
 	int middleY = (y2+y1)/2;
 	if(data->indeterminate) {
-		data->percent += (data->percent + 2 == 400 ? -398 : 2);
+		/* There and back every 3 1/3 s. */
+		data->percent = (int)fmodf(data->seconds * 120.0f, 400.0f);
 		int multiplier = (PROGRESS_BOX_WIDTH-20)/100;
 		int progressBarWidth = multiplier*100;
 		int progressStart = 0;
