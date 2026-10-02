@@ -47,6 +47,10 @@ with the screen showing each one as you move through the list. The backdrop
 keeps its darkness in every color, so the cube and the text stand out as
 before, and Jet Black draws it nearly black.
 
+**Wave Speed**, below them, sets how fast the waves drift: **Slow** is half
+as fast, **Normal** as they always have, and **Fast** three times as fast. A
+new speed picks up from where the waves are, so they never jump.
+
 ## Cube icons
 
 Each face of the Home cube shows a picture, and you can pick it:

@@ -181,6 +181,9 @@ void DrawUpdateDeviceSelector(uiDrawObj_t *selector,
 	bool inAdvanced);
 uiDrawObj_t* DrawTooltip(const char *tooltip);
 uiDrawObj_t* DrawTitleBar();
+/* The CPU temperature the title bar's dial shows, smoothed over its 4 degree
+ * steps; below 0 without a sensor. */
+int CoreTemperature(void);
 uiDrawObj_t* DrawGameflow(const uiGameflowRenderSnapshot_t *snapshot);
 void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	const uiGameflowRenderSnapshot_t *snapshot);

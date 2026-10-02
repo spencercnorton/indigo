@@ -167,7 +167,7 @@ each face has four icons of its own. Library has Controller, Books, Covers
 and Play; Source has Hub, Disc, SD Card and Folder; Settings has Sliders,
 Gear, Toggles and Dial; System has Clock, Info, Power and Chip. The time
 and the temperature sit in the top right corner; Setup › Console › Clock
-moves them to the top left or hides them.
+and Temperature each move theirs to the top left or hide it.
 
 **Memory Cards moves your saves, like the GameCube's own screen.** System ›
 Memory Cards lists the saves on the cards in Slot A and Slot B, each with its
