@@ -1355,6 +1355,7 @@ static void drawControllerIcon(const cubeRasterTransform_t *raster, int face,
 	controllerPose_t pose;
 
 	controllerPose(pad, seconds, animated, &idle, &pose);
+	if(raster->motifAlpha[face] <= 0.0f) return;
 	bool l = (pose.pressed & PAD_TRIGGER_L) != 0u;
 	bool r = (pose.pressed & PAD_TRIGGER_R) != 0u;
 	bool a = (pose.pressed & PAD_BUTTON_A) != 0u;
@@ -1985,6 +1986,11 @@ static void drawFaceIcons(float seconds, bool animated,
 		int choice = choices[face];
 
 		if(choice < 0 || choice >= UI_HOME_ICON_CHOICES) continue;
+		/* A face turned away draws nothing. The controller still reads the
+		 * pad (it returns before drawing), so its idle play does not start
+		 * the moment its face comes back. */
+		if(raster->motifAlpha[face] <= 0.0f &&
+			face * UI_HOME_ICON_CHOICES + choice != UI_HOME_ICON_CONTROLLER) continue;
 		switch(face * UI_HOME_ICON_CHOICES + choice) {
 			case UI_HOME_ICON_CONTROLLER:
 				drawControllerIcon(raster, face, glow, seconds, animated, pad);

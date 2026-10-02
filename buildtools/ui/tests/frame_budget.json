@@ -1,6 +1,6 @@
 {
  "boot-handoff": {
-  "begins": 88,
+  "begins": 86,
   "copy_pixels": 0,
   "hash": "9e3317e4eaef1a3d",
   "minmax": 297,
@@ -8,7 +8,7 @@
   "sqrtf": 3629,
   "state": 147,
   "trig": 538,
-  "vertices": 5502
+  "vertices": 5202
  },
  "hint-round-rect": {
   "begins": 2,
@@ -22,7 +22,7 @@
   "vertices": 88
  },
  "home-library": {
-  "begins": 113,
+  "begins": 110,
   "copy_pixels": 614400,
   "hash": "e848c7e55ee80846",
   "minmax": 329,
@@ -30,43 +30,43 @@
   "sqrtf": 3554,
   "state": 322,
   "trig": 545,
-  "vertices": 6786
+  "vertices": 6266
  },
  "home-settings": {
-  "begins": 76,
+  "begins": 74,
   "copy_pixels": 614400,
   "hash": "63d861c4e5e22d90",
   "minmax": 323,
   "scene": "home-settings",
-  "sqrtf": 2513,
+  "sqrtf": 2511,
   "state": 322,
-  "trig": 241,
-  "vertices": 4616
+  "trig": 37,
+  "vertices": 4216
  },
  "home-source": {
-  "begins": 74,
+  "begins": 72,
   "copy_pixels": 614400,
   "hash": "2729922facddebc5",
   "minmax": 332,
   "scene": "home-source",
-  "sqrtf": 2559,
+  "sqrtf": 2557,
   "state": 322,
-  "trig": 241,
-  "vertices": 4612
+  "trig": 37,
+  "vertices": 4272
  },
  "home-system": {
-  "begins": 74,
+  "begins": 72,
   "copy_pixels": 614400,
   "hash": "755cf16733cd3011",
   "minmax": 336,
   "scene": "home-system",
-  "sqrtf": 2583,
+  "sqrtf": 2581,
   "state": 322,
-  "trig": 241,
-  "vertices": 4612
+  "trig": 37,
+  "vertices": 4312
  },
  "home-turning": {
-  "begins": 108,
+  "begins": 105,
   "copy_pixels": 614400,
   "hash": "63a80157eb5e8cd7",
   "minmax": 310,
@@ -74,10 +74,10 @@
   "sqrtf": 3371,
   "state": 318,
   "trig": 545,
-  "vertices": 6622
+  "vertices": 6102
  },
  "library-grid": {
-  "begins": 113,
+  "begins": 111,
   "copy_pixels": 614400,
   "hash": "8fb651ce6b539c10",
   "minmax": 374,
@@ -85,10 +85,10 @@
   "sqrtf": 3776,
   "state": 322,
   "trig": 545,
-  "vertices": 6990
+  "vertices": 6690
  },
  "library-grid-wide": {
-  "begins": 113,
+  "begins": 111,
   "copy_pixels": 614400,
   "hash": "3c31d7ae881ae72c",
   "minmax": 368,
@@ -96,10 +96,10 @@
   "sqrtf": 3764,
   "state": 322,
   "trig": 545,
-  "vertices": 6974
+  "vertices": 6674
  },
  "library-horizontal": {
-  "begins": 108,
+  "begins": 105,
   "copy_pixels": 614400,
   "hash": "f56a98af41ba2a5a",
   "minmax": 318,
@@ -107,10 +107,10 @@
   "sqrtf": 3396,
   "state": 318,
   "trig": 545,
-  "vertices": 6638
+  "vertices": 6118
  },
  "library-spotlight": {
-  "begins": 113,
+  "begins": 111,
   "copy_pixels": 614400,
   "hash": "d2b983de6cf206ca",
   "minmax": 374,
@@ -118,10 +118,10 @@
   "sqrtf": 3776,
   "state": 322,
   "trig": 545,
-  "vertices": 6990
+  "vertices": 6690
  },
  "library-spotlight-wide": {
-  "begins": 113,
+  "begins": 111,
   "copy_pixels": 614400,
   "hash": "6ca5d258d9907343",
   "minmax": 362,
@@ -129,10 +129,10 @@
   "sqrtf": 3752,
   "state": 322,
   "trig": 545,
-  "vertices": 6958
+  "vertices": 6658
  },
  "library-vertical": {
-  "begins": 117,
+  "begins": 115,
   "copy_pixels": 614400,
   "hash": "dc7fc5736ecd56da",
   "minmax": 429,
@@ -140,10 +140,10 @@
   "sqrtf": 4082,
   "state": 322,
   "trig": 545,
-  "vertices": 7122
+  "vertices": 6822
  },
  "settings": {
-  "begins": 90,
+  "begins": 88,
   "copy_pixels": 0,
   "hash": "8c781b6ed9fa9eaa",
   "minmax": 316,
@@ -151,10 +151,10 @@
   "sqrtf": 3778,
   "state": 127,
   "trig": 541,
-  "vertices": 5638
+  "vertices": 5298
  },
  "system": {
-  "begins": 110,
+  "begins": 107,
   "copy_pixels": 614400,
   "hash": "3e254a495a6258ec",
   "minmax": 321,
@@ -162,6 +162,6 @@
   "sqrtf": 3398,
   "state": 318,
   "trig": 545,
-  "vertices": 6658
+  "vertices": 6138
  }
 }

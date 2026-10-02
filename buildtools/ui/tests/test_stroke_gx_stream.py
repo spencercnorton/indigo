@@ -182,7 +182,9 @@ static void test_motifs(void) {
         r.model[2][3]=-5.4f;
         reset(false);
         drawFaceIcons(1.0f,true,&clock,NULL,quadIcons,&r);
-        CHECK(count==520 && begins==3 && matrixLoads==2,"motif fixed stream/matrix budget");
+        /* Each quad icon draws its whole fixed stream, or nothing while its
+         * face is turned away (Hub 180, Sliders 120, Clock 220). */
+        CHECK(begins<=3 && count<=520 && count%20==0 && matrixLoads==2,"motif stream/matrix budget");
         CHECK(culling==GX_CULL_BACK && memcmp(loaded,r.model,sizeof(Mtx))==0,
             "motif culling/model restoration");
         int lit=0;
@@ -224,10 +226,15 @@ static void test_motifs(void) {
     float yaw=INDIGO_TAU*0.25f;
     r.model[0][0]=cosf(yaw); r.model[0][2]=sinf(yaw);
     r.model[2][0]=-sinf(yaw); r.model[2][2]=cosf(yaw);
+    clock.available=true;
     reset(false); drawFaceIcons(1.0f,false,&clock,NULL,quadIcons,&r);
-    CHECK(count==520,"invalid clock changed GX count");
-    /* Hands occupy the first three of the eleven System shapes. */
-    for(int i=15*20;i<18*20;i++) CHECK(alphas[i]==0,"invalid clock invented hands");
+    int validCount=count;
+    clock.available=false;
+    reset(false); drawFaceIcons(1.0f,false,&clock,NULL,quadIcons,&r);
+    CHECK(count==validCount && count>=220,"invalid clock changed GX count");
+    /* Hands occupy the first three of the clock's eleven shapes, which come
+     * last; the side faces' icons before it draw nothing facing away. */
+    for(int i=count-220;i<count-220+3*20;i++) CHECK(alphas[i]==0,"invalid clock invented hands");
 }
 static int moved(const guVector *before,int n) {
     int changed=0;
@@ -408,7 +415,11 @@ static void test_icons_on_their_faces(void) {
             reset(false); drawFaceIcons(3.9f,true,&clock,&pad,choices,&r);
             CHECK(matrixLoads==2 && culling==GX_CULL_BACK && memcmp(loaded,r.model,sizeof(Mtx))==0,
                 "icon pass state restore");
-            if(quadBudget[icon]) CHECK(count==quadBudget[icon] && begins==1,"quad icon budget moved");
+            if(quadBudget[icon]) CHECK((count==quadBudget[icon] && begins==1) ||
+                (count==0 && begins==0),"quad icon budget moved");
+            /* An icon fades out with its face, gone 71 degrees from the
+             * camera; a face turned away draws nothing at all. */
+            if(toward<0.3f) CHECK(count==0 && begins==0,"an icon drew on a face turned away");
             if(toward>0.99f) CHECK(begins==primitives[icon],"an icon lost a part facing the camera");
             int lit=0;
             for(int i=0;i<count;i++) {
@@ -564,6 +575,36 @@ static int compare_point(guVector a,guVector b) {
     if(a.y!=b.y) return a.y<b.y?-1:1;
     if(a.z!=b.z) return a.z<b.z?-1:1;
     return 0;
+}
+static void test_hidden_controller_reads_the_pad(void) {
+    /* Library's face turns away while A is held, then back with the pad at
+     * rest: the press was seen, so the emblem has not begun its idle play
+     * and draws at rest, exactly as with motion off. */
+    static guVector live[4096];
+    cubeRasterTransform_t r;
+    const Mtx semanticFaces[UI_HOME_FACE_COUNT]={
+        {{1,0,0,0},{0,1,0,0},{0,0,1,0}},
+        {{0,0,1,0},{0,1,0,0},{-1,0,0,0}},
+        {{-1,0,0,0},{0,1,0,0},{0,0,-1,0}},
+        {{0,0,-1,0},{0,1,0,0},{1,0,0,0}},
+        {{1,0,0,0},{0,1,0,0},{0,0,1,0}}
+    };
+    uiClockFrame_t clock={true,0,1,1,0,0.70710678f,0.70710678f};
+    indigoPadFrame_t held={true,0,0,0,0,PAD_BUTTON_A},rest={true,0,0,0,0,0u};
+    int choices[UI_HOME_FACE_COUNT]={0,-1,-1,-1,-1};
+    memcpy(r.semanticFaces,semanticFaces,sizeof(semanticFaces)); lightAll(&r);
+    r.scaleX=r.scaleY=625.221f;
+    guMtxIdentity(r.model); r.model[0][0]=r.model[2][2]=-1; r.model[2][3]=-5.4f;
+    reset(false); drawFaceIcons(100.0f,true,&clock,&held,choices,&r);
+    CHECK(begins==0,"the controller drew on a face turned away");
+    guMtxIdentity(r.model); r.model[2][3]=-5.4f;
+    reset(false); drawFaceIcons(100.5f,true,&clock,&rest,choices,&r);
+    int n=count;
+    CHECK(n>0,"the controller did not draw facing the camera");
+    memcpy(live,positions,sizeof(guVector)*(size_t)n);
+    reset(false); drawFaceIcons(100.5f,false,&clock,&rest,choices,&r);
+    CHECK(count==n && memcmp(live,positions,sizeof(guVector)*(size_t)n)==0,
+        "the controller missed a press while its face was turned away");
 }
 static void test_closed_cube(void) {
     cubeSurfaceQuad_t mesh[26];
@@ -843,7 +884,7 @@ static void test_glass(void) {
 }
 int main(void) {
     test_dial(); test_rail_joins(); test_motifs(); test_controller(); test_rounded_outlines();
-    test_icons_on_their_faces();
+    test_icons_on_their_faces(); test_hidden_controller_reads_the_pad();
     test_closed_cube(); test_seamless_mesh(); test_chamfer_color_pairs(); test_surfaces(); test_glass();
     puts("native strokes: bounded complete GX streams, perspective coverage and closed seams");
     return 0;
