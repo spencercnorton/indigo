@@ -702,17 +702,31 @@ static void test_shadows(void) {
     CHECK(matrixLoads==2 && culling==GX_CULL_BACK && memcmp(loaded,r.model,sizeof(Mtx))==0 &&
         blendSource==GX_BL_SRCALPHA && blendDestination==GX_BL_INVSRCALPHA,"shadow state restore");
     streamSpread(&r,&sx,&sy,&sPeak,&sFade);
+    /* On the glass (1.0), under the lifted icon: square on, every vertex
+     * keeps its plane's depth. */
+    for(int i=0;i<count;i++)
+        CHECK(!alphas[i] || fabsf(positions[i].z-(0.92f*1.0f-5.4f))<1e-4f,
+            "the shadow is not on the glass");
     /* y is up on this screen. */
     CHECK(sx-ix<-1.5f && sy-iy<-1.5f && hypotf(sx-ix,sy-iy)<8.0f,
         "the shadow does not fall down and to the left of its icon");
-    CHECK(sPeak<=FACE_SHADOW_ALPHA*iPeak+1,"the shadow is as strong as its icon");
-    CHECK(sFade>(FACE_SHADOW_FEATHER-0.2f)*iFade && sFade<(FACE_SHADOW_FEATHER+0.2f)*iFade,
-        "the shadow is not soft");
+    /* Subtle but seen: 0.35 to 0.5 of the icon's strength. */
+    CHECK(sPeak<=0.5f*iPeak+1 && sPeak>=0.35f*iPeak,"the shadow is too strong or too faint");
+    CHECK(sFade>2.5f*iFade && sFade<3.5f*iFade,"the shadow is not soft");
     reset(false); drawFaceShadows(1.0f,false,&clock,&pad,choices,&r,0.5f);
     streamSpread(&r,&sx,&sy,&halfPeak,&sFade);
     CHECK(abs(2*halfPeak-sPeak)<=2,"the shadow does not follow the glass light's strength");
     reset(false); drawFaceShadows(1.0f,false,&clock,&pad,choices,&r,0.0f);
     CHECK(count==0 && begins==0 && matrixLoads==0,"a shadow drew on plain glass");
+    /* Turned 45 degrees its strokes are whole but its icon is down near the
+     * glass, so the shadow lies close under it, under a pixel's drop. */
+    turnTo(&r,45,0.92f);
+    reset(false); drawFaceIcons(1.0f,false,&clock,&pad,books,&r);
+    streamSpread(&r,&ix,&iy,&iPeak,&iFade);
+    reset(false); drawFaceShadows(1.0f,false,&clock,&pad,books,&r,1.0f);
+    CHECK(count==260,"a face turned 45 degrees cast no shadow");
+    streamSpread(&r,&sx,&sy,&sPeak,&sFade);
+    CHECK(sy-iy<0.0f && sy-iy>-1.5f,"an icon at rest casts its shadow as far as a lifted one");
     /* Turned 75 degrees its strokes are gone, and so is its shadow. */
     turnTo(&r,75,0.92f);
     reset(false); drawFaceShadows(1.0f,false,&clock,&pad,books,&r,1.0f);
@@ -1310,6 +1324,10 @@ class StrokeGXStreamTests(unittest.TestCase):
                 "\tGX_SetCullMode(GX_CULL_BACK);\n"
                 "\tGX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);",
                 "clock, pad);\n\t}"),
+            "shadow off the glass": ("(basis[row][2] * FACE_SHADOW_PLANE +",
+                "(basis[row][2] * FACE_ICON_PLANE +"),
+            "shadow drop ignores the lift": ("FACE_ICON_PLANE + faceIconLift(facing) - FACE_SHADOW_PLANE",
+                "FACE_ICON_PLANE + FACE_ICON_LIFT - FACE_SHADOW_PLANE"),
         }
         for name,(old,new) in mutants.items():
             with self.subTest(name=name):
