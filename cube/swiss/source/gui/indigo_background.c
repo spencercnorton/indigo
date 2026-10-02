@@ -33,11 +33,6 @@
 #define FACE_BAND_MAX 80
 #define FACE_ARC_MAX 24
 #define CONTROLLER_IDLE_HOLD 2.0f
-/* ponytail: Spencer turned the corner sun off to see the cube without it
- * (2026-09-25); 1 brings drawSunFlare back. */
-#define CUBE_SUN_FLARE 0
-/* ponytail: Spencer turned the passing sheen off too (2026-09-25); 1 brings it back. */
-#define CUBE_GLASS_SHEEN 0
 
 typedef struct indigoPoint {
 	float x;
@@ -2265,12 +2260,6 @@ static bool glassSameNormal(guVector a, guVector b)
 	return a.x == b.x && a.y == b.y && a.z == b.z;
 }
 
-static bool glassCellLit(const GXColor *color, int first, int stride)
-{
-	return (color[first].a | color[first + 1].a | color[first + stride].a |
-		color[first + stride + 1].a) != 0;
-}
-
 static guVector glassBilinear(const guVector corner[4], float u, float v)
 {
 	float w0 = (1.0f - u) * (1.0f - v), w1 = u * (1.0f - v), w2 = u * v, w3 = (1.0f - u) * v;
@@ -2483,16 +2472,6 @@ void IndigoBackground_SetFramebuffer(u16 width, u16 height)
 	glassEfbHeight = height;
 }
 
-/* Where the light that refracts and glints comes from, and how much of it a
- * scene shows. Home and Source carry the full effect; the cube behind the
- * Library, a game's details and Settings keeps a quieter version of it. */
-typedef struct glassSun {
-	float peak;
-	float x;
-	float y;
-	float weight;
-} glassSun_t;
-
 typedef struct glassRefraction {
 	float centerX;
 	float centerY;
@@ -2504,9 +2483,9 @@ typedef struct glassRefraction {
 	GXColor tint; /* its alpha is the layer's opacity */
 } glassRefraction_t;
 
-/* Toward the key light, up and to the right of the camera, in eye space. */
-static const guVector glassSunDirection = {0.595f, 0.672f, 0.441f};
-
+/* How much of the glass light a scene shows. Home and Source carry the full
+ * effect; the cube behind the Library, a game's details and Settings keeps a
+ * quieter version of it. */
 static float glassSceneStrength(const uiSceneFrame_t *scene)
 {
 	float strength = scene->orbitStrength < 0.0f ? 0.0f :
@@ -2640,11 +2619,10 @@ typedef struct glassRefractedVertex {
  * faces and a strong pull round the rounded bevels, where the normal turns
  * sideways. Each channel bends a little more than the last. The layer fades
  * out over the last glancing degrees, so at the silhouette the bent image
- * meets the straight one. The sun term finds where the glass mirrors the
- * key light toward the camera, weighted hard toward the brightest point. */
+ * meets the straight one. */
 static void refractGlassVertex(const cubeRasterTransform_t *raster,
 		const glassRefraction_t *glass, guVector body, guVector eye, guVector n,
-		glassSun_t *sun, glassRefractedVertex_t *out)
+		glassRefractedVertex_t *out)
 {
 	float length = sqrtf(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z);
 	guVector view = {-eye.x / length, -eye.y / length, -eye.z / length};
@@ -2655,19 +2633,6 @@ static void refractGlassVertex(const cubeRasterTransform_t *raster,
 	float by = glass->centerY + (sy - glass->centerY) * (1.0f - glass->magnify);
 	float ox = -n.x * glass->bend, oy = n.y * glass->bend;
 
-	if(facing > 0.0f) {
-		guVector r = {2.0f * facing * n.x - view.x, 2.0f * facing * n.y - view.y,
-			2.0f * facing * n.z - view.z};
-		float d = r.x * glassSunDirection.x + r.y * glassSunDirection.y +
-			r.z * glassSunDirection.z;
-		float glint = glassSmoothstep(0.955f, 0.9985f, d) *
-			glassSmoothstep(0.06f, 0.30f, facing);
-		if(glint > sun->peak) sun->peak = glint;
-		glint *= glint * glint * glint;
-		sun->x += sx * glint;
-		sun->y += sy * glint;
-		sun->weight += glint;
-	}
 	out->body = body;
 	out->color = glass->tint;
 	out->color.a = (u8)((float)glass->tint.a * glassSmoothstep(0.0f, 0.34f, facing) + 0.5f);
@@ -2691,11 +2656,10 @@ static void putGlassRefractedVertex(const glassRefractedVertex_t *vertex)
  * in a coarse grid, where only perspective needs the extra vertices, and
  * bevels finely across their width, where the normal rolls. It is drawn
  * before the dark core, which then covers the middle, so what refracts is
- * the frame seen through the glass around it. With emit false the same walk
- * only measures the sun glint (no copy this frame). */
+ * the frame seen through the glass around it. */
 static void drawGlassRefraction(const cubeRasterTransform_t *raster,
 		const glassRefraction_t *glass, const cubeSurfaceQuad_t *quads, int count,
-		int vertexCount, float outer, glassSun_t *sun, bool emit)
+		int vertexCount, float outer)
 {
 	/* A bevel is cut along as often as the face beside it (glassSidePoint). */
 	enum { FACE_STEPS = 4, ACROSS_STEPS = 6, ALONG_STEPS = FACE_STEPS, GRID = 7 };
@@ -2722,9 +2686,8 @@ static void drawGlassRefraction(const cubeRasterTransform_t *raster,
 				guVector body, e, n;
 				glassFanPoint(quads[quad].point, eyes, normals, ACROSS_STEPS, k,
 					&body, &e, &n);
-				refractGlassVertex(raster, glass, body, e, n, sun, &grid[k]);
+				refractGlassVertex(raster, glass, body, e, n, &grid[k]);
 			}
-			if(!emit) continue;
 			GX_Begin(GX_TRIANGLES, GX_VTXFMT0, (u16)((points - 1) * 3));
 			for(int k = 1; k < points; k++) {
 				putGlassRefractedVertex(&grid[0]);
@@ -2747,85 +2710,14 @@ static void drawGlassRefraction(const cubeRasterTransform_t *raster,
 				normal.z / normalLength};
 			refractGlassVertex(raster, glass,
 				glassGridPoint(quads[quad].point, column, columns, row, rows),
-				glassBilinear(eyes, u, v), normal, sun, &grid[row * GRID + column]);
+				glassBilinear(eyes, u, v), normal, &grid[row * GRID + column]);
 		}
-		if(!emit) continue;
 		GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(rows * columns * 4));
 		for(int row = 0; row < rows; row++) for(int column = 0; column < columns; column++) {
 			static const int corner[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
 			for(int vertex = 0; vertex < 4; vertex++)
 				putGlassRefractedVertex(&grid[(row + corner[vertex][1]) * GRID +
 					column + corner[vertex][0]]);
-		}
-		GX_End();
-	}
-}
-
-/* While Home rests, a band of light passes over the glass every
- * GLASS_SHEEN_PERIOD seconds: a plane moving through eye space from lower
- * left to upper right, so it rolls over the bevels the way a real light
- * crossing the cube would. front is the band's place along that path in
- * cube units from the centre; weight fades it in and out. Cells it does not
- * reach are skipped. */
-#define GLASS_SHEEN_PERIOD 7.0f
-#define GLASS_SHEEN_LENGTH 1.35f
-
-static void drawGlassSheen(const cubeRasterTransform_t *raster,
-		const cubeSurfaceQuad_t *quads, int count, int vertexCount, float outer,
-		float front, float width, float weight)
-{
-	/* A bevel is cut along as often as the face beside it (glassSidePoint). */
-	enum { FACE_STEPS = 8, ACROSS_STEPS = 6, ALONG_STEPS = FACE_STEPS, GRID = 9 };
-	const guVector axis = {0.8908f, 0.4543f, 0.0f};
-	guVector center = {raster->model[0][3], raster->model[1][3], raster->model[2][3]};
-
-	for(int quad = 0; quad < count; quad++) {
-		guVector eyes[4], normals[4], body[GRID * GRID];
-		GXColor color[GRID * GRID];
-		indigoPoint_t points[4];
-		float area = 0.0f;
-		int cells = 0, columns, rows;
-		for(int vertex = 0; vertex < vertexCount; vertex++) {
-			guVector p = quads[quad].point[vertex];
-			if(!projectRailPoint(raster, p.x, p.y, p.z, &eyes[vertex], &points[vertex])) return;
-			normals[vertex] = glassVertexNormal(raster, p, outer);
-		}
-		for(int vertex = 0; vertex < vertexCount; vertex++) {
-			int next = (vertex + 1) % vertexCount;
-			area += points[vertex].x * points[next].y - points[next].x * points[vertex].y;
-		}
-		if(area >= -0.001f || vertexCount != 4) continue;
-		bool acrossU = !glassSameNormal(normals[0], normals[1]);
-		bool acrossV = !glassSameNormal(normals[0], normals[3]);
-		columns = acrossU ? ACROSS_STEPS : (acrossV ? ALONG_STEPS : FACE_STEPS);
-		rows = acrossV ? ACROSS_STEPS : (acrossU ? ALONG_STEPS : FACE_STEPS);
-		for(int row = 0; row <= rows; row++) for(int column = 0; column <= columns; column++) {
-			float u = (float)column / columns, v = (float)row / rows;
-			int at = row * GRID + column;
-			guVector eye = glassBilinear(eyes, u, v), n = glassBilinear(normals, u, v);
-			float length = sqrtf(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z);
-			float nLength = sqrtf(n.x * n.x + n.y * n.y + n.z * n.z);
-			float facing = -(n.x * eye.x + n.y * eye.y + n.z * eye.z) / (length * nLength);
-			float d = ((eye.x - center.x) * axis.x + (eye.y - center.y) * axis.y) - front;
-			float bump = 1.0f - (d * d) / (width * width);
-			bump = bump <= 0.0f ? 0.0f : bump * bump;
-			body[at] = glassGridPoint(quads[quad].point, column, columns, row, rows);
-			color[at] = (GXColor) {236, 230, 255,
-				(u8)(255.0f * fminf(1.0f, 0.24f * weight * bump *
-				glassSmoothstep(0.0f, 0.30f, facing)) + 0.5f)};
-		}
-		for(int row = 0; row < rows; row++) for(int column = 0; column < columns; column++)
-			cells += glassCellLit(color, row * GRID + column, GRID);
-		if(cells == 0) continue;
-		GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(cells * 4));
-		for(int row = 0; row < rows; row++) for(int column = 0; column < columns; column++) {
-			static const int corner[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
-			int first = row * GRID + column;
-			if(!glassCellLit(color, first, GRID)) continue;
-			for(int vertex = 0; vertex < 4; vertex++) {
-				int at = first + corner[vertex][1] * GRID + corner[vertex][0];
-				putCubeVertex(body[at].x, body[at].y, body[at].z, color[at]);
-			}
 		}
 		GX_End();
 	}
@@ -2860,28 +2752,6 @@ static void drawSoftGlow(float x, float y, float radiusX, float radiusY,
 		}
 		GX_End();
 	}
-}
-
-/* A thin tapered ray from a light's centre: bright at the root, gone at the
- * tip, a little wider in the middle than a line would be. */
-static void drawLightRay(float x, float y, float angle, float length, float width,
-		GXColor color, float alpha)
-{
-	float dx = cosf(angle), dy = sinf(angle);
-	float px = -dy * width, py = dx * width;
-	GXColor root = color, tip = color;
-
-	if(alpha <= 0.004f) return;
-	root.a = (u8)(255.0f * fminf(1.0f, alpha) + 0.5f);
-	tip.a = 0;
-	GX_Begin(GX_TRIANGLESTRIP, GX_VTXFMT0, 6);
-		putVertex((indigoPoint_t) {x + px * 0.2f, y + py * 0.2f}, root);
-		putVertex((indigoPoint_t) {x - px * 0.2f, y - py * 0.2f}, root);
-		putVertex((indigoPoint_t) {x + dx * length * 0.30f + px, y + dy * length * 0.30f + py}, root);
-		putVertex((indigoPoint_t) {x + dx * length * 0.30f - px, y + dy * length * 0.30f - py}, root);
-		putVertex((indigoPoint_t) {x + dx * length, y + dy * length}, tip);
-		putVertex((indigoPoint_t) {x + dx * length, y + dy * length}, tip);
-	GX_End();
 }
 
 /* Light on the glass's outline: a fine rim that is brightest on the edges
@@ -2936,56 +2806,6 @@ static void drawGlassRim(const cubeOutline_t *outline, float strength)
 				points[i].y + ny * layers[layer].offset};
 		}
 		drawRasterStroke(shifted, joins, colors, count + 1, profile, 2);
-	}
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-}
-
-/* The sun caught in the glass: a small bright core where the bevel mirrors
- * the key light, a lilac bloom round it, a short anamorphic streak, six
- * short rays that turn with the cube, and faint ghosts strung through the
- * middle of the screen the way a lens repeats a bright light. It is a glint,
- * not a starburst: at rest the same corner holds it, so it has to sit
- * quietly on the glass. Nothing shows until the glass actually turns the
- * light toward the camera. */
-static void drawSunFlare(const glassSun_t *sun, float strength, float spin,
-		float scale)
-{
-	static const GXColor core = {255, 247, 236, 255};
-	static const GXColor bloom = {204, 190, 255, 255};
-	static const GXColor streak = {186, 196, 255, 255};
-	static const struct {
-		float along;
-		float radius;
-		float alpha;
-		GXColor color;
-	} ghosts[3] = {
-		{1.28f, 11.0f, 0.05f, {164, 138, 255, 255}},
-		{1.62f, 24.0f, 0.028f, {134, 120, 236, 255}},
-		{2.05f, 8.0f, 0.042f, {214, 204, 255, 255}}
-	};
-	float intensity;
-	float x, y;
-
-	if(sun->weight <= 0.0f || sun->peak <= 0.01f || strength <= 0.0f) return;
-	intensity = glassSmoothstep(0.0f, 1.0f, sun->peak) * strength;
-	x = sun->x / sun->weight;
-	y = sun->y / sun->weight;
-	if(!isfinite(x) || !isfinite(y)) return;
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
-	drawSoftGlow(x, y, 38.0f * scale, 38.0f * scale, bloom, 0.18f * intensity);
-	drawSoftGlow(x, y, 104.0f * scale, 2.5f * scale, streak, 0.16f * intensity);
-	drawSoftGlow(x, y, 64.0f * scale, 6.0f * scale, streak, 0.05f * intensity);
-	for(int ray = 0; ray < 6; ray++) {
-		float angle = spin + INDIGO_TAU * (float)ray / 6.0f;
-		float length = (ray & 1 ? 18.0f : 32.0f) * scale;
-		drawLightRay(x, y, angle, length, 1.1f * scale, bloom, 0.16f * intensity);
-	}
-	drawSoftGlow(x, y, 10.0f * scale, 10.0f * scale, core, 0.55f * intensity);
-	for(int ghost = 0; ghost < 3; ghost++) {
-		float gx = x + (320.0f - x) * ghosts[ghost].along;
-		float gy = y + (240.0f - y) * ghosts[ghost].along;
-		drawSoftGlow(gx, gy, ghosts[ghost].radius * scale, ghosts[ghost].radius * scale,
-			ghosts[ghost].color, ghosts[ghost].alpha * intensity);
 	}
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 }
@@ -3109,7 +2929,6 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 		{-0.72f, -0.72f}, {-0.72f, 0.72f}, {0.72f, 0.72f}, {0.72f, -0.72f}
 	};
 	cubeOutline_t shellOutline;
-	glassSun_t sun = {0.0f, 0.0f, 0.0f, 0.0f};
 	const float outer = 1.0f;
 	const float inset = 0.78f;
 	float strength = glassSceneStrength(scene);
@@ -3165,7 +2984,7 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	 * edges: magnified across the faces, wrapped round the bevels and parted
 	 * into colour where the bend is strongest, with a faint indigo body. The
 	 * front tint, near bevels, reflections and icons then sit on the glass,
-	 * sharp. Without a copy the walk still finds the sun glint. */
+	 * sharp. */
 	refract = screenGlass && strength > 0.01f && glassCopyFrame();
 	{
 		float radius = raster.scaleY * scene->cubeScale / -CUBE_CAMERA_Z;
@@ -3183,11 +3002,11 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 			GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 			GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_FALSE);
 			GX_SetCullMode(GX_CULL_BACK);
+			drawGlassRefraction(&raster, &glass, shell, 6, 4, outer);
+			drawGlassRefraction(&raster, &glass, strips, 12, 4, outer);
+			drawGlassRefraction(&raster, &glass, corners, 8, 3, outer);
+			restoreCubeRaster();
 		}
-		drawGlassRefraction(&raster, &glass, shell, 6, 4, outer, &sun, refract);
-		drawGlassRefraction(&raster, &glass, strips, 12, 4, outer, &sun, refract);
-		drawGlassRefraction(&raster, &glass, corners, 8, 3, outer, &sun, refract);
-		if(refract) restoreCubeRaster();
 	}
 
 	GX_SetCullMode(GX_CULL_BACK);
@@ -3214,21 +3033,9 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	drawGlassReflection(&raster, strips, 12, 4, outer);
 	drawGlassReflection(&raster, corners, 8, 3, outer);
 	restoreCubeRaster();
-	if(CUBE_GLASS_SHEEN && animated && scene->homeIdleBlend > 0.01f && strength > 0.01f) {
-		float phase = fmodf(seconds, GLASS_SHEEN_PERIOD);
-		if(phase < GLASS_SHEEN_LENGTH) {
-			float progress = glassSmoothstep(0.0f, GLASS_SHEEN_LENGTH, phase);
-			float reach = 1.9f * scene->cubeScale;
-			float weight = sinf(progress * INDIGO_TAU * 0.5f) * scene->homeIdleBlend;
-			drawGlassSheen(&raster, shell, 6, 4, outer, -reach + 2.0f * reach * progress,
-				0.42f * scene->cubeScale, weight);
-			drawGlassSheen(&raster, strips, 12, 4, outer, -reach + 2.0f * reach * progress,
-				0.42f * scene->cubeScale, weight);
-		}
-	}
 	/* Light leaving the finished glass: its bloom first, then the icons, so
 	 * their strokes stay sharp instead of blurring with it (Spencer found
-	 * them hard to read), then the rim, and the sun it catches if on. */
+	 * them hard to read), then the rim. */
 	bool light = strength > 0.01f && shellOutline.count >= 3;
 	if(light && screenGlass) {
 		float left = 640.0f, top = 480.0f, right = 0.0f, bottom = 0.0f;
@@ -3248,10 +3055,6 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	if(light) {
 		setupRasterPipeline();
 		drawGlassRim(&shellOutline, strength);
-		if(CUBE_SUN_FLARE) {
-			drawSunFlare(&sun, strength, (animated ? seconds * 0.05f : 0.0f) +
-				scene->cubeYaw * 0.5f, scene->cubeScale / 0.92f);
-		}
 	}
 }
 

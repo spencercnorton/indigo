@@ -5,7 +5,7 @@
   "hash": "9e3317e4eaef1a3d",
   "minmax": 297,
   "scene": "boot-handoff",
-  "sqrtf": 3629,
+  "sqrtf": 2957,
   "state": 147,
   "trig": 538,
   "vertices": 5202
@@ -148,7 +148,7 @@
   "hash": "8c781b6ed9fa9eaa",
   "minmax": 316,
   "scene": "settings",
-  "sqrtf": 3778,
+  "sqrtf": 3030,
   "state": 127,
   "trig": 541,
   "vertices": 5298
