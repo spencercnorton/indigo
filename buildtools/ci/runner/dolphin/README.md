@@ -13,8 +13,9 @@ the headless front end is built (`dolphin-emu-nogui`).
 | [`0004-sd-faults.patch`](0004-sd-faults.patch) | Faults a test asks for in `DOLPHIN_SD_FAULTS`: sectors that fail to read or write, or every write after a number of them, so the test can see what Indigo does with a failing card. A write the card could not make is answered as one, where 0001 answered "accepted" whatever happened. |
 | [`0005-emulated-clock.patch`](0005-emulated-clock.patch) | With `DOLPHIN_TICKS` set, the emulated clock and the CPU's PC and LR on stderr ten times a second: the emulator test times its waits in the console's own seconds, so a busy machine slows a run instead of failing it, and a hang says where it is. |
 | [`0006-gcloader.patch`](0006-gcloader.patch) | With `DOLPHIN_GCLOADER` naming a card image, the drive is a GC Loader (HW2, firmware 1.0.1, writes enabled): Swiss and libogc2 read and write its SD card through the drive's commands, and it serves up to two discs from fragment tables of at most 40 entries each, as [its API](https://github.com/danielkraak/GC-Loader/blob/master/API.md) describes. Until a table is in use it serves the inserted disc, as a GC Loader serves its `boot.iso`. |
+| [`0007-dabr.patch`](0007-dabr.patch) | With `DOLPHIN_DABR` set, the data address breakpoint works as on a 750: libogc points it at the lowest doubleword of the running thread's stack, so a stack that overflows into it raises a DSI and libogc's exception screen comes up, as on a console. Dolphin had ignored it, and the overrun went on corrupting memory. Each hit is logged (`DABR: write to …`). |
 
-All six are under Dolphin's licence, the GNU General Public License
+All seven are under Dolphin's licence, the GNU General Public License
 version 2 or later.
 
 Without them CI could boot Indigo only from a disc: Dolphin has no GameCube
