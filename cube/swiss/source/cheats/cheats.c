@@ -27,6 +27,10 @@
 #include "IPLFontWrite.h"
 #include <xxhash.h>
 
+/* A cheats file is text, tens of kilobytes for the biggest games: one past
+ * this is refused rather than read into the menu's heap. */
+#define CHEATS_FILE_MAX (1024 * 1024)
+
 static CheatEntries _cheats;
 static CheatIdentity _cheatIdentity;
 static CheatPolicyState _cheatPolicy;
@@ -117,9 +121,22 @@ int isCheatCode(char *line) {
 	return sscanf(line, "%*2[0-9A-Fa-f]%*6[0-9A-Za-z] %*8[0-9A-Za-z]%n", &len) == 0 && len > 16;
 }
 
+// Adds the code on line to cheat as its code number numCodes; false when
+// there is no memory for it.
+static bool addCheatCode(CheatEntry *cheat, int numCodes, const char *line) {
+	u32 (*codes)[2] = reallocarray(cheat->codes, numCodes+1, sizeof(*codes));
+	if(codes == NULL) {
+		return false;
+	}
+	cheat->codes = codes;
+	sscanf(line, "%x %x", &codes[numCodes][0], &codes[numCodes][1]);
+	return true;
+}
+
 /** 
 	Given a char array with the contents of a .txt, 
 	this method will allocate and return a populated Parameters struct 
+	(out of memory, it keeps the cheats read so far)
 */
 void parseCheats(char *filecontents) {
 	char *line = NULL, *prevLine = NULL, *linectx = NULL;
@@ -133,19 +150,27 @@ void parseCheats(char *filecontents) {
 	while( line != NULL ) {
 		//print_debug("Line [%s]\n", line);
 		if(isCheatCode(line)) {		// The line looks like a valid code
-			_cheats.cheat = reallocarray(_cheats.cheat, numCheats+1, sizeof(CheatEntry));
+			CheatEntry *grown = reallocarray(_cheats.cheat, numCheats+1, sizeof(CheatEntry));
+			if(grown == NULL) {
+				break;
+			}
+			_cheats.cheat = grown;
 			curCheat = &_cheats.cheat[numCheats];
 			memset(curCheat, 0, sizeof(CheatEntry));
 			
 			if(prevLine != NULL) {
 				curCheat->name = strdup(prevLine);
+				if(curCheat->name == NULL) {
+					goto outOfMemory;
+				}
 				//print_debug("Cheat Name: [%s]\n", prevLine);
 			}
 			int numCodes = 0, unsupported = 0;
 			if(isValidCode(line)) {
 				// Add this valid code as the first code for this cheat
-				curCheat->codes = reallocarray(curCheat->codes, numCodes+1, sizeof(*curCheat->codes));
-				sscanf(line, "%x %x", &curCheat->codes[numCodes][0], &curCheat->codes[numCodes][1]);
+				if(!addCheatCode(curCheat, numCodes, line)) {
+					goto outOfMemory;
+				}
 				numCodes++;
 			}
 			else {
@@ -160,8 +185,9 @@ void parseCheats(char *filecontents) {
 				if(isCheatCode(line)) {
 					if(isValidCode(line)) {
 						// Add this valid code
-						curCheat->codes = reallocarray(curCheat->codes, numCodes+1, sizeof(*curCheat->codes));
-						sscanf(line, "%x %x", &curCheat->codes[numCodes][0], &curCheat->codes[numCodes][1]);
+						if(!addCheatCode(curCheat, numCodes, line)) {
+							goto outOfMemory;
+						}
 						numCodes++;
 					}
 					else {
@@ -191,6 +217,13 @@ void parseCheats(char *filecontents) {
 	}
 	_cheats.num_cheats = numCheats;
 	//printCheats();
+	return;
+
+outOfMemory:
+	// Drop the cheat being read; keep the ones before it.
+	free(curCheat->name);
+	free(curCheat->codes);
+	_cheats.num_cheats = numCheats;
 }
 
 CheatEntries* getCheats(void) {
@@ -430,7 +463,8 @@ static int findCheatsInternal(bool silent, bool allowPathMutation,
 	}
 	print_debug("Cheats file found with size %i\n", cheatsFile->size);
 	bool readComplete = false;
-	char *cheats_buffer = calloc(1, cheatsFile->size + 1);
+	char *cheats_buffer = cheatsFile->size <= CHEATS_FILE_MAX ?
+		calloc(1, cheatsFile->size + 1) : NULL;
 	if(cheats_buffer) {
 		devices[DEVICE_CHEATS]->seekFile(cheatsFile, 0, DEVICE_HANDLER_SEEK_SET);
 		s32 bytesRead = devices[DEVICE_CHEATS]->readFile(cheatsFile,

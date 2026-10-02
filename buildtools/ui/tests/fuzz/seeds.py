@@ -118,9 +118,20 @@ def png(out: Path) -> None:
     (out / "name-separators").write_bytes(b"N-_. +a")
 
 
+def cheats(out: Path) -> None:
+    # A cheats file as the downloads write it (each name above its codes),
+    # one with an unsupported XX code, and a code with no name above it.
+    (out / "codes.txt").write_bytes(
+        b"GALE01\r\nSuper Smash Bros. Melee\r\n\r\nInfinite Jumps\r\n"
+        b"04275CAC FFFFFFFF\r\n\r\nPlay As Master Hand\r\n"
+        b"0445C388 00000014\r\n0445C380 00000001\r\n\r\n"
+        b"Random Stage\r\n2845BF28 0000XXXX\r\n0445BF28 00000000\r\n")
+    (out / "no-name.txt").write_bytes(b"04275CAC FFFFFFFF\n")
+
+
 def main() -> int:
     out = Path(sys.argv[1])
-    for target in (history, saves, posters, about, settings, fst, png):
+    for target in (history, saves, posters, about, settings, fst, png, cheats):
         folder = out / target.__name__
         folder.mkdir(parents=True, exist_ok=True)
         target(folder)
