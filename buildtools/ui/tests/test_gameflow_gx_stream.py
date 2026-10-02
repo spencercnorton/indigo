@@ -58,6 +58,33 @@ BASE_EDITS = (
     ("FrameBufferMagic.c", "\t\t(1.0f - titleTravel) * (1.0f - frame->detailProgress), reveal);",
      "\t\t_GameflowClamp(1.0f - 2.0f * titleTravel, 0.0f, 1.0f) *\n"
      "\t\t(1.0f - frame->detailProgress), reveal);"),
+    # A held stick: the strip may run two cards behind, so the window holds
+    # four either side.
+    ("ui_gameflow.c", "if(travel < -1.0f) {\n\t\treturn -1.0f;\n\t}\n"
+     "\tif(travel > 1.0f) {\n\t\treturn 1.0f;",
+     "if(travel < -2.0f) {\n\t\treturn -2.0f;\n\t}\n"
+     "\tif(travel > 2.0f) {\n\t\treturn 2.0f;"),
+    # A ring smaller than that window keeps within one card.
+    ("ui_gameflow.c", "\ttravel = clampCarouselTravel(travel + visualStep);\n",
+     "\ttravel = clampCarouselTravel(travel + visualStep);\n"
+     "\tif(state->itemCount < 9u) {\n"
+     "\t\ttravel = travel < -1.0f ? -1.0f : (travel > 1.0f ? 1.0f : travel);\n\t}\n"),
+    ("ui_gameflow_library.c", "0, -1, 1, -2, 2, -3, 3\n", "0, -1, 1, -2, 2, -3, 3, -4, 4\n"),
+    ("ui_gameflow_library.h", "#define UI_GAMEFLOW_LIBRARY_WINDOW 7u",
+     "#define UI_GAMEFLOW_LIBRARY_WINDOW 9u"),
+    ("FrameBufferMagic.h", "#define UI_GAMEFLOW_RENDER_SLOTS 7u",
+     "#define UI_GAMEFLOW_RENDER_SLOTS 9u"),
+    ("FrameBufferMagic.c", "record->relativeSlot < -3 || record->relativeSlot > 3) {",
+     "record->relativeSlot < -4 || record->relativeSlot > 4) {"),
+    # A moving card rounds its first corner and the distances from it, so
+    # its size changes one way.
+    ("FrameBufferMagic.c", "\t\tresult.point[i].x = _GameflowRound(result.point[i].x);\n"
+     "\t\tresult.point[i].y = _GameflowRound(result.point[i].y);\n\t}\n\treturn result;",
+     "\t}\n\tfor(i = 3; i >= 0; --i) {\n"
+     "\t\tresult.point[i].x = _GameflowRound(result.point[0].x) +\n"
+     "\t\t\t_GameflowRound(result.point[i].x - result.point[0].x);\n"
+     "\t\tresult.point[i].y = _GameflowRound(result.point[0].y) +\n"
+     "\t\t\t_GameflowRound(result.point[i].y - result.point[0].y);\n\t}\n\treturn result;"),
 )
 PURE = ("ui_gameflow.c", "ui_motion.c", "ui_gameflow_library.c",
         "ui_command_rail.c", "ui_gameflow_detail.c", "ui_game_history.c")
@@ -164,6 +191,17 @@ static float GetTextScaleToFitInWidthWithMax(const char *text, int width, float 
 	float scale = size < (float)width ? 1.0f : (float)width / size;
 	return scale < maximum ? scale : maximum;
 }
+/* When every picture arrived, by a clock the frames advance: long ago,
+ * until "Y" has them all arrive now, or "Y n" game n's still. */
+static u32 clockMs = 600000u, artArrivedMs, stillArrivedMs[1000];
+u32 UIAssets_PeekAgeMs(uiPosterHandle_t handle) { (void)handle; return clockMs - artArrivedMs; }
+u32 UIStills_PeekAgeMs(uiPosterHandle_t handle)
+{
+	return clockMs - (handle.slot < 1000u &&
+		stillArrivedMs[handle.slot] > artArrivedMs ?
+		stillArrivedMs[handle.slot] : artArrivedMs);
+}
+static u32 CardArt_PosterAgeMs(int32_t card) { (void)card; return clockMs - artArrivedMs; }
 /* Every seventh game has no cover, so the fallback art is drawn too. The
  * launch test closes the pack, as the hand-off does. */
 static GXTexObj covers[1000];
@@ -236,9 +274,12 @@ static bool apps;
 /* O: Library Folders, inside a folder: every fourth card is a folder of
  * games, and the heading names the folder. */
 static bool folders;
+/* W: every game has a disc banner, as Spotlight's always do. */
+static bool banners;
 
 /* L layout count selected (A: apps, O: folders) | P selected hint rowDirection snap
- * | M motion | D mode | N frames dt  -- the log has one "F" per frame. */
+ * | M motion | D mode | W (banners) | Y [game] (pictures, or its still, arrive)
+ * | N frames dt  -- the log has one "F" per frame. */
 static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 	int rowDirection, int snap, bool first)
 {
@@ -278,7 +319,7 @@ static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 		snprintf(record->company, sizeof(record->company), "Company %u", slots[i].index % 9u);
 		snprintf(record->facts, sizeof(record->facts), "%s  |  1.4 GB", record->gameId);
 #if LAYOUTS
-		if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
+		if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT || banners) {
 			record->flags |= UI_GAMEFLOW_CARD_HAS_BANNER;
 			snprintf((char *)record->banner, 16, "banner:%s", record->gameId);
 		}
@@ -359,6 +400,9 @@ int main(void)
 			publish(layout, count, a, c, d, e, false);
 		}
 		else if(sscanf(line, "M %d", &c) == 1) motionMode = (uiMotionMode_t)c;
+		else if(sscanf(line, "Y %u", &a) == 1) stillArrivedMs[a % 1000u] = clockMs;
+		else if(line[0] == 'Y') artArrivedMs = clockMs;
+		else if(line[0] == 'W') banners = true;
 		else if(sscanf(line, "D %d", &c) == 1) {
 			UIGameflow_SetMode(&eventData->state, (uiGameflowMode_t)c, motionMode);
 			sceneFrame.scene = c ? UI_SCENE_GAME_DETAIL : UI_SCENE_LIBRARY;
@@ -366,6 +410,7 @@ int main(void)
 		else if(sscanf(line, "N %u %f", &a, &dt) == 2) {
 			for(b = 0; b < a; ++b) {
 				animDelta = dt; animSeconds += dt;
+				clockMs += (u32)(dt * 1000.0f + 0.5f);
 				fprintf(out, "F\n");
 				_DrawGameflow(&event);
 			}
@@ -825,6 +870,149 @@ class GameflowGxStream(unittest.TestCase):
         self.assertNotIn("still:G021E0", rest)
         self.assertAlmostEqual(centre(rest["banner:G022E0"][0])[0], 320, delta=1.0)
         self.assertEqual(self.column(frames(log)[-1])[92], "Game number 22")
+
+    @staticmethod
+    def texture_alpha(frame: str, name: str):
+        """The alpha a texture is first drawn with in a frame, or None."""
+        lines = frame.splitlines()
+        if f"X {name}" not in lines:
+            return None
+        at = lines.index(f"X {name}")
+        return int(next(l for l in lines[at:] if l.startswith("C ")).split()[4])
+
+    def test_a_picture_fades_in_as_it_arrives(self):
+        for script, picture, fallbacks in (
+                # A cover, over the card it stood in for; five cards show.
+                (["L 0 40 20"], "G020E0", 5),
+                # An app's poster made on the console.
+                (["A 0 10 4"], "ART004", None),
+                # Spotlight's still, over the cover it stood in for.
+                (["L 3 40 21"], "still:G021E0", None)):
+            with self.subTest(picture=picture):
+                log = frames(self.run_script(script + ["N 40 0.0167", "Y", "N 20 0.0167"]))
+                # Read long before it shows, it shows at once.
+                self.assertEqual(self.texture_alpha(log[0], picture), 255)
+                alphas = [self.texture_alpha(f, picture) for f in log[40:]]
+                self.assertLess(alphas[0], 255 * 0.15)
+                self.assertEqual(alphas, sorted(alphas))
+                self.assertTrue(all(b - a < 255 * 0.3 for a, b in zip(alphas, alphas[1:])),
+                                alphas)
+                # About 200 ms: full by the thirteenth frame.
+                self.assertEqual(alphas[13:], [255] * 7)
+                if fallbacks:
+                    self.assertEqual(log[40].count("B 24\n"), fallbacks)
+                    self.assertEqual(log[-1].count("B 24\n"), 0)
+                if picture.startswith("still:"):
+                    self.assertIsNotNone(self.texture_alpha(log[40], "G021E0"))
+                    self.assertIsNone(self.texture_alpha(log[-1], "G021E0"))
+        # Off shows it at once.
+        log = frames(self.run_script(["M 2", "L 0 40 20", "N 5 0.0167", "Y", "N 1 0.0167"]))
+        self.assertEqual(self.texture_alpha(log[-1], "G020E0"), 255)
+
+    def test_a_stand_in_gives_way_as_its_picture_arrives(self):
+        """What stood in for a picture shows only as much as the arriving
+        picture does not cover yet: the two read as one card at the card's
+        own strength, so nothing of the stand-in is left to vanish when the
+        picture is whole. The cards either side are drawn at less than full
+        strength, which is where it showed."""
+        log = frames(self.run_script(["W", "L 0 40 20", "N 40 0.0167", "Y",
+                                      "N 20 0.0167"]))[40:]
+        for game in ("G019E0", "G020E0", "G021E0"):
+            with self.subTest(game=game):
+                shown = []
+                for frame in log:
+                    picture = self.texture_alpha(frame, game) / 255
+                    stand_in = (self.texture_alpha(frame, "banner:" + game) or 0) / 255
+                    shown.append(round(picture + stand_in * (1 - picture), 3))
+                self.assertIsNotNone(self.texture_alpha(log[5], "banner:" + game))
+                self.assertTrue(all(abs(s - shown[-1]) < 0.01 for s in shown), shown)
+        # Spotlight: a still that arrives as the row moves fades in over its
+        # cover, and the two come in together, never more and then less.
+        log = frames(self.run_script(["L 3 40 21", "N 40 0.0167", "P 22 1 0 0", "Y 22",
+                                      "N 30 0.0167"]))[40:]
+        shown = []
+        for frame in log:
+            still = (self.texture_alpha(frame, "still:G022E0") or 0) / 255
+            cover = (self.texture_alpha(frame, "G022E0") or 0) / 255
+            shown.append(still + cover * (1 - still))
+        self.assertIsNotNone(self.texture_alpha(log[5], "G022E0"))
+        self.assertIsNone(self.texture_alpha(log[-1], "G022E0"))
+        self.assertTrue(all(b >= a - 0.005 for a, b in zip(shown, shown[1:])), shown)
+
+    def test_spotlight_keeps_the_old_picture_as_a_new_still_arrives(self):
+        """The old picture only ever fades as the row moves: when the new
+        still arrives part way through the move and takes over from its
+        cover, the old one does not step back up under it; and opening
+        Detail part way through fades it with the new one, rather than
+        showing more of it as the panel fades."""
+        def old_shown(log):
+            shown = []
+            for frame in log:
+                old = (self.texture_alpha(frame, "still:G021E0") or 0) / 255
+                new = (self.texture_alpha(frame, "still:G022E0") or 0) / 255
+                shown.append(round(old * (1 - new), 3))
+            return shown
+        shown = old_shown(frames(self.run_script(
+            ["L 3 40 21", "N 40 0.0167", "P 22 1 0 0", "Y 22", "N 60 0.0167"]))[40:])
+        self.assertGreater(shown[0], 0.9)
+        self.assertEqual(shown[-1], 0)
+        self.assertTrue(all(b <= a + 0.005 for a, b in zip(shown, shown[1:])), shown)
+        # The old picture against the new one: their share of the mix is
+        # the move's, however far the panel has faded.
+        mix = []
+        for frame in frames(self.run_script(
+                ["L 3 40 21", "N 40 0.0167", "P 22 1 0 0", "N 6 0.0167", "D 1",
+                 "N 30 0.0167"]))[45:]:
+            old = (self.texture_alpha(frame, "still:G021E0") or 0) / 255
+            new = (self.texture_alpha(frame, "still:G022E0") or 0) / 255
+            if new > 0.05:
+                mix.append(round(old * (1 - new) / new, 3))
+        self.assertGreater(len(mix), 10)
+        self.assertTrue(all(b <= a + 0.01 for a, b in zip(mix, mix[1:])), mix)
+
+    def test_moving_cards_change_size_one_way(self):
+        """A step moves every card between two poses: its size along the
+        strip changes one way, never a pixel back and forth as its corners
+        round. Each card's corners round from its first corner."""
+        width = lambda box: box[2] - box[0]
+        height = lambda box: box[3] - box[1]
+        for script, sizes in ((["L 0 40 20", "P 21 1 0 0"], (width,)),
+                              (["L 1 40 20", "P 21 1 0 0"], (height,)),
+                              (["L 2 40 12", "P 13 1 0 0"], (width, height)),
+                              (["L 2 40 12", "P 17 1 0 0"], (width, height))):
+            with self.subTest(script=script):
+                log = [covers(f) for f in frames(self.run_script(
+                    [script[0], "N 40 0.0167", script[1], "N 50 0.0167"]))[40:]]
+                games = set.intersection(*(set(f) for f in log))
+                self.assertGreater(len(games), 1)
+                for game in games:
+                    for size in sizes:
+                        seen = [size(f[game][0]) for f in log if len(f[game]) == 1]
+                        steps = [b - a for a, b in zip(seen, seen[1:]) if abs(b - a) > 0.001]
+                        self.assertTrue(all(step > 0 for step in steps) or
+                                        all(step < 0 for step in steps), (game, seen))
+
+    def test_spotlight_mixes_stills_without_a_dip(self):
+        """Still to still, the old one stays whole under the new one as it
+        fades in, so the panel never shows through half way; still to cover,
+        the old still fades out round the smaller cover."""
+        log = frames(self.run_script(["L 3 40 21", "N 40 0.0167", "P 22 1 0 0",
+                                      "N 40 0.0167"]))[40:]
+        mixed = [(self.texture_alpha(f, "still:G021E0"), self.texture_alpha(f, "still:G022E0"))
+                 for f in log]
+        during = [(old, new) for old, new in mixed if old is not None]
+        self.assertGreater(len(during), 5)
+        self.assertTrue(all(old == 255 for old, _ in during), during)
+        news = [new for _, new in mixed]
+        self.assertEqual(news, sorted(news))
+        self.assertEqual(mixed[-1], (None, 255))
+        log = frames(self.run_script(["L 3 40 22", "N 40 0.0167", "P 23 1 0 0",
+                                      "N 40 0.0167"]))[40:]
+        olds = [self.texture_alpha(f, "still:G022E0") for f in log]
+        olds = [alpha for alpha in olds if alpha is not None]
+        self.assertGreater(len(olds), 5)
+        self.assertEqual(olds, sorted(olds, reverse=True))
+        self.assertLess(olds[-1], 128)
 
     def test_every_layout_flies_to_detail(self):
         for layout in (0, 1, 2, 3):

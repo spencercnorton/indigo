@@ -57,7 +57,7 @@ enum { GX_ENABLE=1, GX_LEQUAL=2, GX_FALSE=0, GX_TRUE=1,
 typedef struct { bool available; float hourX,hourY,minuteX,minuteY,secondX,secondY; } uiClockFrame_t;
 typedef struct { bool available; s8 stickX,stickY,substickX,substickY; u32 buttons; } indigoPadFrame_t;
 typedef struct { float stickX,stickY,substickX,substickY; u32 pressed; } controllerPose_t;
-typedef struct { float lastLiveInput; bool liveSeen; } controllerIdle_t;
+/* CONTROLLER IDLE */
 static controllerIdle_t controllerIdle;
 enum { PAD_BUTTON_LEFT=0x0001, PAD_BUTTON_RIGHT=0x0002, PAD_BUTTON_DOWN=0x0004, PAD_BUTTON_UP=0x0008,
     PAD_TRIGGER_Z=0x0010, PAD_TRIGGER_R=0x0020, PAD_TRIGGER_L=0x0040, PAD_BUTTON_A=0x0100,
@@ -772,7 +772,7 @@ static void test_controller_across_the_clock_wrap(void) {
         {PAD_BUTTON_X,2.91f},{PAD_BUTTON_RIGHT,3.9f},{PAD_BUTTON_DOWN,4.3f},
         {PAD_BUTTON_START,5.21f}};
     indigoPadFrame_t held={true,60,0,0,0,0u},rest={true,0,0,0,0,0u};
-    controllerIdle_t idle={0.0f,false};
+    controllerIdle_t idle={0.0f,false,0.0f,0.0f};
     controllerPose_t pose;
     controllerPose(&held,UI_ANIM_TIME_WRAP_SECONDS-0.5f,true,&idle,&pose);
     controllerPose(&rest,3.0f,true,&idle,&pose);
@@ -782,6 +782,33 @@ static void test_controller_across_the_clock_wrap(void) {
             true,&idle,&pose);
         CHECK(pose.pressed&presses[i].button,"the presses jump at the clock's wrap");
     }
+}
+static void test_controller_gives_way_to_the_hand(void) {
+    /* Idle play hands the sticks to live input over CONTROLLER_IDLE_RELEASE:
+     * the idle sway shrinks a frame at a time, never in one, and the idle
+     * presses stop at once. Not animated, there is none to give way. */
+    indigoPadFrame_t rest={true,0,0,0,0,0u},pressing={true,0,0,0,0,PAD_BUTTON_B};
+    controllerIdle_t idle={0.0f,false,0.0f,0.0f};
+    controllerPose_t pose;
+    float t=100.0f, previous=1.0f;
+    controllerPose(&rest,t,true,&idle,&pose);
+    float sway=fabsf(pose.stickX)+fabsf(pose.stickY)+fabsf(pose.substickX)+fabsf(pose.substickY);
+    CHECK(sway>0.1f,"no idle play to give way");
+    for(int frame=1;frame<=12;frame++) {
+        t+=1.0f/60.0f;
+        controllerPose(&pressing,t,true,&idle,&pose);
+        float share=(fabsf(pose.stickX)+fabsf(pose.stickY)+fabsf(pose.substickX)+
+            fabsf(pose.substickY))/(.38f*fabsf(sinf(t*.8f))+.32f*fabsf(sinf(t*1.1f+.6f))+
+            .34f*fabsf(sinf(t*1.3f+2.0f))+.30f*fabsf(cosf(t*.9f)));
+        CHECK(pose.pressed==PAD_BUTTON_B,"idle presses kept on under the hand");
+        CHECK(share<=previous+1e-4f && previous-share<.2f,"idle play left the sticks in one frame");
+        CHECK(frame<8 || share==0.0f,"idle play kept the sticks past its release");
+        previous=share;
+    }
+    idle=(controllerIdle_t){0.0f,false,0.0f,0.0f};
+    controllerPose(&rest,t,true,&idle,&pose);
+    controllerPose(&pressing,t+1.0f/60.0f,false,&idle,&pose);
+    CHECK(pose.stickX==0.0f && pose.substickY==0.0f,"idle play lingered with animation off");
 }
 static void test_closed_cube(void) {
     cubeSurfaceQuad_t mesh[26];
@@ -1063,6 +1090,7 @@ int main(void) {
     test_fast_sqrt(); test_dial(); test_rail_joins(); test_motifs(); test_controller(); test_rounded_outlines();
     test_icons_on_their_faces(); test_lift(); test_shadows(); test_hidden_controller_reads_the_pad();
     test_controller_across_the_clock_wrap();
+    test_controller_gives_way_to_the_hand();
     test_closed_cube(); test_seamless_mesh(); test_chamfer_color_pairs(); test_surfaces(); test_glass();
     puts("native strokes: bounded complete GX streams, perspective coverage and closed seams");
     return 0;
@@ -1145,8 +1173,10 @@ class StrokeGXStreamTests(unittest.TestCase):
             r"^#define (?:UI_ANIM_TIME_WRAP_SECONDS) .*$",
             (GUI / "ui_anim.h").read_text(), re.MULTILINE) + re.findall(
             r"^#define (?:FACE_POLYGON_MAX|FACE_BAND_MAX|FACE_ARC_MAX|CONTROLLER_IDLE_HOLD|"
-            r"CONTROLLER_PRESS_CYCLE|BEVEL_SEAM_BLEND|FACE_ICON_\w+|FACE_SHADOW_\w+) .*$",
+            r"CONTROLLER_IDLE_RELEASE|CONTROLLER_PRESS_CYCLE|BEVEL_SEAM_BLEND|FACE_ICON_\w+|FACE_SHADOW_\w+) .*$",
             indigo, re.MULTILINE))
+        cls.idle=re.search(r"typedef struct controllerIdle \{.*?\} controllerIdle_t;",
+            indigo, re.S).group(0)
         # The face and icon lists come from the source, never a copy.
         home=(GUI / "ui_home.h").read_text()
         cls.enums="\n".join([re.search(r"^#define UI_HOME_ICON_CHOICES \d+$", home, re.M).group(0)] +
@@ -1211,6 +1241,7 @@ class StrokeGXStreamTests(unittest.TestCase):
             root=Path(directory); source=root / "strokes.c"; binary=root / "strokes"
             source.write_text(HARNESS.replace("/* HOME ENUMS */", self.enums)
                 .replace("/* CONTROLLER DEFINES */", self.defines)
+                .replace("/* CONTROLLER IDLE */", self.idle)
                 .replace("/* EMITTERS */", emitters))
             result=subprocess.run(shlex.split(os.environ.get("CC", "cc")) +
                 ["-std=c99", "-Wall", "-Wextra", "-Werror", str(source), "-o", str(binary), "-lm"],
@@ -1219,7 +1250,7 @@ class StrokeGXStreamTests(unittest.TestCase):
             return subprocess.run([str(binary)],capture_output=True,text=True,timeout=5)
 
     def test_controller_defines_come_from_the_source(self):
-        self.assertEqual(self.defines.count("#define"), 13)
+        self.assertEqual(self.defines.count("#define"), 14)
 
     def test_native_emitters(self):
         result=self.run_emitters(self.emitters)

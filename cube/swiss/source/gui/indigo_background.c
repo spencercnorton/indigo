@@ -45,6 +45,7 @@
 #define FACE_BAND_MAX 80
 #define FACE_ARC_MAX 24
 #define CONTROLLER_IDLE_HOLD 2.0f
+#define CONTROLLER_IDLE_RELEASE 0.12f
 /* The idle presses' cycle: six seconds, give or take a millisecond, so that
  * the clock's wrap holds a whole number of them. */
 #define CONTROLLER_PRESS_CYCLE (UI_ANIM_TIME_WRAP_SECONDS / 1047.0f)
@@ -95,10 +96,13 @@ typedef struct controllerPose {
 } controllerPose_t;
 
 /* Idle play resumes only once the controller has been left alone, so it is
- * never mistaken for the user's own input. */
+ * never mistaken for the user's own input. It gives way to live input over
+ * CONTROLLER_IDLE_RELEASE rather than in one frame. */
 typedef struct controllerIdle {
 	float lastLiveInput;
 	bool liveSeen;
+	float shown;	/* how much idle play shows, easing down to the target */
+	float lastSeconds;
 } controllerIdle_t;
 
 typedef struct waveOscillator {
@@ -1370,6 +1374,7 @@ static void controllerPose(const indigoPadFrame_t *pad, float seconds,
 		PAD_BUTTON_LEFT | PAD_BUTTON_RIGHT | PAD_TRIGGER_L | PAD_TRIGGER_R;
 	float idleWeight;
 	float since;
+	float step;
 
 	*pose = (controllerPose_t) {0.0f, 0.0f, 0.0f, 0.0f, 0u};
 	if(pad != NULL && pad->available) {
@@ -1390,8 +1395,19 @@ static void controllerPose(const indigoPadFrame_t *pad, float seconds,
 	if(since < 0.0f) since += UI_ANIM_TIME_WRAP_SECONDS;
 	idleWeight = !animated ? 0.0f : (!idle->liveSeen ? 1.0f :
 		(since - CONTROLLER_IDLE_HOLD) / 0.8f);
-	if(idleWeight <= 0.0f) return;
+	if(idleWeight < 0.0f) idleWeight = 0.0f;
 	if(idleWeight > 1.0f) idleWeight = 1.0f;
+	/* Idle play comes back on its own 0.8 s ramp; live input takes the
+	 * sticks from it over a moment, so they do not jump to the hand. */
+	step = seconds - idle->lastSeconds;
+	if(step < 0.0f) step += UI_ANIM_TIME_WRAP_SECONDS;
+	idle->lastSeconds = seconds;
+	if(animated && idleWeight < idle->shown) {
+		idleWeight = fmaxf(idleWeight,
+			idle->shown - step / CONTROLLER_IDLE_RELEASE);
+	}
+	idle->shown = idleWeight;
+	if(idleWeight <= 0.0f) return;
 	pose->stickX += idleWeight * 0.38f * sinf(seconds * 0.8f);
 	pose->stickY += idleWeight * 0.32f * sinf(seconds * 1.1f + 0.6f);
 	pose->substickX += idleWeight * 0.34f * sinf(seconds * 1.3f + 2.0f);
@@ -2907,7 +2923,7 @@ static void renderFacePictures(const uiSceneFrame_t *scene, float seconds,
 			(u16)(width * 2), (u16)height, GX_TF_RGB565, GX_CLAMP, GX_CLAMP, GX_FALSE);
 		GX_InitTexObjLOD(&picture->texture, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f,
 			GX_FALSE, GX_FALSE, GX_ANISO_1);
-		picture->weight = weight;
+		picture->weight = weight * glassSmoothstep(BOOT_CUBE_HANDOFF, 1.0f, scene->introProgress);
 		picture->x = (u16)x0;
 		picture->y = (u16)y0;
 		picture->width = (u16)width;
@@ -3525,9 +3541,11 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 	float orbitScale = 0.70f + (scene->cubeScale * 0.30f);
 	float orbitStrength = scene->orbitStrength < 0.0f ? 0.0f :
 		(scene->orbitStrength > 1.0f ? 1.0f : scene->orbitStrength);
-	float decorativeStrength = scene->scene == UI_SCENE_HOME ||
-		scene->scene == UI_SCENE_SOURCE ?
-		orbitStrength * HOME_DECORATIVE_STRENGTH : orbitStrength;
+	/* Home and Source quiet the waves; the change eases with the cube
+	 * rather than stepping when the scene does. */
+	float decorativeStrength = orbitStrength +
+		(orbitStrength * HOME_DECORATIVE_STRENGTH - orbitStrength) *
+		scene->homeDecorativeBlend;
 
 	/* The turned faces' icon pictures go first: the backdrop paints over
 	 * the corner of the frame they are drawn in. */
