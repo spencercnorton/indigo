@@ -84,8 +84,12 @@ dead control does. Only where that text sits is fixed (`LABEL_BOX`,
 updates them. The test waits for what it expects to see, not for a fixed
 time, and counts the console's own seconds, which the runner's Dolphin
 reports, for every wait and press, so a busy machine makes it slower, not
-flaky. A failed step says why, names the crash when there is one, and where
-the console's CPU was.
+flaky. A press the menu was too busy to see, loading something, changes
+nothing on the screen: for a turn of the cube or a step along a row, the route
+presses again, as a person would, and the report lists each such press
+(`pressed_again`), so the misses stay in sight. A press that changed the
+screen is never repeated. A failed step says why, names the crash when there
+is one, and where the console's CPU was.
 
 ## Running it
 

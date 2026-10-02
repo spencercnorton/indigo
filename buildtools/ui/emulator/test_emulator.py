@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 import zipfile
 import zlib
 from pathlib import Path
@@ -371,6 +372,31 @@ class Screen(unittest.TestCase):
             time.sleep(0.06)
             self.assertTrue(wait.expired())
             self.assertIsNone(emulator.where())
+
+    def press_until(self, screens, answers):
+        """press_until with the screen's text and settled_label's answers scripted."""
+        route = run.Route.__new__(run.Route)
+        route.pressed_again, presses = [], []
+        route.press = lambda button, seconds=0: presses.append(button)
+        route.gray = lambda: None
+        route.settled_label = lambda *args, **kwargs: next(answers)
+        with mock.patch.object(run, "text_mask", lambda frame, box=None: next(screens)):
+            found = route.press_until("RIGHT")[0]
+        return found, presses, route.pressed_again
+
+    def test_a_press_the_menu_missed_is_pressed_again(self):
+        """Nothing changed after the press: press again, and say so."""
+        face = np.ones((4, 4), bool)
+        found, presses, again = self.press_until(iter([face, face]), iter([(None, 0.0), (face, 1.0)]))
+        self.assertIs(found, face)
+        self.assertEqual((presses, again), (["RIGHT", "RIGHT"], ["RIGHT"]))
+
+    def test_a_press_that_changed_the_screen_is_never_repeated(self):
+        """The screen moved, just not yet to what was wanted: wait, never press twice."""
+        before, moved = np.ones((4, 4), bool), np.zeros((4, 4), bool)
+        found, presses, again = self.press_until(iter([before, moved]), iter([(None, 0.0), (None, 1.0)]))
+        self.assertIsNone(found)
+        self.assertEqual((presses, again), (["RIGHT"], []))
 
     def test_fatal_lines(self):
         with tempfile.TemporaryDirectory() as directory:

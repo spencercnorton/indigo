@@ -41,6 +41,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- The emulator test presses a cube turn or a step along a row again when the
+  menu was too busy to see the press and the screen did not change, as a
+  person would; the report lists each such press.
 - AESND, libogc2's audio library, is built from `cube/swiss/aesnd`: a copy
   byte-identical to the toolchain's libogc2, with Indigo's fix as a patch
   applied at build time. CI checks the copy against that commit and the
