@@ -3082,6 +3082,16 @@ static float _GameflowArrival(u32 ageMs)
 	return UIMotion_Smoothstep((float)ageMs / (float)GAMEFLOW_ART_ARRIVAL_MS);
 }
 
+/* The share of alpha to draw what a picture fades in over, under the
+ * picture at alpha * arrival: together they show as one card at alpha, and
+ * nothing of it is left just as the picture is whole. */
+static float _GameflowUnderneath(float alpha, float arrival)
+{
+	float rest = 1.0f - alpha * arrival;
+
+	return rest > 0.0f ? (1.0f - arrival) / rest : 0.0f;
+}
+
 /* The record's poster, or NULL; *arrival (when asked for) is how far it has
  * faded in since it arrived. */
 static GXTexObj *_GameflowPosterTexture(
@@ -3190,7 +3200,8 @@ static void _GameflowDrawSpotlightCover(drawGameflowEvent_t *data,
 	if(artwork == UI_GAMEFLOW_LIBRARY_ART_POSTER) {
 		if(arrival < 1.0f) {
 			_GameflowDrawFallback(&cover, UIGameflowLibrary_ChooseArtwork(
-				false, bannerTexture != NULL), bannerTexture, 1.0f);
+				false, bannerTexture != NULL), bannerTexture,
+				_GameflowUnderneath(alpha, arrival));
 		}
 		_GameflowDrawPoster(&cover, texture, arrival);
 	}
@@ -3221,7 +3232,8 @@ static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
 			4.0f);
 		float arrival = _GameflowStillArrival(record);
 		if(arrival < 1.0f) {
-			_GameflowDrawSpotlightCover(data, record, recordIndex, alpha);
+			_GameflowDrawSpotlightCover(data, record, recordIndex,
+				alpha * _GameflowUnderneath(alpha, arrival));
 		}
 		_GameflowDrawBanner(&inner, texture,
 			_GameflowAlpha(255.0f * alpha * arrival));
@@ -4304,7 +4316,8 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			if(arrival < 1.0f) {
 				_GameflowDrawFallback(&cards[i],
 					UIGameflowLibrary_ChooseArtwork(false,
-					bannerTexture != NULL), bannerTexture, reveal);
+					bannerTexture != NULL), bannerTexture, reveal *
+					_GameflowUnderneath(cards[i].presence * reveal, arrival));
 			}
 			_GameflowDrawPoster(&cards[i], posterTexture, reveal * arrival);
 			continue;

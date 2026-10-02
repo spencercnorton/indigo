@@ -192,10 +192,15 @@ static float GetTextScaleToFitInWidthWithMax(const char *text, int width, float 
 	return scale < maximum ? scale : maximum;
 }
 /* When every picture arrived, by a clock the frames advance: long ago,
- * until "Y" has them all arrive now. */
-static u32 clockMs = 600000u, artArrivedMs;
+ * until "Y" has them all arrive now, or "Y n" game n's still. */
+static u32 clockMs = 600000u, artArrivedMs, stillArrivedMs[1000];
 u32 UIAssets_PeekAgeMs(uiPosterHandle_t handle) { (void)handle; return clockMs - artArrivedMs; }
-u32 UIStills_PeekAgeMs(uiPosterHandle_t handle) { (void)handle; return clockMs - artArrivedMs; }
+u32 UIStills_PeekAgeMs(uiPosterHandle_t handle)
+{
+	return clockMs - (handle.slot < 1000u &&
+		stillArrivedMs[handle.slot] > artArrivedMs ?
+		stillArrivedMs[handle.slot] : artArrivedMs);
+}
 static u32 CardArt_PosterAgeMs(int32_t card) { (void)card; return clockMs - artArrivedMs; }
 /* Every seventh game has no cover, so the fallback art is drawn too. The
  * launch test closes the pack, as the hand-off does. */
@@ -269,9 +274,12 @@ static bool apps;
 /* O: Library Folders, inside a folder: every fourth card is a folder of
  * games, and the heading names the folder. */
 static bool folders;
+/* W: every game has a disc banner, as Spotlight's always do. */
+static bool banners;
 
 /* L layout count selected (A: apps, O: folders) | P selected hint rowDirection snap
- * | M motion | D mode | N frames dt  -- the log has one "F" per frame. */
+ * | M motion | D mode | W (banners) | Y [game] (pictures, or its still, arrive)
+ * | N frames dt  -- the log has one "F" per frame. */
 static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 	int rowDirection, int snap, bool first)
 {
@@ -311,7 +319,7 @@ static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 		snprintf(record->company, sizeof(record->company), "Company %u", slots[i].index % 9u);
 		snprintf(record->facts, sizeof(record->facts), "%s  |  1.4 GB", record->gameId);
 #if LAYOUTS
-		if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
+		if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT || banners) {
 			record->flags |= UI_GAMEFLOW_CARD_HAS_BANNER;
 			snprintf((char *)record->banner, 16, "banner:%s", record->gameId);
 		}
@@ -392,7 +400,9 @@ int main(void)
 			publish(layout, count, a, c, d, e, false);
 		}
 		else if(sscanf(line, "M %d", &c) == 1) motionMode = (uiMotionMode_t)c;
+		else if(sscanf(line, "Y %u", &a) == 1) stillArrivedMs[a % 1000u] = clockMs;
 		else if(line[0] == 'Y') artArrivedMs = clockMs;
+		else if(line[0] == 'W') banners = true;
 		else if(sscanf(line, "D %d", &c) == 1) {
 			UIGameflow_SetMode(&eventData->state, (uiGameflowMode_t)c, motionMode);
 			sceneFrame.scene = c ? UI_SCENE_GAME_DETAIL : UI_SCENE_LIBRARY;
@@ -898,6 +908,36 @@ class GameflowGxStream(unittest.TestCase):
         # Off shows it at once.
         log = frames(self.run_script(["M 2", "L 0 40 20", "N 5 0.0167", "Y", "N 1 0.0167"]))
         self.assertEqual(self.texture_alpha(log[-1], "G020E0"), 255)
+
+    def test_a_stand_in_gives_way_as_its_picture_arrives(self):
+        """What stood in for a picture shows only as much as the arriving
+        picture does not cover yet: the two read as one card at the card's
+        own strength, so nothing of the stand-in is left to vanish when the
+        picture is whole. The cards either side are drawn at less than full
+        strength, which is where it showed."""
+        log = frames(self.run_script(["W", "L 0 40 20", "N 40 0.0167", "Y",
+                                      "N 20 0.0167"]))[40:]
+        for game in ("G019E0", "G020E0", "G021E0"):
+            with self.subTest(game=game):
+                shown = []
+                for frame in log:
+                    picture = self.texture_alpha(frame, game) / 255
+                    stand_in = (self.texture_alpha(frame, "banner:" + game) or 0) / 255
+                    shown.append(round(picture + stand_in * (1 - picture), 3))
+                self.assertIsNotNone(self.texture_alpha(log[5], "banner:" + game))
+                self.assertTrue(all(abs(s - shown[-1]) < 0.01 for s in shown), shown)
+        # Spotlight: a still that arrives as the row moves fades in over its
+        # cover, and the two come in together, never more and then less.
+        log = frames(self.run_script(["L 3 40 21", "N 40 0.0167", "P 22 1 0 0", "Y 22",
+                                      "N 30 0.0167"]))[40:]
+        shown = []
+        for frame in log:
+            still = (self.texture_alpha(frame, "still:G022E0") or 0) / 255
+            cover = (self.texture_alpha(frame, "G022E0") or 0) / 255
+            shown.append(still + cover * (1 - still))
+        self.assertIsNotNone(self.texture_alpha(log[5], "G022E0"))
+        self.assertIsNone(self.texture_alpha(log[-1], "G022E0"))
+        self.assertTrue(all(b >= a - 0.005 for a, b in zip(shown, shown[1:])), shown)
 
     def test_moving_cards_change_size_one_way(self):
         """A step moves every card between two poses: its size along the
