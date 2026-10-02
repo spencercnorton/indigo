@@ -525,6 +525,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "System Icon=%s\r\n", systemIconStr[swissSettings.systemIcon]);
 	fprintf(fp, "Hide Apps Face=%s\r\n", swissSettings.hideAppsFace ? "Yes":"No");
 	fprintf(fp, "Clock=%s\r\n", clockPositionStr[swissSettings.clockPosition]);
+	fprintf(fp, "Temperature=%s\r\n", clockPositionStr[swissSettings.temperaturePosition]);
 	fprintf(fp, "Wave Speed=%s\r\n", waveSpeedStr[swissSettings.waveSpeed]);
 	fprintf(fp, "Library Layout=%s\r\n", libraryLayoutStr[swissSettings.libraryLayout]);
 	fprintf(fp, "Init DVD Drive at startup=%s\r\n", swissSettings.initDVDDriveAtStart ? "Yes":"No");
@@ -1110,6 +1111,9 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 
 void config_parse_global(char *configData) {
 	char *line, *linectx = NULL;
+	/* Before Temperature had its own line, Clock placed the dial too. */
+	int clockRead = -1;
+	bool temperatureRead = false;
 	line = strtok_r( configData, "\r\n", &linectx );
 	while( line != NULL ) {
 		//print_debug("Line [%s]\n", line);
@@ -1404,7 +1408,16 @@ void config_parse_global(char *configData) {
 				else if(!strcmp("Clock", name)) {
 					for(int i = 0; i < CLOCK_POSITION_MAX; i++) {
 						if(!strcmp(clockPositionStr[i], value)) {
-							swissSettings.clockPosition = i;
+							swissSettings.clockPosition = clockRead = i;
+							break;
+						}
+					}
+				}
+				else if(!strcmp("Temperature", name)) {
+					for(int i = 0; i < CLOCK_POSITION_MAX; i++) {
+						if(!strcmp(clockPositionStr[i], value)) {
+							swissSettings.temperaturePosition = i;
+							temperatureRead = true;
 							break;
 						}
 					}
@@ -1625,6 +1638,9 @@ void config_parse_global(char *configData) {
 		}
 		// And round we go again
 		line = strtok_r( NULL, "\r\n", &linectx);
+	}
+	if(clockRead >= 0 && !temperatureRead) {
+		swissSettings.temperaturePosition = clockRead;
 	}
 }
 

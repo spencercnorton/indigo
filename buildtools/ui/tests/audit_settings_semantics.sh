@@ -8,8 +8,9 @@
 # new Menu Color arm (SET_UI_COLOR) only steps swissSettings.uiColor round
 # its colors, the Backdrop and Wave Color arms (SET_UI_BACKDROP_COLOR,
 # SET_UI_WAVE_COLOR) each only step their own setting round Menu Color and
-# the colors, the Clock arm (SET_CLOCK_POSITION) only steps
-# swissSettings.clockPosition round Right, Left and Off, the Wave Speed arm
+# the colors, the Clock and Temperature arms (SET_CLOCK_POSITION,
+# SET_TEMPERATURE_POSITION) each only step swissSettings.clockPosition or
+# swissSettings.temperaturePosition round Right, Left and Off, the Wave Speed arm
 # (SET_WAVE_SPEED) only steps swissSettings.waveSpeed round Normal, Fast and
 # Slow, the four new face icon arms (SET_*_ICON) each only step
 # their own face's icon round that face's own four, the Library Layout arm
@@ -95,13 +96,14 @@ normalized, layers = re.subn(
     r"\t+break;\n",
     lambda arm: "" if arm.group(1).lower() == arm.group(2).lower() else arm.group(0),
     normalized)
-# So is the Clock arm, round Right, Left and Off.
+# So are the Clock and Temperature arms, round Right, Left and Off.
 normalized = re.sub(
-    r"(?ms)^\t+case SET_CLOCK_POSITION:\n"
-    r"\t+swissSettings\.clockPosition \+= direction;\n"
-    r"\t+swissSettings\.clockPosition = \(swissSettings\.clockPosition \+ CLOCK_POSITION_MAX\) % CLOCK_POSITION_MAX;\n"
+    r"(?ms)^\t+case SET_(CLOCK|TEMPERATURE)_POSITION:\n"
+    r"\t+swissSettings\.(clock|temperature)Position \+= direction;\n"
+    r"\t+swissSettings\.\2Position = \(swissSettings\.\2Position \+ CLOCK_POSITION_MAX\) % CLOCK_POSITION_MAX;\n"
     r"\t+break;\n",
-    "", normalized, count=1)
+    lambda arm: "" if arm.group(1).lower() == arm.group(2) else arm.group(0),
+    normalized)
 # So is the Wave Speed arm, round Normal, Fast and Slow.
 normalized = re.sub(
     r"(?ms)^\t+case SET_WAVE_SPEED:\n"
@@ -165,9 +167,9 @@ for fn in settings_toggle; do
 			normalize_intended_changes "$TMP/base_$fn" "$TMP/base_${fn}_normalized"
 			normalize_intended_changes "$TMP/head_$fn" "$TMP/head_${fn}_normalized"
 			if cmp -s "$TMP/base_${fn}_normalized" "$TMP/head_${fn}_normalized"; then
-				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, icon, layout, save folder, widescreen and apps face arms and game reset\n' "$fn"
+				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, temperature, icon, layout, save folder, widescreen and apps face arms and game reset\n' "$fn"
 			else
-				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_APPS_FACE and the game reset" >&2
+				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_TEMPERATURE_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_APPS_FACE and the game reset" >&2
 				diff -u "$TMP/base_${fn}_normalized" \
 					"$TMP/head_${fn}_normalized" | head -40 >&2 || true
 				fail=1

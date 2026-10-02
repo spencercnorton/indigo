@@ -155,7 +155,8 @@ most use the same key there.
 | `Settings Icon` | `Sliders`, `Gear`, `Toggles`, `Dial`. The picture on the Settings face, from its own four icons. | `Sliders` | Settings Icon |
 | `System Icon` | `Clock`, `Info`, `Power`, `Chip`. The picture on the System face, from its own four icons. | `Clock` | System Icon |
 | `Wave Speed` | `Normal`, `Fast`, `Slow`. How fast the waves drift: `Fast` three times as fast, `Slow` half as fast. | `Normal` | Wave Speed |
-| `Clock` | `Right`, `Left`, `Off`. Where the time and the temperature dial sit: the top right or top left corner, or neither. | `Right` | Clock |
+| `Clock` | `Right`, `Left`, `Off`. Where the time sits: the top right or top left corner, or neither. | `Right` | Clock |
+| `Temperature` | `Right`, `Left`, `Off`. Where the temperature dial sits, the same way. Without this line, the dial follows `Clock`. | `Right` | Temperature |
 | `Hide Apps Face` | `Yes`, `No`. `Yes` shows as Apps Face › Off: Home never shows Apps, even with programs in `/apps`. | `No` | Apps Face |
 | `System Boot Mode` | `Default`, `Production`. Any other value means `Default`. | the console's SRAM | System Boot Mode |
 | `System Sound` | `Mono`, `Stereo`. Any other value means `Mono`. | the console's SRAM | System Sound |

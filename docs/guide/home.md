@@ -81,7 +81,8 @@ never plays by itself. UI Motion is in Settings › Quick.
 ## Around the cube
 
 - **Top right:** the time and the console's CPU temperature. Settings ›
-  Setup › Console › Clock moves them to the top left or hides them. The
+  Setup › Console › Clock and Temperature each move theirs to the top left
+  or hide it. The
   CPU's sensor reads in 4 degree steps, so the temperature shown is an
   average of the last few seconds' readings: it holds steady and moves a
   degree at a time. It has no factory calibration; adjust it in Settings ›

@@ -139,7 +139,8 @@ typedef struct {
 	int settingsIcon;
 	int systemIcon;
 	int hideAppsFace;	// 0 = Home shows Apps while /apps has a program (default); 1 = never
-	int clockPosition;	// CLOCK_RIGHT (default), CLOCK_LEFT or CLOCK_OFF: the clock and temperature dial
+	int clockPosition;	// CLOCK_RIGHT (default), CLOCK_LEFT or CLOCK_OFF: the time
+	int temperaturePosition;	// the same three for the temperature dial
 	int waveSpeed;	// WAVE_SPEED_NORMAL (default), WAVE_SPEED_FAST or WAVE_SPEED_SLOW: how fast the waves drift
 	int libraryLayout;	// uiGameflowLayout_t (gui/ui_gameflow.h): Horizontal (default), Vertical, Grid or Spotlight
 	int sram60Hz;

@@ -12,6 +12,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
   Slow (half as fast), Normal (the default) or Fast (three times as fast). A
   new speed picks up from where the waves are. In `global.ini` it is
   `Wave Speed`.
+- Settings › Setup › Console › **Temperature** places the temperature dial on
+  its own: Right, Left or Off, as Clock places the time. Clock moves only the
+  time now. In the same corner the time sits beside the dial as before; apart,
+  each sits in its own corner. In `global.ini` it is `Temperature`; settings
+  saved by 2.2, which has no `Temperature`, keep the dial with the clock.
 
 ### Changes
 
@@ -28,6 +33,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   second (40 °C, 44 °C, 40 °C...). Indigo now shows an average of the last few
   seconds' readings, which moves a degree at a time, at the top of the screen
   and in System Information alike.
+- With Clock at Left, the loading spinner at the top right ran its word
+  "Loading" from the wheel out to the screen's edge, where a TV can crop it.
+  It reads inward from the wheel now, in either corner.
 
 ## v2.2.0 — Backdrop and Wave Color, a Clock setting and a cleaner cube
 

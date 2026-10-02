@@ -152,7 +152,8 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_MENU_WIDESCREEN] = "Menu Widescreen:\n\nYes - Drawn for a TV set to 16:9: the background fills the\nscreen and the menus keep their shape.\nNo - Drawn for a 4:3 picture (default)\n\nSet your TV or HDMI adapter to 16:9 too. Games follow Force\nWidescreen in Game Defaults, not this.",
 	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\nSpotlight - A gameplay still over banners; Left and Right move\n\nThe selected game's title and details show beside its cover in\nVertical and its still in Spotlight, and above the controls in Grid.\nEvery layout wraps round from the last game to the first; L and R\njump a page. Y opens the focused game's settings.",
 	[SET_WAVE_SPEED] = "Wave Speed:\n\nHow fast the waves behind the cube drift.\nSlow - Half as fast\nNormal - As they always have (default)\nFast - Three times as fast\n\nUI Motion Off or Reduced, or Animated Backdrop off (Setup >\nLibrary), still stops them.",
-	[SET_CLOCK_POSITION] = "Clock:\n\nRight - The time and the temperature dial sit in the top\nright corner (default)\nLeft - They sit in the top left corner instead\nOff - Neither is shown.",
+	[SET_CLOCK_POSITION] = "Clock:\n\nRight - The time sits in the top right corner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nTemperature places the temperature dial on its own.",
+	[SET_TEMPERATURE_POSITION] = "Temperature:\n\nRight - The CPU temperature dial sits in the top right\ncorner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nIn the clock's corner, the dial sits nearer the edge.",
 	[SET_APPS_FACE] = "Apps Face:\n\nOn - Home shows Apps, one turn left of Library, while the\nsource has a program in /apps (default)\nOff - Home never shows Apps. The programs stay in /apps,\nand the file list still starts them.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
@@ -581,6 +582,7 @@ static const settingsRowRef_t consoleRows[] = {
 	{PAGE_INTERFACE, SET_SYSTEM_ICON},
 	{PAGE_INTERFACE, SET_APPS_FACE},
 	{PAGE_INTERFACE, SET_CLOCK_POSITION},
+	{PAGE_INTERFACE, SET_TEMPERATURE_POSITION},
 	{PAGE_GLOBAL, SET_SYS_SOUND},
 	{PAGE_GLOBAL, SET_SYS_LANG},
 	{PAGE_GLOBAL, SET_SYS_BOOTMODE},
@@ -1051,6 +1053,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_SYSTEM_ICON: rowCycle(row, "System Icon:", systemIconStr[swissSettings.systemIcon], true); break;
 			case SET_APPS_FACE: rowOnOff(row, "Apps Face:", !swissSettings.hideAppsFace, true); break;
 			case SET_CLOCK_POSITION: rowCycle(row, "Clock:", clockPositionStr[swissSettings.clockPosition], true); break;
+			case SET_TEMPERATURE_POSITION: rowCycle(row, "Temperature:", clockPositionStr[swissSettings.temperaturePosition], true); break;
 			case SET_WAVE_SPEED: rowCycle(row, "Wave Speed:", waveSpeedStr[swissSettings.waveSpeed], true); break;
 			case SET_PANEL_TRANSPARENCY: rowYesNo(row, "Panel Transparency:", !swissSettings.disablePanelTransparency, true); break;
 			case SET_ANIMATED_BACKDROP: rowYesNo(row, "Animated Backdrop:", !swissSettings.disableAnimatedBackdrop, true); break;
@@ -1597,6 +1600,10 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			case SET_CLOCK_POSITION:
 				swissSettings.clockPosition += direction;
 				swissSettings.clockPosition = (swissSettings.clockPosition + CLOCK_POSITION_MAX) % CLOCK_POSITION_MAX;
+			break;
+			case SET_TEMPERATURE_POSITION:
+				swissSettings.temperaturePosition += direction;
+				swissSettings.temperaturePosition = (swissSettings.temperaturePosition + CLOCK_POSITION_MAX) % CLOCK_POSITION_MAX;
 			break;
 			case SET_WAVE_SPEED:
 				swissSettings.waveSpeed += direction;
