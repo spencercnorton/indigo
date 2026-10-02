@@ -381,6 +381,9 @@ typedef struct drawGameflowEvent {
 	GXTexObj detailBannerTexObj;
 	/* Outside the snapshot, so a republished Detail keeps it. */
 	uiGameflowDetailFocus_t detailFocus;
+	/* The focused row's frame, its top and height, sliding between rows;
+	 * placed afresh (response 0) each time Detail opens. */
+	uiMotionSpring_t detailLit[2];
 	/* Spotlight: the selected game's description, wrapped for its column
 	 * when the snapshot is published. */
 	char spotlightLines[UI_GAMEFLOW_DESCRIPTION_LINES][UI_CHEATS_TEXT_CAPACITY];
@@ -3558,18 +3561,18 @@ static void _GameflowDrawDetailPlanes(
 	const uiGameflowDetailSnapshot_t *detail,
 	const drawGameflowDetailPresentation_t *presentation,
 	const uiGameflowFrame_t *frame, float alpha,
-	uiGameflowDetailFocus_t focusRow)
+	uiGameflowDetailFocus_t focusRow, uiMotionSpring_t lit[2])
 {
 	/* The rows the focus moves between, bottom up: Launch, Cheats, Settings. */
 	static const int rowTop[] = {348, 281, 232};
 	static const int rowHeight[] = {43, 59, 42};
-	float litTop = (float)rowTop[focusRow];
-	float litBottom = litTop + (float)rowHeight[focusRow];
-	gameflowQuad_t litRow = {{{260.0f, litTop}, {590.0f, litTop},
-		{590.0f, litBottom}, {260.0f, litBottom}}};
-	gameflowQuad_t litInner = _GameflowGrowQuad(&litRow, -2.0f);
-	gameflowQuad_t litGlow = _GameflowGrowQuad(&litRow, 2.0f);
-	gameflowQuad_t litHalo = _GameflowGrowQuad(&litGlow, 3.0f);
+	uiMotionMode_t motion = _CurrentMotionMode();
+	float litTop;
+	float litBottom;
+	gameflowQuad_t litRow;
+	gameflowQuad_t litInner;
+	gameflowQuad_t litGlow;
+	gameflowQuad_t litHalo;
 	int row;
 	bool hasAdvanced = detail->advancedLineOne[0] != '\0' ||
 		detail->advancedLineTwo[0] != '\0';
@@ -3599,6 +3602,23 @@ static void _GameflowDrawDetailPlanes(
 	bool hasSettings = detail->settingsSummary[0] != '\0';
 	u16 panelCount = (u16)(3u + (hasAdvanced ? 1u : 0u) +
 		(hasSettings ? 1u : 0u));
+
+	/* The bright frame slides from row to row, as the cheat list's focus
+	 * does; Detail opening places it on its row at once. */
+	if(lit[0].response <= 0.0f) {
+		UIMotion_SpringInit(&lit[0], (float)rowTop[focusRow], 25.0f);
+		UIMotion_SpringInit(&lit[1], (float)rowHeight[focusRow], 25.0f);
+	}
+	UIMotion_SpringRetarget(&lit[0], (float)rowTop[focusRow], motion);
+	UIMotion_SpringRetarget(&lit[1], (float)rowHeight[focusRow], motion);
+	litTop = UIMotion_SpringUpdate(&lit[0], UIAnim_Delta(), motion);
+	litBottom = litTop + UIMotion_SpringUpdate(&lit[1], UIAnim_Delta(),
+		motion);
+	litRow = (gameflowQuad_t) {{{260.0f, litTop}, {590.0f, litTop},
+		{590.0f, litBottom}, {260.0f, litBottom}}};
+	litInner = _GameflowGrowQuad(&litRow, -2.0f);
+	litGlow = _GameflowGrowQuad(&litRow, 2.0f);
+	litHalo = _GameflowGrowQuad(&litGlow, 3.0f);
 
 	panelGlow.a = _GameflowAlpha(34.0f * alpha);
 	panelEdge.a = _GameflowAlpha(172.0f * alpha);
@@ -3639,7 +3659,8 @@ static void _GameflowDrawDetailDashboard(
 	const uiGameflowDetailSnapshot_t *detail,
 	const drawGameflowDetailPresentation_t *presentation,
 	const uiGameflowFrame_t *frame, float reveal,
-	const uiCommandRailFrame_t *commandRail, uiGameflowDetailFocus_t focusRow)
+	const uiCommandRailFrame_t *commandRail, uiGameflowDetailFocus_t focusRow,
+	uiMotionSpring_t lit[2])
 {
 	const char *launchText;
 	float launchScale;
@@ -3651,6 +3672,7 @@ static void _GameflowDrawDetailDashboard(
 
 	if(detail == NULL || presentation == NULL || frame == NULL ||
 		frame->detailProgress <= 0.001f) {
+		lit[0].response = 0.0f;
 		return;
 	}
 	alpha = _GameflowClamp(frame->detailProgress * reveal, 0.0f, 1.0f);
@@ -3658,7 +3680,8 @@ static void _GameflowDrawDetailDashboard(
 	secondary = (GXColor) {202, 192, 244, _GameflowAlpha(235.0f * alpha)};
 	muted = (GXColor) {165, 158, 201, _GameflowAlpha(218.0f * alpha)};
 	focus = (GXColor) {244, 239, 255, _GameflowAlpha(255.0f * alpha)};
-	_GameflowDrawDetailPlanes(detail, presentation, frame, alpha, focusRow);
+	_GameflowDrawDetailPlanes(detail, presentation, frame, alpha, focusRow,
+		lit);
 
 	drawStringMedium(264, 95, frame->launchProgress > 0.02f ?
 		"LAUNCHING" : "GAME DETAIL", 0.42f, ALIGN_LEFT, secondary);
@@ -4293,7 +4316,7 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 	if(frame->launchProgress < 0.999f) {
 		_GameflowDrawDetailDashboard(detail, &data->detailPresentation,
 			frame, reveal * (1.0f - frame->launchProgress), &commandRail,
-			data->detailFocus);
+			data->detailFocus, data->detailLit);
 	}
 	if(frame->detailProgress < 0.999f) {
 		GXColor label = {177, 168, 220,
@@ -6057,6 +6080,11 @@ typedef struct {
 	uiSetPageSnapshot_t snapshot;
 	uiSettingsFocusState_t focus;
 	int focusView;
+	/* The current tab's cell, its left edge and width, sliding between
+	 * tabs; placed when the page first draws. */
+	uiMotionSpring_t tabX;
+	uiMotionSpring_t tabW;
+	bool tabPlaced;
 } drawSettingsEvent_t;
 
 typedef struct {
@@ -6219,8 +6247,24 @@ static void _DrawSettingsPage(uiDrawObj_t *evt)
 	drawStringMedium(l->titleX, l->titleY, s->title, s->titleScale,
 		ALIGN_LEFT, settingsInk);
 	if(l->tabCount > 0) {
+		const uiSetLayoutRect_t *cell = &l->tabCell[l->currentTab];
+		int cellLeft;
+
+		if(!data->tabPlaced) {
+			UIMotion_SpringInit(&data->tabX, (float)cell->x, 25.0f);
+			UIMotion_SpringInit(&data->tabW, (float)cell->w, 25.0f);
+			data->tabPlaced = true;
+		}
+		UIMotion_SpringRetarget(&data->tabX, (float)cell->x, motion);
+		UIMotion_SpringRetarget(&data->tabW, (float)cell->w, motion);
+		UIMotion_SpringUpdate(&data->tabX, UIAnim_Delta(), motion);
+		UIMotion_SpringUpdate(&data->tabW, UIAnim_Delta(), motion);
+		/* Whole-pixel edges: each moves one way as the cell slides. */
+		cellLeft = (int)lrintf(data->tabX.value);
 		_SettingsBox(&l->tabTrack, settingsCard);
-		_SettingsBox(&l->tabCell[l->currentTab], settingsFocus);
+		_CheatsPanel(cellLeft, cell->y,
+			(int)lrintf(data->tabX.value + data->tabW.value) - cellLeft,
+			cell->h, settingsFocus);
 		for(i = 0; i < l->tabCount; i++) {
 			drawStringMedium(l->tabLabelCenterX[i], l->tabLabelY, s->tab[i],
 				s->tabScale[i], ALIGN_CENTER,
@@ -6503,6 +6547,11 @@ typedef struct {
 	uiMotionSpring_t focusY;
 	bool focusInitialized;
 	u32 focusList;
+	/* The current tab's underline, its left edge and width, sliding
+	 * between tabs; placed when the page first draws. */
+	uiMotionSpring_t tabX;
+	uiMotionSpring_t tabW;
+	bool tabPlaced;
 } drawSavesEvent_t;
 
 static void _SavesCopySnapshot(drawSavesEvent_t *data,
@@ -6560,6 +6609,7 @@ static void _DrawSaves(uiDrawObj_t *evt)
 	const GXColor amber = {255, 207, 139, 255};
 	uiMotionMode_t motion = _CurrentMotionMode();
 	float target = (float)(148 + s->focusRow * 40);
+	bool underlined = false;
 	int focusY;
 	int i;
 	int x;
@@ -6584,9 +6634,25 @@ static void _DrawSaves(uiDrawObj_t *evt)
 		drawStringMedium(x, 98, s->tabs[i], 0.54f, ALIGN_LEFT,
 			i == s->tab ? settingsInk : settingsQuiet);
 		if(i == s->tab) {
-			_CheatsPanel(x, 108, width, 2, settingsAccent);
+			/* The underline slides from tab to tab. */
+			underlined = true;
+			if(!data->tabPlaced) {
+				UIMotion_SpringInit(&data->tabX, (float)x, 25.0f);
+				UIMotion_SpringInit(&data->tabW, (float)width, 25.0f);
+				data->tabPlaced = true;
+			}
+			UIMotion_SpringRetarget(&data->tabX, (float)x, motion);
+			UIMotion_SpringRetarget(&data->tabW, (float)width, motion);
 		}
 		x += width + 32;
+	}
+	if(underlined) {
+		int left = (int)lrintf(UIMotion_SpringUpdate(&data->tabX,
+			UIAnim_Delta(), motion));
+		int right = (int)lrintf(data->tabX.value + UIMotion_SpringUpdate(
+			&data->tabW, UIAnim_Delta(), motion));
+
+		_CheatsPanel(left, 108, right - left, 2, settingsAccent);
 	}
 	_CheatsPanel(40, 115, 560, 1, settingsRule);
 	drawStringMedium(40, 132, s->section, 0.42f, ALIGN_LEFT, settingsAccent);

@@ -34,7 +34,7 @@ static bool apps;
 
 /* L layout count selected | K (Detail's snapshot) | W wide | M motion
  * | D mode | S message (\n and \205 escaped) | C packClosed | E (hand-off)
- * | N frames dt -- the log has one "F" per frame. */
+ * | Z focus (Detail's row) | N frames dt -- the log has one "F" per frame. */
 static void publish(int layout, uint32_t count, uint32_t selected)
 {
 	uiGameflowLibraryWindowSlot_t slots[25];
@@ -128,6 +128,10 @@ int main(void)
 		else if(sscanf(line, "W %d", &c) == 1) UIStage_SetWide(c != 0);
 		else if(sscanf(line, "M %d", &c) == 1) motionMode = (uiMotionMode_t)c;
 		else if(sscanf(line, "C %d", &c) == 1) packClosed = c != 0;
+		else if(sscanf(line, "Z %d", &c) == 1) {
+			/* DrawSetGameflowDetailFocus, without its lock. */
+			eventData->detailFocus = (uiGameflowDetailFocus_t)c;
+		}
 		else if(sscanf(line, "D %d", &c) == 1) {
 			/* DrawSetGameflowMode, without its lock. */
 			UIGameflow_SetMode(&eventData->state, (uiGameflowMode_t)c, motionMode);
@@ -380,6 +384,38 @@ class LaunchGxStream(unittest.TestCase):
         self.assertTrue(all(a >= b for a, b in zip(fades, fades[1:])))
         self.assertEqual(fades[-1], 0)
         self.assertEqual(shots[-1], before)
+
+    @staticmethod
+    def lit_frame(frame: str) -> tuple:
+        """Detail's bright frame round the focused row: its top and bottom."""
+        ys, y = [], None
+        for line in frame.splitlines():
+            if line.startswith("P "):
+                y = float(line.split()[2])
+            elif line.startswith("C ") and line.split()[1:4] == ["244", "239", "255"]:
+                ys.append(y)
+        return (min(ys), max(ys)) if ys else None
+
+    def test_detail_focus_slides_between_rows(self):
+        # Launch's row, then Cheats' (281 down, 59 tall): the frame slides
+        # there over several frames rather than jumping, and rests on it.
+        log = self.run_script(["L 0 40 18", "K", "D 1", "N 40 0.0167", "Z 1",
+                               "N 40 0.0167"])
+        self.assertEqual(self.lit_frame(log[39]), (348.0, 391.0))
+        path = [self.lit_frame(f) for f in log[40:]]
+        self.assertEqual(path[-1], (281.0, 340.0))
+        tops = [top for top, _ in path]
+        self.assertEqual(tops, sorted(tops, reverse=True))
+        self.assertTrue(all(a - b < 67 * 0.3 for a, b in zip(tops, tops[1:])), tops)
+        self.assertGreater(sum(1 for a, b in zip(tops, tops[1:]) if a != b), 5)
+        # Off moves it at once; Detail opening again finds it on its row.
+        log = self.run_script(["M 2", "L 0 40 18", "K", "D 1", "N 5 0.0167", "Z 2",
+                               "N 1 0.0167"])
+        self.assertEqual(self.lit_frame(log[-1]), (232.0, 274.0))
+        log = self.run_script(["L 0 40 18", "K", "D 1", "N 40 0.0167", "Z 1",
+                               "N 40 0.0167", "D 0", "N 60 0.0167", "Z 0", "D 1",
+                               "N 1 0.0167"])
+        self.assertEqual(self.lit_frame(log[-1]), (348.0, 391.0))
 
     def test_mutants_fail(self):
         mutants = {

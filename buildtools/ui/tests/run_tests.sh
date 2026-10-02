@@ -120,6 +120,8 @@ run_contracts() {
 	python3 ./test_source_picker_gx_stream.py
 	echo "== Home: its name, hint and rows fade in, never pop =="
 	python3 ./test_home_gx_stream.py
+	echo "== Settings and Memory Cards: the current tab's mark slides =="
+	python3 ./test_page_tabs_gx_stream.py
 	echo "== native stroke GX stream and perspective coverage =="
 	python3 ./test_stroke_gx_stream.py
 	echo "== wave and grid native coverage =="

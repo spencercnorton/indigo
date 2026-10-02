@@ -94,6 +94,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   fifth of a second as it arrives, over the card that stood in for it,
   rather than replacing it in one frame. One read while it was off screen
   shows at once when you scroll to it, as before.
+- The highlight in Game Details slides from row to row, and so do the current
+  tab's cell in Settings and its underline in Memory Cards, as the focus in
+  the cheat list already did, instead of jumping.
 
 ### Fixes
 
