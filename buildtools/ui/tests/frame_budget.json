@@ -23,7 +23,7 @@
  },
  "home-library": {
   "begins": 106,
-  "copy_pixels": 277632,
+  "copy_pixels": 239232,
   "hash": "25f9877806c6fcab",
   "minmax": 326,
   "scene": "home-library",
@@ -34,7 +34,7 @@
  },
  "home-settings": {
   "begins": 70,
-  "copy_pixels": 277632,
+  "copy_pixels": 239232,
   "hash": "bdffcdf3a6f4282e",
   "minmax": 313,
   "scene": "home-settings",
@@ -45,7 +45,7 @@
  },
  "home-source": {
   "begins": 104,
-  "copy_pixels": 276096,
+  "copy_pixels": 238464,
   "hash": "6744c24afb64d71c",
   "minmax": 327,
   "scene": "home-source",
@@ -56,7 +56,7 @@
  },
  "home-system": {
   "begins": 68,
-  "copy_pixels": 282752,
+  "copy_pixels": 244352,
   "hash": "9faad11656d59d94",
   "minmax": 325,
   "scene": "home-system",
@@ -67,7 +67,7 @@
  },
  "home-turning": {
   "begins": 101,
-  "copy_pixels": 251008,
+  "copy_pixels": 225920,
   "hash": "066034eb19acfc0b",
   "minmax": 297,
   "scene": "home-turning",
@@ -100,7 +100,7 @@
  },
  "library-horizontal": {
   "begins": 101,
-  "copy_pixels": 102528,
+  "copy_pixels": 95104,
   "hash": "001b9b7ab8221fae",
   "minmax": 313,
   "scene": "library-horizontal",
@@ -133,7 +133,7 @@
  },
  "library-vertical": {
   "begins": 111,
-  "copy_pixels": 116608,
+  "copy_pixels": 94208,
   "hash": "7a18fbf2b8384d4b",
   "minmax": 428,
   "scene": "library-vertical",
@@ -144,7 +144,7 @@
  },
  "settings": {
   "begins": 90,
-  "copy_pixels": 43008,
+  "copy_pixels": 21504,
   "hash": "a5f35c5e3826aa01",
   "minmax": 356,
   "scene": "settings",
@@ -155,7 +155,7 @@
  },
  "system": {
   "begins": 103,
-  "copy_pixels": 151808,
+  "copy_pixels": 137984,
   "hash": "86a30e1652ca9751",
   "minmax": 311,
   "scene": "system",

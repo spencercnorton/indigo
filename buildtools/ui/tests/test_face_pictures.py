@@ -183,7 +183,7 @@ static void testHome(void) {
             expected+=wanted;
         }
         CHECK(facePictureCount==expected && drawnCount==expected,"picture count");
-        CHECK(copies==2*expected && clears==copies,"each picture clears its corner and copies it");
+        CHECK(copies==expected && clears==copies,"each picture is one copy, which clears its corner");
         if(expected) CHECK(copySrc[0]==4*facePictures[expected-1].width &&
             copySrc[1]==2*facePictures[expected-1].height &&
             copyDst[0]==2*facePictures[expected-1].width && copyDst[1]==facePictures[expected-1].height &&
@@ -280,8 +280,8 @@ class FacePictureTests(unittest.TestCase):
             "projection not scaled across": ("projection[0][column] = 4.0f * projection[0][column]",
                 "projection[0][column] = 2.0f * projection[0][column]"),
             "picture off by a pixel": ("int x0 = (int)floorf(left) - 1,", "int x0 = (int)floorf(left) + 2,"),
-            "corner not cleared first": ("GX_CopyTex(facePictureTexels[facePictureCount], GX_TRUE);\n"
-                "\t\tfacePictureProjection", "facePictureProjection"),
+            "corner left for the next picture": ("GX_CopyTex(facePictureTexels[facePictureCount], GX_TRUE);",
+                "GX_CopyTex(facePictureTexels[facePictureCount], GX_FALSE);"),
             "scissor left on": ("\tGX_SetScissor(0, 0, glassEfbWidth, glassEfbHeight);\n", "\n"),
             "strokes and picture both full": ("float weight = raster.motifAlpha[face] * (1.0f - "
                 "faceStrokeShare(facing));", "float weight = raster.motifAlpha[face];"),
