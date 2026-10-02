@@ -1446,11 +1446,25 @@ static file_handle *gameflowFindOppositeImage(file_handle *image,
 	for(i = 0; entries != NULL && i < entryCount; ++i) {
 		uiGameflowResolverEntry_t candidateHeader;
 		file_handle *candidate = &entries[i];
+		char knownId[UI_GAMEFLOW_RESOLVER_ID_LENGTH];
+		bool known;
 		bool headerValid;
 
 		if(candidate == image || candidate->fileType != IS_FILE ||
 			candidate->device == NULL ||
 			!UIGameflowLibrary_IsGameImageName(candidate->name)) {
+			continue;
+		}
+		/* An image whose metadata names another game is not read. The lock
+		 * keeps the metadata cache from freeing it meanwhile. */
+		lockFile(candidate);
+		known = candidate->meta != NULL;
+		if(known) {
+			memcpy(knownId, &candidate->meta->diskId, sizeof(knownId));
+		}
+		unlockFile(candidate);
+		if(!UIGameflowResolver_MayBeOppositeDisc(primaryHeader,
+			known ? knownId : NULL)) {
 			continue;
 		}
 		memset(&candidateHeader, 0, sizeof(candidateHeader));
