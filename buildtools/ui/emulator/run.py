@@ -134,6 +134,14 @@ STORAGES = {"dvd": None, "sd2sp2": "SerialPort2", "sdgecko-b": "SlotB"}
 SD_CARD_DEVICE = 15
 # Rows on Settings' Storage page: DOWN past them reaches Save & Exit.
 STORAGE_ROWS = 7
+# Settings to start with, put on the card as swiss/settings/global.ini (--settings).
+SETTINGS = Path(__file__).resolve().parent / "settings"
+
+
+def seeded(text: str) -> dict[str, str]:
+    """The Key=Value lines of a settings file."""
+    pairs = (line.split("=", 1) for line in text.splitlines() if "=" in line and not line.startswith("#"))
+    return {key.strip(): value.strip() for key, value in pairs}
 
 # The probe's report, in the order of its strip (probe.c).
 PROBE_WORDS = ("magic", "version", "id0", "id1", "memsize", "console", "video", "bus", "core",
@@ -416,14 +424,19 @@ class Route:
             raise Broken("Dolphin never asked for the controller")
         time.sleep(0.5)
 
-    def card_checks(self, image: Path, route: str) -> None:
-        """What Indigo wrote to the SD card, read back from its image."""
+    def card_checks(self, image: Path, route: str, start: dict[str, str] | None = None) -> None:
+        """What Indigo wrote to the SD card, read back from its image. Settings
+        the card started with must have lasted through Indigo's own saves."""
         def text(path: str) -> str:
             return (card.read_card(image, path) or b"").decode("latin-1")
 
         settings = text("swiss/settings/global.ini")
         self.check("the settings Indigo saved are on the card",
                    "Swiss Video Mode=" in settings and "Hide Apps Face=No" in settings, bytes=len(settings))
+        if start:
+            kept = seeded(settings)
+            lost = {key: value for key, value in start.items() if kept.get(key) != value}
+            self.check("the settings the card started with are all still there", not lost, lost=lost)
         if route != "game":
             return
         recent = text("swiss/settings/recent.ini").split("Recent_1=")[0]
@@ -763,15 +776,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--storage", choices=tuple(STORAGES), default="dvd")
     parser.add_argument("--cable", choices=tuple(CABLES), default="composite")
     parser.add_argument("--card-zip", type=Path, help="the release zip, unpacked onto the SD card")
+    parser.add_argument("--settings", help="start the card with settings/<name>.ini as its global.ini")
     parser.add_argument("--disc", type=Path, help="a disc to use instead of building card.py's")
     args = parser.parse_args(argv)
     if args.route == "game" and not args.probe:
         parser.error("the game route launches the probe: give --probe")
     if (args.storage != "dvd") != bool(args.card_zip):
         parser.error("an SD card (--storage) is made from the release zip (--card-zip), and only then")
+    if args.settings and not args.card_zip:
+        parser.error("settings to start with go on the SD card (--storage)")
+    start = (SETTINGS / f"{args.settings}.ini").read_text() if args.settings else None
     args.out.mkdir(parents=True, exist_ok=True)
     report: dict[str, object] = {"schema": "indigo.emulator-test.v1", "route": args.route,
                                  "region": args.region, "storage": args.storage, "cable": args.cable,
+                                 "settings": args.settings,
                                  "dol": str(args.dol),
                                  "dolphin": _version()}
     status, emulator, route = 0, None, None
@@ -782,7 +800,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.card_zip:
                 sd = work / "card.img"
                 report["card"] = card.build_card(sd, args.card_zip, probe=args.probe,
-                                                 foreign=FOREIGN[args.region])
+                                                 foreign=FOREIGN[args.region], settings=start)
                 dol = work / "ipl.dol"  # what a loader starts: the zip's own
                 with zipfile.ZipFile(args.card_zip) as package:
                     dol.write_bytes(package.read("ipl.dol"))
@@ -792,11 +810,11 @@ def main(argv: list[str] | None = None) -> int:
                 report["disc"] = card.build(disc, probe=args.probe, foreign=FOREIGN[args.region])
             emulator = Emulator(dol, disc.resolve() if disc else None, work, args.out, args.region,
                                 args.storage, sd, args.cable)
-            route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd), cable=args.cable,
-                          region=args.region)
+            route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd) and start is None,
+                          cable=args.cable, region=args.region)
             getattr(route, args.route)()
             if sd:
-                route.card_checks(sd, args.route)
+                route.card_checks(sd, args.route, seeded(start) if start else None)
         except Failed as failure:
             status = 1
             report["failure"] = str(failure)

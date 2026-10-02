@@ -118,7 +118,12 @@ on a console. `--storage sdgecko-b` puts the card in Memory Card Slot B
 instead.
 
 A new card has no settings, so the route starts in Settings: it must open on
-its own, and Save & Exit must write the file and go Home. At the end the
+its own, and Save & Exit must write the file and go Home. With `--settings
+<name>` the card starts with [`settings/<name>.ini`](settings/) as its
+`global.ini` instead and Indigo goes straight Home; at the end every line of
+it must still be on the card, through Indigo's own saves. CI's SD2SP2 smoke
+job starts with [`non-default.ini`](settings/non-default.ini): colours, icons,
+the clock on the left, no menu music or sounds, reduced motion, In-Game Reset. At the end the
 test reads the card back: the settings Indigo saved (with Apps Face as the
 route left it), and after the game route the launched game first in the
 recent list and in Indigo's play history.

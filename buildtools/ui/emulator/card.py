@@ -414,10 +414,11 @@ MTOOLS = dict(os.environ, MTOOLS_SKIP_CHECK="1")
 
 
 def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | None = None,
-               foreign: int = 0) -> dict[str, object]:
+               foreign: int = 0, settings: str | None = None) -> dict[str, object]:
     """A FAT32 SD card image set up as someone would: the release zip
-    unpacked onto it, then games, the packs and apps beside it. It has no
-    swiss/settings/global.ini, so Indigo starts in Settings, as on a new card."""
+    unpacked onto it, then games, the packs and apps beside it. Without
+    settings it has no swiss/settings/global.ini, so Indigo starts in
+    Settings, as on a new card; with them that file holds them."""
     import zipfile
     for tool in ("mkfs.fat", "mcopy"):
         if not shutil.which(tool):
@@ -429,6 +430,9 @@ def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | No
         with zipfile.ZipFile(card_zip) as package:
             package.extractall(root)
         info = populate(root, folder, posters, probe, foreign)
+        if settings is not None:
+            (root / "swiss/settings").mkdir(parents=True, exist_ok=True)
+            (root / "swiss/settings/global.ini").write_text(settings.replace("\n", "\r\n"))
         with open(out, "wb") as image:
             image.truncate(CARD_BYTES)
         subprocess.run(["mkfs.fat", "-F", "32", "-s", "64", "-n", "INDIGO", str(out)], check=True,

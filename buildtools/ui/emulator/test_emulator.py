@@ -179,6 +179,16 @@ class Card(unittest.TestCase):
             self.assertIn(card.game_file(*card.PROBE_GAME), games)
             self.assertIn(card.game_file(*card.GAMES[0]), games)
             self.assertIsNone(card.read_card(image, "swiss/settings/global.ini"), "a new card has no settings")
+            card.build_card(image, package, posters=False, settings="# start\nClock=Left\n")
+            self.assertEqual(card.read_card(image, "swiss/settings/global.ini"), b"# start\r\nClock=Left\r\n")
+
+    def test_settings_to_start_with(self):
+        text = (run.SETTINGS / "non-default.ini").read_text()
+        pairs = run.seeded(text)
+        self.assertEqual(pairs["Clock"], "Left")
+        self.assertNotIn("Menu Widescreen", pairs)
+        self.assertTrue(all(not key.startswith("#") for key in pairs))
+        self.assertEqual(run.seeded("# Clock=Right\nClock = Off\r\n"), {"Clock": "Off"})
 
 
 class Pad(unittest.TestCase):
