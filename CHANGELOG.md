@@ -19,7 +19,17 @@ tag on `beta`. The newest changes are at the top until their release is named.
   shutdown stalls there while a controller is connected, so the test pulls
   the controller as a launch begins.
 - CI runs the emulator test four times: every menu, and a game's launch from
-  the Library, each in PAL and in NTSC. Dolphin's own default had been PAL.
+  the Library, each from the demonstration disc in PAL and from an SD card in
+  NTSC. Dolphin's own default region had been PAL.
+- The emulator test boots from an SD card, as Indigo is installed: the
+  build's zip unpacked onto a FAT32 card image with the demonstration games
+  beside it, served by an SD2SP2 adapter that CI's Dolphin gains from a patch
+  ([`buildtools/ci/runner/dolphin/`](buildtools/ci/runner/dolphin/README.md)),
+  so libogc2's SD driver, FatFs and Swiss's device code run as on a console.
+  A new card starts in Settings, and the test checks what Indigo writes to
+  the card: its settings, the recent list and its play history.
+- CI's Dolphin is built from source, a pinned March 2026 commit, in place of
+  Ubuntu's 2512 package.
 
 ## v2.2.0 — Backdrop and Wave Color, a Clock setting and a cleaner cube
 

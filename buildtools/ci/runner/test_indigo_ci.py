@@ -53,7 +53,9 @@ class ImageTag(unittest.TestCase):
     def test_changes_with_its_inputs_and_the_runner_only(self):
         with tempfile.TemporaryDirectory() as directory:
             context = Path(directory)
-            for name in ("build.Dockerfile", "emulator.Dockerfile", "entrypoint.sh", "egress_proxy.py"):
+            names = {name for pool in indigo_ci.POOLS.values() for name in (pool.dockerfile, *pool.copies)}
+            for name in names:
+                (context / name).parent.mkdir(parents=True, exist_ok=True)
                 (context / name).write_text(name)
             build, emulator = indigo_ci.POOLS["build"], indigo_ci.POOLS["emulator"]
             runner = ("2.337.0", "a" * 64)
@@ -67,6 +69,8 @@ class ImageTag(unittest.TestCase):
             (context / "egress_proxy.py").write_text("changed")  # the build image copies it
             self.assertNotEqual(first, indigo_ci.image_tag(build, context, runner))
             self.assertEqual(emulator_tag, indigo_ci.image_tag(emulator, context, runner))
+            (context / "dolphin/0002-flush-sd-writes.patch").write_text("changed")  # Dolphin's patches
+            self.assertNotEqual(emulator_tag, indigo_ci.image_tag(emulator, context, runner))
 
 
 class Dockerfiles(unittest.TestCase):

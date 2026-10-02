@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """The emulator test's own parts, without Dolphin: the disc, the pad, the checks."""
 
+import shutil
 import socket
 import struct
+import subprocess
 import sys
 import tempfile
 import time
 import unittest
+import zipfile
 import zlib
 from pathlib import Path
 
@@ -143,6 +146,29 @@ class Disc(unittest.TestCase):
     def test_stills_are_4_3_and_differ(self):
         self.assertEqual(card.still(0).size, (640, 480))
         self.assertNotEqual(card.still(0).tobytes(), card.still(1).tobytes())
+
+
+class Card(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("mkfs.fat") and shutil.which("mcopy"), "needs dosfstools and mtools")
+    def test_a_card_made_from_the_release_zip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            package, probe, image = folder / "Indigo-test.zip", folder / "probe.dol", folder / "card.img"
+            with zipfile.ZipFile(package, "w") as z:
+                z.writestr("ipl.dol", b"the release's DOL")
+                z.writestr("swiss/patches/apploader.img", b"In-Game Reset")
+                z.writestr("swiss/ui/", b"")
+            probe.write_bytes(bytes(range(256)) * 16)
+            info = card.build_card(image, package, posters=False, probe=probe)
+            self.assertEqual((image.stat().st_size, info["apps"]), (card.CARD_BYTES, len(card.APPS) + 1))
+            self.assertEqual(card.read_card(image, "ipl.dol"), b"the release's DOL")
+            self.assertEqual(card.read_card(image, "swiss/patches/apploader.img"), b"In-Game Reset")
+            self.assertEqual(card.read_card(image, "apps/Probe.dol"), probe.read_bytes())
+            games = subprocess.run(["mdir", "-b", "-i", str(image), "::/games"], capture_output=True, text=True,
+                                   env=card.MTOOLS).stdout  # mcopy reads [ID] as a wildcard; mdir lists it
+            self.assertIn(card.game_file(*card.PROBE_GAME), games)
+            self.assertIn(card.game_file(*card.GAMES[0]), games)
+            self.assertIsNone(card.read_card(image, "swiss/settings/global.ini"), "a new card has no settings")
 
 
 class Pad(unittest.TestCase):

@@ -12,6 +12,8 @@ up in starts, draws, answers the controller and hands over cleanly.
 | [`card.py`](card.py) | The demonstration disc it boots with: fictitious games with banners, two damaged images, posters, and apps with pictures |
 | [`dsu_pad.py`](dsu_pad.py) | The controller: a pad served to Dolphin over its DSU protocol |
 | [`probe/`](probe/probe.c) | The program the launches reach: it reports what the hand-off left it |
+
+`card.py` also makes the SD card (`build_card`): see [An SD card](#an-sd-card).
 | [`test_emulator.py`](test_emulator.py) | Tests for those three, without Dolphin |
 
 ## What it checks
@@ -45,9 +47,12 @@ exception screen as it would on a console. The route:
 The **game route** (`--route game`) boots, opens the Library, moves to the
 probe's game and launches it from its details: the probe must see the game's
 own disc ID, the 24 MB a game is promised, the music stopped and memory
-quiet. CI runs both routes in both regions (`--region pal` or `ntsc`, the
-video mode the console starts in): four jobs, the first of them the required
-**Emulator** check.
+quiet.
+
+CI runs four jobs, the first of them the required **Emulator** check: both
+routes from the demonstration disc in PAL (`--region`, the video mode the
+console starts in), and both from an SD card in SD2SP2 in NTSC
+(`--storage sd2sp2`).
 
 Every check compares the screen with itself earlier in the same run (the
 text under the cube, a game's title), never with stored pictures, so a
@@ -85,6 +90,24 @@ Or anywhere with Dolphin (`dolphin-emu-nogui`), Xvfb, FFmpeg, genisoimage and
 Python 3 with Pillow and NumPy. The posters need gxtexconv; without it the
 disc has none and every card shows its banner.
 
+## An SD card
+
+With `--storage sd2sp2 --card-zip Indigo-<version>.zip` there is no disc.
+`card.build_card` unpacks the release zip onto an 8 GB FAT32 card image, as
+someone sets up a card, and puts the same games, packs and apps beside it.
+Indigo boots from the zip's own `ipl.dol`, and Dolphin serves the card as an
+SD2SP2 in Serial Port 2: an SD card adapter the emulator runner's Dolphin
+adds (`buildtools/ci/runner/dolphin/`), which speaks the SD protocol a byte
+at a time, so libogc2's driver, FatFs and Swiss's device code run as they do
+on a console. `--storage sdgecko-b` puts the card in Memory Card Slot B
+instead.
+
+A new card has no settings, so the route starts in Settings: it must open on
+its own, and Save & Exit must write the file and go Home. At the end the
+test reads the card back: the settings Indigo saved (with Apps Face as the
+route left it), and after the game route the launched game first in the
+recent list and in Indigo's play history.
+
 ## The probe
 
 [`probe/probe.c`](probe/probe.c) is a small libogc2 program, built with the
@@ -112,6 +135,11 @@ Dolphin reports 16 MB to programs started from Apps where a console reports
 Games are given 24 MB by Swiss itself, so the game route checks it.
 
 ## What Dolphin needs
+
+The emulator runner builds Dolphin from source with the SD card adapter
+(`buildtools/ci/runner/dolphin/`). Without it, the disc routes still run
+anywhere Dolphin does.
+
 
 - **The controller is plugged in after startup, and pulled at a launch.**
   Swiss's startup stalls in Dolphin when a controller is already connected
