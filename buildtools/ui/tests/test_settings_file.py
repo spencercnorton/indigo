@@ -509,6 +509,17 @@ class SettingsFileTest(unittest.TestCase):
         # The on-screen speed is not the file's: 27MHz selects the slow one.
         self.assertEqual(self.global_file("SD/IDE Speed=27MHz")["SD/IDE Speed"], "16MHz")
 
+    def test_the_cube_is_infinite_unless_the_file_says_classic(self):
+        # Setup > Console > Cube: a file without the key, or with any other
+        # value, keeps the cube Indigo always had.
+        self.assertEqual(self.global_file()["Cube"], "Infinite")
+        self.assertIn("\ncubeStyle=0\n", self.run_harness("global-fields"))
+        self.assertEqual(self.global_file("Cube=Classic\r\n")["Cube"], "Classic")
+        self.assertIn("\ncubeStyle=1\n", self.run_harness("global-fields", stdin="Cube=Classic\r\n"))
+        for other in ("Infinite", "classic", "Ring", ""):
+            self.assertEqual(self.global_file(f"Cube=Classic\r\nCube={other}\r\n")["Cube"],
+                             "Infinite", other)
+
     def test_a_face_icon_only_takes_that_faces_own(self):
         # Each face has its own four icons; a name from another face's list
         # (a v1.19.0 file could hold one) leaves the face on its default.

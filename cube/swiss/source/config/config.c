@@ -561,6 +561,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Settings Icon=%s\r\n", settingsIconStr[swissSettings.settingsIcon]);
 	fprintf(fp, "System Icon=%s\r\n", systemIconStr[swissSettings.systemIcon]);
 	fprintf(fp, "Hide Apps Face=%s\r\n", swissSettings.hideAppsFace ? "Yes":"No");
+	fprintf(fp, "Cube=%s\r\n", swissSettings.cubeStyle ? "Classic":"Infinite");
 	fprintf(fp, "Clock=%s\r\n", clockPositionStr[swissSettings.clockPosition]);
 	fprintf(fp, "Temperature=%s\r\n", clockPositionStr[swissSettings.temperaturePosition]);
 	fprintf(fp, "Wave Speed=%s\r\n", waveSpeedStr[swissSettings.waveSpeed]);
@@ -1459,6 +1460,9 @@ void config_parse_global(char *configData, bool settingsFile) {
 				}
 				else if(!strcmp("Hide Apps Face", name)) {
 					swissSettings.hideAppsFace = !strcmp("Yes", value);
+				}
+				else if(!strcmp("Cube", name)) {
+					swissSettings.cubeStyle = !strcmp("Classic", value);
 				}
 				else if(!strcmp("Clock", name)) {
 					for(int i = 0; i < CLOCK_POSITION_MAX; i++) {
