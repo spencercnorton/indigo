@@ -471,7 +471,11 @@ class Route:
             time.sleep(0.3)
             rgb = self.emulator.frame()
             self.last_rgb = rgb
-            launched = 0.02 < float(rgb.mean()) < 0.6 * apps
+            # The launch screen dims all but the app's card. With the probe the
+            # launch goes on, so the hand-off's black frame counts as well (the
+            # probe then proves the launch); without it black means a crash.
+            mean = float(rgb.mean())
+            launched = mean < 0.6 * apps and (self.probe or mean > 0.02)
         self.shot("app-launch", self.last_rgb)
         self.check("A starts the app: the launch screen dims the Apps screen", launched,
                    apps=round(apps, 1), now=round(float(self.last_rgb.mean()), 1))
