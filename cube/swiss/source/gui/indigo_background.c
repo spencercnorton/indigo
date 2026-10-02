@@ -35,6 +35,7 @@
 #define FACE_BAND_MAX 80
 #define FACE_ARC_MAX 24
 #define CONTROLLER_IDLE_HOLD 2.0f
+#define CONTROLLER_IDLE_RELEASE 0.12f
 /* The idle presses' cycle: six seconds, give or take a millisecond, so that
  * the clock's wrap holds a whole number of them. */
 #define CONTROLLER_PRESS_CYCLE (UI_ANIM_TIME_WRAP_SECONDS / 1047.0f)
@@ -85,10 +86,13 @@ typedef struct controllerPose {
 } controllerPose_t;
 
 /* Idle play resumes only once the controller has been left alone, so it is
- * never mistaken for the user's own input. */
+ * never mistaken for the user's own input. It gives way to live input over
+ * CONTROLLER_IDLE_RELEASE rather than in one frame. */
 typedef struct controllerIdle {
 	float lastLiveInput;
 	bool liveSeen;
+	float shown;	/* how much idle play shows, easing down to the target */
+	float lastSeconds;
 } controllerIdle_t;
 
 typedef struct waveOscillator {
@@ -1360,6 +1364,7 @@ static void controllerPose(const indigoPadFrame_t *pad, float seconds,
 		PAD_BUTTON_LEFT | PAD_BUTTON_RIGHT | PAD_TRIGGER_L | PAD_TRIGGER_R;
 	float idleWeight;
 	float since;
+	float step;
 
 	*pose = (controllerPose_t) {0.0f, 0.0f, 0.0f, 0.0f, 0u};
 	if(pad != NULL && pad->available) {
@@ -1380,8 +1385,19 @@ static void controllerPose(const indigoPadFrame_t *pad, float seconds,
 	if(since < 0.0f) since += UI_ANIM_TIME_WRAP_SECONDS;
 	idleWeight = !animated ? 0.0f : (!idle->liveSeen ? 1.0f :
 		(since - CONTROLLER_IDLE_HOLD) / 0.8f);
-	if(idleWeight <= 0.0f) return;
+	if(idleWeight < 0.0f) idleWeight = 0.0f;
 	if(idleWeight > 1.0f) idleWeight = 1.0f;
+	/* Idle play comes back on its own 0.8 s ramp; live input takes the
+	 * sticks from it over a moment, so they do not jump to the hand. */
+	step = seconds - idle->lastSeconds;
+	if(step < 0.0f) step += UI_ANIM_TIME_WRAP_SECONDS;
+	idle->lastSeconds = seconds;
+	if(animated && idleWeight < idle->shown) {
+		idleWeight = fmaxf(idleWeight,
+			idle->shown - step / CONTROLLER_IDLE_RELEASE);
+	}
+	idle->shown = idleWeight;
+	if(idleWeight <= 0.0f) return;
 	pose->stickX += idleWeight * 0.38f * sinf(seconds * 0.8f);
 	pose->stickY += idleWeight * 0.32f * sinf(seconds * 1.1f + 0.6f);
 	pose->substickX += idleWeight * 0.34f * sinf(seconds * 1.3f + 2.0f);

@@ -103,6 +103,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - In Spotlight, moving from one game with a gameplay still to another, the
   new still fades in over the old one, instead of both fading through a
   darker panel half way.
+- The Home controller lets go of its idle play over a moment when you touch
+  the pad, instead of its sticks jumping to your hand in one frame.
 
 ### Fixes
 
