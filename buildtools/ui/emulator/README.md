@@ -12,9 +12,10 @@ up in starts, draws, answers the controller and hands over cleanly.
 | [`card.py`](card.py) | The demonstration disc it boots with: fictitious games with banners, two damaged images, posters, and apps with pictures |
 | [`dsu_pad.py`](dsu_pad.py) | The controller: a pad served to Dolphin over its DSU protocol |
 | [`probe/`](probe/probe.c) | The program the launches reach: it reports what the hand-off left it |
+| [`aesnd/`](aesnd/aesnd.c), [`aesnd_test.py`](aesnd_test.py) | AESND stopped hundreds of times, as a launch stops the menu's audio: see [AESND](#aesnd) |
+| [`test_emulator.py`](test_emulator.py) | Tests for those three, without Dolphin |
 
 `card.py` also makes the SD card (`build_card`): see [An SD card](#an-sd-card).
-| [`test_emulator.py`](test_emulator.py) | Tests for those three, without Dolphin |
 
 ## What it checks
 
@@ -159,6 +160,17 @@ than 40. `--fragments N` moves the probe's game into N pieces on the card
 (`card.fragment`): up to 40 the game route launches it, past that Indigo
 must refuse it, say why, and come back to the Library. CI's GC Loader job
 launches it in 40.
+
+## AESND
+
+A launch stops the menu's music and sounds, and once froze there until the
+console was switched off: libogc2's `AESND_Reset` waited, interrupts off, for
+a DSP that takes no mail while an answer of its own is unread. Swiss now
+builds AESND from `cube/swiss/aesnd`, with a fix (see its README).
+[`aesnd/aesnd.c`](aesnd/aesnd.c) links the `aesndlib.o` that build made and
+stops AESND 300 times, each a varying part of an audio period after a voice
+started; `aesnd_test.py` fails if its round count stops. libogc2's own
+`AESND_Reset` froze within 50 rounds. CI runs it in the PAL game job.
 
 ## The probe
 
