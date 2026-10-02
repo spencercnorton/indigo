@@ -111,10 +111,10 @@ typedef struct {
 
 #include <stdbool.h>
 
-/* The carousels' window: the selected card and three either side. */
-#define UI_ASSETS_WINDOW 7
+/* The carousels' window: the selected card and four either side. */
+#define UI_ASSETS_WINDOW 9
 /* Poster slots, enough for the Grid layout's window of five rows of five.
- * Under a carousel's seven the rest keep the posters it scrolled past, so
+ * Under a carousel's nine the rest keep the posters it scrolled past, so
  * scrolling back reads nothing. */
 #define UI_ASSETS_SLOTS 25
 #define UI_ASSETS_CANVAS_W 256

@@ -75,6 +75,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
   50 Hz as at 60 Hz.
 - The Home controller's idle animation no longer stops after Indigo has been
   running for an hour and three quarters.
+- Holding the stick in the Library's Horizontal, Vertical and Spotlight
+  layouts, the games glide past without a jump. The strip could fall only
+  one game behind the selection, so at the stick's pace it skipped forward a
+  third of a card every step; it can fall two behind now.
 
 ### Fixes
 

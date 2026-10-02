@@ -4939,7 +4939,7 @@ static bool _GameflowSnapshotValid(const uiGameflowRenderSnapshot_t *snapshot)
 		snapshot->layout >= UI_GAMEFLOW_LAYOUT_COUNT) {
 		return false;
 	}
-	/* A grid names its columns; the carousels keep their seven cards. */
+	/* A grid names its columns; the carousels keep their nine cards. */
 	grid = snapshot->layout == UI_GAMEFLOW_LAYOUT_GRID;
 	if(grid ? snapshot->columns == 0u ||
 		snapshot->columns > UI_GAMEFLOW_LIBRARY_GRID_COLUMNS :
@@ -4951,7 +4951,7 @@ static bool _GameflowSnapshotValid(const uiGameflowRenderSnapshot_t *snapshot)
 		const uiGameflowCardSnapshot_t *record = &snapshot->records[i];
 		if(!(record->flags & UI_GAMEFLOW_CARD_VALID) ||
 			record->libraryIndex >= snapshot->selection.itemCount ||
-			record->relativeSlot < -3 || record->relativeSlot > 3 ||
+			record->relativeSlot < -4 || record->relativeSlot > 4 ||
 			(grid && (record->column >= snapshot->columns ||
 			record->relativeSlot < -2 || record->relativeSlot > 2))) {
 			return false;
@@ -5179,7 +5179,7 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	}
 	for(i = 0u; i < snapshot->recordCount; ++i) {
 		const uiGameflowCardSnapshot_t *record = &snapshot->records[i];
-		int position = (int)record->relativeSlot + 3;
+		int position = (int)record->relativeSlot + 4;
 		if(position < 0 || position >= UI_ASSETS_WINDOW ||
 			strnlen(record->gameId, sizeof(record->gameId)) !=
 				UI_ASSETS_ID_LEN) {
@@ -5187,9 +5187,9 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 		}
 		memcpy(ids[position], record->gameId, UI_ASSETS_ID_LEN);
 	}
-	/* Fixed -3..+3 placement preserves true carousel distance even when
+	/* Fixed -4..+4 placement preserves true carousel distance even when
 	 * the parent entry has no poster ID or a small library has gaps. */
-	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 4);
 }
 
 bool DrawGameflowPollPosters(void)

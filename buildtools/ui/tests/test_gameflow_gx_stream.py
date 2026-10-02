@@ -58,6 +58,19 @@ BASE_EDITS = (
     ("FrameBufferMagic.c", "\t\t(1.0f - titleTravel) * (1.0f - frame->detailProgress), reveal);",
      "\t\t_GameflowClamp(1.0f - 2.0f * titleTravel, 0.0f, 1.0f) *\n"
      "\t\t(1.0f - frame->detailProgress), reveal);"),
+    # A held stick: the strip may run two cards behind, so the window holds
+    # four either side.
+    ("ui_gameflow.c", "if(travel < -1.0f) {\n\t\treturn -1.0f;\n\t}\n"
+     "\tif(travel > 1.0f) {\n\t\treturn 1.0f;",
+     "if(travel < -2.0f) {\n\t\treturn -2.0f;\n\t}\n"
+     "\tif(travel > 2.0f) {\n\t\treturn 2.0f;"),
+    ("ui_gameflow_library.c", "0, -1, 1, -2, 2, -3, 3\n", "0, -1, 1, -2, 2, -3, 3, -4, 4\n"),
+    ("ui_gameflow_library.h", "#define UI_GAMEFLOW_LIBRARY_WINDOW 7u",
+     "#define UI_GAMEFLOW_LIBRARY_WINDOW 9u"),
+    ("FrameBufferMagic.h", "#define UI_GAMEFLOW_RENDER_SLOTS 7u",
+     "#define UI_GAMEFLOW_RENDER_SLOTS 9u"),
+    ("FrameBufferMagic.c", "record->relativeSlot < -3 || record->relativeSlot > 3) {",
+     "record->relativeSlot < -4 || record->relativeSlot > 4) {"),
 )
 PURE = ("ui_gameflow.c", "ui_motion.c", "ui_gameflow_library.c",
         "ui_command_rail.c", "ui_gameflow_detail.c", "ui_game_history.c")
