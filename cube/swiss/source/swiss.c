@@ -1340,7 +1340,10 @@ static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 		if(file == NULL) {
 			return false;
 		}
-		memset(record, 0, sizeof(*record));
+		/* All but the banner, which is read only under its flag: 256 of
+		 * the record's 6,400 bytes. */
+		memset(record->title, 0, sizeof(*record) -
+			offsetof(uiGameflowCardSnapshot_t, title));
 		record->libraryIndex = slots[i].index;
 		record->relativeSlot = slots[i].relativeSlot;
 		record->column = slots[i].column;

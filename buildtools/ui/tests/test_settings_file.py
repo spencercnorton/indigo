@@ -149,9 +149,14 @@ static bool getRawDTVStatus(void) { return false; }
     "#define ticks_to_millisecs(t) (t)\n"
     "static int harness_scan_result, harness_scans;\n"
     "static int config_each_game_file(void (*visit)(const char *, char *, void *), void *context)\n"
-    "{\n\t(void)visit;\n\t(void)context;\n\tharness_scans++;\n\treturn harness_scan_result;\n}",
+    "{\n\t(void)visit;\n\t(void)context;\n\tharness_scans++;\n\treturn harness_scan_result;\n}\n"
+    "static int harness_parses;\n"
+    "static void harness_parse_game(char *data, ConfigEntry *entry)\n"
+    "{\n\tharness_parses++;\n\tconfig_parse_game(data, entry);\n}\n"
+    "#define config_parse_game harness_parse_game",
     between(SETTINGS_C, "typedef struct {\n\tchar gameId[4];",
             "/* X in a game's settings: this row follows Game Defaults again. */"),
+    "#undef config_parse_game",
     GLOBAL_PARSER,
     GAME_PARSER,
     between(CONFIG_C, "/* Keys a global.ini may still carry", "int config_update_global("),
@@ -306,6 +311,8 @@ int main(int argc, char **argv)
 		}
 		settingsKeepGameFile(argv[2], input, NULL);
 		puts(settings_game_has_custom(argv[2], argv[3][0]) ? "custom" : "none");
+		puts(settings_game_has_custom(argv[2], argv[3][0]) ? "custom" : "none");
+		printf("%d\n", harness_parses);
 		settings_game_files_forget();
 		puts(settings_game_has_custom(argv[2], argv[3][0]) ? "custom" : "none");
 	}
@@ -534,7 +541,9 @@ class SettingsFileTest(unittest.TestCase):
     def test_the_library_marks_only_games_that_differ_from_game_defaults(self):
         def mark(game_ini, game_id="GALE", region="E", global_ini=None):
             args = ["custom-mark", game_id, region] + ([global_ini] if global_ini else [])
-            first, after_a_save = self.run_harness(*args, stdin=game_ini).split()
+            first, again, parses, after_a_save = self.run_harness(*args, stdin=game_ini).split()
+            # The next step asks again: the same answer, without parsing again.
+            self.assertEqual((again, parses), (first, "1"))
             # A save forgets the files: nothing is marked until they're read again.
             self.assertEqual(after_a_save, "none")
             return first
