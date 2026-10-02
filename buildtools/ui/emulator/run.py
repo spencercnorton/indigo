@@ -31,8 +31,14 @@ while a crash, a hang, a black screen or a broken control does:
 The game route launches the probe from the Library as a game instead: the
 probe must see the game's ID, the full 24 MB and the music stopped.
 
+With --storage sd2sp2 (or sdgecko-b) there is no disc: the release zip is
+unpacked onto an SD card image (card.build_card) and Indigo boots from the
+zip's own ipl.dol. A new card has no settings yet, so Indigo starts in
+Settings and the route saves them first; afterwards it reads back from the
+card what Indigo wrote there.
+
 usage: run.py DOL --out DIR [--route smoke|tour|game] [--probe DOL] [--region pal|ntsc]
-              [--disc ISO]
+              [--storage dvd|sd2sp2|sdgecko-b --card-zip ZIP] [--disc ISO]
 Writes DIR/report.json, DIR/summary.md, DIR/sheet.png (every checkpoint),
 the checkpoint pictures and Dolphin's output. Exit 0: passed. 1: Indigo
 failed a check. 2: the harness or the emulator could not run.
@@ -49,6 +55,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zipfile
 import zlib
 from pathlib import Path
 
@@ -66,6 +73,8 @@ WIDTH, HEIGHT = 640, 480
 # game's details.
 LABEL_BOX = (200, 372, 440, 396)
 TITLE_BOX = (200, 338, 440, 362)
+# The page title Settings opens with on a new card ("Storage").
+SETTINGS_TITLE_BOX = (30, 46, 230, 80)
 DETAIL_TITLE_BOX = (264, 106, 600, 134)
 TEXT_LEVEL = 160          # label text is bright; the waves behind it are not
 SAME, DIFFERENT = 0.85, 0.5  # intersection over union of two label masks
@@ -79,9 +88,12 @@ FATAL = re.compile("|".join((
 )), re.I)
 # The DSP runs its real microcode (LLE): Dolphin's high-level stand-ins know
 # libogc's audio library but not libogc2's, so the menu music's stop before a
-# launch would never be answered.
+# launch would never be answered. It runs in step with the CPU, not on a thread
+# of its own, where it sometimes missed the mail that stops the music for a
+# launch (AESND_Reset waits for it with interrupts off) on a busy machine.
 DOLPHIN_INI = """[Core]
 DSPHLE = False
+DSPThread = False
 MMU = True
 GFXBackend = OGL
 SIDevice0 = 6
@@ -105,6 +117,13 @@ RenderToMain = True
 # Dolphin's region for a program without one (a DOL): what the console's video
 # hardware starts in. Its own default depends on the machine.
 REGIONS = {"ntsc": 1, "pal": 2}
+# Where the SD card goes: SD2SP2 in Serial Port 2, or an SD Gecko in Memory
+# Card Slot B. 15 is the SD card adapter the emulator runner's Dolphin adds
+# (buildtools/ci/runner/dolphin/).
+STORAGES = {"dvd": None, "sd2sp2": "SerialPort2", "sdgecko-b": "SlotB"}
+SD_CARD_DEVICE = 15
+# Rows on Settings' Storage page: DOWN past them reaches Save & Exit.
+STORAGE_ROWS = 7
 
 # The probe's report, in the order of its strip (probe.c).
 PROBE_WORDS = ("magic", "version", "id0", "id1", "memsize", "console", "video", "bus", "core",
@@ -189,17 +208,27 @@ def probe_report(rgb: np.ndarray) -> dict[str, object] | None:
     report: dict[str, object] = dict(zip(PROBE_WORDS, words))
     packed = b"".join(w.to_bytes(4, "big") for w in words)
     report["valid"] = words[0] == PROBE_MAGIC and zlib.crc32(packed[:-4]) == words[-1]
-    report["disc_id"] = packed[8:14].decode("latin-1")
-    report["path"] = packed[64:80].rstrip(b"\0").decode("latin-1")
+    report["disc_id"] = printable(packed[8:14])
+    report["path"] = printable(packed[64:80].rstrip(b"\0"))
     return report
 
 
+def printable(data: bytes) -> str:
+    """Bytes as text for a report: anything outside printable ASCII as a dot."""
+    return "".join(chr(b) if 32 <= b < 127 else "." for b in data)
+
+
 class Emulator:
-    def __init__(self, dol: Path, disc: Path, work: Path, out: Path, region: str = "pal") -> None:
+    def __init__(self, dol: Path, disc: Path | None, work: Path, out: Path, region: str = "pal",
+                 storage: str = "dvd", card: Path | None = None) -> None:
         self.out = out
         self.user = work / "dolphin"
         (self.user / "Config").mkdir(parents=True)
-        (self.user / "Config/Dolphin.ini").write_text(DOLPHIN_INI)
+        ini = DOLPHIN_INI
+        if STORAGES[storage]:
+            ini = ini.replace("[Core]\n", f"[Core]\n{STORAGES[storage]} = {SD_CARD_DEVICE}\n"
+                                          f"SP2SDCardImage = {card}\n", 1)
+        (self.user / "Config/Dolphin.ini").write_text(ini)
         (self.user / "Config/GFX.ini").write_text("[Settings]\nInternalResolution = 1\nShowFPS = False\n")
         (self.user / "Config/GCPadNew.ini").write_text(dsu_pad.GCPAD_INI)
         self.pad = dsu_pad.Pad(0)  # any free port; Dolphin is told which
@@ -222,7 +251,7 @@ class Emulator:
         self.log = out / "dolphin.log"
         self.dolphin = subprocess.Popen(
             ["dolphin-emu-nogui", "-u", str(self.user), "-p", "x11", "-v", "OGL",
-             "-C", f"Dolphin.Core.DefaultISO={disc}",
+             *(["-C", f"Dolphin.Core.DefaultISO={disc}"] if disc else []),
              "-C", f"Dolphin.Core.FallbackRegion={REGIONS[region]}", "-e", str(dol)],
             stdout=open(self.log, "w"), stderr=subprocess.STDOUT, env=env)
         self.started = time.monotonic()
@@ -253,10 +282,11 @@ class Emulator:
 class Route:
     """Steps through the menus and records every checkpoint."""
 
-    def __init__(self, emulator: Emulator, out: Path, probe: bool = False) -> None:
+    def __init__(self, emulator: Emulator, out: Path, probe: bool = False, fresh_card: bool = False) -> None:
         self.emulator = emulator
         self.out = out
         self.probe = probe
+        self.fresh_card = fresh_card
         self.report: dict[str, object] | None = None
         self.checks: list[dict[str, object]] = []
         self.shots: list[tuple[str, Path]] = []
@@ -309,10 +339,36 @@ class Route:
 
     # -- the route
     def boot(self) -> np.ndarray:
+        if self.fresh_card:
+            return self.first_run()
         mask, now = self.settled_label(BOOT_SECONDS)
         boot = round(now - self.emulator.started, 1)
         self.shot("home", self.last_rgb)
         self.check("Home appears after boot", mask is not None, seconds=boot)
+        self.plug_in()
+        return mask
+
+    def first_run(self) -> np.ndarray:
+        """A new card has no swiss/settings/global.ini: Indigo starts in
+        Settings, on Storage, and says so. DOWN past the page's rows reaches
+        Save & Exit, and A writes the settings to the card and goes Home."""
+        title, now = self.settled_label(BOOT_SECONDS, box=SETTINGS_TITLE_BOX)
+        self.shot("first-run", self.last_rgb)
+        self.check("a new card opens Settings first", title is not None,
+                   seconds=round(now - self.emulator.started, 1))
+        self.plug_in()
+        for _ in range(STORAGE_ROWS):
+            self.press("DOWN")
+            time.sleep(0.4)
+        self.shot("first-run-save", self.emulator.frame())
+        self.press("A")
+        mask, now = self.settled_label(BOOT_SECONDS)
+        self.shot("home", self.last_rgb)
+        self.check("Save & Exit writes the settings and goes Home", mask is not None,
+                   seconds=round(now - self.emulator.started, 1))
+        return mask
+
+    def plug_in(self) -> None:
         self.pad.plug_in()
         deadline = time.monotonic() + 15
         while not self.pad.streaming and time.monotonic() < deadline:
@@ -320,7 +376,22 @@ class Route:
         if not self.pad.streaming:
             raise Broken("Dolphin never asked for the controller")
         time.sleep(0.5)
-        return mask
+
+    def card_checks(self, image: Path, route: str) -> None:
+        """What Indigo wrote to the SD card, read back from its image."""
+        def text(path: str) -> str:
+            return (card.read_card(image, path) or b"").decode("latin-1")
+
+        settings = text("swiss/settings/global.ini")
+        self.check("the settings Indigo saved are on the card",
+                   "Swiss Video Mode=" in settings and "Hide Apps Face=No" in settings, bytes=len(settings))
+        if route != "game":
+            return
+        recent = text("swiss/settings/recent.ini").split("Recent_1=")[0]
+        self.check("the launched game is first in the recent list",
+                   card.game_file(*card.PROBE_GAME) in recent, recent=recent.strip().splitlines()[-1:])
+        played = text("swiss/settings/play-history-0.ini") + text("swiss/settings/play-history-1.ini")
+        self.check("Indigo's play history records the game", f"\n{card.PROBE_GAME[0]}=" in played)
 
     def turn(self, faces: list[np.ndarray], button: str, name: str) -> np.ndarray:
         self.press(button)
@@ -411,10 +482,7 @@ class Route:
 
     def handoff(self, tag: str) -> dict[str, object]:
         """After a launch, wait for the probe's screen and check what the
-        hand-off left it. Swiss's shutdown before a launch stalls in Dolphin
-        while a controller is connected, as its startup does (a console is
-        fine), so the pad is unplugged once the launching A is in."""
-        self.pad.unplug()
+        hand-off left it. The controller stays connected, as on a console."""
         report, deadline = None, time.monotonic() + BOOT_SECONDS
         while not (report and report["valid"]) and time.monotonic() < deadline:
             time.sleep(0.5)
@@ -635,24 +703,39 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--route", choices=("smoke", "tour", "game"), default="smoke")
     parser.add_argument("--probe", type=Path, help="the probe DOL (probe/), launched as an app and a game")
     parser.add_argument("--region", choices=tuple(REGIONS), default="pal")
+    parser.add_argument("--storage", choices=tuple(STORAGES), default="dvd")
+    parser.add_argument("--card-zip", type=Path, help="the release zip, unpacked onto the SD card")
     parser.add_argument("--disc", type=Path, help="a disc to use instead of building card.py's")
     args = parser.parse_args(argv)
     if args.route == "game" and not args.probe:
         parser.error("the game route launches the probe: give --probe")
+    if (args.storage != "dvd") != bool(args.card_zip):
+        parser.error("an SD card (--storage) is made from the release zip (--card-zip), and only then")
     args.out.mkdir(parents=True, exist_ok=True)
     report: dict[str, object] = {"schema": "indigo.emulator-test.v1", "route": args.route,
-                                 "region": args.region, "dol": str(args.dol), "dolphin": _version()}
+                                 "region": args.region, "storage": args.storage, "dol": str(args.dol),
+                                 "dolphin": _version()}
     status, emulator, route = 0, None, None
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
         try:
-            disc = args.disc
-            if disc is None:
+            dol, disc, sd = args.dol.resolve(), args.disc, None
+            if args.card_zip:
+                sd = work / "card.img"
+                report["card"] = card.build_card(sd, args.card_zip, probe=args.probe)
+                dol = work / "ipl.dol"  # what a loader starts: the zip's own
+                with zipfile.ZipFile(args.card_zip) as package:
+                    dol.write_bytes(package.read("ipl.dol"))
+                report["dol"] = f"{args.card_zip.name}:ipl.dol"
+            elif disc is None:
                 disc = work / "demo.iso"
                 report["disc"] = card.build(disc, probe=args.probe)
-            emulator = Emulator(args.dol.resolve(), disc.resolve(), work, args.out, args.region)
-            route = Route(emulator, args.out, probe=bool(args.probe))
+            emulator = Emulator(dol, disc.resolve() if disc else None, work, args.out, args.region,
+                                args.storage, sd)
+            route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd))
             getattr(route, args.route)()
+            if sd:
+                route.card_checks(sd, args.route)
         except Failed as failure:
             status = 1
             report["failure"] = str(failure)
@@ -681,9 +764,12 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def summary(report: dict[str, object]) -> str:
-    lines = [f"### Emulator ({report['route']}, {report['region'].upper()}): "
+    where = ("the demonstration disc" if report["storage"] == "dvd" else
+             f"an SD card in {report['storage'].upper()} made from the release zip")
+    lines = [f"### Emulator ({report['route']}, {report['region'].upper()}"
+             f"{'' if report['storage'] == 'dvd' else ', ' + report['storage'].upper()}): "
              f"{'passed' if report['passed'] else 'failed'}", "",
-             f"{report['dolphin']}, the demonstration disc, a controller plugged in once Home is up.", "",
+             f"{report['dolphin']}, {where}, a controller plugged in once Home is up.", "",
              "| Check | Result | Detail |", "| --- | --- | --- |"]
     for check in report["checks"]:
         detail = ", ".join(f"{k} {v}" for k, v in check.items() if k not in ("check", "passed"))

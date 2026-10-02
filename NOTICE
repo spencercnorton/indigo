@@ -34,6 +34,11 @@ Third-party components redistributed in this tree:
     Vendored at commit 6cb4e86540eca0d9ba62500a298385c9d863c8be;
     see cube/swiss/source/littlefs/LICENSE.md.
 
+  SD2SP2 adapter emulation for Dolphin — https://github.com/dfederspiel/dolphin/pull/1
+    By CodeFly. GNU General Public License, version 2 or later, as Dolphin.
+    A patch CI applies to Dolphin when it builds the emulator test's runner;
+    see buildtools/ci/runner/dolphin/. Nothing of it is in Indigo's DOL.
+
   FatFs — http://elm-chan.org/fsw/ff/
     Copyright (C) ChaN. One-clause BSD-style licence, retained in the source.
     The DBCS conversion tables are removed; see the note in

@@ -23,7 +23,11 @@ Given the probe (probe/probe.c, built with the toolchain), the disc also holds
 it twice, as a real program Indigo can launch: a game image whose boot program
 is the probe (PROBE_GAME) and an app (PROBE_APP).
 
+With --card-zip it makes an SD card image instead (build_card): the release
+zip unpacked onto a FAT32 card, the same games, packs and apps beside it.
+
 usage: card.py OUT.iso [--no-posters] [--probe probe.dol]
+       card.py OUT.img --card-zip Indigo-<version>.zip [--no-posters] [--probe probe.dol]
 Needs genisoimage; the posters need gxtexconv (see buildtools/ui/poster_pack.py)
 and are left out, with a notice, when it is missing.
 """
@@ -340,35 +344,44 @@ def build_apps(apps: Path) -> int:
     return len(APPS)
 
 
+def populate(root: Path, work: Path, posters: bool = True, probe: Path | None = None) -> dict[str, object]:
+    """What the disc and the card both hold: /games, the packs and
+    descriptions in /swiss/ui, and /apps."""
+    (root / "games").mkdir(parents=True, exist_ok=True)
+    (root / "swiss/ui").mkdir(parents=True, exist_ok=True)
+    for index, (game_id, title) in enumerate(GAMES):
+        (root / "games" / game_file(game_id, title)).write_bytes(game_image(index, game_id, title))
+    for game_id, title, image in DAMAGED:
+        (root / "games" / game_file(game_id, title)).write_bytes(image(game_id, title))
+    if probe:
+        (root / "games" / game_file(*PROBE_GAME)).write_bytes(probe_image(probe.read_bytes()))
+    for name in STRAYS:
+        if name.endswith("/"):
+            (root / "games" / name).mkdir()
+        else:
+            (root / "games" / name).write_text("Not a game.\n")
+    with_posters = posters and build_pack(work, root / "swiss/ui/posters.pak", "posters")
+    with_stills = posters and build_pack(work, root / "swiss/ui/stills.pak", "stills")
+    (root / "swiss/ui/descriptions.txt").write_text(
+        "# Descriptions of the demonstration disc's fictitious games\n" +
+        "".join(f"{game_id} {text}\n" for game_id, text in sorted(DESCRIPTIONS.items())))
+    apps = build_apps(root / "apps")
+    if probe:
+        (root / "apps" / PROBE_APP).write_bytes(probe.read_bytes())
+        apps += 1
+    return {"games": len(GAMES), "damaged": len(DAMAGED),
+            "posters": len(GAMES) - len(NO_POSTER) if with_posters else 0,
+            "stills": len(GAMES) - len(NO_STILL) if with_stills else 0, "apps": apps,
+            "probe": bool(probe)}
+
+
 def build(out: Path, posters: bool = True, probe: Path | None = None) -> dict[str, object]:
     if not shutil.which("genisoimage"):
         raise SystemExit("card.py: genisoimage is missing")
     with tempfile.TemporaryDirectory() as directory:
         folder = Path(directory)
         root = folder / "root"
-        (root / "games").mkdir(parents=True)
-        (root / "swiss/ui").mkdir(parents=True)
-        for index, (game_id, title) in enumerate(GAMES):
-            (root / "games" / game_file(game_id, title)).write_bytes(game_image(index, game_id, title))
-        for game_id, title, image in DAMAGED:
-            (root / "games" / game_file(game_id, title)).write_bytes(image(game_id, title))
-        if probe:
-            dol = probe.read_bytes()
-            (root / "games" / game_file(*PROBE_GAME)).write_bytes(probe_image(dol))
-        for name in STRAYS:
-            if name.endswith("/"):
-                (root / "games" / name).mkdir()
-            else:
-                (root / "games" / name).write_text("Not a game.\n")
-        with_posters = posters and build_pack(folder, root / "swiss/ui/posters.pak", "posters")
-        with_stills = posters and build_pack(folder, root / "swiss/ui/stills.pak", "stills")
-        (root / "swiss/ui/descriptions.txt").write_text(
-            "# Descriptions of the demonstration disc's fictitious games\n" +
-            "".join(f"{game_id} {text}\n" for game_id, text in sorted(DESCRIPTIONS.items())))
-        apps = build_apps(root / "apps")
-        if probe:
-            (root / "apps" / PROBE_APP).write_bytes(probe.read_bytes())
-            apps += 1
+        info = populate(root, folder, posters, probe)
         for path in sorted(root.rglob("*")) + [root]:
             os.utime(path, (1000000000, 1000000000))
         subprocess.run(["genisoimage", "-quiet", "-R", "-J", "-V", "INDIGO_DEMO", "-o", str(out), str(root)],
@@ -379,10 +392,44 @@ def build(out: Path, posters: bool = True, probe: Path | None = None) -> dict[st
     header = outer_header()
     image[:len(header)] = header
     out.write_bytes(image)
-    return {"games": len(GAMES), "damaged": len(DAMAGED),
-            "posters": len(GAMES) - len(NO_POSTER) if with_posters else 0,
-            "stills": len(GAMES) - len(NO_STILL) if with_stills else 0, "apps": apps,
-            "probe": bool(probe), "bytes": len(image)}
+    return {**info, "bytes": len(image)}
+
+
+# The SD card: as big as a small real one, formatted as the SD Association's
+# formatter does an SDHC card (FAT32, 32 KiB clusters). The file is sparse.
+CARD_BYTES = 8 << 30
+MTOOLS = dict(os.environ, MTOOLS_SKIP_CHECK="1")
+
+
+def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | None = None) -> dict[str, object]:
+    """A FAT32 SD card image set up as someone would: the release zip
+    unpacked onto it, then games, the packs and apps beside it. It has no
+    swiss/settings/global.ini, so Indigo starts in Settings, as on a new card."""
+    import zipfile
+    for tool in ("mkfs.fat", "mcopy"):
+        if not shutil.which(tool):
+            raise SystemExit(f"card.py: {tool} is missing (dosfstools, mtools)")
+    with tempfile.TemporaryDirectory() as directory:
+        folder = Path(directory)
+        root = folder / "root"
+        root.mkdir()
+        with zipfile.ZipFile(card_zip) as package:
+            package.extractall(root)
+        info = populate(root, folder, posters, probe)
+        with open(out, "wb") as image:
+            image.truncate(CARD_BYTES)
+        subprocess.run(["mkfs.fat", "-F", "32", "-s", "64", "-n", "INDIGO", str(out)], check=True,
+                       capture_output=True)
+        for entry in sorted(root.iterdir()):
+            subprocess.run(["mcopy", "-s", "-i", str(out), str(entry), "::/"], check=True, env=MTOOLS,
+                           capture_output=True)
+    return {**info, "zip": card_zip.name, "bytes": CARD_BYTES}
+
+
+def read_card(card: Path, path: str) -> bytes | None:
+    """A file from the card image, or None when it isn't there."""
+    result = subprocess.run(["mcopy", "-n", "-i", str(card), f"::/{path}", "-"], capture_output=True, env=MTOOLS)
+    return result.stdout if result.returncode == 0 else None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -390,8 +437,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("out", type=Path)
     parser.add_argument("--no-posters", action="store_true")
     parser.add_argument("--probe", type=Path, help="the probe DOL, to add as a game and an app")
+    parser.add_argument("--card-zip", type=Path, help="make an SD card image from this release zip instead")
     args = parser.parse_args(argv)
-    print(json.dumps(build(args.out, posters=not args.no_posters, probe=args.probe)))
+    if args.card_zip:
+        print(json.dumps(build_card(args.out, args.card_zip, posters=not args.no_posters, probe=args.probe)))
+    else:
+        print(json.dumps(build(args.out, posters=not args.no_posters, probe=args.probe)))
     return 0
 
 
