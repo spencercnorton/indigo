@@ -2788,11 +2788,10 @@ static void renderFacePictures(const uiSceneFrame_t *scene, float seconds,
 			DCFlushRange(facePictureTexels, sizeof(facePictureTexels));
 			facePictureTexelsFlushed = true;
 		}
-		/* The legacy backdrop image is already in the frame: a first copy
-		 * clears the corner to black (each copy clears what it read). */
+		/* Nothing is drawn before the background, so the corner holds the
+		 * frame's black clear; each copy clears what it read for the next. */
 		GX_SetTexCopySrc(0, 0, (u16)(width * 4), (u16)(height * 2));
 		GX_SetTexCopyDst((u16)(width * 2), (u16)height, GX_TF_RGB565, GX_TRUE);
-		GX_CopyTex(facePictureTexels[facePictureCount], GX_TRUE);
 		facePictureProjection(projection, x0, y0);
 		GX_LoadProjectionMtx(projection, GX_PERSPECTIVE);
 		GX_SetScissor(0, 0, (u32)width * 4u, (u32)height * 2u);
