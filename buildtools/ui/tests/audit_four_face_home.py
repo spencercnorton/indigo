@@ -569,6 +569,11 @@ decorative_strength = re.search(
 )
 assert decorative_strength and 0.0 < float(decorative_strength.group(1)) <= 0.8
 assert "orbitStrength * HOME_DECORATIVE_STRENGTH" in INDIGO
+# The quieter Home waves ease in and out with the scene's own spring; a test
+# of the scene id here steps them on the frame the scene changes.
+background_draw = extract_function(INDIGO, "void IndigoBackground_Draw(")
+assert "scene->homeDecorativeBlend" in background_draw
+assert "scene->scene == UI_SCENE_HOME" not in background_draw
 system_motif = extract_function(INDIGO, "static void drawClockIcon(")
 for frame_edge in (
 	"-0.55f, 0.55f",

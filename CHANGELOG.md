@@ -79,6 +79,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   layouts, the games glide past without a jump. The strip could fall only
   one game behind the selection, so at the stick's pace it skipped forward a
   third of a card every step; it can fall two behind now.
+- The waves behind the menus ease between Home's quieter strength and the
+  other screens' as the cube moves, instead of brightening or dimming in one
+  frame as you leave or come back to Home.
 
 ### Fixes
 

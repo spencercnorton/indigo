@@ -3419,9 +3419,11 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 	float orbitScale = 0.70f + (scene->cubeScale * 0.30f);
 	float orbitStrength = scene->orbitStrength < 0.0f ? 0.0f :
 		(scene->orbitStrength > 1.0f ? 1.0f : scene->orbitStrength);
-	float decorativeStrength = scene->scene == UI_SCENE_HOME ||
-		scene->scene == UI_SCENE_SOURCE ?
-		orbitStrength * HOME_DECORATIVE_STRENGTH : orbitStrength;
+	/* Home and Source quiet the waves; the change eases with the cube
+	 * rather than stepping when the scene does. */
+	float decorativeStrength = orbitStrength +
+		(orbitStrength * HOME_DECORATIVE_STRENGTH - orbitStrength) *
+		scene->homeDecorativeBlend;
 
 	/* The turned faces' icon pictures go first: the backdrop paints over
 	 * the corner of the frame they are drawn in. */
