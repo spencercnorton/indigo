@@ -41,8 +41,20 @@ tag on `beta`. The newest changes are at the top until their release is named.
   "Loading" from the wheel out to the screen's edge, where a TV can crop it.
   It reads inward from the wheel now, in either corner.
 
+### Fixes
+
+- After a game failed to launch, the menu stayed in the video mode the launch
+  had switched to for the game. A PAL game left an NTSC console's menu at
+  50 Hz, which a TV that only takes 60 Hz shows as a black screen, and an
+  NTSC game left a PAL console's at 60 Hz. The menu goes back to its own mode.
+
 ### For developers
 
+- The emulator test runs each job in a video mode of its own: PAL composite
+  576i, NTSC composite 480i and a component cable's 480p, in both regions. A
+  console's SRAM now matches its region, and the probe reports the mode the
+  menu was in, which the smoke route checks after a failed launch of a game
+  from the other region. Until now every job ran interlaced: 480p never ran.
 - The emulator test launches a game and an app all the way. A small program,
   the probe ([`buildtools/ui/emulator/probe/`](buildtools/ui/emulator/probe/probe.c)),
   sits on the demonstration disc as a game and as an app. Launched, it

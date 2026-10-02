@@ -49,10 +49,25 @@ probe's game and launches it from its details: the probe must see the game's
 own disc ID, the 24 MB a game is promised, the music stopped and memory
 quiet.
 
-CI runs four jobs, the first of them the required **Emulator** check: both
-routes from the demonstration disc in PAL (`--region`, the video mode the
-console starts in), and both from an SD card in SD2SP2 in NTSC
-(`--storage sd2sp2`).
+CI runs four jobs, the first of them the required **Emulator** check, each in
+a video mode of its own:
+
+| Job | Console | Video | Storage |
+| --- | --- | --- | --- |
+| Emulator (smoke) | PAL, composite | 576i | disc |
+| game, PAL, component | PAL, component | 480p | disc |
+| smoke, NTSC, component, SD2SP2 | NTSC, component | 480p | SD2SP2 |
+| game, NTSC, SD2SP2 | NTSC, composite | 480i | SD2SP2 |
+
+`--region pal|pal60|ntsc` is the console: the region Dolphin starts the video
+hardware in, and an SRAM (`GC/SRAM.raw`) with the same video format, as a
+real console's IPL leaves it; Dolphin's own SRAM is an NTSC console's
+whatever the region. `--cable component` makes Dolphin report a component
+cable, and Swiss's Auto video mode is then 480p. At the end of the smoke
+route the probe reports the mode the menu was in, which must be the one the
+console and cable ask for. That route's failed launch is of a game from the
+console's other region, which switches to that region's video mode first, so
+the check catches a menu that doesn't switch back.
 
 Every check compares the screen with itself earlier in the same run (the
 text under the cube, a game's title), never with stored pictures, so a
@@ -120,6 +135,8 @@ left before libogc touches anything, in `__SYS_PreInit`:
 
 - the disc ID, memory size, video mode, bus and core clocks, arena and top
   of memory in low memory;
+- the video mode the screen was left in (the display configuration and
+  the 27/54 MHz clock with the component cable bit);
 - whether the audio interface's DMA is still running (the menu music);
 - the path it was started with (`argv[0]`);
 - and, once up, whether any word of an 8 MB block it filled changes in a
