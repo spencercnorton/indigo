@@ -20,6 +20,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
   console's SRAM now matches its region, and the probe reports the mode the
   menu was in, which the smoke route checks after a failed launch of a game
   from the other region. Until now every job ran interlaced: 480p never ran.
+- An SD card can start with settings (`run.py --settings <name>`, from
+  `buildtools/ui/emulator/settings/`), which must all survive Indigo's own
+  saves. CI's SD2SP2 smoke job starts with every setting of Indigo's own away
+  from its default, but Menu Widescreen.
 - The emulator test launches a game and an app all the way. A small program,
   the probe ([`buildtools/ui/emulator/probe/`](buildtools/ui/emulator/probe/probe.c)),
   sits on the demonstration disc as a game and as an app. Launched, it
