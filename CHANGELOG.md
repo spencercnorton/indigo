@@ -15,6 +15,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- The emulator test can put the SD card in a GC Loader (`run.py --storage
+  gcloader`): the runner's Dolphin answers as one, so Indigo finds it, keeps
+  its settings on its card and launches a game by the game file's fragments,
+  as on a console with one. CI launches the probe's game that way, in 480p.
 - The emulator test counts the console's own seconds, which the runner's
   Dolphin now reports, for its waits and presses, so a busy machine slows a
   run instead of failing it; a failed step says where the console's CPU was.
