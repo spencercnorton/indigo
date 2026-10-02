@@ -54,7 +54,7 @@ The cube is clear glass, and it treats light the way glass does:
   glass as the cube turns, and while Home rests they drift a little, so the
   glass is never quite still.
 - **It glows.** Highlights and glints have a soft glow, a fine rim lights
-  the edges that face the light, and a halo sits behind the cube. The face
+  the edges that face the light. The face
   icons stay sharp on top of the glass. Every face shows its icon, moving,
   as the cube turns: the faces to either side show theirs too, narrowed by
   the angle.

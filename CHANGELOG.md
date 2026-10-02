@@ -17,10 +17,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 - Every face of the Home cube shows its icon as the cube turns, animated, the
   side faces at rest included. An icon on a face turned away from the screen
-  is drawn at twice the size and scaled down, so its thinnest lines keep
-  their light instead of breaking into fragments or fading out. Mostly
-  horizontal icons, such as Settings' sliders, still look narrow on a face
-  seen nearly edge-on.
+  is drawn four times as wide and twice as tall, then scaled down, so its
+  thinnest lines keep their light, without breaking into fragments, fading
+  out or flickering as the cube sways. Mostly horizontal icons, such as
+  Settings' sliders, still look narrow on a face seen nearly edge-on.
+- The halo around the Home cube is gone, as the glow spot under it went in
+  2.2.
 - The CPU temperature holds steady. The console's sensor reads in 4 degree
   steps, so a CPU sitting on a step showed one side and then the other every
   second (40 °C, 44 °C, 40 °C...). Indigo now shows an average of the last few

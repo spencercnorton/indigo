@@ -112,12 +112,13 @@ static void GX_TexCoord2f32(float s,float t) {
 }
 static void GX_End(void) {}
 /* What the icon pass is asked to draw, at the size it draws it. */
-static int drawn[8], drawnCount; static float drawnScale[8], drawnAlpha[8];
+static int drawn[8], drawnCount; static float drawnScale[8], drawnScaleY[8], drawnAlpha[8];
 static void drawOneFaceIcon(const cubeRasterTransform_t *r,int face,int choice,float seconds,
     bool animated,const uiClockFrame_t *clock,const indigoPadFrame_t *pad) {
     (void)choice;(void)seconds;(void)animated;(void)clock;(void)pad;
     CHECK(loadedType==GX_PERSPECTIVE,"picture drawn without the doubled projection");
     drawn[drawnCount]=face; drawnScale[drawnCount]=r->scaleX/pose.scaleX;
+    drawnScaleY[drawnCount]=r->scaleY/pose.scaleY;
     drawnAlpha[drawnCount]=r->motifAlpha[face]; drawnCount++;
 }
 /* EMITTERS */
@@ -130,15 +131,15 @@ static void frameOf(Mtx44 p,guVector e,float *x,float *y) {
 static void testProjection(void) {
     for(int shape=0;shape<4;shape++) {
         wide=shape&1; glassEfbHeight=shape&2?528:480;
-        Mtx44 base,twice;
+        Mtx44 base,fine;
         for(int r=0;r<4;r++) for(int c=0;c<4;c++) base[r][c]=cubeProjection[r][c];
         UIStage_Project(base);
-        facePictureProjection(twice,118,64);
+        facePictureProjection(fine,118,64);
         for(int i=0;i<50;i++) {
             guVector e={sinf(i*1.7f)*1.4f,cosf(i*2.3f)*1.1f,-4.2f-(i%7)*.2f};
-            float fx,fy,bx,by; frameOf(base,e,&fx,&fy); frameOf(twice,e,&bx,&by);
-            CHECK(fabsf(bx-2*(fx-118))<.01f && fabsf(by-2*(fy-64))<.01f,
-                "doubled projection does not put the picture at the corner");
+            float fx,fy,bx,by; frameOf(base,e,&fx,&fy); frameOf(fine,e,&bx,&by);
+            CHECK(fabsf(bx-4*(fx-118))<.02f && fabsf(by-2*(fy-64))<.01f,
+                "4x2 projection does not put the picture at the corner");
         }
     }
     wide=false; glassEfbHeight=480;
@@ -182,10 +183,17 @@ static void testHome(void) {
         }
         CHECK(facePictureCount==expected && drawnCount==expected,"picture count");
         CHECK(copies==2*expected && clears==copies,"each picture clears its corner and copies it");
+        if(expected) CHECK(copySrc[0]==4*facePictures[expected-1].width &&
+            copySrc[1]==2*facePictures[expected-1].height &&
+            copyDst[0]==2*facePictures[expected-1].width && copyDst[1]==facePictures[expected-1].height &&
+            copyFilter,"picture copy is not a 2x2 box of a 4x2 render");
         CHECK(expected==0 || (syncs==1 && invalidated==1),"pictures read before the copies land");
         for(int i=0;i<facePictureCount;i++) {
             const facePicture_t *p=&facePictures[i];
-            CHECK(drawnScale[i]==2 && drawnAlpha[i]==1,"picture not drawn twice the size at full light");
+            CHECK(drawnScale[i]==4 && drawnScaleY[i]==2 && drawnAlpha[i]==1,
+                "picture not drawn four times across, twice down, at full light");
+            CHECK(p->texture.width==2*p->width && p->texture.height==p->height,
+                "picture texture is not two texels to a pixel across");
             CHECK(p->width%4==0 && p->height%4==0 && p->width<=FACE_PICTURE_MAX_W &&
                 p->height<=FACE_PICTURE_MAX_H,"picture slot size");
             CHECK(p->x+p->width<=640 && p->y+p->height<=480,"picture off the frame");
@@ -265,15 +273,17 @@ class FacePictureTests(unittest.TestCase):
 
     def test_regressions_are_rejected(self):
         mutants = {
-            "projection not doubled": ("projection[0][column] = 2.0f * projection[0][column]",
-                "projection[0][column] = 1.0f * projection[0][column]"),
+            "projection not scaled across": ("projection[0][column] = 4.0f * projection[0][column]",
+                "projection[0][column] = 2.0f * projection[0][column]"),
             "picture off by a pixel": ("int x0 = (int)floorf(left) - 1,", "int x0 = (int)floorf(left) + 2,"),
             "corner not cleared first": ("GX_CopyTex(facePictureTexels[facePictureCount], GX_TRUE);\n"
                 "\t\tfacePictureProjection", "facePictureProjection"),
             "scissor left on": ("\tGX_SetScissor(0, 0, glassEfbWidth, glassEfbHeight);\n", "\n"),
             "strokes and picture both full": ("float weight = raster.motifAlpha[face] * (1.0f - "
                 "faceStrokeShare(facing));", "float weight = raster.motifAlpha[face];"),
-            "drawn at size": ("twice.scaleX *= 2.0f;", "twice.scaleX *= 1.0f;"),
+            "drawn at size": ("fine.scaleX *= 4.0f;", "fine.scaleX *= 1.0f;"),
+            "texture one texel to a pixel": ("(u16)(width * 2), (u16)height, GX_TF_RGB565",
+                "(u16)width, (u16)height, GX_TF_RGB565"),
             "no sync before reading": ("\t\tGX_PixModeSync();\n", "\t\tif(0) GX_PixModeSync();\n"),
             "pipeline not restored": ("\trestoreCubeRaster();\n\tGX_LoadPosMtxImm(raster->model",
                 "\tif(0) restoreCubeRaster();\n\tGX_LoadPosMtxImm(raster->model"),

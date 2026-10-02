@@ -399,9 +399,13 @@ static void drawSilkWaves(float seconds, bool animated, float strength)
 }
 
 
-/* The waves' clock: the menu's, scaled by Wave Speed. A new speed counts
- * from the moment it takes over, so the waves never jump. */
-static float waveSpeedSetting = 1.0f, waveSpeedApplied = 1.0f, waveClockOffset;
+/* The waves' clock: the menu clock's steps at Wave Speed's pace, so a new
+ * speed counts from where the waves are. It wraps where the menu clock does
+ * (ui_anim.c): every wave rate is a multiple of 0.001 rad/s, so no phase
+ * jumps there at any speed, where scaling the menu clock itself would jump
+ * at its wrap unless the speed kept every rate a multiple. */
+#define WAVE_CLOCK_WRAP 6283.18530718f
+static float waveSpeedSetting = 1.0f, waveLastSeconds = -1.0f, waveSeconds;
 
 void IndigoBackground_SetWaveSpeed(float speed)
 {
@@ -410,11 +414,14 @@ void IndigoBackground_SetWaveSpeed(float speed)
 
 static float waveClock(float seconds)
 {
-	if(waveSpeedSetting != waveSpeedApplied) {
-		waveClockOffset += seconds * (waveSpeedApplied - waveSpeedSetting);
-		waveSpeedApplied = waveSpeedSetting;
+	float step = waveLastSeconds < 0.0f ? seconds : seconds - waveLastSeconds;
+
+	if(step < 0.0f) {
+		step += WAVE_CLOCK_WRAP;  /* the menu clock wrapped */
 	}
-	return seconds * waveSpeedApplied + waveClockOffset;
+	waveLastSeconds = seconds;
+	waveSeconds = fmodf(waveSeconds + step * waveSpeedSetting, WAVE_CLOCK_WRAP);
+	return waveSeconds;
 }
 
 static void drawGlobeGrid(float centerX, float centerY, float drift)
@@ -2602,12 +2609,15 @@ static void restoreCubeRaster(void)
 }
 
 /* A face turned away from the camera shows its icon as a picture instead of
- * as strokes: the strokes drawn twice the size into the top left of the
- * frame before the backdrop (which then paints over the corner), shrunk
- * by the copy's 2x2 box filter and laid where the icon sits. A line thinner
- * than a pixel keeps its light, spread evenly, where drawn at size it breaks
- * into fragments; so every face's icon shows, and keeps moving, as the cube
- * turns. At most three faces of a cube face the camera. */
+ * as strokes: the strokes drawn four times as wide and twice as tall into
+ * the top left of the frame before the backdrop (which then paints over the
+ * corner), halved both ways by the copy's 2x2 box filter and laid where the
+ * icon sits, two texels to a pixel across, so each pixel averages four
+ * samples across and two down. A face turned away is squeezed across: a
+ * line thinner than a pixel there keeps its light, spread evenly, where
+ * drawn at size it breaks into fragments, and it no longer pops in and out
+ * as the cube sways; so every face's icon shows, and keeps moving, as the
+ * cube turns. At most three faces of a cube face the camera. */
 #define FACE_PICTURE_SLOTS 3
 #define FACE_PICTURE_MAX_W 128
 #define FACE_PICTURE_MAX_H 224
@@ -2622,17 +2632,17 @@ typedef struct facePicture {
 	u16 x, y, width, height;
 } facePicture_t;
 
-static u8 facePictureTexels[FACE_PICTURE_SLOTS][FACE_PICTURE_MAX_W * FACE_PICTURE_MAX_H * 2]
+static u8 facePictureTexels[FACE_PICTURE_SLOTS][2 * FACE_PICTURE_MAX_W * FACE_PICTURE_MAX_H * 2]
 	ATTRIBUTE_ALIGN(32);
 static facePicture_t facePictures[FACE_PICTURE_SLOTS];
 static int facePictureCount;
 static bool facePictureTexelsFlushed;
 
-/* The cube's projection, doubled about frame pixel (x, y): what lands there
- * lands at the frame's top left instead, twice the size. */
+/* The cube's projection, scaled about frame pixel (x, y) by four across and
+ * two down: what lands there lands at the frame's top left instead. */
 static void facePictureProjection(Mtx44 projection, int x, int y)
 {
-	float shiftX = 1.0f - 4.0f * (float)x / glassEfbWidth;
+	float shiftX = 3.0f - 8.0f * (float)x / glassEfbWidth;
 	float shiftY = -1.0f + 4.0f * (float)y / glassEfbHeight;
 
 	for(int row = 0; row < 4; row++)
@@ -2640,7 +2650,7 @@ static void facePictureProjection(Mtx44 projection, int x, int y)
 			projection[row][column] = cubeProjection[row][column];
 	UIStage_Project(projection);
 	for(int column = 0; column < 4; column++) {
-		projection[0][column] = 2.0f * projection[0][column] + shiftX * projection[3][column];
+		projection[0][column] = 4.0f * projection[0][column] + shiftX * projection[3][column];
 		projection[1][column] = 2.0f * projection[1][column] + shiftY * projection[3][column];
 	}
 }
@@ -2651,7 +2661,7 @@ static void renderFacePictures(const uiSceneFrame_t *scene, float seconds,
 		const int icons[UI_HOME_FACE_COUNT])
 {
 	/* Static: the video thread's stack is small. */
-	static cubeRasterTransform_t raster, twice;
+	static cubeRasterTransform_t raster, fine;
 	float frameX = glassEfbWidth / 640.0f, frameY = glassEfbHeight / 480.0f;
 	Mtx44 projection;
 	Mtx identity;
@@ -2689,34 +2699,38 @@ static void renderFacePictures(const uiSceneFrame_t *scene, float seconds,
 		int x0 = (int)floorf(left) - 1, y0 = (int)floorf(top) - 1;
 		int width = ((int)ceilf(right) + 1 - x0 + 3) & ~3;
 		int height = ((int)ceilf(bottom) + 1 - y0 + 3) & ~3;
-		/* Off the frame's edge or too big for a slot: the strokes alone. */
+		/* Off the frame's edge, too big for a slot or for the corner it is
+		 * drawn in: the strokes alone. */
 		if(!seen || x0 < 0 || y0 < 0 || x0 + width > glassEfbWidth ||
 			y0 + height > glassEfbHeight || width > FACE_PICTURE_MAX_W ||
-			height > FACE_PICTURE_MAX_H) {
+			height > FACE_PICTURE_MAX_H || 4 * width > glassEfbWidth ||
+			2 * height > glassEfbHeight) {
 			continue;
 		}
 
 		facePicture_t *picture = &facePictures[facePictureCount];
-		twice = raster;
-		twice.scaleX *= 2.0f;
-		twice.scaleY *= 2.0f;
-		twice.motifAlpha[face] = 1.0f;
+		fine = raster;
+		fine.scaleX *= 4.0f;
+		fine.scaleY *= 2.0f;
+		fine.motifAlpha[face] = 1.0f;
 		if(!facePictureTexelsFlushed) {
 			DCFlushRange(facePictureTexels, sizeof(facePictureTexels));
 			facePictureTexelsFlushed = true;
 		}
 		/* The legacy backdrop image is already in the frame: a first copy
 		 * clears the corner to black (each copy clears what it read). */
-		GX_SetTexCopySrc(0, 0, (u16)(width * 2), (u16)(height * 2));
-		GX_SetTexCopyDst((u16)width, (u16)height, GX_TF_RGB565, GX_TRUE);
+		GX_SetTexCopySrc(0, 0, (u16)(width * 4), (u16)(height * 2));
+		GX_SetTexCopyDst((u16)(width * 2), (u16)height, GX_TF_RGB565, GX_TRUE);
 		GX_CopyTex(facePictureTexels[facePictureCount], GX_TRUE);
 		facePictureProjection(projection, x0, y0);
 		GX_LoadProjectionMtx(projection, GX_PERSPECTIVE);
-		GX_SetScissor(0, 0, (u32)width * 2u, (u32)height * 2u);
-		drawOneFaceIcon(&twice, face, icons[face], seconds, animated, clock, pad);
+		GX_SetScissor(0, 0, (u32)width * 4u, (u32)height * 2u);
+		drawOneFaceIcon(&fine, face, icons[face], seconds, animated, clock, pad);
 		GX_CopyTex(facePictureTexels[facePictureCount], GX_TRUE);
+		/* Two texels to a pixel across: a pixel's centre falls between two,
+		 * and the bilinear read averages them. */
 		GX_InitTexObj(&picture->texture, facePictureTexels[facePictureCount],
-			(u16)width, (u16)height, GX_TF_RGB565, GX_CLAMP, GX_CLAMP, GX_FALSE);
+			(u16)(width * 2), (u16)height, GX_TF_RGB565, GX_CLAMP, GX_CLAMP, GX_FALSE);
 		GX_InitTexObjLOD(&picture->texture, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f,
 			GX_FALSE, GX_FALSE, GX_ANISO_1);
 		picture->weight = weight;
@@ -3462,32 +3476,6 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	}
 }
 
-/* The light around the cube, drawn behind it: a wide halo, as if the key
- * light stood behind the glass, and a caustic where the glass focuses that
- * light on the floor inside its shadow. The caustic swells as a face turns
- * square to the light and the lens it makes is strongest. */
-static void drawCubeLight(const uiSceneFrame_t *scene, float seconds, bool animated)
-{
-	const float perUnit = 1.0f / tanf(21.0f * INDIGO_TAU / 360.0f) * 240.0f /
-		-CUBE_CAMERA_Z;
-	float strength = glassSceneStrength(scene);
-	float bob = animated ? sinf(seconds * 0.62f) * 0.035f : 0.0f;
-	float x = 320.0f + scene->cubeX * perUnit;
-	float y = 240.0f - (scene->cubeY + bob) * perUnit;
-	float radius = scene->cubeScale * perUnit;
-	float breath = animated ? 0.92f + 0.08f * sinf(seconds * 0.9f) : 1.0f;
-
-	if(strength <= 0.01f) return;
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
-	drawSoftGlow(x + radius * 0.16f, y - radius * 0.10f, radius * 2.35f, radius * 2.10f,
-		(GXColor) {138, 116, 255, 255}, 0.14f * strength * breath);
-	drawSoftGlow(x, y, radius * 1.42f, radius * 1.36f,
-		(GXColor) {172, 150, 255, 255}, 0.09f * strength * breath);
-	/* Spencer took the glow spot on the floor under the cube out
-	 * (2026-09-30): it added nothing. */
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-}
-
 static int layerColors[UI_COLOR_LAYERS];
 
 void IndigoBackground_SetColors(const int colors[UI_COLOR_LAYERS])
@@ -3542,7 +3530,6 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 		(GXColor) {3, 2, 12, (u8)(92.0f * orbitStrength)},
 		(GXColor) {3, 2, 12, 0});
 	if(scene->introProgress >= BOOT_CUBE_HANDOFF) {
-		drawCubeLight(scene, seconds, cubeMotionActive);
 		drawCube(scene, seconds, cubeMotionActive, clock, pad, icons, true);
 	}
 }

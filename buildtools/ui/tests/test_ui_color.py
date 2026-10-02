@@ -295,7 +295,7 @@ class MenuColorTest(unittest.TestCase):
                 "drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));",
                 "drawGlobeGrid(", "UIColor_Select(layerColors[UI_COLOR_LAYER_WAVES]);",
                 "drawSilkWaves(", "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);",
-                "if(!scene->visible) {", "drawRadialDisc(", "drawCubeLight(", "drawCube(scene,"):
+                "if(!scene->visible) {", "drawRadialDisc(", "drawCube(scene,"):
             at = draw.index(token, at) + 1
         self.assertEqual(draw.count("UIColor_Select("), 4)
         # The boot veil is the backdrop too; the cube under it is the menus'.

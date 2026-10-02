@@ -217,10 +217,12 @@ static void testGrid(void) {
         }
     }
 }
-/* Wave Speed: Normal keeps the menu's clock, and a change moves the waves at
- * the new pace from where they are. */
-static float waveSpeedSetting=1, waveSpeedApplied=1, waveClockOffset;
+/* Wave Speed: Normal keeps the menu's clock, a change moves the waves at the
+ * new pace from where they are, and the menu clock's wrap never jumps them. */
+#define WAVE_CLOCK_WRAP 6283.18530718f
+static float waveSpeedSetting=1, waveLastSeconds=-1, waveSeconds;
 /* WAVE CLOCK */
+static float wavePhase(float t) { return sinf(t*.031f)+sinf(t*.018f)+sinf(t*.052f)+sinf(t*.029f); }
 static void testWaveClock(void) {
     CHECK(closef(waveClock(10),10) && closef(waveClock(1035.75f),1035.75f),
         "Normal Wave Speed moved the waves off the menu clock");
@@ -230,9 +232,16 @@ static void testWaveClock(void) {
     IndigoBackground_SetWaveSpeed(.5f);
     CHECK(closef(waveClock(1036.75f),1038.75f) && closef(waveClock(1038.75f),1039.75f),
         "Slow is not half the pace");
+    /* Slow across the menu clock's wrap: the waves move on by half the step. */
+    float before=waveClock(6283.0f), phase=wavePhase(before);
+    float after=waveClock(0.1f);
+    CHECK(fabsf(after-before-.5f*(.1f+WAVE_CLOCK_WRAP-6283.0f))<.01f ||
+        fabsf(after+WAVE_CLOCK_WRAP-before-.5f*(.1f+WAVE_CLOCK_WRAP-6283.0f))<.01f,
+        "the menu clock's wrap made the waves jump");
+    CHECK(fabsf(wavePhase(after)-phase)<.01f,"wave phase jumped at the wrap");
     IndigoBackground_SetWaveSpeed(1);
-    CHECK(closef(waveClock(1038.75f),1039.75f) && closef(waveClock(1040.75f),1041.75f),
-        "back to Normal jumped or kept the old pace");
+    float now=waveClock(0.1f);
+    CHECK(closef(waveClock(2.1f),now+2),"back to Normal kept the old pace");
 }
 int main(void) {
     testWaves(); testGrid(); testWaveClock();

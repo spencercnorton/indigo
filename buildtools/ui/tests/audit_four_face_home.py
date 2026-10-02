@@ -552,7 +552,7 @@ dispatch = extract_function(INDIGO, "static void drawOneFaceIcon(")
 # Four icons per face, in face order; a face's choice picks one of its own.
 # drawFaceIcons and the turned faces' pictures both draw through it.
 assert "drawOneFaceIcon(raster, face, choices[face]" in extract_function(INDIGO, "static void drawFaceIcons(")
-assert "drawOneFaceIcon(&twice, face, icons[face]" in extract_function(INDIGO, "static void renderFacePictures(")
+assert "drawOneFaceIcon(&fine, face, icons[face]" in extract_function(INDIGO, "static void renderFacePictures(")
 assert "switch(face * UI_HOME_ICON_CHOICES + choice) {" in dispatch
 for icon, name in (("CONTROLLER", "Controller"), ("BOOKS", "Books"), ("COVERS", "Covers"),
 		("PLAY", "Play"), ("HUB", "Hub"), ("DISC", "Disc"), ("SD_CARD", "SdCard"),
