@@ -75,6 +75,9 @@ TEXT_LEVEL = 160          # label text is bright; the waves behind it are not
 SAME, DIFFERENT = 0.85, 0.5  # intersection over union of two label masks
 BOOT_SECONDS = 120
 SETTLE_SECONDS = 10
+# Library Folders: how long the route holds a press that opens or leaves a
+# folder (library_folders).
+FOLDER_PRESS_SECONDS = 0.5
 FATAL = re.compile("|".join((
     r"(?:DSI|ISI|Program|Machine Check|Alignment) Exception", r"Unhandled exception",
     r"Segmentation fault", r"core dumped", r"\bPANIC\b", r"ASSERT(?:ION)? FAILED",
@@ -541,22 +544,26 @@ class Route:
         self.shot("folders-games", self.last_rgb)
         self.check("the Library shows a folder's name", stray is not None)
         # Old saves is empty: it opens in the Library with only the way back,
-        # and B comes back to its card (Swiss's list would go Home).
-        self.press("A")
+        # and B comes back to its card (Swiss's list would go Home). The
+        # presses that open or leave a folder are held: the Library is still
+        # reading covers then, and on a slow, busy machine a tap can fall
+        # between two of its pad reads. Indigo waits for the release after a
+        # folder changes, so a held press acts once.
+        self.pad.press("A", FOLDER_PRESS_SECONDS)
         empty, _ = self.settled_label(unlike=stray, box=TITLE_BOX)
         self.shot("folders-empty", self.last_rgb)
         self.check("an empty folder opens with only the way back", empty is not None)
-        self.press("B")
+        self.pad.press("B", FOLDER_PRESS_SECONDS)
         self.check("B comes back to the empty folder's card",
                    self.settled_label(like=stray, box=TITLE_BOX)[0] is not None)
         self.press("RIGHT")
         racing, _ = self.settled_label(unlike=stray, box=TITLE_BOX)
         self.check("RIGHT moves to the next folder", racing is not None)
-        self.press("A")
+        self.pad.press("A", FOLDER_PRESS_SECONDS)
         classics, _ = self.settled_label(unlike=racing, box=TITLE_BOX)
         self.shot("folders-racing", self.last_rgb)
         self.check("A opens a folder", classics is not None)
-        self.press("A")
+        self.pad.press("A", FOLDER_PRESS_SECONDS)
         first, _ = self.settled_label(unlike=classics, box=TITLE_BOX)
         self.shot("folders-classics", self.last_rgb)
         self.check("A opens a folder in it", first is not None)
@@ -572,11 +579,11 @@ class Route:
         self.check("a third RIGHT is back at the first card",
                    self.settled_label(like=first, box=TITLE_BOX)[0] is not None)
         for name, expected in (("Classics", classics), ("Racing", racing)):
-            self.press("B")
+            self.pad.press("B", FOLDER_PRESS_SECONDS)
             back, _ = self.settled_label(like=expected, box=TITLE_BOX)
             self.shot(f"folders-back-to-{name.lower()}", self.last_rgb)
             self.check("B goes up a folder, to the same card", back is not None, card=name)
-        self.press("B")
+        self.pad.press("B", FOLDER_PRESS_SECONDS)
         mask, _ = self.settled_label(like=library)
         self.shot("folders-home", self.last_rgb)
         self.check("B from /games goes Home", mask is not None, library_folders="on")
