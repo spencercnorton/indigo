@@ -54,8 +54,10 @@ int UIColor_Layer(int setting, int menuColor)
 }
 
 /* Tuned by eye on Spencer's TV (2026-09-30: "not nearly as dark as it
- * should be"); lower is blacker. */
-#define JET_BLACK_BACKDROP_SHADE 0.35f
+ * should be"); lower is blacker. 2026-10-02: at 0.35 the wash's brightest
+ * corner, the bottom right, still read as a grey cloud; 0.28 takes its
+ * grey from 10 to 7 and the top left's from 3 to 2. */
+#define JET_BLACK_BACKDROP_SHADE 0.28f
 
 float UIColor_BackdropShade(int color)
 {
