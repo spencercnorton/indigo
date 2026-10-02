@@ -58,6 +58,10 @@ The cube is clear glass, and it treats light the way glass does:
   icons stay sharp on top of the glass. Every face shows its icon, moving,
   as the cube turns: the faces to either side show theirs too, narrowed by
   the angle.
+- **Its icons stand off it.** The face you are on lifts its icon a little off
+  the glass, so the icon shifts against the glass as the cube turns and
+  sways, and casts a soft shadow on it, down and to the left, away from the
+  light. The faces to either side keep their icons down on the glass.
 
 Every part follows your [Menu Color](personalize.md), except the prism's
 fringes, which keep their own colors. With UI Motion set
