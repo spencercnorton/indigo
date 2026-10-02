@@ -26,6 +26,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
   thinnest lines keep their light, without breaking into fragments, fading
   out or flickering as the cube sways. Mostly horizontal icons, such as
   Settings' sliders, still look narrow on a face seen nearly edge-on.
+- A slanted line on a face seen nearly edge-on, such as the clock's minute
+  hand at ten to the hour, no longer disappears at some angles as the cube
+  sways. Its corners were too sharp for its soft edge, and it was skipped;
+  it is drawn plain now.
 - The halo around the Home cube is gone, as the glow spot under it went in
   2.2.
 - The CPU temperature holds steady. The console's sensor reads in 4 degree

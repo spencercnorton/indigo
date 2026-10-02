@@ -219,6 +219,26 @@ static void test_motifs(void) {
     for(int i=0;i<4;i++) area+=positions[i].x*positions[(i+1)%4].y-
         positions[(i+1)%4].x*positions[i].y;
     CHECK(area<0,"subpixel core inverted");
+    /* The clock's minute hand at ten to the hour on a face turned 60 to 78
+     * degrees, still toward the camera, at the 4x by 2x scale the side-face
+     * pictures draw at: some of these turns make its corners too sharp to
+     * mitre, and it keeps its outline instead of vanishing. */
+    r.scaleX=4*625.221f; r.scaleY=2*625.221f;
+    for(int angle=60;angle<=78;angle+=2) {
+        float yaw=angle*INDIGO_TAU/360,c=cosf(yaw),s=sinf(yaw);
+        guMtxIdentity(r.model);
+        r.model[0][0]=c; r.model[0][2]=s; r.model[2][0]=-s; r.model[2][2]=c;
+        r.model[2][3]=-5.4f;
+        reset(false); GX_Begin(GX_QUADS,0,20);
+        putSemanticFaceHand(&r,UI_HOME_FACE_LIBRARY,-0.8660254f,0.5f,0.49f,0.027f,0.055f,
+            1.012f,(GXColor){255,255,255,200});
+        GX_End();
+        float hand=0;
+        for(int i=0;i<4;i++) hand+=positions[i].x*positions[(i+1)%4].y-
+            positions[(i+1)%4].x*positions[i].y;
+        CHECK(alphas[0] && alphas[1] && hand<0,"an edge-on slanted hand vanished");
+    }
+    r.scaleX=r.scaleY=625.221f;
     clock.available=false;
     float yaw=INDIGO_TAU*0.25f;
     r.model[0][0]=cosf(yaw); r.model[0][2]=sinf(yaw);
@@ -1011,6 +1031,7 @@ class StrokeGXStreamTests(unittest.TestCase):
             "opaque semantic fringe": ("transparent.a = 0;", "transparent.a = color.a;"),
             "wrong face winding": ("area >= -0.001f", "area <= -0.001f"),
             "subpixel brightness": ("fminf(1.0f, clearance * 2.0f)", "1.0f"),
+            "edge-on stroke vanishes": ("&joins[i])) sharp = true;", "&joins[i])) goto hidden;"),
             "degenerate vertex count": ("i < 20;", "i < 19;"),
             "outward silhouette normal": ("{-inward.x, -inward.y}", "{inward.x, inward.y}"),
             "opaque silhouette fringe": ("transparentA.a = transparentB.a = 0;",

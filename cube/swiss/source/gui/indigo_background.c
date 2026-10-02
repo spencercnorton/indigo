@@ -898,6 +898,7 @@ static void putSemanticMotifQuad(const cubeRasterTransform_t *raster, int face,
 	guVector eyes[4];
 	indigoPoint_t points[4], joins[4], center = {0.0f, 0.0f};
 	float area = 0.0f, clearance = 1000.0f;
+	bool sharp = false;
 	for(int i = 0; i < 4; i++) {
 		guVector point = semanticFacePoint(raster, face, corners[i].x, corners[i].y, plane);
 		if(!projectRailPoint(raster, point.x, point.y, point.z,
@@ -917,7 +918,10 @@ static void putSemanticMotifQuad(const cubeRasterTransform_t *raster, int face,
 		float dx = points[next].x - points[i].x;
 		float dy = points[next].y - points[i].y;
 		float length = sqrtf(dx * dx + dy * dy);
-		if(!railJoin(points[(i + 3) % 4], points[i], points[next], &joins[i])) goto hidden;
+		if(length < 0.001f) goto hidden;
+		/* A slanted stroke on a face seen nearly edge-on, such as the clock's
+		 * minute hand on a side face, has corners too sharp to mitre. */
+		if(!railJoin(points[(i + 3) % 4], points[i], points[next], &joins[i])) sharp = true;
 		float distance = fabsf(dx * (center.y - points[i].y) -
 			dy * (center.x - points[i].x)) / length;
 		if(distance < clearance) clearance = distance;
@@ -926,7 +930,15 @@ static void putSemanticMotifQuad(const cubeRasterTransform_t *raster, int face,
 	 * retain area through alpha instead of inverting their inner polygon. */
 	float inset = fminf(0.5f, clearance * 0.5f);
 	float outside = 1.0f - inset;
-	color.a = (u8)((float)color.a * fminf(1.0f, clearance * 2.0f));
+	if(sharp) {
+		/* Its exact outline instead, unfeathered and at full strength: the
+		 * rasterizer's coverage is its brightness, and a turned face is drawn
+		 * as a supersampled picture (renderFacePictures), which smooths it. */
+		for(int i = 0; i < 4; i++) joins[i] = (indigoPoint_t) {0.0f, 0.0f};
+	}
+	else {
+		color.a = (u8)((float)color.a * fminf(1.0f, clearance * 2.0f));
+	}
 	GXColor transparent = color;
 	transparent.a = 0;
 	for(int i = 0; i < 4; i++) {
