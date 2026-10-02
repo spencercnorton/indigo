@@ -131,6 +131,8 @@ run_contracts() {
 	python3 ./test_gameflow_layout_mutants.py
 	echo "== cube orientation and visible face binding =="
 	python3 ./test_cube_render_pose.py
+	echo "== frame budget: what one frame of each scene costs the console =="
+	python3 ./test_frame_budget.py
 	echo "== settings files: real parser/writer vs docs/SETTINGS.md =="
 	python3 ./test_settings_file.py
 	echo "== settings views: every setting in exactly one view =="
