@@ -67,10 +67,12 @@ jobs:
               echo "| \`${file#dist/}\` | $(wc -c < "$file") | \`$(sha256sum "$file" | cut -c1-64)\` |"
             done
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Build the emulator test's probe
+      - name: Build the emulator test's programs
         run: |
           make -C buildtools/ui/emulator/probe
           cp buildtools/ui/emulator/probe/probe.dol dist/probe.dol
+          make -C buildtools/ui/emulator/aesnd
+          cp buildtools/ui/emulator/aesnd/aesnd.dol dist/aesnd.dol
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: indigo-sd-card-${{ github.sha }}
@@ -83,6 +85,7 @@ jobs:
           path: |
             dist/swiss.dol
             dist/probe.dol
+            dist/aesnd.dol
             dist/provenance.json
             dist/tags.txt
           if-no-files-found: error
@@ -140,8 +143,9 @@ jobs:
           # from this build's zip, as someone sets one up; gcloader from such a
           # card in a GC Loader, which serves the game from its fragments.
           - { name: Emulator, route: smoke, region: pal, cable: composite, storage: dvd, artifact: emulator }
+          # It also stops the menu's audio hundreds of times (aesnd_test.py).
           - { name: "Emulator (game, PAL, component)", route: game, region: pal, cable: component,
-              storage: dvd, artifact: emulator-game-pal-component }
+              storage: dvd, aesnd: true, artifact: emulator-game-pal-component }
           # The GC Loader smoke job's card starts with settings/non-default.ini;
           # the game jobs' cards are new, so they start in Settings.
           - { name: "Emulator (smoke, NTSC, component, GC Loader)", route: smoke, region: ntsc,
@@ -193,6 +197,9 @@ jobs:
             set -- "$@" --sd-faults "$SD_FAULTS"
           fi
           python3 buildtools/ui/emulator/run.py build/swiss.dol "$@" --out emulator
+      - name: Stop the menu's audio hundreds of times
+        if: matrix.aesnd
+        run: python3 buildtools/ui/emulator/aesnd_test.py build/aesnd.dol --out emulator/aesnd
       - name: Summary
         if: always()
         run: cat emulator/summary.md >> "$GITHUB_STEP_SUMMARY" || true

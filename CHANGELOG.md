@@ -20,6 +20,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- CI stops the menu's audio 300 times with the menu's own code
+  (`aesnd_reset_safely`, `buildtools/ui/emulator/aesnd/`), so the launch
+  freeze it fixed can't come back unseen.
 - CI saves settings to a card whose writes fail, boots it again and checks
   the settings still load in their colours, and its smoke job with every
   setting changed now runs on a GC Loader.
