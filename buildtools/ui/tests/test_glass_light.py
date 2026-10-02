@@ -134,7 +134,7 @@ static void pose(cubeRasterTransform_t *r,float yaw,float pitch,float roll,float
     r->model[2][3]=CUBE_CAMERA_Z;
     r->scaleX=r->scaleY=625.2f;
 }
-static const glassRefraction_t glass0={320,240,36,0.045f,0.17f,1.0f/640,1.0f/480,{128,125,134,255}};
+static const glassRefraction_t glass0={320,240,36,0.045f,0.17f,1.0f/640,1.0f/480,0,0,{128,125,134,255}};
 static bool near(float a,float b,float e) { return fabsf(a-b)<=e; }
 static void test_vertex_optics(void) {
     cubeRasterTransform_t r; glassRefractedVertex_t out;
@@ -353,15 +353,29 @@ static void test_studio(void) {
 }
 static void test_copy(void) {
     glassEfbWidth=640; glassEfbHeight=480; flushes=copies=0;
-    CHECK(glassCopyFrame() && copies==1 && flushes==1,"first copy");
+    /* The whole frame: the frame at half size. */
+    CHECK(glassCopyFrame(0,0,640,480) && copies==1 && flushes==1,"first copy");
     CHECK(copyL==0 && copyT==0 && copyW==640 && copyH==480 && dstW==320 && dstH==240,"copy is not the frame at half size");
     CHECK(dstFmt==GX_TF_RGBA8 && dstMip==GX_TRUE && clearFlag==GX_FALSE,"copy format, filter or clear");
-    CHECK(glassCopyFrame() && copies==2 && flushes==1,"the buffer was flushed again");
-    CHECK(near(glassCopyS()*640,1,1e-6f) && near(glassCopyT()*480,1,1e-6f),"copy coordinates");
+    CHECK(glassCopyFrame(0,0,640,480) && copies==2 && flushes==1,"the buffer was flushed again");
+    CHECK(near(glassCopyS()*640,1,1e-6f) && near(glassCopyT()*480,1,1e-6f) &&
+        glassCopyS0()==0 && glassCopyT0()==0,"copy coordinates");
+    /* Part of the frame: corners snap out to 8 pixels, so each texel holds
+     * the same four pixels as in the whole-frame copy, and a frame point
+     * lands on the same place in both. */
+    CHECK(glassCopyFrame(101.5f,203.2f,250.0f,330.9f),"part of the frame");
+    CHECK(copyL==96 && copyT==200 && copyW%8==0 && copyH%8==0,"copy corners not on 8-pixel steps");
+    CHECK(copyL+copyW>=251 && copyT+copyH>=331,"copy cut the box short");
+    float s=130*glassCopyS()-glassCopyS0(), t=300*glassCopyT()-glassCopyT0();
+    CHECK(near(s*dstW,(130-copyL)/2.0f,1e-3f) && near(t*dstH,(300-copyT)/2.0f,1e-3f),
+        "a frame point moved in the copy");
+    /* Past the frame's edges, it stops at them. */
+    CHECK(glassCopyFrame(-50,-20,700,600) && copyL==0 && copyT==0 && copyW==640 && copyH==480,
+        "copy left the frame");
     glassEfbHeight=574;
-    CHECK(glassCopyFrame() && dstH==284 && copyH==568,"odd heights must stay tile-aligned");
+    CHECK(glassCopyFrame(0,0,640,480) && dstH==284 && copyH==568,"odd heights must stay tile-aligned");
     CHECK(glassCopyT()*480>1.0f,"copy coordinates ignore the cropped rows");
-    glassEfbHeight=6; CHECK(!glassCopyFrame(),"a tiny frame was copied");
+    glassEfbHeight=6; CHECK(!glassCopyFrame(0,0,640,480),"a tiny frame was copied");
     (void)texels;
 }
 static void test_scene_strength(void) {
@@ -449,6 +463,7 @@ FUNCTIONS = [
     "static guVector glassSidePoint(", "static guVector glassGridPoint(",
     "static void glassFanPoint(", "static float glassSceneStrength(", "static bool glassCopyFrame(",
     "static float glassCopyS(", "static float glassCopyT(",
+    "static float glassCopyS0(", "static float glassCopyT0(",
     "static void refractGlassVertex(", "static void putGlassRefractedVertex(",
     "static void drawGlassRefraction(", "static void drawSoftGlow(",
     "static void drawGlassRim(",
@@ -506,7 +521,7 @@ class GlassLightTests(unittest.TestCase):
         order = [draw.index(token) for token in (
             "drawCubeSurfacePass(&raster, &shellOutline, shell, 6, GX_CULL_FRONT);",
             "drawFacePolygon(&raster, face, pane, 4, 0.86f,",
-            "refract = screenGlass && strength > 0.01f && glassCopyFrame();",
+            "refract = screenGlass && strength > 0.01f && shellOutline.count >= 3 &&",
             "drawGlassRefraction(&raster, &glass, corners, 8, 3, outer);\n\t\t\trestoreCubeRaster();",
             "litCubeTints(&raster, frontGlassColors, lit);",
             "setupGlassReflectionPipeline(",
@@ -582,7 +597,7 @@ class GlassLightTests(unittest.TestCase):
             "the bloom must screen, not add: added, a face turning through the light burns white")
         self.assertIn("glow.b = (u8)(glow.b * strength + 0.5f);", bloom,
             "a screen has no source alpha: the strength must ride in the glow colour")
-        self.assertLess(bloom.index("glassCopyFrame()"), bloom.index("GX_Begin("))
+        self.assertLess(bloom.index("glassCopyFrame(UIStage_FrameX(left)"), bloom.index("GX_Begin("))
         self.assertIn("setupRasterPipeline();\n}", bloom, "bloom left its TEV stages behind")
         frame = (GUI / "FrameBufferMagic.c").read_text()
         background = extract_function(frame, "static void _DrawBackground(")
@@ -621,7 +636,8 @@ class GlassLightTests(unittest.TestCase):
                 "GX_SetTexCopyDst(width, height, GX_TF_RGBA8, GX_FALSE);"),
             "no cache write-back": ("\t\tDCFlushRange(glassTexels, sizeof(glassTexels));\n", ""),
             "flush every frame": ("\t\tglassTexelsFlushed = true;\n", ""),
-            "untiled height": ("(u16)((glassEfbHeight / 2u) & ~3u)", "(u16)(glassEfbHeight / 2u)"),
+            "untiled height": ("if(y1 > (int)(glassEfbHeight & ~7u)) y1 = (int)(glassEfbHeight & ~7u);",
+                "if(y1 > (int)glassEfbHeight) y1 = (int)glassEfbHeight;"),
             "hard glow edge": ("{1.0f, 0.74f, 0.30f, 0.0f}", "{1.0f, 0.74f, 0.30f, 0.1f}"),
             "open glow ring": ("for(int i = 0; i <= RADIAL_SEGMENTS; i++) {\n\t\t\tputVertex((indigoPoint_t) {x + radiusX * ring",
                 "for(int i = 0; i < RADIAL_SEGMENTS; i++) {\n\t\t\tputVertex((indigoPoint_t) {x + radiusX * ring"),

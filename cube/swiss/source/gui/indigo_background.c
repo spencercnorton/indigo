@@ -2467,6 +2467,8 @@ static u16 glassEfbWidth = 640;
 static u16 glassEfbHeight = 480;
 static u16 glassCopyWidth;
 static u16 glassCopyHeight;
+static u16 glassCopyLeft;
+static u16 glassCopyTop;
 static bool glassTexelsFlushed;
 
 void IndigoBackground_SetFramebuffer(u16 width, u16 height)
@@ -2483,6 +2485,8 @@ typedef struct glassRefraction {
 	float dispersion;
 	float sScale;
 	float tScale;
+	float sOffset;
+	float tOffset;
 	GXColor tint; /* its alpha is the layer's opacity */
 } glassRefraction_t;
 
@@ -2507,19 +2511,36 @@ static float glassSceneStrength(const uiSceneFrame_t *scene)
  * it holds exactly what the frame shows at this point. The CPU never reads
  * the texels; their cache lines are written back once, before the GPU first
  * writes the buffer, so no stale line can later overwrite a copy. */
-static bool glassCopyFrame(void)
+/* Copies the part of the frame the glass samples: the box (frame pixels,
+ * 640 x 480 units) halved by the box filter. Its corners snap outward to
+ * 8 EFB pixels, so every texel averages the same four pixels as it would
+ * in a copy of the whole frame, and the copy stays in whole 4x4 tiles.
+ * glassCopyLeft and glassCopyTop keep where it starts, in EFB pixels. */
+static bool glassCopyFrame(float left, float top, float right, float bottom)
 {
-	u16 width = (u16)((glassEfbWidth / 2u) & ~3u);
-	u16 height = (u16)((glassEfbHeight / 2u) & ~3u);
+	float sx = (float)glassEfbWidth / 640.0f, sy = (float)glassEfbHeight / 480.0f;
+	int x0, y0, x1, y1;
+	u16 width, height;
 
-	if(width < 4u || height < 4u) return false;
+	left = left < 0.0f ? 0.0f : left * sx;
+	top = top < 0.0f ? 0.0f : top * sy;
+	right = right * sx; bottom = bottom * sy;
+	x0 = (int)left & ~7;
+	y0 = (int)top & ~7;
+	x1 = ((int)right + 8) & ~7;
+	y1 = ((int)bottom + 8) & ~7;
+	if(x1 > (int)(glassEfbWidth & ~7u)) x1 = (int)(glassEfbWidth & ~7u);
+	if(y1 > (int)(glassEfbHeight & ~7u)) y1 = (int)(glassEfbHeight & ~7u);
+	if(x1 - x0 < 8 || y1 - y0 < 8) return false;
+	width = (u16)((x1 - x0) / 2);
+	height = (u16)((y1 - y0) / 2);
 	if(width > GLASS_COPY_MAX_W) width = GLASS_COPY_MAX_W;
 	if(height > GLASS_COPY_MAX_H) height = GLASS_COPY_MAX_H;
 	if(!glassTexelsFlushed) {
 		DCFlushRange(glassTexels, sizeof(glassTexels));
 		glassTexelsFlushed = true;
 	}
-	GX_SetTexCopySrc(0, 0, (u16)(width * 2u), (u16)(height * 2u));
+	GX_SetTexCopySrc((u16)x0, (u16)y0, (u16)(width * 2u), (u16)(height * 2u));
 	GX_SetTexCopyDst(width, height, GX_TF_RGBA8, GX_TRUE);
 	GX_CopyTex(glassTexels, GX_FALSE);
 	GX_PixModeSync();
@@ -2531,11 +2552,14 @@ static bool glassCopyFrame(void)
 	GX_LoadTexObj(&glassTexObj, GX_TEXMAP0);
 	glassCopyWidth = width;
 	glassCopyHeight = height;
+	glassCopyLeft = (u16)x0;
+	glassCopyTop = (u16)y0;
 	return true;
 }
 
-/* Texture coordinates of a frame point (640 x 480 units) in the copy;
- * UIStage_FrameX takes a stage x there. */
+/* Texture coordinates of a frame point (640 x 480 units) in the copy: the
+ * point times the scale, less the offset; UIStage_FrameX takes a stage x
+ * there. */
 static float glassCopyS(void)
 {
 	return (float)glassEfbWidth / (float)(glassCopyWidth * 2u) / 640.0f;
@@ -2544,6 +2568,16 @@ static float glassCopyS(void)
 static float glassCopyT(void)
 {
 	return (float)glassEfbHeight / (float)(glassCopyHeight * 2u) / 480.0f;
+}
+
+static float glassCopyS0(void)
+{
+	return (float)glassCopyLeft / (float)(glassCopyWidth * 2u);
+}
+
+static float glassCopyT0(void)
+{
+	return (float)glassCopyTop / (float)(glassCopyHeight * 2u);
 }
 
 /* Vertex color back to the only TEV input: the state every cube pass and
@@ -2642,8 +2676,8 @@ static void refractGlassVertex(const cubeRasterTransform_t *raster,
 	UIColor_Apply(&out->color.r, &out->color.g, &out->color.b);
 	for(int channel = 0; channel < 3; channel++) {
 		float k = 1.0f + glass->dispersion * (float)(channel - 1);
-		out->s[channel] = UIStage_FrameX(bx + ox * k) * glass->sScale;
-		out->t[channel] = (by + oy * k) * glass->tScale;
+		out->s[channel] = UIStage_FrameX(bx + ox * k) * glass->sScale - glass->sOffset;
+		out->t[channel] = (by + oy * k) * glass->tScale - glass->tOffset;
 	}
 }
 
@@ -2826,11 +2860,16 @@ static void drawGlassBloom(float left, float top, float right, float bottom,
 		{0.0f, 0.0f}, {-3.0f, -2.0f}, {3.0f, -2.0f}, {-3.0f, 2.0f}, {3.0f, 2.0f}
 	};
 	GXColor glow = {220, 208, 255, 255};
-	float sScale, tScale;
+	float sScale, tScale, sOffset, tOffset;
 
-	if(strength <= 0.01f || !glassCopyFrame()) return;
+	/* The taps reach 3 texels (6 pixels) round each point, and bilinear
+	 * filtering one more. */
+	if(strength <= 0.01f || !glassCopyFrame(UIStage_FrameX(left) - 12.0f,
+		top - 12.0f, UIStage_FrameX(right) + 12.0f, bottom + 12.0f)) return;
 	sScale = glassCopyS();
 	tScale = glassCopyT();
+	sOffset = glassCopyS0();
+	tOffset = glassCopyT0();
 	left = fmaxf(UIStage_Left(), left); top = fmaxf(0.0f, top);
 	right = fminf(UIStage_Right(), right); bottom = fminf(480.0f, bottom);
 	if(right - left < 2.0f || bottom - top < 2.0f) return;
@@ -2890,31 +2929,34 @@ static void drawGlassBloom(float left, float top, float right, float bottom,
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
 		GX_Position3f32(left, top, 0.0f);
 		GX_Color4u8(glow.r, glow.g, glow.b, glow.a);
-		GX_TexCoord2f32(UIStage_FrameX(left) * sScale, top * tScale);
+		GX_TexCoord2f32(UIStage_FrameX(left) * sScale - sOffset, top * tScale - tOffset);
 		GX_Position3f32(right, top, 0.0f);
 		GX_Color4u8(glow.r, glow.g, glow.b, glow.a);
-		GX_TexCoord2f32(UIStage_FrameX(right) * sScale, top * tScale);
+		GX_TexCoord2f32(UIStage_FrameX(right) * sScale - sOffset, top * tScale - tOffset);
 		GX_Position3f32(right, bottom, 0.0f);
 		GX_Color4u8(glow.r, glow.g, glow.b, glow.a);
-		GX_TexCoord2f32(UIStage_FrameX(right) * sScale, bottom * tScale);
+		GX_TexCoord2f32(UIStage_FrameX(right) * sScale - sOffset, bottom * tScale - tOffset);
 		GX_Position3f32(left, bottom, 0.0f);
 		GX_Color4u8(glow.r, glow.g, glow.b, glow.a);
-		GX_TexCoord2f32(UIStage_FrameX(left) * sScale, bottom * tScale);
+		GX_TexCoord2f32(UIStage_FrameX(left) * sScale - sOffset, bottom * tScale - tOffset);
 	GX_End();
 	setupRasterPipeline();
 }
 
-/* The cube's silhouette lies wholly left or right of the stage. */
-static bool cubeOffStage(const cubeOutline_t *outline)
+/* The silhouette's box: stage x, frame y. */
+static void cubeOutlineBox(const cubeOutline_t *outline, float *left, float *top,
+		float *right, float *bottom)
 {
-	float left = 1e9f, right = -1e9f;
-	if(outline->count < 3) return false;
+	*left = *top = 1e9f;
+	*right = *bottom = -1e9f;
 	for(int i = 0; i < outline->count; i++) {
 		float x = 320.0f + outline->point[i].x;
-		if(x < left) left = x;
-		if(x > right) right = x;
+		float y = 240.0f - outline->point[i].y;
+		if(x < *left) *left = x;
+		if(x > *right) *right = x;
+		if(y < *top) *top = y;
+		if(y > *bottom) *bottom = y;
 	}
-	return right <= UIStage_Left() || left >= UIStage_Right();
 }
 
 static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
@@ -2945,6 +2987,7 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 		{-0.72f, -0.72f}, {-0.72f, 0.72f}, {0.72f, 0.72f}, {0.72f, -0.72f}
 	};
 	cubeOutline_t shellOutline;
+	float boxLeft, boxTop, boxRight, boxBottom;
 	const float outer = 1.0f;
 	const float inset = 0.78f;
 	float strength = glassSceneStrength(scene);
@@ -2966,7 +3009,9 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	buildChamferStrips(bevels, outer, inset, rear, lit);
 	buildCornerFans(fans, outer, inset, rear, lit);
 	buildCubeOutline(&raster, shell, &shellOutline);
-	if(cubeOffStage(&shellOutline)) {
+	cubeOutlineBox(&shellOutline, &boxLeft, &boxTop, &boxRight, &boxBottom);
+	if(shellOutline.count >= 3 &&
+		(boxRight <= UIStage_Left() || boxLeft >= UIStage_Right())) {
 		/* Parked beside the stage (Grid and Spotlight in 4:3): none of it
 		 * shows. The Library emblem still follows the pad. */
 		controllerPose_t pose;
@@ -3008,7 +3053,9 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	 * into colour where the bend is strongest, with a faint indigo body. The
 	 * front tint, near bevels, reflections and icons then sit on the glass,
 	 * sharp. */
-	refract = screenGlass && strength > 0.01f && glassCopyFrame();
+	refract = screenGlass && strength > 0.01f && shellOutline.count >= 3 &&
+		glassCopyFrame(UIStage_FrameX(boxLeft) - 16.0f, boxTop - 16.0f,
+			UIStage_FrameX(boxRight) + 16.0f, boxBottom + 16.0f);
 	{
 		float radius = raster.scaleY * scene->cubeScale / -CUBE_CAMERA_Z;
 		glassRefraction_t glass = {
@@ -3016,6 +3063,7 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 			240.0f - raster.model[1][3] * raster.scaleY / -raster.model[2][3],
 			0.46f * radius, 0.05f, 0.24f,
 			refract ? glassCopyS() : 0.0f, refract ? glassCopyT() : 0.0f,
+			refract ? glassCopyS0() : 0.0f, refract ? glassCopyT0() : 0.0f,
 			/* The layer fades in with the boot's light, never all at once. */
 			{116, 110, 140, (u8)(255.0f * glassSmoothstep(BOOT_CUBE_HANDOFF, 1.0f,
 				scene->introProgress) + 0.5f)}
@@ -3061,15 +3109,8 @@ static void drawCube(const uiSceneFrame_t *scene, float seconds, bool animated,
 	 * them hard to read), then the rim. */
 	bool light = strength > 0.01f && shellOutline.count >= 3;
 	if(light && screenGlass) {
-		float left = 640.0f, top = 480.0f, right = 0.0f, bottom = 0.0f;
-		for(int i = 0; i < shellOutline.count; i++) {
-			float x = 320.0f + shellOutline.point[i].x;
-			float y = 240.0f - shellOutline.point[i].y;
-			left = fminf(left, x); right = fmaxf(right, x);
-			top = fminf(top, y); bottom = fmaxf(bottom, y);
-		}
-		drawGlassBloom(left - 28.0f, top - 28.0f, right + 28.0f, bottom + 28.0f,
-			0.78f * strength);
+		drawGlassBloom(boxLeft - 28.0f, boxTop - 28.0f, boxRight + 28.0f,
+			boxBottom + 28.0f, 0.78f * strength);
 		loadCubeProjection();
 		restoreCubeRaster();
 	}
