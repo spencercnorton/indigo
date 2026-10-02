@@ -1,0 +1,167 @@
+{
+ "boot-handoff": {
+  "begins": 86,
+  "copy_pixels": 0,
+  "hash": "9e3317e4eaef1a3d",
+  "minmax": 297,
+  "scene": "boot-handoff",
+  "sqrtf": 0,
+  "state": 147,
+  "trig": 538,
+  "vertices": 5202
+ },
+ "hint-round-rect": {
+  "begins": 2,
+  "copy_pixels": 0,
+  "hash": "4517a6d389ee715e",
+  "minmax": 0,
+  "scene": "hint-round-rect",
+  "sqrtf": 29,
+  "state": 0,
+  "trig": 0,
+  "vertices": 88
+ },
+ "home-library": {
+  "begins": 110,
+  "copy_pixels": 200832,
+  "hash": "e848c7e55ee80846",
+  "minmax": 289,
+  "scene": "home-library",
+  "sqrtf": 0,
+  "state": 322,
+  "trig": 545,
+  "vertices": 6266
+ },
+ "home-settings": {
+  "begins": 74,
+  "copy_pixels": 200832,
+  "hash": "63d861c4e5e22d90",
+  "minmax": 283,
+  "scene": "home-settings",
+  "sqrtf": 0,
+  "state": 322,
+  "trig": 37,
+  "vertices": 4216
+ },
+ "home-source": {
+  "begins": 72,
+  "copy_pixels": 200832,
+  "hash": "1a5269f7be458c52",
+  "minmax": 292,
+  "scene": "home-source",
+  "sqrtf": 0,
+  "state": 322,
+  "trig": 37,
+  "vertices": 4272
+ },
+ "home-system": {
+  "begins": 72,
+  "copy_pixels": 205952,
+  "hash": "755cf16733cd3011",
+  "minmax": 296,
+  "scene": "home-system",
+  "sqrtf": 0,
+  "state": 322,
+  "trig": 37,
+  "vertices": 4312
+ },
+ "home-turning": {
+  "begins": 105,
+  "copy_pixels": 200832,
+  "hash": "63a80157eb5e8cd7",
+  "minmax": 270,
+  "scene": "home-turning",
+  "sqrtf": 0,
+  "state": 318,
+  "trig": 545,
+  "vertices": 6102
+ },
+ "library-grid": {
+  "begins": 28,
+  "copy_pixels": 0,
+  "hash": "26d3bdc6c4a70169",
+  "minmax": 0,
+  "scene": "library-grid",
+  "sqrtf": 0,
+  "state": 53,
+  "trig": 32,
+  "vertices": 1440
+ },
+ "library-grid-wide": {
+  "begins": 111,
+  "copy_pixels": 29824,
+  "hash": "dac25e4fa5249cd8",
+  "minmax": 328,
+  "scene": "library-grid-wide",
+  "sqrtf": 0,
+  "state": 322,
+  "trig": 545,
+  "vertices": 6674
+ },
+ "library-horizontal": {
+  "begins": 105,
+  "copy_pixels": 87680,
+  "hash": "cd3528b5936a4e29",
+  "minmax": 278,
+  "scene": "library-horizontal",
+  "sqrtf": 0,
+  "state": 318,
+  "trig": 545,
+  "vertices": 6118
+ },
+ "library-spotlight": {
+  "begins": 28,
+  "copy_pixels": 0,
+  "hash": "a489a6fab7c8d345",
+  "minmax": 0,
+  "scene": "library-spotlight",
+  "sqrtf": 0,
+  "state": 53,
+  "trig": 32,
+  "vertices": 1440
+ },
+ "library-spotlight-wide": {
+  "begins": 111,
+  "copy_pixels": 29824,
+  "hash": "c68c3f7566f64c0f",
+  "minmax": 322,
+  "scene": "library-spotlight-wide",
+  "sqrtf": 0,
+  "state": 322,
+  "trig": 545,
+  "vertices": 6658
+ },
+ "library-vertical": {
+  "begins": 115,
+  "copy_pixels": 71808,
+  "hash": "dc7fc5736ecd56da",
+  "minmax": 389,
+  "scene": "library-vertical",
+  "sqrtf": 0,
+  "state": 322,
+  "trig": 545,
+  "vertices": 6822
+ },
+ "settings": {
+  "begins": 88,
+  "copy_pixels": 0,
+  "hash": "8c781b6ed9fa9eaa",
+  "minmax": 316,
+  "scene": "settings",
+  "sqrtf": 0,
+  "state": 127,
+  "trig": 541,
+  "vertices": 5298
+ },
+ "system": {
+  "begins": 107,
+  "copy_pixels": 124160,
+  "hash": "3e254a495a6258ec",
+  "minmax": 281,
+  "scene": "system",
+  "sqrtf": 0,
+  "state": 318,
+  "trig": 545,
+  "vertices": 6138
+ }
+}

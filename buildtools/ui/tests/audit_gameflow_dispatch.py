@@ -185,6 +185,9 @@ assert "meta_find_disc2(" not in image_loader
 assert "gameflowProtectMetaFile(image);" in image_loader
 opposite_finder = extract_function(SWISS, "static file_handle *gameflowFindOppositeImage(")
 assert "image->device->quirks & QUIRK_GCLOADER_NO_DISC_2" in opposite_finder
+# A disc 2 lookup reads only the images its metadata cannot rule out.
+assert opposite_finder.index("UIGameflowResolver_MayBeOppositeDisc(primaryHeader,") < \
+    opposite_finder.index("gameflowReadResolverHeader(candidate,")
 context_load = image_loader.index("load_file_with_context(&context);")
 primary_close = image_loader.index(
     "devices[DEVICE_CUR]->closeFile(&curFile);", context_load

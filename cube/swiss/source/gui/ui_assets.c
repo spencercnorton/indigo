@@ -113,10 +113,10 @@ enum {
 typedef struct {
 	u32 generation; /* advances exactly once per new ownership */
 	u8 state;
-	u8 pinCount;
 	u8 distance;
 	s16 recordPos; /* index into the pack index; -1 when empty */
 	u32 quarantineUntil; /* nowMs() stamp before which texels may not be rewritten */
+	u32 wanted; /* the window request that last asked for its record */
 	u8 *data; /* fixed arena region */
 	GXTexObj tex;
 } uiAssetSlot_t;
@@ -146,6 +146,7 @@ typedef struct {
 	u32 recordCount;
 	u32 dataOffset;
 	u32 fileLength;
+	u32 requests;      /* window requests so far */
 	uiAssetSlot_t slots[UI_ASSETS_SLOTS];
 } uiAssetsCache_t;
 
@@ -307,7 +308,6 @@ static uiAssetSlot_t *slotFromHandle(uiAssetsCache_t *c,
  * increment per ownership. */
 static void evictSlot(const uiAssetsCache_t *c, uiAssetSlot_t *slot) {
 	slot->state = SLOT_EMPTY;
-	slot->pinCount = 0;
 	slot->recordPos = -1;
 	slot->quarantineUntil = c->nowMs ? c->nowMs() + UI_ASSETS_EVICT_QUARANTINE_MS : 0;
 }
@@ -563,27 +563,32 @@ static void cacheRequestWindow(uiAssetsCache_t *c, const char (*ids)[8],
 
 	/* Keep slots already holding wanted records (including FAILED ones:
 	 * a corrupt poster stays corrupt until the pack changes, so don't
-	 * retry-loop); evict unpinned slots that fell out of the window. */
+	 * retry-loop). A slot whose record left the window keeps it, loaded or
+	 * failed, for scrolling back, until a wanted record needs the slot; one
+	 * still waiting for its read is let go. */
+	c->requests++;
 	for (i = 0; i < slotCount; i++) {
 		uiAssetSlot_t *slot = &c->slots[i];
-		bool wanted = false;
 		if (slot->state == SLOT_EMPTY)
 			continue;
 		for (j = 0; j < wantCount; j++) {
 			if (want[j].recordPos == slot->recordPos) {
 				slot->distance = want[j].distance;
+				slot->wanted = c->requests;
 				want[j].recordPos = -1; /* satisfied */
-				wanted = true;
 				break;
 			}
 		}
-		if (!wanted && slot->pinCount == 0)
+		if (j == wantCount && slot->state != SLOT_READY &&
+		    slot->state != SLOT_FAILED)
 			evictSlot(c, slot);
 	}
 
-	/* Assign the remaining wanted records to free slots, nearest first.
-	 * Pinned out-of-window slots shrink capacity; the farthest requests
-	 * simply wait for a later window. Assignment is the single point
+	/* Assign the remaining wanted records nearest first, each to an empty
+	 * slot, else to the slot whose record left the window longest ago (the
+	 * farther first). The window's own slots carry the newest stamp, and
+	 * while a record still waits at least one slot is not the window's, so
+	 * the oldest is never one of them. Assignment is the single point
 	 * where a slot's generation advances. */
 	for (;;) {
 		int best = -1;
@@ -596,17 +601,22 @@ static void cacheRequestWindow(uiAssetsCache_t *c, const char (*ids)[8],
 		if (best < 0)
 			break;
 		for (i = 0; i < slotCount; i++) {
-			if (c->slots[i].state == SLOT_EMPTY) {
-				freeSlot = &c->slots[i];
+			uiAssetSlot_t *slot = &c->slots[i];
+			if (slot->state == SLOT_EMPTY) {
+				freeSlot = slot;
 				break;
 			}
+			if (!freeSlot || (s32)(slot->wanted - freeSlot->wanted) < 0 ||
+			    (slot->wanted == freeSlot->wanted &&
+			     slot->distance > freeSlot->distance))
+				freeSlot = slot;
 		}
-		if (!freeSlot)
-			break;
+		if (freeSlot->state != SLOT_EMPTY)
+			evictSlot(c, freeSlot); /* quarantines its texels */
 		freeSlot->generation++;
 		freeSlot->recordPos = want[best].recordPos;
 		freeSlot->distance = want[best].distance;
-		freeSlot->pinCount = 0;
+		freeSlot->wanted = c->requests;
 		freeSlot->state = SLOT_PENDING;
 		want[best].recordPos = -1;
 	}
@@ -812,7 +822,6 @@ static s32 cacheDispose(uiAssetsCache_t *c) {
 	c->arenaReady = false;
 	for (i = 0; i < c->shape->slotCount; i++) {
 		c->slots[i].state = SLOT_EMPTY;
-		c->slots[i].pinCount = 0;
 		c->slots[i].distance = 0;
 		c->slots[i].recordPos = -1;
 		c->slots[i].quarantineUntil = 0;
@@ -865,31 +874,6 @@ uiPosterResult_t UIAssets_Query(const char *gameId, size_t gameIdLen,
 
 GXTexObj *UIAssets_Peek(uiPosterHandle_t handle) {
 	return cachePeek(&posters, handle);
-}
-
-GXTexObj *UIAssets_Acquire(uiPosterHandle_t handle) {
-	uiAssetSlot_t *slot;
-	GXTexObj *tex = NULL;
-	syncLock(&posters);
-	slot = slotFromHandle(&posters, handle);
-	if (slot && slot->state == SLOT_READY && slot->pinCount < 0xFF) {
-		/* Refuse rather than saturate: an Acquire that returned a texture
-		 * without recording its pin would let paired Releases drive the
-		 * count to zero while a holder still retains the pointer. */
-		slot->pinCount++;
-		tex = &slot->tex;
-	}
-	syncUnlock(&posters);
-	return tex;
-}
-
-void UIAssets_Release(uiPosterHandle_t handle) {
-	uiAssetSlot_t *slot;
-	syncLock(&posters);
-	slot = slotFromHandle(&posters, handle);
-	if (slot && slot->pinCount > 0)
-		slot->pinCount--;
-	syncUnlock(&posters);
 }
 
 bool UIAssets_DominantColor(const char *gameId, size_t gameIdLen,

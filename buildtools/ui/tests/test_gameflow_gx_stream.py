@@ -51,6 +51,13 @@ BASE_EDITS = (
     ("FrameBufferMagic.c", "if(fabsf(cards[i].visualSlot) < 1.5f &&",
      "if(fabsf(cards[i].visualSlot) < 3.0f &&"),
     ("ui_gameflow_library.c", "if(distance >= 1.5f) {", "if(distance >= 3.0f) {"),
+    # The titles fade through: out over the first half of a move, then in.
+    ("FrameBufferMagic.c", "\t\ttitleTravel * (1.0f - frame->detailProgress), reveal);",
+     "\t\t_GameflowClamp(2.0f * titleTravel - 1.0f, 0.0f, 1.0f) *\n"
+     "\t\t(1.0f - frame->detailProgress), reveal);"),
+    ("FrameBufferMagic.c", "\t\t(1.0f - titleTravel) * (1.0f - frame->detailProgress), reveal);",
+     "\t\t_GameflowClamp(1.0f - 2.0f * titleTravel, 0.0f, 1.0f) *\n"
+     "\t\t(1.0f - frame->detailProgress), reveal);"),
 )
 PURE = ("ui_gameflow.c", "ui_motion.c", "ui_gameflow_library.c",
         "ui_command_rail.c", "ui_gameflow_detail.c", "ui_game_history.c")

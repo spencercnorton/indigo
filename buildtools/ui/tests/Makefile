@@ -14,301 +14,100 @@ endif
 GAMEFLOW_CFLAGS := -std=c11 -Wall -Wextra -Werror -Wconversion \
 	-Wsign-conversion -pedantic
 
-PLAIN_TARGETS := test_ui_cube_motif test_ui_game_history test_ui_about test_ui_cheats test_ui_saves test_ui_assets test_ui_assets_target_sync \
+# Every C test, once, in the order run_tests.sh runs them (make -s list).
+# A test builds <name>.c (or <name>.main) with the sources in <name>.src,
+# the flags in <name>.flags (GAMEFLOW_CFLAGS unless set) and the libraries in
+# <name>.libs: plain as <name>, under ASan/UBSan as <name>_san.
+TESTS := test_ui_cheats test_ui_saves test_ui_apps test_ui_png \
+	test_ui_assets test_ui_assets_target_sync \
 	test_ui_settings_layout test_ui_settings_focus test_ui_system_info \
 	test_ui_menu_input test_ui_clock test_ui_hint test_ui_stage \
-	test_ui_home test_ui_presentation \
-	test_ui_home_layout test_ui_home_safety test_ui_scene \
-	test_ui_command_rail test_gameflow_state test_gameflow_library \
-	test_gameflow_resolver test_gameflow_detail test_gameflow_ownership \
-	test_cheat_policy test_ui_launch test_ui_apps test_ui_png
+	test_ui_home test_ui_cube_motif test_ui_home_safety test_ui_home_layout \
+	test_ui_scene test_ui_command_rail test_ui_presentation \
+	test_gameflow_state test_gameflow_library test_gameflow_resolver \
+	test_gameflow_detail test_ui_game_history test_ui_about \
+	test_gameflow_ownership test_cheat_policy test_ui_launch
 
-SANITIZED_TARGETS := test_ui_cube_motif_san test_ui_game_history_san test_ui_about_san test_ui_cheats_san test_ui_saves_san test_ui_assets_san test_ui_assets_target_sync_san \
-	test_ui_settings_layout_san test_ui_settings_focus_san \
-	test_ui_menu_input_san test_ui_clock_san test_ui_hint_san test_ui_stage_san \
-	test_ui_system_info_san test_ui_home_san test_ui_presentation_san \
-	test_ui_home_layout_san test_ui_home_safety_san test_ui_scene_san \
-	test_ui_command_rail_san test_gameflow_state_san \
-	test_gameflow_library_san test_gameflow_resolver_san \
-	test_gameflow_detail_san test_gameflow_ownership_san \
-	test_cheat_policy_san test_ui_launch_san test_ui_apps_san test_ui_png_san
+test_ui_cheats.src := $(GUI)/ui_cheats.c
+test_ui_saves.src := $(GUI)/ui_saves.c
+test_ui_apps.src := $(GUI)/ui_apps.c
+# test_ui_png.py drives these with the pictures it writes.
+test_ui_png.src := $(GUI)/ui_png.c
+test_ui_png.libs := -lz -lm
+test_ui_assets.src := $(GUI)/ui_assets.c
+test_ui_assets.flags = $(CFLAGS) -DUI_ASSETS_HOST_BUILD
+test_ui_assets.libs := -lz
+# Host-compiled policy variant: exercises the target requirement that Init
+# receive a complete external critical-section pair without needing libogc.
+test_ui_assets_target_sync.main := test_ui_assets.c
+test_ui_assets_target_sync.src := $(GUI)/ui_assets.c
+test_ui_assets_target_sync.flags = $(CFLAGS) -DUI_ASSETS_HOST_BUILD \
+	-DUI_ASSETS_HOST_REQUIRE_SYNC
+test_ui_assets_target_sync.libs := -lz
+# Settings layout module: strict C99. ui_cheats is the cheat browser whose
+# window the pages share.
+test_ui_settings_layout.src := $(GUI)/ui_settings_layout.c $(GUI)/ui_hint.c \
+	$(GUI)/ui_cheats.c
+test_ui_settings_layout.flags := -std=c99 -Wall -Wextra -Werror -pedantic
+test_ui_settings_focus.src := $(GUI)/ui_settings_focus.c $(GUI)/ui_motion.c
+test_ui_settings_focus.libs := -lm
+test_ui_system_info.src := $(GUI)/ui_system_info.c
+test_ui_menu_input.src := $(GUI)/ui_menu_input.c
+test_ui_clock.src := $(GUI)/ui_clock.c
+test_ui_clock.libs := -lm
+test_ui_hint.src := $(GUI)/ui_hint.c
+test_ui_stage.src := $(GUI)/ui_stage.c
+test_ui_stage.libs := -lm
+test_ui_home.src := $(GUI)/ui_home.c
+test_ui_cube_motif.src := $(GUI)/ui_cube_motif.c $(GUI)/ui_home.c
+test_ui_cube_motif.libs := -lm
+test_ui_home_safety.src := $(GUI)/ui_home_safety.c
+test_ui_home_layout.src := $(GUI)/ui_home_layout.c $(GUI)/ui_home_text.c \
+	$(GUI)/ui_home.c
+test_ui_scene.src := $(GUI)/ui_scene.c $(GUI)/ui_motion.c $(GUI)/ui_home.c \
+	$(GUI)/ui_cube_motif.c
+test_ui_scene.libs := -lm
+test_ui_command_rail.src := $(GUI)/ui_command_rail.c
+test_ui_command_rail.libs := -lm
+test_ui_presentation.src := $(GUI)/ui_presentation.c
+# Retained Gameflow suites.
+test_gameflow_state.src := $(GUI)/ui_gameflow.c $(GUI)/ui_motion.c
+test_gameflow_state.libs := -lm
+test_gameflow_library.src := $(GUI)/ui_gameflow_library.c
+test_gameflow_resolver.src := $(GUI)/ui_gameflow_resolver.c \
+	$(GUI)/ui_gameflow_library.c
+test_gameflow_detail.src := $(GUI)/ui_gameflow_detail.c $(GUI)/ui_game_history.c
+test_ui_game_history.src := $(GUI)/ui_game_history.c
+# Spotlight's game descriptions (swiss/ui/descriptions.txt).
+test_ui_about.src := $(GUI)/ui_about.c
+test_gameflow_ownership.src := $(GUI)/ui_gameflow_ownership.c
+test_cheat_policy.src := $(CHEATS)/cheat_policy.c
+test_cheat_policy.flags = $(GAMEFLOW_CFLAGS) -I$(CHEATS)
+# The launch screen's steps; it reads the Swiss sources it pins.
+test_ui_launch.src := $(GUI)/ui_launch.c
+
+# A header change rebuilds every test; run_tests.sh builds from clean anyway.
+HEADERS := $(wildcard $(GUI)/*.h $(CHEATS)/*.h)
+
+# $(1): the test, $(2): the binary's suffix, $(3): extra flags.
+define c_test
+$(1)$(2): $$(or $$($(1).main),$(1).c) $$($(1).src) $$(HEADERS)
+	$$(CC) $$(or $$($(1).flags),$$(GAMEFLOW_CFLAGS)) $(3) -I$$(GUI) -o $$@ \
+		$$(or $$($(1).main),$(1).c) $$($(1).src) $$($(1).libs)
+endef
+$(foreach t,$(TESTS),$(eval $(call c_test,$(t),,))$(eval $(call c_test,$(t),_san,$$(SANFLAGS))))
 
 all: plain sanitized
 
-plain: $(PLAIN_TARGETS)
+plain: $(TESTS)
 
-sanitized: $(SANITIZED_TARGETS)
+sanitized: $(TESTS:=_san)
 
-test_ui_cube_motif: test_ui_cube_motif.c $(GUI)/ui_cube_motif.c $(GUI)/ui_cube_motif.h $(GUI)/ui_home.c $(GUI)/ui_home.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_cube_motif.c $(GUI)/ui_cube_motif.c $(GUI)/ui_home.c -lm
-
-test_ui_cube_motif_san: test_ui_cube_motif.c $(GUI)/ui_cube_motif.c $(GUI)/ui_cube_motif.h $(GUI)/ui_home.c $(GUI)/ui_home.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_cube_motif.c $(GUI)/ui_cube_motif.c $(GUI)/ui_home.c -lm
-
-test_ui_game_history: test_ui_game_history.c $(GUI)/ui_game_history.c $(GUI)/ui_game_history.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_game_history.c $(GUI)/ui_game_history.c
-
-test_ui_game_history_san: test_ui_game_history.c $(GUI)/ui_game_history.c $(GUI)/ui_game_history.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_game_history.c $(GUI)/ui_game_history.c
-
-# Spotlight's game descriptions (swiss/ui/descriptions.txt).
-test_ui_about: test_ui_about.c $(GUI)/ui_about.c $(GUI)/ui_about.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_about.c $(GUI)/ui_about.c
-
-test_ui_about_san: test_ui_about.c $(GUI)/ui_about.c $(GUI)/ui_about.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_about.c $(GUI)/ui_about.c
-
-test_ui_cheats: test_ui_cheats.c $(GUI)/ui_cheats.c $(GUI)/ui_cheats.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_cheats.c $(GUI)/ui_cheats.c
-
-test_ui_cheats_san: test_ui_cheats.c $(GUI)/ui_cheats.c $(GUI)/ui_cheats.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_cheats.c $(GUI)/ui_cheats.c
-
-test_ui_saves: test_ui_saves.c $(GUI)/ui_saves.c $(GUI)/ui_saves.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_saves.c $(GUI)/ui_saves.c
-
-test_ui_saves_san: test_ui_saves.c $(GUI)/ui_saves.c $(GUI)/ui_saves.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_saves.c $(GUI)/ui_saves.c
-
-test_ui_apps: test_ui_apps.c $(GUI)/ui_apps.c $(GUI)/ui_apps.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_apps.c $(GUI)/ui_apps.c
-
-test_ui_apps_san: test_ui_apps.c $(GUI)/ui_apps.c $(GUI)/ui_apps.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_apps.c $(GUI)/ui_apps.c
-
-# test_ui_png.py drives these with the pictures it writes.
-test_ui_png: test_ui_png.c $(GUI)/ui_png.c $(GUI)/ui_png.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_png.c $(GUI)/ui_png.c -lz -lm
-
-test_ui_png_san: test_ui_png.c $(GUI)/ui_png.c $(GUI)/ui_png.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_png.c $(GUI)/ui_png.c -lz -lm
-
-test_cheat_policy: test_cheat_policy.c $(CHEATS)/cheat_policy.c \
-		$(CHEATS)/cheat_policy.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(CHEATS) -o $@ test_cheat_policy.c \
-		$(CHEATS)/cheat_policy.c
-
-test_cheat_policy_san: test_cheat_policy.c $(CHEATS)/cheat_policy.c \
-		$(CHEATS)/cheat_policy.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(CHEATS) -o $@ \
-		test_cheat_policy.c $(CHEATS)/cheat_policy.c
-
-test_ui_assets: test_ui_assets.c $(GUI)/ui_assets.c $(GUI)/ui_assets.h
-	$(CC) $(CFLAGS) -DUI_ASSETS_HOST_BUILD -I$(GUI) -o $@ \
-		test_ui_assets.c $(GUI)/ui_assets.c -lz
-
-test_ui_assets_san: test_ui_assets.c $(GUI)/ui_assets.c $(GUI)/ui_assets.h
-	$(CC) $(CFLAGS) $(SANFLAGS) -DUI_ASSETS_HOST_BUILD -I$(GUI) -o $@ \
-		test_ui_assets.c $(GUI)/ui_assets.c -lz
-
-# Host-compiled policy variant: exercises the target requirement that Init
-# receive a complete external critical-section pair without needing libogc.
-test_ui_assets_target_sync: test_ui_assets.c $(GUI)/ui_assets.c $(GUI)/ui_assets.h
-	$(CC) $(CFLAGS) -DUI_ASSETS_HOST_BUILD -DUI_ASSETS_HOST_REQUIRE_SYNC \
-		-I$(GUI) -o $@ test_ui_assets.c $(GUI)/ui_assets.c -lz
-
-test_ui_assets_target_sync_san: test_ui_assets.c $(GUI)/ui_assets.c $(GUI)/ui_assets.h
-	$(CC) $(CFLAGS) $(SANFLAGS) -DUI_ASSETS_HOST_BUILD \
-		-DUI_ASSETS_HOST_REQUIRE_SYNC -I$(GUI) -o $@ \
-		test_ui_assets.c $(GUI)/ui_assets.c -lz
-
-# Settings layout module: strict C99. ui_cheats is the cheat browser whose
-# window the pages share.
-test_ui_settings_layout: test_ui_settings_layout.c $(GUI)/ui_settings_layout.c $(GUI)/ui_settings_layout.h \
-		$(GUI)/ui_hint.c $(GUI)/ui_hint.h $(GUI)/ui_cheats.c $(GUI)/ui_cheats.h
-	$(CC) -std=c99 -Wall -Wextra -Werror -pedantic -I$(GUI) -o $@ \
-		test_ui_settings_layout.c $(GUI)/ui_settings_layout.c $(GUI)/ui_hint.c \
-		$(GUI)/ui_cheats.c
-
-test_ui_settings_layout_san: test_ui_settings_layout.c \
-		$(GUI)/ui_settings_layout.c $(GUI)/ui_settings_layout.h \
-		$(GUI)/ui_hint.c $(GUI)/ui_hint.h $(GUI)/ui_cheats.c $(GUI)/ui_cheats.h
-	$(CC) -std=c99 -Wall -Wextra -Werror -pedantic $(SANFLAGS) \
-		-I$(GUI) -o $@ test_ui_settings_layout.c \
-		$(GUI)/ui_settings_layout.c $(GUI)/ui_hint.c $(GUI)/ui_cheats.c
-
-test_ui_menu_input: test_ui_menu_input.c $(GUI)/ui_menu_input.c \
-		$(GUI)/ui_menu_input.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_menu_input.c \
-		$(GUI)/ui_menu_input.c
-
-test_ui_menu_input_san: test_ui_menu_input.c $(GUI)/ui_menu_input.c \
-		$(GUI)/ui_menu_input.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ \
-		test_ui_menu_input.c $(GUI)/ui_menu_input.c
-
-test_ui_settings_focus: test_ui_settings_focus.c $(GUI)/ui_settings_focus.c \
-		$(GUI)/ui_settings_focus.h $(GUI)/ui_settings_layout.h \
-		$(GUI)/ui_motion.c $(GUI)/ui_motion.h
-	$(CC) -std=c11 -Wall -Wextra -Werror -Wconversion -Wsign-conversion \
-		-pedantic -I$(GUI) -o $@ test_ui_settings_focus.c \
-		$(GUI)/ui_settings_focus.c $(GUI)/ui_motion.c -lm
-
-test_ui_settings_focus_san: test_ui_settings_focus.c $(GUI)/ui_settings_focus.c \
-		$(GUI)/ui_settings_focus.h $(GUI)/ui_settings_layout.h \
-		$(GUI)/ui_motion.c $(GUI)/ui_motion.h
-	$(CC) -std=c11 -Wall -Wextra -Werror -Wconversion -Wsign-conversion \
-		-pedantic $(SANFLAGS) -I$(GUI) -o $@ test_ui_settings_focus.c \
-		$(GUI)/ui_settings_focus.c $(GUI)/ui_motion.c -lm
-
-test_ui_system_info: test_ui_system_info.c $(GUI)/ui_system_info.c \
-		$(GUI)/ui_system_info.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_system_info.c \
-		$(GUI)/ui_system_info.c
-
-test_ui_system_info_san: test_ui_system_info.c $(GUI)/ui_system_info.c \
-		$(GUI)/ui_system_info.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ \
-		test_ui_system_info.c $(GUI)/ui_system_info.c
-
-test_ui_hint: test_ui_hint.c $(GUI)/ui_hint.c $(GUI)/ui_hint.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_hint.c $(GUI)/ui_hint.c
-
-test_ui_hint_san: test_ui_hint.c $(GUI)/ui_hint.c $(GUI)/ui_hint.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_hint.c $(GUI)/ui_hint.c
-
-test_ui_stage: test_ui_stage.c $(GUI)/ui_stage.c $(GUI)/ui_stage.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_stage.c $(GUI)/ui_stage.c -lm
-
-test_ui_stage_san: test_ui_stage.c $(GUI)/ui_stage.c $(GUI)/ui_stage.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_stage.c $(GUI)/ui_stage.c -lm
-
-test_ui_clock: test_ui_clock.c $(GUI)/ui_clock.c $(GUI)/ui_clock.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_clock.c \
-		$(GUI)/ui_clock.c -lm
-
-test_ui_clock_san: test_ui_clock.c $(GUI)/ui_clock.c $(GUI)/ui_clock.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_clock.c \
-		$(GUI)/ui_clock.c -lm
-
-test_ui_home: test_ui_home.c $(GUI)/ui_home.c $(GUI)/ui_home.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_home.c \
-		$(GUI)/ui_home.c
-
-test_ui_home_san: test_ui_home.c $(GUI)/ui_home.c $(GUI)/ui_home.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ test_ui_home.c \
-		$(GUI)/ui_home.c
-
-test_ui_home_safety: test_ui_home_safety.c $(GUI)/ui_home_safety.c \
-		$(GUI)/ui_home_safety.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_home_safety.c \
-		$(GUI)/ui_home_safety.c
-
-test_ui_home_safety_san: test_ui_home_safety.c $(GUI)/ui_home_safety.c \
-		$(GUI)/ui_home_safety.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ \
-		test_ui_home_safety.c $(GUI)/ui_home_safety.c
-
-test_ui_home_layout: test_ui_home_layout.c $(GUI)/ui_home_layout.c \
-		$(GUI)/ui_home_layout.h $(GUI)/ui_home_text.c \
-		$(GUI)/ui_home_text.h $(GUI)/ui_home.c $(GUI)/ui_home.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_home_layout.c \
-		$(GUI)/ui_home_layout.c $(GUI)/ui_home_text.c $(GUI)/ui_home.c
-
-test_ui_home_layout_san: test_ui_home_layout.c $(GUI)/ui_home_layout.c \
-		$(GUI)/ui_home_layout.h $(GUI)/ui_home_text.c \
-		$(GUI)/ui_home_text.h $(GUI)/ui_home.c $(GUI)/ui_home.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ \
-		test_ui_home_layout.c $(GUI)/ui_home_layout.c \
-		$(GUI)/ui_home_text.c $(GUI)/ui_home.c
-
-test_ui_scene: test_ui_scene.c $(GUI)/ui_scene.c $(GUI)/ui_scene.h \
-		$(GUI)/ui_motion.c $(GUI)/ui_motion.h $(GUI)/ui_home.c $(GUI)/ui_home.h \
-		$(GUI)/ui_cube_motif.c $(GUI)/ui_cube_motif.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_scene.c \
-		$(GUI)/ui_scene.c $(GUI)/ui_motion.c $(GUI)/ui_home.c $(GUI)/ui_cube_motif.c -lm
-
-test_ui_scene_san: test_ui_scene.c $(GUI)/ui_scene.c $(GUI)/ui_scene.h \
-		$(GUI)/ui_motion.c $(GUI)/ui_motion.h $(GUI)/ui_home.c $(GUI)/ui_home.h \
-		$(GUI)/ui_cube_motif.c $(GUI)/ui_cube_motif.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ \
-		test_ui_scene.c $(GUI)/ui_scene.c $(GUI)/ui_motion.c $(GUI)/ui_home.c $(GUI)/ui_cube_motif.c -lm
-
-test_ui_command_rail: test_ui_command_rail.c $(GUI)/ui_command_rail.c \
-		$(GUI)/ui_command_rail.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_command_rail.c \
-		$(GUI)/ui_command_rail.c -lm
-
-test_ui_command_rail_san: test_ui_command_rail.c $(GUI)/ui_command_rail.c \
-		$(GUI)/ui_command_rail.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ \
-		test_ui_command_rail.c $(GUI)/ui_command_rail.c -lm
-
-test_ui_presentation: test_ui_presentation.c $(GUI)/ui_presentation.c \
-		$(GUI)/ui_presentation.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_presentation.c \
-		$(GUI)/ui_presentation.c
-
-test_ui_presentation_san: test_ui_presentation.c $(GUI)/ui_presentation.c \
-		$(GUI)/ui_presentation.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ \
-		test_ui_presentation.c $(GUI)/ui_presentation.c
-
-# Retained Gameflow suites: strict C11, each plain and sanitized.
-test_gameflow_state: test_gameflow_state.c $(GUI)/ui_gameflow.c \
-		$(GUI)/ui_gameflow.h $(GUI)/ui_motion.c $(GUI)/ui_motion.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_gameflow_state.c \
-		$(GUI)/ui_gameflow.c $(GUI)/ui_motion.c -lm
-
-test_gameflow_state_san: test_gameflow_state.c $(GUI)/ui_gameflow.c \
-		$(GUI)/ui_gameflow.h $(GUI)/ui_motion.c $(GUI)/ui_motion.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ \
-		test_gameflow_state.c $(GUI)/ui_gameflow.c $(GUI)/ui_motion.c -lm
-
-test_gameflow_library: test_gameflow_library.c \
-		$(GUI)/ui_gameflow_library.c $(GUI)/ui_gameflow_library.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_gameflow_library.c \
-		$(GUI)/ui_gameflow_library.c
-
-test_gameflow_library_san: test_gameflow_library.c \
-		$(GUI)/ui_gameflow_library.c $(GUI)/ui_gameflow_library.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ \
-		test_gameflow_library.c $(GUI)/ui_gameflow_library.c
-
-test_gameflow_resolver: test_gameflow_resolver.c \
-		$(GUI)/ui_gameflow_resolver.c $(GUI)/ui_gameflow_resolver.h \
-		$(GUI)/ui_gameflow_library.c $(GUI)/ui_gameflow_library.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_gameflow_resolver.c \
-		$(GUI)/ui_gameflow_resolver.c $(GUI)/ui_gameflow_library.c
-
-test_gameflow_resolver_san: test_gameflow_resolver.c \
-		$(GUI)/ui_gameflow_resolver.c $(GUI)/ui_gameflow_resolver.h \
-		$(GUI)/ui_gameflow_library.c $(GUI)/ui_gameflow_library.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ \
-		test_gameflow_resolver.c $(GUI)/ui_gameflow_resolver.c \
-		$(GUI)/ui_gameflow_library.c
-
-test_gameflow_detail: test_gameflow_detail.c \
-		$(GUI)/ui_gameflow_detail.c $(GUI)/ui_gameflow_detail.h $(GUI)/ui_game_history.c $(GUI)/ui_game_history.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_gameflow_detail.c \
-		$(GUI)/ui_gameflow_detail.c $(GUI)/ui_game_history.c
-
-test_gameflow_detail_san: test_gameflow_detail.c \
-		$(GUI)/ui_gameflow_detail.c $(GUI)/ui_gameflow_detail.h $(GUI)/ui_game_history.c $(GUI)/ui_game_history.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ \
-		test_gameflow_detail.c $(GUI)/ui_gameflow_detail.c $(GUI)/ui_game_history.c
-
-test_gameflow_ownership: test_gameflow_ownership.c \
-		$(GUI)/ui_gameflow_ownership.c $(GUI)/ui_gameflow_ownership.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_gameflow_ownership.c \
-		$(GUI)/ui_gameflow_ownership.c
-
-test_gameflow_ownership_san: test_gameflow_ownership.c \
-		$(GUI)/ui_gameflow_ownership.c $(GUI)/ui_gameflow_ownership.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ \
-		test_gameflow_ownership.c $(GUI)/ui_gameflow_ownership.c
-
-# The launch screen's steps; it reads the Swiss sources it pins.
-test_ui_launch: test_ui_launch.c $(GUI)/ui_launch.c $(GUI)/ui_launch.h
-	$(CC) $(GAMEFLOW_CFLAGS) -I$(GUI) -o $@ test_ui_launch.c \
-		$(GUI)/ui_launch.c
-
-test_ui_launch_san: test_ui_launch.c $(GUI)/ui_launch.c $(GUI)/ui_launch.h
-	$(CC) $(GAMEFLOW_CFLAGS) $(SANFLAGS) -I$(GUI) -o $@ \
-		test_ui_launch.c $(GUI)/ui_launch.c
+list:
+	@echo $(TESTS)
 
 clean:
-	rm -f $(PLAIN_TARGETS) $(SANITIZED_TARGETS)
+	rm -f $(TESTS) $(TESTS:=_san)
 	rm -rf *.dSYM
 
-.PHONY: all plain sanitized clean
+.PHONY: all plain sanitized list clean

@@ -30,13 +30,20 @@ Indigo is built on and lists the upstream files Indigo does change, with why.
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
   ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
 
+# The performance build, after make dev: frame times and the GPU's counters
+# (vertices, pixels, texels, copy clocks) over the menus, to measure a change
+# on a console (writes cube/swiss/swiss-perf.dol; CI keeps one as dol-perf-*):
+#   make -C cube/swiss BUILD=build-perf TARGET=swiss-perf UI_PERF=1
+
 # The SD card zip for that build (after make dev):
 buildtools/sd_package.sh dev cube/swiss/swiss.dol .
 
 # Host tests: lanes plain, sanitized, contracts, or all. Needs Python 3 with
 # Pillow and NumPy, a C compiler and zlib; the poster tests also need
-# gxtexconv (in the image above). CI runs every lane on that toolchain, and
-# the sanitized lane twice: CC=gcc and CC=clang.
+# gxtexconv (in the image above), and the contracts lane builds the fuzzers
+# when clang has libFuzzer. CI runs every lane on that toolchain, and the
+# sanitized lane twice: CC=gcc and CC=clang. A new C test is one name in
+# TESTS and its sources in buildtools/ui/tests/Makefile; both lanes run it.
 buildtools/ui/tests/run_tests.sh all
 
 # Source checks CI runs on a pull request into beta:
@@ -86,7 +93,9 @@ with a tagged release.
   control or a setting updates its page in `docs/guide/` (and `docs/SETTINGS.md`
   for a settings key) in the same pull request. Pictures are recorded in the
   Dolphin emulator from a real build; say in the pull request which ones are
-  stale if you cannot record them.
+  stale if you cannot record them. Record only the screens the change alters:
+  every picture rewritten stays in the repository's history for good. A
+  picture of something moving is a lossless animated WebP.
 - **Upstream's files match `UPSTREAM`.** Outside Indigo's own paths (`OWN` in
   `buildtools/ci/check_upstream.py`), every file matches the upstream commit
   `UPSTREAM` names, line endings aside, or is listed there with the reason.

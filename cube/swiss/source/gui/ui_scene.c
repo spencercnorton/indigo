@@ -721,12 +721,9 @@ void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode)
 	 * cube on the first destination frame. Derive their reveal from the live
 	 * retreat pose: interruption and Off therefore need no separate timeline.
 	 * Library/detail changes stay fully visible once the cube is in the back. */
-	float retreat = (0.88f - state.frame.cubeScale) / 0.24f;
-	if(retreat < 0.0f) retreat = 0.0f;
-	if(retreat > 1.0f) retreat = 1.0f;
 	state.frame.libraryReveal = (targetScene == UI_SCENE_LIBRARY ||
 		targetScene == UI_SCENE_GAME_DETAIL) ?
-		retreat * retreat * (3.0f - 2.0f * retreat) : 0.0f;
+		UIMotion_Smoothstep((0.88f - state.frame.cubeScale) / 0.24f) : 0.0f;
 	/* The boot already shows its destination, so the chrome that scene draws
 	 * fades in with chromeProgress rather than appearing when the boot ends. */
 	state.frame.scene = targetScene;

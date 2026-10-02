@@ -221,6 +221,24 @@ static void testOppositeDiscPredicate(void)
 	CHECK(!UIGameflowResolver_IsOppositeDisc(NULL, &candidate));
 }
 
+static void testOppositeDiscNeedsNoReadOfAnotherGame(void)
+{
+	static const char unknown[UI_GAMEFLOW_RESOLVER_ID_LENGTH];
+	uiGameflowResolverEntry_t primary = makeEntry(1u,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "game.iso", true,
+		"G4BE08", 0u, 3u);
+
+	/* Nothing known (no metadata, or a TGC's empty ID): read it. */
+	CHECK(UIGameflowResolver_MayBeOppositeDisc(&primary, NULL));
+	CHECK(UIGameflowResolver_MayBeOppositeDisc(&primary, unknown));
+	/* The same game: read it for its disc number and version. */
+	CHECK(UIGameflowResolver_MayBeOppositeDisc(&primary, "G4BE08"));
+	/* Another game, by one character at either end: skip it. */
+	CHECK(!UIGameflowResolver_MayBeOppositeDisc(&primary, "G4BE09"));
+	CHECK(!UIGameflowResolver_MayBeOppositeDisc(&primary, "X4BE08"));
+	CHECK(!UIGameflowResolver_MayBeOppositeDisc(NULL, "G4BE08"));
+}
+
 static void testParentAndDirectoriesIgnored(void)
 {
 	uiGameflowResolverFolder_t folder = makeFolder("GMSE01");
@@ -328,6 +346,7 @@ int main(void)
 	testIdMismatch();
 	testDiscPair();
 	testOppositeDiscPredicate();
+	testOppositeDiscNeedsNoReadOfAnotherGame();
 	testParentAndDirectoriesIgnored();
 	testDeterministicOrder();
 	testMetadataAndVersionRejection();

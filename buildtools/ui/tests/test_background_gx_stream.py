@@ -13,12 +13,14 @@ ROOT = Path(__file__).resolve().parents[3]
 SOURCE = ROOT / "cube/swiss/source/gui/indigo_background.c"
 
 HARNESS = r"""
+#include <float.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 typedef unsigned char u8;
+typedef unsigned int u32;
 typedef struct { u8 r,g,b,a; } GXColor;
 /* Menu Color is Indigo here: the emitters' recolor passes colors through. */
 static void UIColor_Apply(u8 *r,u8 *g,u8 *b) { (void)r; (void)g; (void)b; }
@@ -238,7 +240,8 @@ class BackgroundGXStreamTests(unittest.TestCase):
     def setUpClass(cls):
         source = SOURCE.read_text()
         marker = "static bool railJoin("
-        blocks = [extract_function(source[source.rindex(marker):], marker)]
+        blocks = [extract_function(source, "static float fastSqrt("),
+                  extract_function(source[source.rindex(marker):], marker)]
         for result, names in [
             ("void", ("putVertex", "initWaveOscillator", "advanceWaveOscillator", "buildWavePath")),
             ("float", ("waveEdgeFade",)), ("GXColor", ("waveVertexColor",)),

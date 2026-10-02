@@ -167,6 +167,18 @@ class Workflows(unittest.TestCase):
                     good.replace("1" * 64, "2" * 64, 1)):
             self.assertNotEqual(self.check(bad), [], bad)
 
+    def test_every_copy_of_the_toolchain_digest_matches(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.root(Path(directory), self.good())
+            (root / "README.md").write_text("docker pull x/libogc2@sha256:" + "1" * 64 + "\n")
+            (root / "pack.py").write_text('IMAGE = ("x/libogc2@sha256:"\n    "' + "1" * 64 + '")\n')
+            self.assertEqual(check_workflows.problems(root), [])
+            for name in ("README.md", "pack.py"):
+                text = (root / name).read_text()
+                (root / name).write_text(text.replace("1" * 64, "3" * 64))
+                self.assertEqual(len(check_workflows.problems(root)), 1, name)
+                (root / name).write_text(text)
+
 
 class Upstream(unittest.TestCase):
     """Outside the interface, a file matches the upstream commit UPSTREAM names,

@@ -1,5 +1,3 @@
-<filepath="backdrop.png" id="backdrop" colfmt=8 palfmt=0 magfilt=0 />
-<filepath="backdrop_ind.png" id="backdrop_ind" colfmt=3 minfilt=0 magfilt=0 />
 <filepath="banner_mask.tif" id="banner_mask" colfmt=0 />
 <filepath="bba.tif" id="bbaimg" colfmt=3 />
 <filepath="dir.tif" id="dirimg" colfmt=6 />
@@ -26,7 +24,6 @@
 <filepath="qoob.png" id="qoobimg" colfmt=9 palfmt=0 magfilt=0 />
 <filepath="qoob_ind.png" id="qoobimg_ind" colfmt=1 minfilt=0 magfilt=0 />
 <filepath="sdsmall.tif" id="sdsmall" colfmt=9 palfmt=0 />
-<filepath="swiss.tif" id="swissimg" colfmt=0 />
 <filepath="systemimg.tif" id="systemimg" colfmt=3 />
 <filepath="tgc.tif" id="tgcimg" colfmt=6 />
 <filepath="usbgecko.tif" id="usbgeckoimg" colfmt=9 palfmt=0 />

@@ -948,13 +948,19 @@ static void test_window_eviction_and_reversal(void) {
 	pollAll();
 	CHECK(mem.readCalls == reads + 1);
 
-	/* The evicted edge (G003E0) is stale now. */
+	/* The edge that left (G003E0) keeps its poster, so going back reads
+	 * nothing. */
 	CHECK(UIAssets_Query("G003E0", 6, true, &h) == UI_POSTER_EXACT);
-	CHECK(UIAssets_Peek(h) == NULL); /* record exists but no slot */
+	CHECK(UIAssets_Peek(h) != NULL);
+	makeIds(ids, 3, UI_ASSETS_WINDOW);
+	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+	pollAll();
+	CHECK(mem.readCalls == reads + 1);
 
 	/* Rapid reversal WITH loads interleaved: the clock advances past the
-	 * quarantine between flips, so posters land mid-storm and are then
-	 * re-evicted -- the harsher path than pure request churn. */
+	 * quarantine between flips, so posters land mid-storm and the ones
+	 * still waiting are dropped -- the harsher path than pure request
+	 * churn. */
 	{
 		int flip;
 		int readsBefore = mem.readCalls;
@@ -983,13 +989,52 @@ static void test_window_eviction_and_reversal(void) {
 	free(recs);
 }
 
-static void test_stale_handle_after_eviction(void) {
-	int count = 20;
+/* Three carousel windows fill 21 of the 25 slots; a fourth needs seven, so
+ * after the four empty ones it reuses the slots of the window left longest
+ * ago, the posters farthest from its selection first. */
+static void test_window_retention_oldest_first(void) {
+	int count = 40;
 	testRec_t *recs = makeRecs(count);
 	size_t len;
 	u8 *pack = buildPack(recs, count, &len, 0);
 	uiAssetsSource_t src = memSource(pack, len);
 	char ids[UI_ASSETS_WINDOW][8];
+	char id[8];
+	uiPosterHandle_t h;
+	int reads;
+	int i;
+
+	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
+	for (i = 0; i < 4; i++) {
+		makeIds(ids, i * UI_ASSETS_WINDOW, UI_ASSETS_WINDOW);
+		UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+		pollAll();
+	}
+	CHECK(mem.readCalls == 2 + 4 * UI_ASSETS_WINDOW);
+	for (i = 0; i < 4 * UI_ASSETS_WINDOW; i++) {
+		nthId(id, i);
+		CHECK(UIAssets_Query(id, 6, true, &h) == UI_POSTER_EXACT);
+		/* Gone: the first window's two ends and the left one of the next
+		 * two out. */
+		CHECK((UIAssets_Peek(h) == NULL) == (i == 0 || i == 6 || i == 1));
+	}
+	/* The third window is still whole: going back reads nothing. */
+	reads = mem.readCalls;
+	makeIds(ids, 2 * UI_ASSETS_WINDOW, UI_ASSETS_WINDOW);
+	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+	pollAll();
+	CHECK(mem.readCalls == reads);
+	free(pack);
+	free(recs);
+}
+
+static void test_stale_handle_after_eviction(void) {
+	int count = 40;
+	testRec_t *recs = makeRecs(count);
+	size_t len;
+	u8 *pack = buildPack(recs, count, &len, 0);
+	uiAssetsSource_t src = memSource(pack, len);
+	char ids[UI_ASSETS_SLOTS][8];
 	uiPosterHandle_t h;
 
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
@@ -998,73 +1043,19 @@ static void test_stale_handle_after_eviction(void) {
 	pollAll();
 	CHECK(UIAssets_Query("G000E0", 6, true, &h) == UI_POSTER_EXACT);
 	CHECK(UIAssets_Peek(h) != NULL);
-	makeIds(ids, 10, UI_ASSETS_WINDOW); /* push far away: full eviction */
-	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 0);
+	/* A full window of other posters takes every slot, G000E0's too. */
+	makeIds(ids, 10, UI_ASSETS_SLOTS);
+	UIAssets_RequestWindow(ids, UI_ASSETS_SLOTS, 0);
 	CHECK(UIAssets_Peek(h) == NULL);    /* stale before any reload */
-	CHECK(UIAssets_Acquire(h) == NULL);
 	pollAll();
 	CHECK(UIAssets_Peek(h) == NULL);    /* and after the slot is reused */
 	free(pack);
 	free(recs);
 }
 
-static void test_pin_retention_through_detail_launch(void) {
-	int count = 60;
-	testRec_t *recs = makeRecs(count);
-	size_t len;
-	u8 *pack = buildPack(recs, count, &len, 0);
-	uiAssetsSource_t src = memSource(pack, len);
-	char ids[UI_ASSETS_SLOTS][8];
-	char pinnedId[8];
-	uiPosterHandle_t h;
-	GXTexObj *tex;
-	int middle = UI_ASSETS_SLOTS / 2;
-	int i;
-
-	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
-	makeIds(ids, 0, UI_ASSETS_SLOTS);
-	UIAssets_RequestWindow(ids, UI_ASSETS_SLOTS, middle);
-	pollAll();
-	memcpy(pinnedId, ids[middle], sizeof(pinnedId));
-	CHECK(UIAssets_Query(pinnedId, 6, true, &h) == UI_POSTER_EXACT);
-	tex = UIAssets_Acquire(h); /* entering Game Detail */
-	CHECK(tex != NULL);
-
-	/* Library window scrolls far away; the pinned poster must survive. */
-	makeIds(ids, 30, UI_ASSETS_SLOTS);
-	UIAssets_RequestWindow(ids, UI_ASSETS_SLOTS, middle);
-	pollAll();
-	CHECK(UIAssets_Peek(h) == tex);
-	/* The pin leaves one slot short. Assignment is distance-ordered
-	 * (selected first, the left of a tie first), so every card but the
-	 * farthest tie-loser on the right loads, and that one waits slotless. */
-	for (i = 0; i < UI_ASSETS_SLOTS - 1; i++)
-		checkLoaded(ids[i]);
-	{
-		uiPosterHandle_t edge;
-		CHECK(UIAssets_Query(ids[UI_ASSETS_SLOTS - 1], 6, true, &edge) ==
-		      UI_POSTER_EXACT);
-		CHECK(UIAssets_Peek(edge) == NULL); /* record exists, no slot */
-	}
-
-	/* Back out of Detail: release, then the next window may evict it. */
-	{
-		uiPosterHandle_t pinned;
-		CHECK(UIAssets_Query(pinnedId, 6, true, &pinned) == UI_POSTER_EXACT);
-		UIAssets_Release(pinned);
-		makeIds(ids, 30, UI_ASSETS_SLOTS);
-		UIAssets_RequestWindow(ids, UI_ASSETS_SLOTS, middle);
-		pollAll();
-		CHECK(UIAssets_Peek(pinned) == NULL);
-		checkLoaded(ids[UI_ASSETS_SLOTS - 1]);
-	}
-	free(pack);
-	free(recs);
-}
-
 /* The Grid layout asks for its whole window nearest first (selected 0), and
- * a carousel afterwards keeps exactly its own seven: no extra posters stay
- * resident and none of its seven is read again. */
+ * a carousel afterwards finds its seven resident: none is read again, and
+ * the grid's other posters stay for going back. */
 static void test_grid_window_then_carousel(void) {
 	int count = 40;
 	testRec_t *recs = makeRecs(count);
@@ -1103,7 +1094,7 @@ static void test_grid_window_then_carousel(void) {
 		char id[8];
 		nthId(id, i);
 		CHECK(UIAssets_Query(id, 6, true, &h) == UI_POSTER_EXACT);
-		CHECK((UIAssets_Peek(h) != NULL) == (i >= 9 && i < 9 + UI_ASSETS_WINDOW));
+		CHECK((UIAssets_Peek(h) != NULL) == (i < UI_ASSETS_SLOTS));
 	}
 	free(pack);
 	free(recs);
@@ -1115,7 +1106,6 @@ static void test_cancel_for_device_change(void) {
 	uiAssetsSource_t src = memSource(pack, len);
 	char ids[3][8];
 	uiPosterHandle_t h;
-	GXTexObj *tex;
 
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
 	memset(ids, 0, sizeof(ids));
@@ -1126,13 +1116,11 @@ static void test_cancel_for_device_change(void) {
 	fakeNowValue += UI_ASSETS_EVICT_QUARANTINE_MS + 1;
 	UIAssets_Poll(); /* only the selected poster lands; two still pending */
 	CHECK(UIAssets_Query("GALE01", 6, true, &h) == UI_POSTER_EXACT);
-	tex = UIAssets_Acquire(h);
-	CHECK(tex != NULL);
+	CHECK(UIAssets_Peek(h) != NULL);
 
-	UIAssets_CancelForDeviceChange(); /* mid-load, selected pinned */
+	UIAssets_CancelForDeviceChange(); /* mid-load */
 	CHECK(!UIAssets_Ready());
-	CHECK(UIAssets_Peek(h) == NULL);      /* pinned handles die too */
-	CHECK(UIAssets_Acquire(h) == NULL);
+	CHECK(UIAssets_Peek(h) == NULL);      /* every handle dies */
 	CHECK(!UIAssets_Poll());              /* loading fully stopped */
 	{
 		int reads = mem.readCalls;
@@ -1295,23 +1283,24 @@ static void test_dispose_releases_everything(void) {
 }
 
 static void test_quarantine_blocks_rewrite(void) {
-	int count = 20;
+	int count = 40;
 	testRec_t *recs = makeRecs(count);
 	size_t len;
 	u8 *pack = buildPack(recs, count, &len, 0);
 	uiAssetsSource_t src = memSource(pack, len);
-	char ids[UI_ASSETS_WINDOW][8];
+	char ids[UI_ASSETS_SLOTS][8];
 	int reads;
 
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
-	makeIds(ids, 0, UI_ASSETS_WINDOW);
-	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 0);
+	makeIds(ids, 0, UI_ASSETS_SLOTS);
+	UIAssets_RequestWindow(ids, UI_ASSETS_SLOTS, 0);
 	pollAll();
 	reads = mem.readCalls;
 
-	/* Evict everything, immediately rewindow: texels must not be
-	 * rewritten until a frame has passed (the GPU may still sample). */
-	makeIds(ids, 10, UI_ASSETS_WINDOW);
+	/* Every slot holds a poster, so a new window reuses slots whose
+	 * posters left it: their texels must not be rewritten until a frame
+	 * has passed (the GPU may still sample). */
+	makeIds(ids, 30, UI_ASSETS_WINDOW);
 	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 0);
 	CHECK(UIAssets_Poll());               /* work queued... */
 	CHECK(mem.readCalls == reads);        /* ...but no rewrite yet */
@@ -1400,7 +1389,8 @@ static void test_memory_budget(void) {
 	int allocsBefore;
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
 	/* Arena: 25 x 43,648 = 1,091,200 bytes, the Grid layout's five rows of
-	 * five (the carousels use 7 of them); index <= 32 KiB on top. */
+	 * five (a carousel's seven and the posters it scrolled past); index
+	 * <= 32 KiB on top. */
 	CHECK(UI_ASSETS_SLOTS * UI_ASSETS_POSTER_BYTES == 1091200);
 	CHECK(UIAssets_MemoryFootprint() <= 1091200 + 32768);
 	allocsBefore = allocCalls;
@@ -1411,8 +1401,6 @@ static void test_memory_budget(void) {
 		uiPosterHandle_t h;
 		UIAssets_Query("GALE01", 6, true, &h);
 		UIAssets_Peek(h);
-		UIAssets_Acquire(h);
-		UIAssets_Release(h);
 		UIAssets_DominantColor("GALE01", 6, NULL, NULL, NULL);
 	}
 	allocsFrozen = 0;
@@ -1457,7 +1445,6 @@ static void test_bad_ids_and_args(void) {
 		bogus.slot = 3;
 		bogus.generation = 0xFFFF;
 		CHECK(UIAssets_Peek(bogus) == NULL);
-		UIAssets_Release(bogus);
 	}
 	free(pack);
 }
@@ -1499,7 +1486,8 @@ static void test_poll_lock_phase_split(void) {
 	CHECK(lockCalls == calls + 1);
 
 	/* Quarantined pending work: one section, and provably no read. */
-	requestOne("GC6E01"); /* evicts GALE01, assigns into quarantined slot */
+	requestOne("GC6E01");
+	requestOne("GZLE01"); /* drops GC6E01 unread, takes its quarantined slot */
 	calls = lockCalls;
 	reads = mem.readCalls;
 	CHECK(UIAssets_Poll());
@@ -1536,7 +1524,6 @@ static void test_menu_apis_single_section(void) {
 	u8 *pack = buildPack(BASIC, 3, &len, 0);
 	uiAssetsSource_t src = memSource(pack, len);
 	uiPosterHandle_t h;
-	GXTexObj *tex;
 	int calls;
 	char ids[1][8];
 
@@ -1551,13 +1538,6 @@ static void test_menu_apis_single_section(void) {
 	memcpy(ids[0], "GALE01", 6);
 	calls = lockCalls;
 	UIAssets_RequestWindow(ids, 1, 0);
-	CHECK(lockCalls == calls + 1);
-	calls = lockCalls;
-	tex = UIAssets_Acquire(h);
-	CHECK(tex != NULL);
-	CHECK(lockCalls == calls + 1);
-	calls = lockCalls;
-	UIAssets_Release(h);
 	CHECK(lockCalls == calls + 1);
 	calls = lockCalls;
 	UIAssets_CancelForDeviceChange();
@@ -1650,32 +1630,38 @@ static void test_reinit_inside_read_no_stale_publish(void) {
 }
 
 static void test_generation_u32_wrap(void) {
+	int count = 40;
+	testRec_t *recs = makeRecs(count);
 	size_t len;
-	u8 *pack = buildPack(BASIC, 3, &len, 0);
+	u8 *pack = buildPack(recs, count, &len, 0);
 	uiAssetsSource_t src = memSource(pack, len);
+	char ids[UI_ASSETS_SLOTS][8];
 	uiPosterHandle_t preWrap, postWrap;
 
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
-	requestOne("GALE01");
+	requestOne("G000E0");
 	pollAll();
-	CHECK(UIAssets_Query("GALE01", 6, true, &preWrap) == UI_POSTER_EXACT);
+	CHECK(UIAssets_Query("G000E0", 6, true, &preWrap) == UI_POSTER_EXACT);
 	CHECK(UIAssets_Peek(preWrap) != NULL);
 
 	/* Park the slot at the wrap boundary, then hand ownership over: the
-	 * next assignment increments 0xFFFFFFFF -> 0. */
+	 * next assignment increments 0xFFFFFFFF -> 0. A full window of other
+	 * posters fills the empty slots first, so its farthest takes it. */
 	UIAssetsTest_ForceGeneration(preWrap.slot, 0xFFFFFFFFu);
-	CHECK(UIAssets_Query("GALE01", 6, true, &preWrap) == UI_POSTER_EXACT);
+	CHECK(UIAssets_Query("G000E0", 6, true, &preWrap) == UI_POSTER_EXACT);
 	CHECK(preWrap.generation == 0xFFFFFFFFu);
-	requestOne("GC6E01"); /* evicts GALE01's slot, reassigns it */
+	makeIds(ids, 10, UI_ASSETS_SLOTS);
+	UIAssets_RequestWindow(ids, UI_ASSETS_SLOTS, 0);
 	pollAll();
-	CHECK(UIAssets_Query("GC6E01", 6, true, &postWrap) == UI_POSTER_EXACT);
+	CHECK(UIAssets_Query(ids[UI_ASSETS_SLOTS - 1], 6, true, &postWrap) ==
+	      UI_POSTER_EXACT);
 	CHECK(postWrap.slot == preWrap.slot);
 	CHECK(postWrap.generation == 0);
 	CHECK(UIAssets_Peek(postWrap) != NULL);
 	/* The boundary handle is stale across the wrap, not resurrected. */
 	CHECK(UIAssets_Peek(preWrap) == NULL);
-	CHECK(UIAssets_Acquire(preWrap) == NULL);
 	free(pack);
+	free(recs);
 }
 
 static void test_short_id_rejected_before_read(void) {
@@ -1740,33 +1726,6 @@ static void test_request_window_mid_read_no_stale_publish(void) {
 		checkLoaded(chaosWindowIds[i]); /* correct content lands after */
 	free(pack);
 	free(recs);
-}
-
-static void test_acquire_pin_saturation(void) {
-	size_t len;
-	u8 *pack = buildPack(BASIC, 3, &len, 0);
-	uiAssetsSource_t src = memSource(pack, len);
-	uiPosterHandle_t h;
-	GXTexObj *tex;
-	int i;
-
-	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
-	requestOne("GALE01");
-	pollAll();
-	CHECK(UIAssets_Query("GALE01", 6, true, &h) == UI_POSTER_EXACT);
-	tex = UIAssets_Peek(h);
-	CHECK(tex != NULL);
-	for (i = 0; i < 255; i++)
-		CHECK(UIAssets_Acquire(h) == tex);
-	/* At the cap, Acquire must refuse (an uncounted pin could later be
-	 * cancelled out by paired Releases, leaving a holder unprotected). */
-	CHECK(UIAssets_Acquire(h) == NULL);
-	for (i = 0; i < 255; i++)
-		UIAssets_Release(h);
-	/* Pins balanced back to zero: the slot is evictable again. */
-	requestOne("GC6E01");
-	CHECK(UIAssets_Peek(h) == NULL);
-	free(pack);
 }
 
 /* ---- stills (stills.pak): the second cache ---- */
@@ -2163,9 +2122,9 @@ int main(int argc, char **argv) {
 	RUN(test_nth_id_boundaries);
 	RUN(test_window_prefetch_loads_all_seven);
 	RUN(test_window_eviction_and_reversal);
+	RUN(test_window_retention_oldest_first);
 	RUN(test_max_records_boundary);
 	RUN(test_stale_handle_after_eviction);
-	RUN(test_pin_retention_through_detail_launch);
 	RUN(test_grid_window_then_carousel);
 	RUN(test_cancel_for_device_change);
 	RUN(test_sync_validation_policy);
@@ -2187,7 +2146,6 @@ int main(int argc, char **argv) {
 	RUN(test_generation_u32_wrap);
 	RUN(test_short_id_rejected_before_read);
 	RUN(test_request_window_mid_read_no_stale_publish);
-	RUN(test_acquire_pin_saturation);
 	RUN(test_stills_load_one_texture_each);
 	RUN(test_stills_and_posters_refuse_each_other);
 	RUN(test_stills_window_of_three);

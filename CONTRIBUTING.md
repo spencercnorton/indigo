@@ -72,7 +72,9 @@ buildtools/ui/tests/fuzz/run_fuzz.sh 30               # fuzz the files read from
 - Commits carry a `Signed-off-by:` line (`git commit -s`, the Developer
   Certificate of Origin). There is no CLA.
 - No secrets, hostnames, personal data or screenshots of a real desktop in
-  the diff. Pictures come from the Dolphin emulator.
+  the diff. Pictures come from the Dolphin emulator, only of the screens the
+  change alters (a picture rewritten stays in the history for good), and a
+  picture of something moving is a lossless animated WebP.
 
 ## Out of scope
 
