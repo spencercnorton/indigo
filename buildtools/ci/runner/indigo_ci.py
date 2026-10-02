@@ -90,7 +90,7 @@ POOLS = {
     "emulator": Pool("emulator", "emulator.Dockerfile",
                      ("entrypoint.sh", "dolphin/0001-sd2sp2-adapter.patch", "dolphin/0002-flush-sd-writes.patch",
                       "dolphin/0003-controller-no-response.patch", "dolphin/0004-sd-faults.patch",
-                      "dolphin/0005-emulated-clock.patch"),
+                      "dolphin/0005-emulated-clock.patch", "dolphin/0006-gcloader.patch"),
                      "indigo-emulator", "8", "6g", shares=4096),
     # norvitech.com's checks (Python, Node, gitleaks) on the build image.
     "site": Pool("site", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py"),

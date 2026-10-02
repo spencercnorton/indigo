@@ -145,8 +145,9 @@ FOREIGN = {"ntsc": 2, "pal": 1, "pal60": 1}
 CABLES = {"composite": False, "component": True}
 # Where the SD card goes: SD2SP2 in Serial Port 2, or an SD Gecko in Memory
 # Card Slot B. 15 is the SD card adapter the emulator runner's Dolphin adds
-# (buildtools/ci/runner/dolphin/).
-STORAGES = {"dvd": None, "sd2sp2": "SerialPort2", "sdgecko-b": "SlotB"}
+# (buildtools/ci/runner/dolphin/). In a GC Loader, the card is the drive's,
+# which serves its boot.iso as the disc (DOLPHIN_GCLOADER, patch 0006).
+STORAGES = {"dvd": None, "sd2sp2": "SerialPort2", "sdgecko-b": "SlotB", "gcloader": None}
 SD_CARD_DEVICE = 15
 # Rows on Settings' Storage page: DOWN past them reaches Save & Exit.
 STORAGE_ROWS = 7
@@ -340,6 +341,9 @@ class Emulator:
         env = dict(os.environ, DISPLAY=self.display, LIBGL_ALWAYS_SOFTWARE="1")
         env["DOLPHIN_TICKS"] = "1"  # the console's clock and PC in dolphin.log (patch 0005)
         env.pop("DOLPHIN_SD_FAULTS", None)
+        env.pop("DOLPHIN_GCLOADER", None)
+        if storage == "gcloader":
+            env["DOLPHIN_GCLOADER"] = str(card)
         if faults:  # the SD card fails as asked (buildtools/ci/runner/dolphin/0004)
             env["DOLPHIN_SD_FAULTS"] = faults
         self.log = out / "dolphin.log"
@@ -420,7 +424,8 @@ class Route:
         return frame
 
     def check(self, name: str, passed: bool, **detail: object) -> None:
-        if not passed and getattr(self, "last_rgb", None) is not None:
+        probe_up = bool(self.report and self.report["valid"])  # the probe's screen is no crash
+        if not passed and getattr(self, "last_rgb", None) is not None and not probe_up:
             if why := diagnose(self.last_rgb):
                 detail["screen"] = why
         if not passed and (where := self.emulator.where()):
@@ -1029,7 +1034,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.card_zip:
                 sd = work / "card.img"
                 report["card"] = card.build_card(sd, args.card_zip, probe=args.probe,
-                                                 foreign=FOREIGN[args.region], settings=start)
+                                                 foreign=FOREIGN[args.region], settings=start,
+                                                 boot_iso=args.storage == "gcloader")
+                if args.storage == "gcloader":  # the drive's disc until a game's is set
+                    disc = work / "boot.iso"
+                    disc.write_bytes(card.read_card(sd, "boot.iso"))
                 dol = work / "ipl.dol"  # what a loader starts: the zip's own
                 with zipfile.ZipFile(args.card_zip) as package:
                     dol.write_bytes(package.read("ipl.dol"))
@@ -1047,8 +1056,8 @@ def main(argv: list[str] | None = None) -> int:
                 emulator.close()
                 (work / "again").mkdir()
                 (args.out / "next-boot").mkdir(exist_ok=True)  # Dolphin's output of the second boot
-                emulator = Emulator(dol, None, work / "again", args.out / "next-boot", args.region,
-                                    args.storage, sd, args.cable)
+                emulator = Emulator(dol, disc.resolve() if disc else None, work / "again",
+                                    args.out / "next-boot", args.region, args.storage, sd, args.cable)
                 route.emulator, route.pad = emulator, emulator.pad
                 route.boot_again()
             elif sd:

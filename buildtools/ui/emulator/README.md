@@ -145,6 +145,18 @@ then powers off and boots the same card again, with no faults: Indigo must
 still start at Home with its settings. The second boot's output is in
 `next-boot/`.
 
+## A GC Loader
+
+`--storage gcloader` puts the same card in a GC Loader, the drive
+replacement that serves games from the files on its SD card. The runner's
+Dolphin answers as one (HW2, firmware 1.0.1, writes enabled;
+`buildtools/ci/runner/dolphin/0006-gcloader.patch`): Indigo finds it by
+asking the drive, reads and writes the card through the drive's commands,
+and launches a game by sending the drive the game file's fragments, which it
+then serves as the disc, 40 at most. The card has a `boot.iso`, the zip's
+`ipl.dol` made into a disc, which the drive serves until a game's fragments
+are set, as a GC Loader does at power on; Dolphin starts `ipl.dol` itself.
+
 ## The probe
 
 [`probe/probe.c`](probe/probe.c) is a small libogc2 program, built with the

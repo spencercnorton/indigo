@@ -177,6 +177,9 @@ DAMAGED = (("GBHZ01", "Broken Header", header_only), ("GCTZ01", "Corrupt Table",
 PROBE_GAME = ("GPRE01", "Indigo Probe")
 PROBE_APP = "Probe.dol"
 PROBE_DOL_OFFSET = 0x10000
+# A GC Loader boots boot.iso from its card: on a card for one, the release's
+# ipl.dol made into a disc.
+BOOT_ISO = ("GSWE01", "Indigo")
 
 
 def probe_image(dol: bytes, game_id: str = PROBE_GAME[0], title: str = PROBE_GAME[1]) -> bytes:
@@ -457,7 +460,7 @@ MTOOLS = dict(os.environ, MTOOLS_SKIP_CHECK="1")
 
 
 def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | None = None,
-               foreign: int = 0, settings: str | None = None) -> dict[str, object]:
+               foreign: int = 0, settings: str | None = None, boot_iso: bool = False) -> dict[str, object]:
     """A FAT32 SD card image set up as someone would: the release zip
     unpacked onto it, then games, the packs and apps beside it. Without
     settings it has no swiss/settings/global.ini, so Indigo starts in
@@ -476,6 +479,8 @@ def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | No
         if settings is not None:  # a card that has been used: its settings folders made
             (root / "swiss/settings/game").mkdir(parents=True, exist_ok=True)
             (root / "swiss/settings/global.ini").write_text(settings.replace("\n", "\r\n"))
+        if boot_iso:
+            (root / "boot.iso").write_bytes(probe_image((root / "ipl.dol").read_bytes(), *BOOT_ISO))
         with open(out, "wb") as image:
             image.truncate(CARD_BYTES)
         subprocess.run(["mkfs.fat", "-F", "32", "-s", "64", "-n", "INDIGO", str(out)], check=True,

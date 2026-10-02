@@ -196,8 +196,12 @@ class Card(unittest.TestCase):
             self.assertIn(card.game_file(*card.PROBE_GAME), games)
             self.assertIn(card.game_file(*card.GAMES[0]), games)
             self.assertIsNone(card.read_card(image, "swiss/settings/global.ini"), "a new card has no settings")
-            card.build_card(image, package, posters=False, settings="# start\nClock=Left\n")
+            self.assertIsNone(card.read_card(image, "boot.iso"), "only a GC Loader's card has a boot.iso")
+            card.build_card(image, package, posters=False, settings="# start\nClock=Left\n", boot_iso=True)
             self.assertEqual(card.read_card(image, "swiss/settings/global.ini"), b"# start\r\nClock=Left\r\n")
+            boot = card.read_card(image, "boot.iso")
+            self.assertEqual(boot[:6], card.BOOT_ISO[0].encode())
+            self.assertEqual(boot[card.PROBE_DOL_OFFSET:card.PROBE_DOL_OFFSET + 17], b"the release's DOL")
 
     def test_settings_to_start_with(self):
         text = (run.SETTINGS / "non-default.ini").read_text()
