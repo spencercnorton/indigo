@@ -427,6 +427,16 @@ static void testHomeDecorativeBlend(void)
 	UIScene_Request(UI_SCENE_HOME);
 	tick(0.02f, UI_MOTION_OFF);
 	near(UIScene_Frame()->homeDecorativeBlend, 1.0f, 0.0f);
+	/* It keeps step with the orbit's strength, whose spring it shares, even
+	 * when Reduced takes the travel it had gathered from them both. */
+	start(1.0f / 60.0f, UI_MOTION_FULL);
+	UIScene_RequestLibraryLayout(UI_GAMEFLOW_LAYOUT_HORIZONTAL);
+	UIScene_Request(UI_SCENE_LIBRARY);
+	for(int frame = 0; frame < 60; frame++) {
+		tick(1.0f / 60.0f, frame < 8 ? UI_MOTION_FULL : UI_MOTION_REDUCED);
+		near(1.0f - UIScene_Frame()->homeDecorativeBlend,
+			(1.0f - UIScene_Frame()->orbitStrength) / (1.0f - 0.72f), 0.0005f);
+	}
 }
 
 /* The Library's cube pose follows its layout: Horizontal keeps the one the

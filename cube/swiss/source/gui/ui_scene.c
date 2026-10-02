@@ -267,6 +267,7 @@ static void clearSpringVelocities(void)
 	state.cubePitch.velocity = 0.0f;
 	state.cubeYaw.velocity = 0.0f;
 	state.orbitStrength.velocity = 0.0f;
+	state.homeDecorative.velocity = 0.0f;
 	state.homeIdleBlend.velocity = 0.0f;
 	for(int i = 0; i < 4; ++i) state.orientation[i].velocity = 0.0f;
 }
