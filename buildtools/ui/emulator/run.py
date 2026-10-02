@@ -97,6 +97,7 @@ FATAL = re.compile("|".join((
     r"Segmentation fault", r"core dumped", r"\bPANIC\b", r"ASSERT(?:ION)? FAILED",
     r"Invalid (?:read|write) (?:from|to)", r"Unknown (?:opcode|instruction)",
     r"FIFO (?:is )?(?:overflowed|desync)", r"failed to compile shader", r"device lost",
+    r"DABR: (?:write to|read of)",  # a thread's stack reached its guard (patch 0007)
 )), re.I)
 # The DSP runs its real microcode (LLE): Dolphin's high-level stand-ins know
 # libogc's audio library but not libogc2's, so the menu music's stop before a
@@ -315,7 +316,7 @@ class Emulator:
         (self.user / "Config/Dolphin.ini").write_text(ini)
         # Swiss's own debug output (its OSReport lines) goes to dolphin.log.
         (self.user / "Config/Logger.ini").write_text(
-            "[Logs]\nOSREPORT = True\n[Options]\nVerbosity = 1\nWriteToConsole = True\nWriteToFile = False\n")
+            "[Logs]\nOSREPORT = True\nPOWERPC = True\n[Options]\nVerbosity = 1\nWriteToConsole = True\nWriteToFile = False\n")
         (self.user / "GC").mkdir()
         (self.user / "GC/SRAM.raw").write_bytes(sram(*REGIONS[region][1:]))
         (self.user / "Config/GFX.ini").write_text("[Settings]\nInternalResolution = 1\nShowFPS = False\n")
@@ -338,6 +339,7 @@ class Emulator:
         self.display = f":{number}"
         env = dict(os.environ, DISPLAY=self.display, LIBGL_ALWAYS_SOFTWARE="1")
         env["DOLPHIN_TICKS"] = "1"  # the console's clock and PC in dolphin.log (patch 0005)
+        env["DOLPHIN_DABR"] = "1"  # a thread's stack guarded, as on a console (patch 0007)
         env.pop("DOLPHIN_SD_FAULTS", None)
         env.pop("DOLPHIN_GCLOADER", None)
         if storage == "gcloader":
