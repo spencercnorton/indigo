@@ -30,6 +30,11 @@ Indigo is built on and lists the upstream files Indigo does change, with why.
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
   ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
 
+# The performance build, after make dev: frame times and the GPU's counters
+# (vertices, pixels, texels, copy clocks) over the menus, to measure a change
+# on a console (writes cube/swiss/swiss-perf.dol; CI keeps one as dol-perf-*):
+#   make -C cube/swiss BUILD=build-perf TARGET=swiss-perf UI_PERF=1
+
 # The SD card zip for that build (after make dev):
 buildtools/sd_package.sh dev cube/swiss/swiss.dol .
 

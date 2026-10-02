@@ -435,9 +435,37 @@ static void _DrawDialogCard(int x, int y, int width, int height, int type);
 static void _DrawDialogBar(int x, int y, int width, int start, int length);
 
 #if UI_PERF_CAPTURE
+/* The GPU's own counters, summed between two refreshes of the overlay: the
+ * vertices, pixels and texels it drew and the clocks it spent copying the
+ * EFB (the glass copies and the display copy). A console counts them;
+ * Dolphin may not. */
+static u64 perfGpuVertices, perfGpuPixels, perfGpuTexels, perfGpuCopyClocks;
+static u32 perfGpuFrames;
+
+static void _PerfGpuFrameStart(void)
+{
+	GX_ClearGPMetric();
+	GX_ClearPixMetric();
+}
+
+/* After GX_DrawDone: the frame's work is finished. */
+static void _PerfGpuFrameEnd(void)
+{
+	u32 vertices, texels, topIn, topOut, bottomIn, bottomOut, clearIn, copyClocks;
+
+	GX_ReadGPMetric(&vertices, &texels);
+	GX_ReadPixMetric(&topIn, &topOut, &bottomIn, &bottomOut, &clearIn, &copyClocks);
+	perfGpuVertices += vertices;
+	perfGpuPixels += (u64)topIn + bottomIn;
+	perfGpuTexels += texels;
+	perfGpuCopyClocks += copyClocks;
+	perfGpuFrames++;
+}
+
 static void _DrawPerfOverlay(void)
 {
 	static char summary[128] = "PERF capture warming up";
+	static char gpu[128] = "";
 	static u32 framesUntilRefresh = 1;
 	uiPerfSnapshot_t snapshot;
 	u64 workP99;
@@ -459,13 +487,26 @@ static void _DrawPerfOverlay(void)
 			(unsigned long long)(periodP99 / 1000),
 			(unsigned long long)((periodP99 % 1000) / 10),
 			(unsigned long long)snapshot.metrics[UI_PERF_METRIC_FRAME_PERIOD].thresholdExceedances);
+		if(perfGpuFrames) {
+			/* Per frame: vertices, then thousands of pixels and texels,
+			 * then thousands of copy clocks (162 per microsecond). */
+			snprintf(gpu, sizeof(gpu),
+				"GPU/frame verts %llu  kpx %llu  ktex %llu  copy %llu kclk",
+				(unsigned long long)(perfGpuVertices / perfGpuFrames),
+				(unsigned long long)(perfGpuPixels / perfGpuFrames / 1000),
+				(unsigned long long)(perfGpuTexels / perfGpuFrames / 1000),
+				(unsigned long long)(perfGpuCopyClocks / perfGpuFrames / 1000));
+		}
+		perfGpuVertices = perfGpuPixels = perfGpuTexels = perfGpuCopyClocks = 0;
+		perfGpuFrames = 0;
 		framesUntilRefresh = 60;
 	}
 
 	drawInit();
-	_DrawSimpleBox(118, 82, 404, 22, 0,
+	_DrawSimpleBox(118, 82, 404, 36, 0,
 		(GXColor) {7, 6, 24, 218}, (GXColor) {135, 124, 209, 150});
 	drawString(320, 94, summary, 0.42f, ALIGN_CENTER, defaultColor);
+	drawString(320, 108, gpu, 0.42f, ALIGN_CENTER, defaultColor);
 }
 #endif
 
@@ -6926,6 +6967,9 @@ static void *videoUpdate(void *videoEventQueue) {
 		UI_PERF_BEGIN(frameWorkStart);
 		//frames++;
 		LWP_MutexLock(_videomutex);
+#if UI_PERF_CAPTURE
+		_PerfGpuFrameStart();
+#endif
 		/* One color per layer a frame, taken with the page it goes with:
 		 * every emitter recolors with the menus', the backdrop and its waves
 		 * with their own. */
@@ -7006,6 +7050,9 @@ static void *videoUpdate(void *videoEventQueue) {
 		copyDisplayFrame(xfb[whichfb]);
 		GX_DrawDone();
 		UI_PERF_END(UI_PERF_METRIC_FRAME_WORK, frameWorkStart);
+#if UI_PERF_CAPTURE
+		_PerfGpuFrameEnd();
+#endif
 
 		LWP_MutexUnlock(_videomutex);
 		VIDEO_SetNextFramebuffer(xfb[whichfb]);
@@ -7092,6 +7139,9 @@ void DrawInit(GXRModeObj *videoMode, bool black) {
 	memcpy(systemInstrument.timeText, "--:--:--", 9u);
 	videoFrameSerial = 0u;
 	UIPerf_Reset();
+#if UI_PERF_CAPTURE
+	GX_SetGPMetric(GX_PERF0_VERTICES, GX_PERF1_TEXELS);
+#endif
 	UIScene_Reset();
 	sceneRenderingEnabled = !black;
 	uiDrawObj_t *container = DrawContainer();

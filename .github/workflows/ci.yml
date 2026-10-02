@@ -127,6 +127,17 @@ jobs:
             exit 1
           fi
           echo "Reproducible: two independent builds are byte for byte the same." >> "$GITHUB_STEP_SUMMARY"
+      - name: The performance build
+        # Frame times and the GPU's counters drawn over the menus
+        # (UI_PERF=1), to measure a change on a console. It runs here, beside
+        # the Emulator job, so it adds nothing to the time CI takes.
+        run: make -C cube/swiss -j8 BUILD=build-perf TARGET=swiss-perf UI_PERF=1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dol-perf-${{ github.sha }}
+          path: cube/swiss/swiss-perf.dol
+          if-no-files-found: error
+          retention-days: 14
 
   emulator:
     name: ${{ matrix.name }}

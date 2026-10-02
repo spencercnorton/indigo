@@ -12,6 +12,7 @@
 /pc/usbgecko/swissserver.exe
 /swiss_r*
 build
+build-perf
 dist
 # Every host test executable the suite builds: test_* with no extension.
 /buildtools/ui/tests/test_*
