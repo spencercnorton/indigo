@@ -88,6 +88,10 @@ SETTLE_SECONDS = 10
 WALL_FACTOR = 5
 TICKS_PER_SECOND = 486_000_000  # the GameCube's CPU clock, which Dolphin's ticks count
 PRESS_SECONDS = 0.1  # of the console's time a button stays down, and up after
+# A press the menu was too busy to see changes nothing on the screen; a person
+# presses again, and press_until does, after MISSED_SECONDS, up to PRESSES times.
+MISSED_SECONDS = 3
+PRESSES = 3
 FATAL = re.compile("|".join((
     r"(?:DSI|ISI|Program|Machine Check|Alignment) Exception", r"Unhandled exception",
     r"Segmentation fault", r"core dumped", r"\bPANIC\b", r"ASSERT(?:ION)? FAILED",
@@ -407,6 +411,7 @@ class Route:
         self.probe = probe
         self.fresh_card = fresh_card
         self.report: dict[str, object] | None = None
+        self.pressed_again: list[str] = []  # presses the menu missed, pressed again
         self.checks: list[dict[str, object]] = []
         self.shots: list[tuple[str, Path]] = []
         self.pad = emulator.pad
@@ -454,6 +459,25 @@ class Route:
             if steady >= 2:
                 return mask, time.monotonic()
             time.sleep(0.15)
+        return None, time.monotonic()
+
+    def press_until(self, button: str, seconds: float = SETTLE_SECONDS, unlike: np.ndarray | None = None,
+                    like: np.ndarray | None = None,
+                    box: tuple[int, int, int, int] = LABEL_BOX) -> tuple[np.ndarray | None, float]:
+        """Press a button, then wait for steady text in a box as settled_label does.
+        A press the menu was too busy to see leaves the box as it was, and a person
+        presses again: so does this, noting each in the report. A press that
+        changed the box, to anything, is never repeated."""
+        before = text_mask(self.gray(), box)
+        for attempt in range(1, PRESSES + 1):
+            self.press(button)
+            last = attempt == PRESSES
+            mask, now = self.settled_label(seconds if last else MISSED_SECONDS, unlike, like, box)
+            if mask is not None or last:
+                return mask, now
+            if overlap(text_mask(self.gray(), box), before) < SAME:
+                return self.settled_label(seconds, unlike, like, box)  # it moved: let it arrive
+            self.pressed_again.append(button)
         return None, time.monotonic()
 
     def press(self, button: str, seconds: float = PRESS_SECONDS) -> None:
@@ -544,8 +568,7 @@ class Route:
         self.check("Indigo's play history records the game", f"\n{card.PROBE_GAME[0]}=" in played)
 
     def turn(self, faces: list[np.ndarray], button: str, name: str) -> np.ndarray:
-        self.press(button)
-        mask, _ = self.settled_label(unlike=faces[-1])
+        mask, _ = self.press_until(button, unlike=faces[-1])
         self.shot(name, self.last_rgb)
         self.check(f"{button} turns the cube to another face", mask is not None, after=name)
         return mask
@@ -565,8 +588,7 @@ class Route:
         left = self.turn([back], "LEFT", "left-1")
         self.check("LEFT turns the other way", overlap(left, faces[-1]) >= SAME,
                    overlap=round(overlap(left, faces[-1]), 3))
-        self.press("RIGHT")
-        mask, _ = self.settled_label(like=home)
+        mask, _ = self.press_until("RIGHT", like=home)
         self.check("RIGHT undoes LEFT", mask is not None)
         for n, face in enumerate(faces[:4]):
             # Home starts on the Library face: browse it while it is open,
@@ -577,8 +599,7 @@ class Route:
             else:
                 inside = {0: self.browse_library, 1: self.change_source}.get(n)
                 self.open_and_close(face, n, inside)
-            self.press("RIGHT")
-            mask, _ = self.settled_label(like=faces[n + 1])
+            mask, _ = self.press_until("RIGHT", like=faces[n + 1])
             self.check("the cube turns on to the next face", mask is not None, face=n + 1)
         # Apps last: a launch never comes back.
         self.start_an_app(faces[4])
@@ -600,18 +621,15 @@ class Route:
         self.check("A opens Apps", opened)
         first, _ = self.settled_label(box=TITLE_BOX)
         self.check("Apps shows an app's name", first is not None)
-        self.press("RIGHT")
-        other, _ = self.settled_label(unlike=first, box=TITLE_BOX)
+        other, _ = self.press_until("RIGHT", unlike=first, box=TITLE_BOX)
         self.shot("apps-right", self.last_rgb)
         self.check("RIGHT moves to the next app", other is not None)
-        self.press("LEFT")
-        again, _ = self.settled_label(like=first, box=TITLE_BOX)
+        again, _ = self.press_until("LEFT", like=first, box=TITLE_BOX)
         self.check("LEFT goes back an app", again is not None)
         if self.probe:
             name = again
             for n in range(card.app_order(True).index(card.PROBE_APP[:-4])):
-                self.press("RIGHT")
-                name, _ = self.settled_label(unlike=name, box=TITLE_BOX)
+                name, _ = self.press_until("RIGHT", unlike=name, box=TITLE_BOX)
                 self.check("RIGHT moves to the next app", name is not None, step=n + 1)
             self.shot("apps-probe", self.last_rgb)
         apps = float(self.emulator.frame().mean())
@@ -703,8 +721,7 @@ class Route:
         title, _ = self.settled_label(box=TITLE_BOX)
         self.check("the Library shows a game's title", title is not None)
         for n in range(card.library_order(True).index(card.PROBE_GAME[1])):
-            self.press("RIGHT")
-            title, _ = self.settled_label(unlike=title, box=TITLE_BOX)
+            title, _ = self.press_until("RIGHT", unlike=title, box=TITLE_BOX)
             self.check("RIGHT moves to the next game", title is not None, step=n + 1)
         self.shot("library-probe", self.last_rgb)
         self.press("A")
@@ -752,19 +769,16 @@ class Route:
         library, settings, system, apps = faces[0], faces[2], faces[3], faces[4]
         for tag, after_system in (("off", library), ("on", apps)):
             self.flip_apps_face(settings, tag)
-            self.press("RIGHT")
-            self.check("RIGHT turns to System", self.settled_label(like=system)[0] is not None,
+            self.check("RIGHT turns to System", self.press_until("RIGHT", like=system)[0] is not None,
                        apps_face=tag)
-            self.press("RIGHT")
-            mask, _ = self.settled_label(unlike=system)
+            mask, _ = self.press_until("RIGHT", unlike=system)
             self.shot(f"after-system-apps-face-{tag}", self.last_rgb)
             self.check(f"Apps Face {tag.title()}: after System comes "
                        f"{'Library' if tag == 'off' else 'Apps'}",
                        mask is not None and overlap(mask, after_system) >= SAME,
                        overlap=round(overlap(mask, after_system), 3) if mask is not None else None)
             for back in (system, settings):
-                self.press("LEFT")
-                self.check("LEFT turns back a face", self.settled_label(like=back)[0] is not None,
+                self.check("LEFT turns back a face", self.press_until("LEFT", like=back)[0] is not None,
                            apps_face=tag)
 
     def covered(self, reference: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX) -> bool:
@@ -800,14 +814,12 @@ class Route:
         self.check("the Library shows a game's title", first is not None)
         titles.append(first)
         for n in (1, 2):
-            self.press("RIGHT")
-            title, _ = self.settled_label(unlike=titles[-1], box=TITLE_BOX)
+            title, _ = self.press_until("RIGHT", unlike=titles[-1], box=TITLE_BOX)
             self.shot(f"library-right-{n}", self.last_rgb)
             self.check("RIGHT moves to the next game", title is not None, step=n)
             titles.append(title)
         for n, expected in ((1, titles[1]), (2, titles[0])):
-            self.press("LEFT")
-            title, _ = self.settled_label(like=expected, box=TITLE_BOX)
+            title, _ = self.press_until("LEFT", like=expected, box=TITLE_BOX)
             self.shot(f"library-left-{n}", self.last_rgb)
             self.check("LEFT goes back a game", title is not None, step=n)
         self.press("A")
@@ -872,8 +884,7 @@ class Route:
         first, _ = self.settled_label(unlike=before, box=TITLE_BOX)
         self.shot("source-picker", self.last_rgb)
         self.check("Change Source opens the device picker", first is not None)
-        self.press("RIGHT")
-        name, _ = self.settled_label(unlike=first, box=TITLE_BOX)
+        name, _ = self.press_until("RIGHT", unlike=first, box=TITLE_BOX)
         self.shot("source-picker-right", self.last_rgb)
         self.check("RIGHT shows the next device", name is not None)
         self.press("B")
@@ -991,6 +1002,7 @@ def main(argv: list[str] | None = None) -> int:
         "checks": route.checks if route else [],
         "fatal_log_lines": fatal,
         "probe": route.report if route else None,
+        "pressed_again": route.pressed_again if route else [],
         "pictures": [path.name for _, path in (route.shots if route else [])],
     })
     (args.out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -1016,6 +1028,10 @@ def summary(report: dict[str, object]) -> str:
             lines.append(f"\n**{key.capitalize()}:** {report[key]}")
     if report["fatal_log_lines"]:
         lines.append("\n**Dolphin reported:**\n```\n" + "\n".join(report["fatal_log_lines"]) + "\n```")
+    if report.get("pressed_again"):
+        lines.append(f"\n**Pressed again:** {len(report['pressed_again'])} press(es) the menu was too busy "
+                     f"to see ({', '.join(report['pressed_again'])}): the screen had not changed, so the "
+                     f"route pressed again, as a person would.")
     probe = report.get("probe")
     if probe:
         lines.append(f"\n**The probe reported:** disc `{probe['disc_id']}`, memory `{probe['memsize']:08X}`, "
