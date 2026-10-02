@@ -15,7 +15,7 @@ commit 163f8b1de75328ad3a9a79caabff924930c04213 (v0.6r2119, 2026-09-24)
 
 Makefile                                   make dev also builds the packer, for In-Game Reset's apploader.img
 cube/packer/Makefile                       compresses with xz: the build image has no 7z; links its files in byte order, whatever the locale
-cube/swiss/Makefile                        tags.h leaves out the commit being built; links its files in byte order and names the commit in exactly 7 characters, so the DOL is the same in any locale and any clone; UI_PERF=1 builds the performance overlay; AESND is built from cube/swiss/aesnd, not -laesnd
+cube/swiss/Makefile                        tags.h leaves out the commit being built; links its files in byte order and names the commit in exactly 7 characters, so the DOL is the same in any locale and any clone; UI_PERF=1 builds the performance overlay; no unwind tables, which nothing reads; AESND is built from cube/swiss/aesnd, not -laesnd
 cube/swiss/aesnd/                          libogc2's AESND at the toolchain's commit, with Indigo's fix to AESND_Reset (its README.md)
 cube/swiss/source/devices/deviceHandler.c  devices shut down on reset after the interface stops reading them (priority 1)
 cube/swiss/source/gcm.c                    get_fst_details stays inside the file table: a damaged image cannot crash the Library
