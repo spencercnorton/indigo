@@ -205,16 +205,6 @@ class Pad(unittest.TestCase):
             self.assertEqual(client.recv(128)[50], 255)
             with self.assertRaises(ValueError):
                 pad.hold("SELECT")
-            pad.unplug()
-            self.assertFalse(pad.streaming)
-            client.settimeout(0.3)
-            try:
-                while client.recv(128):
-                    pass  # pad data already on its way
-            except socket.timeout:
-                pass
-            send(dsu_pad.PORT_INFO, struct.pack("<I4B", 4, 0, 1, 2, 3))
-            self.assertEqual(client.recv(64)[21], 0, "the port reads unplugged again")
         finally:
             client.close()
             pad.close()

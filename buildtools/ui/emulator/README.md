@@ -136,22 +136,25 @@ Games are given 24 MB by Swiss itself, so the game route checks it.
 
 ## What Dolphin needs
 
-The emulator runner builds Dolphin from source with the SD card adapter
-(`buildtools/ci/runner/dolphin/`). Without it, the disc routes still run
-anywhere Dolphin does.
+The emulator runner builds Dolphin from source with three patches
+(`buildtools/ci/runner/dolphin/`): the SD card adapter, its writes flushed,
+and a controller that answers like one. The disc routes' menus run in any
+Dolphin; the launches and the SD card need the runner's.
 
-
-- **The controller is plugged in after startup, and pulled at a launch.**
-  Swiss's startup stalls in Dolphin when a controller is already connected
-  (its pad and steering-wheel setup; a console is fine), and so does its
-  shutdown before a launch, in libogc's serial transfer. The pad reports
-  itself unplugged until Home is up, and again once the A that launches has
-  gone in. That is why the controller is a DSU pad: Dolphin notices one
-  coming and going while it runs.
-- **The DSP runs its microcode** (`DSPHLE = False`). Dolphin's high-level
-  stand-ins know libogc's audio library but not libogc2's (it logs
-  "Unknown ucode (CRC = 8d527c50) - forcing AX"), so the menu music's stop
-  before a launch was never answered and the launch screen never moved on.
+- **A controller answers like one.** A console's controller ignores serial
+  commands it doesn't know, and the hardware reports no response. Dolphin
+  answered nothing, and the transfer then never ended: libogc's steering
+  wheel probe at startup and the GameID packet Swiss sends before every
+  launch both hung with a controller connected. The patched Dolphin answers
+  no response, so the controller stays connected through a launch. It is
+  still plugged in only once Home is up, which works in any Dolphin; that is
+  why the controller is a DSU pad, which Dolphin notices arriving.
+- **The DSP runs its microcode, in step with the CPU** (`DSPHLE = False`,
+  `DSPThread = False`). Dolphin's high-level stand-ins know libogc's audio
+  library but not libogc2's (it logs "Unknown ucode (CRC = 8d527c50) -
+  forcing AX"), so the menu music's stop before a launch was never answered.
+  On a thread of its own the DSP sometimes missed the mail that stop sends
+  (`AESND_Reset` waits for it with interrupts off) when the machine was busy.
 - **Games need a file table.** The Library reads a game's banner through the
   file table its disc header points to, so each game on the demonstration
   disc has one, with an `opening.bnr`, as a real game does. Two more images

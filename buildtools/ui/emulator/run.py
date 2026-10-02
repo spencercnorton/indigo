@@ -88,9 +88,12 @@ FATAL = re.compile("|".join((
 )), re.I)
 # The DSP runs its real microcode (LLE): Dolphin's high-level stand-ins know
 # libogc's audio library but not libogc2's, so the menu music's stop before a
-# launch would never be answered.
+# launch would never be answered. It runs in step with the CPU, not on a thread
+# of its own, where it sometimes missed the mail that stops the music for a
+# launch (AESND_Reset waits for it with interrupts off) on a busy machine.
 DOLPHIN_INI = """[Core]
 DSPHLE = False
+DSPThread = False
 MMU = True
 GFXBackend = OGL
 SIDevice0 = 6
@@ -479,10 +482,7 @@ class Route:
 
     def handoff(self, tag: str) -> dict[str, object]:
         """After a launch, wait for the probe's screen and check what the
-        hand-off left it. Swiss's shutdown before a launch stalls in Dolphin
-        while a controller is connected, as its startup does (a console is
-        fine), so the pad is unplugged once the launching A is in."""
-        self.pad.unplug()
+        hand-off left it. The controller stays connected, as on a console."""
         report, deadline = None, time.monotonic() + BOOT_SECONDS
         while not (report and report["valid"]) and time.monotonic() < deadline:
             time.sleep(0.5)
