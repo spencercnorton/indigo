@@ -100,8 +100,7 @@ typedef struct {
 
 enum TextureId
 {
-	TEX_BACKDROP=0,
-	TEX_SWISS,
+	TEX_SWISS=0,
 	TEX_GCDVDSMALL,
 	TEX_SDSMALL,
 	TEX_HDD,

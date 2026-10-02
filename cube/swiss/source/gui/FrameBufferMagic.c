@@ -56,10 +56,6 @@
 
 TPLFile imagesTPL;
 TPLFile buttonsTPL;
-TPLFile backdropTPL;
-GXTexObj backdropTexObj;
-GXTlutObj backdropTlutObj;
-GXTexObj backdropIndTexObj;
 GXTexObj bannerMaskTexObj;
 GXTexObj swissTexObj;
 GXTexObj gcdvdsmallTexObj;
@@ -616,10 +612,6 @@ static void init_textures()
 {
 	TPL_OpenTPLFromMemory(&imagesTPL, (void *)images_tpl, images_tpl_size);
 	TPL_OpenTPLFromMemory(&buttonsTPL, (void *)buttons_tpl, buttons_tpl_size);
-	TPL_GetTextureCI(&imagesTPL, backdrop, &backdropTexObj, &backdropTlutObj, GX_TLUT0);
-	GX_InitTexObjUserData(&backdropTexObj, &backdropTlutObj);
-	TPL_GetTexture(&imagesTPL, backdrop_ind, &backdropIndTexObj);
-	GX_InitTexObjUserData(&backdropIndTexObj, &backdropTexObj);
 	TPL_GetTexture(&imagesTPL, banner_mask, &bannerMaskTexObj);
 	TPL_GetTexture(&imagesTPL, swissimg, &swissTexObj);
 	TPL_GetTexture(&imagesTPL, gcdvdsmall, &gcdvdsmallTexObj);
@@ -798,45 +790,6 @@ static void _DrawImageNow(int textureId, int x, int y, int width, int height, in
 	
 	switch(textureId)
 	{
-		case TEX_BACKDROP:
-			switch(GX_GetTexObjFmt(&backdropTexObj)) {
-				case GX_TF_CI4:
-				case GX_TF_CI8:
-				case GX_TF_CI14:
-					if(GX_GetTlutObjFmt(&backdropTlutObj) != GX_TL_IA8) {
-						texObj = &backdropTexObj;
-						break;
-					}
-				case GX_TF_IA4:
-				case GX_TF_IA8:
-					GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_TEXA, GX_CC_TEXC, GX_CC_RASC, GX_CC_ZERO);
-					GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
-					
-					texObj = &backdropTexObj; color = (GXColor) {0,0,255,255};
-					break;
-				default:
-					texObj = &backdropTexObj;
-					break;
-			}
-			if(GX_GetTexObjUserData(&backdropIndTexObj) == texObj) {
-				indTexObj = &backdropIndTexObj;
-				ss = 640; ts = 480;
-			}
-			// Phase 2: subtle GameCube-menu-style backdrop drift. Runs once per frame
-			// on the vsync-locked video thread (no timer needed — same pattern as the
-			// Phase 1 highlight tween). Config-gated; when off, the original full-frame
-			// coords pass through unchanged => byte-identical to stock.
-			if(!swissSettings.disableUIAnimations &&
-				!swissSettings.reduceUIAnimations &&
-				!swissSettings.disableAnimatedBackdrop) {
-				float bgPhase = UIAnim_Seconds() * 0.72f;
-				const float M = 0.03f;           // inset margin keeps texcoords in [0,1]: no edge smear, wrap-agnostic
-				float dx = M * sinf(bgPhase);
-				float dy = M * cosf(bgPhase * 0.9f);
-				s1 = M + dx; s2 = (1.0f - M) + dx;
-				t1 = M + dy; t2 = (1.0f - M) + dy;
-			}
-			break;
 		case TEX_SWISS:
 			texObj = &swissTexObj;
 			break;
@@ -7186,7 +7139,6 @@ void DrawInit(GXRModeObj *videoMode, bool black) {
 	sceneRenderingEnabled = !black;
 	uiDrawObj_t *container = DrawContainer();
 	if(!black) {
-		DrawAddChild(container, DrawImage(TEX_BACKDROP, 0, 0, 640, 480, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0));
 		DrawAddChild(container, DrawBackground());
 		DrawAddChild(container, DrawTitleBar());
 		buttonPanel = DrawHome();
@@ -7196,76 +7148,11 @@ void DrawInit(GXRModeObj *videoMode, bool black) {
 	LWP_CreateThread(&video_thread, videoUpdate, videoEventQueue, video_thread_stack, VIDEO_STACK_SIZE, VIDEO_PRIORITY);
 }
 
+/* Indigo's own background (indigo_background.c) covers the whole stage, so
+ * a custom swiss/backdrop.tpl could never show: nothing is loaded. main.c
+ * still calls this, as upstream's does. */
 void DrawLoadBackdrop(DEVICEHANDLER_INTERFACE *device) {
-	file_handle *backdropFile = calloc(1, sizeof(file_handle));
-	concat_path(backdropFile->name, device->initial->name, "swiss/backdrop.tpl");
-	backdropFile->device = device;
-	
-	s32 id = 0;
-	u32 fmt;
-	u16 width, height;
-	if(TPL_OpenTPLFromHandle(&backdropTPL, openFileStream(backdropFile)) >= 0) {
-		time_t curtime;
-		if(time(&curtime) != (time_t)-1) {
-			struct tm *tm = localtime(&curtime);
-			switch(backdropTPL.ntextures) {
-				case 2:
-					id = (tm->tm_mon + 2) % 12 / 6;
-					break;
-				case 3:
-					id = (tm->tm_mon + 2) % 12 / 4;
-					break;
-				case 4:
-					id = (tm->tm_mon + 1) % 12 / 3;
-					break;
-				case 6:
-					id = (tm->tm_mon + 1) % 12 / 2;
-					break;
-				case 7:
-					id = tm->tm_wday;
-					break;
-				case 12:
-					id = tm->tm_mon;
-					break;
-				case 24:
-					id = tm->tm_hour;
-					break;
-				case 30 ... 31:
-					id = tm->tm_mday - 1;
-					break;
-				case 365 ... 366:
-					id = tm->tm_yday;
-					break;
-				default:
-					srand(curtime);
-					id = rand();
-					break;
-			}
-			id %= backdropTPL.ntextures;
-		}
-		if(TPL_GetTextureInfo(&backdropTPL, id, &fmt, &width, &height) >= 0) {
-			switch(fmt) {
-				case GX_TF_CI4:
-				case GX_TF_CI8:
-				case GX_TF_CI14:
-					TPL_GetTextureCI(&backdropTPL, id, &backdropTexObj, &backdropTlutObj, fmt == GX_TF_CI14 ? GX_BIGTLUT0 : GX_TLUT0);
-					GX_InitTexObjUserData(&backdropTexObj, &backdropTlutObj);
-					break;
-				default:
-					TPL_GetTexture(&backdropTPL, id, &backdropTexObj);
-					break;
-			}
-			GX_InitTexObjUserData(&backdropIndTexObj, NULL);
-		}
-		else {
-			TPL_CloseTPLFile(&backdropTPL);
-			free(backdropFile);
-		}
-	}
-	else {
-		TPL_CloseTPLFile(&backdropTPL);
-		free(backdropFile);
-	}
+	(void)device;
 }
 
 void DrawShutdown() {
