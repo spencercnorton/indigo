@@ -40,8 +40,10 @@ buildtools/sd_package.sh dev cube/swiss/swiss.dol .
 
 # Host tests: lanes plain, sanitized, contracts, or all. Needs Python 3 with
 # Pillow and NumPy, a C compiler and zlib; the poster tests also need
-# gxtexconv (in the image above). CI runs every lane on that toolchain, and
-# the sanitized lane twice: CC=gcc and CC=clang.
+# gxtexconv (in the image above), and the contracts lane builds the fuzzers
+# when clang has libFuzzer. CI runs every lane on that toolchain, and the
+# sanitized lane twice: CC=gcc and CC=clang. A new C test is one name in
+# TESTS and its sources in buildtools/ui/tests/Makefile; both lanes run it.
 buildtools/ui/tests/run_tests.sh all
 
 # Source checks CI runs on a pull request into beta:

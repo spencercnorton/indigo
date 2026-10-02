@@ -246,6 +246,7 @@ jobs:
           LANE: ${{ matrix.lane }}
           UI_TEST_JOBS: "8"
           UI_TEST_REQUIRE_GXTEXCONV: "1"
+          UI_TEST_REQUIRE_FUZZERS: "1"
         run: buildtools/ui/tests/run_tests.sh "$LANE"
 
   fuzz:

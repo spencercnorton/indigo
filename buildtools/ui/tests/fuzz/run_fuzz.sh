@@ -7,10 +7,17 @@
 # fails the run and leaves the input that caused it in OUT/crashes/<target>/.
 #
 # usage: buildtools/ui/tests/fuzz/run_fuzz.sh [SECONDS per target, 30] [OUT, ./fuzz-out]
+#        buildtools/ui/tests/fuzz/run_fuzz.sh --build-only [OUT]
 # Needs clang with its fuzzer and sanitizer runtimes, zlib, Python 3 with
 # Pillow and NumPy; the poster seed also needs gxtexconv.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
+build_only=
+if [ "${1:-}" = --build-only ]; then
+	build_only=1
+	shift
+	set -- 0 "${1:-fuzz-out}"
+fi
 seconds=${1:-30}
 mkdir -p "${2:-fuzz-out}"
 out=$(cd "${2:-fuzz-out}" && pwd)
@@ -35,6 +42,7 @@ echo "== building the fuzzers =="
 	python3 "$here/fst_source.py" "$out/fuzz_fst.c"
 	$cc $flags -funsigned-char -std=gnu11 -w -o "$out/bin/fst" "$out/fuzz_fst.c"
 }
+[ -n "$build_only" ] && exit 0
 python3 "$here/seeds.py" "$out/corpus"
 # Inputs that once broke something stay in the corpus for good: corpus/<target>/.
 for target in history saves posters about settings fst png; do

@@ -69,7 +69,6 @@ def validate(files: dict[str, str]) -> list[str]:
     layout_c = files["layout_c"]
     layout_h = files["layout_h"]
     makefile = files["makefile"]
-    runner = files["runner"]
     layout_test = files["layout_test"]
     menu_test = files["menu_test"]
     semantics = files["semantics"]
@@ -434,14 +433,9 @@ def validate(files: dict[str, str]) -> list[str]:
          "measured-copy failures do not clear presentation output")
 
     # Compile/sanitizer coverage and real-English extrema are mandatory.
-    for target in (
-        "test_ui_settings_layout",
-        "test_ui_settings_layout_san",
-        "test_ui_menu_input",
-        "test_ui_menu_input_san",
-    ):
+    # One list builds every test plain and sanitized, and the runner runs it.
+    for target in ("test_ui_settings_layout", "test_ui_menu_input"):
         need(target in makefile, f"Makefile omits {target}")
-        need(f"./{target}" in runner, f"runner omits {target}")
     for token in (
         "test_explicit_text_and_vertical_ownership",
         "test_measured_copies_cover_real_extremes",
@@ -481,7 +475,6 @@ FILES = {
     "layout_c": read(GUI / "ui_settings_layout.c"),
     "layout_h": read(GUI / "ui_settings_layout.h"),
     "makefile": read(ROOT / "buildtools/ui/tests/Makefile"),
-    "runner": read(ROOT / "buildtools/ui/tests/run_tests.sh"),
     "layout_test": read(ROOT / "buildtools/ui/tests/test_ui_settings_layout.c"),
     "menu_test": read(ROOT / "buildtools/ui/tests/test_ui_menu_input.c"),
     "semantics": read(ROOT / "buildtools/ui/tests/audit_settings_semantics.sh"),
@@ -500,7 +493,6 @@ for name, key, old, new in (
     ("fading-help", "settings", 'hints[count++] = "Y  Help";',
      'hints[count++] = "Y  Help";\n\t\t\tDrawFadingLabel(0, 0, "Y  Help", 0.5f);'),
     ("no-title-owner", "layout_h", "\tuiSetLayoutRect_t titleRegion;\n", ""),
-    ("no-layout-sanitizer", "runner", "./test_ui_settings_layout_san", "true"),
     ("child-a-leak", "settings", "if(inputMayBlock || (wasDigital && !settingsHoldToRepeat(",
      "if(((wasDigital && !settingsHoldToRepeat("),
     ("b-discards", "settings", "settingsChanged(config) ?", "false ?"),
