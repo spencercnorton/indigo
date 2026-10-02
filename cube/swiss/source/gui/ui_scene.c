@@ -18,6 +18,9 @@
 #define UI_SCENE_ORIENTATION_EPSILON 0.0002f
 #define UI_SCENE_CUBE_YAW_RESPONSE 6.5f
 #define UI_SCENE_HOME_TURN_RESPONSE 10.0f
+/* Classic turns arrive as the GameCube's own menu does: nine tenths of a
+ * quarter turn in a quarter of a second. */
+#define UI_SCENE_CLASSIC_TURN_RESPONSE 15.6f
 
 typedef struct {
 	float cubeX;
@@ -348,6 +351,11 @@ static void retargetOrientation(uiSceneId_t scene, uiMotionMode_t motionMode)
 	if(isHomeYawScene(scene)) target = state.homeTarget;
 	if(memcmp(&target, &state.navigationTarget, sizeof(target)) == 0) return;
 	state.navigationTarget = target;
+	/* Each leg takes its pace from the style it is turned in. */
+	for(int i = 0; i < 4; ++i)
+		state.orientation[i].response = isHomeYawScene(scene) &&
+			state.home.style == UI_HOME_CUBE_CLASSIC ?
+			UI_SCENE_CLASSIC_TURN_RESPONSE : UI_SCENE_HOME_TURN_RESPONSE;
 	orientationQuaternion(&target, q);
 	for(int i = 0; i < 4; ++i) {
 		current[i] = state.orientation[i].value;

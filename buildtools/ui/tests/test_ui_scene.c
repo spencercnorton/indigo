@@ -357,10 +357,31 @@ static void testAppsRing(void)
 	near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SOURCE], 1.0f, 0.0f);
 }
 
-/* Classic: its style travels with the state, and is checked. Every glyph
- * keeps its side through every turn and every scene, so none fades. */
+/* How far a quarter turn has come seconds after it was asked for. */
+static float turnedAfter(uiHomeCapabilities_t with, uiMotionMode_t mode,
+	float seconds)
+{
+	uiHomeState_t home = startWith(with, 1.0f/60.0f, mode);
+	CHECK(UIHome_Apply(&home, UI_HOME_INPUT_LEFT, with) == UI_HOME_EFFECT_NONE);
+	UIScene_RequestHome(&home);
+	advance(seconds, 1.0f/60.0f, mode);
+	return UIScene_Frame()->homeFocusProgress;
+}
+
+/* Classic: its turns arrive as the GameCube's do, nine tenths of the way in
+ * a quarter of a second, where Infinite's keep their pace; Reduced is
+ * faster still. Its style travels with the state, and is checked. Every
+ * glyph keeps its side through every turn and every scene, so none fades. */
 static void testClassicCube(void)
 {
+	uiHomeCapabilities_t infinite = classicCaps;
+	infinite.style = UI_HOME_CUBE_INFINITE;
+	CHECK(turnedAfter(classicCaps, UI_MOTION_FULL, 0.25f) > 0.88f);
+	CHECK(turnedAfter(infinite, UI_MOTION_FULL, 0.25f) < 0.80f);
+	CHECK(turnedAfter(classicCaps, UI_MOTION_FULL, 0.15f) < 0.80f);
+	CHECK(turnedAfter(classicCaps, UI_MOTION_REDUCED, 0.15f) > 0.88f);
+	CHECK(turnedAfter(infinite, UI_MOTION_REDUCED, 0.15f) < 0.80f);
+
 	/* Every face from Library and back: the target is the face's own side,
 	 * and no glyph moves or fades on the way. */
 	static const uiHomeInput_t out[4] = {UI_HOME_INPUT_LEFT, UI_HOME_INPUT_RIGHT,
