@@ -68,7 +68,7 @@ jobs:
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
       - name: Build Indigo
-        run: make dev
+        run: make -j8 dev
       - name: Check the DOL
         run: |
           mkdir -p dist

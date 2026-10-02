@@ -44,7 +44,10 @@ jobs:
       - name: Toolchain
         run: buildtools/ci/toolchain.sh "$TOOLCHAIN"
       - name: Build Indigo
-        run: make dev
+        # Eight jobs, one a runner CPU: the top Makefile runs its steps in
+        # order (.NOTPARALLEL) and each step builds in parallel. Reproducible
+        # build makes its copy one file at a time, as the README does.
+        run: make -j8 dev
       - name: Check the DOL
         run: |
           mkdir -p dist
