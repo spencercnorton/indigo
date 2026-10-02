@@ -1,0 +1,48 @@
+Indigo's change: with DOLPHIN_TICKS set, the headless front end prints the
+emulated clock (CoreTiming's ticks) and where the CPU is (PC, LR) on stderr
+ten times a second. The emulator test times its waits in the console's own
+seconds from it, so a busy machine slows a run instead of failing it, and a
+run that hangs says where. GNU General Public License version 2 or later,
+as Dolphin.
+
+diff --git a/Source/Core/DolphinNoGUI/MainNoGUI.cpp b/Source/Core/DolphinNoGUI/MainNoGUI.cpp
+index 1e1ff6e..50195ea 100644
+--- a/Source/Core/DolphinNoGUI/MainNoGUI.cpp
++++ b/Source/Core/DolphinNoGUI/MainNoGUI.cpp
+@@ -22,6 +22,11 @@
+ #include "Core/DolphinAnalytics.h"
+ #include "Core/Host.h"
+ #include "Core/System.h"
++#include "Core/CoreTiming.h"
++#include "Core/PowerPC/PowerPC.h"
++#include <chrono>
++#include <cstdlib>
++#include <thread>
+ 
+ #include "UICommon/CommandLineParse.h"
+ #ifdef USE_DISCORD_PRESENCE
+@@ -313,6 +318,24 @@ int main(const int argc, char* argv[])
+   Discord::UpdateDiscordPresence();
+ #endif
+ 
++  // DOLPHIN_TICKS: ten times a second, the emulated clock and where the CPU is, on
++  // stderr, so a test can time its waits in the console's own seconds (a busy
++  // machine slows the console, not the verdict) and say where a program hung.
++  if (std::getenv("DOLPHIN_TICKS"))
++  {
++    std::thread([] {
++      for (;;)
++      {
++        std::this_thread::sleep_for(std::chrono::milliseconds(100));
++        auto& system = Core::System::GetInstance();
++        const auto& ppc = system.GetPPCState();
++        std::fprintf(stderr, "TICKS %llu PC %08x LR %08x\n",
++                     static_cast<unsigned long long>(system.GetCoreTiming().GetTicks()), ppc.pc,
++                     ppc.spr[SPR_LR]);
++        std::fflush(stderr);
++      }
++    }).detach();
++  }
+   s_platform->MainLoop();
+   Core::Stop(Core::System::GetInstance());
+ 

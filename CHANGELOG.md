@@ -15,6 +15,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- The emulator test counts the console's own seconds, which the runner's
+  Dolphin now reports, for its waits and presses, so a busy machine slows a
+  run instead of failing it; a failed step says where the console's CPU was.
+- The emulated SD card can fail as a test asks (`run.py --sd-faults`), and
+  `--route save` checks that settings saved to a failing card are still there
+  on the next boot.
 - The emulator test runs each job in a video mode of its own: PAL composite
   576i, NTSC composite 480i and a component cable's 480p, in both regions. A
   console's SRAM now matches its region, and the probe reports the mode the

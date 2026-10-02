@@ -430,8 +430,8 @@ def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | No
         with zipfile.ZipFile(card_zip) as package:
             package.extractall(root)
         info = populate(root, folder, posters, probe, foreign)
-        if settings is not None:
-            (root / "swiss/settings").mkdir(parents=True, exist_ok=True)
+        if settings is not None:  # a card that has been used: its settings folders made
+            (root / "swiss/settings/game").mkdir(parents=True, exist_ok=True)
             (root / "swiss/settings/global.ini").write_text(settings.replace("\n", "\r\n"))
         with open(out, "wb") as image:
             image.truncate(CARD_BYTES)

@@ -10,8 +10,10 @@ the headless front end is built (`dolphin-emu-nogui`).
 | [`0001-sd2sp2-adapter.patch`](0001-sd2sp2-adapter.patch) | An SD card adapter on the EXI bus, the emulator core of [dfederspiel/dolphin#1](https://github.com/dfederspiel/dolphin/pull/1) by CodeFly: SD2SP2 in Serial Port 2 (`SerialPort2 = 15`), or an SD Gecko in a memory card slot (`SlotB = 15`), reading and writing the card image `SP2SDCardImage` names. It speaks the SD protocol a byte at a time, SDHC, with CRCs, so libogc2's own driver, FatFs and Swiss's device code run as on a console. |
 | [`0002-flush-sd-writes.patch`](0002-flush-sd-writes.patch) | Each write reaches the card image at once, so the test reads back what Indigo wrote once Dolphin stops. |
 | [`0003-controller-no-response.patch`](0003-controller-no-response.patch) | A controller answers the serial commands a real one ignores with no response. Dolphin answered nothing, which kept the transfer pending forever: Swiss stalled starting up with a controller connected (libogc's steering wheel probe, `0x30`), and again before a launch (the GameID packet Swiss sends for BlueRetro adapters). |
+| [`0004-sd-faults.patch`](0004-sd-faults.patch) | Faults a test asks for in `DOLPHIN_SD_FAULTS`: sectors that fail to read or write, or every write after a number of them, so the test can see what Indigo does with a failing card. A write the card could not make is answered as one, where 0001 answered "accepted" whatever happened. |
+| [`0005-emulated-clock.patch`](0005-emulated-clock.patch) | With `DOLPHIN_TICKS` set, the emulated clock and the CPU's PC and LR on stderr ten times a second: the emulator test times its waits in the console's own seconds, so a busy machine slows a run instead of failing it, and a hang says where it is. |
 
-All three are under Dolphin's licence, the GNU General Public License
+All five are under Dolphin's licence, the GNU General Public License
 version 2 or later.
 
 Without them CI could boot Indigo only from a disc: Dolphin has no GameCube

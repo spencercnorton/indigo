@@ -302,6 +302,33 @@ class Screen(unittest.TestCase):
         words = [int.from_bytes(pal60[i:i + 2], "big") for i in range(0x10, 0x18, 2)]
         self.assertEqual(int.from_bytes(pal60[4:6], "big"), sum(words) & 0xFFFF)
 
+    def test_the_consoles_clock_times_a_wait(self):
+        """Waits count the console's seconds from Dolphin's TICKS lines (patch 0005)."""
+        with tempfile.TemporaryDirectory() as directory:
+            emulator = run.Emulator.__new__(run.Emulator)
+            emulator.log = Path(directory) / "dolphin.log"
+            self.assertIsNone(emulator.emulated(), "no log yet")
+            emulator.log.write_text("Booting\nTICKS 486000000 PC 80003100 LR 00000000\n")
+            self.assertEqual(emulator.emulated(), 1.0)
+            wait = run.Deadline(emulator, 2.0)
+            self.assertFalse(wait.expired())
+            with emulator.log.open("a") as log:
+                log.write("N[OSREPORT]: a line between\nTICKS 1701000000 PC 801179a0 LR 8011774c\n")
+            self.assertAlmostEqual(wait.elapsed(), 2.5)
+            self.assertTrue(wait.expired())
+            self.assertEqual(emulator.where(), "PC 801179a0 LR 8011774c at 3.5 s")
+
+    def test_without_the_consoles_clock_a_wait_counts_the_machines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            emulator = run.Emulator.__new__(run.Emulator)
+            emulator.log = Path(directory) / "dolphin.log"
+            emulator.log.write_text("Booting\n")
+            wait = run.Deadline(emulator, 0.05)
+            self.assertFalse(wait.expired())
+            time.sleep(0.06)
+            self.assertTrue(wait.expired())
+            self.assertIsNone(emulator.where())
+
     def test_fatal_lines(self):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "dolphin.log"
