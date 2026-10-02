@@ -1,0 +1,2 @@
+# Patches keep diff context lines as they are: a blank one is a single space.
+*.patch -whitespace

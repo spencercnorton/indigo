@@ -12,6 +12,8 @@ up in starts, draws, answers the controller and hands over cleanly.
 | [`card.py`](card.py) | The demonstration disc it boots with: fictitious games with banners, two damaged images, posters, and apps with pictures |
 | [`dsu_pad.py`](dsu_pad.py) | The controller: a pad served to Dolphin over its DSU protocol |
 | [`probe/`](probe/probe.c) | The program the launches reach: it reports what the hand-off left it |
+
+`card.py` also makes the SD card (`build_card`): see [An SD card](#an-sd-card).
 | [`test_emulator.py`](test_emulator.py) | Tests for those three, without Dolphin |
 
 ## What it checks
@@ -45,9 +47,12 @@ exception screen as it would on a console. The route:
 The **game route** (`--route game`) boots, opens the Library, moves to the
 probe's game and launches it from its details: the probe must see the game's
 own disc ID, the 24 MB a game is promised, the music stopped and memory
-quiet. CI runs both routes in both regions (`--region pal` or `ntsc`, the
-video mode the console starts in): four jobs, the first of them the required
-**Emulator** check.
+quiet.
+
+CI runs four jobs, the first of them the required **Emulator** check: both
+routes from the demonstration disc in PAL (`--region`, the video mode the
+console starts in), and both from an SD card in SD2SP2 in NTSC
+(`--storage sd2sp2`).
 
 Every check compares the screen with itself earlier in the same run (the
 text under the cube, a game's title), never with stored pictures, so a
@@ -87,6 +92,24 @@ Or anywhere with Dolphin (`dolphin-emu-nogui`), Xvfb, FFmpeg, genisoimage and
 Python 3 with Pillow and NumPy. The posters need gxtexconv; without it the
 disc has none and every card shows its banner.
 
+## An SD card
+
+With `--storage sd2sp2 --card-zip Indigo-<version>.zip` there is no disc.
+`card.build_card` unpacks the release zip onto an 8 GB FAT32 card image, as
+someone sets up a card, and puts the same games, packs and apps beside it.
+Indigo boots from the zip's own `ipl.dol`, and Dolphin serves the card as an
+SD2SP2 in Serial Port 2: an SD card adapter the emulator runner's Dolphin
+adds (`buildtools/ci/runner/dolphin/`), which speaks the SD protocol a byte
+at a time, so libogc2's driver, FatFs and Swiss's device code run as they do
+on a console. `--storage sdgecko-b` puts the card in Memory Card Slot B
+instead.
+
+A new card has no settings, so the route starts in Settings: it must open on
+its own, and Save & Exit must write the file and go Home. At the end the
+test reads the card back: the settings Indigo saved (with Apps Face as the
+route left it), and after the game route the launched game first in the
+recent list and in Indigo's play history.
+
 ## The probe
 
 [`probe/probe.c`](probe/probe.c) is a small libogc2 program, built with the
@@ -115,17 +138,25 @@ Games are given 24 MB by Swiss itself, so the game route checks it.
 
 ## What Dolphin needs
 
-- **The controller is plugged in after startup, and pulled at a launch.**
-  Swiss's startup stalls in Dolphin when a controller is already connected
-  (its pad and steering-wheel setup; a console is fine), and so does its
-  shutdown before a launch, in libogc's serial transfer. The pad reports
-  itself unplugged until Home is up, and again once the A that launches has
-  gone in. That is why the controller is a DSU pad: Dolphin notices one
-  coming and going while it runs.
-- **The DSP runs its microcode** (`DSPHLE = False`). Dolphin's high-level
-  stand-ins know libogc's audio library but not libogc2's (it logs
-  "Unknown ucode (CRC = 8d527c50) - forcing AX"), so the menu music's stop
-  before a launch was never answered and the launch screen never moved on.
+The emulator runner builds Dolphin from source with three patches
+(`buildtools/ci/runner/dolphin/`): the SD card adapter, its writes flushed,
+and a controller that answers like one. The disc routes' menus run in any
+Dolphin; the launches and the SD card need the runner's.
+
+- **A controller answers like one.** A console's controller ignores serial
+  commands it doesn't know, and the hardware reports no response. Dolphin
+  answered nothing, and the transfer then never ended: libogc's steering
+  wheel probe at startup and the GameID packet Swiss sends before every
+  launch both hung with a controller connected. The patched Dolphin answers
+  no response, so the controller stays connected through a launch. It is
+  still plugged in only once Home is up, which works in any Dolphin; that is
+  why the controller is a DSU pad, which Dolphin notices arriving.
+- **The DSP runs its microcode, in step with the CPU** (`DSPHLE = False`,
+  `DSPThread = False`). Dolphin's high-level stand-ins know libogc's audio
+  library but not libogc2's (it logs "Unknown ucode (CRC = 8d527c50) -
+  forcing AX"), so the menu music's stop before a launch was never answered.
+  On a thread of its own the DSP sometimes missed the mail that stop sends
+  (`AESND_Reset` waits for it with interrupts off) when the machine was busy.
 - **Games need a file table.** The Library reads a game's banner through the
   file table its disc header points to, so each game on the demonstration
   disc has one, with an `opening.bnr`, as a real game does. Two more images
