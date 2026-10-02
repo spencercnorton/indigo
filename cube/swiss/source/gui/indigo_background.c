@@ -60,6 +60,13 @@ typedef struct cubeSurfaceQuad {
 typedef struct cubeOutline {
 	indigoPoint_t point[24];
 	int count;
+	/* Measured once a frame by buildCubeOutline for every edge drawn
+	 * against it: each side's length in stage units and in frame pixels,
+	 * and each corner's outward miter (joined[] false: no miter). */
+	float length[24];
+	float pixels[24];
+	indigoPoint_t corner[24];
+	bool joined[24];
 } cubeOutline_t;
 
 typedef struct cubeCoverageEdge {
@@ -732,17 +739,25 @@ static void buildCubeOutline(const cubeRasterTransform_t *raster,
 	if(used < 4) return;
 	outline->count = used - 1;
 	for(int i = 0; i < outline->count; i++) outline->point[i] = hull[i];
+	/* Every silhouette edge of the frame is measured against these; work
+	 * them out once (sqrtf is a software loop on the console). */
+	float across = UIStage_PixelWidth();
+	for(int i = 0; i < outline->count; i++) {
+		indigoPoint_t p = outline->point[i], q = outline->point[(i + 1) % outline->count];
+		indigoPoint_t inward;
+		float dx = q.x - p.x, dy = q.y - p.y;
+		outline->length[i] = sqrtf(dx * dx + dy * dy);
+		outline->pixels[i] = sqrtf(dx * dx / (across * across) + dy * dy);
+		outline->joined[i] = railJoin(outline->point[(i + outline->count - 1) % outline->count],
+			p, q, &inward);
+		if(outline->joined[i]) outline->corner[i] = (indigoPoint_t) {-inward.x, -inward.y};
+	}
 }
 
 static indigoPoint_t cubeOutlineNormal(const cubeOutline_t *outline, int corner,
 		indigoPoint_t fallback)
 {
-	indigoPoint_t inward;
-	if(railJoin(outline->point[(corner + outline->count - 1) % outline->count],
-		outline->point[corner], outline->point[(corner + 1) % outline->count], &inward)) {
-		return (indigoPoint_t) {-inward.x, -inward.y};
-	}
-	return fallback;
+	return outline->joined[corner] ? outline->corner[corner] : fallback;
 }
 
 static bool cubeOutlineEdge(const cubeOutline_t *outline,
@@ -752,7 +767,7 @@ static bool cubeOutlineEdge(const cubeOutline_t *outline,
 		int next = (i + 1) % outline->count;
 		indigoPoint_t p = outline->point[i], q = outline->point[next];
 		float dx = q.x - p.x, dy = q.y - p.y;
-		float length = sqrtf(dx * dx + dy * dy);
+		float length = outline->length[i];
 		if(length < 0.001f) continue;
 		float alongA = ((a.x - p.x) * dx + (a.y - p.y) * dy) / length;
 		float alongB = ((b.x - p.x) * dx + (b.y - p.y) * dy) / length;
@@ -764,7 +779,7 @@ static bool cubeOutlineEdge(const cubeOutline_t *outline,
 		 * for neighbouring boundary faces so their one-pixel fringes meet.
 		 * Like railJoin's, the normal is a frame pixel long. */
 		float across = UIStage_PixelWidth();
-		float pixels = sqrtf(dx * dx / (across * across) + dy * dy);
+		float pixels = outline->pixels[i];
 		indigoPoint_t normal = {dy / pixels * across, -dx / across / pixels};
 		outward[0] = fabsf(alongA) < 0.005f ? cubeOutlineNormal(outline, i, normal) :
 			(fabsf(alongA - length) < 0.005f ? cubeOutlineNormal(outline, next, normal) : normal);

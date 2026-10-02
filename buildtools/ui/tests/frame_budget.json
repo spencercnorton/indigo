@@ -5,7 +5,7 @@
   "hash": "9e3317e4eaef1a3d",
   "minmax": 297,
   "scene": "boot-handoff",
-  "sqrtf": 7375,
+  "sqrtf": 3629,
   "state": 147,
   "trig": 538,
   "vertices": 5502
@@ -27,7 +27,7 @@
   "hash": "e848c7e55ee80846",
   "minmax": 329,
   "scene": "home-library",
-  "sqrtf": 7304,
+  "sqrtf": 3554,
   "state": 322,
   "trig": 545,
   "vertices": 6786
@@ -38,7 +38,7 @@
   "hash": "63d861c4e5e22d90",
   "minmax": 323,
   "scene": "home-settings",
-  "sqrtf": 6271,
+  "sqrtf": 2513,
   "state": 322,
   "trig": 241,
   "vertices": 4616
@@ -49,7 +49,7 @@
   "hash": "2729922facddebc5",
   "minmax": 332,
   "scene": "home-source",
-  "sqrtf": 6309,
+  "sqrtf": 2559,
   "state": 322,
   "trig": 241,
   "vertices": 4612
@@ -60,7 +60,7 @@
   "hash": "755cf16733cd3011",
   "minmax": 336,
   "scene": "home-system",
-  "sqrtf": 6333,
+  "sqrtf": 2583,
   "state": 322,
   "trig": 241,
   "vertices": 4612
@@ -71,7 +71,7 @@
   "hash": "63a80157eb5e8cd7",
   "minmax": 310,
   "scene": "home-turning",
-  "sqrtf": 7117,
+  "sqrtf": 3371,
   "state": 318,
   "trig": 545,
   "vertices": 6622
@@ -82,7 +82,7 @@
   "hash": "8fb651ce6b539c10",
   "minmax": 374,
   "scene": "library-grid",
-  "sqrtf": 7530,
+  "sqrtf": 3776,
   "state": 322,
   "trig": 545,
   "vertices": 6990
@@ -93,7 +93,7 @@
   "hash": "3c31d7ae881ae72c",
   "minmax": 368,
   "scene": "library-grid-wide",
-  "sqrtf": 7518,
+  "sqrtf": 3764,
   "state": 322,
   "trig": 545,
   "vertices": 6974
@@ -104,7 +104,7 @@
   "hash": "f56a98af41ba2a5a",
   "minmax": 318,
   "scene": "library-horizontal",
-  "sqrtf": 7142,
+  "sqrtf": 3396,
   "state": 318,
   "trig": 545,
   "vertices": 6638
@@ -115,7 +115,7 @@
   "hash": "d2b983de6cf206ca",
   "minmax": 374,
   "scene": "library-spotlight",
-  "sqrtf": 7530,
+  "sqrtf": 3776,
   "state": 322,
   "trig": 545,
   "vertices": 6990
@@ -126,7 +126,7 @@
   "hash": "6ca5d258d9907343",
   "minmax": 362,
   "scene": "library-spotlight-wide",
-  "sqrtf": 7506,
+  "sqrtf": 3752,
   "state": 322,
   "trig": 545,
   "vertices": 6958
@@ -137,7 +137,7 @@
   "hash": "dc7fc5736ecd56da",
   "minmax": 429,
   "scene": "library-vertical",
-  "sqrtf": 7828,
+  "sqrtf": 4082,
   "state": 322,
   "trig": 545,
   "vertices": 7122
@@ -148,7 +148,7 @@
   "hash": "8c781b6ed9fa9eaa",
   "minmax": 316,
   "scene": "settings",
-  "sqrtf": 7536,
+  "sqrtf": 3778,
   "state": 127,
   "trig": 541,
   "vertices": 5638
@@ -159,7 +159,7 @@
   "hash": "3e254a495a6258ec",
   "minmax": 321,
   "scene": "system",
-  "sqrtf": 7144,
+  "sqrtf": 3398,
   "state": 318,
   "trig": 545,
   "vertices": 6658

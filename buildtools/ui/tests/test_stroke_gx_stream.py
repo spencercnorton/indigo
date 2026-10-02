@@ -38,7 +38,8 @@ typedef float Mtx[3][4];
 typedef struct { float x,y,z; } guVector;
 typedef struct { float x,y; } indigoPoint_t;
 typedef struct { guVector point[4]; GXColor color[4]; } cubeSurfaceQuad_t;
-typedef struct { indigoPoint_t point[24]; int count; } cubeOutline_t;
+typedef struct { indigoPoint_t point[24]; int count; float length[24], pixels[24];
+    indigoPoint_t corner[24]; bool joined[24]; } cubeOutline_t;
 typedef struct { guVector eye[2]; indigoPoint_t outward[2]; GXColor color[2]; } cubeCoverageEdge_t;
 enum { GX_QUADS=1, GX_TRIANGLESTRIP=2, GX_TRIANGLES=3, GX_TRIANGLEFAN=4, GX_VTXFMT0=0, GX_PNMTX0=0 };
 /* HOME ENUMS */

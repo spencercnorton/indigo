@@ -44,7 +44,8 @@ typedef struct { float x,y; } indigoPoint_t;
 typedef struct { Mtx model,semanticFaces[UI_HOME_FACE_COUNT];
     float motifAlpha[UI_HOME_FACE_COUNT],scaleX,scaleY; } cubeRasterTransform_t;
 typedef struct { guVector point[4]; GXColor color[4]; } cubeSurfaceQuad_t;
-typedef struct { indigoPoint_t point[24]; int count; } cubeOutline_t;
+typedef struct { indigoPoint_t point[24]; int count; float length[24], pixels[24];
+    indigoPoint_t corner[24]; bool joined[24]; } cubeOutline_t;
 typedef struct { void *data; u16 w, h; u8 fmt, mip, minFilter; float maxLod; } GXTexObj;
 #define CHECK(c,m) do { if(!(c)) { fprintf(stderr,"%s\n",m); exit(73); } } while(0)
 #define INDIGO_TAU 6.28318530718f
@@ -279,7 +280,7 @@ static void test_flare(void) {
     reset(1); drawSunFlare(&sun,0,0,1); CHECK(count==0,"a scene without light flared");
 }
 static void test_rim(void) {
-    cubeOutline_t o={{{-100,-100},{100,-100},{100,100},{-100,100}},4};
+    cubeOutline_t o={.point={{-100,-100},{100,-100},{100,100},{-100,100}},.count=4};
     reset(1); drawGlassRim(&o,1);
     CHECK(begins==6 && count==3*2*5*2,"rim is not three feathered closed strokes");
     CHECK(blendDst==GX_BL_INVSRCALPHA,"rim left additive blending on");
