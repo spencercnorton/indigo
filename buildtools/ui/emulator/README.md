@@ -157,6 +157,13 @@ then serves as the disc, 40 at most. The card has a `boot.iso`, the zip's
 `ipl.dol` made into a disc, which the drive serves until a game's fragments
 are set, as a GC Loader does at power on; Dolphin starts `ipl.dol` itself.
 
+A game file in many pieces is what a copy onto a card that has seen
+deletions can leave, and neither Swiss nor a GC Loader can launch one in more
+than 40. `--fragments N` moves the probe's game into N pieces on the card
+(`card.fragment`): up to 40 the game route launches it, past that Indigo
+must refuse it, say why, and come back to the Library. CI's GC Loader job
+launches it in 40.
+
 ## The probe
 
 [`probe/probe.c`](probe/probe.c) is a small libogc2 program, built with the

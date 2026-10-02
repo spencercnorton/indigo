@@ -456,11 +456,16 @@ def build(out: Path, posters: bool = True, probe: Path | None = None, foreign: i
 # The SD card: as big as a small real one, formatted as the SD Association's
 # formatter does an SDHC card (FAT32, 32 KiB clusters). The file is sparse.
 CARD_BYTES = 8 << 30
+CLUSTER_BYTES = 64 * 512  # mkfs.fat -s 64
+# The most pieces a game file can be in for Swiss to launch it (MAX_FRAGS in
+# deviceHandler.h), and for a GC Loader to serve it.
+MAX_FRAGMENTS = 40
 MTOOLS = dict(os.environ, MTOOLS_SKIP_CHECK="1")
 
 
 def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | None = None,
-               foreign: int = 0, settings: str | None = None, boot_iso: bool = False) -> dict[str, object]:
+               foreign: int = 0, settings: str | None = None, boot_iso: bool = False,
+               fragments: int = 0) -> dict[str, object]:
     """A FAT32 SD card image set up as someone would: the release zip
     unpacked onto it, then games, the packs and apps beside it. Without
     settings it has no swiss/settings/global.ini, so Indigo starts in
@@ -481,6 +486,9 @@ def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | No
             (root / "swiss/settings/global.ini").write_text(settings.replace("\n", "\r\n"))
         if boot_iso:
             (root / "boot.iso").write_bytes(probe_image((root / "ipl.dol").read_bytes(), *BOOT_ISO))
+        if fragments:  # the probe's game, with enough clusters for that many pieces
+            game = root / "games" / game_file(*PROBE_GAME)
+            game.write_bytes(game.read_bytes().ljust(fragments * CLUSTER_BYTES, b"\0"))
         with open(out, "wb") as image:
             image.truncate(CARD_BYTES)
         subprocess.run(["mkfs.fat", "-F", "32", "-s", "64", "-n", "INDIGO", str(out)], check=True,
@@ -488,7 +496,88 @@ def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | No
         for entry in sorted(root.iterdir()):
             subprocess.run(["mcopy", "-s", "-i", str(out), str(entry), "::/"], check=True, env=MTOOLS,
                            capture_output=True)
+    if fragments:
+        info["fragments"] = fragment(out, f"games/{game_file(*PROBE_GAME)}", fragments)
     return {**info, "zip": card_zip.name, "bytes": CARD_BYTES}
+
+
+def fragment(image: Path, path: str, pieces: int) -> int:
+    """Move a file on a card image (FAT32, as build_card makes it) into that
+    many runs of clusters, a free cluster between each, as a copy onto a card
+    that has seen deletions can leave it. Returns how many runs it is in."""
+    with open(image, "r+b") as disk:
+        boot = disk.read(512)
+        sector, per_cluster, reserved, fats = struct.unpack_from("<HBHB", boot, 11)
+        total, fat_sectors = struct.unpack_from("<I", boot, 32)[0], struct.unpack_from("<I", boot, 36)[0]
+        cluster = sector * per_cluster
+        fat_at, data_at = reserved * sector, (reserved + fats * fat_sectors) * sector
+        limit = (total - data_at // sector) // per_cluster + 2  # cluster numbers start at 2
+        disk.seek(fat_at)
+        fat = list(struct.unpack(f"<{fat_sectors * sector // 4}I", disk.read(fat_sectors * sector)))
+
+        def chain(first: int) -> list[int]:
+            clusters = []
+            while 2 <= first < 0x0FFFFFF8:
+                clusters.append(first)
+                first = fat[first] & 0x0FFFFFFF
+            return clusters
+
+        def entries(first: int):
+            """(name, where its entry is, the entry) for each file in a directory."""
+            parts: dict[int, str] = {}
+            for number in chain(first):
+                at = data_at + (number - 2) * cluster
+                disk.seek(at)
+                block = disk.read(cluster)
+                for i in range(0, cluster, 32):
+                    entry = block[i:i + 32]
+                    if entry[0] == 0:
+                        return
+                    if entry[0] == 0xE5:
+                        parts = {}
+                    elif entry[11] == 0x0F:  # a piece of a long name
+                        parts[entry[0] & 0x1F] = (entry[1:11] + entry[14:26] + entry[28:32]).decode("utf-16-le")
+                    else:
+                        base, ext = entry[0:8].decode("latin-1").rstrip(), entry[8:11].decode("latin-1").rstrip()
+                        name = "".join(parts[k] for k in sorted(parts)).split("\0")[0]
+                        yield name or base + (f".{ext}" if ext else ""), at + i, entry
+                        parts = {}
+
+        first, where = struct.unpack_from("<I", boot, 44)[0], 0
+        for part in path.split("/"):
+            found = next(((at, entry) for name, at, entry in entries(first) if name.lower() == part.lower()), None)
+            if found is None:
+                raise FileNotFoundError(path)
+            where, entry = found
+            first = struct.unpack_from("<H", entry, 20)[0] << 16 | struct.unpack_from("<H", entry, 26)[0]
+        old = chain(first)
+        if len(old) < pieces:
+            raise ValueError(f"{path} has {len(old)} clusters, too few for {pieces} pieces")
+        new, number = [], limit - len(old) - pieces  # at the card's end, which build_card leaves free
+        for piece in range(pieces):
+            size = len(old) // pieces + (piece < len(old) % pieces)
+            new += range(number, number + size)
+            number += size + 1
+        if any(fat[n] for n in new):
+            raise ValueError("the card's end is not free")
+        for source, target in zip(old, new):
+            disk.seek(data_at + (source - 2) * cluster)
+            data = disk.read(cluster)
+            disk.seek(data_at + (target - 2) * cluster)
+            disk.write(data)
+        for source in old:
+            fat[source] = 0
+        for i, target in enumerate(new):
+            fat[target] = new[i + 1] if i + 1 < len(new) else 0x0FFFFFFF
+        table = struct.pack(f"<{len(fat)}I", *fat)
+        for copy in range(fats):
+            disk.seek(fat_at + copy * fat_sectors * sector)
+            disk.write(table)
+        disk.seek(where + 20)
+        disk.write(struct.pack("<H", new[0] >> 16))
+        disk.seek(where + 26)
+        disk.write(struct.pack("<H", new[0] & 0xFFFF))
+    return 1 + sum(b != a + 1 for a, b in zip(new, new[1:]))
 
 
 def read_card(card: Path, path: str) -> bytes | None:

@@ -404,14 +404,16 @@ class Route:
     """Steps through the menus and records every checkpoint."""
 
     def __init__(self, emulator: Emulator, out: Path, probe: bool = False, fresh_card: bool = False,
-                 cable: str = "composite", region: str = "pal") -> None:
+                 cable: str = "composite", region: str = "pal", fragments: int = 0) -> None:
         self.emulator = emulator
+        self.fragments = fragments  # the pieces the probe's game is in on the card
         self.cable = cable
         self.region = region
         self.out = out
         self.probe = probe
         self.fresh_card = fresh_card
         self.report: dict[str, object] | None = None
+        self.folders_on = False  # the route turned Library Folders on and saved it
         self.checks: list[dict[str, object]] = []
         self.shots: list[tuple[str, Path]] = []
         self.pad = emulator.pad
@@ -529,7 +531,7 @@ class Route:
             kept = seeded(settings)
             lost = {key: value for key, value in start.items() if kept.get(key) != value}
             self.check("the settings the card started with are all still there", not lost, lost=lost)
-        if route != "game":
+        if self.folders_on:
             # Library Folders, turned on by the route (library_folders): saved
             # on, and the card keeps its own FlattenDir, not the pattern Library
             # Folders uses while it is on, for when it goes off again.
@@ -537,6 +539,7 @@ class Route:
                        "\nLibrary Folders=Yes\r" in settings and "\nFlattenDir=*/games\r" in settings,
                        lines=[line.strip() for line in settings.splitlines()
                               if line.startswith(("Library Folders=", "FlattenDir="))])
+        if route != "game" or not self.report:  # no game started
             return
         recent = text("swiss/settings/recent.ini").split("Recent_1=")[0]
         self.check("the launched game is first in the recent list",
@@ -709,6 +712,10 @@ class Route:
         self.check("A opens the game's details", self.covered(title, TITLE_BOX))
         self.shot("probe-details", self.last_rgb)
         self.press("A")
+        if self.fragments > card.MAX_FRAGMENTS:
+            self.check("a game in more pieces than can be served is refused, and the Library comes back",
+                       self.back_to_library(title, "launch-refused"), pieces=self.fragments)
+            return
         report = self.handoff("game")
         self.check("the game starts with its own disc ID", report["disc_id"] == card.PROBE_GAME[0],
                    disc_id=report["disc_id"])
@@ -802,6 +809,7 @@ class Route:
         mask, _ = self.settled_label(like=settings)
         self.check("Save & Exit comes back to the Settings face", mask is not None,
                    library_folders="on")
+        self.folders_on = True
         for back in (source, library):
             self.press("LEFT")
             self.check("LEFT turns back a face", self.settled_label(like=back)[0] is not None,
@@ -947,17 +955,23 @@ class Route:
         self.press("A")
         self.check("A opens the game's details again", self.covered(title, TITLE_BOX))
         self.press("A")
+        self.check("a launch that cannot read BS2 comes back to the Library",
+                   self.back_to_library(title, "launch-failure"))
+
+    def back_to_library(self, title: np.ndarray, tag: str) -> bool:
+        """After a launch that fails: A dismisses its message, and the Library
+        must come back on the same game."""
         back, deadline = None, Deadline(self.emulator, BOOT_SECONDS / 2)
         while back is None and not deadline.expired():
             time.sleep(2.0)
             self.gray()
-            self.shot("launch-failure", self.last_rgb)
+            self.shot(tag, self.last_rgb)
             if diagnose(self.last_rgb):
                 break  # a crash or a black screen: check() reports which
             self.press("A")  # dismisses the failure message once it is up
             back, _ = self.settled_label(4, like=title, box=TITLE_BOX)
-        self.shot("launch-failed-back", self.last_rgb)
-        self.check("a launch that cannot read BS2 comes back to the Library", back is not None)
+        self.shot(f"{tag}-back", self.last_rgb)
+        return back is not None
 
     def change_source(self) -> None:
         """A on Change Source opens the device picker, RIGHT shows the next device
@@ -1009,6 +1023,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--card-zip", type=Path, help="the release zip, unpacked onto the SD card")
     parser.add_argument("--settings", help="start the card with settings/<name>.ini as its global.ini")
     parser.add_argument("--sd-faults", help="the SD card's faults (DOLPHIN_SD_FAULTS), such as write-error-after=4")
+    parser.add_argument("--fragments", type=int, default=0,
+                        help=f"the probe's game in that many pieces on the card; over {card.MAX_FRAGMENTS} "
+                             "its launch must be refused")
     parser.add_argument("--disc", type=Path, help="a disc to use instead of building card.py's")
     args = parser.parse_args(argv)
     if args.route == "game" and not args.probe:
@@ -1019,11 +1036,14 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("settings to start with go on the SD card (--storage)")
     if args.route == "save" and not args.settings:
         parser.error("the save route changes settings a card starts with: give --settings")
+    if args.fragments and not (args.card_zip and args.probe and args.route == "game"):
+        parser.error("--fragments splits the probe's game on the SD card for the game route")
     start = (SETTINGS / f"{args.settings}.ini").read_text() if args.settings else None
     args.out.mkdir(parents=True, exist_ok=True)
     report: dict[str, object] = {"schema": "indigo.emulator-test.v1", "route": args.route,
                                  "region": args.region, "storage": args.storage, "cable": args.cable,
                                  "settings": args.settings, "sd_faults": args.sd_faults,
+                                 "fragments": args.fragments,
                                  "dol": str(args.dol),
                                  "dolphin": _version()}
     status, emulator, route = 0, None, None
@@ -1035,7 +1055,7 @@ def main(argv: list[str] | None = None) -> int:
                 sd = work / "card.img"
                 report["card"] = card.build_card(sd, args.card_zip, probe=args.probe,
                                                  foreign=FOREIGN[args.region], settings=start,
-                                                 boot_iso=args.storage == "gcloader")
+                                                 boot_iso=args.storage == "gcloader", fragments=args.fragments)
                 if args.storage == "gcloader":  # the drive's disc until a game's is set
                     disc = work / "boot.iso"
                     disc.write_bytes(card.read_card(sd, "boot.iso"))
@@ -1049,7 +1069,7 @@ def main(argv: list[str] | None = None) -> int:
             emulator = Emulator(dol, disc.resolve() if disc else None, work, args.out, args.region,
                                 args.storage, sd, args.cable, args.sd_faults)
             route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd) and start is None,
-                          cable=args.cable, region=args.region)
+                          cable=args.cable, region=args.region, fragments=args.fragments)
             getattr(route, args.route)()
             if args.route == "save":
                 # Power off and on again, with a card that works.
