@@ -49,7 +49,7 @@ jobs:
         run: |
           mkdir -p dist
           python3 buildtools/ci/verify_dol.py cube/swiss/swiss.dol --toolchain "$TOOLCHAIN" \
-            --revision "$(git rev-parse HEAD)" --short "$(git rev-parse --short HEAD)" \
+            --revision "$(git rev-parse HEAD)" --short "$(git rev-parse HEAD | cut -c1-7)" \
             --out dist/provenance.json
           cp cube/swiss/swiss.dol dist/swiss.dol
           git show-ref --tags > dist/tags.txt || true  # the DOL lists every tag (tags.h)
@@ -115,8 +115,10 @@ jobs:
           git tag -l | while read -r tag; do
             grep -qxF "refs/tags/$tag" first/tag-refs.txt || git tag -d "$tag" > /dev/null
           done
-      - name: Build Indigo again, in a fresh container
-        run: make dev
+      - name: Build Indigo again, in a fresh container and another locale
+        # The toolchain image's own locale, which a build that follows the
+        # README gets; this image's is C.UTF-8. The bytes must not care.
+        run: LC_ALL=en_US.UTF-8 make dev
       - name: Both builds are the same bytes
         run: |
           sha256sum first/swiss.dol cube/swiss/swiss.dol
