@@ -1,7 +1,8 @@
 # Every push to main or beta and every pull request: build the DOL and the SD
 # card zip and check both, build again in a fresh container to prove the build
-# is reproducible, boot the build in Dolphin and walk its menus with a
-# controller (buildtools/ui/emulator/), run the host tests (plain, GCC and
+# is reproducible, boot the build in Dolphin, walk its menus with a controller
+# and launch a game and an app all the way to a program that reports what the
+# hand-off left it (buildtools/ui/emulator/), run the host tests (plain, GCC and
 # Clang sanitizers, contracts) and the source checks. Every job runs on our own machines, in a
 # fresh container that takes one job and is then thrown away
 # (buildtools/ci/runner/README.md). The zip is kept as an artifact, so any
@@ -65,6 +66,10 @@ jobs:
               echo "| \`${file#dist/}\` | $(wc -c < "$file") | \`$(sha256sum "$file" | cut -c1-64)\` |"
             done
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Build the emulator test's probe
+        run: |
+          make -C buildtools/ui/emulator/probe
+          cp buildtools/ui/emulator/probe/probe.dol dist/probe.dol
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: indigo-sd-card-${{ github.sha }}
@@ -76,6 +81,7 @@ jobs:
           name: dol-${{ github.sha }}
           path: |
             dist/swiss.dol
+            dist/probe.dol
             dist/provenance.json
             dist/tags.txt
           if-no-files-found: error
@@ -117,25 +123,38 @@ jobs:
           echo "Reproducible: two independent builds are byte for byte the same." >> "$GITHUB_STEP_SUMMARY"
 
   emulator:
-    name: Emulator
+    name: ${{ matrix.name }}
     needs: build
     runs-on: [self-hosted, indigo-emulator]
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Every menu, then the probe launched as an app. Dolphin's region
+          # decides the console's video mode (PAL 576i or NTSC 480i).
+          - { name: Emulator, route: smoke, region: pal, artifact: emulator }
+          - { name: "Emulator (smoke, NTSC)", route: smoke, region: ntsc, artifact: emulator-smoke-ntsc }
+          # The Library to a game's launch: the probe launched as a game.
+          - { name: "Emulator (game, PAL)", route: game, region: pal, artifact: emulator-game-pal }
+          - { name: "Emulator (game, NTSC)", route: game, region: ntsc, artifact: emulator-game-ntsc }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dol-${{ github.sha }}
           path: build
-      - name: Boot the build in Dolphin and walk its menus
-        run: python3 buildtools/ui/emulator/run.py build/swiss.dol --out emulator
+      - name: Boot the build in Dolphin, walk its menus and launch the probe
+        run: |
+          python3 buildtools/ui/emulator/run.py build/swiss.dol --probe build/probe.dol \
+            --route ${{ matrix.route }} --region ${{ matrix.region }} --out emulator
       - name: Summary
         if: always()
         run: cat emulator/summary.md >> "$GITHUB_STEP_SUMMARY" || true
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: emulator-${{ github.sha }}
+          name: ${{ matrix.artifact }}-${{ github.sha }}
           path: emulator/
           if-no-files-found: warn
           retention-days: 14
