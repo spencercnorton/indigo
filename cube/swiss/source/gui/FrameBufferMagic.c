@@ -2590,6 +2590,25 @@ static gameflowPoint_t _GameflowLerpPoint(gameflowPoint_t from,
 	return point;
 }
 
+/* Whole pixels: the first corner rounded, and each other corner the
+ * rounded distance from it, so a moving card's size changes one way rather
+ * than flickering a pixel either way as its corners round apart. */
+static gameflowQuad_t _GameflowRoundQuad(gameflowQuad_t quad)
+{
+	gameflowPoint_t origin = quad.point[0];
+	int i;
+
+	quad.point[0].x = _GameflowRound(origin.x);
+	quad.point[0].y = _GameflowRound(origin.y);
+	for(i = 1; i < 4; ++i) {
+		quad.point[i].x = quad.point[0].x +
+			_GameflowRound(quad.point[i].x - origin.x);
+		quad.point[i].y = quad.point[0].y +
+			_GameflowRound(quad.point[i].y - origin.y);
+	}
+	return quad;
+}
+
 static gameflowQuad_t _GameflowSamplePoseIn(const gameflowQuad_t poses[7],
 	float slot)
 {
@@ -2604,10 +2623,8 @@ static gameflowQuad_t _GameflowSamplePoseIn(const gameflowQuad_t poses[7],
 		result.point[i] = _GameflowLerpPoint(
 			poses[lower + 3].point[i],
 			poses[upper + 3].point[i], progress);
-		result.point[i].x = _GameflowRound(result.point[i].x);
-		result.point[i].y = _GameflowRound(result.point[i].y);
 	}
-	return result;
+	return _GameflowRoundQuad(result);
 }
 
 static gameflowQuad_t _GameflowSamplePose(float slot)
@@ -2616,20 +2633,22 @@ static gameflowQuad_t _GameflowSamplePose(float slot)
 }
 
 /* A grid card at a column and a row (0 is the focused row), grown by
- * focus. Whole pixels, like the carousel's poses. */
+ * focus. Whole pixels, like the carousel's poses: its centre rounded and
+ * its rounded half size either side, so it grows and shrinks one way. */
 static gameflowQuad_t _GameflowGridQuad(float column, float row, float focus)
 {
 	float scale = 1.0f + GAMEFLOW_GRID_FOCUS_GROWTH * focus;
-	float halfWidth = GAMEFLOW_GRID_CARD_W * 0.5f * scale;
-	float halfHeight = GAMEFLOW_GRID_CARD_H * 0.5f * scale;
-	float x = GAMEFLOW_GRID_CENTER_X +
+	float halfWidth = _GameflowRound(GAMEFLOW_GRID_CARD_W * 0.5f * scale);
+	float halfHeight = _GameflowRound(GAMEFLOW_GRID_CARD_H * 0.5f * scale);
+	float x = _GameflowRound(GAMEFLOW_GRID_CENTER_X +
 		(column - (float)(UI_GAMEFLOW_LIBRARY_GRID_COLUMNS - 1u) * 0.5f) *
-		GAMEFLOW_GRID_PITCH_X;
-	float y = GAMEFLOW_GRID_CENTER_Y + row * GAMEFLOW_GRID_PITCH_Y;
-	float left = _GameflowRound(x - halfWidth);
-	float right = _GameflowRound(x + halfWidth);
-	float top = _GameflowRound(y - halfHeight);
-	float bottom = _GameflowRound(y + halfHeight);
+		GAMEFLOW_GRID_PITCH_X);
+	float y = _GameflowRound(GAMEFLOW_GRID_CENTER_Y +
+		row * GAMEFLOW_GRID_PITCH_Y);
+	float left = x - halfWidth;
+	float right = x + halfWidth;
+	float top = y - halfHeight;
+	float bottom = y + halfHeight;
 	gameflowQuad_t quad = {{{left, top}, {right, top}, {right, bottom},
 		{left, bottom}}};
 	return quad;
@@ -6228,6 +6247,8 @@ static void _DrawSettingsPage(uiDrawObj_t *evt)
 	GXColor back = settingsBack;
 	int focusSlot = l->selectedRow >= 0 ?
 		l->selectedRow - l->firstVisibleRow : -1;
+	int focusLeft;
+	int focusTop;
 	int i;
 
 	/* A new view snaps the focus card; within one it springs. */
@@ -6293,8 +6314,12 @@ static void _DrawSettingsPage(uiDrawObj_t *evt)
 	for(i = 0; i < l->actionCount; i++) {
 		_SettingsBox(&l->actionRect[i], settingsCard);
 	}
-	_SettingsFocusCard((int)lrintf(frame.x), (int)lrintf(frame.y),
-		(int)lrintf(frame.w), (int)lrintf(frame.h));
+	/* Whole-pixel edges: each moves one way as the card slides. */
+	focusLeft = (int)lrintf(frame.x);
+	focusTop = (int)lrintf(frame.y);
+	_SettingsFocusCard(focusLeft, focusTop,
+		(int)lrintf(frame.x + frame.w) - focusLeft,
+		(int)lrintf(frame.y + frame.h) - focusTop);
 	for(i = 0; i < l->visibleRowCount; i++) {
 		_SettingsRow(l, i, &s->rows[i], i == focusSlot);
 	}

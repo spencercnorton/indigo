@@ -9,7 +9,8 @@ place, size and color; the rows, text and banners are stand-ins. The tests
 check that the current tab's cell (Settings) and its underline (Memory
 Cards) slide from tab to tab on a spring, each edge moving one way only and
 never by much in a frame, rest exactly where they always were, and move at
-once under Motion Off.
+once under Motion Off; and that Settings' focus card, which springs its
+middle and its size, rounds its edges, so each edge moves one way too.
 """
 
 import os
@@ -126,6 +127,11 @@ int main(void)
 		if(sscanf(line, "S %d", &a) == 1) settingsTab(a);
 		else if(sscanf(line, "C %d", &a) == 1) savesTab(a);
 		else if(sscanf(line, "M %d", &a) == 1) motionMode = (uiMotionMode_t)a;
+		else if(sscanf(line, "R %d %d", &a, &b) == 2) {
+			/* The focus card's rect: x and width, centred the same. */
+			settings.snapshot.layout.focusRect.x = (short)a;
+			settings.snapshot.layout.focusRect.w = (short)b;
+		}
 		else if(sscanf(line, "N %c %d %f", (char *)&b, &a, &dt) == 3) {
 			for(int i = 0; i < a; ++i) {
 				animDelta = dt;
@@ -231,6 +237,21 @@ class PageTabsGXStreamTests(unittest.TestCase):
         self.check_slide(frames[29:], cell, (60, 110), (400, 150))
         frames = self.run_script("M 2\nS 0\nN s 3 0.0166667\nS 2\nN s 1 0.0166667\n")
         self.assertEqual(cell(frames[-1]), (400, 150))
+
+    def test_settings_focus_card_edges_move_one_way(self):
+        """A card that narrows about its middle: its left edge only moves
+        right and its right edge only left, a pixel or a few at a time."""
+        def card(frame):
+            found = [(x, x + w) for x, y, w, h, color in frame if color == FOCUS and y == 150]
+            self.assertEqual(len(found), 1)
+            return found[0]
+        frames = self.run_script("S 0\nN s 30 0.0166667\nR 68 504\nN s 60 0.0166667\n")[29:]
+        self.assertEqual(card(frames[0]), (48, 592))
+        self.assertEqual(card(frames[-1]), (68, 572))
+        lefts = [card(f)[0] for f in frames]
+        rights = [card(f)[1] for f in frames]
+        self.assertEqual(lefts, sorted(lefts))
+        self.assertEqual(rights, sorted(rights, reverse=True))
 
     def test_saves_underline_slides(self):
         def underline(frame):

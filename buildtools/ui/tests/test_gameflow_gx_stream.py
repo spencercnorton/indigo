@@ -71,6 +71,15 @@ BASE_EDITS = (
      "#define UI_GAMEFLOW_RENDER_SLOTS 9u"),
     ("FrameBufferMagic.c", "record->relativeSlot < -3 || record->relativeSlot > 3) {",
      "record->relativeSlot < -4 || record->relativeSlot > 4) {"),
+    # A moving card rounds its first corner and the distances from it, so
+    # its size changes one way.
+    ("FrameBufferMagic.c", "\t\tresult.point[i].x = _GameflowRound(result.point[i].x);\n"
+     "\t\tresult.point[i].y = _GameflowRound(result.point[i].y);\n\t}\n\treturn result;",
+     "\t}\n\tfor(i = 3; i >= 0; --i) {\n"
+     "\t\tresult.point[i].x = _GameflowRound(result.point[0].x) +\n"
+     "\t\t\t_GameflowRound(result.point[i].x - result.point[0].x);\n"
+     "\t\tresult.point[i].y = _GameflowRound(result.point[0].y) +\n"
+     "\t\t\t_GameflowRound(result.point[i].y - result.point[0].y);\n\t}\n\treturn result;"),
 )
 PURE = ("ui_gameflow.c", "ui_motion.c", "ui_gameflow_library.c",
         "ui_command_rail.c", "ui_gameflow_detail.c", "ui_game_history.c")
@@ -884,6 +893,28 @@ class GameflowGxStream(unittest.TestCase):
         # Off shows it at once.
         log = frames(self.run_script(["M 2", "L 0 40 20", "N 5 0.0167", "Y", "N 1 0.0167"]))
         self.assertEqual(self.texture_alpha(log[-1], "G020E0"), 255)
+
+    def test_moving_cards_change_size_one_way(self):
+        """A step moves every card between two poses: its size along the
+        strip changes one way, never a pixel back and forth as its corners
+        round. Each card's corners round from its first corner."""
+        width = lambda box: box[2] - box[0]
+        height = lambda box: box[3] - box[1]
+        for script, sizes in ((["L 0 40 20", "P 21 1 0 0"], (width,)),
+                              (["L 1 40 20", "P 21 1 0 0"], (height,)),
+                              (["L 2 40 12", "P 13 1 0 0"], (width, height)),
+                              (["L 2 40 12", "P 17 1 0 0"], (width, height))):
+            with self.subTest(script=script):
+                log = [covers(f) for f in frames(self.run_script(
+                    [script[0], "N 40 0.0167", script[1], "N 50 0.0167"]))[40:]]
+                games = set.intersection(*(set(f) for f in log))
+                self.assertGreater(len(games), 1)
+                for game in games:
+                    for size in sizes:
+                        seen = [size(f[game][0]) for f in log if len(f[game]) == 1]
+                        steps = [b - a for a, b in zip(seen, seen[1:]) if abs(b - a) > 0.001]
+                        self.assertTrue(all(step > 0 for step in steps) or
+                                        all(step < 0 for step in steps), (game, seen))
 
     def test_every_layout_flies_to_detail(self):
         for layout in (0, 1, 2, 3):
