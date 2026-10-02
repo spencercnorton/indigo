@@ -142,13 +142,18 @@ jobs:
           - { name: Emulator, route: smoke, region: pal, cable: composite, storage: dvd, artifact: emulator }
           - { name: "Emulator (game, PAL, component)", route: game, region: pal, cable: component,
               storage: dvd, artifact: emulator-game-pal-component }
-          # The SD2SP2 smoke job's card starts with settings/non-default.ini;
-          # the game job's card is new, so it starts in Settings.
-          - { name: "Emulator (smoke, NTSC, component, SD2SP2)", route: smoke, region: ntsc,
-              cable: component, storage: sd2sp2, settings: non-default,
-              artifact: emulator-smoke-ntsc-component-sd2sp2 }
+          # The GC Loader smoke job's card starts with settings/non-default.ini;
+          # the game jobs' cards are new, so they start in Settings.
+          - { name: "Emulator (smoke, NTSC, component, GC Loader)", route: smoke, region: ntsc,
+              cable: component, storage: gcloader, settings: non-default,
+              artifact: emulator-smoke-ntsc-component-gcloader }
           - { name: "Emulator (game, NTSC, SD2SP2)", route: game, region: ntsc, cable: composite,
               storage: sd2sp2, artifact: emulator-game-ntsc-sd2sp2 }
+          # A save on a card whose writes fail after 13, then the same card
+          # booted again: the settings must still load, in their colours.
+          - { name: "Emulator (save, NTSC, SD2SP2, failing card)", route: save, region: ntsc,
+              cable: composite, storage: sd2sp2, settings: non-default, sd_faults: write-error-after=13,
+              artifact: emulator-save-ntsc-sd2sp2-faults }
           # Its game is in 40 pieces on the card, the most a GC Loader serves.
           - { name: "Emulator (game, NTSC, component, GC Loader)", route: game, region: ntsc,
               cable: component, storage: gcloader, fragments: 40,
@@ -172,6 +177,7 @@ jobs:
           STORAGE: ${{ matrix.storage }}
           SETTINGS: ${{ matrix.settings }}
           FRAGMENTS: ${{ matrix.fragments }}
+          SD_FAULTS: ${{ matrix.sd_faults }}
         run: |
           set -- --probe build/probe.dol --route "$ROUTE" --region "$REGION" --cable "$CABLE"
           if [ "$STORAGE" != dvd ]; then
@@ -182,6 +188,9 @@ jobs:
           fi
           if [ -n "$FRAGMENTS" ]; then
             set -- "$@" --fragments "$FRAGMENTS"
+          fi
+          if [ -n "$SD_FAULTS" ]; then
+            set -- "$@" --sd-faults "$SD_FAULTS"
           fi
           python3 buildtools/ui/emulator/run.py build/swiss.dol "$@" --out emulator
       - name: Summary

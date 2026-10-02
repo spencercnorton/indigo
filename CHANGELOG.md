@@ -29,6 +29,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
   checksum zlib-ng takes of a block that long needs more stack than the
   poster thread has; Indigo now takes it 8 KB at a time. Folder pictures
   are made the same way.
+- A game or app could freeze as it started, until the console was switched
+  off. Stopping the menu's music and sounds could catch the audio DSP with a
+  reply the CPU had not read yet; the DSP then never took the stop, and the
+  CPU waited for it with interrupts off. The menu's audio now lets the DSP
+  finish first.
 - After a game failed to launch, the menu stayed in the video mode the launch
   had switched to for the game. A PAL game left an NTSC console's menu at
   50 Hz, which a TV that only takes 60 Hz shows as a black screen, and an
@@ -36,6 +41,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- CI saves settings to a card whose writes fail, boots it again and checks
+  the settings still load in their colours, and its smoke job with every
+  setting changed now runs on a GC Loader.
 - The emulator test can put the probe's game in pieces on the SD card
   (`run.py --fragments N`), as a copy onto a used card can leave a game: in
   40 it must launch, the most Swiss and a GC Loader can serve, and in more it
@@ -57,8 +65,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
   from the other region. Until now every job ran interlaced: 480p never ran.
 - An SD card can start with settings (`run.py --settings <name>`, from
   `buildtools/ui/emulator/settings/`), which must all survive Indigo's own
-  saves. CI's SD2SP2 smoke job starts with every setting of Indigo's own away
-  from its default, but Menu Widescreen.
+  saves. CI's GC Loader smoke job starts with every setting of Indigo's own
+  away from its default, but Menu Widescreen.
 - The emulator test launches a game and an app all the way. A small program,
   the probe ([`buildtools/ui/emulator/probe/`](buildtools/ui/emulator/probe/probe.c)),
   sits on the demonstration disc as a game and as an app. Launched, it

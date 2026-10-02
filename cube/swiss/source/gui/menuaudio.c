@@ -307,6 +307,15 @@ bool menuaudio_shutdown(void) {
 	if(!inited) return false;
 	stop_music();
 	if(sfxVoice) AESND_SetVoiceStop(sfxVoice, true);
+	/* AESND_Reset waits, interrupts off, for the DSP to take its last mail,
+	 * but libogc2's mixer takes no mail until the CPU has read the reply it
+	 * sent last: a reply sent just before was never read, and the launch
+	 * froze. Paused, AESND starts no more of the DSP's frames, and two
+	 * video frames with interrupts on let the one in flight finish and its
+	 * replies be read. */
+	AESND_Pause(true);
+	VIDEO_WaitVSync();
+	VIDEO_WaitVSync();
 	AESND_Reset();
 	musicVoice = NULL;
 	sfxVoice = NULL;
