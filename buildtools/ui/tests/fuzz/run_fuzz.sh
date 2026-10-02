@@ -7,6 +7,7 @@
 # fails the run and leaves the input that caused it in OUT/crashes/<target>/.
 #
 # usage: buildtools/ui/tests/fuzz/run_fuzz.sh [SECONDS per target, 30] [OUT, ./fuzz-out]
+#        buildtools/ui/tests/fuzz/run_fuzz.sh total:SECONDS [OUT]   (shared by the targets)
 #        buildtools/ui/tests/fuzz/run_fuzz.sh --build-only [OUT]
 # Needs clang with its fuzzer and sanitizer runtimes, zlib, Python 3 with
 # Pillow and NumPy; the poster seed also needs gxtexconv.
@@ -18,7 +19,11 @@ if [ "${1:-}" = --build-only ]; then
 	shift
 	set -- 0 "${1:-fuzz-out}"
 fi
+targets="history saves posters about settings fst png"
 seconds=${1:-30}
+case $seconds in
+total:*) seconds=$(( ${seconds#total:} / $(echo "$targets" | wc -w) )) ;;
+esac
 mkdir -p "${2:-fuzz-out}"
 out=$(cd "${2:-fuzz-out}" && pwd)
 cc=${FUZZ_CC:-clang}
@@ -45,14 +50,14 @@ echo "== building the fuzzers =="
 [ -n "$build_only" ] && exit 0
 python3 "$here/seeds.py" "$out/corpus"
 # Inputs that once broke something stay in the corpus for good: corpus/<target>/.
-for target in history saves posters about settings fst png; do
+for target in $targets; do
 	if [ -d "$here/corpus/$target" ]; then
 		cp "$here/corpus/$target"/* "$out/corpus/$target/"
 	fi
 done
 
 status=0
-for target in history saves posters about settings fst png; do
+for target in $targets; do
 	echo "== $target: ${seconds}s =="
 	mkdir -p "$out/crashes/$target"
 	if "$out/bin/$target" -max_total_time="$seconds" -timeout=10 -rss_limit_mb=2048 \
