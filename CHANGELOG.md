@@ -77,8 +77,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   running for an hour and three quarters.
 - Holding the stick in the Library's Horizontal, Vertical and Spotlight
   layouts, the games glide past without a jump. The strip could fall only
-  one game behind the selection, so at the stick's pace it skipped forward a
-  third of a card every step; it can fall two behind now.
+  one game behind the selection, so at the stick's pace it skipped forward
+  two fifths of a card every step; with nine games or more it can fall two
+  behind now.
 - The waves behind the menus ease between Home's quieter strength and the
   other screens' as the cube moves, instead of brightening or dimming in one
   frame as you leave or come back to Home.

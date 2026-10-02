@@ -64,6 +64,11 @@ BASE_EDITS = (
      "\tif(travel > 1.0f) {\n\t\treturn 1.0f;",
      "if(travel < -2.0f) {\n\t\treturn -2.0f;\n\t}\n"
      "\tif(travel > 2.0f) {\n\t\treturn 2.0f;"),
+    # A ring smaller than that window keeps within one card.
+    ("ui_gameflow.c", "\ttravel = clampCarouselTravel(travel + visualStep);\n",
+     "\ttravel = clampCarouselTravel(travel + visualStep);\n"
+     "\tif(state->itemCount < 9u) {\n"
+     "\t\ttravel = travel < -1.0f ? -1.0f : (travel > 1.0f ? 1.0f : travel);\n\t}\n"),
     ("ui_gameflow_library.c", "0, -1, 1, -2, 2, -3, 3\n", "0, -1, 1, -2, 2, -3, 3, -4, 4\n"),
     ("ui_gameflow_library.h", "#define UI_GAMEFLOW_LIBRARY_WINDOW 7u",
      "#define UI_GAMEFLOW_LIBRARY_WINDOW 9u"),

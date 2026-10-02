@@ -531,7 +531,8 @@ static void testGridRowsAndHighlight(void)
 /* A held stick repeats every 120 ms after 320 ms. The strip must follow it
  * without a jump: the card at the centre before a step is the card at the
  * centre after it, at 60 and at 50 frames a second. A grid's rows still
- * fall at most one behind. */
+ * fall at most one behind, and so does a ring of fewer games than the
+ * window holds: it has no fourth card either side to show. */
 static void testHeldStickNeverJumps(void)
 {
 	static const float rates[2] = {60.0f, 50.0f};
@@ -581,6 +582,23 @@ static void testHeldStickNeverJumps(void)
 		apply(&state, generation++, UI_GAMEFLOW_MAX_ITEMS, selected,
 			UI_GAMEFLOW_DIRECTION_NEXT, UI_MOTION_FULL);
 		CHECK(nearlyEqual(UIGameflow_Frame(&state)->carouselTravel, 1.0f));
+	}
+
+	for(i = 8; i <= 9; ++i) {
+		int step;
+
+		UIGameflow_Init(&state);
+		selected = 0u;
+		generation = 1u;
+		apply(&state, generation++, (uint32_t)i, selected,
+			UI_GAMEFLOW_DIRECTION_NONE, UI_MOTION_OFF);
+		for(step = 0; step < 5; ++step) {
+			selected = (selected + 1u) % (uint32_t)i;
+			apply(&state, generation++, (uint32_t)i, selected,
+				UI_GAMEFLOW_DIRECTION_NEXT, UI_MOTION_FULL);
+		}
+		CHECK(nearlyEqual(UIGameflow_Frame(&state)->carouselTravel,
+			i < 9 ? 1.0f : 2.0f));
 	}
 }
 
