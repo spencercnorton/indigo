@@ -80,6 +80,26 @@ int main(void) {
   CHECK(fabsf(up.x)<.0001f && fabsf(up.y-1)<.0001f && fabsf(up.z)<.0001f);
   CHECK(fabsf(normal.x)<.0001f && fabsf(normal.y)<.0001f && fabsf(normal.z-1)<.0001f);
  }
+ /* Classic: every face's glyph keeps a side of its own, and the reducer's
+    turn from Library to the face brings that side to the front, the glyph
+    upright, for all five faces, every one of them shown. */
+ {
+  static const uiHomeInput_t toward[UI_HOME_FACE_COUNT]={UI_HOME_INPUT_NONE,UI_HOME_INPUT_UP,UI_HOME_INPUT_LEFT,UI_HOME_INPUT_RIGHT,UI_HOME_INPUT_DOWN};
+  uiHomeCapabilities_t caps={.hasSource=true,.hasApps=true,.style=UI_HOME_CUBE_CLASSIC};
+  for(int face=0;face<UI_HOME_FACE_COUNT;face++) {
+   uiHomeState_t home;UIHome_Init(&home,caps);
+   if(toward[face]!=UI_HOME_INPUT_NONE) UIHome_Apply(&home,toward[face],caps);
+   CHECK(home.face==(uiHomeFace_t)face);
+   uiSceneFrame_t frame;frameFor(&frame,&home);cubeRasterTransform_t raster;memset(&raster,0,sizeof(raster));setupCubePipeline(&frame,0,false,&raster);
+   for(int f=0;f<UI_HOME_FACE_COUNT;f++) CHECK(fabsf(raster.motifAlpha[f]-.7f)<.0001f);
+   guVector right=transformed(semanticFacePoint(&raster,face,1,0,0));
+   guVector up=transformed(semanticFacePoint(&raster,face,0,1,0));
+   guVector normal=transformed(semanticFacePoint(&raster,face,0,0,1));
+   CHECK(fabsf(right.x-1)<.0001f && fabsf(right.y)<.0001f && fabsf(right.z)<.0001f);
+   CHECK(fabsf(up.x)<.0001f && fabsf(up.y-1)<.0001f && fabsf(up.z)<.0001f);
+   CHECK(fabsf(normal.x)<.0001f && fabsf(normal.y)<.0001f && fabsf(normal.z-1)<.0001f);
+  }
+ }
  /* An actual half-completed vertical turn moves the front normal vertically,
     while an equivalent horizontal turn moves it sideways. */
  for(int vertical=0;vertical<2;vertical++) for(int sign=-1;sign<=1;sign+=2) {
@@ -101,7 +121,7 @@ int main(void) {
   float expect[3][3]={{cy,sy*sx,sy*cx},{0,cx,-sx},{-sy,cy*sx,cy*cx}};
   for(int r=0;r<3;r++) for(int c=0;c<3;c++) CHECK(fabsf(loaded[r][c]-expect[r][c])<.0001f);
  }
- puts("cube render pose: 192 settled bindings, four directional midpoints and the boot fly-in passed"); return 0;
+ puts("cube render pose: 192 settled bindings, five Classic faces, four directional midpoints and the boot fly-in passed"); return 0;
 }
 '''
 

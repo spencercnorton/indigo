@@ -155,7 +155,8 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_WAVE_SPEED] = "Wave Speed:\n\nHow fast the waves behind the cube drift.\nSlow - Half as fast\nNormal - As they always have (default)\nFast - Three times as fast\n\nUI Motion Off or Reduced, or Animated Backdrop off (Setup >\nLibrary), still stops them.",
 	[SET_CLOCK_POSITION] = "Clock:\n\nRight - The time sits in the top right corner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nTemperature places the temperature dial on its own.",
 	[SET_TEMPERATURE_POSITION] = "Temperature:\n\nRight - The CPU temperature dial sits in the top right\ncorner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nIn the clock's corner, the dial sits nearer the edge.",
-	[SET_APPS_FACE] = "Apps Face:\n\nOn - Home shows Apps, one turn left of Library, while the\nsource has a program in /apps (default)\nOff - Home never shows Apps. The programs stay in /apps,\nand the file list still starts them.",
+	[SET_APPS_FACE] = "Apps Face:\n\nOn - Home shows Apps, one turn from Library, while the\nsource has a program in /apps (default)\nOff - Home never shows Apps. The programs stay in /apps,\nand the file list still starts them.",
+	[SET_CUBE] = "Cube:\n\nInfinite - Left and Right turn round every face in a ring (default)\nClassic - Every menu sits on its own side of the cube, as on\nthe GameCube\n\nIn Classic, turn to a side, and back to Library to reach the\nothers: Settings is left of Library, System right, Source\nabove and Apps below. B turns back to Library.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
 
@@ -582,6 +583,7 @@ static const settingsRowRef_t consoleRows[] = {
 	{PAGE_INTERFACE, SET_SETTINGS_ICON},
 	{PAGE_INTERFACE, SET_SYSTEM_ICON},
 	{PAGE_INTERFACE, SET_APPS_FACE},
+	{PAGE_INTERFACE, SET_CUBE},
 	{PAGE_INTERFACE, SET_CLOCK_POSITION},
 	{PAGE_INTERFACE, SET_TEMPERATURE_POSITION},
 	{PAGE_GLOBAL, SET_SYS_SOUND},
@@ -1063,6 +1065,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_SETTINGS_ICON: rowCycle(row, "Settings Icon:", settingsIconStr[swissSettings.settingsIcon], true); break;
 			case SET_SYSTEM_ICON: rowCycle(row, "System Icon:", systemIconStr[swissSettings.systemIcon], true); break;
 			case SET_APPS_FACE: rowOnOff(row, "Apps Face:", !swissSettings.hideAppsFace, true); break;
+			case SET_CUBE: rowCycle(row, "Cube:", swissSettings.cubeStyle ? "Classic" : "Infinite", true); break;
 			case SET_CLOCK_POSITION: rowCycle(row, "Clock:", clockPositionStr[swissSettings.clockPosition], true); break;
 			case SET_TEMPERATURE_POSITION: rowCycle(row, "Temperature:", clockPositionStr[swissSettings.temperaturePosition], true); break;
 			case SET_WAVE_SPEED: rowCycle(row, "Wave Speed:", waveSpeedStr[swissSettings.waveSpeed], true); break;
@@ -1608,6 +1611,9 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_APPS_FACE:
 				swissSettings.hideAppsFace ^= 1;
+			break;
+			case SET_CUBE:
+				swissSettings.cubeStyle ^= 1;
 			break;
 			case SET_CLOCK_POSITION:
 				swissSettings.clockPosition += direction;

@@ -172,7 +172,9 @@ static uiHomeCapabilities_t homeCapabilities(void)
 	uiHomeCapabilities_t capabilities = {
 		.hasSource = homeSourceIsReady(),
 		.hasRecent = swissSettings.recentListLevel > 0 &&
-			swissSettings.recent[0][0] != '\0'
+			swissSettings.recent[0][0] != '\0',
+		.style = swissSettings.cubeStyle ?
+			UI_HOME_CUBE_CLASSIC : UI_HOME_CUBE_INFINITE
 	};
 	/* The Apps face shows while the mounted source has an app, unless
 	 * Setup > Console > Apps Face is Off; then the card isn't read for it. */

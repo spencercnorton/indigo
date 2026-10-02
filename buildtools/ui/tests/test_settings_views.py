@@ -221,6 +221,29 @@ class SettingsViewsTest(unittest.TestCase):
             for page, option in table(name):
                 self.assertIn(option, help_for[page], f"{name}: {option} has no help")
 
+    def test_console_value_lines_fit_the_help_line(self):
+        # Under the rows, the help line shows the help's line for the
+        # row's value, with the lines continuing it (they start lower
+        # case). About 100 characters fit across the page: Cube's Classic
+        # line once ran to 121 and lost its end.
+        tooltips = {}
+        for table_name in ("tooltips_global", "tooltips_interface"):
+            body = re.search(r"static char \*" + table_name + r"\[[^\]]*\] = \{(.*?)\n\};",
+                             SETTINGS_C, re.S).group(1)
+            for option, text in re.findall(r'\[(SET_\w+)\] = ((?:"(?:[^"\\]|\\.)*"\s*)+)', body):
+                tooltips[option] = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', text)).replace("\\n", "\n")
+        for _, option in table("console"):
+            value_line = None
+            for line in tooltips[option].split("\n")[1:]:
+                if " - " in line and line[0].isupper():
+                    value_line = line.split(" - ", 1)[1]
+                elif value_line is not None and line and line[0].islower():
+                    value_line += " " + line
+                else:
+                    value_line = None
+                    continue
+                self.assertLessEqual(len(value_line), 100, f"{option}: {value_line}")
+
     def test_storage_says_whether_the_settings_file_loaded(self):
         chrome = SETTINGS_C[SETTINGS_C.index("static void drawSettingsChrome("):]
         chrome = chrome[:chrome.index("\n}\n")]

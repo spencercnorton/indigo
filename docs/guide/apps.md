@@ -42,9 +42,9 @@ apps/
   only the GameCube one.
 
 The **Apps** face appears on [Home](home.md) as soon as the card has an app,
-one turn left of Library. To keep it off Home, set Settings › Setup ›
-Console › **Apps Face** to Off; the programs stay where they are, and the
-file list still starts them.
+one turn left of Library, or below it with a Classic cube. To keep it off
+Home, set Settings › Setup › Console › **Apps Face** to Off; the programs
+stay where they are, and the file list still starts them.
 
 <p align="center">
   <img alt="Home on the Apps face: the glass cube shows four rounded squares, two by two, and APPS is written underneath." src="images/home-apps-face.png" width="480">
