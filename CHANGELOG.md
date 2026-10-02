@@ -90,6 +90,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
   jumping.
 - As the boot's cube lands on Home, the icon on the face beside the front
   one fades in with the glass's light instead of appearing in one frame.
+- A cover, a gameplay still or an app's or folder's poster fades in over a
+  fifth of a second as it arrives, over the card that stood in for it,
+  rather than replacing it in one frame. One read while it was off screen
+  shows at once when you scroll to it, as before.
 
 ### Fixes
 

@@ -58,5 +58,8 @@ void CardArt_Close(void);
 /* The card's poster, or NULL while it has none. Video thread, with the
  * video lock held, as _DrawGameflow has it. */
 GXTexObj *CardArt_Poster(int32_t card);
+/* How many milliseconds ago the card's poster was made, or 0 while it has
+ * none; as CardArt_Poster. */
+u32 CardArt_PosterAgeMs(int32_t card);
 
 #endif

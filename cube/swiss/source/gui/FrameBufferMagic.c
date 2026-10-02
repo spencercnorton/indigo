@@ -3045,26 +3045,54 @@ static void _GameflowDrawFallback(const gameflowRenderCard_t *card,
 	_SetupRasterColor();
 }
 
+/* A picture fades in over this long from when it arrived. One read while it
+ * was off screen, as the cards either side are, is older than that by the
+ * time it shows, so scrolling to it shows it at once. */
+#define GAMEFLOW_ART_ARRIVAL_MS 200u
+
+/* How far a picture that arrived ageMs ago has faded in, 0 to 1. */
+static float _GameflowArrival(u32 ageMs)
+{
+	if(ageMs >= GAMEFLOW_ART_ARRIVAL_MS ||
+		_CurrentMotionMode() == UI_MOTION_OFF) {
+		return 1.0f;
+	}
+	return UIMotion_Smoothstep((float)ageMs / (float)GAMEFLOW_ART_ARRIVAL_MS);
+}
+
+/* The record's poster, or NULL; *arrival (when asked for) is how far it has
+ * faded in since it arrived. */
 static GXTexObj *_GameflowPosterTexture(
-	const uiGameflowCardSnapshot_t *record)
+	const uiGameflowCardSnapshot_t *record, float *arrival)
 {
 	uiPosterHandle_t handle;
 	uiPosterResult_t result;
+	GXTexObj *texture;
+	u32 ageMs;
 
 	/* An app's poster, or a folder of games', is made on the console from
 	 * its own picture or its name (card_art.c). */
 	if((record->flags & UI_GAMEFLOW_CARD_APP) || record->subfolder) {
-		return CardArt_Poster((int32_t)record->libraryIndex);
+		texture = CardArt_Poster((int32_t)record->libraryIndex);
+		ageMs = CardArt_PosterAgeMs((int32_t)record->libraryIndex);
 	}
-	/* _DrawGameflow runs under _videomutex. Query and Peek deliberately do
-	 * not lock and the borrowed texture is consumed before that lock drops. */
-	result = UIAssets_Query(record->gameId,
-		strnlen(record->gameId, sizeof(record->gameId)),
-		(record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) != 0u, &handle);
-	if(result != UI_POSTER_EXACT && result != UI_POSTER_UNIVERSAL) {
-		return NULL;
+	else {
+		/* _DrawGameflow runs under _videomutex. Query and Peek deliberately
+		 * do not lock and the borrowed texture is consumed before that lock
+		 * drops. */
+		result = UIAssets_Query(record->gameId,
+			strnlen(record->gameId, sizeof(record->gameId)),
+			(record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) != 0u, &handle);
+		if(result != UI_POSTER_EXACT && result != UI_POSTER_UNIVERSAL) {
+			return NULL;
+		}
+		texture = UIAssets_Peek(handle);
+		ageMs = UIAssets_PeekAgeMs(handle);
 	}
-	return UIAssets_Peek(handle);
+	if(arrival != NULL) {
+		*arrival = _GameflowArrival(ageMs);
+	}
+	return texture;
 }
 
 /* The game's gameplay still from stills.pak, or NULL; the same borrowing
@@ -3079,6 +3107,19 @@ static GXTexObj *_GameflowStillTexture(const uiGameflowCardSnapshot_t *record)
 		return NULL;
 	}
 	return UIStills_Peek(handle);
+}
+
+/* How far the game's still has faded in since it arrived. */
+static float _GameflowStillArrival(const uiGameflowCardSnapshot_t *record)
+{
+	uiPosterHandle_t handle;
+	uiPosterResult_t result = UIStills_Query(record->gameId,
+		strnlen(record->gameId, sizeof(record->gameId)), false, &handle);
+
+	if(result != UI_POSTER_EXACT && result != UI_POSTER_UNIVERSAL) {
+		return 1.0f;
+	}
+	return _GameflowArrival(UIStills_PeekAgeMs(handle));
 }
 
 /* Spotlight's picture panel: a frame and a dark field, faded by alpha. */
@@ -3100,17 +3141,54 @@ static void _GameflowDrawSpotlightPanel(float alpha)
 	GX_End();
 }
 
-/* One game's picture in Spotlight's panel, faded by alpha: its gameplay
- * still filling the panel, else its cover in the middle, drawn as Detail
- * draws it, so the cover can leave from there for Detail. A game with
- * settings of its own carries the mark a cover does, on either. */
-static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
+/* One game's cover in the middle of Spotlight's panel, faded by alpha,
+ * drawn as Detail draws it, so the cover can leave from there for Detail. */
+static void _GameflowDrawSpotlightCover(drawGameflowEvent_t *data,
 	const uiGameflowCardSnapshot_t *record, u32 recordIndex, float alpha)
 {
 	gameflowRenderCard_t cover;
 	GXTexObj *texture;
 	GXTexObj *bannerTexture = NULL;
 	uiGameflowLibraryArtwork_t artwork;
+	float arrival;
+
+	memset(&cover, 0, sizeof(cover));
+	cover.record = record;
+	cover.recordIndex = recordIndex;
+	cover.focus = 1.0f;
+	cover.presence = alpha;
+	cover.art = true;
+	cover.quad = gameflowSpotlightCover;
+	texture = _GameflowPosterTexture(record, &arrival);
+	if(record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) {
+		bannerTexture = &data->bannerTexObj[recordIndex];
+	}
+	artwork = UIGameflowLibrary_ChooseArtwork(texture != NULL,
+		bannerTexture != NULL);
+	if(artwork == UI_GAMEFLOW_LIBRARY_ART_POSTER) {
+		if(arrival < 1.0f) {
+			_GameflowDrawFallback(&cover, UIGameflowLibrary_ChooseArtwork(
+				false, bannerTexture != NULL), bannerTexture, 1.0f);
+		}
+		_GameflowDrawPoster(&cover, texture, arrival);
+	}
+	else {
+		_GameflowDrawFallback(&cover, artwork, bannerTexture, 1.0f);
+	}
+	if(record->flags & UI_GAMEFLOW_CARD_CUSTOM) {
+		_GameflowDrawCustomMark(&cover, 1.0f);
+	}
+}
+
+/* One game's picture in Spotlight's panel, faded by alpha: its gameplay
+ * still filling the panel, else its cover in the middle. A still that has
+ * just arrived fades in over the cover. A game with settings of its own
+ * carries the mark a cover does, on either. */
+static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
+	const uiGameflowCardSnapshot_t *record, u32 recordIndex, float alpha)
+{
+	gameflowRenderCard_t mark;
+	GXTexObj *texture;
 
 	if(record == NULL || alpha <= 0.001f) {
 		return;
@@ -3119,39 +3197,23 @@ static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
 	if(texture != NULL) {
 		gameflowQuad_t inner = _GameflowInsetPixels(&gameflowSpotlightPanel,
 			4.0f);
-		_GameflowDrawBanner(&inner, texture, _GameflowAlpha(255.0f * alpha));
+		float arrival = _GameflowStillArrival(record);
+		if(arrival < 1.0f) {
+			_GameflowDrawSpotlightCover(data, record, recordIndex, alpha);
+		}
+		_GameflowDrawBanner(&inner, texture,
+			_GameflowAlpha(255.0f * alpha * arrival));
 		drawInit();
 		_SetupRasterColor();
 		if(record->flags & UI_GAMEFLOW_CARD_CUSTOM) {
-			memset(&cover, 0, sizeof(cover));
-			cover.quad = inner;
-			cover.presence = alpha;
-			_GameflowDrawCustomMark(&cover, 1.0f);
+			memset(&mark, 0, sizeof(mark));
+			mark.quad = inner;
+			mark.presence = alpha * arrival;
+			_GameflowDrawCustomMark(&mark, 1.0f);
 		}
 		return;
 	}
-	memset(&cover, 0, sizeof(cover));
-	cover.record = record;
-	cover.recordIndex = recordIndex;
-	cover.focus = 1.0f;
-	cover.presence = alpha;
-	cover.art = true;
-	cover.quad = gameflowSpotlightCover;
-	texture = _GameflowPosterTexture(record);
-	if(record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) {
-		bannerTexture = &data->bannerTexObj[recordIndex];
-	}
-	artwork = UIGameflowLibrary_ChooseArtwork(texture != NULL,
-		bannerTexture != NULL);
-	if(artwork == UI_GAMEFLOW_LIBRARY_ART_POSTER) {
-		_GameflowDrawPoster(&cover, texture, 1.0f);
-	}
-	else {
-		_GameflowDrawFallback(&cover, artwork, bannerTexture, 1.0f);
-	}
-	if(record->flags & UI_GAMEFLOW_CARD_CUSTOM) {
-		_GameflowDrawCustomMark(&cover, 1.0f);
-	}
+	_GameflowDrawSpotlightCover(data, record, recordIndex, alpha);
 }
 
 /* A game on Spotlight's row: its disc banner inside the tile's frame, or its
@@ -3769,7 +3831,7 @@ static void _GameflowSetLaunch(drawGameflowEvent_t *data, bool on)
 		const uiGameflowCardSnapshot_t *record = _GameflowFindRecord(
 			&data->snapshot, UIGameflow_Frame(&data->state)->focusIndex, NULL);
 		GXTexObj *poster = record != NULL ?
-			_GameflowPosterTexture(record) : NULL;
+			_GameflowPosterTexture(record, NULL) : NULL;
 
 		UILaunch_Begin(&launchState);
 		launchWarningScale = 0.0f;
@@ -4160,13 +4222,14 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		GXTexObj *posterTexture;
 		GXTexObj *bannerTexture = NULL;
 		uiGameflowLibraryArtwork_t artwork;
+		float arrival = 1.0f;
 
 		if(!cards[i].art) {
 			continue;
 		}
 		posterTexture = launchActive && launchHasPoster &&
 			cards[i].record->libraryIndex == frame->focusIndex ?
-			&launchPoster : _GameflowPosterTexture(cards[i].record);
+			&launchPoster : _GameflowPosterTexture(cards[i].record, &arrival);
 		if(cards[i].record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) {
 			bannerTexture = &data->bannerTexObj[cards[i].recordIndex];
 		}
@@ -4182,7 +4245,13 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		artwork = UIGameflowLibrary_ChooseArtwork(posterTexture != NULL,
 			bannerTexture != NULL);
 		if(artwork == UI_GAMEFLOW_LIBRARY_ART_POSTER) {
-			_GameflowDrawPoster(&cards[i], posterTexture, reveal);
+			/* A poster just read fades in over what stood in for it. */
+			if(arrival < 1.0f) {
+				_GameflowDrawFallback(&cards[i],
+					UIGameflowLibrary_ChooseArtwork(false,
+					bannerTexture != NULL), bannerTexture, reveal);
+			}
+			_GameflowDrawPoster(&cards[i], posterTexture, reveal * arrival);
 			continue;
 		}
 		_GameflowDrawFallback(&cards[i], artwork, bannerTexture, reveal);

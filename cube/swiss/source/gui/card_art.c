@@ -23,6 +23,7 @@ static bool artOpen;
 static uiAppsArt_t art;
 static u8 *artTexels;
 static GXTexObj artTexture[UI_APPS_ART_SLOTS];
+static u32 artReadyMs[UI_APPS_ART_SLOTS];	/* when each was made */
 
 static u32 nowMs(void)
 {
@@ -129,6 +130,7 @@ static void posterDone(void *context)
 			UI_PNG_CANVAS, GX_TF_CMPR, GX_CLAMP, GX_CLAMP, GX_TRUE);
 		GX_InitTexObjLOD(&artTexture[job->slot], GX_LIN_MIP_LIN, GX_LINEAR,
 			0.0f, 4.0f, 0.0f, GX_FALSE, GX_TRUE, GX_ANISO_1);
+		artReadyMs[job->slot] = nowMs();
 	}
 }
 
@@ -338,4 +340,11 @@ GXTexObj *CardArt_Poster(int32_t card)
 	int slot = UIAppsArt_Find(&art, card);
 
 	return slot >= 0 ? &artTexture[slot] : NULL;
+}
+
+u32 CardArt_PosterAgeMs(int32_t card)
+{
+	int slot = UIAppsArt_Find(&art, card);
+
+	return slot >= 0 ? nowMs() - artReadyMs[slot] : 0u;
 }

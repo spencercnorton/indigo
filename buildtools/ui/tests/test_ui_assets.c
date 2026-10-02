@@ -273,8 +273,10 @@ void uiAssetsHostFree(void *ptr) {
 /* ---- fake clock ---- */
 
 static u32 fakeNowValue = 1000;
+static int nowLockDepth; /* lockDepth at the clock's last reading */
 
 static u32 fakeNow(void) {
+	nowLockDepth = lockDepth;
 	return fakeNowValue;
 }
 
@@ -1821,6 +1823,53 @@ static void test_stills_load_one_texture_each(void) {
 	free(pack);
 }
 
+/* A picture's age counts from its publication, stamped inside the critical
+ * section by the cache's own clock: 0 on the frame it lands, then the
+ * clock's time, across the clock's wrap too, and 0 for a handle whose
+ * picture is not there. Posters and stills alike. */
+static void test_ready_age(void) {
+	int count = 40;
+	testRec_t *recs = makeRecs(count);
+	size_t len, stillLen;
+	u8 *pack = buildPack(recs, count, &len, 0);
+	u8 *stillPack = buildStillPack(BASIC, 3, &stillLen);
+	uiAssetsSource_t src = memSource(pack, len);
+	uiPosterHandle_t h;
+	char ids[UI_ASSETS_SLOTS][8];
+
+	fakeNowValue = 0xFFFFFF00u;
+	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
+	requestOne("G000E0");
+	CHECK(UIAssets_Query("G000E0", 6, true, &h) == UI_POSTER_EXACT);
+	CHECK(UIAssets_PeekAgeMs(h) == 0); /* not read yet */
+	fakeNowValue += UI_ASSETS_EVICT_QUARANTINE_MS + 1;
+	CHECK(!UIAssets_Poll());
+	CHECK(nowLockDepth == 1); /* the stamp is the locked publication's */
+	CHECK(UIAssets_Peek(h) != NULL);
+	CHECK(UIAssets_PeekAgeMs(h) == 0);
+	fakeNowValue += 0x100u; /* past the clock's wrap */
+	CHECK(UIAssets_PeekAgeMs(h) == 0x100u);
+	/* A full window of other posters takes its slot: no picture, no age. */
+	makeIds(ids, 10, UI_ASSETS_SLOTS);
+	UIAssets_RequestWindow(ids, UI_ASSETS_SLOTS, 0);
+	pollAll();
+	CHECK(UIAssets_Peek(h) == NULL);
+	CHECK(UIAssets_PeekAgeMs(h) == 0);
+
+	src = memSource(stillPack, stillLen);
+	CHECK(UIStills_Init(&src, &testSync) == UI_ASSETS_OK);
+	requestStills("GALE01", "GC6E01", "GZLE01");
+	CHECK(UIStills_Query("GC6E01", 6, true, &h) == UI_POSTER_EXACT);
+	CHECK(UIStills_PeekAgeMs(h) == 0);
+	pollStills();
+	CHECK(UIStills_Peek(h) != NULL);
+	fakeNowValue += 75u;
+	CHECK(UIStills_PeekAgeMs(h) >= 75u);
+	free(pack);
+	free(stillPack);
+	free(recs);
+}
+
 /* posters.pak and stills.pak declare different textures, and each cache
  * refuses the other's pack before it allocates anything. */
 static void test_stills_and_posters_refuse_each_other(void) {
@@ -2128,6 +2177,7 @@ int main(int argc, char **argv) {
 	RUN(test_max_records_boundary);
 	RUN(test_stale_handle_after_eviction);
 	RUN(test_grid_window_then_carousel);
+	RUN(test_ready_age);
 	RUN(test_cancel_for_device_change);
 	RUN(test_sync_validation_policy);
 	RUN(test_sync_binding_lifecycle);

@@ -177,6 +177,12 @@ static float GetTextScaleToFitInWidthWithMax(const char *text, int width, float 
 	float scale = size < (float)width ? 1.0f : (float)width / size;
 	return scale < maximum ? scale : maximum;
 }
+/* When every picture arrived, by a clock the frames advance: long ago,
+ * until "Y" has them all arrive now. */
+static u32 clockMs = 600000u, artArrivedMs;
+u32 UIAssets_PeekAgeMs(uiPosterHandle_t handle) { (void)handle; return clockMs - artArrivedMs; }
+u32 UIStills_PeekAgeMs(uiPosterHandle_t handle) { (void)handle; return clockMs - artArrivedMs; }
+static u32 CardArt_PosterAgeMs(int32_t card) { (void)card; return clockMs - artArrivedMs; }
 /* Every seventh game has no cover, so the fallback art is drawn too. The
  * launch test closes the pack, as the hand-off does. */
 static GXTexObj covers[1000];
@@ -372,6 +378,7 @@ int main(void)
 			publish(layout, count, a, c, d, e, false);
 		}
 		else if(sscanf(line, "M %d", &c) == 1) motionMode = (uiMotionMode_t)c;
+		else if(line[0] == 'Y') artArrivedMs = clockMs;
 		else if(sscanf(line, "D %d", &c) == 1) {
 			UIGameflow_SetMode(&eventData->state, (uiGameflowMode_t)c, motionMode);
 			sceneFrame.scene = c ? UI_SCENE_GAME_DETAIL : UI_SCENE_LIBRARY;
@@ -379,6 +386,7 @@ int main(void)
 		else if(sscanf(line, "N %u %f", &a, &dt) == 2) {
 			for(b = 0; b < a; ++b) {
 				animDelta = dt; animSeconds += dt;
+				clockMs += (u32)(dt * 1000.0f + 0.5f);
 				fprintf(out, "F\n");
 				_DrawGameflow(&event);
 			}
@@ -838,6 +846,44 @@ class GameflowGxStream(unittest.TestCase):
         self.assertNotIn("still:G021E0", rest)
         self.assertAlmostEqual(centre(rest["banner:G022E0"][0])[0], 320, delta=1.0)
         self.assertEqual(self.column(frames(log)[-1])[92], "Game number 22")
+
+    @staticmethod
+    def texture_alpha(frame: str, name: str):
+        """The alpha a texture is first drawn with in a frame, or None."""
+        lines = frame.splitlines()
+        if f"X {name}" not in lines:
+            return None
+        at = lines.index(f"X {name}")
+        return int(next(l for l in lines[at:] if l.startswith("C ")).split()[4])
+
+    def test_a_picture_fades_in_as_it_arrives(self):
+        for script, picture, fallbacks in (
+                # A cover, over the card it stood in for; five cards show.
+                (["L 0 40 20"], "G020E0", 5),
+                # An app's poster made on the console.
+                (["A 0 10 4"], "ART004", None),
+                # Spotlight's still, over the cover it stood in for.
+                (["L 3 40 21"], "still:G021E0", None)):
+            with self.subTest(picture=picture):
+                log = frames(self.run_script(script + ["N 40 0.0167", "Y", "N 20 0.0167"]))
+                # Read long before it shows, it shows at once.
+                self.assertEqual(self.texture_alpha(log[0], picture), 255)
+                alphas = [self.texture_alpha(f, picture) for f in log[40:]]
+                self.assertLess(alphas[0], 255 * 0.15)
+                self.assertEqual(alphas, sorted(alphas))
+                self.assertTrue(all(b - a < 255 * 0.3 for a, b in zip(alphas, alphas[1:])),
+                                alphas)
+                # About 200 ms: full by the thirteenth frame.
+                self.assertEqual(alphas[13:], [255] * 7)
+                if fallbacks:
+                    self.assertEqual(log[40].count("B 24\n"), fallbacks)
+                    self.assertEqual(log[-1].count("B 24\n"), 0)
+                if picture.startswith("still:"):
+                    self.assertIsNotNone(self.texture_alpha(log[40], "G021E0"))
+                    self.assertIsNone(self.texture_alpha(log[-1], "G021E0"))
+        # Off shows it at once.
+        log = frames(self.run_script(["M 2", "L 0 40 20", "N 5 0.0167", "Y", "N 1 0.0167"]))
+        self.assertEqual(self.texture_alpha(log[-1], "G020E0"), 255)
 
     def test_every_layout_flies_to_detail(self):
         for layout in (0, 1, 2, 3):
