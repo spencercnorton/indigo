@@ -848,9 +848,18 @@ void config_defaults(ConfigEntry *entry) {
 }
 
 // TODO kill this off in one major version from now. Don't add new settings to it.
+/* Entries for the games a legacy swiss.ini carries over and for Game
+ * Defaults: 2,047 games at most, the rest dropped. About 650 KB, so on the
+ * heap: the menu thread's stack is 128 KB. */
+#define LEGACY_ENTRIES 2048
+
 void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int, int)) {
-	ConfigEntry configEntries[2048]; // That's a lot of Games!
+	ConfigEntry *configEntries = calloc(LEGACY_ENTRIES, sizeof(ConfigEntry));
 	int configEntriesCount = 0;
+	if(configEntries == NULL) {
+		// No room to migrate: swiss.ini stays for another try.
+		return;
+	}
 	// Parse each entry and put it into our array
 	char *line, *linectx = NULL;
 	int first = 1;
@@ -868,7 +877,8 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 
 				if(!strcmp("ID", name)) {
 					defaultPassed = true;
-					if(!first) {
+					// Games past the last slot are read into it, then dropped.
+					if(!first && configEntriesCount < LEGACY_ENTRIES - 1) {
 						configEntriesCount++;
 					}
 					strncpy(configEntries[configEntriesCount].game_id, value, 4);
@@ -1123,8 +1133,10 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 		line = strtok_r( NULL, "\r\n", &linectx);
 	}
 
-	if(configEntriesCount > 0 || !first) {
+	if((configEntriesCount > 0 || !first) && configEntriesCount < LEGACY_ENTRIES - 1) {
 		configEntriesCount++;
+	}
+	if(configEntriesCount > 0 || !first) {
 		config_defaults(&configEntries[configEntriesCount]);
 	}
 	 print_debug("Found %i entries in the (legacy) config file\n",configEntriesCount);
@@ -1141,6 +1153,7 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 	 config_update_recent(false);
 	 // Kill off the old swiss.ini
 	 config_file_delete(SWISS_SETTINGS_FILENAME_LEGACY);
+	 free(configEntries);
 }
 
 void config_parse_global(char *configData) {
