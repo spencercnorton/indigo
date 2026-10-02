@@ -85,6 +85,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - Coming back to Home, the face's name and the hint under the cube fade in
   as the cube grows back to its place, instead of appearing at once over a
   cube still on its way.
+- On Home, Source's and System's rows and the restart question fade in when
+  they open, and the highlight fades from row to row as you move instead of
+  jumping.
 
 ### Fixes
 

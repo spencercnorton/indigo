@@ -291,7 +291,17 @@ typedef struct drawHomeEvent {
 	float contextCommandScale;
 	float confirmCommandScale;
 	float consequenceScale;
+	/* Seconds since the surface changed, up to HOME_SURFACE_REVEAL: a new
+	 * surface fades in. */
+	float surfaceAge;
+	/* Each row's style from idle (0) to selected (1), springing between as
+	 * the selection moves; a new surface's rows start where they rest. */
+	uiMotionSpring_t rowWeight[UI_HOME_LAYOUT_MAX_ROWS];
+	bool rowsPlaced;
 } drawHomeEvent_t;
+
+#define HOME_SURFACE_REVEAL 0.18f
+#define HOME_ROW_RESPONSE 25.0f
 
 static const char homeContextCommand[] =
 	"D-PAD  SELECT    A  OPEN    B  BACK";
@@ -4268,8 +4278,9 @@ static void _DrawHomeText(int x, int y, const char *text, float scale,
 	drawStringMedium(x, y, text, scale, align, color);
 }
 
+/* weight runs from the idle panel (0) to the selected one (1). */
 static void _DrawHomePanel(int x, int y, int width, int height,
-		float reveal, bool selected, bool danger)
+		float reveal, float weight, bool danger)
 {
 	GXColor fill = danger ? (GXColor) {82, 20, 42, 0} :
 		(GXColor) {20, 13, 58, 0};
@@ -4278,9 +4289,9 @@ static void _DrawHomePanel(int x, int y, int width, int height,
 	GXColor glow = danger ? (GXColor) {255, 75, 118, 0} :
 		(GXColor) {117, 88, 244, 0};
 
-	fill.a = (u8)((selected ? 148.0f : 72.0f) * reveal);
-	edge.a = (u8)((selected ? 218.0f : 92.0f) * reveal);
-	glow.a = (u8)((selected ? 84.0f : 28.0f) * reveal);
+	fill.a = (u8)((72.0f + 76.0f * weight) * reveal);
+	edge.a = (u8)((92.0f + 126.0f * weight) * reveal);
+	glow.a = (u8)((28.0f + 56.0f * weight) * reveal);
 	drawInit();
 	GX_SetNumTexGens(0);
 	GX_SetNumIndStages(0);
@@ -4303,7 +4314,7 @@ static void _DrawHomePanel(int x, int y, int width, int height,
 		_putFlatRect((float)x - 3.0f, (float)y - 3.0f,
 			(float)width + 6.0f, (float)height + 6.0f, glow);
 		_putFlatRect((float)x, (float)y, (float)width, (float)height, fill);
-		_putFlatRect((float)x, (float)y, selected ? 4.0f : 2.0f,
+		_putFlatRect((float)x, (float)y, 2.0f + 2.0f * weight,
 			(float)height, edge);
 	GX_End();
 	drawInit();
@@ -4406,13 +4417,14 @@ static void _DrawHomeRows(const drawHomeEvent_t *data, float reveal)
 		const uiHomeLayoutItem_t *item = &layout->rows[row];
 		int width = item->panelBounds.right - item->panelBounds.left;
 		int height = item->panelBounds.bottom - item->panelBounds.top;
-		bool selected = item->selected;
+		float weight = data->rowWeight[row].value;
 		const char *label = UIHome_RowLabel(data->state.surface, row);
 		_DrawHomePanel(item->panelBounds.left, item->panelBounds.top,
-			width, height, reveal, selected, false);
+			width, height, reveal, weight, false);
 		_DrawHomeText(item->labelCenter.x, item->labelCenter.y, label,
-			selected ? data->rowSelectedScale[row] : data->rowIdleScale[row],
-			ALIGN_CENTER, selected ? primary : muted);
+			data->rowIdleScale[row] + (data->rowSelectedScale[row] -
+				data->rowIdleScale[row]) * weight,
+			ALIGN_CENTER, _GameflowMixColor(muted, primary, weight));
 	}
 	_DrawHintText(layout->commandCenter.x, layout->commandCenter.y,
 		homeContextCommand, data->contextCommandScale,
@@ -4448,18 +4460,41 @@ static void _DrawHomeRestartConfirm(const drawHomeEvent_t *data,
 		const uiHomeLayoutItem_t *item = &data->layout.options[row];
 		int width = item->panelBounds.right - item->panelBounds.left;
 		int height = item->panelBounds.bottom - item->panelBounds.top;
-		bool selected = item->selected;
+		float weight = data->rowWeight[row].value;
 		const char *label = UIHome_RowLabel(
 			UI_HOME_SURFACE_RESTART_CONFIRM, row);
 		_DrawHomePanel(item->panelBounds.left, item->panelBounds.top,
-			width, height, reveal, selected, row == 1);
+			width, height, reveal, weight, row == 1);
 		_DrawHomeText(item->labelCenter.x, item->labelCenter.y, label,
-			selected ? 0.54f : 0.49f,
-			ALIGN_CENTER, selected ? primary : muted);
+			0.49f + 0.05f * weight,
+			ALIGN_CENTER, _GameflowMixColor(muted, primary, weight));
 	}
 	_DrawHintText(data->layout.commandCenter.x, data->layout.commandCenter.y,
 		homeConfirmCommand, data->confirmCommandScale,
 		ALIGN_CENTER, muted);
+}
+
+/* Spring each row of the surface towards its style: selected or idle. */
+static void _HomeUpdateRowWeights(drawHomeEvent_t *data,
+		uiMotionMode_t motionMode)
+{
+	bool confirm = data->state.surface == UI_HOME_SURFACE_RESTART_CONFIRM;
+	const uiHomeLayoutItem_t *items = confirm ?
+		data->layout.options : data->layout.rows;
+	int count = confirm ? data->layout.optionCount : data->layout.rowCount;
+	int row;
+
+	for(row = 0; row < count && row < UI_HOME_LAYOUT_MAX_ROWS; ++row) {
+		float target = items[row].selected ? 1.0f : 0.0f;
+		if(!data->rowsPlaced) {
+			UIMotion_SpringInit(&data->rowWeight[row], target,
+				HOME_ROW_RESPONSE);
+		}
+		UIMotion_SpringRetarget(&data->rowWeight[row], target, motionMode);
+		UIMotion_SpringUpdate(&data->rowWeight[row], UIAnim_Delta(),
+			motionMode);
+	}
+	data->rowsPlaced = true;
 }
 
 // Internal
@@ -4472,6 +4507,7 @@ static void _DrawHome(uiDrawObj_t *evt)
 	 * row rises with it. Off snaps the cube, so they show at once. */
 	float reveal = scene->chromeProgress *
 		UIMotion_Smoothstep((scene->cubeScale - 0.70f) / 0.18f);
+	uiMotionMode_t motionMode = _CurrentMotionMode();
 
 	if(!data->visible || !data->layoutValid || reveal <= 0.0f ||
 		scene->scene != UI_SCENE_HOME || scene->homeFace != data->state.face ||
@@ -4480,6 +4516,15 @@ static void _DrawHome(uiDrawObj_t *evt)
 		return;
 	}
 	if(reveal > 1.0f) reveal = 1.0f;
+	/* A new surface (the ring, a face's rows, the restart question) fades
+	 * in over a moment rather than appearing whole. */
+	if(data->surfaceAge < HOME_SURFACE_REVEAL) {
+		data->surfaceAge += UIAnim_Delta();
+	}
+	if(motionMode != UI_MOTION_OFF) {
+		reveal *= UIMotion_Smoothstep(data->surfaceAge / HOME_SURFACE_REVEAL);
+	}
+	_HomeUpdateRowWeights(data, motionMode);
 	if(data->state.surface == UI_HOME_SURFACE_RING) {
 		_DrawHomeRoot(data, scene, reveal);
 	}
@@ -4498,6 +4543,8 @@ uiDrawObj_t* DrawHome(void)
 	drawHomeEvent_t *eventData = calloc(1, sizeof(drawHomeEvent_t));
 	event->type = EV_HOME;
 	event->data = eventData;
+	/* The first surface shows with the boot's chrome, not after it. */
+	eventData->surfaceAge = HOME_SURFACE_REVEAL;
 	return event;
 }
 
@@ -4898,6 +4945,10 @@ void DrawUpdateHome(const uiHomeState_t *state,
 		data->visible = state != NULL;
 		data->layoutValid = false;
 		if(state != NULL) {
+			if(state->surface != data->state.surface) {
+				data->surfaceAge = 0.0f;
+				data->rowsPlaced = false;
+			}
 			data->state = *state;
 			data->capabilities = capabilities;
 			if(sourceName != NULL) {

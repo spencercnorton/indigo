@@ -5,9 +5,15 @@ _DrawHome, its panels and text, and DrawUpdateHome are compiled out of
 FrameBufferMagic.c with the real Home reducer, layout, text fitting, springs
 and screen shapes. The scene, the font and GX are stand-ins: the scene frame
 is set by the script, and every string and flat quad drawn is logged with its
-opacity. The tests then check that the face's name and the hint fade in as
-the cube grows back to its Home size, rather than appearing at full strength
-over a cube still on its way back.
+opacity. The tests then check that
+
+- the face's name and the hint fade in as the cube grows back to its Home
+  size, rather than appearing at full strength over a cube still on its way;
+- a new surface (Source's or System's rows, the restart question, the ring
+  again) fades in, its rows already in their places;
+- a row moves between its idle and selected styles on a spring as the
+  selection moves, and rests exactly where those styles always were;
+- Motion Off shows both at once.
 """
 
 import os
@@ -172,11 +178,11 @@ int main(void)
 
 def renderer(frame_c: str) -> str:
     return "\n".join([
-        between(frame_c, "typedef struct drawHomeEvent {", "} drawHomeEvent_t;", True),
-        between(frame_c, "static const char homeContextCommand[] =",
+        between(frame_c, "typedef struct drawHomeEvent {",
                 "/* One device the Source picker lists"),
         extract_function(frame_c, "static void _putFlatVertex("),
         extract_function(frame_c, "static void _putFlatRect("),
+        extract_function(frame_c, "static GXColor _GameflowMixColor("),
         between(frame_c, "static void _DrawHomeText(", "// External\nuiDrawObj_t* DrawHome(void)"),
         extract_function(frame_c, "uiDrawObj_t* DrawHome(void)"),
         extract_function(frame_c, "static void _PrepareHomeText("),
@@ -189,7 +195,7 @@ def parse(log: str) -> list[dict]:
     for line in log.splitlines():
         tag, _, rest = line.partition(" ")
         if tag == "F":
-            frames.append({"strings": [], "hints": [], "quads": []})
+            frames.append({"strings": [], "hints": [], "quads": [], "blocks": []})
         elif not frames:
             continue
         elif tag == "S":
@@ -200,6 +206,8 @@ def parse(log: str) -> list[dict]:
         elif tag == "H":
             x, y, align, scale, alpha, text = rest.split(" ", 5)
             frames[-1]["hints"].append({"alpha": int(alpha), "text": text})
+        elif tag == "B":
+            frames[-1]["blocks"].append(len(frames[-1]["quads"]))
         elif tag == "V":
             x, y, alpha = rest.split()
             frames[-1]["quads"].append((float(x), float(y), int(alpha)))
@@ -216,6 +224,20 @@ def rects(frame: dict) -> list[dict]:
         found.append({"x": min(xs), "y": min(ys), "w": max(xs) - min(xs),
                       "h": max(ys) - min(ys), "alpha": quads[i][2]})
     return found
+
+
+def panels(frame: dict) -> list[list[dict]]:
+    """Each GX_Begin's rectangles: a panel is its glow, fill and edge."""
+    found = []
+    every = rects(frame)
+    for start in frame["blocks"]:
+        found.append(every[start // 4:start // 4 + 3])
+    return found
+
+
+DT = 0.0166667
+SYSTEM = "I 1\n"  # Left from Library turns to System.
+OPEN, BACK, UP, DOWN, RIGHT = "I 5\n", "I 6\n", "I 3\n", "I 4\n", "I 2\n"
 
 
 class HomeGXStreamTests(unittest.TestCase):
@@ -242,7 +264,7 @@ class HomeGXStreamTests(unittest.TestCase):
 
     def run_script(self, script: str) -> list[dict]:
         result = subprocess.run([str(self.program)], input=script,
-                                capture_output=True, text=True, timeout=30)
+                                capture_output=True, text=True, encoding="latin-1", timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         return parse(result.stdout)
 
@@ -270,6 +292,90 @@ class HomeGXStreamTests(unittest.TestCase):
         # And at the rows' larger 0.95.
         frame = self.run_script("K 0.95\nN 1 0.0166667\n")[-1]
         self.assertEqual([s["alpha"] for s in frame["strings"] + frame["hints"]], [255, 184])
+
+
+    def system_rows(self, motion: int = 0) -> str:
+        return f"M {motion}\n{SYSTEM}N 60 {DT}\n{OPEN}"
+
+    def test_the_harness_reaches_system_and_restart(self):
+        result = subprocess.run([str(self.program)], input=self.system_rows() + DOWN + DOWN + OPEN,
+                                capture_output=True, text=True, encoding="latin-1", timeout=30)
+        states = [line for line in result.stdout.splitlines() if line.startswith("A ")]
+        # Face 3 (System): the ring, its rows, two rows down, the question.
+        self.assertEqual(states, ["A 3 0 0", "A 3 2 0", "A 3 2 1", "A 3 2 2", "A 3 3 0"])
+
+    def test_a_new_surface_fades_in(self):
+        frames = self.run_script(self.system_rows() + f"N 30 {DT}\n")[-30:]
+        rest = frames[-1]
+        labels = [s["alpha"] for s in rest["strings"][1:]]
+        # The heading, then three rows: the first selected, as always drawn.
+        self.assertEqual(labels, [255, 190, 190])
+        self.assertEqual([[r["alpha"] for r in panel] for panel in panels(rest)],
+                         [[84, 148, 218], [28, 72, 92], [28, 72, 92]])
+        self.assertEqual([panel[2]["w"] for panel in panels(rest)], [4.0, 2.0, 2.0])
+        for row in range(3):
+            alphas = [f["strings"][row + 1]["alpha"] for f in frames]
+            self.assertLess(alphas[0], labels[row] * 0.2, "the rows popped in")
+            self.assertEqual(alphas, sorted(alphas))
+            self.assertTrue(all(b - a < labels[row] * 0.35 for a, b in zip(alphas, alphas[1:])))
+            # Shown in full within a quarter of a second.
+            self.assertEqual(alphas[15:], [labels[row]] * 15)
+            # The rows start in their places: only the fade moves them.
+            self.assertEqual({f["strings"][row + 1]["scale"] for f in frames},
+                             {rest["strings"][row + 1]["scale"]})
+        # Back to the ring: it fades in too.
+        ring = self.run_script(self.system_rows() + f"N 30 {DT}\n{BACK}N 30 {DT}\n")[-30:]
+        names = [f["strings"][0]["alpha"] for f in ring]
+        self.assertLess(names[0], 255 * 0.2)
+        self.assertEqual(names[15:], [255] * 15)
+
+    def test_off_shows_a_new_surface_at_once(self):
+        frames = self.run_script(self.system_rows(2) + f"N 3 {DT}\n")[-3:]
+        for frame in frames:
+            self.assertEqual([s["alpha"] for s in frame["strings"][1:]], [255, 190, 190])
+
+    def test_rows_spring_between_their_styles(self):
+        frames = self.run_script(self.system_rows() + f"N 30 {DT}\n{DOWN}N 30 {DT}\n")[-31:]
+        before, after = frames[0], frames[-1]
+        self.assertEqual([s["alpha"] for s in after["strings"][1:]], [190, 255, 190])
+        self.assertEqual([panel[2]["w"] for panel in panels(after)], [2.0, 4.0, 2.0])
+        for row, (start, end) in ((0, (255, 190)), (1, (190, 255))):
+            scales = [f["strings"][row + 1]["scale"] for f in frames]
+            alphas = [f["strings"][row + 1]["alpha"] for f in frames]
+            edges = [panels(f)[row][2]["w"] for f in frames]
+            colors = [f["strings"][row + 1]["color"] for f in frames]
+            self.assertEqual((alphas[0], alphas[-1]), (start, end))
+            span = abs(scales[-1] - scales[0])
+            self.assertGreater(span, 0.0)
+            for series, total in ((scales, span), (alphas, 65), (edges, 2.0)):
+                steps = [abs(b - a) for a, b in zip(series, series[1:])]
+                self.assertTrue(all(step <= total * 0.45 for step in steps),
+                                f"row {row} jumped between styles: {series}")
+                self.assertGreater(sum(1 for step in steps if step > 0), 3,
+                                   f"row {row} did not move between styles: {series}")
+            self.assertGreater(len(set(colors)), 3)
+        self.assertEqual(after["strings"][2]["scale"], before["strings"][1]["scale"])
+
+    def test_off_moves_the_rows_at_once(self):
+        frames = self.run_script(self.system_rows(2) + f"N 3 {DT}\n{DOWN}N 2 {DT}\n")[-2:]
+        for frame in frames:
+            self.assertEqual([s["alpha"] for s in frame["strings"][1:]], [190, 255, 190])
+
+    def test_the_restart_question_fades_in_and_its_choices_spring(self):
+        script = self.system_rows() + f"N 30 {DT}\n{DOWN}{DOWN}N 30 {DT}\n{OPEN}N 30 {DT}\n"
+        frames = self.run_script(script)[-30:]
+        rest = frames[-1]
+        # The title, the consequence, then CANCEL (selected) and RESTART.
+        self.assertEqual([s["text"] for s in rest["strings"][2:]], ["CANCEL", "RESTART"])
+        self.assertEqual([s["alpha"] for s in rest["strings"][2:]], [255, 202])
+        self.assertEqual([s["scale"] for s in rest["strings"][2:]], [0.54, 0.49])
+        cancel = [f["strings"][2]["alpha"] for f in frames]
+        self.assertLess(cancel[0], 255 * 0.2)
+        self.assertEqual(cancel[15:], [255] * 15)
+        frames = self.run_script(script + f"{RIGHT}N 30 {DT}\n")[-31:]
+        scales = [f["strings"][3]["scale"] for f in frames]
+        self.assertEqual((scales[0], scales[-1]), (0.49, 0.54))
+        self.assertGreater(len(set(scales)), 4, "RESTART snapped to its selected style")
 
 
 if __name__ == "__main__":
