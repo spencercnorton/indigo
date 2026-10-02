@@ -2739,6 +2739,24 @@ static GXColor _GameflowAccent(const uiGameflowCardSnapshot_t *record,
 	return color;
 }
 
+/* A name where a game's ID goes: its first eight characters in capitals,
+ * with an ellipsis when it is longer, so a card or a tile holds it. */
+#define GAMEFLOW_SHORT_NAME_SIZE 12
+static void _GameflowShortName(const char *title,
+	char name[GAMEFLOW_SHORT_NAME_SIZE])
+{
+	size_t k;
+
+	for(k = 0; k < 8u && title[k] != '\0'; ++k) {
+		char c = title[k];
+		name[k] = c >= 'a' && c <= 'z' ? (char)(c - 'a' + 'A') : c;
+	}
+	if(title[k] != '\0') {
+		name[k++] = '\205';
+	}
+	name[k] = '\0';
+}
+
 static const uiGameflowCardSnapshot_t *_GameflowFindRecord(
 	const uiGameflowRenderSnapshot_t *snapshot, u32 libraryIndex,
 	u32 *recordIndex)
@@ -2974,20 +2992,11 @@ static void _GameflowDrawFallback(const gameflowRenderCard_t *card,
 		/* An app whose poster isn't made yet, or a folder of games: its
 		 * name where a game's ID goes, cut to what a card holds, so the
 		 * cards tell apart. */
-		char appName[12];
+		char appName[GAMEFLOW_SHORT_NAME_SIZE];
 
 		if(card->record->flags & UI_GAMEFLOW_CARD_APP ||
 			card->record->subfolder) {
-			size_t k;
-
-			for(k = 0; k < 8u && card->record->title[k] != '\0'; ++k) {
-				char c = card->record->title[k];
-				appName[k] = c >= 'a' && c <= 'z' ? (char)(c - 'a' + 'A') : c;
-			}
-			if(card->record->title[k] != '\0') {
-				appName[k++] = '\205';
-			}
-			appName[k] = '\0';
+			_GameflowShortName(card->record->title, appName);
 			identityText = appName;
 			regionText = card->record->subfolder ? "FOLDER" : "APP";
 		}
@@ -3121,7 +3130,7 @@ static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
 }
 
 /* A game on Spotlight's row: its disc banner inside the tile's frame, or its
- * game ID when it has no banner. */
+ * game ID when it has no banner; a folder of games, its short name. */
 static void _GameflowDrawSpotlightTile(const gameflowRenderCard_t *card,
 	GXTexObj *banner, float reveal)
 {
@@ -3137,9 +3146,16 @@ static void _GameflowDrawSpotlightTile(const gameflowRenderCard_t *card,
 	{
 		GXColor text = {190, 181, 231, _GameflowAlpha(220.0f * alpha)};
 		gameflowPoint_t middle = _GameflowQuadPoint(&card->quad, 0.5f, 0.5f);
+		char shortName[GAMEFLOW_SHORT_NAME_SIZE];
+		const char *label = card->record->gameId[0] ?
+			card->record->gameId : card->record->title;
+
+		if(card->record->subfolder) {
+			_GameflowShortName(card->record->title, shortName);
+			label = shortName;
+		}
 		drawStringMedium((int)_GameflowRound(middle.x),
-			(int)_GameflowRound(middle.y) - 6, card->record->gameId[0] ?
-			card->record->gameId : card->record->title, 0.38f,
+			(int)_GameflowRound(middle.y) - 6, label, 0.38f,
 			ALIGN_CENTER, text);
 	}
 }
@@ -3340,7 +3356,7 @@ static void _GameflowPrepareSpotlight(drawGameflowEvent_t *data)
 	}
 	text[out] = '\0';
 	if(out == 0u && selected != NULL &&
-		!(selected->flags & UI_GAMEFLOW_CARD_PARENT)) {
+		!(selected->flags & UI_GAMEFLOW_CARD_PARENT) && !selected->subfolder) {
 		memcpy(text, GAMEFLOW_SPOTLIGHT_NO_DESCRIPTION,
 			sizeof(GAMEFLOW_SPOTLIGHT_NO_DESCRIPTION));
 	}

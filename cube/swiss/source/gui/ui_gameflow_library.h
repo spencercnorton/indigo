@@ -135,6 +135,15 @@ uiGameflowLibraryLocation_t UIGameflowLibrary_LocateFolders(
 /* True for the two locations below /games, where B goes up a folder. */
 bool UIGameflowLibrary_IsInsideFolder(uiGameflowLibraryLocation_t location);
 
+/* The Library's heading inside a Library Folders folder: currentPath below
+ * gamesRoot in capitals, its folders joined by " / ", as "RPGS / JRPG". When
+ * that is longer than size holds, the start gives way to an ellipsis so the
+ * folder shown still ends it ("\205 / JRPG"), and a name too long even alone
+ * is cut at its end. Returns false, with heading empty, anywhere but below
+ * gamesRoot. */
+bool UIGameflowLibrary_FolderHeading(const char *gamesRoot,
+	const char *currentPath, char *heading, size_t size);
+
 /* Home's B LIBRARY route may promote an exact root /games directory from an
  * already-scanned device root. Files, lookalike names, and deeper paths are
  * rejected before production copies a directory handle. */

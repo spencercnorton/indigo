@@ -1309,40 +1309,6 @@ static void gameflowProtectMetaFile(const file_handle *file)
 	}
 }
 
-/* The Library's heading inside a Library Folders folder: its path below
- * /games in capitals, "RPGS / JRPG", cut to fit with an ellipsis. */
-static void gameflowFolderHeading(char *heading, size_t size)
-{
-	char gamesRoot[PATHNAME_MAX];
-	const char *path;
-	size_t length = 0u;
-
-	concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
-	for(path = curDir.name + strlen(gamesRoot); *path == '/'; ++path) {
-	}
-	for(; *path != '\0'; ++path) {
-		bool separator = *path == '/';
-
-		if(separator && path[1] == '\0') {
-			break;
-		}
-		/* Room for this character, or " / ", and the ellipsis and NUL. */
-		if(length + (separator ? 3u : 1u) + 2u > size) {
-			heading[length++] = '\205';
-			break;
-		}
-		if(separator) {
-			memcpy(&heading[length], " / ", 3u);
-			length += 3u;
-		}
-		else {
-			char c = *path;
-			heading[length++] = c >= 'a' && c <= 'z' ? (char)(c - 'a' + 'A') : c;
-		}
-	}
-	heading[length] = '\0';
-}
-
 static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 	file_handle **directory, int numFiles, uiGameflowLibraryMode_t mode,
 	uiGameflowLayout_t layout, uiGameflowDirection_t directionHint,
@@ -1370,7 +1336,11 @@ static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 	gameflowCopyText(snapshot->deviceName, sizeof(snapshot->deviceName),
 		DeviceDisplayName(devices[DEVICE_CUR]), sizeof(snapshot->deviceName));
 	if(gameflowInsideFolder()) {
-		gameflowFolderHeading(snapshot->folder, sizeof(snapshot->folder));
+		char gamesRoot[PATHNAME_MAX];
+
+		concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
+		UIGameflowLibrary_FolderHeading(gamesRoot, curDir.name,
+			snapshot->folder, sizeof(snapshot->folder));
 	}
 	snapshot->layout = (u8)layout;
 	if(layout == UI_GAMEFLOW_LAYOUT_GRID) {

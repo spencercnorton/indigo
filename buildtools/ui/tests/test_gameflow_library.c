@@ -848,6 +848,45 @@ static void testLibraryFoldersLocations(void)
 		FNM_PATHNAME | FNM_CASEFOLD | FNM_LEADING_DIR) == 0);
 }
 
+static void testLibraryFoldersHeading(void)
+{
+	char heading[64];
+	char tiny[12];
+
+	CHECK(UIGameflowLibrary_FolderHeading("sd:/games", "sd:/games/RPGs/JRPG",
+		heading, sizeof(heading)));
+	CHECK(strcmp(heading, "RPGS / JRPG") == 0);
+	CHECK(UIGameflowLibrary_FolderHeading("sd:/games", "SD:/Games/rpgs/",
+		heading, sizeof(heading)));
+	CHECK(strcmp(heading, "RPGS") == 0);
+	/* /games itself and anywhere else have no heading. */
+	CHECK(!UIGameflowLibrary_FolderHeading("sd:/games", "sd:/games",
+		heading, sizeof(heading)));
+	CHECK(heading[0] == '\0');
+	CHECK(!UIGameflowLibrary_FolderHeading("sd:/games", "sd:/apps/RPGs",
+		heading, sizeof(heading)));
+	CHECK(!UIGameflowLibrary_FolderHeading("sd:/games", "sd:/gamesx/RPGs",
+		heading, sizeof(heading)));
+	/* Too long: the start gives way, so the folder shown still ends it. */
+	CHECK(UIGameflowLibrary_FolderHeading("sd:/games",
+		"sd:/games/Flight and Space Games From Every Region of the World/"
+		"The Very Long Second Level Folder", heading, sizeof(heading)));
+	CHECK(strcmp(heading, "\205 / THE VERY LONG SECOND LEVEL FOLDER") == 0);
+	/* A name too long even alone is cut at its end. */
+	CHECK(UIGameflowLibrary_FolderHeading("sd:/games",
+		"sd:/games/A/Abcdefghijklmnop", tiny, sizeof(tiny)));
+	CHECK(strcmp(tiny, "\205 / ABCDEF\205") == 0);
+	CHECK(UIGameflowLibrary_FolderHeading("sd:/games",
+		"sd:/games/Abcdefghijklmnop", tiny, sizeof(tiny)));
+	CHECK(strcmp(tiny, "ABCDEFGHIJ\205") == 0);
+	/* Exactly full: no ellipsis. */
+	CHECK(UIGameflowLibrary_FolderHeading("sd:/games", "sd:/games/Abcdefghijk",
+		tiny, sizeof(tiny)));
+	CHECK(strcmp(tiny, "ABCDEFGHIJK") == 0);
+	CHECK(!UIGameflowLibrary_FolderHeading("sd:/games", "sd:/games/RPGs",
+		heading, 0u));
+}
+
 static void testLibraryFoldersClassifier(void)
 {
 	uiGameflowLibraryClassifier_t classifier;
@@ -982,6 +1021,7 @@ int main(void)
 	testClassifierFallbackMatrix();
 	testClassifierSkipsStrays();
 	testLibraryFoldersLocations();
+	testLibraryFoldersHeading();
 	testLibraryFoldersClassifier();
 	testLibraryFoldersEntries();
 	testHomeLibraryStartupRoute();

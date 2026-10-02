@@ -200,6 +200,83 @@ bool UIGameflowLibrary_IsInsideFolder(uiGameflowLibraryLocation_t location)
 		location == UI_GAMEFLOW_LIBRARY_LOCATION_SUBFOLDER;
 }
 
+/* Copies count bytes of a path into heading at length, in capitals and with
+ * each '/' as " / ", stopping while one byte is left for the NUL. */
+static size_t headingPut(char *heading, size_t size, size_t length,
+	const char *text, size_t count)
+{
+	size_t i;
+
+	for(i = 0u; i < count && length + 1u < size; ++i) {
+		unsigned char c = (unsigned char)text[i];
+
+		if(c == '/') {
+			const char *separator = " / ";
+			size_t k;
+
+			for(k = 0u; k < 3u && length + 1u < size; ++k) {
+				heading[length++] = separator[k];
+			}
+			continue;
+		}
+		heading[length++] = (char)(c >= 'a' && c <= 'z' ? c - ('a' - 'A') : c);
+	}
+	return length;
+}
+
+bool UIGameflowLibrary_FolderHeading(const char *gamesRoot,
+	const char *currentPath, char *heading, size_t size)
+{
+	size_t rootLength = trimmedPathLength(gamesRoot);
+	size_t pathLength = trimmedPathLength(currentPath);
+	const char *folder;
+	const char *last;
+	size_t folderLength;
+	size_t full;
+	size_t length = 0u;
+	size_t i;
+
+	if(heading == NULL || size == 0u) {
+		return false;
+	}
+	heading[0] = '\0';
+	if(size < 8u || rootLength == 0u || pathLength <= rootLength + 1u ||
+		!asciiPrefixEquals(gamesRoot, currentPath, rootLength) ||
+		currentPath[rootLength] != '/') {
+		return false;
+	}
+	folder = &currentPath[rootLength + 1u];
+	folderLength = pathLength - rootLength - 1u;
+	last = folder;
+	full = folderLength;
+	for(i = 0u; i < folderLength; ++i) {
+		if(folder[i] == '/') {
+			last = &folder[i + 1u];
+			full += 2u;
+		}
+	}
+	if(full < size) {
+		length = headingPut(heading, size, 0u, folder, folderLength);
+	}
+	else {
+		size_t lastLength = (size_t)(&folder[folderLength] - last);
+
+		if(last != folder) {
+			heading[length++] = '\205';
+			length = headingPut(heading, size, length, "/", 1u);
+		}
+		if(length + lastLength < size) {
+			length = headingPut(heading, size, length, last, lastLength);
+		}
+		else {
+			length = headingPut(heading, size - 1u, length, last, lastLength);
+			heading[length++] = '\205';
+		}
+	}
+	heading[length] = '\0';
+	return true;
+}
+
 bool UIGameflowLibrary_IsGamesRootEntry(const char *gamesRoot,
 	uiGameflowLibraryEntryType_t type, const char *entryPath)
 {

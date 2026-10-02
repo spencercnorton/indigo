@@ -225,8 +225,11 @@ static uiGameflowRenderSnapshot_t snapshot;
 static uint32_t generation;
 /* A: the cards are apps, as Apps shows them. */
 static bool apps;
+/* O: Library Folders, inside a folder: every fourth card is a folder of
+ * games, and the heading names the folder. */
+static bool folders;
 
-/* L layout count selected (A: apps) | P selected hint rowDirection snap
+/* L layout count selected (A: apps, O: folders) | P selected hint rowDirection snap
  * | M motion | D mode | N frames dt  -- the log has one "F" per frame. */
 static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 	int rowDirection, int snap, bool first)
@@ -271,6 +274,16 @@ static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 			record->flags |= UI_GAMEFLOW_CARD_HAS_BANNER;
 			snprintf((char *)record->banner, 16, "banner:%s", record->gameId);
 		}
+		if(folders && slots[i].index % 4u == 2u) {
+			/* No ID, no banner, and a name longer than a card holds. */
+			record->flags = (u8)(record->flags & ~UI_GAMEFLOW_CARD_HAS_BANNER);
+			memset(record->banner, 0, 16);
+			memset(record->gameId, 0, sizeof(record->gameId));
+			record->subfolder = 1u;
+			snprintf(record->title, sizeof(record->title), "Folder of games %u", slots[i].index);
+			snprintf(record->company, sizeof(record->company), "FOLDER");
+			snprintf(record->facts, sizeof(record->facts), "A  OPEN");
+		}
 #endif
 #ifdef UI_GAMEFLOW_CARD_APP	/* the reference renderer has no Apps */
 		if(apps) {
@@ -284,7 +297,12 @@ static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 #endif
 	}
 #if LAYOUTS
-	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT && selected != 27u) {
+	if(folders) {
+		snprintf(snapshot.folder, sizeof(snapshot.folder), "RACING / CLASSICS");
+	}
+	/* A folder of games has no description, as swiss.c leaves it. */
+	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT && selected != 27u &&
+		!(folders && selected % 4u == 2u)) {
 		/* Padded with spaces and no NUL, as a banner's may be: anything
 		 * read past it would show as a word. Game 27 has none. */
 		memset(snapshot.description, ' ', sizeof(snapshot.description));
@@ -321,10 +339,13 @@ int main(void)
 	while(fgets(line, sizeof(line), stdin)) {
 		unsigned a, b; int c, d, e; float dt;
 		if(sscanf(line, "L %d %u %u", &layout, &a, &b) == 3) {
-			count = a; apps = false; publish(layout, count, b, 0, 0, 0, true);
+			count = a; apps = false; folders = false; publish(layout, count, b, 0, 0, 0, true);
 		}
 		else if(sscanf(line, "A %d %u %u", &layout, &a, &b) == 3) {
-			count = a; apps = true; publish(layout, count, b, 0, 0, 0, true);
+			count = a; apps = true; folders = false; publish(layout, count, b, 0, 0, 0, true);
+		}
+		else if(sscanf(line, "O %d %u %u", &layout, &a, &b) == 3) {
+			count = a; apps = false; folders = true; publish(layout, count, b, 0, 0, 0, true);
 		}
 		else if(sscanf(line, "P %u %d %d %d", &a, &c, &d, &e) == 4) {
 			publish(layout, count, a, c, d, e, false);
@@ -519,6 +540,50 @@ class GameflowGxStream(unittest.TestCase):
             self.assertIn(name, texts)
             self.assertIn("APP", texts)
             self.assertNotIn(f"APP{selected:03d}", covers(last))
+
+    def test_a_folder_of_games(self):
+        """Library Folders, inside a folder: in every layout the heading names
+        the folder and B goes back up it. A folder of games without art shows
+        its name cut to a card's eight letters over FOLDER, on a cover card and
+        on Spotlight's row alike; selected in Spotlight, the column holds no
+        description line, since a folder has none."""
+        def last_frame(script):
+            result = subprocess.run([str(self.binary)], input=script, capture_output=True,
+                                    encoding="latin-1", timeout=120)
+            self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+            return frames(result.stdout)[-1]
+
+        def texts(frame):
+            # split, not splitlines: the IPL font's ellipsis is U+0085.
+            return [l.split(" ", 6)[6] for l in frame.split("\n") if l.startswith("S ")]
+
+        for layout, heading in ((0, "S 320 70 0.500 1"), (1, "S 262 177 0.420 0"),
+                                (2, "S 320 40 0.460 1"), (3, "S 36 62 0.420 0")):
+            with self.subTest(layout=layout):
+                last = last_frame(f"O {layout} 12 4\nN 40 0.0167\n")
+                self.assertTrue(any(l.startswith(heading) and l.endswith(" RACING / CLASSICS")
+                                    for l in last.split("\n")), heading)
+                self.assertNotIn("GAME LIBRARY", last)
+                self.assertIn("D-PAD  BROWSE   A  OPEN   Y  SETTINGS   B  BACK", last)
+                self.assertNotIn("B  HOME", last)
+        # Selected: card 2 in the carousel shows FOLDER OF\x85 over FOLDER.
+        shown = texts(last_frame("O 0 12 2\nN 40 0.0167\n"))
+        self.assertIn("FOLDER O\x85", shown)
+        self.assertIn("FOLDER", shown)
+        self.assertNotIn("Folder of games 2", [t for t in shown if t.startswith("FOLDER")])
+        # Spotlight: folder 22 selected. Its tile on the row has its short
+        # name, never the whole one, and the column no description line.
+        frame = last_frame("O 3 40 22\nN 40 0.0167\n")
+        whole = [l.split(" ")[1] for l in frame.split("\n")
+                 if l.startswith("S ") and l.split(" ", 6)[6] == "Folder of games 22"]
+        self.assertEqual(whole, ["380"])  # only the column's title, not the row
+        self.assertGreaterEqual(texts(frame).count("FOLDER O\x85"), 2)  # panel and tile
+        column = self.column(frame)
+        self.assertEqual(column[92], "Folder of games 22")
+        self.assertNotIn(154, column)
+        # A game beside it still says when it has no description.
+        self.assertEqual(self.column(last_frame("O 3 40 27\nN 40 0.0167\n")).get(154),
+                         "No description for this game.")
 
     def test_vertical_column(self):
         log = self.run_script(["L 1 40 12", "N 40 0.0167"])
