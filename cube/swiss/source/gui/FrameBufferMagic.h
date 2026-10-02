@@ -105,19 +105,11 @@ typedef struct {
 
 enum TextureId
 {
-	TEX_BACKDROP=0,
-	TEX_SWISS,
-	TEX_GCDVDSMALL,
+	TEX_GCDVDSMALL=0,
 	TEX_SDSMALL,
 	TEX_HDD,
 	TEX_QOOB,
 	TEX_WODEIMG,
-	TEX_BTNHILIGHT,
-	TEX_BTNDEVICE,
-	TEX_BTNSETTINGS,
-	TEX_BTNINFO,
-	TEX_BTNREFRESH,
-	TEX_BTNEXIT,
 	TEX_MEMCARD,
 	TEX_WIIKEY,
 	TEX_SYSTEM,
@@ -194,6 +186,9 @@ void DrawUpdateDeviceSelector(uiDrawObj_t *selector,
 	bool inAdvanced);
 uiDrawObj_t* DrawTooltip(const char *tooltip);
 uiDrawObj_t* DrawTitleBar();
+/* The CPU temperature the title bar's dial shows, smoothed over its 4 degree
+ * steps; below 0 without a sensor. */
+int CoreTemperature(void);
 uiDrawObj_t* DrawGameflow(const uiGameflowRenderSnapshot_t *snapshot);
 void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	const uiGameflowRenderSnapshot_t *snapshot);

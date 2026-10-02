@@ -28,7 +28,6 @@
 #include "main.h"
 #include "util.h"
 #include "ata.h"
-#include "btns.h"
 #include "dolparameters.h"
 #include "cheats.h"
 #include "indigo_background.h"
@@ -39,6 +38,7 @@
 #include "ui_scene.h"
 #include "ui_stage.h"
 #include "ui_hint.h"
+#include "ui_system_info.h"
 #include "ui_assets.h"
 #include "ui_command_rail.h"
 #include "ui_home_layout.h"
@@ -56,12 +56,7 @@
 
 TPLFile imagesTPL;
 TPLFile buttonsTPL;
-TPLFile backdropTPL;
-GXTexObj backdropTexObj;
-GXTlutObj backdropTlutObj;
-GXTexObj backdropIndTexObj;
 GXTexObj bannerMaskTexObj;
-GXTexObj swissTexObj;
 GXTexObj gcdvdsmallTexObj;
 GXTexObj sdsmallTexObj;
 GXTlutObj sdsmallTlutObj;
@@ -79,12 +74,6 @@ GXTexObj memcardIndTexObj;
 GXTexObj bbaTexObj;
 GXTexObj wiikeyTexObj;
 GXTexObj systemTexObj;
-GXTexObj btnhilightTexObj;
-GXTexObj btndeviceTexObj;
-GXTexObj btnsettingsTexObj;
-GXTexObj btninfoTexObj;
-GXTexObj btnrefreshTexObj;
-GXTexObj btnexitTexObj;
 GXTexObj boxinnerTexObj;
 GXTexObj boxouterTexObj;
 GXTexObj ntscjTexObj;
@@ -119,7 +108,6 @@ static char  video_thread_stack[VIDEO_STACK_SIZE] ATTRIBUTE_ALIGN (8);
 static lwp_t video_thread = LWP_THREAD_NULL;
 static mutex_t _videomutex = LWP_MUTEX_NULL;
 static bool sceneRenderingEnabled;
-static u32 videoFrameSerial;
 /* While a Settings page is up, the screen keeps the colors that page was
  * drawn with (DrawUpdateSettingsPage): Menu, Backdrop and Wave Color, one per
  * UI_COLOR_LAYER_; disposing the page lets them go. While one of their lists
@@ -139,6 +127,7 @@ typedef struct {
 	char timeText[9];
 	char temperatureText[8];
 	s8 coreTemperature;
+	uiSystemTemperature_t temperatureFilter;
 	bool civilSecondSampled;
 	bool civilTimeAvailable;
 	bool temperatureSampled;
@@ -147,6 +136,8 @@ typedef struct {
 static uiSystemInstrument_t systemInstrument;
 static void _UpdateSystemInstrument(void);
 static indigoPadFrame_t padInstrument;
+/* This frame shows a full-screen page over everything before it. */
+static bool backgroundCovered;
 static file_handle posterPackFile;
 static DEVICEHANDLER_INTERFACE *posterPackDevice;
 static bool posterPackAttempted;
@@ -411,7 +402,8 @@ typedef struct drawProgressEvent {
 	bool miniMode;
 	bool hidden;	/* a launch's: the launch screen shows its step */
 	int miniModePos;
-	int miniModeAlpha;
+	float miniModeAlpha;
+	float seconds;	/* shown for: the spinner's and sweep's clock */
 	int percent;
 	int speed;	// in bytes
 	int timestart;
@@ -435,9 +427,37 @@ static void _DrawDialogCard(int x, int y, int width, int height, int type);
 static void _DrawDialogBar(int x, int y, int width, int start, int length);
 
 #if UI_PERF_CAPTURE
+/* The GPU's own counters, summed between two refreshes of the overlay: the
+ * vertices, pixels and texels it drew and the clocks it spent copying the
+ * EFB (the glass copies and the display copy). A console counts them;
+ * Dolphin may not. */
+static u64 perfGpuVertices, perfGpuPixels, perfGpuTexels, perfGpuCopyClocks;
+static u32 perfGpuFrames;
+
+static void _PerfGpuFrameStart(void)
+{
+	GX_ClearGPMetric();
+	GX_ClearPixMetric();
+}
+
+/* After GX_DrawDone: the frame's work is finished. */
+static void _PerfGpuFrameEnd(void)
+{
+	u32 vertices, texels, topIn, topOut, bottomIn, bottomOut, clearIn, copyClocks;
+
+	GX_ReadGPMetric(&vertices, &texels);
+	GX_ReadPixMetric(&topIn, &topOut, &bottomIn, &bottomOut, &clearIn, &copyClocks);
+	perfGpuVertices += vertices;
+	perfGpuPixels += (u64)topIn + bottomIn;
+	perfGpuTexels += texels;
+	perfGpuCopyClocks += copyClocks;
+	perfGpuFrames++;
+}
+
 static void _DrawPerfOverlay(void)
 {
 	static char summary[128] = "PERF capture warming up";
+	static char gpu[128] = "";
 	static u32 framesUntilRefresh = 1;
 	uiPerfSnapshot_t snapshot;
 	u64 workP99;
@@ -459,13 +479,26 @@ static void _DrawPerfOverlay(void)
 			(unsigned long long)(periodP99 / 1000),
 			(unsigned long long)((periodP99 % 1000) / 10),
 			(unsigned long long)snapshot.metrics[UI_PERF_METRIC_FRAME_PERIOD].thresholdExceedances);
+		if(perfGpuFrames) {
+			/* Per frame: vertices, then thousands of pixels and texels,
+			 * then thousands of copy clocks (162 per microsecond). */
+			snprintf(gpu, sizeof(gpu),
+				"GPU/frame verts %llu  kpx %llu  ktex %llu  copy %llu kclk",
+				(unsigned long long)(perfGpuVertices / perfGpuFrames),
+				(unsigned long long)(perfGpuPixels / perfGpuFrames / 1000),
+				(unsigned long long)(perfGpuTexels / perfGpuFrames / 1000),
+				(unsigned long long)(perfGpuCopyClocks / perfGpuFrames / 1000));
+		}
+		perfGpuVertices = perfGpuPixels = perfGpuTexels = perfGpuCopyClocks = 0;
+		perfGpuFrames = 0;
 		framesUntilRefresh = 60;
 	}
 
 	drawInit();
-	_DrawSimpleBox(118, 82, 404, 22, 0,
+	_DrawSimpleBox(118, 82, 404, 36, 0,
 		(GXColor) {7, 6, 24, 218}, (GXColor) {135, 124, 209, 150});
 	drawString(320, 94, summary, 0.42f, ALIGN_CENTER, defaultColor);
+	drawString(320, 108, gpu, 0.42f, ALIGN_CENTER, defaultColor);
 }
 #endif
 
@@ -573,12 +606,7 @@ static void init_textures()
 {
 	TPL_OpenTPLFromMemory(&imagesTPL, (void *)images_tpl, images_tpl_size);
 	TPL_OpenTPLFromMemory(&buttonsTPL, (void *)buttons_tpl, buttons_tpl_size);
-	TPL_GetTextureCI(&imagesTPL, backdrop, &backdropTexObj, &backdropTlutObj, GX_TLUT0);
-	GX_InitTexObjUserData(&backdropTexObj, &backdropTlutObj);
-	TPL_GetTexture(&imagesTPL, backdrop_ind, &backdropIndTexObj);
-	GX_InitTexObjUserData(&backdropIndTexObj, &backdropTexObj);
 	TPL_GetTexture(&imagesTPL, banner_mask, &bannerMaskTexObj);
-	TPL_GetTexture(&imagesTPL, swissimg, &swissTexObj);
 	TPL_GetTexture(&imagesTPL, gcdvdsmall, &gcdvdsmallTexObj);
 	TPL_GetTextureCI(&imagesTPL, sdsmall, &sdsmallTexObj, &sdsmallTlutObj, GX_TLUT0);
 	GX_InitTexObjUserData(&sdsmallTexObj, &sdsmallTlutObj);
@@ -596,12 +624,6 @@ static void init_textures()
 	TPL_GetTextureCI(&imagesTPL, usbgeckoimg, &usbgeckoTexObj, &usbgeckoTlutObj, GX_TLUT0);
 	GX_InitTexObjUserData(&usbgeckoTexObj, &usbgeckoTlutObj);
 	TPL_GetTexture(&imagesTPL, bbaimg, &bbaTexObj);
-	TPL_GetTexture(&buttonsTPL, btnhilight, &btnhilightTexObj);
-	TPL_GetTexture(&buttonsTPL, btndevice, &btndeviceTexObj);
-	TPL_GetTexture(&buttonsTPL, btnsettings, &btnsettingsTexObj);
-	TPL_GetTexture(&buttonsTPL, btninfo, &btninfoTexObj);
-	TPL_GetTexture(&buttonsTPL, btnrefresh, &btnrefreshTexObj);
-	TPL_GetTexture(&buttonsTPL, btnexit, &btnexitTexObj);
 	TPL_GetTexture(&buttonsTPL, boxinner, &boxinnerTexObj);
 	TPL_GetTexture(&buttonsTPL, boxouter, &boxouterTexObj);
 	TPL_GetTexture(&imagesTPL, ntscjimg, &ntscjTexObj);
@@ -755,48 +777,6 @@ static void _DrawImageNow(int textureId, int x, int y, int width, int height, in
 	
 	switch(textureId)
 	{
-		case TEX_BACKDROP:
-			switch(GX_GetTexObjFmt(&backdropTexObj)) {
-				case GX_TF_CI4:
-				case GX_TF_CI8:
-				case GX_TF_CI14:
-					if(GX_GetTlutObjFmt(&backdropTlutObj) != GX_TL_IA8) {
-						texObj = &backdropTexObj;
-						break;
-					}
-				case GX_TF_IA4:
-				case GX_TF_IA8:
-					GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_TEXA, GX_CC_TEXC, GX_CC_RASC, GX_CC_ZERO);
-					GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
-					
-					texObj = &backdropTexObj; color = (GXColor) {0,0,255,255};
-					break;
-				default:
-					texObj = &backdropTexObj;
-					break;
-			}
-			if(GX_GetTexObjUserData(&backdropIndTexObj) == texObj) {
-				indTexObj = &backdropIndTexObj;
-				ss = 640; ts = 480;
-			}
-			// Phase 2: subtle GameCube-menu-style backdrop drift. Runs once per frame
-			// on the vsync-locked video thread (no timer needed — same pattern as the
-			// Phase 1 highlight tween). Config-gated; when off, the original full-frame
-			// coords pass through unchanged => byte-identical to stock.
-			if(!swissSettings.disableUIAnimations &&
-				!swissSettings.reduceUIAnimations &&
-				!swissSettings.disableAnimatedBackdrop) {
-				float bgPhase = UIAnim_Seconds() * 0.72f;
-				const float M = 0.03f;           // inset margin keeps texcoords in [0,1]: no edge smear, wrap-agnostic
-				float dx = M * sinf(bgPhase);
-				float dy = M * cosf(bgPhase * 0.9f);
-				s1 = M + dx; s2 = (1.0f - M) + dx;
-				t1 = M + dy; t2 = (1.0f - M) + dy;
-			}
-			break;
-		case TEX_SWISS:
-			texObj = &swissTexObj;
-			break;
 		case TEX_GCDVDSMALL:
 			texObj = &gcdvdsmallTexObj;
 			break;
@@ -830,27 +810,6 @@ static void _DrawImageNow(int textureId, int x, int y, int width, int height, in
 			break;
 		case TEX_BBA:
 			texObj = &bbaTexObj;
-			break;
-		case TEX_BTNHILIGHT:
-			GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_TEXC, GX_CC_RASC, GX_CC_ZERO);
-			GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
-			
-			texObj = &btnhilightTexObj; color = (GXColor) {127,134,255,255};
-			break;
-		case TEX_BTNDEVICE:
-			texObj = &btndeviceTexObj;
-			break;
-		case TEX_BTNSETTINGS:
-			texObj = &btnsettingsTexObj;
-			break;
-		case TEX_BTNINFO:
-			texObj = &btninfoTexObj;
-			break;
-		case TEX_BTNREFRESH:
-			texObj = &btnrefreshTexObj;
-			break;
-		case TEX_BTNEXIT:
-			texObj = &btnexitTexObj;
 			break;
 		case TEX_CHECKED:
 			texObj = &checkedTexObj; color = (GXColor) {0,128,0,255};
@@ -943,9 +902,17 @@ static void _HomeFaceIcons(int icons[UI_HOME_FACE_COUNT])
 
 static void _DrawBackground(uiDrawObj_t *evt)
 {
+	/* Wave Speed, in swiss.h's order: Normal, Fast, Slow. */
+	static const float waveSpeeds[WAVE_SPEED_MAX] = {1.0f, 3.0f, 0.5f};
 	bool decorativeAnimated = _CurrentMotionMode() == UI_MOTION_FULL;
 	int icons[UI_HOME_FACE_COUNT];
 
+	if(backgroundCovered) {
+		/* Not a pixel of it would show. */
+		IndigoBackground_TrackPad(UIAnim_Seconds(),
+			decorativeAnimated && UIScene_Frame()->visible, &padInstrument);
+		return;
+	}
 	UI_PERF_BEGIN(backgroundStart);
 
 	(void)evt;
@@ -953,6 +920,7 @@ static void _DrawBackground(uiDrawObj_t *evt)
 	/* The glass copies the frame it is drawn in. */
 	IndigoBackground_SetFramebuffer(getVideoMode()->fbWidth,
 		getVideoMode()->efbHeight);
+	IndigoBackground_SetWaveSpeed(waveSpeeds[swissSettings.waveSpeed]);
 	IndigoBackground_Draw(UIAnim_Seconds(),
 		decorativeAnimated && !swissSettings.disableAnimatedBackdrop,
 		decorativeAnimated,
@@ -1048,16 +1016,30 @@ uiDrawObj_t* DrawTexObj(GXTexObj *texObj, int x, int y, int width, int height, i
 	return event;
 }
 
-/* The top corner the clock and its temperature dial take (Clock): 1 the
- * right (the default), -1 the left, 0 neither. The header's other corner
- * items take the corner it leaves free. */
-static int _ClockCorner(void)
+/* The top corner Clock or Temperature puts its instrument in: 1 the right
+ * (the default), -1 the left, 0 neither. */
+static int _Corner(int position)
 {
-	switch(swissSettings.clockPosition) {
+	switch(position) {
 		case CLOCK_LEFT: return -1;
 		case CLOCK_OFF: return 0;
 		default: return 1;
 	}
+}
+
+/* The top corner the header's other items take (the loading spinner, the
+ * Source picker's label): the left while the time and the dial leave it,
+ * else the right; when they hold a corner each, the dial's, inside it. */
+static int _FreeCorner(float *inset)
+{
+	int clock = _Corner(swissSettings.clockPosition);
+	int dial = _Corner(swissSettings.temperaturePosition);
+
+	*inset = 0.0f;
+	if(clock != -1 && dial != -1) return -1;
+	if(clock != 1 && dial != 1) return 1;
+	*inset = 48.0f;
+	return dial;
 }
 
 // Internal
@@ -1072,34 +1054,40 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 	if(data->hidden) {
 		return;
 	}
+	data->seconds += UIAnim_Delta();
 	if(data->miniMode) {	
-		int x = 30, y = 420;
-		/* The header's corner the clock leaves free, level with the clock
-		 * and as far in from the edge the frame shows. */
+		int x = 30, y = 420, corner = -1;
+		/* The header's free corner, level with the clock and as far in from
+		 * the edge the frame shows; the word on the wheel's inner side. */
 		if(data->miniModePos == PROGRESS_BOX_TOPLEFT) {
-			x = (int)(_ClockCorner() < 0 ? UIStage_Right() - 44.0f : UIStage_Left() + 44.0f);
+			float inset;
+			corner = _FreeCorner(&inset);
+			x = (int)(corner > 0 ? UIStage_Right() - 44.0f - inset : UIStage_Left() + 44.0f + inset);
 			y = 43;
 		}
-		GXColor loadingColor = (GXColor) {255,255,255,data->miniModeAlpha};
-		int numSegments = (data->percent*8)/100;
-		data->percent += (data->percent + 2 > 200 ? -200 : 2);
+		GXColor loadingColor = (GXColor) {255,255,255,(u8)data->miniModeAlpha};
+		/* In seconds, the same at 50 Hz and 60 Hz: a turn of the eight
+		 * segments every 5/6 s, a fade in or out over 1.4 s. */
+		int numSegments = (int)(data->seconds * 9.6f) % 8;
 		if(data->speed != 0) {
-			data->miniModeAlpha = MIN(255, data->miniModeAlpha + 3);
+			data->miniModeAlpha = MIN(255.0f, data->miniModeAlpha + UIAnim_Delta() * 180.0f);
 		}
 		else {
-			data->miniModeAlpha = MAX(0, data->miniModeAlpha - 3);
+			data->miniModeAlpha = MAX(0.0f, data->miniModeAlpha - UIAnim_Delta() * 180.0f);
 		}
 		GX_InvalidateTexAll();
 		GX_LoadTexObj(&loadingTexObj, GX_TEXMAP0);
 		_drawRect(x-8, y-8, 16, 16, 0, loadingColor, (float) (numSegments)/8, (float) (numSegments+1)/8, 0.0f, 1.0f);
-		drawString(x+8, y, "Loading\205", 0.55f, ALIGN_LEFT, loadingColor);
+		drawString(x - 8 * corner, y, "Loading\205", 0.55f,
+			corner > 0 ? ALIGN_RIGHT : ALIGN_LEFT, loadingColor);
 		return;
 	}
 	_DrawDialogCard(x1, y1, x2-x1, y2-y1, -1);
 
 	int middleY = (y2+y1)/2;
 	if(data->indeterminate) {
-		data->percent += (data->percent + 2 == 400 ? -398 : 2);
+		/* There and back every 3 1/3 s. */
+		data->percent = (int)fmodf(data->seconds * 120.0f, 400.0f);
 		int multiplier = (PROGRESS_BOX_WIDTH-20)/100;
 		int progressBarWidth = multiplier*100;
 		int progressStart = 0;
@@ -2107,24 +2095,41 @@ static void _HintShape(float cx, float cy, const float (*points)[2], int count,
 }
 
 /* A rectangle with round corners; radius = half the height makes a pill. */
+#define HINT_CORNER_STEPS 6
 static void _HintRoundRect(float cx, float cy, float width, float height,
 	float radius, GXColor color)
 {
-	static const int steps = 6;
+	/* The corners' points on a unit circle, worked out on the first call:
+	 * cosf and sinf are software on the console, and every disc, pill and
+	 * badge in a hint line draws through here each frame. */
+	static float unit[4 * (HINT_CORNER_STEPS + 1)][2];
+	static bool unitReady = false;
 	float points[HINT_POINTS_MAX][2];
 	float halfW = width / 2.0f - radius;
 	float halfH = height / 2.0f - radius;
 	int corner, i, count = 0;
 
+	if(!unitReady) {
+		for(corner = 0; corner < 4; corner++) {
+			for(i = 0; i <= HINT_CORNER_STEPS; i++) {
+				float angle = HINT_QUARTER_TURN *
+					((float)corner + (float)i / (float)HINT_CORNER_STEPS);
+
+				unit[count][0] = cosf(angle);
+				unit[count][1] = sinf(angle);
+				count++;
+			}
+		}
+		unitReady = true;
+		count = 0;
+	}
 	for(corner = 0; corner < 4; corner++) {
 		float ox = (corner == 0 || corner == 3) ? halfW : -halfW;
 		float oy = (corner < 2) ? halfH : -halfH;
 
-		for(i = 0; i <= steps; i++) {
-			float angle = HINT_QUARTER_TURN * ((float)corner + (float)i / (float)steps);
-
-			points[count][0] = cx + ox + radius * cosf(angle);
-			points[count][1] = cy + oy + radius * sinf(angle);
+		for(i = 0; i <= HINT_CORNER_STEPS; i++) {
+			points[count][0] = cx + ox + radius * unit[count][0];
+			points[count][1] = cy + oy + radius * unit[count][1];
 			count++;
 		}
 	}
@@ -2334,6 +2339,28 @@ static void _DrawSystemDial(float centerX, float centerY, s8 coreTemperature,
 	drawInit();
 }
 
+/* A sensor reading into the dial, smoothed: the sensor answers in 4 degree
+ * steps (UISystem_SmoothTemperature). */
+static void _SetCoreTemperature(int reading)
+{
+	systemInstrument.coreTemperature = (s8)UISystem_SmoothTemperature(
+		&systemInstrument.temperatureFilter, reading);
+	if(systemInstrument.coreTemperature >= 0) {
+		(void)snprintf(systemInstrument.temperatureText,
+			sizeof(systemInstrument.temperatureText), "%i\260C",
+			systemInstrument.coreTemperature);
+	}
+	else {
+		systemInstrument.temperatureText[0] = '\0';
+	}
+	systemInstrument.temperatureSampled = true;
+}
+
+int CoreTemperature(void)
+{
+	return systemInstrument.coreTemperature;
+}
+
 static void _UpdateSystemInstrument(void)
 {
 	struct timeval now;
@@ -2341,16 +2368,7 @@ static void _UpdateSystemInstrument(void)
 	if(gettimeofday(&now, NULL) != 0) {
 		/* Civil time and thermal telemetry are independent instruments. */
 		if(!systemInstrument.temperatureSampled) {
-			systemInstrument.coreTemperature = SYS_GetCoreTemperature();
-			if(systemInstrument.coreTemperature >= 0) {
-				(void)snprintf(systemInstrument.temperatureText,
-					sizeof(systemInstrument.temperatureText), "%i\260C",
-					systemInstrument.coreTemperature);
-			}
-			else {
-				systemInstrument.temperatureText[0] = '\0';
-			}
-			systemInstrument.temperatureSampled = true;
+			_SetCoreTemperature(SYS_GetCoreTemperature());
 		}
 		(void)UIClock_Compose(&systemInstrument.clock, -1, -1, -1.0f);
 		systemInstrument.civilSecondSampled = false;
@@ -2375,16 +2393,7 @@ static void _UpdateSystemInstrument(void)
 			systemInstrument.civilTimeAvailable = false;
 			memcpy(systemInstrument.timeText, "--:--:--", 9u);
 		}
-		systemInstrument.coreTemperature = SYS_GetCoreTemperature();
-		if(systemInstrument.coreTemperature >= 0) {
-			(void)snprintf(systemInstrument.temperatureText,
-				sizeof(systemInstrument.temperatureText), "%i\260C",
-				systemInstrument.coreTemperature);
-		}
-		else {
-			systemInstrument.temperatureText[0] = '\0';
-		}
-		systemInstrument.temperatureSampled = true;
+		_SetCoreTemperature(SYS_GetCoreTemperature());
 		systemInstrument.sampledSecond = now.tv_sec;
 		systemInstrument.civilSecondSampled = true;
 	}
@@ -2402,15 +2411,18 @@ static void _UpdateSystemInstrument(void)
 // Internal
 static void _DrawTitleBar(uiDrawObj_t *evt) {
 	float reveal = UIScene_Frame()->chromeProgress;
-	int corner = _ClockCorner();
-	/* The dial sits 40 in from the edge the frame shows, the time on its
-	 * inner side. */
-	int dialX = (int)(corner < 0 ? UIStage_Left() + 40.0f : UIStage_Right() - 40.0f);
+	int clock = _Corner(swissSettings.clockPosition);
+	int dial = _Corner(swissSettings.temperaturePosition);
+	/* The dial sits 40 in from the edge the frame shows; the time on its
+	 * inner side in the same corner, else 40 in itself. */
+	int dialX = (int)(dial < 0 ? UIStage_Left() + 40.0f : UIStage_Right() - 40.0f);
+	int timeX = clock == dial ? dialX - 32 * clock :
+		(int)(clock < 0 ? UIStage_Left() + 40.0f : UIStage_Right() - 40.0f);
 	int offsetY;
 	GXColor textColor;
 
 	(void)evt;
-	if(reveal <= 0.0f || corner == 0) {
+	if(reveal <= 0.0f || (clock == 0 && dial == 0)) {
 		return;
 	}
 	if(reveal > 1.0f) {
@@ -2420,15 +2432,17 @@ static void _DrawTitleBar(uiDrawObj_t *evt) {
 	textColor = (GXColor) {209, 201, 255, (u8)(232.0f * reveal)};
 
 	/* A single pre-traversal instrument snapshot owns both header and cube. */
-	_DrawSystemDial((float)dialX, 43.0f + offsetY, systemInstrument.coreTemperature, (u8)(255.0f * reveal));
-	if(systemInstrument.temperatureText[0]) {
-		drawStringMedium(dialX, 43 + offsetY,
-			systemInstrument.temperatureText,
-			0.42f, ALIGN_CENTER, textColor);
+	if(dial != 0) {
+		_DrawSystemDial((float)dialX, 43.0f + offsetY, systemInstrument.coreTemperature, (u8)(255.0f * reveal));
+		if(systemInstrument.temperatureText[0]) {
+			drawStringMedium(dialX, 43 + offsetY,
+				systemInstrument.temperatureText,
+				0.42f, ALIGN_CENTER, textColor);
+		}
 	}
-	if(systemInstrument.clock.available) {
-		drawStringMedium(dialX - 32 * corner, 43 + offsetY, systemInstrument.timeText,
-			0.54f, corner < 0 ? ALIGN_LEFT : ALIGN_RIGHT, textColor);
+	if(clock != 0 && systemInstrument.clock.available) {
+		drawStringMedium(timeX, 43 + offsetY, systemInstrument.timeText,
+			0.54f, clock < 0 ? ALIGN_LEFT : ALIGN_RIGHT, textColor);
 	}
 }
 
@@ -3427,10 +3441,10 @@ static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
 	presentation->primaryActionsScale = _GameflowPrepareDetailText(
 		data->detail.primaryActions, sizeof(data->detail.primaryActions),
 		590, 0.46f, 0.46f);
-	/* ponytail: the shortcut, launch and cheat hints fit by their text
-	 * width. Their strings are fixed and the icons leave room (the widest,
-	 * "Z  AUTOLOAD ON   R  VERIFY", draws about 115 px of 164); measure with
-	 * GetHintSizeInPixels if a longer one is added. */
+	/* The shortcut, launch and cheat hints fit by their text width alone:
+	 * their strings are fixed and the icons leave room (the widest, "Z
+	 * AUTOLOAD ON   R  VERIFY", draws about 115 px of 164). A longer one is
+	 * measured with GetHintSizeInPixels. */
 	presentation->advancedLineOneScale = _GameflowPrepareDetailText(
 		data->detail.advancedLineOne, sizeof(data->detail.advancedLineOne),
 		164, 0.42f, 0.42f);
@@ -4178,15 +4192,20 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			reveal * (1.0f - frame->detailProgress));
 	}
 
+	/* The old game's words fade out over the first half of a move and the
+	 * new game's in over the second, as the Source picker's names do: never
+	 * the two at once. */
 	_GameflowDrawMetadata(previousRecord, previousRecord != NULL ?
 		&data->cardPresentation[previousRecordIndex] : NULL,
-		titleTravel * (1.0f - frame->detailProgress), reveal, layout);
+		_GameflowClamp(2.0f * titleTravel - 1.0f, 0.0f, 1.0f) *
+		(1.0f - frame->detailProgress), reveal, layout);
 	_GameflowDrawMetadata(selectedRecord, selectedRecord != NULL ?
 		&data->cardPresentation[selectedRecordIndex] : NULL,
-		(1.0f - titleTravel) * (1.0f - frame->detailProgress), reveal,
-		layout);
+		_GameflowClamp(1.0f - 2.0f * titleTravel, 0.0f, 1.0f) *
+		(1.0f - frame->detailProgress), reveal, layout);
 	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
-		_GameflowDrawSpotlightDescription(data, (1.0f - titleTravel) *
+		_GameflowDrawSpotlightDescription(data,
+			_GameflowClamp(1.0f - 2.0f * titleTravel, 0.0f, 1.0f) *
 			(1.0f - frame->detailProgress), reveal);
 	}
 
@@ -4347,9 +4366,7 @@ static void _DrawHomeRoot(const drawHomeEvent_t *data,
 	GXColor incoming;
 	uiMotionMode_t motionMode = _CurrentMotionMode();
 
-	if(progress < 0.0f) progress = 0.0f;
-	if(progress > 1.0f) progress = 1.0f;
-	eased = progress * progress * (3.0f - 2.0f * progress);
+	eased = UIMotion_Smoothstep(progress);
 
 	/* The ring names only the selected face, under the cube. Nothing sits
 	 * above or beside it: a label the cube does not carry through the turn
@@ -4586,13 +4603,12 @@ static void _DrawDeviceSelector(uiDrawObj_t *evt)
 	const uiSceneFrame_t *scene = UIScene_Frame();
 	/* The row rises into view as the cube lifts and shrinks out of its way,
 	 * as the Library's posters follow the cube's retreat. */
-	float rise = fminf(fmaxf((0.92f - scene->cubeScale) / 0.30f, 0.0f), 1.0f);
+	float rise = UIMotion_Smoothstep((0.92f - scene->cubeScale) / 0.30f);
 	float reveal = fminf(scene->chromeProgress, 1.0f);
-	float position, first, last, y, pulse, labels;
+	float position, first, last, y, pulse, labels, inset;
 	int tiles = 0;
-	int nearest, k, i;
+	int nearest, k, i, corner;
 
-	rise = rise * rise * (3.0f - 2.0f * rise);
 	reveal *= rise;
 	if(s->count <= 0 || reveal <= 0.0f) {
 		return;
@@ -4664,10 +4680,11 @@ static void _DrawDeviceSelector(uiDrawObj_t *evt)
 	nearest = (int)floorf(position + 0.5f);
 	labels = reveal * (1.0f - 2.0f * fabsf(position - (float)nearest));
 	tile = &s->tiles[_DeviceIndex(nearest, s->count)];
-	/* In the header's corner the clock leaves free. */
-	drawStringMedium(_ClockCorner() < 0 ? 600 : 40, 44,
+	/* In the header's free corner. */
+	corner = _FreeCorner(&inset);
+	drawStringMedium((int)(corner > 0 ? 600.0f - inset : 40.0f + inset), 44,
 		data->destination ? "DESTINATION" : "SOURCE", 0.50f,
-		_ClockCorner() < 0 ? ALIGN_RIGHT : ALIGN_LEFT,
+		corner > 0 ? ALIGN_RIGHT : ALIGN_LEFT,
 		(GXColor) {216, 207, 255, (u8)(230.0f * reveal)});
 	drawStringMedium(320, (int)(y + 88.0f), tile->name, tile->nameScale,
 		ALIGN_CENTER, (GXColor) {246, 243, 255, (u8)(255.0f * labels)});
@@ -5691,7 +5708,7 @@ static void _DrawCheats(uiDrawObj_t *evt)
 	focusY = (int)lrintf(UIMotion_SpringUpdate(&data->focusY,
 		UIAnim_Delta(), motion));
 
-	_PagePanel(-6, -6, 652, 492, (GXColor){8, 12, 27, 254});
+	_PagePanel(-6, -6, 652, 492, (GXColor){8, 12, 27, 255});
 	_CheatsPanel(40, 30, 40, 3, accent);
 	drawStringMedium(40, 63, "Cheats", 1.05f, ALIGN_LEFT, primary);
 	drawStringMedium(600, 63, s->enabledText, 0.54f, ALIGN_RIGHT, accent);
@@ -6938,6 +6955,20 @@ static void _SelectFrameColors(void)
 	IndigoBackground_SetColors(frameColors);
 }
 
+/* Settings, the cheats and Memory Cards are opaque pages over the whole
+ * stage (_PagePanel), so while one is up nothing drawn before it shows. */
+static bool _FrameCovered(uiDrawObjQueue_t *queue)
+{
+	for(; queue != NULL; queue = queue->next) {
+		const uiDrawObj_t *event = queue->event;
+		if(!event->disposed && (event->type == EV_SETTINGS ||
+			event->type == EV_CHEATS || event->type == EV_SAVES)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 static void *videoUpdate(void *videoEventQueue) {
 	GX_SetCurrentGXThread();
 	
@@ -6950,6 +6981,9 @@ static void *videoUpdate(void *videoEventQueue) {
 		UI_PERF_BEGIN(frameWorkStart);
 		//frames++;
 		LWP_MutexLock(_videomutex);
+#if UI_PERF_CAPTURE
+		_PerfGpuFrameStart();
+#endif
 		/* One color per layer a frame, taken with the page it goes with:
 		 * every emitter recolors with the menus', the backdrop and its waves
 		 * with their own. */
@@ -6964,7 +6998,6 @@ static void *videoUpdate(void *videoEventQueue) {
 			true, padsStickX(), padsStickY(), padsSubStickX(), padsSubStickY(),
 			padsButtonsHeld()
 		};
-		videoFrameSerial++;
 		// Mark events recursively as disposed
 		uiDrawObjQueue_t *videoEventQueueEntry = (uiDrawObjQueue_t*)videoEventQueue;
 		while(videoEventQueueEntry != NULL) {
@@ -6987,6 +7020,7 @@ static void *videoUpdate(void *videoEventQueue) {
 			videoEventQueueEntry = videoEventQueueEntry->next;
 		}
 		
+		backgroundCovered = _FrameCovered((uiDrawObjQueue_t*)videoEventQueue);
 		GXRModeObj *vmode = getVideoMode();
 		if(vmode->field_rendering) {
 			GX_SetViewportJitter(0.0f, 0.0f, vmode->fbWidth, vmode->efbHeight, 0.0f, 1.0f, VIDEO_GetNextField());
@@ -7011,7 +7045,7 @@ static void *videoUpdate(void *videoEventQueue) {
 			_HomeFaceIcons(icons);
 			drawInit();
 			IndigoBackground_DrawBootOverlay(UIAnim_Seconds(),
-				!swissSettings.disableUIAnimations, UIScene_Frame(),
+				_CurrentMotionMode() == UI_MOTION_FULL, UIScene_Frame(),
 				&systemInstrument.clock, icons);
 			drawInit();
 		}
@@ -7030,6 +7064,9 @@ static void *videoUpdate(void *videoEventQueue) {
 		copyDisplayFrame(xfb[whichfb]);
 		GX_DrawDone();
 		UI_PERF_END(UI_PERF_METRIC_FRAME_WORK, frameWorkStart);
+#if UI_PERF_CAPTURE
+		_PerfGpuFrameEnd();
+#endif
 
 		LWP_MutexUnlock(_videomutex);
 		VIDEO_SetNextFramebuffer(xfb[whichfb]);
@@ -7114,13 +7151,14 @@ void DrawInit(GXRModeObj *videoMode, bool black) {
 	memset(&systemInstrument, 0, sizeof(systemInstrument));
 	systemInstrument.coreTemperature = -1;
 	memcpy(systemInstrument.timeText, "--:--:--", 9u);
-	videoFrameSerial = 0u;
 	UIPerf_Reset();
+#if UI_PERF_CAPTURE
+	GX_SetGPMetric(GX_PERF0_VERTICES, GX_PERF1_TEXELS);
+#endif
 	UIScene_Reset();
 	sceneRenderingEnabled = !black;
 	uiDrawObj_t *container = DrawContainer();
 	if(!black) {
-		DrawAddChild(container, DrawImage(TEX_BACKDROP, 0, 0, 640, 480, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0));
 		DrawAddChild(container, DrawBackground());
 		DrawAddChild(container, DrawTitleBar());
 		buttonPanel = DrawHome();
@@ -7130,76 +7168,11 @@ void DrawInit(GXRModeObj *videoMode, bool black) {
 	LWP_CreateThread(&video_thread, videoUpdate, videoEventQueue, video_thread_stack, VIDEO_STACK_SIZE, VIDEO_PRIORITY);
 }
 
+/* Indigo's own background (indigo_background.c) covers the whole stage, so
+ * a custom swiss/backdrop.tpl could never show: nothing is loaded. main.c
+ * still calls this, as upstream's does. */
 void DrawLoadBackdrop(DEVICEHANDLER_INTERFACE *device) {
-	file_handle *backdropFile = calloc(1, sizeof(file_handle));
-	concat_path(backdropFile->name, device->initial->name, "swiss/backdrop.tpl");
-	backdropFile->device = device;
-	
-	s32 id = 0;
-	u32 fmt;
-	u16 width, height;
-	if(TPL_OpenTPLFromHandle(&backdropTPL, openFileStream(backdropFile)) >= 0) {
-		time_t curtime;
-		if(time(&curtime) != (time_t)-1) {
-			struct tm *tm = localtime(&curtime);
-			switch(backdropTPL.ntextures) {
-				case 2:
-					id = (tm->tm_mon + 2) % 12 / 6;
-					break;
-				case 3:
-					id = (tm->tm_mon + 2) % 12 / 4;
-					break;
-				case 4:
-					id = (tm->tm_mon + 1) % 12 / 3;
-					break;
-				case 6:
-					id = (tm->tm_mon + 1) % 12 / 2;
-					break;
-				case 7:
-					id = tm->tm_wday;
-					break;
-				case 12:
-					id = tm->tm_mon;
-					break;
-				case 24:
-					id = tm->tm_hour;
-					break;
-				case 30 ... 31:
-					id = tm->tm_mday - 1;
-					break;
-				case 365 ... 366:
-					id = tm->tm_yday;
-					break;
-				default:
-					srand(curtime);
-					id = rand();
-					break;
-			}
-			id %= backdropTPL.ntextures;
-		}
-		if(TPL_GetTextureInfo(&backdropTPL, id, &fmt, &width, &height) >= 0) {
-			switch(fmt) {
-				case GX_TF_CI4:
-				case GX_TF_CI8:
-				case GX_TF_CI14:
-					TPL_GetTextureCI(&backdropTPL, id, &backdropTexObj, &backdropTlutObj, fmt == GX_TF_CI14 ? GX_BIGTLUT0 : GX_TLUT0);
-					GX_InitTexObjUserData(&backdropTexObj, &backdropTlutObj);
-					break;
-				default:
-					TPL_GetTexture(&backdropTPL, id, &backdropTexObj);
-					break;
-			}
-			GX_InitTexObjUserData(&backdropIndTexObj, NULL);
-		}
-		else {
-			TPL_CloseTPLFile(&backdropTPL);
-			free(backdropFile);
-		}
-	}
-	else {
-		TPL_CloseTPLFile(&backdropTPL);
-		free(backdropFile);
-	}
+	(void)device;
 }
 
 void DrawShutdown() {

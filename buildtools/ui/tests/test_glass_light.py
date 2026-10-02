@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""The cube's light: refraction, dispersion, studio, bloom, rim, halo and flare.
+"""The cube's light: refraction, dispersion, studio, bloom, rim and halo.
 
 Compiles the real emitters from indigo_background.c against a checked GX
 stub and proves what the glass does with light: the frame behind the front
 glass is bent toward the cube's middle and parted into red, green and blue in
-that order, the bent layer fades out at the silhouette, the sun glint is found
-only where the glass mirrors the key light toward the camera, the soft glows
+that order, the bent layer fades out at the silhouette, the soft glows
 and rim draw closed bounded streams, the frame copies keep their contract
 (half size, RGBA8, box filter, never clearing the EFB, cache written back
 once before the GPU first writes the buffer), and the studio map the glass
@@ -28,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[3]
 GUI = ROOT / "cube/swiss/source/gui"
 
 HARNESS = r"""
+#include <float.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -44,7 +44,8 @@ typedef struct { float x,y; } indigoPoint_t;
 typedef struct { Mtx model,semanticFaces[UI_HOME_FACE_COUNT];
     float motifAlpha[UI_HOME_FACE_COUNT],scaleX,scaleY; } cubeRasterTransform_t;
 typedef struct { guVector point[4]; GXColor color[4]; } cubeSurfaceQuad_t;
-typedef struct { indigoPoint_t point[24]; int count; } cubeOutline_t;
+typedef struct { indigoPoint_t point[24]; int count; float length[24], pixels[24];
+    indigoPoint_t corner[24]; bool joined[24]; } cubeOutline_t;
 typedef struct { void *data; u16 w, h; u8 fmt, mip, minFilter; float maxLod; } GXTexObj;
 #define CHECK(c,m) do { if(!(c)) { fprintf(stderr,"%s\n",m); exit(73); } } while(0)
 #define INDIGO_TAU 6.28318530718f
@@ -134,25 +135,25 @@ static void pose(cubeRasterTransform_t *r,float yaw,float pitch,float roll,float
     r->model[2][3]=CUBE_CAMERA_Z;
     r->scaleX=r->scaleY=625.2f;
 }
-static const glassRefraction_t glass0={320,240,36,0.045f,0.17f,1.0f/640,1.0f/480,{128,125,134,255}};
+static const glassRefraction_t glass0={320,240,36,0.045f,0.17f,1.0f/640,1.0f/480,0,0,{128,125,134,255}};
 static bool near(float a,float b,float e) { return fabsf(a-b)<=e; }
 static void test_vertex_optics(void) {
-    cubeRasterTransform_t r; glassSun_t sun={0,0,0,0}; glassRefractedVertex_t out;
+    cubeRasterTransform_t r; glassRefractedVertex_t out;
     guVector eye={0,0,-4.4f};
     pose(&r,0,0,0,1);
     /* Face-on at the centre: no lateral bend, all channels together, fully
      * opaque, and the frame sampled exactly where it was. */
-    refractGlassVertex(&r,&glass0,(guVector){0,0,1},eye,(guVector){0,0,1},&sun,&out);
+    refractGlassVertex(&r,&glass0,(guVector){0,0,1},eye,(guVector){0,0,1},&out);
     CHECK(out.color.a==255,"face-on glass is not the refracting layer");
     /* The tint's alpha is the layer's opacity: the boot fades it in. */
     glassRefraction_t half=glass0; half.tint.a=128;
-    refractGlassVertex(&r,&half,(guVector){0,0,1},eye,(guVector){0,0,1},&sun,&out);
+    refractGlassVertex(&r,&half,(guVector){0,0,1},eye,(guVector){0,0,1},&out);
     CHECK(out.color.a==128,"the refracting layer ignores its opacity");
     for(int c=0;c<3;c++) CHECK(near(out.s[c]*640,320,.01f) && near(out.t[c]*480,240,.01f),
         "centre of the face moved");
     /* Off-centre on the face: magnified toward the centre by the lens. */
     guVector off={1.1f,-0.6f,-4.4f};
-    refractGlassVertex(&r,&glass0,(guVector){0,0,1},off,(guVector){0,0,1},&sun,&out);
+    refractGlassVertex(&r,&glass0,(guVector){0,0,1},off,(guVector){0,0,1},&out);
     float sx=320+625.2f*1.1f/4.4f, sy=240+625.2f*0.6f/4.4f;
     CHECK(near(out.s[1]*640,320+(sx-320)*(1-0.045f),.05f) &&
         near(out.t[1]*480,240+(sy-240)*(1-0.045f),.05f),"face is not magnified about the centre");
@@ -160,39 +161,23 @@ static void test_vertex_optics(void) {
     /* A bevel turned right bends the frame toward the middle (left), and
      * blue bends furthest, red least: a prism's order. */
     guVector bevel={0.7071f,0,0.7071f};
-    refractGlassVertex(&r,&glass0,(guVector){1,0,0.9f},(guVector){0.8f,0,-4.6f},bevel,&sun,&out);
+    refractGlassVertex(&r,&glass0,(guVector){1,0,0.9f},(guVector){0.8f,0,-4.6f},bevel,&out);
     float base=320+625.2f*0.8f/4.6f; base=320+(base-320)*(1-0.045f);
     CHECK(out.s[0]*640<base && out.s[1]*640<out.s[0]*640 && out.s[2]*640<out.s[1]*640,
         "dispersion lost its red-green-blue order or its direction");
     CHECK(near((base-out.s[1]*640),36*0.7071f,.05f),"bend does not follow the normal");
     /* A bevel turned up bends the frame down (screen y grows). */
     refractGlassVertex(&r,&glass0,(guVector){0,1,0.9f},(guVector){0,0.8f,-4.6f},
-        (guVector){0,0.7071f,0.7071f},&sun,&out);
+        (guVector){0,0.7071f,0.7071f},&out);
     CHECK(out.t[1]*480>240-(625.2f*0.8f/4.6f)*(1-0.045f),"upward bevel bent the wrong way");
     /* Grazing glass fades: at the silhouette the bent image meets the straight one. */
-    refractGlassVertex(&r,&glass0,(guVector){1,0,0},(guVector){0,0,-5},(guVector){1,0,0},&sun,&out);
+    refractGlassVertex(&r,&glass0,(guVector){1,0,0},(guVector){0,0,-5},(guVector){1,0,0},&out);
     CHECK(out.color.a==0,"silhouette glass not faded");
-    refractGlassVertex(&r,&glass0,(guVector){1,0,0},(guVector){0,0,-5},(guVector){0.9982f,0,0.06f},&sun,&out);
+    refractGlassVertex(&r,&glass0,(guVector){1,0,0},(guVector){0,0,-5},(guVector){0.9982f,0,0.06f},&out);
     int nearEdge=out.color.a;
-    refractGlassVertex(&r,&glass0,(guVector){1,0,0},(guVector){0,0,-5},(guVector){0.985f,0,0.1736f},&sun,&out);
+    refractGlassVertex(&r,&glass0,(guVector){1,0,0},(guVector){0,0,-5},(guVector){0.985f,0,0.1736f},&out);
     CHECK(nearEdge>0 && nearEdge<60 && out.color.a>nearEdge && out.color.a<255,
         "glancing fade is not gradual");
-}
-static void test_sun(void) {
-    cubeRasterTransform_t r; glassRefractedVertex_t out;
-    pose(&r,0,0,0,1);
-    /* A normal halfway between the view and the key light mirrors the sun. */
-    guVector v={0,0,1}, h={glassSunDirection.x+v.x,glassSunDirection.y+v.y,glassSunDirection.z+v.z};
-    float l=sqrtf(h.x*h.x+h.y*h.y+h.z*h.z); h=(guVector){h.x/l,h.y/l,h.z/l};
-    glassSun_t sun={0,0,0,0};
-    refractGlassVertex(&r,&glass0,(guVector){0,0,1},(guVector){0,0,-4.4f},h,&sun,&out);
-    CHECK(sun.peak>0.99f && sun.weight>0.9f,"the mirrored sun was not found");
-    CHECK(near(sun.x/sun.weight,320,.01f) && near(sun.y/sun.weight,240,.01f),"glint placed wrong");
-    /* Face-on glass and glass turned away never glint. */
-    glassSun_t none={0,0,0,0};
-    refractGlassVertex(&r,&glass0,(guVector){0,0,1},(guVector){0,0,-4.4f},(guVector){0,0,1},&none,&out);
-    refractGlassVertex(&r,&glass0,(guVector){0,0,1},(guVector){0,0,-4.4f},(guVector){0,0,-1},&none,&out);
-    CHECK(none.peak==0 && none.weight==0,"glint without the sun's reflection");
 }
 static void test_refraction_stream(void) {
     const GXColor tint[6]={{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4}};
@@ -201,12 +186,12 @@ static void test_refraction_stream(void) {
     int most=0,poses=0;
     for(int yaw=0;yaw<360;yaw+=30) for(int pitch=0;pitch<360;pitch+=30)
     for(int roll=0;roll<180;roll+=45) for(int size=0;size<2;size++) {
-        cubeRasterTransform_t r; glassSun_t sun={0,0,0,0},quiet={0,0,0,0};
+        cubeRasterTransform_t r;
         pose(&r,yaw*INDIGO_TAU/360,pitch*INDIGO_TAU/360,roll*INDIGO_TAU/360,size?1.3f:.65f);
         reset(3);
-        drawGlassRefraction(&r,&glass0,shell,6,4,1,&sun,true);
-        drawGlassRefraction(&r,&glass0,strips,12,4,1,&sun,true);
-        drawGlassRefraction(&r,&glass0,corners,8,3,1,&sun,true);
+        drawGlassRefraction(&r,&glass0,shell,6,4,1);
+        drawGlassRefraction(&r,&glass0,strips,12,4,1);
+        drawGlassRefraction(&r,&glass0,corners,8,3,1);
         CHECK(!active,"refraction left a primitive open");
         int total=count;
         for(int i=0;i<count;i++) {
@@ -227,14 +212,6 @@ static void test_refraction_stream(void) {
             }
             at+=primitiveSizes[p];
         }
-        /* Measuring alone emits nothing and finds the same sun. */
-        reset(3);
-        drawGlassRefraction(&r,&glass0,shell,6,4,1,&quiet,false);
-        drawGlassRefraction(&r,&glass0,strips,12,4,1,&quiet,false);
-        drawGlassRefraction(&r,&glass0,corners,8,3,1,&quiet,false);
-        CHECK(count==0 && begins==0,"a measuring walk drew");
-        CHECK(near(quiet.peak,sun.peak,1e-6f) && near(quiet.weight,sun.weight,1e-3f),
-            "the measuring walk found another sun");
         if(total>most) most=total;
         poses++;
     }
@@ -264,22 +241,8 @@ static void test_soft_glow(void) {
     reset(1); drawSoftGlow(1,1,10,10,(GXColor){1,2,3,4},0.0f);
     CHECK(count==0,"an invisible glow drew");
 }
-static void test_flare(void) {
-    glassSun_t none={0.005f,100,100,1};
-    reset(1); drawSunFlare(&none,1,0,1); CHECK(count==0 && begins==0,"flare without a glint");
-    glassSun_t sun={1,480,120,2};
-    reset(1); drawSunFlare(&sun,1,0.3f,1);
-    CHECK(begins>0 && count<=1400,"flare budget");
-    CHECK(blendDst==GX_BL_INVSRCALPHA,"flare left additive blending on");
-    for(int i=0;i<count;i++) CHECK(positions[i].x>-200 && positions[i].x<840 &&
-        positions[i].y>-200 && positions[i].y<680,"flare escaped the screen");
-    /* The core sits on the glint. */
-    int hits=0; for(int i=0;i<count;i++) if(near(positions[i].x,240,.01f) && near(positions[i].y,60,.01f)) hits++;
-    CHECK(hits>0,"flare is not centred on the glint");
-    reset(1); drawSunFlare(&sun,0,0,1); CHECK(count==0,"a scene without light flared");
-}
 static void test_rim(void) {
-    cubeOutline_t o={{{-100,-100},{100,-100},{100,100},{-100,100}},4};
+    cubeOutline_t o={.point={{-100,-100},{100,-100},{100,100},{-100,100}},.count=4};
     reset(1); drawGlassRim(&o,1);
     CHECK(begins==6 && count==3*2*5*2,"rim is not three feathered closed strokes");
     CHECK(blendDst==GX_BL_INVSRCALPHA,"rim left additive blending on");
@@ -302,25 +265,6 @@ static void test_rim(void) {
             fabsf(positions[i+1].y-positions[i].y)),2.0f,.01f),"rim does not fade over two pixels");
     }
     reset(1); drawGlassRim(&o,0); CHECK(count==0,"a scene without light drew a rim");
-}
-static void test_sheen(void) {
-    const GXColor tint[6]={{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4}};
-    cubeSurfaceQuad_t shell[6],strips[12];
-    cubeRasterTransform_t r;
-    buildCubeFaces(shell,1,.78f,tint); buildChamferStrips(strips,1,.78f,tint,NULL);
-    pose(&r,0.28f,0.09f,0,0.92f);
-    reset(0); drawGlassSheen(&r,shell,6,4,1,0,0.4f,1); drawGlassSheen(&r,strips,12,4,1,0,0.4f,1);
-    CHECK(!active && count>0 && count<=1200,"sheen missing or unbounded at the centre");
-    for(int i=0;i<count;i++) {
-        guVector q=positions[i]; float m=fmaxf(fabsf(q.x),fmaxf(fabsf(q.y),fabsf(q.z)));
-        CHECK(m<=1.0001f && m>=.78f-.0001f,"sheen left the glass");
-    }
-    for(int i=0;i<count;i+=4) CHECK((colors[i].a|colors[i+1].a|colors[i+2].a|colors[i+3].a)!=0,
-        "a dark sheen cell was drawn");
-    int centre=count;
-    reset(0); drawGlassSheen(&r,shell,6,4,1,3.0f,0.4f,1); drawGlassSheen(&r,strips,12,4,1,3.0f,0.4f,1);
-    CHECK(count<centre/4,"the band did not leave the cube at the end of its sweep");
-    reset(0); drawGlassSheen(&r,shell,6,4,1,0,0.4f,0); CHECK(count==0,"a resting sheen drew");
 }
 static unsigned char texels[16];
 /* A texel of the studio, read back from GX's RGBA8 tiles: in each 4x4 tile
@@ -410,15 +354,29 @@ static void test_studio(void) {
 }
 static void test_copy(void) {
     glassEfbWidth=640; glassEfbHeight=480; flushes=copies=0;
-    CHECK(glassCopyFrame() && copies==1 && flushes==1,"first copy");
+    /* The whole frame: the frame at half size. */
+    CHECK(glassCopyFrame(0,0,640,480) && copies==1 && flushes==1,"first copy");
     CHECK(copyL==0 && copyT==0 && copyW==640 && copyH==480 && dstW==320 && dstH==240,"copy is not the frame at half size");
     CHECK(dstFmt==GX_TF_RGBA8 && dstMip==GX_TRUE && clearFlag==GX_FALSE,"copy format, filter or clear");
-    CHECK(glassCopyFrame() && copies==2 && flushes==1,"the buffer was flushed again");
-    CHECK(near(glassCopyS()*640,1,1e-6f) && near(glassCopyT()*480,1,1e-6f),"copy coordinates");
+    CHECK(glassCopyFrame(0,0,640,480) && copies==2 && flushes==1,"the buffer was flushed again");
+    CHECK(near(glassCopyS()*640,1,1e-6f) && near(glassCopyT()*480,1,1e-6f) &&
+        glassCopyS0()==0 && glassCopyT0()==0,"copy coordinates");
+    /* Part of the frame: corners snap out to 8 pixels, so each texel holds
+     * the same four pixels as in the whole-frame copy, and a frame point
+     * lands on the same place in both. */
+    CHECK(glassCopyFrame(101.5f,203.2f,250.0f,330.9f),"part of the frame");
+    CHECK(copyL==96 && copyT==200 && copyW%8==0 && copyH%8==0,"copy corners not on 8-pixel steps");
+    CHECK(copyL+copyW>=251 && copyT+copyH>=331,"copy cut the box short");
+    float s=130*glassCopyS()-glassCopyS0(), t=300*glassCopyT()-glassCopyT0();
+    CHECK(near(s*dstW,(130-copyL)/2.0f,1e-3f) && near(t*dstH,(300-copyT)/2.0f,1e-3f),
+        "a frame point moved in the copy");
+    /* Past the frame's edges, it stops at them. */
+    CHECK(glassCopyFrame(-50,-20,700,600) && copyL==0 && copyT==0 && copyW==640 && copyH==480,
+        "copy left the frame");
     glassEfbHeight=574;
-    CHECK(glassCopyFrame() && dstH==284 && copyH==568,"odd heights must stay tile-aligned");
+    CHECK(glassCopyFrame(0,0,640,480) && dstH==284 && copyH==568,"odd heights must stay tile-aligned");
     CHECK(glassCopyT()*480>1.0f,"copy coordinates ignore the cropped rows");
-    glassEfbHeight=6; CHECK(!glassCopyFrame(),"a tiny frame was copied");
+    glassEfbHeight=6; CHECK(!glassCopyFrame(0,0,640,480),"a tiny frame was copied");
     (void)texels;
 }
 static void test_scene_strength(void) {
@@ -471,35 +429,32 @@ static void test_seams(void) {
     int poses=0;
     buildCubeFaces(shell,1,.78f,tint); buildChamferStrips(strips,1,.78f,tint,NULL); buildCubeCorners(corners,1,.78f);
     for(int yaw=0;yaw<360;yaw+=45) for(int pitch=-30;pitch<=30;pitch+=15) {
-        cubeRasterTransform_t r; glassSun_t sun={0,0,0,0};
+        cubeRasterTransform_t r;
         pose(&r,yaw*INDIGO_TAU/360,pitch*INDIGO_TAU/360,0,1);
         reset(3);
-        drawGlassRefraction(&r,&glass0,shell,6,4,1,&sun,true);
-        drawGlassRefraction(&r,&glass0,strips,12,4,1,&sun,true);
-        drawGlassRefraction(&r,&glass0,corners,8,3,1,&sun,true);
+        drawGlassRefraction(&r,&glass0,shell,6,4,1);
+        drawGlassRefraction(&r,&glass0,strips,12,4,1);
+        drawGlassRefraction(&r,&glass0,corners,8,3,1);
         CHECK(count>0,"no refraction to check"); check_seams("refraction");
         reset(1);
         drawGlassReflection(&r,shell,6,4,1); drawGlassReflection(&r,strips,12,4,1);
         drawGlassReflection(&r,corners,8,3,1);
         CHECK(count>0,"no reflection to check"); check_seams("reflection");
-        /* A band wide enough to light the whole cube. */
-        reset(0);
-        drawGlassSheen(&r,shell,6,4,1,0,4.0f,1); drawGlassSheen(&r,strips,12,4,1,0,4.0f,1);
-        CHECK(count>0,"no sheen to check"); check_seams("sheen");
         poses++;
     }
     CHECK(poses==40,"seam pose sweep incomplete");
 }
 int main(void) {
-    test_vertex_optics(); test_sun(); test_refraction_stream(); test_soft_glow();
-    test_flare(); test_rim(); test_copy(); test_scene_strength(); test_sheen(); test_studio();
+    test_vertex_optics(); test_refraction_stream(); test_soft_glow();
+    test_rim(); test_copy(); test_scene_strength(); test_studio();
     test_seams();
-    puts("glass light: refraction, dispersion, glint, studio, glows, rim and copies hold");
+    puts("glass light: refraction, dispersion, studio, glows, rim and copies hold");
     return 0;
 }
 """
 
 FUNCTIONS = [
+    "static float fastSqrt(",
     "static bool railJoin(", "static bool buildRasterJoins(", "static void drawRasterStroke(",
     "static bool projectRailPoint(", "static guVector cubeViewNormal(",
     "static void buildCubeFaces(", "static void buildChamferStrip(",
@@ -510,10 +465,10 @@ FUNCTIONS = [
     "static guVector glassSidePoint(", "static guVector glassGridPoint(",
     "static void glassFanPoint(", "static float glassSceneStrength(", "static bool glassCopyFrame(",
     "static float glassCopyS(", "static float glassCopyT(",
+    "static float glassCopyS0(", "static float glassCopyT0(",
     "static void refractGlassVertex(", "static void putGlassRefractedVertex(",
     "static void drawGlassRefraction(", "static void drawSoftGlow(",
-    "static void drawLightRay(", "static void drawGlassRim(", "static void drawSunFlare(",
-    "static bool glassCellLit(", "static void drawGlassSheen(",
+    "static void drawGlassRim(",
     "static GXColor glassStudioLight(", "static void glassStudioCoords(",
     "static guVector glassStudioDirection(", "static bool prepareGlassStudio(",
     "static u8 glassReflect(", "static void putGlassMirrorVertex(",
@@ -526,11 +481,9 @@ class GlassLightTests(unittest.TestCase):
     def setUpClass(cls):
         cls.source = (GUI / "indigo_background.c").read_text()
         blocks = []
-        for name in ("glassSun", "glassRefraction", "glassRefractedVertex", "glassMirrorVertex"):
+        for name in ("glassRefraction", "glassRefractedVertex", "glassMirrorVertex"):
             blocks.append(re.search(r"typedef struct " + name + r" \{.*?\} \w+;",
                 cls.source, re.S).group(0))
-        blocks.append(re.search(r"static const guVector glassSunDirection = \{.*?\};",
-            cls.source).group(0))
         blocks.append("\n".join(re.findall(r"^#define (?:GLASS_\w+|BEVEL_SEAM_BLEND) .*$",
             cls.source, re.M)))
         blocks.append(re.search(r"static u8 glassTexels\[.*?;\n(?:static .*?;\n)+",
@@ -539,6 +492,8 @@ class GlassLightTests(unittest.TestCase):
             r"\{.*?\n\};", cls.source, re.S).group(0))
         blocks.append(re.search(r"static u8 glassStudioTexels\[.*?;\n(?:static .*?;\n)+",
             cls.source).group(0))
+        blocks.append(extract_function((GUI / "ui_motion.c").read_text(),
+                                       "float UIMotion_Smoothstep("))
         for signature in FUNCTIONS:
             text = cls.source
             if signature == "static bool railJoin(":
@@ -570,17 +525,15 @@ class GlassLightTests(unittest.TestCase):
         order = [draw.index(token) for token in (
             "drawCubeSurfacePass(&raster, &shellOutline, shell, 6, GX_CULL_FRONT);",
             "drawFacePolygon(&raster, face, pane, 4, 0.86f,",
-            "refract = screenGlass && strength > 0.01f && glassCopyFrame();",
-            "drawGlassRefraction(&raster, &glass, corners, 8, 3, outer, &sun, refract);",
-            "if(refract) restoreCubeRaster();",
+            "refract = screenGlass && strength > 0.01f && shellOutline.count >= 3 &&",
+            "drawGlassRefraction(&raster, &glass, corners, 8, 3, outer);\n\t\t\trestoreCubeRaster();",
             "litCubeTints(&raster, frontGlassColors, lit);",
             "setupGlassReflectionPipeline(",
             "drawGlassReflection(&raster, corners, 8, 3, outer);\n\trestoreCubeRaster();",
             "drawGlassBloom(",
             "loadCubeProjection();\n\t\trestoreCubeRaster();",
             "drawFaceIcons(seconds, animated, clock, pad, icons, &raster);",
-            "drawGlassRim(&shellOutline, strength);",
-            "drawSunFlare(&sun, strength,")]
+            "drawGlassRim(&shellOutline, strength);")]
         self.assertEqual(order, sorted(order),
             "the glass passes left their place between the back glass and the front glass")
         # The studio drifts only while the cube is animated, and only as Home rests.
@@ -589,21 +542,14 @@ class GlassLightTests(unittest.TestCase):
         # The icons come after the bloom so their strokes stay sharp, on the
         # cube's own projection again (the bloom leaves an orthographic one).
         self.assertIn("if(light && screenGlass) {", draw)
-        # Spencer turned the corner sun off; the switch keeps it one edit away.
-        self.assertIn("if(CUBE_SUN_FLARE) {\n\t\t\tdrawSunFlare(", draw)
-        self.assertRegex(self.source, r"\n#define CUBE_SUN_FLARE 0\n")
         boot = extract_function(self.source, "void IndigoBackground_DrawBootOverlay(")
         self.assertIn("drawCube(scene, seconds, animated, clock, NULL, icons, false);", boot,
             "the boot overlay must never copy the frame: widgets sit under it")
         home = extract_function(self.source, "void IndigoBackground_Draw(")
         self.assertIn("drawCube(scene, seconds, cubeMotionActive, clock, pad, icons, true);", home)
-        self.assertLess(home.index("drawCubeLight("), home.index("drawCube(scene,"),
-            "the halo belongs behind the cube")
-        # The halo is two soft glows behind the cube; the glow spot on the
-        # floor under it is gone (Spencer, 2026-09-30).
-        light = extract_function(self.source, "static void drawCubeLight(")
-        self.assertEqual(light.count("drawSoftGlow("), 2)
-        self.assertNotRegex(light, r"floor[XYS]")
+        # No light behind the cube: Spencer took out the glow spot on the
+        # floor (2026-09-30) and then the halo round it (2026-10-01).
+        self.assertNotIn("drawCubeLight", self.source)
 
     def test_the_glass_is_clear(self):
         # No solid cube inside: no pass writes depth or draws opaque, and the
@@ -651,7 +597,7 @@ class GlassLightTests(unittest.TestCase):
             "the bloom must screen, not add: added, a face turning through the light burns white")
         self.assertIn("glow.b = (u8)(glow.b * strength + 0.5f);", bloom,
             "a screen has no source alpha: the strength must ride in the glow colour")
-        self.assertLess(bloom.index("glassCopyFrame()"), bloom.index("GX_Begin("))
+        self.assertLess(bloom.index("glassCopyFrame(UIStage_FrameX(left)"), bloom.index("GX_Begin("))
         self.assertIn("setupRasterPipeline();\n}", bloom, "bloom left its TEV stages behind")
         frame = (GUI / "FrameBufferMagic.c").read_text()
         background = extract_function(frame, "static void _DrawBackground(")
@@ -674,7 +620,6 @@ class GlassLightTests(unittest.TestCase):
                 "float ox = -n.x * glass->bend, oy = -n.y * glass->bend;"),
             "no magnification": ("(sx - glass->centerX) * (1.0f - glass->magnify)",
                 "(sx - glass->centerX)"),
-            "broad glint": ("glassSmoothstep(0.955f, 0.9985f, d)", "glassSmoothstep(0.2f, 0.9985f, d)"),
             "back-facing refraction": ("\t\tif(area >= -0.001f) continue;\n\t\tif(vertexCount == 3) {\n"
                 "\t\t\t/* A fan, its sides cut as the bevel ends it closes are cut across. */",
                 "\t\tif(area >= 1e30f) continue;\n\t\tif(vertexCount == 3) {\n"
@@ -683,28 +628,20 @@ class GlassLightTests(unittest.TestCase):
             # corner fan that misses the bevel ends' cuts, is a T-junction.
             "bevel cut apart from its face": ("ACROSS_STEPS = 6, ALONG_STEPS = FACE_STEPS, GRID = 7 };",
                 "ACROSS_STEPS = 6, ALONG_STEPS = 3, GRID = 7 };"),
-            "sheen bevel cut apart from its face": ("ACROSS_STEPS = 6, ALONG_STEPS = FACE_STEPS, GRID = 9 };",
-                "ACROSS_STEPS = 6, ALONG_STEPS = 4, GRID = 9 };"),
             "corner fan cut apart from its bevels": (
                 "*body = glassSidePoint(corner[side], corner[next], cut, cuts);",
                 "*body = glassSidePoint(corner[side], corner[next], cut, cuts + 1);"),
-            "measuring walk draws": ("\t\t\tif(!emit) continue;\n\t\t\tGX_Begin(GX_TRIANGLES",
-                "\t\t\tGX_Begin(GX_TRIANGLES"),
             "copy clears the frame": ("GX_CopyTex(glassTexels, GX_FALSE);", "GX_CopyTex(glassTexels, GX_TRUE);"),
             "copy without the box filter": ("GX_SetTexCopyDst(width, height, GX_TF_RGBA8, GX_TRUE);",
                 "GX_SetTexCopyDst(width, height, GX_TF_RGBA8, GX_FALSE);"),
             "no cache write-back": ("\t\tDCFlushRange(glassTexels, sizeof(glassTexels));\n", ""),
             "flush every frame": ("\t\tglassTexelsFlushed = true;\n", ""),
-            "untiled height": ("(u16)((glassEfbHeight / 2u) & ~3u)", "(u16)(glassEfbHeight / 2u)"),
+            "untiled height": ("if(y1 > (int)(glassEfbHeight & ~7u)) y1 = (int)(glassEfbHeight & ~7u);",
+                "if(y1 > (int)glassEfbHeight) y1 = (int)glassEfbHeight;"),
             "hard glow edge": ("{1.0f, 0.74f, 0.30f, 0.0f}", "{1.0f, 0.74f, 0.30f, 0.1f}"),
             "open glow ring": ("for(int i = 0; i <= RADIAL_SEGMENTS; i++) {\n\t\t\tputVertex((indigoPoint_t) {x + radiusX * ring",
                 "for(int i = 0; i < RADIAL_SEGMENTS; i++) {\n\t\t\tputVertex((indigoPoint_t) {x + radiusX * ring"),
             "rim on the dark side": ("float lit = nx * lightX + ny * lightY;", "float lit = -(nx * lightX + ny * lightY);"),
-            "flare stays additive": ("\t\t\tghosts[ghost].color, ghosts[ghost].alpha * intensity);\n\t}\n\tGX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);",
-                "\t\t\tghosts[ghost].color, ghosts[ghost].alpha * intensity);\n\t}"),
-            "sheen everywhere": ("bump = bump <= 0.0f ? 0.0f : bump * bump;", "bump = 1.0f;"),
-            "sheen draws dark cells": ("\t\tif(cells == 0) continue;\n\t\tGX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(cells * 4));",
-                "\t\tcells = rows * columns;\n\t\tGX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(cells * 4));"),
             "light pops in after boot": ("return strength * glassSmoothstep(BOOT_CUBE_HANDOFF, 1.0f, scene->introProgress);",
                 "return strength;"),
             "Settings keeps screen glass": ("\t\treturn 0.0f;\n\t}\n\t/* During the boot reveal",

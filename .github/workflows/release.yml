@@ -68,12 +68,12 @@ jobs:
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
       - name: Build Indigo
-        run: make dev
+        run: make -j8 dev
       - name: Check the DOL
         run: |
           mkdir -p dist
           python3 buildtools/ci/verify_dol.py cube/swiss/swiss.dol --toolchain "$TOOLCHAIN" \
-            --revision "$(git rev-parse HEAD)" --short "$(git rev-parse --short HEAD)" \
+            --revision "$(git rev-parse HEAD)" --short "$(git rev-parse HEAD | cut -c1-7)" \
             --out dist/provenance.json
       - name: Package the SD card zip and the notes
         env:

@@ -81,10 +81,12 @@ text under the cube, a game's title), never with stored pictures, so a
 redesign does not break the test and a crash, a hang, a black screen or a
 dead control does. Only where that text sits is fixed (`LABEL_BOX`,
 `TITLE_BOX` and `DETAIL_TITLE_BOX` in `run.py`): a change that moves it
-updates them. The test waits for what it expects to see, not for a fixed
-time, and counts the console's own seconds, which the runner's Dolphin
-reports, for every wait and press, so a busy machine makes it slower, not
-flaky. A thread whose stack overflows crashes, as on a console: libogc
+updates them. Text is the same text a pair of rows at a time: a slow frame
+can leave the 480i picture half a line higher. The test waits for what it
+expects to see, not for a fixed time, and counts the console's own seconds,
+which the runner's Dolphin reports, for every wait and press, so a busy
+machine makes it slower, not flaky. A thread whose stack overflows crashes,
+as on a console: libogc
 guards the lowest doubleword of the running thread's stack with the CPU's data
 address breakpoint, which the runner's Dolphin emulates (patch 0007), so the
 overrun raises a DSI and libogc's exception screen, and Dolphin logs the hit.

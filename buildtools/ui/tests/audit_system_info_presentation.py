@@ -44,7 +44,6 @@ info = read(info_path)
 policy = read(GUI / "ui_system_info.c")
 header = read(GUI / "ui_system_info.h")
 makefile = read(ROOT / "buildtools/ui/tests/Makefile")
-runner = read(ROOT / "buildtools/ui/tests/run_tests.sh")
 
 draw_page = extract_function(info, "uiDrawObj_t * info_draw_page(")
 show_info = extract_function(info, "void show_info()")
@@ -92,9 +91,8 @@ require("UI_SYSTEM_SAFE_Y0 34" in header and "UI_SYSTEM_SAFE_Y1 438" in header,
         "vertical safe area is not explicit")
 require("UI_SYSTEM_ELLIPSIS_BYTE" in copy_fitted,
         "long runtime values do not ellipsize")
-for target in ("test_ui_system_info", "test_ui_system_info_san"):
-    require(target in makefile, f"missing host target {target}")
-    require(f"./{target}" in runner, f"runner omits {target}")
+# One list builds every test plain and sanitized, and the runner runs it.
+require("test_ui_system_info" in makefile, "missing host target test_ui_system_info")
 
 # Runtime truth is captured on the menu thread before DrawRepublish. There are
 # no video-time callbacks, formatters, or hardware probes hidden in labels.
@@ -117,7 +115,7 @@ require("pollFrames >= 50u" in show_info and "infoCurrentMinute()" in show_info,
 for token in (
     "UISystem_FormatClock",
     "UISystem_FormatDate",
-    "SYS_GetCoreTemperature",
+    "CoreTemperature()",
     "UISystem_FormatTemperature",
     "UISystem_FormatCalibration",
     "deviceHandler_getDeviceAvailable",

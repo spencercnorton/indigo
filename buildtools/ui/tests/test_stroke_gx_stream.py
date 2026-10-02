@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[3]
 GUI = ROOT / "cube/swiss/source/gui"
 
 HARNESS = r"""
+#include <float.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -38,7 +39,8 @@ typedef float Mtx[3][4];
 typedef struct { float x,y,z; } guVector;
 typedef struct { float x,y; } indigoPoint_t;
 typedef struct { guVector point[4]; GXColor color[4]; } cubeSurfaceQuad_t;
-typedef struct { indigoPoint_t point[24]; int count; } cubeOutline_t;
+typedef struct { indigoPoint_t point[24]; int count; float length[24], pixels[24];
+    indigoPoint_t corner[24]; bool joined[24]; } cubeOutline_t;
 typedef struct { guVector eye[2]; indigoPoint_t outward[2]; GXColor color[2]; } cubeCoverageEdge_t;
 enum { GX_QUADS=1, GX_TRIANGLESTRIP=2, GX_TRIANGLES=3, GX_TRIANGLEFAN=4, GX_VTXFMT0=0, GX_PNMTX0=0 };
 /* HOME ENUMS */
@@ -56,6 +58,7 @@ typedef struct { bool available; float hourX,hourY,minuteX,minuteY,secondX,secon
 typedef struct { bool available; s8 stickX,stickY,substickX,substickY; u32 buttons; } indigoPadFrame_t;
 typedef struct { float stickX,stickY,substickX,substickY; u32 pressed; } controllerPose_t;
 typedef struct { float lastLiveInput; bool liveSeen; } controllerIdle_t;
+static controllerIdle_t controllerIdle;
 enum { PAD_BUTTON_LEFT=0x0001, PAD_BUTTON_RIGHT=0x0002, PAD_BUTTON_DOWN=0x0004, PAD_BUTTON_UP=0x0008,
     PAD_TRIGGER_Z=0x0010, PAD_TRIGGER_R=0x0020, PAD_TRIGGER_L=0x0040, PAD_BUTTON_A=0x0100,
     PAD_BUTTON_B=0x0200, PAD_BUTTON_X=0x0400, PAD_BUTTON_Y=0x0800, PAD_BUTTON_START=0x1000 };
@@ -137,6 +140,16 @@ static void GX_LoadPosMtxImm(const Mtx m,int slot) {
 }
 /* EMITTERS */
 static bool closef(float a,float b) { return fabsf(a-b)<0.002f; }
+static void test_fast_sqrt(void) {
+    /* The estimate's error repeats every two binades, so [1, 4) bounds it
+     * everywhere (every 64th float: 262,144 of them); special values stay
+     * sqrtf's. */
+    union { float f; u32 i; } x={1.0f};
+    for(;x.f<4.0f;x.i+=64)
+        CHECK(fabs(fastSqrt(x.f)-sqrt(x.f))<=5e-6*sqrt(x.f),"fast square root drifted");
+    CHECK(fastSqrt(0.0f)==0.0f && fastSqrt(INFINITY)==INFINITY && isnan(fastSqrt(-1.0f)) &&
+        fastSqrt(FLT_MIN/4)==sqrtf(FLT_MIN/4),"fast square root's special values");
+}
 static void test_dial(void) {
     for(int segments=1;segments<=24;segments++) {
         reset(true);
@@ -181,7 +194,9 @@ static void test_motifs(void) {
         r.model[2][3]=-5.4f;
         reset(false);
         drawFaceIcons(1.0f,true,&clock,NULL,quadIcons,&r);
-        CHECK(count==520 && begins==3 && matrixLoads==2,"motif fixed stream/matrix budget");
+        /* Each quad icon draws its whole fixed stream, or nothing while its
+         * face is turned away (Hub 180, Sliders 120, Clock 220). */
+        CHECK(begins<=3 && count<=520 && count%20==0 && matrixLoads==2,"motif stream/matrix budget");
         CHECK(culling==GX_CULL_BACK && memcmp(loaded,r.model,sizeof(Mtx))==0,
             "motif culling/model restoration");
         int lit=0;
@@ -219,14 +234,39 @@ static void test_motifs(void) {
     for(int i=0;i<4;i++) area+=positions[i].x*positions[(i+1)%4].y-
         positions[(i+1)%4].x*positions[i].y;
     CHECK(area<0,"subpixel core inverted");
+    /* The clock's minute hand at ten to the hour on a face turned 60 to 78
+     * degrees, still toward the camera, at the 4x by 2x scale the side-face
+     * pictures draw at: some of these turns make its corners too sharp to
+     * mitre, and it keeps its outline instead of vanishing. */
+    r.scaleX=4*625.221f; r.scaleY=2*625.221f;
+    for(int angle=60;angle<=78;angle+=2) {
+        float yaw=angle*INDIGO_TAU/360,c=cosf(yaw),s=sinf(yaw);
+        guMtxIdentity(r.model);
+        r.model[0][0]=c; r.model[0][2]=s; r.model[2][0]=-s; r.model[2][2]=c;
+        r.model[2][3]=-5.4f;
+        reset(false); GX_Begin(GX_QUADS,0,20);
+        putSemanticFaceHand(&r,UI_HOME_FACE_LIBRARY,-0.8660254f,0.5f,0.49f,0.027f,0.055f,
+            1.012f,(GXColor){255,255,255,200});
+        GX_End();
+        float hand=0;
+        for(int i=0;i<4;i++) hand+=positions[i].x*positions[(i+1)%4].y-
+            positions[(i+1)%4].x*positions[i].y;
+        CHECK(alphas[0] && alphas[1] && hand<0,"an edge-on slanted hand vanished");
+    }
+    r.scaleX=r.scaleY=625.221f;
     clock.available=false;
     float yaw=INDIGO_TAU*0.25f;
     r.model[0][0]=cosf(yaw); r.model[0][2]=sinf(yaw);
     r.model[2][0]=-sinf(yaw); r.model[2][2]=cosf(yaw);
+    clock.available=true;
     reset(false); drawFaceIcons(1.0f,false,&clock,NULL,quadIcons,&r);
-    CHECK(count==520,"invalid clock changed GX count");
-    /* Hands occupy the first three of the eleven System shapes. */
-    for(int i=15*20;i<18*20;i++) CHECK(alphas[i]==0,"invalid clock invented hands");
+    int validCount=count;
+    clock.available=false;
+    reset(false); drawFaceIcons(1.0f,false,&clock,NULL,quadIcons,&r);
+    CHECK(count==validCount && count>=220,"invalid clock changed GX count");
+    /* Hands occupy the first three of the clock's eleven shapes, which come
+     * last; the side faces' icons before it draw nothing facing away. */
+    for(int i=count-220;i<count-220+3*20;i++) CHECK(alphas[i]==0,"invalid clock invented hands");
 }
 static int moved(const guVector *before,int n) {
     int changed=0;
@@ -407,7 +447,11 @@ static void test_icons_on_their_faces(void) {
             reset(false); drawFaceIcons(3.9f,true,&clock,&pad,choices,&r);
             CHECK(matrixLoads==2 && culling==GX_CULL_BACK && memcmp(loaded,r.model,sizeof(Mtx))==0,
                 "icon pass state restore");
-            if(quadBudget[icon]) CHECK(count==quadBudget[icon] && begins==1,"quad icon budget moved");
+            if(quadBudget[icon]) CHECK((count==quadBudget[icon] && begins==1) ||
+                (count==0 && begins==0),"quad icon budget moved");
+            /* An icon fades out with its face, gone 71 degrees from the
+             * camera; a face turned away draws nothing at all. */
+            if(toward<0.3f) CHECK(count==0 && begins==0,"an icon drew on a face turned away");
             if(toward>0.99f) CHECK(begins==primitives[icon],"an icon lost a part facing the camera");
             int lit=0;
             for(int i=0;i<count;i++) {
@@ -563,6 +607,57 @@ static int compare_point(guVector a,guVector b) {
     if(a.y!=b.y) return a.y<b.y?-1:1;
     if(a.z!=b.z) return a.z<b.z?-1:1;
     return 0;
+}
+static void test_hidden_controller_reads_the_pad(void) {
+    /* Library's face turns away while A is held, then back with the pad at
+     * rest: the press was seen, so the emblem has not begun its idle play
+     * and draws at rest, exactly as with motion off. */
+    static guVector live[4096];
+    cubeRasterTransform_t r;
+    const Mtx semanticFaces[UI_HOME_FACE_COUNT]={
+        {{1,0,0,0},{0,1,0,0},{0,0,1,0}},
+        {{0,0,1,0},{0,1,0,0},{-1,0,0,0}},
+        {{-1,0,0,0},{0,1,0,0},{0,0,-1,0}},
+        {{0,0,-1,0},{0,1,0,0},{1,0,0,0}},
+        {{1,0,0,0},{0,1,0,0},{0,0,1,0}}
+    };
+    uiClockFrame_t clock={true,0,1,1,0,0.70710678f,0.70710678f};
+    indigoPadFrame_t held={true,0,0,0,0,PAD_BUTTON_A},rest={true,0,0,0,0,0u};
+    int choices[UI_HOME_FACE_COUNT]={0,-1,-1,-1,-1};
+    memcpy(r.semanticFaces,semanticFaces,sizeof(semanticFaces)); lightAll(&r);
+    r.scaleX=r.scaleY=625.221f;
+    guMtxIdentity(r.model); r.model[0][0]=r.model[2][2]=-1; r.model[2][3]=-5.4f;
+    reset(false); drawFaceIcons(100.0f,true,&clock,&held,choices,&r);
+    CHECK(begins==0,"the controller drew on a face turned away");
+    guMtxIdentity(r.model); r.model[2][3]=-5.4f;
+    reset(false); drawFaceIcons(100.5f,true,&clock,&rest,choices,&r);
+    int n=count;
+    CHECK(n>0,"the controller did not draw facing the camera");
+    memcpy(live,positions,sizeof(guVector)*(size_t)n);
+    reset(false); drawFaceIcons(100.5f,false,&clock,&rest,choices,&r);
+    CHECK(count==n && memcmp(live,positions,sizeof(guVector)*(size_t)n)==0,
+        "the controller missed a press while its face was turned away");
+}
+static void test_controller_across_the_clock_wrap(void) {
+    /* The animation clock wraps to 0 every 2000 pi s. The stick, held until
+     * just before the wrap, is still released 3.5 s later after it: idle
+     * play is back. And the presses' cycle goes on across the wrap: the
+     * cycle before it plays every press where the first cycle does. */
+    static const struct { u32 button; float at; } presses[]={
+        {PAD_BUTTON_A,0.43f},{PAD_BUTTON_B,1.31f},{PAD_BUTTON_Y,2.31f},
+        {PAD_BUTTON_X,2.91f},{PAD_BUTTON_RIGHT,3.9f},{PAD_BUTTON_DOWN,4.3f},
+        {PAD_BUTTON_START,5.21f}};
+    indigoPadFrame_t held={true,60,0,0,0,0u},rest={true,0,0,0,0,0u};
+    controllerIdle_t idle={0.0f,false};
+    controllerPose_t pose;
+    controllerPose(&held,UI_ANIM_TIME_WRAP_SECONDS-0.5f,true,&idle,&pose);
+    controllerPose(&rest,3.0f,true,&idle,&pose);
+    CHECK(pose.stickX!=0.0f || pose.stickY!=0.0f,"idle play stopped at the clock's wrap");
+    for(unsigned i=0;i<sizeof(presses)/sizeof(presses[0]);i++) {
+        controllerPose(&rest,UI_ANIM_TIME_WRAP_SECONDS-CONTROLLER_PRESS_CYCLE+presses[i].at,
+            true,&idle,&pose);
+        CHECK(pose.pressed&presses[i].button,"the presses jump at the clock's wrap");
+    }
 }
 static void test_closed_cube(void) {
     cubeSurfaceQuad_t mesh[26];
@@ -841,8 +936,9 @@ static void test_glass(void) {
     CHECK(most>200 && most<=1100,"reflection vertex budget");
 }
 int main(void) {
-    test_dial(); test_rail_joins(); test_motifs(); test_controller(); test_rounded_outlines();
-    test_icons_on_their_faces();
+    test_fast_sqrt(); test_dial(); test_rail_joins(); test_motifs(); test_controller(); test_rounded_outlines();
+    test_icons_on_their_faces(); test_hidden_controller_reads_the_pad();
+    test_controller_across_the_clock_wrap();
     test_closed_cube(); test_seamless_mesh(); test_chamfer_color_pairs(); test_surfaces(); test_glass();
     puts("native strokes: bounded complete GX streams, perspective coverage and closed seams");
     return 0;
@@ -854,8 +950,10 @@ class StrokeGXStreamTests(unittest.TestCase):
     def setUpClass(cls):
         indigo=(GUI / "indigo_background.c").read_text()
         frame=(GUI / "FrameBufferMagic.c").read_text()
-        blocks=[extract_function(indigo, "static void " + name + "(")
-                for name in ("putCubeVertex",)]
+        blocks=[extract_function(indigo, "static float fastSqrt("),
+                extract_function((GUI / "ui_motion.c").read_text(), "float UIMotion_Smoothstep(")]
+        blocks += [extract_function(indigo, "static void " + name + "(")
+                   for name in ("putCubeVertex",)]
         blocks += [extract_function(indigo[indigo.rindex("static bool " + name + "("):], "static bool " + name + "(")
                    for name in ("projectRailPoint", "railJoin")]
         blocks += [extract_function(indigo, "static void " + name + "(")
@@ -880,6 +978,9 @@ class StrokeGXStreamTests(unittest.TestCase):
             "drawPlayIcon", "drawSdCardIcon", "drawFolderIcon", "drawTogglesIcon",
             "drawDialIcon", "drawInfoIcon", "drawPowerIcon", "drawChipIcon",
             "drawAppsIcon")]
+        blocks += [extract_function(indigo, "static float faceFacing(")]
+        blocks += [extract_function(indigo, "static float faceStrokeShare(")]
+        blocks += [extract_function(indigo, "static void drawOneFaceIcon(")]
         blocks += [extract_function(indigo, "static void drawFaceIcons(")]
         blocks += [extract_function(indigo, "static float outlineCross(")]
         blocks += [extract_function(indigo, "static void buildCubeOutline(")]
@@ -913,8 +1014,10 @@ class StrokeGXStreamTests(unittest.TestCase):
         # The controller's sizing constants and the bevels' seam blend come
         # from the source, never a copy.
         cls.defines="\n".join(re.findall(
+            r"^#define (?:UI_ANIM_TIME_WRAP_SECONDS) .*$",
+            (GUI / "ui_anim.h").read_text(), re.MULTILINE) + re.findall(
             r"^#define (?:FACE_POLYGON_MAX|FACE_BAND_MAX|FACE_ARC_MAX|CONTROLLER_IDLE_HOLD|"
-            r"BEVEL_SEAM_BLEND) .*$", indigo, re.MULTILINE))
+            r"CONTROLLER_PRESS_CYCLE|BEVEL_SEAM_BLEND) .*$", indigo, re.MULTILINE))
         # The face and icon lists come from the source, never a copy.
         home=(GUI / "ui_home.h").read_text()
         cls.enums="\n".join([re.search(r"^#define UI_HOME_ICON_CHOICES \d+$", home, re.M).group(0)] +
@@ -987,7 +1090,7 @@ class StrokeGXStreamTests(unittest.TestCase):
             return subprocess.run([str(binary)],capture_output=True,text=True,timeout=5)
 
     def test_controller_defines_come_from_the_source(self):
-        self.assertEqual(self.defines.count("#define"), 5)
+        self.assertEqual(self.defines.count("#define"), 7)
 
     def test_native_emitters(self):
         result=self.run_emitters(self.emitters)
@@ -1008,6 +1111,7 @@ class StrokeGXStreamTests(unittest.TestCase):
             "opaque semantic fringe": ("transparent.a = 0;", "transparent.a = color.a;"),
             "wrong face winding": ("area >= -0.001f", "area <= -0.001f"),
             "subpixel brightness": ("fminf(1.0f, clearance * 2.0f)", "1.0f"),
+            "edge-on stroke vanishes": ("&joins[i])) sharp = true;", "&joins[i])) goto hidden;"),
             "degenerate vertex count": ("i < 20;", "i < 19;"),
             "outward silhouette normal": ("{-inward.x, -inward.y}", "{inward.x, inward.y}"),
             "opaque silhouette fringe": ("transparentA.a = transparentB.a = 0;",
@@ -1071,6 +1175,9 @@ class StrokeGXStreamTests(unittest.TestCase):
             "studio follows the glass out along its normal": (
                 "float out = offset.x * n.x + offset.y * n.y + offset.z * n.z;", "float out = 0.0f;"),
             "studio map upside down": ("*t = 0.5f - r.y / m;", "*t = 0.5f + r.y / m;"),
+            "one Newton step": ("\ty *= 1.5f - 0.5f * x * y * y;\n\ty *= 1.5f - 0.5f * x * y * y;\n",
+                "\ty *= 1.5f - 0.5f * x * y * y;\n"),
+            "estimate past its range": ("if(!(x >= FLT_MIN && x <= FLT_MAX)) return sqrtf(x);", ""),
         }
         for name,(old,new) in mutants.items():
             with self.subTest(name=name):

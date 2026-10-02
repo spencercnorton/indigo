@@ -148,6 +148,44 @@ int main(void)
 '''
 
 
+COVERED_MAIN = r'''
+static uiDrawObj_t *page(int type)
+{
+    uiDrawObj_t *result = calloc(1, sizeof(*result)); CHECK(result); result->type = type;
+    return DrawPublish(result);
+}
+static void retrace(void)
+{
+    uiDrawObjQueue_t *q = videoEventQueue->next;
+    while(q) {
+        if(q->event->disposed) { disposeEvent(q->event); q = videoEventQueue->next; }
+        else q = q->next;
+    }
+}
+int main(void)
+{
+    page(EV_BACKGROUND);
+    CHECK(!_FrameCovered(videoEventQueue));
+    const int pages[3] = {EV_SETTINGS, EV_CHEATS, EV_SAVES};
+    for(int i = 0; i < 3; ++i) {
+        uiDrawObj_t *covering = page(pages[i]);
+        CHECK(_FrameCovered(videoEventQueue));
+        DrawDispose(covering);
+        /* Disposed: uncovered from the next frame, before it is freed. */
+        CHECK(!_FrameCovered(videoEventQueue));
+        retrace();
+        CHECK(!_FrameCovered(videoEventQueue));
+    }
+    /* A value list or a help card over a page is not a page. */
+    uiDrawObj_t *list = page(EV_SETTINGSLIST);
+    CHECK(!_FrameCovered(videoEventQueue));
+    DrawDispose(list); retrace();
+    puts("covered frames: a full-screen page hides the background only while it is up");
+    return 0;
+}
+'''
+
+
 class BrowserHomeLifecycle(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -198,6 +236,27 @@ class BrowserHomeLifecycle(unittest.TestCase):
             'bool visible = curMenuLocation == ON_OPTIONS;',
             'bool visible = curMenuLocation == ON_OPTIONS; homePublish(visible);')
         self.assertNotEqual(self.run_harness(reordered).returncode, 0)
+
+    def test_a_full_screen_page_covers_the_frame(self):
+        # While Settings, the cheats or Memory Cards are up, the background
+        # is not drawn: _FrameCovered decides it from the live queue.
+        covered = block(FRAME, 'static bool _FrameCovered(')
+        types = 'enum { EV_BACKGROUND = 100, EV_SETTINGS, EV_CHEATS, EV_SETTINGSLIST, EV_SAVES };\n'
+        def run(rule):
+            with tempfile.TemporaryDirectory() as tmp:
+                source = Path(tmp) / 'covered.c'; binary = Path(tmp) / 'covered'
+                source.write_text(PREFIX + types + self.queue + rule + COVERED_MAIN)
+                cmd = shlex.split(os.environ.get('CC', 'cc')) + [
+                    '-std=c11', '-Wall', '-Wextra', '-Werror', '-Wno-unused-function',
+                    '-Wno-unused-variable']
+                subprocess.run(cmd + [str(source), '-o', str(binary)], check=True,
+                               capture_output=True, text=True, timeout=30)
+                return subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+        result = run(covered)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        # A page already disposed must not keep the background hidden.
+        self.assertIn('!event->disposed && ', covered)
+        self.assertNotEqual(run(covered.replace('!event->disposed && ', '')).returncode, 0)
 
     def test_actual_menu_wiring_and_mutants(self):
         require_wiring(SWISS)

@@ -133,6 +133,12 @@ float UIMotion_EaseOutCubic(float progress)
 	return 1.0f - remaining * remaining * remaining;
 }
 
+float UIMotion_Smoothstep(float progress)
+{
+	progress = progress < 0.0f ? 0.0f : (progress > 1.0f ? 1.0f : progress);
+	return progress * progress * (3.0f - 2.0f * progress);
+}
+
 float UIMotion_Amplitude(float amplitude, uiMotionMode_t mode)
 {
 	if(mode == UI_MOTION_OFF) {

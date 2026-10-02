@@ -286,14 +286,18 @@ class MenuColorTest(unittest.TestCase):
     def test_each_layer_is_drawn_in_its_own_color(self):
         background = (GUI / "indigo_background.c").read_text()
         draw = extract_function(background, "void IndigoBackground_Draw(")
-        order = [draw.index(token) for token in (
-            "UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);",
-            "drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));",
-            "drawGlobeGrid(", "UIColor_Select(layerColors[UI_COLOR_LAYER_WAVES]);",
-            "drawSilkWaves(", "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);",
-            "if(!scene->visible) {", "drawRadialDisc(", "drawCubeLight(", "drawCube(scene,")]
-        self.assertEqual(order, sorted(order))
-        self.assertEqual(draw.count("UIColor_Select("), 3)
+        # In this order: the turned faces' icon pictures in the menus' color
+        # (before the wash covers their corner), then the backdrop, the waves,
+        # and the menus' again for the cube.
+        at = 0
+        for token in ("UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);", "renderFacePictures(",
+                "UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);",
+                "drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));",
+                "drawGlobeGrid(", "UIColor_Select(layerColors[UI_COLOR_LAYER_WAVES]);",
+                "drawSilkWaves(", "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);",
+                "if(!scene->visible) {", "drawRadialDisc(", "drawCube(scene,"):
+            at = draw.index(token, at) + 1
+        self.assertEqual(draw.count("UIColor_Select("), 4)
         # The boot veil is the backdrop too; the cube under it is the menus'.
         boot = extract_function(background, "void IndigoBackground_DrawBootOverlay(")
         order = [boot.index(token) for token in (

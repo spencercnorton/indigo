@@ -80,6 +80,8 @@ char *uiLayerColorStr[] = {"Menu Color", "Indigo", "Azure", "Emerald", "Gold", "
 _Static_assert(sizeof(uiLayerColorStr) / sizeof(uiLayerColorStr[0]) == UI_COLOR_MAX + 1, "layer color names drift");
 char *clockPositionStr[] = {"Right", "Left", "Off"};
 _Static_assert(sizeof(clockPositionStr) / sizeof(clockPositionStr[0]) == CLOCK_POSITION_MAX, "Clock names drift");
+char *waveSpeedStr[] = {"Normal", "Fast", "Slow"};
+_Static_assert(sizeof(waveSpeedStr) / sizeof(waveSpeedStr[0]) == WAVE_SPEED_MAX, "Wave Speed names drift");
 char *libraryIconStr[] = {"Controller", "Books", "Covers", "Play"};
 char *sourceIconStr[] = {"Hub", "Disc", "SD Card", "Folder"};
 char *settingsIconStr[] = {"Sliders", "Gear", "Toggles", "Dial"};
@@ -150,7 +152,9 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_MENU_WIDESCREEN] = "Menu Widescreen:\n\nYes - Drawn for a TV set to 16:9: the background fills the\nscreen and the menus keep their shape.\nNo - Drawn for a 4:3 picture (default)\n\nSet your TV or HDMI adapter to 16:9 too. Games follow Force\nWidescreen in Game Defaults, not this.",
 	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\nSpotlight - A gameplay still over banners; Left and Right move\n\nThe selected game's title and details show beside its cover in\nVertical and its still in Spotlight, and above the controls in Grid.\nEvery layout wraps round from the last game to the first; L and R\njump a page. Y opens the focused game's settings.",
 	[SET_LIBRARY_FOLDERS] = "Library Folders:\n\nOff - The Library is one list of every game in /games, however\nthey sit in folders there (default)\nOn - The Library shows the folders in /games beside the games:\nA opens one, B goes back. A folder in a folder is the deepest;\nit lists every game below it.\n\nKeep a game's discs in the same folder.",
-	[SET_CLOCK_POSITION] = "Clock:\n\nRight - The time and the temperature dial sit in the top\nright corner (default)\nLeft - They sit in the top left corner instead\nOff - Neither is shown.",
+	[SET_WAVE_SPEED] = "Wave Speed:\n\nHow fast the waves behind the cube drift.\nSlow - Half as fast\nNormal - As they always have (default)\nFast - Three times as fast\n\nUI Motion Off or Reduced, or Animated Backdrop off (Setup >\nLibrary), still stops them.",
+	[SET_CLOCK_POSITION] = "Clock:\n\nRight - The time sits in the top right corner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nTemperature places the temperature dial on its own.",
+	[SET_TEMPERATURE_POSITION] = "Temperature:\n\nRight - The CPU temperature dial sits in the top right\ncorner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nIn the clock's corner, the dial sits nearer the edge.",
 	[SET_APPS_FACE] = "Apps Face:\n\nOn - Home shows Apps, one turn left of Library, while the\nsource has a program in /apps (default)\nOff - Home never shows Apps. The programs stay in /apps,\nand the file list still starts them.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
@@ -572,12 +576,14 @@ static const settingsRowRef_t consoleRows[] = {
 	{PAGE_INTERFACE, SET_UI_COLOR},
 	{PAGE_INTERFACE, SET_UI_BACKDROP_COLOR},
 	{PAGE_INTERFACE, SET_UI_WAVE_COLOR},
+	{PAGE_INTERFACE, SET_WAVE_SPEED},
 	{PAGE_INTERFACE, SET_LIBRARY_ICON},
 	{PAGE_INTERFACE, SET_SOURCE_ICON},
 	{PAGE_INTERFACE, SET_SETTINGS_ICON},
 	{PAGE_INTERFACE, SET_SYSTEM_ICON},
 	{PAGE_INTERFACE, SET_APPS_FACE},
 	{PAGE_INTERFACE, SET_CLOCK_POSITION},
+	{PAGE_INTERFACE, SET_TEMPERATURE_POSITION},
 	{PAGE_GLOBAL, SET_SYS_SOUND},
 	{PAGE_GLOBAL, SET_SYS_LANG},
 	{PAGE_GLOBAL, SET_SYS_BOOTMODE},
@@ -737,11 +743,13 @@ int settings_game_custom_count(const ConfigEntry *game)
 
 /* The Library marks the covers of games that have settings of their own.
  * Each card on screen asks again on every step of the carousel, so the
- * settings files are read once (one mount, one folder listing) and kept
- * until the next save changes them. */
+ * settings files are read once (one mount, one folder listing) and kept,
+ * each with its answer once worked out, until the next save changes them. */
 typedef struct {
 	char gameId[4];
 	char *text;
+	char markRegion;	/* the region mark was worked out for; 0 before */
+	bool mark;
 } settingsGameFile_t;
 
 static settingsGameFile_t *settingsGameFiles;
@@ -762,6 +770,7 @@ static void settingsKeepGameFile(const char *gameId, char *text, void *context)
 	}
 	settingsGameFiles = grown;
 	memcpy(grown[settingsGameFileCount].gameId, gameId, 4);
+	grown[settingsGameFileCount].markRegion = 0;
 	grown[settingsGameFileCount].text = strdup(text);
 	if(grown[settingsGameFileCount].text != NULL) {
 		settingsGameFileCount++;
@@ -806,7 +815,8 @@ void settings_game_files_load(void)
 
 /* Whether a game has any row that differs from Game Defaults, as Game
  * Detail counts it. region is 'P' for PAL discs, whose video mode default
- * differs. Reads nothing: settings_game_files_load did. */
+ * differs. Reads nothing: settings_game_files_load did; and parses a game's
+ * file once, until a save forgets the files. */
 bool settings_game_has_custom(const char *gameId, char region)
 {
 	static ConfigEntry game;
@@ -824,6 +834,9 @@ bool settings_game_has_custom(const char *gameId, char region)
 	if(i == settingsGameFileCount) {
 		return false;
 	}
+	if(settingsGameFiles[i].markRegion == region) {
+		return settingsGameFiles[i].mark;
+	}
 	/* config_parse_game cuts its input into lines, so parse a copy. */
 	text = strdup(settingsGameFiles[i].text);
 	if(text == NULL) {
@@ -835,7 +848,9 @@ bool settings_game_has_custom(const char *gameId, char region)
 	config_defaults(&game);
 	config_parse_game(text, &game);
 	free(text);
-	return settings_game_custom_count(&game) > 0;
+	settingsGameFiles[i].mark = settings_game_custom_count(&game) > 0;
+	settingsGameFiles[i].markRegion = region;
+	return settingsGameFiles[i].mark;
 }
 
 /* X in a game's settings: this row follows Game Defaults again. */
@@ -1049,6 +1064,8 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_SYSTEM_ICON: rowCycle(row, "System Icon:", systemIconStr[swissSettings.systemIcon], true); break;
 			case SET_APPS_FACE: rowOnOff(row, "Apps Face:", !swissSettings.hideAppsFace, true); break;
 			case SET_CLOCK_POSITION: rowCycle(row, "Clock:", clockPositionStr[swissSettings.clockPosition], true); break;
+			case SET_TEMPERATURE_POSITION: rowCycle(row, "Temperature:", clockPositionStr[swissSettings.temperaturePosition], true); break;
+			case SET_WAVE_SPEED: rowCycle(row, "Wave Speed:", waveSpeedStr[swissSettings.waveSpeed], true); break;
 			case SET_PANEL_TRANSPARENCY: rowYesNo(row, "Panel Transparency:", !swissSettings.disablePanelTransparency, true); break;
 			case SET_ANIMATED_BACKDROP: rowYesNo(row, "Animated Backdrop:", !swissSettings.disableAnimatedBackdrop, true); break;
 			case SET_MENU_MUSIC: rowYesNo(row, "Menu Music:", !swissSettings.disableMenuMusic, true); break;
@@ -1595,6 +1612,14 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			case SET_CLOCK_POSITION:
 				swissSettings.clockPosition += direction;
 				swissSettings.clockPosition = (swissSettings.clockPosition + CLOCK_POSITION_MAX) % CLOCK_POSITION_MAX;
+			break;
+			case SET_TEMPERATURE_POSITION:
+				swissSettings.temperaturePosition += direction;
+				swissSettings.temperaturePosition = (swissSettings.temperaturePosition + CLOCK_POSITION_MAX) % CLOCK_POSITION_MAX;
+			break;
+			case SET_WAVE_SPEED:
+				swissSettings.waveSpeed += direction;
+				swissSettings.waveSpeed = (swissSettings.waveSpeed + WAVE_SPEED_MAX) % WAVE_SPEED_MAX;
 			break;
 			case SET_LIBRARY_FOLDERS:
 				config_set_library_folders(!swissSettings.libraryFolders);

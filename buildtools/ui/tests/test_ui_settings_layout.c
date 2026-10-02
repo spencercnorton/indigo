@@ -47,7 +47,7 @@ static const struct {
 	{ 21,  1, 22 }, /* Game Defaults: no Vertical Offset, which can't reach a game */
 	{  6,  2,  7 }, /* Setup: one row per section */
 	{ 10,  2, 11 }, /* Display */
-	{ 14,  2, 15 }, /* Console: Apps Face, Backdrop and Wave Color, Clock too */
+	{ 16,  2, 17 }, /* Console: Apps Face, Backdrop and Wave Color, Wave Speed, Clock, Temperature too */
 	{  7,  2,  8 }, /* Storage: its Save Folder too */
 	{ 20,  2, 21 }, /* Network */
 	{ 13,  2, 14 }, /* Library: Load at startup and Library Folders too */

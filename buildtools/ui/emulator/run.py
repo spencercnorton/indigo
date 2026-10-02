@@ -225,6 +225,15 @@ def overlap(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.logical_and(a, b).sum() / union) if union else 1.0
 
 
+def same_text(a: np.ndarray, b: np.ndarray) -> bool:
+    """The same words. A 480i picture can sit half a line higher after a slow
+    frame (it is drawn for the other field), which moves an antialiased word's
+    rows across TEXT_LEVEL, so the words are compared a pair of rows at a time."""
+    def rows(mask: np.ndarray) -> np.ndarray:
+        return mask[:mask.shape[0] // 2 * 2].reshape(-1, 2, mask.shape[1]).any(axis=1)
+    return overlap(rows(a), rows(b)) >= SAME
+
+
 def has_label(mask: np.ndarray) -> bool:
     """A word of text: enough lit pixels, spread across the band but not filling it."""
     lit = int(mask.sum())
@@ -479,7 +488,7 @@ class Route:
             if ok and unlike is not None:
                 ok = overlap(mask, unlike) < DIFFERENT
             if ok and like is not None:
-                ok = overlap(mask, like) >= SAME
+                ok = same_text(mask, like)
             steady = steady + 1 if ok and previous is not None and overlap(mask, previous) >= 0.95 else 0
             previous = mask if ok else None
             if steady >= 2:
@@ -614,13 +623,13 @@ class Route:
         for n in range(1, 5):
             faces.append(self.turn(faces, "RIGHT", f"right-{n}"))
         back = self.turn(faces, "RIGHT", "right-5")
-        self.check("five turns come back to the first face", overlap(back, home) >= SAME,
+        self.check("five turns come back to the first face", same_text(back, home),
                    overlap=round(overlap(back, home), 3))
-        distinct = min(overlap(a, b) for i, a in enumerate(faces) for b in faces[i + 1:])
+        distinct = max(overlap(a, b) for i, a in enumerate(faces) for b in faces[i + 1:])
         self.check("the five faces have five different names", distinct < DIFFERENT,
                    largest_overlap=round(distinct, 3))
         left = self.turn([back], "LEFT", "left-1")
-        self.check("LEFT turns the other way", overlap(left, faces[-1]) >= SAME,
+        self.check("LEFT turns the other way", same_text(left, faces[-1]),
                    overlap=round(overlap(left, faces[-1]), 3))
         mask, _ = self.press_until("RIGHT", like=home)
         self.check("RIGHT undoes LEFT", mask is not None)
@@ -775,7 +784,7 @@ class Route:
 
     def flip_apps_face(self, settings: np.ndarray, tag: str) -> None:
         """From the Settings face: R and R to Setup, DOWN and A into Console,
-        seven DOWNs to Apps Face and RIGHT to flip it. B goes back to Setup and
+        eight DOWNs to Apps Face and RIGHT to flip it. B goes back to Setup and
         B again saves and exits (the demo disc can't keep the file; the
         setting holds until Indigo restarts), back to the Settings face."""
         self.press("A")
@@ -785,7 +794,7 @@ class Route:
         for button, pause in (("R", 1.0), ("R", 1.0), ("DOWN", 0.6), ("A", 1.5)):
             self.press(button)
             self.pause(pause)
-        for _ in range(7):
+        for _ in range(8):
             self.press("DOWN")
             self.pause(0.4)
         self.press("RIGHT")
@@ -810,7 +819,7 @@ class Route:
             self.shot(f"after-system-apps-face-{tag}", self.last_rgb)
             self.check(f"Apps Face {tag.title()}: after System comes "
                        f"{'Library' if tag == 'off' else 'Apps'}",
-                       mask is not None and overlap(mask, after_system) >= SAME,
+                       mask is not None and same_text(mask, after_system),
                        overlap=round(overlap(mask, after_system), 3) if mask is not None else None)
             for back in (system, settings):
                 self.check("LEFT turns back a face", self.press_until("LEFT", like=back)[0] is not None,

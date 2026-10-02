@@ -150,15 +150,34 @@ static bool getRawDTVStatus(void) { return false; }
     "#define ticks_to_millisecs(t) (t)\n"
     "static int harness_scan_result, harness_scans;\n"
     "static int config_each_game_file(void (*visit)(const char *, char *, void *), void *context)\n"
-    "{\n\t(void)visit;\n\t(void)context;\n\tharness_scans++;\n\treturn harness_scan_result;\n}",
+    "{\n\t(void)visit;\n\t(void)context;\n\tharness_scans++;\n\treturn harness_scan_result;\n}\n"
+    "static int harness_parses;\n"
+    "static void harness_parse_game(char *data, ConfigEntry *entry)\n"
+    "{\n\tharness_parses++;\n\tconfig_parse_game(data, entry);\n}\n"
+    "#define config_parse_game harness_parse_game",
     between(SETTINGS_C, "typedef struct {\n\tchar gameId[4];",
             "/* X in a game's settings: this row follows Game Defaults again. */"),
+    "#undef config_parse_game",
     # Library Folders sets FlattenDir to its own pattern while it is on.
     re.search(r"^#define UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN .*$",
               UI_GAMEFLOW_LIBRARY_H, re.M).group(0),
     extract_function(CONFIG_C, "void config_set_library_folders("),
     GLOBAL_PARSER,
     GAME_PARSER,
+    # The legacy swiss.ini migration, counting the files it would write.
+    "static int harness_migrated, harness_legacy_deleted, harness_no_memory;\n"
+    "static void *harness_calloc(size_t count, size_t size)\n"
+    "{\n\treturn harness_no_memory ? NULL : calloc(count, size);\n}\n"
+    "static int config_update_game(ConfigEntry *entry, ConfigEntry *defaults, bool check)\n"
+    "{\n\t(void)entry;\n\t(void)defaults;\n\t(void)check;\n\treturn ++harness_migrated;\n}\n"
+    "static int config_update_global(bool check) { (void)check; return 1; }\n"
+    "static int config_update_recent(bool check) { (void)check; return 1; }\n"
+    "static void config_file_delete(char *name) { harness_legacy_deleted = !strcmp(name, \"swiss.ini\"); }\n"
+    "static void harness_progress(char *text, int a, int b) { (void)text; (void)a; (void)b; }\n"
+    "#define SWISS_SETTINGS_FILENAME_LEGACY \"swiss.ini\"\n"
+    "#define print_debug(...) ((void)0)\n"
+    + re.search(r"^#define LEGACY_ENTRIES .*$", CONFIG_C, re.M).group(0) + "\n"
+    + extract_function(CONFIG_C, "void config_parse_legacy(").replace("calloc(", "harness_calloc("),
     between(CONFIG_C, "/* Keys a global.ini may still carry", "int config_update_global("),
     extract_function(CONFIG_C, "static char *config_merge_autoload("),
     "static void write_global(FILE *fp)\n{\n"
@@ -218,6 +237,8 @@ static char *read_path(const char *path)
  * merge-global existing.ini < changes: what a save writes over a global.ini
  *   Swiss booted with, after the changes were made on the console.
  * merge-game ID4 REGION existing.ini < changes: the same for a game's file.
+ * legacy [no-memory] < swiss.ini: the games a legacy file migrates, and
+ *   whether it then deletes swiss.ini.
  * custom-mark ID4 REGION [global.ini] < game ini: whether the Library marks
  *   that game's cover as having settings of its own.
  * scan-retry: how many scans the Library makes around a failed one. */
@@ -311,8 +332,15 @@ int main(int argc, char **argv)
 		}
 		settingsKeepGameFile(argv[2], input, NULL);
 		puts(settings_game_has_custom(argv[2], argv[3][0]) ? "custom" : "none");
+		puts(settings_game_has_custom(argv[2], argv[3][0]) ? "custom" : "none");
+		printf("%d\n", harness_parses);
 		settings_game_files_forget();
 		puts(settings_game_has_custom(argv[2], argv[3][0]) ? "custom" : "none");
+	}
+	else if(!strcmp(argv[1], "legacy")) {
+		harness_no_memory = argc >= 3 && !strcmp(argv[2], "no-memory");
+		config_parse_legacy(input, harness_progress);
+		printf("%d %d\n", harness_migrated, harness_legacy_deleted);
 	}
 	else if(!strcmp(argv[1], "scan-retry")) {
 		harness_scan_result = -1;
@@ -556,7 +584,9 @@ class SettingsFileTest(unittest.TestCase):
     def test_the_library_marks_only_games_that_differ_from_game_defaults(self):
         def mark(game_ini, game_id="GALE", region="E", global_ini=None):
             args = ["custom-mark", game_id, region] + ([global_ini] if global_ini else [])
-            first, after_a_save = self.run_harness(*args, stdin=game_ini).split()
+            first, again, parses, after_a_save = self.run_harness(*args, stdin=game_ini).split()
+            # The next step asks again: the same answer, without parsing again.
+            self.assertEqual((again, parses), (first, "1"))
             # A save forgets the files: nothing is marked until they're read again.
             self.assertEqual(after_a_save, "none")
             return first
@@ -576,6 +606,18 @@ class SettingsFileTest(unittest.TestCase):
             self.assertEqual(mark("Force Video Mode=576i\r\n", "GALE", "E", handle.name), "custom")
         finally:
             os.unlink(handle.name)
+
+    def test_a_legacy_swiss_ini_migrates_at_most_2047_games(self):
+        # Under AddressSanitizer: 2,100 games stay inside the 2,048 entries
+        # (the last is Game Defaults), and swiss.ini goes once they're out.
+        games = "".join(f"ID=G{i:03X}\r\nName=Game {i}\r\nForce Video Mode=480p\r\n"
+                        for i in range(2100))
+        self.assertEqual(self.run_harness("legacy", stdin="Force Video Mode=480i\r\n" + games).split(),
+                         ["2047", "1"])
+        self.assertEqual(self.run_harness("legacy", stdin=games[:games.index("ID=G00A")]).split(),
+                         ["10", "1"])
+        # No memory for the entries: nothing is written, swiss.ini stays.
+        self.assertEqual(self.run_harness("legacy", "no-memory", stdin=games).split(), ["0", "0"])
 
     def test_a_failed_scan_is_retried_but_not_on_every_step(self):
         # Fails, then waits (no second scan), retries after 30 s and keeps

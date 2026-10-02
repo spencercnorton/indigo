@@ -20,6 +20,61 @@ tag on `beta`. The newest changes are at the top until their release is named.
   over 2 MB is never read, and posters are made one at a time on a thread of
   their own, so a large picture neither holds up a button nor runs the
   console short of memory.
+- Settings › Setup › Console › **Wave Speed** sets how fast the waves drift:
+  Slow (half as fast), Normal (the default) or Fast (three times as fast). A
+  new speed picks up from where the waves are. In `global.ini` it is
+  `Wave Speed`.
+- Settings › Setup › Console › **Temperature** places the temperature dial on
+  its own: Right, Left or Off, as Clock places the time. Clock moves only the
+  time now. In the same corner the time sits beside the dial as before; apart,
+  each sits in its own corner. In `global.ini` it is `Temperature`; settings
+  saved by 2.2, which has no `Temperature`, keep the dial with the clock.
+
+### Changes
+
+- Every face of the Home cube shows its icon as the cube turns, animated, the
+  side faces at rest included. An icon on a face turned away from the screen
+  is drawn four times as wide and twice as tall, then scaled down, so its
+  thinnest lines keep their light, without breaking into fragments, fading
+  out or flickering as the cube sways. Mostly horizontal icons, such as
+  Settings' sliders, still look narrow on a face seen nearly edge-on.
+- A slanted line on a face seen nearly edge-on, such as the clock's minute
+  hand at ten to the hour, no longer disappears at some angles as the cube
+  sways. Its corners were too sharp for its soft edge, and it was skipped;
+  it is drawn plain now.
+- The halo around the Home cube is gone, as the glow spot under it went in
+  2.2.
+- The CPU temperature holds steady. The console's sensor reads in 4 degree
+  steps, so a CPU sitting on a step showed one side and then the other every
+  second (40 °C, 44 °C, 40 °C...). Indigo now shows an average of the last few
+  seconds' readings, which moves a degree at a time, at the top of the screen
+  and in System Information alike.
+- With Clock at Left, the loading spinner at the top right ran its word
+  "Loading" from the wheel out to the screen's edge, where a TV can crop it.
+  It reads inward from the wheel now, in either corner.
+- The menus' animated background costs the console far less each frame: the
+  cube works out its square roots without newlib's slow loop, keeps its
+  outline's lengths, skips icons that can't be seen, copies only the part of
+  the frame its glass shows, and isn't drawn at all under a full-screen page
+  or when Grid and Spotlight park it beside the screen. Upstream's backdrop
+  picture, which Indigo's background always covered, is no longer drawn under
+  it. In Dolphin the background's time a frame went from 8.75 ms to 4.25 ms
+  on Home and from 9.00 ms to 4.50 ms on the Settings face.
+- Scrolling back through the Library shows the covers at once: a cover
+  scrolled past keeps its place in memory until a new one needs it, instead
+  of being read from the card again.
+- Starting a two-disc game no longer reads every disc image in its folder to
+  find the other disc, only those whose details don't already rule them out.
+- A settings save that loses power (or a card pulled mid-save) keeps the
+  settings from before it or the new ones, never none.
+- Moving between games, the old title fades out before the new one fades
+  in, rather than the two showing over each other.
+- With UI Motion on Reduced, the cube no longer moves during the boot and
+  then stops short.
+- The Loading spinner and the progress bar's sweep keep the same speed at
+  50 Hz as at 60 Hz.
+- The Home controller's idle animation no longer stops after Indigo has been
+  running for an hour and three quarters.
 
 ### Fixes
 
@@ -38,9 +93,39 @@ tag on `beta`. The newest changes are at the top until their release is named.
   had switched to for the game. A PAL game left an NTSC console's menu at
   50 Hz, which a TV that only takes 60 Hz shows as a black screen, and an
   NTSC game left a PAL console's at 60 Hz. The menu goes back to its own mode.
+- Migrating a settings file from Swiss before 2019 (a single swiss.ini) no
+  longer overruns the menu's stack, and a cheats file of 4 GiB, or the
+  console running out of memory while reading one, no longer crashes it.
 
 ### For developers
 
+- `test_frame_budget.py` runs the real cube renderer against counting GX
+  stubs and holds each scene's per-frame cost (square roots, trig, vertices,
+  GX_Begin calls, EFB pixels copied) to the ceilings in
+  `frame_budget.json`; `--update` locks in a gain.
+- `make -C cube/swiss BUILD=build-perf TARGET=swiss-perf UI_PERF=1` builds the
+  performance overlay, now with the GPU's own counters; CI builds it beside
+  every DOL.
+- One list of C tests drives both the test Makefile and `run_tests.sh`, and
+  the contracts lane builds every fuzzer, so a broken one fails CI.
+- The DOL is the same bytes in any locale, any folder and whatever tags the
+  clone has: the build links its files in byte order, names no build path,
+  and `tags.h` (read only by upstream's startup autoload, which Indigo drops)
+  is empty. CI's second build runs in another folder.
+- New fuzzers and harnesses: `fuzz_cheats` (with allocations failing on
+  purpose), the settings fuzzer now also merges files and migrates a legacy
+  swiss.ini, and `test_config_save.py` cuts the power at every step of a
+  settings save.
+- Fuzz runs after "CI passed", so it never holds a runner a required job is
+  waiting for, and the weekly run fits its hour. Build runs `make -j8 dev`,
+  30 s faster; Reproducible build still builds one file at a time, as the
+  README does, and proves the two give the same DOL.
+- The toolchain's digest moves by hand, every copy at once: Dependabot leaves
+  libogc2 alone and `check_workflows.py` holds all 13 copies equal.
+- The menu music is `menu_music.mp3`, embedded with `#embed`, instead of a
+  5 MB header of numbers.
+- The DOL is 106 KB smaller: Swiss is built without unwind tables, which
+  nothing in it reads.
 - A thread whose stack overflows now crashes in the emulator test as it does on
   a console: the runner's Dolphin emulates the data address breakpoint libogc
   guards each thread's stack with, where it used to let the overrun corrupt
