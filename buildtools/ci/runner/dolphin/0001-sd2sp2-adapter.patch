@@ -1,0 +1,1204 @@
+SD2SP2 adapter emulation for Dolphin: the emulator core of
+https://github.com/dfederspiel/dolphin/pull/1 (commit 88decb79), by CodeFly,
+under Dolphin's licence, the GNU General Public License version 2 or later.
+Its Qt settings page, Windows project and tools are left out; the rest is
+unchanged. emulator.Dockerfile applies it to the Dolphin release it names.
+
+diff --git a/Source/Core/Core/CMakeLists.txt b/Source/Core/Core/CMakeLists.txt
+index 821080a..f57c1bf 100644
+--- a/Source/Core/Core/CMakeLists.txt
++++ b/Source/Core/Core/CMakeLists.txt
+@@ -217,6 +217,8 @@ add_library(core
+   HW/EXI/EXI_DeviceMemoryCard.h
+   HW/EXI/EXI_DeviceModem.cpp
+   HW/EXI/EXI_DeviceModem.h
++  HW/EXI/EXI_DeviceSDCard.cpp
++  HW/EXI/EXI_DeviceSDCard.h
+   HW/EXI/EXI.cpp
+   HW/EXI/EXI.h
+   HW/GBAPad.cpp
+diff --git a/Source/Core/Core/Config/MainSettings.cpp b/Source/Core/Core/Config/MainSettings.cpp
+index 441c5dd..c626b42 100644
+--- a/Source/Core/Core/Config/MainSettings.cpp
++++ b/Source/Core/Core/Config/MainSettings.cpp
+@@ -151,6 +151,8 @@ const Info<ExpansionInterface::EXIDeviceType>& GetInfoForEXIDevice(ExpansionInte
+   return *infos[slot];
+ }
+ 
++const Info<std::string> MAIN_SP2_SD_CARD_IMAGE{{System::Main, "Core", "SP2SDCardImage"}, ""};
++
+ const Info<std::string> MAIN_BBA_MAC{{System::Main, "Core", "BBA_MAC"}, ""};
+ const Info<std::string> MAIN_BBA_XLINK_IP{{System::Main, "Core", "BBA_XLINK_IP"}, "127.0.0.1"};
+ const Info<bool> MAIN_BBA_XLINK_CHAT_OSD{{System::Main, "Core", "BBA_XLINK_CHAT_OSD"}, true};
+diff --git a/Source/Core/Core/Config/MainSettings.h b/Source/Core/Core/Config/MainSettings.h
+index 1946045..c451767 100644
+--- a/Source/Core/Core/Config/MainSettings.h
++++ b/Source/Core/Core/Config/MainSettings.h
+@@ -144,6 +144,7 @@ extern const Info<u32> MAIN_MEM2_SIZE;
+ extern const Info<std::string> MAIN_GFX_BACKEND;
+ extern const Info<HSP::HSPDeviceType> MAIN_HSP_DEVICE;
+ extern const Info<u32> MAIN_ARAM_EXPANSION_SIZE;
++extern const Info<std::string> MAIN_SP2_SD_CARD_IMAGE;
+ 
+ enum class GPUDeterminismMode
+ {
+diff --git a/Source/Core/Core/HW/EXI/EXI.cpp b/Source/Core/Core/HW/EXI/EXI.cpp
+index 144fdd5..c7efc37 100644
+--- a/Source/Core/Core/HW/EXI/EXI.cpp
++++ b/Source/Core/Core/HW/EXI/EXI.cpp
+@@ -195,6 +195,12 @@ void ExpansionInterfaceManager::RegisterMMIO(MMIO::Mapping* mmio, u32 base)
+     // boundary and using "base | FOO" is not valid!
+     m_channels[i]->RegisterMMIO(mmio, base + 5 * 4 * i);
+   }
++
++  // Register dummy handlers for addresses probed by Swiss's MMCE device detection.
++  // Without these, every probe generates an expensive ERROR_LOG_FMT call through
++  // the InvalidRead/InvalidWrite handlers, even when the log window is closed.
++  mmio->Register(base + 0x8C, MMIO::Constant<u32>(0), MMIO::Nop<u32>());
++  mmio->Register(base + 0xB4, MMIO::Constant<u32>(0), MMIO::Nop<u32>());
+ }
+ 
+ void ExpansionInterfaceManager::ChangeDeviceCallback(Core::System& system, u64 userdata,
+@@ -249,7 +255,14 @@ void ExpansionInterfaceManager::UpdateInterrupts()
+   for (auto& channel : m_channels)
+     causeInt |= channel->IsCausingInterrupt();
+ 
+-  m_system.GetProcessorInterface().SetInterrupt(ProcessorInterface::INT_CAUSE_EXI, causeInt);
++  // Only call into ProcessorInterface when the interrupt state actually changes.
++  // This avoids redundant SetInterrupt -> UpdateException calls during high-frequency
++  // polling (e.g. SD2SP2 SPI transfers at ~250K/sec).
++  if (causeInt != m_last_interrupt_state)
++  {
++    m_last_interrupt_state = causeInt;
++    m_system.GetProcessorInterface().SetInterrupt(ProcessorInterface::INT_CAUSE_EXI, causeInt);
++  }
+ }
+ 
+ void ExpansionInterfaceManager::UpdateInterruptsCallback(Core::System& system, u64 userdata,
+diff --git a/Source/Core/Core/HW/EXI/EXI.h b/Source/Core/Core/HW/EXI/EXI.h
+index 7ded905..8145ebb 100644
+--- a/Source/Core/Core/HW/EXI/EXI.h
++++ b/Source/Core/Core/HW/EXI/EXI.h
+@@ -98,6 +98,10 @@ private:
+ 
+   std::array<std::unique_ptr<CEXIChannel>, MAX_EXI_CHANNELS> m_channels;
+ 
++  // Cached result of the last UpdateInterrupts computation to avoid redundant
++  // ProcessorInterface::SetInterrupt calls when the EXI interrupt state is unchanged.
++  bool m_last_interrupt_state = false;
++
+   bool m_using_overridden_sram = false;
+ 
+   Core::System& m_system;
+diff --git a/Source/Core/Core/HW/EXI/EXI_Channel.cpp b/Source/Core/Core/HW/EXI/EXI_Channel.cpp
+index 8d47a81..933f2a1 100644
+--- a/Source/Core/Core/HW/EXI/EXI_Channel.cpp
++++ b/Source/Core/Core/HW/EXI/EXI_Channel.cpp
+@@ -66,6 +66,15 @@ void CEXIChannel::RegisterMMIO(MMIO::Mapping* mmio, u32 base)
+                  MMIO::ComplexWrite<u32>([this](Core::System& system, u32, u32 val) {
+                    UEXI_STATUS new_status(val);
+ 
++                   // Snapshot interrupt-relevant state before modifications
++                   const u32 old_exiintmask = m_status.EXIINTMASK;
++                   const u32 old_exiint = m_status.EXIINT;
++                   const u32 old_tcintmask = m_status.TCINTMASK;
++                   const u32 old_tcint = m_status.TCINT;
++                   const u32 old_extintmask = m_status.EXTINTMASK;
++                   const u32 old_extint = m_status.EXTINT;
++                   const u32 old_chip_select = m_status.CHIP_SELECT;
++
+                    m_status.EXIINTMASK = new_status.EXIINTMASK;
+                    if (new_status.EXIINT)
+                      m_status.EXIINT = 0;
+@@ -92,7 +101,16 @@ void CEXIChannel::RegisterMMIO(MMIO::Mapping* mmio, u32 base)
+                    if (device != nullptr)
+                      device->SetCS(m_status.CHIP_SELECT);
+ 
+-                   system.GetExpansionInterface().UpdateInterrupts();
++                   // Only call UpdateInterrupts if interrupt-relevant state actually
++                   // changed. This avoids expensive interrupt recomputation on writes
++                   // that only modify CLK or other non-interrupt fields.
++                   if (m_status.EXIINTMASK != old_exiintmask || m_status.EXIINT != old_exiint ||
++                       m_status.TCINTMASK != old_tcintmask || m_status.TCINT != old_tcint ||
++                       m_status.EXTINTMASK != old_extintmask || m_status.EXTINT != old_extint ||
++                       m_status.CHIP_SELECT != old_chip_select)
++                   {
++                     system.GetExpansionInterface().UpdateInterrupts();
++                   }
+                  }));
+ 
+   mmio->Register(base + EXI_DMA_ADDRESS, MMIO::DirectRead<u32>(&m_dma_memory_address),
+@@ -161,7 +179,13 @@ void CEXIChannel::RegisterMMIO(MMIO::Mapping* mmio, u32 base)
+ void CEXIChannel::SendTransferComplete()
+ {
+   m_status.TCINT = 1;
+-  m_system.GetExpansionInterface().UpdateInterrupts();
++  // Only run the expensive UpdateInterrupts machinery if the transfer complete
++  // interrupt is actually masked in. When software uses polled mode (TCINTMASK=0),
++  // setting TCINT is just a status flag — it can't generate a CPU interrupt, so
++  // the global interrupt state is unchanged. This is critical for devices like
++  // SD2SP2 where libogc polls TSTART synchronously at ~250K transfers/sec.
++  if (m_status.TCINTMASK)
++    m_system.GetExpansionInterface().UpdateInterrupts();
+ }
+ 
+ void CEXIChannel::RemoveDevices()
+diff --git a/Source/Core/Core/HW/EXI/EXI_Device.cpp b/Source/Core/Core/HW/EXI/EXI_Device.cpp
+index ab92aa5..d7c345f 100644
+--- a/Source/Core/Core/HW/EXI/EXI_Device.cpp
++++ b/Source/Core/Core/HW/EXI/EXI_Device.cpp
+@@ -15,6 +15,7 @@
+ #include "Core/HW/EXI/EXI_DeviceIPL.h"
+ #include "Core/HW/EXI/EXI_DeviceMemoryCard.h"
+ #include "Core/HW/EXI/EXI_DeviceModem.h"
++#include "Core/HW/EXI/EXI_DeviceSDCard.h"
+ #include "Core/HW/Memmap.h"
+ #include "Core/System.h"
+ 
+@@ -181,6 +182,10 @@ std::unique_ptr<IEXIDevice> EXIDevice_Create(Core::System& system, const EXIDevi
+     result = std::make_unique<CEXIBaseboard>(system);
+     break;
+ 
++  case EXIDeviceType::SDCard:
++    result = std::make_unique<CEXISDCard>(system);
++    break;
++
+   case EXIDeviceType::None:
+   default:
+     result = std::make_unique<IEXIDevice>(system);
+diff --git a/Source/Core/Core/HW/EXI/EXI_Device.h b/Source/Core/Core/HW/EXI/EXI_Device.h
+index 129f7a2..5bcf104 100644
+--- a/Source/Core/Core/HW/EXI/EXI_Device.h
++++ b/Source/Core/Core/HW/EXI/EXI_Device.h
+@@ -41,6 +41,7 @@ enum class EXIDeviceType : int
+   EthernetBuiltIn,
+   ModemTapServer,
+   EthernetIPC,
++  SDCard,
+   None = 0xFF
+ };
+ 
+@@ -87,7 +88,7 @@ std::unique_ptr<IEXIDevice> EXIDevice_Create(Core::System& system, EXIDeviceType
+ 
+ template <>
+ struct fmt::formatter<ExpansionInterface::EXIDeviceType>
+-    : EnumFormatter<ExpansionInterface::EXIDeviceType::EthernetIPC>
++    : EnumFormatter<ExpansionInterface::EXIDeviceType::SDCard>
+ {
+   static constexpr array_type names = {
+       _trans("Dummy"),
+@@ -106,6 +107,7 @@ struct fmt::formatter<ExpansionInterface::EXIDeviceType>
+       _trans("Broadband Adapter (HLE)"),
+       _trans("Modem Adapter (tapserver)"),
+       _trans("Broadband Adapter (IPC)"),
++      _trans("SD Card (SD2SP2)"),
+   };
+ 
+   constexpr formatter() : EnumFormatter(names) {}
+diff --git a/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.cpp b/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.cpp
+new file mode 100644
+index 0000000..ad71a1e
+--- /dev/null
++++ b/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.cpp
+@@ -0,0 +1,913 @@
++// Copyright 2025 Dolphin Emulator Project
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#include "Core/HW/EXI/EXI_DeviceSDCard.h"
++
++#include <algorithm>
++#include <cstring>
++#include <string>
++
++#include "Common/ChunkFile.h"
++#include "Common/CommonTypes.h"
++#include "Common/FileUtil.h"
++#include "Common/IOFile.h"
++#include "Common/Logging/Log.h"
++#include "Core/Config/MainSettings.h"
++#include "Core/HW/Memmap.h"
++#include "Core/System.h"
++
++namespace ExpansionInterface
++{
++// SD SPI command indices
++enum : u8
++{
++  SD_CMD0 = 0,     // GO_IDLE_STATE
++  SD_CMD8 = 8,     // SEND_IF_COND
++  SD_CMD9 = 9,     // SEND_CSD
++  SD_CMD10 = 10,   // SEND_CID
++  SD_CMD13 = 13,   // SEND_STATUS
++  SD_CMD12 = 12,   // STOP_TRANSMISSION
++  SD_CMD16 = 16,   // SET_BLOCKLEN
++  SD_CMD17 = 17,   // READ_SINGLE_BLOCK
++  SD_CMD18 = 18,   // READ_MULTIPLE_BLOCK
++  SD_CMD24 = 24,   // WRITE_BLOCK
++  SD_CMD25 = 25,   // WRITE_MULTIPLE_BLOCK
++  SD_CMD55 = 55,   // APP_CMD
++  SD_CMD58 = 58,   // READ_OCR
++  SD_CMD59 = 59,   // CRC_ON_OFF
++  SD_ACMD41 = 41,  // SD_SEND_OP_COND (following CMD55)
++};
++
++// R1 response bits
++enum : u8
++{
++  R1_IDLE = 0x01,
++  R1_ILLEGAL_CMD = 0x04,
++};
++
++// Data tokens
++constexpr u8 DATA_START_TOKEN = 0xFE;
++constexpr u8 STOP_TRAN_TOKEN = 0xFD;
++constexpr u8 DATA_ACCEPTED = 0x05;  // xxx0_0101
++
++CEXISDCard::CEXISDCard(Core::System& system) : IEXIDevice(system)
++{
++  const std::string image_path = Config::Get(Config::MAIN_SP2_SD_CARD_IMAGE);
++  INFO_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: Device created, image path='{}'", image_path);
++  if (!image_path.empty())
++  {
++    m_card.Open(image_path, "r+b");
++    if (!m_card)
++    {
++      WARN_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: Failed to open image '{}'", image_path);
++    }
++    else
++    {
++      m_card_size_blocks = m_card.GetSize() / 512;
++      INFO_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: Opened '{}' ({} blocks, {} MB)", image_path,
++                   m_card_size_blocks, m_card_size_blocks / 2048);
++    }
++  }
++  else
++  {
++    WARN_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: No image path configured");
++  }
++}
++
++bool CEXISDCard::IsPresent() const
++{
++  return m_card.IsOpen();
++}
++
++void CEXISDCard::SetCS(int cs)
++{
++  // libogc's sdgecko driver deselects CS between writing a command and reading
++  // the response. We must NOT reset the state machine on deselect, or the
++  // response will be lost. Only reset partial command reception.
++  if (!cs)
++  {
++    if (m_state == State::CmdReceive)
++    {
++      // Abort incomplete command
++      m_state = State::Idle;
++      m_cmd_byte_idx = 0;
++    }
++  }
++}
++
++// CRC16-CCITT lookup table (polynomial 0x1021)
++// clang-format off
++static constexpr u16 s_crc16_table[256] = {
++  0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50A5, 0x60C6, 0x70E7,
++  0x8108, 0x9129, 0xA14A, 0xB16B, 0xC18C, 0xD1AD, 0xE1CE, 0xF1EF,
++  0x1231, 0x0210, 0x3273, 0x2252, 0x52B5, 0x4294, 0x72F7, 0x62D6,
++  0x9339, 0x8318, 0xB37B, 0xA35A, 0xD3BD, 0xC39C, 0xF3FF, 0xE3DE,
++  0x2462, 0x3443, 0x0420, 0x1401, 0x64E6, 0x74C7, 0x44A4, 0x5485,
++  0xA56A, 0xB54B, 0x8528, 0x9509, 0xE5EE, 0xF5CF, 0xC5AC, 0xD58D,
++  0x3653, 0x2672, 0x1611, 0x0630, 0x76D7, 0x66F6, 0x5695, 0x46B4,
++  0xB75B, 0xA77A, 0x9719, 0x8738, 0xF7DF, 0xE7FE, 0xD79D, 0xC7BC,
++  0x48C4, 0x58E5, 0x6886, 0x78A7, 0x0840, 0x1861, 0x2802, 0x3823,
++  0xC9CC, 0xD9ED, 0xE98E, 0xF9AF, 0x8948, 0x9969, 0xA90A, 0xB92B,
++  0x5AF5, 0x4AD4, 0x7AB7, 0x6A96, 0x1A71, 0x0A50, 0x3A33, 0x2A12,
++  0xDBFD, 0xCBDC, 0xFBBF, 0xEB9E, 0x9B79, 0x8B58, 0xBB3B, 0xAB1A,
++  0x6CA6, 0x7C87, 0x4CE4, 0x5CC5, 0x2C22, 0x3C03, 0x0C60, 0x1C41,
++  0xEDAE, 0xFD8F, 0xCDEC, 0xDDCD, 0xAD2A, 0xBD0B, 0x8D68, 0x9D49,
++  0x7E97, 0x6EB6, 0x5ED5, 0x4EF4, 0x3E13, 0x2E32, 0x1E51, 0x0E70,
++  0xFF9F, 0xEFBE, 0xDFDD, 0xCFFC, 0xBF1B, 0xAF3A, 0x9F59, 0x8F78,
++  0x9188, 0x81A9, 0xB1CA, 0xA1EB, 0xD10C, 0xC12D, 0xF14E, 0xE16F,
++  0x1080, 0x00A1, 0x30C2, 0x20E3, 0x5004, 0x4025, 0x7046, 0x6067,
++  0x83B9, 0x9398, 0xA3FB, 0xB3DA, 0xC33D, 0xD31C, 0xE37F, 0xF35E,
++  0x02B1, 0x1290, 0x22F3, 0x32D2, 0x4235, 0x5214, 0x6277, 0x7256,
++  0xB5EA, 0xA5CB, 0x95A8, 0x8589, 0xF56E, 0xE54F, 0xD52C, 0xC50D,
++  0x34E2, 0x24C3, 0x14A0, 0x0481, 0x7466, 0x6447, 0x5424, 0x4405,
++  0xA7DB, 0xB7FA, 0x8799, 0x97B8, 0xE75F, 0xF77E, 0xC71D, 0xD73C,
++  0x26D3, 0x36F2, 0x0691, 0x16B0, 0x6657, 0x7676, 0x4615, 0x5634,
++  0xD94C, 0xC96D, 0xF90E, 0xE92F, 0x99C8, 0x89E9, 0xB98A, 0xA9AB,
++  0x5844, 0x4865, 0x7806, 0x6827, 0x18C0, 0x08E1, 0x3882, 0x28A3,
++  0xCB7D, 0xDB5C, 0xEB3F, 0xFB1E, 0x8BF9, 0x9BD8, 0xABBB, 0xBB9A,
++  0x4A75, 0x5A54, 0x6A37, 0x7A16, 0x0AF1, 0x1AD0, 0x2AB3, 0x3A92,
++  0xFD2E, 0xED0F, 0xDD6C, 0xCD4D, 0xBDAA, 0xAD8B, 0x9DE8, 0x8DC9,
++  0x7C26, 0x6C07, 0x5C64, 0x4C45, 0x3CA2, 0x2C83, 0x1CE0, 0x0CC1,
++  0xEF1F, 0xFF3E, 0xCF5D, 0xDF7C, 0xAF9B, 0xBFBA, 0x8FD9, 0x9FF8,
++  0x6E17, 0x7E36, 0x4E55, 0x5E74, 0x2E93, 0x3EB2, 0x0ED1, 0x1EF0,
++};
++// clang-format on
++
++static u16 ComputeCRC16(const u8* data, int len)
++{
++  u16 crc = 0;
++  for (int i = 0; i < len; i++)
++    crc = s_crc16_table[((crc >> 8) ^ data[i]) & 0xFF] ^ (crc << 8);
++  return crc;
++}
++
++void CEXISDCard::BuildCSD()
++{
++  // CSD Version 2.0 for SDHC
++  u64 size = m_card.GetSize();
++  if (size == 0)
++    size = 128ULL * 1024 * 1024;
++
++  // c_size = (size_in_bytes / (512 * 1024)) - 1
++  const u32 c_size = static_cast<u32>(size / (512 * 1024)) - 1;
++
++  // Byte 0 (bits 127:120): CSD_STRUCTURE=01, reserved=000000
++  m_data_buf[0] = 0x40;
++  // Byte 1 (bits 119:112): TAAC = 0x0E (1ms)
++  m_data_buf[1] = 0x0E;
++  // Byte 2 (bits 111:104): NSAC = 0
++  m_data_buf[2] = 0x00;
++  // Byte 3 (bits 103:96): TRAN_SPEED = 0x5A (50 Mbit/s)
++  m_data_buf[3] = 0x5A;
++  // Byte 4 (bits 95:88): CCC[11:4] = 0x5F
++  m_data_buf[4] = 0x5F;
++  // Byte 5 (bits 87:80): CCC[3:0]=5, READ_BL_LEN=9
++  m_data_buf[5] = 0x59;
++  // Byte 6 (bits 79:72): READ_BL_PARTIAL=0, WRITE_BLK_MISALIGN=0, READ_BLK_MISALIGN=0,
++  //                      DSR_IMP=0, reserved[3:0]=0
++  m_data_buf[6] = 0x00;
++  // Byte 7 (bits 71:64): reserved[1:0]=0, C_SIZE[21:16]
++  m_data_buf[7] = static_cast<u8>((c_size >> 16) & 0x3F);
++  // Byte 8 (bits 63:56): C_SIZE[15:8]
++  m_data_buf[8] = static_cast<u8>((c_size >> 8) & 0xFF);
++  // Byte 9 (bits 55:48): C_SIZE[7:0]
++  m_data_buf[9] = static_cast<u8>(c_size & 0xFF);
++  // Byte 10 (bits 47:40): reserved=0, ERASE_BLK_EN=1, SECTOR_SIZE[6:1]=111111
++  m_data_buf[10] = 0x7F;
++  // Byte 11 (bits 39:32): SECTOR_SIZE[0]=1, WP_GRP_SIZE=0000000
++  m_data_buf[11] = 0x80;
++  // Byte 12 (bits 31:24): WP_GRP_ENABLE=0, reserved=00, R2W_FACTOR=010, WRITE_BL_LEN[3:2]=10
++  m_data_buf[12] = 0x0A;
++  // Byte 13 (bits 23:16): WRITE_BL_LEN[1:0]=01, WRITE_BL_PARTIAL=0, reserved=00000
++  m_data_buf[13] = 0x40;
++  // Byte 14 (bits 15:8): FILE_FORMAT_GRP=0, COPY=0, PERM_WP=0, TMP_WP=0, FILE_FORMAT=00,
++  //                      reserved=00
++  m_data_buf[14] = 0x00;
++  // Byte 15 (bits 7:0): CRC=0000000, always1=1
++  m_data_buf[15] = 0x01;
++  // CRC16 over the 16 data bytes
++  const u16 crc = ComputeCRC16(m_data_buf.data(), 16);
++  m_data_buf[16] = static_cast<u8>(crc >> 8);
++  m_data_buf[17] = static_cast<u8>(crc & 0xFF);
++}
++
++void CEXISDCard::BuildCID()
++{
++  // CID register - fake values identifying this as a Dolphin emulated card
++  m_data_buf[0] = 0xAA;   // MID: manufacturer
++  m_data_buf[1] = 'D';    // OID[1]
++  m_data_buf[2] = 'O';    // OID[0]
++  m_data_buf[3] = 'D';    // PNM[4]
++  m_data_buf[4] = 'O';    // PNM[3]
++  m_data_buf[5] = 'L';    // PNM[2]
++  m_data_buf[6] = 'P';    // PNM[1]
++  m_data_buf[7] = 'H';    // PNM[0]
++  m_data_buf[8] = 0x10;   // PRV: product revision 1.0
++  m_data_buf[9] = 0x00;   // PSN[3]
++  m_data_buf[10] = 0x00;  // PSN[2]
++  m_data_buf[11] = 0x00;  // PSN[1]
++  m_data_buf[12] = 0x01;  // PSN[0]
++  m_data_buf[13] = 0x01;  // MDT upper (reserved=0000, year[7:4])
++  m_data_buf[14] = 0x56;  // MDT lower (year[3:0]=0101=5+2000=2025? no, offset from 2000: 5=2005...
++                          // use 0x19 for 2025 = 0001_1001)
++  m_data_buf[15] = 0x01;  // CRC=0, always1=1
++  // CRC16 over the 16 data bytes
++  const u16 crc = ComputeCRC16(m_data_buf.data(), 16);
++  m_data_buf[16] = static_cast<u8>(crc >> 8);
++  m_data_buf[17] = static_cast<u8>(crc & 0xFF);
++}
++
++bool CEXISDCard::ReadSector(u32 sector, u8* buf)
++{
++  if (!m_card || sector >= m_card_size_blocks)
++    return false;
++
++  m_card.Seek(static_cast<u64>(sector) * 512, File::SeekOrigin::Begin);
++  if (!m_card.ReadBytes(buf, 512))
++    return false;
++
++  // One-shot integrity check: log first non-zero sector read
++  static bool s_first_data_logged = false;
++  if (!s_first_data_logged && sector > 0)
++  {
++    bool all_zero = true;
++    for (int i = 0; i < 512 && all_zero; i++)
++      all_zero = (buf[i] == 0);
++    if (!all_zero)
++    {
++      s_first_data_logged = true;
++      NOTICE_LOG_FMT(EXPANSIONINTERFACE,
++                     "SD2SP2: First data sector={} bytes={:02x}{:02x}{:02x}{:02x} "
++                     "{:02x}{:02x}{:02x}{:02x} {:02x}{:02x}{:02x}{:02x} "
++                     "{:02x}{:02x}{:02x}{:02x}",
++                     sector, buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8],
++                     buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15]);
++    }
++  }
++  return true;
++}
++
++bool CEXISDCard::WriteSector(u32 sector, const u8* buf)
++{
++  if (!m_card || sector >= m_card_size_blocks)
++    return false;
++
++  m_card.Seek(static_cast<u64>(sector) * 512, File::SeekOrigin::Begin);
++  return m_card.WriteBytes(buf, 512);
++}
++
++void CEXISDCard::ProcessCommand()
++{
++  const u8 cmd_index = m_cmd_buf[0] & 0x3F;
++  const u32 arg = (static_cast<u32>(m_cmd_buf[1]) << 24) | (static_cast<u32>(m_cmd_buf[2]) << 16) |
++                  (static_cast<u32>(m_cmd_buf[3]) << 8) | m_cmd_buf[4];
++
++  DEBUG_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: {}CMD{} arg={:#010x}", m_app_cmd ? "A" : "", cmd_index,
++                arg);
++
++  m_pending_read = false;
++  m_pending_write = false;
++
++  const bool was_app_cmd = m_app_cmd;
++  m_app_cmd = false;
++
++  if (was_app_cmd)
++  {
++    switch (cmd_index)
++    {
++    case 13:  // ACMD13: SD_STATUS
++    {
++      // Return 64 bytes of SD Status (mostly zeros = defaults)
++      std::memset(m_data_buf.data(), 0, 64);
++      // DAT_BUS_WIDTH = 0 (1 bit), SECURED_MODE = 0, SD_CARD_TYPE = 0x0000
++      // SPEED_CLASS = 4 (Class 10)
++      m_data_buf[8] = 0x04;
++      const u16 crc_sd = ComputeCRC16(m_data_buf.data(), 64);
++      m_data_buf[64] = static_cast<u8>(crc_sd >> 8);
++      m_data_buf[65] = static_cast<u8>(crc_sd & 0xFF);
++      m_data_size = 64;
++      // ACMD13 returns R2 (2 bytes) in SPI mode, then data block
++      m_response = {0x00, 0x00};
++      m_pending_read = true;
++      return;
++    }
++    case 23:  // ACMD23: SET_WR_BLK_ERASE_COUNT (pre-erase hint, no-op for emulation)
++      m_response = {0x00};
++      return;
++    case SD_ACMD41:  // SD_SEND_OP_COND
++      // Always report ready (initialized, SDHC)
++      m_initialized = true;
++      m_response = {0x00};
++      return;
++    default:
++      m_response = {R1_ILLEGAL_CMD};
++      return;
++    }
++  }
++
++  switch (cmd_index)
++  {
++  case SD_CMD0:  // GO_IDLE_STATE
++    m_initialized = false;
++    m_response = {R1_IDLE};
++    break;
++
++  case SD_CMD8:  // SEND_IF_COND
++    // Echo back check pattern with voltage accepted (3.3V, pattern 0xAA)
++    if ((arg & 0x1FF) == 0x1AA)
++      m_response = {R1_IDLE, 0x00, 0x00, 0x01, 0xAA};
++    else
++      m_response = {R1_IDLE | R1_ILLEGAL_CMD};
++    break;
++
++  case SD_CMD9:  // SEND_CSD
++    BuildCSD();
++    m_data_size = 16;
++    m_response = {0x00};
++    m_pending_read = true;
++    break;
++
++  case SD_CMD10:  // SEND_CID
++    BuildCID();
++    m_data_size = 16;
++    m_response = {0x00};
++    m_pending_read = true;
++    break;
++
++  case SD_CMD12:  // STOP_TRANSMISSION
++  {
++    const u32 sectors_read = m_current_sector - m_cmd18_start_sector;
++    DEBUG_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: STOP sectors={}-{} ({}sectors, {}KB)",
++                  m_cmd18_start_sector, m_current_sector, sectors_read, sectors_read * 512 / 1024);
++    m_multi_block = false;
++    // CMD12 has an R1b response: R1 byte followed by busy signaling.
++    // libogc2's SD driver polls for card-ready (0xFF) after CMD12 on the next
++    // select cycle. If we go straight to Idle (0xFF), the driver may miss the
++    // busy->ready transition and fail. Send R1(0x00) + busy(0x00) so the
++    // ready-poll sees 0x00 then 0xFF (Idle), matching real hardware behavior.
++    m_response = {0x00, 0x00};
++    break;
++  }
++
++  case SD_CMD13:  // SEND_STATUS (R2 response = 2 bytes)
++    m_response = {0x00, 0x00};
++    break;
++
++  case SD_CMD16:  // SET_BLOCKLEN (no-op for SDHC, always 512)
++    m_response = {0x00};
++    break;
++
++  case SD_CMD17:  // READ_SINGLE_BLOCK
++    NOTICE_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: READ sector={}", arg);
++    m_current_sector = arg;
++    if (ReadSector(m_current_sector, m_data_buf.data()))
++    {
++      const u16 crc17 = ComputeCRC16(m_data_buf.data(), 512);
++      m_data_buf[512] = static_cast<u8>(crc17 >> 8);
++      m_data_buf[513] = static_cast<u8>(crc17 & 0xFF);
++      m_data_size = 512;
++      m_multi_block = false;
++      m_response = {0x00};
++      m_pending_read = true;
++    }
++    else
++    {
++      m_response = {0x01};  // read error
++    }
++    break;
++
++  case SD_CMD18:  // READ_MULTIPLE_BLOCK
++    m_cmd18_start_sector = arg;
++    m_cmd18_sector_count = 0;
++    m_current_sector = arg;
++    DEBUG_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: CMD18 READ_MULTI sector={}", arg);
++    if (ReadSector(m_current_sector, m_data_buf.data()))
++    {
++      // Dump first 32 bytes of high-sector reads to verify ISO header data on disk
++      static u32 s_header_dumps = 0;
++      // Only dump sectors that look like GCM/ISO headers (ConsoleID 'G' = GameCube)
++      if (m_data_buf[0] == 0x47 && s_header_dumps < 10)
++      {
++        s_header_dumps++;
++        const u32 magic = (static_cast<u32>(m_data_buf[0x1C]) << 24) |
++                          (static_cast<u32>(m_data_buf[0x1D]) << 16) |
++                          (static_cast<u32>(m_data_buf[0x1E]) << 8) | m_data_buf[0x1F];
++        NOTICE_LOG_FMT(EXPANSIONINTERFACE,
++                       "SD2SP2: Sector {} data: {:02x}{:02x}{:02x}{:02x} {:02x}{:02x}{:02x}{:02x} "
++                       "{:02x}{:02x}{:02x}{:02x} {:02x}{:02x}{:02x}{:02x} "
++                       "{:02x}{:02x}{:02x}{:02x} {:02x}{:02x}{:02x}{:02x} "
++                       "{:02x}{:02x}{:02x}{:02x} {:02x}{:02x}{:02x}{:02x} DVDMagic={:08X}",
++                       arg, m_data_buf[0], m_data_buf[1], m_data_buf[2], m_data_buf[3],
++                       m_data_buf[4], m_data_buf[5], m_data_buf[6], m_data_buf[7], m_data_buf[8],
++                       m_data_buf[9], m_data_buf[10], m_data_buf[11], m_data_buf[12],
++                       m_data_buf[13], m_data_buf[14], m_data_buf[15], m_data_buf[16],
++                       m_data_buf[17], m_data_buf[18], m_data_buf[19], m_data_buf[20],
++                       m_data_buf[21], m_data_buf[22], m_data_buf[23], m_data_buf[24],
++                       m_data_buf[25], m_data_buf[26], m_data_buf[27], m_data_buf[28],
++                       m_data_buf[29], m_data_buf[30], m_data_buf[31], magic);
++      }
++
++      const u16 crc18 = ComputeCRC16(m_data_buf.data(), 512);
++      m_data_buf[512] = static_cast<u8>(crc18 >> 8);
++      m_data_buf[513] = static_cast<u8>(crc18 & 0xFF);
++      m_data_size = 512;
++      m_multi_block = true;
++      m_response = {0x00};
++      m_pending_read = true;
++    }
++    else
++    {
++      m_response = {0x01};
++    }
++    break;
++
++  case SD_CMD24:  // WRITE_BLOCK
++    NOTICE_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: WRITE sector={}", arg);
++    m_current_sector = arg;
++    m_data_size = 512;
++    m_multi_block = false;
++    m_response = {0x00};
++    m_pending_write = true;
++    break;
++
++  case SD_CMD25:  // WRITE_MULTIPLE_BLOCK
++    m_current_sector = arg;
++    m_data_size = 512;
++    m_multi_block = true;
++    m_response = {0x00};
++    m_pending_write = true;
++    break;
++
++  case SD_CMD55:  // APP_CMD
++    m_app_cmd = true;
++    m_response = {m_initialized ? static_cast<u8>(0x00) : static_cast<u8>(R1_IDLE)};
++    break;
++
++  case SD_CMD59:  // CRC_ON_OFF
++    // Accept CRC enable/disable, no actual validation needed
++    m_response = {m_initialized ? static_cast<u8>(0x00) : static_cast<u8>(R1_IDLE)};
++    break;
++
++  case SD_CMD58:  // READ_OCR
++    // OCR: power up done (bit31), SDHC (bit30), 3.2-3.3V supported
++    if (m_initialized)
++      m_response = {0x00, 0xC0, 0xFF, 0x80, 0x00};
++    else
++      m_response = {R1_IDLE, 0x00, 0xFF, 0x80, 0x00};
++    break;
++
++  default:
++    WARN_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: Unhandled command CMD{} arg={:#010x}", cmd_index,
++                 arg);
++    m_response = {R1_ILLEGAL_CMD};
++    break;
++  }
++}
++
++void CEXISDCard::TransferByte(u8& byte)
++{
++  const u8 received = byte;
++
++  switch (m_state)
++  {
++  case State::Idle:
++    byte = 0xFF;
++    // Command start byte: 0b01xxxxxx (bits 7:6 = 01)
++    if ((received & 0xC0) == 0x40)
++    {
++      m_cmd_buf[0] = received;
++      m_cmd_byte_idx = 1;
++      m_state = State::CmdReceive;
++    }
++    break;
++
++  case State::CmdReceive:
++    byte = 0xFF;
++    m_cmd_buf[m_cmd_byte_idx++] = received;
++    if (m_cmd_byte_idx == 6)
++    {
++      ProcessCommand();
++      m_response_idx = 0;
++      m_state = State::Response;
++    }
++    break;
++
++  case State::Response:
++    if (m_response_idx < m_response.size())
++      byte = m_response[m_response_idx++];
++    else
++      byte = 0xFF;
++
++    if (m_response_idx >= m_response.size())
++    {
++      if (m_pending_read)
++      {
++        m_pending_read = false;
++        m_state = State::DataReadToken;
++        m_data_byte_idx = 0;
++      }
++      else if (m_pending_write)
++      {
++        m_pending_write = false;
++        m_state = State::DataWriteToken;
++      }
++      else
++      {
++        m_state = State::Idle;
++      }
++    }
++    break;
++
++  case State::DataReadToken:
++    // Send the data start token
++    byte = DATA_START_TOKEN;
++    // Per SD SPI spec, the card must watch MOSI for commands even while sending data.
++    // CMD12 (STOP_TRANSMISSION) can arrive during the data token phase.
++    // libogc deselects CS after reading a complete sector (state=DataReadToken),
++    // then reselects and sends CMD12 — so CMD12's first byte hits this state.
++    if (m_multi_block && (received & 0xC0) == 0x40)
++    {
++      // Accept CMD12 and any other command — abort the multi-block read
++      m_multi_block = false;
++      m_cmd_buf[0] = received;
++      m_cmd_byte_idx = 1;
++      m_state = State::CmdReceive;
++      break;
++    }
++    m_state = State::DataRead;
++    m_data_byte_idx = 0;
++    break;
++
++  case State::DataRead:
++    if (m_data_byte_idx < m_data_size + 2)
++      byte = m_data_buf[m_data_byte_idx++];
++    else
++      byte = 0xFF;
++
++    // During multi-block reads, watch for CMD12 (0x4C = 0x40 | 12)
++    if (m_multi_block && (received & 0xC0) == 0x40)
++    {
++      const u8 cmd_idx = received & 0x3F;
++      if (cmd_idx == SD_CMD12)
++      {
++        m_multi_block = false;
++        m_cmd_buf[0] = received;
++        m_cmd_byte_idx = 1;
++        m_state = State::CmdReceive;
++        break;
++      }
++    }
++
++    if (m_data_byte_idx >= m_data_size + 2)
++    {
++      if (m_multi_block)
++      {
++        m_current_sector++;
++        if (ReadSector(m_current_sector, m_data_buf.data()))
++        {
++          const u16 crc_mb = ComputeCRC16(m_data_buf.data(), m_data_size);
++          m_data_buf[m_data_size] = static_cast<u8>(crc_mb >> 8);
++          m_data_buf[m_data_size + 1] = static_cast<u8>(crc_mb & 0xFF);
++          m_state = State::DataReadToken;
++        }
++        else
++        {
++          m_multi_block = false;
++          m_state = State::Idle;
++        }
++      }
++      else
++      {
++        m_state = State::Idle;
++      }
++    }
++    break;
++
++  case State::DataWriteToken:
++    byte = 0xFF;
++    if (received == DATA_START_TOKEN)
++    {
++      m_data_byte_idx = 0;
++      m_state = State::DataWrite;
++    }
++    else if (received == STOP_TRAN_TOKEN)
++    {
++      // Stop multi-block write
++      m_multi_block = false;
++      m_response = {0xFF, 0x00, 0xFF};  // busy then ready
++      m_response_idx = 0;
++      m_state = State::Response;
++    }
++    break;
++
++  case State::DataWrite:
++    byte = 0xFF;
++    if (m_data_byte_idx < m_data_size + 2)
++      m_data_buf[m_data_byte_idx++] = received;
++
++    if (m_data_byte_idx >= m_data_size + 2)
++    {
++      if (!WriteSector(m_current_sector, m_data_buf.data()))
++        WARN_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: Write failed at sector {}", m_current_sector);
++
++      if (m_multi_block)
++      {
++        m_current_sector++;
++        // Send write response then go back to wait for next block
++        m_pending_write = true;
++        m_response = {DATA_ACCEPTED, 0xFF};
++        m_response_idx = 0;
++        m_state = State::Response;
++      }
++      else
++      {
++        m_response = {DATA_ACCEPTED, 0xFF};
++        m_response_idx = 0;
++        m_state = State::Response;
++      }
++    }
++    break;
++
++  case State::DataWriteResponse:
++    // Unused - handled inline in DataWrite
++    byte = 0xFF;
++    if ((received & 0xC0) == 0x40)
++    {
++      // Host sending new command — abort and process it
++      m_multi_block = false;
++      m_pending_write = false;
++      m_cmd_buf[0] = received;
++      m_cmd_byte_idx = 1;
++      m_state = State::CmdReceive;
++    }
++    else
++    {
++      m_state = State::Idle;
++    }
++    break;
++  }
++}
++
++void CEXISDCard::ImmReadWrite(u32& data, u32 size)
++{
++  // SPI is full-duplex: host sends and receives simultaneously.
++
++  // Fast path: Idle state — return 0xFF for all bytes immediately.
++  // Swiss continuously polls the SD card; short-circuit this.
++  if (m_state == State::Idle)
++  {
++    // Check if any byte is a command start (0x40-0x7F)
++    bool has_command = false;
++    for (u32 i = 0; i < size; i++)
++    {
++      u8 sent = static_cast<u8>(data >> (24 - i * 8));
++      if ((sent & 0xC0) == 0x40)
++      {
++        has_command = true;
++        break;
++      }
++    }
++    if (!has_command)
++    {
++      data = 0xFFFFFFFF;
++      return;
++    }
++  }
++
++  // Normal path through TransferByte for commands and data transfers
++  u32 result = 0;
++  for (u32 i = 0; i < size; i++)
++  {
++    u8 byte = static_cast<u8>(data >> (24 - i * 8));
++    TransferByte(byte);
++    result |= static_cast<u32>(byte) << (24 - i * 8);
++  }
++  data = result;
++}
++
++u32 CEXISDCard::ImmRead(u32 size)
++{
++  // Fast path: Idle state returns 0xFF for all bytes. Swiss continuously polls
++  // the SD card at ~1MB/s in idle state. Short-circuit this to avoid the full
++  // TransferByte state machine overhead for each poll byte.
++  if (m_state == State::Idle)
++    return 0xFFFFFFFF;
++
++  // Fast path: Response state - pack response bytes directly
++  if (m_state == State::Response)
++  {
++    u32 result = 0;
++    for (u32 i = 0; i < size; i++)
++    {
++      u8 byte;
++      if (m_response_idx < m_response.size())
++        byte = m_response[m_response_idx++];
++      else
++        byte = 0xFF;
++      result |= static_cast<u32>(byte) << (24 - i * 8);
++    }
++    if (m_response_idx >= m_response.size())
++    {
++      if (m_pending_read)
++      {
++        m_pending_read = false;
++        m_state = State::DataReadToken;
++        m_data_byte_idx = 0;
++      }
++      else if (m_pending_write)
++      {
++        m_pending_write = false;
++        m_state = State::DataWriteToken;
++      }
++      else
++      {
++        m_state = State::Idle;
++      }
++    }
++    return result;
++  }
++
++  // Fast path: DataReadToken - send 0xFE token
++  if (m_state == State::DataReadToken)
++  {
++    m_state = State::DataRead;
++    m_data_byte_idx = 0;
++    // Pack token into highest byte, remaining bytes from data buffer
++    u32 result = static_cast<u32>(DATA_START_TOKEN) << 24;
++    for (u32 i = 1; i < size; i++)
++    {
++      u8 byte = (m_data_byte_idx < m_data_size + 2) ? m_data_buf[m_data_byte_idx++] : 0xFF;
++      result |= static_cast<u32>(byte) << (24 - i * 8);
++    }
++    return result;
++  }
++
++  // Fast path: DataRead state - direct buffer access, but only if the entire
++  // transfer fits within the current sector's remaining data. If a sector
++  // boundary would occur mid-transfer, fall through to TransferByte which
++  // handles state transitions correctly across boundaries.
++  if (m_state == State::DataRead && m_data_byte_idx + static_cast<int>(size) <= m_data_size + 2)
++  {
++    u32 result = 0;
++    for (u32 i = 0; i < size; i++)
++    {
++      u8 byte = m_data_buf[m_data_byte_idx++];
++      result |= static_cast<u32>(byte) << (24 - i * 8);
++    }
++    // Check if we just finished the sector
++    if (m_data_byte_idx >= m_data_size + 2)
++    {
++      if (m_multi_block)
++      {
++        m_current_sector++;
++        if (ReadSector(m_current_sector, m_data_buf.data()))
++        {
++          const u16 crc = ComputeCRC16(m_data_buf.data(), m_data_size);
++          m_data_buf[m_data_size] = static_cast<u8>(crc >> 8);
++          m_data_buf[m_data_size + 1] = static_cast<u8>(crc & 0xFF);
++          m_state = State::DataReadToken;
++        }
++        else
++        {
++          m_multi_block = false;
++          m_state = State::Idle;
++        }
++      }
++      else
++      {
++        m_state = State::Idle;
++      }
++    }
++    return result;
++  }
++
++  // Default path through TransferByte for all other states
++  return IEXIDevice::ImmRead(size);
++}
++
++void CEXISDCard::DMARead(u32 address, u32 size)
++{
++  // Bulk read optimization: if we're in DataRead state, copy directly from
++  // our data buffer to GC memory instead of going through TransferByte.
++  if (m_state == State::DataRead && m_data_byte_idx + static_cast<int>(size) <= m_data_size + 2)
++  {
++    auto& memory = m_system.GetMemory();
++    for (u32 i = 0; i < size; i++)
++    {
++      memory.Write_U8(m_data_buf[m_data_byte_idx++], address++);
++    }
++    // Handle sector completion
++    if (m_data_byte_idx >= m_data_size + 2)
++    {
++      if (m_multi_block)
++      {
++        m_current_sector++;
++        if (ReadSector(m_current_sector, m_data_buf.data()))
++        {
++          const u16 crc = ComputeCRC16(m_data_buf.data(), m_data_size);
++          m_data_buf[m_data_size] = static_cast<u8>(crc >> 8);
++          m_data_buf[m_data_size + 1] = static_cast<u8>(crc & 0xFF);
++          m_state = State::DataReadToken;
++        }
++        else
++        {
++          m_multi_block = false;
++          m_state = State::Idle;
++        }
++      }
++      else
++      {
++        m_state = State::Idle;
++      }
++    }
++    return;
++  }
++
++  // Fallback to TransferByte for boundary cases and other states
++  IEXIDevice::DMARead(address, size);
++}
++
++void CEXISDCard::DMAWrite(u32 address, u32 size)
++{
++  DEBUG_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: DMAWrite addr={:#010x}, size={}, state={}, sector={}",
++                address, size, static_cast<int>(m_state), m_current_sector);
++
++  auto& memory = m_system.GetMemory();
++
++  // When DMA fires in DataWriteToken state, the 0xFE data start token was
++  // either not sent separately or was sent via a path we didn't catch.
++  // Handle the transition here: if we're waiting for the token, accept the
++  // DMA data directly as write data (the token may have been implicit).
++  if (m_state == State::DataWriteToken)
++  {
++    // Check if the first byte is the data start token
++    u8 first_byte = memory.Read_U8(address);
++    if (first_byte == DATA_START_TOKEN)
++    {
++      // Token is prepended to the DMA data
++      address++;
++      size--;
++    }
++    // Either way, transition to DataWrite — DMA means "here's the data"
++    m_data_byte_idx = 0;
++    m_state = State::DataWrite;
++  }
++
++  if (m_state == State::DataWrite)
++  {
++    // Bulk copy from GC memory into our write buffer
++    u32 bytes_to_copy = std::min(size, static_cast<u32>(m_data_size + 2 - m_data_byte_idx));
++    for (u32 i = 0; i < bytes_to_copy; i++)
++    {
++      m_data_buf[m_data_byte_idx++] = memory.Read_U8(address++);
++    }
++
++    // Check if we've received the full data block + CRC
++    if (m_data_byte_idx >= m_data_size + 2)
++    {
++      if (!WriteSector(m_current_sector, m_data_buf.data()))
++        WARN_LOG_FMT(EXPANSIONINTERFACE, "SD2SP2: DMA write failed at sector {}", m_current_sector);
++
++      if (m_multi_block)
++      {
++        m_current_sector++;
++        m_pending_write = true;
++        m_response = {DATA_ACCEPTED, 0xFF};
++        m_response_idx = 0;
++        m_state = State::Response;
++      }
++      else
++      {
++        m_response = {DATA_ACCEPTED, 0xFF};
++        m_response_idx = 0;
++        m_state = State::Response;
++      }
++    }
++  }
++  else
++  {
++    // Fallback for other states
++    IEXIDevice::DMAWrite(address, size);
++  }
++}
++
++void CEXISDCard::DoState(PointerWrap& p)
++{
++  p.Do(m_state);
++  p.Do(m_cmd_buf);
++  p.Do(m_cmd_byte_idx);
++  p.Do(m_response);
++  p.Do(m_response_idx);
++  p.Do(m_data_buf);
++  p.Do(m_data_byte_idx);
++  p.Do(m_data_size);
++  p.Do(m_app_cmd);
++  p.Do(m_initialized);
++  p.Do(m_multi_block);
++  p.Do(m_pending_read);
++  p.Do(m_pending_write);
++  p.Do(m_current_sector);
++  p.Do(m_card_size_blocks);
++}
++
++}  // namespace ExpansionInterface
+diff --git a/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.h b/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.h
+new file mode 100644
+index 0000000..93c83b4
+--- /dev/null
++++ b/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.h
+@@ -0,0 +1,82 @@
++// Copyright 2025 Dolphin Emulator Project
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#pragma once
++
++#include <array>
++#include <vector>
++
++#include "Common/CommonTypes.h"
++#include "Common/IOFile.h"
++#include "Core/HW/EXI/EXI_Device.h"
++
++namespace ExpansionInterface
++{
++// SD card in SPI mode emulation for SD2SP2 (GameCube Serial Port 2 SD adapter).
++// Implements the SD SPI protocol over EXI byte transfers.
++class CEXISDCard : public IEXIDevice
++{
++public:
++  explicit CEXISDCard(Core::System& system);
++  bool IsPresent() const override;
++  void SetCS(int cs) override;
++  void DoState(PointerWrap& p) override;
++  void ImmReadWrite(u32& data, u32 size) override;
++  u32 ImmRead(u32 size) override;
++  void DMARead(u32 address, u32 size) override;
++  void DMAWrite(u32 address, u32 size) override;
++
++private:
++  void TransferByte(u8& byte) override;
++
++  void ProcessCommand();
++  void BuildCSD();
++  void BuildCID();
++
++  bool ReadSector(u32 sector, u8* buf);
++  bool WriteSector(u32 sector, const u8* buf);
++
++  enum class State
++  {
++    Idle,
++    CmdReceive,
++    Response,
++    DataReadToken,
++    DataRead,
++    DataWriteToken,
++    DataWrite,
++    DataWriteResponse,
++  };
++
++  State m_state = State::Idle;
++
++  // Command receive buffer (6 bytes: start_bit|transmission_bit|cmd[5:0], arg[31:0], crc|stop_bit)
++  std::array<u8, 6> m_cmd_buf{};
++  int m_cmd_byte_idx = 0;
++
++  // Response buffer
++  std::vector<u8> m_response;
++  size_t m_response_idx = 0;
++
++  // Data transfer buffer (max 512 data bytes + 2 CRC bytes)
++  std::array<u8, 514> m_data_buf{};
++  int m_data_byte_idx = 0;
++  int m_data_size = 512;  // data bytes to transfer (not counting 2 CRC bytes)
++
++  // SD card state
++  bool m_app_cmd = false;
++  bool m_initialized = false;
++  bool m_multi_block = false;
++  bool m_pending_read = false;
++  bool m_pending_write = false;
++
++  u32 m_current_sector = 0;
++  u64 m_card_size_blocks = 0;
++
++  // Transfer tracking
++  u32 m_cmd18_start_sector = 0;
++  u32 m_cmd18_sector_count = 0;
++
++  File::IOFile m_card;
++};
++}  // namespace ExpansionInterface

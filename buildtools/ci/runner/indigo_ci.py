@@ -84,7 +84,9 @@ class Pool:
 POOLS = {
     "build": Pool("build", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py"),
                   "indigo-build", "8", "6g"),
-    "emulator": Pool("emulator", "emulator.Dockerfile", ("entrypoint.sh",),
+    "emulator": Pool("emulator", "emulator.Dockerfile",
+                     ("entrypoint.sh", "dolphin/0001-sd2sp2-adapter.patch", "dolphin/0002-flush-sd-writes.patch",
+                      "dolphin/0003-controller-no-response.patch"),
                      "indigo-emulator", "8", "6g"),
     # norvitech.com's checks (Python, Node, gitleaks) on the build image.
     "site": Pool("site", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py"),

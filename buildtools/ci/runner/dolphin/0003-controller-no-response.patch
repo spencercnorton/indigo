@@ -1,0 +1,43 @@
+Indigo's change: a standard controller answers the serial commands it doesn't
+answer on a console with no response. Dolphin answered nothing, which keeps
+the transfer pending forever: libogc's steering wheel support sends a wheel's
+0x30 to every port, so Swiss stalled starting up with a controller connected,
+and Swiss sends the GameID packet (for BlueRetro adapters) before a launch,
+so the launch stalled too. GNU General Public License version 2 or later, as
+Dolphin.
+
+diff --git a/Source/Core/Core/HW/SI/SI_DeviceGCController.cpp b/Source/Core/Core/HW/SI/SI_DeviceGCController.cpp
+index 1f7a7b6..73885de 100644
+--- a/Source/Core/Core/HW/SI/SI_DeviceGCController.cpp
++++ b/Source/Core/Core/HW/SI/SI_DeviceGCController.cpp
+@@ -95,21 +95,22 @@ int CSIDevice_GCController::RunBuffer(u8* buffer, int request_length)
+     return sizeof(SOrigin);
+   }
+ 
+-  // GameID packet, no response needed, nothing to do
+-  // On real hardware, this is used to configure the BlueRetro controller
+-  // adapter, while licensed accessories ignore this command.
++  // GameID packet. On real hardware, this is used to configure the BlueRetro
++  // controller adapter, while licensed accessories ignore this command: the SI
++  // reports no response. Returning 0 would leave the transfer pending forever.
+   case EBufferCommands::CMD_SET_GAME_ID:
+   {
+-    return 0;
++    return -1;
+   }
+ 
+-  // DEFAULT
++  // A controller does not answer a command it doesn't know (such as a steering
++  // wheel's 0x30, which libogc's wheel support sends to every port): the SI
++  // reports no response, as for the GameID packet above.
+   default:
+   {
+-    ERROR_LOG_FMT(SERIALINTERFACE, "Unknown SI command     ({:#x})", static_cast<u8>(command));
+-    PanicAlertFmt("SI: Unknown command ({:#x})", static_cast<u8>(command));
++    WARN_LOG_FMT(SERIALINTERFACE, "Unknown SI command     ({:#x})", static_cast<u8>(command));
++    return -1;
+   }
+-  break;
+   }
+ 
+   return 0;

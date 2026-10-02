@@ -1,0 +1,19 @@
+Indigo's change on top of 0001: the SD card's writes reach the image file at
+once, so the emulator test can read what Indigo wrote once Dolphin stops.
+GNU General Public License version 2 or later, as Dolphin.
+
+diff --git a/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.cpp b/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.cpp
+index ad71a1e..47fc1ae 100644
+--- a/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.cpp
++++ b/Source/Core/Core/HW/EXI/EXI_DeviceSDCard.cpp
+@@ -253,7 +253,9 @@ bool CEXISDCard::WriteSector(u32 sector, const u8* buf)
+     return false;
+ 
+   m_card.Seek(static_cast<u64>(sector) * 512, File::SeekOrigin::Begin);
+-  return m_card.WriteBytes(buf, 512);
++  // Every write reaches the image file at once, so whatever reads the image
++  // after Dolphin stops (or is stopped) sees what the program wrote.
++  return m_card.WriteBytes(buf, 512) && m_card.Flush();
+ }
+ 
+ void CEXISDCard::ProcessCommand()
