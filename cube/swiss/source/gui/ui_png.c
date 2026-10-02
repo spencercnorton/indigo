@@ -1,4 +1,5 @@
-/* ui_png.c - an app's picture, from a PNG on the card to a Library poster.
+/* ui_png.c - an app's or a folder's picture, from a PNG on the card to a
+   Library poster.
 
    See ui_png.h. The PNG is decoded a row at a time: each row is inflated,
    unfiltered, expanded to RGBA and added into a picture reduced by a whole
@@ -19,6 +20,11 @@
 #define PNG_MAX_UPSCALE 4.0f
 /* The reduced picture's largest size in bytes (RGBA). */
 #define PNG_MAX_REDUCED (1024u * 1024u)
+/* The most a chunk's CRC is taken over at once. zlib-ng's CRC of a longer
+ * run takes a table of 32 to 128 KB on the stack (its Chorba methods: over
+ * 8 KB on a 64-bit build, over 256 KB on the console's), and posters are
+ * made on a thread with 32 KB of stack: a 2 MB chunk overran it. */
+#define PNG_CRC_PIECE 8192u
 #define PNG_MIP_LEVELS 5u
 
 typedef struct {
@@ -56,6 +62,20 @@ static bool stopped(const volatile bool *stop)
 	return stop != NULL && *stop;
 }
 
+/* zlib's memory comes from the same calloc and free as the rest, so all a
+ * poster holds is ui_png's own, and counted as UI_PNG_MAX_WORK. */
+static voidpf zlibAlloc(voidpf opaque, uInt items, uInt size)
+{
+	(void)opaque;
+	return calloc(items, size);
+}
+
+static void zlibFree(voidpf opaque, voidpf address)
+{
+	(void)opaque;
+	free(address);
+}
+
 static uint32_t be32(const uint8_t *p)
 {
 	return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 |
@@ -67,6 +87,7 @@ static bool nextChunk(const uint8_t *png, size_t size, size_t *offset,
 	pngChunk_t *chunk)
 {
 	size_t at = *offset;
+	size_t done, piece;
 	uint32_t length;
 	uLong crc;
 
@@ -78,7 +99,13 @@ static bool nextChunk(const uint8_t *png, size_t size, size_t *offset,
 		return false;
 	}
 	crc = crc32(0L, Z_NULL, 0);
-	crc = crc32(crc, png + at + 4u, (uInt)(length + 4u));
+	for(done = 0u; done < (size_t)length + 4u; done += piece) {
+		piece = (size_t)length + 4u - done;
+		if(piece > PNG_CRC_PIECE) {
+			piece = PNG_CRC_PIECE;
+		}
+		crc = crc32(crc, png + at + 4u + done, (uInt)piece);
+	}
 	if((uint32_t)crc != be32(png + at + 8u + length)) {
 		return false;
 	}
@@ -490,6 +517,8 @@ static bool decodeRows(const uint8_t *png, size_t size, size_t idatStart,
 	bool streamOpen = false;
 
 	memset(&zs, 0, sizeof(zs));
+	zs.zalloc = zlibAlloc;
+	zs.zfree = zlibFree;
 	if(current == NULL || previous == NULL || rgba == NULL || sums == NULL ||
 		inflateInit(&zs) != Z_OK) {
 		goto done;
@@ -1239,13 +1268,17 @@ bool UIPng_Poster(const uint8_t *png, size_t size, uint8_t *out)
 bool UIPng_PosterUntil(const uint8_t *png, size_t size, uint8_t *out,
 	const volatile bool *stop)
 {
-	pngHeader_t *header = malloc(sizeof(pngHeader_t));
+	pngHeader_t *header;
 	uint8_t *reduced = NULL;
 	uint8_t *levels[2] = {NULL, NULL};
 	size_t next, idatStart, idatEnd;
 	pngFit_t fit;
 	bool ok = false;
 
+	if(size > UI_PNG_MAX_FILE) {
+		return false;
+	}
+	header = malloc(sizeof(pngHeader_t));
 	if(header == NULL || out == NULL || !readHeader(png, size, header, &next) ||
 		!readChunks(png, size, next, header, &idatStart, &idatEnd)) {
 		goto done;

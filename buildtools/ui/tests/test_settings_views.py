@@ -250,7 +250,8 @@ class SettingsViewsTest(unittest.TestCase):
         # Only these can dim a text row; a new one needs its hint decided.
         self.assertEqual(set(re.findall(r'rowText(?:Number)?\(row, "[^"]*", [^;]*, ([^;]*?)\);',
                                         SETTINGS_C)),
-                         {"true", "netEnable", "devices[DEVICE_CONFIG] != NULL"})
+                         {"true", "netEnable", "devices[DEVICE_CONFIG] != NULL",
+                          "!swissSettings.libraryFolders"})
         arms = toggle_arms()
         network = re.findall(r'case (SET_\w+): rowText(?:Number)?\(row, "[^"]*", [^;]*, netEnable\);',
                              SETTINGS_C)
@@ -258,6 +259,15 @@ class SettingsViewsTest(unittest.TestCase):
         for option in network:
             self.assertTrue(arms[option].strip().startswith("DrawGetTextEntry("), option)
         self.assertIn("devices[DEVICE_CONFIG] != NULL &&", arms["SET_SAVE_FOLDER"])
+        # Flatten directory dims while Library Folders sets it, and then
+        # neither A nor Left and Right reach its editor.
+        locked = SETTINGS_C[SETTINGS_C.index("static bool settingsRowLocked("):]
+        locked = locked[:locked.index("\n}\n")]
+        self.assertIn("option == SET_FLATTEN_DIR &&\n\t\tswissSettings.libraryFolders", locked)
+        change = SETTINGS_C[SETTINGS_C.index("static void settingsChangeValue("):]
+        self.assertIn("if(settingsRowLocked(page, option)) {\n\t\treturn;", change[:200])
+        self.assertRegex(SETTINGS_C, r"else if\(settingsRowLocked\(ref->page, ref->option\)\) \{"
+                                     r"[^}]*\}\s*else if\(settingsRowIsAction\(ref->page, ref->option\)\)")
 
     def test_entry_points_land_where_they_should(self):
         self.assertIn("show_settings_view(VIEW_QUICK, 0, NULL)", SWISS_C)

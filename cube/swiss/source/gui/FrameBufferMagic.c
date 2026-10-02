@@ -49,7 +49,7 @@
 #include "ui_cheats.h"
 #include "ui_about.h"
 #include "ui_launch.h"
-#include "apps.h"
+#include "card_art.h"
 
 #define GUI_MSGBOX_ALPHA 225
 #define GUI_PANEL_ALPHA 150	// Phase 2: translucent content panels (config-gated; dialogs stay at GUI_MSGBOX_ALPHA)
@@ -2753,6 +2753,24 @@ static GXColor _GameflowAccent(const uiGameflowCardSnapshot_t *record,
 	return color;
 }
 
+/* A name where a game's ID goes: its first eight characters in capitals,
+ * with an ellipsis when it is longer, so a card or a tile holds it. */
+#define GAMEFLOW_SHORT_NAME_SIZE 12
+static void _GameflowShortName(const char *title,
+	char name[GAMEFLOW_SHORT_NAME_SIZE])
+{
+	size_t k;
+
+	for(k = 0; k < 8u && title[k] != '\0'; ++k) {
+		char c = title[k];
+		name[k] = c >= 'a' && c <= 'z' ? (char)(c - 'a' + 'A') : c;
+	}
+	if(title[k] != '\0') {
+		name[k++] = '\205';
+	}
+	name[k] = '\0';
+}
+
 static const uiGameflowCardSnapshot_t *_GameflowFindRecord(
 	const uiGameflowRenderSnapshot_t *snapshot, u32 libraryIndex,
 	u32 *recordIndex)
@@ -2985,23 +3003,16 @@ static void _GameflowDrawFallback(const gameflowRenderCard_t *card,
 		const char *regionText = card->record->flags & UI_GAMEFLOW_CARD_PARENT ?
 			"GAME LIBRARY" :
 			UIGameflowLibrary_RegionLabel(card->record->gameId);
-		/* An app whose poster isn't made yet: its name where a game's ID
-		 * goes, cut to what a card holds, so the cards tell apart. */
-		char appName[12];
+		/* An app whose poster isn't made yet, or a folder of games: its
+		 * name where a game's ID goes, cut to what a card holds, so the
+		 * cards tell apart. */
+		char appName[GAMEFLOW_SHORT_NAME_SIZE];
 
-		if(card->record->flags & UI_GAMEFLOW_CARD_APP) {
-			size_t k;
-
-			for(k = 0; k < 8u && card->record->title[k] != '\0'; ++k) {
-				char c = card->record->title[k];
-				appName[k] = c >= 'a' && c <= 'z' ? (char)(c - 'a' + 'A') : c;
-			}
-			if(card->record->title[k] != '\0') {
-				appName[k++] = '\205';
-			}
-			appName[k] = '\0';
+		if(card->record->flags & UI_GAMEFLOW_CARD_APP ||
+			card->record->subfolder) {
+			_GameflowShortName(card->record->title, appName);
 			identityText = appName;
-			regionText = "APP";
+			regionText = card->record->subfolder ? "FOLDER" : "APP";
 		}
 		gameflowPoint_t idPoint = _GameflowQuadPoint(&card->quad, 0.5f,
 			layout.idBaseline);
@@ -3030,9 +3041,10 @@ static GXTexObj *_GameflowPosterTexture(
 	uiPosterHandle_t handle;
 	uiPosterResult_t result;
 
-	/* An app's poster is its own picture, from Apps' slots. */
-	if(record->flags & UI_GAMEFLOW_CARD_APP) {
-		return apps_poster(record->libraryIndex);
+	/* An app's poster, or a folder of games', is made on the console from
+	 * its own picture or its name (card_art.c). */
+	if((record->flags & UI_GAMEFLOW_CARD_APP) || record->subfolder) {
+		return CardArt_Poster((int32_t)record->libraryIndex);
 	}
 	/* _DrawGameflow runs under _videomutex. Query and Peek deliberately do
 	 * not lock and the borrowed texture is consumed before that lock drops. */
@@ -3133,7 +3145,7 @@ static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
 }
 
 /* A game on Spotlight's row: its disc banner inside the tile's frame, or its
- * game ID when it has no banner. */
+ * game ID when it has no banner; a folder of games, its short name. */
 static void _GameflowDrawSpotlightTile(const gameflowRenderCard_t *card,
 	GXTexObj *banner, float reveal)
 {
@@ -3149,9 +3161,16 @@ static void _GameflowDrawSpotlightTile(const gameflowRenderCard_t *card,
 	{
 		GXColor text = {190, 181, 231, _GameflowAlpha(220.0f * alpha)};
 		gameflowPoint_t middle = _GameflowQuadPoint(&card->quad, 0.5f, 0.5f);
+		char shortName[GAMEFLOW_SHORT_NAME_SIZE];
+		const char *label = card->record->gameId[0] ?
+			card->record->gameId : card->record->title;
+
+		if(card->record->subfolder) {
+			_GameflowShortName(card->record->title, shortName);
+			label = shortName;
+		}
 		drawStringMedium((int)_GameflowRound(middle.x),
-			(int)_GameflowRound(middle.y) - 6, card->record->gameId[0] ?
-			card->record->gameId : card->record->title, 0.38f,
+			(int)_GameflowRound(middle.y) - 6, label, 0.38f,
 			ALIGN_CENTER, text);
 	}
 }
@@ -3352,7 +3371,7 @@ static void _GameflowPrepareSpotlight(drawGameflowEvent_t *data)
 	}
 	text[out] = '\0';
 	if(out == 0u && selected != NULL &&
-		!(selected->flags & UI_GAMEFLOW_CARD_PARENT)) {
+		!(selected->flags & UI_GAMEFLOW_CARD_PARENT) && !selected->subfolder) {
 		memcpy(text, GAMEFLOW_SPOTLIGHT_NO_DESCRIPTION,
 			sizeof(GAMEFLOW_SPOTLIGHT_NO_DESCRIPTION));
 	}
@@ -4205,7 +4224,10 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		 * and with their own controls: A starts one, and that is all. */
 		bool apps = (data->snapshot.records[0].flags &
 			UI_GAMEFLOW_CARD_APP) != 0u;
-		const char *heading = apps ? "APPS" : "GAME LIBRARY";
+		/* Inside a Library Folders folder the heading names it. */
+		const char *heading = apps ? "APPS" :
+			data->snapshot.folder[0] ? data->snapshot.folder :
+			"GAME LIBRARY";
 
 		if(layout == UI_GAMEFLOW_LAYOUT_VERTICAL) {
 			drawStringMedium(262, 177, heading, 0.42f, ALIGN_LEFT,
@@ -4216,7 +4238,7 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 				label);
 		}
 		else if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
-			drawStringMedium(36, 62, "GAME LIBRARY", 0.42f, ALIGN_LEFT,
+			drawStringMedium(36, 62, heading, 0.42f, ALIGN_LEFT,
 				label);
 		}
 		else {
@@ -4229,6 +4251,8 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			command.a = _GameflowAlpha(180.0f * reveal * commandRail.alpha);
 			_DrawHintText(320, 428, apps ?
 				"D-PAD  BROWSE   A  START   B  HOME" :
+				data->snapshot.folder[0] ?
+				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   B  BACK" :
 				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   X  BACK   B  HOME",
 				0.46f, ALIGN_CENTER, command);
 		}

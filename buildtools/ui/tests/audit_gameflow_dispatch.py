@@ -152,6 +152,10 @@ library_mode = extract_function(
     SWISS, "static uiGameflowLibraryMode_t gameflowLibraryMode("
 )
 assert "UIGameflowLibrary_Locate(gamesRoot, curDir.name)" in library_mode
+# Library Folders locates by its own rule only while it is on.
+assert ("location = swissSettings.libraryFolders ?\n"
+        "\t\tUIGameflowLibrary_LocateFolders(gamesRoot, curDir.name) :\n"
+        "\t\tUIGameflowLibrary_Locate(gamesRoot, curDir.name);") in library_mode
 assert "UIGameflowLibrary_ClassifierInit(&classifier, location);" in library_mode
 assert "UIGameflowLibrary_ClassifierAdd(&classifier, type, name)" in library_mode
 assert "UIGameflowLibrary_ClassifierFinish(&classifier)" in library_mode
@@ -287,6 +291,17 @@ def check_layouts(swiss: str) -> None:
     assert "!(browserButtons & BUTTON_A)" in entry
     assert "(browserButtons & PAD_BUTTON_Y)" in entry
     assert "UIGameflowLibrary_UsesRetainedDetail(" in entry
+    # Library Folders: each entry answers for itself, so a folder of games
+    # never opens Detail and a game beside it always does.
+    assert "gameflowEntryMode(gameflowMode, directory[curSelection])" in entry
+    activate = carousel[carousel.index("if((browserButtons & BUTTON_A) || openSettings) {"):]
+    activate = activate[:activate.index("//go into a folder or select a file")]
+    assert "gameflowEntryMode(gameflowMode, directory[curSelection]);" in activate
+    assert "if(entryMode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS) {" in activate
+    # Inside a folder, B goes up it before it can reach Home.
+    up = carousel.index("if((browserButtons & BUTTON_B) && useGameflow &&\n\t\t\tgameflowInsideFolder()) {")
+    home = carousel.index("curMenuLocation = ON_OPTIONS;", up)
+    assert "needsDeviceChange = upToParent(&curDir);" in carousel[up:home]
     branch = carousel.index("if((browserButtons & BUTTON_A) || openSettings) {")
     loaders = carousel.index("gameflowSnapshot, openSettings);", branch)
     loaders = carousel.index("gameflowSnapshot, openSettings);", loaders + 1)
@@ -323,8 +338,14 @@ layout_mutants = (
      "FILES_PER_PAGE_CAROUSEL : FILES_PER_PAGE_CAROUSEL,"),
     ("the C-stick opens settings", "(browserButtons & PAD_BUTTON_Y) &&\n\t\t\tUIGameflowLibrary_UsesRetainedDetail(",
      "(browserButtons & BUTTON_Y) &&\n\t\t\tUIGameflowLibrary_UsesRetainedDetail("),
-    ("Y on the parent card", "(browserButtons & PAD_BUTTON_Y) &&\n\t\t\tUIGameflowLibrary_UsesRetainedDetail(gameflowMode,\n\t\t\t\tgameflowEntryType(directory[curSelection]));",
+    ("Y on the parent card", "(browserButtons & PAD_BUTTON_Y) &&\n\t\t\tUIGameflowLibrary_UsesRetainedDetail(\n\t\t\t\tgameflowEntryMode(gameflowMode, directory[curSelection]),\n\t\t\t\tgameflowEntryType(directory[curSelection]));",
      "(browserButtons & PAD_BUTTON_Y);"),
+    ("Y on a folder of games", "UIGameflowLibrary_UsesRetainedDetail(\n\t\t\t\tgameflowEntryMode(gameflowMode, directory[curSelection]),",
+     "UIGameflowLibrary_UsesRetainedDetail(\n\t\t\t\tgameflowMode,"),
+    ("A on a folder of games opens Detail", "uiGameflowLibraryMode_t entryMode =\n\t\t\t\tgameflowEntryMode(gameflowMode, directory[curSelection]);",
+     "uiGameflowLibraryMode_t entryMode =\n\t\t\t\tgameflowMode;"),
+    ("B inside a folder goes Home", "if((browserButtons & BUTTON_B) && useGameflow &&\n\t\t\tgameflowInsideFolder()) {",
+     "if((browserButtons & BUTTON_B) && useGameflow &&\n\t\t\tfalse) {"),
     ("Y falls into the legacy file path", "\t\t\tif(openSettings) {\n\t\t\t\t/* Y has no legacy meaning: it never opens or boots a file. */\n\t\t\t\twhile(padsButtonsHeld() & PAD_BUTTON_Y) VIDEO_WaitVSync();\n\t\t\t\tbreak;\n\t\t\t}\n",
      ""),
     ("a loader drops Y", "\tcontext.openSettings = openSettings;\n\tmemcpy(context.gameId, headerEntry.gameId",

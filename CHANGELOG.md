@@ -8,6 +8,18 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### New
 
+- Settings › Setup › Library › **Library Folders** lets you sort your games
+  into folders. On, the Library shows the folders in `/games` as cards beside
+  the games, two levels deep: A opens one, B goes back up, and the heading
+  names the folder you are in. A folder in a folder shows every game below
+  it. Off (the default), the Library is one list of every game, as before.
+  In `global.ini` it is `Library Folders`.
+- A folder can have a picture: a PNG beside it with its name, such as
+  `Nintendo.png` for the Nintendo folder, becomes its poster, as an app's
+  picture does. A folder without one shows a poster of its name. A picture
+  over 2 MB is never read, and posters are made one at a time on a thread of
+  their own, so a large picture neither holds up a button nor runs the
+  console short of memory.
 - Settings › Setup › Console › **Wave Speed** sets how fast the waves drift:
   Slow (half as fast), Normal (the default) or Fast (three times as fast). A
   new speed picks up from where the waves are. In `global.ini` it is
@@ -66,6 +78,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Apps: a picture with a long block of data in it, more than 256 KB in one
+  piece (some programs save a PNG that way, or put a large block of
+  metadata in it), crashed Indigo while it made the app's poster. The
+  checksum zlib-ng takes of a block that long needs more stack than the
+  poster thread has; Indigo now takes it 8 KB at a time. Folder pictures
+  are made the same way.
 - A game or app could freeze as it started, until the console was switched
   off. Stopping the menu's music and sounds could catch the audio DSP with an
   answer the CPU had not read yet; the DSP then never took the stop, and the

@@ -18,10 +18,6 @@ bool apps_available(DEVICEHANDLER_INTERFACE *device);
 /* The Apps screen, until B; an app it starts never returns. Menu thread. */
 void show_apps(void);
 
-/* The poster of app (its place in the list Apps shows), or NULL. Video
- * thread, with the video lock held, as _DrawGameflow has it. */
-GXTexObj *apps_poster(u32 app);
-
 /* swiss.c's, so Apps browses as the Library does. */
 uiGameflowLayout_t gameflowLayout(void);
 u32 gameflowMenuInputPolicy(uiGameflowLayout_t layout);
