@@ -51,7 +51,7 @@ SOURCES		:=  source \
 DATA		:=	data  
 TEXTURES	:=	source/images \
               source/images/buttons
-INCLUDES	:=	include $(SOURCES) ..
+INCLUDES	:=	include $(SOURCES) .. aesnd/libogc2/include
 
 #---------------------------------------------------------------------------------
 # options for code generation
@@ -66,7 +66,7 @@ LDFLAGS		= $(CFLAGS) -Wl,-Map,$(notdir $@).map -T ../../linker-script/ogc.ld -T 
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with the project
 #---------------------------------------------------------------------------------
-LIBS	:=	-ldvm -ltinysmb -lbba -laesnd -ldb -logc -lm -lpsoarchive $(shell $(PREFIX)pkg-config --libs libdeflate iconv mad uchardet libxxhash zlib)
+LIBS	:=	-ldvm -ltinysmb -lbba -ldb -logc -lm -lpsoarchive $(shell $(PREFIX)pkg-config --libs libdeflate iconv mad uchardet libxxhash zlib)
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -111,7 +111,9 @@ endif
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) $(addsuffix .o,$(TPLFILES))
 export OFILES_SOURCES := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(sFILES:.s=.o) $(SFILES:.S=.o)
-export OFILES := $(OFILES_BIN) $(OFILES_SOURCES)
+# libogc2's AESND, from aesnd/ with Indigo's patches rather than -laesnd
+export OFILES_AESND := aesndlib.o aesndmp3player.o
+export OFILES := $(OFILES_BIN) $(OFILES_SOURCES) $(OFILES_AESND)
 
 export HFILES := $(addsuffix .h,$(subst .,_,$(BINFILES))) $(addsuffix .h,$(subst .,_,$(TPLFILES))) tags.h
 
@@ -173,6 +175,25 @@ tags.h :
 #---------------------------------------------------------------------------------
 	$(SILENTMSG) $(notdir $@)
 	$(SILENTCMD)git for-each-ref --format='"%(objectname:short)",' refs/tags | grep -vx '"$(shell git rev-parse --short HEAD)",' > $@ || true
+
+#---------------------------------------------------------------------------------
+# libogc2's AESND: the copy in aesnd/libogc2, with the patches beside it
+# applied in order (aesnd/README.md), and its DSP code assembled from source
+#---------------------------------------------------------------------------------
+AESND	:=	$(CURDIR)/../aesnd
+
+aesndlib.c : $(AESND)/libogc2/libaesnd/aesndlib.c $(sort $(wildcard $(AESND)/*.patch))
+	$(SILENTMSG) $(notdir $@)
+	$(SILENTCMD)cp $< $@ && for p in $(filter %.patch,$^); do patch -s -F0 $@ $$p || exit 1; done
+
+aesndmp3player.c : $(AESND)/libogc2/libaesnd/aesndmp3player.c
+	$(SILENTCMD)cp $< $@
+
+aesnddspmixer.h : $(AESND)/libogc2/libaesnd/dspcode/dspmixer.s
+	$(SILENTMSG) $(notdir $@)
+	$(SILENTCMD)$(DEVKITPRO)/tools/bin/gcdsptool -c $< -o $@ > /dev/null
+
+aesndlib.o : aesnddspmixer.h
 
 -include $(DEPENDS)
 

@@ -9,10 +9,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
 ### Fixes
 
 - A game or app could freeze as it started, until the console was switched
-  off. Stopping the menu's music and sounds could catch the audio DSP with a
-  reply the CPU had not read yet; the DSP then never took the stop, and the
-  CPU waited for it with interrupts off. The menu's audio now lets the DSP
-  finish first.
+  off. Stopping the menu's music and sounds could catch the audio DSP with an
+  answer the CPU had not read yet; the DSP then never took the stop, and the
+  CPU waited for it with interrupts off. Indigo now builds libogc2's audio
+  library from its own copy, with the stop fixed to let the DSP finish first.
 - After a game failed to launch, the menu stayed in the video mode the launch
   had switched to for the game. A PAL game left an NTSC console's menu at
   50 Hz, which a TV that only takes 60 Hz shows as a black screen, and an
@@ -20,6 +20,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- AESND, libogc2's audio library, is built from `cube/swiss/aesnd`: a copy
+  byte-identical to the toolchain's libogc2, with Indigo's fix as a patch
+  applied at build time. CI checks the copy against that commit and the
+  toolchain, and stops AESND 300 times in the emulator test.
 - CI saves settings to a card whose writes fail, boots it again and checks
   the settings still load in their colours, and its smoke job with every
   setting changed now runs on a GC Loader.

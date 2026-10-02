@@ -11,6 +11,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
+import check_aesnd
 import check_package
 import check_upstream
 import check_workflows
@@ -230,6 +231,35 @@ class Upstream(unittest.TestCase):
         self.assertEqual(done.returncode, 1)
         self.assertIn("  a.c\n", done.stdout)
         self.assertIn(b"<<<<<<<", (indigo / "a.c").read_bytes())
+
+
+class Aesnd(unittest.TestCase):
+    """The AESND copy is byte-identical to the libogc2 commit it names, and that
+    commit is the toolchain's: changes go in patches, and a moved toolchain fails."""
+
+    def check(self, copied: dict[str, bytes], toolchain: str = "libogc2 r1.abc") -> list[str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            up, ours = Path(tmp, "up"), Path(tmp, "ours")
+            commit = Upstream.commit(self, up, {"libaesnd/aesndlib.c": b"void AESND_Reset(void);\r\n",
+                                                "include/aesndlib.h": b"#pragma once\n"})
+            copy = ours / check_aesnd.COPY
+            (copy / "libogc2").mkdir(parents=True)
+            (copy / "UPSTREAM").write_text(f"upstream {up}\ncommit {commit}\ntoolchain libogc2 r1.abc\n")
+            for name, data in copied.items():
+                (copy / "libogc2" / name).parent.mkdir(parents=True, exist_ok=True)
+                (copy / "libogc2" / name).write_bytes(data)
+            libversion = Path(tmp, "libversion.h")
+            libversion.write_text(f'#define _V_STRING "{toolchain}"\n')
+            return check_aesnd.problems(ours, libversion=libversion)
+
+    def test_the_copy_is_the_commit_byte_for_byte(self):
+        self.assertEqual(self.check({"libaesnd/aesndlib.c": b"void AESND_Reset(void);\r\n"}), [])
+        self.assertIn("differs from libogc2", self.check({"libaesnd/aesndlib.c": b"void AESND_Reset(void);\n"})[0])
+        self.assertIn("is not in libogc2", self.check({"libaesnd/extra.c": b""})[0])
+
+    def test_a_toolchain_that_moves_on_fails(self):
+        self.assertIn("the toolchain's libogc2 is libogc2 r2.def",
+                      self.check({"include/aesndlib.h": b"#pragma once\n"}, toolchain="libogc2 r2.def")[0])
 
 
 ROOT = Path(__file__).resolve().parents[2]
