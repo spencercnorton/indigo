@@ -149,8 +149,10 @@ jobs:
               artifact: emulator-smoke-ntsc-component-sd2sp2 }
           - { name: "Emulator (game, NTSC, SD2SP2)", route: game, region: ntsc, cable: composite,
               storage: sd2sp2, artifact: emulator-game-ntsc-sd2sp2 }
+          # Its game is in 40 pieces on the card, the most a GC Loader serves.
           - { name: "Emulator (game, NTSC, component, GC Loader)", route: game, region: ntsc,
-              cable: component, storage: gcloader, artifact: emulator-game-ntsc-component-gcloader }
+              cable: component, storage: gcloader, fragments: 40,
+              artifact: emulator-game-ntsc-component-gcloader }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -169,6 +171,7 @@ jobs:
           CABLE: ${{ matrix.cable }}
           STORAGE: ${{ matrix.storage }}
           SETTINGS: ${{ matrix.settings }}
+          FRAGMENTS: ${{ matrix.fragments }}
         run: |
           set -- --probe build/probe.dol --route "$ROUTE" --region "$REGION" --cable "$CABLE"
           if [ "$STORAGE" != dvd ]; then
@@ -176,6 +179,9 @@ jobs:
           fi
           if [ -n "$SETTINGS" ]; then
             set -- "$@" --settings "$SETTINGS"
+          fi
+          if [ -n "$FRAGMENTS" ]; then
+            set -- "$@" --fragments "$FRAGMENTS"
           fi
           python3 buildtools/ui/emulator/run.py build/swiss.dol "$@" --out emulator
       - name: Summary
