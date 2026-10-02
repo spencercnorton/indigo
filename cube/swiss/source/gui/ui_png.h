@@ -24,7 +24,9 @@
  * any of its rows are.
  * Whatever the PNG, making its poster never holds more than UI_PNG_MAX_WORK
  * at once (zlib's window included) besides the PNG's bytes and out, and
- * gives all of it back: test_ui_png.py counts it.
+ * gives all of it back, and it needs little stack (card_art's thread has
+ * 32 KB): zlib is never asked for a CRC of more than 8 KB at once.
+ * test_ui_png.py counts both.
  */
 
 #define UI_PNG_POSTER_BYTES 43648u	/* the poster pack's record */

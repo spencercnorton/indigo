@@ -631,7 +631,12 @@ class MemoryTests(unittest.TestCase):
     allocation, zlib's included): never more than UI_PNG_MAX_WORK at once,
     whatever the picture, and all of it given back, made or not. A file over
     UI_PNG_MAX_FILE is refused before anything is allocated, and a picture
-    over UI_PNG_MAX_SIDE before its rows are."""
+    over UI_PNG_MAX_SIDE before its rows are. And zlib is never given more
+    than CRC_PIECE bytes for one CRC: zlib-ng's CRC of a long run takes a
+    table of 32 to 128 KB on the stack, and posters are made on a thread
+    with 32 KB (a 2 MB chunk crashed a console)."""
+
+    CRC_PIECE = 8192
 
     @classmethod
     def setUpClass(cls):
@@ -647,13 +652,15 @@ class MemoryTests(unittest.TestCase):
         cls.dir.cleanup()
 
     def peak(self, data: bytes, mode: str = "peak") -> tuple[bool, int, int]:
-        """Made or not, the most ui_png held at once, and what it still holds."""
+        """Made or not, the most ui_png held at once, and what it still
+        holds; and zlib's CRC was never given too long a run at once."""
         path = os.path.join(self.dir.name, "peak.png")
         with open(path, "wb") as f:
             f.write(data)
         result = subprocess.run([BINARY, mode, path], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        made, peak, live = map(int, result.stdout.split())
+        made, peak, live, crc = map(int, result.stdout.split())
+        self.assertLessEqual(crc, self.CRC_PIECE, "a CRC of a long run at once: the poster thread's stack")
         return bool(made), peak, live
 
     def test_the_largest_pictures_stay_within_the_bound(self):
@@ -675,6 +682,9 @@ class MemoryTests(unittest.TestCase):
             "438x511 RGBA, 16 bits": plain_png(438, 511, 6, 16),
             # Data past the last row is never inflated into anything.
             "4 MB more data than its rows": plain_png(64, 64, 2, 8, extra=4 << 20),
+            # One chunk of nearly 2 MB, a reader skips it: its CRC is taken
+            # a piece at a time (the console's crash, 2026-10-02).
+            "a 2 MB ancillary chunk": self.padded(plain_png(64, 64, 2, 8), (2 << 20) - 64),
         }
         for name, data in cases.items():
             with self.subTest(name):
@@ -683,6 +693,12 @@ class MemoryTests(unittest.TestCase):
                 self.assertLessEqual(peak, self.max_work)
                 self.assertGreater(peak, levels)
                 self.assertEqual(live, 0)
+
+    @staticmethod
+    def padded(data: bytes, size: int) -> bytes:
+        """data padded to size bytes with one ancillary chunk before IEND."""
+        pad = size - len(data) - 12
+        return data[:-12] + chunk(b"paDd", bytes(pad)) + data[-12:]
 
     def test_a_file_over_the_limit_is_refused_at_once(self):
         noise = np.random.default_rng(7).integers(0, 256, 1024 * 1024 * 3, np.uint8).tobytes()
@@ -722,7 +738,7 @@ class MemoryTests(unittest.TestCase):
         result = subprocess.run([BINARY, "peak-name", "Old saves of every racing game I own"],
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        made, peak, live = map(int, result.stdout.split())
+        made, peak, live, _ = map(int, result.stdout.split())
         self.assertEqual(made, 1)
         self.assertLessEqual(peak, self.max_work)
         self.assertGreater(peak, 0)

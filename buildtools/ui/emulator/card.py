@@ -239,7 +239,9 @@ def outer_header() -> bytes:
 def folder_picture(kind: str) -> bytes:
     """A folder's picture: shown, or a picture Indigo can read but must not
     (too big: 3 MB, padded with a chunk a reader skips), or one it can't
-    (damaged: a bit of its image data flipped, so its CRC fails)."""
+    (damaged: a bit of its image data flipped, so its CRC fails). The one
+    shown carries a 1.5 MB chunk a reader skips as well: a chunk that long
+    once overran the poster thread's stack in zlib-ng's CRC."""
     import io
     import zlib
     from PIL import Image
@@ -247,8 +249,8 @@ def folder_picture(kind: str) -> bytes:
     out = io.BytesIO()
     Image.new("RGB", (192, 256), SHOWN_PICTURE if kind == "shown" else REFUSED_PICTURE).save(out, "PNG")
     data = out.getvalue()
-    if kind == "too big":
-        pad = bytes(3 << 20)
+    if kind in ("shown", "too big"):
+        pad = bytes(3 << 20 if kind == "too big" else 3 << 19)
         data = (data[:-12] + struct.pack(">I", len(pad)) + b"paDd" + pad +
                 struct.pack(">I", zlib.crc32(b"paDd" + pad)) + data[-12:])
     elif kind == "damaged":

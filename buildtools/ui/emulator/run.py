@@ -102,7 +102,14 @@ FATAL = re.compile("|".join((
     r"Segmentation fault", r"core dumped", r"\bPANIC\b", r"ASSERT(?:ION)? FAILED",
     r"Invalid (?:read|write) (?:from|to)", r"Unknown (?:opcode|instruction)",
     r"FIFO (?:is )?(?:overflowed|desync)", r"failed to compile shader", r"device lost",
+    r"poster stack .*\(overrun\)",
 )), re.I)
+# card_art's poster thread reports how much of its stack it used each time it
+# stops (Indigo's debug output, a development console's): Dolphin doesn't
+# stop at an overrun as a console does, so a run that used more than this
+# share of it fails.
+POSTER_STACK_SHARE = 0.75
+POSTER_STACK = re.compile(r"card_art: poster stack (\d+) of (\d+) bytes used")
 # The DSP runs its real microcode (LLE): Dolphin's high-level stand-ins know
 # libogc's audio library but not libogc2's, so the menu music's stop before a
 # launch would never be answered. It runs in step with the CPU, not on a thread
@@ -1011,6 +1018,14 @@ def fatal_lines(log: Path) -> list[str]:
     return [line.strip() for line in text.splitlines() if FATAL.search(line)][:20]
 
 
+def poster_stack(log: Path) -> dict[str, int] | None:
+    """The most of its stack the poster thread used in a run, or None when
+    it never ran."""
+    text = log.read_text(errors="replace") if log.exists() else ""
+    used = [(int(m.group(1)), int(m.group(2))) for m in POSTER_STACK.finditer(text)]
+    return {"most": max(u for u, _ in used), "of": used[0][1], "stops": len(used)} if used else None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dol", type=Path)
@@ -1095,6 +1110,12 @@ def main(argv: list[str] | None = None) -> int:
     if fatal and status == 0:
         status = 1
         report["failure"] = "Dolphin reported a crash or an invalid access"
+    stack = poster_stack(args.out / "dolphin.log")
+    if stack and stack["most"] > POSTER_STACK_SHARE * stack["of"] and status == 0:
+        status = 1
+        report["failure"] = (f"the poster thread used {stack['most']} of its {stack['of']} bytes of "
+                             f"stack, more than {POSTER_STACK_SHARE:.0%}")
+    report["poster_stack"] = stack
     report.update({
         "passed": status == 0,
         "checks": route.checks if route else [],

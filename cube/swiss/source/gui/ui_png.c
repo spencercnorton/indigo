@@ -20,6 +20,11 @@
 #define PNG_MAX_UPSCALE 4.0f
 /* The reduced picture's largest size in bytes (RGBA). */
 #define PNG_MAX_REDUCED (1024u * 1024u)
+/* The most a chunk's CRC is taken over at once. zlib-ng's CRC of a longer
+ * run takes a table of 32 to 128 KB on the stack (its Chorba methods: over
+ * 8 KB on a 64-bit build, over 256 KB on the console's), and posters are
+ * made on a thread with 32 KB of stack: a 2 MB chunk overran it. */
+#define PNG_CRC_PIECE 8192u
 #define PNG_MIP_LEVELS 5u
 
 typedef struct {
@@ -82,6 +87,7 @@ static bool nextChunk(const uint8_t *png, size_t size, size_t *offset,
 	pngChunk_t *chunk)
 {
 	size_t at = *offset;
+	size_t done, piece;
 	uint32_t length;
 	uLong crc;
 
@@ -93,7 +99,13 @@ static bool nextChunk(const uint8_t *png, size_t size, size_t *offset,
 		return false;
 	}
 	crc = crc32(0L, Z_NULL, 0);
-	crc = crc32(crc, png + at + 4u, (uInt)(length + 4u));
+	for(done = 0u; done < (size_t)length + 4u; done += piece) {
+		piece = (size_t)length + 4u - done;
+		if(piece > PNG_CRC_PIECE) {
+			piece = PNG_CRC_PIECE;
+		}
+		crc = crc32(crc, png + at + 4u + done, (uInt)piece);
+	}
 	if((uint32_t)crc != be32(png + at + 8u + length)) {
 		return false;
 	}

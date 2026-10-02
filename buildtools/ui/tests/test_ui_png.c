@@ -14,11 +14,13 @@
  *   test_ui_png limits                  "MAX_FILE MAX_SIDE MAX_WORK"
  *   test_ui_png peak IN | peak-name NAME | peak-stopped IN
  *                                       a poster, counting what ui_png
- *                                       allocates: "MADE PEAK LIVE", made 1
- *                                       or 0, the most held at once and what
- *                                       is still held after. Only a build
- *                                       with UI_PNG_COUNT counts (exit 4);
- *                                       the Makefile builds both with it.
+ *                                       allocates: "MADE PEAK LIVE CRC",
+ *                                       made 1 or 0, the most held at once,
+ *                                       what is still held after, and the
+ *                                       most bytes one zlib CRC call was
+ *                                       given. Only a build with
+ *                                       UI_PNG_COUNT counts (exit 4); the
+ *                                       Makefile builds both with it.
  */
 #include <math.h>
 #include <stdbool.h>
@@ -41,6 +43,7 @@ typedef union {
 
 static bool counting;
 static size_t countLive, countPeak;
+static uInt countCrcLongest;
 
 static void *countMalloc(size_t size)
 {
@@ -81,13 +84,23 @@ static void countFree(void *data)
 	free(&block[-1]);
 }
 
+/* zlib's CRC, the longest run it is given at once noted: zlib-ng takes a
+ * long run's table on the stack, more than the poster thread has. */
+static uLong countCrc32(uLong crc, const Bytef *buf, uInt len)
+{
+	if(len > countCrcLongest) countCrcLongest = len;
+	return crc32(crc, buf, len);
+}
+
 #define malloc countMalloc
 #define calloc countCalloc
 #define free countFree
+#define crc32 countCrc32
 #include "ui_png.c"
 #undef malloc
 #undef calloc
 #undef free
+#undef crc32
 #else
 #include "ui_png.h"
 #endif
@@ -183,7 +196,8 @@ int main(int argc, char **argv)
 			free(data);
 		}
 		free(poster);
-		printf("%d %zu %zu\n", ok ? 1 : 0, countPeak, countLive);
+		printf("%d %zu %zu %u\n", ok ? 1 : 0, countPeak, countLive,
+			(unsigned)countCrcLongest);
 		return 0;
 #else
 		fprintf(stderr, "%s: this build doesn't count allocations\n", argv[0]);

@@ -23,6 +23,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Apps: a picture with a long block of data in it, more than 256 KB in one
+  piece (some programs save a PNG that way, or put a large block of
+  metadata in it), crashed Indigo while it made the app's poster. The
+  checksum zlib-ng takes of a block that long needs more stack than the
+  poster thread has; Indigo now takes it 8 KB at a time. Folder pictures
+  are made the same way.
 - After a game failed to launch, the menu stayed in the video mode the launch
   had switched to for the game. A PAL game left an NTSC console's menu at
   50 Hz, which a TV that only takes 60 Hz shows as a black screen, and an

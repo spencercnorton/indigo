@@ -47,6 +47,7 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef int32_t s32;
 typedef uint64_t u64;
+#define ATTRIBUTE_ALIGN(v) __attribute__((aligned(v)))
 typedef struct { void *data; } GXTexObj;
 enum { GX_TF_CMPR = 14, GX_CLAMP = 0, GX_FALSE = 0, GX_TRUE = 1,
 	GX_LINEAR = 1, GX_LIN_MIP_LIN = 5, GX_ANISO_1 = 0 };
@@ -104,6 +105,7 @@ void countFree(void *data);
 #define free countFree
 """,
     "malloc.h": "#include <stdlib.h>\n",
+    "util.h": "void print_debug(const char *fmt, ...);\n",
 }
 
 DRIVER = r"""
@@ -290,6 +292,17 @@ void DrawWithVideoLocked(void (*change)(void *context), void *context)
 	pthread_mutex_lock(&videoLock);
 	change(context);
 	pthread_mutex_unlock(&videoLock);
+}
+
+/* Indigo's debug output: printed as "debug ..." lines. */
+#include <stdarg.h>
+void print_debug(const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	fputs("debug ", stdout);
+	vprintf(fmt, args);
+	va_end(args);
 }
 
 /* The block font: every letter a block in a 12-pixel cell. */
@@ -667,6 +680,10 @@ class CardArtTests(unittest.TestCase):
         self.assertEqual(cards[4], ("name", 0, 0, []))
         # A picture the device fails to read: its name, and not tried again.
         self.assertEqual(cards[5], ("name", 1, 1, [0]))
+        # Each stop of the poster thread reports its stack (its pthread
+        # stand-in has a stack of its own, so this one reads unused).
+        self.assertTrue(any(l.startswith("debug card_art: poster stack ") and
+                            l.endswith(" of 32768 bytes used") for l in out), out[-5:])
         (open_live, _, blocks), (live, peak, _), (closed, _, _) = self.mems(out)
         # Open holds the posters' block and nothing else ...
         self.assertEqual((open_live, blocks), (SLOTS_BYTES, 1))

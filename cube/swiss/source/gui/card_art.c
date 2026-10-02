@@ -15,6 +15,7 @@
 #include "IPLFontWrite.h"
 #include "ui_apps.h"
 #include "ui_png.h"
+#include "util.h"
 #include "card_art.h"
 
 static cardArtSource_t source;
@@ -81,6 +82,13 @@ typedef struct {
 
 #define POSTER_STACK_SIZE (32 * 1024)
 #define POSTER_PRIORITY (LWP_PRIO_NORMAL - 1)	/* as the file list's banners */
+/* How deep the poster thread's stack went, for Dolphin, which doesn't stop
+ * at an overrun as a console does (libogc2 guards a stack's lowest word):
+ * the thread fills what its stack has below it when it starts, and reports
+ * what was used when it ends. The fill starts STACK_SLACK above where the
+ * stack can begin at the lowest, so it never writes outside it. */
+#define STACK_FILL 0xA5u
+#define STACK_SLACK 1024u
 
 static lwp_t posterThread = LWP_THREAD_NULL;
 static sem_t posterStart;
@@ -130,11 +138,41 @@ static void forgetPosters(void *context)
 	UIAppsArt_Init(&art, nowMs());
 }
 
+/* Fills the stack below the caller's frame, down to STACK_SLACK above the
+ * lowest the stack can start; returns where the fill begins. */
+static volatile u8 *fillStack(void)
+{
+	volatile u8 here = 0u;
+	uintptr_t low = (uintptr_t)&here - POSTER_STACK_SIZE + STACK_SLACK;
+	uintptr_t p;
+
+	for(p = low; p < (uintptr_t)&here - 256u; ++p) {
+		*(volatile u8 *)p = STACK_FILL;
+	}
+	return (volatile u8 *)low;
+}
+
+/* What the thread used of the stack fillStack filled, on a development
+ * console's debug output. */
+static void reportStack(volatile u8 *low)
+{
+	size_t untouched = 0u;
+
+	while(untouched < POSTER_STACK_SIZE - STACK_SLACK &&
+		low[untouched] == STACK_FILL) {
+		untouched++;
+	}
+	print_debug("card_art: poster stack %u of %u bytes used%s\n",
+		(unsigned)(POSTER_STACK_SIZE - untouched), (unsigned)POSTER_STACK_SIZE,
+		untouched == 0u ? " (overrun)" : "");
+}
+
 /* The poster thread: each job's poster, from its picture, or when it has
  * none or it can't be used, from its name. */
 static void *posterMain(void *unused)
 {
 	uiPngFont_t font = {fontCellHeight(), artGlyph, NULL};
+	volatile u8 *stackLow = fillStack();
 
 	(void)unused;
 	for(;;) {
@@ -175,6 +213,7 @@ static void *posterMain(void *unused)
 		DrawWithVideoLocked(posterDone, job);
 		posterBusy = false;
 	}
+	reportStack(stackLow);
 	return NULL;
 }
 
