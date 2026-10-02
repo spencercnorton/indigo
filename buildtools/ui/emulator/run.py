@@ -171,6 +171,13 @@ def text_mask(frame: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX) -> 
     return frame[y0:y1, x0:x1] >= TEXT_LEVEL
 
 
+def backdrop(rgb: np.ndarray) -> np.ndarray:
+    """The menu's backdrop colour, from the screen's bottom corners, where
+    nothing else is drawn: settings/non-default.ini's Emerald, not Indigo's
+    default purple."""
+    return np.concatenate([rgb[-40:, :60].reshape(-1, 3), rgb[-40:, -60:].reshape(-1, 3)]).mean(axis=0)
+
+
 def diagnose(rgb: np.ndarray) -> str:
     """What a failed step's screen shows, when it is not Indigo at all."""
     black = float((rgb.max(axis=2) < 8).mean())
@@ -651,7 +658,7 @@ class Route:
         Face Off, then Save & Exit. Run on a card that fails (--sd-faults), the
         next boot of the same card (main) shows whether the settings survived."""
         home = self.boot()
-        self.home_label = home
+        self.home_label, self.home_backdrop = home, backdrop(self.last_rgb)
         face = home
         for n in (1, 2):  # Library, Source, Settings
             face = self.turn([face], "RIGHT", f"right-{n}")
@@ -665,6 +672,10 @@ class Route:
         home, _ = self.settled_label(BOOT_SECONDS, like=self.home_label)
         self.shot("next-boot", self.last_rgb)
         self.check("the next boot still has the card's settings: Indigo starts at Home", home is not None)
+        # A settings file that reads back broken boots Home too, on the defaults.
+        drift = float(np.linalg.norm(backdrop(self.last_rgb) - self.home_backdrop))
+        self.check("... in the colours the card's settings chose, not the defaults", drift < 15,
+                   drift=round(drift, 1))
 
     def game(self) -> None:
         """Boot, open the Library, move to the probe's game, open its details

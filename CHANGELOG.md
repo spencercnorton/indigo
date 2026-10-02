@@ -15,6 +15,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- CI saves settings to a card whose writes fail, boots it again and checks
+  the settings still load in their colours, and its smoke job with every
+  setting changed now runs on a GC Loader.
 - The emulator test can put the probe's game in pieces on the SD card
   (`run.py --fragments N`), as a copy onto a used card can leave a game: in
   40 it must launch, the most Swiss and a GC Loader can serve, and in more it
@@ -36,8 +39,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
   from the other region. Until now every job ran interlaced: 480p never ran.
 - An SD card can start with settings (`run.py --settings <name>`, from
   `buildtools/ui/emulator/settings/`), which must all survive Indigo's own
-  saves. CI's SD2SP2 smoke job starts with every setting of Indigo's own away
-  from its default, but Menu Widescreen.
+  saves. CI's GC Loader smoke job starts with every setting of Indigo's own
+  away from its default, but Menu Widescreen.
 - The emulator test launches a game and an app all the way. A small program,
   the probe ([`buildtools/ui/emulator/probe/`](buildtools/ui/emulator/probe/probe.c)),
   sits on the demonstration disc as a game and as an app. Launched, it
