@@ -93,7 +93,9 @@ with a tagged release.
   control or a setting updates its page in `docs/guide/` (and `docs/SETTINGS.md`
   for a settings key) in the same pull request. Pictures are recorded in the
   Dolphin emulator from a real build; say in the pull request which ones are
-  stale if you cannot record them.
+  stale if you cannot record them. Record only the screens the change alters:
+  every picture rewritten stays in the repository's history for good. A
+  picture of something moving is a lossless animated WebP.
 - **Upstream's files match `UPSTREAM`.** Outside Indigo's own paths (`OWN` in
   `buildtools/ci/check_upstream.py`), every file matches the upstream commit
   `UPSTREAM` names, line endings aside, or is listed there with the reason.
