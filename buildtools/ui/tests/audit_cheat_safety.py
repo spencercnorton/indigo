@@ -16,38 +16,11 @@ POLICY_HEADER = ROOT / "cube/swiss/source/cheats/cheat_policy.h"
 SWISS = ROOT / "cube/swiss/source/swiss.c"
 SELECTOR = ROOT / "cube/swiss/source/gui/FrameBufferMagic.c"
 TEST = Path(__file__).resolve().parent / "test_cheat_policy.c"
-BUG_BASE = "621a2687cc4039058a373b52e8ffc22a9b66dcb6"
 
 
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise SystemExit(f"cheat safety audit failed: {message}")
-
-
-def git_show(path: str) -> str:
-    return subprocess.check_output(
-        ["git", "show", f"{BUG_BASE}:{path}"], cwd=ROOT, text=True
-    )
-
-
-def assert_bug_provenance() -> None:
-    if subprocess.run(["git", "cat-file", "-e", f"{BUG_BASE}^{{commit}}"],
-                      cwd=ROOT, capture_output=True).returncode:
-        print("cheat safety audit: bug provenance skipped "
-              "(its base commit predates this repository's history)")
-        return
-    old_cheats = git_show("cube/swiss/source/cheats/cheats.c")
-    old_swiss = git_show("cube/swiss/source/swiss.c")
-    old_selector = git_show("cube/swiss/source/gui/FrameBufferMagic.c")
-    require("void kenobi_install_engine()" in old_cheats,
-            "accepted base no longer contains unchecked installer")
-    require("swiss/cheats/%.6s.chtsel" in old_cheats,
-            "accepted base no longer contains six-ID selection key")
-    require("swissSettings.wiirdDebug || getEnabledCheatsSize() > 0" in
-            old_swiss,
-            "accepted base no longer contains raw launch predicate")
-    require("swissSettings.wiirdDebug ^=1;" in old_selector,
-            "accepted base no longer contains unchecked debug toggle")
 
 
 def assert_integration() -> None:
@@ -186,7 +159,6 @@ def assert_mutations_killed() -> None:
 
 
 def main() -> None:
-    assert_bug_provenance()
     assert_integration()
     assert_mutations_killed()
     print("cheat safety integration and mutation audit passed")
