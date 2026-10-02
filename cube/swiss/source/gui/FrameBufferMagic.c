@@ -28,7 +28,6 @@
 #include "main.h"
 #include "util.h"
 #include "ata.h"
-#include "btns.h"
 #include "dolparameters.h"
 #include "cheats.h"
 #include "indigo_background.h"
@@ -57,7 +56,6 @@
 TPLFile imagesTPL;
 TPLFile buttonsTPL;
 GXTexObj bannerMaskTexObj;
-GXTexObj swissTexObj;
 GXTexObj gcdvdsmallTexObj;
 GXTexObj sdsmallTexObj;
 GXTlutObj sdsmallTlutObj;
@@ -75,12 +73,6 @@ GXTexObj memcardIndTexObj;
 GXTexObj bbaTexObj;
 GXTexObj wiikeyTexObj;
 GXTexObj systemTexObj;
-GXTexObj btnhilightTexObj;
-GXTexObj btndeviceTexObj;
-GXTexObj btnsettingsTexObj;
-GXTexObj btninfoTexObj;
-GXTexObj btnrefreshTexObj;
-GXTexObj btnexitTexObj;
 GXTexObj boxinnerTexObj;
 GXTexObj boxouterTexObj;
 GXTexObj ntscjTexObj;
@@ -115,7 +107,6 @@ static char  video_thread_stack[VIDEO_STACK_SIZE] ATTRIBUTE_ALIGN (8);
 static lwp_t video_thread = LWP_THREAD_NULL;
 static mutex_t _videomutex = LWP_MUTEX_NULL;
 static bool sceneRenderingEnabled;
-static u32 videoFrameSerial;
 /* While a Settings page is up, the screen keeps the colors that page was
  * drawn with (DrawUpdateSettingsPage): Menu, Backdrop and Wave Color, one per
  * UI_COLOR_LAYER_; disposing the page lets them go. While one of their lists
@@ -614,7 +605,6 @@ static void init_textures()
 	TPL_OpenTPLFromMemory(&imagesTPL, (void *)images_tpl, images_tpl_size);
 	TPL_OpenTPLFromMemory(&buttonsTPL, (void *)buttons_tpl, buttons_tpl_size);
 	TPL_GetTexture(&imagesTPL, banner_mask, &bannerMaskTexObj);
-	TPL_GetTexture(&imagesTPL, swissimg, &swissTexObj);
 	TPL_GetTexture(&imagesTPL, gcdvdsmall, &gcdvdsmallTexObj);
 	TPL_GetTextureCI(&imagesTPL, sdsmall, &sdsmallTexObj, &sdsmallTlutObj, GX_TLUT0);
 	GX_InitTexObjUserData(&sdsmallTexObj, &sdsmallTlutObj);
@@ -632,12 +622,6 @@ static void init_textures()
 	TPL_GetTextureCI(&imagesTPL, usbgeckoimg, &usbgeckoTexObj, &usbgeckoTlutObj, GX_TLUT0);
 	GX_InitTexObjUserData(&usbgeckoTexObj, &usbgeckoTlutObj);
 	TPL_GetTexture(&imagesTPL, bbaimg, &bbaTexObj);
-	TPL_GetTexture(&buttonsTPL, btnhilight, &btnhilightTexObj);
-	TPL_GetTexture(&buttonsTPL, btndevice, &btndeviceTexObj);
-	TPL_GetTexture(&buttonsTPL, btnsettings, &btnsettingsTexObj);
-	TPL_GetTexture(&buttonsTPL, btninfo, &btninfoTexObj);
-	TPL_GetTexture(&buttonsTPL, btnrefresh, &btnrefreshTexObj);
-	TPL_GetTexture(&buttonsTPL, btnexit, &btnexitTexObj);
 	TPL_GetTexture(&buttonsTPL, boxinner, &boxinnerTexObj);
 	TPL_GetTexture(&buttonsTPL, boxouter, &boxouterTexObj);
 	TPL_GetTexture(&imagesTPL, ntscjimg, &ntscjTexObj);
@@ -791,9 +775,6 @@ static void _DrawImageNow(int textureId, int x, int y, int width, int height, in
 	
 	switch(textureId)
 	{
-		case TEX_SWISS:
-			texObj = &swissTexObj;
-			break;
 		case TEX_GCDVDSMALL:
 			texObj = &gcdvdsmallTexObj;
 			break;
@@ -827,27 +808,6 @@ static void _DrawImageNow(int textureId, int x, int y, int width, int height, in
 			break;
 		case TEX_BBA:
 			texObj = &bbaTexObj;
-			break;
-		case TEX_BTNHILIGHT:
-			GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_TEXC, GX_CC_RASC, GX_CC_ZERO);
-			GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
-			
-			texObj = &btnhilightTexObj; color = (GXColor) {127,134,255,255};
-			break;
-		case TEX_BTNDEVICE:
-			texObj = &btndeviceTexObj;
-			break;
-		case TEX_BTNSETTINGS:
-			texObj = &btnsettingsTexObj;
-			break;
-		case TEX_BTNINFO:
-			texObj = &btninfoTexObj;
-			break;
-		case TEX_BTNREFRESH:
-			texObj = &btnrefreshTexObj;
-			break;
-		case TEX_BTNEXIT:
-			texObj = &btnexitTexObj;
 			break;
 		case TEX_CHECKED:
 			texObj = &checkedTexObj; color = (GXColor) {0,128,0,255};
@@ -3431,10 +3391,10 @@ static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
 	presentation->primaryActionsScale = _GameflowPrepareDetailText(
 		data->detail.primaryActions, sizeof(data->detail.primaryActions),
 		590, 0.46f, 0.46f);
-	/* ponytail: the shortcut, launch and cheat hints fit by their text
-	 * width. Their strings are fixed and the icons leave room (the widest,
-	 * "Z  AUTOLOAD ON   R  VERIFY", draws about 115 px of 164); measure with
-	 * GetHintSizeInPixels if a longer one is added. */
+	/* The shortcut, launch and cheat hints fit by their text width alone:
+	 * their strings are fixed and the icons leave room (the widest, "Z
+	 * AUTOLOAD ON   R  VERIFY", draws about 115 px of 164). A longer one is
+	 * measured with GetHintSizeInPixels. */
 	presentation->advancedLineOneScale = _GameflowPrepareDetailText(
 		data->detail.advancedLineOne, sizeof(data->detail.advancedLineOne),
 		164, 0.42f, 0.42f);
@@ -6982,7 +6942,6 @@ static void *videoUpdate(void *videoEventQueue) {
 			true, padsStickX(), padsStickY(), padsSubStickX(), padsSubStickY(),
 			padsButtonsHeld()
 		};
-		videoFrameSerial++;
 		// Mark events recursively as disposed
 		uiDrawObjQueue_t *videoEventQueueEntry = (uiDrawObjQueue_t*)videoEventQueue;
 		while(videoEventQueueEntry != NULL) {
@@ -7136,7 +7095,6 @@ void DrawInit(GXRModeObj *videoMode, bool black) {
 	memset(&systemInstrument, 0, sizeof(systemInstrument));
 	systemInstrument.coreTemperature = -1;
 	memcpy(systemInstrument.timeText, "--:--:--", 9u);
-	videoFrameSerial = 0u;
 	UIPerf_Reset();
 #if UI_PERF_CAPTURE
 	GX_SetGPMetric(GX_PERF0_VERTICES, GX_PERF1_TEXELS);

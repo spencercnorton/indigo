@@ -10,7 +10,7 @@
 
 set -eu
 
-BASE="${1:-origin/master}"
+BASE="${1:-origin/beta}"
 ROOT=$(git rev-parse --show-toplevel)
 cd "$ROOT"
 
