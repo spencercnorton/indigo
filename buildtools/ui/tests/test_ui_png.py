@@ -638,8 +638,6 @@ class MemoryTests(unittest.TestCase):
         limits = subprocess.run([BINARY, "limits"], capture_output=True, text=True, check=True)
         cls.max_file, cls.max_side, cls.max_work = map(int, limits.stdout.split())
         probe = subprocess.run([BINARY, "peak-name", "x"], capture_output=True, text=True)
-        if probe.returncode == 4 and BINARY.endswith("_san"):
-            raise unittest.SkipTest("the sanitizer build counts nothing: the plain build runs these")
         if probe.returncode != 0:
             raise AssertionError(f"{BINARY} doesn't count allocations: {probe.stderr}")
         cls.dir = tempfile.TemporaryDirectory()

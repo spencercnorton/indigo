@@ -17,9 +17,11 @@
  *                                       allocates: "MADE PEAK LIVE", made 1
  *                                       or 0, the most held at once and what
  *                                       is still held after. Only a build
- *                                       with UI_PNG_COUNT counts (exit 4).
+ *                                       with UI_PNG_COUNT counts (exit 4);
+ *                                       the Makefile builds both with it.
  */
 #include <math.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -29,18 +31,22 @@
 
 #ifdef UI_PNG_COUNT
 /* ui_png.c built in, its malloc, calloc and free (zlib's through them)
- * counted: each block carries its size in front of it. */
+ * counted in the peak modes, where each block carries its size in front of
+ * it. In the others they are the C library's own, whole, for the
+ * sanitizers. main decides before ui_png allocates anything. */
 typedef union {
 	size_t size;
 	max_align_t align;
 } countHeader_t;
 
+static bool counting;
 static size_t countLive, countPeak;
 
 static void *countMalloc(size_t size)
 {
 	countHeader_t *block;
 
+	if(!counting) return malloc(size);
 	if(size > SIZE_MAX - sizeof(countHeader_t) ||
 		(block = malloc(sizeof(countHeader_t) + size)) == NULL) {
 		return NULL;
@@ -55,6 +61,7 @@ static void *countCalloc(size_t count, size_t size)
 {
 	void *data;
 
+	if(!counting) return calloc(count, size);
 	if(size != 0u && count > SIZE_MAX / size) return NULL;
 	data = countMalloc(count * size);
 	if(data != NULL) memset(data, 0, count * size);
@@ -65,6 +72,10 @@ static void countFree(void *data)
 {
 	countHeader_t *block = data;
 
+	if(!counting) {
+		free(data);
+		return;
+	}
 	if(block == NULL) return;
 	countLive -= block[-1].size;
 	free(&block[-1]);
@@ -144,6 +155,10 @@ int main(int argc, char **argv)
 {
 	size_t size;
 	unsigned char *data;
+
+#ifdef UI_PNG_COUNT
+	counting = argc == 3 && strncmp(argv[1], "peak", 4) == 0;
+#endif
 
 	if(argc == 2 && strcmp(argv[1], "limits") == 0) {
 		printf("%u %u %u\n", (unsigned)UI_PNG_MAX_FILE,
