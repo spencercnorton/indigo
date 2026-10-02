@@ -8,6 +8,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- A game or app could freeze as it started, until the console was switched
+  off. Stopping the menu's music and sounds could catch the audio DSP with a
+  reply the CPU had not read yet; the DSP then never took the stop, and the
+  CPU waited for it with interrupts off. The menu's audio now lets the DSP
+  finish first.
 - After a game failed to launch, the menu stayed in the video mode the launch
   had switched to for the game. A PAL game left an NTSC console's menu at
   50 Hz, which a TV that only takes 60 Hz shows as a black screen, and an
