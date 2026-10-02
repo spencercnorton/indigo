@@ -33,7 +33,14 @@ to see a change.
 
 The CPU temperature has no factory calibration. If Overview's reading is off
 on a cold console, adjust Settings › Setup › Console › **CPU Temperature
-Calibration** until it reads about room temperature.
+Calibration** until it reads about room temperature. Each press moves it 4
+degrees.
+
+Overview shows the same reading as the top of the screen. The sensor reads in
+4 degree steps, so the reading is an average of the last few seconds' readings
+and moves a degree at a time. After a change, give it about ten seconds to
+catch up before you check. Overview updates when the minute changes; open it
+again to see the latest reading.
 
 ## Memory Cards
 

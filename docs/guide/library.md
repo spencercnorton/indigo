@@ -100,17 +100,22 @@ its own folder, or put the disc images there directly:
 
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`, in capitals or not.
 The Library skips anything else in `/games` or in a game's folder, such as a
-text file, a cover image or an empty folder.
+text file, a cover image or an empty folder. With Library Folders on, a
+folder in `/games`, or in a folder there, shows as a card even when it is
+empty: see [Folders of games](#folders-of-games).
 
 <p align="center">
   <img alt="Swiss's plain file list of a games folder, one entry per row with its banner, name and region flag." src="images/library-file-list.png" width="640">
 </p>
 
-If `/games` holds no disc images, you get the list above instead of posters.
+If `/games` holds no disc images (and, with Library Folders on, no folders),
+you get the list above instead of posters.
 Compressed images (`.rvz`, `.gcz`) don't count: Swiss can't start them, and
 choosing one tells you to decompress it with NKit or Dolphin.
 
-Games on two discs appear twice, once for each disc.
+Games on two discs appear twice, once for each disc. With Library Folders
+on, a game in its own `Title [GAMEID]` folder in `/games`, or one folder
+down, appears once; Indigo finds its other disc in that folder.
 
 ## Folders of games
 
@@ -136,8 +141,13 @@ Mario Sunshine and a **Zelda** folder.
 - Folders go two levels deep. A folder in a folder is the last level: it
   shows every game below it, in folders of its own or not, so Zelda above
   shows both The Wind Waker and Ocarina of Time.
-- A folder named like a game, `Title [GAMEID]`, is a game, not a folder of
-  games: it shows as that game, as it does in `/games`.
+- In `/games` and in a folder there, a folder is a game only when it is
+  named like one, `Title [GAMEID]`. Its card takes the title from the
+  folder's name and has no publisher, and without a poster pack it shows
+  its game ID but not the disc banner. A game in a folder with any other
+  name, such as `/games/Super Mario Sunshine/game.iso`, shows as a folder
+  card: A opens it, and the game is inside. To keep it one card, name the
+  folder `Super Mario Sunshine [GMSE01]`.
 - Keep a game's discs in the same folder. Indigo looks for the other disc
   next to the one you start.
 - A folder with no games in it shows only the way back.

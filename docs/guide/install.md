@@ -56,8 +56,7 @@ download onto the root of the card, start Swiss the way you do now, and open
 **Merge**. **Replace** deletes what is already in the card's `swiss`
 folder: your settings, cheats and saves.
 
-Then put your games in `/games` (make the folder if the card has none), with
-nothing else in it or in the game folders: see
+Then put your games in `/games` (make the folder if the card has none): see
 [Set up the games folder](library.md#set-up-the-games-folder).
 
 ## 3. First boot
@@ -66,14 +65,19 @@ Indigo opens on Home, a glass cube with one destination on each face. If it
 found a device to read from, the cube faces **Library**; press A to see your
 games. If it found none yet, it faces **Source**, where you choose one.
 
+On a card with no settings yet, Indigo first opens Settings › Setup ›
+Storage › **Configuration Device**. Choose **Save & Exit** to write your
+settings to the card, and Indigo goes on to Home.
+
 <p align="center">
   <img alt="Home on the Library face: the glass cube shows a GameCube controller, LIBRARY is written underneath, and the hint line reads Turn and A Open." src="images/home-library-face.png" width="640">
 </p>
 
 Next:
 
-- [Set up your library](library.md#set-up-the-games-folder): the Library
-  needs a `/games` folder with nothing but games in it.
+- [Set up your library](library.md#set-up-the-games-folder): put your
+  games in a `/games` folder. To sort them into folders, see
+  [Folders of games](library.md#folders-of-games).
 - [Add posters](posters.md) for box art, and [cheats](cheats.md) if you
   want them.
 - Learn the [controls](controls.md).

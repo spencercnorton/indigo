@@ -53,10 +53,10 @@ See [Source](source.md).
 | Button | Does |
 | --- | --- |
 | D-pad or stick | Move through your games: see the layouts below. |
-| A | Open the game's details. |
+| A | Open the game's details, or open a folder ([Library Folders](library.md#folders-of-games)). |
 | Y | The game's own settings. Leaving them shows its details. |
 | X | Up one folder. |
-| B | Back to Home. |
+| B | Back to Home. Inside a folder, up one folder. |
 
 How the D-pad moves depends on **Library Layout** (Setup › Library):
 

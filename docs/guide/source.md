@@ -48,10 +48,11 @@ The disc drive is called **Game Disc**.
 
 ## What the Library face opens
 
-If the device has a `/games` folder holding only games, the Library face
-opens the poster [Library](library.md). Otherwise it opens Swiss's file list
-of the device, where you can browse folders and open games, homebrew
-programs (`.dol`, `.elf`) and MP3s:
+If the device has a `/games` folder with games in it, the Library face opens
+the poster [Library](library.md) and skips anything else there. With
+**Library Folders** on (Settings › Setup › Library), folders there count
+too. Otherwise it opens Swiss's file list of the device, where you can
+browse folders and open games, homebrew programs (`.dol`, `.elf`) and MP3s:
 
 - **A** opens a file or folder, and **X** goes up a folder.
 - With **File Management** on (Settings › Setup › Library), **Z** on a file

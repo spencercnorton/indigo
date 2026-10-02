@@ -217,7 +217,7 @@ Press Y on any row for the same explanations on the console.
 | System Language | The language games use, mainly multi-language PAL games. |
 | System Boot Mode | On development hardware, development or production mode. With GC Loader or PicoLoader on a retail console, the default skips the GameCube logo. |
 | Controller Recalibration | Off skips controller recalibration, for controllers that don't follow the standard. |
-| CPU Temperature Calibration | Adjust it on a cold boot so the temperature at the top right reads about room temperature. |
+| CPU Temperature Calibration | Adjust it on a cold boot so the CPU temperature, at the top of the screen and on System Information's Overview, reads about room temperature. |
 
 </details>
 

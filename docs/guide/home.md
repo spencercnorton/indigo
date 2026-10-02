@@ -29,7 +29,9 @@ reach the next face, and the name under the cube tells you which face is in
 front. The face icons can be changed: see [Make it yours](personalize.md#cube-icons).
 
 Indigo starts on Library when it finds a device to read games from. If it
-doesn't, it starts on Source, and A on Library takes you there too.
+doesn't, it starts on Source, and A on Library takes you there too. On a card
+with no settings file yet, such as a new card, Indigo first opens Settings on
+Setup › Storage › Configuration Device; leave Settings to reach Home.
 
 When Indigo starts, the cube flies in from the distance, spinning, and comes
 to rest on that face within a second. With UI Motion set to Reduced it fades
@@ -62,8 +64,7 @@ The cube is clear glass, and it treats light the way glass does:
 Every part follows your [Menu Color](personalize.md), except the prism's
 fringes, which keep their own colors. With UI Motion set
 to Reduced or Off, the cube's gentle sway and the drift of its reflections
-stop; the glass still bends light, mirrors and glows. Behind Settings the cube
-keeps its plain glass.
+stop; the glass still bends light, mirrors and glows.
 
 ## The controller on the Library face
 

@@ -150,7 +150,8 @@ move through the list. B keeps the color you had; A chooses the one you are on.
 Backdrop Color and Wave Color, under Menu Color, give the backdrop behind the
 cube and the waves in front of it a color of their own, or let them follow
 Menu Color as before: a Gold cube can sit over Azure waves on a Jet Black
-backdrop.
+backdrop. Wave Speed, below them, sets how fast the waves drift: Slow (half
+as fast), Normal or Fast (three times as fast).
 
 <p align="center">
   <img alt="The Home cube in Gold on its Library face, over a Jet Black backdrop with Azure waves drifting behind it." src="docs/screenshots/layer-colors.png" width="640">
@@ -206,8 +207,8 @@ swiss/indigo/                  the licence and notice
    the card. Let it replace files of the same name. On a Mac, hold Option as
    you drop and choose **Merge**: **Replace** deletes what is already in the
    card's `swiss` folder (your settings, cheats and saves).
-3. Put your games in `/games` (make the folder if the card has none), with
-   nothing else in it or in the game folders, and power on.
+3. Put your games in `/games` (make the folder if the card has none), as
+   [Games](#games) below shows, and power on.
 
 **Updating from Indigo 1.x:** `ipl.dol` is already Indigo, so don't rename
 it; copy the new files over it the same way (on a Mac, Merge). If you renamed
@@ -283,13 +284,15 @@ Put each game in its own folder or put the disc images there directly:
 
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. The Library skips
 anything else there, such as a text file, a cover image or an empty folder.
-If `/games` holds no disc images at all, you get Swiss's plain file list
-instead. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn the
+If `/games` holds no disc images at all (and, with Library Folders on, no
+folders), you get Swiss's plain file list instead. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn the
 cube to Library and press A.
 
 To sort your games into folders, turn on Settings › Setup › Library ›
 **Library Folders**: the Library then shows the folders in `/games` as cards
-you open, two levels deep. See
+you open, two levels deep, empty ones included. A PNG beside a folder with
+its name, such as `Nintendo.png` for the Nintendo folder, becomes its poster;
+a folder without one gets a poster of its name. See
 [Folders of games](docs/guide/library.md#folders-of-games).
 
 ### Posters

@@ -24,14 +24,16 @@
 
 The Library appears when `/games` holds at least one disc image (`.iso`,
 `.gcm`, `.tgc`, `.fdi`), directly or in a game's folder, and it skips
-anything else there. You get the file list when:
+anything else there. With **Library Folders** on, a folder there is enough.
+You get the file list when:
 
 - `/games` holds no disc images, for example only compressed `.rvz` or `.gcz`
   images, which must be decompressed with NKit or Dolphin first.
 - Your games are on another card or drive: choose it on the Source face.
-- **Flatten directory** in Settings › Setup › Library was changed from
-  `*/games`, and `/games` holds loose disc images beside game folders. Set it
-  back to `*/games`.
+- With **Library Folders** off, **Flatten directory** in Settings › Setup ›
+  Library was changed from `*/games`, and `/games` holds loose disc images
+  beside game folders. Set it back to `*/games`. (While Library Folders is on,
+  the row reads `*/games/*/*` and can't be changed; that is expected.)
 
 See [Set up the games folder](library.md#set-up-the-games-folder).
 

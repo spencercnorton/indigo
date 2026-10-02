@@ -49,7 +49,9 @@ before, and Jet Black draws it nearly black.
 
 **Wave Speed**, below them, sets how fast the waves drift: **Slow** is half
 as fast, **Normal** as they always have, and **Fast** three times as fast. A
-new speed picks up from where the waves are, so they never jump.
+new speed picks up from where the waves are, so they never jump. The waves
+only drift with Settings › Quick › **UI Motion** on **Full** and
+Settings › Setup › Library › **Animated Backdrop** on.
 
 ## Cube icons
 

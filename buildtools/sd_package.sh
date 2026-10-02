@@ -41,9 +41,8 @@ New to Indigo:
    Let it replace files of the same name. On a Mac, hold Option as you drop
    and choose Merge: Replace deletes what is already in the card's swiss
    folder (your settings, cheats and saves).
-3. Put your games in /games (make the folder if the card has none), with
-   nothing else in it or in the game folders (see GAMES), put the card back
-   and power on.
+3. Put your games in /games (make the folder if the card has none), as
+   GAMES below shows, put the card back and power on.
 Your Swiss settings carry over.
 
 PicoBoot and PicoLoader boot ipl.dol. FlippyDrive boots boot.dol, and with
@@ -70,12 +69,16 @@ directly:
     /games/Super Mario Sunshine.iso
 Disc images end in .iso, .gcm, .tgc or .fdi. The Library skips anything
 else there (a text file, a cover image, an empty folder). If /games holds
-no disc images, you get Swiss's plain file list instead.
+no disc images (and, with Library Folders on, no folders), you get Swiss's
+plain file list instead.
 On Home, turn the cube to Library and press A.
 To sort your games into folders, turn on Settings > Setup > Library >
 Library Folders: the Library then shows the folders in /games, two levels
-deep. A opens a folder and B goes back. Keep a game's discs together. A PNG
-beside a folder with its name (Nintendo.png for Nintendo) is its poster.
+deep, empty ones included. A opens a folder and B goes back. Only a folder
+named like Super Mario Sunshine [GMSE01] is one game; a game in a folder
+with any other name shows as a folder you open. Keep a game's discs
+together. A PNG beside a folder with its name (Nintendo.png for Nintendo)
+is its poster.
 
 POSTERS AND CHEATS (optional, also drag and drop)
 Without posters, each game shows its disc banner and its six-character game
