@@ -22,59 +22,59 @@
   "vertices": 88
  },
  "home-library": {
-  "begins": 106,
+  "begins": 143,
   "copy_pixels": 239232,
-  "hash": "25f9877806c6fcab",
-  "minmax": 326,
+  "hash": "af39900d7748c67a",
+  "minmax": 344,
   "scene": "home-library",
   "sqrtf": 0,
-  "state": 377,
-  "trig": 546,
-  "vertices": 6190
+  "state": 382,
+  "trig": 1061,
+  "vertices": 8360
  },
  "home-settings": {
-  "begins": 70,
+  "begins": 71,
   "copy_pixels": 239232,
-  "hash": "bdffcdf3a6f4282e",
-  "minmax": 313,
+  "hash": "2f2779dcb689988e",
+  "minmax": 325,
   "scene": "home-settings",
   "sqrtf": 0,
-  "state": 377,
-  "trig": 40,
-  "vertices": 4100
+  "state": 382,
+  "trig": 42,
+  "vertices": 4220
  },
  "home-source": {
-  "begins": 104,
+  "begins": 105,
   "copy_pixels": 238464,
-  "hash": "6744c24afb64d71c",
-  "minmax": 327,
+  "hash": "c1337248ed80e25b",
+  "minmax": 345,
   "scene": "home-source",
   "sqrtf": 0,
-  "state": 377,
-  "trig": 553,
-  "vertices": 6146
+  "state": 382,
+  "trig": 555,
+  "vertices": 6326
  },
  "home-system": {
-  "begins": 68,
+  "begins": 69,
   "copy_pixels": 244352,
-  "hash": "9faad11656d59d94",
-  "minmax": 325,
+  "hash": "c14a6666a2a10b70",
+  "minmax": 347,
   "scene": "home-system",
   "sqrtf": 0,
-  "state": 377,
-  "trig": 40,
-  "vertices": 4136
+  "state": 382,
+  "trig": 42,
+  "vertices": 4356
  },
  "home-turning": {
-  "begins": 101,
+  "begins": 138,
   "copy_pixels": 225920,
-  "hash": "066034eb19acfc0b",
-  "minmax": 297,
+  "hash": "f7891f3e1128187f",
+  "minmax": 315,
   "scene": "home-turning",
   "sqrtf": 0,
-  "state": 373,
-  "trig": 546,
-  "vertices": 5986
+  "state": 378,
+  "trig": 1061,
+  "vertices": 8156
  },
  "library-grid": {
   "begins": 22,
@@ -88,26 +88,26 @@
   "vertices": 1140
  },
  "library-grid-wide": {
-  "begins": 105,
+  "begins": 143,
   "copy_pixels": 29824,
-  "hash": "7efaa19fd4d2e686",
-  "minmax": 344,
+  "hash": "2e610dbe1bb739d8",
+  "minmax": 362,
   "scene": "library-grid-wide",
   "sqrtf": 0,
-  "state": 346,
-  "trig": 546,
-  "vertices": 6374
+  "state": 351,
+  "trig": 1063,
+  "vertices": 8764
  },
  "library-horizontal": {
-  "begins": 101,
+  "begins": 138,
   "copy_pixels": 95104,
-  "hash": "001b9b7ab8221fae",
-  "minmax": 313,
+  "hash": "571af7ed86584faa",
+  "minmax": 331,
   "scene": "library-horizontal",
   "sqrtf": 0,
-  "state": 373,
-  "trig": 546,
-  "vertices": 6042
+  "state": 378,
+  "trig": 1061,
+  "vertices": 8212
  },
  "library-spotlight": {
   "begins": 22,
@@ -121,31 +121,31 @@
   "vertices": 1140
  },
  "library-spotlight-wide": {
-  "begins": 105,
+  "begins": 143,
   "copy_pixels": 29824,
-  "hash": "fc21f0227f06eda6",
-  "minmax": 338,
+  "hash": "182429780fd13b44",
+  "minmax": 356,
   "scene": "library-spotlight-wide",
   "sqrtf": 0,
-  "state": 346,
-  "trig": 546,
-  "vertices": 6358
+  "state": 351,
+  "trig": 1063,
+  "vertices": 8748
  },
  "library-vertical": {
-  "begins": 111,
+  "begins": 149,
   "copy_pixels": 94208,
-  "hash": "7a18fbf2b8384d4b",
-  "minmax": 428,
+  "hash": "dab74da04079389e",
+  "minmax": 468,
   "scene": "library-vertical",
   "sqrtf": 0,
-  "state": 377,
-  "trig": 548,
-  "vertices": 6746
+  "state": 382,
+  "trig": 1065,
+  "vertices": 9136
  },
  "settings": {
   "begins": 90,
   "copy_pixels": 21504,
-  "hash": "a5f35c5e3826aa01",
+  "hash": "be0499fc4323d99d",
   "minmax": 356,
   "scene": "settings",
   "sqrtf": 0,
@@ -154,14 +154,14 @@
   "vertices": 5482
  },
  "system": {
-  "begins": 103,
+  "begins": 140,
   "copy_pixels": 137984,
-  "hash": "86a30e1652ca9751",
-  "minmax": 311,
+  "hash": "1e86974471a9b33e",
+  "minmax": 329,
   "scene": "system",
   "sqrtf": 0,
-  "state": 373,
-  "trig": 546,
-  "vertices": 6022
+  "state": 378,
+  "trig": 1061,
+  "vertices": 8192
  }
 }
