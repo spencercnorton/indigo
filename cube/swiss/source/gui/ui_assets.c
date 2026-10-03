@@ -116,6 +116,7 @@ typedef struct {
 	u8 distance;
 	s16 recordPos; /* index into the pack index; -1 when empty */
 	u32 quarantineUntil; /* nowMs() stamp before which texels may not be rewritten */
+	u32 readyMs; /* nowMs() stamp of its texture's publication */
 	u32 wanted; /* the window request that last asked for its record */
 	u8 *data; /* fixed arena region */
 	GXTexObj tex;
@@ -707,6 +708,7 @@ static bool cachePoll(uiAssetsCache_t *c) {
 				GX_InitTexObjLOD(&slot->tex, GX_LIN_MIP_LIN, GX_LINEAR,
 				                 0.0f, (float)(shape->mipLevels - 1),
 				                 0.0f, GX_FALSE, GX_TRUE, GX_ANISO_1);
+			slot->readyMs = c->nowMs();
 			slot->state = SLOT_READY;
 		} else {
 			slot->state = SLOT_FAILED;
@@ -764,6 +766,13 @@ static GXTexObj *cachePeek(uiAssetsCache_t *c, uiPosterHandle_t handle) {
 	if (!slot || slot->state != SLOT_READY)
 		return NULL;
 	return &slot->tex;
+}
+
+static u32 cachePeekAgeMs(uiAssetsCache_t *c, uiPosterHandle_t handle) {
+	uiAssetSlot_t *slot = slotFromHandle(c, handle);
+	if (!slot || slot->state != SLOT_READY || !c->nowMs)
+		return 0;
+	return c->nowMs() - slot->readyMs;
 }
 
 static bool cacheDominantColor(const uiAssetsCache_t *c, const char *gameId,
@@ -876,6 +885,10 @@ GXTexObj *UIAssets_Peek(uiPosterHandle_t handle) {
 	return cachePeek(&posters, handle);
 }
 
+u32 UIAssets_PeekAgeMs(uiPosterHandle_t handle) {
+	return cachePeekAgeMs(&posters, handle);
+}
+
 bool UIAssets_DominantColor(const char *gameId, size_t gameIdLen,
                             u8 *r, u8 *g, u8 *b) {
 	return cacheDominantColor(&posters, gameId, gameIdLen, r, g, b);
@@ -918,6 +931,10 @@ uiPosterResult_t UIStills_Query(const char *gameId, size_t gameIdLen,
 
 GXTexObj *UIStills_Peek(uiPosterHandle_t handle) {
 	return cachePeek(&stills, handle);
+}
+
+u32 UIStills_PeekAgeMs(uiPosterHandle_t handle) {
+	return cachePeekAgeMs(&stills, handle);
 }
 
 bool UIStills_DominantColor(const char *gameId, size_t gameIdLen,

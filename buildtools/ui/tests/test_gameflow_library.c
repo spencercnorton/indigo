@@ -361,9 +361,9 @@ static void testHomeLibraryStartupRoute(void)
 
 static void testWindow(void)
 {
-	static const uint32_t expectedIndices[7] = {0u, 4u, 1u, 3u, 2u, 2u, 3u};
-	static const int8_t expectedRelative[7] = {0, -1, 1, -2, 2, -3, 3};
-	uiGameflowLibraryWindowSlot_t slots[7];
+	static const uint32_t expectedIndices[5] = {0u, 4u, 1u, 3u, 2u};
+	static const int8_t expectedRelative[5] = {0, -1, 1, -2, 2};
+	uiGameflowLibraryWindowSlot_t slots[UI_GAMEFLOW_LIBRARY_WINDOW];
 	size_t count;
 	size_t i;
 	size_t j;
@@ -383,12 +383,16 @@ static void testWindow(void)
 		}
 	}
 
-	count = UIGameflowLibrary_BuildWindow(9u, 8u,
+	/* Four either side: a held stick's strip runs up to two cards behind
+	 * the selection, and the third card out must still be there. */
+	count = UIGameflowLibrary_BuildWindow(12u, 8u,
 		UI_GAMEFLOW_DIRECTION_NONE, slots);
-	CHECK(count == 7u);
+	CHECK(count == 9u);
 	CHECK(slots[0].index == 8u && slots[0].relativeSlot == 0);
 	CHECK(slots[1].index == 7u && slots[1].relativeSlot == -1);
-	CHECK(slots[2].index == 0u && slots[2].relativeSlot == 1);
+	CHECK(slots[2].index == 9u && slots[2].relativeSlot == 1);
+	CHECK(slots[7].index == 4u && slots[7].relativeSlot == -4);
+	CHECK(slots[8].index == 0u && slots[8].relativeSlot == 4);
 
 	count = UIGameflowLibrary_BuildWindow(1u, 99u,
 		UI_GAMEFLOW_DIRECTION_NONE, slots);
@@ -415,7 +419,7 @@ static void checkWindowScale(uint32_t itemCount)
 		UI_GAMEFLOW_DIRECTION_NONE,
 		UI_GAMEFLOW_DIRECTION_NEXT
 	};
-	uiGameflowLibraryWindowSlot_t slots[7];
+	uiGameflowLibraryWindowSlot_t slots[UI_GAMEFLOW_LIBRARY_WINDOW];
 	uint32_t selections[3];
 	size_t expectedCount = itemCount < UI_GAMEFLOW_LIBRARY_WINDOW ?
 		(size_t)itemCount : (size_t)UI_GAMEFLOW_LIBRARY_WINDOW;
@@ -441,8 +445,8 @@ static void checkWindowScale(uint32_t itemCount)
 			CHECK(slots[0].relativeSlot == 0);
 			for(i = 0u; i < count; ++i) {
 				CHECK(slots[i].index < itemCount);
-				CHECK(slots[i].relativeSlot >= -3);
-				CHECK(slots[i].relativeSlot <= 3);
+				CHECK(slots[i].relativeSlot >= -4);
+				CHECK(slots[i].relativeSlot <= 4);
 				for(j = i + 1u; j < count; ++j) {
 					CHECK(slots[i].index != slots[j].index);
 				}

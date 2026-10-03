@@ -259,8 +259,9 @@ static void testBoundedPhaseRefreshAndImmediateOff(void)
 	}
 
 	/* Full-motion input is latest-value state rather than an unbounded queue.
-	 * Hundreds of maximum arcs without a video update stay within one local
-	 * slot; an opposite unit exactly cancels and a new unit remains visible. */
+	 * Hundreds of maximum arcs without a video update stay within two local
+	 * slots; an opposite unit takes one back, and a new unit remains
+	 * visible. */
 	UIGameflow_Init(&state);
 	selected = 0u;
 	generation = 1u;
@@ -273,9 +274,14 @@ static void testBoundedPhaseRefreshAndImmediateOff(void)
 		frame = UIGameflow_Frame(&state);
 		CHECK(frame->selectedIndex == selected);
 		CHECK(isfinite(frame->carouselPosition));
-		CHECK(fabsf(frame->carouselTravel) <= 1.0f);
-		CHECK(nearlyEqual(frame->carouselTravel, 1.0f));
+		CHECK(fabsf(frame->carouselTravel) <= 2.0f);
+		CHECK(nearlyEqual(frame->carouselTravel, i == 0 ? 1.0f : 2.0f));
 	}
+	selected = (selected + 1u) % UI_GAMEFLOW_MAX_ITEMS;
+	apply(&state, generation++, UI_GAMEFLOW_MAX_ITEMS, selected,
+		UI_GAMEFLOW_DIRECTION_PREVIOUS, UI_MOTION_FULL);
+	frame = UIGameflow_Frame(&state);
+	CHECK(nearlyEqual(frame->carouselTravel, 1.0f));
 	selected = (selected + 1u) % UI_GAMEFLOW_MAX_ITEMS;
 	apply(&state, generation++, UI_GAMEFLOW_MAX_ITEMS, selected,
 		UI_GAMEFLOW_DIRECTION_PREVIOUS, UI_MOTION_FULL);
@@ -522,6 +528,80 @@ static void testGridRowsAndHighlight(void)
 	UIGameflow_SetColumns(NULL, 5u);
 }
 
+/* A held stick repeats every 120 ms after 320 ms. The strip must follow it
+ * without a jump: the card at the centre before a step is the card at the
+ * centre after it, at 60 and at 50 frames a second. A grid's rows still
+ * fall at most one behind, and so does a ring of fewer games than the
+ * window holds: it has no fourth card either side to show. */
+static void testHeldStickNeverJumps(void)
+{
+	static const float rates[2] = {60.0f, 50.0f};
+	uiGameflowState_t state;
+	const uiGameflowFrame_t *frame;
+	uint32_t selected;
+	uint32_t generation;
+	int r;
+	int i;
+
+	for(r = 0; r < 2; ++r) {
+		float dt = 1.0f / rates[r];
+		float clock = 0.0f;
+		float nextStep = 0.0f;
+		float steps = 0.0f;
+
+		UIGameflow_Init(&state);
+		selected = 0u;
+		generation = 1u;
+		apply(&state, generation++, UI_GAMEFLOW_MAX_ITEMS, selected,
+			UI_GAMEFLOW_DIRECTION_NONE, UI_MOTION_OFF);
+		for(i = 0; i < (int)(rates[r] * 4.0f); ++i) {
+			UIGameflow_Update(&state, dt, UI_MOTION_FULL);
+			clock += dt;
+			if(clock + 0.0001f >= nextStep) {
+				float before = steps - UIGameflow_Frame(&state)->carouselTravel;
+				nextStep += steps == 0.0f ? 0.320f : 0.120f;
+				selected = (selected + 1u) % UI_GAMEFLOW_MAX_ITEMS;
+				steps += 1.0f;
+				apply(&state, generation++, UI_GAMEFLOW_MAX_ITEMS, selected,
+					UI_GAMEFLOW_DIRECTION_NEXT, UI_MOTION_FULL);
+				frame = UIGameflow_Frame(&state);
+				CHECK(fabsf(steps - frame->carouselTravel - before) < 0.0001f);
+				CHECK(frame->carouselTravel < 2.0f);
+			}
+		}
+	}
+
+	UIGameflow_Init(&state);
+	UIGameflow_SetColumns(&state, 5u);
+	selected = 0u;
+	generation = 1u;
+	apply(&state, generation++, UI_GAMEFLOW_MAX_ITEMS, selected,
+		UI_GAMEFLOW_DIRECTION_NONE, UI_MOTION_OFF);
+	for(i = 0; i < 30; ++i) {
+		selected += 5u;
+		apply(&state, generation++, UI_GAMEFLOW_MAX_ITEMS, selected,
+			UI_GAMEFLOW_DIRECTION_NEXT, UI_MOTION_FULL);
+		CHECK(nearlyEqual(UIGameflow_Frame(&state)->carouselTravel, 1.0f));
+	}
+
+	for(i = 8; i <= 9; ++i) {
+		int step;
+
+		UIGameflow_Init(&state);
+		selected = 0u;
+		generation = 1u;
+		apply(&state, generation++, (uint32_t)i, selected,
+			UI_GAMEFLOW_DIRECTION_NONE, UI_MOTION_OFF);
+		for(step = 0; step < 5; ++step) {
+			selected = (selected + 1u) % (uint32_t)i;
+			apply(&state, generation++, (uint32_t)i, selected,
+				UI_GAMEFLOW_DIRECTION_NEXT, UI_MOTION_FULL);
+		}
+		CHECK(nearlyEqual(UIGameflow_Frame(&state)->carouselTravel,
+			i < 9 ? 1.0f : 2.0f));
+	}
+}
+
 int main(void)
 {
 	testGenerationAndSanitization();
@@ -531,6 +611,7 @@ int main(void)
 	testBoundedPhaseRefreshAndImmediateOff();
 	testPinnedDetailLaunchSelection();
 	testGridRowsAndHighlight();
+	testHeldStickNeverJumps();
 	puts("ui_gameflow state tests passed");
 	return EXIT_SUCCESS;
 }
