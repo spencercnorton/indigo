@@ -710,9 +710,15 @@ static void test_shadows(void) {
     /* y is up on this screen. */
     CHECK(sx-ix<-1.5f && sy-iy<-1.5f && hypotf(sx-ix,sy-iy)<8.0f,
         "the shadow does not fall down and to the left of its icon");
-    /* Subtle but seen: 0.35 to 0.5 of the icon's strength. */
-    CHECK(sPeak<=0.5f*iPeak+1 && sPeak>=0.35f*iPeak,"the shadow is too strong or too faint");
+    /* Subtle but seen: 0.2 to 0.3 of the icon's strength. */
+    CHECK(sPeak<=0.3f*iPeak+1 && sPeak>=0.2f*iPeak,"the shadow is too strong or too faint");
     CHECK(sFade>2.5f*iFade && sFade<3.5f*iFade,"the shadow is not soft");
+    /* Across its fade (the icon's is one pixel) it darkens the glass under
+     * 6 % more each pixel. The glass round an icon is some 60 to 70 of 255:
+     * a steeper fade steps it by 4 or more a pixel, bands a pixel wide that
+     * read as pixelation in its reflection. */
+    CHECK((float)sPeak/255.0f/(sFade/iFade)<0.06f,
+        "the shadow's fade steps the glass a pixel at a time");
     reset(false); drawFaceShadows(1.0f,false,&clock,&pad,choices,&r,0.5f);
     streamSpread(&r,&sx,&sy,&halfPeak,&sFade);
     CHECK(abs(2*halfPeak-sPeak)<=2,"the shadow does not follow the glass light's strength");
@@ -1320,6 +1326,8 @@ class StrokeGXStreamTests(unittest.TestCase):
                 "const float fallX = 0.68f, fallY = 0.73f;"),
             "sharp shadow": ("\tshadow.scaleX /= FACE_SHADOW_FEATHER;\n\tshadow.scaleY /= FACE_SHADOW_FEATHER;\n",
                 ""),
+            "shadow as dark as it was": ("FACE_SHADOW_ALPHA * strength * faceStrokeShare(facing);",
+                "0.45f * strength * faceStrokeShare(facing);"),
             "shadow state left": ("clock, pad);\n\t}\n\tGX_LoadPosMtxImm(raster->model, GX_PNMTX0);\n"
                 "\tGX_SetCullMode(GX_CULL_BACK);\n"
                 "\tGX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);",

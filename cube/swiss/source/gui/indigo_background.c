@@ -2147,8 +2147,15 @@ static void drawFaceIcons(float seconds, bool animated,
  * moves no core), so it reads as a soft shadow under a sharp icon, never
  * as a blur of the icon itself. */
 #define FACE_SHADOW_PLANE 1.0f
+/* No wider: at six times its fades fold over inside an icon's tighter
+ * curves (an Apps tile's inner corner is under five pixels round at Home)
+ * and darken the glass twice there, in single dark pixels. */
 #define FACE_SHADOW_FEATHER 3.0f
-#define FACE_SHADOW_ALPHA 0.45f
+/* A quarter of the icon's strength, so its fade darkens the glass by no
+ * more than 6 % a pixel. At 0.45 each pixel across the fade was a tenth
+ * darker than the next, steps of 4 to 10 (of 255) that read as pixels in
+ * the reflection round the icon. */
+#define FACE_SHADOW_ALPHA 0.25f
 /* How far a fully lifted icon's shadow falls, in cube sizes: about four
  * pixels at Home. */
 #define FACE_SHADOW_DROP 0.034f
