@@ -291,7 +291,17 @@ typedef struct drawHomeEvent {
 	float contextCommandScale;
 	float confirmCommandScale;
 	float consequenceScale;
+	/* Seconds since the surface changed, up to HOME_SURFACE_REVEAL: a new
+	 * surface fades in. */
+	float surfaceAge;
+	/* Each row's style from idle (0) to selected (1), springing between as
+	 * the selection moves; a new surface's rows start where they rest. */
+	uiMotionSpring_t rowWeight[UI_HOME_LAYOUT_MAX_ROWS];
+	bool rowsPlaced;
 } drawHomeEvent_t;
+
+#define HOME_SURFACE_REVEAL 0.18f
+#define HOME_ROW_RESPONSE 25.0f
 
 static const char homeContextCommand[] =
 	"D-PAD  SELECT    A  OPEN    B  BACK";
@@ -371,6 +381,9 @@ typedef struct drawGameflowEvent {
 	GXTexObj detailBannerTexObj;
 	/* Outside the snapshot, so a republished Detail keeps it. */
 	uiGameflowDetailFocus_t detailFocus;
+	/* The focused row's frame, its top and height, sliding between rows;
+	 * placed afresh (response 0) each time Detail opens. */
+	uiMotionSpring_t detailLit[2];
 	/* Spotlight: the selected game's description, wrapped for its column
 	 * when the snapshot is published. */
 	char spotlightLines[UI_GAMEFLOW_DESCRIPTION_LINES][UI_CHEATS_TEXT_CAPACITY];
@@ -2577,6 +2590,11 @@ static gameflowPoint_t _GameflowLerpPoint(gameflowPoint_t from,
 	return point;
 }
 
+/* A card between two poses, in whole pixels. It goes from one pose to the
+ * next a whole pixel of its farthest-moving corner at a time, and each corner
+ * rounds on its own there: every edge moves one way through a move, never a
+ * pixel back as the spring's tail crosses half pixels, and the card's size
+ * from that corner changes one way too. */
 static gameflowQuad_t _GameflowSamplePoseIn(const gameflowQuad_t poses[7],
 	float slot)
 {
@@ -2584,13 +2602,22 @@ static gameflowQuad_t _GameflowSamplePoseIn(const gameflowQuad_t poses[7],
 	float clamped = _GameflowClamp(slot, -3.0f, 3.0f);
 	int lower = (int)floorf(clamped);
 	int upper = lower < 3 ? lower + 1 : lower;
+	const gameflowQuad_t *from = &poses[lower + 3];
+	const gameflowQuad_t *to = &poses[upper + 3];
 	float progress = clamped - (float)lower;
+	float travel = 0.0f;
 	int i;
 
 	for(i = 0; i < 4; ++i) {
-		result.point[i] = _GameflowLerpPoint(
-			poses[lower + 3].point[i],
-			poses[upper + 3].point[i], progress);
+		travel = fmaxf(travel, fabsf(to->point[i].x - from->point[i].x));
+		travel = fmaxf(travel, fabsf(to->point[i].y - from->point[i].y));
+	}
+	if(travel > 0.0f) {
+		progress = _GameflowRound(progress * travel) / travel;
+	}
+	for(i = 0; i < 4; ++i) {
+		result.point[i] = _GameflowLerpPoint(from->point[i], to->point[i],
+			progress);
 		result.point[i].x = _GameflowRound(result.point[i].x);
 		result.point[i].y = _GameflowRound(result.point[i].y);
 	}
@@ -2603,20 +2630,22 @@ static gameflowQuad_t _GameflowSamplePose(float slot)
 }
 
 /* A grid card at a column and a row (0 is the focused row), grown by
- * focus. Whole pixels, like the carousel's poses. */
+ * focus. Whole pixels, like the carousel's poses: its centre rounded and
+ * its rounded half size either side, so it grows and shrinks one way. */
 static gameflowQuad_t _GameflowGridQuad(float column, float row, float focus)
 {
 	float scale = 1.0f + GAMEFLOW_GRID_FOCUS_GROWTH * focus;
-	float halfWidth = GAMEFLOW_GRID_CARD_W * 0.5f * scale;
-	float halfHeight = GAMEFLOW_GRID_CARD_H * 0.5f * scale;
-	float x = GAMEFLOW_GRID_CENTER_X +
+	float halfWidth = _GameflowRound(GAMEFLOW_GRID_CARD_W * 0.5f * scale);
+	float halfHeight = _GameflowRound(GAMEFLOW_GRID_CARD_H * 0.5f * scale);
+	float x = _GameflowRound(GAMEFLOW_GRID_CENTER_X +
 		(column - (float)(UI_GAMEFLOW_LIBRARY_GRID_COLUMNS - 1u) * 0.5f) *
-		GAMEFLOW_GRID_PITCH_X;
-	float y = GAMEFLOW_GRID_CENTER_Y + row * GAMEFLOW_GRID_PITCH_Y;
-	float left = _GameflowRound(x - halfWidth);
-	float right = _GameflowRound(x + halfWidth);
-	float top = _GameflowRound(y - halfHeight);
-	float bottom = _GameflowRound(y + halfHeight);
+		GAMEFLOW_GRID_PITCH_X);
+	float y = _GameflowRound(GAMEFLOW_GRID_CENTER_Y +
+		row * GAMEFLOW_GRID_PITCH_Y);
+	float left = x - halfWidth;
+	float right = x + halfWidth;
+	float top = y - halfHeight;
+	float bottom = y + halfHeight;
 	gameflowQuad_t quad = {{{left, top}, {right, top}, {right, bottom},
 		{left, bottom}}};
 	return quad;
@@ -3035,26 +3064,64 @@ static void _GameflowDrawFallback(const gameflowRenderCard_t *card,
 	_SetupRasterColor();
 }
 
+/* A picture fades in over this long from when it arrived. One read while it
+ * was off screen, as the cards either side are, is older than that by the
+ * time it shows, so scrolling to it shows it at once. */
+#define GAMEFLOW_ART_ARRIVAL_MS 200u
+
+/* How far a picture that arrived ageMs ago has faded in, 0 to 1. */
+static float _GameflowArrival(u32 ageMs)
+{
+	if(ageMs >= GAMEFLOW_ART_ARRIVAL_MS ||
+		_CurrentMotionMode() == UI_MOTION_OFF) {
+		return 1.0f;
+	}
+	return UIMotion_Smoothstep((float)ageMs / (float)GAMEFLOW_ART_ARRIVAL_MS);
+}
+
+/* The share of alpha to draw what a picture fades in over, under the
+ * picture at alpha * arrival: together they show as one card at alpha, and
+ * nothing of it is left just as the picture is whole. */
+static float _GameflowUnderneath(float alpha, float arrival)
+{
+	float rest = 1.0f - alpha * arrival;
+
+	return rest > 0.0f ? (1.0f - arrival) / rest : 0.0f;
+}
+
+/* The record's poster, or NULL; *arrival (when asked for) is how far it has
+ * faded in since it arrived. */
 static GXTexObj *_GameflowPosterTexture(
-	const uiGameflowCardSnapshot_t *record)
+	const uiGameflowCardSnapshot_t *record, float *arrival)
 {
 	uiPosterHandle_t handle;
 	uiPosterResult_t result;
+	GXTexObj *texture;
+	u32 ageMs;
 
 	/* An app's poster, or a folder of games', is made on the console from
 	 * its own picture or its name (card_art.c). */
 	if((record->flags & UI_GAMEFLOW_CARD_APP) || record->subfolder) {
-		return CardArt_Poster((int32_t)record->libraryIndex);
+		texture = CardArt_Poster((int32_t)record->libraryIndex);
+		ageMs = CardArt_PosterAgeMs((int32_t)record->libraryIndex);
 	}
-	/* _DrawGameflow runs under _videomutex. Query and Peek deliberately do
-	 * not lock and the borrowed texture is consumed before that lock drops. */
-	result = UIAssets_Query(record->gameId,
-		strnlen(record->gameId, sizeof(record->gameId)),
-		(record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) != 0u, &handle);
-	if(result != UI_POSTER_EXACT && result != UI_POSTER_UNIVERSAL) {
-		return NULL;
+	else {
+		/* _DrawGameflow runs under _videomutex. Query and Peek deliberately
+		 * do not lock and the borrowed texture is consumed before that lock
+		 * drops. */
+		result = UIAssets_Query(record->gameId,
+			strnlen(record->gameId, sizeof(record->gameId)),
+			(record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) != 0u, &handle);
+		if(result != UI_POSTER_EXACT && result != UI_POSTER_UNIVERSAL) {
+			return NULL;
+		}
+		texture = UIAssets_Peek(handle);
+		ageMs = UIAssets_PeekAgeMs(handle);
 	}
-	return UIAssets_Peek(handle);
+	if(arrival != NULL) {
+		*arrival = _GameflowArrival(ageMs);
+	}
+	return texture;
 }
 
 /* The game's gameplay still from stills.pak, or NULL; the same borrowing
@@ -3069,6 +3136,19 @@ static GXTexObj *_GameflowStillTexture(const uiGameflowCardSnapshot_t *record)
 		return NULL;
 	}
 	return UIStills_Peek(handle);
+}
+
+/* How far the game's still has faded in since it arrived. */
+static float _GameflowStillArrival(const uiGameflowCardSnapshot_t *record)
+{
+	uiPosterHandle_t handle;
+	uiPosterResult_t result = UIStills_Query(record->gameId,
+		strnlen(record->gameId, sizeof(record->gameId)), false, &handle);
+
+	if(result != UI_POSTER_EXACT && result != UI_POSTER_UNIVERSAL) {
+		return 1.0f;
+	}
+	return _GameflowArrival(UIStills_PeekAgeMs(handle));
 }
 
 /* Spotlight's picture panel: a frame and a dark field, faded by alpha. */
@@ -3090,17 +3170,55 @@ static void _GameflowDrawSpotlightPanel(float alpha)
 	GX_End();
 }
 
-/* One game's picture in Spotlight's panel, faded by alpha: its gameplay
- * still filling the panel, else its cover in the middle, drawn as Detail
- * draws it, so the cover can leave from there for Detail. A game with
- * settings of its own carries the mark a cover does, on either. */
-static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
+/* One game's cover in the middle of Spotlight's panel, faded by alpha,
+ * drawn as Detail draws it, so the cover can leave from there for Detail. */
+static void _GameflowDrawSpotlightCover(drawGameflowEvent_t *data,
 	const uiGameflowCardSnapshot_t *record, u32 recordIndex, float alpha)
 {
 	gameflowRenderCard_t cover;
 	GXTexObj *texture;
 	GXTexObj *bannerTexture = NULL;
 	uiGameflowLibraryArtwork_t artwork;
+	float arrival;
+
+	memset(&cover, 0, sizeof(cover));
+	cover.record = record;
+	cover.recordIndex = recordIndex;
+	cover.focus = 1.0f;
+	cover.presence = alpha;
+	cover.art = true;
+	cover.quad = gameflowSpotlightCover;
+	texture = _GameflowPosterTexture(record, &arrival);
+	if(record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) {
+		bannerTexture = &data->bannerTexObj[recordIndex];
+	}
+	artwork = UIGameflowLibrary_ChooseArtwork(texture != NULL,
+		bannerTexture != NULL);
+	if(artwork == UI_GAMEFLOW_LIBRARY_ART_POSTER) {
+		if(arrival < 1.0f) {
+			_GameflowDrawFallback(&cover, UIGameflowLibrary_ChooseArtwork(
+				false, bannerTexture != NULL), bannerTexture,
+				_GameflowUnderneath(alpha, arrival));
+		}
+		_GameflowDrawPoster(&cover, texture, arrival);
+	}
+	else {
+		_GameflowDrawFallback(&cover, artwork, bannerTexture, 1.0f);
+	}
+	if(record->flags & UI_GAMEFLOW_CARD_CUSTOM) {
+		_GameflowDrawCustomMark(&cover, 1.0f);
+	}
+}
+
+/* One game's picture in Spotlight's panel, faded by alpha: its gameplay
+ * still filling the panel, else its cover in the middle. A still that has
+ * just arrived fades in over the cover. A game with settings of its own
+ * carries the mark a cover does, on either. */
+static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
+	const uiGameflowCardSnapshot_t *record, u32 recordIndex, float alpha)
+{
+	gameflowRenderCard_t mark;
+	GXTexObj *texture;
 
 	if(record == NULL || alpha <= 0.001f) {
 		return;
@@ -3109,39 +3227,24 @@ static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
 	if(texture != NULL) {
 		gameflowQuad_t inner = _GameflowInsetPixels(&gameflowSpotlightPanel,
 			4.0f);
-		_GameflowDrawBanner(&inner, texture, _GameflowAlpha(255.0f * alpha));
+		float arrival = _GameflowStillArrival(record);
+		if(arrival < 1.0f) {
+			_GameflowDrawSpotlightCover(data, record, recordIndex,
+				alpha * _GameflowUnderneath(alpha, arrival));
+		}
+		_GameflowDrawBanner(&inner, texture,
+			_GameflowAlpha(255.0f * alpha * arrival));
 		drawInit();
 		_SetupRasterColor();
 		if(record->flags & UI_GAMEFLOW_CARD_CUSTOM) {
-			memset(&cover, 0, sizeof(cover));
-			cover.quad = inner;
-			cover.presence = alpha;
-			_GameflowDrawCustomMark(&cover, 1.0f);
+			memset(&mark, 0, sizeof(mark));
+			mark.quad = inner;
+			mark.presence = alpha * arrival;
+			_GameflowDrawCustomMark(&mark, 1.0f);
 		}
 		return;
 	}
-	memset(&cover, 0, sizeof(cover));
-	cover.record = record;
-	cover.recordIndex = recordIndex;
-	cover.focus = 1.0f;
-	cover.presence = alpha;
-	cover.art = true;
-	cover.quad = gameflowSpotlightCover;
-	texture = _GameflowPosterTexture(record);
-	if(record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) {
-		bannerTexture = &data->bannerTexObj[recordIndex];
-	}
-	artwork = UIGameflowLibrary_ChooseArtwork(texture != NULL,
-		bannerTexture != NULL);
-	if(artwork == UI_GAMEFLOW_LIBRARY_ART_POSTER) {
-		_GameflowDrawPoster(&cover, texture, 1.0f);
-	}
-	else {
-		_GameflowDrawFallback(&cover, artwork, bannerTexture, 1.0f);
-	}
-	if(record->flags & UI_GAMEFLOW_CARD_CUSTOM) {
-		_GameflowDrawCustomMark(&cover, 1.0f);
-	}
+	_GameflowDrawSpotlightCover(data, record, recordIndex, alpha);
 }
 
 /* A game on Spotlight's row: its disc banner inside the tile's frame, or its
@@ -3486,18 +3589,18 @@ static void _GameflowDrawDetailPlanes(
 	const uiGameflowDetailSnapshot_t *detail,
 	const drawGameflowDetailPresentation_t *presentation,
 	const uiGameflowFrame_t *frame, float alpha,
-	uiGameflowDetailFocus_t focusRow)
+	uiGameflowDetailFocus_t focusRow, uiMotionSpring_t lit[2])
 {
 	/* The rows the focus moves between, bottom up: Launch, Cheats, Settings. */
 	static const int rowTop[] = {348, 281, 232};
 	static const int rowHeight[] = {43, 59, 42};
-	float litTop = (float)rowTop[focusRow];
-	float litBottom = litTop + (float)rowHeight[focusRow];
-	gameflowQuad_t litRow = {{{260.0f, litTop}, {590.0f, litTop},
-		{590.0f, litBottom}, {260.0f, litBottom}}};
-	gameflowQuad_t litInner = _GameflowGrowQuad(&litRow, -2.0f);
-	gameflowQuad_t litGlow = _GameflowGrowQuad(&litRow, 2.0f);
-	gameflowQuad_t litHalo = _GameflowGrowQuad(&litGlow, 3.0f);
+	uiMotionMode_t motion = _CurrentMotionMode();
+	float litTop;
+	float litBottom;
+	gameflowQuad_t litRow;
+	gameflowQuad_t litInner;
+	gameflowQuad_t litGlow;
+	gameflowQuad_t litHalo;
 	int row;
 	bool hasAdvanced = detail->advancedLineOne[0] != '\0' ||
 		detail->advancedLineTwo[0] != '\0';
@@ -3527,6 +3630,23 @@ static void _GameflowDrawDetailPlanes(
 	bool hasSettings = detail->settingsSummary[0] != '\0';
 	u16 panelCount = (u16)(3u + (hasAdvanced ? 1u : 0u) +
 		(hasSettings ? 1u : 0u));
+
+	/* The bright frame slides from row to row, as the cheat list's focus
+	 * does; Detail opening places it on its row at once. */
+	if(lit[0].response <= 0.0f) {
+		UIMotion_SpringInit(&lit[0], (float)rowTop[focusRow], 25.0f);
+		UIMotion_SpringInit(&lit[1], (float)rowHeight[focusRow], 25.0f);
+	}
+	UIMotion_SpringRetarget(&lit[0], (float)rowTop[focusRow], motion);
+	UIMotion_SpringRetarget(&lit[1], (float)rowHeight[focusRow], motion);
+	litTop = UIMotion_SpringUpdate(&lit[0], UIAnim_Delta(), motion);
+	litBottom = litTop + UIMotion_SpringUpdate(&lit[1], UIAnim_Delta(),
+		motion);
+	litRow = (gameflowQuad_t) {{{260.0f, litTop}, {590.0f, litTop},
+		{590.0f, litBottom}, {260.0f, litBottom}}};
+	litInner = _GameflowGrowQuad(&litRow, -2.0f);
+	litGlow = _GameflowGrowQuad(&litRow, 2.0f);
+	litHalo = _GameflowGrowQuad(&litGlow, 3.0f);
 
 	panelGlow.a = _GameflowAlpha(34.0f * alpha);
 	panelEdge.a = _GameflowAlpha(172.0f * alpha);
@@ -3567,7 +3687,8 @@ static void _GameflowDrawDetailDashboard(
 	const uiGameflowDetailSnapshot_t *detail,
 	const drawGameflowDetailPresentation_t *presentation,
 	const uiGameflowFrame_t *frame, float reveal,
-	const uiCommandRailFrame_t *commandRail, uiGameflowDetailFocus_t focusRow)
+	const uiCommandRailFrame_t *commandRail, uiGameflowDetailFocus_t focusRow,
+	uiMotionSpring_t lit[2])
 {
 	const char *launchText;
 	float launchScale;
@@ -3579,6 +3700,7 @@ static void _GameflowDrawDetailDashboard(
 
 	if(detail == NULL || presentation == NULL || frame == NULL ||
 		frame->detailProgress <= 0.001f) {
+		lit[0].response = 0.0f;
 		return;
 	}
 	alpha = _GameflowClamp(frame->detailProgress * reveal, 0.0f, 1.0f);
@@ -3586,7 +3708,8 @@ static void _GameflowDrawDetailDashboard(
 	secondary = (GXColor) {202, 192, 244, _GameflowAlpha(235.0f * alpha)};
 	muted = (GXColor) {165, 158, 201, _GameflowAlpha(218.0f * alpha)};
 	focus = (GXColor) {244, 239, 255, _GameflowAlpha(255.0f * alpha)};
-	_GameflowDrawDetailPlanes(detail, presentation, frame, alpha, focusRow);
+	_GameflowDrawDetailPlanes(detail, presentation, frame, alpha, focusRow,
+		lit);
 
 	drawStringMedium(264, 95, frame->launchProgress > 0.02f ?
 		"LAUNCHING" : "GAME DETAIL", 0.42f, ALIGN_LEFT, secondary);
@@ -3759,7 +3882,7 @@ static void _GameflowSetLaunch(drawGameflowEvent_t *data, bool on)
 		const uiGameflowCardSnapshot_t *record = _GameflowFindRecord(
 			&data->snapshot, UIGameflow_Frame(&data->state)->focusIndex, NULL);
 		GXTexObj *poster = record != NULL ?
-			_GameflowPosterTexture(record) : NULL;
+			_GameflowPosterTexture(record, NULL) : NULL;
 
 		UILaunch_Begin(&launchState);
 		launchWarningScale = 0.0f;
@@ -4093,12 +4216,30 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 	titleTravel = _GameflowClamp(titleTravel, 0.0f, 1.0f);
 	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
 		/* The picture changes with the title: the old game's fades out as
-		 * the row moves and the new game's fades in. */
+		 * the row moves and the new game's fades in. A new still fills the
+		 * panel, so it fades in over the old picture, which keeps what of
+		 * the mix the still leaves: a true mix at the panel's strength, with
+		 * no dip to the empty panel half way. A new cover is smaller, so
+		 * the old picture fades out around it; a still arriving over its
+		 * cover moves from the one to the other as it fades in. */
 		float heroAlpha = reveal * (1.0f - frame->detailProgress) *
 			(1.0f - frame->launchProgress);
+		float previousAlpha = heroAlpha * titleTravel;
+
+		if(selectedRecord != NULL &&
+			_GameflowStillTexture(selectedRecord) != NULL) {
+			float arrival = _GameflowStillArrival(selectedRecord);
+			float mixed = heroAlpha *
+				_GameflowUnderneath(heroAlpha, 1.0f - titleTravel);
+
+			/* Nothing of it shows once the still over it is opaque. */
+			previousAlpha = _GameflowAlpha(255.0f * heroAlpha *
+				(1.0f - titleTravel) * arrival) == 255u ? 0.0f :
+				previousAlpha + (mixed - previousAlpha) * arrival;
+		}
 		_GameflowDrawSpotlightPanel(heroAlpha);
 		_GameflowDrawSpotlightArt(data, previousRecord, previousRecordIndex,
-			heroAlpha * titleTravel);
+			previousAlpha);
 		_GameflowDrawSpotlightArt(data, selectedRecord, selectedRecordIndex,
 			heroAlpha * (1.0f - titleTravel));
 	}
@@ -4150,13 +4291,14 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		GXTexObj *posterTexture;
 		GXTexObj *bannerTexture = NULL;
 		uiGameflowLibraryArtwork_t artwork;
+		float arrival = 1.0f;
 
 		if(!cards[i].art) {
 			continue;
 		}
 		posterTexture = launchActive && launchHasPoster &&
 			cards[i].record->libraryIndex == frame->focusIndex ?
-			&launchPoster : _GameflowPosterTexture(cards[i].record);
+			&launchPoster : _GameflowPosterTexture(cards[i].record, &arrival);
 		if(cards[i].record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) {
 			bannerTexture = &data->bannerTexObj[cards[i].recordIndex];
 		}
@@ -4172,7 +4314,14 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		artwork = UIGameflowLibrary_ChooseArtwork(posterTexture != NULL,
 			bannerTexture != NULL);
 		if(artwork == UI_GAMEFLOW_LIBRARY_ART_POSTER) {
-			_GameflowDrawPoster(&cards[i], posterTexture, reveal);
+			/* A poster just read fades in over what stood in for it. */
+			if(arrival < 1.0f) {
+				_GameflowDrawFallback(&cards[i],
+					UIGameflowLibrary_ChooseArtwork(false,
+					bannerTexture != NULL), bannerTexture, reveal *
+					_GameflowUnderneath(cards[i].presence * reveal, arrival));
+			}
+			_GameflowDrawPoster(&cards[i], posterTexture, reveal * arrival);
 			continue;
 		}
 		_GameflowDrawFallback(&cards[i], artwork, bannerTexture, reveal);
@@ -4214,7 +4363,7 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 	if(frame->launchProgress < 0.999f) {
 		_GameflowDrawDetailDashboard(detail, &data->detailPresentation,
 			frame, reveal * (1.0f - frame->launchProgress), &commandRail,
-			data->detailFocus);
+			data->detailFocus, data->detailLit);
 	}
 	if(frame->detailProgress < 0.999f) {
 		GXColor label = {177, 168, 220,
@@ -4268,8 +4417,9 @@ static void _DrawHomeText(int x, int y, const char *text, float scale,
 	drawStringMedium(x, y, text, scale, align, color);
 }
 
+/* weight runs from the idle panel (0) to the selected one (1). */
 static void _DrawHomePanel(int x, int y, int width, int height,
-		float reveal, bool selected, bool danger)
+		float reveal, float weight, bool danger)
 {
 	GXColor fill = danger ? (GXColor) {82, 20, 42, 0} :
 		(GXColor) {20, 13, 58, 0};
@@ -4278,9 +4428,9 @@ static void _DrawHomePanel(int x, int y, int width, int height,
 	GXColor glow = danger ? (GXColor) {255, 75, 118, 0} :
 		(GXColor) {117, 88, 244, 0};
 
-	fill.a = (u8)((selected ? 148.0f : 72.0f) * reveal);
-	edge.a = (u8)((selected ? 218.0f : 92.0f) * reveal);
-	glow.a = (u8)((selected ? 84.0f : 28.0f) * reveal);
+	fill.a = (u8)((72.0f + 76.0f * weight) * reveal);
+	edge.a = (u8)((92.0f + 126.0f * weight) * reveal);
+	glow.a = (u8)((28.0f + 56.0f * weight) * reveal);
 	drawInit();
 	GX_SetNumTexGens(0);
 	GX_SetNumIndStages(0);
@@ -4303,7 +4453,7 @@ static void _DrawHomePanel(int x, int y, int width, int height,
 		_putFlatRect((float)x - 3.0f, (float)y - 3.0f,
 			(float)width + 6.0f, (float)height + 6.0f, glow);
 		_putFlatRect((float)x, (float)y, (float)width, (float)height, fill);
-		_putFlatRect((float)x, (float)y, selected ? 4.0f : 2.0f,
+		_putFlatRect((float)x, (float)y, 2.0f + 2.0f * weight,
 			(float)height, edge);
 	GX_End();
 	drawInit();
@@ -4406,13 +4556,14 @@ static void _DrawHomeRows(const drawHomeEvent_t *data, float reveal)
 		const uiHomeLayoutItem_t *item = &layout->rows[row];
 		int width = item->panelBounds.right - item->panelBounds.left;
 		int height = item->panelBounds.bottom - item->panelBounds.top;
-		bool selected = item->selected;
+		float weight = data->rowWeight[row].value;
 		const char *label = UIHome_RowLabel(data->state.surface, row);
 		_DrawHomePanel(item->panelBounds.left, item->panelBounds.top,
-			width, height, reveal, selected, false);
+			width, height, reveal, weight, false);
 		_DrawHomeText(item->labelCenter.x, item->labelCenter.y, label,
-			selected ? data->rowSelectedScale[row] : data->rowIdleScale[row],
-			ALIGN_CENTER, selected ? primary : muted);
+			data->rowIdleScale[row] + (data->rowSelectedScale[row] -
+				data->rowIdleScale[row]) * weight,
+			ALIGN_CENTER, _GameflowMixColor(muted, primary, weight));
 	}
 	_DrawHintText(layout->commandCenter.x, layout->commandCenter.y,
 		homeContextCommand, data->contextCommandScale,
@@ -4448,18 +4599,41 @@ static void _DrawHomeRestartConfirm(const drawHomeEvent_t *data,
 		const uiHomeLayoutItem_t *item = &data->layout.options[row];
 		int width = item->panelBounds.right - item->panelBounds.left;
 		int height = item->panelBounds.bottom - item->panelBounds.top;
-		bool selected = item->selected;
+		float weight = data->rowWeight[row].value;
 		const char *label = UIHome_RowLabel(
 			UI_HOME_SURFACE_RESTART_CONFIRM, row);
 		_DrawHomePanel(item->panelBounds.left, item->panelBounds.top,
-			width, height, reveal, selected, row == 1);
+			width, height, reveal, weight, row == 1);
 		_DrawHomeText(item->labelCenter.x, item->labelCenter.y, label,
-			selected ? 0.54f : 0.49f,
-			ALIGN_CENTER, selected ? primary : muted);
+			0.49f + 0.05f * weight,
+			ALIGN_CENTER, _GameflowMixColor(muted, primary, weight));
 	}
 	_DrawHintText(data->layout.commandCenter.x, data->layout.commandCenter.y,
 		homeConfirmCommand, data->confirmCommandScale,
 		ALIGN_CENTER, muted);
+}
+
+/* Spring each row of the surface towards its style: selected or idle. */
+static void _HomeUpdateRowWeights(drawHomeEvent_t *data,
+		uiMotionMode_t motionMode)
+{
+	bool confirm = data->state.surface == UI_HOME_SURFACE_RESTART_CONFIRM;
+	const uiHomeLayoutItem_t *items = confirm ?
+		data->layout.options : data->layout.rows;
+	int count = confirm ? data->layout.optionCount : data->layout.rowCount;
+	int row;
+
+	for(row = 0; row < count && row < UI_HOME_LAYOUT_MAX_ROWS; ++row) {
+		float target = items[row].selected ? 1.0f : 0.0f;
+		if(!data->rowsPlaced) {
+			UIMotion_SpringInit(&data->rowWeight[row], target,
+				HOME_ROW_RESPONSE);
+		}
+		UIMotion_SpringRetarget(&data->rowWeight[row], target, motionMode);
+		UIMotion_SpringUpdate(&data->rowWeight[row], UIAnim_Delta(),
+			motionMode);
+	}
+	data->rowsPlaced = true;
 }
 
 // Internal
@@ -4467,7 +4641,12 @@ static void _DrawHome(uiDrawObj_t *evt)
 {
 	drawHomeEvent_t *data = (drawHomeEvent_t*)evt->data;
 	const uiSceneFrame_t *scene = UIScene_Frame();
-	float reveal = scene->chromeProgress;
+	/* Back from another screen the name and hint fade in as the cube grows
+	 * to its Home size (every other scene's is 0.70 or less), as the Source
+	 * row rises with it. Off snaps the cube, so they show at once. */
+	float reveal = scene->chromeProgress *
+		UIMotion_Smoothstep((scene->cubeScale - 0.70f) / 0.18f);
+	uiMotionMode_t motionMode = _CurrentMotionMode();
 
 	if(!data->visible || !data->layoutValid || reveal <= 0.0f ||
 		scene->scene != UI_SCENE_HOME || scene->homeFace != data->state.face ||
@@ -4476,6 +4655,15 @@ static void _DrawHome(uiDrawObj_t *evt)
 		return;
 	}
 	if(reveal > 1.0f) reveal = 1.0f;
+	/* A new surface (the ring, a face's rows, the restart question) fades
+	 * in over a moment rather than appearing whole. */
+	if(data->surfaceAge < HOME_SURFACE_REVEAL) {
+		data->surfaceAge += UIAnim_Delta();
+	}
+	if(motionMode != UI_MOTION_OFF) {
+		reveal *= UIMotion_Smoothstep(data->surfaceAge / HOME_SURFACE_REVEAL);
+	}
+	_HomeUpdateRowWeights(data, motionMode);
 	if(data->state.surface == UI_HOME_SURFACE_RING) {
 		_DrawHomeRoot(data, scene, reveal);
 	}
@@ -4494,6 +4682,8 @@ uiDrawObj_t* DrawHome(void)
 	drawHomeEvent_t *eventData = calloc(1, sizeof(drawHomeEvent_t));
 	event->type = EV_HOME;
 	event->data = eventData;
+	/* The first surface shows with the boot's chrome, not after it. */
+	eventData->surfaceAge = HOME_SURFACE_REVEAL;
 	return event;
 }
 
@@ -4894,6 +5084,10 @@ void DrawUpdateHome(const uiHomeState_t *state,
 		data->visible = state != NULL;
 		data->layoutValid = false;
 		if(state != NULL) {
+			if(state->surface != data->state.surface) {
+				data->surfaceAge = 0.0f;
+				data->rowsPlaced = false;
+			}
 			data->state = *state;
 			data->capabilities = capabilities;
 			if(sourceName != NULL) {
@@ -4939,7 +5133,7 @@ static bool _GameflowSnapshotValid(const uiGameflowRenderSnapshot_t *snapshot)
 		snapshot->layout >= UI_GAMEFLOW_LAYOUT_COUNT) {
 		return false;
 	}
-	/* A grid names its columns; the carousels keep their seven cards. */
+	/* A grid names its columns; the carousels keep their nine cards. */
 	grid = snapshot->layout == UI_GAMEFLOW_LAYOUT_GRID;
 	if(grid ? snapshot->columns == 0u ||
 		snapshot->columns > UI_GAMEFLOW_LIBRARY_GRID_COLUMNS :
@@ -4951,7 +5145,7 @@ static bool _GameflowSnapshotValid(const uiGameflowRenderSnapshot_t *snapshot)
 		const uiGameflowCardSnapshot_t *record = &snapshot->records[i];
 		if(!(record->flags & UI_GAMEFLOW_CARD_VALID) ||
 			record->libraryIndex >= snapshot->selection.itemCount ||
-			record->relativeSlot < -3 || record->relativeSlot > 3 ||
+			record->relativeSlot < -4 || record->relativeSlot > 4 ||
 			(grid && (record->column >= snapshot->columns ||
 			record->relativeSlot < -2 || record->relativeSlot > 2))) {
 			return false;
@@ -5179,7 +5373,7 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	}
 	for(i = 0u; i < snapshot->recordCount; ++i) {
 		const uiGameflowCardSnapshot_t *record = &snapshot->records[i];
-		int position = (int)record->relativeSlot + 3;
+		int position = (int)record->relativeSlot + 4;
 		if(position < 0 || position >= UI_ASSETS_WINDOW ||
 			strnlen(record->gameId, sizeof(record->gameId)) !=
 				UI_ASSETS_ID_LEN) {
@@ -5187,9 +5381,9 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 		}
 		memcpy(ids[position], record->gameId, UI_ASSETS_ID_LEN);
 	}
-	/* Fixed -3..+3 placement preserves true carousel distance even when
+	/* Fixed -4..+4 placement preserves true carousel distance even when
 	 * the parent entry has no poster ID or a small library has gaps. */
-	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 4);
 }
 
 bool DrawGameflowPollPosters(void)
@@ -5933,6 +6127,11 @@ typedef struct {
 	uiSetPageSnapshot_t snapshot;
 	uiSettingsFocusState_t focus;
 	int focusView;
+	/* The current tab's cell, its left edge and width, sliding between
+	 * tabs; placed when the page first draws. */
+	uiMotionSpring_t tabX;
+	uiMotionSpring_t tabW;
+	bool tabPlaced;
 } drawSettingsEvent_t;
 
 typedef struct {
@@ -6076,6 +6275,8 @@ static void _DrawSettingsPage(uiDrawObj_t *evt)
 	GXColor back = settingsBack;
 	int focusSlot = l->selectedRow >= 0 ?
 		l->selectedRow - l->firstVisibleRow : -1;
+	int focusLeft;
+	int focusTop;
 	int i;
 
 	/* A new view snaps the focus card; within one it springs. */
@@ -6095,8 +6296,24 @@ static void _DrawSettingsPage(uiDrawObj_t *evt)
 	drawStringMedium(l->titleX, l->titleY, s->title, s->titleScale,
 		ALIGN_LEFT, settingsInk);
 	if(l->tabCount > 0) {
+		const uiSetLayoutRect_t *cell = &l->tabCell[l->currentTab];
+		int cellLeft;
+
+		if(!data->tabPlaced) {
+			UIMotion_SpringInit(&data->tabX, (float)cell->x, 25.0f);
+			UIMotion_SpringInit(&data->tabW, (float)cell->w, 25.0f);
+			data->tabPlaced = true;
+		}
+		UIMotion_SpringRetarget(&data->tabX, (float)cell->x, motion);
+		UIMotion_SpringRetarget(&data->tabW, (float)cell->w, motion);
+		UIMotion_SpringUpdate(&data->tabX, UIAnim_Delta(), motion);
+		UIMotion_SpringUpdate(&data->tabW, UIAnim_Delta(), motion);
+		/* Whole-pixel edges: each moves one way as the cell slides. */
+		cellLeft = (int)lrintf(data->tabX.value);
 		_SettingsBox(&l->tabTrack, settingsCard);
-		_SettingsBox(&l->tabCell[l->currentTab], settingsFocus);
+		_CheatsPanel(cellLeft, cell->y,
+			(int)lrintf(data->tabX.value + data->tabW.value) - cellLeft,
+			cell->h, settingsFocus);
 		for(i = 0; i < l->tabCount; i++) {
 			drawStringMedium(l->tabLabelCenterX[i], l->tabLabelY, s->tab[i],
 				s->tabScale[i], ALIGN_CENTER,
@@ -6125,8 +6342,12 @@ static void _DrawSettingsPage(uiDrawObj_t *evt)
 	for(i = 0; i < l->actionCount; i++) {
 		_SettingsBox(&l->actionRect[i], settingsCard);
 	}
-	_SettingsFocusCard((int)lrintf(frame.x), (int)lrintf(frame.y),
-		(int)lrintf(frame.w), (int)lrintf(frame.h));
+	/* Whole-pixel edges: each moves one way as the card slides. */
+	focusLeft = (int)lrintf(frame.x);
+	focusTop = (int)lrintf(frame.y);
+	_SettingsFocusCard(focusLeft, focusTop,
+		(int)lrintf(frame.x + frame.w) - focusLeft,
+		(int)lrintf(frame.y + frame.h) - focusTop);
 	for(i = 0; i < l->visibleRowCount; i++) {
 		_SettingsRow(l, i, &s->rows[i], i == focusSlot);
 	}
@@ -6379,6 +6600,11 @@ typedef struct {
 	uiMotionSpring_t focusY;
 	bool focusInitialized;
 	u32 focusList;
+	/* The current tab's underline, its left edge and width, sliding
+	 * between tabs; placed when the page first draws. */
+	uiMotionSpring_t tabX;
+	uiMotionSpring_t tabW;
+	bool tabPlaced;
 } drawSavesEvent_t;
 
 static void _SavesCopySnapshot(drawSavesEvent_t *data,
@@ -6436,6 +6662,7 @@ static void _DrawSaves(uiDrawObj_t *evt)
 	const GXColor amber = {255, 207, 139, 255};
 	uiMotionMode_t motion = _CurrentMotionMode();
 	float target = (float)(148 + s->focusRow * 40);
+	bool underlined = false;
 	int focusY;
 	int i;
 	int x;
@@ -6460,9 +6687,25 @@ static void _DrawSaves(uiDrawObj_t *evt)
 		drawStringMedium(x, 98, s->tabs[i], 0.54f, ALIGN_LEFT,
 			i == s->tab ? settingsInk : settingsQuiet);
 		if(i == s->tab) {
-			_CheatsPanel(x, 108, width, 2, settingsAccent);
+			/* The underline slides from tab to tab. */
+			underlined = true;
+			if(!data->tabPlaced) {
+				UIMotion_SpringInit(&data->tabX, (float)x, 25.0f);
+				UIMotion_SpringInit(&data->tabW, (float)width, 25.0f);
+				data->tabPlaced = true;
+			}
+			UIMotion_SpringRetarget(&data->tabX, (float)x, motion);
+			UIMotion_SpringRetarget(&data->tabW, (float)width, motion);
 		}
 		x += width + 32;
+	}
+	if(underlined) {
+		int left = (int)lrintf(UIMotion_SpringUpdate(&data->tabX,
+			UIAnim_Delta(), motion));
+		int right = (int)lrintf(data->tabX.value + UIMotion_SpringUpdate(
+			&data->tabW, UIAnim_Delta(), motion));
+
+		_CheatsPanel(left, 108, right - left, 2, settingsAccent);
 	}
 	_CheatsPanel(40, 115, 560, 1, settingsRule);
 	drawStringMedium(40, 132, s->section, 0.42f, ALIGN_LEFT, settingsAccent);

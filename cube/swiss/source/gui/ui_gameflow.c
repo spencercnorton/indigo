@@ -1,6 +1,7 @@
 #include <stddef.h>
 
 #include "ui_gameflow.h"
+#include "ui_gameflow_library.h"
 
 #define UI_GAMEFLOW_CAROUSEL_RESPONSE 15.0f
 #define UI_GAMEFLOW_DETAIL_RESPONSE 12.0f
@@ -112,13 +113,21 @@ static bool springSettled(const uiMotionSpring_t *spring)
 		UI_GAMEFLOW_VELOCITY_EPSILON);
 }
 
-static float clampCarouselTravel(float travel)
+/* How far behind the selection the strip may fall: two cards on a ring, so
+ * a held stick's repeats (every 120 ms) never outrun the spring and drop
+ * the travel still to go; one row in a grid, whose rows are gone two out.
+ * A ring smaller than the window has no fourth card either side to show
+ * two behind, so it keeps to one. */
+static float clampCarouselTravel(const uiGameflowState_t *state, float travel)
 {
-	if(travel < -1.0f) {
-		return -1.0f;
+	float limit = state->columns == 0u &&
+		state->itemCount >= UI_GAMEFLOW_LIBRARY_WINDOW ? 2.0f : 1.0f;
+
+	if(travel < -limit) {
+		return -limit;
 	}
-	if(travel > 1.0f) {
-		return 1.0f;
+	if(travel > limit) {
+		return limit;
 	}
 	return travel;
 }
@@ -131,9 +140,10 @@ static void retargetCarouselSpring(uiGameflowState_t *state, int32_t delta,
 	float travel = spring->target - spring->value;
 
 	/* Snapshot selection is latest-value state, not an animation queue. A new
-	 * card begins at most one slot away; rapid same-direction input coalesces,
-	 * while reversal subtracts a slot and preserves visible continuity. */
-	travel = clampCarouselTravel(travel + visualStep);
+	 * card begins at most two slots away (see clampCarouselTravel); rapid
+	 * same-direction input coalesces, while reversal subtracts a slot and
+	 * preserves visible continuity. */
+	travel = clampCarouselTravel(state, travel + visualStep);
 	spring->target = 0.0f;
 	spring->value = -travel;
 	if(motionMode == UI_MOTION_REDUCED) {
