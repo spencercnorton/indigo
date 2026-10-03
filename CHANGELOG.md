@@ -98,9 +98,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - The highlight in Game Details slides from row to row, and so do the current
   tab's cell in Settings and its underline in Memory Cards, as the focus in
   the cheat list already did, instead of jumping.
-- A moving cover in the Library no longer shimmers a pixel wider and
-  narrower as it slides, and Settings' focus card no longer nudges an edge
-  back the other way as it moves to a row of another width.
+- A moving cover in the Library slides one way to rest, its edges never
+  stepping back as it settles, and Settings' focus card no longer nudges an
+  edge back the other way as it moves to a row of another width.
 - In Spotlight, moving from one game with a gameplay still to another, the
   new still fades in over the old one, instead of both fading through a
   darker panel half way.
