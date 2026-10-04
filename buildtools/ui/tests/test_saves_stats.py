@@ -64,7 +64,7 @@ static DEVICEHANDLER_INTERFACE *devices[2];
 static file_handle initial[3];
 static u8 *image, *gci;
 static size_t imageSize, gciSize;
-static bool configOk, directoryError, shortRead, seekError, invalidSave;
+static bool configOk, directoryError, shortRead, seekError, invalidSave, hugeSave;
 static bool statusError, statusMismatch, enumError;
 static unsigned listingMode, fileReads, fileCloses, configCloses, probes[2];
 static unsigned mounts[2], unmounts[2], statusReads, maximumRead;
@@ -170,12 +170,13 @@ static s32 readDir(file_handle *f, file_handle **files, u32 kind)
 			strcpy(entry->name, "sd:/swiss/saves/readme.txt");
 		}
 		if(invalidSave && i == 0u) entry->size = 17u;
+		if(hugeSave && i == 0u) entry->size = UINT32_MAX;
 	}
 	return (s32)count;
 }
 static void reset(void)
 {
-	configOk = true; directoryError = shortRead = seekError = invalidSave = false;
+	configOk = true; directoryError = shortRead = seekError = invalidSave = hugeSave = false;
 	statusError = statusMismatch = enumError = false; listingMode = 0u;
 	fileReads = fileCloses = configCloses = maximumRead = statusReads = 0u;
 	memset(probes, 0, sizeof(probes)); memset(mounts, 0, sizeof(mounts));
@@ -224,7 +225,9 @@ int main(int argc, char **argv)
 	reset(); statusMismatch = true; Saves_CollectGameStats(id, &stats);
 	assert(stats.saves == 3u && stats.partial && stats.latestUpdated == updated);
 	reset(); invalidSave = true; Saves_CollectGameStats(id, &stats);
-	assert(stats.saves == 2u && stats.blocks == 4u && stats.partial);
+	assert(stats.saves == 2u && stats.blocks == 4u && stats.partial && fileReads == 1u);
+	reset(); hugeSave = true; Saves_CollectGameStats(id, &stats);
+	assert(stats.saves == 2u && stats.blocks == 4u && stats.partial && fileReads == 1u);
 	reset(); shortRead = true; Saves_CollectGameStats(id, &stats);
 	assert(stats.saves == 1u && stats.partial && fileCloses == 2u);
 	reset(); seekError = true; Saves_CollectGameStats(id, &stats);

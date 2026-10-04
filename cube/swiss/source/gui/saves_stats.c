@@ -113,6 +113,8 @@ static bool statsReadEntry(file_handle *file, u8 *head,
 	u32 want = file->size < UI_SAVES_HEAD_SIZE ? file->size : UI_SAVES_HEAD_SIZE;
 	bool ok;
 
+	if(file->size < UI_SAVES_ENTRY_SIZE ||
+		file->size > UI_SAVES_HEAD_SIZE + 2043u * UI_SAVES_BLOCK_SIZE) return false;
 	ok = file->device->seekFile(file, 0, DEVICE_HANDLER_SEEK_SET) == 0 &&
 		file->device->readFile(file, head, want) == (s32)want;
 	file->device->closeFile(file);
