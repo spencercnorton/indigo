@@ -713,13 +713,15 @@ class Route:
         time.sleep(0.5)
 
     def card_checks(self, image: Path, route: str, start: dict[str, str] | None = None) -> None:
-        """What Indigo wrote to the SD card, read back from its image. Settings
-        the card started with must have lasted through Indigo's own saves."""
+        """Read settings back from the SD image. A seeded card must retain
+        its configured values, including on routes that do not save settings."""
         def text(path: str) -> str:
             return (card.read_card(image, path) or b"").decode("latin-1")
 
         settings = text("swiss/settings/global.ini")
-        self.check("the settings Indigo saved are on the card",
+        settings_check = ("the configured settings remain on the card" if start else
+                          "the settings Indigo saved are on the card")
+        self.check(settings_check,
                    "Swiss Video Mode=" in settings and "Hide Apps Face=No" in settings, bytes=len(settings))
         if start:
             kept = seeded(settings)

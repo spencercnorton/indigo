@@ -241,6 +241,26 @@ class Card(unittest.TestCase):
         self.assertTrue(all(not key.startswith("#") for key in pairs))
         self.assertEqual(run.seeded("# Clock=Right\nClock = Off\r\n"), {"Clock": "Off"})
 
+    def test_wide_save_details_seed_survives_readback(self):
+        text = (run.SETTINGS / "save-details-wide.ini").read_text()
+        start = run.seeded(text)
+        self.assertEqual(start, {"Menu Widescreen": "Yes", "Swiss Video Mode": "Auto",
+                                 "Hide Apps Face": "No"})
+        route = run.Route.__new__(run.Route)
+        route.checks, route.report, route.last_rgb = [], None, None
+        route.folders_on = False
+        route.emulator = mock.Mock(where=lambda: None)
+        with mock.patch.object(card, "read_card", return_value=text.replace("\n", "\r\n").encode()):
+            route.card_checks(Path("synthetic.img"), "virtual-cards", start)
+        self.assertEqual([check["check"] for check in route.checks],
+                         ["the configured settings remain on the card",
+                          "the settings the card started with are all still there"])
+        self.assertTrue(all(check["passed"] for check in route.checks))
+        with mock.patch.object(card, "read_card", return_value=text.replace("Menu Widescreen=Yes",
+                                                                          "Menu Widescreen=No").encode()):
+            with self.assertRaises(run.Failed):
+                route.card_checks(Path("synthetic.img"), "virtual-cards", start)
+
 
 class MemoryCards(unittest.TestCase):
     """The memory cards the smoke route opens Memory Cards with, and what it
