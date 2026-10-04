@@ -1,5 +1,29 @@
 # Indigo development journal
 
+## 2026-10-04 — Save details and Library save statistics
+
+Selecting a save now opens its details before guarded actions, including
+when both columns contain read-only images. Details show blocks, KiB, source
+and the save's recorded update date. Creation dates are explicitly not
+recorded; SD container dates are never substituted. Physical metadata must
+match the selected slot, game, maker, filename and size. Calendar formatting
+works beyond 2038 without relying on the target's time_t width.
+
+Game Detail takes a read-only snapshot for the verified six-byte disc ID and
+shows save copies, blocks and update date above Settings and Cheats. Scans
+examine at most 256 folder entries and 16 RAW images; omitted subfolders,
+unreadable sources and truncated scans are marked partial. Draw functions
+perform no storage reads, and existing focus and launch actions are retained.
+
+Focused production controller, collector and metadata regressions pass
+plain and sanitized builds. Tests stream fragmented RAW saves through the
+real adapter and decoder, including distinct animated frames. Detail GX
+budgets separately measure panel geometry and medium text in both screen
+shapes. Dolphin routes cover the details flow, read-only images and Library
+totals before and after a verified export. Console acceptance remains the
+next step before release promotion.
+
+
 ## 2026-10-04 — RAW adapter Linux sanitizer startup
 
 The standalone RAW adapter harness now uses the Linux-only non-PIE sanitizer
