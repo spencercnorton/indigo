@@ -17,6 +17,15 @@ the saves of both stacks before it names a slot, and publishes only then;
 B goes up a folder the SD card's stack opened, never past where it opened
 or the card's root, and L or R looks again at a slot without a card before
 swapping a stack.
+
+An operation's cube flies while the card works: it starts before the save
+is read, and lands (or goes back) only once the copy was written, read
+back and a Move's original removed, after every place is read again; the
+save that came takes the cube's art in a slot no published cube names, its
+texels flushed before the slot is named; the cube in flight has its own
+slot, filled before it is shown. An erase is called done only after the
+card did it, and a failed one on a card shows the driver's box alone. The
+screen leaves before the cards are let go.
 """
 
 from __future__ import annotations
@@ -134,6 +143,40 @@ def check(source: str) -> None:
             "loadTab(stacks[s]);", "found = found || places[stacks[s]].ready;",
             "UISaveCubes_Swap(stacks[stack], stacks[!stack], found);")
 
+    # The flight starts before the save is read, and ends only after the
+    # copy was written, read back and a Move's original removed: twice, the
+    # Move whose original stayed and the rest.
+    ordered(transfer, "opBegin(", "saveRead(save, &length)")
+    if transfer.index("opEnd(") < transfer.index("if(ok && move && !saveDelete(save))"):
+        raise AssertionError("a cube lands before the copy is checked")
+    if transfer.count("opEnd(") != 2 or transfer.count("opBegin(") != 1:
+        raise AssertionError("saveTransfer starts or ends its flight more than once")
+    ordered(transfer, "if(ok && move && !saveDelete(save))", "opEnd(true);",
+            "savesTell(D_WARN", "return;", "opEnd(ok);", "savesSay(done);")
+    begin = function(source, "opBegin")
+    end = function(source, "opEnd")
+    # The cube in flight has its own slot, filled before a screen names it.
+    ordered(begin, "memcpy(SAVES_FLIGHT,", "DCFlushRange(SAVES_FLIGHT, SAVES_SLOT_BYTES);",
+            "over.op.cube.texels = SAVES_FLIGHT;", "screenRedraw();")
+    # Every place is read again before a cube lands; the save that came is
+    # given the cube's art only after the screen built from that reading
+    # is out, in a slot it doesn't name, flushed before the slot is named.
+    ordered(end, "savesWait(opStarted,", "placesReload();",
+            "over.op.phase = ok ? UI_SAVE_CUBES_LAND : UI_SAVE_CUBES_BACK;",
+            "screenRedraw();",
+            "UISaves_SlotPick(slotTags, SAVES_SLOTS, wantTags, wantCount)",
+            "DCFlushRange(pool + s * SAVES_SLOT_BYTES, SAVES_SLOT_BYTES);",
+            "slotTags[s] = tag;", "screenRedraw();", "memset(&over.op, 0,")
+    options = function(source, "saveOptions")
+    # An erase is done once the card did it; a card's failure shows only the
+    # box its driver shows.
+    ordered(options, "eraseBegin(", "ok = saveDelete(save);", "opEnd(ok);",
+            "if(ok) {", 'savesSay("The data was erased.");', "else if(!card) {",
+            'savesTell(D_FAIL, "The save couldn\'t be deleted.')
+    # The screen goes before the cards it mounted are let go.
+    ordered(show, "over.leaving = 1;", "screenRedraw();", "savesWait(",
+            "placeClear(&places[i]);", "DrawDispose(page);", "free(pool);")
+
 
 def mutants(source: str) -> list[tuple[str, str]]:
     return [
@@ -187,6 +230,27 @@ def mutants(source: str) -> list[tuple[str, str]]:
          source.replace(" &&\n\t\t!folderIsRoot(&places[tab]);", ";")),
         ("L and R never look again for a card",
          source.replace("\t\t\t\t\tfound = found || places[stacks[s]].ready;\n", "")),
+        ("a cube lands before the copy is written",
+         source.replace("\topEnd(ok);\n\tif(ok) {\n\t\tsavesSay(done);",
+                        "\tif(ok) {\n\t\tsavesSay(done);").replace(
+             "\t\tok = cardWrite(", "\t\topEnd(ok);\n\t\tok = cardWrite(")),
+        ("a cube lands before every place is read again",
+         source.replace("\tplacesReload();\n\t/* Where it came", "\t/* Where it came")),
+        ("the save that came is given art while the old screen is up",
+         source.replace("\tover.op.phase = ok ? UI_SAVE_CUBES_LAND : UI_SAVE_CUBES_BACK;\n\tscreenRedraw();\n",
+                        "\tover.op.phase = ok ? UI_SAVE_CUBES_LAND : UI_SAVE_CUBES_BACK;\n")),
+        ("the save that came is named before its art is flushed",
+         source.replace("\t\tDCFlushRange(pool + s * SAVES_SLOT_BYTES, SAVES_SLOT_BYTES);\n\t\tslotTags[s] = tag;\n",
+                        "\t\tslotTags[s] = tag;\n\t\tDCFlushRange(pool + s * SAVES_SLOT_BYTES, SAVES_SLOT_BYTES);\n")),
+        ("the cube in flight is shown before its art is in its slot",
+         source.replace("\t\tDCFlushRange(SAVES_FLIGHT, SAVES_SLOT_BYTES);\n", "")),
+        ("an erase is called done before the card did it",
+         source.replace("\t\teraseBegin(placeCell(place));\n\t\tok = saveDelete(save);\n\t\topEnd(ok);\n",
+                        "\t\teraseBegin(placeCell(place));\n\t\topEnd(true);\n\t\tok = saveDelete(save);\n")),
+        ("a failed erase on a card shows two boxes",
+         source.replace("\t\telse if(!card) {\n", "\t\telse {\n")),
+        ("the cards go before the screen does",
+         source.replace("\tover.leaving = 1;\n", "")),
         ("a half-written card copy is left on the card",
          source.replace("!= NULL) {\n\t\t\tdevice->deleteFile(copy);\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"",
                         "!= NULL) {\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"")),

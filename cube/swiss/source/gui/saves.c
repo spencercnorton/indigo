@@ -55,6 +55,8 @@ typedef struct {
 	int totalBlocks;
 	int freeBlocks;
 	u32 listing;				/* which listing this is, for the page */
+	u8 change;				/* how the listing came: uiSaveCubesChange_t */
+	s16 changeAt;				/* the cell a save went from or came to */
 	char note[2][96];			/* why nothing is listed */
 } savesPlace_t;
 
@@ -83,6 +85,31 @@ static uiSaveCubesPageSnapshot_t screen;
 /* The folder the SD card's stack opens at, the Save Folder: A opens the
  * folders in it and B goes back up, no further. */
 static char folderHome[PATHNAME_MAX];
+/* The settings device is mounted, so the SD card's place can be listed. */
+static bool foldersReady;
+/* What the screen last showed, so a box, an operation or a message can show
+ * it again. */
+static int screenStacks[UI_SAVE_CUBES_STACKS];
+static int screenFocus = -1;
+static uiDrawObj_t *screenPage;
+/* What goes over it: an operation in flight, the box beside the focused
+ * cube and its ghost, a message, the leaving. */
+static struct {
+	uiSaveCubesOp_t op;
+	uiSaveCubesMenu_t menu;
+	u8 menuOpen, menuFocus;
+	u16 menuSerial;
+	u8 ghost;
+	s16 ghostCell;
+	char reason[96];			/* why the focused item can't be chosen */
+	char message[64];
+	u8 leaving;
+} over;
+/* Each place's cubes as ids, before an operation and after, to tell what
+ * moved. */
+static u32 placeIds[SAVES_TABS][SAVES_LIST_MAX];
+static int placeIdCount[SAVES_TABS];
+static u32 reloads;
 
 const char *saves_folder(void)
 {
@@ -133,9 +160,12 @@ static bool isSaveName(const char *name)
 static u32 slotTags[SAVES_SLOTS];		/* each slot's save, 0 for none */
 static savesSlot_t slots[SAVES_SLOTS];
 /* A ceiling chosen on purpose: one 1.03 MiB block while the page is open,
- * as big as the Library's poster reservation. A shared pool of 2 KiB
- * frames is the way on if that ever crowds a copy. */
-static u8 *pool;				/* SAVES_SLOTS x SAVES_SLOT_BYTES, or NULL */
+ * as big as the Library's poster reservation, and one slot more for a cube
+ * in flight (operations come one at a time). A shared pool of 2 KiB frames
+ * is the way on if that ever crowds a copy. */
+static u8 *pool;				/* SAVES_SLOTS + 1 x SAVES_SLOT_BYTES, or NULL */
+#define SAVES_FLIGHT (pool + SAVES_SLOTS * SAVES_SLOT_BYTES)
+static savesSlot_t flight;			/* the art of the save in flight */
 static u8 *scratch;				/* SAVES_SCRATCH_BYTES, or NULL */
 /* The saves on screen, nearest the focus first. placeClear empties it, as
  * the handles point into the listing it frees. */
@@ -415,63 +445,6 @@ static void savesTell(int type, const char *text)
 	DrawDispose(box);
 }
 
-/* A short list over the page, in the Settings value list's card: A chooses,
- * B cancels. Returns the index chosen, or -1. */
-static int savesPick(const char *title, const char *const *items, int count,
-	int focus)
-{
-	static uiSetListSnapshot_t list;
-	uiDrawObj_t *box = NULL;
-	savesInput_t input;
-	int chosen = -1;
-	int i;
-
-	if(count <= 0 || count > UI_SETLAYOUT_LIST_MAX) {
-		return -1;
-	}
-	inputInit(&input);
-	while(1) {
-		u32 pressed;
-
-		memset(&list, 0, sizeof(list));
-		UISetLayout_ComputeList(count, focus, &list.layout);
-		list.titleScale = UI_SETLAYOUT_CARD_TITLE_SCALE;
-		UICheats_Fit(list.title, sizeof(list.title), title,
-			list.layout.titleMaxWidth, list.titleScale, GetTextSizeInPixels);
-		for(i = 0; i < list.layout.visibleCount; i++) {
-			list.valueScale[i] = UI_SETLAYOUT_LABEL_SCALE;
-			UICheats_Fit(list.value[i], sizeof(list.value[i]),
-				items[list.layout.first + i], list.layout.rowTextMaxWidth,
-				list.valueScale[i], GetTextSizeInPixels);
-		}
-		list.current = -1;
-		snprintf(list.hint[0], sizeof(list.hint[0]), "A  Choose");
-		snprintf(list.hint[1], sizeof(list.hint[1]), "B  Cancel");
-		list.hintScale[0] = list.hintScale[1] = UI_SETLAYOUT_HINT_SCALE;
-		if(box == NULL) {
-			if((box = DrawSettingsList(&list)) != NULL) {
-				DrawPublish(box);
-			}
-		}
-		else {
-			DrawUpdateSettingsList(box, &list, -1, -1);
-		}
-		pressed = inputNext(&input);
-		if(pressed & BUTTON_UP) {
-			focus = focus > 0 ? focus - 1 : count - 1;
-		}
-		else if(pressed & BUTTON_DOWN) {
-			focus = focus + 1 < count ? focus + 1 : 0;
-		}
-		else if(pressed & (BUTTON_A | BUTTON_B)) {
-			chosen = (pressed & BUTTON_A) ? focus : -1;
-			break;
-		}
-	}
-	DrawDispose(box);
-	return chosen;
-}
-
 /* ------------------------------------------------------------------------
  * Places: a card, or a folder on the settings device.
  * --------------------------------------------------------------------- */
@@ -497,6 +470,9 @@ static void placeClear(savesPlace_t *place)
 	place->count = 0;
 	place->ready = false;
 	place->listing = ++listings;
+	/* Another listing comes in from nothing, unless placesReload says how
+	 * it moved. */
+	place->change = UI_SAVE_CUBES_NEW;
 	place->note[0][0] = place->note[1][0] = '\0';
 }
 
@@ -651,6 +627,16 @@ static void loadFolder(savesPlace_t *place, bool foldersOnly)
 	}
 	if(place->selection >= place->count) {
 		place->selection = place->count > 0 ? place->count - 1 : 0;
+	}
+}
+
+static void loadTab(int tab)
+{
+	if(tab == SAVES_TAB_FOLDER) {
+		loadFolder(&places[tab], false);
+	}
+	else {
+		loadCard(&places[tab], tab);
 	}
 }
 
@@ -1024,6 +1010,10 @@ static void screenBuild(const int stacks[UI_SAVE_CUBES_STACKS], int focus)
 	file_handle *chosen;
 	int s, k;
 
+	for(s = 0; s < UI_SAVE_CUBES_STACKS; s++) {
+		screenStacks[s] = stacks[s];
+	}
+	screenFocus = focus;
 	memset(g, 0, sizeof(*g));
 	for(s = 0; s < UI_SAVE_CUBES_STACKS; s++) {
 		savesPlace_t *place = &places[stacks[s]];
@@ -1051,6 +1041,8 @@ static void screenBuild(const int stacks[UI_SAVE_CUBES_STACKS], int focus)
 		stack->cells = (s16)placeCells(place);
 		stack->first = (s16)place->top;
 		stack->listing = place->listing;
+		stack->change = place->change;
+		stack->changeAt = place->changeAt;
 		if(stack->cells == 0) {
 			for(k = 0; k < 2; k++) {
 				snprintf(text->note[k], sizeof(text->note[k]), "%s", place->note[k]);
@@ -1088,10 +1080,38 @@ static void screenBuild(const int stacks[UI_SAVE_CUBES_STACKS], int focus)
 	if(chosen != NULL) {
 		screenInfo(g, stacks[focus], chosen);
 	}
-	snprintf(g->hint[0], sizeof(g->hint[0]),
-		"STICK / D-PAD  Select   B  %s   A  Confirm",
-		focus >= 0 && folderBelowHome(stacks[focus]) ? "Up" : "Finish");
-	snprintf(g->hint[1], sizeof(g->hint[1]), "L/R  Card");
+	g->grid.op = over.op;
+	g->grid.ghost = over.ghost;
+	g->grid.ghostCell = over.ghostCell;
+	g->grid.menu = over.menuOpen;
+	g->grid.menuFocus = over.menuFocus;
+	g->grid.menuSerial = over.menuSerial;
+	g->menu = over.menu;
+	g->grid.message = over.message[0] != '\0';
+	snprintf(g->message, sizeof(g->message), "%s", over.message);
+	g->grid.leaving = over.leaving;
+	if(over.op.kind != UI_SAVE_CUBES_OP_NONE) {
+		/* The words the GameCube's guidelines ask for while a card works. */
+		snprintf(g->hint[0], sizeof(g->hint[0]),
+			"Accessing. Do not touch the Memory Card or the POWER Button.");
+	}
+	else if(over.menuOpen && over.reason[0] != '\0') {
+		/* A dimmed item says why, in the info bar in amber and below. */
+		UICheats_Fit(g->line[1], sizeof(g->line[1]), over.reason, 360, 0.5f,
+			GetTextSizeInPixels);
+		g->warn = 1;
+		snprintf(g->hint[0], sizeof(g->hint[0]), "%s", over.reason);
+		snprintf(g->hint[1], sizeof(g->hint[1]), "B  Cancel");
+	}
+	else if(over.menuOpen) {
+		snprintf(g->hint[0], sizeof(g->hint[0]), "B  Cancel   A  Confirm");
+	}
+	else {
+		snprintf(g->hint[0], sizeof(g->hint[0]),
+			"STICK / D-PAD  Select   B  %s   A  Confirm",
+			focus >= 0 && folderBelowHome(stacks[focus]) ? "Up" : "Finish");
+		snprintf(g->hint[1], sizeof(g->hint[1]), "L/R  Card");
+	}
 }
 
 static void screenShow(uiDrawObj_t **page)
@@ -1104,6 +1124,255 @@ static void screenShow(uiDrawObj_t **page)
 	else {
 		DrawUpdateSaveCubesPage(*page, &screen);
 	}
+	screenPage = *page;
+}
+
+static void screenRedraw(void)
+{
+	screenBuild(screenStacks, screenFocus);
+	screenShow(&screenPage);
+}
+
+/* ------------------------------------------------------------------------
+ * Over the screen: the box beside the focused cube, an operation's cube
+ * flying while the card works, and messages.
+ * --------------------------------------------------------------------- */
+static uiMotionMode_t savesMotion(void)
+{
+	return UIMotion_ModeFromFlags(swissSettings.disableUIAnimations,
+		swissSettings.reduceUIAnimations);
+}
+
+/* Waits until seconds of video have gone since retrace since, counted at
+ * the screen's own rate. */
+static void savesWait(u32 since, float seconds)
+{
+	float rate = VIDEO_GetRetraceRate();
+
+	if(!isfinite(rate) || rate < 1.0f) rate = 60.0f;
+	while((float)(VIDEO_GetRetraceCount() - since) < seconds * rate) {
+		VIDEO_WaitVSync();
+	}
+}
+
+/* The box beside the focused cube, the IPL's, or a question with title
+ * above it: Up and Down move, A chooses an item that isn't dimmed, B
+ * cancels. A dimmed item says why (reasons[i]) while it is focused; the
+ * items in ghosts show the ghost cube where a save would land. Returns the
+ * index chosen, or -1. */
+static int savesMenu(const char *title, const char *const *items, int count,
+	int focus, unsigned dim, const char *const *reasons, unsigned ghosts)
+{
+	savesInput_t input;
+	int width, chosen = -1, i;
+
+	if(count <= 0 || count > 4) {
+		return -1;
+	}
+	memset(&over.menu, 0, sizeof(over.menu));
+	UICheats_Fit(over.menu.title, sizeof(over.menu.title), title, 236, 0.56f,
+		GetTextSizeInPixels);
+	width = (int)((float)GetTextSizeInPixels(over.menu.title) * 0.56f) + 24;
+	for(i = 0; i < count; i++) {
+		int w;
+
+		UICheats_Fit(over.menu.item[i], sizeof(over.menu.item[i]), items[i], 228,
+			0.56f, GetTextSizeInPixels);
+		w = (int)((float)GetTextSizeInPixels(over.menu.item[i]) * 0.56f) + 32;
+		width = w > width ? w : width;
+	}
+	over.menu.count = (u8)count;
+	over.menu.dim = (u8)dim;
+	over.menu.width = (u16)width;
+	over.menuOpen = 1;
+	over.menuSerial++;
+	inputInit(&input);
+	while(1) {
+		u32 pressed;
+
+		over.menuFocus = (u8)focus;
+		over.ghost = (u8)((ghosts >> focus) & 1u);
+		snprintf(over.reason, sizeof(over.reason), "%s", (dim >> focus) & 1u &&
+			reasons != NULL && reasons[focus] != NULL ? reasons[focus] : "");
+		screenRedraw();
+		pressed = inputNext(&input);
+		if(pressed & BUTTON_UP) {
+			focus = focus > 0 ? focus - 1 : count - 1;
+			menuaudio_blip();
+		}
+		else if(pressed & BUTTON_DOWN) {
+			focus = focus + 1 < count ? focus + 1 : 0;
+			menuaudio_blip();
+		}
+		else if(pressed & BUTTON_B) {
+			break;
+		}
+		else if((pressed & BUTTON_A) && !((dim >> focus) & 1u)) {
+			menuaudio_select();
+			chosen = focus;
+			break;
+		}
+	}
+	over.menuOpen = over.ghost = 0;
+	over.reason[0] = '\0';
+	screenRedraw();
+	return chosen;
+}
+
+/* A message in the IPL's maroon box, that something is done: it closes by
+ * itself after UI_SAVE_CUBES_MESSAGE seconds, or on A or B. */
+static void savesSay(const char *text)
+{
+	u32 start = VIDEO_GetRetraceCount();
+	u32 previous = padsButtonsHeld();
+	float rate = VIDEO_GetRetraceRate();
+	u32 held, pressed = 0u;
+
+	if(!isfinite(rate) || rate < 1.0f) rate = 60.0f;
+	snprintf(over.message, sizeof(over.message), "%s", text);
+	screenRedraw();
+	while(UISaveCubes_MessageHolds((float)(VIDEO_GetRetraceCount() - start) / rate,
+		pressed != 0u)) {
+		VIDEO_WaitVSync();
+		held = padsButtonsHeld();
+		pressed = held & ~previous & (BUTTON_A | BUTTON_B);
+		previous = held;
+	}
+	over.message[0] = '\0';
+	screenRedraw();
+}
+
+/* Place tab's cubes as ids, saves' as their art slots know them. */
+static void placeRemember(int tab)
+{
+	savesPlace_t *place = &places[tab];
+	int i;
+
+	placeIdCount[tab] = 0;
+	for(i = placeSkip(place); i < place->count; i++) {
+		placeIds[tab][placeIdCount[tab]++] = saveTag(tab, place->list[i]);
+	}
+}
+
+static void placesRemember(void)
+{
+	int tab;
+
+	for(tab = 0; tab < SAVES_TABS; tab++) {
+		placeRemember(tab);
+	}
+}
+
+/* Every place read again after an operation, each knowing how its cubes
+ * moved since placesRemember: a save gone, one come, or nothing. */
+static void placesReload(void)
+{
+	static u32 before[SAVES_LIST_MAX];
+	int tab, count, at;
+
+	for(tab = 0; tab < SAVES_TABS; tab++) {
+		count = placeIdCount[tab];
+		memcpy(before, placeIds[tab], (size_t)count * sizeof(before[0]));
+		if(tab < SAVES_TAB_FOLDER || foldersReady) {
+			loadTab(tab);
+		}
+		placeRemember(tab);
+		at = 0;
+		places[tab].change = (u8)(places[tab].ready ? UISaveCubes_Change(before, count,
+			placeIds[tab], placeIdCount[tab], &at) : UI_SAVE_CUBES_NEW);
+		places[tab].changeAt = (s16)at;
+	}
+	reloads++;
+}
+
+/* What an operation starts from: the save's cell and art slot, and the
+ * cell of the other stack it would land in. */
+static struct {
+	int cell;
+	int slot;
+	int toCell;
+} plan;
+static u16 opSerial;
+static u32 opStarted;
+
+/* Copy or Move: the save's cube leaves for the other stack, or the header
+ * of a folder it doesn't show, while the card is read and written. */
+static void opBegin(bool move, const char *folder)
+{
+	memset(&flight, 0, sizeof(flight));
+	flight.failed = true;
+	if(pool != NULL && plan.slot >= 0 && !slots[plan.slot].failed) {
+		/* The slot in flight: no published cube names it until this. */
+		flight = slots[plan.slot];
+		memcpy(SAVES_FLIGHT, pool + plan.slot * SAVES_SLOT_BYTES, SAVES_SLOT_BYTES);
+		DCFlushRange(SAVES_FLIGHT, SAVES_SLOT_BYTES);
+	}
+	memset(&over.op, 0, sizeof(over.op));
+	over.op.kind = move ? UI_SAVE_CUBES_OP_MOVE : UI_SAVE_CUBES_OP_COPY;
+	over.op.phase = UI_SAVE_CUBES_GO;
+	over.op.serial = ++opSerial;
+	over.op.from = (s8)screenFocus;
+	over.op.fromCell = (s16)plan.cell;
+	over.op.toCell = (s16)(folder != NULL &&
+		strcmp(folder, places[SAVES_TAB_FOLDER].dir.name) ? -1 : plan.toCell);
+	over.op.cube.kind = UI_SAVE_CUBES_KIND_SAVE;
+	if(!flight.failed) {
+		over.op.cube.texels = SAVES_FLIGHT;
+		over.op.cube.art = &flight.art;
+	}
+	opStarted = VIDEO_GetRetraceCount();
+	screenRedraw();
+}
+
+/* Erase: the save's cube shrinks while the card deletes it. */
+static void eraseBegin(int cell)
+{
+	memset(&over.op, 0, sizeof(over.op));
+	over.op.kind = UI_SAVE_CUBES_OP_ERASE;
+	over.op.phase = UI_SAVE_CUBES_GO;
+	over.op.serial = ++opSerial;
+	over.op.from = (s8)screenFocus;
+	over.op.fromCell = (s16)cell;
+	opStarted = VIDEO_GetRetraceCount();
+	screenRedraw();
+}
+
+/* The card has answered, ok: written and read back the same (and a Move's
+ * original removed), or erased. Called only then, so a cube lands only on
+ * a save that is there. Every place is read again, the cube lands where its
+ * save now is, bursts, or goes back, and only when that is done does the
+ * screen go on. */
+static void opEnd(bool ok)
+{
+	uiMotionMode_t mode = savesMotion();
+	int other = over.op.from >= 0 ? screenStacks[!over.op.from] : -1;
+	u32 tag = 0u;
+	int s;
+
+	savesWait(opStarted, UISaveCubes_OpSeconds(over.op.kind, UI_SAVE_CUBES_GO, mode));
+	placesReload();
+	/* Where it came: the one id the other stack didn't have. */
+	if(ok && over.op.kind != UI_SAVE_CUBES_OP_ERASE && other >= 0 &&
+		places[other].change == UI_SAVE_CUBES_OPENED) {
+		over.op.toCell = places[other].changeAt;
+		tag = placeIds[other][places[other].changeAt];
+	}
+	over.op.phase = ok ? UI_SAVE_CUBES_LAND : UI_SAVE_CUBES_BACK;
+	screenRedraw();
+	/* The save that came shows the art its cube carried, in a slot no cube
+	 * on the screen just published names. */
+	if(tag != 0u && !flight.failed && artSlot(tag) < 0 &&
+		(s = UISaves_SlotPick(slotTags, SAVES_SLOTS, wantTags, wantCount)) >= 0) {
+		memcpy(pool + s * SAVES_SLOT_BYTES, SAVES_FLIGHT, SAVES_SLOT_BYTES);
+		slots[s] = flight;
+		DCFlushRange(pool + s * SAVES_SLOT_BYTES, SAVES_SLOT_BYTES);
+		slotTags[s] = tag;
+		screenRedraw();
+	}
+	savesWait(VIDEO_GetRetraceCount(), UISaveCubes_OpSeconds(over.op.kind,
+		over.op.phase, mode));
+	memset(&over.op, 0, sizeof(over.op));
+	screenRedraw();
 }
 
 /* ------------------------------------------------------------------------
@@ -1325,7 +1594,6 @@ static void saveTransfer(file_handle *save, int tab, uiSavesPlace_t to,
 	char folder[PATHNAME_MAX];
 	char name[PATHNAME_MAX];
 	u8 entry[UI_SAVES_ENTRY_SIZE];
-	uiDrawObj_t *progress;
 	u8 *data;
 	u32 length = 0;
 	size_t blocksAt;
@@ -1369,8 +1637,7 @@ static void saveTransfer(file_handle *save, int tab, uiSavesPlace_t to,
 			"It couldn't be moved.\nPress A to continue.");
 		return;
 	}
-	progress = DrawPublish(DrawProgressBar(true, 0, move ? "Moving\205" :
-		"Copying\205"));
+	opBegin(move, to >= UI_SAVES_PLACE_FOLDER ? folder : NULL);
 	data = saveRead(save, &length);
 	blocksAt = 0u;
 	if(data != NULL && isCard(save->device)) {
@@ -1392,8 +1659,7 @@ static void saveTransfer(file_handle *save, int tab, uiSavesPlace_t to,
 	else if(to <= UI_SAVES_PLACE_SLOT_B) {
 		ok = cardWrite(to == UI_SAVES_PLACE_SLOT_B, entry, data + blocksAt,
 			length - (u32)blocksAt, why, sizeof(why));
-		snprintf(done, sizeof(done), "%s to %s.", move ? "Moved" : "Copied",
-			slotName(to == UI_SAVES_PLACE_SLOT_B));
+		snprintf(done, sizeof(done), "Finished %s.", move ? "moving" : "copying");
 	}
 	else {
 		/* A card's save becomes a .gci; a file keeps its name and form. */
@@ -1405,20 +1671,19 @@ static void saveTransfer(file_handle *save, int tab, uiSavesPlace_t to,
 		}
 		folderEnsure(devices[DEVICE_CONFIG], getDevicePath(folder) + 1);
 		ok = folderWrite(folder, name, data, length, why, sizeof(why));
-		snprintf(done, sizeof(done), "%s to %s.", move ? "Moved" : "Copied",
+		snprintf(done, sizeof(done), "Finished %s to %s.", move ? "moving" : "copying",
 			getDevicePath(folder));
 	}
 	free(data);
 	if(ok && move && !saveDelete(save)) {
-		DrawDispose(progress);
+		opEnd(true);
 		savesTell(D_WARN, "Copied, but the original couldn't be removed.\n"
 			"Press A to continue.");
 		return;
 	}
-	DrawDispose(progress);
+	opEnd(ok);
 	if(ok) {
-		strlcat(done, "\nPress A to continue.", sizeof(done));
-		savesTell(D_INFO, done);
+		savesSay(done);
 	}
 	else {
 		snprintf(done, sizeof(done), "%s\nNothing was %s.\nPress A to continue.",
@@ -1488,14 +1753,18 @@ static bool chooseFolder(const char *start, char *path, size_t size)
 	return chosen;
 }
 
+/* The folder the SD card's stack has open, or one chosen from there. */
 static bool destinationFolder(uiSavesPlace_t to, char *path, size_t size)
 {
+	char open[PATHNAME_MAX];
 	char chosen[PATHNAME_MAX];
 
 	if(to == UI_SAVES_PLACE_FOLDER) {
-		snprintf(chosen, sizeof(chosen), "%s", saves_folder());
+		snprintf(path, size, "%s", places[SAVES_TAB_FOLDER].dir.name);
+		return true;
 	}
-	else if(!chooseFolder(saves_folder(), chosen, sizeof(chosen))) {
+	folderPath(&places[SAVES_TAB_FOLDER].dir, open, sizeof(open));
+	if(!chooseFolder(open, chosen, sizeof(chosen))) {
 		return false;
 	}
 	concat_path(path, devices[DEVICE_CONFIG]->initial->name, chosen);
@@ -1516,76 +1785,157 @@ bool saves_choose_folder(char *folder, size_t size)
 	return chosen;
 }
 
-static bool inSaveFolder(const savesPlace_t *place)
+/* A save's entry as a .gci has it: a card's from its directory, a file's
+ * from its first bytes. False for a file that isn't a GameCube save. */
+static bool saveEntry(file_handle *save, u8 entry[UI_SAVES_ENTRY_SIZE])
 {
-	char path[PATHNAME_MAX];
+	static u8 head[UI_SAVES_HEAD_SIZE] ATTRIBUTE_ALIGN(32);
+	u32 want = save->size < UI_SAVES_HEAD_SIZE ? save->size : UI_SAVES_HEAD_SIZE;
+	s32 got;
 
-	folderPath(&place->dir, path, sizeof(path));
-	return !strcmp(path, saves_folder());
+	memset(entry, 0, UI_SAVES_ENTRY_SIZE);
+	if(isCard(save->device)) {
+		const card_dir *dir = (const card_dir *)save->other;
+		unsigned blocks = saveBlocks(save);
+
+		memcpy(entry, dir->gamecode, 4);
+		memcpy(entry + 4, dir->company, 2);
+		memcpy(entry + 8, dir->filename, CARD_FILENAMELEN);
+		entry[0x34] = dir->permissions;
+		entry[0x38] = (u8)(blocks >> 8);
+		entry[0x39] = (u8)blocks;
+		return true;
+	}
+	save->device->seekFile(save, 0, DEVICE_HANDLER_SEEK_SET);
+	got = save->device->readFile(save, head, want);
+	save->device->closeFile(save);
+	return got == (s32)want && UISaves_FindEntryPrefix(head, want, save->size,
+		entry) != 0u;
 }
 
-/* A on a save: Copy, Move or Delete, then where to. Returns whether a list
- * may have changed. */
+/* Where a save from the place on screen would go: the other stack's. */
+static void saveRoom(int tab, const u8 entry[UI_SAVES_ENTRY_SIZE], bool known,
+	uiSavesRoom_t *room)
+{
+	savesPlace_t *place = &places[tab];
+	int i;
+
+	memset(room, 0, sizeof(*room));
+	room->ready = place->ready;
+	if(tab == SAVES_TAB_FOLDER) {
+		room->name = "The SD card";
+		room->writable = place->device != NULL && (place->device->features & FEAT_WRITE);
+		return;
+	}
+	room->name = slotName(tab);
+	room->card = true;
+	room->saves = place->count;
+	room->freeBlocks = place->freeBlocks;
+	for(i = 0; known && place->ready && i < place->count; i++) {
+		const card_dir *dir = (const card_dir *)place->list[i]->other;
+
+		if(!memcmp(dir->gamecode, entry, 4) && !memcmp(dir->company, entry + 4, 2) &&
+			!strncmp(dir->filename, (const char *)entry + 8, CARD_FILENAMELEN)) {
+			room->hasIt = true;
+		}
+	}
+}
+
+/* A on a save: the IPL's Move / Copy / Erase beside it, an item that can't
+ * be used dimmed with its reason, then a question. Copy and Move go to the
+ * other stack: a card, or the SD card's open folder (from a list when it
+ * holds folders, with another one to choose). Returns whether a list may
+ * have changed and wasn't read again. */
 static bool saveOptions(int tab)
 {
-	static const char *const actions[3] = {"Copy", "Move", "Delete"};
-	static const char *const confirm[2] = {"Cancel", "Delete"};
+	static const char *const actions[3] = {"Move", "Copy", "Erase"};
+	static const char *const answers[2] = {"Yes", "No"};
 	savesPlace_t *place = &places[tab];
 	file_handle *save = place->list[place->selection];
-	uiSavesPlace_t to[UI_SAVES_PLACE_COUNT];
-	const char *toNames[UI_SAVES_PLACE_COUNT];
-	char title[96];
-	char saveFolder[PATHNAME_MAX + 16];
-	int count, action, choice, i;
+	int toTab = screenStacks[!screenFocus];
+	savesPlace_t *dest = &places[toTab];
+	char reason[2][96], title[64], open[PATHNAME_MAX];
+	const char *why[3] = {reason[0], reason[1], NULL};
+	const char *where[2] = {open, "Another folder\205"};
+	u8 entry[UI_SAVES_ENTRY_SIZE];
+	bool known = saveEntry(save, entry), card = isCard(save->device), move, ok;
+	unsigned blocks = known ? UISaves_Blocks(entry) : saveBlocks(save), dim = 0u;
+	uiSavesRoom_t room;
+	uiSavesPlace_t to;
+	u32 before = reloads;
+	int action, i;
 
-	saveHeading(title, sizeof(title), tab, save);
-	action = savesPick(title, actions, 3, 0);
+	saveRoom(toTab, entry, known, &room);
+	for(i = 0; i < 2; i++) {
+		if(UISaves_Verdict(i == 0, card, entry[0x34], blocks, &room, reason[i],
+			sizeof(reason[i])) != UI_SAVES_VERDICT_OK) {
+			dim |= 1u << i;
+		}
+	}
+	action = savesMenu("", actions, 3, 0, dim, why, 0u);
 	if(action < 0) {
 		return false;
 	}
+	placesRemember();
 	if(action == 2) {
-		if(savesPick("Delete this save?", confirm, 2, 0) != 1) {
+		/* No first: an erased save is gone. */
+		if(savesMenu("Erase this save?", answers, 2, 1, 0u, NULL, 0u) != 0) {
 			return false;
 		}
-		if(!saveDelete(save)) {
+		eraseBegin(placeCell(place));
+		ok = saveDelete(save);
+		opEnd(ok);
+		if(ok) {
+			savesSay("The data was erased.");
+		}
+		/* The card driver says why itself, in its own box. */
+		else if(!card) {
 			savesTell(D_FAIL, "The save couldn't be deleted.\n"
 				"Press A to continue.");
 		}
-		return true;
-	}
-	count = UISaves_Destinations(tab == 0 ? UI_SAVES_PLACE_SLOT_A :
-		tab == 1 ? UI_SAVES_PLACE_SLOT_B : UI_SAVES_PLACE_FOLDER,
-		places[0].ready, places[1].ready, places[SAVES_TAB_FOLDER].device != NULL &&
-		(places[SAVES_TAB_FOLDER].device->features & FEAT_WRITE),
-		tab == SAVES_TAB_FOLDER && inSaveFolder(place), to);
-	if(count == 0) {
-		savesTell(D_INFO, "There's nowhere else to put it.\n"
-			"Put a memory card in the other slot.\nPress A to continue.");
 		return false;
 	}
-	snprintf(saveFolder, sizeof(saveFolder), "Save Folder  /%s",
-		strcmp(saves_folder(), "/") ? saves_folder() : "");
-	for(i = 0; i < count; i++) {
-		toNames[i] = to[i] == UI_SAVES_PLACE_SLOT_A ? "Slot A" :
-			to[i] == UI_SAVES_PLACE_SLOT_B ? "Slot B" :
-			to[i] == UI_SAVES_PLACE_FOLDER ? saveFolder : "Another folder\205";
-	}
-	choice = savesPick(action == 1 ? "Move to" : "Copy to", toNames, count, 0);
-	if(choice < 0) {
-		return false;
-	}
-	saveTransfer(save, tab, to[choice], action == 1);
-	return true;
-}
-
-static void loadTab(int tab)
-{
-	if(tab == SAVES_TAB_FOLDER) {
-		loadFolder(&places[tab], false);
+	move = action == 0;
+	/* Where it would land: the other stack's first free cell, its window
+	 * moved to show it, the ghost there while the question is up. */
+	plan.cell = placeCell(place);
+	plan.slot = artSlot(saveTag(tab, save));
+	plan.toCell = dest->count - placeSkip(dest);
+	over.ghostCell = (s16)plan.toCell;
+	dest->selection = plan.toCell + placeSkip(dest);
+	if(toTab < SAVES_TAB_FOLDER) {
+		snprintf(title, sizeof(title), "%s to %s?", move ? "Move" : "Copy",
+			slotName(toTab));
+		if(savesMenu(title, answers, 2, 0, 0u, NULL, 3u) != 0) {
+			return false;
+		}
+		to = toTab == 0 ? UI_SAVES_PLACE_SLOT_A : UI_SAVES_PLACE_SLOT_B;
 	}
 	else {
-		loadCard(&places[tab], tab);
+		bool folders = false;
+
+		for(i = placeSkip(dest); i < dest->count; i++) {
+			folders = folders || dest->list[i]->fileType == IS_DIR;
+		}
+		if(folders) {
+			UICheats_Fit(open, sizeof(open), getDevicePath(dest->dir.name), 228, 0.56f,
+				GetTextSizeInPixels);
+			i = savesMenu(move ? "Move to" : "Copy to", where, 2, 0, 0u, NULL, 1u);
+			if(i < 0) {
+				return false;
+			}
+			to = i == 0 ? UI_SAVES_PLACE_FOLDER : UI_SAVES_PLACE_CHOOSE;
+		}
+		else {
+			snprintf(title, sizeof(title), "%s to the SD card?", move ? "Move" : "Copy");
+			if(savesMenu(title, answers, 2, 0, 0u, NULL, 3u) != 0) {
+				return false;
+			}
+			to = UI_SAVES_PLACE_FOLDER;
+		}
 	}
+	saveTransfer(save, tab, to, move);
+	return reloads == before;
 }
 
 void show_saves(void)
@@ -1599,14 +1949,20 @@ void show_saves(void)
 	int focus, tab, s, i;
 
 	memset(places, 0, sizeof(places));
+	memset(&over, 0, sizeof(over));
 	memset(slotTags, 0, sizeof(slotTags));
 	wantCount = 0;
-	pool = memalign(32, SAVES_SLOTS * SAVES_SLOT_BYTES);
+	foldersReady = folderMounted;
+	pool = memalign(32, (SAVES_SLOTS + 1) * SAVES_SLOT_BYTES);
 	scratch = memalign(32, SAVES_SCRATCH_BYTES);
 	if(folderMounted) {
 		folderSet(&places[SAVES_TAB_FOLDER], saves_folder());
 		folderEnsure(devices[DEVICE_CONFIG], saves_folder());
 	}
+	/* The screen goes up at once and opens while the cards are read, each
+	 * stack's cubes coming in as its place is listed. */
+	screenBuild(stacks, -1);
+	screenShow(&page);
 	for(i = 0; i < SAVES_TABS; i++) {
 		if(i < SAVES_TAB_FOLDER || folderMounted) {
 			loadTab(i);
@@ -1618,6 +1974,8 @@ void show_saves(void)
 			snprintf(places[i].note[1], sizeof(places[i].note[1]),
 				"Choose one in Settings, Storage.");
 		}
+		screenBuild(stacks, stackFocus(stacks, 0));
+		screenShow(&page);
 	}
 	if(folderMounted && !places[SAVES_TAB_FOLDER].ready) {
 		/* A Save Folder that can't be read or made: start at the root. */
@@ -1676,13 +2034,9 @@ void show_saves(void)
 			}
 			menuaudio_select();
 			if(chosen->fileType == IS_FILE) {
+				/* An operation reads every place again itself. */
 				if(saveOptions(stacks[focus])) {
-					/* A save may have gone or come anywhere. */
-					for(i = 0; i < SAVES_TABS; i++) {
-						if(i < SAVES_TAB_FOLDER || folderMounted) {
-							loadTab(i);
-						}
-					}
+					placesReload();
 				}
 			}
 			else {
@@ -1716,6 +2070,10 @@ void show_saves(void)
 			}
 		}
 	}
+	/* The screen goes, the Home cube coming back, before the cards do. */
+	over.leaving = 1;
+	screenRedraw();
+	savesWait(VIDEO_GetRetraceCount(), UISaveCubes_LeaveSeconds(savesMotion()));
 	for(i = 0; i < SAVES_TABS; i++) {
 		placeClear(&places[i]);
 		/* Unmount what this screen mounted, unless it's the source. */
