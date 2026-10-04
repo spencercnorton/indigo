@@ -49,8 +49,8 @@ The SD card's stack shows a folder on the SD card Indigo keeps its settings
 on, the Configuration Device. It opens on your Save Folder and shows its
 folders, as cubes with a folder on the front, then its saves: `.gci` files,
 and Action Replay (`.sav`) and GameShark (`.gcs`) saves. Its header names the
-folder. A on a folder opens it, and B goes back up, as far as the folder it
-opened on.
+folder. A on a folder opens it, and B, with the cursor on that stack, goes
+back up, as far as the folder it opened on.
 
 <p align="center">
   <img alt="R has swapped the right stack for the SD card: SD /swiss/saves above it, the folders Backups and Old saves as folder cubes, then the saves in the Save Folder, Slot A's stack still on the left." src="images/memory-cards-sd.png" width="640">
