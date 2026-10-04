@@ -40,6 +40,28 @@ Beta incorporation preserves both features and all previous journal entries.
 The focused shared-tab regression and ownership gate pass. The complete
 contract lane and refreshed branch CI remain pending.
 
+## 2026-10-04 — Library folders return directly to Home
+
+The retained Library treats `/games` as its navigation boundary. A on its
+parent card and X return Home without scanning the device root; nested A,
+X and B still go up one folder and focus the folder just left. Empty and
+non-game-only roots stay in Indigo when Library Folders is enabled. B and X
+retain the selected game or folder on reopening; the root parent card opens
+on the first actual card, as the renderer normally does.
+
+The regression executes the production file filters, directory scan,
+classifier, card snapshots, navigation branches and menu handoff. Plain and
+sanitized runs pass; replaying the preceding candidate reproduces the legacy
+browser publication. Names such as `Racing.v1` and `Nintendo.GC`, dotted
+ancestors and full matching PNG names already pass those filters. Leading
+dots retain the existing hidden-file policy, and Mac metadata stays filtered.
+
+The SD2SP2 folder route covers all four Library layouts and records presented
+frames during parent and Home transitions. Its guard identifies Swiss's
+path, device panel and file rows, with single-frame, indexing, registration
+and delayed-tail regressions. The existing global scene budgets and pixel
+thresholds are preserved.
+
 ## 2026-10-04 — Preserve motion and save details together on beta
 
 Incorporated the accepted beta icon and motion changes into Memory Cards.

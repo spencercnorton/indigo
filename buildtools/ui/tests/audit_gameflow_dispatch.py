@@ -301,7 +301,7 @@ def check_layouts(swiss: str) -> None:
     # Inside a folder, B goes up it before it can reach Home.
     up = carousel.index("if((browserButtons & BUTTON_B) && useGameflow &&\n\t\t\tgameflowInsideFolder()) {")
     home = carousel.index("curMenuLocation = ON_OPTIONS;", up)
-    assert "needsDeviceChange = upToParent(&curDir);" in carousel[up:home]
+    assert "gameflowNavigateParent(useGameflow, directory[0]);" in carousel[up:home]
     branch = carousel.index("if((browserButtons & BUTTON_A) || openSettings) {")
     loaders = carousel.index("gameflowSnapshot, openSettings);", branch)
     loaders = carousel.index("gameflowSnapshot, openSettings);", loaders + 1)
@@ -323,6 +323,13 @@ def check_layouts(swiss: str) -> None:
 
 
 check_layouts(SWISS)
+# Every retained parent activation uses the root boundary guard before it
+# can refresh a listing. B at the root still selects Home directly.
+parent_navigation = extract_function(SWISS, "static void gameflowNavigateParent(")
+assert parent_navigation.index("UI_GAMEFLOW_LIBRARY_LOCATION_ROOT") < \
+    parent_navigation.index("curMenuLocation = ON_OPTIONS;") < \
+    parent_navigation.index("return;") < parent_navigation.index("upToParent(&curDir)")
+assert carousel.count("gameflowNavigateParent(useGameflow,") == 3
 layout_mutants = (
     ("an unknown layout is kept", "swissSettings.libraryLayout < UI_GAMEFLOW_LAYOUT_COUNT ?",
      "swissSettings.libraryLayout < 99 ?"),

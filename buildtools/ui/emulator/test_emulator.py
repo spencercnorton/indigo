@@ -8,6 +8,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -81,8 +82,26 @@ class Disc(unittest.TestCase):
         self.assertLessEqual(set(card.FOLDERS), games)
         depths = sorted(path.count("/") + 1 for path in card.FOLDERS.values())
         self.assertEqual(depths, [1, 2, 3], "a folder, a folder in it, and one past the second level")
-        # The route reaches Racing with one RIGHT from the empty stray folder.
-        self.assertLess(card.STRAYS[1].lower(), "racing/")
+        # The first two root folder cards are Nintendo.GC and Racing.v1.
+        self.assertLess(card.STRAYS[1].lower(), "racing.v1/")
+        self.assertEqual(card.FOLDERS["GPLZ01"], "Racing.v1/Classics.Set/Old.Saves.v2")
+        self.assertTrue(all("." in part and not part.startswith(".")
+                            for folder in card.FOLDERS.values() for part in folder.split("/")))
+        self.assertEqual(card.FOLDER_PICTURES["Racing.v1"], "shown")
+        self.assertEqual(card.FOLDER_PICTURES["Racing.v1/Classics.Set"], "damaged")
+
+    def test_populated_dotted_folders_and_sibling_png_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            root = work / "root"
+            card.populate(root, work, posters=False)
+            self.assertEqual(list((root / "games/Nintendo.GC").iterdir()), [])
+            for game_id, title in card.GAMES:
+                self.assertEqual((root / "games" / card.game_path(game_id, title)).read_bytes()[:6],
+                                 game_id.encode("ascii"))
+            for folder, kind in card.FOLDER_PICTURES.items():
+                self.assertEqual((root / "games" / f"{folder}.png").read_bytes(),
+                                 card.folder_picture(kind))
 
     def test_the_stray_file_sorts_before_every_game(self):
         titles = [title for _, title in card.GAMES] + [title for _, title, _ in card.DAMAGED]
@@ -515,6 +534,128 @@ class Pad(unittest.TestCase):
 
 
 class Screen(unittest.TestCase):
+    def folder_frame(self, name):
+        from PIL import Image
+        return np.asarray(Image.open(Path(__file__).parent / "fixtures" / name).convert("RGB"))
+
+    def test_actual_legacy_folder_chrome_and_its_fades(self):
+        legacy = self.folder_frame("folder-legacy-browser.png")
+        for strength in (1.0, 0.75, 0.5, 0.25, 0.1):
+            self.assertTrue(run.legacy_folder_browser((legacy * strength).astype(np.uint8)), strength)
+        for name in ("folder-horizontal.png", "folder-vertical.png", "folder-grid.png",
+                     "folder-spotlight.png", "folder-home.png"):
+            modern = self.folder_frame(name)
+            for strength in (1.0, 0.75, 0.5, 0.25, 0.1):
+                self.assertFalse(run.legacy_folder_browser((modern * strength).astype(np.uint8)),
+                                 (name, strength))
+        for frame in (np.zeros_like(legacy), np.full_like(legacy, 255),
+                      np.full_like(legacy, (128, 16, 96))):
+            self.assertFalse(run.legacy_folder_browser(frame))
+        for box in ((0, 80, 148, 214), (148, 100, 610, 350)):
+            missing = legacy.copy()
+            x0, y0, x1, y1 = box
+            missing[y0:y1, x0:x1] = 0
+            self.assertFalse(run.legacy_folder_browser(missing), box)
+        with self.assertRaises(run.Broken):
+            run.legacy_folder_browser(legacy[:400])
+        self.assertEqual((run.TEXT_LEVEL, run.SAME, run.DIFFERENT), (160, 0.85, 0.5))
+
+    def test_native_frame_reader_catches_one_legacy_frame_and_checks_each_index(self):
+        from PIL import Image
+        for inject in (None, 5, 10):
+            with self.subTest(inject=inject), tempfile.TemporaryDirectory() as directory:
+                folder = Path(directory) / "dump"
+                folder.mkdir()
+                out = Path(directory) / "proof"
+                reader = run.PresentedFrames(folder, out)
+                modern = self.folder_frame("folder-horizontal.png")
+                legacy = self.folder_frame("folder-legacy-browser.png")
+                def write(index, rgb):
+                    Image.fromarray(rgb).save(folder / f"framedump_{index}.png")
+                write(1, modern)
+                write(2, modern)
+                span = reader.begin("one-frame-control")
+                for index in range(3, 9):
+                    write(index, legacy if index == inject else modern)
+                # Reader must wait for the next file: no partially written
+                # image is accepted merely because its name exists.
+                result = []
+                end = threading.Thread(target=lambda: (reader.end(span), result.append(True)))
+                end.start()
+                time.sleep(0.05)
+                self.assertTrue(end.is_alive())
+                # Delayed encoder/readback tail: frame10 arrives after the
+                # end request at8. A one-frame legacy flash there must still
+                # be included, and N is consumed only after N+1 appears.
+                for index in range(9, 30):
+                    write(index, legacy if index == inject else modern)
+                    time.sleep(0.02)
+                    if not end.is_alive():
+                        break
+                end.join(3)
+                self.assertEqual(result, [True])
+                reader.finish()
+                proof = reader.evidence(span)
+                self.assertEqual((proof["first"], proof["end_requested"]), (2, 8))
+                self.assertGreaterEqual(proof["last"], 10)
+                self.assertEqual(proof["frames"], proof["last"] - proof["first"] + 1)
+                self.assertEqual(proof["bad_frames"], [f"legacy-{inject}.png"] if inject else [])
+                self.assertEqual(len(proof["samples"]), 3)
+                self.assertEqual(len(proof["sha256_rgb_sequence"]), 64)
+                self.assertFalse(list(folder.iterdir()), "temporary dump files are consumed")
+
+    def test_native_frame_reader_missing_index_is_an_error(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory) / "dump"
+            folder.mkdir()
+            reader = run.PresentedFrames(folder, Path(directory) / "proof")
+            with self.assertRaises(run.Broken):
+                reader.begin("not-started")
+            modern = self.folder_frame("folder-horizontal.png")
+            for index in (1, 3, 4):
+                Image.fromarray(modern).save(folder / f"framedump_{index}.png")
+            until = time.monotonic() + 3
+            while not reader.error and time.monotonic() < until:
+                time.sleep(0.01)
+            with self.assertRaisesRegex(run.Broken, "gap at 2"):
+                reader.finish()
+
+    def test_native_frame_span_registration_cannot_race_the_processed_watermark(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory) / "dump"
+            folder.mkdir()
+            reader = run.PresentedFrames(folder, Path(directory) / "proof")
+            modern = self.folder_frame("folder-horizontal.png")
+            Image.fromarray(modern).save(folder / "framedump_1.png")
+            entered, release = threading.Event(), threading.Event()
+            original = reader.latest
+            def old_directory_snapshot():
+                entered.set()
+                if not release.wait(3):
+                    raise RuntimeError("test never released directory enumeration")
+                return 1
+            spans = []
+            with mock.patch.object(reader, "latest", side_effect=old_directory_snapshot):
+                begin = threading.Thread(target=lambda: spans.append(reader.begin("registration")))
+                begin.start()
+                self.assertTrue(entered.wait(3))
+                Image.fromarray(modern).save(folder / "framedump_2.png")
+                time.sleep(0.05)
+                self.assertEqual(reader.next, 1, "registration holds the consumer lock")
+                release.set()
+                begin.join(3)
+            self.assertEqual(spans[0]["first"], 1)
+            with reader.lock:
+                spans[0]["last"] = 2
+            reader.finish()
+            self.assertEqual(spans[0]["frames"], 2)
+            # A stale directory snapshot must also not include an index
+            # already processed before registration acquired the lock.
+            with mock.patch.object(reader, "latest", return_value=1):
+                self.assertEqual(reader.begin("stale-snapshot")["first"], reader.next)
+
     def frame(self, words=()) -> np.ndarray:
         gray = np.full((run.HEIGHT, run.WIDTH), 40, np.uint8)
         for x0, x1 in words:

@@ -976,8 +976,8 @@ static void testLibraryFoldersClassifier(void)
 	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
 		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
 
-	/* A folder with no games stays a Library with only its way back, at
-	 * either level; an empty /games is still Swiss's list. */
+	/* With Library Folders on, /games and both folder levels stay in the
+	 * Library with only their way back when they hold no games. */
 	UIGameflowLibrary_ClassifierInit(&classifier,
 		UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER);
 	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
@@ -1005,7 +1005,7 @@ static void testLibraryFoldersClassifier(void)
 	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
 		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "notes.txt"));
 	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
-		UI_GAMEFLOW_LIBRARY_NONE);
+		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
 
 	/* With Library Folders off, /games keeps today's rule. */
 	UIGameflowLibrary_ClassifierInit(&classifier,

@@ -166,15 +166,16 @@ bool UIGameflowLibrary_ShouldStartHome(bool hasAutoload, bool hasRecent,
 
 /* The Library shows a location's games and skips everything else there: a
  * text file, a picture, a folder that isn't a game. Games are disc images,
- * or at the root "Title [ABC123]" folders; one Library can't show both, so a
- * root with loose images beside game folders stays Swiss's list, as does a
- * location with no games. ClassifierAdd returns false only when the list
- * can't be a Library at all (outside /games, or ".." not first).
+ * or at the root "Title [ABC123]" folders. With Library Folders off, one
+ * Library can't show both, so a root with loose images beside game folders
+ * stays Swiss's list, as does a location with no games. ClassifierAdd returns
+ * false only when the list can't be a Library at all (outside /games, or
+ * ".." not first).
  * Library Folders' locations take images, game folders and folders of games
  * together (FOLDERS), or images alone as IMAGE_FILES, the same Library a
  * flattened /games shows; the deepest folder takes images only, since Swiss
- * lists what its folders hold. A folder below /games with no games is still a
- * Library (IMAGE_FILES), with only its way back. */
+ * lists what its folders hold. With Library Folders on, /games and its folders
+ * with no games stay a Library (IMAGE_FILES), with only their way back. */
 void UIGameflowLibrary_ClassifierInit(uiGameflowLibraryClassifier_t *state,
 	uiGameflowLibraryLocation_t location);
 bool UIGameflowLibrary_ClassifierAdd(uiGameflowLibraryClassifier_t *state,

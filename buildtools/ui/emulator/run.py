@@ -58,7 +58,7 @@ The virtual-cards route leaves both physical slots empty, browses a public
 synthetic RAW image on SD and exports a GCI into the other SD column. The
 actual exported payload and unchanged RAW bytes are checked on the FAT image.
 
-usage: run.py DOL --out DIR [--route smoke|tour|game|save|virtual-cards] [--probe DOL] [--region pal|pal60|ntsc]
+usage: run.py DOL --out DIR [--route smoke|tour|game|save|virtual-cards|folders] [--probe DOL] [--region pal|pal60|ntsc]
               [--cable composite|component]
               [--storage dvd|sd2sp2|sdgecko-b|gcloader --card-zip ZIP] [--disc ISO]
 Writes DIR/report.json, DIR/summary.md, DIR/sheet.png (every checkpoint),
@@ -69,6 +69,7 @@ failed a check. 2: the harness or the emulator could not run.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -76,6 +77,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import zipfile
 import zlib
@@ -97,6 +99,12 @@ WIDTH, HEIGHT = 640, 480
 # game's details.
 LABEL_BOX = (200, 372, 440, 396)
 TITLE_BOX = (200, 338, 440, 362)
+FOLDER_LAYOUTS = {
+    "Horizontal": (TITLE_BOX, "LEFT", "RIGHT"),
+    "Vertical": ((258, 190, 605, 224), "UP", "DOWN"),
+    "Grid": ((180, 374, 460, 402), "LEFT", "RIGHT"),
+    "Spotlight": ((378, 78, 607, 108), "LEFT", "RIGHT"),
+}
 # The page title Settings opens with on a new card ("Storage").
 SETTINGS_TITLE_BOX = (30, 46, 230, 80)
 COUNTER_BOX = (560, 120, 610, 142)  # Settings' "row / rows", shown while a row has the focus
@@ -239,6 +247,147 @@ class Failed(Exception):
 
 class Broken(Exception):
     """The harness or the emulator could not do its part."""
+
+
+def legacy_folder_browser(rgb: np.ndarray) -> bool:
+    """Swiss's default list: long 40-pixel rows beside its device panel.
+
+    These are the actual drawFiles/DrawFileBrowserButton bounds, not a
+    missing Indigo label: an Indigo fade or blank frame is allowed here.
+    A line must contrast with both neighboring rows, so a pale background
+    or a darkened legacy frame does not disguise its geometry.
+    """
+    if rgb.shape != (HEIGHT, WIDTH, 3):
+        raise Broken(f"unexpected presented frame size: {rgb.shape}")
+    gray = rgb.max(axis=2).astype(np.int16)
+
+    def edge(x0: int, x1: int, y: int) -> bool:
+        for row in range(y - 2, y + 3):
+            contrast = gray[row, x0:x1] - np.maximum(gray[row - 4, x0:x1],
+                                                   gray[row + 4, x0:x1])
+            if np.count_nonzero(contrast > 12) >= (x1 - x0) * 0.90:
+                return True
+        return False
+
+    rows = sum(edge(166, 592, y) for y in (105, 145, 185, 225, 265, 305, 345))
+    # The device card at (20,90)-(143,210) is separate from the file rows.
+    device = edge(36, 125, 90) and edge(36, 125, 210)
+    return device and rows >= 1
+
+
+class PresentedFrames:
+    """Consume Dolphin's sequential PNG dumps, keeping bounded evidence.
+
+    Dolphin finishes N before starting N+1. Read N only once N+1 exists;
+    no screen polling interval can skip a rendered transition frame. Dumps
+    outside spans are deleted too, so long waits do not fill the artifact.
+    """
+    LIMIT = 60000
+
+    def __init__(self, folder: Path, out: Path) -> None:
+        self.folder, self.out = folder, out
+        self.spans: list[dict[str, object]] = []
+        self.next = 1
+        self.error: str | None = None
+        self.done = False
+        self.lock = threading.Lock()
+        self.worker = threading.Thread(target=self._consume, daemon=True)
+        self.worker.start()
+
+    def latest(self) -> int:
+        return max((int(p.stem.rsplit("_", 1)[1])
+                    for p in self.folder.glob("framedump_*.png")), default=0)
+
+    def begin(self, name: str) -> dict[str, object]:
+        with self.lock:
+            newest = self.latest()
+            if newest == 0:
+                raise Broken("Dolphin did not start native frame dumping")
+            # Registration and the processed watermark share one lock. A
+            # completed PNG cannot be deleted between choosing and starting
+            # the span, even when directory enumeration sees an older file.
+            span = {"transition": name, "first": max(newest, self.next), "last": None,
+                    "frames": 0, "bad_frames": [], "digest": hashlib.sha256(),
+                    "samples": []}
+            self.spans.append(span)
+        return span
+
+    def end(self, span: dict[str, object]) -> None:
+        with self.lock:
+            span["end_requested"] = self.latest()
+        until = time.monotonic() + 20
+        # Presented XFB readback and PNG encoding are asynchronous. Two
+        # advancing dump indices cover that pending tail before closing
+        # the span; the successor file then proves its last PNG is complete.
+        while self.latest() < span["end_requested"] + 2 and not self.error and time.monotonic() < until:
+            time.sleep(0.02)
+        with self.lock:
+            span["last"] = self.latest()
+        if span["last"] < span["end_requested"] + 2:
+            raise Broken(self.error or "native frame-dump tail did not advance")
+        while self.next <= span["last"] and not self.error and time.monotonic() < until:
+            time.sleep(0.02)
+        if self.error or self.next <= span["last"]:
+            raise Broken(self.error or "native frame-dump reader did not keep up")
+        if span["frames"] != span["last"] - span["first"] + 1:
+            raise Broken(f"native frame-dump gap in {span['transition']}")
+
+    def _consume(self) -> None:
+        try:
+            while True:
+                path = self.folder / f"framedump_{self.next}.png"
+                after = self.folder / f"framedump_{self.next + 1}.png"
+                if not after.exists() and not self.done:
+                    time.sleep(0.01)
+                    continue
+                if not path.exists():
+                    if self.done and self.latest() < self.next:
+                        break
+                    raise Broken(f"native frame-dump gap at {self.next}")
+                if self.next > self.LIMIT:
+                    raise Broken("native frame-dump budget exceeded")
+                with self.lock:
+                    active = [s for s in self.spans if self.next >= s["first"] and
+                              (s["last"] is None or self.next <= s["last"])]
+                    if active:
+                        with Image.open(path) as picture:
+                            rgb = np.asarray(picture.convert("RGB"))
+                    for span in active:
+                        span["frames"] += 1
+                        span["digest"].update(self.next.to_bytes(4, "big") + rgb.tobytes())
+                        samples = span["samples"]
+                        # First, middle candidate (powers of two), and last:
+                        # three frame-sized buffers per span, never all frames.
+                        if not samples:
+                            samples.extend([(self.next, rgb.copy())] * 3)
+                        if span["frames"] & (span["frames"] - 1) == 0:
+                            samples[1] = (self.next, rgb.copy())
+                        samples[2] = (self.next, rgb.copy())
+                        if legacy_folder_browser(rgb):
+                            self.out.mkdir(exist_ok=True)
+                            name = f"legacy-{self.next}.png"
+                            Image.fromarray(rgb).save(self.out / name)
+                            span["bad_frames"].append(name)
+                    path.unlink()
+                    self.next += 1
+        except Exception as error:
+            self.error = f"{type(error).__name__}: {error}"
+
+    def finish(self) -> None:
+        self.done = True
+        self.worker.join(20)
+        if self.worker.is_alive() or self.error:
+            raise Broken(self.error or "native frame-dump reader did not stop")
+
+    def evidence(self, span: dict[str, object]) -> dict[str, object]:
+        self.out.mkdir(exist_ok=True)
+        samples = []
+        for label, (index, rgb) in zip(("first", "middle", "last"), span["samples"]):
+            name = f"{span['transition']}-{label}-{index}.png"
+            Image.fromarray(rgb).save(self.out / name)
+            samples.append(name)
+        return {k: span[k] for k in ("transition", "first", "end_requested", "last", "frames", "bad_frames")} | {
+            "sha256_rgb_sequence": span["digest"].hexdigest(), "samples": samples}
 
 
 def dolphin_ini(storage: str = "dvd", card: Path | None = None, cards: Path | None = None,
@@ -518,17 +667,24 @@ class Emulator:
     def __init__(self, dol: Path, disc: Path | None, work: Path, out: Path, region: str = "pal",
                  storage: str = "dvd", card: Path | None = None, cable: str = "composite",
                  faults: str | None = None, cards: Path | None = None,
-                 empty_slots: bool = False) -> None:
+                 empty_slots: bool = False, folder_frames: bool = False) -> None:
         self.out = out
         self.user = work / "dolphin"
         (self.user / "Config").mkdir(parents=True)
-        (self.user / "Config/Dolphin.ini").write_text(dolphin_ini(storage, card, cards, empty_slots))
+        config = dolphin_ini(storage, card, cards, empty_slots)
+        if folder_frames:
+            config += "[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n"
+        (self.user / "Config/Dolphin.ini").write_text(config)
         # Swiss's own debug output (its OSReport lines) goes to dolphin.log.
         (self.user / "Config/Logger.ini").write_text(
             "[Logs]\nOSREPORT = True\nPOWERPC = True\n[Options]\nVerbosity = 1\nWriteToConsole = True\nWriteToFile = False\n")
         (self.user / "GC").mkdir()
         (self.user / "GC/SRAM.raw").write_bytes(sram(*REGIONS[region][1:]))
-        (self.user / "Config/GFX.ini").write_text("[Settings]\nInternalResolution = 1\nShowFPS = False\n")
+        (self.user / "Config/GFX.ini").write_text("[Settings]\nInternalResolution = 1\nShowFPS = False\n" +
+            ("DumpFramesAsImages = True\nFrameDumpsResolutionType = 2\nPNGCompressionLevel = 1\n"
+             if folder_frames else ""))
+        self.folder_frames = (PresentedFrames(self.user / "Dump/Frames", out / "folder-transitions")
+                              if folder_frames else None)
         (self.user / "Config/GCPadNew.ini").write_text(dsu_pad.GCPAD_INI)
         self.pad = dsu_pad.Pad(0)  # any free port; Dolphin is told which
         (self.user / "Config/DSUClient.ini").write_text(
@@ -607,6 +763,8 @@ class Emulator:
                 except subprocess.TimeoutExpired:
                     process.kill()
         self.pad.close()
+        if self.folder_frames:
+            self.folder_frames.finish()
 
 
 class Route:
@@ -1070,13 +1228,13 @@ class Route:
     def library_folders(self, faces: list[np.ndarray]) -> None:
         """From the Settings face: R and R to Setup, four DOWNs and A into
         Library, DOWN to Library Folders and RIGHT to turn it on; B and B save
-        and exit. Then on Library, A opens the empty Old saves folder, which
+        and exit. Then on Library, A opens the empty Nintendo.GC folder, which
         stays in the Library with only its way back, and B returns to it;
-        RIGHT from there to Racing, A into it and A into Classics, which holds three cards (a game,
+        RIGHT from there to Racing.v1, A into it and A into Classics.Set, which holds three cards (a game,
         the game in Old below it, and the way back): RIGHT twice is not back at
         the first, a third RIGHT is. B goes back to the same folder card each
         level up, and from /games to Home. Back on the Settings face after.
-        Racing's picture is its poster; Old saves' (too big) and Classics'
+        Racing.v1's picture is its poster; Nintendo.GC's (too big) and Classics.Set's
         (damaged) never show, while their cards are in front."""
         library, source, settings = faces[0], faces[1], faces[2]
         self.press("A")
@@ -1104,7 +1262,7 @@ class Route:
         _, refused = self.pictures(8.0)
         self.check("a folder's picture too big to read never shows", refused < PICTURE_PIXELS,
                    pixels=refused)
-        # Old saves is empty: it opens in the Library with only the way back,
+        # Nintendo.GC is empty: it opens in the Library with only the way back,
         # and B comes back to its card (Swiss's list would go Home). The
         # presses that open or leave a folder are held for half a second of
         # the console's time: the Library is still reading covers then, and a
@@ -1154,6 +1312,170 @@ class Route:
         for ahead in (source, settings):
             self.check("RIGHT turns on a face", self.press_until("RIGHT", like=ahead)[0] is not None,
                        library_folders="on")
+
+    def folder_step(self, button: str, tag: str, box=TITLE_BOX,
+                    like: np.ndarray | None = None,
+                    unlike: np.ndarray | None = None) -> np.ndarray | None:
+        """One folder action, including every native frame until it settles."""
+        dump = self.emulator.folder_frames
+        if dump is None:
+            raise Broken("the folders route needs native presented-frame dumps")
+        span = dump.begin(tag)
+        self.press(button, FOLDER_PRESS_SECONDS)
+        label, _ = self.settled_label(like=like, unlike=unlike, box=box)
+        dump.end(span)
+        proof = dump.evidence(span)
+        self.folder_transitions.append(proof)
+        (self.out / "folder-transitions.json").write_text(
+            json.dumps(self.folder_transitions, indent=2) + "\n")
+        self.shot(tag, self.last_rgb)
+        self.check("every presented folder transition frame stays out of the legacy browser",
+                   not proof["bad_frames"], **proof)
+        return label
+
+    def folder_layout(self, faces: list[np.ndarray], name: str, first: bool) -> None:
+        """From Home Settings, set the next layout and folders on, then browse."""
+        library, source, settings = faces
+        self.press("A")
+        self.check("A opens Settings", self.covered(settings), folder_layout=name)
+        for button, pause in (("R", 1.0), ("R", 1.0), ("DOWN", 0.4), ("DOWN", 0.4),
+                              ("DOWN", 0.4), ("DOWN", 0.6), ("A", 1.5)):
+            self.press(button)
+            self.pause(pause)
+        if first:
+            self.press("DOWN")
+            self.pause(0.6)
+            self.press("RIGHT")
+        else:  # Library Layout is the first row, cycling the four layouts.
+            self.press("RIGHT")
+        self.pause(1.0)
+        self.shot(f"folders-{name.lower()}-setting", self.emulator.frame())
+        self.press("B")
+        self.pause(1.0)
+        self.press("B")
+        self.check("Save & Exit returns Home with the folder layout",
+                   self.settled_label(like=settings)[0] is not None, layout=name)
+        self.folders_on = True
+        for face in (source, library):
+            self.check("LEFT returns toward Home Library",
+                       self.press_until("LEFT", like=face)[0] is not None, layout=name)
+
+    def folders(self) -> None:
+        """Dotted folders and A/B/X parents in every layout, on a real FAT image."""
+        home = self.boot()
+        faces = [home]
+        for n in (1, 2):
+            faces.append(self.turn(faces, "RIGHT", f"folder-face-{n}"))
+        self.folder_transitions: list[dict[str, object]] = []
+        for index, (layout, (box, previous, following)) in enumerate(FOLDER_LAYOUTS.items()):
+            prefix = layout.lower()
+            self.folder_layout(faces, layout, first=index == 0)
+            stray = self.folder_step("A", f"{prefix}-root-open", box)
+            self.check("the dotted empty folder is a Library card", stray is not None, layout=layout)
+            if index == 0:
+                _, refused = self.pictures(8.0)
+                self.check("the dotted empty folder's oversized PNG never shows",
+                           refused < PICTURE_PIXELS, pixels=refused)
+            parent = None
+            for button in ("A", "B", "X"):
+                empty = self.folder_step("A", f"{prefix}-empty-open-{button.lower()}",
+                                         box, unlike=stray)
+                self.check("the dotted empty folder contains only its parent card",
+                           empty is not None, layout=layout, return_button=button)
+                parent = empty
+                if button == "A":
+                    self.press(following)
+                    self.check("the empty folder has no second card to browse",
+                               self.settled_label(like=empty, box=box)[0] is not None, layout=layout)
+                back = self.folder_step(button, f"{prefix}-empty-return-{button.lower()}",
+                                        box, like=stray)
+                self.check("A-parent, B and X return to the same empty folder card",
+                           back is not None, layout=layout, button=button)
+            racing, _ = self.press_until(following, unlike=stray, box=box)
+            self.check("the dotted nonempty folder follows the empty folder", racing is not None,
+                       layout=layout)
+            if index == 0:
+                shown, refused = self.pictures(30.0, until_shown=True)
+                self.shot("dotted-folder-picture", self.last_rgb)
+                self.check("the dotted folder's sibling PNG becomes its poster",
+                           shown >= PICTURE_PIXELS, pixels=shown)
+                self.check("a refused PNG never appears beside the dotted folder",
+                           refused < PICTURE_PIXELS, pixels=refused)
+            for button in ("A", "B", "X"):
+                classics = self.folder_step("A", f"{prefix}-racing-open-{button.lower()}",
+                                            box, unlike=racing)
+                self.check("A opens a dotted ancestor folder", classics is not None,
+                           layout=layout, return_button=button)
+                if index == 0 and button == "A":
+                    _, refused = self.pictures(8.0)
+                    self.check("the dotted nested folder's damaged PNG never shows",
+                               refused < PICTURE_PIXELS, pixels=refused)
+                first = self.folder_step("A", f"{prefix}-nested-open-{button.lower()}",
+                                         box, unlike=classics)
+                self.check("A opens the dotted nested folder", first is not None,
+                           layout=layout, return_button=button)
+                if button == "A":
+                    # Parent + direct game + flattened game in Old.Saves.v2:
+                    # three cards. A fourth or missing card fails the wrap.
+                    title = first
+                    for step in (1, 2):
+                        title, _ = self.press_until(following, unlike=title, box=box)
+                        self.check("the dotted nested listing moves to another card",
+                                   title is not None, layout=layout, step=step)
+                    self.check("two steps include the game beneath the second dotted ancestor",
+                               overlap(title, first) < DIFFERENT, layout=layout)
+                    self.check("three steps wrap the exact nested listing",
+                               self.press_until(following, like=first, box=box)[0] is not None,
+                               layout=layout)
+                    selected, _ = self.press_until(previous, like=parent, box=box)
+                    self.check("the explicit nested parent card is reachable", selected is not None,
+                               layout=layout)
+                back = self.folder_step(button, f"{prefix}-nested-return-{button.lower()}",
+                                        box, like=classics)
+                self.check("A-parent, B and X restore the same nested folder card",
+                           back is not None, layout=layout, button=button)
+                if button == "A":
+                    selected, _ = self.press_until(previous, like=parent, box=box)
+                    self.check("the ancestor's explicit parent card is reachable",
+                               selected is not None, layout=layout)
+                back = self.folder_step(button, f"{prefix}-racing-return-{button.lower()}",
+                                        box, like=racing)
+                self.check("A-parent, B and X restore the same ancestor folder card",
+                           back is not None, layout=layout, button=button)
+            current_root = racing
+            for button in ("A", "B", "X"):
+                if button == "A":
+                    # Parent is index zero, before the two folders. The
+                    # returned Racing.v1 card is index two in every layout.
+                    selected, _ = self.press_until(previous, unlike=racing, box=box)
+                    self.check("the empty folder precedes the root parent", selected is not None,
+                               layout=layout)
+                    selected, _ = self.press_until(previous, like=parent, box=box)
+                    self.check("the /games explicit parent card is reachable", selected is not None,
+                               layout=layout)
+                back = self.folder_step(button, f"{prefix}-root-return-{button.lower()}",
+                                        LABEL_BOX, like=home)
+                self.check("A-parent, B and X from /games return Home", back is not None,
+                           layout=layout, button=button)
+                # The parent card is skipped on entry when other cards
+                # exist; B/X retain the actual non-parent selected card.
+                expected = stray if button == "A" else current_root
+                current_root = self.folder_step("A", f"{prefix}-root-reopen-{button.lower()}",
+                                                box, like=expected)
+                self.check("Home reopens /games on the expected folder card", current_root is not None,
+                           layout=layout, after=button,
+                           focus="first actual card" if button == "A" else "same selected card")
+                if button == "A":
+                    current_root, _ = self.press_until(following, like=racing, box=box)
+                    self.check("root B and X use the non-first dotted folder",
+                               current_root is not None, layout=layout)
+            self.check("the next layout starts at the first actual folder",
+                       self.press_until(previous, like=stray, box=box)[0] is not None, layout=layout)
+            back = self.folder_step("B", f"{prefix}-root-finish", LABEL_BOX, like=home)
+            self.check("B leaves the checked root on Home Library", back is not None, layout=layout)
+            for face in faces[1:]:
+                self.check("RIGHT returns toward Home Settings",
+                           self.press_until("RIGHT", like=face)[0] is not None, layout=layout)
 
     def covered(self, reference: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX) -> bool:
         """Wait for the text in a box to stop matching reference: another screen opened over it."""
@@ -1723,7 +2045,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dol", type=Path)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--route", choices=("smoke", "tour", "game", "save", "virtual-cards"), default="smoke")
+    parser.add_argument("--route", choices=("smoke", "tour", "game", "save", "virtual-cards", "folders"), default="smoke")
     parser.add_argument("--probe", type=Path, help="the probe DOL (probe/), launched as an app and a game")
     parser.add_argument("--region", choices=tuple(REGIONS), default="pal")
     parser.add_argument("--storage", choices=tuple(STORAGES), default="dvd")
@@ -1748,6 +2070,9 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--fragments splits the probe's game on the SD card for the game route")
     if args.route == "virtual-cards" and args.storage not in ("gcloader", "sd2sp2"):
         parser.error("virtual-cards needs an SD card in GC Loader or SD2SP2, with both slots empty")
+    if args.route == "folders" and (args.storage != "sd2sp2" or args.region != "ntsc" or
+                                     args.cable != "component" or args.settings):
+        parser.error("folders needs a fresh SD2SP2 card, NTSC and component video")
     start = (SETTINGS / f"{args.settings}.ini").read_text() if args.settings else None
     args.out.mkdir(parents=True, exist_ok=True)
     report: dict[str, object] = {"schema": "indigo.emulator-test.v1", "route": args.route,
@@ -1785,7 +2110,7 @@ def main(argv: list[str] | None = None) -> int:
                 make_test_saves.write(str(cards))
             emulator = Emulator(dol, disc.resolve() if disc else None, work, args.out, args.region,
                                 args.storage, sd, args.cable, args.sd_faults, cards,
-                                empty_slots=args.route == "virtual-cards")
+                                empty_slots=args.route == "virtual-cards", folder_frames=args.route == "folders")
             route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd) and start is None,
                           cable=args.cable, region=args.region, fragments=args.fragments, cards=cards,
                           storage=args.storage, menu_wide=bool(start and "Menu Widescreen=Yes" in start),
@@ -1812,7 +2137,11 @@ def main(argv: list[str] | None = None) -> int:
             report["error"] = f"{type(error).__name__}: {error}"
         finally:
             if emulator:
-                emulator.close()
+                try:
+                    emulator.close()
+                except Broken as error:
+                    status = 2
+                    report["error"] = f"native frame proof: {error}"
     fatal = fatal_lines(args.out / "dolphin.log")
     if fatal and status == 0:
         status = 1
@@ -1830,6 +2159,7 @@ def main(argv: list[str] | None = None) -> int:
         "probe": route.report if route else None,
         "pressed_again": route.pressed_again if route else [],
         "pictures": [path.name for _, path in (route.shots if route else [])],
+        "folder_transitions": getattr(route, "folder_transitions", []) if route else [],
     })
     (args.out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     sheet(route.shots if route else [], args.out / "sheet.png")

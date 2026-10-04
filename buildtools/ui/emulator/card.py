@@ -9,11 +9,11 @@ missing or corrupt file table, which the Library must survive (DAMAGED).
 A text file and an empty folder sit beside them, as they do on real cards:
 the Library skips both (STRAYS), and the text file sorts first, so the
 games move up past it. Three games sit in folders (FOLDERS), one of them three
-levels down: Swiss's default flattening lists them with the rest, and Library
+levels down in Old.Saves.v2: Swiss's default flattening lists them with the rest, and Library
 Folders shows the folders, two levels deep, with the pictures beside them
-(FOLDER_PICTURES) as their posters: Racing's, in a colour nothing else on the
-disc has, and two that must never show, in another: Old saves', a picture
-past the 2 MB one may have, and Classics', damaged.
+(FOLDER_PICTURES) as their posters: Racing.v1's, in a colour nothing else on the
+disc has, and two that must never show, in another: Nintendo.GC's, a picture
+past the 2 MB one may have, and Classics.Set's, damaged.
 /swiss/ui/posters.pak holds posters drawn here from gradients and shapes, for
 all but two of the games, so the Library shows both kinds of card, and
 /swiss/ui/stills.pak gameplay stills drawn the same way for all but three, so
@@ -56,12 +56,12 @@ GAMES = (
     ("GPLZ01", "Paper Lantern"), ("GRZZ01", "Rally Cross Zero"), ("GSSZ01", "Skyward Salvage"),
 )
 NO_POSTER = frozenset({"GPLZ01", "GSSZ01"})
-STRAYS = ("About these games.txt", "Old saves/")
+STRAYS = ("About these games.txt", "Nintendo.GC/")
 # Games in folders below /games, the last one past the second level.
-FOLDERS = {"GRZZ01": "Racing", "GNTZ01": "Racing/Classics", "GPLZ01": "Racing/Classics/Old"}
+FOLDERS = {"GRZZ01": "Racing.v1", "GNTZ01": "Racing.v1/Classics.Set", "GPLZ01": "Racing.v1/Classics.Set/Old.Saves.v2"}
 # Pictures beside folders, each a poster-shaped field of one colour: the one
 # Library Folders shows, and the ones it must refuse (run.py looks for both).
-FOLDER_PICTURES = {"Racing": "shown", "Old saves": "too big", "Racing/Classics": "damaged"}
+FOLDER_PICTURES = {"Racing.v1": "shown", "Nintendo.GC": "too big", "Racing.v1/Classics.Set": "damaged"}
 SHOWN_PICTURE, REFUSED_PICTURE = (255, 0, 255), (0, 255, 255)
 NO_STILL = frozenset({"GDRZ01", "GPLZ01", "GSSZ01"})
 # Spotlight's descriptions; Rally Cross Zero keeps its banner's.

@@ -875,6 +875,28 @@ static bool gameflowInsideFolder(void)
 		UIGameflowLibrary_LocateFolders(gamesRoot, curDir.name));
 }
 
+/* The retained Library ends at /games. Its parent card and X return Home,
+ * keeping this listing ready for the next visit instead of opening Swiss's
+ * device-root browser. Within a folder, keep scanFiles' child selection. */
+static void gameflowNavigateParent(bool useGameflow, const file_handle *parent)
+{
+	char gamesRoot[PATHNAME_MAX];
+
+	if(useGameflow && devices[DEVICE_CUR] != NULL &&
+		devices[DEVICE_CUR]->initial != NULL) {
+		concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
+		if(UIGameflowLibrary_Locate(gamesRoot, curDir.name) ==
+			UI_GAMEFLOW_LIBRARY_LOCATION_ROOT) {
+			curMenuLocation = ON_OPTIONS;
+			return;
+		}
+	}
+	memcpy(&curFile, &curDir, sizeof(file_handle));
+	curDir.fileBase = parent->fileBase;
+	needsDeviceChange = upToParent(&curDir);
+	needsRefresh = 1;
+}
+
 static bool gameflowEnterLibraryFromHome(void)
 {
 	char gamesRoot[PATHNAME_MAX];
@@ -2353,10 +2375,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				needsRefresh=1;
 			}
 			else if(directory[curSelection]->fileType==IS_SPECIAL){
-				memcpy(&curFile, &curDir, sizeof(file_handle));
-				curDir.fileBase = directory[curSelection]->fileBase;
-				needsDeviceChange = upToParent(&curDir);
-				needsRefresh=1;
+				gameflowNavigateParent(useGameflow, directory[curSelection]);
 			}
 			else if(directory[curSelection]->fileType==IS_FILE){
 				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
@@ -2374,10 +2393,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			break;
 		}
 		if(browserButtons & BUTTON_X) {
-			memcpy(&curFile, &curDir, sizeof(file_handle));
-			curDir.fileBase = directory[0]->fileBase;
-			needsDeviceChange = upToParent(&curDir);
-			needsRefresh=1;
+			gameflowNavigateParent(useGameflow, directory[0]);
 			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
 			break;
 		}
@@ -2417,10 +2433,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			gameflowInsideFolder()) {
 			/* Library Folders: B goes up a folder, as X does; at /games
 			 * it goes Home. */
-			memcpy(&curFile, &curDir, sizeof(file_handle));
-			curDir.fileBase = directory[0]->fileBase;
-			needsDeviceChange = upToParent(&curDir);
-			needsRefresh=1;
+			gameflowNavigateParent(useGameflow, directory[0]);
 			while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
 			break;
 		}
@@ -5190,9 +5203,9 @@ void menu_loop()
 			/* A games folder with a game in it owns the retained presentation.
 			 * Existing configurations default GameBrowserType to Fullwidth;
 			 * allowing that legacy preference to win would make the custom
-			 * Library unreachable on upgraded cards. A folder with no games, or
-			 * loose images beside game folders, still returns NONE and keeps
-			 * its requested legacy browser. */
+			 * Library unreachable on upgraded cards. Library Folders also owns
+			 * empty /games and its folder views. Outside those locations, the
+			 * requested legacy browser remains available. */
 			fileBrowserType = UIGameflowLibrary_SelectBrowser(
 				gameflowLibraryMode(getSortedDirEntries(),
 					getSortedDirEntryCount()),
