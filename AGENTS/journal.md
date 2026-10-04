@@ -1,5 +1,32 @@
 # Indigo development journal
 
+## 2026-10-04 — Preserve motion and save details together on beta
+
+Incorporated the accepted beta icon and motion changes into Memory Cards.
+The renderer retains the save summary inset and its focus positions while
+preserving the sliding detail focus. Product rendering and metadata sources
+match the independently tested combined implementation. Both branches' prior
+journal entries are preserved below.
+
+The shared launch GX regression checks both the new inset and moving focus.
+The global frame profiles match the combined renderer, including its opening
+transition. Source checks, the upstream ownership gate, actual launch and
+Gameflow GX tests and the frame budget checks pass.
+
+## 2026-10-04 — Preserve icon and motion coverage while incorporating beta
+
+Merged the current beta branch into the motion polish branch. The resolved
+stroke GX harness retains the icon lift, shadow bounds and GX-state restoration
+checks alongside the controller idle-release checks. The shared harness matches
+the independently tested combined implementation.
+
+The project journal belongs to Indigo. The upstream source gate now recognizes
+its directory, with a regression that still rejects unlisted upstream edits and
+a similarly named directory outside the journal namespace.
+
+Validation: source checks, the upstream ownership check and the actual stroke GX
+stream suite. Product changes from both accepted branches are retained.
+
 ## 2026-10-04 — Save panel hierarchy and native button hints
 
 Save details now promotes the save name, separates block and KiB totals,

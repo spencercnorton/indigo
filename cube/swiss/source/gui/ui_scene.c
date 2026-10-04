@@ -41,6 +41,7 @@ typedef struct {
 	uiMotionSpring_t cubeYaw;
 	uiMotionSpring_t orbitStrength;
 	uiMotionSpring_t homeIdleBlend;
+	uiMotionSpring_t homeDecorative;
 	uiSceneFrame_t frame;
 	float bootElapsed;
 	uiMotionSpring_t orientation[4]; /* Unit quaternion: w, x, y, z. */
@@ -275,6 +276,7 @@ static void clearSpringVelocities(void)
 	state.cubePitch.velocity = 0.0f;
 	state.cubeYaw.velocity = 0.0f;
 	state.orbitStrength.velocity = 0.0f;
+	state.homeDecorative.velocity = 0.0f;
 	state.homeIdleBlend.velocity = 0.0f;
 	for(int i = 0; i < 4; ++i) state.orientation[i].velocity = 0.0f;
 }
@@ -462,6 +464,8 @@ static void retargetPose(uiSceneId_t scene, uiMotionMode_t motionMode)
 	UIMotion_SpringRetarget(&state.cubePitch, pose->cubePitch, motionMode);
 	UIMotion_SpringRetarget(&state.cubeYaw, cubeYaw, motionMode);
 	UIMotion_SpringRetarget(&state.orbitStrength, pose->orbitStrength, motionMode);
+	UIMotion_SpringRetarget(&state.homeDecorative,
+		isHomeYawScene(scene) ? 1.0f : 0.0f, motionMode);
 	retargetOrientation(scene, motionMode);
 	/* Classic's glyphs keep their sides in every scene, so leaving Home
 	 * moves none of them. */
@@ -576,6 +580,8 @@ void UIScene_Reset(void)
 	UIMotion_SpringInit(&state.cubeYaw, bootPose->cubeYaw,
 		UI_SCENE_CUBE_YAW_RESPONSE);
 	UIMotion_SpringInit(&state.orbitStrength, bootPose->orbitStrength, 5.5f);
+	/* The boot arrives on Home. */
+	UIMotion_SpringInit(&state.homeDecorative, 1.0f, 5.5f);
 	UIMotion_SpringInit(&state.homeIdleBlend, 0.0f, 7.0f);
 	state.frame = (uiSceneFrame_t) {
 		.scene = UI_SCENE_BOOT,
@@ -585,6 +591,7 @@ void UIScene_Reset(void)
 		.cubePitch = bootPose->cubePitch,
 		.cubeYaw = bootPose->cubeYaw,
 		.orbitStrength = bootPose->orbitStrength,
+		.homeDecorativeBlend = 1.0f,
 		.introProgress = 0.0f,
 		.chromeProgress = 0.0f,
 		.homeFace = UI_HOME_FACE_LIBRARY,
@@ -725,6 +732,8 @@ void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode)
 		deltaSeconds, motionMode);
 	state.frame.orbitStrength = UIMotion_SpringUpdate(&state.orbitStrength,
 		deltaSeconds, motionMode);
+	state.frame.homeDecorativeBlend = UIMotion_SpringUpdate(
+		&state.homeDecorative, deltaSeconds, motionMode);
 	state.frame.introProgress = state.bootComplete ? 1.0f :
 		state.bootElapsed / UI_SCENE_BOOT_HOLD_SECONDS;
 	state.frame.chromeProgress = UIMotion_EaseOutCubic(

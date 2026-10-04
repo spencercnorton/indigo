@@ -176,15 +176,15 @@
   "vertices": 2856
  },
  "memory-cards-opening": {
-  "begins": 80,
+  "begins": 81,
   "copy_pixels": 0,
-  "hash": "092ae78e0d432cd8",
-  "minmax": 591,
+  "hash": "df91c974cff998f7",
+  "minmax": 613,
   "scene": "memory-cards-opening",
   "sqrtf": 0,
-  "state": 152,
-  "trig": 17,
-  "vertices": 4488
+  "state": 157,
+  "trig": 19,
+  "vertices": 4708
  },
  "memory-cards-wide": {
   "begins": 45,

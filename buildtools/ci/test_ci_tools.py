@@ -198,18 +198,26 @@ class Upstream(unittest.TestCase):
             "commit", "-qm", "c")
         return git("rev-parse", "HEAD")
 
-    def check(self, patcher: bytes, listed: str = "") -> list[str]:
+    def check(self, patcher: bytes, listed: str = "",
+              extra: dict[str, bytes] | None = None) -> list[str]:
         with tempfile.TemporaryDirectory() as tmp:
             up, ours = Path(tmp, "up"), Path(tmp, "ours")
             commit = self.commit(up, {"cube/swiss/source/patcher.c": b"a\r\nb\r\n",
                                       "cube/swiss/source/gui/menu.c": b"swiss\n"})
             self.commit(ours, {"UPSTREAM": f"upstream {up}\ncommit {commit}\n{listed}".encode(),
                                "cube/swiss/source/patcher.c": patcher,
-                               "cube/swiss/source/gui/menu.c": b"indigo\n"})
+                               "cube/swiss/source/gui/menu.c": b"indigo\n", **(extra or {})})
             return check_upstream.problems(ours)
 
     def test_line_endings_and_the_interface_are_not_changes(self):
         self.assertEqual(self.check(b"a\nb\n"), [])
+
+    def test_project_journal_is_owned_without_exempting_upstream_code(self):
+        journal = {"AGENTS/journal.md": b"Project development history\n"}
+        self.assertEqual(self.check(b"a\nb\n", extra=journal), [])
+        self.assertIn("does not list it", self.check(b"a\nc\n", extra=journal)[0])
+        self.assertIn("does not list it", self.check(b"a\nb\n", extra={
+            "AGENTS-unowned/journal.md": b"Not a project-owned path\n"})[0])
 
     def test_a_change_is_listed_and_the_list_stays_true(self):
         self.assertEqual(self.check(b"a\nc\n", "cube/swiss/source/patcher.c  a fix\n"), [])
