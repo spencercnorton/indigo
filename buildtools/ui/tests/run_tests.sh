@@ -168,6 +168,9 @@ run_contracts() {
 	echo "== cheat runtime integration and mutation audit =="
 	python3 ./audit_cheat_safety.py
 
+	echo "== Memory Cards: the test saves' icons and banners through the decoder =="
+	python3 ./test_save_art.py
+
 	echo "== Memory Cards copy, move and delete safety audit =="
 	python3 ./audit_saves_safety.py
 

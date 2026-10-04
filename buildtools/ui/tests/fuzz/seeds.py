@@ -43,6 +43,21 @@ def saves(out: Path) -> None:
     gcs = bytearray(0x110)
     gcs[:6] = b"GCSAVE"
     (out / "save.gcs").write_bytes(bytes(gcs) + bytes(entry) + block)
+    # Saves with art, from the generator Memory Cards is tried with (it
+    # needs Pillow): RGB5A3 frames, CI8 frames on a shared palette and on
+    # their own, a bounce, frames with no pixels, no banner, and an icon
+    # address near 2^32.
+    sys.path.insert(0, str(ROOT / "buildtools/ui/qa"))
+    import make_test_saves as gen
+    by_game = {save.game: save for save in gen.SLOT_A}
+    for name, game in (("art-rgb", "ZIQE"), ("art-ci8-shared-bounce", "ZSRE"),
+                       ("art-ci8-own-no-banner", "ZPPE"), ("art-empty-frames", "ZLKE"),
+                       ("art-eight-mixed", "ZTPE"), ("art-no-icon", "ZCHE")):
+        (out / f"{name}.gci").write_bytes(gen.encode(by_game[game], 0))
+    (out / "art-datel.sav").write_bytes(gen.datel(gen.encode(by_game["ZLKE"], 0)))
+    hostile = bytearray(gen.encode(by_game["ZIQE"], 0))
+    hostile[0x2C:0x30] = b"\xff\xff\xf8\x00"
+    (out / "art-hostile-address.gci").write_bytes(bytes(hostile))
 
 
 def posters(out: Path) -> None:
