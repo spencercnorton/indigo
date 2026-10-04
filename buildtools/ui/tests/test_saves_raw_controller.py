@@ -30,6 +30,8 @@ PRELUDE = r'''
 #include "ui_saves.h"
 #include "ui_saves_raw.h"
 #include "ui_save_cubes.h"
+#include "ui_saves_metadata.h"
+#include "ui_presentation.h"
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -41,6 +43,7 @@ typedef int32_t s32;
 #define SAVES_LIST_MAX 256
 #define SAVES_TABS 4
 #define SAVES_TAB_FOLDER 2
+#define SAVES_SLOTS 48
 #define SAVES_SYSTEM_BLOCKS 5
 #define SAVES_MAX_BYTES (0x150u + 2043u * UI_SAVES_BLOCK_SIZE)
 #define IS_FILE 0
@@ -54,8 +57,14 @@ typedef int32_t s32;
 #define CARD_ATTRIB_NOMOVE 16
 #define BUTTON_L 1
 #define BUTTON_R 2
+#define BUTTON_A 4
+#define BUTTON_B 8
+#define BUTTON_UP 16
+#define BUTTON_DOWN 32
 #define D_WARN 1
 #define D_FAIL 2
+#define ALIGN_LEFT 0
+#define CARD_ERROR_READY 0
 #define DCFlushRange(p,n) ((void)0)
 typedef struct {
     s32 chn, fileno;
@@ -94,14 +103,66 @@ static int placeIdCount[SAVES_TABS];
 static int reads, writes, deletes, closes, cardCopies, starts, ends, tells, says;
 static bool expectInvalidMessage, invalidMessageSeen;
 static bool lastResult, copyMode;
-static struct {s8 storageStack;} over;
+static struct {
+    s8 storageStack;
+    struct {char title[48],item[4][40];u8 count,dim;u16 width;} menu;
+    u8 menuOpen,menuFocus,ghost;
+    u16 menuSerial;
+    s16 ghostCell;
+    char reason[96];
+} over;
+static struct {int cell,slot,toCell;} plan;
 static int storageChoice=-1;
 static int savesMenu(const char *title,const char *const *items,int count,int initial,
-    unsigned dim,const char *const *reasons,unsigned ghosts) {
-    (void)title;(void)items;(void)count;(void)initial;(void)dim;(void)reasons;(void)ghosts;
-    return storageChoice;
+    unsigned dim,const char *const *reasons,unsigned ghosts);
+typedef int savesInput_t;
+static u32 inputs[32];
+static unsigned inputCount,inputAt,menusShown,detailsShown,labelsShown;
+static unsigned seenDim;
+static uiPresentationSnapshot_t detailSnapshot;
+static char detailUpdated[64];
+static void inputInit(savesInput_t *input) {*input=0;}
+static u32 inputNext(savesInput_t *input) {
+    (void)input;
+    if(inputAt<inputCount) return inputs[inputAt++];
+    return storageChoice<0 ? BUTTON_B : over.menuFocus==storageChoice ? BUTTON_A : BUTTON_DOWN;
 }
-static void inputInit(int *input) {*input=0;}
+static void script(const u32 *presses,unsigned count) {
+    assert(count<=32);memcpy(inputs,presses,count*sizeof(*presses));inputCount=count;inputAt=0;
+}
+static void menuaudio_select(void) {}
+static void menuaudio_blip(void) {}
+static int GetTextSizeInPixels(const char *text) {return (int)strlen(text)*8;}
+static void UICheats_Fit(char *out,size_t size,const char *text,int width,float scale,
+    int (*measure)(const char *)) {
+    (void)width;(void)scale;(void)measure;snprintf(out,size,"%s",text);
+}
+static void screenRedraw(void) {
+    if(over.menuOpen) {menusShown++;seenDim=over.menu.dim;assert(over.menuSerial);}
+}
+typedef struct {u8 r,g,b,a;} GXColor;
+typedef struct {int unused;} uiDrawObj_t;
+static uiDrawObj_t *DrawPresentation(const uiPresentationSnapshot_t *snapshot) {
+    assert(UIPresentation_Valid(snapshot));detailSnapshot=*snapshot;detailsShown++;
+    return calloc(1,sizeof(uiDrawObj_t));
+}
+static uiDrawObj_t *DrawStyledLabel(int x,int y,const char *text,float scale,int align,GXColor color) {
+    (void)scale;(void)align;(void)color;assert(x==104 && (y==288 || y==310));
+    if(y==288)assert(!strcmp(text,"Created: Not recorded"));
+    else snprintf(detailUpdated,sizeof(detailUpdated),"%s",text);
+    labelsShown++;return calloc(1,sizeof(uiDrawObj_t));
+}
+static void DrawAddChild(uiDrawObj_t *parent,uiDrawObj_t *child) {assert(parent && child);free(child);}
+static uiDrawObj_t *DrawPublish(uiDrawObj_t *box) {assert(box);return box;}
+static void DrawDispose(uiDrawObj_t *box) {assert(box);free(box);}
+typedef struct {char gamecode[4],company[2],filename[32];u32 time;} card_stat;
+static card_stat status;
+static int statusResult,statusReads;
+static int CARD_GetStatus(int channel,int file,card_stat *out) {
+    assert((channel==0 || channel==1) && file==7);statusReads++;*out=status;return statusResult;
+}
+static void eraseBegin(int cell) {(void)cell;starts++;}
+static void artReturn(void) {}
 static int failReadAt = -1;
 static char chosen[PATHNAME_MAX], told[160];
 static void *memalign(size_t alignment, size_t size) {(void)alignment; return malloc(size);}
@@ -229,6 +290,10 @@ static void setup(void) {
     expectInvalidMessage=invalidMessageSeen=false;
     pool=calloc(1,48*SAVES_SLOT_BYTES);assert(pool);memset(slots,0,sizeof(slots));
     screenFocus=0;screenStacks[0]=2;screenStacks[1]=3;failReadAt=-1;chosen[0]=0;
+    memset(&over,0,sizeof(over));over.storageStack=-1;
+    inputCount=inputAt=menusShown=detailsShown=labelsShown=seenDim=0;storageChoice=-1;
+    memset(&detailSnapshot,0,sizeof(detailSnapshot));detailUpdated[0]=0;
+    memset(&status,0,sizeof(status));statusResult=CARD_ERROR_READY;statusReads=0;
     fixture(imageA,"GALP","01",'A','B');fixture(imageB,"GZLP","02",'C','D');
     memcpy(frozenA,imageA,IMAGE_BYTES);memcpy(frozenB,imageB,IMAGE_BYTES);
 }
@@ -349,9 +414,88 @@ static void storageFocus(void) {
         unchanged();clean();
     }
 }
+static void detailsInput(void) {
+    const u32 back[]={BUTTON_B};
+    setup();openImage(2,"A");openImage(3,"B");
+    /* Exercise the full production A branch, not a test's save-dispatch
+     * approximation. Neither RAW column can accept a write. */
+    script(back,1);assert(selectPress(0,BUTTON_A)==0);
+    assert(detailsShown==1 && labelsShown==2 && menusShown==0);
+    assert(!strcmp(detailSnapshot.title,"Save details"));
+    assert(!strcmp(detailSnapshot.message,"raw-save"));
+    assert(strstr(detailSnapshot.detail,"2 blocks (16 KiB)") && strstr(detailSnapshot.detail,"Read-only"));
+    assert(!strcmp(detailUpdated,"Last updated: Unknown"));
+    assert(!strcmp(detailSnapshot.action,"A Actions    B Back"));
+    assert(starts==0 && writes==0 && deletes==0);
+    script(back,1);selectPress(0,BUTTON_A);assert(detailsShown==2);
+    selectPress(0,BUTTON_B);assert(detailsShown==2);
+    places[2].selection=1;selectPress(0,BUTTON_A);assert(detailsShown==2);
+    unchanged();clean();
+
+    /* A enters the unchanged action menu. Every dimmed action remains
+     * unselectable, while both the dialog and action menu were rendered. */
+    const u32 allDim[]={BUTTON_A,BUTTON_A,BUTTON_UP,BUTTON_A,
+        BUTTON_DOWN,BUTTON_DOWN,BUTTON_A,BUTTON_B};
+    setup();openImage(2,"A");openImage(3,"B");script(allDim,8);selectPress(0,BUTTON_A);
+    assert(inputAt==8 && detailsShown==1 && menusShown>0 && seenDim==7 && over.menuSerial==1);
+    assert(starts==0 && writes==0 && deletes==0);unchanged();clean();
+
+    /* A real RAW-to-independent-SD export still needs action selection
+     * and its confirmation; opening details alone never performs it. */
+    const u32 copy[]={BUTTON_A,BUTTON_A,BUTTON_A};
+    setup();openImage(2,"A");script(copy,3);selectPress(0,BUTTON_A);
+    assert(detailsShown==1 && inputAt==3 && writes==1 && exportCount==1);
+    assert(lastResult && !strncmp(exports[0].name,"sda:/right/",11));
+    unchanged();clean();
+    setup();openImage(2,"A");sd.features=0;script(allDim,8);selectPress(0,BUTTON_A);
+    assert(detailsShown==1 && seenDim==7 && starts==0 && writes==0);unchanged();clean();
+}
+static void detailsMetadata(void) {
+    const u32 back[]={BUTTON_B};
+    setup();openImage(2,"A");
+    int before=reads;
+    u8 *entry=places[2].rawCard->entry[0];
+    unsigned seconds=86400+120;
+    entry[0x28]=(u8)(seconds>>24);entry[0x29]=(u8)(seconds>>16);
+    entry[0x2a]=(u8)(seconds>>8);entry[0x2b]=(u8)seconds;
+    entry[11]='\n';script(back,1);selectPress(0,BUTTON_A);
+    assert(!strcmp(detailUpdated,"Last updated: 2000-01-02 00:02"));
+    assert(!strcmp(detailSnapshot.message,"raw save"));
+    assert(reads==before && writes==0 && deletes==0);unchanged();clean();
+
+    /* An unreadable SD header still opens a visible details panel and
+     * identifies the metadata failure instead of inventing a date. */
+    setup();file_handle save={.size=2*8192+64,.fileType=IS_FILE,.device=&sd};
+    strcpy(save.name,"sda:/right/unreadable.gci");
+    places[2].list[0]=&save;places[2].count=1;script(back,1);selectPress(0,BUTTON_A);
+    assert(strstr(detailSnapshot.detail,"estimated") && !strcmp(detailUpdated,"Last updated: Unable to read metadata"));
+    assert(detailsShown==1 && writes==0 && deletes==0);unchanged();clean();
+
+    /* A physical card's real status date is used only on a successful
+     * status read for that exact game, maker and filename. */
+    for(int mode=0;mode<7;mode++) {
+        setup();file_handle card={.size=2*8192,.fileType=IS_FILE,.device=&__device_card_a};
+        strcpy(card.name,"carda:/raw-save");card_dir *dir=(card_dir *)card.other;
+        dir->chn=0;dir->fileno=7;dir->filelen=card.size;
+        memcpy(dir->gamecode,"GALP",4);memcpy(dir->company,"01",2);strcpy(dir->filename,"raw-save");
+        memcpy(status.gamecode,"GALP",4);memcpy(status.company,"01",2);strcpy(status.filename,"raw-save");status.time=86400+120;
+        if(mode==1)statusResult=-1;
+        if(mode==2)memcpy(status.gamecode,"GZLP",4);
+        if(mode==3)memcpy(status.company,"02",2);
+        if(mode==4)strcpy(status.filename,"another-save");
+        if(mode==5)status.time=0;
+        if(mode==6)status.time=UINT32_MAX;
+        places[0].ready=true;places[0].list[0]=&card;places[0].count=1;screenStacks[0]=0;
+        script(back,1);selectPress(0,BUTTON_A);
+        assert(statusReads==1 && !strcmp(detailUpdated,mode==0 ?
+            "Last updated: 2000-01-02 00:02" : mode>=5 ?
+            "Last updated: Unknown" : "Last updated: Unable to read metadata"));
+        assert(detailsShown==1 && reads==0 && writes==0 && deletes==0);unchanged();clean();
+    }
+}
 int main(void) {
-    readExport();twoColumns();destinationsAndFailures();openingFailures();emptyImage();storageFocus();
-    puts("RAW controller: load, virtual entry/art/read, guarded export, read-only operations, reload and two SD columns PASS");
+    readExport();twoColumns();destinationsAndFailures();openingFailures();emptyImage();storageFocus();detailsInput();detailsMetadata();
+    puts("RAW controller: load, virtual entry/art/read, details A/B, guarded actions/export, read-only operations, reload and two SD columns PASS");
     return 0;
 }
 '''
@@ -389,13 +533,15 @@ static void savesSay(const char *why) {
     pieces += [model, extract_function(saves, 'static bool isSaveName(')]
     pieces += [extract_function(saves, marker) for marker in ('static int placeOrder(', 'static bool folderIsRoot(', 'static void loadFolder(', 'static void loadRaw(', 'static void loadTab(', 'static void folderPath(', 'static void placeRemember(')]
     pieces += [extract_function(cube, marker) for marker in ('uiSaveCubesChange_t UISaveCubes_Change(', 'int UISaveCubes_Cells(', 'int UISaveCubes_Home(')]
-    pieces += [extract_function(saves, marker) for marker in ('static void placesRemember(', 'static void placesReload(', 'static u8 *saveRead(', 'static bool folderWrite(', 'static bool saveDelete(', 'static bool destinationFolder(uiSavesPlace_t to, char *path, size_t size)\n{', 'static void saveTransfer(', 'static unsigned saveBlocks(', 'static bool saveEntry(', 'static void saveRoom(', 'static int placeCells(', 'static int stackFocus(', 'static void chooseStorage(')]
+    pieces += [extract_function(saves, marker) for marker in ('static void placesRemember(', 'static void placesReload(', 'static u8 *saveRead(', 'static bool folderWrite(', 'static bool saveDelete(', 'static bool destinationFolder(uiSavesPlace_t to, char *path, size_t size)\n{', 'static void saveTransfer(', 'static unsigned saveBlocks(', 'static bool saveEntry(', 'static void saveRoom(', 'static int placeCells(', 'static int placeCell(', 'static file_handle *placeAt(', 'static int stackFocus(', 'static int artSlot(', 'static void saveLine(', 'static void saveTitle(', 'static void saveHeading(', 'static bool saveUpdated(', 'static bool saveDetails(', 'static int savesMenu(', 'static void saveOptions(', 'static void chooseStorage(')]
     show = extract_function(saves, 'void show_saves(')
     opening = extract_function(show, 'if(SavesRaw_IsImageName(chosen->name))')
     pieces += ['static void openSelected(savesPlace_t *place,file_handle *chosen) {' + opening + '}']
     storage = extract_function(show, 'else if(pressed & (BUTTON_L | BUTTON_R))')
     body = storage[storage.index('{')+1:storage.rindex('}')]
     pieces += ['static int storagePress(int stacks[2],int focus,u32 pressed) {int input=0;' + body + 'return focus;}']
+    selection = extract_function(show, 'else if((pressed & BUTTON_A) && focus >= 0)')
+    pieces += ['static int selectPress(int focus,u32 pressed) {int stacks[2]={screenStacks[0],screenStacks[1]};int input=0;do {' + selection.removeprefix('else ') + '}while(0);return focus;}']
     return '\n'.join(pieces + ['static void setup(void)' + tests])
 
 
@@ -414,7 +560,7 @@ def main():
             if sys.platform.startswith('linux'):
                 flags += ['-fno-pie', '-no-pie']
         gui = root / 'cube/swiss/source/gui'
-        subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + flags + ['-I', str(gui), str(source), str(gui / 'ui_saves.c'), str(gui / 'ui_saves_raw.c'), '-o', str(binary)], check=True)
+        subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + flags + ['-I', str(gui), str(source), str(gui / 'ui_saves.c'), str(gui / 'ui_saves_raw.c'), str(gui / 'ui_saves_metadata.c'), str(gui / 'ui_presentation.c'), '-o', str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
 
 

@@ -29,6 +29,8 @@
 #include "ui_menu_input.h"
 #include "menuaudio.h"
 #include "ui_saves.h"
+#include "ui_saves_metadata.h"
+#include "ui_presentation.h"
 #include "ui_settings_layout.h"
 #include "saves.h"
 #include "saves_raw.h"
@@ -1898,7 +1900,87 @@ static void saveRoom(int tab, const u8 entry[UI_SAVES_ENTRY_SIZE], bool known,
 	}
 }
 
-/* A on a save: the IPL's Move / Copy / Erase beside it, an item that can't
+/* A physical listing has identity and size, but not the directory date.
+ * Read status without changing the save, and don't display another entry's
+ * date if the card changed since it was listed. */
+static bool saveUpdated(file_handle *save,
+	const u8 entry[UI_SAVES_ENTRY_SIZE], bool known, u32 *seconds)
+{
+	*seconds = 0u;
+	if(!known) return false;
+	if(isCard(save->device)) {
+		const card_dir *dir = (const card_dir *)save->other;
+		card_stat status;
+
+		if(CARD_GetStatus(dir->chn, dir->fileno, &status) != CARD_ERROR_READY ||
+			memcmp(status.gamecode, dir->gamecode, 4) ||
+			memcmp(status.company, dir->company, 2) ||
+			strncmp(status.filename, dir->filename, CARD_FILENAMELEN)) return false;
+		*seconds = status.time;
+	}
+	else {
+		*seconds = UISaves_UpdatedSeconds(entry);
+	}
+	return true;
+}
+
+/* Details are available even when the other stack cannot take a copy.
+ * The save format has one update date, never a separate creation date. */
+static bool saveDetails(int tab, file_handle *save,
+	const u8 entry[UI_SAVES_ENTRY_SIZE], bool known, unsigned blocks)
+{
+	uiPresentationSnapshot_t details;
+	savesInput_t input;
+	uiDrawObj_t *box;
+	char heading[64], size[96], updated[64], date[24];
+	const char *source = places[tab].rawOpen ? "Read-only card image" :
+		(isCard(save->device) ? slotName(tab) : "SD save");
+	u32 seconds;
+	bool actions = false, readable = saveUpdated(save, entry, known, &seconds);
+	size_t i;
+
+	saveHeading(heading, sizeof(heading), tab, save);
+	/* Card filenames and comments are untrusted; a control byte must not
+	 * prevent a details panel from opening or change its authored layout. */
+	for(i = 0; heading[i] != '\0'; i++) {
+		if((u8)heading[i] < 0x20u || (u8)heading[i] == 0x7Fu) heading[i] = ' ';
+	}
+	if(heading[0] == '\0') snprintf(heading, sizeof(heading), "Unnamed save");
+	snprintf(size, sizeof(size), "%u block%s (%u KiB)%s - %s", blocks,
+		blocks == 1u ? "" : "s",
+		blocks * (UI_SAVES_BLOCK_SIZE / 1024u), known ? "" : " estimated", source);
+	snprintf(updated, sizeof(updated), "Last updated: %s", !readable ?
+		"Unable to read metadata" : UISaves_FormatUpdated(seconds, date,
+			sizeof(date)) ? date : "Unknown");
+	if(!UIPresentation_Build(&details, UI_PRESENTATION_INFORMATION,
+		"Save details", heading, size, "A Actions    B Back")) return false;
+	box = DrawPresentation(&details);
+	if(box == NULL) {
+		savesTell(D_FAIL, "Save details couldn't be opened.\nPress A to continue.");
+		return false;
+	}
+	DrawAddChild(box, DrawStyledLabel(104, 288, "Created: Not recorded", 0.46f,
+		ALIGN_LEFT, (GXColor) {184, 174, 225, 255}));
+	DrawAddChild(box, DrawStyledLabel(104, 310, updated, 0.46f,
+		ALIGN_LEFT, (GXColor) {184, 174, 225, 255}));
+	box = DrawPublish(box);
+	inputInit(&input);
+	while(1) {
+		u32 pressed = inputNext(&input);
+
+		if(pressed & BUTTON_B) break;
+		if(pressed & BUTTON_A) {
+			menuaudio_select();
+			actions = true;
+			break;
+		}
+	}
+	DrawDispose(box);
+	return actions;
+}
+
+/* A on a save opens details first, then the IPL's Move / Copy / Erase
+ * beside it when A selects Actions. An item that can't
  * be used dimmed with its reason, then a question. Copy and Move go to the
  * other stack: a card, or the SD card's open folder (from a list when it
  * holds folders, with another one to choose). An operation reads every
@@ -1927,6 +2009,7 @@ static void saveOptions(int tab)
 	unsigned ghosts;
 	int action, i;
 
+	if(!saveDetails(tab, save, entry, known, blocks)) return;
 	memset(reason, 0, sizeof(reason));
 	saveRoom(toTab, entry, known, &room);
 	for(i = 0; i < 2; i++) {
