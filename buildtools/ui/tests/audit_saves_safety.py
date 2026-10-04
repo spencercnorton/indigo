@@ -31,9 +31,9 @@ texels flushed before the slot is named; the cube in flight has its own
 slot, filled before it is shown. An erase is called done only after the
 card did it, and a failed one on a card shows the driver's box alone. The
 screen leaves before the cards are let go. A message is fitted to its
-box with an ellipsis. A save copied to a folder that lists as many as a
-stack shows has no cell to land in: no ghost shows, the folder's stack
-keeps its selection on a cell it has, and the question says why. A copy
+box with an ellipsis. A save copied to a folder listed to its most may
+not be listed after: no ghost shows, the folder's stack keeps its
+selection on a cell it has, and the question says it may not show. A copy
 the memory left can't hold twice, with the card driver's room, lets the
 art's pool go first, the screen without it out before it is freed, and the
 pool comes back afterwards with every slot read again.
@@ -214,10 +214,12 @@ def check(source: str) -> None:
     ordered(function(source, "artReturn"), "memalign(32, (SAVES_SLOTS + 1) * SAVES_SLOT_BYTES)",
             "memset(slotTags, 0, sizeof(slotTags));", "artFresh = true;")
     ordered(show, "saveOptions(stacks[focus]);", "artReturn();")
-    # A save lands in the other stack's first free cell. A folder listing as
-    # many as a stack shows has none: then no ghost shows, the stack's
-    # selection stays on a cell it has, and the question says why.
-    ordered(options, "plan.toCell = UISaveCubes_Landing(dest->count - placeSkip(dest));",
+    # A save lands in the other stack's first free cell. A folder listed to
+    # SAVES_LIST_MAX, its ".." counted, may not list it after, wherever its
+    # directory puts it: then no ghost shows, the stack's selection stays on
+    # a cell it has, and the question says the save may not show.
+    ordered(options, '"This folder lists 256 already; the save may not show"',
+            "plan.toCell = dest->count < SAVES_LIST_MAX ? dest->count - placeSkip(dest) : -1;",
             "dest->selection = plan.toCell >= 0 ? plan.toCell + placeSkip(dest) : dest->count - 1;",
             "ghosts = plan.toCell >= 0 ? 3u : 0u;", "savesMenu(title, answers, 2, 0, 0u, NULL, ghosts)",
             "ghosts ? NULL : unseen, ghosts & 1u);",
@@ -326,8 +328,12 @@ def mutants(source: str) -> list[tuple[str, str]]:
         ("the pool never comes back",
          source.replace("\t\t\t\tartReturn();\n", "")),
         ("a save aims past the end of a folder's stack",
-         source.replace("plan.toCell = UISaveCubes_Landing(dest->count - placeSkip(dest));",
+         source.replace("plan.toCell = dest->count < SAVES_LIST_MAX ? dest->count - placeSkip(dest) : -1;",
                         "plan.toCell = dest->count - placeSkip(dest);")),
+        ("a ghost promises a cell a full folder's listing may not have",
+         source.replace("plan.toCell = dest->count < SAVES_LIST_MAX ? dest->count - placeSkip(dest) : -1;",
+                        "plan.toCell = dest->count - placeSkip(dest) < SAVES_LIST_MAX ?\n"
+                        "\t\tdest->count - placeSkip(dest) : -1;")),
         ("a ghost shows where a save has nowhere to land",
          source.replace("ghosts = plan.toCell >= 0 ? 3u : 0u;", "ghosts = 3u;")),
         ("the question doesn't say why no ghost shows",

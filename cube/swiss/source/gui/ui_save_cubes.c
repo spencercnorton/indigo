@@ -1184,12 +1184,6 @@ int UISaveCubes_Cells(int saves)
 		cells > UI_SAVE_CUBES_MAX_CELLS ? UI_SAVE_CUBES_MAX_CELLS : cells;
 }
 
-int UISaveCubes_Landing(int saves)
-{
-	saves = saves < 0 ? 0 : saves;
-	return saves < UISaveCubes_Cells(saves) ? saves : -1;
-}
-
 int UISaveCubes_Window(int first, int cell, int cells)
 {
 	int row = cell / UI_SAVE_CUBES_COLUMNS;

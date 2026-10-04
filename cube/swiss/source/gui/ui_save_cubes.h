@@ -309,11 +309,6 @@ typedef struct {
  * cell, in whole rows, four rows at least, UI_SAVE_CUBES_MAX_CELLS at most. */
 int UISaveCubes_Cells(int saves);
 
-/* The cell a save copied to a stack of saves lands in, its first free one,
- * or -1 when the stack has none: a folder that lists as many as a stack
- * shows. */
-int UISaveCubes_Landing(int saves);
-
 /* The window's first row that shows cell, moved as little as it can from
  * first, in a stack of cells. */
 int UISaveCubes_Window(int first, int cell, int cells);

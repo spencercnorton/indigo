@@ -1781,9 +1781,9 @@ static void saveOptions(int tab)
 	savesPlace_t *dest = &places[toTab];
 	char reason[2][96], title[64], open[PATHNAME_MAX];
 	const char *why[3] = {reason[0], reason[1], NULL};
-	/* A folder listing as many as a stack shows has no free cell to land
-	 * in: the copy goes in all the same, unseen. */
-	const char *unseen[2] = {"This folder shows 256 already; the save won't show", NULL};
+	/* A folder listed to SAVES_LIST_MAX may leave the save out of its
+	 * listing: the copy goes in all the same, perhaps unseen. */
+	const char *unseen[2] = {"This folder lists 256 already; the save may not show", NULL};
 	const char *where[2] = {open, "Another folder\205"};
 	u8 entry[UI_SAVES_ENTRY_SIZE];
 	bool known = saveEntry(save, entry), card = isCard(save->device), move, ok;
@@ -1825,12 +1825,13 @@ static void saveOptions(int tab)
 	}
 	move = action == 0;
 	/* Where it would land: the other stack's first free cell, its window
-	 * moved to show it, the ghost there while the question is up. With no
-	 * free cell (a folder at the stack's 256), no ghost, its window on its
-	 * last cell, and the question says why. */
+	 * moved to show it, the ghost there while the question is up. A folder
+	 * listed to SAVES_LIST_MAX (its ".." counted) may not list the save,
+	 * wherever its directory puts it: no ghost, its window on its last
+	 * cell, and the question says why. */
 	plan.cell = placeCell(place);
 	plan.slot = artSlot(saveTag(tab, save));
-	plan.toCell = UISaveCubes_Landing(dest->count - placeSkip(dest));
+	plan.toCell = dest->count < SAVES_LIST_MAX ? dest->count - placeSkip(dest) : -1;
 	over.ghostCell = (s16)plan.toCell;
 	dest->selection = plan.toCell >= 0 ? plan.toCell + placeSkip(dest) : dest->count - 1;
 	ghosts = plan.toCell >= 0 ? 3u : 0u;
