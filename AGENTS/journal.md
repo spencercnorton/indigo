@@ -1,5 +1,17 @@
 # Journal
 
+## 2026-10-04 — Project journal ownership in the source gate
+
+The upstream audit now recognizes the project-owned AGENTS directory,
+including its development journal. This fixes the source gate rejecting the
+journal added with this branch's sanitizer regression work. The product
+sources and existing behavior are unchanged.
+
+The real upstream-checker regression accepts the project journal while still
+rejecting unlisted upstream code and similarly named directories. The
+upstream audit and source checks pass.
+
+
 ## 2026-10-04 — Stabilize Linux MP3 sanitizer startup
 
 The standalone MP3 regression harness now adds `-fno-pie` and `-no-pie`
