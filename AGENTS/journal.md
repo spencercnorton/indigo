@@ -1,5 +1,21 @@
 # Indigo development journal
 
+## 2026-10-04 — Coordinate the remaining beta compatibility branches
+
+Memory Cards and motion are merged into beta. Metadata filtering and manual
+rewind remain pending their own pull requests. The rewind branch incorporates
+the pending metadata branch so the ordered merges retain the same combined
+implementation. The metadata branch keeps its focused production change.
+The shared journal preserves both branches' earlier entries exactly. CI for
+the refreshed heads remains pending.
+
+## 2026-10-04 — Keep the reviewed beta compatibility fixes coherent
+
+Included the metadata filtering branch alongside the accepted beta renderer
+and manual rewind fix. Both compatibility changes retain their production
+regressions, and every earlier journal entry is preserved. This prepares the
+same combined implementation for the ordered beta merges.
+
 ## 2026-10-04 — Preserve current beta and metadata filtering together
 
 Incorporated the accepted Memory Cards and motion changes from beta into the
@@ -204,6 +220,28 @@ The standalone folder-visibility regression harness now adds `-fno-pie`
 and `-no-pie` to sanitizer builds on Linux, matching the host-test Makefile.
 This avoids Clang sanitizer failures before `main` on affected Linux hosts
 while retaining the address and undefined-behavior checks.
+
+Validation: the plain and sanitized harness passes on macOS; the sanitized
+harness passes with GCC and Clang in the pinned Linux build image.
+## 2026-10-04 — Preserve accepted beta and manual rewind safeguards
+
+Incorporated the accepted Memory Cards and motion changes from beta while
+retaining the bounded manual rewind fix. Shared renderer and tab harnesses
+match the tested combined implementation. All earlier journal entries from
+both branches are preserved below.
+
+## 2026-10-04 — Preserve seek bounds with beta icon and motion updates
+
+Incorporated the accepted beta icon and motion updates and preserved both
+branches' development history. Manual MP3 seek bounds remain unchanged.
+Source and ownership checks pass; CI will validate the combined branch.
+
+## 2026-10-04 — Stabilize Linux MP3 sanitizer startup
+
+The standalone MP3 regression harness now adds `-fno-pie` and `-no-pie`
+to sanitizer builds on Linux, matching the host-test Makefile. This avoids
+Clang sanitizer failures before `main` on affected Linux hosts while
+retaining the address and undefined-behavior checks.
 
 Validation: the plain and sanitized harness passes on macOS; the sanitized
 harness passes with GCC and Clang in the pinned Linux build image.
