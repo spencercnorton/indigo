@@ -37,9 +37,40 @@ tag on `beta`. The newest changes are at the top until their release is named.
   B returns to Library. The icons stay on their sides as the cube turns, and
   a Classic turn arrives in about a quarter of a second. In `global.ini` it
   is `Cube`.
+- **Memory Cards is the GameCube's own Memory Card screen now.** System ›
+  Memory Cards shows two stacks of small cubes over graph paper, Slot A on
+  the left and Slot B on the right, a save to a cube. Each cube carries its
+  game's icon, every frame at its own speed as the GameCube plays it, and
+  free space shows as smaller, see-through cubes. The
+  highlighted cube is larger and pale and sways slowly; every cube floats
+  gently. A bar below shows the highlighted save's banner (or its icon), its
+  comment and its size in blocks, and above each stack are its letter, Open
+  and the free blocks. The stick or the D-pad moves from cube to cube and
+  across from one stack to the other, and a stack scrolls a row at a time.
+  **L** swaps the left stack and **R** the right one for Slot A, Slot B or the
+  SD card's folder. The screen opens with the Home cube drawing away and the
+  saves spiralling out into place, and closes back into the cube.
+- A on a save opens the GameCube's Move, Copy and Erase beside its cube.
+  Move and Copy go to the other stack and ask first, a pale cube pulsing
+  where the save will land; Erase asks with No highlighted. While the card
+  works, the save's cube flies across and waits, and it lands only once the
+  copy has been read back the same and a Move's original removed. The saves
+  after it slide along, and a maroon box says "Finished copying.",
+  "Finished moving." or "The data was erased.", closing by itself. An erased
+  save's cube bursts; a copy that fails flies back and says why.
+- Move or Copy is dimmed, its reason shown before you choose it, when the
+  save can't go: no card, the card has it already, 127 saves, too few free
+  blocks, a game that won't let its save move, or an SD card that can't be
+  written.
 
 ### Changes
 
+- Memory Cards copies and moves a save to the SD card into the folder the
+  SD card's stack has open, which starts at the Save Folder, rather than
+  always into the Save Folder; when that folder holds folders, a list offers
+  it or another folder. A save is no longer moved from one folder of the SD
+  card to another there: the file browser does that. Delete is Erase now,
+  and B on the SD card's stack goes up a folder instead of an Up to row.
 - Every face of the Home cube shows its icon as the cube turns, animated, the
   side faces at rest included. An icon on a face turned away from the screen
   is drawn four times as wide and twice as tall, then scaled down, so its
@@ -86,6 +117,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Memory Cards moved a card's save that its game marks as not to be moved:
+  libogc2's listing of a card leaves a save's permissions out, so the check
+  never saw them. It reads them from the card's directory now, Move is
+  dimmed for such a save, and a copy of one on the SD card keeps them.
 - Since 2.3.0-rc.1: a loader that starts Indigo with settings as arguments no
   longer turns Library Folders off and loses the FlattenDir it keeps, and a
   Clock argument no longer moves the temperature dial. Turning Library
@@ -112,6 +147,17 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- The emulator test's smoke route walks Memory Cards with a memory card in
+  each slot, GCI folders of made-up saves with every kind of icon
+  (`buildtools/ui/qa/make_test_saves.py`): it moves across the cubes and
+  between the stacks, scrolls, swaps a stack with L and R, copies a save to
+  Slot B and checks Slot B's folder gained it with the same blocks, then
+  erases it and checks Slot A's folder lost it.
+- Memory Cards' save art (banners, every icon frame and comments) is read
+  by pure, fuzzed code in `ui_saves.c`, and its cubes are laid out, moved
+  and projected on the CPU by `ui_save_cubes.c` and drawn in the 2D
+  pipeline. Both have host tests, and the cube screen's GX stream, its
+  safety audit and its frame budget scenes are pinned.
 - `test_frame_budget.py` runs the real cube renderer against counting GX
   stubs and holds each scene's per-frame cost (square roots, trig, vertices,
   GX_Begin calls, EFB pixels copied) to the ceilings in
