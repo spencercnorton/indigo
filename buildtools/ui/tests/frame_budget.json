@@ -145,57 +145,57 @@
  "memory-cards": {
   "begins": 45,
   "copy_pixels": 0,
-  "hash": "c19e8778070583d9",
-  "minmax": 0,
+  "hash": "94ac41d8935f3ff9",
+  "minmax": 240,
   "scene": "memory-cards",
   "sqrtf": 0,
   "state": 30,
   "trig": 4,
-  "vertices": 1448
+  "vertices": 2408
  },
  "memory-cards-copy": {
   "begins": 47,
   "copy_pixels": 0,
-  "hash": "3bd755d870d7b150",
-  "minmax": 0,
+  "hash": "9f766c8cce0f53c0",
+  "minmax": 246,
   "scene": "memory-cards-copy",
   "sqrtf": 0,
   "state": 32,
   "trig": 6,
-  "vertices": 1512
+  "vertices": 2496
  },
  "memory-cards-erase": {
   "begins": 52,
   "copy_pixels": 0,
-  "hash": "0998711a2189599d",
-  "minmax": 0,
+  "hash": "08b8d7cbb4bd9841",
+  "minmax": 288,
   "scene": "memory-cards-erase",
   "sqrtf": 0,
   "state": 28,
   "trig": 4,
-  "vertices": 1704
+  "vertices": 2856
  },
  "memory-cards-opening": {
   "begins": 80,
   "copy_pixels": 0,
-  "hash": "35d7fb399ff6afb0",
-  "minmax": 365,
+  "hash": "092ae78e0d432cd8",
+  "minmax": 591,
   "scene": "memory-cards-opening",
   "sqrtf": 0,
   "state": 152,
   "trig": 17,
-  "vertices": 3584
+  "vertices": 4488
  },
  "memory-cards-wide": {
   "begins": 45,
   "copy_pixels": 0,
-  "hash": "647a2657d353ac8e",
-  "minmax": 0,
+  "hash": "3db42e7cdd6fa5ca",
+  "minmax": 240,
   "scene": "memory-cards-wide",
   "sqrtf": 0,
   "state": 30,
   "trig": 4,
-  "vertices": 1480
+  "vertices": 2440
  },
  "settings": {
   "begins": 90,
