@@ -18,7 +18,7 @@ GAMEFLOW_CFLAGS := -std=c11 -Wall -Wextra -Werror -Wconversion \
 # A test builds <name>.c (or <name>.main) with the sources in <name>.src,
 # the flags in <name>.flags (GAMEFLOW_CFLAGS unless set) and the libraries in
 # <name>.libs: plain as <name>, under ASan/UBSan as <name>_san.
-TESTS := test_ui_cheats test_ui_saves test_ui_saves_raw test_ui_save_cubes test_ui_apps test_ui_png \
+TESTS := test_ui_cheats test_ui_saves test_ui_saves_raw test_ui_saves_metadata test_ui_save_cubes test_ui_apps test_ui_png \
 	test_ui_assets test_ui_assets_target_sync \
 	test_ui_settings_layout test_ui_settings_focus test_ui_system_info \
 	test_ui_menu_input test_ui_clock test_ui_hint test_ui_stage \
@@ -31,6 +31,7 @@ TESTS := test_ui_cheats test_ui_saves test_ui_saves_raw test_ui_save_cubes test_
 test_ui_cheats.src := $(GUI)/ui_cheats.c
 test_ui_saves.src := $(GUI)/ui_saves.c
 test_ui_saves_raw.src := $(GUI)/ui_saves_raw.c $(GUI)/ui_saves.c
+test_ui_saves_metadata.src := $(GUI)/ui_saves_metadata.c $(GUI)/ui_saves.c
 # Memory Cards' screen: its cubes, their motion and the cursor.
 test_ui_save_cubes.src := $(GUI)/ui_save_cubes.c $(GUI)/ui_motion.c $(GUI)/ui_saves.c
 test_ui_save_cubes.libs := -lm

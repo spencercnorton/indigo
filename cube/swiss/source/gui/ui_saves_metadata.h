@@ -17,8 +17,9 @@ typedef struct {
 } uiSavesGameStats_t;
 
 /* The one per-save date in a GCI/RAW directory entry: seconds since
- * 2000-01-01. There is no separate creation date. Zero and erased bytes
- * mean unavailable. The outer SD file's dates do not describe this save. */
+ * 2000-01-01. There is no separate creation date. The UI treats zero and
+ * all-ones dates as unavailable rather than showing an epoch/default date.
+ * The outer SD file's dates do not describe this save. */
 uint32_t UISaves_UpdatedSeconds(const uint8_t entry[UI_SAVES_ENTRY_SIZE]);
 
 /* Calendar text from the save's recorded clock, without assuming a time
