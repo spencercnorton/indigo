@@ -175,6 +175,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Rewinding an MP3 near its start goes back to the start instead of skipping
+  the track, and Forward near the end of a large track no longer wraps to
+  the start. Its progress marker stays inside the bar, including an empty
+  file or a device reading beyond the end of the track.
 - Memory Cards' small cubes have smooth outlines as they float and turn,
   including the highlighted cube, free cells and folders. Their game icons
   and banners keep the game's own artwork.
