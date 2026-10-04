@@ -627,11 +627,16 @@ class SaveCubesGXStreamTests(unittest.TestCase):
         self.assertEqual(len(icons(flying)), len(icons(at_rest)) + 1)
         self.assertGreater(icons(flying)[-1]["at"], cube_batches(flying)[-1]["at"])
         self.assertGreater(width(cube_batches(flying)[-1]), 56.0, "the flight grows toward the eye")
-        # Erased: eight small pieces, each a batch, no icons.
+        # Erased: eight pieces a sixth of a cube, each a batch, no icons,
+        # pale as the cube they were and over every other cube.
         burst = self.run_script(AT_REST + "O 3 0 2 5 0\nN 30 0.0166667\nO 3 1 2 5 0\n"
                                 "N 3 0.0166667\n")[-1]
-        pieces = [b for b in cube_batches(burst) if width(b) < 12.0]
+        pieces = [b for b in cube_batches(burst) if width(b) < 20.0]
         self.assertEqual(len(pieces), 8)
+        self.assertEqual(pieces, cube_batches(burst)[-8:])
+        for piece in pieces:
+            self.assertGreater(width(piece), 8.0)
+            self.assertGreater(max(v[2] for v in piece["vertices"]), 180)
         self.assertEqual(len(icons(burst)), len(icons(at_rest)))
         # The busiest such frame, in Menu Widescreen, holds the budget.
         frames = self.run_script("W 1\nS 0 128 4 127 1\nS 1 128 4 127 2\nC 0 17\nI 1 1 0\n"

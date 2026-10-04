@@ -74,16 +74,22 @@
 #define CUBES_SHAKE_PX 5.0f
 #define CUBES_SHAKE_RATE 48.0f
 /* Erase: the cube shrinks and turns, trembles until the card has done it,
- * then bursts into pieces that scatter and fall. */
+ * then bursts into pale pieces that fly out, tumbling, slow, fall and fade.
+ * The saves after it wait for the burst to open before they slide back,
+ * and the one that takes its cell grows into focus only once the pieces
+ * have mostly flown. */
 #define CUBES_ERASE_SHRINK 0.1f
 #define CUBES_ERASE_SCALE 0.9f
 #define CUBES_ERASE_TURN 0.6f
-#define CUBES_ERASE_BURST 0.4f
+#define CUBES_ERASE_BURST 0.5f
+#define CUBES_ERASE_SETTLE 0.15f	/* the saves after it wait */
+#define CUBES_ERASE_FOCUS 0.35f		/* the next save grows into focus */
 #define CUBES_ERASE_FADE 0.2f		/* Reduced: it fades instead */
 #define CUBES_ERASE_REGROW 0.15f
-#define CUBES_BIT_SPEED 150.0f
-#define CUBES_BIT_FALL 120.0f
-#define CUBES_BIT_SIZE 0.11f
+#define CUBES_BIT_REACH 95.0f		/* px the farthest piece flies */
+#define CUBES_BIT_FALL 40.0f
+#define CUBES_BIT_SIZE 0.16f		/* a piece's half, of the cube's face */
+#define CUBES_BIT_SPIN 7.0f		/* radians a second */
 #define CUBES_GHOST_PERIOD 0.9f
 #define CUBES_MENU_OPEN 0.08f
 #define CUBES_MENU_CLOSE 0.1f
@@ -481,6 +487,7 @@ static void cubesStart(uiSaveCubesMotion_t *motion,
 	motion->messageSeconds = -CUBES_MESSAGE_OUT;
 	motion->focusStack = grid->focusStack;
 	motion->focusCell = grid->focusCell;
+	motion->growsFrom = CUBES_FOCUS_GROWS;
 	motion->started = true;
 }
 
@@ -681,6 +688,14 @@ static void cubesOpTrack(uiSaveCubesMotion_t *motion,
 	else {
 		motion->opTo = op->toCell;
 	}
+	/* Bursting: the save that takes its cell comes into focus once the
+	 * pieces have mostly flown, from its own size, not the erased one's. */
+	if(op->kind == UI_SAVE_CUBES_OP_ERASE && op->phase == UI_SAVE_CUBES_LAND &&
+		mode == UI_MOTION_FULL && op->from >= 0 && op->from < UI_SAVE_CUBES_STACKS &&
+		op->fromCell >= 0 && op->fromCell < UI_SAVE_CUBES_MAX_CELLS) {
+		motion->growsFrom = motion->seconds + CUBES_ERASE_FOCUS;
+		UIMotion_SpringSnap(&motion->grow[op->from][op->fromCell], 0.0f);
+	}
 	motion->opSerial = op->serial;
 	motion->opKind = op->kind;
 	motion->opPhase = op->phase;
@@ -811,10 +826,11 @@ static int cubesExtras(uiSaveCubesMotion_t *motion,
 	const uiSaveCubesGrid_t *grid, uiMotionMode_t mode, float opTau,
 	uiSaveCube_t *out, bool *floats, int n)
 {
-	/* The pieces' ways out, round the compass. */
+	/* The pieces' ways out, round the compass, every other one less far, so
+	 * they burst rather than ring. */
 	static const float bitWay[UI_SAVE_CUBES_BITS][2] = {
-		{1.0f, 0.0f}, {0.7071f, -0.7071f}, {0.0f, -1.0f}, {-0.7071f, -0.7071f},
-		{-1.0f, 0.0f}, {-0.7071f, 0.7071f}, {0.0f, 1.0f}, {0.7071f, 0.7071f}
+		{1.0f, 0.0f}, {0.52f, -0.52f}, {0.0f, -1.0f}, {-0.52f, -0.52f},
+		{-1.0f, 0.0f}, {-0.52f, 0.52f}, {0.0f, 1.0f}, {0.52f, 0.52f}
 	};
 	const uiSaveCubesOp_t *op = &grid->op;
 	const uiSaveCubesPose_t *from = &motion->opFrom;
@@ -854,17 +870,25 @@ static int cubesExtras(uiSaveCubesMotion_t *motion,
 			floats[n++] = true;
 		}
 		else if(mode == UI_MOTION_FULL && opTau < CUBES_ERASE_BURST) {
+			/* Thrown out fast and slowing, falling a little, the pale of
+			 * the cube they were, bright until they fade at the end. */
+			float u = opTau / CUBES_ERASE_BURST;
+			float flung = 1.0f - (1.0f - u) * (1.0f - u);
+
+			cubesYaw(sinf(CUBES_ERASE_TURN + CUBES_BIT_SPIN * opTau),
+				cosf(CUBES_ERASE_TURN + CUBES_BIT_SPIN * opTau), motion->bitTurn);
 			for(k = 0; k < UI_SAVE_CUBES_BITS; k++) {
 				cube = &out[n];
 				memset(cube, 0, sizeof(*cube));
-				cube->x = from->x + bitWay[k][0] * CUBES_BIT_SPEED * opTau;
-				cube->y = from->y + bitWay[k][1] * CUBES_BIT_SPEED * opTau +
-					CUBES_BIT_FALL * opTau * opTau;
+				cube->x = from->x + bitWay[k][0] * CUBES_BIT_REACH * flung;
+				cube->y = from->y + bitWay[k][1] * CUBES_BIT_REACH * flung +
+					CUBES_BIT_FALL * u * u;
 				cube->z = from->z;
-				cube->half = CUBES_BIT_SIZE * size;
-				cube->kind = UI_SAVE_CUBES_KIND_EMPTY;
-				cube->shade = UI_SAVE_CUBES_SHADE_PLAIN;
-				cube->alpha = (uint8_t)(255.0f * (1.0f - opTau / CUBES_ERASE_BURST));
+				cube->half = CUBES_BIT_SIZE * size * (1.0f - 0.3f * u);
+				cube->turn = motion->bitTurn;
+				cube->kind = UI_SAVE_CUBES_KIND_SAVE;
+				cube->shade = UI_SAVE_CUBES_SHADE_SAVE_FOCUS;
+				cube->alpha = (uint8_t)(255.0f * (1.0f - u * u) + 0.5f);
 				floats[n++] = true;
 			}
 		}
@@ -936,8 +960,10 @@ int UISaveCubes_Frame(uiSaveCubesMotion_t *motion,
 		cubesStart(motion, grid);
 	}
 	motion->seconds += dt;
-	/* While the screen opens the focused cube waits to grow. */
-	grows = mode != UI_MOTION_FULL || motion->seconds >= CUBES_FOCUS_GROWS;
+	cubesOpTrack(motion, grid, mode);
+	/* While the screen opens the focused cube waits to grow, and while an
+	 * erased one bursts. */
+	grows = mode != UI_MOTION_FULL || motion->seconds >= motion->growsFrom;
 	if(grid->focusStack != motion->focusStack ||
 		grid->focusCell != motion->focusCell || !grows) {
 		motion->focusStack = grid->focusStack;
@@ -958,7 +984,6 @@ int UISaveCubes_Frame(uiSaveCubesMotion_t *motion,
 	if(wobble > 0.0f) {
 		cubesWobble(motion->focusSeconds, wobble, motion->turn, drift);
 	}
-	cubesOpTrack(motion, grid, mode);
 	cubesOverlays(motion, grid, dt, mode);
 	cubesStage(motion, mode);
 	opTau = motion->seconds - motion->opSeconds;
@@ -974,6 +999,12 @@ int UISaveCubes_Frame(uiSaveCubesMotion_t *motion,
 			motion->change[s] = stack->change;
 			motion->changeAt[s] = stack->changeAt;
 			motion->changed[s] = motion->seconds;
+			/* The saves after an erased one wait for its burst to open. */
+			if(stack->change == UI_SAVE_CUBES_CLOSED && mode == UI_MOTION_FULL &&
+				op->kind == UI_SAVE_CUBES_OP_ERASE && op->phase == UI_SAVE_CUBES_LAND &&
+				op->from == s) {
+				motion->changed[s] += CUBES_ERASE_SETTLE;
+			}
 			/* Another card or folder starts still; the same one read
 			 * again keeps moving as it was. */
 			if(stack->change == UI_SAVE_CUBES_NEW) {

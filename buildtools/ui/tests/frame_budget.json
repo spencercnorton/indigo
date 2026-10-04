@@ -167,13 +167,13 @@
  "memory-cards-erase": {
   "begins": 52,
   "copy_pixels": 0,
-  "hash": "386d5bdaa52e2bbb",
+  "hash": "0998711a2189599d",
   "minmax": 0,
   "scene": "memory-cards-erase",
   "sqrtf": 0,
   "state": 28,
   "trig": 4,
-  "vertices": 1576
+  "vertices": 1704
  },
  "memory-cards-opening": {
   "begins": 80,

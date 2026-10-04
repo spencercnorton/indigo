@@ -814,13 +814,18 @@ static const uiSaveCube_t *opCube(int count)
 	return NULL;
 }
 
+/* An erased cube's pieces: they turn as one, on their own. */
+static bool bit(const uiSaveCube_t *cube)
+{
+	return cube->turn == motion.bitTurn;
+}
+
 static int bits(int count)
 {
 	int found = 0, i;
 
 	for(i = 0; i < count; i++) {
-		found += cubes[i].shade == UI_SAVE_CUBES_SHADE_PLAIN &&
-			cubes[i].kind == UI_SAVE_CUBES_KIND_EMPTY;
+		found += bit(&cubes[i]);
 	}
 	return found;
 }
@@ -837,7 +842,7 @@ static void testFlight(void)
 	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_MOVE, UI_SAVE_CUBES_LAND, UI_MOTION_REDUCED) == 0.2f);
 	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_BACK, UI_MOTION_FULL) == 0.75f);
 	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_GO, UI_MOTION_REDUCED) == 0.35f);
-	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_LAND, UI_MOTION_FULL) == 0.4f);
+	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_LAND, UI_MOTION_FULL) == 0.5f);
 	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_LAND, UI_MOTION_REDUCED) == 0.2f);
 	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_LAND, UI_MOTION_OFF) == 0.0f);
 	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_NONE, UI_SAVE_CUBES_GO, UI_MOTION_FULL) == 0.0f);
@@ -1018,7 +1023,7 @@ static float along(int count, float ax, float ay, float bx, float by)
 static void testErase(void)
 {
 	const uiSaveCube_t *cube;
-	float sixWas, sevenWas;
+	float sixWas, sevenWas, most;
 	int floating, count, i;
 	unsigned last = 256u;
 
@@ -1034,41 +1039,66 @@ static void testErase(void)
 	assert(cube != NULL && cube->shade == UI_SAVE_CUBES_SHADE_PLAIN && cube->icon == NULL);
 	assert(near(cube->half, 0.5f * UI_SAVE_CUBES_FACE * 0.9f, 1e-3f));
 	assert(near(cube->turn[2], sinf(0.6f), 2e-3f) && near(cube->x, restX(0, 5), 1.01f));
-	/* LAND: gone, in 8 pieces that scatter, fall and fade for 0.4 s; the
-	 * saves after it come back a cell, each a little after the one before,
-	 * and the free cell left at the end grows. */
+	/* LAND: gone, in 8 pale pieces, each a sixth of the cube across, that
+	 * fly out, fall and fade for 0.5 s, drawn over everything else; the
+	 * saves after it wait 0.15 s for the burst to open, then come back a
+	 * cell, each a little after the one before, and the free cell left at
+	 * the end grows. */
 	stackSet(0, 32, 0, 29, 502u, UI_SAVE_CUBES_CLOSED, 5);
 	opSet(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_LAND, 6, 5, 0);
 	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
 	assert(bits(count) == 8 && opCube(count) == NULL);
+	for(i = 0; i < count; i++) {
+		if(bit(&cubes[i])) {
+			assert(cubes[i].shade == UI_SAVE_CUBES_SHADE_SAVE_FOCUS &&
+				cubes[i].icon == NULL && cubes[i].alpha > 250);
+			assert(cubes[i].half > 0.15f * UI_SAVE_CUBES_FACE * 0.9f);
+			assert(i >= count - 8);
+		}
+	}
 	/* Every save after it starts a cell on, so none is at the erased
 	 * one's cell but its pieces. */
 	for(i = 0; i < count; i++) {
-		assert((cubes[i].kind == UI_SAVE_CUBES_KIND_EMPTY &&
-			cubes[i].shade == UI_SAVE_CUBES_SHADE_PLAIN) ||
-			apart(&cubes[i], restX(0, 5), restY(5, 0)) > 12.0f);
+		assert(bit(&cubes[i]) || apart(&cubes[i], restX(0, 5), restY(5, 0)) > 12.0f);
 	}
 	for(i = 0; i < 5; i++) {
 		count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
-		assert(bits(count) == 8);
-		for(int k = 0; k < count; k++) {
-			if(cubes[k].shade == UI_SAVE_CUBES_SHADE_PLAIN &&
-				cubes[k].kind == UI_SAVE_CUBES_KIND_EMPTY) {
-				assert(cubes[k].alpha < last);
-				last = cubes[k].alpha;
-				break;
-			}
+		assert(bits(count) == 8 && bit(&cubes[count - 1]));
+		assert(cubes[count - 1].alpha < last);
+		last = cubes[count - 1].alpha;
+	}
+	/* 0.1 s in, nothing has slid yet; the pieces are far out and the save
+	 * that takes the erased cell is still its own size. */
+	assert(along(count, restX(0, 7), restY(7, 0), restX(0, 6), restY(6, 0)) < 0.0f);
+	assert(find(count, 0, 7, 0)->half == 0.5f * UI_SAVE_CUBES_FACE);
+	run(0.15f, 60.0f, UI_MOTION_FULL);	/* 0.25 s in */
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	for(i = 0, most = 0.0f; i < count; i++) {
+		if(bit(&cubes[i])) {
+			most = fmaxf(most, apart(&cubes[i], restX(0, 5), restY(5, 0)));
+		}
+		else {
+			assert(cubes[i].half <= 0.5f * UI_SAVE_CUBES_FACE + 1e-3f);
 		}
 	}
-	/* 0.1 s in, cell 6's save (from cell 7) is further along than cell 7's
-	 * (from cell 8, across the row's end), which started a little later. */
+	assert(most > 70.0f);
+	/* Cell 6's save (from cell 7) is further along than cell 7's (from
+	 * cell 8, across the row's end), which started a little later. */
 	sixWas = along(count, restX(0, 7), restY(7, 0), restX(0, 6), restY(6, 0));
 	sevenWas = along(count, restX(0, 8), restY(8, 0), restX(0, 7), restY(7, 0));
 	assert(sevenWas > 0.05f && sixWas > sevenWas + 0.05f);
-	run(0.29f, 60.0f, UI_MOTION_FULL);
+	/* From 0.35 s the save in the erased cell grows into focus, done by the
+	 * time the pieces are gone. */
+	run(0.2f, 60.0f, UI_MOTION_FULL);	/* 0.45 s in */
 	count = frame(0.0f, UI_MOTION_FULL, &floating);
 	assert(bits(count) == 8);
+	cube = &cubes[count - 9];
+	assert(near(cube->x, restX(0, 5), 12.0f) && cube->shade == UI_SAVE_CUBES_SHADE_SAVE_FOCUS);
+	assert(cube->half > 0.5f * UI_SAVE_CUBES_FACE * 1.3f);
 	run(0.04f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(bits(count) == 8);
+	run(0.03f, 60.0f, UI_MOTION_FULL);
 	count = frame(0.0f, UI_MOTION_FULL, &floating);
 	assert(bits(count) == 0);
 	run(1.0f, 60.0f, UI_MOTION_FULL);

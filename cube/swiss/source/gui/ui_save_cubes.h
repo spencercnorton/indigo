@@ -195,9 +195,11 @@ typedef struct {
 	float changed[UI_SAVE_CUBES_STACKS];
 	float seconds;		/* the page's own clock */
 	float focusSeconds;	/* since the focus came */
+	float growsFrom;	/* the focused cube waits to grow until then */
 	int focusStack, focusCell;
 	float turn[9];		/* the focused cube's wobble */
 	float opTurn[9];	/* a flying or erased cube's */
+	float bitTurn[9];	/* an erased cube's pieces' */
 	/* The operation's phase since when, the cell it aimed at going, and
 	 * where its cube was when the phase changed. */
 	uint16_t opSerial;
