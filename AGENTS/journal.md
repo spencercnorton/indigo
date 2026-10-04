@@ -1,5 +1,25 @@
 # Indigo development journal
 
+## 2026-10-04 — Save panel hierarchy and native button hints
+
+Save details now promotes the save name, separates block and KiB totals,
+aligns source and date rows, and shows native A/B icons for Actions and Back.
+The Library Saves inset uses larger left-aligned totals and a brighter update
+line. Metadata, action handlers and Library focus positions are unchanged;
+the popup owns its bounded metadata copy and prepares text fits before drawing.
+
+The native build and package checks, full local host suite and focused footer
+parser regression pass. Native default and widescreen save routes pass 84 and
+83 checks without retries; the themed simulated-card route passes 144 checks.
+The 55-test emulator suite passes, with two local mtools checks skipped. Its
+regressions cover real captures, value-only probes, thin digits, the small
+themed heading, missing fields and unsafe A retries. Global text thresholds
+and steady-frame requirements remain unchanged. Only affected guide pictures
+and native fixtures were refreshed.
+
+Exact final-source CI, SD installation and console
+acceptance remain pending. Release promotion still requires the maintainer's go.
+
 ## 2026-10-04 — Themed save details detection and popup input guard
 
 The previous final-source CI gate failed only in the themed GC Loader smoke
