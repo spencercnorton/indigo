@@ -22,6 +22,74 @@
 #define CUBES_DRIFT_X (0.30f * UI_SAVE_CUBES_FACE)
 #define CUBES_DRIFT_Y (0.15f * UI_SAVE_CUBES_FACE)
 #define CUBES_FLOATING 0.002f		/* grown past this, a cube may overlap */
+#define CUBES_PI 3.14159265f
+#define CUBES_MIDDLE_X UI_SAVE_CUBES_VANISH_X	/* where the screen opens from */
+#define CUBES_MIDDLE_Y UI_SAVE_CUBES_VANISH_Y
+/* Opening (Full): the Home cube goes back into the distance, the graph paper
+ * comes, each stack's cubes spiral out of the middle, one after another,
+ * then the words come and the focused cube grows. A listing that comes
+ * later than CUBES_ENTRY pops in instead; Reduced fades it all in. */
+#define CUBES_HANDOVER 0.3f
+#define CUBES_PAPER_IN 0.12f
+#define CUBES_PAPER_TIME 0.33f
+#define CUBES_SPIRAL_START 0.15f
+#define CUBES_SPIRAL_STAGGER 0.006f
+#define CUBES_SPIRAL_TIME 0.55f
+#define CUBES_SPIRAL_TURN 1.8f		/* radians, unwound as it comes */
+#define CUBES_ENTRY 1.2f
+#define CUBES_CHROME_IN 0.95f
+#define CUBES_CHROME_TIME 0.3f
+#define CUBES_FOCUS_GROWS 1.1f
+#define CUBES_POP_STAGGER 0.01f
+#define CUBES_POP_TIME 0.25f
+#define CUBES_FADE_TIME 0.25f
+/* Leaving (Full): the words go, the cubes fall into the middle and fade,
+ * and the Home cube comes back from the distance. */
+#define CUBES_LEAVE 0.45f
+#define CUBES_LEAVE_REDUCED 0.2f
+#define CUBES_LEAVE_CHROME 0.12f
+#define CUBES_COLLAPSE 0.3f
+#define CUBES_COLLAPSE_FADE 0.1f
+#define CUBES_RETURN_START 0.15f
+/* A save gone or come: the cubes after it slide a cell, each a little
+ * after the one before, as the IPL's ripple. */
+#define CUBES_CASCADE_TIME 0.4f
+#define CUBES_CASCADE_STAGGER 0.03f
+/* Copy and Move: an arc dipping toward the info bar, growing toward the
+ * viewer and turning once, then a hover until the card has the save. */
+#define CUBES_FLIGHT 0.6f
+#define CUBES_ARC_DIP 110.0f
+#define CUBES_ARC_FLOOR 400.0f
+#define CUBES_ARC_GROWTH 0.5f
+#define CUBES_ARC_RISE 60.0f
+#define CUBES_HOVER_EASE 0.25f
+#define CUBES_HOVER_GROWTH 0.15f
+#define CUBES_HOVER_PULSE 0.08f
+#define CUBES_HOVER_TURN 0.15f
+#define CUBES_HOVER_RATE 1.571f
+#define CUBES_GLIDE 0.35f		/* Reduced: a straight line */
+#define CUBES_LAND 0.2f
+#define CUBES_BACK 0.45f
+#define CUBES_SHAKE 0.3f
+#define CUBES_SHAKE_PX 5.0f
+#define CUBES_SHAKE_RATE 48.0f
+/* Erase: the cube shrinks and turns, trembles until the card has done it,
+ * then bursts into pieces that scatter and fall. */
+#define CUBES_ERASE_SHRINK 0.1f
+#define CUBES_ERASE_SCALE 0.9f
+#define CUBES_ERASE_TURN 0.6f
+#define CUBES_ERASE_BURST 0.4f
+#define CUBES_ERASE_FADE 0.2f		/* Reduced: it fades instead */
+#define CUBES_ERASE_REGROW 0.15f
+#define CUBES_BIT_SPEED 150.0f
+#define CUBES_BIT_FALL 120.0f
+#define CUBES_BIT_SIZE 0.11f
+#define CUBES_GHOST_PERIOD 0.9f
+#define CUBES_MENU_OPEN 0.08f
+#define CUBES_MENU_CLOSE 0.1f
+#define CUBES_MENU_RESPONSE 25.0f
+#define CUBES_MESSAGE_IN 0.1f
+#define CUBES_MESSAGE_OUT 0.15f
 
 /* Each cube's place in the bob: steps of the golden angle, so neighbours
  * across are 137 degrees apart and neighbours down nearly opposite. */
@@ -272,6 +340,124 @@ static void cubesWobble(float seconds, float amount, float turn[9],
 	drift[1] = amount * CUBES_DRIFT_Y * sine2;
 }
 
+static float cubesClamp(float value)
+{
+	return value > 0.0f ? (value < 1.0f ? value : 1.0f) : 0.0f;
+}
+
+static float cubesLerp(float a, float b, float amount)
+{
+	return a + (b - a) * amount;
+}
+
+/* sin and cos of an angle within 2 radians, to a thousandth, with no call:
+ * the opening's spiral turns every cube by its own angle. */
+static void cubesTurn(float angle, float *sine, float *cosine)
+{
+	float square = angle * angle;
+
+	*sine = angle * (1.0f - square / 6.0f * (1.0f - square / 20.0f *
+		(1.0f - square / 42.0f)));
+	*cosine = 1.0f - square / 2.0f * (1.0f - square / 12.0f *
+		(1.0f - square / 30.0f * (1.0f - square / 56.0f)));
+}
+
+/* A turn of angle about the up axis, from its sine and cosine. */
+static void cubesYaw(float sine, float cosine, float turn[9])
+{
+	turn[0] = cosine; turn[1] = 0.0f; turn[2] = sine;
+	turn[3] = 0.0f; turn[4] = 1.0f; turn[5] = 0.0f;
+	turn[6] = -sine; turn[7] = 0.0f; turn[8] = cosine;
+}
+
+void UISaveCubes_Where(int stack, int cell, float first, float *x, float *y)
+{
+	*x = UI_SAVE_CUBES_STACK_X + (float)stack * UI_SAVE_CUBES_STACK_GAP +
+		((float)(cell % UI_SAVE_CUBES_COLUMNS) - 1.5f) * UI_SAVE_CUBES_PITCH;
+	*y = UI_SAVE_CUBES_TOP_Y + ((float)(cell / UI_SAVE_CUBES_COLUMNS) - first) *
+		UI_SAVE_CUBES_PITCH;
+}
+
+float UISaveCubes_OpSeconds(int kind, int phase, uiMotionMode_t mode)
+{
+	bool full = mode == UI_MOTION_FULL;
+
+	if(mode == UI_MOTION_OFF || kind == UI_SAVE_CUBES_OP_NONE) {
+		return 0.0f;
+	}
+	if(kind == UI_SAVE_CUBES_OP_ERASE) {
+		return phase == UI_SAVE_CUBES_GO ? (full ? CUBES_ERASE_SHRINK : 0.0f) :
+			phase == UI_SAVE_CUBES_LAND ? (full ? CUBES_ERASE_BURST : CUBES_ERASE_FADE) :
+			(full ? CUBES_ERASE_REGROW : 0.0f);
+	}
+	return phase == UI_SAVE_CUBES_GO ? (full ? CUBES_FLIGHT : CUBES_GLIDE) :
+		phase == UI_SAVE_CUBES_LAND ? CUBES_LAND :
+		(full ? CUBES_BACK + CUBES_SHAKE : CUBES_GLIDE);
+}
+
+float UISaveCubes_LeaveSeconds(uiMotionMode_t mode)
+{
+	return mode == UI_MOTION_FULL ? CUBES_LEAVE :
+		mode == UI_MOTION_REDUCED ? CUBES_LEAVE_REDUCED : 0.0f;
+}
+
+bool UISaveCubes_MessageHolds(float seconds, bool pressed)
+{
+	return !pressed && seconds < UI_SAVE_CUBES_MESSAGE;
+}
+
+void UISaveCubes_MenuBox(float cubeX, float cubeY, float width, int items,
+	bool titled, uiSaveCubesBox_t *box)
+{
+	float title = titled ? UI_SAVE_CUBES_MENU_TITLE + 4.0f : 0.0f;
+	float top = cubeY - 46.0f;
+
+	box->width = width > UI_SAVE_CUBES_MENU_WIDTH ? width : UI_SAVE_CUBES_MENU_WIDTH;
+	box->height = 16.0f + UI_SAVE_CUBES_MENU_PITCH * (float)(items > 0 ? items : 0);
+	/* Past the middle the box opens to the left, so it stays on the stage. */
+	box->x = cubeX > 400.0f ? cubeX - 44.0f - box->width : cubeX + 44.0f;
+	/* Inside the window, above the info bar. */
+	if(top > 336.0f - title - box->height) {
+		top = 336.0f - title - box->height;
+	}
+	if(top < 112.0f) {
+		top = 112.0f;
+	}
+	box->titleY = top;
+	box->y = top + title;
+}
+
+uiSaveCubesChange_t UISaveCubes_Change(const uint32_t *before, int beforeCount,
+	const uint32_t *after, int afterCount, int *at)
+{
+	int same = 0, k;
+
+	while(same < beforeCount && same < afterCount && before[same] == after[same]) {
+		same++;
+	}
+	*at = same;
+	if(afterCount == beforeCount) {
+		return same == afterCount ? UI_SAVE_CUBES_SAME : UI_SAVE_CUBES_NEW;
+	}
+	if(afterCount == beforeCount - 1) {
+		for(k = same; k < afterCount; k++) {
+			if(after[k] != before[k + 1]) {
+				return UI_SAVE_CUBES_NEW;
+			}
+		}
+		return UI_SAVE_CUBES_CLOSED;
+	}
+	if(afterCount == beforeCount + 1) {
+		for(k = same; k < beforeCount; k++) {
+			if(after[k + 1] != before[k]) {
+				return UI_SAVE_CUBES_NEW;
+			}
+		}
+		return UI_SAVE_CUBES_OPENED;
+	}
+	return UI_SAVE_CUBES_NEW;
+}
+
 static void cubesStart(uiSaveCubesMotion_t *motion,
 	const uiSaveCubesGrid_t *grid)
 {
@@ -285,14 +471,20 @@ static void cubesStart(uiSaveCubesMotion_t *motion,
 		UIMotion_SpringInit(&motion->first[s], (float)grid->stack[s].first,
 			CUBES_SCROLL_RESPONSE);
 		motion->listing[s] = grid->stack[s].listing;
+		motion->top[s] = (float)grid->stack[s].first;
 	}
+	UIMotion_SpringInit(&motion->menuBar, 0.0f, CUBES_MENU_RESPONSE);
+	/* Long closed: no box or message fades out on the first frame. */
+	motion->menuSeconds = -CUBES_MENU_CLOSE;
+	motion->messageSeconds = -CUBES_MESSAGE_OUT;
 	motion->focusStack = grid->focusStack;
 	motion->focusCell = grid->focusCell;
 	motion->started = true;
 }
 
-/* Grown or growing cubes go last, nearest last; the rest keep their order.
- * Returns how many rest. An insertion sort in place: nearly all rest. */
+/* Grown, growing and flying cubes go last, nearest last; the rest keep
+ * their order. Returns how many rest. An insertion sort in place: nearly
+ * all rest. */
 static int cubesFloat(uiSaveCube_t *cubes, bool *floats, int count)
 {
 	int resting = 0, i, j;
@@ -315,13 +507,424 @@ static int cubesFloat(uiSaveCube_t *cubes, bool *floats, int count)
 	return resting;
 }
 
+/* A quadratic arc from a to b, its middle pulled down toward the info bar
+ * (no lower than the floor), at u of the way. */
+static void cubesArc(float ax, float ay, float bx, float by, float u,
+	float *x, float *y)
+{
+	float cx = 0.5f * (ax + bx);
+	float cy = 0.5f * (ay + by) + CUBES_ARC_DIP;
+
+	if(cy > CUBES_ARC_FLOOR) {
+		cy = CUBES_ARC_FLOOR;
+	}
+	*x = (1.0f - u) * (1.0f - u) * ax + 2.0f * u * (1.0f - u) * cx + u * u * bx;
+	*y = (1.0f - u) * (1.0f - u) * ay + 2.0f * u * (1.0f - u) * cy + u * u * by;
+}
+
+/* Where an operation's cube is tau seconds into phase, toCell the cell it
+ * aims for; turn takes its turn. False when there is none to draw: with
+ * Motion Off, a Copy's or Move's back home or a Reduced one done gliding,
+ * or an erased cube's pieces (drawn on their own). */
+static bool cubesOpPose(const uiSaveCubesMotion_t *motion,
+	const uiSaveCubesOp_t *op, int phase, int toCell, float tau,
+	uiMotionMode_t mode, uiSaveCubesPose_t *pose, float turn[9])
+{
+	int other = !op->from;
+	const uiSaveCubesPose_t *from = &motion->opFrom;
+	float homeX, homeY, toX, toY, u, sine = 0.0f, cosine = 1.0f;
+	bool full = mode == UI_MOTION_FULL;
+
+	if(mode == UI_MOTION_OFF || op->from < 0 || op->from >= UI_SAVE_CUBES_STACKS) {
+		return false;
+	}
+	UISaveCubes_Where(op->from, op->fromCell, motion->top[op->from], &homeX, &homeY);
+	if(toCell >= 0) {
+		UISaveCubes_Where(other, toCell, motion->top[other], &toX, &toY);
+	}
+	else {
+		toX = UI_SAVE_CUBES_STACK_X + (float)other * UI_SAVE_CUBES_STACK_GAP;
+		toY = UI_SAVE_CUBES_HEADER_Y;
+	}
+	memset(pose, 0, sizeof(*pose));
+	if(op->kind == UI_SAVE_CUBES_OP_ERASE) {
+		if(phase == UI_SAVE_CUBES_GO) {
+			/* Shrinking and turning, then trembling, a pixel either way. */
+			static const float tremble[8] = {0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 1.0f, 0.0f, -1.0f};
+			u = full ? UIMotion_EaseOutCubic(tau / CUBES_ERASE_SHRINK) : 0.0f;
+			pose->x = homeX + (full ? u * tremble[(int)(tau * 60.0f) & 7] : 0.0f);
+			pose->y = homeY;
+			pose->z = UI_SAVE_CUBES_LIFT;
+			pose->scale = cubesLerp(UI_SAVE_CUBES_SELECTED, CUBES_ERASE_SCALE, u);
+			pose->yaw = CUBES_ERASE_TURN * u;
+		}
+		else if(phase == UI_SAVE_CUBES_BACK && full && tau < CUBES_ERASE_REGROW) {
+			u = UIMotion_EaseOutCubic(tau / CUBES_ERASE_REGROW);
+			*pose = *from;
+			pose->scale = cubesLerp(from->scale, UI_SAVE_CUBES_SELECTED, u);
+			pose->yaw = from->yaw * (1.0f - u);
+		}
+		else {
+			return false;
+		}
+		cubesSmallTurn(pose->yaw, &sine, &cosine);
+		cubesYaw(sine, cosine, turn);
+		return true;
+	}
+	if(phase == UI_SAVE_CUBES_GO) {
+		if(!full) {
+			u = UIMotion_Smoothstep(tau / CUBES_GLIDE);
+			pose->x = cubesLerp(homeX, toX, u);
+			pose->y = cubesLerp(homeY, toY, u);
+			pose->z = UI_SAVE_CUBES_LIFT;
+			pose->scale = cubesLerp(UI_SAVE_CUBES_SELECTED, 1.0f, u);
+		}
+		else if(tau < CUBES_FLIGHT) {
+			float rise;
+
+			u = UIMotion_Smoothstep(tau / CUBES_FLIGHT);
+			rise = sinf(CUBES_PI * u);
+			cubesArc(homeX, homeY, toX, toY, u, &pose->x, &pose->y);
+			pose->z = UI_SAVE_CUBES_LIFT + CUBES_ARC_RISE * rise;
+			pose->scale = cubesLerp(UI_SAVE_CUBES_SELECTED, 1.0f, u) +
+				CUBES_ARC_GROWTH * rise;
+			/* Once round: the double angle's sine and cosine from the
+			 * single's, one call more. */
+			cosine = cosf(CUBES_PI * u);
+			sine = 2.0f * rise * cosine;
+			cosine = 1.0f - 2.0f * rise * rise;
+			pose->yaw = 2.0f * CUBES_PI * u - (u > 0.5f ? 2.0f * CUBES_PI : 0.0f);
+			cubesYaw(sine, cosine, turn);
+			return true;
+		}
+		else {
+			/* Hovering over the cell until the card answers, easing into
+			 * the IPL's pulse and sway. */
+			float hover = tau - CUBES_FLIGHT;
+			float ease = UIMotion_Smoothstep(hover / CUBES_HOVER_EASE);
+
+			pose->x = toX;
+			pose->y = toY;
+			pose->z = UI_SAVE_CUBES_LIFT;
+			pose->scale = 1.0f + ease * (CUBES_HOVER_GROWTH + CUBES_HOVER_PULSE *
+				sinf(3.0f * CUBES_PI * hover));
+			pose->yaw = ease * CUBES_HOVER_TURN * sinf(CUBES_HOVER_RATE * hover);
+		}
+	}
+	else if(phase == UI_SAVE_CUBES_LAND) {
+		u = UIMotion_EaseOutCubic(tau / CUBES_LAND);
+		pose->x = cubesLerp(from->x, toX, u);
+		pose->y = cubesLerp(from->y, toY, u);
+		pose->z = from->z * (1.0f - u);
+		/* Into a header it shrinks away; onto a cell it rests there. */
+		pose->scale = toCell >= 0 ? cubesLerp(from->scale, 1.0f, u) :
+			from->scale * (1.0f - u);
+		pose->yaw = from->yaw * (1.0f - u);
+		if(pose->scale <= 0.0f) {
+			return false;
+		}
+	}
+	else {
+		float time = full ? CUBES_BACK : CUBES_GLIDE;
+
+		if(tau >= time) {
+			return false;
+		}
+		u = UIMotion_Smoothstep(tau / time);
+		if(full) {
+			cubesArc(from->x, from->y, homeX, homeY, u, &pose->x, &pose->y);
+		}
+		else {
+			pose->x = cubesLerp(from->x, homeX, u);
+			pose->y = cubesLerp(from->y, homeY, u);
+		}
+		pose->z = cubesLerp(from->z, UI_SAVE_CUBES_LIFT, u);
+		pose->scale = cubesLerp(from->scale, UI_SAVE_CUBES_SELECTED, u);
+		pose->yaw = from->yaw * (1.0f - u);
+	}
+	cubesSmallTurn(pose->yaw, &sine, &cosine);
+	cubesYaw(sine, cosine, turn);
+	return true;
+}
+
+/* Takes in the operation grid shows: a new phase starts now, from where its
+ * cube was as the last one ended, or where a flight hovers if that wasn't
+ * seen. */
+static void cubesOpTrack(uiSaveCubesMotion_t *motion,
+	const uiSaveCubesGrid_t *grid, uiMotionMode_t mode)
+{
+	const uiSaveCubesOp_t *op = &grid->op;
+	bool seen = op->serial == motion->opSerial && op->kind == motion->opKind;
+	float scratch[9];
+
+	if(op->kind == UI_SAVE_CUBES_OP_NONE) {
+		motion->opKind = UI_SAVE_CUBES_OP_NONE;
+		return;
+	}
+	if(seen && op->phase == motion->opPhase) {
+		return;
+	}
+	if(op->phase != UI_SAVE_CUBES_GO) {
+		if(!seen) {
+			/* Its going never showed: from its end, over the cell. */
+			motion->opTo = op->toCell;
+		}
+		if(!cubesOpPose(motion, op, seen ? motion->opPhase : UI_SAVE_CUBES_GO,
+			motion->opTo, seen ? motion->seconds - motion->opSeconds :
+			(op->kind == UI_SAVE_CUBES_OP_ERASE ? CUBES_ERASE_SHRINK : CUBES_FLIGHT),
+			mode, &motion->opFrom, scratch)) {
+			memset(&motion->opFrom, 0, sizeof(motion->opFrom));
+		}
+	}
+	else {
+		motion->opTo = op->toCell;
+	}
+	motion->opSerial = op->serial;
+	motion->opKind = op->kind;
+	motion->opPhase = op->phase;
+	motion->opSeconds = motion->seconds;
+}
+
+/* The box beside the focus, a message and the leaving: from when each
+ * changed. */
+static void cubesOverlays(uiSaveCubesMotion_t *motion,
+	const uiSaveCubesGrid_t *grid, float dt, uiMotionMode_t mode)
+{
+	float since;
+
+	if(grid->menu && (!motion->menuOpen || grid->menuSerial != motion->menuSerial)) {
+		motion->menuOpen = true;
+		motion->menuSerial = grid->menuSerial;
+		motion->menuSeconds = motion->seconds;
+		UIMotion_SpringSnap(&motion->menuBar, (float)grid->menuFocus);
+	}
+	else if(!grid->menu && motion->menuOpen) {
+		motion->menuOpen = false;
+		motion->menuSeconds = motion->seconds;
+	}
+	UIMotion_SpringRetarget(&motion->menuBar, (float)grid->menuFocus, mode);
+	motion->menuItem = UIMotion_SpringUpdate(&motion->menuBar, dt, mode);
+	since = motion->seconds - motion->menuSeconds;
+	motion->menuScale = 1.0f;
+	if(mode == UI_MOTION_OFF) {
+		motion->menuAlpha = motion->menuOpen ? 1.0f : 0.0f;
+	}
+	else if(motion->menuOpen) {
+		motion->menuAlpha = cubesClamp(since / CUBES_MENU_OPEN);
+		motion->menuScale = 0.92f + 0.08f * motion->menuAlpha;
+	}
+	else {
+		motion->menuAlpha = 1.0f - cubesClamp(since / CUBES_MENU_CLOSE);
+	}
+	if((grid->message != 0) != motion->messageShown) {
+		motion->messageShown = grid->message != 0;
+		motion->messageSeconds = motion->seconds;
+	}
+	since = motion->seconds - motion->messageSeconds;
+	motion->messageAlpha = mode == UI_MOTION_OFF ? (motion->messageShown ? 1.0f : 0.0f) :
+		motion->messageShown ? cubesClamp(since / CUBES_MESSAGE_IN) :
+		1.0f - cubesClamp(since / CUBES_MESSAGE_OUT);
+	if(grid->leaving && !motion->leaving) {
+		motion->leaving = true;
+		motion->leaveSeconds = motion->seconds;
+	}
+}
+
+/* The words, the graph paper and the Home cube, opening and leaving. */
+static void cubesStage(uiSaveCubesMotion_t *motion, uiMotionMode_t mode)
+{
+	float t = motion->seconds, leave = motion->seconds - motion->leaveSeconds;
+
+	if(mode == UI_MOTION_OFF) {
+		motion->chrome = motion->paper = 1.0f;
+		motion->handover = 0.0f;
+	}
+	else if(mode == UI_MOTION_REDUCED) {
+		motion->chrome = motion->paper = cubesClamp(t / CUBES_FADE_TIME);
+		motion->handover = 0.0f;
+	}
+	else {
+		float gone = cubesClamp(t / CUBES_HANDOVER);
+
+		motion->chrome = UIMotion_Smoothstep((t - CUBES_CHROME_IN) / CUBES_CHROME_TIME);
+		motion->paper = cubesClamp((t - CUBES_PAPER_IN) / CUBES_PAPER_TIME);
+		motion->handover = 1.0f - gone * gone * gone;
+	}
+	if(!motion->leaving || mode == UI_MOTION_OFF) {
+		return;
+	}
+	if(mode == UI_MOTION_REDUCED) {
+		motion->chrome *= 1.0f - cubesClamp(leave / CUBES_LEAVE_REDUCED);
+		motion->paper *= 1.0f - cubesClamp(leave / CUBES_LEAVE_REDUCED);
+		return;
+	}
+	motion->chrome *= 1.0f - cubesClamp(leave / CUBES_LEAVE_CHROME);
+	motion->paper *= 1.0f - UIMotion_Smoothstep(leave / CUBES_LEAVE);
+	leave = UIMotion_EaseOutCubic((leave - CUBES_RETURN_START) /
+		(CUBES_LEAVE - CUBES_RETURN_START));
+	if(leave > motion->handover) {
+		motion->handover = leave;
+	}
+}
+
+/* How a cell's cube comes in with its listing, k its place in the stack's
+ * drawn rows: spiralling out of the middle while the screen opens, else
+ * popping in; Reduced fades it in. Moves (x, y) and scales scale and alpha. */
+static void cubesArrive(const uiSaveCubesMotion_t *motion, int s, int k,
+	uiMotionMode_t mode, float *x, float *y, float *scale, float *alpha)
+{
+	float since = motion->seconds - motion->changed[s];
+	float e, sine, cosine, dx, dy;
+
+	if(mode == UI_MOTION_OFF || motion->change[s] != UI_SAVE_CUBES_NEW) {
+		return;
+	}
+	if(mode == UI_MOTION_REDUCED) {
+		*alpha *= cubesClamp(since / CUBES_FADE_TIME);
+		return;
+	}
+	if(motion->changed[s] >= CUBES_ENTRY) {
+		*scale *= UIMotion_EaseOutCubic((since - CUBES_POP_STAGGER * (float)k) /
+			CUBES_POP_TIME);
+		return;
+	}
+	e = UIMotion_EaseOutCubic((since - CUBES_SPIRAL_START -
+		CUBES_SPIRAL_STAGGER * (float)k) / CUBES_SPIRAL_TIME);
+	if(e >= 1.0f) {
+		return;
+	}
+	cubesTurn(CUBES_SPIRAL_TURN * (1.0f - e), &sine, &cosine);
+	dx = (*x - CUBES_MIDDLE_X) * e;
+	dy = (*y - CUBES_MIDDLE_Y) * e;
+	*x = CUBES_MIDDLE_X + cosine * dx - sine * dy;
+	*y = CUBES_MIDDLE_Y + sine * dx + cosine * dy;
+	*scale *= 0.3f + 0.7f * e;
+	*alpha *= cubesClamp(4.0f * e);
+}
+
+/* The cubes besides the cells: a copied or moved save's cube flying, an
+ * erased one's pieces (Reduced: the cube fading), and the ghost where a
+ * Copy or Move would land. All float. Returns how many cubes out holds. */
+static int cubesExtras(uiSaveCubesMotion_t *motion,
+	const uiSaveCubesGrid_t *grid, uiMotionMode_t mode, float opTau,
+	uiSaveCube_t *out, bool *floats, int n)
+{
+	/* The pieces' ways out, round the compass. */
+	static const float bitWay[UI_SAVE_CUBES_BITS][2] = {
+		{1.0f, 0.0f}, {0.7071f, -0.7071f}, {0.0f, -1.0f}, {-0.7071f, -0.7071f},
+		{-1.0f, 0.0f}, {-0.7071f, 0.7071f}, {0.0f, 1.0f}, {0.7071f, 0.7071f}
+	};
+	const uiSaveCubesOp_t *op = &grid->op;
+	const uiSaveCubesPose_t *from = &motion->opFrom;
+	uiSaveCubesPose_t pose;
+	uiSaveCube_t *cube;
+	int k;
+
+	if((op->kind == UI_SAVE_CUBES_OP_COPY || op->kind == UI_SAVE_CUBES_OP_MOVE) &&
+		cubesOpPose(motion, op, op->phase, op->phase == UI_SAVE_CUBES_GO ?
+		motion->opTo : op->toCell, opTau, mode, &pose, motion->opTurn)) {
+		cube = &out[n];
+		memset(cube, 0, sizeof(*cube));
+		cube->x = pose.x;
+		cube->y = pose.y;
+		cube->z = pose.z;
+		cube->half = 0.5f * UI_SAVE_CUBES_FACE * pose.scale;
+		cube->turn = motion->opTurn;
+		cube->kind = UI_SAVE_CUBES_KIND_SAVE;
+		cube->shade = UI_SAVE_CUBES_SHADE_SAVE;
+		cube->icon = UISaveCubes_Icon(&op->cube, motion->seconds, mode);
+		cube->alpha = 255;
+		floats[n++] = true;
+	}
+	else if(op->kind == UI_SAVE_CUBES_OP_ERASE && op->phase == UI_SAVE_CUBES_LAND) {
+		float size = UI_SAVE_CUBES_FACE * from->scale;
+
+		if(mode == UI_MOTION_REDUCED && opTau < CUBES_ERASE_FADE) {
+			cube = &out[n];
+			memset(cube, 0, sizeof(*cube));
+			cube->x = from->x;
+			cube->y = from->y;
+			cube->z = from->z;
+			cube->half = 0.5f * size;
+			cube->kind = UI_SAVE_CUBES_KIND_SAVE;
+			cube->shade = UI_SAVE_CUBES_SHADE_PLAIN;
+			cube->alpha = (uint8_t)(255.0f * (1.0f - opTau / CUBES_ERASE_FADE));
+			floats[n++] = true;
+		}
+		else if(mode == UI_MOTION_FULL && opTau < CUBES_ERASE_BURST) {
+			for(k = 0; k < UI_SAVE_CUBES_BITS; k++) {
+				cube = &out[n];
+				memset(cube, 0, sizeof(*cube));
+				cube->x = from->x + bitWay[k][0] * CUBES_BIT_SPEED * opTau;
+				cube->y = from->y + bitWay[k][1] * CUBES_BIT_SPEED * opTau +
+					CUBES_BIT_FALL * opTau * opTau;
+				cube->z = from->z;
+				cube->half = CUBES_BIT_SIZE * size;
+				cube->kind = UI_SAVE_CUBES_KIND_EMPTY;
+				cube->shade = UI_SAVE_CUBES_SHADE_PLAIN;
+				cube->alpha = (uint8_t)(255.0f * (1.0f - opTau / CUBES_ERASE_BURST));
+				floats[n++] = true;
+			}
+		}
+	}
+	if(grid->ghost && grid->focusStack >= 0 && grid->focusStack < UI_SAVE_CUBES_STACKS) {
+		int s = !grid->focusStack;
+		const uiSaveCubesStack_t *stack = &grid->stack[s];
+
+		k = grid->ghostCell - (stack->first - 1) * UI_SAVE_CUBES_COLUMNS;
+		if(k >= 0 && k < UI_SAVE_CUBES_DRAWN && grid->ghostCell < stack->cells) {
+			/* Between half and eight tenths, about Reduced's steady 0.65. */
+			float pulse = mode == UI_MOTION_FULL ? 0.65f + 0.15f *
+				sinf(2.0f * CUBES_PI * motion->seconds / CUBES_GHOST_PERIOD) : 0.65f;
+
+			cube = &out[n];
+			memset(cube, 0, sizeof(*cube));
+			UISaveCubes_Where(s, grid->ghostCell, motion->top[s], &cube->x, &cube->y);
+			cube->half = 0.5f * UI_SAVE_CUBES_FACE;
+			cube->kind = UI_SAVE_CUBES_KIND_SAVE;
+			cube->shade = UI_SAVE_CUBES_SHADE_EMPTY_FOCUS;
+			cube->alpha = (uint8_t)(255.0f * pulse + 0.5f);
+			floats[n++] = true;
+		}
+	}
+	return n;
+}
+
+/* Leaving (Full): every cube falls into the middle and fades at the end;
+ * Reduced fades them where they are. */
+static void cubesLeave(const uiSaveCubesMotion_t *motion, uiMotionMode_t mode,
+	uiSaveCube_t *out, int n)
+{
+	float leave = motion->seconds - motion->leaveSeconds, keep = 1.0f, alpha;
+	int i;
+
+	if(!motion->leaving || mode == UI_MOTION_OFF) {
+		return;
+	}
+	if(mode == UI_MOTION_REDUCED) {
+		alpha = 1.0f - cubesClamp(leave / CUBES_LEAVE_REDUCED);
+	}
+	else {
+		keep = 1.0f - UIMotion_Smoothstep(leave / CUBES_COLLAPSE);
+		alpha = 1.0f - cubesClamp((leave - (CUBES_COLLAPSE - CUBES_COLLAPSE_FADE)) /
+			CUBES_COLLAPSE_FADE);
+	}
+	for(i = 0; i < n; i++) {
+		out[i].x = CUBES_MIDDLE_X + (out[i].x - CUBES_MIDDLE_X) * keep;
+		out[i].y = CUBES_MIDDLE_Y + (out[i].y - CUBES_MIDDLE_Y) * keep;
+		out[i].alpha = (uint8_t)((float)out[i].alpha * alpha + 0.5f);
+	}
+}
+
 int UISaveCubes_Frame(uiSaveCubesMotion_t *motion,
 	const uiSaveCubesGrid_t *grid, float dt, uiMotionMode_t mode,
-	uiSaveCube_t out[UI_SAVE_CUBES_FRAME], int *floating)
+	uiSaveCube_t out[UI_SAVE_CUBES_OUT], int *floating)
 {
-	bool floats[UI_SAVE_CUBES_FRAME];
+	bool floats[UI_SAVE_CUBES_OUT];
+	const uiSaveCubesOp_t *op = &grid->op;
 	float bobSine = 0.0f, bobCosine = 0.0f, drift[2] = {0.0f, 0.0f};
-	float wobble = 0.0f;
+	float wobble = 0.0f, opTau;
+	bool grows;
 	int n = 0, s, k;
 
 	if(!(dt > 0.0f)) {
@@ -331,8 +934,10 @@ int UISaveCubes_Frame(uiSaveCubesMotion_t *motion,
 		cubesStart(motion, grid);
 	}
 	motion->seconds += dt;
+	/* While the screen opens the focused cube waits to grow. */
+	grows = mode != UI_MOTION_FULL || motion->seconds >= CUBES_FOCUS_GROWS;
 	if(grid->focusStack != motion->focusStack ||
-		grid->focusCell != motion->focusCell) {
+		grid->focusCell != motion->focusCell || !grows) {
 		motion->focusStack = grid->focusStack;
 		motion->focusCell = grid->focusCell;
 		motion->focusSeconds = 0.0f;
@@ -351,59 +956,122 @@ int UISaveCubes_Frame(uiSaveCubesMotion_t *motion,
 	if(wobble > 0.0f) {
 		cubesWobble(motion->focusSeconds, wobble, motion->turn, drift);
 	}
+	cubesOpTrack(motion, grid, mode);
+	cubesOverlays(motion, grid, dt, mode);
+	cubesStage(motion, mode);
+	opTau = motion->seconds - motion->opSeconds;
 	for(s = 0; s < UI_SAVE_CUBES_STACKS; s++) {
 		const uiSaveCubesStack_t *stack = &grid->stack[s];
-		bool snap = stack->listing != motion->listing[s];
 		int cells = stack->cells > UI_SAVE_CUBES_MAX_CELLS ?
 			UI_SAVE_CUBES_MAX_CELLS : stack->cells;
-		float left = UI_SAVE_CUBES_STACK_X + (float)s * UI_SAVE_CUBES_STACK_GAP -
-			1.5f * UI_SAVE_CUBES_PITCH;
-		float top;
+		bool sliding;
+		float since;
 
-		/* Another listing (another card, folder or reload) starts still. */
-		if(snap) {
+		if(stack->listing != motion->listing[s]) {
 			motion->listing[s] = stack->listing;
-			UIMotion_SpringSnap(&motion->first[s], (float)stack->first);
-			for(k = 0; k < UI_SAVE_CUBES_MAX_CELLS; k++) {
-				UIMotion_SpringSnap(&motion->grow[s][k],
-					s == grid->focusStack && k == grid->focusCell ? 1.0f : 0.0f);
+			motion->change[s] = stack->change;
+			motion->changeAt[s] = stack->changeAt;
+			motion->changed[s] = motion->seconds;
+			/* Another card or folder starts still; the same one read
+			 * again keeps moving as it was. */
+			if(stack->change == UI_SAVE_CUBES_NEW) {
+				UIMotion_SpringSnap(&motion->first[s], (float)stack->first);
+				for(k = 0; k < UI_SAVE_CUBES_MAX_CELLS; k++) {
+					UIMotion_SpringSnap(&motion->grow[s][k], grows &&
+						s == grid->focusStack && k == grid->focusCell ? 1.0f : 0.0f);
+				}
 			}
 		}
 		UIMotion_SpringRetarget(&motion->first[s], (float)stack->first, mode);
-		top = UIMotion_SpringUpdate(&motion->first[s], dt, mode);
+		motion->top[s] = UIMotion_SpringUpdate(&motion->first[s], dt, mode);
+		since = motion->seconds - motion->changed[s];
+		sliding = mode != UI_MOTION_OFF && (motion->change[s] == UI_SAVE_CUBES_CLOSED ||
+			motion->change[s] == UI_SAVE_CUBES_OPENED);
 		for(k = 0; k < UI_SAVE_CUBES_DRAWN; k++) {
 			int row = stack->first - 1 + k / UI_SAVE_CUBES_COLUMNS;
 			int column = k % UI_SAVE_CUBES_COLUMNS;
 			int cell = row * UI_SAVE_CUBES_COLUMNS + column;
 			bool focused = s == grid->focusStack && cell == grid->focusCell;
+			bool mine = op->kind != UI_SAVE_CUBES_OP_NONE && s == op->from &&
+				cell == op->fromCell;
 			const uiSaveCubesCell_t *what = &stack->cell[k];
 			uiSaveCube_t *cube = &out[n];
 			uiMotionSpring_t *grow;
-			float y, outside, fade, g;
+			uiSaveCubesPose_t pose;
+			float x, y, outside, fade, g, scale = 1.0f, alpha = 1.0f;
+			uint8_t kind = what->kind;
 
 			if(row < 0 || cell >= cells) {
 				continue;
 			}
 			grow = &motion->grow[s][cell];
-			UIMotion_SpringRetarget(grow, focused ? 1.0f : 0.0f, mode);
+			UIMotion_SpringRetarget(grow, focused && grows ? 1.0f : 0.0f, mode);
 			g = UIMotion_SpringUpdate(grow, dt, mode);
-			y = UI_SAVE_CUBES_TOP_Y + ((float)row - top) * UI_SAVE_CUBES_PITCH;
+			/* The ghost stands in this cell; a landing cube is on its way
+			 * into this one. */
+			if((grid->ghost && grid->focusStack >= 0 && s == !grid->focusStack &&
+				cell == grid->ghostCell) || (mode != UI_MOTION_OFF &&
+				op->phase == UI_SAVE_CUBES_LAND && op->toCell >= 0 &&
+				(op->kind == UI_SAVE_CUBES_OP_COPY || op->kind == UI_SAVE_CUBES_OP_MOVE) &&
+				s == !op->from && cell == op->toCell)) {
+				continue;
+			}
+			UISaveCubes_Where(s, cell, motion->top[s], &x, &y);
+			if(sliding && motion->changeAt[s] >= 0) {
+				int at = motion->changeAt[s];
+				int firstDrawn = (stack->first - 1) * UI_SAVE_CUBES_COLUMNS;
+				int was = -1;
+				float slide;
+
+				if(motion->change[s] == UI_SAVE_CUBES_CLOSED && cell >= at) {
+					was = kind != UI_SAVE_CUBES_KIND_EMPTY ? cell + 1 : -1;
+				}
+				else if(motion->change[s] == UI_SAVE_CUBES_OPENED && cell > at) {
+					was = kind != UI_SAVE_CUBES_KIND_EMPTY ? cell - 1 : -1;
+				}
+				slide = UIMotion_EaseOutCubic((since - CUBES_CASCADE_STAGGER *
+					(float)(cell - (at > firstDrawn ? at : firstDrawn))) /
+					CUBES_CASCADE_TIME);
+				if(was >= 0 && slide < 1.0f) {
+					float wasX, wasY;
+
+					UISaveCubes_Where(s, was, motion->top[s], &wasX, &wasY);
+					x = cubesLerp(wasX, x, slide);
+					y = cubesLerp(wasY, y, slide);
+				}
+				/* The cell a save left at the end, or the one that came,
+				 * grows from nothing. */
+				else if((motion->change[s] == UI_SAVE_CUBES_CLOSED && cell >= at &&
+					kind == UI_SAVE_CUBES_KIND_EMPTY && k > 0 &&
+					stack->cell[k - 1].kind != UI_SAVE_CUBES_KIND_EMPTY) ||
+					(motion->change[s] == UI_SAVE_CUBES_OPENED && cell == at)) {
+					scale *= slide;
+				}
+			}
+			cubesArrive(motion, s, k, mode, &x, &y, &scale, &alpha);
 			outside = CUBES_FADE_TOP - y > y - CUBES_FADE_BOTTOM ?
 				CUBES_FADE_TOP - y : y - CUBES_FADE_BOTTOM;
 			fade = outside <= 0.0f ? 1.0f : 1.0f - outside / CUBES_FADE_SPAN;
-			if(fade <= 0.0f) {
+			fade *= alpha;
+			if(fade <= 0.0f || scale <= 0.0f) {
 				continue;
 			}
+			/* A Move's save has left its cell while it flies. */
+			if(mine && op->kind == UI_SAVE_CUBES_OP_MOVE && (op->phase == UI_SAVE_CUBES_GO ||
+				(op->phase == UI_SAVE_CUBES_BACK && opTau <
+				(mode == UI_MOTION_FULL ? CUBES_BACK : CUBES_GLIDE)))) {
+				kind = UI_SAVE_CUBES_KIND_EMPTY;
+			}
 			memset(cube, 0, sizeof(*cube));
-			cube->kind = what->kind;
-			cube->shade = (uint8_t)(what->kind == UI_SAVE_CUBES_KIND_EMPTY ?
+			cube->kind = kind;
+			cube->shade = (uint8_t)(kind == UI_SAVE_CUBES_KIND_EMPTY ?
 				(focused ? UI_SAVE_CUBES_SHADE_EMPTY_FOCUS : UI_SAVE_CUBES_SHADE_EMPTY) :
 				(focused ? UI_SAVE_CUBES_SHADE_SAVE_FOCUS : UI_SAVE_CUBES_SHADE_SAVE));
-			cube->half = 0.5f * UI_SAVE_CUBES_FACE *
-				(what->kind == UI_SAVE_CUBES_KIND_EMPTY ? UI_SAVE_CUBES_EMPTY : 1.0f) *
+			cube->half = 0.5f * UI_SAVE_CUBES_FACE * scale *
+				(kind == UI_SAVE_CUBES_KIND_EMPTY ? UI_SAVE_CUBES_EMPTY : 1.0f) *
 				(1.0f + (UI_SAVE_CUBES_SELECTED - 1.0f) * g);
 			cube->z = UI_SAVE_CUBES_LIFT * g;
-			cube->x = left + (float)column * UI_SAVE_CUBES_PITCH;
+			cube->x = x;
 			cube->y = y + UI_SAVE_CUBES_BOB_PX *
 				(bobSine * bobPhase[(cell + 8 * s) & 15][0] +
 				bobCosine * bobPhase[(cell + 8 * s) & 15][1]);
@@ -412,11 +1080,42 @@ int UISaveCubes_Frame(uiSaveCubesMotion_t *motion,
 				cube->y += drift[1];
 				cube->turn = motion->turn;
 			}
-			cube->icon = UISaveCubes_Icon(what, motion->seconds, mode);
+			cube->icon = kind == what->kind ? UISaveCubes_Icon(what, motion->seconds, mode) :
+				NULL;
+			if(mine && op->kind == UI_SAVE_CUBES_OP_ERASE &&
+				cubesOpPose(motion, op, op->phase, motion->opTo, opTau, mode, &pose,
+				motion->opTurn)) {
+				/* The save being erased: plain, shrunk and turned, or
+				 * growing back with its icon when that failed. */
+				cube->half = 0.5f * UI_SAVE_CUBES_FACE * pose.scale;
+				cube->x = pose.x;
+				cube->y = pose.y;
+				cube->turn = motion->opTurn;
+				if(op->phase == UI_SAVE_CUBES_GO) {
+					cube->shade = UI_SAVE_CUBES_SHADE_PLAIN;
+					cube->icon = NULL;
+				}
+			}
+			else if(mine && op->kind == UI_SAVE_CUBES_OP_ERASE &&
+				op->phase == UI_SAVE_CUBES_GO) {
+				cube->shade = UI_SAVE_CUBES_SHADE_PLAIN;
+				cube->icon = NULL;
+			}
+			/* Back home from a failed Copy or Move, the save shakes. */
+			if(mine && op->phase == UI_SAVE_CUBES_BACK && mode == UI_MOTION_FULL &&
+				op->kind != UI_SAVE_CUBES_OP_ERASE && opTau >= CUBES_BACK &&
+				opTau < CUBES_BACK + CUBES_SHAKE) {
+				float shake = opTau - CUBES_BACK;
+
+				cube->x += CUBES_SHAKE_PX * sinf(CUBES_SHAKE_RATE * shake) *
+					(1.0f - shake / CUBES_SHAKE);
+			}
 			cube->alpha = (uint8_t)(255.0f * fade + 0.5f);
-			floats[n++] = focused || g > CUBES_FLOATING;
+			floats[n++] = focused || g > CUBES_FLOATING || mine;
 		}
 	}
+	n = cubesExtras(motion, grid, mode, opTau, out, floats, n);
+	cubesLeave(motion, mode, out, n);
 	*floating = cubesFloat(out, floats, n);
 	return n;
 }

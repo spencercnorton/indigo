@@ -239,7 +239,7 @@ static void testColours(void)
 static uiSavesArt_t art;
 static uiSaveCubesGrid_t grid;
 static uiSaveCubesMotion_t motion;
-static uiSaveCube_t cubes[UI_SAVE_CUBES_FRAME];
+static uiSaveCube_t cubes[UI_SAVE_CUBES_OUT];
 
 /* Both stacks: saves in the first cells of 40, the rest free. */
 static void gridSet(int first0, int first1, int focusStack, int focusCell,
@@ -266,11 +266,14 @@ static void gridSet(int first0, int first1, int focusStack, int focusCell,
 	grid.focusCell = (int16_t)focusCell;
 }
 
+/* Long enough for the screen to have opened. */
+#define OPENED 2.0f
+
 static int frame(float dt, uiMotionMode_t mode, int *floating)
 {
 	int count = UISaveCubes_Frame(&motion, &grid, dt, mode, cubes, floating);
 
-	assert(count >= 0 && count <= UI_SAVE_CUBES_FRAME);
+	assert(count >= 0 && count <= UI_SAVE_CUBES_OUT);
 	assert(*floating >= 0 && *floating <= count);
 	return count;
 }
@@ -316,7 +319,7 @@ static void testGrow(float hz)
 
 	memset(&motion, 0, sizeof(motion));
 	gridSet(0, 0, 0, 5, 10u);
-	run(1.0f, hz, UI_MOTION_FULL);
+	run(OPENED, hz, UI_MOTION_FULL);
 	gridSet(0, 0, 0, 6, 10u);
 	run(0.15f, hz, UI_MOTION_FULL);
 	count = frame(0.0f, UI_MOTION_FULL, &floating);
@@ -342,7 +345,7 @@ static void testMotion(void)
 	/* Halfway through a step, both cubes float, nearest last. */
 	memset(&motion, 0, sizeof(motion));
 	gridSet(0, 0, 0, 5, 10u);
-	run(1.0f, 60.0f, UI_MOTION_FULL);
+	run(OPENED, 60.0f, UI_MOTION_FULL);
 	gridSet(0, 0, 0, 6, 10u);
 	count = frame(1.0f / 30.0f, UI_MOTION_FULL, &floating);
 	assert(count - floating == 2 && cubes[floating].z < cubes[count - 1].z);
@@ -374,6 +377,7 @@ static void testMotion(void)
 
 		memset(&motion, 0, sizeof(motion));
 		gridSet(0, 0, 1, 2, 30u);
+		run(OPENED, 60.0f, mode);
 		for(i = 0; i < 360; i++) {
 			count = frame(1.0f / 60.0f, mode, &floating);
 			cube = &cubes[count - 1];
@@ -386,6 +390,7 @@ static void testMotion(void)
 	 * its neighbour. Reduced: none bob. */
 	memset(&motion, 0, sizeof(motion));
 	gridSet(0, 0, 1, 0, 40u);
+	run(OPENED, 60.0f, UI_MOTION_FULL);
 	for(i = 0; i < 240; i++) {
 		count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
 		cube = find(floating, 0, 1, 0);
@@ -430,13 +435,23 @@ static void testMotion(void)
 	assert(count == 32);
 	cube = find(count, 0, 8, 2);
 	assert(cube != NULL && cube->y == UI_SAVE_CUBES_TOP_Y);
-	/* Another listing starts still: no scroll, no grow. */
+	/* Another listing starts still: no scroll, the focus grown at once,
+	 * every cube popping in from nothing where it rests. */
 	gridSet(5, 0, 0, 22, 60u);
 	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	assert(find(count, 0, 22, 5) == NULL && find(count, 0, 21, 5) == NULL);
+	run(0.1f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
 	cube = &cubes[count - 1];
-	assert(cube->half == 0.5f * UI_SAVE_CUBES_FACE * UI_SAVE_CUBES_SELECTED);
+	assert(near(cube->x, restX(0, 22), 12.0f) && cube->half > 0.0f &&
+		cube->half < 0.3f * UI_SAVE_CUBES_FACE * UI_SAVE_CUBES_SELECTED);
 	cube = find(floating, 0, 21, 5);
 	assert(cube != NULL && near(cube->y, UI_SAVE_CUBES_TOP_Y, UI_SAVE_CUBES_BOB_PX + 1e-3f));
+	assert(cube->half > 0.0f && cube->half < 0.3f * UI_SAVE_CUBES_FACE);
+	run(0.6f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(cubes[count - 1].half == 0.5f * UI_SAVE_CUBES_FACE * UI_SAVE_CUBES_SELECTED);
+	assert(find(floating, 0, 21, 5)->half == 0.5f * UI_SAVE_CUBES_FACE);
 
 	/* No grid: nothing drawn for that stack. */
 	memset(&motion, 0, sizeof(motion));
@@ -588,6 +603,677 @@ static void testCursor(void)
 	assert(UISaveCubes_Swap(1, 0, true) == 1);
 }
 
+/* ------------------------------------------------------------------------
+ * Opening and leaving.
+ * --------------------------------------------------------------------- */
+static float apart(const uiSaveCube_t *cube, float x, float y)
+{
+	return fabsf(cube->x - x) + fabsf(cube->y - y);
+}
+
+static void testOpening(void)
+{
+	const uiSaveCube_t *cube;
+	float way, rest;
+	int floating, count, i, k;
+
+	/* Full: the Home cube goes back over 0.3 s; nothing shows until the
+	 * cubes start out of the middle at 0.15 s; the paper comes from 0.12 s
+	 * to 0.45; the words from 0.95 to 1.25; the focus grows from 1.1. */
+	memset(&motion, 0, sizeof(motion));
+	gridSet(0, 0, 0, 5, 200u);
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	assert(count == 0 && motion.handover > 0.99f && motion.chrome == 0.0f &&
+		motion.paper == 0.0f);
+	run(0.1f, 60.0f, UI_MOTION_FULL);
+	assert(frame(1.0f / 60.0f, UI_MOTION_FULL, &floating) == 0);
+	run(0.2f, 60.0f, UI_MOTION_FULL);
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	assert(count > 0 && motion.handover < 0.01f && motion.paper > 0.5f);
+	/* On their way: drawn in toward the middle, and small. */
+	for(i = 0, k = 0, way = 0.0f; i < count; i++) {
+		cube = &cubes[i];
+		assert(cube->half < 0.5f * UI_SAVE_CUBES_FACE);
+		k += apart(cube, 320.0f, 224.0f) < 100.0f;
+		way += apart(cube, 320.0f, 224.0f) / (float)count;
+	}
+	assert(k > 0);
+	run(0.5f, 60.0f, UI_MOTION_FULL);	/* t = 0.87 */
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	for(i = 0, rest = 0.0f; i < count; i++) {
+		rest += apart(&cubes[i], 320.0f, 224.0f) / (float)count;
+	}
+	assert(way < 0.7f * rest);
+	assert(motion.paper == 1.0f && motion.chrome == 0.0f);
+	assert(find(count, 0, 0, 0) != NULL && find(count, 1, 15, 0) != NULL);
+	assert(find(count, 0, 5, 0)->half == 0.5f * UI_SAVE_CUBES_FACE);
+	run(0.3f, 60.0f, UI_MOTION_FULL);	/* t = 1.18 */
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	assert(motion.chrome > 0.5f && motion.chrome < 1.0f);
+	assert(cubes[count - 1].half > 0.5f * UI_SAVE_CUBES_FACE);
+	run(0.2f, 60.0f, UI_MOTION_FULL);
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	assert(motion.chrome == 1.0f && count == 32);
+	for(i = 0; i < count; i++) {
+		assert(cubes[i].alpha == 255);
+	}
+
+	/* A stack listed while it opens spirals in from then. */
+	memset(&motion, 0, sizeof(motion));
+	gridSet(0, 0, 0, 5, 210u);
+	grid.stack[1].cells = 0;
+	run(0.5f, 60.0f, UI_MOTION_FULL);
+	grid.stack[1].cells = 40;
+	grid.stack[1].listing = 300u;
+	run(0.1f, 60.0f, UI_MOTION_FULL);
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	for(i = 0; i < count; i++) {
+		assert(cubes[i].x < UI_SAVE_CUBES_STACK_X + UI_SAVE_CUBES_STACK_GAP / 2.0f);
+	}
+	run(0.9f, 60.0f, UI_MOTION_FULL);
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	assert(find(count, 1, 15, 0) != NULL && find(count, 1, 15, 0)->alpha == 255);
+
+	/* Reduced: everything where it rests, fading in over 0.25 s; the Home
+	 * cube gone at once. */
+	memset(&motion, 0, sizeof(motion));
+	gridSet(0, 0, 0, 5, 220u);
+	run(0.1f, 60.0f, UI_MOTION_REDUCED);
+	count = frame(0.0f, UI_MOTION_REDUCED, &floating);
+	assert(count == 32 && motion.handover == 0.0f);
+	assert(motion.chrome > 0.2f && motion.chrome < 0.6f);
+	cube = find(count, 1, 15, 0);
+	assert(cube != NULL && cube->x == restX(1, 15) && cube->alpha > 50 && cube->alpha < 160);
+	run(0.2f, 60.0f, UI_MOTION_REDUCED);
+	count = frame(0.0f, UI_MOTION_REDUCED, &floating);
+	assert(find(count, 1, 15, 0)->alpha == 255 && motion.chrome == 1.0f);
+
+	/* Off: all there on the first frame. */
+	memset(&motion, 0, sizeof(motion));
+	gridSet(0, 0, 0, 5, 230u);
+	count = frame(1.0f / 60.0f, UI_MOTION_OFF, &floating);
+	assert(count == 32 && motion.chrome == 1.0f && motion.paper == 1.0f &&
+		motion.handover == 0.0f);
+	assert(cubes[count - 1].half == 0.5f * UI_SAVE_CUBES_FACE * UI_SAVE_CUBES_SELECTED);
+}
+
+static void testLeaving(void)
+{
+	int floating, count, i;
+
+	assert(UISaveCubes_LeaveSeconds(UI_MOTION_FULL) == 0.45f);
+	assert(UISaveCubes_LeaveSeconds(UI_MOTION_REDUCED) == 0.2f);
+	assert(UISaveCubes_LeaveSeconds(UI_MOTION_OFF) == 0.0f);
+
+	/* Full: the words gone in 0.12 s, the cubes in the middle and clear by
+	 * 0.3, the Home cube back from 0.15 to 0.45. */
+	memset(&motion, 0, sizeof(motion));
+	gridSet(0, 0, 0, 5, 240u);
+	run(OPENED, 60.0f, UI_MOTION_FULL);
+	grid.leaving = 1;
+	run(0.06f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(motion.chrome > 0.3f && motion.chrome < 0.7f && motion.handover == 0.0f);
+	for(i = 0; i < count; i++) {
+		assert(cubes[i].alpha > 0);
+	}
+	run(0.25f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(count > 0 && motion.chrome == 0.0f);
+	assert(motion.handover > 0.3f && motion.handover < 1.0f);
+	for(i = 0; i < count; i++) {
+		assert(cubes[i].alpha == 0 && near(cubes[i].x, 320.0f, 0.01f) &&
+			near(cubes[i].y, 224.0f, 0.01f));
+	}
+	run(0.15f, 60.0f, UI_MOTION_FULL);
+	frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(motion.handover == 1.0f && motion.paper < 0.01f);
+	grid.leaving = 0;
+
+	/* Reduced: they fade where they are; no Home cube. */
+	memset(&motion, 0, sizeof(motion));
+	gridSet(0, 0, 0, 5, 250u);
+	run(OPENED, 60.0f, UI_MOTION_REDUCED);
+	grid.leaving = 1;
+	run(0.1f, 60.0f, UI_MOTION_REDUCED);
+	count = frame(0.0f, UI_MOTION_REDUCED, &floating);
+	assert(find(count, 1, 15, 0)->alpha < 160 && find(count, 1, 15, 0)->alpha > 90);
+	run(0.11f, 60.0f, UI_MOTION_REDUCED);
+	count = frame(0.0f, UI_MOTION_REDUCED, &floating);
+	for(i = 0; i < count; i++) {
+		assert(cubes[i].alpha == 0);
+	}
+	assert(find(count, 1, 15, 0) != NULL && motion.handover == 0.0f);
+	grid.leaving = 0;
+}
+
+/* ------------------------------------------------------------------------
+ * Copy, Move and Erase.
+ * --------------------------------------------------------------------- */
+/* Stack s: cells, its window at first, the first saves of them saves. */
+static void stackSet(int s, int cells, int first, int saves, uint32_t listing,
+	uint8_t change, int at)
+{
+	uiSaveCubesStack_t *stack = &grid.stack[s];
+	int k;
+
+	stack->cells = (int16_t)cells;
+	stack->first = (int16_t)first;
+	stack->listing = listing;
+	stack->change = change;
+	stack->changeAt = (int16_t)at;
+	for(k = 0; k < UI_SAVE_CUBES_DRAWN; k++) {
+		int cell = (first - 1 + k / 4) * 4 + k % 4;
+
+		stack->cell[k].kind = cell < saves ? UI_SAVE_CUBES_KIND_SAVE :
+			UI_SAVE_CUBES_KIND_EMPTY;
+		stack->cell[k].texels = cell < saves ? texels : NULL;
+		stack->cell[k].art = cell < saves ? &art : NULL;
+	}
+}
+
+/* The left stack's 30 saves, the right's 10 of 16 cells, the focus on the
+ * left's cell 5, opened. */
+static void opStart(uiMotionMode_t mode, uint32_t listing)
+{
+	memset(&motion, 0, sizeof(motion));
+	memset(&grid, 0, sizeof(grid));
+	stackSet(0, 32, 0, 30, listing, UI_SAVE_CUBES_NEW, 0);
+	stackSet(1, 16, 0, 10, listing + 1u, UI_SAVE_CUBES_NEW, 0);
+	grid.focusStack = 0;
+	grid.focusCell = 5;
+	run(OPENED, 60.0f, mode);
+}
+
+static void opSet(uint8_t kind, uint8_t phase, uint16_t serial, int fromCell,
+	int toCell)
+{
+	uiSaveCubesOp_t *op = &grid.op;
+
+	op->kind = kind;
+	op->phase = phase;
+	op->serial = serial;
+	op->from = 0;
+	op->fromCell = (int16_t)fromCell;
+	op->toCell = (int16_t)toCell;
+	op->cube.texels = texels;
+	op->cube.art = &art;
+	op->cube.kind = UI_SAVE_CUBES_KIND_SAVE;
+}
+
+/* The operation's own cube: flying, or being erased. */
+static const uiSaveCube_t *opCube(int count)
+{
+	int i;
+
+	for(i = 0; i < count; i++) {
+		if(cubes[i].turn == motion.opTurn) {
+			return &cubes[i];
+		}
+	}
+	return NULL;
+}
+
+static int bits(int count)
+{
+	int found = 0, i;
+
+	for(i = 0; i < count; i++) {
+		found += cubes[i].shade == UI_SAVE_CUBES_SHADE_PLAIN &&
+			cubes[i].kind == UI_SAVE_CUBES_KIND_EMPTY;
+	}
+	return found;
+}
+
+static void testFlight(void)
+{
+	const uiSaveCube_t *cube;
+	float fromX = restX(0, 5), fromY = restY(5, 0);
+	float toX = restX(1, 10), toY = restY(10, 0);
+	float realX = restX(1, 3), realY = restY(3, 0), most = 0.0f;
+	int floating, count, i;
+
+	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_GO, UI_MOTION_FULL) == 0.6f);
+	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_MOVE, UI_SAVE_CUBES_LAND, UI_MOTION_REDUCED) == 0.2f);
+	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_BACK, UI_MOTION_FULL) == 0.75f);
+	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_GO, UI_MOTION_REDUCED) == 0.35f);
+	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_LAND, UI_MOTION_FULL) == 0.4f);
+	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_LAND, UI_MOTION_REDUCED) == 0.2f);
+	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_LAND, UI_MOTION_OFF) == 0.0f);
+	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_NONE, UI_SAVE_CUBES_GO, UI_MOTION_FULL) == 0.0f);
+
+	/* GO: the copy leaves the focused cube as it is, 1.5x and forward. */
+	opStart(UI_MOTION_FULL, 400u);
+	opSet(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_GO, 1, 5, 10);
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	cube = opCube(count);
+	assert(cube != NULL && cube == &cubes[count - 1] && cube->icon != NULL);
+	assert(near(cube->x, fromX, 0.5f) && near(cube->y, fromY, 0.5f));
+	assert(near(cube->half, 0.5f * UI_SAVE_CUBES_FACE * UI_SAVE_CUBES_SELECTED, 0.2f));
+	assert(near(cube->z, UI_SAVE_CUBES_LIFT, 0.5f));
+	assert(find(count, 0, 5, 0) != NULL && find(count, 0, 5, 0) != cube);
+	/* Halfway it dips toward the info bar and comes toward the viewer. */
+	run(0.29f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	cube = opCube(count);
+	assert(cube->y > 0.5f * (fromY + toY) + 40.0f && cube->z > 70.0f);
+	assert(cube->half > 0.5f * UI_SAVE_CUBES_FACE * 1.7f);
+	assert(cube->x > fromX && cube->x < toX);
+	/* Then it hovers on the cell for as long as the card takes, lifted:
+	 * it never lands before LAND. */
+	for(i = 0; i < 300; i++) {
+		count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+		cube = opCube(count);
+		assert(cube != NULL && cube->z >= UI_SAVE_CUBES_LIFT - 1e-3f);
+		if(i > 30) {
+			assert(near(cube->x, toX, 1e-3f) && near(cube->y, toY, 1e-3f));
+			assert(cube->half >= 0.5f * UI_SAVE_CUBES_FACE - 1e-3f &&
+				cube->half <= 0.5f * UI_SAVE_CUBES_FACE * 1.24f);
+		}
+	}
+	/* LAND: written and read back, it lands on its cell 0.2 s later, the
+	 * cell's own cube waiting for it, never sooner. */
+	stackSet(1, 16, 0, 11, 402u, UI_SAVE_CUBES_OPENED, 10);
+	opSet(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_LAND, 1, 5, 10);
+	for(i = 0; i <= 12; i++) {	/* 0 .. 0.2 s */
+		count = frame(i ? 1.0f / 60.0f : 0.0f, UI_MOTION_FULL, &floating);
+		cube = opCube(count);
+		assert(cube != NULL && find(count, 1, 10, 0) == cube);
+		for(int k = 0; k < count; k++) {
+			assert(&cubes[k] == cube || apart(&cubes[k], toX, toY) > 20.0f);
+		}
+		if(i < 12) {
+			assert(cube->z > 0.01f);
+		}
+	}
+	assert(apart(cube, toX, toY) < 1e-3f && cube->z < 1e-3f);
+	assert(near(cube->half, 0.5f * UI_SAVE_CUBES_FACE, 1e-3f));
+	/* Then the cell's own cube takes over, where the flight left off. */
+	grid.op.kind = UI_SAVE_CUBES_OP_NONE;
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	assert(opCube(count) == NULL);
+	cube = find(count, 1, 10, 0);
+	assert(cube != NULL && near(cube->x, toX, 1e-3f) && cube->kind == UI_SAVE_CUBES_KIND_SAVE);
+	/* The card put the next one in a free place at cell 3, not the 11 it
+	 * aimed at: it lands there, and the saves after it go on a cell. */
+	opSet(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_GO, 11, 5, 11);
+	run(1.0f, 60.0f, UI_MOTION_FULL);
+	stackSet(1, 16, 0, 12, 404u, UI_SAVE_CUBES_OPENED, 3);
+	opSet(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_LAND, 11, 5, 3);
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	cube = opCube(count);
+	assert(near(cube->x, restX(1, 11), 4.0f));
+	cube = find(count, 1, 3, 0);	/* cell 4's save, a cell back still */
+	assert(cube != NULL && cube->turn != motion.opTurn);
+	run(0.1f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(apart(opCube(count), realX, realY) > 1.0f);
+	run(0.1f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	cube = opCube(count);
+	assert(apart(cube, realX, realY) < 1e-3f && cube->z < 1e-3f);
+	run(0.6f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(find(count, 1, 4, 0)->x == restX(1, 4) && find(count, 1, 11, 0)->x == restX(1, 11));
+
+	/* BACK: it goes home along the arc in 0.45 s, then the save shakes
+	 * for 0.3 s and is still. (The focus elsewhere, so the save doesn't
+	 * wobble.) */
+	opStart(UI_MOTION_FULL, 410u);
+	grid.focusCell = 6;
+	run(0.5f, 60.0f, UI_MOTION_FULL);
+	opSet(UI_SAVE_CUBES_OP_MOVE, UI_SAVE_CUBES_GO, 2, 5, 10);
+	run(1.0f, 60.0f, UI_MOTION_FULL);
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	/* A Move's save has left its cell. */
+	cube = find(count, 0, 5, 0);
+	assert(cube != NULL && cube->kind == UI_SAVE_CUBES_KIND_EMPTY && cube->icon == NULL);
+	opSet(UI_SAVE_CUBES_OP_MOVE, UI_SAVE_CUBES_BACK, 2, 5, 10);
+	run(0.45f, 60.0f, UI_MOTION_FULL);	/* 0.433 s since it was seen */
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	cube = opCube(count);
+	assert(cube != NULL && apart(cube, fromX, fromY) < 6.0f);
+	assert(find(count, 0, 5, 0)->kind == UI_SAVE_CUBES_KIND_EMPTY);
+	run(0.03f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(opCube(count) == NULL && find(count, 0, 5, 0)->kind == UI_SAVE_CUBES_KIND_SAVE);
+	for(i = 0; i < 18; i++) {
+		count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+		most = fmaxf(most, fabsf(find(count, 0, 5, 0)->x - fromX));
+	}
+	assert(most > 2.0f && most <= 5.0f);
+	run(0.1f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(find(count, 0, 5, 0)->x == fromX);
+
+	/* Bound for a folder the stack doesn't show: into its header, where
+	 * it shrinks away. */
+	opStart(UI_MOTION_FULL, 420u);
+	opSet(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_GO, 3, 5, -1);
+	run(1.0f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	cube = opCube(count);
+	assert(near(cube->x, UI_SAVE_CUBES_STACK_X + UI_SAVE_CUBES_STACK_GAP, 1e-3f) &&
+		near(cube->y, UI_SAVE_CUBES_HEADER_Y, 1e-3f));
+	opSet(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_LAND, 3, 5, -1);
+	run(0.1f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(opCube(count)->half < 0.4f * UI_SAVE_CUBES_FACE);
+	run(0.12f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(opCube(count) == NULL);
+
+	/* Reduced: a straight 0.35 s glide, unturned and no bigger. */
+	opStart(UI_MOTION_REDUCED, 430u);
+	opSet(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_GO, 4, 5, 10);
+	frame(1.0f / 60.0f, UI_MOTION_REDUCED, &floating);
+	for(i = 0; i < 30; i++) {
+		float u;
+
+		count = frame(1.0f / 60.0f, UI_MOTION_REDUCED, &floating);
+		cube = opCube(count);
+		u = (cube->x - fromX) / (toX - fromX);
+		assert(u >= 0.0f && u <= 1.0f + 1e-4f);
+		assert(near(cube->y, fromY + u * (toY - fromY), 0.01f));
+		assert(cube->turn[2] == 0.0f && cube->half <= 0.5f * UI_SAVE_CUBES_FACE * 1.5f);
+	}
+	assert(near(cube->x, toX, 1e-3f));
+
+	/* Off: no flight at all; the lists just change. */
+	opStart(UI_MOTION_OFF, 440u);
+	opSet(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_GO, 5, 5, 10);
+	for(i = 0; i < 60; i++) {
+		count = frame(1.0f / 60.0f, UI_MOTION_OFF, &floating);
+		assert(opCube(count) == NULL);
+	}
+	stackSet(1, 16, 0, 11, 442u, UI_SAVE_CUBES_OPENED, 10);
+	opSet(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_LAND, 5, 5, 10);
+	count = frame(1.0f / 60.0f, UI_MOTION_OFF, &floating);
+	assert(opCube(count) == NULL && find(count, 1, 10, 0)->kind == UI_SAVE_CUBES_KIND_SAVE);
+	assert(find(count, 1, 11, 0)->x == restX(1, 11));
+}
+
+/* How far along from a to b a cube is, 0 .. 1, or -1 when none is on the
+ * way between them. */
+static float along(int count, float ax, float ay, float bx, float by)
+{
+	float length = sqrtf((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+	int i;
+
+	for(i = 0; i < count; i++) {
+		float u = ((cubes[i].x - ax) * (bx - ax) + (cubes[i].y - ay) * (by - ay)) /
+			(length * length);
+		float off = fabsf((cubes[i].x - ax) * (by - ay) - (cubes[i].y - ay) * (bx - ax)) /
+			length;
+
+		if(u > 0.01f && u < 0.99f && off < 2.0f) {
+			return u;
+		}
+	}
+	return -1.0f;
+}
+
+static void testErase(void)
+{
+	const uiSaveCube_t *cube;
+	float sixWas, sevenWas;
+	int floating, count, i;
+	unsigned last = 256u;
+
+	/* GO: the save loses its icon, shrinks to 0.9 and turns, and stays so
+	 * for as long as the card takes, in one piece. */
+	opStart(UI_MOTION_FULL, 500u);
+	opSet(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_GO, 6, 5, 0);
+	for(i = 0; i < 120; i++) {
+		count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+		assert(bits(count) == 0);
+	}
+	cube = opCube(count);
+	assert(cube != NULL && cube->shade == UI_SAVE_CUBES_SHADE_PLAIN && cube->icon == NULL);
+	assert(near(cube->half, 0.5f * UI_SAVE_CUBES_FACE * 0.9f, 1e-3f));
+	assert(near(cube->turn[2], sinf(0.6f), 2e-3f) && near(cube->x, restX(0, 5), 1.01f));
+	/* LAND: gone, in 8 pieces that scatter, fall and fade for 0.4 s; the
+	 * saves after it come back a cell, each a little after the one before,
+	 * and the free cell left at the end grows. */
+	stackSet(0, 32, 0, 29, 502u, UI_SAVE_CUBES_CLOSED, 5);
+	opSet(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_LAND, 6, 5, 0);
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	assert(bits(count) == 8 && opCube(count) == NULL);
+	/* Every save after it starts a cell on, so none is at the erased
+	 * one's cell but its pieces. */
+	for(i = 0; i < count; i++) {
+		assert((cubes[i].kind == UI_SAVE_CUBES_KIND_EMPTY &&
+			cubes[i].shade == UI_SAVE_CUBES_SHADE_PLAIN) ||
+			apart(&cubes[i], restX(0, 5), restY(5, 0)) > 12.0f);
+	}
+	for(i = 0; i < 5; i++) {
+		count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+		assert(bits(count) == 8);
+		for(int k = 0; k < count; k++) {
+			if(cubes[k].shade == UI_SAVE_CUBES_SHADE_PLAIN &&
+				cubes[k].kind == UI_SAVE_CUBES_KIND_EMPTY) {
+				assert(cubes[k].alpha < last);
+				last = cubes[k].alpha;
+				break;
+			}
+		}
+	}
+	/* 0.1 s in, cell 6's save (from cell 7) is further along than cell 7's
+	 * (from cell 8, across the row's end), which started a little later. */
+	sixWas = along(count, restX(0, 7), restY(7, 0), restX(0, 6), restY(6, 0));
+	sevenWas = along(count, restX(0, 8), restY(8, 0), restX(0, 7), restY(7, 0));
+	assert(sevenWas > 0.05f && sixWas > sevenWas + 0.05f);
+	run(0.29f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(bits(count) == 8);
+	run(0.04f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(bits(count) == 0);
+	run(1.0f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(find(count, 0, 7, 0)->x == restX(0, 7));
+	cube = find(count, 0, 29, 0);
+	assert(cube == NULL || cube->kind == UI_SAVE_CUBES_KIND_EMPTY);
+
+	/* The cell a save left at the end grows from nothing. */
+	opStart(UI_MOTION_FULL, 510u);
+	stackSet(0, 32, 0, 13, 512u, UI_SAVE_CUBES_NEW, 0);
+	run(OPENED, 60.0f, UI_MOTION_FULL);
+	stackSet(0, 32, 0, 12, 514u, UI_SAVE_CUBES_CLOSED, 5);
+	run(0.4f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	cube = find(count, 0, 12, 0);
+	assert(cube != NULL && cube->kind == UI_SAVE_CUBES_KIND_EMPTY && cube->half > 1.0f &&
+		cube->half < 0.5f * UI_SAVE_CUBES_FACE * UI_SAVE_CUBES_EMPTY - 1.0f);
+	assert(find(count, 0, 13, 0)->half == 0.5f * UI_SAVE_CUBES_FACE * UI_SAVE_CUBES_EMPTY);
+
+	/* BACK: it grows back with its icon in 0.15 s. */
+	opStart(UI_MOTION_FULL, 520u);
+	opSet(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_GO, 7, 5, 0);
+	run(0.5f, 60.0f, UI_MOTION_FULL);
+	opSet(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_BACK, 7, 5, 0);
+	run(0.05f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	cube = opCube(count);
+	assert(cube != NULL && cube->icon != NULL && bits(count) == 0);
+	assert(cube->half > 0.5f * UI_SAVE_CUBES_FACE * 0.9f &&
+		cube->half < 0.5f * UI_SAVE_CUBES_FACE * UI_SAVE_CUBES_SELECTED);
+	run(0.13f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(opCube(count) == NULL);
+	assert(cubes[count - 1].half == 0.5f * UI_SAVE_CUBES_FACE * UI_SAVE_CUBES_SELECTED &&
+		cubes[count - 1].icon != NULL);
+
+	/* Reduced: no pieces; the plain cube fades out in 0.2 s. */
+	opStart(UI_MOTION_REDUCED, 530u);
+	opSet(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_GO, 8, 5, 0);
+	run(0.3f, 60.0f, UI_MOTION_REDUCED);
+	stackSet(0, 32, 0, 29, 532u, UI_SAVE_CUBES_CLOSED, 5);
+	opSet(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_LAND, 8, 5, 0);
+	run(0.1f, 60.0f, UI_MOTION_REDUCED);
+	count = frame(0.0f, UI_MOTION_REDUCED, &floating);
+	assert(bits(count) == 0);
+	cube = &cubes[count - 1];
+	assert(cube->shade == UI_SAVE_CUBES_SHADE_PLAIN && cube->alpha > 60 && cube->alpha < 200);
+	run(0.13f, 60.0f, UI_MOTION_REDUCED);
+	count = frame(0.0f, UI_MOTION_REDUCED, &floating);
+	for(i = 0; i < count; i++) {
+		assert(cubes[i].shade != UI_SAVE_CUBES_SHADE_PLAIN);
+	}
+
+	/* Off: plain while the card works, then simply gone. */
+	opStart(UI_MOTION_OFF, 540u);
+	opSet(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_GO, 9, 5, 0);
+	count = frame(1.0f / 60.0f, UI_MOTION_OFF, &floating);
+	cube = &cubes[count - 1];
+	assert(cube->shade == UI_SAVE_CUBES_SHADE_PLAIN &&
+		cube->half == 0.5f * UI_SAVE_CUBES_FACE * UI_SAVE_CUBES_SELECTED);
+	stackSet(0, 32, 0, 29, 542u, UI_SAVE_CUBES_CLOSED, 5);
+	opSet(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_LAND, 9, 5, 0);
+	count = frame(1.0f / 60.0f, UI_MOTION_OFF, &floating);
+	assert(bits(count) == 0 && find(count, 0, 6, 0)->x == restX(0, 6));
+}
+
+static void testChanges(void)
+{
+	static const uint32_t before[5] = {11u, 22u, 33u, 44u, 55u};
+	static const uint32_t gone[4] = {11u, 22u, 44u, 55u};
+	static const uint32_t came[6] = {11u, 22u, 33u, 99u, 44u, 55u};
+	static const uint32_t other[5] = {11u, 22u, 34u, 44u, 55u};
+	static const uint32_t swapped[6] = {11u, 22u, 99u, 34u, 44u, 55u};
+	const uiSaveCube_t *cube;
+	float half;
+	int at = -1, floating, count;
+
+	assert(UISaveCubes_Change(before, 5, before, 5, &at) == UI_SAVE_CUBES_SAME && at == 5);
+	assert(UISaveCubes_Change(before, 5, gone, 4, &at) == UI_SAVE_CUBES_CLOSED && at == 2);
+	assert(UISaveCubes_Change(before, 5, came, 6, &at) == UI_SAVE_CUBES_OPENED && at == 3);
+	assert(UISaveCubes_Change(before, 5, before, 4, &at) == UI_SAVE_CUBES_CLOSED && at == 4);
+	assert(UISaveCubes_Change(before, 5, other, 5, &at) == UI_SAVE_CUBES_NEW);
+	assert(UISaveCubes_Change(came, 6, before, 4, &at) == UI_SAVE_CUBES_NEW);
+	assert(UISaveCubes_Change(gone, 4, before, 5, &at) == UI_SAVE_CUBES_OPENED && at == 2);
+	assert(UISaveCubes_Change(came, 6, other, 5, &at) == UI_SAVE_CUBES_NEW);
+	assert(UISaveCubes_Change(before, 5, swapped, 6, &at) == UI_SAVE_CUBES_NEW);
+	assert(UISaveCubes_Change(NULL, 0, before, 1, &at) == UI_SAVE_CUBES_OPENED && at == 0);
+	assert(UISaveCubes_Change(NULL, 0, NULL, 0, &at) == UI_SAVE_CUBES_SAME);
+
+	/* Read again with nothing moved: the stack carries on as it was, the
+	 * focus mid-grow, nothing popping in. */
+	opStart(UI_MOTION_FULL, 600u);
+	grid.focusCell = 6;
+	run(0.05f, 60.0f, UI_MOTION_FULL);
+	count = frame(0.0f, UI_MOTION_FULL, &floating);
+	half = cubes[count - 1].half;
+	assert(half > 0.5f * UI_SAVE_CUBES_FACE && half < 0.5f * UI_SAVE_CUBES_FACE * 1.45f);
+	stackSet(0, 32, 0, 30, 602u, UI_SAVE_CUBES_SAME, 0);
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	assert(cubes[count - 1].half > half &&
+		cubes[count - 1].half < 0.5f * UI_SAVE_CUBES_FACE * UI_SAVE_CUBES_SELECTED - 0.5f);
+	cube = find(count, 0, 1, 0);
+	assert(cube->half == 0.5f * UI_SAVE_CUBES_FACE && cube->alpha == 255);
+}
+
+static void testOverlays(void)
+{
+	uiSaveCubesBox_t box;
+	const uiSaveCube_t *cube;
+	int floating, count, i;
+	float low = FAR, high = -FAR;
+
+	/* A message stays 2 s, or until A or B. */
+	assert(UISaveCubes_MessageHolds(0.0f, false));
+	assert(UISaveCubes_MessageHolds(1.99f, false));
+	assert(!UISaveCubes_MessageHolds(2.0f, false));
+	assert(!UISaveCubes_MessageHolds(0.5f, true));
+
+	/* The box opens in 0.08 s from 0.92x, closes in 0.1 s; its bar slides
+	 * to the focus, and another box starts with it there. */
+	opStart(UI_MOTION_FULL, 700u);
+	assert(motion.menuAlpha == 0.0f && motion.messageAlpha == 0.0f);
+	grid.menu = 1;
+	grid.menuSerial = 1;
+	grid.menuFocus = 0;
+	frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	assert(motion.menuAlpha == 0.0f && motion.menuScale == 0.92f);
+	run(0.04f, 60.0f, UI_MOTION_FULL);
+	frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(motion.menuAlpha > 0.3f && motion.menuAlpha < 0.7f);
+	run(0.05f, 60.0f, UI_MOTION_FULL);
+	frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(motion.menuAlpha == 1.0f && motion.menuScale == 1.0f && motion.menuItem == 0.0f);
+	grid.menuFocus = 2;
+	run(0.1f, 60.0f, UI_MOTION_FULL);
+	frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(motion.menuItem > 1.0f && motion.menuItem < 2.0f);
+	run(0.5f, 60.0f, UI_MOTION_FULL);
+	frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(near(motion.menuItem, 2.0f, 0.01f));
+	grid.menuSerial = 2;
+	grid.menuFocus = 1;
+	frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	assert(motion.menuItem == 1.0f && motion.menuAlpha == 0.0f);
+	run(0.2f, 60.0f, UI_MOTION_FULL);
+	grid.menu = 0;
+	run(0.05f, 60.0f, UI_MOTION_FULL);
+	frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(motion.menuAlpha > 0.3f && motion.menuAlpha < 0.7f);
+	run(0.08f, 60.0f, UI_MOTION_FULL);
+	frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(motion.menuAlpha == 0.0f);
+	/* A message in over 0.1 s, out over 0.15 s. */
+	grid.message = 1;
+	run(0.05f, 60.0f, UI_MOTION_FULL);
+	frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(motion.messageAlpha > 0.3f && motion.messageAlpha < 0.7f);
+	run(2.0f, 60.0f, UI_MOTION_FULL);
+	assert(motion.messageAlpha == 1.0f);
+	grid.message = 0;
+	run(0.1f, 60.0f, UI_MOTION_FULL);
+	frame(0.0f, UI_MOTION_FULL, &floating);
+	assert(motion.messageAlpha > 0.2f && motion.messageAlpha < 0.5f);
+	run(0.08f, 60.0f, UI_MOTION_FULL);
+	assert(motion.messageAlpha == 0.0f);
+	/* Off: at once. */
+	grid.menu = grid.message = 1;
+	frame(1.0f / 60.0f, UI_MOTION_OFF, &floating);
+	assert(motion.menuAlpha == 1.0f && motion.messageAlpha == 1.0f);
+	grid.menu = grid.message = 0;
+	frame(1.0f / 60.0f, UI_MOTION_OFF, &floating);
+	assert(motion.menuAlpha == 0.0f && motion.messageAlpha == 0.0f);
+
+	/* The ghost: pale, where the save would land, pulsing between half and
+	 * eight tenths; the free cube there makes way. Reduced holds it. */
+	grid.ghost = 1;
+	grid.ghostCell = 10;
+	for(i = 0; i < 60; i++) {
+		count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+		cube = find(count, 1, 10, 0);
+		assert(cube != NULL && cube->shade == UI_SAVE_CUBES_SHADE_EMPTY_FOCUS &&
+			cube->kind == UI_SAVE_CUBES_KIND_SAVE && cube->icon == NULL);
+		assert(cube->half == 0.5f * UI_SAVE_CUBES_FACE && cube->x == restX(1, 10));
+		low = fminf(low, (float)cube->alpha);
+		high = fmaxf(high, (float)cube->alpha);
+	}
+	assert(low < 135.0f && low >= 127.0f && high > 195.0f && high <= 205.0f);
+	count = frame(1.0f / 60.0f, UI_MOTION_REDUCED, &floating);
+	assert(find(count, 1, 10, 0)->alpha == 166);
+	grid.ghost = 0;
+	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+	assert(find(count, 1, 10, 0)->kind == UI_SAVE_CUBES_KIND_EMPTY);
+
+	/* The box beside its cube: to the right, or past the middle to the
+	 * left; inside the window, clear of the info bar. */
+	UISaveCubes_MenuBox(148.0f, 196.0f, 0.0f, 3, false, &box);
+	assert(box.x == 192.0f && box.y == 150.0f && box.width == 112.0f && box.height == 88.0f);
+	UISaveCubes_MenuBox(436.0f, 196.0f, 140.0f, 3, false, &box);
+	assert(box.x == 436.0f - 44.0f - 140.0f && box.width == 140.0f);
+	UISaveCubes_MenuBox(260.0f, 140.0f, 0.0f, 2, true, &box);
+	assert(box.titleY == 112.0f && box.y == 146.0f && box.x == 304.0f);
+	UISaveCubes_MenuBox(548.0f, 308.0f, 0.0f, 3, true, &box);
+	assert(box.y + box.height == 336.0f && box.titleY == box.y - 34.0f);
+	assert(box.x + box.width <= 640.0f);
+}
+
 int main(void)
 {
 	testFaces();
@@ -595,7 +1281,14 @@ int main(void)
 	testColours();
 	testIcons();
 	testMotion();
+	testOpening();
+	testLeaving();
+	testFlight();
+	testErase();
+	testChanges();
+	testOverlays();
 	testCursor();
-	puts("save cubes: faces, footprints, colours, icons, motion and the cursor passed");
+	puts("save cubes: faces, footprints, colours, icons, motion, opening, leaving, "
+		"copy, move, erase, menus and the cursor passed");
 	return 0;
 }

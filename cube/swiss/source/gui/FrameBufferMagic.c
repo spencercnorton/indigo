@@ -6564,9 +6564,9 @@ void DrawUpdateSavesPage(uiDrawObj_t *page,
 
 /* What one frame's cubes need. */
 typedef struct {
-	uiSaveCube_t cubes[UI_SAVE_CUBES_FRAME];
-	uiSaveCubesQuad_t quads[UI_SAVE_CUBES_FRAME * UI_SAVE_CUBES_QUADS];
-	u16 quadEnd[UI_SAVE_CUBES_FRAME];
+	uiSaveCube_t cubes[UI_SAVE_CUBES_OUT];
+	uiSaveCubesQuad_t quads[UI_SAVE_CUBES_OUT * UI_SAVE_CUBES_QUADS];
+	u16 quadEnd[UI_SAVE_CUBES_OUT];
 	GXColor shades[UI_SAVE_CUBES_SHADES][UI_SAVE_CUBES_ROLES];
 	GXTexObj icon;
 	bool invalidated;	/* the texture cache, this frame */

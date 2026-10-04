@@ -336,6 +336,7 @@ def width(batch: dict) -> float:
 
 
 AT_REST = "S 0 40 1 30 1\nS 1 20 0 18 2\nC 0 5\nI 1 1 0\nN 120 0.0166667\n"
+OPEN = 90   # frames: by 1.5 s the screen has opened
 
 
 class SaveCubesGXStreamTests(unittest.TestCase):
@@ -404,7 +405,7 @@ class SaveCubesGXStreamTests(unittest.TestCase):
                 self.assert_rest(frames[-1])
 
     def test_one_invalidation_a_frame_and_icon_textures(self):
-        frames = self.run_script(AT_REST)
+        frames = self.run_script(AT_REST)[OPEN:]
         for frame in frames:
             self.assertEqual(frame["invalidations"], 1)
             for texture in frame["textures"]:
@@ -435,7 +436,7 @@ class SaveCubesGXStreamTests(unittest.TestCase):
 
     def test_what_draws_nothing(self):
         # A stack with no grid draws no cube, only why.
-        frames = self.run_script("S 0 0 0 0 1\nS 1 16 0 5 2\nC 1 0\nN 30 0.0166667\n")
+        frames = self.run_script(f"S 0 0 0 0 1\nS 1 16 0 5 2\nC 1 0\nN {OPEN} 0.0166667\n")
         frame = frames[-1]
         notes = [e for e in frame["events"] if e[0] == "S" and "Nothing is inserted" in e[1]]
         self.assertEqual(len(notes), 1)
@@ -453,7 +454,7 @@ class SaveCubesGXStreamTests(unittest.TestCase):
     def test_the_info_bar(self):
         base = "S 0 40 1 30 1\nS 1 20 0 18 2\nC 0 5\n"
         def shown(info):
-            frame = self.run_script(base + info + "N 2 0.0166667\n")[-1]
+            frame = self.run_script(base + info + f"N {OPEN} 0.0166667\n")[-1]
             return [e for e in frame["events"] if e[0] in ("P", "G")], \
                 any(e[0] == "S" and "Sky Harbor" in e[1] for e in frame["events"])
         # The banner; a save without one shows its icon in its place, as the
@@ -473,7 +474,7 @@ class SaveCubesGXStreamTests(unittest.TestCase):
         # Both stacks full and scrolling, Menu Widescreen, the focus grown
         # and an info bar: the cubes, boxes and arrows a frame sends.
         frames = self.run_script("W 1\nS 0 128 4 127 1\nS 1 128 4 127 2\nC 0 17\nI 1 1 0\n"
-                                 "N 60 0.0166667\nS 0 128 5 127 1\nS 1 128 5 127 2\nC 0 21\n"
+                                 "N 120 0.0166667\nS 0 128 5 127 1\nS 1 128 5 127 2\nC 0 21\n"
                                  "N 6 0.0166667\n")
         frame = frames[-1]
         vertices = sum(len(b["vertices"]) for b in frame["batches"])
@@ -495,7 +496,7 @@ class SaveCubesGXStreamTests(unittest.TestCase):
             "the cache cleared for every icon": (
                 fbm, "\t\tGX_LoadTexObj(&draw->icon, GX_TEXMAP0);",
                 "\t\tGX_InvalidateTexAll();\n\t\tGX_LoadTexObj(&draw->icon, GX_TEXMAP0);"),
-            "the focus drawn at rest": (pure, "floats[n++] = focused || g > CUBES_FLOATING;",
+            "the focus drawn at rest": (pure, "floats[n++] = focused || g > CUBES_FLOATING || mine;",
                                         "floats[n++] = false;"),
             "icons through Menu Color": (
                 fbm, "_SaveCubesVertex(quad->x[v], quad->y[v], white, s[v], t[v]);",
