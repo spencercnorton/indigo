@@ -149,7 +149,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # smoke: every menu, then the probe launched as an app. game: the
+          # smoke: every menu, Memory Cards with a memory card in each slot
+          # among them, then the probe launched as an app. game: the
           # Library to a game's launch, the probe launched as a game. The
           # console's region and cable decide the video mode: PAL composite
           # 576i, NTSC composite 480i, a component cable 480p. dvd boots with

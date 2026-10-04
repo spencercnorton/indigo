@@ -18,6 +18,13 @@ while a crash, a hang, a black screen or a broken control does:
     comes back to the details, and B again to the game;
   - on the Source face, Change Source opens the device picker, RIGHT shows
     another device and B leaves it;
+  - on the System face, Memory Cards opens with a memory card in each slot
+    (GCI folders of made-up saves, ../qa/make_test_saves.py): RIGHT and LEFT
+    move from save to save and across to Slot B and back, DOWN scrolls a
+    stack, R and L swap a stack for another place and back, A opens the box
+    beside a save and B closes it, Copy puts the save on Slot B (its folder
+    gains the file, the same blocks), Move is dimmed for it then, Erase
+    removes it from Slot A's folder, and B leaves;
   - on the Settings face, Setup > Console > Apps Face Off takes Apps off the
     cube (System's next face is Library) and On puts it back;
   - Setup > Console > Cube Classic lays the faces out as the GameCube's menu
@@ -74,8 +81,10 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(1, str(Path(__file__).resolve().parents[1] / "qa"))
 import card  # noqa: E402
 import dsu_pad  # noqa: E402
+import make_test_saves  # noqa: E402
 
 WIDTH, HEIGHT = 640, 480
 # Where text the route reads sits (x0, y0, x1, y1): the face's name under the
@@ -88,6 +97,25 @@ TITLE_BOX = (200, 338, 440, 362)
 SETTINGS_TITLE_BOX = (30, 46, 230, 80)
 COUNTER_BOX = (560, 120, 610, 142)  # Settings' "row / rows", shown while a row has the focus
 DETAIL_TITLE_BOX = (264, 106, 600, 134)
+# Memory Cards: the focused save's name in the info bar, each stack's header
+# ("A  Open" and its free blocks), the buttons along the bottom, where the
+# arrow above the left stack shows once it scrolls, and the maroon box that
+# says an operation is done. Its words are bold and close together, so two
+# saves' names can overlap by more than half: they are told apart by
+# same_text, not overlap.
+INFO_BOX = (164, 377, 590, 396)
+LEFT_HEADER_BOX, RIGHT_HEADER_BOX = (66, 56, 222, 92), (354, 56, 510, 92)
+FOOTER_BOX = (30, 442, 610, 464)
+UP_ARROW_BOX = (169, 96, 184, 112)
+MESSAGE_BOX = (160, 200, 480, 250)
+MESSAGE_COLOUR = (120, 16, 36)  # the same under every Menu Color
+MESSAGE_PIXELS = 9000  # of the box's 16000: its fill, not a red icon or two behind it
+ARROW_PIXELS = 20
+# A save's art loads once nothing has been held for 15 VSyncs: a moment
+# after a step, its comment replaces its file name in the info bar.
+ART_SECONDS = 0.8
+# Dolphin writes a GCI folder's files a second after the card's last write.
+FLUSH_SECONDS = 10
 TEXT_LEVEL = 160          # label text is bright; the waves behind it are not
 SAME, DIFFERENT = 0.85, 0.5  # intersection over union of two label masks
 # Waits count the console's own seconds (Emulator.emulated) when Dolphin
@@ -167,6 +195,8 @@ CABLES = {"composite": False, "component": True}
 # which serves its boot.iso as the disc (DOLPHIN_GCLOADER, patch 0006).
 STORAGES = {"dvd": None, "sd2sp2": "SerialPort2", "sdgecko-b": "SlotB", "gcloader": None}
 SD_CARD_DEVICE = 15
+# Dolphin's memory card that is a folder of .gci files, one per save.
+GCI_FOLDER_DEVICE = 8
 # Rows on Settings' Storage page: DOWN past them reaches Save & Exit.
 STORAGE_ROWS = 7
 # Lit pixels in COUNTER_BOX that are its digits rather than nothing (19 for "1 / 7").
@@ -194,6 +224,43 @@ class Failed(Exception):
 
 class Broken(Exception):
     """The harness or the emulator could not do its part."""
+
+
+def dolphin_ini(storage: str = "dvd", card: Path | None = None, cards: Path | None = None) -> str:
+    """Dolphin.ini: the SD card where the storage puts it, and with cards a
+    GCI folder memory card in each slot, cards/A and cards/B."""
+    core = ""
+    if STORAGES[storage]:
+        core += f"{STORAGES[storage]} = {SD_CARD_DEVICE}\nSP2SDCardImage = {card}\n"
+    if cards:
+        core += (f"SlotA = {GCI_FOLDER_DEVICE}\nSlotB = {GCI_FOLDER_DEVICE}\n"
+                 f"GCIFolderAPathOverride = {cards / 'A'}\nGCIFolderBPathOverride = {cards / 'B'}\n")
+    return DOLPHIN_INI.replace("[Core]\n", "[Core]\n" + core, 1)
+
+
+def saves(folder: Path) -> set[str]:
+    """The saves in a GCI folder memory card, by file name."""
+    return {path.name for path in folder.glob("*.gci")}
+
+
+def same_save(original: bytes, copy: bytes) -> bool:
+    """A .gci and its copy on another card: the same game, maker and name in
+    the entry, and the same blocks. The rest of the entry (where its blocks
+    start on the card, when it was written) is the card's own."""
+    return (len(copy) == len(original) > 64 and copy[0:6] == original[0:6] and
+            copy[8:40] == original[8:40] and copy[64:] == original[64:])
+
+
+def message_up(rgb: np.ndarray) -> bool:
+    """Memory Cards' maroon box over the middle of the screen."""
+    x0, y0, x1, y1 = MESSAGE_BOX
+    return coloured(rgb[y0:y1, x0:x1], MESSAGE_COLOUR) >= MESSAGE_PIXELS
+
+
+def arrow_up(gray: np.ndarray) -> bool:
+    """The arrow above Memory Cards' left stack: rows lie above its window."""
+    x0, y0, x1, y1 = UP_ARROW_BOX
+    return int((gray[y0:y1, x0:x1] >= 200).sum()) >= ARROW_PIXELS
 
 
 def text_mask(frame: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX) -> np.ndarray:
@@ -342,15 +409,11 @@ class Deadline:
 class Emulator:
     def __init__(self, dol: Path, disc: Path | None, work: Path, out: Path, region: str = "pal",
                  storage: str = "dvd", card: Path | None = None, cable: str = "composite",
-                 faults: str | None = None) -> None:
+                 faults: str | None = None, cards: Path | None = None) -> None:
         self.out = out
         self.user = work / "dolphin"
         (self.user / "Config").mkdir(parents=True)
-        ini = DOLPHIN_INI
-        if STORAGES[storage]:
-            ini = ini.replace("[Core]\n", f"[Core]\n{STORAGES[storage]} = {SD_CARD_DEVICE}\n"
-                                          f"SP2SDCardImage = {card}\n", 1)
-        (self.user / "Config/Dolphin.ini").write_text(ini)
+        (self.user / "Config/Dolphin.ini").write_text(dolphin_ini(storage, card, cards))
         # Swiss's own debug output (its OSReport lines) goes to dolphin.log.
         (self.user / "Config/Logger.ini").write_text(
             "[Logs]\nOSREPORT = True\nPOWERPC = True\n[Options]\nVerbosity = 1\nWriteToConsole = True\nWriteToFile = False\n")
@@ -441,8 +504,10 @@ class Route:
     """Steps through the menus and records every checkpoint."""
 
     def __init__(self, emulator: Emulator, out: Path, probe: bool = False, fresh_card: bool = False,
-                 cable: str = "composite", region: str = "pal", fragments: int = 0) -> None:
+                 cable: str = "composite", region: str = "pal", fragments: int = 0,
+                 cards: Path | None = None) -> None:
         self.emulator = emulator
+        self.cards = cards  # the memory cards' GCI folders, cards/A and cards/B
         self.fragments = fragments  # the pieces the probe's game is in on the card
         self.cable = cable
         self.region = region
@@ -647,7 +712,8 @@ class Route:
                 self.classic_cube(faces)
                 self.library_folders(faces)
             else:
-                inside = {0: self.browse_library, 1: self.change_source}.get(n)
+                inside = {0: self.browse_library, 1: self.change_source,
+                          3: self.memory_cards if self.cards else None}.get(n)
                 self.open_and_close(face, n, inside)
             mask, _ = self.press_until("RIGHT", like=faces[n + 1])
             self.check("the cube turns on to the next face", mask is not None, face=n + 1)
@@ -1078,6 +1144,189 @@ class Route:
         self.press("B")
         self.check("B leaves the device picker", self.covered(name, TITLE_BOX))
 
+    def text_until(self, box: tuple[int, int, int, int], wanted) -> np.ndarray | None:
+        """Steady text in a box, or none, that wanted(mask) accepts: None when
+        it never comes."""
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        previous = None
+        while not deadline.expired():
+            mask = text_mask(self.gray(), box)
+            if wanted(mask) and previous is not None and same_text(mask, previous):
+                return mask
+            previous = mask if wanted(mask) else None
+            time.sleep(0.15)
+        return None
+
+    def info(self, button: str, like: np.ndarray | None = None,
+             unlike: np.ndarray | None = None) -> np.ndarray | None:
+        """A step in Memory Cards, and the focused save's name it comes to:
+        its comment, once the save's art is read, rather than its file name."""
+        self.press(button)
+        self.pause(ART_SECONDS)
+        return self.text_until(INFO_BOX, lambda mask: has_label(mask) and
+                               (like is None or same_text(mask, like)) and
+                               (unlike is None or not same_text(mask, unlike)))
+
+    def differs(self, reference: np.ndarray, box: tuple[int, int, int, int]) -> bool:
+        """Waits for the text in a box to be other words than reference, or none."""
+        found = self.text_until(box, lambda mask: not same_text(mask, reference)) is not None
+        self.pause(0.5)
+        self.gray()
+        return found
+
+    def message(self, seconds: float = BOOT_SECONDS / 4) -> bool:
+        """Waits for Memory Cards' maroon box: an operation is done."""
+        deadline = Deadline(self.emulator, seconds)
+        while not deadline.expired():
+            self.last_rgb = self.emulator.frame()
+            if message_up(self.last_rgb):
+                return True
+            time.sleep(0.2)
+        return False
+
+    def message_closes(self) -> bool:
+        """Waits for the maroon box to close by itself (2 s)."""
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        while not deadline.expired():
+            self.last_rgb = self.emulator.frame()
+            if not message_up(self.last_rgb):
+                return True
+            time.sleep(0.2)
+        return False
+
+    def folder_changes(self, folder: Path, before: set[str]) -> set[str]:
+        """A memory card's saves once Dolphin has written them to its folder."""
+        deadline = Deadline(self.emulator, FLUSH_SECONDS)
+        while not deadline.expired() and saves(folder) == before:
+            time.sleep(0.25)
+        self.pause(1.0)  # the file whole, not as it is being written
+        return saves(folder)
+
+    def steps(self, buttons: str, seconds: float = 0.6) -> None:
+        for button in buttons.split():
+            self.press(button)
+            self.pause(seconds)
+
+    def memory_cards(self) -> None:
+        """On the System face, DOWN and A open Memory Cards, with a GCI folder
+        memory card in each slot (self.cards: make_test_saves.py's Slot A and
+        Slot B). Slot A's first save has the focus and its name is in the info
+        bar. RIGHT moves along Slot A's first row, a new save each time, and a
+        fourth RIGHT crosses to Slot B: LEFT then comes back to the row's last
+        save, not the bump of a stack's edge, and on to the first. DOWN four
+        times scrolls Slot A's stack (the arrow above it shows), and UP four
+        times comes back. R swaps the right stack for another place and back.
+        A opens the box beside the save, which changes the
+        buttons along the bottom, and B closes it. Move, Copy, Yes copies the
+        save to Slot B: the maroon box says so and closes by itself, and Slot
+        B's folder gains the save, its blocks the same. A on it again opens the
+        box with Move dimmed, as Slot B has it now, and the buttons say why.
+        Erase, then Yes over the No it starts on, erases it, and Slot A's
+        folder no longer has it. L swaps the left stack and back, and B
+        leaves, back to the System face."""
+        slot_a, slot_b = self.cards / "A", self.cards / "B"
+        self.press("DOWN")
+        self.pause(0.6)
+        self.press("A")
+        self.pause(2.0)  # the screen opens, and the saves on it are read
+        first, _ = self.settled_label(box=INFO_BOX)
+        self.shot("memory-cards", self.last_rgb)
+        self.check("A on Memory Cards opens the cube screen, a save's name below it",
+                   first is not None)
+        gray = self.gray()
+        self.check("both stacks show a memory card: a letter, Open and the free blocks",
+                   has_label(text_mask(gray, LEFT_HEADER_BOX)) and
+                   has_label(text_mask(gray, RIGHT_HEADER_BOX)))
+        browsing = text_mask(gray, FOOTER_BOX)
+        seen = [first]
+        for n in (1, 2, 3):
+            mask = self.info("RIGHT", unlike=seen[-1])
+            self.shot(f"memory-cards-right-{n}", self.last_rgb)
+            self.check("RIGHT moves to the next save", mask is not None, step=n)
+            seen.append(mask)
+        crossed = self.info("RIGHT", unlike=seen[-1])
+        self.shot("memory-cards-slot-b", self.last_rgb)
+        self.check("RIGHT from the last column moves to another save",
+                   crossed is not None and not any(same_text(crossed, mask) for mask in seen))
+        self.check("LEFT from Slot B comes back to Slot A's last column, not a stack's edge",
+                   self.info("LEFT", like=seen[3]) is not None)
+        for n in (2, 1, 0):
+            self.check("LEFT goes back a save", self.info("LEFT", like=seen[n]) is not None, to=n)
+        for n in range(4):
+            self.press("DOWN")
+            self.pause(0.6)
+        self.pause(ART_SECONDS)
+        gray = self.gray()
+        self.shot("memory-cards-scrolled", self.last_rgb)
+        self.check("DOWN past the window's last row scrolls the stack: the arrow above it shows",
+                   arrow_up(gray))
+        for n in range(4):
+            self.press("UP")
+            self.pause(0.6)
+        back = self.text_until(INFO_BOX, lambda mask: same_text(mask, first))
+        self.check("UP comes back to the first save, the stack scrolled back", back is not None and
+                   not arrow_up(self.gray()))
+        self.swap("R", RIGHT_HEADER_BOX, "right")
+        self.press("A")
+        opened = self.differs(browsing, FOOTER_BOX)
+        self.shot("memory-cards-box", self.last_rgb)
+        self.check("A on a save opens the box beside it: the buttons below change", opened)
+        menu = text_mask(self.gray(), FOOTER_BOX)
+        self.press("B")
+        closed = self.text_until(FOOTER_BOX, lambda mask: same_text(mask, browsing))
+        self.check("B closes the box", closed is not None)
+        before_b = saves(slot_b)
+        self.steps("A DOWN A")
+        self.shot("memory-cards-copy-to", self.emulator.frame())
+        self.press("A")
+        self.check("Copy, Yes: the maroon box says the save is copied", self.message())
+        self.shot("memory-cards-copied", self.last_rgb)
+        gained = self.folder_changes(slot_b, before_b) - before_b
+        name = next(iter(gained)) if len(gained) == 1 else ""
+        self.check("Slot B's folder gains the save, its blocks the same as on Slot A",
+                   bool(name) and (slot_a / name).exists() and
+                   same_save((slot_a / name).read_bytes(), (slot_b / name).read_bytes()),
+                   gained=sorted(gained))
+        self.check("the maroon box closes by itself", self.message_closes())
+        self.press("A")
+        self.differs(browsing, FOOTER_BOX)
+        reason = text_mask(self.gray(), FOOTER_BOX)
+        self.shot("memory-cards-dimmed", self.last_rgb)
+        self.check("A on the copied save: Move is dimmed, and the buttons say why",
+                   not same_text(reason, menu) and not same_text(reason, browsing))
+        self.press("B")
+        self.text_until(FOOTER_BOX, lambda mask: same_text(mask, browsing))
+        before_a = saves(slot_a)
+        self.steps("A DOWN DOWN A")
+        self.shot("memory-cards-erase", self.emulator.frame())
+        self.steps("UP")
+        self.press("A")
+        self.check("Erase, Yes: the maroon box says the save is erased", self.message())
+        self.shot("memory-cards-erased", self.last_rgb)
+        gone = before_a - self.folder_changes(slot_a, before_a)
+        self.check("the save is gone from Slot A's folder", bool(name) and gone == {name},
+                   gone=sorted(gone))
+        self.check("the maroon box closes by itself", self.message_closes())
+        # Last: with the left stack on an SD card that isn't there, the
+        # focus goes to the right stack, and stays there.
+        self.swap("L", LEFT_HEADER_BOX, "left")
+        left = text_mask(self.gray(), LEFT_HEADER_BOX)
+        self.press("B")
+        self.check("B leaves Memory Cards", self.differs(left, LEFT_HEADER_BOX))
+        self.shot("memory-cards-left", self.last_rgb)
+
+    def swap(self, button: str, box: tuple[int, int, int, int], side: str) -> None:
+        """L or R swaps that side's stack for another place, which changes its
+        header, and again brings its memory card back."""
+        header = text_mask(self.gray(), box)
+        self.press(button)
+        swapped = self.differs(header, box)
+        self.shot(f"memory-cards-{button.lower()}", self.last_rgb)
+        self.check(f"{button} swaps the {side} stack for another place", swapped)
+        self.press(button)
+        again = self.text_until(box, lambda mask: same_text(mask, header))
+        self.check(f"{button} again brings its memory card back", again is not None)
+
     def tour(self) -> None:
         self.smoke()
 
@@ -1164,10 +1413,16 @@ def main(argv: list[str] | None = None) -> int:
             elif disc is None:
                 disc = work / "demo.iso"
                 report["disc"] = card.build(disc, probe=args.probe, foreign=FOREIGN[args.region])
+            # The smoke route opens Memory Cards with a memory card in each
+            # slot, unless an SD Gecko has Slot B.
+            cards = None
+            if args.route in ("smoke", "tour") and args.storage != "sdgecko-b":
+                cards = work / "cards"
+                make_test_saves.write(str(cards))
             emulator = Emulator(dol, disc.resolve() if disc else None, work, args.out, args.region,
-                                args.storage, sd, args.cable, args.sd_faults)
+                                args.storage, sd, args.cable, args.sd_faults, cards)
             route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd) and start is None,
-                          cable=args.cable, region=args.region, fragments=args.fragments)
+                          cable=args.cable, region=args.region, fragments=args.fragments, cards=cards)
             getattr(route, args.route)()
             if args.route == "save":
                 # Power off and on again, with a card that works.

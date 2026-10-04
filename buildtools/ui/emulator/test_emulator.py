@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """The emulator test's own parts, without Dolphin: the disc, the pad, the checks."""
 
+import itertools
 import shutil
 import socket
 import struct
@@ -233,6 +234,102 @@ class Card(unittest.TestCase):
         self.assertNotIn("Menu Widescreen", pairs)
         self.assertTrue(all(not key.startswith("#") for key in pairs))
         self.assertEqual(run.seeded("# Clock=Right\nClock = Off\r\n"), {"Clock": "Off"})
+
+
+class MemoryCards(unittest.TestCase):
+    """The memory cards the smoke route opens Memory Cards with, and what it
+    reads off the screen and the cards' folders."""
+
+    def test_a_gci_folder_card_in_each_slot(self):
+        ini = run.dolphin_ini(cards=Path("/work/cards"))
+        core = ini.split("[Core]\n", 1)[1].split("[", 1)[0]
+        self.assertIn("SlotA = 8\nSlotB = 8\n", core)
+        self.assertIn("GCIFolderAPathOverride = /work/cards/A\n", core)
+        self.assertIn("GCIFolderBPathOverride = /work/cards/B\n", core)
+        both = run.dolphin_ini("sd2sp2", Path("/work/card.img"), Path("/work/cards"))
+        self.assertIn("SerialPort2 = 15\nSP2SDCardImage = /work/card.img\nSlotA = 8\n", both)
+        self.assertNotIn("Slot", run.dolphin_ini("gcloader"))
+        self.assertEqual(run.dolphin_ini(), run.DOLPHIN_INI)
+
+    def test_the_cards_hold_saves_dolphin_lists(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cards = Path(directory)
+            run.make_test_saves.write(str(cards))
+            slot_a, slot_b = run.saves(cards / "A"), run.saves(cards / "B")
+            self.assertEqual((len(slot_a), len(slot_b)), (21, 18))
+            # Slot A's first save in Dolphin's order (by name) isn't on Slot B
+            # already, so the route's Copy of it isn't dimmed.
+            self.assertNotIn(min(slot_a), slot_b)
+            (cards / "A" / min(slot_a)).rename(cards / "A" / (min(slot_a) + ".deleted"))
+            self.assertEqual(len(run.saves(cards / "A")), 20, "an erased save isn't one")
+
+    def test_a_copy_on_another_card_is_the_same_save(self):
+        original = run.make_test_saves.encode(run.make_test_saves.SLOT_A[0], 0)
+        copy = bytearray(original)
+        copy[0x10] ^= 1  # a letter of its name
+        self.assertFalse(run.same_save(original, bytes(copy)))
+        copy = bytearray(original)
+        copy[0x28:0x2C] = b"\x00\x01\x02\x03"  # when it was written, and
+        copy[0x36:0x38] = b"\x00\x40"  # its first block: the card's own
+        self.assertTrue(run.same_save(original, bytes(copy)))
+        copy[64 + 5000] ^= 1
+        self.assertFalse(run.same_save(original, bytes(copy)), "a block that differs")
+        self.assertFalse(run.same_save(original, original[:-1]))
+        other = run.make_test_saves.encode(run.make_test_saves.SLOT_A[1], 0)
+        self.assertFalse(run.same_save(original, other))
+
+    def test_the_message_and_the_arrow_are_found(self):
+        rgb = np.full((run.HEIGHT, run.WIDTH, 3), (35, 25, 60), np.uint8)
+        self.assertFalse(run.message_up(rgb))
+        x0, y0, x1, y1 = run.MESSAGE_BOX
+        icons = rgb.copy()
+        for x in range(x0, x1 - 32, 56):
+            icons[y0:y0 + 32, x:x + 32] = (140, 35, 35)  # a red icon's darker half
+        self.assertFalse(run.message_up(icons))
+        rgb[y0:y1, x0:x1] = (112, 15, 34)  # the maroon box over the cubes
+        rgb[y0 + 18:y0 + 32, x0 + 100:x1 - 100] = 255  # its words
+        self.assertTrue(run.message_up(rgb))
+        gray = np.full((run.HEIGHT, run.WIDTH), 40, np.uint8)
+        self.assertFalse(run.arrow_up(gray))
+        ax0, ay0, ax1, ay1 = run.UP_ARROW_BOX
+        for row in range(9):  # a 14 x 9 triangle, point up
+            middle = (ax0 + ax1) // 2
+            gray[ay0 + 4 + row, middle - row * 7 // 9:middle + row * 7 // 9 + 1] = 255
+        self.assertTrue(run.arrow_up(gray))
+
+    def step(self, frames, unlike):
+        """Route.info, a step in Memory Cards, over scripted frames."""
+        with tempfile.TemporaryDirectory() as directory:
+            emulator = run.Emulator.__new__(run.Emulator)
+            emulator.log = Path(directory) / "dolphin.log"
+            emulator.log.write_text("Booting\n")
+            route = run.Route.__new__(run.Route)
+            route.emulator, presses = emulator, []
+            route.press = presses.append
+            route.pause = lambda seconds: None
+            frames = iter(frames)
+            route.gray = lambda: next(frames)
+            with mock.patch.object(run, "SETTLE_SECONDS", 0.3), mock.patch.object(run.time, "sleep"):
+                found = route.info("RIGHT", unlike=unlike)
+            self.assertEqual(presses, ["RIGHT"])
+            return found
+
+    def test_two_names_in_bold_are_told_apart(self):
+        """Two saves' names in the info bar's bold words can overlap by more
+        than half: a step waits, steady, for other words by same_text."""
+        def words(*spans):
+            gray = np.full((run.HEIGHT, run.WIDTH), 40, np.uint8)
+            for x0, x1 in spans:
+                gray[382:394, x0:x1] = 230
+                gray[386:388, x0:x1:4] = 40
+            return gray
+        copper, snowglobe = words((168, 250)), words((168, 230), (236, 262))
+        first = run.text_mask(copper, run.INFO_BOX)
+        self.assertGreater(run.overlap(first, run.text_mask(snowglobe, run.INFO_BOX)), run.DIFFERENT)
+        arriving = words((168, 200))  # the name as it comes, before it settles
+        found = self.step([copper, arriving, snowglobe, snowglobe], first)
+        self.assertTrue(found is not None and run.same_text(found, run.text_mask(snowglobe, run.INFO_BOX)))
+        self.assertIsNone(self.step(itertools.repeat(copper), first), "the same name never counts")
 
 
 class Pad(unittest.TestCase):

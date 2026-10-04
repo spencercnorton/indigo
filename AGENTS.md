@@ -124,8 +124,9 @@ with a tagged release.
   `buildtools/ci/check_workflows.py` fails CI otherwise. A change to a runner
   image (`buildtools/ci/runner/`) applies from the first run after it merges.
 - **The emulator test reads the screen.** It finds the face's name under the
-  cube and a game's title in the Library and on its details by where they sit
-  (`LABEL_BOX`, `TITLE_BOX`, `DETAIL_TITLE_BOX` in
+  cube, a game's title in the Library and on its details, and Memory Cards'
+  info bar, headers and buttons by where they sit (`LABEL_BOX`, `TITLE_BOX`,
+  `DETAIL_TITLE_BOX`, `INFO_BOX` and the boxes beside it in
   `buildtools/ui/emulator/run.py`); a change that moves them
   updates those boxes, and a change that adds a screen or a control can add a
   step to the route.

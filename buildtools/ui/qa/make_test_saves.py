@@ -306,11 +306,8 @@ def clear(folder: str) -> None:
                 os.remove(os.path.join(root, name))
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
-        print(__doc__, file=sys.stderr)
-        return 2
-    out = sys.argv[1]
+def write(out: str) -> None:
+    """Every file of catalog() under out, the folders cleared first."""
     for folder in ("A", "B", "SD"):
         clear(os.path.join(out, folder))
     when = 1790000000 - EPOCH_2000
@@ -321,6 +318,13 @@ def main() -> int:
         os.makedirs(os.path.dirname(target), exist_ok=True)
         with open(target, "wb") as handle:
             handle.write(body)
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print(__doc__, file=sys.stderr)
+        return 2
+    write(sys.argv[1])
     return 0
 
 

@@ -35,7 +35,9 @@ exception screen as it would on a console. The route:
    back to the IPL's, and Dolphin has no IPL ROM): Indigo
    must say so and come back to the Library once A dismisses it. On the Source
    face, A on Change Source opens the device picker, RIGHT shows another
-   device and B leaves the picker. On the Settings face, Setup › Console › Apps
+   device and B leaves the picker. On the System face, Memory Cards opens
+   with a memory card in each slot: see [Memory Cards](#memory-cards). On the
+   Settings face, Setup › Console › Apps
    Face Off takes Apps off the cube and On puts it back; Setup › Console › Cube
    at Classic lays the faces out as the GameCube's menu does, and the route
    walks it (LEFT goes nowhere from Settings, RIGHT twice is Library then
@@ -162,6 +164,44 @@ still start at Home with its settings, in the colours they chose (a broken
 settings file boots Home too, on the defaults). The second boot's output is
 in `next-boot/`. CI's save job fails writes after 13, the moment of a save
 when only `global.ini.new` is whole on the card.
+
+## Memory Cards
+
+The smoke route plugs a memory card into each slot, as Dolphin's GCI folder
+cards (`SlotA` and `SlotB` = 8): folders of `.gci` files, one per save, made
+afresh for every run by
+[`../qa/make_test_saves.py`](../qa/make_test_saves.py). Every game on them is
+made up and every icon and banner is drawn by the script: Slot A has 21
+saves with every kind of icon a save can have, Slot B 18, so both stacks
+scroll. On the System face, DOWN and A open Memory Cards, and the route
+reads the screen as it does elsewhere: the focused save's name in the info
+bar (`INFO_BOX`), each stack's header, the buttons along the bottom, the
+arrow above a stack that has scrolled, and the maroon box an operation ends
+with. It checks that:
+
+- the screen opens on Slot A's first save, with both cards' headers;
+- RIGHT moves along a row, a different save each time, and from the last
+  column on to Slot B: LEFT then comes back to that column's save, not the
+  bump of a stack's edge, and on back to the first;
+- DOWN past the window's last row scrolls the stack (the arrow above it
+  shows), and UP scrolls it back;
+- R swaps the right stack for another place and back to Slot B, and L,
+  at the end, the left one;
+- A opens the box beside the save, which changes the buttons, and B closes
+  it;
+- Copy and Yes copy the save to Slot B: the maroon box comes and closes by
+  itself, and Slot B's folder gains the save, with the same game, maker and
+  name and the same blocks as on Slot A (Dolphin writes a card's folder a
+  second after the card's last write);
+- A on the copied save then dims Move, Slot B having it, and the buttons
+  say why;
+- Erase, then Yes over the No it starts on, erases the save, and Slot A's
+  folder loses it (Dolphin renames it `.gci.deleted`);
+- B leaves, back to the System face.
+
+On the disc the SD card's stack has no device, so it shows why; in the GC
+Loader job it shows the Save Folder on the card. An SD Gecko in Slot B
+(`--storage sdgecko-b`) leaves the cards and this step out.
 
 ## A GC Loader
 
