@@ -835,7 +835,7 @@ static void testFlight(void)
 	const uiSaveCube_t *cube;
 	float fromX = restX(0, 5), fromY = restY(5, 0);
 	float toX = restX(1, 10), toY = restY(10, 0);
-	float realX = restX(1, 3), realY = restY(3, 0), most = 0.0f;
+	float realX = restX(1, 3), realY = restY(3, 0), most = 0.0f, hz;
 	int floating, count, i;
 
 	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_GO, UI_MOTION_FULL) == 0.6f);
@@ -846,6 +846,30 @@ static void testFlight(void)
 	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_ERASE, UI_SAVE_CUBES_LAND, UI_MOTION_REDUCED) == 0.2f);
 	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_LAND, UI_MOTION_OFF) == 0.0f);
 	assert(UISaveCubes_OpSeconds(UI_SAVE_CUBES_OP_NONE, UI_SAVE_CUBES_GO, UI_MOTION_FULL) == 0.0f);
+
+	/* All the way across, at 50 Hz and 60, the flying cube's icon faces
+	 * the viewer at least half as large as it would unturned: it swings
+	 * its face toward where it goes and never shows its back. */
+	for(hz = 50.0f; hz <= 60.0f; hz += 10.0f) {
+		opStart(UI_MOTION_FULL, 390u);
+		opSet(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_GO, 1, 5, 10);
+		for(i = 0; i <= (int)(0.65f * hz); i++) {
+			uiSaveCubesQuad_t quads[UI_SAVE_CUBES_QUADS];
+			float side;
+			int n;
+
+			count = frame(i ? 1.0f / hz : 0.0f, UI_MOTION_FULL, &floating);
+			cube = opCube(count);
+			assert(cube != NULL && cube->icon != NULL);
+			n = UISaveCubes_Faces(cube, -200.0f, 840.0f, quads);
+			assert(n > 0 && quads[n - 1].role == UI_SAVE_CUBES_ROLE_ICON);
+			side = 2.0f * cube->half * UI_SAVE_CUBES_ICON / UI_SAVE_CUBES_FACE;
+			assert(quadArea(&quads[n - 1]) > 0.5f * side * side);
+			if(i == (int)(0.3f * hz)) {
+				assert(cube->turn[2] > 0.4f);
+			}
+		}
+	}
 
 	/* GO: the copy leaves the focused cube as it is, 1.5x and forward. */
 	opStart(UI_MOTION_FULL, 400u);

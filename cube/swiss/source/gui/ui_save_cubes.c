@@ -56,12 +56,15 @@
 #define CUBES_CASCADE_TIME 0.4f
 #define CUBES_CASCADE_STAGGER 0.03f
 /* Copy and Move: an arc dipping toward the info bar, growing toward the
- * viewer and turning once, then a hover until the card has the save. */
+ * viewer and swinging its face toward where it goes, then a hover until the
+ * card has the save. */
 #define CUBES_FLIGHT 0.6f
 #define CUBES_ARC_DIP 110.0f
 #define CUBES_ARC_FLOOR 400.0f
 #define CUBES_ARC_GROWTH 0.5f
 #define CUBES_ARC_RISE 60.0f
+#define CUBES_ARC_YAW 0.6f		/* radians toward where it goes, mid-flight */
+#define CUBES_ARC_TILT 0.35f		/* down into the dip, then up out of it */
 #define CUBES_HOVER_EASE 0.25f
 #define CUBES_HOVER_GROWTH 0.15f
 #define CUBES_HOVER_PULSE 0.08f
@@ -357,7 +360,8 @@ static float cubesLerp(float a, float b, float amount)
 }
 
 /* sin and cos of an angle within 2 radians, to a thousandth, with no call:
- * the opening's spiral turns every cube by its own angle. */
+ * the opening's spiral turns every cube by its own angle, and a flight's
+ * cube swings. */
 static void cubesTurn(float angle, float *sine, float *cosine)
 {
 	float square = angle * angle;
@@ -374,6 +378,19 @@ static void cubesYaw(float sine, float cosine, float turn[9])
 	turn[0] = cosine; turn[1] = 0.0f; turn[2] = sine;
 	turn[3] = 0.0f; turn[4] = 1.0f; turn[5] = 0.0f;
 	turn[6] = -sine; turn[7] = 0.0f; turn[8] = cosine;
+}
+
+/* A tip of tilt about the across axis (up for more), then a turn of yaw
+ * about the up axis, each within 2 radians. */
+static void cubesSwing(float yaw, float tilt, float turn[9])
+{
+	float sy, cy, sx, cx;
+
+	cubesTurn(yaw, &sy, &cy);
+	cubesTurn(tilt, &sx, &cx);
+	turn[0] = cy; turn[1] = sy * sx; turn[2] = sy * cx;
+	turn[3] = 0.0f; turn[4] = cx; turn[5] = -sx;
+	turn[6] = -sy; turn[7] = cy * sx; turn[8] = cy * cx;
 }
 
 void UISaveCubes_Where(int stack, int cell, float first, float *x, float *y)
@@ -597,14 +614,12 @@ static bool cubesOpPose(const uiSaveCubesMotion_t *motion,
 			pose->z = UI_SAVE_CUBES_LIFT + CUBES_ARC_RISE * rise;
 			pose->scale = cubesLerp(UI_SAVE_CUBES_SELECTED, 1.0f, u) +
 				CUBES_ARC_GROWTH * rise;
-			/* Once round: the double angle's sine and cosine from the
-			 * single's, one call more. */
-			cosine = cosf(CUBES_PI * u);
-			sine = 2.0f * rise * cosine;
-			cosine = 1.0f - 2.0f * rise * rise;
-			pose->yaw = 2.0f * CUBES_PI * u - (u > 0.5f ? 2.0f * CUBES_PI : 0.0f);
-			cubesYaw(sine, cosine, turn);
-			return true;
+			/* Its icon in sight all the way: it swings its face toward
+			 * where it goes, most at the middle, tipped down into the
+			 * dip and up out of it (the double angle's sine from the
+			 * single's, one call more). */
+			pose->yaw = (toX < homeX ? -CUBES_ARC_YAW : CUBES_ARC_YAW) * rise;
+			pose->tilt = -2.0f * CUBES_ARC_TILT * rise * cosf(CUBES_PI * u);
 		}
 		else {
 			/* Hovering over the cell until the card answers, easing into
@@ -629,6 +644,7 @@ static bool cubesOpPose(const uiSaveCubesMotion_t *motion,
 		pose->scale = toCell >= 0 ? cubesLerp(from->scale, 1.0f, u) :
 			from->scale * (1.0f - u);
 		pose->yaw = from->yaw * (1.0f - u);
+		pose->tilt = from->tilt * (1.0f - u);
 		if(pose->scale <= 0.0f) {
 			return false;
 		}
@@ -650,9 +666,9 @@ static bool cubesOpPose(const uiSaveCubesMotion_t *motion,
 		pose->z = cubesLerp(from->z, UI_SAVE_CUBES_LIFT, u);
 		pose->scale = cubesLerp(from->scale, UI_SAVE_CUBES_SELECTED, u);
 		pose->yaw = from->yaw * (1.0f - u);
+		pose->tilt = from->tilt * (1.0f - u);
 	}
-	cubesSmallTurn(pose->yaw, &sine, &cosine);
-	cubesYaw(sine, cosine, turn);
+	cubesSwing(pose->yaw, pose->tilt, turn);
 	return true;
 }
 

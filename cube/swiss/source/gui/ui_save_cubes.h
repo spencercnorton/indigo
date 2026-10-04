@@ -180,9 +180,9 @@ typedef struct {
 } uiSaveCubesGrid_t;
 
 /* Where a flying or erased cube is: scale is of a save's cube, yaw its turn
- * about the up axis. */
+ * about the up axis, tilt its tip about the across axis. */
 typedef struct {
-	float x, y, z, scale, yaw;
+	float x, y, z, scale, yaw, tilt;
 } uiSaveCubesPose_t;
 
 typedef struct {
