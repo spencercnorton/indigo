@@ -532,6 +532,7 @@ class GlassLightTests(unittest.TestCase):
             "drawGlassReflection(&raster, corners, 8, 3, outer);\n\trestoreCubeRaster();",
             "drawGlassBloom(",
             "loadCubeProjection();\n\t\trestoreCubeRaster();",
+            "drawFaceShadows(seconds, animated, clock, pad, icons, &raster, strength);",
             "drawFaceIcons(seconds, animated, clock, pad, icons, &raster);",
             "drawGlassRim(&shellOutline, strength);")]
         self.assertEqual(order, sorted(order),
