@@ -21,7 +21,7 @@ while a crash, a hang, a black screen or a broken control does:
   - on the System face, Memory Cards opens with a memory card in each slot
     (GCI folders of made-up saves, ../qa/make_test_saves.py): RIGHT and LEFT
     move from save to save and across to Slot B and back, DOWN scrolls a
-    stack, R and L swap a stack for another place and back, A opens the box
+    stack, R and L choose a named storage place and back, A opens the box
     beside a save and B closes it, Copy puts the save on Slot B (its folder
     gains the file, the same blocks), Move is dimmed for it then, Erase
     removes it from Slot A's folder, and B leaves;
@@ -54,9 +54,13 @@ zip's own ipl.dol. A new card has no settings yet, so Indigo starts in
 Settings and the route saves them first; afterwards it reads back from the
 card what Indigo wrote there.
 
-usage: run.py DOL --out DIR [--route smoke|tour|game] [--probe DOL] [--region pal|pal60|ntsc]
+The virtual-cards route leaves both physical slots empty, browses a public
+synthetic RAW image on SD and exports a GCI into the other SD column. The
+actual exported payload and unchanged RAW bytes are checked on the FAT image.
+
+usage: run.py DOL --out DIR [--route smoke|tour|game|save|virtual-cards] [--probe DOL] [--region pal|pal60|ntsc]
               [--cable composite|component]
-              [--storage dvd|sd2sp2|sdgecko-b --card-zip ZIP] [--disc ISO]
+              [--storage dvd|sd2sp2|sdgecko-b|gcloader --card-zip ZIP] [--disc ISO]
 Writes DIR/report.json, DIR/summary.md, DIR/sheet.png (every checkpoint),
 the checkpoint pictures and Dolphin's output. Exit 0: passed. 1: Indigo
 failed a check. 2: the harness or the emulator could not run.
@@ -226,7 +230,8 @@ class Broken(Exception):
     """The harness or the emulator could not do its part."""
 
 
-def dolphin_ini(storage: str = "dvd", card: Path | None = None, cards: Path | None = None) -> str:
+def dolphin_ini(storage: str = "dvd", card: Path | None = None, cards: Path | None = None,
+                empty_slots: bool = False) -> str:
     """Dolphin.ini: the SD card where the storage puts it, and with cards a
     GCI folder memory card in each slot, cards/A and cards/B."""
     core = ""
@@ -235,6 +240,8 @@ def dolphin_ini(storage: str = "dvd", card: Path | None = None, cards: Path | No
     if cards:
         core += (f"SlotA = {GCI_FOLDER_DEVICE}\nSlotB = {GCI_FOLDER_DEVICE}\n"
                  f"GCIFolderAPathOverride = {cards / 'A'}\nGCIFolderBPathOverride = {cards / 'B'}\n")
+    elif empty_slots:
+        core += "SlotA = 0\nSlotB = 0\n"
     return DOLPHIN_INI.replace("[Core]\n", "[Core]\n" + core, 1)
 
 
@@ -409,11 +416,12 @@ class Deadline:
 class Emulator:
     def __init__(self, dol: Path, disc: Path | None, work: Path, out: Path, region: str = "pal",
                  storage: str = "dvd", card: Path | None = None, cable: str = "composite",
-                 faults: str | None = None, cards: Path | None = None) -> None:
+                 faults: str | None = None, cards: Path | None = None,
+                 empty_slots: bool = False) -> None:
         self.out = out
         self.user = work / "dolphin"
         (self.user / "Config").mkdir(parents=True)
-        (self.user / "Config/Dolphin.ini").write_text(dolphin_ini(storage, card, cards))
+        (self.user / "Config/Dolphin.ini").write_text(dolphin_ini(storage, card, cards, empty_slots))
         # Swiss's own debug output (its OSReport lines) goes to dolphin.log.
         (self.user / "Config/Logger.ini").write_text(
             "[Logs]\nOSREPORT = True\nPOWERPC = True\n[Options]\nVerbosity = 1\nWriteToConsole = True\nWriteToFile = False\n")
@@ -505,9 +513,10 @@ class Route:
 
     def __init__(self, emulator: Emulator, out: Path, probe: bool = False, fresh_card: bool = False,
                  cable: str = "composite", region: str = "pal", fragments: int = 0,
-                 cards: Path | None = None) -> None:
+                 cards: Path | None = None, storage: str = "dvd") -> None:
         self.emulator = emulator
         self.cards = cards  # the memory cards' GCI folders, cards/A and cards/B
+        self.storage = storage
         self.fragments = fragments  # the pieces the probe's game is in on the card
         self.cable = cable
         self.region = region
@@ -1307,8 +1316,7 @@ class Route:
         self.check("the save is gone from Slot A's folder", bool(name) and gone == {name},
                    gone=sorted(gone))
         self.check("the maroon box closes by itself", self.message_closes())
-        # Last: with the left stack on an SD card that isn't there, the
-        # focus goes to the right stack, and stays there.
+        # The left storage menu also selects SD, then restores Slot A.
         self.swap("L", LEFT_HEADER_BOX, "left")
         left = text_mask(self.gray(), LEFT_HEADER_BOX)
         self.press("B")
@@ -1316,16 +1324,104 @@ class Route:
         self.shot("memory-cards-left", self.last_rgb)
 
     def swap(self, button: str, box: tuple[int, int, int, int], side: str) -> None:
-        """L or R swaps that side's stack for another place, which changes its
-        header, and again brings its memory card back."""
+        """Choose SD by name with L or R, then restore that side's card.
+        Each menu starts on its current place: A, B, SD in that order."""
         header = text_mask(self.gray(), box)
         self.press(button)
+        self.pause(0.3)
+        self.shot(f"memory-cards-{button.lower()}-storage", self.emulator.frame())
+        if self.storage == "dvd":
+            # This route has no configuration SD device. SD is named but
+            # dimmed, with its reason; A must not replace a working card.
+            self.steps("DOWN" if button == "R" else "DOWN DOWN")
+            self.press("A")
+            self.pause(0.3)
+            self.check(f"{button}, unavailable SD leaves the {side} card in place",
+                       same_text(text_mask(self.gray(), box), header))
+            self.shot(f"memory-cards-{button.lower()}-sd-unavailable", self.last_rgb)
+            self.press("B")
+            self.check("B cancels the storage menu with its card still shown",
+                       self.text_until(box, lambda mask: same_text(mask, header)) is not None)
+            return
+        self.steps("DOWN A" if button == "R" else "DOWN DOWN A")
         swapped = self.differs(header, box)
         self.shot(f"memory-cards-{button.lower()}", self.last_rgb)
-        self.check(f"{button} swaps the {side} stack for another place", swapped)
+        self.check(f"{button}, SD card chooses the {side} stack's storage", swapped)
         self.press(button)
+        self.steps("UP A" if button == "R" else "UP UP A")
         again = self.text_until(box, lambda mask: same_text(mask, header))
-        self.check(f"{button} again brings its memory card back", again is not None)
+        self.check(f"{button}, Slot {'B' if button == 'R' else 'A'} brings its memory card back",
+                   again is not None)
+
+    def virtual_cards(self) -> None:
+        """No physical cards: both columns start on SD, one opens a RAW image
+        and exports a save through Copy into the other's SD folder."""
+        home = self.boot()
+        faces = [home]
+        for n in range(1, 4):
+            faces.append(self.turn(faces, "RIGHT", f"virtual-cards-home-right-{n}"))
+        self.press("A")
+        self.check("A opens System", self.covered(faces[-1]))
+        self.steps("DOWN A")
+        self.pause(2.0)
+        left = text_mask(self.gray(), LEFT_HEADER_BOX)
+        right = text_mask(self.gray(), RIGHT_HEADER_BOX)
+        self.shot("virtual-cards-sd", self.last_rgb)
+        self.check("empty physical slots open SD storage in both columns",
+                   has_label(left) and has_label(right) and self.cards is None)
+        self.press("R")
+        self.pause(0.3)
+        self.shot("virtual-cards-storage-menu", self.emulator.frame())
+        self.press("A")  # keep the right column on its currently selected SD
+        self.check("choosing right storage keeps both SD folders",
+                   same_text(text_mask(self.gray(), LEFT_HEADER_BOX), left) and
+                   same_text(text_mask(self.gray(), RIGHT_HEADER_BOX), right))
+        # The source focus must stay on the left after choosing right storage.
+        self.press("A")  # the only SD item is Demo Card.raw
+        self.check("A opens the SD card's RAW image", self.differs(left, LEFT_HEADER_BOX))
+        self.pause(ART_SECONDS)
+        first, _ = self.settled_label(box=INFO_BOX)
+        self.check("the RAW card shows a save's comment", first is not None)
+        self.shot("virtual-cards-raw", self.last_rgb)
+        self.check("opening RAW on the left keeps the right SD folder",
+                   same_text(text_mask(self.gray(), RIGHT_HEADER_BOX), right))
+        second = self.info("RIGHT", unlike=first)
+        self.check("RIGHT browses another save in RAW", second is not None)
+        again = self.info("LEFT", like=first)
+        self.check("LEFT returns to the RAW save to export", again is not None)
+        self.press("A")  # read-only RAW starts on Copy
+        self.pause(0.3)
+        self.shot("virtual-cards-copy-menu", self.emulator.frame())
+        self.press("A")
+        self.pause(0.3)
+        self.shot("virtual-cards-copy-to-sd", self.emulator.frame())
+        self.press("A")
+        self.check("Copy exports RAW's save to the SD folder", self.message())
+        self.shot("virtual-cards-exported", self.last_rgb)
+        self.check("the export message closes by itself", self.message_closes())
+        self.press("B")
+        back = self.text_until(LEFT_HEADER_BOX, lambda mask: same_text(mask, left))
+        self.check("B closes RAW to its containing SD folder", back is not None)
+        self.check("the other SD column keeps its folder after export",
+                   same_text(text_mask(self.gray(), RIGHT_HEADER_BOX), right))
+        self.shot("virtual-cards-back-to-sd", self.last_rgb)
+        self.press("B")
+        self.check("B leaves Memory Cards from the SD root", self.differs(left, LEFT_HEADER_BOX))
+
+    def virtual_card_checks(self, image: Path) -> None:
+        """The actual FAT bytes, after navigating and exporting in Indigo."""
+        original, gcis = make_test_saves.virtual_card()
+        folder = make_test_saves.SAVE_FOLDER
+        raw = card.read_card(image, f"{folder}/{make_test_saves.RAW_CARD_NAME}")
+        exported = card.read_card(image, f"{folder}/{make_test_saves.RAW_EXPORT_NAME}")
+        self.check("the source RAW image is byte-identical after browsing and export", raw == original,
+                   bytes=len(raw) if raw is not None else None)
+        self.check("the exported GCI has the selected identity and exact BAT-ordered payload",
+                   exported is not None and same_save(gcis[0], exported),
+                   file=make_test_saves.RAW_EXPORT_NAME,
+                   bytes=len(exported) if exported is not None else None)
+        if exported is not None:
+            (self.out / "virtual-card-export.gci").write_bytes(exported)
 
     def tour(self) -> None:
         self.smoke()
@@ -1362,7 +1458,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dol", type=Path)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--route", choices=("smoke", "tour", "game", "save"), default="smoke")
+    parser.add_argument("--route", choices=("smoke", "tour", "game", "save", "virtual-cards"), default="smoke")
     parser.add_argument("--probe", type=Path, help="the probe DOL (probe/), launched as an app and a game")
     parser.add_argument("--region", choices=tuple(REGIONS), default="pal")
     parser.add_argument("--storage", choices=tuple(STORAGES), default="dvd")
@@ -1385,6 +1481,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("the save route changes settings a card starts with: give --settings")
     if args.fragments and not (args.card_zip and args.probe and args.route == "game"):
         parser.error("--fragments splits the probe's game on the SD card for the game route")
+    if args.route == "virtual-cards" and args.storage not in ("gcloader", "sd2sp2"):
+        parser.error("virtual-cards needs an SD card in GC Loader or SD2SP2, with both slots empty")
     start = (SETTINGS / f"{args.settings}.ini").read_text() if args.settings else None
     args.out.mkdir(parents=True, exist_ok=True)
     report: dict[str, object] = {"schema": "indigo.emulator-test.v1", "route": args.route,
@@ -1402,7 +1500,8 @@ def main(argv: list[str] | None = None) -> int:
                 sd = work / "card.img"
                 report["card"] = card.build_card(sd, args.card_zip, probe=args.probe,
                                                  foreign=FOREIGN[args.region], settings=start,
-                                                 boot_iso=args.storage == "gcloader", fragments=args.fragments)
+                                                 boot_iso=args.storage == "gcloader", fragments=args.fragments,
+                                                 virtual_cards=args.route == "virtual-cards")
                 if args.storage == "gcloader":  # the drive's disc until a game's is set
                     disc = work / "boot.iso"
                     disc.write_bytes(card.read_card(sd, "boot.iso"))
@@ -1420,10 +1519,12 @@ def main(argv: list[str] | None = None) -> int:
                 cards = work / "cards"
                 make_test_saves.write(str(cards))
             emulator = Emulator(dol, disc.resolve() if disc else None, work, args.out, args.region,
-                                args.storage, sd, args.cable, args.sd_faults, cards)
+                                args.storage, sd, args.cable, args.sd_faults, cards,
+                                empty_slots=args.route == "virtual-cards")
             route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd) and start is None,
-                          cable=args.cable, region=args.region, fragments=args.fragments, cards=cards)
-            getattr(route, args.route)()
+                          cable=args.cable, region=args.region, fragments=args.fragments, cards=cards,
+                          storage=args.storage)
+            getattr(route, args.route.replace("-", "_"))()
             if args.route == "save":
                 # Power off and on again, with a card that works.
                 emulator.close()
@@ -1434,6 +1535,8 @@ def main(argv: list[str] | None = None) -> int:
                 route.emulator, route.pad = emulator, emulator.pad
                 route.boot_again()
             elif sd:
+                if args.route == "virtual-cards":
+                    route.virtual_card_checks(sd)
                 route.card_checks(sd, args.route, seeded(start) if start else None)
         except Failed as failure:
             status = 1

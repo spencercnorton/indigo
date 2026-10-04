@@ -1,5 +1,18 @@
 # Indigo development journal
 
+## 2026-10-04 — Virtual card emulator coverage and guide captures
+
+A dedicated CI route boots the SD package with both physical slots empty,
+browses a public synthetic RAW image and exports a fragmented save into the
+other SD column. FAT readback verifies the full save and unchanged image.
+The named L/R menus preserve the selected source; both physical slot routes
+and invalid image fallback have production-function regressions.
+
+The no-card workflow passed 22 emulator preview checks. Updated SD, virtual
+card and storage chooser guide pictures come from that actual Dolphin build;
+older physical-card pictures still show the previous header controls. The
+combined final console test is awaiting its frozen CI artifact.
+
 ## 2026-10-04 — SD virtual cards and storage selection
 
 Console testing succeeded overall but found an empty SD save view and hard

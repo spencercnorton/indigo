@@ -61,7 +61,7 @@ probe's game and launches it from its details: the probe must see the game's
 own disc ID, the 24 MB a game is promised, the music stopped and memory
 quiet.
 
-CI runs six jobs, the first of them the required **Emulator** check:
+CI runs seven jobs, the first of them the required **Emulator** check:
 
 | Job | Console | Video | Storage |
 | --- | --- | --- | --- |
@@ -69,6 +69,7 @@ CI runs six jobs, the first of them the required **Emulator** check:
 | game, PAL, component | PAL, component | 480p | disc |
 | smoke, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the card with `non-default.ini` |
 | game, NTSC, SD2SP2 | NTSC, composite | 480i | SD2SP2, a new card |
+| virtual cards, NTSC, GC Loader | NTSC, component | 480p | GC Loader, both memory-card slots empty |
 | save, NTSC, SD2SP2, failing card | NTSC, composite | 480i | SD2SP2, writes failing after 13 |
 | game, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the game in 40 pieces |
 
@@ -185,8 +186,10 @@ with. It checks that:
   bump of a stack's edge, and on back to the first;
 - DOWN past the window's last row scrolls the stack (the arrow above it
   shows), and UP scrolls it back;
-- R swaps the right stack for another place and back to Slot B, and L,
-  at the end, the left one;
+- R opens the named storage menu; DOWN and A choose SD, then R, UP and A
+  restore Slot B. L, DOWN twice and A choose SD on the left, then L, UP
+  twice and A restore Slot A. On the disc, SD has no configuration device:
+  it is dimmed, A keeps the card displayed, and B cancels the menu;
 - A opens the box beside the save, which changes the buttons, and B closes
   it;
 - Copy and Yes copy the save to Slot B: the maroon box comes and closes by
@@ -202,6 +205,21 @@ with. It checks that:
 On the disc the SD card's stack has no device, so it shows why; in the GC
 Loader job it shows the Save Folder on the card. An SD Gecko in Slot B
 (`--storage sdgecko-b`) leaves the cards and this step out.
+
+The **virtual-cards route** (`--route virtual-cards --storage gcloader`, or
+`sd2sp2`, with `--card-zip`) leaves both physical slots empty explicitly.
+The release zip's SD image also holds `swiss/saves/Demo Card.raw`, a 59-block
+memory-card image made by the same public demonstration generator. It has
+two fictitious saves, with generated icon/banner art; its first save's
+blocks are deliberately separated at blocks 5 and 9.
+
+Memory Cards must start with both columns on SD. A opens the RAW image in
+the left column; RIGHT and LEFT browse its saves, and the right column keeps
+its own SD folder. Copy exports the selected save as a GCI there. The route
+reads the actual FAT file back and checks its game, maker, name and every
+payload byte in BAT order, then checks the entire RAW image is unchanged.
+B closes the image to its containing folder and B again leaves Memory Cards.
+The artifact keeps the exported demonstration GCI and pictures of the route.
 
 ## A GC Loader
 

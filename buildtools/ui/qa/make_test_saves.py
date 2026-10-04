@@ -49,6 +49,8 @@ BANNER_CI8, BANNER_RGB5A3 = 1, 2
 BOUNCE = 0x04             # banner_fmt's bit for playing the frames back again
 PUBLIC, NOCOPY, NOMOVE = 0x04, 0x08, 0x10
 SAVE_FOLDER = "swiss/saves"
+RAW_CARD_NAME = "Demo Card.raw"
+RAW_EXPORT_NAME = "ZZ-ZRWE-Demo Save.gci"
 
 
 @dataclass
@@ -209,6 +211,50 @@ def encode(save: Save, when: int) -> bytes:
         save.name.encode().ljust(32, b"\0"), when, save.icon_addr,
         formats, speeds, save.permissions, 0, 0, blocks, 0xFFFF, 0)
     return entry + bytes(data)
+
+
+def virtual_card() -> tuple[bytes, tuple[bytes, bytes]]:
+    """A public 59-block RAW card and its two synthetic GCI saves.
+
+    The first save's two blocks live at 5 and 9, with the second at 6:
+    exporting it must follow the BAT chain, not assume contiguous data.
+    Both redundant directories and BATs have real checksums. The art comes
+    from this generator, with fictitious game/maker codes and save comments.
+    """
+    gci = (encode(Save("ZRWE", "Demo Save", ("Copper Archive", "SD card image"),
+                       banner=BANNER_RGB5A3, frames=((RGB5A3, 2), (RGB5A3, 3))), 1),
+           encode(Save("ZRVE", "Other Save", ("Moonlit Lake", "Synthetic save"),
+                       banner=0, frames=(), icon_addr=NO_ART), 2))
+    chains = ((5, 9), (6,))
+    header, directory = bytearray(b"\xff" * BLOCK), bytearray(b"\xff" * BLOCK)
+    bat = bytearray(BLOCK)
+    struct.pack_into(">HH", header, 0x22, 4, 0)  # 4 Mbit, Western text
+    struct.pack_into(">H", directory, 0x1FFA, 0)
+    struct.pack_into(">HHH", bat, 4, 0, 59 - sum(map(len, chains)), 9)
+    image = bytearray(64 * BLOCK)
+    for index, (body, chain) in enumerate(zip(gci, chains)):
+        if len(body) != 64 + len(chain) * BLOCK:
+            raise ValueError("the synthetic save no longer fits its RAW chain")
+        entry = bytearray(body[:64])
+        struct.pack_into(">H", entry, 0x36, chain[0])
+        directory[index * 64:(index + 1) * 64] = entry
+        for ordinal, physical in enumerate(chain):
+            following = chain[ordinal + 1] if ordinal + 1 < len(chain) else 0xFFFF
+            struct.pack_into(">H", bat, physical * 2, following)
+            image[physical * BLOCK:(physical + 1) * BLOCK] = body[64 + ordinal * BLOCK:64 + (ordinal + 1) * BLOCK]
+
+    def checksum(block: bytearray, start: int, end: int, at: int) -> None:
+        words = struct.unpack(f">{(end - start) // 2}H", block[start:end])
+        value = sum(words) & 0xFFFF
+        inverse = sum(word ^ 0xFFFF for word in words) & 0xFFFF
+        struct.pack_into(">HH", block, at, 0 if value == 0xFFFF else value,
+                         0 if inverse == 0xFFFF else inverse)
+
+    checksum(header, 0, 0x1FC, 0x1FC)
+    checksum(directory, 0, 0x1FFC, 0x1FFC)
+    checksum(bat, 4, BLOCK, 0)
+    image[:5 * BLOCK] = header + directory * 2 + bat * 2
+    return bytes(image), gci
 
 
 def datel(gci: bytes) -> bytes:

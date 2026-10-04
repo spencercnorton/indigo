@@ -2117,7 +2117,7 @@ void show_saves(void)
 			int stack = (pressed & BUTTON_L) ? 0 : 1;
 
 			chooseStorage(stacks, stack);
-			focus = stackFocus(stacks, stack);
+			focus = stackFocus(stacks, focus);
 			inputInit(&input);
 		}
 		else if((pressed & BUTTON_A) && focus >= 0) {

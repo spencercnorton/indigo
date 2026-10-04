@@ -8,6 +8,7 @@ filename must still keep their game and maker identity, including when a
 failed write or read-back removes only the newly created destination.
 """
 
+import argparse
 import os
 from pathlib import Path
 import shlex
@@ -342,13 +343,37 @@ def harness(driver=None, saves=None):
     saves = SAVES.read_text() if saves is None else saves
     header = (DRIVER.parent / "deviceHandler-CARD.h").read_text()
     gci = header[header.index("typedef struct {"):header.index(" GCI;") + 5]
-    pieces = [PRELUDE, gci, "static GCI *gciInfo;"]
+    prelude = PRELUDE
+    raw_reader = "static bool readSaveAt(" in saves
+    if raw_reader:
+        prelude = prelude.replace("static struct { bool mounted; } places[2];", r"""
+#include "ui_saves_raw.h"
+#define SAVES_TABS 4
+#define SAVES_TAB_FOLDER 2
+typedef struct {
+    bool mounted, rawOpen;
+    file_handle rawImage, *entries;
+    uiSavesRawCard_t *rawCard;
+    int entryCount;
+} savesPlace_t;
+static savesPlace_t places[SAVES_TABS];
+static bool SavesRaw_ReadGci(file_handle *image, const uiSavesRawCard_t *card,
+    unsigned ordinal, uint32_t offset, void *destination, uint32_t length) {
+    (void)image; (void)card; (void)ordinal; (void)offset;
+    (void)destination; (void)length;
+    assert(!"physical-card lane must not read a RAW image"); return false;
+}
+""")
+    pieces = [prelude, gci, "static GCI *gciInfo;"]
     if "static bool CARD_SetEntryIdentity(" in driver:
         pieces.append(extract_function(driver, "static bool CARD_SetEntryIdentity("))
     for marker in ("void setGCIInfo(", "void setCopyGCIMode(",
                    "s32 deviceHandler_CARD_readFile(", "s32 deviceHandler_CARD_writeFile(",
                    "s32 deviceHandler_CARD_deleteFile("):
         pieces.append(extract_function(driver, marker))
+    if raw_reader:
+        for marker in ("static savesPlace_t *rawSource(", "static bool readSaveAt("):
+            pieces.append(extract_function(saves, marker))
     for marker in ("static u8 *saveRead(", "static file_handle *cardFind(",
                    "static const char *cardWhy(", "static bool cardWrite("):
         pieces.append(extract_function(saves, marker))
@@ -356,12 +381,21 @@ def harness(driver=None, saves=None):
 
 
 def main():
+    global ROOT, DRIVER, SAVES
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--sanitize", action="store_true")
+    parser.add_argument("--source-root", type=Path, default=ROOT,
+                        help="Review a separate source worktree without editing it")
+    args = parser.parse_args()
+    ROOT = args.source_root.resolve()
+    DRIVER = ROOT / "cube/swiss/source/devices/memcard/deviceHandler-CARD.c"
+    SAVES = ROOT / "cube/swiss/source/gui/saves.c"
     with tempfile.TemporaryDirectory(prefix="indigo-card-io-") as temp:
         source = Path(temp) / "card_io.c"
         binary = Path(temp) / "card_io"
         source.write_text(harness())
         flags = ["-std=gnu11", "-Wall", "-Wextra", "-Werror", "-Wno-sign-compare"]
-        if "--sanitize" in sys.argv:
+        if args.sanitize:
             flags += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
                       "-fno-omit-frame-pointer"]
             if sys.platform.startswith("linux"):

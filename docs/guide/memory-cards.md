@@ -52,6 +52,10 @@ slot already shown in the other column is dimmed. Both columns can show SD,
 with independent folder positions, so no physical memory card is needed to
 browse virtual cards and export saves.
 
+<p align="center">
+  <img alt="Right storage offers Slot A, Slot B and SD card by name. SD card is highlighted, and the L Choose storage and R Choose storage buttons remain visible above the two columns." src="images/memory-cards-storage-menu.png" width="640">
+</p>
+
 The SD card's stack shows a folder on the SD card Indigo keeps its settings
 on, the Configuration Device. It opens on your Save Folder and shows its
 folders, as cubes with a folder on the front, then its saves: `.gci` files,
@@ -61,7 +65,7 @@ folder. A on a folder opens it, and B, with the cursor on that stack, goes
 back up, as far as the folder it opened on.
 
 <p align="center">
-  <img alt="R has swapped the right stack for the SD card: SD /swiss/saves above it, the folders Backups and Old saves as folder cubes, then the saves in the Save Folder, Slot A's stack still on the left." src="images/memory-cards-sd.png" width="640">
+  <img alt="Both columns open on SD when no physical cards are inserted. L Choose storage and R Choose storage are visible above them; Demo Card.raw appears as a folder cube in the Save Folder." src="images/memory-cards-sd.png" width="640">
 </p>
 
 ### Virtual memory cards
@@ -77,6 +81,10 @@ save, press **A** and choose **Copy** to export it as a `.gci` file. Move
 and Erase are dimmed; importing into, formatting or repairing an image is
 not offered. The exported file is read back and compared before the copy
 is reported as finished.
+
+<p align="center">
+  <img alt="Demo Card.raw opened on the left shows Copper Archive and another save, with the other column still on the SD folder. The info bar shows the save's banner and two-block size, and says that Copy exports a GCI from the read-only card image." src="images/memory-cards-raw.png" width="640">
+</p>
 
 ## Move, copy and erase
 

@@ -96,6 +96,8 @@ run_binaries() {
 	if [ -z "$suffix" ]; then python3 ./test_card_art.py; else python3 ./test_card_art.py --sanitize; fi
 	echo "== test_saves_card_io$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_saves_card_io.py; else python3 ./test_saves_card_io.py --sanitize; fi
+	echo "== test_saves_raw_controller$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_saves_raw_controller.py; else python3 ./test_saves_raw_controller.py --sanitize; fi
 }
 
 # The fuzzers (fuzz/) must build on every change, since a Fuzz run is not

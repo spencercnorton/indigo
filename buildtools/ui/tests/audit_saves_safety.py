@@ -41,6 +41,7 @@ pool comes back afterwards with every slot read again.
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import re
 
@@ -49,11 +50,11 @@ SAVES = ROOT / "cube/swiss/source/gui/saves.c"
 
 
 def function(source: str, name: str) -> str:
-    start = re.search(r"^(?:static )?[a-z_][\w \*]*\b" + name + r"\(",
+    start = re.search(r"^(?:static )?[a-z_][\w \*]*\b" + name + r"\([^;{}]*\)\s*\{",
                       source, re.M)
     if start is None:
         raise AssertionError(f"{name} is missing")
-    brace = source.index("{", start.end())
+    brace = source.index("{", start.start())
     depth = 0
     for index in range(brace, len(source)):
         depth += {"{": 1, "}": -1}.get(source[index], 0)
@@ -108,21 +109,39 @@ def check(source: str) -> None:
             "CARD_GetAttributes(slot, dir->fileno, &dir->permissions);",
             "place->list[place->count++] = &place->entries[i];")
 
-    # The card driver's .gci read mode is on only around the read.
-    ordered(read, "setCopyGCIMode(true);", "readFile(save, data, want)",
-            "setCopyGCIMode(false);")
+    # Both old and centralized readers keep .gci mode around only the read.
+    centralized = "static bool readSaveAt(" in source
+    if centralized:
+        reader = function(source, "readSaveAt")
+        ordered(reader, "if(raw != NULL)", "SavesRaw_ReadGci(",
+                "if(card) setCopyGCIMode(true);", "seekFile(save, offset,",
+                "readFile(save, data, length)", "if(card) setCopyGCIMode(false);",
+                "closeFile(save);")
+        ordered(read, "readSaveAt(save, 0u, data, want)")
+        if "readFile(" in read:
+            raise AssertionError("saveRead bypasses the checked reader")
+    else:
+        ordered(read, "setCopyGCIMode(true);", "readFile(save, data, want)",
+                "setCopyGCIMode(false);")
 
     art = function(source, "artRead")
     load = function(source, "artLoad")
     clear = function(source, "placeClear")
     show = function(source, "show_saves")
     wait = function(source, "inputNext")
-    # Both art reads, the entry's and the art's, switch the .gci mode off.
-    ordered(art, "setCopyGCIMode(true);", "readFile(save, scratch, UI_SAVES_ENTRY_SIZE)",
-            "setCopyGCIMode(false);", "setCopyGCIMode(true);",
-            "readFile(save, scratch, want)", "setCopyGCIMode(false);")
-    if art.count("setCopyGCIMode(true);") != art.count("setCopyGCIMode(false);"):
-        raise AssertionError("artRead leaves the .gci mode on")
+    # Entry, wrapper-prefix and full art reads share the same checked reader.
+    if centralized:
+        ordered(art, "readSaveAt(save, 0u, scratch, UI_SAVES_ENTRY_SIZE)",
+                "readSaveAt(save, 0u, scratch, want)",
+                "UISaves_ArtLayout(", "readSaveAt(save, 0u, scratch, want)")
+        if "readFile(" in art:
+            raise AssertionError("artRead bypasses the checked reader")
+    else:
+        ordered(art, "setCopyGCIMode(true);", "readFile(save, scratch, UI_SAVES_ENTRY_SIZE)",
+                "setCopyGCIMode(false);", "setCopyGCIMode(true);",
+                "readFile(save, scratch, want)", "setCopyGCIMode(false);")
+        if art.count("setCopyGCIMode(true);") != art.count("setCopyGCIMode(false);"):
+            raise AssertionError("artRead leaves the .gci mode on")
     # A slot is named after its texels reach memory, never before.
     ordered(art, "DCFlushRange(texels, SAVES_SLOT_BYTES);", "slotTags[s] = tag;")
     if art.count("slotTags[") != 1:
@@ -158,13 +177,24 @@ def check(source: str) -> None:
     ordered(show, "screenBuild(stacks, focus);", "screenShow(&page);",
             "pressed = inputNext(&input);")
     below = function(source, "folderBelowHome")
-    ordered(below, "tab == SAVES_TAB_FOLDER", "strcmp(places[tab].dir.name, folderHome) != 0",
-            "!folderIsRoot(&places[tab])")
-    ordered(show, "if(focus < 0 || !folderBelowHome(stacks[focus])) {", "break;",
-            "getParentPath(place->dir.name, place->dir.name);")
-    ordered(show, "if(stacks[s] < SAVES_TAB_FOLDER && !places[stacks[s]].ready) {",
-            "loadTab(stacks[s]);", "found = found || places[stacks[s]].ready;",
-            "UISaveCubes_Swap(stacks[stack], stacks[!stack], found);")
+    if centralized:
+        ordered(below, "tab >= SAVES_TAB_FOLDER", "places[tab].rawOpen",
+                "folderHome[tab - SAVES_TAB_FOLDER]", "!folderIsRoot(&places[tab])")
+        ordered(show, "if(focus < 0 || !folderBelowHome(stacks[focus])) break;",
+                "if(place->rawOpen)", "place->selection = place->rawReturn;",
+                "getParentPath(place->dir.name, place->dir.name);", "loadFolder(place, false);")
+        choose = function(source, "chooseStorage")
+        ordered(choose, "if(other < SAVES_TAB_FOLDER)", "dim |= 1u << other;",
+                "choice = savesMenu(", "UISaves_StorageTab(stack, choice, other)", "loadTab(tab);")
+        ordered(show, "chooseStorage(stacks, stack);", "focus = stackFocus(stacks, focus);")
+    else:
+        ordered(below, "tab == SAVES_TAB_FOLDER", "strcmp(places[tab].dir.name, folderHome) != 0",
+                "!folderIsRoot(&places[tab])")
+        ordered(show, "if(focus < 0 || !folderBelowHome(stacks[focus])) {", "break;",
+                "getParentPath(place->dir.name, place->dir.name);")
+        ordered(show, "if(stacks[s] < SAVES_TAB_FOLDER && !places[stacks[s]].ready) {",
+                "loadTab(stacks[s]);", "found = found || places[stacks[s]].ready;",
+                "UISaveCubes_Swap(stacks[stack], stacks[!stack], found);")
 
     # The flight starts before the save is read, and ends only after the
     # copy was written, read back and a Move's original removed: twice, the
@@ -191,9 +221,8 @@ def check(source: str) -> None:
             "DCFlushRange(pool + s * SAVES_SLOT_BYTES, SAVES_SLOT_BYTES);",
             "slotTags[s] = tag;", "screenRedraw();", "memset(&over.op, 0,")
     options = function(source, "saveOptions")
-    # A save goes only to the other stack, never the place it is in, which
-    # two stacks never both show: so a Move never writes over its own
-    # original, and there is no Move within one folder or card.
+    # A save targets the other stack. Physical slots are exclusive; the SD
+    # columns have independent navigation and use collision-safe file names.
     ordered(options, "int toTab = screenStacks[!screenFocus];", "saveRoom(toTab,",
             "saveTransfer(save, to, move);")
     # The save acted on is the cube the cursor is on, the cell the info bar
@@ -238,13 +267,31 @@ def check(source: str) -> None:
     ordered(function(source, "savesSay"),
             "UICheats_Fit(over.message, sizeof(over.message), text,",
             "UI_SAVE_CUBES_MESSAGE_WIDTH, 0.56f, GetTextSizeInPixels);", "screenRedraw();")
+    if centralized:
+        ordered(function(source, "saveDelete"),
+                "rawSource(save, NULL) != NULL || SavesRaw_IsImageName(save->name)",
+                "return false;", "closeFile(save);", "deleteFile(save)")
+        ordered(transfer, "if(move && rawSource(save, NULL) != NULL)",
+                "return;", "artRoom(", "saveRead(save, &length)")
+        ordered(function(source, "destinationFolder"), "if(dest->rawOpen",
+                "dest->device->features & FEAT_WRITE", "return false;",
+                "if(to == UI_SAVES_PLACE_FOLDER)", "dest->dir.name")
+        ordered(function(source, "loadRaw"),
+                "file_handle image = *source;",
+                "int selected = place->rawOpen ? place->selection : 0;", "placeClear(place);",
+                "place->rawImage = image;", "place->rawReturn = returning;",
+                "place->selection = selected;", "SavesRaw_Load(")
+        ordered(show, "if(SavesRaw_IsImageName(chosen->name))", "loadRaw(place, chosen);",
+                "if(!place->ready)", "savesSay(place->note[0]);",
+                "place->selection = place->rawReturn;", "loadFolder(place, false);")
+
     # The screen goes before the cards it mounted are let go.
     ordered(show, "over.leaving = 1;", "screenRedraw();", "savesWait(",
             "placeClear(&places[i]);", "DrawDispose(page);", "free(pool);")
 
 
 def mutants(source: str) -> list[tuple[str, str]]:
-    return [
+    cases = [
         ("a Move deletes without a good copy",
          source.replace("if(ok && move && !saveDelete(save))",
                         "if(move && !saveDelete(save))")),
@@ -369,10 +416,43 @@ def mutants(source: str) -> list[tuple[str, str]]:
          source.replace("!= NULL) {\n\t\t\tdevice->deleteFile(copy);\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"",
                         "!= NULL) {\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"")),
     ]
+    if "static bool readSaveAt(" in source:
+        updates = {
+            "the .gci read mode stays on": ("the centralized .gci read mode stays on",
+                source.replace("if(card) setCopyGCIMode(false);", "")),
+            "the .gci mode stays on after an art entry": ("an art entry bypasses the checked reader",
+                source.replace("readSaveAt(save, 0u, scratch, UI_SAVES_ENTRY_SIZE)", "directRead(save)")),
+            "the .gci mode stays on after a save's art": ("art bytes bypass the checked reader",
+                source.replace("readSaveAt(save, 0u, scratch, want)", "directRead(save)")),
+            "a slot is named before its texels are flushed": ("a slot is named before its texels are flushed",
+                source.replace("\tslotTags[s] = tag;\n}", "\n}").replace(
+                    "\tif(!slot->failed) {\n\t\tconst u8 *data", "\tslotTags[s] = tag;\n\tif(!slot->failed) {\n\t\tconst u8 *data")),
+            "B leaves from a folder the SD card's stack opened": ("B leaves from a folder the SD column opened",
+                source.replace("if(focus < 0 || !folderBelowHome(stacks[focus])) break;", "if(true) break;")),
+            "B goes up past the card's root": ("B goes up past the card's root",
+                re.sub(r"\s*&&\s*!folderIsRoot\(&places\[tab\]\)", "", source)),
+            "L and R never look again for a card": ("the named storage choice never reloads",
+                source.replace("\t\tloadTab(tab);\n", "")),
+        }
+        cases = [updates.get(name, (name, mutant)) for name, mutant in cases]
+        cases += [
+            ("storage choice moves the cursor to the chooser column", source.replace("focus = stackFocus(stacks, focus);\n\t\t\tinputInit(&input);", "focus = stackFocus(stacks, stack);\n\t\t\tinputInit(&input);")),
+            ("RAW virtual saves can be erased", source.replace("rawSource(save, NULL) != NULL || SavesRaw_IsImageName(save->name)", "false")),
+            ("RAW virtual saves can be moved", source.replace("if(move && rawSource(save, NULL) != NULL)", "if(false)")),
+            ("a read-only SD destination can be written", source.replace("!(dest->device->features & FEAT_WRITE)", "false")),
+            ("a new RAW image inherits the folder selection", source.replace("place->rawOpen ? place->selection : 0", "place->selection")),
+            ("an invalid RAW image loses its folder return position", source.replace("\t\t\t\t\tplace->selection = place->rawReturn;\n", "")),
+            ("a RAW source reaches a physical handler", source.replace("return SavesRaw_ReadGci(", "return directReadGci(")),
+            ("the checked reader leaves its physical handle open", source.replace("\tsave->device->closeFile(save);\n\treturn ok;", "\treturn ok;")),
+        ]
+    return cases
 
 
 def main() -> None:
-    source = SAVES.read_text()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source-root", type=Path, default=ROOT)
+    args = parser.parse_args()
+    source = (args.source_root / "cube/swiss/source/gui/saves.c").read_text()
     check(source)
     rejected = 0
     for name, mutant in mutants(source):

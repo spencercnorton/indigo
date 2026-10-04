@@ -199,11 +199,17 @@ class Card(unittest.TestCase):
             self.assertIn(card.game_file(*card.GAMES[0]), games)
             self.assertIsNone(card.read_card(image, "swiss/settings/global.ini"), "a new card has no settings")
             self.assertIsNone(card.read_card(image, "boot.iso"), "only a GC Loader's card has a boot.iso")
-            card.build_card(image, package, posters=False, settings="# start\nClock=Left\n", boot_iso=True)
+            card.build_card(image, package, posters=False, settings="# start\nClock=Left\n", boot_iso=True,
+                            virtual_cards=True)
             self.assertEqual(card.read_card(image, "swiss/settings/global.ini"), b"# start\r\nClock=Left\r\n")
             boot = card.read_card(image, "boot.iso")
             self.assertEqual(boot[:6], card.BOOT_ISO[0].encode())
             self.assertEqual(boot[card.PROBE_DOL_OFFSET:card.PROBE_DOL_OFFSET + 17], b"the release's DOL")
+            raw, _ = run.make_test_saves.virtual_card()
+            folder = run.make_test_saves.SAVE_FOLDER
+            self.assertEqual(card.read_card(image, f"{folder}/{run.make_test_saves.RAW_CARD_NAME}"), raw)
+            self.assertIsNone(card.read_card(image, f"{folder}/{run.make_test_saves.RAW_EXPORT_NAME}"),
+                              "only Indigo's Copy operation should create the export")
 
     @unittest.skipUnless(shutil.which("mkfs.fat") and shutil.which("mcopy"), "needs dosfstools and mtools")
     def test_a_file_in_pieces(self):
@@ -250,6 +256,96 @@ class MemoryCards(unittest.TestCase):
         self.assertIn("SerialPort2 = 15\nSP2SDCardImage = /work/card.img\nSlotA = 8\n", both)
         self.assertNotIn("Slot", run.dolphin_ini("gcloader"))
         self.assertEqual(run.dolphin_ini(), run.DOLPHIN_INI)
+
+    def test_named_storage_menus_select_sd_then_restore_each_slot(self):
+        for button, side, box, expected in (
+                ("R", "right", run.RIGHT_HEADER_BOX, ["R", "DOWN", "A", "R", "UP", "A"]),
+                ("L", "left", run.LEFT_HEADER_BOX, ["L", "DOWN", "DOWN", "A", "L", "UP", "UP", "A"])):
+            with self.subTest(button=button):
+                route = run.Route.__new__(run.Route)
+                route.storage = "gcloader"
+                pressed, checks = [], []
+                route.press = pressed.append
+                route.pause = lambda seconds: None
+                route.gray = lambda: np.zeros((run.HEIGHT, run.WIDTH), np.uint8)
+                route.emulator = mock.Mock()
+                route.last_rgb = None
+                route.shot = lambda *args: None
+                route.differs = lambda before, where: where == box
+                route.text_until = lambda where, predicate: np.zeros((2, 2), np.uint8)
+                route.check = lambda name, passed, **detail: checks.append(passed)
+                route.swap(button, box, side)
+                self.assertEqual(pressed, expected)
+                self.assertEqual(checks, [True, True])
+
+    def test_storage_menu_cannot_select_sd_without_a_configuration_device(self):
+        for button, side, box, expected in (
+                ("R", "right", run.RIGHT_HEADER_BOX, ["R", "DOWN", "A", "B"]),
+                ("L", "left", run.LEFT_HEADER_BOX, ["L", "DOWN", "DOWN", "A", "B"])):
+            route = run.Route.__new__(run.Route)
+            route.storage = "dvd"
+            pressed, checks = [], []
+            route.press = pressed.append
+            route.pause = lambda seconds: None
+            route.gray = lambda: np.zeros((run.HEIGHT, run.WIDTH), np.uint8)
+            route.emulator, route.last_rgb = mock.Mock(), None
+            route.shot = lambda *args: None
+            route.text_until = lambda where, predicate: np.zeros((2, 2), np.uint8)
+            route.check = lambda name, passed, **detail: checks.append(passed)
+            route.swap(button, box, side)
+            self.assertEqual(pressed, expected)
+            self.assertEqual(checks, [True, True])
+
+    def test_virtual_cards_has_no_physical_card_in_either_slot(self):
+        ini = run.dolphin_ini("gcloader", Path("/work/card.img"), empty_slots=True)
+        self.assertIn("SlotA = 0\nSlotB = 0\n", ini)
+        self.assertNotIn("GCIFolder", ini)
+        sp2 = run.dolphin_ini("sd2sp2", Path("/work/card.img"), empty_slots=True)
+        self.assertIn("SerialPort2 = 15\nSP2SDCardImage = /work/card.img\n", sp2)
+        self.assertIn("SlotA = 0\nSlotB = 0\n", sp2)
+
+    def test_public_raw_fixture_has_real_metadata_and_a_fragmented_save(self):
+        raw, gcis = run.make_test_saves.virtual_card()
+        block = run.make_test_saves.BLOCK
+        self.assertEqual((len(raw), len(gcis[0]), len(gcis[1])), (64 * block, 64 + 2 * block, 64 + block))
+        self.assertEqual(raw[block:2 * block], raw[2 * block:3 * block])
+        self.assertEqual(raw[3 * block:4 * block], raw[4 * block:5 * block])
+        for part, start, end, stored in ((raw[:block], 0, 0x1FC, 0x1FC),
+                                         (raw[block:2 * block], 0, 0x1FFC, 0x1FFC),
+                                         (raw[3 * block:4 * block], 4, block, 0)):
+            words = struct.unpack(f">{(end - start) // 2}H", part[start:end])
+            total, inverse = sum(words) & 0xFFFF, sum(w ^ 0xFFFF for w in words) & 0xFFFF
+            self.assertEqual(struct.unpack_from(">HH", part, stored),
+                             (0 if total == 0xFFFF else total, 0 if inverse == 0xFFFF else inverse))
+        self.assertEqual(struct.unpack_from(">HH", raw, 0x22), (4, 0))
+        bat = raw[3 * block:4 * block]
+        self.assertEqual(struct.unpack_from(">HH", bat, 6), (56, 9))
+        self.assertEqual((struct.unpack_from(">H", bat, 5 * 2)[0],
+                          struct.unpack_from(">H", bat, 9 * 2)[0]), (9, 0xFFFF))
+        # A contiguous read accidentally includes the other save at block6.
+        self.assertNotEqual(raw[5 * block:7 * block], gcis[0][64:])
+        self.assertEqual(raw[5 * block:6 * block] + raw[9 * block:10 * block], gcis[0][64:])
+
+    def test_virtual_export_proof_rejects_wrong_payload_and_changed_source(self):
+        raw, gcis = run.make_test_saves.virtual_card()
+        exported = bytearray(gcis[0])
+        exported[0x36:0x38] = b"\x00\x05"  # the image's first block is retained
+        with tempfile.TemporaryDirectory() as directory:
+            for changed_raw, changed_export, passed in ((raw, bytes(exported), True),
+                    (raw, bytes(exported[:-1]) + bytes([exported[-1] ^ 1]), False),
+                    (raw[:-1] + bytes([raw[-1] ^ 1]), bytes(exported), False)):
+                with self.subTest(passed=passed):
+                    route = run.Route.__new__(run.Route)
+                    route.out, route.report, route.last_rgb = Path(directory), None, None
+                    route.checks = []
+                    route.emulator = mock.Mock(where=lambda: None)
+                    with mock.patch.object(card, "read_card", side_effect=[changed_raw, changed_export]):
+                        if passed:
+                            route.virtual_card_checks(Path("test.img"))
+                            self.assertEqual(len(route.checks), 2)
+                        else:
+                            with self.assertRaises(run.Failed):
+                                route.virtual_card_checks(Path("test.img"))
 
     def test_the_cards_hold_saves_dolphin_lists(self):
         with tempfile.TemporaryDirectory() as directory:

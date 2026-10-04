@@ -160,6 +160,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- CI also opens a synthetic RAW memory card on SD with both physical slots
+  empty, browses its saves and exports one as a GCI. The exported identity
+  and block-chain payload must match, and the RAW image must stay unchanged.
 - The emulator test's smoke route walks Memory Cards with a memory card in
   each slot, GCI folders of made-up saves with every kind of icon
   (`buildtools/ui/qa/make_test_saves.py`): it moves across the cubes and
