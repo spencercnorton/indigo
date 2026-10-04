@@ -524,7 +524,38 @@ class Screen(unittest.TestCase):
 
     def test_stage_fields_follow_menu_widescreen_projection(self):
         self.assertEqual(run.stage_box((100, 10, 540, 20)), (100, 10, 540, 20))
-        self.assertEqual(run.stage_box((100, 10, 540, 20), True), (155, 10, 485, 20))
+        self.assertEqual(run.stage_box((100, 10, 540, 20), True), (155, 68, 485, 75))
+
+    def test_wide_detection_restores_authored_fields_without_editing_capture(self):
+        rgb = np.zeros((run.HEIGHT, run.WIDTH, 3), np.uint8)
+        # A small actual-wide glyph band:52 native bright pixels is below the
+        # unchanged60-pixel floor, though it is visible in the letterbox.
+        rgb[232:236, 286:338:4] = 183
+        original = rgb.copy()
+        native = run.text_mask(rgb.max(axis=2), run.stage_box(run.LIBRARY_SAVES_UPDATED_BOX, True))
+        self.assertEqual(int(native.sum()), 52)
+        self.assertFalse(run.has_label(native))
+        detected = run.detection_frame(rgb, True)
+        restored = run.text_mask(detected.max(axis=2), run.LIBRARY_SAVES_UPDATED_BOX)
+        self.assertTrue(run.has_label(restored))
+        self.assertEqual(set(np.unique(detected)), {0, 183}, "no invented pixel values")
+        np.testing.assert_array_equal(rgb, original, "screenshots stay native and unchanged")
+        self.assertIs(run.detection_frame(rgb), rgb)
+
+    def test_actual_wide_date_capture_and_missing_field(self):
+        from PIL import Image
+        source = Path(__file__).resolve().parent / "fixtures/wide-save-stats.png"
+        rgb = np.asarray(Image.open(source).convert("RGB"))
+        native = run.text_mask(rgb.max(axis=2), run.stage_box(run.LIBRARY_SAVES_UPDATED_BOX, True))
+        self.assertEqual(int(native.sum()), 52)
+        self.assertFalse(run.has_label(native))
+        detected = run.detection_frame(rgb, True).max(axis=2)
+        self.assertTrue(run.has_label(run.text_mask(detected, run.LIBRARY_SAVES_UPDATED_BOX)))
+        missing = rgb.copy()
+        x0, y0, x1, y1 = run.stage_box(run.LIBRARY_SAVES_UPDATED_BOX, True)
+        missing[y0:y1, x0:x1] = (16, 14, 40)
+        self.assertFalse(run.has_label(run.text_mask(
+            run.detection_frame(missing, True).max(axis=2), run.LIBRARY_SAVES_UPDATED_BOX)))
 
     def test_raw_animation_proof_requires_both_texture_colors_on_the_cube(self):
         rgb = np.full((run.HEIGHT, run.WIDTH, 3), (35, 25, 60), np.uint8)

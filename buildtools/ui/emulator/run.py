@@ -267,8 +267,9 @@ def same_save(original: bytes, copy: bytes) -> bool:
             copy[8:40] == original[8:40] and copy[64:] == original[64:])
 
 
-def message_up(rgb: np.ndarray) -> bool:
+def message_up(rgb: np.ndarray, wide: bool = False) -> bool:
     """Memory Cards' maroon box over the middle of the screen."""
+    rgb = detection_frame(rgb, wide)
     x0, y0, x1, y1 = MESSAGE_BOX
     return coloured(rgb[y0:y1, x0:x1], MESSAGE_COLOUR) >= MESSAGE_PIXELS
 
@@ -285,14 +286,29 @@ def text_mask(frame: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX) -> 
 
 
 def stage_box(box: tuple[int, int, int, int], wide: bool = False) -> tuple[int, int, int, int]:
-    """Menu Widescreen squeezes stage X by 3/4 about its centre.
+    """Authored coordinates in Dolphin's actual 640x480 capture.
 
-    Dolphin captures 640x480 in both cases; this maps authored coordinates
-    to capture pixels, rather than letting a wide mask miss the field.
+    With Menu Widescreen, Dolphin auto-aspect letterboxes 16:9 at y60..420.
+    Both axes scale 3/4 about the capture centre. Authored x0..640 occupies
+    x80..560; the extended widescreen margins occupy the remaining columns.
     """
     x0, y0, x1, y1 = box
-    return (round(320 + (x0 - 320) * .75), y0,
-            round(320 + (x1 - 320) * .75), y1) if wide else box
+    return (round(320 + (x0 - 320) * .75), round(240 + (y0 - 240) * .75),
+            round(320 + (x1 - 320) * .75), round(240 + (y1 - 240) * .75)) if wide else box
+
+
+def detection_frame(rgb: np.ndarray, wide: bool = False) -> np.ndarray:
+    """Restore authored coordinates solely for comparisons, never screenshots.
+
+    Nearest-neighbor uses only captured pixel values. It removes Dolphin's
+    wide letterbox and restores the central authored stage, so existing
+    field bounds and minimum text coverage apply in either screen shape.
+    The real native capture remains unchanged for pictures and review.
+    """
+    if not wide:
+        return rgb
+    return np.asarray(Image.fromarray(rgb[60:420, 80:560]).resize(
+        (WIDTH, HEIGHT), Image.Resampling.NEAREST))
 
 
 def raw_icon_frame(rgb: np.ndarray, wide: bool = False) -> int | None:
@@ -589,7 +605,7 @@ class Route:
     def gray(self) -> np.ndarray:
         rgb = self.emulator.frame()
         self.last_rgb = rgb
-        return rgb.max(axis=2)
+        return detection_frame(rgb, self.menu_wide).max(axis=2)
 
     def settled_label(self, seconds: float = SETTLE_SECONDS, unlike: np.ndarray | None = None,
                       like: np.ndarray | None = None,
@@ -1224,7 +1240,7 @@ class Route:
         deadline = Deadline(self.emulator, seconds)
         while not deadline.expired():
             self.last_rgb = self.emulator.frame()
-            if message_up(self.last_rgb):
+            if message_up(self.last_rgb, self.menu_wide):
                 return True
             time.sleep(0.2)
         return False
@@ -1234,7 +1250,7 @@ class Route:
         deadline = Deadline(self.emulator, SETTLE_SECONDS)
         while not deadline.expired():
             self.last_rgb = self.emulator.frame()
-            if not message_up(self.last_rgb):
+            if not message_up(self.last_rgb, self.menu_wide):
                 return True
             time.sleep(0.2)
         return False
@@ -1408,11 +1424,11 @@ class Route:
                  "actions": SAVE_DETAILS_ACTIONS_BOX}
         fields = {}
         for field, box in boxes.items():
-            mask, _ = self.settled_label(box=stage_box(box, self.menu_wide))
+            mask, _ = self.settled_label(box=box)
             self.check(f"save details displays its {field} field", mask is not None,
                        aspect="16:9" if self.menu_wide else "4:3")
             fields[field] = mask
-        fields["blocks"] = text_mask(self.gray(), stage_box(SAVE_DETAILS_BLOCKS_BOX, self.menu_wide))
+        fields["blocks"] = text_mask(self.gray(), SAVE_DETAILS_BLOCKS_BOX)
         self.shot(name, self.last_rgb)
         return fields
 
@@ -1440,7 +1456,7 @@ class Route:
         fields = {}
         for field, box in (("summary", LIBRARY_SAVES_SUMMARY_BOX),
                            ("updated", LIBRARY_SAVES_UPDATED_BOX)):
-            mask, _ = self.settled_label(box=stage_box(box, self.menu_wide))
+            mask, _ = self.settled_label(box=box)
             self.check(f"Library SAVES displays its {field}", mask is not None)
             fields[field] = mask
         self.shot(name, self.last_rgb)
@@ -1519,7 +1535,7 @@ class Route:
         self.pause(.3)
         self.check("an unavailable RAW Copy keeps its action menu",
                    same_text(text_mask(self.gray(), FOOTER_BOX), disabled) and
-                   not message_up(self.last_rgb))
+                   not message_up(self.last_rgb, self.menu_wide))
         self.press("B")  # action menu -> right RAW browsing
         self.press("B")  # right RAW -> independent writable folder
         self.check("right RAW closes to the independent SD folder",

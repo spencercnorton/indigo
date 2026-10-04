@@ -228,7 +228,10 @@ Copy stays in its action menu. Before the real Copy, the source RAW is
 byte-identical and no exported GCI exists. The first icon's generated
 texture contains red and green patches in separate frames; captures must
 show both patches on its selected cube, so cube motion or backdrop changes
-cannot stand in for icon playback. The same route runs in 4:3 and 16:9.
+cannot stand in for icon playback. The same route runs in 4:3 and 16:9. Dolphin letterboxes 16:9 inside its
+640×480 capture. Only detection frames normalize the authored centre with
+nearest-neighbor sampling; native screenshots remain untouched, and text
+thresholds are unchanged.
 
 A opens the RAW image in
 the left column; RIGHT and LEFT browse its saves, and the right column keeps
