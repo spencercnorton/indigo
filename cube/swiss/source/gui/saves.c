@@ -1911,11 +1911,14 @@ static bool saveUpdated(file_handle *save,
 	if(isCard(save->device)) {
 		const card_dir *dir = (const card_dir *)save->other;
 		card_stat status;
+		int slot = save->device == &__device_card_b ? 1 : 0;
 
-		if(CARD_GetStatus(dir->chn, dir->fileno, &status) != CARD_ERROR_READY ||
+		if(dir->chn != slot || dir->filelen != save->size) return false;
+		if(CARD_GetStatus(slot, dir->fileno, &status) != CARD_ERROR_READY ||
 			memcmp(status.gamecode, dir->gamecode, 4) ||
 			memcmp(status.company, dir->company, 2) ||
-			strncmp(status.filename, dir->filename, CARD_FILENAMELEN)) return false;
+			strncmp(status.filename, dir->filename, CARD_FILENAMELEN) ||
+			status.len != save->size) return false;
 		*seconds = status.time;
 	}
 	else {

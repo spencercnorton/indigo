@@ -155,11 +155,11 @@ static uiDrawObj_t *DrawStyledLabel(int x,int y,const char *text,float scale,int
 static void DrawAddChild(uiDrawObj_t *parent,uiDrawObj_t *child) {assert(parent && child);free(child);}
 static uiDrawObj_t *DrawPublish(uiDrawObj_t *box) {assert(box);return box;}
 static void DrawDispose(uiDrawObj_t *box) {assert(box);free(box);}
-typedef struct {char gamecode[4],company[2],filename[32];u32 time;} card_stat;
+typedef struct {char gamecode[4],company[2],filename[32];u32 time,len;} card_stat;
 static card_stat status;
-static int statusResult,statusReads;
+static int statusResult,statusReads,expectedStatusChannel;
 static int CARD_GetStatus(int channel,int file,card_stat *out) {
-    assert((channel==0 || channel==1) && file==7);statusReads++;*out=status;return statusResult;
+    assert(channel==expectedStatusChannel && file==7);statusReads++;*out=status;return statusResult;
 }
 static void eraseBegin(int cell) {(void)cell;starts++;}
 static void artReturn(void) {}
@@ -293,7 +293,7 @@ static void setup(void) {
     memset(&over,0,sizeof(over));over.storageStack=-1;
     inputCount=inputAt=menusShown=detailsShown=labelsShown=seenDim=0;storageChoice=-1;
     memset(&detailSnapshot,0,sizeof(detailSnapshot));detailUpdated[0]=0;
-    memset(&status,0,sizeof(status));statusResult=CARD_ERROR_READY;statusReads=0;
+    memset(&status,0,sizeof(status));statusResult=CARD_ERROR_READY;statusReads=0;expectedStatusChannel=0;
     fixture(imageA,"GALP","01",'A','B');fixture(imageB,"GZLP","02",'C','D');
     memcpy(frozenA,imageA,IMAGE_BYTES);memcpy(frozenB,imageB,IMAGE_BYTES);
 }
@@ -473,22 +473,29 @@ static void detailsMetadata(void) {
 
     /* A physical card's real status date is used only on a successful
      * status read for that exact game, maker and filename. */
-    for(int mode=0;mode<7;mode++) {
-        setup();file_handle card={.size=2*8192,.fileType=IS_FILE,.device=&__device_card_a};
-        strcpy(card.name,"carda:/raw-save");card_dir *dir=(card_dir *)card.other;
-        dir->chn=0;dir->fileno=7;dir->filelen=card.size;
+    for(int mode=0;mode<12;mode++) {
+        int slot=mode==11 ? 1 : 0;
+        setup();file_handle card={.size=2*8192,.fileType=IS_FILE,
+            .device=slot ? &__device_card_b : &__device_card_a};
+        strcpy(card.name,slot ? "cardb:/raw-save" : "carda:/raw-save");card_dir *dir=(card_dir *)card.other;
+        dir->chn=slot;dir->fileno=7;dir->filelen=card.size;expectedStatusChannel=slot;
         memcpy(dir->gamecode,"GALP",4);memcpy(dir->company,"01",2);strcpy(dir->filename,"raw-save");
-        memcpy(status.gamecode,"GALP",4);memcpy(status.company,"01",2);strcpy(status.filename,"raw-save");status.time=86400+120;
+        memcpy(status.gamecode,"GALP",4);memcpy(status.company,"01",2);strcpy(status.filename,"raw-save");status.time=86400+120;status.len=card.size;
         if(mode==1)statusResult=-1;
         if(mode==2)memcpy(status.gamecode,"GZLP",4);
         if(mode==3)memcpy(status.company,"02",2);
         if(mode==4)strcpy(status.filename,"another-save");
         if(mode==5)status.time=0;
         if(mode==6)status.time=UINT32_MAX;
-        places[0].ready=true;places[0].list[0]=&card;places[0].count=1;screenStacks[0]=0;
+        if(mode==7)status.len+=8192;
+        if(mode==8)dir->filelen+=8192;
+        if(mode==9)dir->chn=1;
+        if(mode==10)card.size+=8192;
+        places[slot].ready=true;places[slot].list[0]=&card;places[slot].count=1;screenStacks[0]=slot;
         script(back,1);selectPress(0,BUTTON_A);
-        assert(statusReads==1 && !strcmp(detailUpdated,mode==0 ?
-            "Last updated: 2000-01-02 00:02" : mode>=5 ?
+        assert(statusReads==((mode==8 || mode==9 || mode==10) ? 0 : 1));
+        assert(!strcmp(detailUpdated,(mode==0 || mode==11) ?
+            "Last updated: 2000-01-02 00:02" : (mode==5 || mode==6) ?
             "Last updated: Unknown" : "Last updated: Unable to read metadata"));
         assert(detailsShown==1 && reads==0 && writes==0 && deletes==0);unchanged();clean();
     }
