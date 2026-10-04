@@ -699,14 +699,15 @@ static void testOpening(void)
 
 static void testLeaving(void)
 {
-	int floating, count, i;
+	float hz;
+	int floating, count, i, k;
 
 	assert(UISaveCubes_LeaveSeconds(UI_MOTION_FULL) == 0.45f);
 	assert(UISaveCubes_LeaveSeconds(UI_MOTION_REDUCED) == 0.2f);
 	assert(UISaveCubes_LeaveSeconds(UI_MOTION_OFF) == 0.0f);
 
 	/* Full: the words gone in 0.12 s, the cubes in the middle and clear by
-	 * 0.3, the Home cube back from 0.15 to 0.45. */
+	 * 0.25, the Home cube back from then to 0.45. */
 	memset(&motion, 0, sizeof(motion));
 	gridSet(0, 0, 0, 5, 240u);
 	run(OPENED, 60.0f, UI_MOTION_FULL);
@@ -729,6 +730,27 @@ static void testLeaving(void)
 	frame(0.0f, UI_MOTION_FULL, &floating);
 	assert(motion.handover == 1.0f && motion.paper < 0.01f);
 	grid.leaving = 0;
+
+	/* Frame by frame, at 50 Hz and 60: while any cube still shows, the
+	 * Home cube is not drawn (the backdrop draws it past 0.02), so the two
+	 * never overlap; it is all the way back by 0.45 s. */
+	for(hz = 50.0f; hz <= 60.0f; hz += 10.0f) {
+		memset(&motion, 0, sizeof(motion));
+		gridSet(0, 0, 0, 5, 245u);
+		run(OPENED, hz, UI_MOTION_FULL);
+		grid.leaving = 1;
+		for(k = 0; k <= (int)(0.45f * hz + 0.5f); k++) {
+			bool shown = false;
+
+			count = frame(k ? 1.0f / hz : 0.0f, UI_MOTION_FULL, &floating);
+			for(i = 0; i < count; i++) {
+				shown = shown || cubes[i].alpha > 0;
+			}
+			assert(!shown || motion.handover <= 0.02f);
+		}
+		assert(motion.handover > 0.99f);
+		grid.leaving = 0;
+	}
 
 	/* Reduced: they fade where they are; no Home cube. */
 	memset(&motion, 0, sizeof(motion));

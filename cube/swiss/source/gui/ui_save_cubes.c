@@ -44,13 +44,14 @@
 #define CUBES_POP_TIME 0.25f
 #define CUBES_FADE_TIME 0.25f
 /* Leaving (Full): the words go, the cubes fall into the middle and fade,
- * and the Home cube comes back from the distance. */
+ * and only once they are gone does the Home cube come back from the
+ * distance, so the two never overlap. */
 #define CUBES_LEAVE 0.45f
 #define CUBES_LEAVE_REDUCED 0.2f
 #define CUBES_LEAVE_CHROME 0.12f
-#define CUBES_COLLAPSE 0.3f
+#define CUBES_COLLAPSE 0.25f
 #define CUBES_COLLAPSE_FADE 0.1f
-#define CUBES_RETURN_START 0.15f
+#define CUBES_RETURN_START CUBES_COLLAPSE
 /* A save gone or come: the cubes after it slide a cell, each a little
  * after the one before, as the IPL's ripple. */
 #define CUBES_CASCADE_TIME 0.4f
