@@ -109,7 +109,6 @@ static struct {
  * moved. */
 static u32 placeIds[SAVES_TABS][SAVES_LIST_MAX];
 static int placeIdCount[SAVES_TABS];
-static u32 reloads;
 
 const char *saves_folder(void)
 {
@@ -1099,7 +1098,6 @@ static void placesReload(void)
 			placeIds[tab], placeIdCount[tab], &at) : UI_SAVE_CUBES_NEW);
 		places[tab].changeAt = (s16)at;
 	}
-	reloads++;
 }
 
 /* What an operation starts from: the save's cell and art slot, and the
@@ -1402,9 +1400,8 @@ static bool saveDelete(file_handle *save)
 /* The folder a Copy or Move goes to, as a path on the settings device. */
 static bool destinationFolder(uiSavesPlace_t to, char *path, size_t size);
 
-/* Copy or Move save, from tab, to a card or folder. */
-static void saveTransfer(file_handle *save, int tab, uiSavesPlace_t to,
-	bool move)
+/* Copy or Move save to a card, or to a folder on the settings device. */
+static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 {
 	char why[128] = "";
 	char done[PATHNAME_MAX + 64];
@@ -1424,34 +1421,6 @@ static void saveTransfer(file_handle *save, int tab, uiSavesPlace_t to,
 	}
 	if(to >= UI_SAVES_PLACE_FOLDER && !destinationFolder(to, folder,
 		sizeof(folder))) {
-		return;
-	}
-	/* A folder's save moving to another folder on the same card only needs
-	 * renaming there. */
-	if(move && tab == SAVES_TAB_FOLDER && to >= UI_SAVES_PLACE_FOLDER) {
-		char source[PATHNAME_MAX];
-		file_handle dest;
-		int attempt;
-
-		getParentPath(save->name, source);
-		if(!strcmp(source, folder)) {
-			savesTell(D_INFO, "It's already in that folder.\n"
-				"Press A to continue.");
-			return;
-		}
-		for(attempt = 1; attempt < 100; attempt++) {
-			memset(&dest, 0, sizeof(dest));
-			UISaves_NumberedName(name, sizeof(name),
-				getRelativeName(save->name), attempt);
-			concat_path(dest.name, folder, name);
-			if(save->device->statFile(&dest) != 0) {
-				break;
-			}
-		}
-		save->device->closeFile(save);
-		ok = attempt < 100 && save->device->renameFile(save, dest.name) == 0;
-		savesTell(ok ? D_INFO : D_FAIL, ok ? "Moved.\nPress A to continue." :
-			"It couldn't be moved.\nPress A to continue.");
 		return;
 	}
 	opBegin(move, to >= UI_SAVES_PLACE_FOLDER ? folder : NULL);
@@ -1733,9 +1702,9 @@ static void saveRoom(int tab, const u8 entry[UI_SAVES_ENTRY_SIZE], bool known,
 /* A on a save: the IPL's Move / Copy / Erase beside it, an item that can't
  * be used dimmed with its reason, then a question. Copy and Move go to the
  * other stack: a card, or the SD card's open folder (from a list when it
- * holds folders, with another one to choose). Returns whether a list may
- * have changed and wasn't read again. */
-static bool saveOptions(int tab)
+ * holds folders, with another one to choose). An operation reads every
+ * place again itself. */
+static void saveOptions(int tab)
 {
 	static const char *const actions[3] = {"Move", "Copy", "Erase"};
 	static const char *const answers[2] = {"Yes", "No"};
@@ -1751,7 +1720,6 @@ static bool saveOptions(int tab)
 	unsigned blocks = known ? UISaves_Blocks(entry) : saveBlocks(save), dim = 0u;
 	uiSavesRoom_t room;
 	uiSavesPlace_t to;
-	u32 before = reloads;
 	int action, i;
 
 	saveRoom(toTab, entry, known, &room);
@@ -1763,13 +1731,13 @@ static bool saveOptions(int tab)
 	}
 	action = savesMenu("", actions, 3, 0, dim, why, 0u);
 	if(action < 0) {
-		return false;
+		return;
 	}
 	placesRemember();
 	if(action == 2) {
 		/* No first: an erased save is gone. */
 		if(savesMenu("Erase this save?", answers, 2, 1, 0u, NULL, 0u) != 0) {
-			return false;
+			return;
 		}
 		eraseBegin(placeCell(place));
 		ok = saveDelete(save);
@@ -1782,7 +1750,7 @@ static bool saveOptions(int tab)
 			savesTell(D_FAIL, "The save couldn't be deleted.\n"
 				"Press A to continue.");
 		}
-		return false;
+		return;
 	}
 	move = action == 0;
 	/* Where it would land: the other stack's first free cell, its window
@@ -1796,7 +1764,7 @@ static bool saveOptions(int tab)
 		snprintf(title, sizeof(title), "%s to %s?", move ? "Move" : "Copy",
 			slotName(toTab));
 		if(savesMenu(title, answers, 2, 0, 0u, NULL, 3u) != 0) {
-			return false;
+			return;
 		}
 		to = toTab == 0 ? UI_SAVES_PLACE_SLOT_A : UI_SAVES_PLACE_SLOT_B;
 	}
@@ -1811,20 +1779,19 @@ static bool saveOptions(int tab)
 				GetTextSizeInPixels);
 			i = savesMenu(move ? "Move to" : "Copy to", where, 2, 0, 0u, NULL, 1u);
 			if(i < 0) {
-				return false;
+				return;
 			}
 			to = i == 0 ? UI_SAVES_PLACE_FOLDER : UI_SAVES_PLACE_CHOOSE;
 		}
 		else {
 			snprintf(title, sizeof(title), "%s to the SD card?", move ? "Move" : "Copy");
 			if(savesMenu(title, answers, 2, 0, 0u, NULL, 3u) != 0) {
-				return false;
+				return;
 			}
 			to = UI_SAVES_PLACE_FOLDER;
 		}
 	}
-	saveTransfer(save, tab, to, move);
-	return reloads == before;
+	saveTransfer(save, to, move);
 }
 
 void show_saves(void)
@@ -1923,10 +1890,7 @@ void show_saves(void)
 			}
 			menuaudio_select();
 			if(chosen->fileType == IS_FILE) {
-				/* An operation reads every place again itself. */
-				if(saveOptions(stacks[focus])) {
-					placesReload();
-				}
+				saveOptions(stacks[focus]);
 			}
 			else {
 				snprintf(place->dir.name, sizeof(place->dir.name), "%s",

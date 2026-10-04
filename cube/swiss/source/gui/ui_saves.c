@@ -124,29 +124,6 @@ void UISaves_NumberedName(char *out, size_t capacity, const char *name,
 	}
 }
 
-int UISaves_Destinations(uiSavesPlace_t from, bool cardA, bool cardB,
-	bool folders, bool inSaveFolder, uiSavesPlace_t out[UI_SAVES_PLACE_COUNT])
-{
-	int count = 0;
-
-	if(out == NULL) {
-		return 0;
-	}
-	if(cardA && from != UI_SAVES_PLACE_SLOT_A) {
-		out[count++] = UI_SAVES_PLACE_SLOT_A;
-	}
-	if(cardB && from != UI_SAVES_PLACE_SLOT_B) {
-		out[count++] = UI_SAVES_PLACE_SLOT_B;
-	}
-	if(folders && !inSaveFolder) {
-		out[count++] = UI_SAVES_PLACE_FOLDER;
-	}
-	if(folders) {
-		out[count++] = UI_SAVES_PLACE_CHOOSE;
-	}
-	return count;
-}
-
 #define VERDICT_NOCOPY 0x08u	/* CARD_ATTRIB_NOCOPY */
 #define VERDICT_NOMOVE 0x10u	/* CARD_ATTRIB_NOMOVE */
 

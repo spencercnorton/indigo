@@ -13,13 +13,14 @@
 #define UI_SAVES_BLOCK_SIZE 8192u
 #define UI_SAVES_NAME_LENGTH 32u	/* CARD_FILENAMELEN */
 
-/* The places a save can go, in the order the destination list shows them. */
+/* The places a save can go: a card, the folder the SD card's stack has
+ * open, or another folder, chosen then. The first three are also the places
+ * a stack shows. */
 typedef enum {
 	UI_SAVES_PLACE_SLOT_A = 0,
 	UI_SAVES_PLACE_SLOT_B,
-	UI_SAVES_PLACE_FOLDER,	/* Settings > Storage > Save Folder */
-	UI_SAVES_PLACE_CHOOSE,	/* another folder, chosen then */
-	UI_SAVES_PLACE_COUNT
+	UI_SAVES_PLACE_FOLDER,
+	UI_SAVES_PLACE_CHOOSE
 } uiSavesPlace_t;
 
 /* A .gci is the card's directory entry, then the save's blocks. Action
@@ -49,12 +50,6 @@ void UISaves_FileName(char *out, size_t capacity,
  * is taken (attempt 1 is the name itself). */
 void UISaves_NumberedName(char *out, size_t capacity, const char *name,
 	int attempt);
-
-/* Where a save in from can go: a slot with a card that isn't from, the Save
- * Folder unless the save is in it, and any folder when there is an SD card
- * to hold one. Returns how many it wrote to out. */
-int UISaves_Destinations(uiSavesPlace_t from, bool cardA, bool cardB,
-	bool folders, bool inSaveFolder, uiSavesPlace_t out[UI_SAVES_PLACE_COUNT]);
 
 /* Why a Copy or Move can't go where it would, known before it starts: the
  * checks the copy itself makes afterwards (saves.c keeps them all), and the

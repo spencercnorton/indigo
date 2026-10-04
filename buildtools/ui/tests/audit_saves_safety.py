@@ -16,7 +16,8 @@ and the pool outlives the page that draws from it. The cube screen lists
 the saves of both stacks before it names a slot, and publishes only then;
 B goes up a folder the SD card's stack opened, never past where it opened
 or the card's root, and L or R looks again at a slot without a card before
-swapping a stack. A card's listing reads each save's permissions, which
+swapping a stack. Copy and Move go only to the other stack, never to the
+place a save is in. A card's listing reads each save's permissions, which
 libogc2's listing leaves out, so the Move guard has them to read.
 
 An operation's cube flies while the card works: it starts before the save
@@ -72,9 +73,6 @@ def check(source: str) -> None:
             "if(ok && move && !saveDelete(save))")
     if transfer.count("saveDelete(") != 1:
         raise AssertionError("saveTransfer removes a save outside its one guard")
-    # The same-card folder Move is a rename, never a copy and delete.
-    ordered(transfer, "renameFile(save, dest.name)", "return;",
-            "saveRead(save, &length)")
 
     # A card that has the save already, or lacks the room, is never written.
     ordered(card, "has = cardFind(", "if(has) {", "return false;",
@@ -175,6 +173,11 @@ def check(source: str) -> None:
             "DCFlushRange(pool + s * SAVES_SLOT_BYTES, SAVES_SLOT_BYTES);",
             "slotTags[s] = tag;", "screenRedraw();", "memset(&over.op, 0,")
     options = function(source, "saveOptions")
+    # A save goes only to the other stack, never the place it is in, which
+    # two stacks never both show: so a Move never writes over its own
+    # original, and there is no Move within one folder or card.
+    ordered(options, "int toTab = screenStacks[!screenFocus];", "saveRoom(toTab,",
+            "saveTransfer(save, to, move);")
     # An erase is done once the card did it; a card's failure shows only the
     # box its driver shows.
     ordered(options, "eraseBegin(", "ok = saveDelete(save);", "opEnd(ok);",
@@ -260,6 +263,8 @@ def mutants(source: str) -> list[tuple[str, str]]:
          source.replace("\tover.leaving = 1;\n", "")),
         ("a card's permissions left as libogc2 lists them",
          source.replace("\t\tCARD_GetAttributes(slot, dir->fileno, &dir->permissions);\n", "")),
+        ("a save goes to the stack it is in",
+         source.replace("int toTab = screenStacks[!screenFocus];", "int toTab = screenStacks[screenFocus];")),
         ("a half-written card copy is left on the card",
          source.replace("!= NULL) {\n\t\t\tdevice->deleteFile(copy);\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"",
                         "!= NULL) {\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"")),

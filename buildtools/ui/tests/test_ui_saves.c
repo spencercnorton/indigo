@@ -553,7 +553,6 @@ int main(void)
     uint8_t *file;
     size_t length;
     char out[96];
-    uiSavesPlace_t places[UI_SAVES_PLACE_COUNT];
 
     /* A plain .gci: the entry comes first, the blocks start at 64. */
     makeEntry(entry, "SuperSmashBros0110290334", 3u);
@@ -635,23 +634,6 @@ int main(void)
     expectNumbered("01-GALE-save.gci", 2, "01-GALE-save_2.gci");
     expectNumbered("noextension", 3, "noextension_3");
     expectNumbered(".gci", 2, ".gci_2");
-
-    /* A Slot A save goes to Slot B or a folder, never back to Slot A. */
-    assert(UISaves_Destinations(UI_SAVES_PLACE_SLOT_A, true, true, true, false, places) == 3);
-    assert(places[0] == UI_SAVES_PLACE_SLOT_B);
-    assert(places[1] == UI_SAVES_PLACE_FOLDER);
-    assert(places[2] == UI_SAVES_PLACE_CHOOSE);
-    /* No SD card: only the other slot. */
-    assert(UISaves_Destinations(UI_SAVES_PLACE_SLOT_B, true, true, false, false, places) == 1);
-    assert(places[0] == UI_SAVES_PLACE_SLOT_A);
-    /* One card and no SD card: nowhere to go. */
-    assert(UISaves_Destinations(UI_SAVES_PLACE_SLOT_A, true, false, false, false, places) == 0);
-    /* A save already in the Save Folder isn't offered it again. */
-    assert(UISaves_Destinations(UI_SAVES_PLACE_FOLDER, true, false, true, true, places) == 2);
-    assert(places[0] == UI_SAVES_PLACE_SLOT_A);
-    assert(places[1] == UI_SAVES_PLACE_CHOOSE);
-    assert(UISaves_Destinations(UI_SAVES_PLACE_FOLDER, true, true, true, false, places) == 4);
-    assert(UISaves_Destinations(UI_SAVES_PLACE_FOLDER, false, false, true, false, NULL) == 0);
 
     testArtLayout();
     testPool();
