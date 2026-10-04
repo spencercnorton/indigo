@@ -6505,7 +6505,9 @@ static void _SaveCubesBackdrop(float paper, float handover)
 typedef struct {
 	uiSaveCube_t cubes[UI_SAVE_CUBES_OUT];
 	uiSaveCubesQuad_t quads[UI_SAVE_CUBES_OUT * UI_SAVE_CUBES_QUADS];
+	uiSaveCubesQuad_t coverage[UI_SAVE_CUBES_OUT * UI_SAVE_CUBES_COVERAGE];
 	u16 quadEnd[UI_SAVE_CUBES_OUT];
+	u16 coverageEnd[UI_SAVE_CUBES_OUT];
 	GXColor shades[UI_SAVE_CUBES_SHADES][UI_SAVE_CUBES_ROLES];
 	GXTexObj icon;
 	bool invalidated;	/* the texture cache, this frame */
@@ -6544,15 +6546,19 @@ static void _SaveCubesEmit(saveCubesDraw_t *draw, int first, int end)
 	static const float s[4] = {0.0f, 1.0f, 1.0f, 0.0f};
 	static const float t[4] = {0.0f, 0.0f, 1.0f, 1.0f};
 	float left = UIStage_Left(), right = UIStage_Right();
-	int quads = 0, bodies = 0, i, k, v;
+	int quads = 0, coverage = 0, bodies = 0, i, k, v;
 	bool icons = false;
 
 	for(i = first; i < end; i++) {
 		int n = UISaveCubes_Faces(&draw->cubes[i], left, right, draw->quads + quads);
+		int edges = UISaveCubes_Coverage(draw->quads + quads, n,
+			UIStage_PixelWidth(), draw->coverage + coverage);
 
 		quads += n;
-		bodies += n - (n > 0 && draw->quads[quads - 1].role == UI_SAVE_CUBES_ROLE_ICON);
+		coverage += edges;
+		bodies += n + edges - (n > 0 && draw->quads[quads - 1].role == UI_SAVE_CUBES_ROLE_ICON);
 		draw->quadEnd[i] = (u16)quads;
+		draw->coverageEnd[i] = (u16)coverage;
 	}
 	if(bodies > 0) {
 		drawInit();
@@ -6572,6 +6578,17 @@ static void _SaveCubesEmit(saveCubesDraw_t *draw, int first, int end)
 				color.a = (u8)(color.a * cube->alpha / 255);
 				for(v = 0; v < 4; v++) {
 					_SaveCubesVertex(quad->x[v], quad->y[v], color, 0.0f, 0.0f);
+				}
+			}
+			for(k = i > first ? draw->coverageEnd[i - 1] : 0; k < draw->coverageEnd[i]; k++) {
+				const uiSaveCubesQuad_t *quad = &draw->coverage[k];
+				GXColor color = draw->shades[cube->shade][quad->role];
+
+				color.a = (u8)(color.a * cube->alpha / 255);
+				for(v = 0; v < 4; v++) {
+					GXColor faded = color;
+					if(v >= 2) faded.a = 0;
+					_SaveCubesVertex(quad->x[v], quad->y[v], faded, 0.0f, 0.0f);
 				}
 			}
 		}
@@ -6660,13 +6677,9 @@ static void _SaveCubesHeader(const uiSaveCubesStack_t *stack,
 	int rows = stack->cells / UI_SAVE_CUBES_COLUMNS;
 	int i;
 
-	if(stack->cells <= 0) {
-		drawStringMedium((int)middle, 220, text->note[0], text->noteScale[0],
-			ALIGN_CENTER, white);
-		drawStringMedium((int)middle, 248, text->note[1], text->noteScale[1],
-			ALIGN_CENTER, quiet);
-		return;
-	}
+	_SaveCubesBox(middle - 112.0f, 28.0f, 224.0f, 27.0f,
+		_SaveCubesFaded((GXColor) {18, 27, 91, 180}, alpha), shadow, quiet, 1.0f);
+	drawStringMedium((int)middle, 42, text->control, 0.5f, ALIGN_CENTER, white);
 	drawStringMedium((int)middle - 100, 74, text->name, 1.5f, ALIGN_LEFT, white);
 	if(text->free[0] != '\0') {
 		drawStringMedium((int)middle - 66, 80, "Open", 0.5f, ALIGN_LEFT, white);
@@ -6676,6 +6689,13 @@ static void _SaveCubesHeader(const uiSaveCubesStack_t *stack,
 	else {
 		drawStringMedium((int)middle - 44, 78, text->path, 0.42f, ALIGN_LEFT,
 			quiet);
+	}
+	if(stack->cells <= 0) {
+		drawStringMedium((int)middle, 220, text->note[0], text->noteScale[0],
+			ALIGN_CENTER, white);
+		drawStringMedium((int)middle, 248, text->note[1], text->noteScale[1],
+			ALIGN_CENTER, quiet);
+		return;
 	}
 	for(i = 0; i < 2; i++) {
 		float tip = i ? 354.5f : 99.5f, base = i ? 345.5f : 108.5f;

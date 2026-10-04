@@ -210,6 +210,82 @@ static void testFootprints(void)
 	}
 }
 
+/* A cube's silhouette is covered once, with shared corners and one native
+ * pixel across every strip. The fill, rim and the game's art stay intact. */
+static void testCoverage(void)
+{
+	uiSaveCubesQuad_t faces[UI_SAVE_CUBES_QUADS], original[UI_SAVE_CUBES_QUADS];
+	uiSaveCubesQuad_t strips[UI_SAVE_CUBES_COVERAGE];
+	int i, wide;
+
+	for(wide = 0; wide < 2; wide++) for(i = 0; i < 4000; i++) {
+		float pixel = wide ? 4.0f / 3.0f : 1.0f;
+		float a = (float)i * 0.37f, b = (float)i * 0.23f;
+		float ca = cosf(a), sa = sinf(a), cb = cosf(b), sb = sinf(b);
+		float turn[9] = {cb, 0.0f, sb, sa * sb, ca, -sa * cb, -ca * sb, sa, ca * cb};
+		uiSaveCube_t cube = cubeAt(20.0f + (float)(i % 41) * 15.0f,
+			20.0f + (float)(i % 29) * 15.0f, 1.0f + (float)(i % 6) * 6.0f,
+			(uiSaveCubesKind_t)(i % 3));
+		int n, edges, k;
+
+		cube.turn = i % 4 ? turn : NULL;
+		cube.z = (float)(i % 7) * 30.0f;
+		memset(faces, 0, sizeof(faces));
+		n = UISaveCubes_Faces(&cube, -107.0f, 747.0f, faces);
+		memcpy(original, faces, sizeof(faces));
+		edges = UISaveCubes_Coverage(faces, n, pixel, strips);
+		assert(memcmp(faces, original, sizeof(faces)) == 0);
+		if(n == 0) {
+			assert(edges == 0);
+			continue;
+		}
+		assert(edges >= 4 && edges <= 6);
+		for(k = 0; k < edges; k++) {
+			const uiSaveCubesQuad_t *strip = &strips[k];
+			float dx = (strip->x[1] - strip->x[0]) / pixel;
+			float dy = strip->y[1] - strip->y[0];
+			float length = sqrtf(dx * dx + dy * dy);
+			int face, v, incoming = 0, shared = 0, joined = 0, endpoint;
+
+			assert(strip->role < UI_SAVE_CUBES_ROLE_GLYPH);
+			assert(quadArea(strip) < 0.0f);
+			for(face = 0; face < n; face++) {
+				if(faces[face].role >= UI_SAVE_CUBES_ROLE_GLYPH) continue;
+				for(v = 0; v < 4; v++) {
+					int next = (v + 1) & 3;
+					incoming += faces[face].x[v] == strip->x[0] && faces[face].y[v] == strip->y[0] &&
+						faces[face].x[next] == strip->x[1] && faces[face].y[next] == strip->y[1];
+					shared += faces[face].x[v] == strip->x[1] && faces[face].y[v] == strip->y[1] &&
+						faces[face].x[next] == strip->x[0] && faces[face].y[next] == strip->y[0];
+				}
+			}
+			assert(incoming == 1 && shared == 0);
+			for(face = 0; face < edges; face++) {
+				if(strips[face].x[0] == strip->x[1] && strips[face].y[0] == strip->y[1]) {
+					assert(strips[face].x[3] == strip->x[2] && strips[face].y[3] == strip->y[2]);
+					joined++;
+				}
+			}
+			assert(joined == 1);
+			for(endpoint = 0; endpoint < 2; endpoint++) {
+				int outside = endpoint == 0 ? 3 : 2;
+				float x = (strip->x[outside] - strip->x[endpoint]) / pixel;
+				float y = strip->y[outside] - strip->y[endpoint];
+				float across = (dy * x - dx * y) / length;
+
+				assert(isfinite(x) && isfinite(y));
+				assert(across > 0.0f && across <= 1.001f);
+				assert(x * x + y * y <= 16.001f);
+			}
+		}
+	}
+	assert(UISaveCubes_Coverage(NULL, 1, 1.0f, strips) == 0);
+	assert(UISaveCubes_Coverage(faces, 0, 1.0f, strips) == 0);
+	assert(UISaveCubes_Coverage(faces, UI_SAVE_CUBES_QUADS + 1, 1.0f, strips) == 0);
+	assert(UISaveCubes_Coverage(faces, 1, NAN, strips) == 0);
+	assert(UISaveCubes_Coverage(faces, 1, 0.0f, strips) == 0);
+}
+
 static void testColours(void)
 {
 	uint8_t a[4], b[4];
@@ -1383,6 +1459,7 @@ static void testOverlays(void)
 int main(void)
 {
 	testFaces();
+	testCoverage();
 	testFootprints();
 	testColours();
 	testIcons();

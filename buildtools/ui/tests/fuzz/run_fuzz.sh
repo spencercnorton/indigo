@@ -19,7 +19,7 @@ if [ "${1:-}" = --build-only ]; then
 	shift
 	set -- 0 "${1:-fuzz-out}"
 fi
-targets="history saves posters about settings fst png cheats"
+targets="history saves raw_saves posters about settings fst png cheats"
 seconds=${1:-30}
 case $seconds in
 total:*) seconds=$(( ${seconds#total:} / $(echo "$targets" | wc -w) )) ;;
@@ -38,6 +38,7 @@ echo "== building the fuzzers =="
 {
 	$cc $flags -std=c11 -I"$gui" -o "$out/bin/history" "$here/fuzz_history.c" "$gui/ui_game_history.c"
 	$cc $flags -std=c11 -I"$gui" -o "$out/bin/saves" "$here/fuzz_saves.c" "$gui/ui_saves.c"
+	$cc $flags -std=c11 -I"$gui" -o "$out/bin/raw_saves" "$here/fuzz_raw_saves.c" "$gui/ui_saves_raw.c" "$gui/ui_saves.c"
 	$cc $flags -std=c11 -I"$gui" -o "$out/bin/about" "$here/fuzz_about.c" "$gui/ui_about.c"
 	$cc $flags -std=c11 -DUI_ASSETS_HOST_BUILD -I"$gui" -o "$out/bin/posters" \
 		"$here/fuzz_posters.c" "$gui/ui_assets.c" -lz

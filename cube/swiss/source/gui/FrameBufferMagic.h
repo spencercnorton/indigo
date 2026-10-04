@@ -282,6 +282,7 @@ void DrawUpdateSavesPage(uiDrawObj_t *page,
  * at the art saves.c reads into its pool: only at saves on screen, which
  * the loader never reads over, and the pool outlives the page. */
 typedef struct {
+	char control[32];	/* permanent L/R storage chooser */
 	char name[4];		/* "A", "B" or "SD" */
 	char free[8];		/* a card's free blocks, "" for the SD card */
 	char path[64];		/* the SD card's open folder */

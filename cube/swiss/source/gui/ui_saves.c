@@ -8,6 +8,20 @@
 #define GCS_MAGIC "GCSAVE"
 #define GCS_ENTRY 0x110u
 
+void UISaves_InitialStorage(bool slotA, bool slotB, bool sd, int stacks[2])
+{
+	if(stacks == NULL) return;
+	stacks[0] = !slotA && sd ? 2 : 0;
+	stacks[1] = !slotB && sd ? 3 : 1;
+}
+
+int UISaves_StorageTab(int stack, int choice, int other)
+{
+	if(stack < 0 || stack > 1 || choice < 0 || choice > 2 ||
+		(choice < 2 && choice == other)) return -1;
+	return choice == 2 ? 2 + stack : choice;
+}
+
 unsigned UISaves_Blocks(const uint8_t entry[UI_SAVES_ENTRY_SIZE])
 {
 	return ((unsigned)entry[0x38] << 8) | (unsigned)entry[0x39];

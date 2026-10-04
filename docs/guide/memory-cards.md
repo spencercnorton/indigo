@@ -14,15 +14,19 @@ erases saves from one stack to the other. On Home, turn the cube to
 
 ## What's on the screen
 
-Slot A's stack is on the left and Slot B's on the right, over graph paper.
+Each stack shows a storage location, over graph paper. It opens on Slot A
+and Slot B when cards are inserted; an absent card opens that column on SD
+instead, when the Configuration Device is available.
 
 - **Each save is a cube** with its game's icon on the front, animated as the
-  game made it. Free space shows as smaller, see-through cubes: a card shows
-  at least 16 places, and always one free place after its last save.
+  game made it. The cube edges stay smooth as they float and turn. Free space
+  shows as smaller, see-through cubes: a card shows at least 16 places, and
+  always one free place after its last save.
 - **A stack shows four rows of four.** An arrow above or below it means it
   holds more rows; it scrolls a row at a time as you move.
-- **Above each stack** are the slot's letter, **Open** and how many blocks
-  are free, in a box.
+- **Above each stack** is a permanent **L Choose storage** or **R Choose
+  storage** button. Below it are the slot's letter, **Open** and free blocks,
+  or the SD folder or virtual card's name.
 - **The highlighted cube** is larger and pale, and sways slowly. The other
   cubes float gently, each in its own time.
 - **The bar along the bottom** shows the highlighted save: its banner (or
@@ -37,24 +41,42 @@ Slot A's stack is on the left and Slot B's on the right, over graph paper.
 
 A slot with no card, or with something else in it, says so in its half of
 the screen, such as "Nothing is inserted in Slot B."; put a card in and
-press L or R to look again. An empty card shows 16 free places.
+press L or R, choose that slot and press A to look again. An empty card
+shows 16 free places.
 
 ### The SD card
 
-**L** swaps the left stack and **R** the right one, each between Slot A,
-Slot B and the SD card, passing over the place the other stack shows. Memory
-Cards opens on Slot A and Slot B.
+**L** opens **Left storage** and **R** opens **Right storage**. Choose
+**Slot A**, **Slot B** or **SD card**, then press A; B cancels. A physical
+slot already shown in the other column is dimmed. Both columns can show SD,
+with independent folder positions, so no physical memory card is needed to
+browse virtual cards and export saves.
 
 The SD card's stack shows a folder on the SD card Indigo keeps its settings
 on, the Configuration Device. It opens on your Save Folder and shows its
 folders, as cubes with a folder on the front, then its saves: `.gci` files,
-and Action Replay (`.sav`) and GameShark (`.gcs`) saves. Its header names the
+and Action Replay (`.sav`) and GameShark (`.gcs`) saves, plus `.raw` virtual
+memory cards. Its header names the
 folder. A on a folder opens it, and B, with the cursor on that stack, goes
 back up, as far as the folder it opened on.
 
 <p align="center">
   <img alt="R has swapped the right stack for the SD card: SD /swiss/saves above it, the folders Backups and Old saves as folder cubes, then the saves in the Save Folder, Slot A's stack still on the left." src="images/memory-cards-sd.png" width="640">
 </p>
+
+### Virtual memory cards
+
+Swiss's **Emulate Memory Card** keeps saves in `.raw` images such as
+`swiss/saves/MemoryCardA.USA.raw`. These appear as folder cubes. Press **A**
+to open an image and browse its saves and animated icons; **B** returns to
+the containing folder. An unformatted or damaged image gets a clear message
+and is left unchanged.
+
+Images are read-only. With the other column on an SD folder, highlight a
+save, press **A** and choose **Copy** to export it as a `.gci` file. Move
+and Erase are dimmed; importing into, formatting or repairing an image is
+not offered. The exported file is read back and compared before the copy
+is reported as finished.
 
 ## Move, copy and erase
 
@@ -70,7 +92,7 @@ Highlight a save and press **A**. A box opens beside its cube:
 </p>
 
 Move and Copy always go to the other stack: to put a save somewhere else,
-swap that stack first with L or R. When a save can't go there, Move or Copy
+choose that stack's storage first with L or R. When a save can't go there, Move or Copy
 is dimmed, and while it's highlighted the bar and the line below it say
 why:
 
@@ -114,7 +136,7 @@ An erased save's cube shrinks and bursts into pieces.
 If anything goes wrong, the cube flies back, and a message says what went
 wrong and that nothing was changed or moved; press A.
 
-A save copied off a memory card is named the way Dolphin names the saves in
+A save copied off a memory card or exported from an image is named the way Dolphin names the saves in
 a GCI folder, such as `01-GALE-SuperSmashBros0110290334.gci`, so a folder of
 them can also be a Dolphin memory card. When the name is taken, the copy is
 numbered: `…_2.gci`. A save copied from a folder keeps its file name.
@@ -144,14 +166,8 @@ Leave Settings with Save & Exit to keep your choice.
   included.
 - Memory Cards doesn't format a card. A card that can't be read says so;
   the GameCube's own Memory Card screen can check or format it.
-- Memory Cards works with memory cards in the slots. **Emulate Memory Card**
-  keeps saves in a memory card image on the SD card instead, one per slot and
-  region (`swiss/saves/MemoryCardA.USA.raw` and so on), which Memory Cards
-  doesn't open.
 - A slot holding an SD adapter that Indigo is using, for your games or its
   settings, isn't read as a memory card.
-- Dolphin can't give a GameCube an SD card, so there the SD card's stack
-  says there is no device for settings and saves.
 
 ---
 

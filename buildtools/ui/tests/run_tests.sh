@@ -89,6 +89,8 @@ run_binaries() {
 			*) "./$test$suffix" ;;
 		esac
 	done
+	echo "== raw card device adapter$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_saves_raw_backend.py; else python3 ./test_saves_raw_backend.py --sanitize; fi
 	# card_art builds its own binaries: posters of apps and folders, their guards.
 	echo "== test_card_art$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_card_art.py; else python3 ./test_card_art.py --sanitize; fi

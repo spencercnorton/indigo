@@ -5,6 +5,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Physical slots are 0/1; SD columns keep independent positions at 2/3. */
+void UISaves_InitialStorage(bool slotA, bool slotB, bool sd, int stacks[2]);
+int UISaves_StorageTab(int stack, int choice, int other);
+
 /* Memory Cards (Home > System > Memory Cards): the pure half. saves.c asks
  * the card and SD drivers for the bytes; these decide what the bytes are and
  * where a save may go. */

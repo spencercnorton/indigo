@@ -8,6 +8,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### New
 
+- Memory Cards opens Swiss `.raw` virtual memory cards on SD, showing their
+  saves and animated icons. Copy exports a save as a verified `.gci` file;
+  images remain read-only, with Move and Erase dimmed. Unformatted or damaged
+  images get a clear message.
+
 - Settings › Setup › Library › **Library Folders** lets you sort your games
   into folders. On, the Library shows the folders in `/games` as cards beside
   the games, two levels deep: A opens one, B goes back up, and the heading
@@ -47,8 +52,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   comment and its size in blocks, and above each stack are its letter, Open
   and the free blocks. The stick or the D-pad moves from cube to cube and
   across from one stack to the other, and a stack scrolls a row at a time.
-  **L** swaps the left stack and **R** the right one for Slot A, Slot B or the
-  SD card's folder. The screen opens with the Home cube drawing away and the
+  Visible **L Choose storage** and **R Choose storage** buttons open named
+  Slot A, Slot B and SD card choices. With no physical cards, both columns
+  open on SD and keep independent folder positions. The screen opens with the Home cube drawing away and the
   saves spiralling out into place, and closes back into the cube.
 - A on a save opens the GameCube's Move, Copy and Erase beside its cube.
   Move and Copy go to the other stack and ask first, a pale cube pulsing
@@ -117,6 +123,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Memory Cards' small cubes have smooth outlines as they float and turn,
+  including the highlighted cube, free cells and folders. Their game icons
+  and banners keep the game's own artwork.
 - Memory Cards reads and erases the selected save when different games or
   makers use the same save name. Copy checks and failed-copy cleanup keep
   that identity too, so an existing save is left intact. A save header with

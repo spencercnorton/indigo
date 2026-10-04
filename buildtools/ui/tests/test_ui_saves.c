@@ -600,6 +600,29 @@ static void testVerdict(void)
         UI_SAVES_VERDICT_READ_ONLY);
 }
 
+static void testStorage(void)
+{
+    int stacks[2];
+    unsigned mask;
+    for(mask = 0; mask < 8; mask++) {
+        UISaves_InitialStorage((mask & 1u) != 0u, (mask & 2u) != 0u,
+            (mask & 4u) != 0u, stacks);
+        assert(stacks[0] == ((mask & 1u) == 0u && (mask & 4u) != 0u ? 2 : 0));
+        assert(stacks[1] == ((mask & 2u) == 0u && (mask & 4u) != 0u ? 3 : 1));
+        assert(stacks[0] != stacks[1]);
+    }
+    assert(UISaves_StorageTab(0, 2, 3) == 2);
+    assert(UISaves_StorageTab(1, 2, 2) == 3);
+    assert(UISaves_StorageTab(1, 0, 0) == -1);
+    assert(UISaves_StorageTab(0, 1, 1) == -1);
+    assert(UISaves_StorageTab(0, 0, 1) == 0);
+    assert(UISaves_StorageTab(1, 1, 0) == 1);
+    assert(UISaves_StorageTab(0, -1, 3) == -1); /* cancelled */
+    assert(UISaves_StorageTab(2, 2, 1) == -1);
+    assert(UISaves_StorageTab(0, 3, 1) == -1);
+    UISaves_InitialStorage(false, false, true, NULL);
+}
+
 int main(void)
 {
     uint8_t entry[UI_SAVES_ENTRY_SIZE];
@@ -691,6 +714,7 @@ int main(void)
     expectNumbered("noextension", 3, "noextension_3");
     expectNumbered(".gci", 2, ".gci_2");
 
+    testStorage();
     testArtLayout();
     testPool();
     testVerdict();

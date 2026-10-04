@@ -19,6 +19,7 @@ check:
 """
 
 import os
+import math
 from pathlib import Path
 import re
 import shlex
@@ -323,7 +324,7 @@ int main(void)
 
 def screen(frame_c: str, frame_h: str) -> str:
     return "\n".join([
-        between(frame_h, "typedef struct {\n\tchar name[4];", "} uiSaveCubesPageSnapshot_t;", True),
+        between(frame_h, "typedef struct {\n\tchar control[32];", "} uiSaveCubesPageSnapshot_t;", True),
         between(frame_c, "/* What one frame's cubes need. */", "uiDrawObj_t* DrawSaveCubesPage("),
     ])
 
@@ -445,7 +446,13 @@ class SaveCubesGXStreamTests(unittest.TestCase):
         self.assertGreater(drawn[-1]["at"], focused["at"], "its icon after its faces")
         self.assertLess(resting["at"], drawn[0]["at"], "every face at rest before an icon")
         for quad in quads(resting) + quads(focused):
-            self.assertGreater(area(quad), 0.0, "a face wound the wrong way")
+            if quad[2][5] == quad[3][5] == 0:
+                self.assertLess(area(quad), 0.0, "coverage must extend outside its face")
+                self.assertGreater(quad[0][5], 0)
+                self.assertEqual(quad[0][2:6], quad[1][2:6])
+                self.assertEqual(quad[0][2:5], quad[2][2:5])
+            else:
+                self.assertGreater(area(quad), 0.0, "a face wound the wrong way")
         self.assertEqual(frame["events"][0], ("K", "1.00 0.00"), "the backdrop, the screen open")
 
     def test_rest(self):
@@ -453,6 +460,54 @@ class SaveCubesGXStreamTests(unittest.TestCase):
             with self.subTest(wide=wide):
                 frames = self.run_script(f"W {wide}\n" + AT_REST)
                 self.assert_rest(frames[-1])
+
+    def test_one_pixel_silhouette_coverage_preserves_fill_and_icons(self):
+        # Compile a hard-edge reference from the same real draw path. The
+        # added strips must leave every original fill and icon unchanged.
+        call = "int edges = UISaveCubes_Coverage(draw->quads + quads, n,\n\t\t\tUIStage_PixelWidth(), draw->coverage + coverage);"
+        self.assertIn(call, self.source)
+        hard = self.build(self.source.replace(call, "int edges = 0;"), self.cubes_c, "hard")
+        for wide in (0, 1):
+            script = f"W {wide}\n" + AT_REST
+            smooth = self.run_script(script)[-1]
+            original = self.run_script(script, hard)[-1]
+            self.assertEqual([b["vertices"] for b in icons(smooth)],
+                             [b["vertices"] for b in icons(original)])
+            self.assertEqual(smooth["textures"], original["textures"])
+            strips = []
+            for current, reference in zip(cube_batches(smooth), cube_batches(original)):
+                fills = [q for q in quads(current) if q[2][5] != 0]
+                self.assertEqual(fills, quads(reference))
+                strips.extend(q for q in quads(current) if q[2][5] == 0)
+            self.assertGreater(len(strips), 32 * 3, "the cube outlines have no coverage")
+            pixel = 4.0 / 3.0 if wide else 1.0
+            for strip in strips:
+                dx = (strip[1][0] - strip[0][0]) / pixel
+                dy = strip[1][1] - strip[0][1]
+                length = math.hypot(dx, dy)
+                for inner, outer in ((0, 3), (1, 2)):
+                    x = (strip[outer][0] - strip[inner][0]) / pixel
+                    y = strip[outer][1] - strip[inner][1]
+                    self.assertAlmostEqual((dy * x - dx * y) / length, 1.0, delta=0.003)
+                    self.assertEqual(strip[outer][5], 0)
+
+    def test_coverage_fades_with_its_cube(self):
+        frames = self.run_script("W 1\n" + AT_REST +
+                                 "S 0 40 2 30 1\nC 0 9\nN 12 0.0166667\n")
+        partial = False
+        for frame in frames:
+            for batch in cube_batches(frame):
+                fill = [q for q in quads(batch) if area(q) > 0.0]
+                for strip in (q for q in quads(batch) if area(q) < 0.0):
+                    self.assertEqual(strip[0][2:6], strip[1][2:6])
+                    self.assertEqual((strip[2][5], strip[3][5]), (0, 0))
+                    # Coverage starts at the original boundary and carries
+                    # exactly its color and fade, including translucent cells.
+                    matching = [q for q in fill for v in range(4)
+                                if q[v] == strip[0] and q[(v + 1) % 4] == strip[1]]
+                    self.assertEqual(len(matching), 1)
+                    partial |= 0 < strip[0][5] < 150
+        self.assertTrue(partial, "the test never reached a fading silhouette")
 
     def test_one_invalidation_a_frame_and_icon_textures(self):
         frames = self.run_script(AT_REST)[OPEN:]

@@ -60,6 +60,34 @@ def saves(out: Path) -> None:
     (out / "art-hostile-address.gci").write_bytes(bytes(hostile))
 
 
+def raw_saves(out: Path) -> None:
+    def checksum(block: bytearray, start: int, end: int, at: int) -> None:
+        words = struct.unpack(f">{(end - start) // 2}H", block[start:end])
+        value, inverse = sum(words) & 0xFFFF, sum(word ^ 0xFFFF for word in words) & 0xFFFF
+        struct.pack_into(">HH", block, at, 0 if value == 0xFFFF else value,
+                         0 if inverse == 0xFFFF else inverse)
+
+    header = bytearray(b"\xff" * 8192)
+    struct.pack_into(">HH", header, 0x22, 4, 0)
+    checksum(header, 0, 0x1FC, 0x1FC)
+    directory = bytearray(b"\xff" * 8192)
+    directory[:64] = bytes(64)
+    directory[:6] = b"DEMO01"
+    directory[8:18] = b"Demo Save\0"
+    struct.pack_into(">HH", directory, 0x36, 5, 2)
+    struct.pack_into(">H", directory, 0x1FFA, 0)
+    checksum(directory, 0, 0x1FFC, 0x1FFC)
+    block_map = bytearray(8192)
+    struct.pack_into(">HHH", block_map, 4, 0, 57, 9)
+    struct.pack_into(">H", block_map, 10, 9)
+    struct.pack_into(">H", block_map, 18, 0xFFFF)
+    checksum(block_map, 4, 8192, 0)
+    size = struct.pack(">I", 512 * 1024)
+    (out / "two-block-save").write_bytes(size + header + directory * 2 + block_map * 2)
+    (out / "unformatted").write_bytes(size + bytes(5 * 8192))
+    (out / "truncated").write_bytes(size + header)
+
+
 def posters(out: Path) -> None:
     # Real packs from the generator the host tests use, a poster pack and a
     # stills pack; it needs gxtexconv.
@@ -146,7 +174,7 @@ def cheats(out: Path) -> None:
 
 def main() -> int:
     out = Path(sys.argv[1])
-    for target in (history, saves, posters, about, settings, fst, png, cheats):
+    for target in (history, saves, raw_saves, posters, about, settings, fst, png, cheats):
         folder = out / target.__name__
         folder.mkdir(parents=True, exist_ok=True)
         target(folder)

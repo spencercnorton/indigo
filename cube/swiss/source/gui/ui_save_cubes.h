@@ -106,6 +106,14 @@ typedef struct {
 int UISaveCubes_Faces(const uiSaveCube_t *cube, float left, float right,
 	uiSaveCubesQuad_t out[UI_SAVE_CUBES_QUADS]);
 
+/* Only the silhouette gets coverage: a one-native-pixel strip outside each
+ * exposed edge, sharing mitred corners. Fill faces and icon texels stay as
+ * they are; a strip's first two vertices keep the face alpha, the last two
+ * are clear. pixelWidth is one frame pixel across, in stage units. */
+#define UI_SAVE_CUBES_COVERAGE 8
+int UISaveCubes_Coverage(const uiSaveCubesQuad_t *faces, int count,
+	float pixelWidth, uiSaveCubesQuad_t out[UI_SAVE_CUBES_COVERAGE]);
+
 /* A face's color before Menu Color turns it, as RGBA: the shade's body or
  * rim, lit for the part of the cube it is. */
 void UISaveCubes_Colour(int shade, int role, uint8_t rgba[4]);

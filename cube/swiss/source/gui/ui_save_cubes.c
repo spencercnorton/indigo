@@ -260,6 +260,97 @@ int UISaveCubes_Faces(const uiSaveCube_t *cube, float left, float right,
 	return n;
 }
 
+static bool cubesSamePoint(float ax, float ay, float bx, float by)
+{
+	return ax == bx && ay == by;
+}
+
+/* As Home's coverage does: two Newton steps keep a unit normal within five
+ * parts in a million without newlib's bit-by-bit square root on Gekko. Only
+ * finite, positive normal floats reach here. */
+static float cubesInverseLength(float squared)
+{
+	union { float f; uint32_t i; } bits = {squared};
+	float inverse;
+
+	bits.i = 0x5f3759dfu - (bits.i >> 1);
+	inverse = bits.f;
+	inverse *= 1.5f - 0.5f * squared * inverse * inverse;
+	inverse *= 1.5f - 0.5f * squared * inverse * inverse;
+	return inverse;
+}
+
+int UISaveCubes_Coverage(const uiSaveCubesQuad_t *faces, int count,
+	float pixelWidth, uiSaveCubesQuad_t out[UI_SAVE_CUBES_COVERAGE])
+{
+	float nx[UI_SAVE_CUBES_COVERAGE], ny[UI_SAVE_CUBES_COVERAGE];
+	float joinX[UI_SAVE_CUBES_COVERAGE], joinY[UI_SAVE_CUBES_COVERAGE];
+	int i, j, k, v, n = 0;
+
+	if(faces == NULL || count < 1 || count > UI_SAVE_CUBES_QUADS ||
+		!isfinite(pixelWidth) || pixelWidth <= 0.0f) {
+		return 0;
+	}
+	/* The visible faces form one closed mesh. Every shared edge appears
+	 * twice, reversed; only unpaired edges belong to its silhouette. The
+	 * icon and folder glyphs sit on that mesh and contribute no outline. */
+	for(i = 0; i < count; i++) {
+		if(faces[i].role >= UI_SAVE_CUBES_ROLE_GLYPH) continue;
+		for(v = 0; v < 4; v++) {
+			int next = (v + 1) & 3;
+			float ax = faces[i].x[v], ay = faces[i].y[v];
+			float bx = faces[i].x[next], by = faces[i].y[next];
+			bool shared = false;
+
+			for(j = 0; j < count && !shared; j++) {
+				if(j == i || faces[j].role >= UI_SAVE_CUBES_ROLE_GLYPH) continue;
+				for(k = 0; k < 4; k++) {
+					int after = (k + 1) & 3;
+					if(cubesSamePoint(ax, ay, faces[j].x[after], faces[j].y[after]) &&
+						cubesSamePoint(bx, by, faces[j].x[k], faces[j].y[k])) {
+						shared = true;
+						break;
+					}
+				}
+			}
+			if(shared) continue;
+			if(n == UI_SAVE_CUBES_COVERAGE) return 0;
+			float dx = (bx - ax) / pixelWidth, dy = by - ay;
+			float squared = dx * dx + dy * dy;
+			if(!isfinite(squared) || squared < 0.000001f) return 0;
+			float inverse = cubesInverseLength(squared);
+			nx[n] = dy * inverse;
+			ny[n] = -dx * inverse;
+			out[n].x[0] = ax; out[n].y[0] = ay;
+			out[n].x[1] = bx; out[n].y[1] = by;
+			out[n++].role = faces[i].role;
+		}
+	}
+	/* Work in native pixels: Menu Widescreen squeezes X but not Y. The
+	 * same join is used at both ends of neighbouring strips, so corners
+	 * neither overlap nor leave gaps. Bound nearly edge-on mitres. */
+	for(i = 0; i < n; i++) {
+		for(j = 0; j < n; j++) {
+			if(cubesSamePoint(out[j].x[1], out[j].y[1], out[i].x[0], out[i].y[0])) break;
+		}
+		if(j == n) return 0;
+		float denominator = fmaxf(0.125f, 1.0f + nx[j] * nx[i] + ny[j] * ny[i]);
+		joinX[i] = (nx[j] + nx[i]) / denominator * pixelWidth;
+		joinY[i] = (ny[j] + ny[i]) / denominator;
+	}
+	for(i = 0; i < n; i++) {
+		for(j = 0; j < n; j++) {
+			if(cubesSamePoint(out[i].x[1], out[i].y[1], out[j].x[0], out[j].y[0])) break;
+		}
+		if(j == n) return 0;
+		out[i].x[2] = out[i].x[1] + joinX[j];
+		out[i].y[2] = out[i].y[1] + joinY[j];
+		out[i].x[3] = out[i].x[0] + joinX[i];
+		out[i].y[3] = out[i].y[0] + joinY[i];
+	}
+	return n;
+}
+
 void UISaveCubes_Colour(int shade, int role, uint8_t rgba[4])
 {
 	/* Each shade's body, then its rim, in Indigo's blue-violet: Menu Color
