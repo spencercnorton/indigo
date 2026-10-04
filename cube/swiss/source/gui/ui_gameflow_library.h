@@ -7,7 +7,10 @@
 
 #include "ui_gameflow.h"
 
-#define UI_GAMEFLOW_LIBRARY_WINDOW 7u
+/* The carousels' window: the selected card and four either side. Three show;
+ * the fourth is there for a held stick, whose strip runs up to two cards
+ * behind the selection. */
+#define UI_GAMEFLOW_LIBRARY_WINDOW 9u
 /* The Grid layout: five posters a row and three rows on screen. Its window
  * holds the focused row and two rows either side of it, so the row that
  * scrolls in already has its cards and posters. */
@@ -212,12 +215,12 @@ bool UIGameflowLibrary_BuildFallbackLayout(float visualSlot,
  * six-character GameCube ID. Unknown or incomplete IDs stay truthful. */
 const char *UIGameflowLibrary_RegionLabel(const char *gameId);
 
-/* Selected, -1, +1, -2, +2, -3, +3 with duplicate indices removed.
+/* Selected, -1, +1, -2, +2, -3, +3, -4, +4 with duplicate indices removed.
  * On a two-item ring, the sole neighbor is oriented to the side implied by
  * directionHint so relativeSlot + carouselTravel keeps the old card centered. */
 size_t UIGameflowLibrary_BuildWindow(uint32_t itemCount,
 	uint32_t selectedIndex, uiGameflowDirection_t directionHint,
-	uiGameflowLibraryWindowSlot_t slots[7]);
+	uiGameflowLibraryWindowSlot_t slots[UI_GAMEFLOW_LIBRARY_WINDOW]);
 
 /*
  * Where one press moves the selection. columns is 0 for a ring of cards and

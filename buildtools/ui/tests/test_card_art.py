@@ -431,8 +431,9 @@ static const char *posterOf(int card)
  *   pause   resume   close   failslots   failread I   resetpeak
  *   hold I (its next read waits for the pause)   pollheld MS (polls until
  *   it waits)   written ("written N": the slots card_art has written to)
- *   show I   mem   -- show prints "card I POSTER READS OFFMENU VERDICTS",
- *   mem "mem LIVE PEAK BLOCKS". */
+ *   show I   mem   age I   sleep MS   -- show prints "card I POSTER READS
+ *   OFFMENU VERDICTS", mem "mem LIVE PEAK BLOCKS", age "age I MS" (how long
+ *   ago its poster was made). */
 int main(void)
 {
 	char line[2048];
@@ -539,6 +540,14 @@ int main(void)
 			}
 			pthread_mutex_unlock(&videoLock);
 			printf("written %d\n", written);
+		}
+		else if(strcmp(word, "age") == 0 && sscanf(line, "age %d", &card) == 1) {
+			pthread_mutex_lock(&videoLock);
+			printf("age %d %u\n", card, (unsigned)CardArt_PosterAgeMs(card));
+			pthread_mutex_unlock(&videoLock);
+		}
+		else if(strcmp(word, "sleep") == 0 && sscanf(line, "sleep %d", &ms) == 1) {
+			sleepMs(ms);
 		}
 		else if(strcmp(word, "mem") == 0) {
 			pthread_mutex_lock(&countLock);
@@ -692,6 +701,20 @@ class CardArtTests(unittest.TestCase):
         self.assertLessEqual(peak, SLOTS_BYTES + self.max_file + self.max_work)
         self.assertGreater(peak, SLOTS_BYTES + self.max_file)  # the 2 MB file was read
         self.assertEqual(closed, 0)
+
+    def test_a_poster_knows_how_long_ago_it_was_made(self):
+        """The Library fades a poster in over its first moments: its age
+        counts from when it was made, and a card without one has none."""
+        out = self.run_script(*self.standard_cards(), "open 1", "want 0 4", "settle 20000",
+                              "age 0", "age 4", "sleep 300", "age 0", "age 7", "close")
+        self.assertIn("settled", out)
+        ages = [tuple(map(int, l.split()[1:])) for l in out if l.startswith("age ")]
+        (_, first), (_, name), (_, later), (_, none) = ages
+        self.assertLess(first, 2000)
+        self.assertLess(name, 2000)
+        self.assertGreaterEqual(later - first, 300)
+        self.assertLess(later - first, 1500)
+        self.assertEqual(none, 0)
 
     def test_a_device_that_isnt_thread_safe_is_read_between_frames(self):
         out = self.run_script(*self.standard_cards(), "open 0", "want 0 1 3", "settle 20000",

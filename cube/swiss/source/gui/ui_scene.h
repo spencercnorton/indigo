@@ -31,6 +31,9 @@ typedef struct {
 	float cubePitch;
 	float cubeYaw;
 	float orbitStrength;
+	/* 1 on Home and Source, 0 elsewhere, moving with the cube: how far the
+	 * waves have eased to Home's quieter strength. */
+	float homeDecorativeBlend;
 	float introProgress;
 	float chromeProgress;
 	/* The boot fly-in: how much farther off than its pose the cube still is

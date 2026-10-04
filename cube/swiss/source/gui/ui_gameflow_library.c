@@ -506,10 +506,10 @@ const char *UIGameflowLibrary_RegionLabel(const char *gameId)
 
 size_t UIGameflowLibrary_BuildWindow(uint32_t itemCount,
 	uint32_t selectedIndex, uiGameflowDirection_t directionHint,
-	uiGameflowLibraryWindowSlot_t slots[7])
+	uiGameflowLibraryWindowSlot_t slots[UI_GAMEFLOW_LIBRARY_WINDOW])
 {
 	static const int8_t relativeOrder[UI_GAMEFLOW_LIBRARY_WINDOW] = {
-		0, -1, 1, -2, 2, -3, 3
+		0, -1, 1, -2, 2, -3, 3, -4, 4
 	};
 	size_t count = 0u;
 	size_t i;
