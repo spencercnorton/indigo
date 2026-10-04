@@ -557,6 +557,19 @@ class Screen(unittest.TestCase):
         self.assertFalse(run.has_label(run.text_mask(
             run.detection_frame(missing, True).max(axis=2), run.LIBRARY_SAVES_UPDATED_BOX)))
 
+    def test_actual_wide_block_values_are_distinguished_as_a_size_phrase(self):
+        from PIL import Image
+        root = Path(__file__).resolve().parent / "fixtures"
+        gray = [run.detection_frame(np.asarray(Image.open(root / ("wide-save-details-" + name + ".png"))
+                                .convert("RGB")), True).max(axis=2) for name in ("known", "unknown")]
+        narrow = [run.text_mask(frame, (100, 256, 119, 278)) for frame in gray]
+        self.assertTrue(run.same_text(*narrow), "a single low-resolution glyph aliases")
+        values = [run.text_mask(frame, run.SAVE_DETAILS_BLOCKS_BOX) for frame in gray]
+        self.assertTrue(all(run.has_label(value) for value in values))
+        self.assertFalse(run.same_text(*values), "two blocks/16KiB differs from one block/8KiB")
+        self.assertTrue(run.same_text(values[0], values[0].copy()))
+        self.assertTrue(run.same_text(values[1], values[1].copy()))
+
     def test_raw_animation_proof_requires_both_texture_colors_on_the_cube(self):
         rgb = np.full((run.HEIGHT, run.WIDTH, 3), (35, 25, 60), np.uint8)
         # Arbitrary cube/background motion without authored patch colors is
