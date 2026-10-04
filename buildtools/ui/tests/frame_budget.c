@@ -321,8 +321,12 @@ static void hintRoundRect(void)
 
 /* Memory Cards: the backdrop and both stacks, every cell a save with an
  * icon, a sixth of a second into scrolling a row with the focus grown: the
- * most cubes a frame draws. */
-static void memoryCards(const char *name, bool wide)
+ * most cubes a frame draws. With them, a copy's cube mid-flight, an erased
+ * one's pieces, or the opening a quarter of a second in, the Home cube
+ * going back as the cubes start out of the middle. */
+enum { CARDS_STEADY, CARDS_COPY, CARDS_ERASE, CARDS_OPENING };
+
+static void memoryCards(const char *name, bool wide, int what)
 {
 	static u8 texels[UI_SAVES_ICON_FRAMES * UI_SAVES_ICON_BYTES] __attribute__((aligned(32)));
 	static uiSavesArt_t art;
@@ -349,29 +353,54 @@ static void memoryCards(const char *name, bool wide)
 	grid.focusStack = 0;
 	grid.focusCell = 4 * UI_SAVE_CUBES_COLUMNS + 1;
 	UIStage_SetWide(wide);
-	for(frame = 0; frame < 600; frame++) {
-		UISaveCubes_Frame(&motion, &grid, DT, UI_MOTION_FULL, draw.cubes, &floating);
+	if(what == CARDS_OPENING) {
+		startScene();
+		UIScene_Request(UI_SCENE_SYSTEM);
+		settle(600);
+		for(frame = 0; frame < 15; frame++) {
+			UISaveCubes_Frame(&motion, &grid, DT, UI_MOTION_FULL, draw.cubes, &floating);
+			settle(1);
+		}
 	}
-	grid.stack[0].first = grid.stack[1].first = 5;
-	grid.focusCell = 5 * UI_SAVE_CUBES_COLUMNS + 1;
-	for(frame = 0; frame < 10; frame++) {
-		UISaveCubes_Frame(&motion, &grid, DT, UI_MOTION_FULL, draw.cubes, &floating);
+	else {
+		for(frame = 0; frame < 600; frame++) {
+			UISaveCubes_Frame(&motion, &grid, DT, UI_MOTION_FULL, draw.cubes, &floating);
+		}
+		grid.stack[0].first = grid.stack[1].first = 5;
+		grid.focusCell = 5 * UI_SAVE_CUBES_COLUMNS + 1;
+		grid.op.kind = what == CARDS_COPY ? UI_SAVE_CUBES_OP_COPY :
+			what == CARDS_ERASE ? UI_SAVE_CUBES_OP_ERASE : UI_SAVE_CUBES_OP_NONE;
+		grid.op.serial = 1;
+		grid.op.fromCell = grid.focusCell;
+		grid.op.toCell = 6 * UI_SAVE_CUBES_COLUMNS + 2;
+		grid.op.cube = grid.stack[0].cell[8];
+		for(frame = 0; frame < 10; frame++) {
+			UISaveCubes_Frame(&motion, &grid, DT, UI_MOTION_FULL, draw.cubes, &floating);
+		}
+		if(what == CARDS_ERASE) {
+			grid.op.phase = UI_SAVE_CUBES_LAND;
+			for(frame = 0; frame < 6; frame++) {
+				UISaveCubes_Frame(&motion, &grid, DT, UI_MOTION_FULL, draw.cubes, &floating);
+			}
+		}
 	}
 	memset(&cost, 0, sizeof(cost));
 	cost.hash = 1469598103934665603ULL;
 	stubStateCalls = 0;
-	IndigoBackground_DrawSavesBackdrop();
-	_SaveCubesShades(&draw);
 	count = UISaveCubes_Frame(&motion, &grid, DT, UI_MOTION_FULL, draw.cubes, &floating);
+	IndigoBackground_DrawSavesBackdrop(motion.paper, motion.handover, seconds, true,
+		UIScene_Frame(), &clock, icons);
+	_SaveCubesShades(&draw);
 	draw.invalidated = false;
 	_SaveCubesEmit(&draw, 0, floating);
 	for(k = floating; k < count; k++) {
 		_SaveCubesEmit(&draw, k, k + 1);
 	}
 	printf("{\"scene\": \"%s\", \"sqrtf\": %ld, \"trig\": %ld, \"minmax\": %ld, "
-		"\"vertices\": %ld, \"begins\": %ld, \"copy_pixels\": 0, \"state\": %ld, "
+		"\"vertices\": %ld, \"begins\": %ld, \"copy_pixels\": %.0f, \"state\": %ld, "
 		"\"hash\": \"%016llx\"}\n", name, cost.sqrtCalls, cost.trigCalls,
-		cost.minMaxCalls, cost.vertices, cost.begins, stubStateCalls, cost.hash);
+		cost.minMaxCalls, cost.vertices, cost.begins, cost.copyPixels,
+		stubStateCalls, cost.hash);
 	UIStage_SetWide(false);
 }
 
@@ -407,7 +436,10 @@ int main(void)
 	measure("boot-handoff", true);
 
 	hintRoundRect();
-	memoryCards("memory-cards", false);
-	memoryCards("memory-cards-wide", true);
+	memoryCards("memory-cards", false, CARDS_STEADY);
+	memoryCards("memory-cards-wide", true, CARDS_STEADY);
+	memoryCards("memory-cards-copy", true, CARDS_COPY);
+	memoryCards("memory-cards-erase", true, CARDS_ERASE);
+	memoryCards("memory-cards-opening", true, CARDS_OPENING);
 	return 0;
 }

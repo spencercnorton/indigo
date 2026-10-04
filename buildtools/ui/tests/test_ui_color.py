@@ -62,6 +62,8 @@ SEMANTIC = {
     (255, 0, 0), (0, 255, 0),                          # glass: TEV channel masks, not colors
     (255, 247, 236),                                   # glass: the sun's warm white core
     (255, 184, 150), (90, 224, 246),                   # glass: dispersion fringes on the rim
+    (255, 236, 170), (255, 190, 80),                   # Memory Cards: the box's focus, a reason,
+    (120, 16, 36), (255, 210, 220),                    # and the IPL's maroon message
 }
 # Pure blue can't turn without clipping, so its luma moves. It is the legacy
 # backdrop's tint, which the opaque Indigo wash covers.

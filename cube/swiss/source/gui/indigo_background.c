@@ -3456,13 +3456,23 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 }
 
 /* Memory Cards' stage: the backdrop's wash and, as the IPL's Memory Card
- * screen has, graph paper, a line every half a cube's cell through the
- * cubes' vanishing point, in the backdrop's colors; whatever follows takes
- * the menus'. One batch of lines a pixel wide in either screen shape. */
+ * screen has, graph paper (as much as paper, 0 .. 1), a line every half a
+ * cube's cell through the cubes' vanishing point, in the backdrop's colors;
+ * whatever follows takes the menus'. One batch of lines a pixel wide in
+ * either screen shape. While the screen opens and leaves, the Home cube
+ * where Home left it hands over: handover 1 is where it was, going back
+ * into the distance toward 0, the boot's form of it with no glass to copy
+ * the frame. */
 #define SAVES_GRID_PITCH 28.0f
-void IndigoBackground_DrawSavesBackdrop(void)
+#define SAVES_HANDOVER_DISTANCE 9.0f
+void IndigoBackground_DrawSavesBackdrop(float paper, float handover,
+	float seconds, bool animated, const uiSceneFrame_t *scene,
+	const uiClockFrame_t *clock, const int icons[UI_HOME_FACE_COUNT])
 {
-	const GXColor line = {70, 66, 112, 90};
+	/* Too large for the video thread's stack. */
+	static uiSceneFrame_t away;
+	const GXColor line = {70, 66, 112, (u8)(90.0f * (paper < 0.0f ? 0.0f :
+		paper > 1.0f ? 1.0f : paper) + 0.5f)};
 	float left = UIStage_Left(), right = UIStage_Right();
 	float width = UIStage_PixelWidth();
 	/* Truncating toward zero keeps each end's line on the stage. */
@@ -3475,26 +3485,33 @@ void IndigoBackground_DrawSavesBackdrop(void)
 	setupRasterPipeline();
 	UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);
 	drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));
-	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(4 * (lastColumn - firstColumn + 1 +
-		lastRow - firstRow + 1)));
-	for(i = firstColumn; i <= lastColumn; i++) {
-		float x = 320.0f + (float)i * SAVES_GRID_PITCH;
+	if(line.a > 0) {
+		GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(4 * (lastColumn - firstColumn + 1 +
+			lastRow - firstRow + 1)));
+		for(i = firstColumn; i <= lastColumn; i++) {
+			float x = 320.0f + (float)i * SAVES_GRID_PITCH;
 
-		putVertex((indigoPoint_t) {x, 0.0f}, line);
-		putVertex((indigoPoint_t) {x + width, 0.0f}, line);
-		putVertex((indigoPoint_t) {x + width, 480.0f}, line);
-		putVertex((indigoPoint_t) {x, 480.0f}, line);
-	}
-	for(i = firstRow; i <= lastRow; i++) {
-		float y = 224.0f + (float)i * SAVES_GRID_PITCH;
+			putVertex((indigoPoint_t) {x, 0.0f}, line);
+			putVertex((indigoPoint_t) {x + width, 0.0f}, line);
+			putVertex((indigoPoint_t) {x + width, 480.0f}, line);
+			putVertex((indigoPoint_t) {x, 480.0f}, line);
+		}
+		for(i = firstRow; i <= lastRow; i++) {
+			float y = 224.0f + (float)i * SAVES_GRID_PITCH;
 
-		putVertex((indigoPoint_t) {left, y}, line);
-		putVertex((indigoPoint_t) {right, y}, line);
-		putVertex((indigoPoint_t) {right, y + 1.0f}, line);
-		putVertex((indigoPoint_t) {left, y + 1.0f}, line);
+			putVertex((indigoPoint_t) {left, y}, line);
+			putVertex((indigoPoint_t) {right, y}, line);
+			putVertex((indigoPoint_t) {right, y + 1.0f}, line);
+			putVertex((indigoPoint_t) {left, y + 1.0f}, line);
+		}
+		GX_End();
 	}
-	GX_End();
 	UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);
+	if(handover > 0.02f && scene != NULL && scene->visible) {
+		away = *scene;
+		away.introDistance += SAVES_HANDOVER_DISTANCE * (1.0f - handover);
+		drawCube(&away, seconds, animated, clock, NULL, icons, false);
+	}
 }
 
 void IndigoBackground_TrackPad(float seconds, bool animated,

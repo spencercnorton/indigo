@@ -6562,6 +6562,18 @@ void DrawUpdateSavesPage(uiDrawObj_t *page,
  * asks nothing new of GX.
  * --------------------------------------------------------------------- */
 
+/* The backdrop: the graph paper as much as it shows, and the Home cube while
+ * it hands over to the cubes or back, as _DrawBackground would draw it. */
+static void _SaveCubesBackdrop(float paper, float handover)
+{
+	int icons[UI_HOME_FACE_COUNT];
+
+	_HomeFaceIcons(icons);
+	IndigoBackground_DrawSavesBackdrop(paper, handover, UIAnim_Seconds(),
+		_CurrentMotionMode() == UI_MOTION_FULL, UIScene_Frame(),
+		&systemInstrument.clock, icons);
+}
+
 /* What one frame's cubes need. */
 typedef struct {
 	uiSaveCube_t cubes[UI_SAVE_CUBES_OUT];
@@ -6679,7 +6691,17 @@ typedef struct {
 	uiSaveCubesMotion_t motion;
 	saveCubesDraw_t draw;
 	GXTexObj picture;	/* the info bar's banner, or its icon */
+	/* The last box and message shown, drawn while they fade out. */
+	uiSaveCubesMenu_t menu;
+	u8 menuFocus;
+	char message[64];
 } drawSaveCubesEvent_t;
+
+static GXColor _SaveCubesFaded(GXColor color, float alpha)
+{
+	color.a = (u8)((float)color.a * alpha + 0.5f);
+	return color;
+}
 
 /* A box of fill shading top to bottom, inside an edge line px wide. */
 static void _SaveCubesBox(float x, float y, float width, float height,
@@ -6703,10 +6725,11 @@ static void _SaveCubesBox(float x, float y, float width, float height,
  * card's open folder; the arrows when rows lie above or below the window;
  * or, with no grid, why. */
 static void _SaveCubesHeader(const uiSaveCubesStack_t *stack,
-	const uiSaveCubesStackText_t *text, float middle)
+	const uiSaveCubesStackText_t *text, float middle, float alpha)
 {
-	const GXColor white = {255, 255, 255, 255};
-	const GXColor shadow = {0, 0, 0, 200};
+	const GXColor white = _SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha);
+	const GXColor shadow = _SaveCubesFaded((GXColor) {0, 0, 0, 200}, alpha);
+	const GXColor quiet = _SaveCubesFaded(settingsQuiet, alpha);
 	int rows = stack->cells / UI_SAVE_CUBES_COLUMNS;
 	int i;
 
@@ -6714,7 +6737,7 @@ static void _SaveCubesHeader(const uiSaveCubesStack_t *stack,
 		drawStringMedium((int)middle, 220, text->note[0], text->noteScale[0],
 			ALIGN_CENTER, white);
 		drawStringMedium((int)middle, 248, text->note[1], text->noteScale[1],
-			ALIGN_CENTER, settingsQuiet);
+			ALIGN_CENTER, quiet);
 		return;
 	}
 	drawStringMedium((int)middle - 100, 74, text->name, 1.5f, ALIGN_LEFT, white);
@@ -6725,7 +6748,7 @@ static void _SaveCubesHeader(const uiSaveCubesStack_t *stack,
 	}
 	else {
 		drawStringMedium((int)middle - 44, 78, text->path, 0.42f, ALIGN_LEFT,
-			settingsQuiet);
+			quiet);
 	}
 	for(i = 0; i < 2; i++) {
 		float tip = i ? 354.5f : 99.5f, base = i ? 345.5f : 108.5f;
@@ -6756,69 +6779,177 @@ static void _SaveCubesPicture(GXTexObj *picture, const u8 *texels, int x,
 	drawInit();
 }
 
+/* A flat bar, x .. x + width across, y .. y + height down. */
+static void _SaveCubesBar(float x, float y, float width, float height,
+	GXColor color)
+{
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+		_putFlatRect(x, y, width, height, color);
+	GX_End();
+}
+
+/* The box beside the focused cube, as the IPL's: dimmed items grey, the
+ * focus's bar sliding to its item. It opens from 0.92x and fades, about its
+ * middle. */
+static void _SaveCubesMenu(const uiSaveCubesMenu_t *menu, int focus,
+	const uiSaveCubesGrid_t *grid, const uiSaveCubesMotion_t *motion)
+{
+	const float alpha = motion->menuAlpha, scale = motion->menuScale;
+	const GXColor fill = _SaveCubesFaded((GXColor) {18, 27, 91, 230}, alpha);
+	const GXColor edge = _SaveCubesFaded((GXColor) {196, 186, 255, 255}, alpha);
+	uiSaveCubesBox_t box;
+	float cubeX, cubeY, middleX, middleY, top;
+	bool titled = menu->title[0] != '\0';
+	int i;
+
+	if(!(alpha > 0.0f) || menu->count == 0 || grid->focusStack < 0 ||
+		grid->focusStack >= UI_SAVE_CUBES_STACKS) {
+		return;
+	}
+	UISaveCubes_Where(grid->focusStack, grid->focusCell,
+		(float)grid->stack[grid->focusStack].first, &cubeX, &cubeY);
+	UISaveCubes_MenuBox(cubeX, cubeY, (float)menu->width, menu->count, titled, &box);
+	top = titled ? box.titleY : box.y;
+	middleX = box.x + 0.5f * box.width;
+	middleY = 0.5f * (top + box.y + box.height);
+#define MENU_X(x) (middleX + ((x) - middleX) * scale)
+#define MENU_Y(y) (middleY + ((y) - middleY) * scale)
+	if(titled) {
+		_SaveCubesBox(MENU_X(box.x), MENU_Y(box.titleY), box.width * scale,
+			UI_SAVE_CUBES_MENU_TITLE * scale, fill, fill, edge, 2.0f);
+		drawStringMedium((int)MENU_X(box.x + 12.0f),
+			(int)MENU_Y(box.titleY + 0.5f * UI_SAVE_CUBES_MENU_TITLE), menu->title,
+			0.56f * scale, ALIGN_LEFT, _SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha));
+	}
+	_SaveCubesBox(MENU_X(box.x), MENU_Y(box.y), box.width * scale, box.height * scale,
+		fill, fill, edge, 2.0f);
+	_SaveCubesBar(MENU_X(box.x + 4.0f),
+		MENU_Y(box.y + 8.0f + UI_SAVE_CUBES_MENU_PITCH * motion->menuItem),
+		(box.width - 8.0f) * scale, UI_SAVE_CUBES_MENU_PITCH * scale,
+		_SaveCubesFaded((GXColor) {70, 92, 200, 230}, alpha));
+	for(i = 0; i < menu->count && i < 4; i++) {
+		GXColor ink = (menu->dim >> i) & 1u ? (GXColor) {120, 120, 140, 255} :
+			i == focus ? (GXColor) {255, 236, 170, 255} : (GXColor) {255, 255, 255, 255};
+
+		drawStringMedium((int)MENU_X(box.x + 16.0f), (int)MENU_Y(box.y + 8.0f +
+			UI_SAVE_CUBES_MENU_PITCH * ((float)i + 0.5f)), menu->item[i],
+			0.56f * scale, ALIGN_LEFT, _SaveCubesFaded(ink, alpha));
+	}
+#undef MENU_X
+#undef MENU_Y
+}
+
+/* The IPL's maroon message over the middle of the stage. */
+static void _SaveCubesMessage(const char *text, float alpha)
+{
+	float width = (float)GetTextSizeInPixels(text) * 0.56f + 48.0f;
+
+	if(!(alpha > 0.0f) || text[0] == '\0') {
+		return;
+	}
+	if(width < 320.0f) {
+		width = 320.0f;
+	}
+	_SaveCubesBox(320.0f - 0.5f * width, 200.0f, width, 50.0f,
+		_SaveCubesFaded((GXColor) {120, 16, 36, 235}, alpha),
+		_SaveCubesFaded((GXColor) {120, 16, 36, 235}, alpha),
+		_SaveCubesFaded((GXColor) {255, 210, 220, 255}, alpha), 2.0f);
+	drawStringMedium(320, 225, text, 0.56f, ALIGN_CENTER,
+		_SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha));
+}
+
 static void _DrawSaveCubes(uiDrawObj_t *evt)
 {
 	drawSaveCubesEvent_t *data = (drawSaveCubesEvent_t*)evt->data;
 	const uiSaveCubesPageSnapshot_t *s = &data->snapshot;
 	const uiSaveCubesGrid_t *grid = &s->grid;
-	const GXColor white = {255, 255, 255, 255};
-	const GXColor box = {0, 0, 0, 200};
 	uiMotionMode_t motion = _CurrentMotionMode();
 	float left = UIStage_Left() + 40.0f, right = UIStage_Right() - 40.0f;
+	float chrome;
 	int count, floating, i;
 
-	IndigoBackground_DrawSavesBackdrop();
-	drawInit();
-	_SaveCubesShades(&data->draw);
+	/* The cubes first: their motion says how much of the rest shows. */
 	count = UISaveCubes_Frame(&data->motion, grid, UIAnim_Delta(), motion,
 		data->draw.cubes, &floating);
+	chrome = data->motion.chrome;
+	_SaveCubesBackdrop(data->motion.paper, data->motion.handover);
+	drawInit();
+	_SaveCubesShades(&data->draw);
 	data->draw.invalidated = false;
-	for(i = 0; i < UI_SAVE_CUBES_STACKS; i++) {
+	for(i = 0; i < UI_SAVE_CUBES_STACKS && chrome > 0.0f; i++) {
 		_SaveCubesHeader(&grid->stack[i], &s->stack[i],
-			UI_SAVE_CUBES_STACK_X + (float)i * UI_SAVE_CUBES_STACK_GAP);
+			UI_SAVE_CUBES_STACK_X + (float)i * UI_SAVE_CUBES_STACK_GAP, chrome);
 	}
 	_SaveCubesEmit(&data->draw, 0, floating);
 	/* The info bar: the focused save's banner (or its icon), its comment
 	 * and its size, as the IPL's. Empty for a free cell. */
-	_SaveCubesBox(left, 362.0f, right - left, 70.0f, (GXColor) {39, 53, 153, 220},
-		(GXColor) {58, 31, 127, 220}, (GXColor) {196, 186, 255, 255}, 2.0f);
-	if(s->info) {
-		int blocks = 0;
+	if(chrome > 0.0f) {
+		const GXColor white = _SaveCubesFaded((GXColor) {255, 255, 255, 255}, chrome);
+		const GXColor box = _SaveCubesFaded((GXColor) {0, 0, 0, 200}, chrome);
 
-		if(s->banner != NULL) {
-			_SaveCubesPicture(&data->picture, s->banner, 56, 381, 96);
-		}
-		else if(s->folder) {
-			_SavesFolder(56, 381, settingsSwatch);
-		}
-		else if(grid->focusStack >= 0) {
-			const uiSaveCubesStack_t *stack = &grid->stack[grid->focusStack];
-			int k = grid->focusCell - (stack->first - 1) * UI_SAVE_CUBES_COLUMNS;
-			const u8 *icon = k >= 0 && k < UI_SAVE_CUBES_DRAWN ?
-				UISaveCubes_Icon(&stack->cell[k], data->motion.seconds, motion) : NULL;
+		_SaveCubesBox(left, 362.0f, right - left, 70.0f,
+			_SaveCubesFaded((GXColor) {39, 53, 153, 220}, chrome),
+			_SaveCubesFaded((GXColor) {58, 31, 127, 220}, chrome),
+			_SaveCubesFaded((GXColor) {196, 186, 255, 255}, chrome), 2.0f);
+		if(s->info) {
+			int blocks = 0;
 
-			if(icon != NULL) {
-				_SaveCubesPicture(&data->picture, icon, 88, 381, 32);
+			/* Pictures can't fade: they come with the words' second half. */
+			bool pictures = chrome >= 0.5f;
+
+			if(pictures && s->banner != NULL) {
+				_SaveCubesPicture(&data->picture, s->banner, 56, 381, 96);
 			}
-		}
-		drawStringMedium(168, 388, s->line[0], 0.62f, ALIGN_LEFT, white);
-		if(s->blocks[0] != '\0') {
-			blocks = (int)((float)GetTextSizeInPixels(s->blocks) * 0.5f) + 16;
-			if(blocks < 48) {
-				blocks = 48;
+			else if(pictures && s->folder) {
+				_SavesFolder(56, 381, settingsSwatch);
 			}
-			_SaveCubesBox(168.0f, 398.0f, (float)blocks, 24.0f, box, box, white, 2.0f);
-			drawStringMedium(168 + blocks / 2, 410, s->blocks, 0.5f, ALIGN_CENTER,
-				white);
+			else if(pictures && grid->focusStack >= 0) {
+				const uiSaveCubesStack_t *stack = &grid->stack[grid->focusStack];
+				int k = grid->focusCell - (stack->first - 1) * UI_SAVE_CUBES_COLUMNS;
+				const u8 *icon = k >= 0 && k < UI_SAVE_CUBES_DRAWN ?
+					UISaveCubes_Icon(&stack->cell[k], data->motion.seconds, motion) : NULL;
+
+				if(icon != NULL) {
+					_SaveCubesPicture(&data->picture, icon, 88, 381, 32);
+				}
+			}
+			drawStringMedium(168, 388, s->line[0], 0.62f, ALIGN_LEFT, white);
+			if(s->blocks[0] != '\0') {
+				blocks = (int)((float)GetTextSizeInPixels(s->blocks) * 0.5f) + 16;
+				if(blocks < 48) {
+					blocks = 48;
+				}
+				_SaveCubesBox(168.0f, 398.0f, (float)blocks, 24.0f, box, box, white, 2.0f);
+				drawStringMedium(168 + blocks / 2, 410, s->blocks, 0.5f, ALIGN_CENTER,
+					white);
+			}
+			/* A dimmed item's reason takes the second line, in amber. */
+			drawStringMedium(180 + blocks, 410, s->line[1], 0.5f, ALIGN_LEFT,
+				_SaveCubesFaded(s->warn ? (GXColor) {255, 190, 80, 255} : settingsQuiet,
+				chrome));
 		}
-		drawStringMedium(180 + blocks, 410, s->line[1], 0.5f, ALIGN_LEFT,
-			settingsQuiet);
 	}
 	for(i = floating; i < count; i++) {
 		_SaveCubesEmit(&data->draw, i, i + 1);
 	}
-	_DrawHintText(40, 454, s->hint[0], 0.46f, ALIGN_LEFT, settingsInk);
-	_DrawHintText(600, 454, s->hint[1], 0.46f, ALIGN_RIGHT, settingsQuiet);
+	if(grid->menu) {
+		data->menu = s->menu;
+		data->menuFocus = grid->menuFocus;
+	}
+	_SaveCubesMenu(&data->menu, data->menuFocus, grid, &data->motion);
+	if(grid->message) {
+		memcpy(data->message, s->message, sizeof(data->message));
+		data->message[sizeof(data->message) - 1] = '\0';
+	}
+	_SaveCubesMessage(data->message, data->motion.messageAlpha);
+	if(chrome > 0.0f) {
+		_DrawHintText(40, 454, s->hint[0], 0.46f, ALIGN_LEFT,
+			_SaveCubesFaded(settingsInk, chrome));
+		_DrawHintText(600, 454, s->hint[1], 0.46f, ALIGN_RIGHT,
+			_SaveCubesFaded(settingsQuiet, chrome));
+	}
 	drawInit();
 }
 

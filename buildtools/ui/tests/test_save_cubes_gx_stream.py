@@ -156,9 +156,9 @@ static void _putFlatRect(float x, float y, float width, float height, GXColor co
 }
 static void drawStringMedium(int x, int y, const char *text, float scale, int align, GXColor color)
 {
-	(void)align; (void)color;
+	(void)align;
 	CHECK(!active && text != NULL && scale > 0.0f);
-	printf("S %d %d %s\n", x, y, text);
+	printf("S %d %d %u %u %u %u %s\n", x, y, color.r, color.g, color.b, color.a, text);
 	pipeline = DIRTY;
 }
 static void _DrawHintText(int x, int y, const char *text, float scale, int align, GXColor color)
@@ -183,7 +183,12 @@ static void _SavesFolder(int x, int y, GXColor color)
 	printf("G %d %d\n", x, y);
 	pipeline = DIRTY;
 }
-static void IndigoBackground_DrawSavesBackdrop(void) { CHECK(!active); printf("K\n"); pipeline = DIRTY; }
+static void _SaveCubesBackdrop(float paper, float handover)
+{
+	CHECK(!active && paper >= 0.0f && paper <= 1.0f && handover >= 0.0f && handover <= 1.0f);
+	printf("K %.2f %.2f\n", paper, handover);
+	pipeline = DIRTY;
+}
 static float animDelta;
 static float UIAnim_Delta(void) { return animDelta; }
 static uiMotionMode_t motionMode;
@@ -251,6 +256,43 @@ int main(void)
 			snprintf(page.snapshot.line[1], 48, "Cup 3 cleared");
 			snprintf(page.snapshot.blocks, 16, "11");
 		}
+		else if(sscanf(line, "O %d %d %d %d %d", &a, &b, &c, &d, &e) == 5) {
+			/* An operation: kind, phase, serial, the left stack's cell it
+			 * leaves and the right's it goes to. */
+			uiSaveCubesOp_t *op = &page.snapshot.grid.op;
+			op->kind = (u8)a;
+			op->phase = (u8)b;
+			op->serial = (u16)c;
+			op->from = 0;
+			op->fromCell = (s16)d;
+			op->toCell = (s16)e;
+			op->cube.texels = texels;
+			op->cube.art = &art;
+			op->cube.kind = UI_SAVE_CUBES_KIND_SAVE;
+		}
+		else if(sscanf(line, "G %d %d", &a, &b) == 2) {
+			page.snapshot.grid.ghost = (u8)a;
+			page.snapshot.grid.ghostCell = (s16)b;
+		}
+		else if(sscanf(line, "E %d %d %d %d %d", &a, &b, &c, &d, &e) == 5) {
+			/* A box: open, its items, the focus, whether titled, which dim. */
+			uiSaveCubesMenu_t *menu = &page.snapshot.menu;
+			static const char *const items[3] = {"Move", "Copy", "Erase"};
+			page.snapshot.grid.menu = (u8)a;
+			page.snapshot.grid.menuSerial++;
+			page.snapshot.grid.menuFocus = (u8)c;
+			menu->count = (u8)b;
+			menu->dim = (u8)e;
+			menu->width = 112;
+			snprintf(menu->title, sizeof(menu->title), "%s", d ? "Copy to Slot B?" : "");
+			for(f = 0; f < b && f < 3; ++f) snprintf(menu->item[f], sizeof(menu->item[f]), "%s", items[f]);
+		}
+		else if(sscanf(line, "X %d", &a) == 1) {
+			page.snapshot.grid.message = (u8)a;
+			if(a) snprintf(page.snapshot.message, sizeof(page.snapshot.message), "Finished copying.");
+			else page.snapshot.message[0] = '\0';
+		}
+		else if(sscanf(line, "Q %d", &a) == 1) page.snapshot.grid.leaving = (u8)a;
 		else if(sscanf(line, "W %d", &a) == 1) UIStage_SetWide(a != 0);
 		else if(sscanf(line, "M %d", &a) == 1) motionMode = (uiMotionMode_t)a;
 		else if(sscanf(line, "U %d", &a) == 1) shift = a != 0;
@@ -396,7 +438,7 @@ class SaveCubesGXStreamTests(unittest.TestCase):
         self.assertLess(resting["at"], drawn[0]["at"], "every face at rest before an icon")
         for quad in quads(resting) + quads(focused):
             self.assertGreater(area(quad), 0.0, "a face wound the wrong way")
-        self.assertEqual(frame["events"][0], ("K", ""))
+        self.assertEqual(frame["events"][0], ("K", "1.00 0.00"), "the backdrop, the screen open")
 
     def test_rest(self):
         for wide in (0, 1):
@@ -486,6 +528,118 @@ class SaveCubesGXStreamTests(unittest.TestCase):
         self.assertNotIn("GX_SetZMode", self.source)
         self.assertNotIn("GX_BM_NONE", self.source)
         self.assertNotIn("sqrtf", self.cubes_c)
+
+    def mutant(self, where: str, old: str, new: str) -> Path:
+        source, cubes = self.source, self.cubes_c
+        if where == "fbm":
+            self.assertIn(old, source)
+            source = source.replace(old, new, 1)
+        else:
+            self.assertIn(old, cubes)
+            cubes = cubes.replace(old, new, 1)
+        return self.build(source, cubes, "mutant")
+
+    def test_opening_and_leaving(self):
+        frames = self.run_script(AT_REST + "Q 1\nN 30 0.0166667\n")
+        first, opened, gone = frames[0], frames[OPEN], frames[-1]
+        # The first frame: the Home cube where Home left it, no paper, no
+        # cubes and no words yet.
+        self.assertEqual(first["events"][0], ("K", "0.00 1.00"))
+        self.assertEqual(cube_batches(first) + icons(first), [])
+        self.assertFalse([e for e in first["events"] if e[0] in ("S", "H")])
+        # Opened: the paper, every cube and the hints; the Home cube gone.
+        self.assertEqual(opened["events"][0], ("K", "1.00 0.00"))
+        self.assertTrue([e for e in opened["events"] if e[0] == "H"])
+        # Left: the Home cube back, the paper, words and cubes gone.
+        self.assertEqual(gone["events"][0], ("K", "0.00 1.00"))
+        self.assertEqual(cube_batches(gone) + icons(gone), [])
+        self.assertFalse([e for e in gone["events"] if e[0] in ("S", "H")])
+
+    def menu_frame(self, script: str, program: Path | None = None) -> tuple[dict, list]:
+        frame = self.run_script(AT_REST + script, program)[-1]
+        strings = [(i, e[1].split(" ", 6)) for i, e in enumerate(frame["events"]) if e[0] == "S"]
+        return frame, strings
+
+    def test_the_box_beside_the_cube(self):
+        # Move, Copy and Erase beside the focused cube (left stack, cell 5),
+        # Move dimmed, Copy focused: after every cube, at x 192, from y 112.
+        frame, strings = self.menu_frame("E 1 3 1 0 1\nN 15 0.0166667\n")
+        items = [(int(x), int(y), (int(r), int(g), int(b)), text)
+                 for _, (x, y, r, g, b, a, text) in strings if text in ("Move", "Copy", "Erase")]
+        self.assertEqual(items, [(208, 132, (120, 120, 140), "Move"),
+                                 (208, 156, (255, 236, 170), "Copy"),
+                                 (208, 180, (255, 255, 255), "Erase")])
+        last_cube = icons(frame)[-1]["at"]	# the focused cube's icon
+        boxes = [b for b in frame["batches"] if b["count"] == 20 and b["at"] > last_cube]
+        self.assertEqual(len(boxes), 1, "the box, over every cube")
+        self.assertEqual(min(v[0] for v in boxes[0]["vertices"]), 192.0)
+        self.assertEqual(min(v[1] for v in boxes[0]["vertices"]), 112.0)
+        # A question: its title's box above the Yes/No.
+        frame, strings = self.menu_frame("E 1 2 0 1 0\nN 15 0.0166667\n")
+        self.assertTrue(any(text == "Copy to Slot B?" for _, (*_, text) in strings))
+        last_cube = icons(frame)[-1]["at"]
+        self.assertEqual(len([b for b in frame["batches"] if b["count"] == 20 and
+                              b["at"] > last_cube]), 2)
+        # Closed, it fades in 0.1 s.
+        frames = self.run_script(AT_REST + "E 1 3 1 0 1\nN 15 0.0166667\nE 0 3 1 0 1\n"
+                                 "N 3 0.0166667\nN 10 0.0166667\n")
+        fading = [int(e[1].split(" ", 6)[5]) for e in frames[-11]["events"]
+                  if e[0] == "S" and e[1].endswith("Erase")]
+        self.assertTrue(fading and 0 < fading[0] < 255)
+        self.assertFalse([e for e in frames[-1]["events"] if e[0] == "S" and
+                          e[1].endswith("Erase")])
+        # Mutants: a dimmed item drawn as any other; the box under the cubes.
+        program = self.mutant("fbm", "GXColor ink = (menu->dim >> i) & 1u ?",
+                              "GXColor ink = 0 ?")
+        _, strings = self.menu_frame("E 1 3 1 0 1\nN 15 0.0166667\n", program)
+        self.assertTrue(any(text == "Move" and (r, g, b) == ("255", "255", "255")
+                            for _, (x, y, r, g, b, a, text) in strings))
+        floating = "\tfor(i = floating; i < count; i++) {\n\t\t_SaveCubesEmit(&data->draw, i, i + 1);\n\t}\n"
+        menu = ("\tif(grid->menu) {\n\t\tdata->menu = s->menu;\n\t\tdata->menuFocus = grid->menuFocus;\n"
+                "\t}\n\t_SaveCubesMenu(&data->menu, data->menuFocus, grid, &data->motion);\n")
+        program = self.mutant("fbm", floating + menu, menu + floating)
+        frame, _ = self.menu_frame("E 1 3 1 0 1\nN 15 0.0166667\n", program)
+        self.assertEqual([b for b in frame["batches"] if b["count"] == 20 and
+                          b["at"] > icons(frame)[-1]["at"]], [])
+
+    def test_a_message(self):
+        frames = self.run_script(AT_REST + "X 1\nN 15 0.0166667\nX 0\nN 3 0.0166667\n"
+                                 "N 10 0.0166667\n")
+        shown, fading, gone = frames[-14], frames[-11], frames[-1]
+        def message(frame):
+            return [e[1].split(" ", 6) for e in frame["events"]
+                    if e[0] == "S" and e[1].endswith("Finished copying.")]
+        (x, y, r, g, b, a, _), = message(shown)
+        self.assertEqual((x, y, a), ("320", "225", "255"))
+        self.assertLess(int(message(fading)[0][5]), 255)
+        self.assertEqual(message(gone), [])
+        box = [bt for bt in shown["batches"] if bt["count"] == 20 and
+               min(v[1] for v in bt["vertices"]) == 200.0]
+        self.assertEqual(len(box), 1)
+        self.assertEqual(box[0]["vertices"][0][2:5], (120, 16, 36))
+
+    def test_a_flight_and_a_burst(self):
+        at_rest = self.run_script(AT_REST)[-1]
+        # A copy from the left stack's cell 5 to the right's cell 2, 0.1 s
+        # in: one cube more, floating over the rest, its icon after it.
+        flying = self.run_script(AT_REST + "O 1 0 1 5 2\nN 7 0.0166667\n")[-1]
+        self.assertEqual(len(cube_batches(flying)), len(cube_batches(at_rest)) + 1)
+        self.assertEqual(len(icons(flying)), len(icons(at_rest)) + 1)
+        self.assertGreater(icons(flying)[-1]["at"], cube_batches(flying)[-1]["at"])
+        self.assertGreater(width(cube_batches(flying)[-1]), 56.0, "the flight grows toward the eye")
+        # Erased: eight small pieces, each a batch, no icons.
+        burst = self.run_script(AT_REST + "O 3 0 2 5 0\nN 30 0.0166667\nO 3 1 2 5 0\n"
+                                "N 3 0.0166667\n")[-1]
+        pieces = [b for b in cube_batches(burst) if width(b) < 12.0]
+        self.assertEqual(len(pieces), 8)
+        self.assertEqual(len(icons(burst)), len(icons(at_rest)))
+        # The busiest such frame, in Menu Widescreen, holds the budget.
+        frames = self.run_script("W 1\nS 0 128 4 127 1\nS 1 128 4 127 2\nC 0 17\nI 1 1 0\n"
+                                 "N 120 0.0166667\nO 1 0 1 17 21\nS 0 128 5 127 1\n"
+                                 "S 1 128 5 127 2\nC 0 21\nN 18 0.0166667\n")
+        frame = frames[-1]
+        self.assertLessEqual(sum(len(b["vertices"]) for b in frame["batches"]), 3500)
+        self.assertLessEqual(len(frame["batches"]), 140)
 
     def test_mutations_are_rejected(self):
         fbm, pure = "fbm", "pure"

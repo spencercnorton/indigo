@@ -153,6 +153,39 @@
   "trig": 4,
   "vertices": 1448
  },
+ "memory-cards-copy": {
+  "begins": 47,
+  "copy_pixels": 0,
+  "hash": "d24e33bc35f30f8d",
+  "minmax": 0,
+  "scene": "memory-cards-copy",
+  "sqrtf": 0,
+  "state": 32,
+  "trig": 6,
+  "vertices": 1512
+ },
+ "memory-cards-erase": {
+  "begins": 52,
+  "copy_pixels": 0,
+  "hash": "386d5bdaa52e2bbb",
+  "minmax": 0,
+  "scene": "memory-cards-erase",
+  "sqrtf": 0,
+  "state": 28,
+  "trig": 4,
+  "vertices": 1576
+ },
+ "memory-cards-opening": {
+  "begins": 115,
+  "copy_pixels": 0,
+  "hash": "aca09a6fbe07240b",
+  "minmax": 325,
+  "scene": "memory-cards-opening",
+  "sqrtf": 0,
+  "state": 152,
+  "trig": 523,
+  "vertices": 5470
+ },
  "memory-cards-wide": {
   "begins": 45,
   "copy_pixels": 0,

@@ -309,6 +309,16 @@ typedef struct {
 	float noteScale[2];
 } uiSaveCubesStackText_t;
 
+/* The box beside the focused cube (grid.menu says it is open): the IPL's
+ * Move / Copy / Erase, or a question with its title above. */
+typedef struct {
+	char title[48];		/* "" for none */
+	char item[4][40];
+	u8 count;
+	u8 dim;			/* the items that can't be chosen, a bit each */
+	u16 width;		/* in px: its widest item, or its title */
+} uiSaveCubesMenu_t;
+
 typedef struct {
 	uiSaveCubesGrid_t grid;
 	uiSaveCubesStackText_t stack[UI_SAVE_CUBES_STACKS];
@@ -318,6 +328,9 @@ typedef struct {
 	char hint[2][96];	/* left, and right */
 	u8 info;		/* the info bar shows the focused save or folder */
 	u8 folder;		/* it is a folder */
+	u8 warn;		/* line[1] says why the focused item can't be chosen */
+	uiSaveCubesMenu_t menu;
+	char message[64];	/* "Finished copying.", while grid.message */
 } uiSaveCubesPageSnapshot_t;
 
 uiDrawObj_t* DrawSaveCubesPage(const uiSaveCubesPageSnapshot_t *snapshot);
