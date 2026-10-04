@@ -478,6 +478,58 @@ static void testLibraryRetreatReveal(void)
 	}
 }
 
+/* Home and Source quiet the waves (indigo_background.c scales them by
+ * HOME_DECORATIVE_STRENGTH). The quieting eases with the cube rather than
+ * stepping on the frame the scene changes; Source is Home's own, and Off
+ * still changes at once. */
+static void testHomeDecorativeBlend(void)
+{
+	for(int hz = 50; hz <= 60; hz += 10) {
+		float dt = 1.0f / (float)hz;
+		float previous;
+
+		start(dt, UI_MOTION_FULL);
+		near(UIScene_Frame()->homeDecorativeBlend, 1.0f, 0.0001f);
+		UIScene_Request(UI_SCENE_SOURCE);
+		advance(1.0f, dt, UI_MOTION_FULL);
+		near(UIScene_Frame()->homeDecorativeBlend, 1.0f, 0.0001f);
+		UIScene_Request(UI_SCENE_LIBRARY);
+		previous = 1.0f;
+		for(int frame = 0; frame < 3 * hz; frame++) {
+			tick(dt, UI_MOTION_FULL);
+			float blend = UIScene_Frame()->homeDecorativeBlend;
+			CHECK(blend <= previous && previous - blend < 0.06f);
+			previous = blend;
+		}
+		near(previous, 0.0f, 0.001f);
+		UIScene_Request(UI_SCENE_HOME);
+		for(int frame = 0; frame < 3 * hz; frame++) {
+			tick(dt, UI_MOTION_FULL);
+			float blend = UIScene_Frame()->homeDecorativeBlend;
+			CHECK(blend >= previous && blend - previous < 0.06f);
+			previous = blend;
+		}
+		near(previous, 1.0f, 0.001f);
+	}
+	start(0.02f, UI_MOTION_OFF);
+	UIScene_Request(UI_SCENE_SYSTEM);
+	tick(0.02f, UI_MOTION_OFF);
+	near(UIScene_Frame()->homeDecorativeBlend, 0.0f, 0.0f);
+	UIScene_Request(UI_SCENE_HOME);
+	tick(0.02f, UI_MOTION_OFF);
+	near(UIScene_Frame()->homeDecorativeBlend, 1.0f, 0.0f);
+	/* It keeps step with the orbit's strength, whose spring it shares, even
+	 * when Reduced takes the travel it had gathered from them both. */
+	start(1.0f / 60.0f, UI_MOTION_FULL);
+	UIScene_RequestLibraryLayout(UI_GAMEFLOW_LAYOUT_HORIZONTAL);
+	UIScene_Request(UI_SCENE_LIBRARY);
+	for(int frame = 0; frame < 60; frame++) {
+		tick(1.0f / 60.0f, frame < 8 ? UI_MOTION_FULL : UI_MOTION_REDUCED);
+		near(1.0f - UIScene_Frame()->homeDecorativeBlend,
+			(1.0f - UIScene_Frame()->orbitStrength) / (1.0f - 0.72f), 0.0005f);
+	}
+}
+
 /* The Library's cube pose follows its layout: Horizontal keeps the one the
  * carousel always had, Vertical tucks the cube behind the column's cover
  * (Detail's place), and Grid and Spotlight move it clear of their screens; a
@@ -578,6 +630,7 @@ int main(void)
 	testAppsRing();
 	testClassicCube();
 	testLibraryLayoutPoses();
+	testHomeDecorativeBlend();
 	printf("ui_scene: %u checks passed\n", checks);
 	return 0;
 }

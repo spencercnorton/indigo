@@ -111,10 +111,10 @@ typedef struct {
 
 #include <stdbool.h>
 
-/* The carousels' window: the selected card and three either side. */
-#define UI_ASSETS_WINDOW 7
+/* The carousels' window: the selected card and four either side. */
+#define UI_ASSETS_WINDOW 9
 /* Poster slots, enough for the Grid layout's window of five rows of five.
- * Under a carousel's seven the rest keep the posters it scrolled past, so
+ * Under a carousel's nine the rest keep the posters it scrolled past, so
  * scrolling back reads nothing. */
 #define UI_ASSETS_SLOTS 25
 #define UI_ASSETS_CANVAS_W 256
@@ -230,6 +230,12 @@ uiPosterResult_t UIAssets_Query(const char *gameId, size_t gameIdLen,
  * loading, after eviction/cancel/final disposal, or on a stale generation. */
 GXTexObj *UIAssets_Peek(uiPosterHandle_t handle);
 
+/* Video thread, lock ALREADY HELD; never locks. How many milliseconds ago
+ * the texture Peek returns for handle was published, from the clock Init
+ * was given; 0 when Peek returns NULL. A poster read while it was off
+ * screen is old by the time it is drawn. */
+u32 UIAssets_PeekAgeMs(uiPosterHandle_t handle);
+
 /* Video thread, lock ALREADY HELD; never locks. Pack-declared dominant
  * color for procedural cards. gameIdLen as for Query. False when the ID
  * has no pack record (caller picks its own tint). */
@@ -277,6 +283,7 @@ bool UIStills_Poll(void);
 uiPosterResult_t UIStills_Query(const char *gameId, size_t gameIdLen,
                                 bool bnrAvailable, uiPosterHandle_t *out);
 GXTexObj *UIStills_Peek(uiPosterHandle_t handle);
+u32 UIStills_PeekAgeMs(uiPosterHandle_t handle);
 bool UIStills_DominantColor(const char *gameId, size_t gameIdLen,
                             u8 *r, u8 *g, u8 *b);
 void UIStills_CancelForDeviceChange(void);

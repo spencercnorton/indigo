@@ -273,8 +273,10 @@ void uiAssetsHostFree(void *ptr) {
 /* ---- fake clock ---- */
 
 static u32 fakeNowValue = 1000;
+static int nowLockDepth; /* lockDepth at the clock's last reading */
 
 static u32 fakeNow(void) {
+	nowLockDepth = lockDepth;
 	return fakeNowValue;
 }
 
@@ -901,7 +903,7 @@ static void checkLoaded(const char *id) {
 	}
 }
 
-static void test_window_prefetch_loads_all_seven(void) {
+static void test_window_prefetch_loads_whole_window(void) {
 	int count = 20;
 	testRec_t *recs = makeRecs(count);
 	size_t len;
@@ -912,13 +914,13 @@ static void test_window_prefetch_loads_all_seven(void) {
 
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
 	makeIds(ids, 5, UI_ASSETS_WINDOW);
-	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, UI_ASSETS_WINDOW / 2);
 	pollAll();
 	/* Every window entry -- not just the selected one -- must be resident
 	 * with its own record's exact payload. */
 	for (i = 0; i < UI_ASSETS_WINDOW; i++)
 		checkLoaded(ids[i]);
-	CHECK(mem.readCalls == 2 + UI_ASSETS_WINDOW); /* header + index + 7 */
+	CHECK(mem.readCalls == 2 + UI_ASSETS_WINDOW); /* header + index + 9 */
 	CHECK(flushCalls == UI_ASSETS_WINDOW); /* one unlocked flush per load */
 	free(pack);
 	free(recs);
@@ -935,16 +937,16 @@ static void test_window_eviction_and_reversal(void) {
 	int reads;
 
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
-	makeIds(ids, 3, UI_ASSETS_WINDOW); /* window 3..9, selected 6 */
-	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+	makeIds(ids, 3, UI_ASSETS_WINDOW); /* window 3..11, selected 7 */
+	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, UI_ASSETS_WINDOW / 2);
 	pollAll();
 	CHECK(UIAssets_Query("G006E0", 6, true, &h) == UI_POSTER_EXACT);
 	CHECK(UIAssets_Peek(h) != NULL);
 	reads = mem.readCalls;
 
-	/* Shift by one: exactly one new poster read, six kept. */
+	/* Shift by one: exactly one new poster read, eight kept. */
 	makeIds(ids, 4, UI_ASSETS_WINDOW);
-	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, UI_ASSETS_WINDOW / 2);
 	pollAll();
 	CHECK(mem.readCalls == reads + 1);
 
@@ -953,7 +955,7 @@ static void test_window_eviction_and_reversal(void) {
 	CHECK(UIAssets_Query("G003E0", 6, true, &h) == UI_POSTER_EXACT);
 	CHECK(UIAssets_Peek(h) != NULL);
 	makeIds(ids, 3, UI_ASSETS_WINDOW);
-	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, UI_ASSETS_WINDOW / 2);
 	pollAll();
 	CHECK(mem.readCalls == reads + 1);
 
@@ -966,7 +968,7 @@ static void test_window_eviction_and_reversal(void) {
 		int readsBefore = mem.readCalls;
 		for (flip = 0; flip < 25; flip++) {
 			makeIds(ids, (flip & 1) ? 3 : 10, UI_ASSETS_WINDOW);
-			UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+			UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, UI_ASSETS_WINDOW / 2);
 			fakeNowValue += UI_ASSETS_EVICT_QUARANTINE_MS + 1;
 			UIAssets_Poll();
 			UIAssets_Poll();
@@ -974,7 +976,7 @@ static void test_window_eviction_and_reversal(void) {
 		CHECK(mem.readCalls > readsBefore); /* the storm really loaded */
 		pollAll();
 		makeIds(ids, 10, UI_ASSETS_WINDOW);
-		UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+		UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, UI_ASSETS_WINDOW / 2);
 		pollAll();
 		/* Full settled window is correct after the storm. */
 		{
@@ -989,9 +991,10 @@ static void test_window_eviction_and_reversal(void) {
 	free(recs);
 }
 
-/* Three carousel windows fill 21 of the 25 slots; a fourth needs seven, so
- * after the four empty ones it reuses the slots of the window left longest
- * ago, the posters farthest from its selection first. */
+/* Two carousel windows fill 18 of the 25 slots; a third needs nine, so
+ * after the seven empty ones it reuses the slots of the window left longest
+ * ago, the posters farthest from its selection first, and a fourth takes
+ * the rest of that window and the two ends of the next. */
 static void test_window_retention_oldest_first(void) {
 	int count = 40;
 	testRec_t *recs = makeRecs(count);
@@ -1007,21 +1010,22 @@ static void test_window_retention_oldest_first(void) {
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
 	for (i = 0; i < 4; i++) {
 		makeIds(ids, i * UI_ASSETS_WINDOW, UI_ASSETS_WINDOW);
-		UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+		UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, UI_ASSETS_WINDOW / 2);
 		pollAll();
 	}
 	CHECK(mem.readCalls == 2 + 4 * UI_ASSETS_WINDOW);
 	for (i = 0; i < 4 * UI_ASSETS_WINDOW; i++) {
 		nthId(id, i);
 		CHECK(UIAssets_Query(id, 6, true, &h) == UI_POSTER_EXACT);
-		/* Gone: the first window's two ends and the left one of the next
-		 * two out. */
-		CHECK((UIAssets_Peek(h) == NULL) == (i == 0 || i == 6 || i == 1));
+		/* Gone: the whole first window and the second window's two
+		 * ends. */
+		CHECK((UIAssets_Peek(h) == NULL) == (i < UI_ASSETS_WINDOW ||
+		      i == UI_ASSETS_WINDOW || i == 2 * UI_ASSETS_WINDOW - 1));
 	}
 	/* The third window is still whole: going back reads nothing. */
 	reads = mem.readCalls;
 	makeIds(ids, 2 * UI_ASSETS_WINDOW, UI_ASSETS_WINDOW);
-	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, UI_ASSETS_WINDOW / 2);
 	pollAll();
 	CHECK(mem.readCalls == reads);
 	free(pack);
@@ -1054,7 +1058,7 @@ static void test_stale_handle_after_eviction(void) {
 }
 
 /* The Grid layout asks for its whole window nearest first (selected 0), and
- * a carousel afterwards finds its seven resident: none is read again, and
+ * a carousel afterwards finds its nine resident: none is read again, and
  * the grid's other posters stay for going back. */
 static void test_grid_window_then_carousel(void) {
 	int count = 40;
@@ -1086,8 +1090,8 @@ static void test_grid_window_then_carousel(void) {
 	CHECK(mem.readCalls == 2 + UI_ASSETS_SLOTS);
 	reads = mem.readCalls;
 
-	makeIds(carousel, 9, UI_ASSETS_WINDOW); /* all seven already resident */
-	UIAssets_RequestWindow(carousel, UI_ASSETS_WINDOW, 3);
+	makeIds(carousel, 9, UI_ASSETS_WINDOW); /* all nine already resident */
+	UIAssets_RequestWindow(carousel, UI_ASSETS_WINDOW, UI_ASSETS_WINDOW / 2);
 	pollAll();
 	CHECK(mem.readCalls == reads);
 	for (i = 0; i < count; i++) {
@@ -1331,7 +1335,7 @@ static void test_scale_100_and_250(void) {
 		for (pos = 0; pos + UI_ASSETS_WINDOW <= count; pos += 13) {
 			UIAssets_RequestWindow(ids, 0, 0); /* degenerate call is a no-op */
 			makeIds(ids, pos, UI_ASSETS_WINDOW);
-			UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+			UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, UI_ASSETS_WINDOW / 2);
 			pollAll();
 			CHECK(UIAssets_Query(ids[3], 6, true, &h) == UI_POSTER_EXACT);
 			CHECK(UIAssets_Peek(h) != NULL);
@@ -1367,7 +1371,7 @@ static void test_max_records_boundary(void) {
 	{
 		char ids[UI_ASSETS_WINDOW][8];
 		makeIds(ids, count - UI_ASSETS_WINDOW, UI_ASSETS_WINDOW);
-		UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+		UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, UI_ASSETS_WINDOW / 2);
 		pollAll();
 		checkLoaded(ids[3]); /* deep-index record loads correctly */
 	}
@@ -1389,7 +1393,7 @@ static void test_memory_budget(void) {
 	int allocsBefore;
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
 	/* Arena: 25 x 43,648 = 1,091,200 bytes, the Grid layout's five rows of
-	 * five (a carousel's seven and the posters it scrolled past); index
+	 * five (a carousel's nine and the posters it scrolled past); index
 	 * <= 32 KiB on top. */
 	CHECK(UI_ASSETS_SLOTS * UI_ASSETS_POSTER_BYTES == 1091200);
 	CHECK(UIAssets_MemoryFootprint() <= 1091200 + 32768);
@@ -1707,8 +1711,8 @@ static void test_request_window_mid_read_no_stale_publish(void) {
 	int i;
 
 	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
-	makeIds(ids, 0, UI_ASSETS_WINDOW);       /* window A: 0..6 */
-	makeIds(chaosWindowIds, 10, UI_ASSETS_WINDOW); /* window B: 10..16 */
+	makeIds(ids, 0, UI_ASSETS_WINDOW);       /* window A: 0..8 */
+	makeIds(chaosWindowIds, 10, UI_ASSETS_WINDOW); /* window B: 10..18 */
 	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 0);
 	fakeNowValue += UI_ASSETS_EVICT_QUARANTINE_MS + 1;
 	memReadHook = chaosRewindow;
@@ -1817,6 +1821,53 @@ static void test_stills_load_one_texture_each(void) {
 	CHECK(UIStills_DominantColor("GALE01", 6, &r, &g, &b));
 	CHECK(r == 10 && g == 20 && b == 30);
 	free(pack);
+}
+
+/* A picture's age counts from its publication, stamped inside the critical
+ * section by the cache's own clock: 0 on the frame it lands, then the
+ * clock's time, across the clock's wrap too, and 0 for a handle whose
+ * picture is not there. Posters and stills alike. */
+static void test_ready_age(void) {
+	int count = 40;
+	testRec_t *recs = makeRecs(count);
+	size_t len, stillLen;
+	u8 *pack = buildPack(recs, count, &len, 0);
+	u8 *stillPack = buildStillPack(BASIC, 3, &stillLen);
+	uiAssetsSource_t src = memSource(pack, len);
+	uiPosterHandle_t h;
+	char ids[UI_ASSETS_SLOTS][8];
+
+	fakeNowValue = 0xFFFFFF00u;
+	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
+	requestOne("G000E0");
+	CHECK(UIAssets_Query("G000E0", 6, true, &h) == UI_POSTER_EXACT);
+	CHECK(UIAssets_PeekAgeMs(h) == 0); /* not read yet */
+	fakeNowValue += UI_ASSETS_EVICT_QUARANTINE_MS + 1;
+	CHECK(!UIAssets_Poll());
+	CHECK(nowLockDepth == 1); /* the stamp is the locked publication's */
+	CHECK(UIAssets_Peek(h) != NULL);
+	CHECK(UIAssets_PeekAgeMs(h) == 0);
+	fakeNowValue += 0x100u; /* past the clock's wrap */
+	CHECK(UIAssets_PeekAgeMs(h) == 0x100u);
+	/* A full window of other posters takes its slot: no picture, no age. */
+	makeIds(ids, 10, UI_ASSETS_SLOTS);
+	UIAssets_RequestWindow(ids, UI_ASSETS_SLOTS, 0);
+	pollAll();
+	CHECK(UIAssets_Peek(h) == NULL);
+	CHECK(UIAssets_PeekAgeMs(h) == 0);
+
+	src = memSource(stillPack, stillLen);
+	CHECK(UIStills_Init(&src, &testSync) == UI_ASSETS_OK);
+	requestStills("GALE01", "GC6E01", "GZLE01");
+	CHECK(UIStills_Query("GC6E01", 6, true, &h) == UI_POSTER_EXACT);
+	CHECK(UIStills_PeekAgeMs(h) == 0);
+	pollStills();
+	CHECK(UIStills_Peek(h) != NULL);
+	fakeNowValue += 75u;
+	CHECK(UIStills_PeekAgeMs(h) >= 75u);
+	free(pack);
+	free(stillPack);
+	free(recs);
 }
 
 /* posters.pak and stills.pak declare different textures, and each cache
@@ -2120,12 +2171,13 @@ int main(int argc, char **argv) {
 	RUN(test_poster_payload_corrupt);
 	RUN(test_short_read_fails_poster);
 	RUN(test_nth_id_boundaries);
-	RUN(test_window_prefetch_loads_all_seven);
+	RUN(test_window_prefetch_loads_whole_window);
 	RUN(test_window_eviction_and_reversal);
 	RUN(test_window_retention_oldest_first);
 	RUN(test_max_records_boundary);
 	RUN(test_stale_handle_after_eviction);
 	RUN(test_grid_window_then_carousel);
+	RUN(test_ready_age);
 	RUN(test_cancel_for_device_change);
 	RUN(test_sync_validation_policy);
 	RUN(test_sync_binding_lifecycle);
