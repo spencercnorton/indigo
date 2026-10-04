@@ -16,7 +16,8 @@ and the pool outlives the page that draws from it. The cube screen lists
 the saves of both stacks before it names a slot, and publishes only then;
 B goes up a folder the SD card's stack opened, never past where it opened
 or the card's root, and L or R looks again at a slot without a card before
-swapping a stack.
+swapping a stack. A card's listing reads each save's permissions, which
+libogc2's listing leaves out, so the Move guard has them to read.
 
 An operation's cube flies while the card works: it starts before the save
 is read, and lands (or goes back) only once the copy was written, read
@@ -93,6 +94,12 @@ def check(source: str) -> None:
             "device->writeFile(&dest, data, length)",
             "!memcmp(back, data, length)", "if(!same)",
             "device->deleteFile(&dest)")
+
+    # A card's listing carries each save's permissions, which libogc2's
+    # CARD_FindNext leaves out: the Move guard and the verdicts read them.
+    ordered(function(source, "loadCard"), "readDir(device->initial, &place->entries, -1)",
+            "CARD_GetAttributes(slot, dir->fileno, &dir->permissions);",
+            "place->list[place->count++] = &place->entries[i];")
 
     # The card driver's .gci read mode is on only around the read.
     ordered(read, "setCopyGCIMode(true);", "readFile(save, data, want)",
@@ -251,6 +258,8 @@ def mutants(source: str) -> list[tuple[str, str]]:
          source.replace("\t\telse if(!card) {\n", "\t\telse {\n")),
         ("the cards go before the screen does",
          source.replace("\tover.leaving = 1;\n", "")),
+        ("a card's permissions left as libogc2 lists them",
+         source.replace("\t\tCARD_GetAttributes(slot, dir->fileno, &dir->permissions);\n", "")),
         ("a half-written card copy is left on the card",
          source.replace("!= NULL) {\n\t\t\tdevice->deleteFile(copy);\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"",
                         "!= NULL) {\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"")),

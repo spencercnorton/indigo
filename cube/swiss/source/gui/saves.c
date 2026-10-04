@@ -546,6 +546,12 @@ static void loadCard(savesPlace_t *place, int slot)
 	}
 	/* entries[0] is the driver's "..". The card's own order, as the IPL. */
 	for(i = 1; i < place->entryCount && place->count < SAVES_LIST_MAX; i++) {
+		card_dir *dir = (card_dir *)place->entries[i].other;
+
+		/* libogc2's CARD_FindNext leaves a save's permissions out of what
+		 * it lists, so no-copy and no-move read as unset; the card's
+		 * directory, already read, has them. */
+		CARD_GetAttributes(slot, dir->fileno, &dir->permissions);
 		place->list[place->count++] = &place->entries[i];
 		used += (int)((place->entries[i].size + UI_SAVES_BLOCK_SIZE - 1u) /
 			UI_SAVES_BLOCK_SIZE);
