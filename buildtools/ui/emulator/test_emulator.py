@@ -670,6 +670,9 @@ class Screen(unittest.TestCase):
         self.assertEqual(opening(popup, lambda n: popup), (True, [], []), "an existing popup never gets Actions")
         self.assertEqual(opening(browser, lambda n: changed), (False, ["A"], []),
                          "another screen change forbids any repeated A")
+        reverted = iter((changed, browser))
+        self.assertEqual(opening(browser, lambda n: next(reverted, browser)), (False, ["A"], []),
+                         "a transient context change still forbids any repeated A")
 
     def test_raw_animation_proof_requires_both_texture_colors_on_the_cube(self):
         rgb = np.full((run.HEIGHT, run.WIDTH, 3), (35, 25, 60), np.uint8)
