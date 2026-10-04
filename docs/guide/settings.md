@@ -228,7 +228,7 @@ Press Y on any row for the same explanations on the console.
 | Setting | What it does |
 | --- | --- |
 | Configuration Device | Where `global.ini` is read and saved. Kept in the console's memory once Save & Exit has written the settings there. |
-| Save Folder | Where [Memory Cards](memory-cards.md) copies saves off a memory card, and the folder it opens first: a folder on the Configuration Device, `swiss/saves` until you choose another. A lists the folders; X chooses the one that's open. |
+| Save Folder | The folder [Memory Cards](memory-cards.md) opens on the SD card, where saves copied off a memory card go unless you open or pick another: a folder on the Configuration Device, `swiss/saves` until you choose another. A lists the folders; X chooses the one that's open. |
 | SD/IDE-EXI Speed | 27 MHz is faster; some SD cards or adapters only work at 13.5 MHz. |
 | Init DVD Drive at startup | Needed for the eject button on the Panasonic Q when Indigo replaces the IPL. |
 | Stop DVD Drive motor | Stops a disc that is already spinning, as after a save-game exploit. |

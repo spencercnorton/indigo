@@ -122,6 +122,34 @@ assert "findCheats(" not in detail
 assert detail.count("loadCheatsSelectionReadOnly()") == 1
 assert "loadCheatsSelection();" not in detail
 
+def check_save_publication(source: str) -> None:
+    publication = extract_function(source, "static bool gameflowPublishDetail(")
+    assert publication.count("Saves_CollectGameStats(") == 1
+    collection = extract_function(publication, "if(context->primary != NULL")
+    assert "context->primary->fileType == IS_FILE" in collection
+    assert "valid_gcm_magic(&GCMDisk)" in collection
+    assert "memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0" in collection
+    assert "Saves_CollectGameStats(context->gameId, &saveStats);" in collection
+    assert "source.saveStats = &saveStats;" in collection
+    assert source.count("Saves_CollectGameStats(") == 1
+    assert "source.saveStats" not in publication[:publication.index(collection)]
+    assert "UIGameflowDetail_Build(snapshot, &source)" in publication
+
+check_save_publication(swiss_source)
+for old, new in (
+    ("context->primary->fileType == IS_FILE", "true"),
+    ("valid_gcm_magic(&GCMDisk)", "true"),
+    ("memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0", "true"),
+    ("source.saveStats = &saveStats;", "source.saveStats = NULL;"),
+):
+    try:
+        publication = extract_function(swiss_source, "static bool gameflowPublishDetail(")
+        check_save_publication(swiss_source.replace(publication, publication.replace(old, new, 1), 1))
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError(f"save publication mutant escaped: {old}")
+
 def check_detail_input(controller: str, mapping: str) -> None:
     # Host policy tests exercise the edges. Bind the actual controller to that
     # policy, including the entry/modal quarantine and physical face buttons.

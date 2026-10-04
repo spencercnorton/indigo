@@ -27,6 +27,15 @@ gameplay-first GameCube launcher by mvizensk, with its author's permission:
 
 Indigo's code for the layout is its own. System › Credits thanks mvizensk too.
 
+Memory Cards' save cubes are sized, coloured and moved by the GameCube's own
+Memory Card screen as Cubeboot and Gameplay Spotlight document it from their
+study of the console's menu: how far the highlighted cube sways and how
+fast, how much it grows, and how big an empty cube and an icon are beside a
+save's cube. Indigo's code for the screen is its own; nothing of either is
+copied.
+
+    Cubeboot — https://github.com/OffBroadway/cubeboot
+
 Third-party components redistributed in this tree:
 
   littlefs — https://github.com/littlefs-project/littlefs

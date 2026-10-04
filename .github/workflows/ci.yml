@@ -149,7 +149,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # smoke: every menu, then the probe launched as an app. game: the
+          # smoke: every menu, Memory Cards with a memory card in each slot
+          # among them, then the probe launched as an app. game: the
           # Library to a game's launch, the probe launched as a game. The
           # console's region and cable decide the video mode: PAL composite
           # 576i, NTSC composite 480i, a component cable 480p. dvd boots with
@@ -167,6 +168,14 @@ jobs:
               artifact: emulator-smoke-ntsc-component-gcloader }
           - { name: "Emulator (game, NTSC, SD2SP2)", route: game, region: ntsc, cable: composite,
               storage: sd2sp2, artifact: emulator-game-ntsc-sd2sp2 }
+          # Both physical memory-card slots empty: browse a synthetic RAW
+          # image on SD and export a GCI into the other SD column.
+          - { name: "Emulator (virtual cards, NTSC, GC Loader)", route: virtual-cards, region: ntsc,
+              cable: component, storage: gcloader, artifact: emulator-virtual-cards-ntsc-gcloader }
+          # The same dialog, RAW playback and Library inset in 16:9.
+          - { name: "Emulator (virtual cards, NTSC, GC Loader, widescreen)", route: virtual-cards, region: ntsc,
+              cable: component, storage: gcloader, settings: save-details-wide,
+              artifact: emulator-virtual-cards-ntsc-gcloader-wide }
           # A save on a card whose writes fail after 13, then the same card
           # booted again: the settings must still load, in their colours.
           - { name: "Emulator (save, NTSC, SD2SP2, failing card)", route: save, region: ntsc,

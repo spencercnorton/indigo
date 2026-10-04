@@ -166,8 +166,8 @@ int main(void)
 {
     page(EV_BACKGROUND);
     CHECK(!_FrameCovered(videoEventQueue));
-    const int pages[3] = {EV_SETTINGS, EV_CHEATS, EV_SAVES};
-    for(int i = 0; i < 3; ++i) {
+    const int pages[4] = {EV_SETTINGS, EV_CHEATS, EV_SAVES, EV_SAVE_CUBES};
+    for(int i = 0; i < 4; ++i) {
         uiDrawObj_t *covering = page(pages[i]);
         CHECK(_FrameCovered(videoEventQueue));
         DrawDispose(covering);
@@ -238,10 +238,12 @@ class BrowserHomeLifecycle(unittest.TestCase):
         self.assertNotEqual(self.run_harness(reordered).returncode, 0)
 
     def test_a_full_screen_page_covers_the_frame(self):
-        # While Settings, the cheats or Memory Cards are up, the background
-        # is not drawn: _FrameCovered decides it from the live queue.
+        # While Settings, the cheats or Memory Cards (its folder chooser's
+        # list, or its cube screen) are up, the background is not drawn:
+        # _FrameCovered decides it from the live queue.
         covered = block(FRAME, 'static bool _FrameCovered(')
-        types = 'enum { EV_BACKGROUND = 100, EV_SETTINGS, EV_CHEATS, EV_SETTINGSLIST, EV_SAVES };\n'
+        types = ('enum { EV_BACKGROUND = 100, EV_SETTINGS, EV_CHEATS, EV_SETTINGSLIST, EV_SAVES, '
+                 'EV_SAVE_CUBES };\n')
         def run(rule):
             with tempfile.TemporaryDirectory() as tmp:
                 source = Path(tmp) / 'covered.c'; binary = Path(tmp) / 'covered'
@@ -257,6 +259,8 @@ class BrowserHomeLifecycle(unittest.TestCase):
         # A page already disposed must not keep the background hidden.
         self.assertIn('!event->disposed && ', covered)
         self.assertNotEqual(run(covered.replace('!event->disposed && ', '')).returncode, 0)
+        # Memory Cards' cube screen draws its own backdrop over the frame.
+        self.assertNotEqual(run(covered.replace(' ||\n\t\t\tevent->type == EV_SAVE_CUBES', '')).returncode, 0)
 
     def test_actual_menu_wiring_and_mutants(self):
         require_wiring(SWISS)

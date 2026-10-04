@@ -1,0 +1,52 @@
+{
+ "detail-empty-native": {
+  "geometry_begins": 5,
+  "geometry_vertices": 136,
+  "medium_glyphs": 179
+ },
+ "detail-empty-wide": {
+  "geometry_begins": 5,
+  "geometry_vertices": 136,
+  "medium_glyphs": 179
+ },
+ "detail-max-count-native": {
+  "geometry_begins": 5,
+  "geometry_vertices": 136,
+  "medium_glyphs": 205
+ },
+ "detail-max-count-wide": {
+  "geometry_begins": 5,
+  "geometry_vertices": 136,
+  "medium_glyphs": 205
+ },
+ "detail-partial-native": {
+  "geometry_begins": 5,
+  "geometry_vertices": 136,
+  "medium_glyphs": 200
+ },
+ "detail-partial-wide": {
+  "geometry_begins": 5,
+  "geometry_vertices": 136,
+  "medium_glyphs": 200
+ },
+ "detail-recorded-native": {
+  "geometry_begins": 5,
+  "geometry_vertices": 136,
+  "medium_glyphs": 185
+ },
+ "detail-recorded-wide": {
+  "geometry_begins": 5,
+  "geometry_vertices": 136,
+  "medium_glyphs": 185
+ },
+ "detail-unavailable-native": {
+  "geometry_begins": 5,
+  "geometry_vertices": 136,
+  "medium_glyphs": 174
+ },
+ "detail-unavailable-wide": {
+  "geometry_begins": 5,
+  "geometry_vertices": 136,
+  "medium_glyphs": 174
+ }
+}

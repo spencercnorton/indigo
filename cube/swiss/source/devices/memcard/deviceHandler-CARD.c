@@ -221,6 +221,21 @@ int CARD_ReadUnaligned(card_file *cardfile, void *buffer, unsigned int length, u
 }
 
 
+/* card_dir stores fixed-width codes beside one another, not C strings.
+ * Passing them directly lets libogc2 reject their length and open/delete
+ * any game with the same filename instead of the selected save. */
+static bool CARD_SetEntryIdentity(const card_dir *entry) {
+	char gamecode[5] = {0}, company[3] = {0};
+	if(entry->gamecode[0] == 0xff || entry->company[0] == 0xff) {
+		return false;
+	}
+	memcpy(gamecode, entry->gamecode, 4);
+	memcpy(company, entry->company, 2);
+	CARD_SetGamecode(gamecode);
+	CARD_SetCompany(company);
+	return true;
+}
+
 s32 deviceHandler_CARD_readFile(file_handle* file, void* buffer, u32 length){
 	card_file cardfile;
 	void *dst = buffer;
@@ -228,18 +243,13 @@ s32 deviceHandler_CARD_readFile(file_handle* file, void* buffer, u32 length){
 	char *filename = getRelativeName(file->name);
 	unsigned int slot = (!strncmp((const char*)initial_CARDB.name, file->name, 7)), ret = 0;
 
-	if(cd->company[0] == '\0' && cd->gamecode[0] == '\0') {
+	if(cd->company[0] == '\0' && cd->gamecode[0] == '\0' && cd->filelen == 0) {
 		// Find the file we don't know about and populate this file_handle if we find it.
 		if(!findFile(file)) {
 			return CARD_ERROR_NOFILE;
 		}
-		CARD_SetCompany((const char*)cd->company);
-		CARD_SetGamecode((const char*)cd->gamecode);
-	} 
-	else {
-		CARD_SetCompany((const char*)cd->company);
-		CARD_SetGamecode((const char*)cd->gamecode);
 	}
+	if(!CARD_SetEntryIdentity(cd)) return CARD_ERROR_FATAL_ERROR;
 	int swissFile = !strncmp((const char*)cd->gamecode, "SWIS", 4)
 				 && !strncmp((const char*)cd->company, "S0", 2);
 	
@@ -330,6 +340,12 @@ s32 deviceHandler_CARD_writeFile(file_handle* file, const void* data, u32 length
 		setGCIInfo(data);
 		data+=sizeof(GCI);
 		length-=sizeof(GCI);
+	}
+	/* libogc2 treats a leading 0xff as "any game/maker". A copied
+	 * entry must never use that wildcard to overwrite an unrelated save. */
+	if(gciInfo != NULL && (gciInfo->gamecode[0] == 0xff ||
+		gciInfo->company[0] == 0xff)) {
+		return CARD_ERROR_FATAL_ERROR;
 	}
 	if(gciInfo == NULL) {	// Swiss ID for this
 		CARD_SetGameAndCompany();
@@ -501,21 +517,16 @@ s32 deviceHandler_CARD_deleteFile(file_handle* file) {
 	char *filename = getRelativeName(file->name);
 	card_dir* cd = (card_dir*)&file->other;
 	
-	if(cd->company[0] == '\0' && cd->gamecode[0] == '\0') {
+	if(cd->company[0] == '\0' && cd->gamecode[0] == '\0' && cd->filelen == 0) {
 		// Find the file we don't know about and populate this file_handle if we find it.
 		if(!findFile(file)) {
 			return CARD_ERROR_NOFILE;
 		}
-		CARD_SetCompany((const char*)cd->company);
-		CARD_SetGamecode((const char*)cd->gamecode);
-	}
-	else {
-		CARD_SetCompany((const char*)cd->company);
-		CARD_SetGamecode((const char*)cd->gamecode);
 	}
 	print_debug("Deleting: %s from slot %i\n", filename, slot);
 	
-	int ret = CARD_Delete(slot, filename);
+	int ret = CARD_SetEntryIdentity(cd) ? CARD_Delete(slot, filename) :
+		CARD_ERROR_FATAL_ERROR;
 	if(ret != CARD_ERROR_READY) {
 		uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,cardError(ret));
 		DrawPublish(msgBox);

@@ -187,11 +187,13 @@ enum VideoEventType
 	EV_CHEATS,
 	EV_SETTINGSLIST,
 	EV_SETTINGSHELP,
-	EV_SAVES
+	EV_SAVES,
+	EV_SAVE_CUBES,
+	EV_SAVE_DETAILS
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Background", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "Saves"};
+						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "Saves", "SaveCubes", "SaveDetails"};
 
 typedef struct drawTexObjEvent {
 	GXTexObj *texObj;
@@ -352,7 +354,8 @@ typedef struct drawGameflowDetailPresentation {
 	float factsScale;
 	float statusScale;
 	float lastPlayedScale;
-	float saveStatusScale;
+	float savesSummaryScale;
+	float savesUpdatedScale;
 	float cheatSummaryScale;
 	float cheatPreviewScale;
 	float settingsSummaryScale;
@@ -396,6 +399,18 @@ typedef struct drawPresentationEvent {
 	float detailScale;
 	float actionScale;
 } drawPresentationEvent_t;
+
+/* Every fit is computed before this immutable event is published. */
+typedef struct {
+	uiSaveDetailsSnapshot_t snapshot;
+	char blocks[12];
+	char kib[12];
+	float nameScale;
+	float blocksScale;
+	float kibScale;
+	float sourceScale;
+	float updatedScale;
+} drawSaveDetailsEvent_t;
 
 _Static_assert(sizeof(uiGameflowCardSnapshot_t) % 32u == 0u,
 	"Gameflow record stride must preserve banner alignment");
@@ -1378,6 +1393,108 @@ bool DrawUpdatePresentation(uiDrawObj_t *evt,
 	}
 	LWP_MutexUnlock(_videomutex);
 	return updated;
+}
+
+/* Save details has its own hierarchy; other retained dialogs stay compact. */
+static void _DrawSaveDetails(uiDrawObj_t *evt)
+{
+	const drawSaveDetailsEvent_t *data = evt->data;
+	const GXColor transparent = {0, 0, 0, 0};
+	const GXColor primary = {244, 239, 255, 255};
+	const GXColor secondary = {204, 193, 239, 255};
+	const GXColor accent = {176, 153, 248, 255};
+	int scrimLeft;
+
+	if(data == NULL) {
+		return;
+	}
+	drawInit();
+	scrimLeft = (int)floorf(UIStage_Left());
+	_DrawSimpleBox(scrimLeft, 0, (int)ceilf(UIStage_Right()) - scrimLeft, 480,
+		0, (GXColor) {4, 3, 15, 184}, transparent);
+	_DrawSimpleBox(68, 95, 504, 312, 0,
+		(GXColor) {2, 1, 10, 194}, transparent);
+	_DrawSimpleBox(72, 91, 496, 312, 0,
+		(GXColor) {10, 8, 31, 250}, (GXColor) {135, 122, 199, 220});
+	_DrawSimpleBox(72, 91, 5, 312, 0, accent, transparent);
+	_DrawSimpleBox(104, 174, 204, 61, 0,
+		(GXColor) {33, 25, 67, 255}, (GXColor) {103, 87, 166, 180});
+	_DrawSimpleBox(332, 174, 204, 61, 0,
+		(GXColor) {33, 25, 67, 255}, (GXColor) {103, 87, 166, 180});
+	_DrawSimpleBox(104, 345, 432, 1, 0,
+		(GXColor) {135, 122, 199, 160}, transparent);
+
+	drawStringMedium(104, 119, "SAVE DETAILS", 0.48f, ALIGN_LEFT, accent);
+	if(data->snapshot.estimated) {
+		drawStringMedium(536, 119, "Estimated size", 0.48f, ALIGN_RIGHT, secondary);
+	}
+	drawStringMedium(104, 150, data->snapshot.name, data->nameScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(128, 197, data->blocks, data->blocksScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(128, 221, "Blocks", 0.48f, ALIGN_LEFT, secondary);
+	drawStringMedium(356, 197, data->kib, data->kibScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(356, 221, "KiB", 0.48f, ALIGN_LEFT, secondary);
+	drawStringMedium(104, 257, "Source", 0.54f, ALIGN_LEFT, secondary);
+	drawStringMedium(250, 257, data->snapshot.source, data->sourceScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(104, 287, "Created", 0.54f, ALIGN_LEFT, secondary);
+	drawStringMedium(250, 287, "Not recorded", 0.60f, ALIGN_LEFT, primary);
+	drawStringMedium(104, 317, "Last updated", 0.54f, ALIGN_LEFT, secondary);
+	drawStringMedium(250, 317, data->snapshot.updated, data->updatedScale,
+		ALIGN_LEFT, primary);
+	_DrawHintText(216, 373, "A  Actions", 0.60f, ALIGN_CENTER, primary);
+	_DrawHintText(412, 373, "B  Back", 0.60f, ALIGN_CENTER, primary);
+	drawInit();
+}
+
+static bool _PrepareSaveDetails(drawSaveDetailsEvent_t *data,
+	const uiSaveDetailsSnapshot_t *snapshot)
+{
+	if(data == NULL || !UISaveDetails_Valid(snapshot)) {
+		return false;
+	}
+	memset(data, 0, sizeof(*data));
+	data->snapshot.blocks = snapshot->blocks;
+	data->snapshot.estimated = snapshot->estimated;
+	data->nameScale = UIHomeText_CopyFitted(data->snapshot.name,
+		sizeof(data->snapshot.name), snapshot->name, 432, 0.86f,
+		GetTextSizeInPixels, NULL);
+	data->sourceScale = UIHomeText_CopyFitted(data->snapshot.source,
+		sizeof(data->snapshot.source), snapshot->source, 286, 0.60f,
+		GetTextSizeInPixels, NULL);
+	data->updatedScale = UIHomeText_CopyFitted(data->snapshot.updated,
+		sizeof(data->snapshot.updated), snapshot->updated, 286, 0.60f,
+		GetTextSizeInPixels, NULL);
+	snprintf(data->blocks, sizeof(data->blocks), "%u", (unsigned)snapshot->blocks);
+	snprintf(data->kib, sizeof(data->kib), "%u", (unsigned)(snapshot->blocks * 8u));
+	data->blocksScale = UIHomeText_FitScale(data->blocks, 156, 0.92f,
+		GetTextSizeInPixels);
+	data->kibScale = UIHomeText_FitScale(data->kib, 156, 0.92f,
+		GetTextSizeInPixels);
+	return UISaveDetails_Valid(&data->snapshot);
+}
+
+uiDrawObj_t* DrawSaveDetails(const uiSaveDetailsSnapshot_t *snapshot)
+{
+	drawSaveDetailsEvent_t *eventData;
+	uiDrawObj_t *event;
+
+	if(!UISaveDetails_Valid(snapshot)) {
+		return NULL;
+	}
+	eventData = calloc(1, sizeof(*eventData));
+	event = calloc(1, sizeof(*event));
+	if(eventData == NULL || event == NULL ||
+		!_PrepareSaveDetails(eventData, snapshot)) {
+		free(eventData);
+		free(event);
+		return NULL;
+	}
+	event->type = EV_SAVE_DETAILS;
+	event->data = eventData;
+	return event;
 }
 
 // Internal
@@ -3519,13 +3636,15 @@ static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
 	presentation->statusScale = _GameflowPrepareDetailText(
 		data->detail.statusText, sizeof(data->detail.statusText),
 		310, 0.44f, 0.44f);
-	/* LAST PLAYED and SAVE DATA share a line, so each has half of it. */
 	presentation->lastPlayedScale = _GameflowPrepareDetailText(
 		data->detail.lastPlayedText, sizeof(data->detail.lastPlayedText),
-		154, 0.46f, 0.46f);
-	presentation->saveStatusScale = _GameflowPrepareDetailText(
-		data->detail.saveStatusText, sizeof(data->detail.saveStatusText),
-		150, 0.46f, 0.46f);
+		310, 0.46f, 0.46f);
+	presentation->savesSummaryScale = _GameflowPrepareDetailText(
+		data->detail.savesSummary, sizeof(data->detail.savesSummary),
+		264, 0.54f, 0.46f);
+	presentation->savesUpdatedScale = _GameflowPrepareDetailText(
+		data->detail.savesUpdated, sizeof(data->detail.savesUpdated),
+		294, 0.46f, 0.46f);
 	presentation->cheatSummaryScale = _GameflowPrepareDetailText(
 		data->detail.cheatSummary, sizeof(data->detail.cheatSummary),
 		294, 0.46f, 0.46f);
@@ -3592,7 +3711,7 @@ static void _GameflowDrawDetailPlanes(
 	uiGameflowDetailFocus_t focusRow, uiMotionSpring_t lit[2])
 {
 	/* The rows the focus moves between, bottom up: Launch, Cheats, Settings. */
-	static const int rowTop[] = {348, 281, 232};
+	static const int rowTop[] = {367, 301, 252};
 	static const int rowHeight[] = {43, 59, 42};
 	uiMotionMode_t motion = _CurrentMotionMode();
 	float litTop;
@@ -3628,7 +3747,7 @@ static void _GameflowDrawDetailPlanes(
 	GXColor litHaloColor = {117, 88, 244,
 		_GameflowAlpha(78.0f * alpha * focus)};
 	bool hasSettings = detail->settingsSummary[0] != '\0';
-	u16 panelCount = (u16)(3u + (hasAdvanced ? 1u : 0u) +
+	u16 panelCount = (u16)(4u + (hasAdvanced ? 1u : 0u) +
 		(hasSettings ? 1u : 0u));
 
 	/* The bright frame slides from row to row, as the cheat list's focus
@@ -3656,8 +3775,10 @@ static void _GameflowDrawDetailPlanes(
 	drawInit();
 	_SetupRasterColor();
 	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(panelCount * 12u + 48u));
-		_GameflowPutDetailPanel(246, 76, 358, 328, 2,
+		_GameflowPutDetailPanel(246, 76, 358, 344, 2,
 			panelGlow, panelFill, panelEdge);
+		_GameflowPutDetailPanel(260, 202, 330, 43, 2,
+			insetGlow, insetFill, insetEdge);
 		/* The focused row takes the bright edge and the glow, and the
 		 * grid's frame round it; Launch keeps its button fill. */
 		for(row = UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH;
@@ -3716,51 +3837,55 @@ static void _GameflowDrawDetailDashboard(
 	drawStringMedium(264, 122, detail->title, presentation->titleScale,
 		ALIGN_LEFT, primary);
 	if(detail->company[0] != '\0') {
-		drawStringMedium(264, 148, detail->company,
+		drawStringMedium(264, 140, detail->company,
 			presentation->companyScale, ALIGN_LEFT, secondary);
 	}
 	if(detail->statusText[0] != '\0') {
-		drawStringMedium(264, 177, detail->statusText,
+		drawStringMedium(264, 159, detail->statusText,
 			presentation->statusScale, ALIGN_LEFT, muted);
 	}
 
-	drawStringMedium(264, 202, "LAST PLAYED", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(264, 219, detail->lastPlayedText,
+	drawStringMedium(264, 176, "LAST PLAYED", 0.42f, ALIGN_LEFT, secondary);
+	drawStringMedium(264, 191, detail->lastPlayedText,
 		presentation->lastPlayedScale, ALIGN_LEFT, primary);
-	drawStringMedium(430, 202, "SAVE DATA", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(430, 219, detail->saveStatusText,
-		presentation->saveStatusScale, ALIGN_LEFT, muted);
+	/* The count is the headline. A small trailing label leaves the two-line
+	 * inset readable without competing with the actions below it. */
+	drawStringMedium(576, 214, "SAVES", 0.38f, ALIGN_RIGHT, secondary);
+	drawStringMedium(274, 214, detail->savesSummary,
+		presentation->savesSummaryScale, ALIGN_LEFT, primary);
+	drawStringMedium(274, 232, detail->savesUpdated,
+		presentation->savesUpdatedScale, ALIGN_LEFT, secondary);
 
 	/* SETTINGS, like CHEATS below it: this game's own rows, or how to set
 	 * some (X opens them). */
 	if(detail->settingsSummary[0] != '\0') {
-		drawStringMedium(274, 244, "SETTINGS", 0.42f, ALIGN_LEFT, secondary);
-		drawStringMedium(576, 244, detail->settingsSummary,
+		drawStringMedium(274, 264, "SETTINGS", 0.42f, ALIGN_LEFT, secondary);
+		drawStringMedium(576, 264, detail->settingsSummary,
 			presentation->settingsSummaryScale, ALIGN_RIGHT, muted);
 		if(detail->customSettings != 0u) {
-			drawStringMedium(274, 262, "\267", 0.50f, ALIGN_LEFT, focus);
-			drawStringMedium(288, 262, detail->settingsPreview,
+			drawStringMedium(274, 282, "\267", 0.50f, ALIGN_LEFT, focus);
+			drawStringMedium(288, 282, detail->settingsPreview,
 				presentation->settingsPreviewScale, ALIGN_LEFT, primary);
 		}
 		else {
-			_DrawHintText(274, 262, detail->settingsPreview,
+			_DrawHintText(274, 282, detail->settingsPreview,
 				presentation->settingsPreviewScale, ALIGN_LEFT, muted);
 		}
 	}
 
-	drawStringMedium(274, 293, "CHEATS", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(274, 311, detail->cheatSummary,
+	drawStringMedium(274, 313, "CHEATS", 0.42f, ALIGN_LEFT, secondary);
+	drawStringMedium(274, 331, detail->cheatSummary,
 		presentation->cheatSummaryScale, ALIGN_LEFT, muted);
 	if(detail->cheatPreview[0] != '\0') {
 		if(detail->enabledCheatCount != 0u) {
-			drawStringMedium(274, 329, "\267", 0.50f, ALIGN_LEFT, focus);
-			drawStringMedium(288, 329, detail->cheatPreview,
+			drawStringMedium(274, 349, "\267", 0.50f, ALIGN_LEFT, focus);
+			drawStringMedium(288, 349, detail->cheatPreview,
 				presentation->cheatPreviewScale, ALIGN_LEFT, primary);
 		}
 		else {
 			/* "Y  Choose cheats": a hint only while nothing is on, since
 			 * cheat names are free text. */
-			_DrawHintText(274, 329, detail->cheatPreview,
+			_DrawHintText(274, 349, detail->cheatPreview,
 				presentation->cheatPreviewScale, ALIGN_LEFT, muted);
 		}
 	}
@@ -3770,9 +3895,9 @@ static void _GameflowDrawDetailDashboard(
 	launchScale = frame->launchProgress > 0.02f ?
 		0.56f : presentation->launchScale;
 	if(focusRow == UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH) {
-		drawStringMedium(278, 369, "\267", 0.58f, ALIGN_LEFT, focus);
+		drawStringMedium(278, 388, "\267", 0.58f, ALIGN_LEFT, focus);
 	}
-	_DrawHintText(425, 369, launchText, launchScale, ALIGN_CENTER, focus);
+	_DrawHintText(425, 388, launchText, launchScale, ALIGN_CENTER, focus);
 
 	if(detail->advancedLineOne[0] != '\0' ||
 		detail->advancedLineTwo[0] != '\0') {
@@ -6586,60 +6711,16 @@ uiDrawObj_t* DrawSettingsHelp(const char *help)
 }
 
 /* ------------------------------------------------------------------------
- * Memory Cards (saves.c), in the same language: a tab for each slot and the
- * SD card, a row per save with its banner, and the focus card springing from
- * row to row as the cheat list's does.
+ * Memory Cards' folder chooser (saves.c), in the same language: a row per
+ * folder, and the focus card springing from row to row as the cheat list's
+ * does.
  * --------------------------------------------------------------------- */
-_Static_assert(sizeof(uiSavesPageRow_t) % 32 == 0,
-	"each save's banner stays 32-byte aligned");
-
 typedef struct {
-	uiSavesPageSnapshot_t snapshot;	/* first: its banners stay aligned */
-	GXTexObj banner[UI_SAVES_PAGE_ROWS];
-	GXTlutObj palette[UI_SAVES_PAGE_ROWS];
+	uiSavesPageSnapshot_t snapshot;
 	uiMotionSpring_t focusY;
 	bool focusInitialized;
 	u32 focusList;
-	/* The current tab's underline, its left edge and width, sliding
-	 * between tabs; placed when the page first draws. */
-	uiMotionSpring_t tabX;
-	uiMotionSpring_t tabW;
-	bool tabPlaced;
 } drawSavesEvent_t;
-
-static void _SavesCopySnapshot(drawSavesEvent_t *data,
-	const uiSavesPageSnapshot_t *snapshot)
-{
-	int i;
-
-	data->snapshot = *snapshot;
-	for(i = 0; i < UI_SAVES_PAGE_ROWS; i++) {
-		uiSavesPageRow_t *row = &data->snapshot.rows[i];
-
-		memset(&data->banner[i], 0, sizeof(data->banner[i]));
-		if(i >= data->snapshot.rowCount) {
-			continue;
-		}
-		if(row->bannerFormat == CARD_BANNER_RGB) {
-			DCFlushRange(row->banner, CARD_BANNER_W * CARD_BANNER_H * 2);
-			GX_InitTexObj(&data->banner[i], row->banner, CARD_BANNER_W,
-				CARD_BANNER_H, GX_TF_RGB5A3, GX_CLAMP, GX_CLAMP, GX_FALSE);
-		}
-		else if(row->bannerFormat == CARD_BANNER_CI) {
-			DCFlushRange(row->banner, CARD_BANNER_W * CARD_BANNER_H + 512);
-			GX_InitTlutObj(&data->palette[i],
-				row->banner + CARD_BANNER_W * CARD_BANNER_H, GX_TL_RGB5A3, 256);
-			GX_InitTexObjCI(&data->banner[i], row->banner, CARD_BANNER_W,
-				CARD_BANNER_H, GX_TF_CI8, GX_CLAMP, GX_CLAMP, GX_FALSE,
-				GX_TLUT0);
-			GX_InitTexObjUserData(&data->banner[i], &data->palette[i]);
-		}
-		else {
-			continue;
-		}
-		GX_InitTexObjFilterMode(&data->banner[i], GX_LINEAR, GX_NEAR);
-	}
-}
 
 /* A folder: its tab and body. */
 static void _SavesFolder(int x, int y, GXColor color)
@@ -6648,26 +6729,16 @@ static void _SavesFolder(int x, int y, GXColor color)
 	_CheatsPanel(x + 31, y + 9, 34, 19, color);
 }
 
-/* A save without a banner: a memory card and its label. */
-static void _SavesCard(int x, int y)
-{
-	_CheatsPanel(x + 36, y + 2, 24, 28, settingsTrack);
-	_CheatsPanel(x + 40, y + 6, 16, 9, settingsValue);
-}
-
 static void _DrawSaves(uiDrawObj_t *evt)
 {
 	drawSavesEvent_t *data = (drawSavesEvent_t*)evt->data;
 	const uiSavesPageSnapshot_t *s = &data->snapshot;
-	const GXColor amber = {255, 207, 139, 255};
 	uiMotionMode_t motion = _CurrentMotionMode();
 	float target = (float)(148 + s->focusRow * 40);
-	bool underlined = false;
 	int focusY;
 	int i;
-	int x;
 
-	/* Another place or folder snaps the focus; within a list it slides. */
+	/* Another folder snaps the focus; within one it slides. */
 	if(!data->focusInitialized || data->focusList != s->list) {
 		UIMotion_SpringInit(&data->focusY, target, 25.0f);
 		data->focusInitialized = true;
@@ -6681,32 +6752,6 @@ static void _DrawSaves(uiDrawObj_t *evt)
 	_CheatsPanel(40, 30, 40, 3, settingsAccent);
 	drawStringMedium(40, 63, s->title, 1.05f, ALIGN_LEFT, settingsInk);
 	drawStringMedium(600, 63, s->status, 0.54f, ALIGN_RIGHT, settingsAccent);
-	for(i = 0, x = 40; i < s->tabCount; i++) {
-		int width = (int)((float)GetTextSizeInPixels(s->tabs[i]) * 0.54f);
-
-		drawStringMedium(x, 98, s->tabs[i], 0.54f, ALIGN_LEFT,
-			i == s->tab ? settingsInk : settingsQuiet);
-		if(i == s->tab) {
-			/* The underline slides from tab to tab. */
-			underlined = true;
-			if(!data->tabPlaced) {
-				UIMotion_SpringInit(&data->tabX, (float)x, 25.0f);
-				UIMotion_SpringInit(&data->tabW, (float)width, 25.0f);
-				data->tabPlaced = true;
-			}
-			UIMotion_SpringRetarget(&data->tabX, (float)x, motion);
-			UIMotion_SpringRetarget(&data->tabW, (float)width, motion);
-		}
-		x += width + 32;
-	}
-	if(underlined) {
-		int left = (int)lrintf(UIMotion_SpringUpdate(&data->tabX,
-			UIAnim_Delta(), motion));
-		int right = (int)lrintf(data->tabX.value + UIMotion_SpringUpdate(
-			&data->tabW, UIAnim_Delta(), motion));
-
-		_CheatsPanel(left, 108, right - left, 2, settingsAccent);
-	}
 	_CheatsPanel(40, 115, 560, 1, settingsRule);
 	drawStringMedium(40, 132, s->section, 0.42f, ALIGN_LEFT, settingsAccent);
 	drawStringMedium(600, 132, s->position, 0.46f, ALIGN_RIGHT, settingsQuiet);
@@ -6722,18 +6767,7 @@ static void _DrawSaves(uiDrawObj_t *evt)
 		bool focused = i == s->focusRow;
 		int y = 148 + i * 40;
 
-		if(row->bannerFormat != CARD_BANNER_NONE) {
-			drawInit();
-			_DrawTexObjNow(&data->banner[i], 52, y + 1, CARD_BANNER_W,
-				CARD_BANNER_H, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0);
-			drawInit();
-		}
-		else if(row->kind == UI_SAVES_ROW_SAVE) {
-			_SavesCard(52, y + 1);
-		}
-		else {
-			_SavesFolder(52, y + 1, focused ? settingsAccent : settingsSwatch);
-		}
+		_SavesFolder(52, y + 1, focused ? settingsAccent : settingsSwatch);
 		drawStringMedium(160, y + 17, row->title, 0.62f, ALIGN_LEFT,
 			focused ? settingsInk : settingsQuiet);
 		drawStringMedium(588, y + 17, row->blocks, 0.50f, ALIGN_RIGHT,
@@ -6755,10 +6789,6 @@ static void _DrawSaves(uiDrawObj_t *evt)
 		drawStringMedium(320, 269, s->empty[1], 0.54f, ALIGN_CENTER,
 			settingsQuiet);
 	}
-	if(s->detail[0] != '\0') {
-		drawStringMedium(40, 400, s->detail, 0.48f, ALIGN_LEFT,
-			s->warning ? amber : settingsQuiet);
-	}
 	_CheatsPanel(40, 413, 560, 1, settingsRule);
 	_DrawHintText(40, 435, s->hint[0], 0.48f, ALIGN_LEFT, settingsInk);
 	_DrawHintText(600, 435, s->hint[1], 0.48f, ALIGN_RIGHT, settingsQuiet);
@@ -6776,7 +6806,7 @@ uiDrawObj_t* DrawSavesPage(const uiSavesPageSnapshot_t *snapshot)
 		return NULL;
 	}
 	memset(data, 0, sizeof(*data));
-	_SavesCopySnapshot(data, snapshot);
+	data->snapshot = *snapshot;
 	event->type = EV_SAVES;
 	event->data = data;
 	return event;
@@ -6790,7 +6820,457 @@ void DrawUpdateSavesPage(uiDrawObj_t *page,
 	}
 	LWP_MutexLock(_videomutex);
 	if(!page->disposed && page->type == EV_SAVES && page->data != NULL) {
-		_SavesCopySnapshot((drawSavesEvent_t*)page->data, snapshot);
+		((drawSavesEvent_t*)page->data)->snapshot = *snapshot;
+	}
+	LWP_MutexUnlock(_videomutex);
+}
+
+/* ------------------------------------------------------------------------
+ * Memory Cards' cube screen (saves.c): two stacks of save cubes over graph
+ * paper, as the IPL's Memory Card screen shows Slot A and Slot B, with the
+ * focused save's banner and comment below. ui_save_cubes.c lays the cubes
+ * out, moves them and projects their faces on the CPU; here they go through
+ * the 2D pipeline every page uses, Z off and nothing culled, so a frame
+ * asks nothing new of GX.
+ * --------------------------------------------------------------------- */
+
+/* The backdrop: the graph paper as much as it shows, and the Home cube while
+ * it hands over to the cubes or back, as _DrawBackground would draw it. */
+static void _SaveCubesBackdrop(float paper, float handover)
+{
+	int icons[UI_HOME_FACE_COUNT];
+
+	_HomeFaceIcons(icons);
+	IndigoBackground_DrawSavesBackdrop(paper, handover, UIAnim_Seconds(),
+		_CurrentMotionMode() == UI_MOTION_FULL, UIScene_Frame(),
+		&systemInstrument.clock, icons);
+}
+
+/* What one frame's cubes need. */
+typedef struct {
+	uiSaveCube_t cubes[UI_SAVE_CUBES_OUT];
+	uiSaveCubesQuad_t quads[UI_SAVE_CUBES_OUT * UI_SAVE_CUBES_QUADS];
+	uiSaveCubesQuad_t coverage[UI_SAVE_CUBES_OUT * UI_SAVE_CUBES_COVERAGE];
+	u16 quadEnd[UI_SAVE_CUBES_OUT];
+	u16 coverageEnd[UI_SAVE_CUBES_OUT];
+	GXColor shades[UI_SAVE_CUBES_SHADES][UI_SAVE_CUBES_ROLES];
+	GXTexObj icon;
+	bool invalidated;	/* the texture cache, this frame */
+} saveCubesDraw_t;
+
+/* Each shade of each part of a cube, through Menu Color once a frame. */
+static void _SaveCubesShades(saveCubesDraw_t *draw)
+{
+	int shade, role;
+
+	for(shade = 0; shade < UI_SAVE_CUBES_SHADES; shade++) {
+		for(role = 0; role < UI_SAVE_CUBES_ROLES; role++) {
+			u8 rgba[4];
+
+			UISaveCubes_Colour(shade, role, rgba);
+			UIColor_Apply(&rgba[0], &rgba[1], &rgba[2]);
+			draw->shades[shade][role] = (GXColor) {rgba[0], rgba[1], rgba[2], rgba[3]};
+		}
+	}
+}
+
+static void _SaveCubesVertex(float x, float y, GXColor color, float s, float t)
+{
+	GX_Position3f32(x, y, 0.0f);
+	GX_Color4u8(color.r, color.g, color.b, color.a);
+	GX_TexCoord2f32(s, t);
+}
+
+/* Cubes first .. end - 1: all their faces in one batch, then each icon on
+ * its quad in the game's own colors, blended by its alpha (drawInit's blend
+ * would add a clear texel's color). The texture cache is cleared before the
+ * frame's first icon only, not per icon as _DrawTexObjNow would: the loader
+ * writes only slots no published cube names. */
+static void _SaveCubesEmit(saveCubesDraw_t *draw, int first, int end)
+{
+	static const float s[4] = {0.0f, 1.0f, 1.0f, 0.0f};
+	static const float t[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+	float left = UIStage_Left(), right = UIStage_Right();
+	int quads = 0, coverage = 0, bodies = 0, i, k, v;
+	bool icons = false;
+
+	for(i = first; i < end; i++) {
+		int n = UISaveCubes_Faces(&draw->cubes[i], left, right, draw->quads + quads);
+		int edges = UISaveCubes_Coverage(draw->quads + quads, n,
+			UIStage_PixelWidth(), draw->coverage + coverage);
+
+		quads += n;
+		coverage += edges;
+		bodies += n + edges - (n > 0 && draw->quads[quads - 1].role == UI_SAVE_CUBES_ROLE_ICON);
+		draw->quadEnd[i] = (u16)quads;
+		draw->coverageEnd[i] = (u16)coverage;
+	}
+	if(bodies > 0) {
+		drawInit();
+		_SetupRasterColor();
+		GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(4 * bodies));
+		for(i = first; i < end; i++) {
+			const uiSaveCube_t *cube = &draw->cubes[i];
+
+			for(k = i > first ? draw->quadEnd[i - 1] : 0; k < draw->quadEnd[i]; k++) {
+				const uiSaveCubesQuad_t *quad = &draw->quads[k];
+				GXColor color;
+
+				if(quad->role == UI_SAVE_CUBES_ROLE_ICON) {
+					continue;
+				}
+				color = draw->shades[cube->shade][quad->role];
+				color.a = (u8)(color.a * cube->alpha / 255);
+				for(v = 0; v < 4; v++) {
+					_SaveCubesVertex(quad->x[v], quad->y[v], color, 0.0f, 0.0f);
+				}
+			}
+			for(k = i > first ? draw->coverageEnd[i - 1] : 0; k < draw->coverageEnd[i]; k++) {
+				const uiSaveCubesQuad_t *quad = &draw->coverage[k];
+				GXColor color = draw->shades[cube->shade][quad->role];
+
+				color.a = (u8)(color.a * cube->alpha / 255);
+				for(v = 0; v < 4; v++) {
+					GXColor faded = color;
+					if(v >= 2) faded.a = 0;
+					_SaveCubesVertex(quad->x[v], quad->y[v], faded, 0.0f, 0.0f);
+				}
+			}
+		}
+		GX_End();
+	}
+	for(i = first; i < end; i++) {
+		const uiSaveCubesQuad_t *quad;
+		GXColor white = {255, 255, 255, draw->cubes[i].alpha};
+
+		if(draw->quadEnd[i] == (i > first ? draw->quadEnd[i - 1] : 0)) {
+			continue;
+		}
+		quad = &draw->quads[draw->quadEnd[i] - 1];
+		if(quad->role != UI_SAVE_CUBES_ROLE_ICON) {
+			continue;
+		}
+		if(!icons) {
+			drawInit();
+			GX_SetNumTevStages(1);
+			GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA,
+				GX_LO_CLEAR);
+			if(!draw->invalidated) {
+				GX_InvalidateTexAll();
+				draw->invalidated = true;
+			}
+			icons = true;
+		}
+		GX_InitTexObj(&draw->icon, (void *)draw->cubes[i].icon, 32, 32,
+			GX_TF_RGB5A3, GX_CLAMP, GX_CLAMP, GX_FALSE);
+		GX_LoadTexObj(&draw->icon, GX_TEXMAP0);
+		GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+		for(v = 0; v < 4; v++) {
+			_SaveCubesVertex(quad->x[v], quad->y[v], white, s[v], t[v]);
+		}
+		GX_End();
+	}
+	if(icons) {
+		drawInit();
+	}
+}
+
+typedef struct {
+	uiSaveCubesPageSnapshot_t snapshot;
+	uiSaveCubesMotion_t motion;
+	saveCubesDraw_t draw;
+	GXTexObj picture;	/* the info bar's banner, or its icon */
+	/* The last box and message shown, drawn while they fade out. */
+	uiSaveCubesMenu_t menu;
+	u8 menuFocus;
+	char message[96];
+} drawSaveCubesEvent_t;
+
+static GXColor _SaveCubesFaded(GXColor color, float alpha)
+{
+	color.a = (u8)((float)color.a * alpha + 0.5f);
+	return color;
+}
+
+/* A box of fill shading top to bottom, inside an edge line px wide. */
+static void _SaveCubesBox(float x, float y, float width, float height,
+	GXColor top, GXColor bottom, GXColor edge, float line)
+{
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 20);
+		_putFlatVertex(x, y, top);
+		_putFlatVertex(x + width, y, top);
+		_putFlatVertex(x + width, y + height, bottom);
+		_putFlatVertex(x, y + height, bottom);
+		_putFlatRect(x, y, width, line, edge);
+		_putFlatRect(x, y + height - line, width, line, edge);
+		_putFlatRect(x, y + line, line, height - 2.0f * line, edge);
+		_putFlatRect(x + width - line, y + line, line, height - 2.0f * line, edge);
+	GX_End();
+}
+
+/* A stack's header, "A  Open" and its free blocks in a box, or the SD
+ * card's open folder; the arrows when rows lie above or below the window;
+ * or, with no grid, why. */
+static void _SaveCubesHeader(const uiSaveCubesStack_t *stack,
+	const uiSaveCubesStackText_t *text, float middle, float alpha)
+{
+	const GXColor white = _SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha);
+	const GXColor shadow = _SaveCubesFaded((GXColor) {0, 0, 0, 200}, alpha);
+	const GXColor quiet = _SaveCubesFaded(settingsQuiet, alpha);
+	int rows = stack->cells / UI_SAVE_CUBES_COLUMNS;
+	int i;
+
+	_SaveCubesBox(middle - 112.0f, 28.0f, 224.0f, 27.0f,
+		_SaveCubesFaded((GXColor) {18, 27, 91, 180}, alpha), shadow, quiet, 1.0f);
+	drawStringMedium((int)middle, 42, text->control, 0.5f, ALIGN_CENTER, white);
+	drawStringMedium((int)middle - 100, 74, text->name, 1.5f, ALIGN_LEFT, white);
+	if(text->free[0] != '\0') {
+		drawStringMedium((int)middle - 66, 80, "Open", 0.5f, ALIGN_LEFT, white);
+		_SaveCubesBox(middle - 20.0f, 60.0f, 56.0f, 28.0f, shadow, shadow, white, 2.0f);
+		drawStringMedium((int)middle + 8, 74, text->free, 0.6f, ALIGN_CENTER, white);
+	}
+	else {
+		drawStringMedium((int)middle - 44, 78, text->path, 0.42f, ALIGN_LEFT,
+			quiet);
+	}
+	if(stack->cells <= 0) {
+		drawStringMedium((int)middle, 220, text->note[0], text->noteScale[0],
+			ALIGN_CENTER, white);
+		drawStringMedium((int)middle, 248, text->note[1], text->noteScale[1],
+			ALIGN_CENTER, quiet);
+		return;
+	}
+	for(i = 0; i < 2; i++) {
+		float tip = i ? 354.5f : 99.5f, base = i ? 345.5f : 108.5f;
+
+		if(i ? stack->first + UI_SAVE_CUBES_ROWS >= rows : stack->first <= 0) {
+			continue;
+		}
+		drawInit();
+		_SetupRasterColor();
+		GX_Begin(GX_TRIANGLES, GX_VTXFMT0, 3);
+			_putFlatVertex(middle - 7.0f, base, white);
+			_putFlatVertex(middle + 7.0f, base, white);
+			_putFlatVertex(middle, tip, white);
+		GX_End();
+	}
+}
+
+/* A 96x32 banner or a 32x32 icon frame, RGB5A3, at (x, y). */
+static void _SaveCubesPicture(GXTexObj *picture, const u8 *texels, int x,
+	int y, int width)
+{
+	memset(picture, 0, sizeof(*picture));
+	GX_InitTexObj(picture, (void *)texels, width, 32, GX_TF_RGB5A3, GX_CLAMP,
+		GX_CLAMP, GX_FALSE);
+	GX_InitTexObjFilterMode(picture, GX_LINEAR, GX_NEAR);
+	drawInit();
+	_DrawTexObjNow(picture, x, y, width, 32, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0);
+	drawInit();
+}
+
+/* A flat bar, x .. x + width across, y .. y + height down. */
+static void _SaveCubesBar(float x, float y, float width, float height,
+	GXColor color)
+{
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+		_putFlatRect(x, y, width, height, color);
+	GX_End();
+}
+
+/* The box beside the focused cube, as the IPL's: dimmed items grey, the
+ * focus's bar sliding to its item. It opens from 0.92x and fades, about its
+ * middle. */
+static void _SaveCubesMenu(const uiSaveCubesMenu_t *menu, int focus,
+	const uiSaveCubesGrid_t *grid, const uiSaveCubesMotion_t *motion)
+{
+	const float alpha = motion->menuAlpha, scale = motion->menuScale;
+	const GXColor fill = _SaveCubesFaded((GXColor) {18, 27, 91, 230}, alpha);
+	const GXColor edge = _SaveCubesFaded((GXColor) {196, 186, 255, 255}, alpha);
+	uiSaveCubesBox_t box;
+	float cubeX, cubeY, middleX, middleY, top;
+	bool titled = menu->title[0] != '\0';
+	int i;
+
+	if(!(alpha > 0.0f) || menu->count == 0 || grid->focusStack < 0 ||
+		grid->focusStack >= UI_SAVE_CUBES_STACKS) {
+		return;
+	}
+	UISaveCubes_Where(grid->focusStack, grid->focusCell,
+		(float)grid->stack[grid->focusStack].first, &cubeX, &cubeY);
+	UISaveCubes_MenuBox(cubeX, cubeY, (float)menu->width, menu->count, titled, &box);
+	top = titled ? box.titleY : box.y;
+	middleX = box.x + 0.5f * box.width;
+	middleY = 0.5f * (top + box.y + box.height);
+#define MENU_X(x) (middleX + ((x) - middleX) * scale)
+#define MENU_Y(y) (middleY + ((y) - middleY) * scale)
+	if(titled) {
+		_SaveCubesBox(MENU_X(box.x), MENU_Y(box.titleY), box.width * scale,
+			UI_SAVE_CUBES_MENU_TITLE * scale, fill, fill, edge, 2.0f);
+		drawStringMedium((int)MENU_X(box.x + 12.0f),
+			(int)MENU_Y(box.titleY + 0.5f * UI_SAVE_CUBES_MENU_TITLE), menu->title,
+			0.56f * scale, ALIGN_LEFT, _SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha));
+	}
+	_SaveCubesBox(MENU_X(box.x), MENU_Y(box.y), box.width * scale, box.height * scale,
+		fill, fill, edge, 2.0f);
+	_SaveCubesBar(MENU_X(box.x + 4.0f),
+		MENU_Y(box.y + 8.0f + UI_SAVE_CUBES_MENU_PITCH * motion->menuItem),
+		(box.width - 8.0f) * scale, UI_SAVE_CUBES_MENU_PITCH * scale,
+		_SaveCubesFaded((GXColor) {70, 92, 200, 230}, alpha));
+	for(i = 0; i < menu->count && i < 4; i++) {
+		GXColor ink = (menu->dim >> i) & 1u ? (GXColor) {120, 120, 140, 255} :
+			i == focus ? (GXColor) {255, 236, 170, 255} : (GXColor) {255, 255, 255, 255};
+
+		drawStringMedium((int)MENU_X(box.x + 16.0f), (int)MENU_Y(box.y + 8.0f +
+			UI_SAVE_CUBES_MENU_PITCH * ((float)i + 0.5f)), menu->item[i],
+			0.56f * scale, ALIGN_LEFT, _SaveCubesFaded(ink, alpha));
+	}
+#undef MENU_X
+#undef MENU_Y
+}
+
+/* The IPL's maroon message over the middle of the stage. */
+static void _SaveCubesMessage(const char *text, float alpha)
+{
+	float width = (float)GetTextSizeInPixels(text) * 0.56f + 48.0f;
+
+	if(!(alpha > 0.0f) || text[0] == '\0') {
+		return;
+	}
+	if(width < 320.0f) {
+		width = 320.0f;
+	}
+	_SaveCubesBox(320.0f - 0.5f * width, 200.0f, width, 50.0f,
+		_SaveCubesFaded((GXColor) {120, 16, 36, 235}, alpha),
+		_SaveCubesFaded((GXColor) {120, 16, 36, 235}, alpha),
+		_SaveCubesFaded((GXColor) {255, 210, 220, 255}, alpha), 2.0f);
+	drawStringMedium(320, 225, text, 0.56f, ALIGN_CENTER,
+		_SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha));
+}
+
+static void _DrawSaveCubes(uiDrawObj_t *evt)
+{
+	drawSaveCubesEvent_t *data = (drawSaveCubesEvent_t*)evt->data;
+	const uiSaveCubesPageSnapshot_t *s = &data->snapshot;
+	const uiSaveCubesGrid_t *grid = &s->grid;
+	uiMotionMode_t motion = _CurrentMotionMode();
+	float left = UIStage_Left() + 40.0f, right = UIStage_Right() - 40.0f;
+	float chrome;
+	int count, floating, i;
+
+	/* The cubes first: their motion says how much of the rest shows. */
+	count = UISaveCubes_Frame(&data->motion, grid, UIAnim_Delta(), motion,
+		data->draw.cubes, &floating);
+	chrome = data->motion.chrome;
+	_SaveCubesBackdrop(data->motion.paper, data->motion.handover);
+	drawInit();
+	_SaveCubesShades(&data->draw);
+	data->draw.invalidated = false;
+	for(i = 0; i < UI_SAVE_CUBES_STACKS && chrome > 0.0f; i++) {
+		_SaveCubesHeader(&grid->stack[i], &s->stack[i],
+			UI_SAVE_CUBES_STACK_X + (float)i * UI_SAVE_CUBES_STACK_GAP, chrome);
+	}
+	_SaveCubesEmit(&data->draw, 0, floating);
+	/* The info bar: the focused save's banner (or its icon), its comment
+	 * and its size, as the IPL's. Empty for a free cell. */
+	if(chrome > 0.0f) {
+		const GXColor white = _SaveCubesFaded((GXColor) {255, 255, 255, 255}, chrome);
+		const GXColor box = _SaveCubesFaded((GXColor) {0, 0, 0, 200}, chrome);
+
+		_SaveCubesBox(left, 362.0f, right - left, 70.0f,
+			_SaveCubesFaded((GXColor) {39, 53, 153, 220}, chrome),
+			_SaveCubesFaded((GXColor) {58, 31, 127, 220}, chrome),
+			_SaveCubesFaded((GXColor) {196, 186, 255, 255}, chrome), 2.0f);
+		if(s->info) {
+			int blocks = 0;
+
+			/* Pictures can't fade: they come with the words' second half. */
+			bool pictures = chrome >= 0.5f;
+
+			if(pictures && s->banner != NULL) {
+				_SaveCubesPicture(&data->picture, s->banner, 56, 381, 96);
+			}
+			else if(pictures && s->folder) {
+				_SavesFolder(56, 381, settingsSwatch);
+			}
+			else if(pictures && grid->focusStack >= 0) {
+				const uiSaveCubesStack_t *stack = &grid->stack[grid->focusStack];
+				int k = grid->focusCell - (stack->first - 1) * UI_SAVE_CUBES_COLUMNS;
+				const u8 *icon = k >= 0 && k < UI_SAVE_CUBES_DRAWN ?
+					UISaveCubes_Icon(&stack->cell[k], data->motion.seconds, motion) : NULL;
+
+				if(icon != NULL) {
+					_SaveCubesPicture(&data->picture, icon, 88, 381, 32);
+				}
+			}
+			drawStringMedium(168, 388, s->line[0], 0.62f, ALIGN_LEFT, white);
+			if(s->blocks[0] != '\0') {
+				blocks = (int)((float)GetTextSizeInPixels(s->blocks) * 0.5f) + 16;
+				if(blocks < 48) {
+					blocks = 48;
+				}
+				_SaveCubesBox(168.0f, 398.0f, (float)blocks, 24.0f, box, box, white, 2.0f);
+				drawStringMedium(168 + blocks / 2, 410, s->blocks, 0.5f, ALIGN_CENTER,
+					white);
+			}
+			/* A dimmed item's reason takes the second line, in amber. */
+			drawStringMedium(180 + blocks, 410, s->line[1], 0.5f, ALIGN_LEFT,
+				_SaveCubesFaded(s->warn ? (GXColor) {255, 190, 80, 255} : settingsQuiet,
+				chrome));
+		}
+	}
+	for(i = floating; i < count; i++) {
+		_SaveCubesEmit(&data->draw, i, i + 1);
+	}
+	if(grid->menu) {
+		data->menu = s->menu;
+		data->menuFocus = grid->menuFocus;
+	}
+	_SaveCubesMenu(&data->menu, data->menuFocus, grid, &data->motion);
+	if(grid->message) {
+		memcpy(data->message, s->message, sizeof(data->message));
+		data->message[sizeof(data->message) - 1] = '\0';
+	}
+	_SaveCubesMessage(data->message, data->motion.messageAlpha);
+	if(chrome > 0.0f) {
+		_DrawHintText(40, 454, s->hint[0], 0.46f, ALIGN_LEFT,
+			_SaveCubesFaded(settingsInk, chrome));
+		_DrawHintText(600, 454, s->hint[1], 0.46f, ALIGN_RIGHT,
+			_SaveCubesFaded(settingsQuiet, chrome));
+	}
+	drawInit();
+}
+
+uiDrawObj_t* DrawSaveCubesPage(const uiSaveCubesPageSnapshot_t *snapshot)
+{
+	drawSaveCubesEvent_t *data = memalign(32, sizeof(*data));
+	uiDrawObj_t *event = calloc(1, sizeof(*event));
+
+	if(data == NULL || event == NULL) {
+		free(data);
+		free(event);
+		return NULL;
+	}
+	memset(data, 0, sizeof(*data));
+	data->snapshot = *snapshot;
+	event->type = EV_SAVE_CUBES;
+	event->data = data;
+	return event;
+}
+
+void DrawUpdateSaveCubesPage(uiDrawObj_t *page,
+	const uiSaveCubesPageSnapshot_t *snapshot)
+{
+	if(page == NULL) {
+		return;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!page->disposed && page->type == EV_SAVE_CUBES && page->data != NULL) {
+		((drawSaveCubesEvent_t*)page->data)->snapshot = *snapshot;
 	}
 	LWP_MutexUnlock(_videomutex);
 }
@@ -7128,6 +7608,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 		case EV_GAMEFLOW:
 			_DrawGameflow(videoEvent);
 			break;
+		case EV_SAVE_DETAILS:
+			_DrawSaveDetails(videoEvent);
+			break;
 		case EV_PRESENTATION:
 			_DrawPresentation(videoEvent);
 			break;
@@ -7145,6 +7628,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 			break;
 		case EV_SAVES:
 			_DrawSaves(videoEvent);
+			break;
+		case EV_SAVE_CUBES:
+			_DrawSaveCubes(videoEvent);
 			break;
 		default:
 			break;
@@ -7199,13 +7685,15 @@ static void _SelectFrameColors(void)
 }
 
 /* Settings, the cheats and Memory Cards are opaque pages over the whole
- * stage (_PagePanel), so while one is up nothing drawn before it shows. */
+ * stage (_PagePanel, or the cube screen's own backdrop), so while one is up
+ * nothing drawn before it shows. */
 static bool _FrameCovered(uiDrawObjQueue_t *queue)
 {
 	for(; queue != NULL; queue = queue->next) {
 		const uiDrawObj_t *event = queue->event;
 		if(!event->disposed && (event->type == EV_SETTINGS ||
-			event->type == EV_CHEATS || event->type == EV_SAVES)) {
+			event->type == EV_CHEATS || event->type == EV_SAVES ||
+			event->type == EV_SAVE_CUBES)) {
 			return true;
 		}
 	}

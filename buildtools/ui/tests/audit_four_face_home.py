@@ -275,6 +275,13 @@ ordered(
 )
 ordered(dispatch, "case UI_HOME_EFFECT_OPEN_SAVES:", "show_saves();")
 assert SWISS.count("show_saves();") == 1
+# Memory Cards hands the Home cube over where it stands, System side to the
+# front: any scene but Home's would turn it while it goes and comes back.
+open_saves = dispatch[dispatch.index("case UI_HOME_EFFECT_OPEN_SAVES:"):]
+open_saves = open_saves[: open_saves.index("break;")]
+assert set(re.findall(r"UIScene_Request\((\w+)\)", open_saves)) <= {"UI_SCENE_HOME"}, (
+    "Memory Cards turns the Home cube away from its System side as it hands it over"
+)
 assert 'return row == 0 ? "CANCEL" : "RESTART";' in row_labels
 ordered(
     apply_confirm,
