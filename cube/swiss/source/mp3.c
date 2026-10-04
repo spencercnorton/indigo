@@ -32,8 +32,10 @@ uiDrawObj_t* updatescreen_mp3(file_handle *file, int state, int numFiles, int cu
 	DrawAddChild(player, DrawStyledLabel(640/2, 160, txtbuffer, scale, ALIGN_CENTER, defaultColor));
 	memset(txtbuffer, 0, 256);
 	sprintf(txtbuffer, "------------------------------");
-	float percentPlayed = (float)(((float)file->offset / (float)file->size) * 30);
-	txtbuffer[(int)percentPlayed] = '*';
+	u32 played = file->offset;
+	if(played > file->size) played = file->size;
+	int progress = file->size ? (int)((u64)played * 29u / file->size) : 0;
+	txtbuffer[progress] = '*';
 	DrawAddChild(player, DrawStyledLabel(640/2, 210, txtbuffer, 1.0f, ALIGN_CENTER, defaultColor));
 	DrawAddChild(player, DrawHintLabel(640/2, 300, "\213 Rewind    \233 Forward    X  Vol+    Y  Vol-", 1.0f, ALIGN_CENTER, defaultColor));
 	DrawAddChild(player, DrawHintLabel(640/2, 330, "B  Stop    L  Prev    R  Next    START  Pause", 1.0f, ALIGN_CENTER, defaultColor));
@@ -86,7 +88,7 @@ int play_mp3(file_handle *file, int numFiles, int curMP3) {
 		}
 		else if(buttons & BUTTON_RIGHT) {	// Fwd
 			MP3Player_Stop();
-			if(file->offset+0x8000 < file->size) {
+			if(file->offset < file->size && file->size - file->offset > 0x8000) {
 				file->offset += 0x8000;
 				MP3Player_PlayFile(file, &mp3Reader, NULL);
 			}
@@ -97,8 +99,7 @@ int play_mp3(file_handle *file, int numFiles, int curMP3) {
 		}
 		else if(buttons & BUTTON_LEFT) {	// Rewind
 			MP3Player_Stop();
-			if(file->offset-0x10000 > 0) file->offset -= 0x10000;
-			else file->offset = 0;
+			file->offset = file->offset > 0x10000 ? file->offset - 0x10000 : 0;
 			MP3Player_PlayFile(file, &mp3Reader, NULL);
 		}
 		else if(buttons & BUTTON_Z) {		// Toggle Shuffle
@@ -153,4 +154,3 @@ void mp3_player(file_handle** allFiles, int numFiles, file_handle* curFile) {
 	
 	MP3Player_Stop();
 }
-

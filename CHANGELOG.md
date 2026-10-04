@@ -40,6 +40,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Changes
 
+- Rewinding an MP3 near its start goes back to the start instead of skipping
+  the track, and Forward near the end of a large track no longer wraps to
+  the start. Its progress marker stays inside the bar, including an empty
+  file or a device reading beyond the end of the track.
 - Every face of the Home cube shows its icon as the cube turns, animated, the
   side faces at rest included. An icon on a face turned away from the screen
   is drawn four times as wide and twice as tall, then scaled down, so its
