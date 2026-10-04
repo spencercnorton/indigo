@@ -21,7 +21,7 @@ OWN = re.compile(r"^(cube/swiss/source/gui/|cube/swiss/source/images/|cube/swiss
                  r"|cube/swiss/source/main\.c$|cube/swiss/include/swiss\.h$|cube/swiss/include/input\.h$"
                  r"|cube/swiss/include/mp3\.h$|cube/swiss/source/input\.c$|cube/swiss/source/mp3\.c$"
                  r"|cube/swiss/source/wiiload\.c$|cube/swiss/source/cheats/(cheats|cheat_policy)\.[ch]$"
-                 r"|cube/swiss/source/config/|docs/|buildtools/|\.github/|[^/]*\.md$"
+                 r"|cube/swiss/source/config/|docs/|AGENTS/|buildtools/|\.github/|[^/]*\.md$"
                  r"|UPSTREAM$|NOTICE$|\.gitignore$|\.public-release\.toml$)")
 
 

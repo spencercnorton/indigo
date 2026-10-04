@@ -1,5 +1,13 @@
 # Indigo development journal
 
+## 2026-10-04 — Feature branch validation
+
+The upstream comparison recognizes the development journal as Indigo-owned,
+matching the documented per-repository record. Production controller,
+metadata and renderer regressions pass on the feature branch. The new
+Detail inset measures 136 geometry vertices and five batches in both shapes;
+its tests retain the branch's existing focus behavior.
+
 ## 2026-10-04 — Save details and Library save statistics
 
 Selecting a save now opens its details before guarded actions, including
