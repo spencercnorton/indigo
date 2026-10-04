@@ -910,7 +910,8 @@ static int cubesExtras(uiSaveCubesMotion_t *motion,
 			}
 		}
 	}
-	if(grid->ghost && grid->focusStack >= 0 && grid->focusStack < UI_SAVE_CUBES_STACKS) {
+	if(grid->ghost && grid->ghostCell >= 0 && grid->focusStack >= 0 &&
+		grid->focusStack < UI_SAVE_CUBES_STACKS) {
 		int s = !grid->focusStack;
 		const uiSaveCubesStack_t *stack = &grid->stack[s];
 
@@ -1181,6 +1182,12 @@ int UISaveCubes_Cells(int saves)
 		UI_SAVE_CUBES_COLUMNS;
 	return cells < UI_SAVE_CUBES_MIN_CELLS ? UI_SAVE_CUBES_MIN_CELLS :
 		cells > UI_SAVE_CUBES_MAX_CELLS ? UI_SAVE_CUBES_MAX_CELLS : cells;
+}
+
+int UISaveCubes_Landing(int saves)
+{
+	saves = saves < 0 ? 0 : saves;
+	return saves < UISaveCubes_Cells(saves) ? saves : -1;
 }
 
 int UISaveCubes_Window(int first, int cell, int cells)

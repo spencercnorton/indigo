@@ -31,7 +31,9 @@ texels flushed before the slot is named; the cube in flight has its own
 slot, filled before it is shown. An erase is called done only after the
 card did it, and a failed one on a card shows the driver's box alone. The
 screen leaves before the cards are let go. A message is fitted to its
-box with an ellipsis.
+box with an ellipsis. A save copied to a folder that lists as many as a
+stack shows has no cell to land in: no ghost shows, the folder's stack
+keeps its selection on a cell it has, and the question says why.
 """
 
 from __future__ import annotations
@@ -197,6 +199,18 @@ def check(source: str) -> None:
     ordered(options, "eraseBegin(", "ok = saveDelete(save);", "opEnd(ok);",
             "if(ok) {", 'savesSay("The data was erased.");', "else if(!card) {",
             'savesTell(D_FAIL, "The save couldn\'t be deleted.')
+    # A save lands in the other stack's first free cell. A folder listing as
+    # many as a stack shows has none: then no ghost shows, the stack's
+    # selection stays on a cell it has, and the question says why.
+    ordered(options, "plan.toCell = UISaveCubes_Landing(dest->count - placeSkip(dest));",
+            "dest->selection = plan.toCell >= 0 ? plan.toCell + placeSkip(dest) : dest->count - 1;",
+            "ghosts = plan.toCell >= 0 ? 3u : 0u;", "savesMenu(title, answers, 2, 0, 0u, NULL, ghosts)",
+            "ghosts ? NULL : unseen, ghosts & 1u);",
+            "savesMenu(title, answers, 2, 0, 0u, ghosts ? NULL : unseen, ghosts)",
+            "saveTransfer(save, to, move);")
+    # A focused item's reason shows whether or not it is dimmed.
+    ordered(function(source, "savesMenu"), "snprintf(over.reason, sizeof(over.reason), \"%s\",\n"
+            "\t\t\treasons != NULL && reasons[focus] != NULL ? reasons[focus] : \"\");")
     # A message fits its box, an ellipsis ending what doesn't, rather than
     # being cut short where its buffer ends.
     ordered(function(source, "savesSay"),
@@ -286,6 +300,19 @@ def mutants(source: str) -> list[tuple[str, str]]:
          source.replace("\t\telse if(!card) {\n", "\t\telse {\n")),
         ("the cards go before the screen does",
          source.replace("\tover.leaving = 1;\n", "")),
+        ("a save aims past the end of a folder's stack",
+         source.replace("plan.toCell = UISaveCubes_Landing(dest->count - placeSkip(dest));",
+                        "plan.toCell = dest->count - placeSkip(dest);")),
+        ("a ghost shows where a save has nowhere to land",
+         source.replace("ghosts = plan.toCell >= 0 ? 3u : 0u;", "ghosts = 3u;")),
+        ("the question doesn't say why no ghost shows",
+         source.replace("savesMenu(title, answers, 2, 0, 0u, ghosts ? NULL : unseen, ghosts)",
+                        "savesMenu(title, answers, 2, 0, 0u, NULL, ghosts)")),
+        ("only a dimmed item's reason shows",
+         source.replace("snprintf(over.reason, sizeof(over.reason), \"%s\",\n"
+                        "\t\t\treasons != NULL && reasons[focus] != NULL ? reasons[focus] : \"\");",
+                        "snprintf(over.reason, sizeof(over.reason), \"%s\", (dim >> focus) & 1u &&\n"
+                        "\t\t\treasons != NULL && reasons[focus] != NULL ? reasons[focus] : \"\");")),
         ("a message is cut short without an ellipsis",
          source.replace("\tUICheats_Fit(over.message, sizeof(over.message), text,\n"
                         "\t\tUI_SAVE_CUBES_MESSAGE_WIDTH, 0.56f, GetTextSizeInPixels);\n",

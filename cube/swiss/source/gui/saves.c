@@ -926,12 +926,18 @@ static void screenBuild(const int stacks[UI_SAVE_CUBES_STACKS], int focus)
 			"Accessing. Do not touch the Memory Card or the POWER Button.");
 	}
 	else if(over.menuOpen && over.reason[0] != '\0') {
-		/* A dimmed item says why, in the info bar in amber and below. */
+		/* A focused item's reason shows in the info bar in amber; a
+		 * dimmed one's below too, as A does nothing on it. */
 		UICheats_Fit(g->line[1], sizeof(g->line[1]), over.reason, 360, 0.5f,
 			GetTextSizeInPixels);
 		g->warn = 1;
-		snprintf(g->hint[0], sizeof(g->hint[0]), "%s", over.reason);
-		snprintf(g->hint[1], sizeof(g->hint[1]), "B  Cancel");
+		if((over.menu.dim >> over.menuFocus) & 1u) {
+			snprintf(g->hint[0], sizeof(g->hint[0]), "%s", over.reason);
+			snprintf(g->hint[1], sizeof(g->hint[1]), "B  Cancel");
+		}
+		else {
+			snprintf(g->hint[0], sizeof(g->hint[0]), "B  Cancel   A  Confirm");
+		}
 	}
 	else if(over.menuOpen) {
 		snprintf(g->hint[0], sizeof(g->hint[0]), "B  Cancel   A  Confirm");
@@ -987,7 +993,8 @@ static void savesWait(u32 since, float seconds)
 
 /* The box beside the focused cube, the IPL's, or a question with title
  * above it: Up and Down move, A chooses an item that isn't dimmed, B
- * cancels. A dimmed item says why (reasons[i]) while it is focused; the
+ * cancels. An item with a reason (reasons[i]) says it while it is focused:
+ * why a dimmed one can't be chosen, or what to know before choosing; the
  * items in ghosts show the ghost cube where a save would land. Returns the
  * index chosen, or -1. */
 static int savesMenu(const char *title, const char *const *items, int count,
@@ -1022,7 +1029,7 @@ static int savesMenu(const char *title, const char *const *items, int count,
 
 		over.menuFocus = (u8)focus;
 		over.ghost = (u8)((ghosts >> focus) & 1u);
-		snprintf(over.reason, sizeof(over.reason), "%s", (dim >> focus) & 1u &&
+		snprintf(over.reason, sizeof(over.reason), "%s",
 			reasons != NULL && reasons[focus] != NULL ? reasons[focus] : "");
 		screenRedraw();
 		pressed = inputNext(&input);
@@ -1732,12 +1739,16 @@ static void saveOptions(int tab)
 	savesPlace_t *dest = &places[toTab];
 	char reason[2][96], title[64], open[PATHNAME_MAX];
 	const char *why[3] = {reason[0], reason[1], NULL};
+	/* A folder listing as many as a stack shows has no free cell to land
+	 * in: the copy goes in all the same, unseen. */
+	const char *unseen[2] = {"This folder shows 256 already; the save won't show", NULL};
 	const char *where[2] = {open, "Another folder\205"};
 	u8 entry[UI_SAVES_ENTRY_SIZE];
 	bool known = saveEntry(save, entry), card = isCard(save->device), move, ok;
 	unsigned blocks = known ? UISaves_Blocks(entry) : saveBlocks(save), dim = 0u;
 	uiSavesRoom_t room;
 	uiSavesPlace_t to;
+	unsigned ghosts;
 	int action, i;
 
 	saveRoom(toTab, entry, known, &room);
@@ -1772,16 +1783,19 @@ static void saveOptions(int tab)
 	}
 	move = action == 0;
 	/* Where it would land: the other stack's first free cell, its window
-	 * moved to show it, the ghost there while the question is up. */
+	 * moved to show it, the ghost there while the question is up. With no
+	 * free cell (a folder at the stack's 256), no ghost, its window on its
+	 * last cell, and the question says why. */
 	plan.cell = placeCell(place);
 	plan.slot = artSlot(saveTag(tab, save));
-	plan.toCell = dest->count - placeSkip(dest);
+	plan.toCell = UISaveCubes_Landing(dest->count - placeSkip(dest));
 	over.ghostCell = (s16)plan.toCell;
-	dest->selection = plan.toCell + placeSkip(dest);
+	dest->selection = plan.toCell >= 0 ? plan.toCell + placeSkip(dest) : dest->count - 1;
+	ghosts = plan.toCell >= 0 ? 3u : 0u;
 	if(toTab < SAVES_TAB_FOLDER) {
 		snprintf(title, sizeof(title), "%s to %s?", move ? "Move" : "Copy",
 			slotName(toTab));
-		if(savesMenu(title, answers, 2, 0, 0u, NULL, 3u) != 0) {
+		if(savesMenu(title, answers, 2, 0, 0u, NULL, ghosts) != 0) {
 			return;
 		}
 		to = toTab == 0 ? UI_SAVES_PLACE_SLOT_A : UI_SAVES_PLACE_SLOT_B;
@@ -1795,7 +1809,8 @@ static void saveOptions(int tab)
 		if(folders) {
 			UICheats_Fit(open, sizeof(open), getDevicePath(dest->dir.name), 228, 0.56f,
 				GetTextSizeInPixels);
-			i = savesMenu(move ? "Move to" : "Copy to", where, 2, 0, 0u, NULL, 1u);
+			i = savesMenu(move ? "Move to" : "Copy to", where, 2, 0, 0u,
+				ghosts ? NULL : unseen, ghosts & 1u);
 			if(i < 0) {
 				return;
 			}
@@ -1803,7 +1818,7 @@ static void saveOptions(int tab)
 		}
 		else {
 			snprintf(title, sizeof(title), "%s to the SD card?", move ? "Move" : "Copy");
-			if(savesMenu(title, answers, 2, 0, 0u, NULL, 3u) != 0) {
+			if(savesMenu(title, answers, 2, 0, 0u, ghosts ? NULL : unseen, ghosts) != 0) {
 				return;
 			}
 			to = UI_SAVES_PLACE_FOLDER;

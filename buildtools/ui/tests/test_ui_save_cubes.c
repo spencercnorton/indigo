@@ -1339,6 +1339,27 @@ static void testOverlays(void)
 	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
 	assert(find(count, 1, 10, 0)->kind == UI_SAVE_CUBES_KIND_EMPTY);
 
+	/* A save lands in a stack's first free cell; a folder that lists as
+	 * many as a stack shows (256, no "..") has none, and then no ghost
+	 * shows, rather than one past the stack's end. */
+	assert(UISaveCubes_Landing(0) == 0 && UISaveCubes_Landing(10) == 10);
+	assert(UISaveCubes_Landing(127) == 127 && UISaveCubes_Landing(255) == 255);
+	assert(UISaveCubes_Landing(256) == -1 && UISaveCubes_Landing(300) == -1);
+	for(i = -1; i <= 300; i++) {
+		k = UISaveCubes_Landing(i);
+		assert(k == -1 || (k == (i > 0 ? i : 0) && k < UISaveCubes_Cells(i)));
+	}
+	grid.ghost = 1;
+	grid.ghostCell = -1;
+	for(i = 0; i < 3; i++) {
+		count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
+		for(k = 0; k < count; k++) {
+			assert(cubes[k].shade != UI_SAVE_CUBES_SHADE_EMPTY_FOCUS ||
+				cubes[k].kind == UI_SAVE_CUBES_KIND_EMPTY);
+		}
+	}
+	grid.ghost = 0;
+
 	/* The box beside its cube: to the right, or past the middle to the
 	 * left; inside the window, clear of the info bar. */
 	UISaveCubes_MenuBox(148.0f, 196.0f, 0.0f, 3, false, &box);
