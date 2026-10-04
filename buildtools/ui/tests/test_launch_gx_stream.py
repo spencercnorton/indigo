@@ -105,6 +105,15 @@ static void detail(void)
 	if(savesVariant == 2u) stats.partial = true;
 	else if(savesVariant == 3u) stats.saves = stats.blocks = UINT32_MAX;
 	else if(savesVariant == 4u) stats.saves = stats.blocks = 0u;
+	else if(savesVariant == 5u) stats.updatedKnown = false;
+	else if(savesVariant == 6u) {
+		stats.saves = stats.blocks = 0u;
+		stats.partial = true;
+	}
+	else if(savesVariant == 7u) {
+		stats.checkedSources = 0u;
+		stats.updatedKnown = false;
+	}
 	source.saveStats = savesVariant == 0u ? NULL : &stats;
 	CHECK(UIGameflowDetail_Build(&eventData->detail, &source));
 	/* The video event must never retain borrowed menu-thread storage. */
@@ -204,6 +213,34 @@ def strings(frame: str) -> list:
     """(x, y, text) of every line of text a frame draws."""
     return [(int(l.split()[1]), int(l.split()[2]), l.split(" ", 6)[6])
             for l in frame.splitlines() if l.startswith("S ")]
+
+
+def text_cells(frame: str) -> list:
+    """Full medium-font cells, including its one-pixel coverage pass.
+
+    The western IPL cell is 24px high; its y anchor is the cell centre.
+    The checked font stand-in advances 11px, and the final glyph also
+    extends one font pixel beyond its advance, as IPLFontWrite.c does.
+    """
+    cells = []
+    for line in frame.splitlines():
+        if not line.startswith("S "):
+            continue
+        _, x, y, scale, align, alpha, text = line.split(" ", 6)
+        x, y, scale, align = float(x), float(y), float(scale), int(align)
+        left = x - align * 11 * len(text) * scale / 2
+        cells.append({"text": text, "scale": scale, "align": align,
+                      "alpha": int(alpha),
+                      "box": (left, y - 12 * scale,
+                              left + (11 * len(text) + 1) * scale + 1,
+                              y + 12 * scale)})
+    return cells
+
+
+def text_colors(frame: str) -> dict:
+    return {(int(f[1]), int(f[2])): tuple(map(int, f[3:]))
+            for line in frame.splitlines() if line.startswith("I ")
+            for f in [line.split()]}
 
 
 def turn(point) -> float:
@@ -421,8 +458,8 @@ class LaunchGxStream(unittest.TestCase):
             with self.subTest(wide=wide):
                 rest = self.detail_rest(wide)
                 drawn = strings(rest)
-                self.assertIn((274, 214, "SAVES"), drawn)
-                self.assertIn((576, 214, "1 save copy | 2 blocks"), drawn)
+                self.assertIn((576, 214, "SAVES"), drawn)
+                self.assertIn((274, 214, "1 save copy | 2 blocks"), drawn)
                 self.assertIn((274, 232, "Updated 2024-02-29 12:34"), drawn)
                 self.assertIn((274, 264, "SETTINGS"), drawn)
                 self.assertIn((274, 313, "CHEATS"), drawn)
@@ -438,17 +475,75 @@ class LaunchGxStream(unittest.TestCase):
                                       (2, (252.0, 294.0))):
                     self.assertEqual(self.lit_frame(self.detail_rest(wide, focus=row)), expected)
                 unknown = strings(self.detail_rest(wide, 0))
-                self.assertIn((576, 214, "Unavailable"), unknown)
+                self.assertIn((274, 214, "Unavailable"), unknown)
                 partial = strings(self.detail_rest(wide, 2))
                 self.assertIn((274, 232, "Partial scan | Updated 2024-02-29 12:34"), partial)
                 empty = strings(self.detail_rest(wide, 4))
-                self.assertIn((576, 214, "No save copies found"), empty)
-                # Worst-case counters fit without overlapping SAVES; all
-                # typography is measured and cached during publication.
-                for line in self.detail_rest(wide, 3).splitlines():
-                    if line.startswith("S 576 214 "):
-                        fields = line.split(" ", 6)
-                        self.assertLessEqual(11 * len(fields[6]) * float(fields[3]), 234 + 0.1)
+                self.assertIn((274, 214, "No save copies found"), empty)
+                unknown_date = strings(self.detail_rest(wide, 5))
+                self.assertIn((274, 232, "Update date unavailable"), unknown_date)
+                incomplete = strings(self.detail_rest(wide, 6))
+                self.assertIn((274, 214, "Unavailable"), incomplete)
+                self.assertIn((274, 232, "Save scan incomplete"), incomplete)
+                self.assertNotIn((274, 214, "No save copies found"), incomplete)
+                partial_date = strings(self.detail_rest(wide, 7))
+                self.assertIn((274, 232, "Partial scan | Update date unavailable"), partial_date)
+
+    def test_save_inset_hierarchy_and_full_cells_fit(self):
+        # Both lines occupy full font cells, not just baseline anchors.
+        # Max totals and partial/date status share the same fixed inset;
+        # none may touch its border, the trailing label or the next row.
+        for wide in (0, 1):
+            for variant in range(8):
+                with self.subTest(wide=wide, variant=variant):
+                    rest = self.detail_rest(wide, variant)
+                    cells = [c for c in text_cells(rest)
+                             if 202 <= c["box"][1] and c["box"][3] <= 245]
+                    self.assertEqual(len(cells), 3)
+                    tag, summary, updated = cells
+                    self.assertEqual(tag["text"], "SAVES")
+                    self.assertEqual(tag["align"], 2)
+                    self.assertGreaterEqual(tag["scale"], 0.38)
+                    self.assertEqual(summary["align"], 0)
+                    self.assertGreaterEqual(summary["scale"], 0.46)
+                    self.assertGreater(summary["scale"], updated["scale"])
+                    self.assertEqual(updated["scale"], 0.46)
+                    self.assertEqual(updated["align"], 0)
+                    for cell in cells:
+                        left, top, right, bottom = cell["box"]
+                        self.assertGreaterEqual(left, 274)
+                        self.assertGreater(top, 202)
+                        self.assertLess(right, 580)
+                        self.assertLess(bottom, 245)
+                    self.assertGreater(tag["box"][0] - summary["box"][2], 12)
+                    self.assertGreater(updated["box"][1] - summary["box"][3], 5)
+                    self.assertGreater(252 - updated["box"][3], 14)
+                    if variant == 3:
+                        self.assertEqual(summary["text"],
+                                         "4294967295 save copies | 4294967295 blocks")
+                    colors = text_colors(rest)
+                    self.assertEqual(colors[(274, 214)], (246, 243, 255, 255))
+                    self.assertEqual(colors[(274, 232)], (202, 192, 244, 235))
+                    # The date/status has the same secondary weight as the
+                    # section labels; muted preview text remains subordinate.
+                    self.assertEqual(colors[(274, 232)], colors[(274, 264)])
+                    self.assertGreater(min(colors[(274, 232)][:3]), 185)
+                    self.assertGreater(colors[(274, 232)][3], 218)
+
+    def test_save_inset_text_fades_with_detail(self):
+        for wide in (0, 1):
+            log = self.run_script([f"W {wide}", "L 0 40 18", "K", "D 1",
+                                   "N 100 0.0167"])
+            colors = [text_colors(frame) for frame in log]
+            visible = [c for c in colors if (274, 214) in c]
+            self.assertTrue(visible)
+            alphas = [c[(274, 214)][3] for c in visible]
+            self.assertLess(min(alphas), 255)
+            self.assertEqual(alphas[-1], 255)
+            self.assertEqual(alphas, sorted(alphas))
+            for c in visible:
+                self.assertEqual(c[(274, 232)], c[(576, 214)])
+                self.assertLessEqual(c[(274, 232)][3], c[(274, 214)][3])
 
     def test_detail_frame_budget(self):
         budget = json.loads((Path(__file__).with_name("detail_frame_budget.json")).read_text())

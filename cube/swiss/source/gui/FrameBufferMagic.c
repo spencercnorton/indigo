@@ -3423,10 +3423,10 @@ static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
 		310, 0.46f, 0.46f);
 	presentation->savesSummaryScale = _GameflowPrepareDetailText(
 		data->detail.savesSummary, sizeof(data->detail.savesSummary),
-		234, 0.42f, 0.42f);
+		264, 0.54f, 0.46f);
 	presentation->savesUpdatedScale = _GameflowPrepareDetailText(
 		data->detail.savesUpdated, sizeof(data->detail.savesUpdated),
-		294, 0.42f, 0.42f);
+		294, 0.46f, 0.46f);
 	presentation->cheatSummaryScale = _GameflowPrepareDetailText(
 		data->detail.cheatSummary, sizeof(data->detail.cheatSummary),
 		294, 0.46f, 0.46f);
@@ -3610,11 +3610,13 @@ static void _GameflowDrawDetailDashboard(
 	drawStringMedium(264, 176, "LAST PLAYED", 0.42f, ALIGN_LEFT, secondary);
 	drawStringMedium(264, 191, detail->lastPlayedText,
 		presentation->lastPlayedScale, ALIGN_LEFT, primary);
-	drawStringMedium(274, 214, "SAVES", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(576, 214, detail->savesSummary,
-		presentation->savesSummaryScale, ALIGN_RIGHT, primary);
+	/* The count is the headline. A small trailing label leaves the two-line
+	 * inset readable without competing with the actions below it. */
+	drawStringMedium(576, 214, "SAVES", 0.38f, ALIGN_RIGHT, secondary);
+	drawStringMedium(274, 214, detail->savesSummary,
+		presentation->savesSummaryScale, ALIGN_LEFT, primary);
 	drawStringMedium(274, 232, detail->savesUpdated,
-		presentation->savesUpdatedScale, ALIGN_LEFT, muted);
+		presentation->savesUpdatedScale, ALIGN_LEFT, secondary);
 
 	/* SETTINGS, like CHEATS below it: this game's own rows, or how to set
 	 * some (X opens them). */
