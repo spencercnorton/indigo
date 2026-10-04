@@ -80,8 +80,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
   no longer makes its folder report an invalid disc image. Hidden files in
   a game's folder follow Show hidden files, as they do in the file list.
 - The Library's parent card and X return directly to Home at `/games`,
-  keeping the current selection for the next visit. With Library Folders
-  on, an empty `/games` stays in Indigo with its way back to Home.
+  keeping the current game or folder for the next visit. Returning from
+  the parent card opens the first game or folder on the next visit.
+  With Library Folders on, an empty `/games` stays in Indigo with its way
+  back to Home.
 - Save details gives the save name a larger headline, separates blocks and
   KiB into clear summaries, aligns source and date fields, and shows distinct
   controller hints for Actions and Back.

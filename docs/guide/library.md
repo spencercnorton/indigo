@@ -141,7 +141,8 @@ Mario Sunshine and a **Zelda** folder.
   as `NINTENDO / ZELDA`.
 - **B**, **X**, or A on the parent card goes back up one folder. From
   `/games`, each returns directly to Home; opening Library again keeps
-  your selection.
+  the current game or folder. Returning from the parent card starts at
+  the first game or folder on your next visit.
 - Folders go two levels deep. A folder in a folder is the last level: it
   shows every game below it, in folders of its own or not, so Zelda above
   shows both The Wind Waker and Ocarina of Time.

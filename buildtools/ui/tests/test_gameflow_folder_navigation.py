@@ -31,6 +31,7 @@ def build_source(read):
     files = read("cube/swiss/source/files.c")
     util = read("cube/swiss/source/util.c")
     carousel = function(swiss, "uiDrawObj_t* renderFileCarousel(")
+    initial_focus = function(carousel, "if(curSelection == 0 && num_files > 1 && directory[0]->fileType==IS_SPECIAL)")
     # These are the actual activation and parent/back branches, not a policy
     # facsimile. The surrounding retained game-detail path is not entered by
     # a parent card. Its separate existing tests continue to cover game launch.
@@ -52,7 +53,8 @@ def build_source(read):
     record_start = model.rfind("typedef struct {", 0, record_end)
     record_sizes = "\n".join(re.findall(
         r"^#define UI_GAMEFLOW_(?:TITLE|COMPANY|FACTS)_LENGTH .*", model, re.MULTILINE))
-    parts = [STUBS, record_sizes, model[record_start:record_end]]
+    parts = [STUBS.replace("@CAROUSEL_FOCUS@", initial_focus),
+             record_sizes, model[record_start:record_end]]
     for marker in ("char *endsWith(", "bool canLoadFileType(", "bool checkExtension(",
                    "char *getRelativeName(", "bool getParentPath("):
         parts.append(function(util, marker))
@@ -186,8 +188,9 @@ static uiDrawObj_t *renderFileBrowser(file_handle **d, int n, uiDrawObj_t *p) {
 static uiDrawObj_t *renderFileFullwidth(file_handle **d, int n, uiDrawObj_t *p) {
     return renderFileBrowser(d, n, p);
 }
-static uiDrawObj_t *renderFileCarousel(file_handle **d, int n, uiDrawObj_t *p) {
-    (void)d; assert(n > 0); ++libraryPublishes; return p;
+static uiDrawObj_t *renderFileCarousel(file_handle **directory, int num_files, uiDrawObj_t *p) {
+    @CAROUSEL_FOCUS@
+    (void)directory; assert(num_files > 0); ++libraryPublishes; return p;
 }
 '''
 
@@ -270,7 +273,13 @@ static void rootNavigation(void) {
         assert(gameflowEnterLibraryFromHome()); assert(!needsRefresh);
         curMenuLocation=ON_FILLIST; nextIteration();
         assert(libraryPublishes==1 && legacyPublishes==0);
-        assert(!strcmp(sortedDirEntries[curSelection]->name,selectedPath));
+        if(k==0 && empty==0) {
+            /* The real renderer starts past the parent when a card exists.
+             * Keep this intentional first-card focus distinct from restoring
+             * a game/folder after B or X. Empty roots retain their sole parent. */
+            assert(curSelection==1);
+            assert(!strcmp(sortedDirEntries[curSelection]->name,"sdc:/games/Nintendo.GC"));
+        } else assert(!strcmp(sortedDirEntries[curSelection]->name,selectedPath));
     }
 }
 static void nestedNavigation(void) {
@@ -330,6 +339,7 @@ static void legacyAndEmptyPolicy(void) {
     navigate(BUTTON_X,false); nextIteration(); assert(!strcmp(curDir.name,"sdc:/games"));
     reset("sdc:/games",false,true); dispatch(); assert(legacyPublishes==1);
     reset("sdc:/games",false,false); dispatch(); assert(libraryPublishes==1);
+    curSelection=0; /* Explicitly select the parent before activating it. */
     navigate(BUTTON_A,true); nextIteration(); assert(homePublishes==1 && !legacyPublishes);
     reset("sdc:/other.v1",true,false); dispatch(); assert(legacyPublishes==1);
     reset("sdc:/games",true,true); device.features=0; dispatch(); assert(legacyPublishes==1);
