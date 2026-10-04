@@ -1,5 +1,22 @@
 # Indigo development journal
 
+## 2026-10-04 — Save details test candidate and native captures
+
+The console build, SD package checks and full host suite pass, including
+plain, sanitizer and contract lanes. Actual Dolphin captures show the new
+known and unknown date dialogs, simulated slot metadata and guarded actions,
+plus Library totals changing from one copy/two blocks to two copies/four
+blocks after export. The RAW icon plays two distinct authored texture frames.
+The corrected widescreen route passes all 71 checks.
+
+Widescreen detection restores authored coordinates from Dolphin's letterbox
+without altering native screenshots. Actual capture regressions reject a
+missing update field and distinguish the complete block/KiB phrase. Seeded
+settings retention is checked separately from fresh-card Save & Exit writes.
+Guide pictures now show the current cube interface and details, with an
+actual lossless icon animation. Final source CI, SD installation and the
+next console acceptance remain pending; release promotion is not authorized.
+
 ## 2026-10-04 — Feature branch validation
 
 The upstream comparison recognizes the development journal as Indigo-owned,
