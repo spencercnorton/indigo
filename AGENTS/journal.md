@@ -1,5 +1,32 @@
 # Indigo development journal
 
+## 2026-10-04 — Coordinate the remaining beta compatibility branches
+
+Memory Cards and motion are merged into beta. Metadata filtering and manual
+rewind remain pending their own pull requests. The rewind branch incorporates
+the pending metadata branch so the ordered merges retain the same combined
+implementation. The metadata branch keeps its focused production change.
+The shared journal preserves both branches' earlier entries exactly. CI for
+the refreshed heads remains pending.
+
+## 2026-10-04 — Keep the reviewed beta compatibility fixes coherent
+
+Included the metadata filtering branch alongside the accepted beta renderer
+and manual rewind fix. Both compatibility changes retain their production
+regressions, and every earlier journal entry is preserved. This prepares the
+same combined implementation for the ordered beta merges.
+
+## 2026-10-04 — Preserve current beta and metadata filtering together
+
+Incorporated the accepted Memory Cards and motion changes from beta into the
+metadata filtering branch. The renderer and shared launch/tab harnesses match
+the tested combined implementation. Source filtering and its production
+regressions are retained, with no new filename policy or product behavior.
+Both branches' previous journal entries are preserved below.
+
+The sanitized production visibility regression, shared launch and Gameflow GX
+suites, Settings tab assertions and CI tool tests pass.
+
 ## 2026-10-04 — Update the shared tab harness for the current save interface
 
 The incorporated motion harness still tried to extract the old Memory Cards
@@ -169,3 +196,52 @@ quads, save icon texels and banner drawing are unchanged. Both screen shapes,
 small and turning cubes, partial fades, GX vertex counts and unchanged icon
 geometry have host regressions. The Memory Cards guide pictures need a new
 capture from the next combined test build.
+## 2026-10-04 — Preserve hidden-file filtering with beta icon and motion updates
+
+Incorporated the accepted beta icon and motion updates and preserved both
+branches' development history. The Library sidecar and hidden-file filtering remains unchanged.
+Source and ownership checks pass; CI will validate the combined branch.
+
+## 2026-10-04 — Project journal ownership in the source gate
+
+The upstream audit now recognizes the project-owned AGENTS directory,
+including its development journal. This fixes the source gate rejecting the
+journal added with this branch's sanitizer regression work. The product
+sources and existing behavior are unchanged.
+
+The real upstream-checker regression accepts the project journal while still
+rejecting unlisted upstream code and similarly named directories. The
+upstream audit and source checks pass.
+
+
+## 2026-10-04 — Stabilize Linux folder-visibility sanitizer startup
+
+The standalone folder-visibility regression harness now adds `-fno-pie`
+and `-no-pie` to sanitizer builds on Linux, matching the host-test Makefile.
+This avoids Clang sanitizer failures before `main` on affected Linux hosts
+while retaining the address and undefined-behavior checks.
+
+Validation: the plain and sanitized harness passes on macOS; the sanitized
+harness passes with GCC and Clang in the pinned Linux build image.
+## 2026-10-04 — Preserve accepted beta and manual rewind safeguards
+
+Incorporated the accepted Memory Cards and motion changes from beta while
+retaining the bounded manual rewind fix. Shared renderer and tab harnesses
+match the tested combined implementation. All earlier journal entries from
+both branches are preserved below.
+
+## 2026-10-04 — Preserve seek bounds with beta icon and motion updates
+
+Incorporated the accepted beta icon and motion updates and preserved both
+branches' development history. Manual MP3 seek bounds remain unchanged.
+Source and ownership checks pass; CI will validate the combined branch.
+
+## 2026-10-04 — Stabilize Linux MP3 sanitizer startup
+
+The standalone MP3 regression harness now adds `-fno-pie` and `-no-pie`
+to sanitizer builds on Linux, matching the host-test Makefile. This avoids
+Clang sanitizer failures before `main` on affected Linux hosts while
+retaining the address and undefined-behavior checks.
+
+Validation: the plain and sanitized harness passes on macOS; the sanitized
+harness passes with GCC and Clang in the pinned Linux build image.
