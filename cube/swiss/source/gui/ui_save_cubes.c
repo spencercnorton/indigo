@@ -1039,12 +1039,12 @@ int UISaveCubes_Frame(uiSaveCubesMotion_t *motion,
 					x = cubesLerp(wasX, x, slide);
 					y = cubesLerp(wasY, y, slide);
 				}
-				/* The cell a save left at the end, or the one that came,
-				 * grows from nothing. */
-				else if((motion->change[s] == UI_SAVE_CUBES_CLOSED && cell >= at &&
+				/* The cell a save left at the end grows from nothing. The
+				 * one that came doesn't: its cube landed there at its size
+				 * and hands over to it. */
+				else if(motion->change[s] == UI_SAVE_CUBES_CLOSED && cell >= at &&
 					kind == UI_SAVE_CUBES_KIND_EMPTY && k > 0 &&
-					stack->cell[k - 1].kind != UI_SAVE_CUBES_KIND_EMPTY) ||
-					(motion->change[s] == UI_SAVE_CUBES_OPENED && cell == at)) {
+					stack->cell[k - 1].kind != UI_SAVE_CUBES_KIND_EMPTY) {
 					scale *= slide;
 				}
 			}

@@ -888,12 +888,14 @@ static void testFlight(void)
 	}
 	assert(apart(cube, toX, toY) < 1e-3f && cube->z < 1e-3f);
 	assert(near(cube->half, 0.5f * UI_SAVE_CUBES_FACE, 1e-3f));
-	/* Then the cell's own cube takes over, where the flight left off. */
+	/* Then the cell's own cube takes over, where the flight left off and
+	 * at the size it landed: it doesn't shrink and grow again. */
 	grid.op.kind = UI_SAVE_CUBES_OP_NONE;
 	count = frame(1.0f / 60.0f, UI_MOTION_FULL, &floating);
 	assert(opCube(count) == NULL);
 	cube = find(count, 1, 10, 0);
 	assert(cube != NULL && near(cube->x, toX, 1e-3f) && cube->kind == UI_SAVE_CUBES_KIND_SAVE);
+	assert(near(cube->half, 0.5f * UI_SAVE_CUBES_FACE, 1e-3f));
 	/* The card put the next one in a free place at cell 3, not the 11 it
 	 * aimed at: it lands there, and the saves after it go on a cell. */
 	opSet(UI_SAVE_CUBES_OP_COPY, UI_SAVE_CUBES_GO, 11, 5, 11);
