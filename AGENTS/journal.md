@@ -1,5 +1,12 @@
 # Indigo development journal
 
+## 2026-10-04 — RAW adapter Linux sanitizer startup
+
+The standalone RAW adapter harness now uses the Linux-only non-PIE sanitizer
+flags already required by the main host suite. A separate minimal startup
+probe reproduced high-entropy ASLR failures before main without Indigo code.
+Sanitizer instrumentation and GameCube product build flags are unchanged.
+
 ## 2026-10-04 — Virtual card emulator coverage and guide captures
 
 A dedicated CI route boots the SD package with both physical slots empty,

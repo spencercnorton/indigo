@@ -5,6 +5,7 @@ import argparse
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -139,6 +140,9 @@ def main() -> None:
                    str(GUI / "ui_saves.c"), "-o", str(path / "adapter")]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
+            # Match the Linux host suite: high ASLR entropy can crash PIE ASan before main.
+            if sys.platform.startswith("linux"):
+                command += ["-fno-pie", "-no-pie"]
         subprocess.run(command, check=True)
         subprocess.run([str(path / "adapter")], check=True)
 
