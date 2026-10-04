@@ -1179,7 +1179,7 @@ static void testOverlays(void)
 {
 	uiSaveCubesBox_t box;
 	const uiSaveCube_t *cube;
-	int floating, count, i;
+	int floating, count, i, s, k;
 	float low = FAR, high = -FAR;
 
 	/* A message stays 2 s, or until A or B. */
@@ -1274,6 +1274,21 @@ static void testOverlays(void)
 	UISaveCubes_MenuBox(548.0f, 308.0f, 0.0f, 3, true, &box);
 	assert(box.y + box.height == 336.0f && box.titleY == box.y - 34.0f);
 	assert(box.x + box.width <= 640.0f);
+	/* Beside any cube of either stack, as wide as a title or an item can
+	 * make it (fitted to 236 px, and its margins), it stays on the 4:3
+	 * stage and off its cube. */
+	for(s = 0; s < UI_SAVE_CUBES_STACKS; s++) {
+		for(k = 0; k < UI_SAVE_CUBES_COLUMNS; k++) {
+			float x, y, width;
+
+			UISaveCubes_Where(s, k, 0.0f, &x, &y);
+			for(width = 0.0f; width <= 260.0f; width += 4.0f) {
+				UISaveCubes_MenuBox(x, y, width, 2, true, &box);
+				assert(box.x >= 0.0f && box.x + box.width <= 640.0f);
+				assert(box.x >= x + 44.0f || box.x + box.width <= x - 44.0f);
+			}
+		}
+	}
 }
 
 int main(void)

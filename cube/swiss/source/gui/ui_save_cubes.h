@@ -266,8 +266,8 @@ float UISaveCubes_LeaveSeconds(uiMotionMode_t mode);
 bool UISaveCubes_MessageHolds(float seconds, bool pressed);
 
 /* A box of items beside the cube at (cubeX, cubeY), as the IPL's Move / Copy
- * / Erase: to its right, or its left past the middle, clear of the info bar;
- * with titled, a title's box above it. */
+ * / Erase: to its right, or its left past the middle or where it would leave
+ * the stage, clear of the info bar; with titled, a title's box above it. */
 #define UI_SAVE_CUBES_MENU_WIDTH 112.0f
 #define UI_SAVE_CUBES_MENU_PITCH 24.0f
 #define UI_SAVE_CUBES_MENU_TITLE 30.0f

@@ -414,8 +414,10 @@ void UISaveCubes_MenuBox(float cubeX, float cubeY, float width, int items,
 
 	box->width = width > UI_SAVE_CUBES_MENU_WIDTH ? width : UI_SAVE_CUBES_MENU_WIDTH;
 	box->height = 16.0f + UI_SAVE_CUBES_MENU_PITCH * (float)(items > 0 ? items : 0);
-	/* Past the middle the box opens to the left, so it stays on the stage. */
-	box->x = cubeX > 400.0f ? cubeX - 44.0f - box->width : cubeX + 44.0f;
+	/* Past the middle, or where it would run off the stage (a wide one
+	 * beside the right stack's first column), the box opens to the left. */
+	box->x = cubeX > 400.0f || cubeX + 44.0f + box->width > 640.0f ?
+		cubeX - 44.0f - box->width : cubeX + 44.0f;
 	/* Inside the window, above the info bar. */
 	if(top > 336.0f - title - box->height) {
 		top = 336.0f - title - box->height;
