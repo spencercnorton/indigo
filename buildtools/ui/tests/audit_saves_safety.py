@@ -132,6 +132,11 @@ def check(source: str) -> None:
     ordered(load, "if(artSlot(wantTags[i]) >= 0) {", "continue;",
             "UISaves_SlotPick(slotTags, SAVES_SLOTS, wantTags, wantCount)",
             "artRead(wanted[i], s, wantTags[i]);")
+    # Presses come from the scans, so one made while a card was read isn't
+    # lost; a page starts without the presses made before it.
+    ordered(function(source, "inputInit"), "padsButtonsTaken(SAVES_BUTTONS);")
+    ordered(wait, "held = padsButtonsHeld() & SAVES_BUTTONS;",
+            "pressed = padsButtonsTaken(SAVES_BUTTONS);", "return pressed;")
     # A new listing's saves are read back to back, whatever is held, until
     # none is left; otherwise nothing is read until input has been quiet.
     ordered(wait, "bool fresh = artFresh;", "if(!fresh) {", "VIDEO_WaitVSync();",
@@ -353,6 +358,11 @@ def mutants(source: str) -> list[tuple[str, str]]:
         ("a folder's save is taken by its selection, which counts its \"..\"",
          source.replace("file_handle *save = placeAt(place, placeCell(place));",
                         "file_handle *save = place->list[place->selection];")),
+        ("a press made while a card is read is lost",
+         source.replace("pressed = padsButtonsTaken(SAVES_BUTTONS);",
+                        "pressed = held;")),
+        ("a page takes the press that opened it",
+         source.replace("\tpadsButtonsTaken(SAVES_BUTTONS);\n", "\n")),
         ("a save goes to the stack it is in",
          source.replace("int toTab = screenStacks[!screenFocus];", "int toTab = screenStacks[screenFocus];")),
         ("a half-written card copy is left on the card",

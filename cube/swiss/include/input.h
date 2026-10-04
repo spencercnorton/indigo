@@ -22,6 +22,7 @@
 void padsInit();
 void padsScan(void);
 u32 padsButtonsHeld();
+u32 padsButtonsTaken(u32 mask);
 s8 padsStickX();
 s8 padsStickY();
 s8 padsSubStickX();

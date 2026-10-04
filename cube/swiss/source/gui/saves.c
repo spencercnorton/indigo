@@ -62,7 +62,6 @@ typedef struct {
 
 typedef struct {
 	uiMenuInputState_t menu;
-	u32 previous;
 	u32 lastRetrace;
 	u32 repeatHeld;
 	u32 repeatTime;
@@ -381,12 +380,12 @@ static u32 inputElapsed(u32 *lastRetrace)
 		UI_MENU_INPUT_MAX_ELAPSED_US : (u32)elapsed;
 }
 
-/* Buttons already down (the A that opened this) aren't a press. */
+/* Presses from before (the A that opened this) aren't for here. */
 static void inputInit(savesInput_t *input)
 {
 	memset(input, 0, sizeof(*input));
 	UIMenuInput_Init(&input->menu);
-	input->previous = padsButtonsHeld() & SAVES_BUTTONS;
+	padsButtonsTaken(SAVES_BUTTONS);
 	input->lastRetrace = VIDEO_GetRetraceCount();
 }
 
@@ -404,8 +403,9 @@ static u32 inputNext(savesInput_t *input)
 			VIDEO_WaitVSync();
 		}
 		held = padsButtonsHeld() & SAVES_BUTTONS;
-		pressed = held & ~input->previous;
-		input->previous = held;
+		/* Taken from the scans, not from what is held now: a press made
+		 * and let go while a card was read is still seen. */
+		pressed = padsButtonsTaken(SAVES_BUTTONS);
 		elapsed = inputElapsed(&input->lastRetrace);
 		analog = padsMenuInputPoll(&input->menu, elapsed,
 			UI_MENU_INPUT_AXIS_BOTH | UI_MENU_INPUT_REPEAT, held != 0u);
