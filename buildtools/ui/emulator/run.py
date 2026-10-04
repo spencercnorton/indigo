@@ -18,6 +18,13 @@ while a crash, a hang, a black screen or a broken control does:
     comes back to the details, and B again to the game;
   - on the Source face, Change Source opens the device picker, RIGHT shows
     another device and B leaves it;
+  - on the System face, Memory Cards opens with a memory card in each slot
+    (GCI folders of made-up saves, ../qa/make_test_saves.py): RIGHT and LEFT
+    move from save to save and across to Slot B and back, DOWN scrolls a
+    stack, R and L choose a named storage place and back, A opens the box
+    beside a save and B closes it, Copy puts the save on Slot B (its folder
+    gains the file, the same blocks), Move is dimmed for it then, Erase
+    removes it from Slot A's folder, and B leaves;
   - on the Settings face, Setup > Console > Apps Face Off takes Apps off the
     cube (System's next face is Library) and On puts it back;
   - Setup > Console > Cube Classic lays the faces out as the GameCube's menu
@@ -47,9 +54,13 @@ zip's own ipl.dol. A new card has no settings yet, so Indigo starts in
 Settings and the route saves them first; afterwards it reads back from the
 card what Indigo wrote there.
 
-usage: run.py DOL --out DIR [--route smoke|tour|game] [--probe DOL] [--region pal|pal60|ntsc]
+The virtual-cards route leaves both physical slots empty, browses a public
+synthetic RAW image on SD and exports a GCI into the other SD column. The
+actual exported payload and unchanged RAW bytes are checked on the FAT image.
+
+usage: run.py DOL --out DIR [--route smoke|tour|game|save|virtual-cards] [--probe DOL] [--region pal|pal60|ntsc]
               [--cable composite|component]
-              [--storage dvd|sd2sp2|sdgecko-b --card-zip ZIP] [--disc ISO]
+              [--storage dvd|sd2sp2|sdgecko-b|gcloader --card-zip ZIP] [--disc ISO]
 Writes DIR/report.json, DIR/summary.md, DIR/sheet.png (every checkpoint),
 the checkpoint pictures and Dolphin's output. Exit 0: passed. 1: Indigo
 failed a check. 2: the harness or the emulator could not run.
@@ -74,8 +85,10 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(1, str(Path(__file__).resolve().parents[1] / "qa"))
 import card  # noqa: E402
 import dsu_pad  # noqa: E402
+import make_test_saves  # noqa: E402
 
 WIDTH, HEIGHT = 640, 480
 # Where text the route reads sits (x0, y0, x1, y1): the face's name under the
@@ -88,6 +101,36 @@ TITLE_BOX = (200, 338, 440, 362)
 SETTINGS_TITLE_BOX = (30, 46, 230, 80)
 COUNTER_BOX = (560, 120, 610, 142)  # Settings' "row / rows", shown while a row has the focus
 DETAIL_TITLE_BOX = (264, 106, 600, 134)
+# Memory Cards: the focused save's name in the info bar, each stack's header
+# ("A  Open" and its free blocks), the buttons along the bottom, where the
+# arrow above the left stack shows once it scrolls, and the maroon box that
+# says an operation is done. Its words are bold and close together, so two
+# saves' names can overlap by more than half: they are told apart by
+# same_text, not overlap.
+INFO_BOX = (164, 377, 590, 396)
+LEFT_HEADER_BOX, RIGHT_HEADER_BOX = (66, 56, 222, 92), (354, 56, 510, 92)
+FOOTER_BOX = (30, 442, 610, 464)
+SAVE_DETAILS_EYEBROW_BOX = (100, 108, 274, 132)
+SAVE_DETAILS_TITLE_BOX = (100, 132, 540, 168)
+SAVE_DETAILS_SIZE_BOX = (350, 178, 528, 212)
+SAVE_DETAILS_BLOCKS_BOX = (122, 178, 302, 212)
+SAVE_DETAILS_SOURCE_BOX = (246, 244, 540, 270)
+LIBRARY_SAVES_SUMMARY_BOX = (266, 204, 538, 224)
+LIBRARY_SAVES_UPDATED_BOX = (308, 224, 586, 241)
+SAVE_DETAILS_CREATED_BOX = (246, 274, 540, 300)
+SAVE_DETAILS_UPDATED_BOX = (246, 304, 540, 330)
+SAVE_DETAILS_ACTIONS_BOX = (104, 360, 536, 387)
+RAW_ICON_BOX = (68, 100, 120, 161)  # selected cell 0; excludes banner/info bar
+UP_ARROW_BOX = (169, 96, 184, 112)
+MESSAGE_BOX = (160, 200, 480, 250)
+MESSAGE_COLOUR = (120, 16, 36)  # the same under every Menu Color
+MESSAGE_PIXELS = 9000  # of the box's 16000: its fill, not a red icon or two behind it
+ARROW_PIXELS = 20
+# A save's art loads once nothing has been held for 15 VSyncs: a moment
+# after a step, its comment replaces its file name in the info bar.
+ART_SECONDS = 0.8
+# Dolphin writes a GCI folder's files a second after the card's last write.
+FLUSH_SECONDS = 10
 TEXT_LEVEL = 160          # label text is bright; the waves behind it are not
 SAME, DIFFERENT = 0.85, 0.5  # intersection over union of two label masks
 # Waits count the console's own seconds (Emulator.emulated) when Dolphin
@@ -167,6 +210,8 @@ CABLES = {"composite": False, "component": True}
 # which serves its boot.iso as the disc (DOLPHIN_GCLOADER, patch 0006).
 STORAGES = {"dvd": None, "sd2sp2": "SerialPort2", "sdgecko-b": "SlotB", "gcloader": None}
 SD_CARD_DEVICE = 15
+# Dolphin's memory card that is a folder of .gci files, one per save.
+GCI_FOLDER_DEVICE = 8
 # Rows on Settings' Storage page: DOWN past them reaches Save & Exit.
 STORAGE_ROWS = 7
 # Lit pixels in COUNTER_BOX that are its digits rather than nothing (19 for "1 / 7").
@@ -196,9 +241,90 @@ class Broken(Exception):
     """The harness or the emulator could not do its part."""
 
 
-def text_mask(frame: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX) -> np.ndarray:
+def dolphin_ini(storage: str = "dvd", card: Path | None = None, cards: Path | None = None,
+                empty_slots: bool = False) -> str:
+    """Dolphin.ini: the SD card where the storage puts it, and with cards a
+    GCI folder memory card in each slot, cards/A and cards/B."""
+    core = ""
+    if STORAGES[storage]:
+        core += f"{STORAGES[storage]} = {SD_CARD_DEVICE}\nSP2SDCardImage = {card}\n"
+    if cards:
+        core += (f"SlotA = {GCI_FOLDER_DEVICE}\nSlotB = {GCI_FOLDER_DEVICE}\n"
+                 f"GCIFolderAPathOverride = {cards / 'A'}\nGCIFolderBPathOverride = {cards / 'B'}\n")
+    elif empty_slots:
+        core += "SlotA = 0\nSlotB = 0\n"
+    return DOLPHIN_INI.replace("[Core]\n", "[Core]\n" + core, 1)
+
+
+def saves(folder: Path) -> set[str]:
+    """The saves in a GCI folder memory card, by file name."""
+    return {path.name for path in folder.glob("*.gci")}
+
+
+def same_save(original: bytes, copy: bytes) -> bool:
+    """A .gci and its copy on another card: the same game, maker and name in
+    the entry, and the same blocks. The rest of the entry (where its blocks
+    start on the card, when it was written) is the card's own."""
+    return (len(copy) == len(original) > 64 and copy[0:6] == original[0:6] and
+            copy[8:40] == original[8:40] and copy[64:] == original[64:])
+
+
+def message_up(rgb: np.ndarray, wide: bool = False) -> bool:
+    """Memory Cards' maroon box over the middle of the screen."""
+    rgb = detection_frame(rgb, wide)
+    x0, y0, x1, y1 = MESSAGE_BOX
+    return coloured(rgb[y0:y1, x0:x1], MESSAGE_COLOUR) >= MESSAGE_PIXELS
+
+
+def arrow_up(gray: np.ndarray) -> bool:
+    """The arrow above Memory Cards' left stack: rows lie above its window."""
+    x0, y0, x1, y1 = UP_ARROW_BOX
+    return int((gray[y0:y1, x0:x1] >= 200).sum()) >= ARROW_PIXELS
+
+
+def text_mask(frame: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX,
+              level: int = TEXT_LEVEL) -> np.ndarray:
     x0, y0, x1, y1 = box
-    return frame[y0:y1, x0:x1] >= TEXT_LEVEL
+    return frame[y0:y1, x0:x1] >= level
+
+
+def stage_box(box: tuple[int, int, int, int], wide: bool = False) -> tuple[int, int, int, int]:
+    """Authored coordinates in Dolphin's actual 640x480 capture.
+
+    With Menu Widescreen, Dolphin auto-aspect letterboxes 16:9 at y60..420.
+    Both axes scale 3/4 about the capture centre. Authored x0..640 occupies
+    x80..560; the extended widescreen margins occupy the remaining columns.
+    """
+    x0, y0, x1, y1 = box
+    return (round(320 + (x0 - 320) * .75), round(240 + (y0 - 240) * .75),
+            round(320 + (x1 - 320) * .75), round(240 + (y1 - 240) * .75)) if wide else box
+
+
+def detection_frame(rgb: np.ndarray, wide: bool = False) -> np.ndarray:
+    """Restore authored coordinates solely for comparisons, never screenshots.
+
+    Nearest-neighbor uses only captured pixel values. It removes Dolphin's
+    wide letterbox and restores the central authored stage, so existing
+    field bounds and minimum text coverage apply in either screen shape.
+    The real native capture remains unchanged for pictures and review.
+    """
+    if not wide:
+        return rgb
+    return np.asarray(Image.fromarray(rgb[60:420, 80:560]).resize(
+        (WIDTH, HEIGHT), Image.Resampling.NEAREST))
+
+
+def raw_icon_frame(rgb: np.ndarray, wide: bool = False) -> int | None:
+    """Which unique texture patch is on the selected RAW cube.
+
+    A moving cube with a static texture cannot manufacture the other patch
+    colour. Ignore colors elsewhere (banner, footer, backdrop and cubes).
+    """
+    x0, y0, x1, y1 = stage_box(RAW_ICON_BOX, wide)
+    crop = rgb[y0:y1, x0:x1]
+    counts = [coloured(crop, colour) for colour in make_test_saves.RAW_ICON_COLOURS]
+    best = int(np.argmax(counts))
+    return best if counts[best] >= 12 and counts[best] >= counts[1 - best] * 3 else None
 
 
 def backdrop(rgb: np.ndarray) -> np.ndarray:
@@ -246,6 +372,55 @@ def has_label(mask: np.ndarray) -> bool:
         return False
     columns = np.flatnonzero(mask.any(axis=0))
     return columns.size > 0 and 20 <= columns[-1] - columns[0] <= mask.shape[1] - 4
+
+
+def has_save_number(mask: np.ndarray) -> bool:
+    """A value-only metric may be a thin single digit, without its caption.
+
+    Native captures at the unchanged bright-text threshold show 32 pixels
+    for 1, 30 for wide 1 and 58 for wide 2. Require bounded ink, width and glyph height;
+    a pixel or short bar cannot stand in for a number. Word checks retain
+    their existing coverage and spread requirement.
+    """
+    lit = int(mask.sum())
+    if not 24 <= lit <= mask.size // 3:
+        return False
+    columns = np.flatnonzero(mask.any(axis=0))
+    rows = np.flatnonzero(mask.any(axis=1))
+    return (columns.size > 0 and rows.size > 0 and
+            3 <= columns[-1] - columns[0] <= mask.shape[1] - 4 and
+            rows[-1] - rows[0] >= 8)
+
+
+def save_details_panel(gray: np.ndarray) -> bool:
+    """The presentation panel in authored coordinates, distinct from save cubes.
+
+    Its four long border edges remain visible in both the normal and gray
+    palettes. A cube may overlap the title band, but cannot supply this frame.
+    """
+    edges = (((70, 108, 78, 386), 1), ((564, 108, 572, 386), 1),
+             ((92, 88, 548, 96), 0), ((92, 399, 548, 407), 0))
+    for (x0, y0, x1, y1), axis in edges:
+        if (gray[y0:y1, x0:x1] >= 64).any(axis=axis).mean() < .9:
+            return False
+    return has_save_details_eyebrow(text_mask(gray, SAVE_DETAILS_EYEBROW_BOX))
+
+
+def has_save_details_eyebrow(mask: np.ndarray) -> bool:
+    """The fixed small marker: Jet Black retains 49 bright pixels at 160.
+
+    Its ink, word span and short glyph height are bounded separately from
+    normal value fields. This marker is accepted only inside all four panel
+    borders; a short save name never determines whether the dialog is open.
+    """
+    lit = int(mask.sum())
+    if not 40 <= lit <= mask.size // 3:
+        return False
+    columns = np.flatnonzero(mask.any(axis=0))
+    rows = np.flatnonzero(mask.any(axis=1))
+    return (columns.size > 0 and rows.size > 0 and
+            40 <= columns[-1] - columns[0] <= mask.shape[1] - 4 and
+            4 <= rows[-1] - rows[0] <= 10)
 
 
 def probe_field(rgb: np.ndarray) -> np.ndarray:
@@ -342,15 +517,12 @@ class Deadline:
 class Emulator:
     def __init__(self, dol: Path, disc: Path | None, work: Path, out: Path, region: str = "pal",
                  storage: str = "dvd", card: Path | None = None, cable: str = "composite",
-                 faults: str | None = None) -> None:
+                 faults: str | None = None, cards: Path | None = None,
+                 empty_slots: bool = False) -> None:
         self.out = out
         self.user = work / "dolphin"
         (self.user / "Config").mkdir(parents=True)
-        ini = DOLPHIN_INI
-        if STORAGES[storage]:
-            ini = ini.replace("[Core]\n", f"[Core]\n{STORAGES[storage]} = {SD_CARD_DEVICE}\n"
-                                          f"SP2SDCardImage = {card}\n", 1)
-        (self.user / "Config/Dolphin.ini").write_text(ini)
+        (self.user / "Config/Dolphin.ini").write_text(dolphin_ini(storage, card, cards, empty_slots))
         # Swiss's own debug output (its OSReport lines) goes to dolphin.log.
         (self.user / "Config/Logger.ini").write_text(
             "[Logs]\nOSREPORT = True\nPOWERPC = True\n[Options]\nVerbosity = 1\nWriteToConsole = True\nWriteToFile = False\n")
@@ -441,8 +613,14 @@ class Route:
     """Steps through the menus and records every checkpoint."""
 
     def __init__(self, emulator: Emulator, out: Path, probe: bool = False, fresh_card: bool = False,
-                 cable: str = "composite", region: str = "pal", fragments: int = 0) -> None:
+                 cable: str = "composite", region: str = "pal", fragments: int = 0,
+                 cards: Path | None = None, storage: str = "dvd", menu_wide: bool = False,
+                 sd_image: Path | None = None) -> None:
         self.emulator = emulator
+        self.cards = cards  # the memory cards' GCI folders, cards/A and cards/B
+        self.storage = storage
+        self.menu_wide = menu_wide
+        self.sd_image = sd_image
         self.fragments = fragments  # the pieces the probe's game is in on the card
         self.cable = cable
         self.region = region
@@ -465,6 +643,9 @@ class Route:
 
     def check(self, name: str, passed: bool, **detail: object) -> None:
         probe_up = bool(self.report and self.report["valid"])  # the probe's screen is no crash
+        if not passed and getattr(self, "last_rgb", None) is not None:
+            self.shot("failed-check", self.last_rgb)
+            detail["picture"] = self.shots[-1][1].name
         if not passed and getattr(self, "last_rgb", None) is not None and not probe_up:
             if why := diagnose(self.last_rgb):
                 detail["screen"] = why
@@ -479,17 +660,19 @@ class Route:
     def gray(self) -> np.ndarray:
         rgb = self.emulator.frame()
         self.last_rgb = rgb
-        return rgb.max(axis=2)
+        return detection_frame(rgb, self.menu_wide).max(axis=2)
 
     def settled_label(self, seconds: float = SETTLE_SECONDS, unlike: np.ndarray | None = None,
                       like: np.ndarray | None = None,
-                      box: tuple[int, int, int, int] = LABEL_BOX) -> tuple[np.ndarray | None, float]:
+                      box: tuple[int, int, int, int] = LABEL_BOX,
+                      level: int = TEXT_LEVEL,
+                      numeric: bool = False) -> tuple[np.ndarray | None, float]:
         """Wait for steady text in a box (the face's name by default), optionally unlike or like a given one."""
         deadline = Deadline(self.emulator, seconds)
         previous, steady = None, 0
         while not deadline.expired():
-            mask = text_mask(self.gray(), box)
-            ok = has_label(mask)
+            mask = text_mask(self.gray(), box, level)
+            ok = has_save_number(mask) if numeric else has_label(mask)
             if ok and unlike is not None:
                 ok = overlap(mask, unlike) < DIFFERENT
             if ok and like is not None:
@@ -587,13 +770,15 @@ class Route:
         time.sleep(0.5)
 
     def card_checks(self, image: Path, route: str, start: dict[str, str] | None = None) -> None:
-        """What Indigo wrote to the SD card, read back from its image. Settings
-        the card started with must have lasted through Indigo's own saves."""
+        """Read settings back from the SD image. A seeded card must retain
+        its configured values, including on routes that do not save settings."""
         def text(path: str) -> str:
             return (card.read_card(image, path) or b"").decode("latin-1")
 
         settings = text("swiss/settings/global.ini")
-        self.check("the settings Indigo saved are on the card",
+        settings_check = ("the configured settings remain on the card" if start else
+                          "the settings Indigo saved are on the card")
+        self.check(settings_check,
                    "Swiss Video Mode=" in settings and "Hide Apps Face=No" in settings, bytes=len(settings))
         if start:
             kept = seeded(settings)
@@ -647,7 +832,8 @@ class Route:
                 self.classic_cube(faces)
                 self.library_folders(faces)
             else:
-                inside = {0: self.browse_library, 1: self.change_source}.get(n)
+                inside = {0: self.browse_library, 1: self.change_source,
+                          3: self.memory_cards if self.cards else None}.get(n)
                 self.open_and_close(face, n, inside)
             mask, _ = self.press_until("RIGHT", like=faces[n + 1])
             self.check("the cube turns on to the next face", mask is not None, face=n + 1)
@@ -1078,6 +1264,430 @@ class Route:
         self.press("B")
         self.check("B leaves the device picker", self.covered(name, TITLE_BOX))
 
+    def text_until(self, box: tuple[int, int, int, int], wanted) -> np.ndarray | None:
+        """Steady text in a box, or none, that wanted(mask) accepts: None when
+        it never comes."""
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        previous = None
+        while not deadline.expired():
+            mask = text_mask(self.gray(), box)
+            if wanted(mask) and previous is not None and same_text(mask, previous):
+                return mask
+            previous = mask if wanted(mask) else None
+            time.sleep(0.15)
+        return None
+
+    def info(self, button: str, like: np.ndarray | None = None,
+             unlike: np.ndarray | None = None) -> np.ndarray | None:
+        """A step in Memory Cards, and the focused save's name it comes to:
+        its comment, once the save's art is read, rather than its file name."""
+        self.press(button)
+        self.pause(ART_SECONDS)
+        return self.text_until(INFO_BOX, lambda mask: has_label(mask) and
+                               (like is None or same_text(mask, like)) and
+                               (unlike is None or not same_text(mask, unlike)))
+
+    def differs(self, reference: np.ndarray, box: tuple[int, int, int, int]) -> bool:
+        """Waits for the text in a box to be other words than reference, or none."""
+        found = self.text_until(box, lambda mask: not same_text(mask, reference)) is not None
+        self.pause(0.5)
+        self.gray()
+        return found
+
+    def message(self, seconds: float = BOOT_SECONDS / 4) -> bool:
+        """Waits for Memory Cards' maroon box: an operation is done."""
+        deadline = Deadline(self.emulator, seconds)
+        while not deadline.expired():
+            self.last_rgb = self.emulator.frame()
+            if message_up(self.last_rgb, self.menu_wide):
+                return True
+            time.sleep(0.2)
+        return False
+
+    def message_closes(self) -> bool:
+        """Waits for the maroon box to close by itself (2 s)."""
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        while not deadline.expired():
+            self.last_rgb = self.emulator.frame()
+            if not message_up(self.last_rgb, self.menu_wide):
+                return True
+            time.sleep(0.2)
+        return False
+
+    def folder_changes(self, folder: Path, before: set[str]) -> set[str]:
+        """A memory card's saves once Dolphin has written them to its folder."""
+        deadline = Deadline(self.emulator, FLUSH_SECONDS)
+        while not deadline.expired() and saves(folder) == before:
+            time.sleep(0.25)
+        self.pause(1.0)  # the file whole, not as it is being written
+        return saves(folder)
+
+    def steps(self, buttons: str, seconds: float = 0.6) -> None:
+        for button in buttons.split():
+            self.press(button)
+            self.pause(seconds)
+
+    def memory_cards(self) -> None:
+        """On the System face, DOWN and A open Memory Cards, with a GCI folder
+        memory card in each slot (self.cards: make_test_saves.py's Slot A and
+        Slot B). Slot A's first save has the focus and its name is in the info
+        bar. RIGHT moves along Slot A's first row, a new save each time, and a
+        fourth RIGHT crosses to Slot B: LEFT then comes back to the row's last
+        save, not the bump of a stack's edge, and on to the first. DOWN four
+        times scrolls Slot A's stack (the arrow above it shows), and UP four
+        times comes back. R swaps the right stack for another place and back.
+        A opens save details, B returns without an action, and A Actions
+        opens the box beside the save, which changes the bottom buttons. B
+        closes that box. Move, Copy, Yes copies the
+        save to Slot B: the maroon box says so and closes by itself, and Slot
+        B's folder gains the save, its blocks the same. A on it again opens the
+        box with Move dimmed, as Slot B has it now, and the buttons say why.
+        Erase, then Yes over the No it starts on, erases it, and Slot A's
+        folder no longer has it. L swaps the left stack and back, and B
+        leaves, back to the System face."""
+        slot_a, slot_b = self.cards / "A", self.cards / "B"
+        self.press("DOWN")
+        self.pause(0.6)
+        self.press("A")
+        self.pause(2.0)  # the screen opens, and the saves on it are read
+        first, _ = self.settled_label(box=INFO_BOX)
+        self.shot("memory-cards", self.last_rgb)
+        self.check("A on Memory Cards opens the cube screen, a save's name below it",
+                   first is not None)
+        gray = self.gray()
+        self.check("both stacks show a memory card: a letter, Open and the free blocks",
+                   has_label(text_mask(gray, LEFT_HEADER_BOX)) and
+                   has_label(text_mask(gray, RIGHT_HEADER_BOX)))
+        browsing = text_mask(gray, FOOTER_BOX)
+        seen = [first]
+        for n in (1, 2, 3):
+            mask = self.info("RIGHT", unlike=seen[-1])
+            self.shot(f"memory-cards-right-{n}", self.last_rgb)
+            self.check("RIGHT moves to the next save", mask is not None, step=n)
+            seen.append(mask)
+        crossed = self.info("RIGHT", unlike=seen[-1])
+        self.shot("memory-cards-slot-b", self.last_rgb)
+        self.check("RIGHT from the last column moves to another save",
+                   crossed is not None and not any(same_text(crossed, mask) for mask in seen))
+        self.check("LEFT from Slot B comes back to Slot A's last column, not a stack's edge",
+                   self.info("LEFT", like=seen[3]) is not None)
+        for n in (2, 1, 0):
+            self.check("LEFT goes back a save", self.info("LEFT", like=seen[n]) is not None, to=n)
+        for n in range(4):
+            self.press("DOWN")
+            self.pause(0.6)
+        self.pause(ART_SECONDS)
+        gray = self.gray()
+        self.shot("memory-cards-scrolled", self.last_rgb)
+        self.check("DOWN past the window's last row scrolls the stack: the arrow above it shows",
+                   arrow_up(gray))
+        for n in range(4):
+            self.press("UP")
+            self.pause(0.6)
+        back = self.text_until(INFO_BOX, lambda mask: same_text(mask, first))
+        self.check("UP comes back to the first save, the stack scrolled back", back is not None and
+                   not arrow_up(self.gray()))
+        self.swap("R", RIGHT_HEADER_BOX, "right")
+        self.save_details("memory-cards-details")
+        self.press("B")
+        closed = self.text_until(FOOTER_BOX, lambda mask: same_text(mask, browsing))
+        self.check("B closes details without opening an action", closed is not None)
+        self.save_details("memory-cards-details-again")
+        self.press("A")
+        opened = self.differs(browsing, FOOTER_BOX)
+        self.shot("memory-cards-box", self.last_rgb)
+        self.check("A Actions opens the box beside the save", opened)
+        menu = text_mask(self.gray(), FOOTER_BOX)
+        self.press("B")
+        closed = self.text_until(FOOTER_BOX, lambda mask: same_text(mask, browsing))
+        self.check("B closes the box", closed is not None)
+        before_b = saves(slot_b)
+        self.steps("A A DOWN A")
+        self.shot("memory-cards-copy-to", self.emulator.frame())
+        self.press("A")
+        self.check("Copy, Yes: the maroon box says the save is copied", self.message())
+        self.shot("memory-cards-copied", self.last_rgb)
+        gained = self.folder_changes(slot_b, before_b) - before_b
+        name = next(iter(gained)) if len(gained) == 1 else ""
+        self.check("Slot B's folder gains the save, its blocks the same as on Slot A",
+                   bool(name) and (slot_a / name).exists() and
+                   same_save((slot_a / name).read_bytes(), (slot_b / name).read_bytes()),
+                   gained=sorted(gained))
+        self.check("the maroon box closes by itself", self.message_closes())
+        self.steps("A A", 0.3)
+        self.differs(browsing, FOOTER_BOX)
+        reason = text_mask(self.gray(), FOOTER_BOX)
+        self.shot("memory-cards-dimmed", self.last_rgb)
+        self.check("A on the copied save: Move is dimmed, and the buttons say why",
+                   not same_text(reason, menu) and not same_text(reason, browsing))
+        self.press("B")
+        self.text_until(FOOTER_BOX, lambda mask: same_text(mask, browsing))
+        before_a = saves(slot_a)
+        self.steps("A A DOWN DOWN A")
+        self.shot("memory-cards-erase", self.emulator.frame())
+        self.steps("UP")
+        self.press("A")
+        self.check("Erase, Yes: the maroon box says the save is erased", self.message())
+        self.shot("memory-cards-erased", self.last_rgb)
+        gone = before_a - self.folder_changes(slot_a, before_a)
+        self.check("the save is gone from Slot A's folder", bool(name) and gone == {name},
+                   gone=sorted(gone))
+        self.check("the maroon box closes by itself", self.message_closes())
+        # The left storage menu also selects SD, then restores Slot A.
+        self.swap("L", LEFT_HEADER_BOX, "left")
+        left = text_mask(self.gray(), LEFT_HEADER_BOX)
+        self.press("B")
+        self.check("B leaves Memory Cards", self.differs(left, LEFT_HEADER_BOX))
+        self.shot("memory-cards-left", self.last_rgb)
+
+    def swap(self, button: str, box: tuple[int, int, int, int], side: str) -> None:
+        """Choose SD by name with L or R, then restore that side's card.
+        Each menu starts on its current place: A, B, SD in that order."""
+        header = text_mask(self.gray(), box)
+        self.press(button)
+        self.pause(0.3)
+        self.shot(f"memory-cards-{button.lower()}-storage", self.emulator.frame())
+        if self.storage == "dvd":
+            # This route has no configuration SD device. SD is named but
+            # dimmed, with its reason; A must not replace a working card.
+            self.steps("DOWN" if button == "R" else "DOWN DOWN")
+            self.press("A")
+            self.pause(0.3)
+            self.check(f"{button}, unavailable SD leaves the {side} card in place",
+                       same_text(text_mask(self.gray(), box), header))
+            self.shot(f"memory-cards-{button.lower()}-sd-unavailable", self.last_rgb)
+            self.press("B")
+            self.check("B cancels the storage menu with its card still shown",
+                       self.text_until(box, lambda mask: same_text(mask, header)) is not None)
+            return
+        self.steps("DOWN A" if button == "R" else "DOWN DOWN A")
+        swapped = self.differs(header, box)
+        self.shot(f"memory-cards-{button.lower()}", self.last_rgb)
+        self.check(f"{button}, SD card chooses the {side} stack's storage", swapped)
+        self.press(button)
+        self.steps("UP A" if button == "R" else "UP UP A")
+        again = self.text_until(box, lambda mask: same_text(mask, header))
+        self.check(f"{button}, Slot {'B' if button == 'R' else 'A'} brings its memory card back",
+                   again is not None)
+
+    def open_save_details(self) -> bool:
+        """Retry a missed A only while the browser's static context is unchanged.
+
+        Once a panel or another screen change appears, A must not be repeated:
+        on details it means Actions. Cube animation is not an input response,
+        so compare the storage headers, info text and footer, not moving art.
+        """
+        boxes = (LEFT_HEADER_BOX, RIGHT_HEADER_BOX, INFO_BOX, FOOTER_BOX)
+        before = self.gray()
+        if save_details_panel(before):
+            return True
+        context = tuple(text_mask(before, box) for box in boxes)
+        changed = False
+        for attempt in range(PRESSES):
+            self.press("A")
+            deadline = Deadline(self.emulator, SETTLE_SECONDS)
+            while not deadline.expired():
+                gray = self.gray()
+                if save_details_panel(gray):
+                    return True
+                changed = changed or any(not same_text(text_mask(gray, box), original)
+                                         for box, original in zip(boxes, context))
+                time.sleep(.15)
+            if changed or attempt + 1 == PRESSES:
+                return False
+            self.pressed_again.append("A")
+        return False
+
+    def save_details(self, name: str) -> dict[str, np.ndarray]:
+        """Open details and verify authored fields on the real screen.
+
+        Host renderer contracts assert the exact words/date/block values;
+        these masks prove the fields are actually visible in Dolphin. No
+        action is selected until another A press.
+        """
+        self.check("A opens the save details panel", self.open_save_details())
+        boxes = {"title": SAVE_DETAILS_TITLE_BOX, "blocks": SAVE_DETAILS_BLOCKS_BOX,
+                 "size": SAVE_DETAILS_SIZE_BOX, "source": SAVE_DETAILS_SOURCE_BOX,
+                 "created": SAVE_DETAILS_CREATED_BOX, "updated": SAVE_DETAILS_UPDATED_BOX,
+                 "actions": SAVE_DETAILS_ACTIONS_BOX}
+        fields = {}
+        for field, box in boxes.items():
+            mask, _ = self.settled_label(box=box, numeric=field in {"blocks", "size"})
+            self.check(f"save details displays its {field} field", mask is not None,
+                       aspect="16:9" if self.menu_wide else "4:3")
+            fields[field] = mask
+        self.shot(name, self.last_rgb)
+        return fields
+
+    def raw_animation(self) -> None:
+        """Capture both colors authored in RAW's animated icon, not cube motion."""
+        seen = set()
+        deadline = Deadline(self.emulator, 4.0)
+        while not deadline.expired() and len(seen) < 2:
+            rgb = self.emulator.frame()
+            frame = raw_icon_frame(rgb, self.menu_wide)
+            if frame is not None and frame not in seen:
+                self.shot(f"virtual-cards-icon-frame-{frame}", rgb)
+                seen.add(frame)
+            self.pause(.05)
+        self.check("RAW icon plays both distinct texture frames on its selected cube",
+                   seen == {0, 1}, frames=sorted(seen))
+
+    def library_save_stats(self, name: str) -> tuple[dict[str, np.ndarray], np.ndarray]:
+        """From Home's Library face, inspect the synthetic game's saves inset."""
+        self.press("A")
+        title, _ = self.settled_label(box=TITLE_BOX)
+        self.check("Library opens the demonstration game", title is not None)
+        self.press("A")
+        self.check("A opens Library game details", self.covered(title, TITLE_BOX))
+        fields = {}
+        for field, box in (("summary", LIBRARY_SAVES_SUMMARY_BOX),
+                           ("updated", LIBRARY_SAVES_UPDATED_BOX)):
+            mask, _ = self.settled_label(box=box)
+            self.check(f"Library SAVES displays its {field}", mask is not None)
+            fields[field] = mask
+        self.shot(name, self.last_rgb)
+        self.press("B")
+        self.check("B returns from details to the same Library game",
+                   self.settled_label(like=title, box=TITLE_BOX)[0] is not None)
+        self.press("B")
+        home, _ = self.settled_label()
+        self.check("B returns to Home Library", home is not None)
+        return fields, home
+
+    def virtual_cards(self) -> None:
+        """No physical cards: both columns start on SD, one opens a RAW image
+        and exports a save through Copy into the other's SD folder."""
+        home = self.boot()
+        stats_before, home = self.library_save_stats("virtual-cards-library-before-export")
+        faces = [home]
+        for n in range(1, 4):
+            faces.append(self.turn(faces, "RIGHT", f"virtual-cards-home-right-{n}"))
+        self.press("A")
+        self.check("A opens System", self.covered(faces[-1]))
+        self.steps("DOWN A")
+        self.pause(2.0)
+        left = text_mask(self.gray(), LEFT_HEADER_BOX)
+        right = text_mask(self.gray(), RIGHT_HEADER_BOX)
+        self.shot("virtual-cards-sd", self.last_rgb)
+        self.check("empty physical slots open SD storage in both columns",
+                   has_label(left) and has_label(right) and self.cards is None)
+        self.press("R")
+        self.pause(0.3)
+        self.shot("virtual-cards-storage-menu", self.emulator.frame())
+        self.press("A")  # keep the right column on its currently selected SD
+        self.check("choosing right storage keeps both SD folders",
+                   same_text(text_mask(self.gray(), LEFT_HEADER_BOX), left) and
+                   same_text(text_mask(self.gray(), RIGHT_HEADER_BOX), right))
+        # The source focus must stay on the left after choosing right storage.
+        self.press("A")  # the only SD item is Demo Card.raw
+        self.check("A opens the SD card's RAW image", self.differs(left, LEFT_HEADER_BOX))
+        self.pause(ART_SECONDS)
+        first, _ = self.settled_label(box=INFO_BOX)
+        self.check("the RAW card shows a save's comment", first is not None)
+        self.shot("virtual-cards-raw", self.last_rgb)
+        self.check("opening RAW on the left keeps the right SD folder",
+                   same_text(text_mask(self.gray(), RIGHT_HEADER_BOX), right))
+        self.raw_animation()
+        known = self.save_details("virtual-cards-details-known")
+        self.press("B")
+        self.check("B closes RAW save details to browsing",
+                   self.text_until(INFO_BOX, lambda mask: same_text(mask, first)) is not None)
+        second = self.info("RIGHT", unlike=first)
+        self.check("RIGHT browses another save in RAW", second is not None)
+        unknown = self.save_details("virtual-cards-details-unknown")
+        self.check("known and unknown save dates have different text",
+                   not same_text(known["updated"], unknown["updated"]))
+        self.check("both saves report creation date as not recorded",
+                   same_text(known["created"], unknown["created"]))
+        self.check("two-block and one-block save sizes have different text",
+                   not same_text(known["blocks"], unknown["blocks"]))
+        self.press("B")
+        again = self.info("LEFT", like=first)
+        self.check("LEFT returns to the RAW save to export", again is not None)
+        # Open the same image independently on the right. All actions are
+        # unavailable, but details still opens and B always returns.
+        self.steps("RIGHT RIGHT RIGHT RIGHT")
+        self.press("A")
+        self.check("right SD independently opens RAW", self.differs(right, RIGHT_HEADER_BOX))
+        self.pause(ART_SECONDS)
+        both = self.save_details("virtual-cards-details-both-raw")
+        self.check("details works with two read-only RAW columns",
+                   same_text(known["updated"], both["updated"]))
+        self.press("A")
+        self.pause(.3)
+        self.shot("virtual-cards-all-actions-unavailable", self.emulator.frame())
+        disabled = text_mask(self.gray(), FOOTER_BOX)
+        self.press("A")  # dimmed Copy cannot export into a RAW image
+        self.pause(.3)
+        self.check("an unavailable RAW Copy keeps its action menu",
+                   same_text(text_mask(self.gray(), FOOTER_BOX), disabled) and
+                   not message_up(self.last_rgb, self.menu_wide))
+        self.press("B")  # action menu -> right RAW browsing
+        self.press("B")  # right RAW -> independent writable folder
+        self.check("right RAW closes to the independent SD folder",
+                   self.text_until(RIGHT_HEADER_BOX, lambda mask: same_text(mask, right)) is not None)
+        self.steps("LEFT LEFT LEFT LEFT")
+        self.check("left source stays in its RAW image",
+                   self.text_until(INFO_BOX, lambda mask: same_text(mask, first)) is not None)
+        self.virtual_popup_checks()
+        self.save_details("virtual-cards-details-to-export")
+        self.press("A")  # Actions: read-only RAW starts on Copy
+        self.pause(0.3)
+        self.shot("virtual-cards-copy-menu", self.emulator.frame())
+        self.press("A")
+        self.pause(0.3)
+        self.shot("virtual-cards-copy-to-sd", self.emulator.frame())
+        self.press("A")
+        self.check("Copy exports RAW's save to the SD folder", self.message())
+        self.shot("virtual-cards-exported", self.last_rgb)
+        self.check("the export message closes by itself", self.message_closes())
+        self.press("B")
+        back = self.text_until(LEFT_HEADER_BOX, lambda mask: same_text(mask, left))
+        self.check("B closes RAW to its containing SD folder", back is not None)
+        self.check("the other SD column keeps its folder after export",
+                   same_text(text_mask(self.gray(), RIGHT_HEADER_BOX), right))
+        self.shot("virtual-cards-back-to-sd", self.last_rgb)
+        self.press("B")
+        self.check("B leaves Memory Cards from the SD root", self.differs(left, LEFT_HEADER_BOX))
+        self.press("B")  # System -> Home
+        self.check("B returns to Home System", self.settled_label(like=faces[3])[0] is not None)
+        for n in (2, 1, 0):
+            mask, _ = self.press_until("LEFT", like=faces[n])
+            self.check("LEFT returns toward Home Library", mask is not None, to=n)
+        stats_after, _ = self.library_save_stats("virtual-cards-library-after-export")
+        self.check("Library counts change after one GCI export",
+                   not same_text(stats_before["summary"], stats_after["summary"]))
+        self.check("Library retains the save's recorded latest date after export",
+                   same_text(stats_before["updated"], stats_after["updated"]))
+
+    def virtual_popup_checks(self) -> None:
+        """The private emulator image after dialogs, before authorizing Copy."""
+        if self.sd_image is None:
+            raise Broken("virtual-card proof needs its emulator SD image")
+        folder = make_test_saves.SAVE_FOLDER
+        original, _ = make_test_saves.virtual_card()
+        raw = card.read_card(self.sd_image, f"{folder}/{make_test_saves.RAW_CARD_NAME}")
+        exported = card.read_card(self.sd_image, f"{folder}/{make_test_saves.RAW_EXPORT_NAME}")
+        self.check("details, B Back and unusable RAW actions leave the source image unchanged",
+                   raw == original)
+        self.check("details and unusable actions create no exported GCI", exported is None)
+
+    def virtual_card_checks(self, image: Path) -> None:
+        """The actual FAT bytes, after navigating and exporting in Indigo."""
+        original, gcis = make_test_saves.virtual_card()
+        folder = make_test_saves.SAVE_FOLDER
+        raw = card.read_card(image, f"{folder}/{make_test_saves.RAW_CARD_NAME}")
+        exported = card.read_card(image, f"{folder}/{make_test_saves.RAW_EXPORT_NAME}")
+        self.check("the source RAW image is byte-identical after browsing and export", raw == original,
+                   bytes=len(raw) if raw is not None else None)
+        self.check("the exported GCI has the selected identity and exact BAT-ordered payload",
+                   exported is not None and same_save(gcis[0], exported),
+                   file=make_test_saves.RAW_EXPORT_NAME,
+                   bytes=len(exported) if exported is not None else None)
+        if exported is not None:
+            (self.out / "virtual-card-export.gci").write_bytes(exported)
+
     def tour(self) -> None:
         self.smoke()
 
@@ -1113,7 +1723,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dol", type=Path)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--route", choices=("smoke", "tour", "game", "save"), default="smoke")
+    parser.add_argument("--route", choices=("smoke", "tour", "game", "save", "virtual-cards"), default="smoke")
     parser.add_argument("--probe", type=Path, help="the probe DOL (probe/), launched as an app and a game")
     parser.add_argument("--region", choices=tuple(REGIONS), default="pal")
     parser.add_argument("--storage", choices=tuple(STORAGES), default="dvd")
@@ -1136,6 +1746,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("the save route changes settings a card starts with: give --settings")
     if args.fragments and not (args.card_zip and args.probe and args.route == "game"):
         parser.error("--fragments splits the probe's game on the SD card for the game route")
+    if args.route == "virtual-cards" and args.storage not in ("gcloader", "sd2sp2"):
+        parser.error("virtual-cards needs an SD card in GC Loader or SD2SP2, with both slots empty")
     start = (SETTINGS / f"{args.settings}.ini").read_text() if args.settings else None
     args.out.mkdir(parents=True, exist_ok=True)
     report: dict[str, object] = {"schema": "indigo.emulator-test.v1", "route": args.route,
@@ -1153,7 +1765,8 @@ def main(argv: list[str] | None = None) -> int:
                 sd = work / "card.img"
                 report["card"] = card.build_card(sd, args.card_zip, probe=args.probe,
                                                  foreign=FOREIGN[args.region], settings=start,
-                                                 boot_iso=args.storage == "gcloader", fragments=args.fragments)
+                                                 boot_iso=args.storage == "gcloader", fragments=args.fragments,
+                                                 virtual_cards=args.route == "virtual-cards")
                 if args.storage == "gcloader":  # the drive's disc until a game's is set
                     disc = work / "boot.iso"
                     disc.write_bytes(card.read_card(sd, "boot.iso"))
@@ -1164,11 +1777,20 @@ def main(argv: list[str] | None = None) -> int:
             elif disc is None:
                 disc = work / "demo.iso"
                 report["disc"] = card.build(disc, probe=args.probe, foreign=FOREIGN[args.region])
+            # The smoke route opens Memory Cards with a memory card in each
+            # slot, unless an SD Gecko has Slot B.
+            cards = None
+            if args.route in ("smoke", "tour") and args.storage != "sdgecko-b":
+                cards = work / "cards"
+                make_test_saves.write(str(cards))
             emulator = Emulator(dol, disc.resolve() if disc else None, work, args.out, args.region,
-                                args.storage, sd, args.cable, args.sd_faults)
+                                args.storage, sd, args.cable, args.sd_faults, cards,
+                                empty_slots=args.route == "virtual-cards")
             route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd) and start is None,
-                          cable=args.cable, region=args.region, fragments=args.fragments)
-            getattr(route, args.route)()
+                          cable=args.cable, region=args.region, fragments=args.fragments, cards=cards,
+                          storage=args.storage, menu_wide=bool(start and "Menu Widescreen=Yes" in start),
+                          sd_image=sd)
+            getattr(route, args.route.replace("-", "_"))()
             if args.route == "save":
                 # Power off and on again, with a card that works.
                 emulator.close()
@@ -1179,6 +1801,8 @@ def main(argv: list[str] | None = None) -> int:
                 route.emulator, route.pad = emulator, emulator.pad
                 route.boot_again()
             elif sd:
+                if args.route == "virtual-cards":
+                    route.virtual_card_checks(sd)
                 route.card_checks(sd, args.route, seeded(start) if start else None)
         except Failed as failure:
             status = 1

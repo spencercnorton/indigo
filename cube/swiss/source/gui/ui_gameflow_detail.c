@@ -268,6 +268,44 @@ static void buildSettingsPresentation(uiGameflowDetailSnapshot_t *snapshot,
 	}
 }
 
+static void buildSavesPresentation(uiGameflowDetailSnapshot_t *snapshot,
+	const uiSavesGameStats_t *stats)
+{
+	char updated[17];
+	bool incomplete;
+
+	if(stats == NULL) {
+		copyText(snapshot->savesSummary, sizeof(snapshot->savesSummary),
+			"Unavailable");
+		copyText(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
+			"Save sources not checked");
+		return;
+	}
+	snapshot->saveStats = *stats;
+	incomplete = stats->partial || stats->checkedSources == 0u;
+	if(stats->saves == 0u) {
+		copyText(snapshot->savesSummary, sizeof(snapshot->savesSummary),
+			incomplete ? "Unavailable" : "No save copies found");
+		copyText(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
+			incomplete ? "Save scan incomplete" : "Checked save sources");
+		return;
+	}
+	(void)snprintf(snapshot->savesSummary, sizeof(snapshot->savesSummary),
+		"%lu save %s | %lu %s", (unsigned long)stats->saves,
+		stats->saves == 1u ? "copy" : "copies", (unsigned long)stats->blocks,
+		stats->blocks == 1u ? "block" : "blocks");
+	if(stats->updatedKnown &&
+		UISaves_FormatUpdated(stats->latestUpdated, updated, sizeof(updated))) {
+		(void)snprintf(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
+			"%sUpdated %s", incomplete ? "Partial scan | " : "", updated);
+	}
+	else {
+		copyText(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
+			incomplete ? "Partial scan | Update date unavailable" :
+			"Update date unavailable");
+	}
+}
+
 bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 	const uiGameflowDetailSource_t *source)
 {
@@ -338,6 +376,7 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 		UIGameHistory_SaveStatus(source->saveStatus));
 	buildPresentation(snapshot);
 	buildSettingsPresentation(snapshot, source->firstCustomSetting);
+	buildSavesPresentation(snapshot, source->saveStats);
 	return true;
 }
 

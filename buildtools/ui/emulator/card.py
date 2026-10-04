@@ -467,7 +467,7 @@ MTOOLS = dict(os.environ, MTOOLS_SKIP_CHECK="1")
 
 def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | None = None,
                foreign: int = 0, settings: str | None = None, boot_iso: bool = False,
-               fragments: int = 0) -> dict[str, object]:
+               fragments: int = 0, virtual_cards: bool = False) -> dict[str, object]:
     """A FAT32 SD card image set up as someone would: the release zip
     unpacked onto it, then games, the packs and apps beside it. Without
     settings it has no swiss/settings/global.ini, so Indigo starts in
@@ -483,6 +483,14 @@ def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | No
         with zipfile.ZipFile(card_zip) as package:
             package.extractall(root)
         info = populate(root, folder, posters, probe, foreign)
+        if virtual_cards:
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "qa"))
+            import make_test_saves
+            saves = root / make_test_saves.SAVE_FOLDER
+            saves.mkdir(parents=True, exist_ok=True)
+            raw, _ = make_test_saves.virtual_card()
+            (saves / make_test_saves.RAW_CARD_NAME).write_bytes(raw)
+            info["virtual_cards"] = {"images": 1, "saves": 2, "physical_slots": False}
         if settings is not None:  # a card that has been used: its settings folders made
             (root / "swiss/settings/game").mkdir(parents=True, exist_ok=True)
             (root / "swiss/settings/global.ini").write_text(settings.replace("\n", "\r\n"))

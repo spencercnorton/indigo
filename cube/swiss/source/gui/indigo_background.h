@@ -43,6 +43,14 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 void IndigoBackground_TrackPad(float seconds, bool animated,
 	const indigoPadFrame_t *pad);
 
+/* Memory Cards' cube screen covers the frame and draws this first: the
+ * backdrop's wash and as much of its graph paper as paper says, in the
+ * Backdrop Color; then, while handover is above 0, the Home cube where
+ * scene has it, that far back from the distance it goes into. */
+void IndigoBackground_DrawSavesBackdrop(float paper, float handover,
+	float seconds, bool animated, const uiSceneFrame_t *scene,
+	const uiClockFrame_t *clock, const int icons[UI_HOME_FACE_COUNT]);
+
 void IndigoBackground_DrawBootOverlay(float seconds, bool animated,
 	const uiSceneFrame_t *scene, const uiClockFrame_t *clock,
 	const int icons[UI_HOME_FACE_COUNT]);

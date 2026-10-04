@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 /* Home > System > Memory Cards: the saves on the cards in Slot A and Slot B
- * and in folders on the settings device, with Copy, Move and Delete. */
+ * and in folders on the settings device, with Move, Copy and Erase. */
 void show_saves(void);
 
 /* Settings > Storage > Save Folder: browse the settings device's folders and

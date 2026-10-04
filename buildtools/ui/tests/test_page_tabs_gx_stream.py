@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Run the real Settings and Memory Cards page renderers against a logged
-panel stream, for what marks the current tab.
+"""Run the real Settings page renderer against a logged panel stream, for
+what marks the current tab.
 
-_DrawSettingsPage and _DrawSaves are compiled out of FrameBufferMagic.c with
+_DrawSettingsPage is compiled out of FrameBufferMagic.c with
 the real springs (ui_motion.c), Settings' focus card (ui_settings_focus.c)
 and screen shapes (ui_stage.c). Every flat panel they draw is logged with its
 place, size and color; the rows, text and banners are stand-ins. The tests
-check that the current tab's cell (Settings) and its underline (Memory
-Cards) slide from tab to tab on a spring, each edge moving one way only and
+check that the current tab's cell slides from tab to tab on a spring, each edge moving one way only and
 never by much in a frame, rest exactly where they always were, and move at
 once under Motion Off; and that Settings' focus card, which springs its
 middle and its size, rounds its edges, so each edge moves one way too.
@@ -88,9 +87,7 @@ static uiMotionMode_t _CurrentMotionMode(void) { return motionMode; }
 
 DRIVER = r"""
 static drawSettingsEvent_t settings;
-static drawSavesEvent_t saves;
 static uiDrawObj_t settingsEvent = {0, &settings};
-static uiDrawObj_t savesEvent = {0, &saves};
 
 /* Three tabs of different widths, and a focus card on the first row. */
 static void settingsTab(int tab)
@@ -108,16 +105,6 @@ static void settingsTab(int tab)
 	l->focusRect = (uiSetLayoutRect_t){48, 150, 544, 40};
 }
 
-static void savesTab(int tab)
-{
-	uiSavesPageSnapshot_t *s = &saves.snapshot;
-	s->tabCount = 3;
-	s->tab = (s8)tab;
-	strcpy(s->tabs[0], "SLOT A");
-	strcpy(s->tabs[1], "SLOT B");
-	strcpy(s->tabs[2], "SD CARD");
-}
-
 int main(void)
 {
 	char line[128];
@@ -125,7 +112,6 @@ int main(void)
 		int a, b;
 		float dt;
 		if(sscanf(line, "S %d", &a) == 1) settingsTab(a);
-		else if(sscanf(line, "C %d", &a) == 1) savesTab(a);
 		else if(sscanf(line, "M %d", &a) == 1) motionMode = (uiMotionMode_t)a;
 		else if(sscanf(line, "R %d %d", &a, &b) == 2) {
 			/* The focus card's rect: x and width, centred the same. */
@@ -136,8 +122,7 @@ int main(void)
 			for(int i = 0; i < a; ++i) {
 				animDelta = dt;
 				printf("F\n");
-				if((char)b == 's') _DrawSettingsPage(&settingsEvent);
-				else _DrawSaves(&savesEvent);
+				_DrawSettingsPage(&settingsEvent);
 			}
 		}
 		else { fprintf(stderr, "bad command: %s", line); return 64; }
@@ -149,7 +134,6 @@ int main(void)
 
 def renderers(frame_c: str, frame_h: str) -> str:
     return "\n".join([
-        between(frame_h, "#define UI_SAVES_PAGE_ROWS", "} uiSavesPageSnapshot_t;", True),
         between(frame_c, "static const GXColor settingsInk",
                 "typedef struct {\n\tuiSetPageSnapshot_t snapshot;"),
         between(frame_c, "typedef struct {\n\tuiSetPageSnapshot_t snapshot;",
@@ -158,11 +142,6 @@ def renderers(frame_c: str, frame_h: str) -> str:
         extract_function(frame_c, "static void _SettingsFocusCard("),
         extract_function(frame_c, "static void _PagePanel("),
         extract_function(frame_c, "static void _DrawSettingsPage("),
-        between(frame_c, "typedef struct {\n\tuiSavesPageSnapshot_t snapshot;",
-                "} drawSavesEvent_t;", True),
-        extract_function(frame_c, "static void _SavesFolder("),
-        extract_function(frame_c, "static void _SavesCard("),
-        extract_function(frame_c, "static void _DrawSaves("),
     ])
 
 
@@ -179,7 +158,6 @@ def panels(log: str) -> list[list[tuple]]:
 
 
 FOCUS = (38, 37, 78)    # settingsFocus
-ACCENT = (196, 177, 255)    # settingsAccent
 
 
 class PageTabsGXStreamTests(unittest.TestCase):
@@ -253,17 +231,6 @@ class PageTabsGXStreamTests(unittest.TestCase):
         self.assertEqual(lefts, sorted(lefts))
         self.assertEqual(rights, sorted(rights, reverse=True))
 
-    def test_saves_underline_slides(self):
-        def underline(frame):
-            found = [(x, w) for x, y, w, h, color in frame if color == ACCENT and y == 108]
-            self.assertEqual(len(found), 1)
-            return found[0]
-        # SLOT A is 64 px wide at 0.54, then 32 px to SLOT B, SD CARD 75 px.
-        frames = self.run_script("C 0\nN c 30 0.0166667\nC 2\nN c 40 0.0166667\n")
-        self.assertEqual(underline(frames[29]), (40, 64))
-        self.check_slide(frames[29:], underline, (40, 64), (232, 75))
-        frames = self.run_script("M 2\nC 0\nN c 3 0.0166667\nC 2\nN c 1 0.0166667\n")
-        self.assertEqual(underline(frames[-1]), (232, 75))
 
 
 if __name__ == "__main__":

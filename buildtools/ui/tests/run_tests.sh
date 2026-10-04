@@ -89,11 +89,19 @@ run_binaries() {
 			*) "./$test$suffix" ;;
 		esac
 	done
+	echo "== raw card device adapter$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_saves_raw_backend.py; else python3 ./test_saves_raw_backend.py --sanitize; fi
+	echo "== game save stats$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_saves_stats.py; else python3 ./test_saves_stats.py --sanitize; fi
 	# card_art builds its own binaries: posters of apps and folders, their guards.
 	echo "== test_card_art$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_card_art.py; else python3 ./test_card_art.py --sanitize; fi
 	echo "== game folder visibility$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_gameflow_folder_visibility.py; else python3 ./test_gameflow_folder_visibility.py --sanitize; fi
+	echo "== test_saves_card_io$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_saves_card_io.py; else python3 ./test_saves_card_io.py --sanitize; fi
+	echo "== test_saves_raw_controller$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_saves_raw_controller.py; else python3 ./test_saves_raw_controller.py --sanitize; fi
 }
 
 # The fuzzers (fuzz/) must build on every change, since a Fuzz run is not
@@ -174,7 +182,16 @@ run_contracts() {
 	echo "== cheat runtime integration and mutation audit =="
 	python3 ./audit_cheat_safety.py
 
-	echo "== Memory Cards copy, move and delete safety audit =="
+	echo "== Memory Cards: the test saves' icons and banners through the decoder =="
+	python3 ./test_save_art.py
+
+	echo "== Memory Cards: the cube screen's GX stream, its passes and icons =="
+	python3 ./test_save_cubes_gx_stream.py
+
+	echo "== Memory Cards: save details hierarchy, text bounds and GX budget =="
+	python3 ./test_save_details_gx_stream.py
+
+	echo "== Memory Cards move, copy and erase safety audit =="
 	python3 ./audit_saves_safety.py
 
 	echo "== strict Game Library dispatch audit =="
