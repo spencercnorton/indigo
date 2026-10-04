@@ -56,6 +56,39 @@ void UISaves_NumberedName(char *out, size_t capacity, const char *name,
 int UISaves_Destinations(uiSavesPlace_t from, bool cardA, bool cardB,
 	bool folders, bool inSaveFolder, uiSavesPlace_t out[UI_SAVES_PLACE_COUNT]);
 
+/* Why a Copy or Move can't go where it would, known before it starts: the
+ * checks the copy itself makes afterwards (saves.c keeps them all), and the
+ * Move guard. */
+typedef enum {
+	UI_SAVES_VERDICT_OK = 0,
+	UI_SAVES_VERDICT_NO_MOVE,	/* the game won't let its save move */
+	UI_SAVES_VERDICT_NO_CARD,	/* nothing usable in the slot */
+	UI_SAVES_VERDICT_READ_ONLY,	/* the SD card can't be written */
+	UI_SAVES_VERDICT_HAS_IT,	/* the card has a save of this game and name */
+	UI_SAVES_VERDICT_FULL,		/* the card holds its 127 saves */
+	UI_SAVES_VERDICT_ROOM		/* too few free blocks */
+} uiSavesVerdict_t;
+
+#define UI_SAVES_CARD_FILES 127u	/* CARD_MAXFILES */
+
+/* Where a save would go. */
+typedef struct {
+	const char *name;	/* "Slot B", "The SD card" */
+	bool card;		/* a memory card; else a folder on the SD card */
+	bool ready;		/* a card listed, or a folder read */
+	bool writable;		/* a folder's card takes writes */
+	bool hasIt;		/* the card has a save of this game, maker and name */
+	int saves;		/* on the card */
+	int freeBlocks;
+} uiSavesRoom_t;
+
+/* Whether a save blocks long goes to the room to, moved or copied, from a
+ * card or a folder, as today's rules have it: a card's save marked no-copy
+ * or no-move (entry byte 0x34) doesn't move, and copies always may. Writes
+ * the reason in words to why ("" when it may go). */
+uiSavesVerdict_t UISaves_Verdict(bool move, bool fromCard, uint8_t permissions,
+	unsigned blocks, const uiSavesRoom_t *to, char *why, size_t size);
+
 /* ------------------------------------------------------------------------
  * A save's art: its banner, its animated icon and its comment, where the
  * entry puts them in the save's data (the bytes after the entry), read as

@@ -468,6 +468,84 @@ static void testPool(void)
     assert(UISaves_LoadOrder(0, 0, 6, 4, 22, NULL) == 0);
 }
 
+/* Today's rules, said before choosing: a card's save marked no-copy or
+ * no-move doesn't move, copies always may; then what the copy itself would
+ * find, in the order it finds it. */
+static void expectVerdict(bool move, bool fromCard, uint8_t permissions,
+    unsigned blocks, const uiSavesRoom_t *to, uiSavesVerdict_t want,
+    const char *why)
+{
+    char text[96] = "unset";
+
+    assert(UISaves_Verdict(move, fromCard, permissions, blocks, to, text,
+        sizeof(text)) == want);
+    assert(strcmp(text, why) == 0);
+}
+
+static void testVerdict(void)
+{
+    uiSavesRoom_t card = {"Slot B", true, true, false, false, 12, 40};
+    uiSavesRoom_t folder = {"The SD card", false, true, true, false, 0, 0};
+    uiSavesRoom_t room;
+    char tiny[8];
+
+    expectVerdict(false, true, 0x00, 11u, &card, UI_SAVES_VERDICT_OK, "");
+    expectVerdict(true, true, 0x04, 11u, &card, UI_SAVES_VERDICT_OK, "");
+    /* No-copy and no-move both keep a card's save from moving; Copy goes,
+     * and a file in a folder carries no such byte. */
+    expectVerdict(true, true, 0x08, 11u, &card, UI_SAVES_VERDICT_NO_MOVE,
+        "This game doesn't let its save move");
+    expectVerdict(true, true, 0x10, 11u, &folder, UI_SAVES_VERDICT_NO_MOVE,
+        "This game doesn't let its save move");
+    expectVerdict(false, true, 0x18, 11u, &card, UI_SAVES_VERDICT_OK, "");
+    expectVerdict(true, false, 0x18, 11u, &card, UI_SAVES_VERDICT_OK, "");
+    /* The guard comes first: it holds wherever the save would go. */
+    room = card;
+    room.ready = false;
+    expectVerdict(true, true, 0x10, 11u, &room, UI_SAVES_VERDICT_NO_MOVE,
+        "This game doesn't let its save move");
+    expectVerdict(false, true, 0x00, 11u, &room, UI_SAVES_VERDICT_NO_CARD,
+        "No memory card in Slot B");
+    expectVerdict(false, false, 0x00, 1u, NULL, UI_SAVES_VERDICT_NO_CARD,
+        "No memory card in ");
+    /* Then what cardWrite finds: the save there already, 127 saves, room. */
+    room = card;
+    room.hasIt = true;
+    room.saves = 127;
+    room.freeBlocks = 0;
+    expectVerdict(false, false, 0x00, 11u, &room, UI_SAVES_VERDICT_HAS_IT,
+        "Slot B already has this save");
+    room.hasIt = false;
+    expectVerdict(false, false, 0x00, 11u, &room, UI_SAVES_VERDICT_FULL,
+        "Slot B has 127 saves");
+    room.saves = 126;
+    room.freeBlocks = 4;
+    expectVerdict(true, false, 0x00, 11u, &room, UI_SAVES_VERDICT_ROOM,
+        "Slot B has 4 free blocks; this needs 11");
+    room.freeBlocks = 1;
+    expectVerdict(false, true, 0x00, 2u, &room, UI_SAVES_VERDICT_ROOM,
+        "Slot B has 1 free block; this needs 2");
+    room.freeBlocks = 11;
+    expectVerdict(false, true, 0x00, 11u, &room, UI_SAVES_VERDICT_OK, "");
+    /* A folder: only whether its card takes writes. A folder numbers a
+     * name that's taken, so it never has the save, and has room enough. */
+    expectVerdict(false, true, 0x00, 2043u, &folder, UI_SAVES_VERDICT_OK, "");
+    room = folder;
+    room.writable = false;
+    room.hasIt = true;
+    expectVerdict(false, true, 0x00, 1u, &room, UI_SAVES_VERDICT_READ_ONLY,
+        "The SD card can't be written");
+    room.writable = true;
+    room.ready = false;
+    expectVerdict(true, false, 0x00, 1u, &room, UI_SAVES_VERDICT_READ_ONLY,
+        "The SD card can't be written");
+    /* The reason fits whatever it is given. */
+    assert(UISaves_Verdict(false, false, 0, 1u, &room, tiny, sizeof(tiny)) ==
+        UI_SAVES_VERDICT_READ_ONLY && strlen(tiny) == 7u);
+    assert(UISaves_Verdict(false, false, 0, 1u, &room, NULL, 0u) ==
+        UI_SAVES_VERDICT_READ_ONLY);
+}
+
 int main(void)
 {
     uint8_t entry[UI_SAVES_ENTRY_SIZE];
@@ -577,5 +655,6 @@ int main(void)
 
     testArtLayout();
     testPool();
+    testVerdict();
     return 0;
 }
