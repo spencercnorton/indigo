@@ -1431,8 +1431,8 @@ static void _DrawSaveDetails(uiDrawObj_t *evt)
 	drawStringMedium(104, 317, "Last updated", 0.54f, ALIGN_LEFT, secondary);
 	drawStringMedium(250, 317, data->snapshot.updated, data->updatedScale,
 		ALIGN_LEFT, primary);
-	_DrawHintText(216, 373, "A Actions", 0.60f, ALIGN_CENTER, primary);
-	_DrawHintText(412, 373, "B Back", 0.60f, ALIGN_CENTER, primary);
+	_DrawHintText(216, 373, "A  Actions", 0.60f, ALIGN_CENTER, primary);
+	_DrawHintText(412, 373, "B  Back", 0.60f, ALIGN_CENTER, primary);
 	drawInit();
 }
 

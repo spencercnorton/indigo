@@ -79,6 +79,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - Save details gives the save name a larger headline, separates blocks and
   KiB into clear summaries, aligns source and date fields, and shows distinct
   controller hints for Actions and Back.
+- The Library's Saves inset gives the copy and block totals more space and
+  larger text, with a brighter update line beneath them.
 
 - Memory Cards copies and moves a save to the SD card into the folder the
   SD card's stack has open, which starts at the Save Folder, rather than

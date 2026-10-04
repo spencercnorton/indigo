@@ -5,7 +5,8 @@ The generic dialog is unchanged. This checks the new hierarchy, both authored
 screen shapes, all menu colors, maximum numbers, long names and metadata failure.
 Name and metadata fitting belongs to preparation, with no popup allocation
 or refitting during drawing. The existing native hint helper is stubbed here;
-its glyph geometry and fixed-label measurement have their own tests.
+its glyph geometry and fixed-label measurement have their own tests. The real
+hint parser checks that each footer actually names its controller glyph.
 """
 import os
 from pathlib import Path
@@ -30,6 +31,7 @@ HARNESS = r'''
 #include "ui_home_text.h"
 #include "ui_stage.h"
 #include "ui_color.h"
+#include "ui_hint.h"
 typedef struct {uint8_t r,g,b,a;} GXColor;
 typedef struct {int type;void *data;void *child;bool disposed;} uiDrawObj_t;
 enum {ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT, EV_SAVE_DETAILS, GX_QUADS, GX_VTXFMT0, GX_TEXMAP0};
@@ -83,8 +85,13 @@ static void drawStringMedium(int x,int y,const char *text,float scale,int align,
     strings++;
 }
 static void _DrawHintText(int x,int y,const char *text,float scale,int align,GXColor color) {
+    uiHintItem_t item;
+    const char *label=x==216 ? "Actions" : "Back";
     assert(drawing && ready && !active && y==373 && scale==0.60f && align==ALIGN_CENTER && color.a==255);
-    assert((x==216 && !strcmp(text,"A Actions")) || (x==412 && !strcmp(text,"B Back")));
+    assert(x==216 || x==412);
+    assert(UIHint_Parse(text,&item,1)==1 && item.glyphCount==1 && !item.chord);
+    assert(item.glyph[0]==(x==216 ? UI_HINT_GLYPH_A : UI_HINT_GLYPH_B));
+    assert(item.labelLength==strlen(label) && !memcmp(item.label,label,item.labelLength));
     hints++;
 }
 /* ACTUAL_SOURCE */
@@ -140,7 +147,8 @@ def main():
         subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + [
             '-std=gnu11', '-Wall', '-Wextra', '-Werror', '-I', str(GUI), str(c),
             str(GUI / 'ui_saves_details.c'), str(GUI / 'ui_home_text.c'),
-            str(GUI / 'ui_stage.c'), str(GUI / 'ui_color.c'), '-lm', '-o', str(binary)], check=True)
+            str(GUI / 'ui_stage.c'), str(GUI / 'ui_color.c'),
+            str(GUI / 'ui_hint.c'), '-lm', '-o', str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
 
 

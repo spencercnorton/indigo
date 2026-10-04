@@ -22,7 +22,8 @@ that one game, and every way to start it, on one screen.
   game starts from, as with a single SD card. With no settings device to
   read it from, it says "History unavailable".
 - **Saves**, above Settings and Cheats: the number of save copies and
-  their total blocks, from inserted memory cards and the configured Save
+  their total blocks appear first, with the latest update beneath them.
+  These totals come from inserted memory cards and the configured Save
   Folder, including readable RAW images there. It matches the full game and
   maker ID, not the title. A RAW save and an exported GCI count as separate
   copies; this isn't a progress score. **Updated** is the newest date
