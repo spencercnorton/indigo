@@ -307,6 +307,16 @@ class MemoryCards(unittest.TestCase):
     def test_public_raw_fixture_has_real_metadata_and_a_fragmented_save(self):
         raw, gcis = run.make_test_saves.virtual_card()
         block = run.make_test_saves.BLOCK
+        self.assertEqual(gcis[0][:6], b"GACZ01")
+        self.assertEqual(struct.unpack_from(">I", gcis[0], 0x28)[0], 762525240)
+        self.assertEqual(struct.unpack_from(">I", gcis[1], 0x28)[0], 0)
+        alternate, variants = run.make_test_saves.virtual_card("GALE01", 1)
+        self.assertEqual(variants[0][:6], b"GALE01")
+        self.assertEqual(struct.unpack_from(">I", variants[0], 0x28)[0], 1)
+        self.assertNotEqual(raw, alternate)
+        for invalid in ("GACZ", "gacz01", "GACZ??", "GACZ01x"):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                run.make_test_saves.virtual_card(invalid)
         self.assertEqual((len(raw), len(gcis[0]), len(gcis[1])), (64 * block, 64 + 2 * block, 64 + block))
         self.assertEqual(raw[block:2 * block], raw[2 * block:3 * block])
         self.assertEqual(raw[3 * block:4 * block], raw[4 * block:5 * block])

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """make_test_saves.py OUTDIR - fictitious GameCube saves for Memory Cards.
 
-Writes the saves Memory Cards is tried with. Every game is made up (maker
-ZZ, game codes starting Z) and every picture is drawn here: gradients,
+Writes public demonstration saves for Memory Cards. The catalog uses
+made-up games (maker ZZ, game codes starting Z); the virtual-card fixture
+can match a demonstration disc ID. Every picture is drawn here: gradients,
 stripes, rings and digits.
 
   OUTDIR/A               Slot A, a GCI folder: 21 saves, every kind of icon
@@ -50,7 +51,9 @@ BOUNCE = 0x04             # banner_fmt's bit for playing the frames back again
 PUBLIC, NOCOPY, NOMOVE = 0x04, 0x08, 0x10
 SAVE_FOLDER = "swiss/saves"
 RAW_CARD_NAME = "Demo Card.raw"
-RAW_EXPORT_NAME = "ZZ-ZRWE-Demo Save.gci"
+RAW_GAME_ID = "GACZ01"  # Astral Circuit on the emulator's demonstration disc
+RAW_UPDATED_SECONDS = 762525240  # 2024-02-29 12:34, seconds since 2000-01-01
+RAW_EXPORT_NAME = "01-GACZ-Demo Save.gci"
 
 
 @dataclass
@@ -64,6 +67,7 @@ class Save:
     permissions: int = PUBLIC
     blocks: int = 1                 # at least; more when the art needs them
     icon_addr: int = ICON_ADDR
+    maker: str = MAKER
 
 
 def rgb5a3(r: int, g: int, b: int, a: int = 255) -> int:
@@ -207,24 +211,30 @@ def encode(save: Save, when: int) -> bytes:
     speeds = sum(speed << (2 * i) for i, (_, speed) in enumerate(save.frames))
     entry = struct.pack(
         ">4s2sBB32sIIHHBBHHHI",
-        save.game.encode(), MAKER.encode(), 0xFF, save.banner | (BOUNCE if save.bounce else 0),
+        save.game.encode(), save.maker.encode(), 0xFF, save.banner | (BOUNCE if save.bounce else 0),
         save.name.encode().ljust(32, b"\0"), when, save.icon_addr,
         formats, speeds, save.permissions, 0, 0, blocks, 0xFFFF, 0)
     return entry + bytes(data)
 
 
-def virtual_card() -> tuple[bytes, tuple[bytes, bytes]]:
+def virtual_card(game_id: str = RAW_GAME_ID,
+                 updated: int = RAW_UPDATED_SECONDS) -> tuple[bytes, tuple[bytes, bytes]]:
     """A public 59-block RAW card and its two synthetic GCI saves.
 
     The first save's two blocks live at 5 and 9, with the second at 6:
     exporting it must follow the BAT chain, not assume contiguous data.
     Both redundant directories and BATs have real checksums. The art comes
     from this generator, with fictitious game/maker codes and save comments.
+    The first save matches the selected six-byte demonstration game ID;
+    the second has no recorded date. Tests may choose another ID or date.
     """
-    gci = (encode(Save("ZRWE", "Demo Save", ("Copper Archive", "SD card image"),
-                       banner=BANNER_RGB5A3, frames=((RGB5A3, 2), (RGB5A3, 3))), 1),
+    if len(game_id) != 6 or not game_id.isascii() or not game_id.isalnum() or not game_id.isupper():
+        raise ValueError("a synthetic save needs a six-byte uppercase game/maker ID")
+    gci = (encode(Save(game_id[:4], "Demo Save", ("Copper Archive", "SD card image"),
+                       banner=BANNER_RGB5A3, frames=((RGB5A3, 2), (RGB5A3, 3)),
+                       maker=game_id[4:]), updated),
            encode(Save("ZRVE", "Other Save", ("Moonlit Lake", "Synthetic save"),
-                       banner=0, frames=(), icon_addr=NO_ART), 2))
+                       banner=0, frames=(), icon_addr=NO_ART), 0))
     chains = ((5, 9), (6,))
     header, directory = bytearray(b"\xff" * BLOCK), bytearray(b"\xff" * BLOCK)
     bat = bytearray(BLOCK)
@@ -275,7 +285,7 @@ def gameshark(gci: bytes) -> bytes:
 
 def gci_name(save: Save) -> str:
     """Dolphin's name for a GCI folder's file: maker, game code, card name."""
-    return f"{MAKER}-{save.game}-{save.name}.gci"
+    return f"{save.maker}-{save.game}-{save.name}.gci"
 
 
 SR = ((CI8_SHARED, 1), (CI8_SHARED, 2), (CI8_SHARED, 3))
