@@ -65,7 +65,7 @@ static file_handle initial[3];
 static u8 *image, *gci;
 static size_t imageSize, gciSize;
 static bool configOk, directoryError, shortRead, seekError, invalidSave, hugeSave;
-static bool statusError, statusMismatch, enumError;
+static bool statusError, statusMismatch, enumError, nestedFolder;
 static unsigned listingMode, fileReads, fileCloses, configCloses, probes[2];
 static unsigned mounts[2], unmounts[2], statusReads, maximumRead;
 static int probeResult[2];
@@ -165,7 +165,10 @@ static s32 readDir(file_handle *f, file_handle **files, u32 kind)
 		if(listingMode == 0u && i == 2u) {
 			strcpy(entry->name, "sd:/swiss/saves/._save.gci");
 		}
-		if(listingMode == 0u && i == 3u) entry->fileType = IS_DIR;
+		if(listingMode == 0u && i == 3u) {
+			entry->fileType = IS_DIR;
+			strcpy(entry->name, nestedFolder ? "sd:/swiss/saves/older" : "sd:/swiss/saves/.system");
+		}
 		if(listingMode == 0u && i == 4u) {
 			strcpy(entry->name, "sd:/swiss/saves/readme.txt");
 		}
@@ -177,7 +180,7 @@ static s32 readDir(file_handle *f, file_handle **files, u32 kind)
 static void reset(void)
 {
 	configOk = true; directoryError = shortRead = seekError = invalidSave = hugeSave = false;
-	statusError = statusMismatch = enumError = false; listingMode = 0u;
+	statusError = statusMismatch = enumError = nestedFolder = false; listingMode = 0u;
 	fileReads = fileCloses = configCloses = maximumRead = statusReads = 0u;
 	memset(probes, 0, sizeof(probes)); memset(mounts, 0, sizeof(mounts));
 	memset(unmounts, 0, sizeof(unmounts));
@@ -251,6 +254,8 @@ int main(int argc, char **argv)
 	reset(); listingMode = 2u; probeResult[0] = CARD_ERROR_NOCARD;
 	Saves_CollectGameStats(id, &stats);
 	assert(stats.saves == 256u && stats.partial && fileReads == 256u);
+	reset(); nestedFolder = true; Saves_CollectGameStats(id, &stats);
+	assert(stats.saves == 3u && stats.blocks == 6u && stats.partial);
 	reset(); for(i = 0u; i < 6u; i++) wrong[i] = '\0';
 	Saves_CollectGameStats(wrong, &stats);
 	assert(stats.saves == 0u && stats.checkedSources == 0u && fileReads == 0u && probes[0] == 0u);

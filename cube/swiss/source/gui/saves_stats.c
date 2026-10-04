@@ -158,7 +158,14 @@ static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats)
 		const char *leaf = getRelativeName(file->name);
 		u8 entry[UI_SAVES_ENTRY_SIZE];
 
-		if(file->fileType != IS_FILE || leaf[0] == '.') continue;
+		if(leaf[0] == '.') continue;
+		/* Folder browsing can expose more saves than this bounded direct
+		 * scan. Mark the summary partial rather than claiming a full total. */
+		if(file->fileType == IS_DIR) {
+			stats->partial = true;
+			continue;
+		}
+		if(file->fileType != IS_FILE) continue;
 		file->device = device;
 		if(SavesRaw_IsImageName(leaf)) {
 			uiSavesRawStatus_t status;
