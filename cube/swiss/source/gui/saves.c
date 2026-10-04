@@ -152,8 +152,9 @@ static bool isSaveName(const char *name)
 /* What one save's art is read into: a wrapper's header and entry, then the
  * part of the save the art spans. */
 #define SAVES_SCRATCH_BYTES (UI_SAVES_HEAD_SIZE + UI_SAVES_ART_MAX_END)
-/* VSyncs in a row with no button or stick held before a save is read. A
- * read holds input up for tens of milliseconds, so a tap never falls in one. */
+/* VSyncs in a row with no button or stick held before a save is read while
+ * scrolling. A read holds input up for tens of milliseconds, so a tap never
+ * falls in one. */
 #define SAVES_QUIET 15
 
 static u32 slotTags[SAVES_SLOTS];		/* each slot's save, 0 for none */
@@ -171,6 +172,10 @@ static u8 *scratch;				/* SAVES_SCRATCH_BYTES, or NULL */
 static file_handle *wanted[SAVES_SLOTS];
 static u32 wantTags[SAVES_SLOTS];
 static int wantCount;
+/* A stack has a new listing (the screen opening, L or R, a folder opened or
+ * left, a place read again): its saves are read one after another at once,
+ * not after SAVES_QUIET, so their icons come in with their cubes. */
+static bool artFresh;
 
 /* Which save this is, for its slot: its place, then its game, maker and
  * name on a card or its path in a folder, then its size. */
@@ -391,8 +396,12 @@ static u32 inputNext(savesInput_t *input)
 	while(1) {
 		u32 held, pressed, elapsed, direction;
 		uiMenuInputDirection_t analog;
+		bool fresh = artFresh;
 
-		VIDEO_WaitVSync();
+		/* A new stack's saves are read back to back. */
+		if(!fresh) {
+			VIDEO_WaitVSync();
+		}
 		held = padsButtonsHeld() & SAVES_BUTTONS;
 		pressed = held & ~input->previous;
 		input->previous = held;
@@ -424,13 +433,17 @@ static u32 inputNext(savesInput_t *input)
 		if(pressed != 0u) {
 			return pressed;
 		}
-		/* Idle: one save's art a VSync, once nothing has been held for
+		/* Idle: a new stack's saves' art at once, whatever is held;
+		 * otherwise one save's a VSync, once nothing has been held for
 		 * SAVES_QUIET of them. */
-		if(input->quiet < SAVES_QUIET) {
+		if(!fresh && input->quiet < SAVES_QUIET) {
 			input->quiet++;
 		}
 		else if(artLoad()) {
 			return 0u;
+		}
+		else {
+			artFresh = false;
 		}
 	}
 }
@@ -465,6 +478,7 @@ static void placeClear(savesPlace_t *place)
 	place->count = 0;
 	place->ready = false;
 	place->listing = ++listings;
+	artFresh = true;
 	/* Another listing comes in from nothing, unless placesReload says how
 	 * it moved. */
 	place->change = UI_SAVE_CUBES_NEW;

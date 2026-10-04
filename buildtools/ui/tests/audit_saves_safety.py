@@ -10,8 +10,10 @@ driver's .gci modes are switched off again after each use.
 
 The art loader reads saves too, while the page is up: its reads switch the
 .gci mode off again, a slot is named only once its texels are flushed, a
-save that failed isn't read again, nothing is read until input has been
-quiet, the list of saves on screen goes with the listing it points into,
+save that failed isn't read again, a stack's saves are read at once when
+it comes (the screen opening, L or R, a folder) and otherwise only once
+input has been quiet, the list of saves on screen goes with the listing it
+points into,
 and the pool outlives the page that draws from it. The cube screen lists
 the saves of both stacks before it names a slot, and publishes only then;
 B goes up a folder the SD card's stack opened, never past where it opened
@@ -124,11 +126,15 @@ def check(source: str) -> None:
     ordered(load, "if(artSlot(wantTags[i]) >= 0) {", "continue;",
             "UISaves_SlotPick(slotTags, SAVES_SLOTS, wantTags, wantCount)",
             "artRead(wanted[i], s, wantTags[i]);")
-    # Nothing is read until input has been quiet.
-    ordered(wait, "input->quiet = 0u;", "return pressed;",
-            "if(input->quiet < SAVES_QUIET) {", "input->quiet++;", "else if(artLoad()) {")
-    # The saves on screen point into the listing placeClear frees.
-    ordered(clear, "wantCount = 0;", "free(place->entries);")
+    # A new listing's saves are read back to back, whatever is held, until
+    # none is left; otherwise nothing is read until input has been quiet.
+    ordered(wait, "bool fresh = artFresh;", "if(!fresh) {", "VIDEO_WaitVSync();",
+            "input->quiet = 0u;", "return pressed;",
+            "if(!fresh && input->quiet < SAVES_QUIET) {", "input->quiet++;",
+            "else if(artLoad()) {", "return 0u;", "artFresh = false;")
+    # The saves on screen point into the listing placeClear frees, and the
+    # listing that comes after it is read at once.
+    ordered(clear, "wantCount = 0;", "free(place->entries);", "artFresh = true;")
     # The pool outlives the page.
     ordered(show, "pool = memalign(32,", "DrawDispose(page);", "free(pool);")
 
@@ -229,7 +235,13 @@ def mutants(source: str) -> list[tuple[str, str]]:
         ("a failed save is read again",
          source.replace("if(artSlot(wantTags[i]) >= 0) {", "if(0) {")),
         ("a save is read while a button is held",
-         source.replace("if(input->quiet < SAVES_QUIET) {", "if(0) {")),
+         source.replace("if(!fresh && input->quiet < SAVES_QUIET) {", "if(0) {")),
+        ("a new stack's saves wait for quiet",
+         source.replace("if(!fresh && input->quiet < SAVES_QUIET) {",
+                        "if(input->quiet < SAVES_QUIET) {")),
+        ("a new listing's saves aren't read at once",
+         source.replace("\tplace->listing = ++listings;\n\tartFresh = true;\n",
+                        "\tplace->listing = ++listings;\n")),
         ("the saves on screen outlive their listing",
          source.replace("\twantCount = 0;\n\tfor(i = 0; i < place->entryCount;",
                         "\tfor(i = 0; i < place->entryCount;")),
