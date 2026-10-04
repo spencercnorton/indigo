@@ -12,7 +12,11 @@ The art loader reads saves too, while the page is up: its reads switch the
 .gci mode off again, a slot is named only once its texels are flushed, a
 save that failed isn't read again, nothing is read until input has been
 quiet, the list of saves on screen goes with the listing it points into,
-and the pool outlives the page that draws from it.
+and the pool outlives the page that draws from it. The cube screen lists
+the saves of both stacks before it names a slot, and publishes only then;
+B goes up a folder the SD card's stack opened, never past where it opened
+or the card's root, and L or R looks again at a slot without a card before
+swapping a stack.
 """
 
 from __future__ import annotations
@@ -113,6 +117,23 @@ def check(source: str) -> None:
     # The pool outlives the page.
     ordered(show, "pool = memalign(32,", "DrawDispose(page);", "free(pool);")
 
+    build = function(source, "screenBuild")
+    # Every cube the screen publishes is a save on screen: both stacks'
+    # saves are listed before a slot is named, and the screen goes out
+    # after that, before the loader runs again.
+    ordered(build, "wantCount = 0;", "artWant(stacks[focus],",
+            "artWant(stacks[s], -1);", "artSlot(saveTag(")
+    ordered(show, "screenBuild(stacks, focus);", "screenShow(&page);",
+            "pressed = inputNext(&input);")
+    below = function(source, "folderBelowHome")
+    ordered(below, "tab == SAVES_TAB_FOLDER", "strcmp(places[tab].dir.name, folderHome) != 0",
+            "!folderIsRoot(&places[tab])")
+    ordered(show, "if(focus < 0 || !folderBelowHome(stacks[focus])) {", "break;",
+            "getParentPath(place->dir.name, place->dir.name);")
+    ordered(show, "if(stacks[s] < SAVES_TAB_FOLDER && !places[stacks[s]].ready) {",
+            "loadTab(stacks[s]);", "found = found || places[stacks[s]].ready;",
+            "UISaveCubes_Swap(stacks[stack], stacks[!stack], found);")
+
 
 def mutants(source: str) -> list[tuple[str, str]]:
     return [
@@ -155,6 +176,17 @@ def mutants(source: str) -> list[tuple[str, str]]:
         ("the pool goes before the page",
          source.replace("slots. */\n\tfree(pool);\n", "slots. */\n").replace(
              "\tDrawDispose(page);\n\t/* Only now", "\tfree(pool);\n\tDrawDispose(page);\n\t/* Only now")),
+        ("the other stack's saves aren't on screen",
+         source.replace("\t\t\tartWant(stacks[s], -1);\n", "")),
+        ("the screen goes out before its saves are listed",
+         source.replace("\t\tscreenBuild(stacks, focus);\n\t\tscreenShow(&page);\n",
+                        "\t\tscreenShow(&page);\n\t\tscreenBuild(stacks, focus);\n")),
+        ("B leaves from a folder the SD card's stack opened",
+         source.replace("if(focus < 0 || !folderBelowHome(stacks[focus])) {", "if(1) {")),
+        ("B goes up past the card's root",
+         source.replace(" &&\n\t\t!folderIsRoot(&places[tab]);", ";")),
+        ("L and R never look again for a card",
+         source.replace("\t\t\t\t\tfound = found || places[stacks[s]].ready;\n", "")),
         ("a half-written card copy is left on the card",
          source.replace("!= NULL) {\n\t\t\tdevice->deleteFile(copy);\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"",
                         "!= NULL) {\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"")),

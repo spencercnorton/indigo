@@ -27,6 +27,7 @@
 #include "input.h"
 #include "ui_cheats.h"
 #include "ui_menu_input.h"
+#include "menuaudio.h"
 #include "ui_saves.h"
 #include "ui_settings_layout.h"
 #include "saves.h"
@@ -48,6 +49,7 @@ typedef struct {
 	file_handle *list[SAVES_LIST_MAX];	/* what the page lists, in order */
 	int count;
 	int selection;
+	int top;				/* the cube window's first row */
 	bool ready;
 	bool mounted;				/* this screen mounted the card */
 	int totalBlocks;
@@ -77,6 +79,10 @@ static savesPlace_t places[SAVES_TABS];
 static savesPlace_t chooser;
 static u32 listings;
 static uiSavesPageSnapshot_t shown ATTRIBUTE_ALIGN(32);
+static uiSaveCubesPageSnapshot_t screen;
+/* The folder the SD card's stack opens at, the Save Folder: A opens the
+ * folders in it and B goes back up, no further. */
+static char folderHome[PATHNAME_MAX];
 
 const char *saves_folder(void)
 {
@@ -158,19 +164,33 @@ static u32 saveTag(int tab, const file_handle *save)
 	return UISaves_Id(tag, &save->size, sizeof(save->size));
 }
 
-/* The saves in rows first .. first + rows - 1 of a place, columns wide,
- * nearest its selection first. */
-static void artWant(int tab, int first, int rows, int columns)
+/* A folder's parent ("..") is no cube: B goes up instead. */
+static int placeSkip(const savesPlace_t *place)
+{
+	return place->count > 0 && place->list[0]->fileType == IS_SPECIAL;
+}
+
+/* The save or folder in a place's cell, or NULL for a free cell. */
+static file_handle *placeAt(const savesPlace_t *place, int cell)
+{
+	int at = cell + placeSkip(place);
+
+	return cell >= 0 && at < place->count ? place->list[at] : NULL;
+}
+
+/* Adds the saves in the rows a place's stack draws (its window and a row
+ * each side) to those on screen, nearest focus (a cell, or -1) first. */
+static void artWant(int tab, int focus)
 {
 	savesPlace_t *place = &places[tab];
-	int order[SAVES_SLOTS];
-	int count = UISaves_LoadOrder(place->selection, first, rows, columns,
-		place->count, order);
+	int order[UI_SAVE_CUBES_DRAWN];
+	int count = UISaves_LoadOrder(focus, place->top - 1,
+		UI_SAVE_CUBES_DRAWN_ROWS, UI_SAVE_CUBES_COLUMNS,
+		place->count - placeSkip(place), order);
 	int i;
 
-	wantCount = 0;
 	for(i = 0; i < count && wantCount < SAVES_SLOTS; i++) {
-		file_handle *save = place->list[order[i]];
+		file_handle *save = placeAt(place, order[i]);
 
 		if(save->fileType == IS_FILE) {
 			wanted[wantCount] = save;
@@ -349,7 +369,7 @@ static u32 inputNext(savesInput_t *input)
 		input->previous = held;
 		elapsed = inputElapsed(&input->lastRetrace);
 		analog = padsMenuInputPoll(&input->menu, elapsed,
-			UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT, held != 0u);
+			UI_MENU_INPUT_AXIS_BOTH | UI_MENU_INPUT_REPEAT, held != 0u);
 		direction = held & SAVES_DIRECTIONS;
 		if(direction != input->repeatHeld) {
 			input->repeatHeld = direction;
@@ -367,6 +387,8 @@ static u32 inputNext(savesInput_t *input)
 		}
 		if(analog == UI_MENU_INPUT_UP) pressed |= BUTTON_UP;
 		if(analog == UI_MENU_INPUT_DOWN) pressed |= BUTTON_DOWN;
+		if(analog == UI_MENU_INPUT_LEFT) pressed |= BUTTON_LEFT;
+		if(analog == UI_MENU_INPUT_RIGHT) pressed |= BUTTON_RIGHT;
 		if(held != 0u || input->menu.owner != UI_MENU_INPUT_NO_OWNER) {
 			input->quiet = 0u;
 		}
@@ -519,19 +541,19 @@ static void loadCard(savesPlace_t *place, int slot)
 		switch(device->initial->status) {
 			case CARD_ERROR_NOCARD:
 				snprintf(place->note[0], sizeof(place->note[0]),
-					"No memory card in %s", slotName(slot));
+					"Nothing is inserted in %s.", slotName(slot));
 				snprintf(place->note[1], sizeof(place->note[1]),
-					"Put one in, then press L or R to look again.");
+					"Put one in, then press L or R.");
 				break;
 			case CARD_ERROR_WRONGDEVICE:
 				snprintf(place->note[0], sizeof(place->note[0]),
 					"%s holds something else", slotName(slot));
 				snprintf(place->note[1], sizeof(place->note[1]),
-					"It isn't a memory card.");
+					"It isn't a Memory Card.");
 				break;
 			default:
 				snprintf(place->note[0], sizeof(place->note[0]),
-					"The memory card in %s can't be read", slotName(slot));
+					"The Memory Card in %s can't be read", slotName(slot));
 				snprintf(place->note[1], sizeof(place->note[1]),
 					"It may need checking on the console's own screen.");
 				break;
@@ -543,7 +565,7 @@ static void loadCard(savesPlace_t *place, int slot)
 	if(place->entryCount < 1) {
 		place->entryCount = 0;
 		snprintf(place->note[0], sizeof(place->note[0]),
-			"The memory card in %s can't be read", slotName(slot));
+			"The Memory Card in %s can't be read", slotName(slot));
 		return;
 	}
 	/* entries[0] is the driver's "..". The card's own order, as the IPL. */
@@ -558,10 +580,6 @@ static void loadCard(savesPlace_t *place, int slot)
 	place->freeBlocks = place->totalBlocks > used ?
 		place->totalBlocks - used : 0;
 	place->ready = true;
-	if(place->count == 0) {
-		snprintf(place->note[0], sizeof(place->note[0]),
-			"No saves on this memory card");
-	}
 	if(place->selection >= place->count) {
 		place->selection = place->count > 0 ? place->count - 1 : 0;
 	}
@@ -825,9 +843,6 @@ static void pageBuild(savesPlace_t *place, int tab, int tabCount,
 	int i;
 
 	placeWindow(place, first);
-	if(tabCount > 0) {
-		artWant(tab, first, UI_SAVES_PAGE_ROWS, 1);
-	}
 	memset(s, 0, sizeof(*s));
 	snprintf(s->title, sizeof(s->title), tabCount ? "Memory Cards" :
 		"Choose a Folder");
@@ -899,6 +914,195 @@ static void pageShow(uiDrawObj_t **page)
 	}
 	else {
 		DrawUpdateSavesPage(*page, &shown);
+	}
+}
+
+/* ------------------------------------------------------------------------
+ * The cube screen: two stacks side by side, each showing a place (Slot A,
+ * Slot B or the SD card's open folder), and the focused save below.
+ * --------------------------------------------------------------------- */
+
+/* A place's cells: its saves and folders and a free one, in rows; 0 when
+ * there is nothing to show (no card, or it can't be read). */
+static int placeCells(const savesPlace_t *place)
+{
+	return place->ready ? UISaveCubes_Cells(place->count - placeSkip(place)) : 0;
+}
+
+static int placeCell(const savesPlace_t *place)
+{
+	int cell = place->selection - placeSkip(place);
+
+	return cell > 0 ? cell : 0;
+}
+
+/* The stack the cursor belongs in: its own while it has cubes, else the
+ * other, else none (-1). */
+static int stackFocus(const int stacks[UI_SAVE_CUBES_STACKS], int focus)
+{
+	int cells[UI_SAVE_CUBES_STACKS];
+	int s;
+
+	for(s = 0; s < UI_SAVE_CUBES_STACKS; s++) {
+		cells[s] = placeCells(&places[stacks[s]]);
+	}
+	return UISaveCubes_Home(cells, focus);
+}
+
+/* The SD card's stack is in a folder it opened: B goes up, never past the
+ * card's root. */
+static bool folderBelowHome(int tab)
+{
+	return tab == SAVES_TAB_FOLDER && strcmp(places[tab].dir.name, folderHome) != 0 &&
+		!folderIsRoot(&places[tab]);
+}
+
+/* A comment line as it shows: without the spaces that pad it. */
+static void saveLine(char *out, size_t size, const char *line)
+{
+	size_t length;
+
+	snprintf(out, size, "%s", line);
+	for(length = strlen(out); length > 0 && out[length - 1] == ' '; length--) {
+		out[length - 1] = '\0';
+	}
+}
+
+/* What a save is called: the first line of its comment, once its art is
+ * read, else its name. */
+static void saveHeading(char *out, size_t size, int tab, file_handle *save)
+{
+	int s = artSlot(saveTag(tab, save));
+
+	if(s >= 0) {
+		saveLine(out, size, slots[s].line[0]);
+	}
+	if(s < 0 || out[0] == '\0') {
+		saveTitle(out, size, save);
+	}
+}
+
+/* The info bar: the focused save's banner, comment and blocks, or a
+ * folder's name. */
+static void screenInfo(uiSaveCubesPageSnapshot_t *g, int tab, file_handle *chosen)
+{
+	char text[PATHNAME_MAX];
+	int s;
+
+	g->info = 1;
+	if(chosen->fileType == IS_DIR) {
+		g->folder = 1;
+		snprintf(text, sizeof(text), "%s", getRelativeName(chosen->name));
+		snprintf(g->blocks, sizeof(g->blocks), "Folder");
+	}
+	else {
+		saveHeading(text, sizeof(text), tab, chosen);
+		snprintf(g->blocks, sizeof(g->blocks), "%u", saveBlocks(chosen));
+		s = artSlot(saveTag(tab, chosen));
+		if(s >= 0) {
+			char second[33];
+
+			saveLine(second, sizeof(second), slots[s].line[1]);
+			UICheats_Fit(g->line[1], sizeof(g->line[1]), second, 360, 0.5f,
+				GetTextSizeInPixels);
+			if(pool != NULL && !slots[s].failed &&
+				slots[s].art.bannerFormat != UI_SAVES_ART_NONE) {
+				g->banner = pool + s * SAVES_SLOT_BYTES +
+					UI_SAVES_ICON_FRAMES * UI_SAVES_ICON_BYTES;
+			}
+		}
+	}
+	UICheats_Fit(g->line[0], sizeof(g->line[0]), text, 410, 0.62f,
+		GetTextSizeInPixels);
+}
+
+/* The screen as it stands. The saves on screen are listed first, so no cube
+ * published names a slot the loader may read into. */
+static void screenBuild(const int stacks[UI_SAVE_CUBES_STACKS], int focus)
+{
+	uiSaveCubesPageSnapshot_t *g = &screen;
+	file_handle *chosen;
+	int s, k;
+
+	memset(g, 0, sizeof(*g));
+	for(s = 0; s < UI_SAVE_CUBES_STACKS; s++) {
+		savesPlace_t *place = &places[stacks[s]];
+		int cells = placeCells(place);
+
+		place->top = cells > 0 ? UISaveCubes_Window(place->top, placeCell(place),
+			cells) : 0;
+	}
+	wantCount = 0;
+	if(focus >= 0) {
+		artWant(stacks[focus], placeCell(&places[stacks[focus]]));
+	}
+	for(s = 0; s < UI_SAVE_CUBES_STACKS; s++) {
+		if(s != focus) {
+			artWant(stacks[s], -1);
+		}
+	}
+	g->grid.focusStack = (s8)focus;
+	g->grid.focusCell = (s16)(focus >= 0 ? placeCell(&places[stacks[focus]]) : 0);
+	for(s = 0; s < UI_SAVE_CUBES_STACKS; s++) {
+		savesPlace_t *place = &places[stacks[s]];
+		uiSaveCubesStack_t *stack = &g->grid.stack[s];
+		uiSaveCubesStackText_t *text = &g->stack[s];
+
+		stack->cells = (s16)placeCells(place);
+		stack->first = (s16)place->top;
+		stack->listing = place->listing;
+		if(stack->cells == 0) {
+			for(k = 0; k < 2; k++) {
+				snprintf(text->note[k], sizeof(text->note[k]), "%s", place->note[k]);
+				text->noteScale[k] = GetTextScaleToFitInWidthWithMax(text->note[k],
+					264, k ? 0.48f : 0.6f);
+			}
+			continue;
+		}
+		if(stacks[s] < SAVES_TAB_FOLDER) {
+			snprintf(text->name, sizeof(text->name), "%c", 'A' + stacks[s]);
+			snprintf(text->free, sizeof(text->free), "%d", place->freeBlocks);
+		}
+		else {
+			snprintf(text->name, sizeof(text->name), "SD");
+			UICheats_Fit(text->path, sizeof(text->path),
+				getDevicePath(place->dir.name), 150, 0.42f, GetTextSizeInPixels);
+		}
+		for(k = 0; k < UI_SAVE_CUBES_DRAWN; k++) {
+			file_handle *entry = placeAt(place, (place->top - 1) *
+				UI_SAVE_CUBES_COLUMNS + k);
+			uiSaveCubesCell_t *cell = &stack->cell[k];
+			int slot;
+
+			cell->kind = entry == NULL ? UI_SAVE_CUBES_KIND_EMPTY :
+				entry->fileType == IS_DIR ? UI_SAVE_CUBES_KIND_FOLDER :
+				UI_SAVE_CUBES_KIND_SAVE;
+			if(cell->kind == UI_SAVE_CUBES_KIND_SAVE && pool != NULL &&
+				(slot = artSlot(saveTag(stacks[s], entry))) >= 0 && !slots[slot].failed) {
+				cell->texels = pool + slot * SAVES_SLOT_BYTES;
+				cell->art = &slots[slot].art;
+			}
+		}
+	}
+	chosen = focus >= 0 ? placeAt(&places[stacks[focus]], g->grid.focusCell) : NULL;
+	if(chosen != NULL) {
+		screenInfo(g, stacks[focus], chosen);
+	}
+	snprintf(g->hint[0], sizeof(g->hint[0]),
+		"STICK / D-PAD  Select   B  %s   A  Confirm",
+		focus >= 0 && folderBelowHome(stacks[focus]) ? "Up" : "Finish");
+	snprintf(g->hint[1], sizeof(g->hint[1]), "L/R  Card");
+}
+
+static void screenShow(uiDrawObj_t **page)
+{
+	if(*page == NULL) {
+		if((*page = DrawSaveCubesPage(&screen)) != NULL) {
+			DrawPublish(*page);
+		}
+	}
+	else {
+		DrawUpdateSaveCubesPage(*page, &screen);
 	}
 }
 
@@ -1334,7 +1538,7 @@ static bool saveOptions(int tab)
 	char saveFolder[PATHNAME_MAX + 16];
 	int count, action, choice, i;
 
-	saveTitle(title, sizeof(title), save);
+	saveHeading(title, sizeof(title), tab, save);
 	action = savesPick(title, actions, 3, 0);
 	if(action < 0) {
 		return false;
@@ -1389,7 +1593,10 @@ void show_saves(void)
 	uiDrawObj_t *page = NULL;
 	savesInput_t input;
 	bool folderMounted = config_set_device();
-	int tab, i;
+	/* What each stack shows: Slot A on the left and Slot B on the right, as
+	 * the IPL; L and R swap either for the other place. */
+	int stacks[UI_SAVE_CUBES_STACKS] = {0, 1};
+	int focus, tab, s, i;
 
 	memset(places, 0, sizeof(places));
 	memset(slotTags, 0, sizeof(slotTags));
@@ -1417,30 +1624,59 @@ void show_saves(void)
 		folderSet(&places[SAVES_TAB_FOLDER], "/");
 		loadTab(SAVES_TAB_FOLDER);
 	}
+	snprintf(folderHome, sizeof(folderHome), "%s", places[SAVES_TAB_FOLDER].dir.name);
 	/* Slot A first, as the IPL opens. */
-	tab = 0;
+	focus = stackFocus(stacks, 0);
 	inputInit(&input);
 	while(1) {
-		savesPlace_t *place = &places[tab];
-		file_handle *focus = place->count > 0 ? place->list[place->selection] :
-			NULL;
 		u32 pressed;
 
-		pageBuild(place, tab, SAVES_TABS, NULL);
-		pageShow(&page);
+		screenBuild(stacks, focus);
+		screenShow(&page);
 		pressed = inputNext(&input);
 		if(pressed & BUTTON_B) {
-			break;
-		}
-		if(pressed & (BUTTON_L | BUTTON_R)) {
-			tab = (tab + ((pressed & BUTTON_R) ? 1 : SAVES_TABS - 1)) % SAVES_TABS;
-			if(tab < SAVES_TAB_FOLDER || folderMounted) {
-				loadTab(tab);
+			savesPlace_t *place = &places[SAVES_TAB_FOLDER];
+
+			/* In a folder the SD card's stack opened, B goes up one. */
+			if(focus < 0 || !folderBelowHome(stacks[focus])) {
+				break;
 			}
+			getParentPath(place->dir.name, place->dir.name);
+			place->selection = 0;
+			loadFolder(place, false);
+			focus = stackFocus(stacks, focus);
 		}
-		else if((pressed & BUTTON_A) && focus != NULL) {
-			if(focus->fileType == IS_FILE) {
-				if(saveOptions(tab)) {
+		else if(pressed & (BUTTON_L | BUTTON_R)) {
+			int stack = (pressed & BUTTON_L) ? 0 : 1;
+			bool found = false;
+
+			/* A slot with no card is looked at again first: a card put in
+			 * since shows on the same press, and nothing swaps. */
+			for(s = 0; s < UI_SAVE_CUBES_STACKS; s++) {
+				if(stacks[s] < SAVES_TAB_FOLDER && !places[stacks[s]].ready) {
+					loadTab(stacks[s]);
+					found = found || places[stacks[s]].ready;
+				}
+			}
+			tab = UISaveCubes_Swap(stacks[stack], stacks[!stack], found);
+			if(tab != stacks[stack]) {
+				stacks[stack] = tab;
+				if(tab < SAVES_TAB_FOLDER || folderMounted) {
+					loadTab(tab);
+				}
+			}
+			focus = stackFocus(stacks, focus);
+		}
+		else if((pressed & BUTTON_A) && focus >= 0) {
+			savesPlace_t *place = &places[stacks[focus]];
+			file_handle *chosen = placeAt(place, placeCell(place));
+
+			if(chosen == NULL) {
+				continue;
+			}
+			menuaudio_select();
+			if(chosen->fileType == IS_FILE) {
+				if(saveOptions(stacks[focus])) {
 					/* A save may have gone or come anywhere. */
 					for(i = 0; i < SAVES_TABS; i++) {
 						if(i < SAVES_TAB_FOLDER || folderMounted) {
@@ -1450,25 +1686,34 @@ void show_saves(void)
 				}
 			}
 			else {
-				if(focus->fileType == IS_SPECIAL) {
-					getParentPath(place->dir.name, place->dir.name);
-				}
-				else {
-					snprintf(place->dir.name, sizeof(place->dir.name), "%s",
-						focus->name);
-				}
+				snprintf(place->dir.name, sizeof(place->dir.name), "%s",
+					chosen->name);
 				place->selection = 0;
 				loadFolder(place, false);
 			}
+			focus = stackFocus(stacks, focus);
 			inputInit(&input);
 		}
-		else if(pressed & (BUTTON_UP | BUTTON_LEFT)) {
-			place->selection = UICheats_Move(place->selection, place->count, -1,
-				(pressed & BUTTON_LEFT) != 0u);
-		}
-		else if(pressed & (BUTTON_DOWN | BUTTON_RIGHT)) {
-			place->selection = UICheats_Move(place->selection, place->count, 1,
-				(pressed & BUTTON_RIGHT) != 0u);
+		else if((pressed & SAVES_DIRECTIONS) && focus >= 0) {
+			uiSaveCubesCursor_t cursor;
+
+			for(s = 0; s < UI_SAVE_CUBES_STACKS; s++) {
+				cursor.cells[s] = placeCells(&places[stacks[s]]);
+				cursor.first[s] = places[stacks[s]].top;
+			}
+			cursor.stack = focus;
+			cursor.cell = placeCell(&places[stacks[focus]]);
+			if(UISaveCubes_Step(&cursor, (pressed & BUTTON_UP) ? UI_SAVE_CUBES_UP :
+				(pressed & BUTTON_DOWN) ? UI_SAVE_CUBES_DOWN :
+				(pressed & BUTTON_LEFT) ? UI_SAVE_CUBES_LEFT : UI_SAVE_CUBES_RIGHT)) {
+				for(s = 0; s < UI_SAVE_CUBES_STACKS; s++) {
+					places[stacks[s]].top = cursor.first[s];
+				}
+				focus = cursor.stack;
+				places[stacks[focus]].selection = cursor.cell +
+					placeSkip(&places[stacks[focus]]);
+				menuaudio_blip();
+			}
 		}
 	}
 	for(i = 0; i < SAVES_TABS; i++) {
