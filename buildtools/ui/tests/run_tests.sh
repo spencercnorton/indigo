@@ -98,6 +98,8 @@ run_binaries() {
 	if [ -z "$suffix" ]; then python3 ./test_card_art.py; else python3 ./test_card_art.py --sanitize; fi
 	echo "== manual MP3 player$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_mp3_player.py; else python3 ./test_mp3_player.py --sanitize; fi
+	echo "== game folder visibility$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_gameflow_folder_visibility.py; else python3 ./test_gameflow_folder_visibility.py --sanitize; fi
 	echo "== test_saves_card_io$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_saves_card_io.py; else python3 ./test_saves_card_io.py --sanitize; fi
 	echo "== test_saves_raw_controller$suffix =="

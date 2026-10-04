@@ -80,6 +80,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   the track, and Forward near the end of a large track no longer wraps to
   the start. Its progress marker stays inside the bar, including an empty
   file or a device reading beyond the end of the track.
+- Game folders skip Mac `._` metadata files, so copying a game from a Mac
+  no longer makes its folder report an invalid disc image. Hidden files in
+  a game's folder follow Show hidden files, as they do in the file list.
 - Save details gives the save name a larger headline, separates blocks and
   KiB into clear summaries, aligns source and date fields, and shows distinct
   controller hints for Actions and Back.

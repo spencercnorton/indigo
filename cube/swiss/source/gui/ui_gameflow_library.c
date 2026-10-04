@@ -59,6 +59,12 @@ static bool suffixEquals(const char *name, const char *suffix)
 
 bool UIGameflowLibrary_IsGameImageName(const char *name)
 {
+	const char *leafName = name != NULL ? strrchr(name, '/') : NULL;
+
+	leafName = leafName != NULL ? leafName + 1 : name;
+	if(leafName == NULL || strncmp(leafName, "._", 2u) == 0) {
+		return false;
+	}
 	return suffixEquals(name, ".fdi") || suffixEquals(name, ".gcm") ||
 		suffixEquals(name, ".iso") || suffixEquals(name, ".tgc");
 }
