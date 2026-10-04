@@ -139,8 +139,9 @@ Mario Sunshine and a **Zelda** folder.
 
 - **A** on a folder opens it. The heading names the folder you are in, such
   as `NINTENDO / ZELDA`.
-- **B**, or A on the first card, goes back up a folder; from `/games`, B goes
-  back to Home.
+- **B**, **X**, or A on the parent card goes back up one folder. From
+  `/games`, each returns directly to Home; opening Library again keeps
+  your selection.
 - Folders go two levels deep. A folder in a folder is the last level: it
   shows every game below it, in folders of its own or not, so Zelda above
   shows both The Wind Waker and Ocarina of Time.
@@ -148,7 +149,10 @@ Mario Sunshine and a **Zelda** folder.
   games: it shows as that game, as it does in `/games`.
 - Keep a game's discs in the same folder. Indigo looks for the other disc
   next to the one you start.
-- A folder with no games in it shows only the way back.
+- A folder with no games in it shows only the way back. This includes an
+  empty `/games` while Library Folders is on.
+- Folder names can contain periods, such as `Nintendo.GC` or `Racing.v1`.
+  Names beginning with a period follow **Show hidden files**.
 
 While Library Folders is on, it sets **Flatten directory** itself, and the
 row can't be changed. Turn Library Folders off and your own value comes
@@ -158,6 +162,7 @@ back.
 
 Put a PNG beside the folder, with the folder's name: `Nintendo.png` in
 `/games` for the Nintendo folder, `Zelda.png` in `/games/Nintendo` for Zelda.
+Keep periods in the full name too: `Nintendo.GC.png` for `Nintendo.GC`.
 It becomes the folder's poster, made on the console the first time the
 folder is shown, as an app's picture is (see
 [Give an app a picture](apps.md#give-an-app-a-picture)):
