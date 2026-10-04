@@ -30,6 +30,7 @@
 #include "menuaudio.h"
 #include "ui_saves.h"
 #include "ui_saves_metadata.h"
+#include "ui_saves_details.h"
 #include "ui_presentation.h"
 #include "ui_settings_layout.h"
 #include "saves.h"
@@ -1932,10 +1933,11 @@ static bool saveUpdated(file_handle *save,
 static bool saveDetails(int tab, file_handle *save,
 	const u8 entry[UI_SAVES_ENTRY_SIZE], bool known, unsigned blocks)
 {
-	uiPresentationSnapshot_t details;
+	uiSaveDetailsSnapshot_t details;
 	savesInput_t input;
 	uiDrawObj_t *box;
-	char heading[64], size[96], updated[64], date[24];
+	char heading[64], date[24];
+	const char *updated;
 	const char *source = places[tab].rawOpen ? "Read-only card image" :
 		(isCard(save->device) ? slotName(tab) : "SD save");
 	u32 seconds;
@@ -1949,23 +1951,17 @@ static bool saveDetails(int tab, file_handle *save,
 		if((u8)heading[i] < 0x20u || (u8)heading[i] == 0x7Fu) heading[i] = ' ';
 	}
 	if(heading[0] == '\0') snprintf(heading, sizeof(heading), "Unnamed save");
-	snprintf(size, sizeof(size), "%u block%s (%u KiB)%s - %s", blocks,
-		blocks == 1u ? "" : "s",
-		blocks * (UI_SAVES_BLOCK_SIZE / 1024u), known ? "" : " estimated", source);
-	snprintf(updated, sizeof(updated), "Last updated: %s", !readable ?
-		"Unable to read metadata" : UISaves_FormatUpdated(seconds, date,
-			sizeof(date)) ? date : "Unknown");
-	if(!UIPresentation_Build(&details, UI_PRESENTATION_INFORMATION,
-		"Save details", heading, size, "A Actions    B Back")) return false;
-	box = DrawPresentation(&details);
+	updated = !readable ? "Unable to read metadata" :
+		(UISaves_FormatUpdated(seconds, date, sizeof(date)) ? date : "Unknown");
+	if(!UISaveDetails_Build(&details, heading, blocks, !known, source, updated)) {
+		savesTell(D_FAIL, "Save details couldn't be opened.\nPress A to continue.");
+		return false;
+	}
+	box = DrawSaveDetails(&details);
 	if(box == NULL) {
 		savesTell(D_FAIL, "Save details couldn't be opened.\nPress A to continue.");
 		return false;
 	}
-	DrawAddChild(box, DrawStyledLabel(104, 288, "Created: Not recorded", 0.46f,
-		ALIGN_LEFT, (GXColor) {184, 174, 225, 255}));
-	DrawAddChild(box, DrawStyledLabel(104, 310, updated, 0.46f,
-		ALIGN_LEFT, (GXColor) {184, 174, 225, 255}));
 	box = DrawPublish(box);
 	inputInit(&input);
 	while(1) {

@@ -31,7 +31,7 @@ PRELUDE = r'''
 #include "ui_saves_raw.h"
 #include "ui_save_cubes.h"
 #include "ui_saves_metadata.h"
-#include "ui_presentation.h"
+#include "ui_saves_details.h"
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -117,10 +117,9 @@ static int savesMenu(const char *title,const char *const *items,int count,int in
     unsigned dim,const char *const *reasons,unsigned ghosts);
 typedef int savesInput_t;
 static u32 inputs[32];
-static unsigned inputCount,inputAt,menusShown,detailsShown,labelsShown;
+static unsigned inputCount,inputAt,menusShown,detailsShown;
 static unsigned seenDim;
-static uiPresentationSnapshot_t detailSnapshot;
-static char detailUpdated[64];
+static uiSaveDetailsSnapshot_t detailSnapshot;
 static void inputInit(savesInput_t *input) {*input=0;}
 static u32 inputNext(savesInput_t *input) {
     (void)input;
@@ -140,19 +139,11 @@ static void UICheats_Fit(char *out,size_t size,const char *text,int width,float 
 static void screenRedraw(void) {
     if(over.menuOpen) {menusShown++;seenDim=over.menu.dim;assert(over.menuSerial);}
 }
-typedef struct {u8 r,g,b,a;} GXColor;
 typedef struct {int unused;} uiDrawObj_t;
-static uiDrawObj_t *DrawPresentation(const uiPresentationSnapshot_t *snapshot) {
-    assert(UIPresentation_Valid(snapshot));detailSnapshot=*snapshot;detailsShown++;
+static uiDrawObj_t *DrawSaveDetails(const uiSaveDetailsSnapshot_t *snapshot) {
+    assert(UISaveDetails_Valid(snapshot));detailSnapshot=*snapshot;detailsShown++;
     return calloc(1,sizeof(uiDrawObj_t));
 }
-static uiDrawObj_t *DrawStyledLabel(int x,int y,const char *text,float scale,int align,GXColor color) {
-    (void)scale;(void)align;(void)color;assert(x==104 && (y==288 || y==310));
-    if(y==288)assert(!strcmp(text,"Created: Not recorded"));
-    else snprintf(detailUpdated,sizeof(detailUpdated),"%s",text);
-    labelsShown++;return calloc(1,sizeof(uiDrawObj_t));
-}
-static void DrawAddChild(uiDrawObj_t *parent,uiDrawObj_t *child) {assert(parent && child);free(child);}
 static uiDrawObj_t *DrawPublish(uiDrawObj_t *box) {assert(box);return box;}
 static void DrawDispose(uiDrawObj_t *box) {assert(box);free(box);}
 typedef struct {char gamecode[4],company[2],filename[32];u32 time,len;} card_stat;
@@ -291,8 +282,8 @@ static void setup(void) {
     pool=calloc(1,48*SAVES_SLOT_BYTES);assert(pool);memset(slots,0,sizeof(slots));
     screenFocus=0;screenStacks[0]=2;screenStacks[1]=3;failReadAt=-1;chosen[0]=0;
     memset(&over,0,sizeof(over));over.storageStack=-1;
-    inputCount=inputAt=menusShown=detailsShown=labelsShown=seenDim=0;storageChoice=-1;
-    memset(&detailSnapshot,0,sizeof(detailSnapshot));detailUpdated[0]=0;
+    inputCount=inputAt=menusShown=detailsShown=seenDim=0;storageChoice=-1;
+    memset(&detailSnapshot,0,sizeof(detailSnapshot));
     memset(&status,0,sizeof(status));statusResult=CARD_ERROR_READY;statusReads=0;expectedStatusChannel=0;
     fixture(imageA,"GALP","01",'A','B');fixture(imageB,"GZLP","02",'C','D');
     memcpy(frozenA,imageA,IMAGE_BYTES);memcpy(frozenB,imageB,IMAGE_BYTES);
@@ -420,12 +411,11 @@ static void detailsInput(void) {
     /* Exercise the full production A branch, not a test's save-dispatch
      * approximation. Neither RAW column can accept a write. */
     script(back,1);assert(selectPress(0,BUTTON_A)==0);
-    assert(detailsShown==1 && labelsShown==2 && menusShown==0);
-    assert(!strcmp(detailSnapshot.title,"Save details"));
-    assert(!strcmp(detailSnapshot.message,"raw-save"));
-    assert(strstr(detailSnapshot.detail,"2 blocks (16 KiB)") && strstr(detailSnapshot.detail,"Read-only"));
-    assert(!strcmp(detailUpdated,"Last updated: Unknown"));
-    assert(!strcmp(detailSnapshot.action,"A Actions    B Back"));
+    assert(detailsShown==1 && menusShown==0);
+    assert(!strcmp(detailSnapshot.name,"raw-save"));
+    assert(detailSnapshot.blocks==2 && !detailSnapshot.estimated);
+    assert(!strcmp(detailSnapshot.source,"Read-only card image"));
+    assert(!strcmp(detailSnapshot.updated,"Unknown"));
     assert(starts==0 && writes==0 && deletes==0);
     script(back,1);selectPress(0,BUTTON_A);assert(detailsShown==2);
     selectPress(0,BUTTON_B);assert(detailsShown==2);
@@ -459,8 +449,8 @@ static void detailsMetadata(void) {
     entry[0x28]=(u8)(seconds>>24);entry[0x29]=(u8)(seconds>>16);
     entry[0x2a]=(u8)(seconds>>8);entry[0x2b]=(u8)seconds;
     entry[11]='\n';script(back,1);selectPress(0,BUTTON_A);
-    assert(!strcmp(detailUpdated,"Last updated: 2000-01-02 00:02"));
-    assert(!strcmp(detailSnapshot.message,"raw save"));
+    assert(!strcmp(detailSnapshot.updated,"2000-01-02 00:02"));
+    assert(!strcmp(detailSnapshot.name,"raw save"));
     assert(reads==before && writes==0 && deletes==0);unchanged();clean();
 
     /* An unreadable SD header still opens a visible details panel and
@@ -468,7 +458,7 @@ static void detailsMetadata(void) {
     setup();file_handle save={.size=2*8192+64,.fileType=IS_FILE,.device=&sd};
     strcpy(save.name,"sda:/right/unreadable.gci");
     places[2].list[0]=&save;places[2].count=1;script(back,1);selectPress(0,BUTTON_A);
-    assert(strstr(detailSnapshot.detail,"estimated") && !strcmp(detailUpdated,"Last updated: Unable to read metadata"));
+    assert(detailSnapshot.estimated && !strcmp(detailSnapshot.updated,"Unable to read metadata"));
     assert(detailsShown==1 && writes==0 && deletes==0);unchanged();clean();
 
     /* A physical card's real status date is used only on a successful
@@ -494,9 +484,9 @@ static void detailsMetadata(void) {
         places[slot].ready=true;places[slot].list[0]=&card;places[slot].count=1;screenStacks[0]=slot;
         script(back,1);selectPress(0,BUTTON_A);
         assert(statusReads==((mode==8 || mode==9 || mode==10) ? 0 : 1));
-        assert(!strcmp(detailUpdated,(mode==0 || mode==11) ?
-            "Last updated: 2000-01-02 00:02" : (mode==5 || mode==6) ?
-            "Last updated: Unknown" : "Last updated: Unable to read metadata"));
+        assert(!strcmp(detailSnapshot.updated,(mode==0 || mode==11) ?
+            "2000-01-02 00:02" : (mode==5 || mode==6) ?
+            "Unknown" : "Unable to read metadata"));
         assert(detailsShown==1 && reads==0 && writes==0 && deletes==0);unchanged();clean();
     }
 }
@@ -567,7 +557,7 @@ def main():
             if sys.platform.startswith('linux'):
                 flags += ['-fno-pie', '-no-pie']
         gui = root / 'cube/swiss/source/gui'
-        subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + flags + ['-I', str(gui), str(source), str(gui / 'ui_saves.c'), str(gui / 'ui_saves_raw.c'), str(gui / 'ui_saves_metadata.c'), str(gui / 'ui_presentation.c'), '-o', str(binary)], check=True)
+        subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + flags + ['-I', str(gui), str(source), str(gui / 'ui_saves.c'), str(gui / 'ui_saves_raw.c'), str(gui / 'ui_saves_metadata.c'), str(gui / 'ui_saves_details.c'), '-o', str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
 
 

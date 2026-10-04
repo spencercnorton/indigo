@@ -94,7 +94,9 @@ is reported as finished.
 ## Save details
 
 Highlight a save and press **A** to open its details. This works even when
-both columns show read-only card images and no action can be used.
+both columns show read-only card images and no action can be used. The save
+name is the headline; separate **Blocks** and **KiB** summaries sit above
+aligned source and date rows. Unreadable headers mark the size as estimated.
 
 - **Size** shows blocks and KiB. One block is 8 KiB of save data; the GCI
   wrapper and a RAW image's system blocks aren't part of that size.

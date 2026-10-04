@@ -188,11 +188,12 @@ enum VideoEventType
 	EV_SETTINGSLIST,
 	EV_SETTINGSHELP,
 	EV_SAVES,
-	EV_SAVE_CUBES
+	EV_SAVE_CUBES,
+	EV_SAVE_DETAILS
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Background", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "Saves", "SaveCubes"};
+						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "Saves", "SaveCubes", "SaveDetails"};
 
 typedef struct drawTexObjEvent {
 	GXTexObj *texObj;
@@ -385,6 +386,18 @@ typedef struct drawPresentationEvent {
 	float detailScale;
 	float actionScale;
 } drawPresentationEvent_t;
+
+/* Every fit is computed before this immutable event is published. */
+typedef struct {
+	uiSaveDetailsSnapshot_t snapshot;
+	char blocks[12];
+	char kib[12];
+	float nameScale;
+	float blocksScale;
+	float kibScale;
+	float sourceScale;
+	float updatedScale;
+} drawSaveDetailsEvent_t;
 
 _Static_assert(sizeof(uiGameflowCardSnapshot_t) % 32u == 0u,
 	"Gameflow record stride must preserve banner alignment");
@@ -1367,6 +1380,108 @@ bool DrawUpdatePresentation(uiDrawObj_t *evt,
 	}
 	LWP_MutexUnlock(_videomutex);
 	return updated;
+}
+
+/* Save details has its own hierarchy; other retained dialogs stay compact. */
+static void _DrawSaveDetails(uiDrawObj_t *evt)
+{
+	const drawSaveDetailsEvent_t *data = evt->data;
+	const GXColor transparent = {0, 0, 0, 0};
+	const GXColor primary = {244, 239, 255, 255};
+	const GXColor secondary = {204, 193, 239, 255};
+	const GXColor accent = {176, 153, 248, 255};
+	int scrimLeft;
+
+	if(data == NULL) {
+		return;
+	}
+	drawInit();
+	scrimLeft = (int)floorf(UIStage_Left());
+	_DrawSimpleBox(scrimLeft, 0, (int)ceilf(UIStage_Right()) - scrimLeft, 480,
+		0, (GXColor) {4, 3, 15, 184}, transparent);
+	_DrawSimpleBox(68, 95, 504, 312, 0,
+		(GXColor) {2, 1, 10, 194}, transparent);
+	_DrawSimpleBox(72, 91, 496, 312, 0,
+		(GXColor) {10, 8, 31, 250}, (GXColor) {135, 122, 199, 220});
+	_DrawSimpleBox(72, 91, 5, 312, 0, accent, transparent);
+	_DrawSimpleBox(104, 174, 204, 61, 0,
+		(GXColor) {33, 25, 67, 255}, (GXColor) {103, 87, 166, 180});
+	_DrawSimpleBox(332, 174, 204, 61, 0,
+		(GXColor) {33, 25, 67, 255}, (GXColor) {103, 87, 166, 180});
+	_DrawSimpleBox(104, 345, 432, 1, 0,
+		(GXColor) {135, 122, 199, 160}, transparent);
+
+	drawStringMedium(104, 119, "SAVE DETAILS", 0.48f, ALIGN_LEFT, accent);
+	if(data->snapshot.estimated) {
+		drawStringMedium(536, 119, "Estimated size", 0.48f, ALIGN_RIGHT, secondary);
+	}
+	drawStringMedium(104, 150, data->snapshot.name, data->nameScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(128, 197, data->blocks, data->blocksScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(128, 221, "Blocks", 0.48f, ALIGN_LEFT, secondary);
+	drawStringMedium(356, 197, data->kib, data->kibScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(356, 221, "KiB", 0.48f, ALIGN_LEFT, secondary);
+	drawStringMedium(104, 257, "Source", 0.54f, ALIGN_LEFT, secondary);
+	drawStringMedium(250, 257, data->snapshot.source, data->sourceScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(104, 287, "Created", 0.54f, ALIGN_LEFT, secondary);
+	drawStringMedium(250, 287, "Not recorded", 0.60f, ALIGN_LEFT, primary);
+	drawStringMedium(104, 317, "Last updated", 0.54f, ALIGN_LEFT, secondary);
+	drawStringMedium(250, 317, data->snapshot.updated, data->updatedScale,
+		ALIGN_LEFT, primary);
+	_DrawHintText(216, 373, "A Actions", 0.60f, ALIGN_CENTER, primary);
+	_DrawHintText(412, 373, "B Back", 0.60f, ALIGN_CENTER, primary);
+	drawInit();
+}
+
+static bool _PrepareSaveDetails(drawSaveDetailsEvent_t *data,
+	const uiSaveDetailsSnapshot_t *snapshot)
+{
+	if(data == NULL || !UISaveDetails_Valid(snapshot)) {
+		return false;
+	}
+	memset(data, 0, sizeof(*data));
+	data->snapshot.blocks = snapshot->blocks;
+	data->snapshot.estimated = snapshot->estimated;
+	data->nameScale = UIHomeText_CopyFitted(data->snapshot.name,
+		sizeof(data->snapshot.name), snapshot->name, 432, 0.86f,
+		GetTextSizeInPixels, NULL);
+	data->sourceScale = UIHomeText_CopyFitted(data->snapshot.source,
+		sizeof(data->snapshot.source), snapshot->source, 286, 0.60f,
+		GetTextSizeInPixels, NULL);
+	data->updatedScale = UIHomeText_CopyFitted(data->snapshot.updated,
+		sizeof(data->snapshot.updated), snapshot->updated, 286, 0.60f,
+		GetTextSizeInPixels, NULL);
+	snprintf(data->blocks, sizeof(data->blocks), "%u", (unsigned)snapshot->blocks);
+	snprintf(data->kib, sizeof(data->kib), "%u", (unsigned)(snapshot->blocks * 8u));
+	data->blocksScale = UIHomeText_FitScale(data->blocks, 156, 0.92f,
+		GetTextSizeInPixels);
+	data->kibScale = UIHomeText_FitScale(data->kib, 156, 0.92f,
+		GetTextSizeInPixels);
+	return UISaveDetails_Valid(&data->snapshot);
+}
+
+uiDrawObj_t* DrawSaveDetails(const uiSaveDetailsSnapshot_t *snapshot)
+{
+	drawSaveDetailsEvent_t *eventData;
+	uiDrawObj_t *event;
+
+	if(!UISaveDetails_Valid(snapshot)) {
+		return NULL;
+	}
+	eventData = calloc(1, sizeof(*eventData));
+	event = calloc(1, sizeof(*event));
+	if(eventData == NULL || event == NULL ||
+		!_PrepareSaveDetails(eventData, snapshot)) {
+		free(eventData);
+		free(event);
+		return NULL;
+	}
+	event->type = EV_SAVE_DETAILS;
+	event->data = eventData;
+	return event;
 }
 
 // Internal
@@ -7271,6 +7386,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 			break;
 		case EV_GAMEFLOW:
 			_DrawGameflow(videoEvent);
+			break;
+		case EV_SAVE_DETAILS:
+			_DrawSaveDetails(videoEvent);
 			break;
 		case EV_PRESENTATION:
 			_DrawPresentation(videoEvent);

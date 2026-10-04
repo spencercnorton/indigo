@@ -182,6 +182,9 @@ run_contracts() {
 	echo "== Memory Cards: the cube screen's GX stream, its passes and icons =="
 	python3 ./test_save_cubes_gx_stream.py
 
+	echo "== Memory Cards: save details hierarchy, text bounds and GX budget =="
+	python3 ./test_save_details_gx_stream.py
+
 	echo "== Memory Cards move, copy and erase safety audit =="
 	python3 ./audit_saves_safety.py
 
