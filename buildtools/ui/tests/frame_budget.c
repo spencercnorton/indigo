@@ -269,7 +269,8 @@ static void startScene(void)
 	settle(600);
 }
 
-static void home(const char *name, int turns, int framesAfter)
+/* Home's cube some turns from the Library face, settled some frames. */
+static void homeTurned(int turns, int framesAfter)
 {
 	static const uiHomeCapabilities_t capabilities = {true, true, false};
 	uiHomeState_t state;
@@ -283,6 +284,11 @@ static void home(const char *name, int turns, int framesAfter)
 	UIScene_Request(UI_SCENE_HOME);
 	UIScene_RequestHome(&state);
 	settle(framesAfter);
+}
+
+static void home(const char *name, int turns, int framesAfter)
+{
+	homeTurned(turns, framesAfter);
 	measure(name, false);
 }
 
@@ -354,9 +360,8 @@ static void memoryCards(const char *name, bool wide, int what)
 	grid.focusCell = 4 * UI_SAVE_CUBES_COLUMNS + 1;
 	UIStage_SetWide(wide);
 	if(what == CARDS_OPENING) {
-		startScene();
-		UIScene_Request(UI_SCENE_SYSTEM);
-		settle(600);
+		/* Home's cube on its System side, where Memory Cards opens from. */
+		homeTurned(3, 600);
 		for(frame = 0; frame < 15; frame++) {
 			UISaveCubes_Frame(&motion, &grid, DT, UI_MOTION_FULL, draw.cubes, &floating);
 			settle(1);

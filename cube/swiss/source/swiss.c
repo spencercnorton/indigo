@@ -1119,7 +1119,10 @@ static void homeDispatchEffect(uiHomeEffect_t effect)
 			UIScene_Request(UI_SCENE_HOME);
 			break;
 		case UI_HOME_EFFECT_OPEN_SAVES:
-			UIScene_Request(UI_SCENE_SYSTEM);
+			/* Memory Cards covers the screen and hands the Home cube over
+			 * where it stands, its System side to the front, going back into
+			 * the distance and coming back; the System scene would turn it to
+			 * the Library's side on the way and back again after. */
 			show_saves();
 			UIScene_Request(UI_SCENE_HOME);
 			break;
