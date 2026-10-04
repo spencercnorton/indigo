@@ -555,7 +555,8 @@ class GlassLightTests(unittest.TestCase):
         # No solid cube inside: no pass writes depth or draws opaque, and the
         # face plates are the only thing set into the glass.
         for name in ("static void drawCube(", "static void setupCubePipeline(",
-                     "static void drawCubeSurfacePassVertices("):
+                     "static void drawCubeSurfacePassVertices(",
+                     "void IndigoBackground_DrawSavesBackdrop("):
             body = extract_function(self.source, name)
             self.assertNotIn("GX_BM_NONE", body, name)
             self.assertNotRegex(body, r"GX_SetZMode\([^)]*GX_TRUE\)", name)

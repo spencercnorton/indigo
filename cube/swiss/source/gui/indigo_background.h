@@ -43,6 +43,10 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 void IndigoBackground_TrackPad(float seconds, bool animated,
 	const indigoPadFrame_t *pad);
 
+/* Memory Cards' cube screen covers the frame and draws this first: the
+ * backdrop's wash and graph paper, in the Backdrop Color. */
+void IndigoBackground_DrawSavesBackdrop(void);
+
 void IndigoBackground_DrawBootOverlay(float seconds, bool animated,
 	const uiSceneFrame_t *scene, const uiClockFrame_t *clock,
 	const int icons[UI_HOME_FACE_COUNT]);

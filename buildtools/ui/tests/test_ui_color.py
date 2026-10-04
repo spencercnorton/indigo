@@ -305,7 +305,17 @@ class MenuColorTest(unittest.TestCase):
             "drawIndigoWash(veilAlpha, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));",
             "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);")]
         self.assertEqual(order, sorted(order))
-        self.assertEqual(background.count("drawIndigoWash("), 3)   # its definition and these two
+        # Memory Cards' stage is the backdrop too, its graph paper with it;
+        # the cubes after it are the menus'.
+        saves = extract_function(background, "void IndigoBackground_DrawSavesBackdrop(")
+        order = [saves.index(token) for token in (
+            "UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);",
+            "drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));",
+            "GX_Begin(", "putVertex(", "GX_End();",
+            "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);")]
+        self.assertEqual(order, sorted(order))
+        self.assertEqual(saves.count("UIColor_Select("), 2)
+        self.assertEqual(background.count("drawIndigoWash("), 4)   # its definition and these three
         # The wash's four corners all go through the shade.
         wash = extract_function(background, "static void drawIndigoWash(")
         self.assertEqual(wash.count("WASH("), 5)   # the macro and its four corners

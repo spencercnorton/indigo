@@ -3455,6 +3455,48 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 	}
 }
 
+/* Memory Cards' stage: the backdrop's wash and, as the IPL's Memory Card
+ * screen has, graph paper, a line every half a cube's cell through the
+ * cubes' vanishing point, in the backdrop's colors; whatever follows takes
+ * the menus'. One batch of lines a pixel wide in either screen shape. */
+#define SAVES_GRID_PITCH 28.0f
+void IndigoBackground_DrawSavesBackdrop(void)
+{
+	const GXColor line = {70, 66, 112, 90};
+	float left = UIStage_Left(), right = UIStage_Right();
+	float width = UIStage_PixelWidth();
+	/* Truncating toward zero keeps each end's line on the stage. */
+	int firstColumn = (int)((left - 320.0f) / SAVES_GRID_PITCH);
+	int lastColumn = (int)((right - 320.0f) / SAVES_GRID_PITCH);
+	int firstRow = (int)(-224.0f / SAVES_GRID_PITCH);
+	int lastRow = (int)((480.0f - 224.0f) / SAVES_GRID_PITCH);
+	int i;
+
+	setupRasterPipeline();
+	UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);
+	drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));
+	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(4 * (lastColumn - firstColumn + 1 +
+		lastRow - firstRow + 1)));
+	for(i = firstColumn; i <= lastColumn; i++) {
+		float x = 320.0f + (float)i * SAVES_GRID_PITCH;
+
+		putVertex((indigoPoint_t) {x, 0.0f}, line);
+		putVertex((indigoPoint_t) {x + width, 0.0f}, line);
+		putVertex((indigoPoint_t) {x + width, 480.0f}, line);
+		putVertex((indigoPoint_t) {x, 480.0f}, line);
+	}
+	for(i = firstRow; i <= lastRow; i++) {
+		float y = 224.0f + (float)i * SAVES_GRID_PITCH;
+
+		putVertex((indigoPoint_t) {left, y}, line);
+		putVertex((indigoPoint_t) {right, y}, line);
+		putVertex((indigoPoint_t) {right, y + 1.0f}, line);
+		putVertex((indigoPoint_t) {left, y + 1.0f}, line);
+	}
+	GX_End();
+	UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);
+}
+
 void IndigoBackground_TrackPad(float seconds, bool animated,
 	const indigoPadFrame_t *pad)
 {
