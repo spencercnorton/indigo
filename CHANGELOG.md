@@ -79,11 +79,6 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - Game folders skip Mac `._` metadata files, so copying a game from a Mac
   no longer makes its folder report an invalid disc image. Hidden files in
   a game's folder follow Show hidden files, as they do in the file list.
-- The Library's parent card and X return directly to Home at `/games`,
-  keeping the current game or folder for the next visit. Returning from
-  the parent card opens the first game or folder on the next visit.
-  With Library Folders on, an empty `/games` stays in Indigo with its way
-  back to Home.
 - Save details gives the save name a larger headline, separates blocks and
   KiB into clear summaries, aligns source and date fields, and shows distinct
   controller hints for Actions and Back.
@@ -96,6 +91,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
   it or another folder. A save is no longer moved from one folder of the SD
   card to another there: the file browser does that. Delete is Erase now,
   and B on the SD card's stack goes up a folder instead of an Up to row.
+- The Library's parent card and X return directly to Home at `/games`,
+  retaining that Library root. B and X keep the current game or folder for
+  the next visit; the root parent card opens on the first actual card.
+  With Library Folders on, an empty `/games` stays in Indigo with its way
+  back to Home.
 - Every face of the Home cube shows its icon as the cube turns, animated, the
   side faces at rest included. An icon on a face turned away from the screen
   is drawn four times as wide and twice as tall, then scaled down, so its

@@ -72,6 +72,8 @@ make_fixture() {
 run_binaries() {
 	suffix=$1
 	fixtures=
+	echo "== game folder navigation$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_gameflow_folder_navigation.py; else python3 ./test_gameflow_folder_navigation.py --sanitize; fi
 	if make_fixture; then
 		fixtures="$TMP/fixture.pak $TMP/fixture-stills.pak"
 	else
@@ -93,15 +95,13 @@ run_binaries() {
 	if [ -z "$suffix" ]; then python3 ./test_saves_raw_backend.py; else python3 ./test_saves_raw_backend.py --sanitize; fi
 	echo "== game save stats$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_saves_stats.py; else python3 ./test_saves_stats.py --sanitize; fi
+	echo "== manual MP3 player$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_mp3_player.py; else python3 ./test_mp3_player.py --sanitize; fi
 	# card_art builds its own binaries: posters of apps and folders, their guards.
 	echo "== test_card_art$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_card_art.py; else python3 ./test_card_art.py --sanitize; fi
 	echo "== game folder visibility$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_gameflow_folder_visibility.py; else python3 ./test_gameflow_folder_visibility.py --sanitize; fi
-	echo "== game folder navigation$suffix =="
-	if [ -z "$suffix" ]; then python3 ./test_gameflow_folder_navigation.py; else python3 ./test_gameflow_folder_navigation.py --sanitize; fi
-	echo "== manual MP3 player$suffix =="
-	if [ -z "$suffix" ]; then python3 ./test_mp3_player.py; else python3 ./test_mp3_player.py --sanitize; fi
 	echo "== test_saves_card_io$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_saves_card_io.py; else python3 ./test_saves_card_io.py --sanitize; fi
 	echo "== test_saves_raw_controller$suffix =="

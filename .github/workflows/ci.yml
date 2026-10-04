@@ -168,6 +168,10 @@ jobs:
               artifact: emulator-smoke-ntsc-component-gcloader }
           - { name: "Emulator (game, NTSC, SD2SP2)", route: game, region: ntsc, cable: composite,
               storage: sd2sp2, artifact: emulator-game-ntsc-sd2sp2 }
+          # Folder names, artwork and every route back to Home, in all
+          # four Library layouts on a real FAT listing.
+          - { name: "Emulator (folders, NTSC, component, SD2SP2)", route: folders, region: ntsc, cable: component,
+              storage: sd2sp2, artifact: emulator-folders-ntsc-component-sd2sp2 }
           # Both physical memory-card slots empty: browse a synthetic RAW
           # image on SD and export a GCI into the other SD column.
           - { name: "Emulator (virtual cards, NTSC, GC Loader)", route: virtual-cards, region: ntsc,
