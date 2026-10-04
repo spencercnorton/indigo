@@ -37,9 +37,11 @@ Calibration** until it reads about room temperature.
 
 ## Memory Cards
 
-**Memory Cards** lists the saves on the memory cards in Slot A and Slot B and
-in folders on your SD card, with each save's banner, and copies, moves and
-deletes them between the three. See [Memory Cards](memory-cards.md).
+**Memory Cards** shows the saves on the memory cards in Slot A and Slot B and
+in folders on your SD card as two stacks of cubes, each with its game's
+icon, the way the GameCube's own Memory Card screen does, and moves, copies
+and erases them from one stack to the other. See
+[Memory Cards](memory-cards.md).
 
 <p align="center">
   <img alt="The System face opened with Memory Cards highlighted, the second of its three rows." src="images/memory-cards-system.png" width="640">

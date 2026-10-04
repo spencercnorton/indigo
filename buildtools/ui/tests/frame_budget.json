@@ -142,6 +142,61 @@
   "trig": 1065,
   "vertices": 9136
  },
+ "memory-cards": {
+  "begins": 45,
+  "copy_pixels": 0,
+  "hash": "94ac41d8935f3ff9",
+  "minmax": 240,
+  "scene": "memory-cards",
+  "sqrtf": 0,
+  "state": 30,
+  "trig": 4,
+  "vertices": 2408
+ },
+ "memory-cards-copy": {
+  "begins": 47,
+  "copy_pixels": 0,
+  "hash": "9f766c8cce0f53c0",
+  "minmax": 246,
+  "scene": "memory-cards-copy",
+  "sqrtf": 0,
+  "state": 32,
+  "trig": 6,
+  "vertices": 2496
+ },
+ "memory-cards-erase": {
+  "begins": 52,
+  "copy_pixels": 0,
+  "hash": "08b8d7cbb4bd9841",
+  "minmax": 288,
+  "scene": "memory-cards-erase",
+  "sqrtf": 0,
+  "state": 28,
+  "trig": 4,
+  "vertices": 2856
+ },
+ "memory-cards-opening": {
+  "begins": 81,
+  "copy_pixels": 0,
+  "hash": "df91c974cff998f7",
+  "minmax": 613,
+  "scene": "memory-cards-opening",
+  "sqrtf": 0,
+  "state": 157,
+  "trig": 19,
+  "vertices": 4708
+ },
+ "memory-cards-wide": {
+  "begins": 45,
+  "copy_pixels": 0,
+  "hash": "3db42e7cdd6fa5ca",
+  "minmax": 240,
+  "scene": "memory-cards-wide",
+  "sqrtf": 0,
+  "state": 30,
+  "trig": 4,
+  "vertices": 2440
+ },
  "settings": {
   "begins": 90,
   "copy_pixels": 21504,

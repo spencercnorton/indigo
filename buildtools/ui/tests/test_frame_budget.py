@@ -29,7 +29,7 @@ GUI = ROOT / "cube/swiss/source/gui"
 BUDGET = HERE / "frame_budget.json"
 METRICS = ("sqrtf", "trig", "minmax", "vertices", "begins", "copy_pixels")
 SOURCES = ("ui_scene.c", "ui_motion.c", "ui_home.c", "ui_cube_motif.c",
-           "ui_color.c", "ui_stage.c", "ui_clock.c")
+           "ui_color.c", "ui_stage.c", "ui_clock.c", "ui_saves.c")
 
 
 def hint_source() -> str:
@@ -42,9 +42,25 @@ def hint_source() -> str:
     return "\n\n".join(parts) + "\n"
 
 
+def save_cubes_source() -> str:
+    """Memory Cards' cube emitter, out of FrameBufferMagic.c, and the cubes
+    it draws (ui_save_cubes.c), under the counting maths."""
+    fbm = (GUI / "FrameBufferMagic.c").read_text(encoding="utf-8")
+    start = fbm.index("/* What one frame's cubes need. */")
+    parts = ['#include "ui_save_cubes.c"',
+             "static void drawInit(void) {}",
+             "static void _SetupRasterColor(void) {}",
+             fbm[start:fbm.index("} saveCubesDraw_t;", start) + len("} saveCubesDraw_t;")]]
+    for marker in ("static void _SaveCubesShades(", "static void _SaveCubesVertex(",
+                   "static void _SaveCubesEmit("):
+        parts.append(extract_function(fbm, marker))
+    return "\n\n".join(parts) + "\n"
+
+
 def measure() -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         Path(tmp, "hint_source.c").write_text(hint_source(), encoding="utf-8")
+        Path(tmp, "save_cubes_source.c").write_text(save_cubes_source(), encoding="utf-8")
         binary = Path(tmp, "frame_budget")
         command = shlex.split(os.environ.get("CC", "cc")) + [
             "-std=gnu11", "-O1", "-ffp-contract=off", "-Wall",

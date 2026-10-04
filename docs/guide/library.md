@@ -10,6 +10,12 @@ choose. On Home, turn the cube to **Library** and press A.
   <img alt="The Library: moving right through the James Bond games to 1080° Avalanche, each cover raised in turn between two covers either side, with its title and publisher below; A opens its details, B returns to the Library, and 1080° Avalanche is still selected." src="images/library-browse.png" width="640">
 </p>
 
+The [game details](game-details.md) screen also shows **Saves** above
+Settings and Cheats: save copies, total blocks and the latest recorded
+update date from memory cards and the Save Folder, including RAW images.
+Incomplete scans are marked. Open System › [Memory Cards](memory-cards.md)
+for an individual save’s size, date and actions.
+
 ## Choose a layout
 
 **Library Layout**, the first row of [Settings](settings.md) › Setup ›

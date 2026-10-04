@@ -180,7 +180,11 @@ static void GX_InitTexObj(GXTexObj *t, void *d, int w, int h, int f, int s, int 
 { (void)w; (void)h; (void)f; (void)s; (void)tt; (void)m; t->data = d; }
 static void GX_InitTexObjFilterMode(GXTexObj *t, int a, int b) { (void)t; (void)a; (void)b; }
 static void drawStringMedium(int x, int y, const char *text, float scale, int align, GXColor c)
-{ CHECK(!active); fprintf(out, "S %d %d %.3f %d %u %s\n", x, y, scale, align, c.a, text); }
+{
+	CHECK(!active);
+	fprintf(out, "S %d %d %.3f %d %u %s\n", x, y, scale, align, c.a, text);
+	fprintf(out, "I %d %d %u %u %u %u\n", x, y, c.r, c.g, c.b, c.a);
+}
 static void _DrawHintText(int x, int y, const char *text, float scale, int align, GXColor c)
 { CHECK(!active); fprintf(out, "H %d %d %.3f %d %u %s\n", x, y, scale, align, c.a, text); }
 static void _HintRoundRect(float cx, float cy, float w, float h, float r, GXColor c)
@@ -434,9 +438,14 @@ def build(work: Path, gui: Path, frame_c: str, frame_h: str, layouts: bool, name
              "-I" + str(gui)]
     if os.uname().sysname == "Linux":
         flags += ["-fno-pie", "-no-pie"]
+    # The archived comparison predates save metadata. Only today's Detail
+    # header uses the shared formatter; missing current sources still fail
+    # compilation rather than quietly excluding the new feature.
+    metadata = (("ui_saves_metadata.c", "ui_saves.c") if
+                '#include "ui_saves_metadata.h"' in (gui / "ui_gameflow_detail.h").read_text() else ())
     result = subprocess.run(shlex.split(os.environ.get("CC", "cc")) + flags +
                             ["-o", str(binary), str(source)] +
-                            [str(gui / pure) for pure in PURE + (LAUNCH if layouts else ())] +
+                            [str(gui / pure) for pure in PURE + metadata + (LAUNCH if layouts else ())] +
                             ["-lm"],
                             capture_output=True, text=True, timeout=180)
     if result.returncode:

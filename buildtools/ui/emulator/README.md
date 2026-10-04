@@ -35,7 +35,9 @@ exception screen as it would on a console. The route:
    back to the IPL's, and Dolphin has no IPL ROM): Indigo
    must say so and come back to the Library once A dismisses it. On the Source
    face, A on Change Source opens the device picker, RIGHT shows another
-   device and B leaves the picker. On the Settings face, Setup › Console › Apps
+   device and B leaves the picker. On the System face, Memory Cards opens
+   with a memory card in each slot: see [Memory Cards](#memory-cards). On the
+   Settings face, Setup › Console › Apps
    Face Off takes Apps off the cube and On puts it back; Setup › Console › Cube
    at Classic lays the faces out as the GameCube's menu does, and the route
    walks it (LEFT goes nowhere from Settings, RIGHT twice is Library then
@@ -59,7 +61,7 @@ probe's game and launches it from its details: the probe must see the game's
 own disc ID, the 24 MB a game is promised, the music stopped and memory
 quiet.
 
-CI runs six jobs, the first of them the required **Emulator** check:
+CI runs eight jobs, the first of them the required **Emulator** check:
 
 | Job | Console | Video | Storage |
 | --- | --- | --- | --- |
@@ -67,6 +69,8 @@ CI runs six jobs, the first of them the required **Emulator** check:
 | game, PAL, component | PAL, component | 480p | disc |
 | smoke, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the card with `non-default.ini` |
 | game, NTSC, SD2SP2 | NTSC, composite | 480i | SD2SP2, a new card |
+| virtual cards, NTSC, GC Loader | NTSC, component | 480p | GC Loader, both memory-card slots empty, 4:3 |
+| virtual cards, NTSC, GC Loader, widescreen | NTSC, component | 480p | same route with `save-details-wide.ini`, 16:9 |
 | save, NTSC, SD2SP2, failing card | NTSC, composite | 480i | SD2SP2, writes failing after 13 |
 | game, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the game in 40 pieces |
 
@@ -162,6 +166,90 @@ still start at Home with its settings, in the colours they chose (a broken
 settings file boots Home too, on the defaults). The second boot's output is
 in `next-boot/`. CI's save job fails writes after 13, the moment of a save
 when only `global.ini.new` is whole on the card.
+
+## Memory Cards
+
+The smoke route plugs a memory card into each slot, as Dolphin's GCI folder
+cards (`SlotA` and `SlotB` = 8): folders of `.gci` files, one per save, made
+afresh for every run by
+[`../qa/make_test_saves.py`](../qa/make_test_saves.py). Every game on them is
+made up and every icon and banner is drawn by the script: Slot A has 21
+saves with every kind of icon a save can have, Slot B 18, so both stacks
+scroll. On the System face, DOWN and A open Memory Cards, and the route
+reads the screen as it does elsewhere: the focused save's name in the info
+bar (`INFO_BOX`), each stack's header, the buttons along the bottom, the
+arrow above a stack that has scrolled, and the maroon box an operation ends
+with. It checks that:
+
+- the screen opens on Slot A's first save, with both cards' headers;
+- RIGHT moves along a row, a different save each time, and from the last
+  column on to Slot B: LEFT then comes back to that column's save, not the
+  bump of a stack's edge, and on back to the first;
+- DOWN past the window's last row scrolls the stack (the arrow above it
+  shows), and UP scrolls it back;
+- R opens the named storage menu; DOWN and A choose SD, then R, UP and A
+  restore Slot B. L, DOWN twice and A choose SD on the left, then L, UP
+  twice and A restore Slot A. On the disc, SD has no configuration device:
+  it is dimmed, A keeps the card displayed, and B cancels the menu;
+- A opens save details, B returns without an action; another A then
+  A Actions opens the box beside the save, and B closes it;
+- Copy and Yes copy the save to Slot B: the maroon box comes and closes by
+  itself, and Slot B's folder gains the save, with the same game, maker and
+  name and the same blocks as on Slot A (Dolphin writes a card's folder a
+  second after the card's last write);
+- A, then A Actions on the copied save dims Move, Slot B having it, and the buttons
+  say why;
+- Erase, then Yes over the No it starts on, erases the save, and Slot A's
+  folder loses it (Dolphin renames it `.gci.deleted`);
+- B leaves, back to the System face.
+
+On the disc the SD card's stack has no device, so it shows why; in the GC
+Loader job it shows the Save Folder on the card. An SD Gecko in Slot B
+(`--storage sdgecko-b`) leaves the cards and this step out.
+
+The **virtual-cards route** (`--route virtual-cards --storage gcloader`, or
+`sd2sp2`, with `--card-zip`) leaves both physical slots empty explicitly.
+The release zip's SD image also holds `swiss/saves/Demo Card.raw`, a 59-block
+memory-card image made by the same public demonstration generator. It has
+two fictitious saves, with generated icon/banner art; its first save's
+blocks are deliberately separated at blocks 5 and 9.
+
+Memory Cards must start with both columns on SD. The route opens Library
+first and sees the synthetic game's SAVES inset, then checks it again after
+export: one copy/two blocks becomes two copies/four blocks with the same
+recorded update. Renderer host contracts check the exact values; the route
+checks that the real fields appear and their count text changes.
+
+A on each RAW save opens details first: the known `2024-02-29 12:34` date
+and an unknown date have different text, both show Created: Not recorded,
+and their block counts differ. B cancels without an action. Opening RAW
+independently in both columns still allows details and Back; an unusable
+Copy stays in its action menu. Before the real Copy, the source RAW is
+byte-identical and no exported GCI exists. The first icon's generated
+texture contains red and green patches in separate frames; captures must
+show both patches on its selected cube, so cube motion or backdrop changes
+cannot stand in for icon playback. The same route runs in 4:3 and 16:9. Dolphin letterboxes 16:9 inside its
+640×480 capture. Only detection frames normalize the authored centre with
+nearest-neighbor sampling; native screenshots remain untouched, and text
+thresholds are unchanged.
+
+The details probes measure values separately from their labels and metric
+captions. Single-digit metrics use bounded ink (at least 24 bright pixels,
+horizontal span 3 and height 8); word fields keep their 60-pixel rule. Native
+capture tests distinguish 1 from 2 in both shapes and reject erased values,
+captions alone, small noise and the browser beneath the dialog. The opening
+guard requires all four borders and the fixed SAVE DETAILS eyebrow, so a
+short save name cannot hide an open dialog. Only that small fixed marker
+uses a 40-pixel minimum with bounded word span and glyph height; Jet Black
+retains 49 pixels at the unchanged threshold 160. Field steadiness remains 0.95.
+
+A opens the RAW image in
+the left column; RIGHT and LEFT browse its saves, and the right column keeps
+its own SD folder. Copy exports the selected save as a GCI there. The route
+reads the actual FAT file back and checks its game, maker, name and every
+payload byte in BAT order, then checks the entire RAW image is unchanged.
+B closes the image to its containing folder and B again leaves Memory Cards.
+The artifact keeps the exported demonstration GCI and pictures of the route.
 
 ## A GC Loader
 

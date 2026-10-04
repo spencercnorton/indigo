@@ -17,6 +17,7 @@ goes back to the Library. The tests then check that:
 """
 
 import math
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -31,6 +32,7 @@ static uiGameflowRenderSnapshot_t snapshot;
 static uint32_t generation;
 /* Y: the cards are apps, as Apps shows them. */
 static bool apps;
+static unsigned savesVariant = 1u;
 
 /* L layout count selected | K (Detail's snapshot) | W wide | M motion
  * | D mode | S message (\n and \205 escaped) | C packClosed | E (hand-off)
@@ -84,17 +86,39 @@ static void detail(void)
 	const uiGameflowFrame_t *frame = UIGameflow_Frame(&eventData->state);
 	const uiGameflowCardSnapshot_t *record = _GameflowFindRecord(
 		&eventData->snapshot, frame->focusIndex, NULL);
-	uiGameflowDetailSnapshot_t *d = &eventData->detail;
+	uiSavesGameStats_t stats = {
+		.saves = 1u, .blocks = 2u, .latestUpdated = 762525240u,
+		.sourceSaves = {0u, 0u, 1u}, .checkedSources = 4u, .updatedKnown = true
+	};
+	uiGameflowDetailCheatSource_t cheat = {"Infinite energy", true};
+	char title[96];
+	uiGameflowDetailSource_t source = {
+		.generation = frame->generation, .focusIndex = frame->focusIndex,
+		.company = "Detail publisher", .cheats = &cheat, .cheatCount = 1u,
+		.flags = UI_GAMEFLOW_DETAIL_CAN_SETTINGS | UI_GAMEFLOW_DETAIL_CAN_CHEATS |
+			UI_GAMEFLOW_DETAIL_CAN_LIBRARY | UI_GAMEFLOW_DETAIL_CHEATS_KNOWN
+	};
 	CHECK(record != NULL);
-	memset(d, 0, sizeof(*d));
-	d->flags = UI_GAMEFLOW_DETAIL_VALID;
-	d->generation = frame->generation;
-	d->focusIndex = frame->focusIndex;
-	memcpy(d->gameId, record->gameId, 6);
-	snprintf(d->title, sizeof(d->title), "Detail title %s", record->gameId);
-	snprintf(d->company, sizeof(d->company), "Detail publisher");
-	snprintf(d->launchLabel, sizeof(d->launchLabel), "A  LAUNCH GAME");
-	snprintf(d->primaryActions, sizeof(d->primaryActions), "A  LAUNCH   B  LIBRARY");
+	snprintf(title, sizeof(title), "Detail title %s", record->gameId);
+	source.title = title;
+	source.gameId = record->gameId;
+	if(savesVariant == 2u) stats.partial = true;
+	else if(savesVariant == 3u) stats.saves = stats.blocks = UINT32_MAX;
+	else if(savesVariant == 4u) stats.saves = stats.blocks = 0u;
+	else if(savesVariant == 5u) stats.updatedKnown = false;
+	else if(savesVariant == 6u) {
+		stats.saves = stats.blocks = 0u;
+		stats.partial = true;
+	}
+	else if(savesVariant == 7u) {
+		stats.checkedSources = 0u;
+		stats.updatedKnown = false;
+	}
+	source.saveStats = savesVariant == 0u ? NULL : &stats;
+	CHECK(UIGameflowDetail_Build(&eventData->detail, &source));
+	/* The video event must never retain borrowed menu-thread storage. */
+	memset(&stats, 0, sizeof(stats));
+
 	_GameflowPrepareDetailPresentation(eventData);
 }
 
@@ -124,6 +148,7 @@ int main(void)
 		line[strcspn(line, "\n")] = '\0';
 		if(sscanf(line, "L %d %u %u", &c, &a, &b) == 3) publish(c, a, b);
 		else if(strcmp(line, "K") == 0) detail();
+		else if(sscanf(line, "Q %u", &a) == 1) savesVariant = a;
 		else if(strcmp(line, "Y") == 0) apps = true;
 		else if(sscanf(line, "W %d", &c) == 1) UIStage_SetWide(c != 0);
 		else if(sscanf(line, "M %d", &c) == 1) motionMode = (uiMotionMode_t)c;
@@ -188,6 +213,34 @@ def strings(frame: str) -> list:
     """(x, y, text) of every line of text a frame draws."""
     return [(int(l.split()[1]), int(l.split()[2]), l.split(" ", 6)[6])
             for l in frame.splitlines() if l.startswith("S ")]
+
+
+def text_cells(frame: str) -> list:
+    """Full medium-font cells, including its one-pixel coverage pass.
+
+    The western IPL cell is 24px high; its y anchor is the cell centre.
+    The checked font stand-in advances 11px, and the final glyph also
+    extends one font pixel beyond its advance, as IPLFontWrite.c does.
+    """
+    cells = []
+    for line in frame.splitlines():
+        if not line.startswith("S "):
+            continue
+        _, x, y, scale, align, alpha, text = line.split(" ", 6)
+        x, y, scale, align = float(x), float(y), float(scale), int(align)
+        left = x - align * 11 * len(text) * scale / 2
+        cells.append({"text": text, "scale": scale, "align": align,
+                      "alpha": int(alpha),
+                      "box": (left, y - 12 * scale,
+                              left + (11 * len(text) + 1) * scale + 1,
+                              y + 12 * scale)})
+    return cells
+
+
+def text_colors(frame: str) -> dict:
+    return {(int(f[1]), int(f[2])): tuple(map(int, f[3:]))
+            for line in frame.splitlines() if line.startswith("I ")
+            for f in [line.split()]}
 
 
 def turn(point) -> float:
@@ -397,25 +450,135 @@ class LaunchGxStream(unittest.TestCase):
         return (min(ys), max(ys)) if ys else None
 
     def test_detail_focus_slides_between_rows(self):
-        # Launch's row, then Cheats' (281 down, 59 tall): the frame slides
+        # Launch's row, then Cheats' (301 down, 59 tall): the frame slides
         # there over several frames rather than jumping, and rests on it.
         log = self.run_script(["L 0 40 18", "K", "D 1", "N 40 0.0167", "Z 1",
                                "N 40 0.0167"])
-        self.assertEqual(self.lit_frame(log[39]), (348.0, 391.0))
+        self.assertEqual(self.lit_frame(log[39]), (367.0, 410.0))
         path = [self.lit_frame(f) for f in log[40:]]
-        self.assertEqual(path[-1], (281.0, 340.0))
+        self.assertEqual(path[-1], (301.0, 360.0))
         tops = [top for top, _ in path]
         self.assertEqual(tops, sorted(tops, reverse=True))
-        self.assertTrue(all(a - b < 67 * 0.3 for a, b in zip(tops, tops[1:])), tops)
+        self.assertTrue(all(a - b < 66 * 0.3 for a, b in zip(tops, tops[1:])), tops)
         self.assertGreater(sum(1 for a, b in zip(tops, tops[1:]) if a != b), 5)
         # Off moves it at once; Detail opening again finds it on its row.
         log = self.run_script(["M 2", "L 0 40 18", "K", "D 1", "N 5 0.0167", "Z 2",
                                "N 1 0.0167"])
-        self.assertEqual(self.lit_frame(log[-1]), (232.0, 274.0))
+        self.assertEqual(self.lit_frame(log[-1]), (252.0, 294.0))
         log = self.run_script(["L 0 40 18", "K", "D 1", "N 40 0.0167", "Z 1",
                                "N 40 0.0167", "D 0", "N 60 0.0167", "Z 0", "D 1",
                                "N 1 0.0167"])
-        self.assertEqual(self.lit_frame(log[-1]), (348.0, 391.0))
+        self.assertEqual(self.lit_frame(log[-1]), (367.0, 410.0))
+
+    def detail_rest(self, wide=0, variant=1, focus=0):
+        return self.run_script([f"W {wide}", "M 2", "L 0 40 18", f"Q {variant}",
+                                "K", "D 1", f"Z {focus}", "N 1 0.0167"])[-1]
+
+    def test_save_inset_draws_copied_stats_above_actions(self):
+        for wide in (0, 1):
+            with self.subTest(wide=wide):
+                rest = self.detail_rest(wide)
+                drawn = strings(rest)
+                self.assertIn((576, 214, "SAVES"), drawn)
+                self.assertIn((274, 214, "1 save copy | 2 blocks"), drawn)
+                self.assertIn((274, 232, "Updated 2024-02-29 12:34"), drawn)
+                self.assertIn((274, 264, "SETTINGS"), drawn)
+                self.assertIn((274, 313, "CHEATS"), drawn)
+                self.assertIn((264, 122, "Detail title G018E0"), drawn)
+                self.assertFalse(any(t == "SAVE DATA" for _, _, t in drawn))
+                # Actual GX panel vertices enclose the inset and stay separate
+                # from focus; its label is not a fourth navigable action.
+                quads = [p["points"][i:i + 4] for p in primitives(rest)
+                         if p["kind"] == "quads" for i in range(0, p["count"], 4)]
+                self.assertIn([(260.0, 202.0), (590.0, 202.0),
+                               (590.0, 245.0), (260.0, 245.0)], quads)
+                for row, expected in ((0, (367.0, 410.0)), (1, (301.0, 360.0)),
+                                      (2, (252.0, 294.0))):
+                    self.assertEqual(self.lit_frame(self.detail_rest(wide, focus=row)), expected)
+                unknown = strings(self.detail_rest(wide, 0))
+                self.assertIn((274, 214, "Unavailable"), unknown)
+                partial = strings(self.detail_rest(wide, 2))
+                self.assertIn((274, 232, "Partial scan | Updated 2024-02-29 12:34"), partial)
+                empty = strings(self.detail_rest(wide, 4))
+                self.assertIn((274, 214, "No save copies found"), empty)
+                unknown_date = strings(self.detail_rest(wide, 5))
+                self.assertIn((274, 232, "Update date unavailable"), unknown_date)
+                incomplete = strings(self.detail_rest(wide, 6))
+                self.assertIn((274, 214, "Unavailable"), incomplete)
+                self.assertIn((274, 232, "Save scan incomplete"), incomplete)
+                self.assertNotIn((274, 214, "No save copies found"), incomplete)
+                partial_date = strings(self.detail_rest(wide, 7))
+                self.assertIn((274, 232, "Partial scan | Update date unavailable"), partial_date)
+
+    def test_save_inset_hierarchy_and_full_cells_fit(self):
+        # Both lines occupy full font cells, not just baseline anchors.
+        # Max totals and partial/date status share the same fixed inset;
+        # none may touch its border, the trailing label or the next row.
+        for wide in (0, 1):
+            for variant in range(8):
+                with self.subTest(wide=wide, variant=variant):
+                    rest = self.detail_rest(wide, variant)
+                    cells = [c for c in text_cells(rest)
+                             if 202 <= c["box"][1] and c["box"][3] <= 245]
+                    self.assertEqual(len(cells), 3)
+                    tag, summary, updated = cells
+                    self.assertEqual(tag["text"], "SAVES")
+                    self.assertEqual(tag["align"], 2)
+                    self.assertGreaterEqual(tag["scale"], 0.38)
+                    self.assertEqual(summary["align"], 0)
+                    self.assertGreaterEqual(summary["scale"], 0.46)
+                    self.assertGreater(summary["scale"], updated["scale"])
+                    self.assertEqual(updated["scale"], 0.46)
+                    self.assertEqual(updated["align"], 0)
+                    for cell in cells:
+                        left, top, right, bottom = cell["box"]
+                        self.assertGreaterEqual(left, 274)
+                        self.assertGreater(top, 202)
+                        self.assertLess(right, 580)
+                        self.assertLess(bottom, 245)
+                    self.assertGreater(tag["box"][0] - summary["box"][2], 12)
+                    self.assertGreater(updated["box"][1] - summary["box"][3], 5)
+                    self.assertGreater(252 - updated["box"][3], 14)
+                    if variant == 3:
+                        self.assertEqual(summary["text"],
+                                         "4294967295 save copies | 4294967295 blocks")
+                    colors = text_colors(rest)
+                    self.assertEqual(colors[(274, 214)], (246, 243, 255, 255))
+                    self.assertEqual(colors[(274, 232)], (202, 192, 244, 235))
+                    # The date/status has the same secondary weight as the
+                    # section labels; muted preview text remains subordinate.
+                    self.assertEqual(colors[(274, 232)], colors[(274, 264)])
+                    self.assertGreater(min(colors[(274, 232)][:3]), 185)
+                    self.assertGreater(colors[(274, 232)][3], 218)
+
+    def test_save_inset_text_fades_with_detail(self):
+        for wide in (0, 1):
+            log = self.run_script([f"W {wide}", "L 0 40 18", "K", "D 1",
+                                   "N 100 0.0167"])
+            colors = [text_colors(frame) for frame in log]
+            visible = [c for c in colors if (274, 214) in c]
+            self.assertTrue(visible)
+            alphas = [c[(274, 214)][3] for c in visible]
+            self.assertLess(min(alphas), 255)
+            self.assertEqual(alphas[-1], 255)
+            self.assertEqual(alphas, sorted(alphas))
+            for c in visible:
+                self.assertEqual(c[(274, 232)], c[(576, 214)])
+                self.assertLessEqual(c[(274, 232)][3], c[(274, 214)][3])
+
+    def test_detail_frame_budget(self):
+        budget = json.loads((Path(__file__).with_name("detail_frame_budget.json")).read_text())
+        for wide in (0, 1):
+            for variant, name in enumerate(("unavailable", "recorded", "partial", "max-count", "empty")):
+                scene = f"detail-{name}-{'wide' if wide else 'native'}"
+                drawn = primitives(self.detail_rest(wide, variant))
+                actual = {"geometry_vertices": sum(p["count"] for p in drawn),
+                          "geometry_begins": len(drawn),
+                          # IPL medium text emits two four-vertex passes per
+                          # glyph. Hint icons have their own registered suite.
+                          "medium_glyphs": sum(len(t) for _, _, t in strings(self.detail_rest(wide, variant)))}
+                with self.subTest(scene=scene):
+                    self.assertEqual(actual, budget[scene])
 
     def test_mutants_fail(self):
         mutants = {

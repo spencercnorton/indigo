@@ -1,6 +1,7 @@
 /*
- * Frame budget: the cube renderer (gui/indigo_background.c) and the hint
- * icons (gui/FrameBufferMagic.c) run against counting GX stubs, one steady
+ * Frame budget: the cube renderer (gui/indigo_background.c), the hint
+ * icons and Memory Cards' save cubes (gui/FrameBufferMagic.c, with
+ * gui/ui_save_cubes.c) run against counting GX stubs, one steady
  * frame per scene, posed by the real scene module. It counts what a frame
  * costs the console: software maths on the CPU (Gekko has no square-root
  * instruction, so sqrtf is newlib's integer loop; sinf, cosf, fminf and
@@ -49,6 +50,7 @@ static float countFmaxf(float x, float y) { cost.minMaxCalls++; return fmaxf(x, 
 #define fmaxf countFmaxf
 #include "indigo_background.c"
 #include "hint_source.c"	/* written by test_frame_budget.py */
+#include "save_cubes_source.c"	/* and this */
 #undef sqrtf
 #undef sinf
 #undef cosf
@@ -267,7 +269,8 @@ static void startScene(void)
 	settle(600);
 }
 
-static void home(const char *name, int turns, int framesAfter)
+/* Home's cube some turns from the Library face, settled some frames. */
+static void homeTurned(int turns, int framesAfter)
 {
 	static const uiHomeCapabilities_t capabilities = {true, true, false};
 	uiHomeState_t state;
@@ -281,6 +284,11 @@ static void home(const char *name, int turns, int framesAfter)
 	UIScene_Request(UI_SCENE_HOME);
 	UIScene_RequestHome(&state);
 	settle(framesAfter);
+}
+
+static void home(const char *name, int turns, int framesAfter)
+{
+	homeTurned(turns, framesAfter);
 	measure(name, false);
 }
 
@@ -317,6 +325,90 @@ static void hintRoundRect(void)
 		cost.vertices, cost.begins, stubStateCalls, cost.hash);
 }
 
+/* Memory Cards: the backdrop and both stacks, every cell a save with an
+ * icon, a sixth of a second into scrolling a row with the focus grown: the
+ * most cubes a frame draws. With them, a copy's cube mid-flight, an erased
+ * one's pieces, or the opening a quarter of a second in, the Home cube
+ * going back as the cubes start out of the middle. */
+enum { CARDS_STEADY, CARDS_COPY, CARDS_ERASE, CARDS_OPENING };
+
+static void memoryCards(const char *name, bool wide, int what)
+{
+	static u8 texels[UI_SAVES_ICON_FRAMES * UI_SAVES_ICON_BYTES] __attribute__((aligned(32)));
+	static uiSavesArt_t art;
+	static uiSaveCubesGrid_t grid;
+	static uiSaveCubesMotion_t motion;
+	static saveCubesDraw_t draw;
+	int count = 0, floating = 0, frame, s, k;
+
+	art.steps = 1;
+	art.stepHold[0] = 1;
+	art.period = 1;
+	memset(&motion, 0, sizeof(motion));
+	memset(&grid, 0, sizeof(grid));
+	for(s = 0; s < UI_SAVE_CUBES_STACKS; s++) {
+		grid.stack[s].cells = 128;
+		grid.stack[s].first = 4;
+		grid.stack[s].listing = (u32)s + 1u;
+		for(k = 0; k < UI_SAVE_CUBES_DRAWN; k++) {
+			grid.stack[s].cell[k].kind = UI_SAVE_CUBES_KIND_SAVE;
+			grid.stack[s].cell[k].texels = texels;
+			grid.stack[s].cell[k].art = &art;
+		}
+	}
+	grid.focusStack = 0;
+	grid.focusCell = 4 * UI_SAVE_CUBES_COLUMNS + 1;
+	UIStage_SetWide(wide);
+	if(what == CARDS_OPENING) {
+		/* Home's cube on its System side, where Memory Cards opens from. */
+		homeTurned(3, 600);
+		for(frame = 0; frame < 15; frame++) {
+			UISaveCubes_Frame(&motion, &grid, DT, UI_MOTION_FULL, draw.cubes, &floating);
+			settle(1);
+		}
+	}
+	else {
+		for(frame = 0; frame < 600; frame++) {
+			UISaveCubes_Frame(&motion, &grid, DT, UI_MOTION_FULL, draw.cubes, &floating);
+		}
+		grid.stack[0].first = grid.stack[1].first = 5;
+		grid.focusCell = 5 * UI_SAVE_CUBES_COLUMNS + 1;
+		grid.op.kind = what == CARDS_COPY ? UI_SAVE_CUBES_OP_COPY :
+			what == CARDS_ERASE ? UI_SAVE_CUBES_OP_ERASE : UI_SAVE_CUBES_OP_NONE;
+		grid.op.serial = 1;
+		grid.op.fromCell = grid.focusCell;
+		grid.op.toCell = 6 * UI_SAVE_CUBES_COLUMNS + 2;
+		grid.op.cube = grid.stack[0].cell[8];
+		for(frame = 0; frame < 10; frame++) {
+			UISaveCubes_Frame(&motion, &grid, DT, UI_MOTION_FULL, draw.cubes, &floating);
+		}
+		if(what == CARDS_ERASE) {
+			grid.op.phase = UI_SAVE_CUBES_LAND;
+			for(frame = 0; frame < 6; frame++) {
+				UISaveCubes_Frame(&motion, &grid, DT, UI_MOTION_FULL, draw.cubes, &floating);
+			}
+		}
+	}
+	memset(&cost, 0, sizeof(cost));
+	cost.hash = 1469598103934665603ULL;
+	stubStateCalls = 0;
+	count = UISaveCubes_Frame(&motion, &grid, DT, UI_MOTION_FULL, draw.cubes, &floating);
+	IndigoBackground_DrawSavesBackdrop(motion.paper, motion.handover, seconds, true,
+		UIScene_Frame(), &clock, icons);
+	_SaveCubesShades(&draw);
+	draw.invalidated = false;
+	_SaveCubesEmit(&draw, 0, floating);
+	for(k = floating; k < count; k++) {
+		_SaveCubesEmit(&draw, k, k + 1);
+	}
+	printf("{\"scene\": \"%s\", \"sqrtf\": %ld, \"trig\": %ld, \"minmax\": %ld, "
+		"\"vertices\": %ld, \"begins\": %ld, \"copy_pixels\": %.0f, \"state\": %ld, "
+		"\"hash\": \"%016llx\"}\n", name, cost.sqrtCalls, cost.trigCalls,
+		cost.minMaxCalls, cost.vertices, cost.begins, cost.copyPixels,
+		stubStateCalls, cost.hash);
+	UIStage_SetWide(false);
+}
+
 int main(void)
 {
 	int colors[UI_COLOR_LAYERS] = {0};
@@ -349,5 +441,10 @@ int main(void)
 	measure("boot-handoff", true);
 
 	hintRoundRect();
+	memoryCards("memory-cards", false, CARDS_STEADY);
+	memoryCards("memory-cards-wide", true, CARDS_STEADY);
+	memoryCards("memory-cards-copy", true, CARDS_COPY);
+	memoryCards("memory-cards-erase", true, CARDS_ERASE);
+	memoryCards("memory-cards-opening", true, CARDS_OPENING);
 	return 0;
 }

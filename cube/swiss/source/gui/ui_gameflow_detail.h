@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "ui_game_history.h"
+#include "ui_saves_metadata.h"
 
 #define UI_GAMEFLOW_DETAIL_ID_LENGTH 6u
 #define UI_GAMEFLOW_DETAIL_TITLE_CAPACITY 96u
@@ -56,6 +57,7 @@ typedef struct {
 	uint64_t lastPlayedUnixSeconds;
 	bool playHistoryAvailable;
 	uiGameSaveStatus_t saveStatus;
+	const uiSavesGameStats_t *saveStats;
 	const uint8_t *banner;
 	size_t bannerSize;
 	const uiGameflowDetailCheatSource_t *cheats;
@@ -83,6 +85,10 @@ typedef struct {
 	char company[UI_GAMEFLOW_DETAIL_COMPANY_CAPACITY];
 	char lastPlayedText[64];
 	char saveStatusText[48];
+	uiSavesGameStats_t saveStats;
+	/* Read-only save copies in the checked slots and configured Save Folder. */
+	char savesSummary[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
+	char savesUpdated[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
 	char facts[UI_GAMEFLOW_DETAIL_FACTS_CAPACITY];
 	char description[UI_GAMEFLOW_DETAIL_DESCRIPTION_LINES]
 		[UI_GAMEFLOW_DETAIL_DESCRIPTION_CAPACITY];
@@ -118,8 +124,8 @@ typedef enum {
 } uiGameflowDetailInput_t;
 
 /* The rows up and down move between, counted from the bottom as they are
- * drawn: Launch, Cheats above it, Settings at the top. A zeroed event rests
- * on Launch. */
+ * drawn: Launch, Cheats above it, Settings above that. The SAVES inset is
+ * read-only and takes no focus. A zeroed event rests on Launch. */
 typedef enum {
 	UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH = 0,
 	UI_GAMEFLOW_DETAIL_FOCUS_CHEATS,

@@ -57,6 +57,7 @@
 #include "gui/card_art.h"
 #include "gui/ui_apps.h"
 #include "gui/ui_gameflow_detail.h"
+#include "gui/saves_stats.h"
 #include "gui/ui_gameflow_library.h"
 #include "gui/ui_gameflow_ownership.h"
 #include "gui/ui_gameflow_resolver.h"
@@ -1119,7 +1120,10 @@ static void homeDispatchEffect(uiHomeEffect_t effect)
 			UIScene_Request(UI_SCENE_HOME);
 			break;
 		case UI_HOME_EFFECT_OPEN_SAVES:
-			UIScene_Request(UI_SCENE_SYSTEM);
+			/* Memory Cards covers the screen and hands the Home cube over
+			 * where it stands, its System side to the front, going back into
+			 * the distance and coming back; the System scene would turn it to
+			 * the Library's side on the way and back again after. */
 			show_saves();
 			UIScene_Request(UI_SCENE_HOME);
 			break;
@@ -4462,6 +4466,7 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 {
 	uiGameflowDetailSnapshot_t *snapshot;
 	uiGameflowDetailSource_t source;
+	uiSavesGameStats_t saveStats;
 	uiGameflowDetailCheatSource_t *cheatSources = NULL;
 	CheatEntries *cheats = getCheats();
 	file_meta *meta = curFile.meta;
@@ -4551,6 +4556,14 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 	source.lastPlayedUnixSeconds = config_last_played(context->gameId, 6u,
 		&source.playHistoryAvailable);
 	source.saveStatus = UI_GAME_SAVE_NOT_CHECKED;
+	/* Only the verified disc launch context owns a save identity. Apps use
+	 * the same Library renderer but never take this snapshot path. */
+	if(context->primary != NULL && context->primary->fileType == IS_FILE &&
+		valid_gcm_magic(&GCMDisk) &&
+		memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0) {
+		Saves_CollectGameStats(context->gameId, &saveStats);
+		source.saveStats = &saveStats;
+	}
 	source.customSettings = (uint32_t)settings_game_custom_count(config);
 	source.firstCustomSetting = settings_game_custom_first(config);
 	if(meta != NULL && meta->banner != NULL &&

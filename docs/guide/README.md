@@ -61,8 +61,8 @@
   </tr>
   <tr>
     <td valign="top">
-      <a href="memory-cards.md"><img alt="Memory Cards on Slot A: four saves, each with its banner, name and size in blocks." src="images/memory-cards-slot-a.png" width="100%"></a><br>
-      <b><a href="memory-cards.md">Memory Cards</a></b>: see, copy, move and delete your saves.
+      <a href="memory-cards.md"><img alt="Memory Cards: Slot A and Slot B as two stacks of save cubes, each with its game's icon, the first save highlighted." src="images/memory-cards-slot-a.png" width="100%"></a><br>
+      <b><a href="memory-cards.md">Memory Cards</a></b>: see, move, copy and erase your saves.
     </td>
     <td valign="top">
       <a href="posters.md"><img alt="1080° Avalanche without a poster pack and with one." src="images/posters-compare.png" width="100%"></a><br>
@@ -97,9 +97,10 @@ with the games, poster pack and cheat files on an emulated disc. The box art
 belongs to its publishers. The recordings run without an SD card, so
 Setup › Storage says there is no device to save settings to, and game details
 have no Autoload shortcut. With an SD card in your console, both look as the
-text describes. The Memory Cards pictures of the SD CARD tab, the Save Folder
-and the folder chooser use a stand-in for the SD card that exists only for
-recording, named GC Loader on screen, since Dolphin can't give a GameCube one.
+text describes. The Memory Cards pictures of the SD card's stack, the Save
+Folder and the folder chooser use a stand-in for the SD card that exists only
+for recording, named GC Loader on screen, since Dolphin can't give a GameCube
+one.
 
 ---
 

@@ -6,7 +6,7 @@ A on a game in the [Library](library.md) opens its details: everything about
 that one game, and every way to start it, on one screen.
 
 <p align="center">
-  <img alt="The detail screen for 1080° Avalanche: the cover on the left; on the right the title, the publisher, Audio Streaming, Last played, Save data, Settings reading Game Defaults with X Change for this game, Cheats with 2 of 12 enabled and the first of them named, and a Launch Game button in a bright frame, the row the D-pad is on; below the cover a Shortcuts box with R Verify and L + A Clean Boot; the hint line reads D-pad Move, A Select, B Library, X Settings, Y Cheats." src="images/game-details.png" width="640">
+  <img alt="Astral Circuit’s game details: its demonstration cover on the left; Last played says No play recorded. The Saves inset shows 1 save copy, 2 blocks and Updated 2024-02-29 12:34 above Settings and Cheats. Launch Game is selected." src="images/game-details.png" width="640">
 </p>
 
 ## What's on the screen
@@ -21,9 +21,15 @@ that one game, and every way to start it, on one screen.
   play recorded". Indigo records it when your settings live on the card the
   game starts from, as with a single SD card. With no settings device to
   read it from, it says "History unavailable".
-- **Save data**: "Check in game". This screen doesn't look for the game's
-  saves; System › [Memory Cards](memory-cards.md) lists the saves on your
-  memory cards.
+- **Saves**, above Settings and Cheats: the number of save copies and
+  their total blocks appear first, with the latest update beneath them.
+  These totals come from inserted memory cards and the configured Save
+  Folder, including readable RAW images there. It matches the full game and
+  maker ID, not the title. A RAW save and an exported GCI count as separate
+  copies; this isn't a progress score. **Updated** is the newest date
+  recorded in those saves. An incomplete or unavailable scan says so,
+  rather than reporting no saves. System › [Memory Cards](memory-cards.md)
+  opens the individual saves and their details.
 - **Settings**: "Game Defaults" while the game follows them, or how many of
   its settings are its own and the first of them, such as "1 custom" and
   "Force Video Mode: 480p". See [below](#this-games-own-settings).
@@ -32,6 +38,14 @@ that one game, and every way to start it, on one screen.
   there's no cheat file for the game. See [Cheats](cheats.md).
 - **Launch Game**, where the screen opens (below).
 - **Shortcuts**: the extra ways to start or check the game (below).
+
+Copying a save from a RAW image into the Save Folder creates another save
+copy. Opening the game's details again refreshes the totals: the example
+below now has **2 save copies | 4 blocks**, with the same recorded update.
+
+<p align="center">
+  <img alt="Astral Circuit’s Saves inset after exporting one GCI: 2 save copies, 4 blocks and the unchanged Updated 2024-02-29 12:34." src="images/game-details-saves-after-copy.png" width="640">
+</p>
 
 ## Start the game
 

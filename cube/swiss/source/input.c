@@ -1,4 +1,5 @@
 #include <gctypes.h>
+#include <ogc/irq.h>
 #include <ogc/n64.h>
 #include <ogc/pad.h>
 #include <ogc/si.h>
@@ -13,6 +14,10 @@ static u32 resetBits;
  * The atomic snapshot starts disconnected until the first post-retrace scan
  * publishes a result. */
 static u32 menuInputValidMask;
+/* The buttons that went down at a scan since a menu last took them, so a
+ * press held and let go while the menu thread was busy reading a card is
+ * still a press. */
+static u32 buttonsDown;
 
 static void resetCallback(void)
 {
@@ -69,6 +74,20 @@ void padsScan(void)
 	u32 validMask = PAD_ScanPads() &
 		((1u << UI_MENU_INPUT_CHANNEL_COUNT) - 1u);
 	__atomic_store_n(&menuInputValidMask, validMask, __ATOMIC_RELAXED);
+	/* The retrace callback: interrupts are off. */
+	buttonsDown |= PAD_ButtonsDown(PAD_CHAN0) | PAD_ButtonsDown(PAD_CHAN1) |
+		PAD_ButtonsDown(PAD_CHAN2) | PAD_ButtonsDown(PAD_CHAN3);
+}
+
+/* The buttons in mask pressed since they were last taken, taken now. */
+u32 padsButtonsTaken(u32 mask)
+{
+	u32 level = IRQ_Disable();
+	u32 taken = buttonsDown & mask;
+
+	buttonsDown &= ~mask;
+	IRQ_Restore(level);
+	return taken;
 }
 
 s8 __chooseMaxMagnitiude(s8 p0, s8 p1, s8 p2, s8 p3)

@@ -171,16 +171,19 @@ and the temperature sit in the top right corner; Setup › Console › Clock
 and Temperature each move theirs to the top left or hide it.
 
 **Memory Cards moves your saves, like the GameCube's own screen.** System ›
-Memory Cards lists the saves on the cards in Slot A and Slot B, each with its
-banner, and the saves in any folder on your SD card. A on a save copies,
-moves or deletes it: to the other slot, to your Save Folder, or to a folder
-you choose. Every copy is read back before it counts, and a Move removes the
-original only then. Setup › Storage › Save Folder sets where saves copied off
-a card go (`swiss/saves` until you choose one). See
+Memory Cards shows two stacks of cubes side by side, Slot A's saves and Slot
+B's, each cube with its game's animated icon. L and R choose storage;
+with no physical cards, both columns open on SD. RAW virtual cards open to
+browse and export their saves. A on a save shows its size, source and
+recorded update date; A Actions opens Move, Copy and Erase. Move and Copy
+send its cube flying to the other stack. Every copy is read back
+before it counts, and a Move removes the original only then. Setup ›
+Storage › Save Folder sets the folder the SD card's stack opens on
+(`swiss/saves` until you choose one). See
 [Memory Cards](docs/guide/memory-cards.md).
 
 <p align="center">
-  <img alt="Memory Cards: Slot A lists four saves with their banners. R shows Slot B, then the SD CARD tab with no saves in the Save Folder. Back on Slot A, A on Indigo Quest offers Copy, Move and Delete; Copy to lists Slot B, the Save Folder and Another folder; the save is copied to /swiss/saves, and the SD CARD tab now holds it." src="docs/guide/images/memory-cards.png" width="640">
+  <img alt="Memory Cards with Demo Card.raw open on the left and an independent SD folder on the right. Copper Archive’s save cube is selected; its banner and two-block size appear below." src="docs/guide/images/memory-cards.png" width="640">
 </p>
 
 ## Install
