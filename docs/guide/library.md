@@ -101,6 +101,8 @@ its own folder, or put the disc images there directly:
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`, in capitals or not.
 The Library skips anything else in `/games` or in a game's folder, such as a
 text file, a cover image or an empty folder.
+Mac metadata files whose names start with `._` are skipped too. Hidden files
+in a game's folder follow **Show hidden files**, as they do in the file list.
 
 <p align="center">
   <img alt="Swiss's plain file list of a games folder, one entry per row with its banner, name and region flag." src="images/library-file-list.png" width="640">

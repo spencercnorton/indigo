@@ -1706,6 +1706,12 @@ static bool gameflowResolveAndLoadFolder(file_handle *folder,
 
 			entry->type = gameflowEntryType(child);
 			entry->sourceIndex = (u32)i;
+			if(strncmp(leafName, "._", 2u) == 0 ||
+				(!swissSettings.showHiddenFiles &&
+				((child->fileAttrib & ATTRIB_HIDDEN) || leafName[0] == '.'))) {
+				entry->type = UI_GAMEFLOW_LIBRARY_ENTRY_OTHER;
+				continue;
+			}
 			if(leafLength >= sizeof(entry->name)) {
 				strcpy(entry->name, "invalid.iso");
 				continue;

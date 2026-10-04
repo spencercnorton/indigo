@@ -92,6 +92,8 @@ run_binaries() {
 	# card_art builds its own binaries: posters of apps and folders, their guards.
 	echo "== test_card_art$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_card_art.py; else python3 ./test_card_art.py --sanitize; fi
+	echo "== game folder visibility$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_gameflow_folder_visibility.py; else python3 ./test_gameflow_folder_visibility.py --sanitize; fi
 }
 
 # The fuzzers (fuzz/) must build on every change, since a Fuzz run is not
