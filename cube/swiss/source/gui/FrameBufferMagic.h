@@ -17,6 +17,7 @@
 #include "ui_presentation.h"
 #include "ui_color.h"
 #include "ui_settings_layout.h"
+#include "ui_save_cubes.h"
 
 #define D_WARN  0
 #define D_INFO  1
@@ -296,6 +297,32 @@ typedef struct {
 uiDrawObj_t* DrawSavesPage(const uiSavesPageSnapshot_t *snapshot);
 void DrawUpdateSavesPage(uiDrawObj_t *page,
 	const uiSavesPageSnapshot_t *snapshot);
+/* Memory Cards' cube screen (saves.c): one page event, drawn from this
+ * snapshot, which each update copies in whole. Its cubes and banner point
+ * at the art saves.c reads into its pool: only at saves on screen, which
+ * the loader never reads over, and the pool outlives the page. */
+typedef struct {
+	char name[4];		/* "A", "B" or "SD" */
+	char free[8];		/* a card's free blocks, "" for the SD card */
+	char path[64];		/* the SD card's open folder */
+	char note[2][96];	/* why a stack with no grid has none */
+	float noteScale[2];
+} uiSaveCubesStackText_t;
+
+typedef struct {
+	uiSaveCubesGrid_t grid;
+	uiSaveCubesStackText_t stack[UI_SAVE_CUBES_STACKS];
+	const u8 *banner;	/* the focused save's 96x32 RGB5A3 banner, or NULL */
+	char line[2][48];	/* its comment's lines, or its name */
+	char blocks[16];	/* its size in blocks, or "Folder" */
+	char hint[2][96];	/* left, and right */
+	u8 info;		/* the info bar shows the focused save or folder */
+	u8 folder;		/* it is a folder */
+} uiSaveCubesPageSnapshot_t;
+
+uiDrawObj_t* DrawSaveCubesPage(const uiSaveCubesPageSnapshot_t *snapshot);
+void DrawUpdateSaveCubesPage(uiDrawObj_t *page,
+	const uiSaveCubesPageSnapshot_t *snapshot);
 uiDrawObj_t* DrawFileBrowserButton(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
 uiDrawObj_t* DrawFileBrowserButtonMeta(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
 uiDrawObj_t* DrawFileCarouselEntry(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int distFromMiddle);

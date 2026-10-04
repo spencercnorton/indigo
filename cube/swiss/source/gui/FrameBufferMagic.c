@@ -187,11 +187,12 @@ enum VideoEventType
 	EV_CHEATS,
 	EV_SETTINGSLIST,
 	EV_SETTINGSHELP,
-	EV_SAVES
+	EV_SAVES,
+	EV_SAVE_CUBES
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Background", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "Saves"};
+						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "Saves", "SaveCubes"};
 
 typedef struct drawTexObjEvent {
 	GXTexObj *texObj;
@@ -6552,6 +6553,305 @@ void DrawUpdateSavesPage(uiDrawObj_t *page,
 	LWP_MutexUnlock(_videomutex);
 }
 
+/* ------------------------------------------------------------------------
+ * Memory Cards' cube screen (saves.c): two stacks of save cubes over graph
+ * paper, as the IPL's Memory Card screen shows Slot A and Slot B, with the
+ * focused save's banner and comment below. ui_save_cubes.c lays the cubes
+ * out, moves them and projects their faces on the CPU; here they go through
+ * the 2D pipeline every page uses, Z off and nothing culled, so a frame
+ * asks nothing new of GX.
+ * --------------------------------------------------------------------- */
+
+/* What one frame's cubes need. */
+typedef struct {
+	uiSaveCube_t cubes[UI_SAVE_CUBES_FRAME];
+	uiSaveCubesQuad_t quads[UI_SAVE_CUBES_FRAME * UI_SAVE_CUBES_QUADS];
+	u16 quadEnd[UI_SAVE_CUBES_FRAME];
+	GXColor shades[UI_SAVE_CUBES_SHADES][UI_SAVE_CUBES_ROLES];
+	GXTexObj icon;
+	bool invalidated;	/* the texture cache, this frame */
+} saveCubesDraw_t;
+
+/* Each shade of each part of a cube, through Menu Color once a frame. */
+static void _SaveCubesShades(saveCubesDraw_t *draw)
+{
+	int shade, role;
+
+	for(shade = 0; shade < UI_SAVE_CUBES_SHADES; shade++) {
+		for(role = 0; role < UI_SAVE_CUBES_ROLES; role++) {
+			u8 rgba[4];
+
+			UISaveCubes_Colour(shade, role, rgba);
+			UIColor_Apply(&rgba[0], &rgba[1], &rgba[2]);
+			draw->shades[shade][role] = (GXColor) {rgba[0], rgba[1], rgba[2], rgba[3]};
+		}
+	}
+}
+
+static void _SaveCubesVertex(float x, float y, GXColor color, float s, float t)
+{
+	GX_Position3f32(x, y, 0.0f);
+	GX_Color4u8(color.r, color.g, color.b, color.a);
+	GX_TexCoord2f32(s, t);
+}
+
+/* Cubes first .. end - 1: all their faces in one batch, then each icon on
+ * its quad in the game's own colors, blended by its alpha (drawInit's blend
+ * would add a clear texel's color). The texture cache is cleared before the
+ * frame's first icon only, not per icon as _DrawTexObjNow would: the loader
+ * writes only slots no published cube names. */
+static void _SaveCubesEmit(saveCubesDraw_t *draw, int first, int end)
+{
+	static const float s[4] = {0.0f, 1.0f, 1.0f, 0.0f};
+	static const float t[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+	float left = UIStage_Left(), right = UIStage_Right();
+	int quads = 0, bodies = 0, i, k, v;
+	bool icons = false;
+
+	for(i = first; i < end; i++) {
+		int n = UISaveCubes_Faces(&draw->cubes[i], left, right, draw->quads + quads);
+
+		quads += n;
+		bodies += n - (n > 0 && draw->quads[quads - 1].role == UI_SAVE_CUBES_ROLE_ICON);
+		draw->quadEnd[i] = (u16)quads;
+	}
+	if(bodies > 0) {
+		drawInit();
+		_SetupRasterColor();
+		GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(4 * bodies));
+		for(i = first; i < end; i++) {
+			const uiSaveCube_t *cube = &draw->cubes[i];
+
+			for(k = i > first ? draw->quadEnd[i - 1] : 0; k < draw->quadEnd[i]; k++) {
+				const uiSaveCubesQuad_t *quad = &draw->quads[k];
+				GXColor color;
+
+				if(quad->role == UI_SAVE_CUBES_ROLE_ICON) {
+					continue;
+				}
+				color = draw->shades[cube->shade][quad->role];
+				color.a = (u8)(color.a * cube->alpha / 255);
+				for(v = 0; v < 4; v++) {
+					_SaveCubesVertex(quad->x[v], quad->y[v], color, 0.0f, 0.0f);
+				}
+			}
+		}
+		GX_End();
+	}
+	for(i = first; i < end; i++) {
+		const uiSaveCubesQuad_t *quad;
+		GXColor white = {255, 255, 255, draw->cubes[i].alpha};
+
+		if(draw->quadEnd[i] == (i > first ? draw->quadEnd[i - 1] : 0)) {
+			continue;
+		}
+		quad = &draw->quads[draw->quadEnd[i] - 1];
+		if(quad->role != UI_SAVE_CUBES_ROLE_ICON) {
+			continue;
+		}
+		if(!icons) {
+			drawInit();
+			GX_SetNumTevStages(1);
+			GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA,
+				GX_LO_CLEAR);
+			if(!draw->invalidated) {
+				GX_InvalidateTexAll();
+				draw->invalidated = true;
+			}
+			icons = true;
+		}
+		GX_InitTexObj(&draw->icon, (void *)draw->cubes[i].icon, 32, 32,
+			GX_TF_RGB5A3, GX_CLAMP, GX_CLAMP, GX_FALSE);
+		GX_LoadTexObj(&draw->icon, GX_TEXMAP0);
+		GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+		for(v = 0; v < 4; v++) {
+			_SaveCubesVertex(quad->x[v], quad->y[v], white, s[v], t[v]);
+		}
+		GX_End();
+	}
+	if(icons) {
+		drawInit();
+	}
+}
+
+typedef struct {
+	uiSaveCubesPageSnapshot_t snapshot;
+	uiSaveCubesMotion_t motion;
+	saveCubesDraw_t draw;
+	GXTexObj picture;	/* the info bar's banner, or its icon */
+} drawSaveCubesEvent_t;
+
+/* A box of fill shading top to bottom, inside an edge line px wide. */
+static void _SaveCubesBox(float x, float y, float width, float height,
+	GXColor top, GXColor bottom, GXColor edge, float line)
+{
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 20);
+		_putFlatVertex(x, y, top);
+		_putFlatVertex(x + width, y, top);
+		_putFlatVertex(x + width, y + height, bottom);
+		_putFlatVertex(x, y + height, bottom);
+		_putFlatRect(x, y, width, line, edge);
+		_putFlatRect(x, y + height - line, width, line, edge);
+		_putFlatRect(x, y + line, line, height - 2.0f * line, edge);
+		_putFlatRect(x + width - line, y + line, line, height - 2.0f * line, edge);
+	GX_End();
+}
+
+/* A stack's header, "A  Open" and its free blocks in a box, or the SD
+ * card's open folder; the arrows when rows lie above or below the window;
+ * or, with no grid, why. */
+static void _SaveCubesHeader(const uiSaveCubesStack_t *stack,
+	const uiSaveCubesStackText_t *text, float middle)
+{
+	const GXColor white = {255, 255, 255, 255};
+	const GXColor shadow = {0, 0, 0, 200};
+	int rows = stack->cells / UI_SAVE_CUBES_COLUMNS;
+	int i;
+
+	if(stack->cells <= 0) {
+		drawStringMedium((int)middle, 220, text->note[0], text->noteScale[0],
+			ALIGN_CENTER, white);
+		drawStringMedium((int)middle, 248, text->note[1], text->noteScale[1],
+			ALIGN_CENTER, settingsQuiet);
+		return;
+	}
+	drawStringMedium((int)middle - 100, 74, text->name, 1.5f, ALIGN_LEFT, white);
+	if(text->free[0] != '\0') {
+		drawStringMedium((int)middle - 66, 80, "Open", 0.5f, ALIGN_LEFT, white);
+		_SaveCubesBox(middle - 20.0f, 60.0f, 56.0f, 28.0f, shadow, shadow, white, 2.0f);
+		drawStringMedium((int)middle + 8, 74, text->free, 0.6f, ALIGN_CENTER, white);
+	}
+	else {
+		drawStringMedium((int)middle - 44, 78, text->path, 0.42f, ALIGN_LEFT,
+			settingsQuiet);
+	}
+	for(i = 0; i < 2; i++) {
+		float tip = i ? 354.5f : 99.5f, base = i ? 345.5f : 108.5f;
+
+		if(i ? stack->first + UI_SAVE_CUBES_ROWS >= rows : stack->first <= 0) {
+			continue;
+		}
+		drawInit();
+		_SetupRasterColor();
+		GX_Begin(GX_TRIANGLES, GX_VTXFMT0, 3);
+			_putFlatVertex(middle - 7.0f, base, white);
+			_putFlatVertex(middle + 7.0f, base, white);
+			_putFlatVertex(middle, tip, white);
+		GX_End();
+	}
+}
+
+/* A 96x32 banner or a 32x32 icon frame, RGB5A3, at (x, y). */
+static void _SaveCubesPicture(GXTexObj *picture, const u8 *texels, int x,
+	int y, int width)
+{
+	memset(picture, 0, sizeof(*picture));
+	GX_InitTexObj(picture, (void *)texels, width, 32, GX_TF_RGB5A3, GX_CLAMP,
+		GX_CLAMP, GX_FALSE);
+	GX_InitTexObjFilterMode(picture, GX_LINEAR, GX_NEAR);
+	drawInit();
+	_DrawTexObjNow(picture, x, y, width, 32, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0);
+	drawInit();
+}
+
+static void _DrawSaveCubes(uiDrawObj_t *evt)
+{
+	drawSaveCubesEvent_t *data = (drawSaveCubesEvent_t*)evt->data;
+	const uiSaveCubesPageSnapshot_t *s = &data->snapshot;
+	const uiSaveCubesGrid_t *grid = &s->grid;
+	const GXColor white = {255, 255, 255, 255};
+	const GXColor box = {0, 0, 0, 200};
+	uiMotionMode_t motion = _CurrentMotionMode();
+	float left = UIStage_Left() + 40.0f, right = UIStage_Right() - 40.0f;
+	int count, floating, i;
+
+	IndigoBackground_DrawSavesBackdrop();
+	drawInit();
+	_SaveCubesShades(&data->draw);
+	count = UISaveCubes_Frame(&data->motion, grid, UIAnim_Delta(), motion,
+		data->draw.cubes, &floating);
+	data->draw.invalidated = false;
+	for(i = 0; i < UI_SAVE_CUBES_STACKS; i++) {
+		_SaveCubesHeader(&grid->stack[i], &s->stack[i],
+			UI_SAVE_CUBES_STACK_X + (float)i * UI_SAVE_CUBES_STACK_GAP);
+	}
+	_SaveCubesEmit(&data->draw, 0, floating);
+	/* The info bar: the focused save's banner (or its icon), its comment
+	 * and its size, as the IPL's. Empty for a free cell. */
+	_SaveCubesBox(left, 362.0f, right - left, 70.0f, (GXColor) {39, 53, 153, 220},
+		(GXColor) {58, 31, 127, 220}, (GXColor) {196, 186, 255, 255}, 2.0f);
+	if(s->info) {
+		int blocks = 0;
+
+		if(s->banner != NULL) {
+			_SaveCubesPicture(&data->picture, s->banner, 56, 381, 96);
+		}
+		else if(s->folder) {
+			_SavesFolder(56, 381, settingsSwatch);
+		}
+		else if(grid->focusStack >= 0) {
+			const uiSaveCubesStack_t *stack = &grid->stack[grid->focusStack];
+			int k = grid->focusCell - (stack->first - 1) * UI_SAVE_CUBES_COLUMNS;
+			const u8 *icon = k >= 0 && k < UI_SAVE_CUBES_DRAWN ?
+				UISaveCubes_Icon(&stack->cell[k], data->motion.seconds, motion) : NULL;
+
+			if(icon != NULL) {
+				_SaveCubesPicture(&data->picture, icon, 88, 381, 32);
+			}
+		}
+		drawStringMedium(168, 388, s->line[0], 0.62f, ALIGN_LEFT, white);
+		if(s->blocks[0] != '\0') {
+			blocks = (int)((float)GetTextSizeInPixels(s->blocks) * 0.5f) + 16;
+			if(blocks < 48) {
+				blocks = 48;
+			}
+			_SaveCubesBox(168.0f, 398.0f, (float)blocks, 24.0f, box, box, white, 2.0f);
+			drawStringMedium(168 + blocks / 2, 410, s->blocks, 0.5f, ALIGN_CENTER,
+				white);
+		}
+		drawStringMedium(180 + blocks, 410, s->line[1], 0.5f, ALIGN_LEFT,
+			settingsQuiet);
+	}
+	for(i = floating; i < count; i++) {
+		_SaveCubesEmit(&data->draw, i, i + 1);
+	}
+	_DrawHintText(40, 454, s->hint[0], 0.46f, ALIGN_LEFT, settingsInk);
+	_DrawHintText(600, 454, s->hint[1], 0.46f, ALIGN_RIGHT, settingsQuiet);
+	drawInit();
+}
+
+uiDrawObj_t* DrawSaveCubesPage(const uiSaveCubesPageSnapshot_t *snapshot)
+{
+	drawSaveCubesEvent_t *data = memalign(32, sizeof(*data));
+	uiDrawObj_t *event = calloc(1, sizeof(*event));
+
+	if(data == NULL || event == NULL) {
+		free(data);
+		free(event);
+		return NULL;
+	}
+	memset(data, 0, sizeof(*data));
+	data->snapshot = *snapshot;
+	event->type = EV_SAVE_CUBES;
+	event->data = data;
+	return event;
+}
+
+void DrawUpdateSaveCubesPage(uiDrawObj_t *page,
+	const uiSaveCubesPageSnapshot_t *snapshot)
+{
+	if(page == NULL) {
+		return;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!page->disposed && page->type == EV_SAVE_CUBES && page->data != NULL) {
+		((drawSaveCubesEvent_t*)page->data)->snapshot = *snapshot;
+	}
+	LWP_MutexUnlock(_videomutex);
+}
+
 void DrawGetTextEntry(int mode, const char *label, void *src, int size) {
 	
 	print_debug("DrawGetTextEntry Modes: Alpha [%s] Numeric [%s] IP [%s] Masked [%s] File [%s]\n", mode & ENTRYMODE_ALPHA ? "Y":"N", mode & ENTRYMODE_NUMERIC ? "Y":"N",
@@ -6903,6 +7203,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 		case EV_SAVES:
 			_DrawSaves(videoEvent);
 			break;
+		case EV_SAVE_CUBES:
+			_DrawSaveCubes(videoEvent);
+			break;
 		default:
 			break;
 	}
@@ -6956,13 +7259,15 @@ static void _SelectFrameColors(void)
 }
 
 /* Settings, the cheats and Memory Cards are opaque pages over the whole
- * stage (_PagePanel), so while one is up nothing drawn before it shows. */
+ * stage (_PagePanel, or the cube screen's own backdrop), so while one is up
+ * nothing drawn before it shows. */
 static bool _FrameCovered(uiDrawObjQueue_t *queue)
 {
 	for(; queue != NULL; queue = queue->next) {
 		const uiDrawObj_t *event = queue->event;
 		if(!event->disposed && (event->type == EV_SETTINGS ||
-			event->type == EV_CHEATS || event->type == EV_SAVES)) {
+			event->type == EV_CHEATS || event->type == EV_SAVES ||
+			event->type == EV_SAVE_CUBES)) {
 			return true;
 		}
 	}
