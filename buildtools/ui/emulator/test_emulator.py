@@ -584,11 +584,92 @@ class Screen(unittest.TestCase):
                                 .convert("RGB")), True).max(axis=2) for name in ("known", "unknown")]
         narrow = [run.text_mask(frame, (100, 256, 119, 278)) for frame in gray]
         self.assertTrue(run.same_text(*narrow), "a single low-resolution glyph aliases")
-        values = [run.text_mask(frame, run.SAVE_DETAILS_BLOCKS_BOX) for frame in gray]
+        values = [run.text_mask(frame, run.SAVE_DETAILS_BLOCKS_BOX, run.SAVE_DETAILS_SIZE_LEVEL)
+                  for frame in gray]
         self.assertTrue(all(run.has_label(value) for value in values))
         self.assertFalse(run.same_text(*values), "two blocks/16KiB differs from one block/8KiB")
         self.assertTrue(run.same_text(values[0], values[0].copy()))
         self.assertTrue(run.same_text(values[1], values[1].copy()))
+
+    def test_actual_gray_theme_size_is_visible_and_erased_size_is_rejected(self):
+        from PIL import Image
+        path = Path(__file__).resolve().parent / "fixtures/themed-save-details.png"
+        rgb = np.asarray(Image.open(path).convert("RGB"))
+        gray = rgb.max(axis=2)
+        box = run.SAVE_DETAILS_SIZE_BOX
+        x0, y0, x1, y1 = box
+        self.assertEqual(int(gray[y0:y1, x0:x1].max()), 147)
+        self.assertFalse(run.has_label(run.text_mask(gray, box)), "normal bright labels retain threshold160")
+        muted = run.text_mask(gray, box, run.SAVE_DETAILS_SIZE_LEVEL)
+        self.assertEqual(int(muted.sum()), 112)
+        self.assertTrue(run.has_label(muted), "same coverage/spread requirement for the visible muted size")
+        for other in (run.SAVE_DETAILS_TITLE_BOX, run.SAVE_DETAILS_CREATED_BOX,
+                      run.SAVE_DETAILS_UPDATED_BOX, run.SAVE_DETAILS_ACTIONS_BOX):
+            self.assertTrue(run.has_label(run.text_mask(gray, other)))
+        missing = gray.copy()
+        missing[y0:y1, x0:x1] = 11
+        self.assertFalse(run.has_label(run.text_mask(missing, box, run.SAVE_DETAILS_SIZE_LEVEL)))
+        np.testing.assert_array_equal(gray, rgb.max(axis=2), "the capture remains unaltered")
+
+    def test_failed_check_keeps_its_native_frame(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as directory:
+            route = run.Route.__new__(run.Route)
+            route.out, route.shots, route.checks, route.report = Path(directory), [], [], None
+            route.emulator = mock.Mock(where=lambda: None)
+            route.last_rgb = np.full((run.HEIGHT, run.WIDTH, 3), (12, 23, 34), np.uint8)
+            with self.assertRaises(run.Failed):
+                route.check("a synthetic failed checkpoint", False)
+            self.assertEqual(len(route.shots), 1)
+            self.assertEqual(route.checks[0]["picture"], route.shots[0][1].name)
+            np.testing.assert_array_equal(np.asarray(Image.open(route.shots[0][1])), route.last_rgb)
+
+    def test_popup_frame_rejects_browser_cube_pixels(self):
+        from PIL import Image
+        root = Path(__file__).resolve().parent / "fixtures"
+        for name, wide in (("themed-save-details.png", False),
+                           ("wide-save-details-known.png", True),
+                           ("wide-save-details-unknown.png", True)):
+            gray = run.detection_frame(np.asarray(Image.open(root/name).convert("RGB")), wide).max(axis=2)
+            self.assertTrue(run.save_details_panel(gray), name)
+        browser = np.asarray(Image.open(root/"themed-save-browser.png").convert("RGB")).max(axis=2)
+        self.assertTrue(run.has_label(run.text_mask(browser, run.SAVE_DETAILS_TITLE_BOX)),
+                        "the underlying cube can satisfy the old title-only check")
+        self.assertFalse(run.save_details_panel(browser))
+
+    def test_save_details_retry_never_presses_a_after_popup_or_context_change(self):
+        from PIL import Image
+        root = Path(__file__).resolve().parent / "fixtures"
+        browser = np.asarray(Image.open(root/"themed-save-browser.png").convert("RGB")).max(axis=2)
+        popup = np.asarray(Image.open(root/"themed-save-details.png").convert("RGB")).max(axis=2)
+        changed = browser.copy()
+        x0, y0, x1, y1 = run.INFO_BOX
+        changed[y0:y1, x0:x1] = 0
+
+        class ShortWait:
+            def __init__(self, *args):
+                self.calls = 0
+
+            def expired(self):
+                self.calls += 1
+                return self.calls > 2
+
+        def opening(initial, after):
+            route = run.Route.__new__(run.Route)
+            route.emulator, route.pressed_again = object(), []
+            presses = []
+            route.press = lambda button: presses.append(button)
+            route.gray = lambda: initial if not presses else after(len(presses))
+            with mock.patch.object(run, "Deadline", ShortWait), mock.patch.object(run.time, "sleep"):
+                opened = route.open_save_details()
+            return opened, presses, route.pressed_again
+
+        self.assertEqual(opening(browser, lambda n: browser if n == 1 else popup),
+                         (True, ["A", "A"], ["A"]), "one missed press retries, then stops at popup")
+        self.assertEqual(opening(browser, lambda n: popup), (True, ["A"], []))
+        self.assertEqual(opening(popup, lambda n: popup), (True, [], []), "an existing popup never gets Actions")
+        self.assertEqual(opening(browser, lambda n: changed), (False, ["A"], []),
+                         "another screen change forbids any repeated A")
 
     def test_raw_animation_proof_requires_both_texture_colors_on_the_cube(self):
         rgb = np.full((run.HEIGHT, run.WIDTH, 3), (35, 25, 60), np.uint8)

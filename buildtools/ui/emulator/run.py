@@ -130,6 +130,7 @@ ART_SECONDS = 0.8
 # Dolphin writes a GCI folder's files a second after the card's last write.
 FLUSH_SECONDS = 10
 TEXT_LEVEL = 160          # label text is bright; the waves behind it are not
+SAVE_DETAILS_SIZE_LEVEL = 128  # muted detail text becomes gray with Menu Color=Jet Black
 SAME, DIFFERENT = 0.85, 0.5  # intersection over union of two label masks
 # Waits count the console's own seconds (Emulator.emulated) when Dolphin
 # reports them, so a busy machine slows a run instead of failing it; the
@@ -280,9 +281,10 @@ def arrow_up(gray: np.ndarray) -> bool:
     return int((gray[y0:y1, x0:x1] >= 200).sum()) >= ARROW_PIXELS
 
 
-def text_mask(frame: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX) -> np.ndarray:
+def text_mask(frame: np.ndarray, box: tuple[int, int, int, int] = LABEL_BOX,
+              level: int = TEXT_LEVEL) -> np.ndarray:
     x0, y0, x1, y1 = box
-    return frame[y0:y1, x0:x1] >= TEXT_LEVEL
+    return frame[y0:y1, x0:x1] >= level
 
 
 def stage_box(box: tuple[int, int, int, int], wide: bool = False) -> tuple[int, int, int, int]:
@@ -369,6 +371,20 @@ def has_label(mask: np.ndarray) -> bool:
         return False
     columns = np.flatnonzero(mask.any(axis=0))
     return columns.size > 0 and 20 <= columns[-1] - columns[0] <= mask.shape[1] - 4
+
+
+def save_details_panel(gray: np.ndarray) -> bool:
+    """The presentation panel in authored coordinates, distinct from save cubes.
+
+    Its four long border edges remain visible in both the normal and gray
+    palettes. A cube may overlap the title band, but cannot supply this frame.
+    """
+    edges = (((70, 130, 78, 342), 1), ((564, 130, 572, 342), 1),
+             ((92, 108, 548, 115), 0), ((92, 361, 548, 368), 0))
+    for (x0, y0, x1, y1), axis in edges:
+        if (gray[y0:y1, x0:x1] >= 64).any(axis=axis).mean() < .9:
+            return False
+    return has_label(text_mask(gray, SAVE_DETAILS_TITLE_BOX))
 
 
 def probe_field(rgb: np.ndarray) -> np.ndarray:
@@ -591,6 +607,9 @@ class Route:
 
     def check(self, name: str, passed: bool, **detail: object) -> None:
         probe_up = bool(self.report and self.report["valid"])  # the probe's screen is no crash
+        if not passed and getattr(self, "last_rgb", None) is not None:
+            self.shot("failed-check", self.last_rgb)
+            detail["picture"] = self.shots[-1][1].name
         if not passed and getattr(self, "last_rgb", None) is not None and not probe_up:
             if why := diagnose(self.last_rgb):
                 detail["screen"] = why
@@ -609,12 +628,13 @@ class Route:
 
     def settled_label(self, seconds: float = SETTLE_SECONDS, unlike: np.ndarray | None = None,
                       like: np.ndarray | None = None,
-                      box: tuple[int, int, int, int] = LABEL_BOX) -> tuple[np.ndarray | None, float]:
+                      box: tuple[int, int, int, int] = LABEL_BOX,
+                      level: int = TEXT_LEVEL) -> tuple[np.ndarray | None, float]:
         """Wait for steady text in a box (the face's name by default), optionally unlike or like a given one."""
         deadline = Deadline(self.emulator, seconds)
         previous, steady = None, 0
         while not deadline.expired():
-            mask = text_mask(self.gray(), box)
+            mask = text_mask(self.gray(), box, level)
             ok = has_label(mask)
             if ok and unlike is not None:
                 ok = overlap(mask, unlike) < DIFFERENT
@@ -1413,6 +1433,34 @@ class Route:
         self.check(f"{button}, Slot {'B' if button == 'R' else 'A'} brings its memory card back",
                    again is not None)
 
+    def open_save_details(self) -> bool:
+        """Retry a missed A only while the browser's static context is unchanged.
+
+        Once a panel or another screen change appears, A must not be repeated:
+        on details it means Actions. Cube animation is not an input response,
+        so compare the storage headers, info text and footer, not moving art.
+        """
+        boxes = (LEFT_HEADER_BOX, RIGHT_HEADER_BOX, INFO_BOX, FOOTER_BOX)
+        before = self.gray()
+        if save_details_panel(before):
+            return True
+        context = tuple(text_mask(before, box) for box in boxes)
+        changed = False
+        for attempt in range(PRESSES):
+            self.press("A")
+            deadline = Deadline(self.emulator, SETTLE_SECONDS)
+            while not deadline.expired():
+                gray = self.gray()
+                if save_details_panel(gray):
+                    return True
+                changed = changed or any(not same_text(text_mask(gray, box), original)
+                                         for box, original in zip(boxes, context))
+                time.sleep(.15)
+            if changed or attempt + 1 == PRESSES:
+                return False
+            self.pressed_again.append("A")
+        return False
+
     def save_details(self, name: str) -> dict[str, np.ndarray]:
         """Open details and verify authored fields on the real screen.
 
@@ -1420,17 +1468,21 @@ class Route:
         these masks prove the fields are actually visible in Dolphin. No
         action is selected until another A press.
         """
-        self.press("A")
+        self.check("A opens the save details panel", self.open_save_details())
         boxes = {"title": SAVE_DETAILS_TITLE_BOX, "size": SAVE_DETAILS_SIZE_BOX,
                  "created": SAVE_DETAILS_CREATED_BOX, "updated": SAVE_DETAILS_UPDATED_BOX,
                  "actions": SAVE_DETAILS_ACTIONS_BOX}
         fields = {}
         for field, box in boxes.items():
-            mask, _ = self.settled_label(box=box)
+            # The presentation's size/source line uses the renderer's muted
+            # color. Jet Black removes its violet chroma; its visible gray
+            # peaks below TEXT_LEVEL. Keep normal label checks unchanged.
+            level = SAVE_DETAILS_SIZE_LEVEL if field == "size" else TEXT_LEVEL
+            mask, _ = self.settled_label(box=box, level=level)
             self.check(f"save details displays its {field} field", mask is not None,
                        aspect="16:9" if self.menu_wide else "4:3")
             fields[field] = mask
-        fields["blocks"] = text_mask(self.gray(), SAVE_DETAILS_BLOCKS_BOX)
+        fields["blocks"] = text_mask(self.gray(), SAVE_DETAILS_BLOCKS_BOX, SAVE_DETAILS_SIZE_LEVEL)
         self.shot(name, self.last_rgb)
         return fields
 

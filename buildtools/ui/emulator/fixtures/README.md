@@ -12,3 +12,16 @@ rejects a copy with that date field removed. Screenshots remain untouched.
 untouched captures of the same public fixture. They show two blocks/16 KiB
 and one block/8 KiB. The single-digit masks alias at native resolution;
 the regression compares the bounded block/KiB phrase instead.
+
+`themed-save-details.png` is an untouched capture of commit e6c3e865 with
+the public Copper Orchard save on a simulated card. Menu Color is Jet
+Black, Backdrop Color is Emerald, Wave Color is Gold, and animations are
+reduced. The visible size/source line peaks at gray147 after the palette
+and alpha blending, below the normal bright-label threshold160. Its
+bounded muted-text check retains the same minimum coverage and steadiness;
+the regression also rejects an erased size line. No real card was used.
+
+`themed-save-browser.png` shows the same synthetic card before A opens
+details. Its cube pixels can pass the old title-band check. The popup guard
+requires the authored presentation frame, rejects this browser capture,
+and stops repeating A as soon as a popup or static context change appears.
