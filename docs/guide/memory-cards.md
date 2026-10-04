@@ -9,7 +9,7 @@ erases saves from one stack to the other. On Home, turn the cube to
 **System**, press A, choose **Memory Cards** and press A.
 
 <p align="center">
-  <img alt="Memory Cards opening: the Home cube recedes, graph paper fades in, and the saves of Slot A and Slot B spiral out of the middle into two stacks of cubes, each cube showing its game's animated icon. A on Copper Orchard opens save details, then A Actions opens Move, Copy and Erase beside its cube; Copy asks Copy to Slot B?, a pale cube pulsing in Slot B's first free place. The save's cube flies there in an arc, lands, and a maroon box reads Finished copying." src="images/memory-cards.png" width="640">
+  <img alt="Memory Cards with Demo Card.raw open on the left and an independent SD folder on the right. Copper Archive is selected; its cube carries the animated save icon, and its banner and two-block size appear below." src="images/memory-cards.png" width="640">
 </p>
 
 ## What's on the screen
@@ -87,6 +87,10 @@ is reported as finished.
   <img alt="Demo Card.raw opened on the left shows Copper Archive and another save, with the other column still on the SD folder. The info bar shows the save's banner and two-block size, and says that Copy exports a GCI from the read-only card image." src="images/memory-cards-raw.png" width="640">
 </p>
 
+<p align="center">
+  <img alt="The synthetic RAW save’s icon plays its own red and green texture frames on the selected cube while the cube moves. This is save-icon animation, independent of cube motion." src="images/memory-cards-raw-icons.webp" width="640">
+</p>
+
 ## Save details
 
 Highlight a save and press **A** to open its details. This works even when
@@ -104,6 +108,21 @@ both columns show read-only card images and no action can be used.
 Press **B Back** to return without changing anything, or **A Actions** to
 open Move, Copy and Erase. A dimmed action always explains why it can't be
 used.
+
+<p align="center">
+  <img alt="Copper Archive’s Save details: 2 blocks (16 KiB), Read-only card image, Created: Not recorded, Last updated: 2024-02-29 12:34, A Actions and B Back." src="images/memory-cards-details.png" width="640">
+</p>
+
+A save without a recorded update date shows **Unknown**. The dialog remains
+available when both columns hold read-only RAW images.
+
+<p align="center">
+  <img alt="Moonlit Lake’s Save details shows 1 block (8 KiB), Created: Not recorded and Last updated: Unknown." src="images/memory-cards-details-unknown.png" width="640">
+</p>
+
+<p align="center">
+  <img alt="Copper Archive’s details remains available with Demo Card.raw independently open in both columns. A Actions and B Back are visible even though the images are read-only." src="images/memory-cards-details-both-raw.png" width="640">
+</p>
 
 ## Move, copy and erase
 
