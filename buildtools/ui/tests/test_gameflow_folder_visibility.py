@@ -5,6 +5,7 @@ import argparse
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -133,6 +134,8 @@ def main() -> None:
                    str(GUI / "ui_gameflow_resolver.c"), "-o", str(path / "visibility")]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
+            if sys.platform.startswith("linux"):
+                command += ["-fno-pie", "-no-pie"]
         subprocess.run(command, check=True)
         subprocess.run([str(path / "visibility")], check=True)
 
