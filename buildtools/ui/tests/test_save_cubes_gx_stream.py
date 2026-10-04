@@ -20,6 +20,7 @@ check:
 
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
@@ -286,6 +287,13 @@ int main(void)
 			menu->width = 112;
 			snprintf(menu->title, sizeof(menu->title), "%s", d ? "Copy to Slot B?" : "");
 			for(f = 0; f < b && f < 3; ++f) snprintf(menu->item[f], sizeof(menu->item[f]), "%s", items[f]);
+		}
+		else if(sscanf(line, "Y %d", &a) == 1) {
+			/* A message a px wide in the stand-in font, at its 0.56. */
+			page.snapshot.grid.message = 1;
+			b = (int)((float)a / (10.0f * 0.56f));
+			memset(page.snapshot.message, 'x', (size_t)b);
+			page.snapshot.message[b] = '\0';
 		}
 		else if(sscanf(line, "X %d", &a) == 1) {
 			page.snapshot.grid.message = (u8)a;
@@ -617,6 +625,16 @@ class SaveCubesGXStreamTests(unittest.TestCase):
                min(v[1] for v in bt["vertices"]) == 200.0]
         self.assertEqual(len(box), 1)
         self.assertEqual(box[0]["vertices"][0][2:5], (120, 16, 36))
+        # saves.c fits a message to UI_SAVE_CUBES_MESSAGE_WIDTH: as wide as
+        # that, its box stays on the 4:3 stage, the info bar's margins.
+        widest = int(re.search(r"#define UI_SAVE_CUBES_MESSAGE_WIDTH (\d+)",
+                               (GUI / "ui_save_cubes.h").read_text()).group(1))
+        shown = self.run_script(AT_REST + f"Y {widest}\nN 15 0.0166667\n")[-1]
+        box, = [bt for bt in shown["batches"] if bt["count"] == 20 and
+                min(v[1] for v in bt["vertices"]) == 200.0]
+        self.assertGreaterEqual(min(v[0] for v in box["vertices"]), 40.0)
+        self.assertLessEqual(max(v[0] for v in box["vertices"]), 600.0)
+        self.assertGreater(max(v[0] for v in box["vertices"]), 590.0)
 
     def test_a_flight_and_a_burst(self):
         at_rest = self.run_script(AT_REST)[-1]

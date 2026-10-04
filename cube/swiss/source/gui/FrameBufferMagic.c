@@ -6621,7 +6621,7 @@ typedef struct {
 	/* The last box and message shown, drawn while they fade out. */
 	uiSaveCubesMenu_t menu;
 	u8 menuFocus;
-	char message[64];
+	char message[96];
 } drawSaveCubesEvent_t;
 
 static GXColor _SaveCubesFaded(GXColor color, float alpha)

@@ -102,7 +102,7 @@ static struct {
 	u8 ghost;
 	s16 ghostCell;
 	char reason[96];			/* why the focused item can't be chosen */
-	char message[64];
+	char message[96];
 	u8 leaving;
 } over;
 /* Each place's cubes as ids, before an operation and after, to tell what
@@ -1049,8 +1049,9 @@ static int savesMenu(const char *title, const char *const *items, int count,
 	return chosen;
 }
 
-/* A message in the IPL's maroon box, that something is done: it closes by
- * itself after UI_SAVE_CUBES_MESSAGE seconds, or on A or B. */
+/* A message in the IPL's maroon box, that something is done, fitted to the
+ * box with an ellipsis: it closes by itself after UI_SAVE_CUBES_MESSAGE
+ * seconds, or on A or B. */
 static void savesSay(const char *text)
 {
 	u32 start = VIDEO_GetRetraceCount();
@@ -1059,7 +1060,8 @@ static void savesSay(const char *text)
 	u32 held, pressed = 0u;
 
 	if(!isfinite(rate) || rate < 1.0f) rate = 60.0f;
-	snprintf(over.message, sizeof(over.message), "%s", text);
+	UICheats_Fit(over.message, sizeof(over.message), text,
+		UI_SAVE_CUBES_MESSAGE_WIDTH, 0.56f, GetTextSizeInPixels);
 	screenRedraw();
 	while(UISaveCubes_MessageHolds((float)(VIDEO_GetRetraceCount() - start) / rate,
 		pressed != 0u)) {

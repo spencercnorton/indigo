@@ -310,7 +310,7 @@ typedef struct {
 	u8 folder;		/* it is a folder */
 	u8 warn;		/* line[1] says why the focused item can't be chosen */
 	uiSaveCubesMenu_t menu;
-	char message[64];	/* "Finished copying.", while grid.message */
+	char message[96];	/* "Finished copying.", while grid.message */
 } uiSaveCubesPageSnapshot_t;
 
 uiDrawObj_t* DrawSaveCubesPage(const uiSaveCubesPageSnapshot_t *snapshot);

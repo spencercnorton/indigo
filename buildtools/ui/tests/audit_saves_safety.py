@@ -30,7 +30,8 @@ save that came takes the cube's art in a slot no published cube names, its
 texels flushed before the slot is named; the cube in flight has its own
 slot, filled before it is shown. An erase is called done only after the
 card did it, and a failed one on a card shows the driver's box alone. The
-screen leaves before the cards are let go.
+screen leaves before the cards are let go. A message is fitted to its
+box with an ellipsis.
 """
 
 from __future__ import annotations
@@ -196,6 +197,11 @@ def check(source: str) -> None:
     ordered(options, "eraseBegin(", "ok = saveDelete(save);", "opEnd(ok);",
             "if(ok) {", 'savesSay("The data was erased.");', "else if(!card) {",
             'savesTell(D_FAIL, "The save couldn\'t be deleted.')
+    # A message fits its box, an ellipsis ending what doesn't, rather than
+    # being cut short where its buffer ends.
+    ordered(function(source, "savesSay"),
+            "UICheats_Fit(over.message, sizeof(over.message), text,",
+            "UI_SAVE_CUBES_MESSAGE_WIDTH, 0.56f, GetTextSizeInPixels);", "screenRedraw();")
     # The screen goes before the cards it mounted are let go.
     ordered(show, "over.leaving = 1;", "screenRedraw();", "savesWait(",
             "placeClear(&places[i]);", "DrawDispose(page);", "free(pool);")
@@ -280,6 +286,10 @@ def mutants(source: str) -> list[tuple[str, str]]:
          source.replace("\t\telse if(!card) {\n", "\t\telse {\n")),
         ("the cards go before the screen does",
          source.replace("\tover.leaving = 1;\n", "")),
+        ("a message is cut short without an ellipsis",
+         source.replace("\tUICheats_Fit(over.message, sizeof(over.message), text,\n"
+                        "\t\tUI_SAVE_CUBES_MESSAGE_WIDTH, 0.56f, GetTextSizeInPixels);\n",
+                        "\tsnprintf(over.message, sizeof(over.message), \"%s\", text);\n")),
         ("a card's permissions left as libogc2 lists them",
          source.replace("\t\tCARD_GetAttributes(slot, dir->fileno, &dir->permissions);\n", "")),
         ("a folder's save is taken by its selection, which counts its \"..\"",

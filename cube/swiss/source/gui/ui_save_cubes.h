@@ -232,6 +232,9 @@ typedef struct {
 #define UI_SAVE_CUBES_HEADER_Y 74.0f
 /* A message closes by itself after this many seconds. */
 #define UI_SAVE_CUBES_MESSAGE 2.0f
+/* Its words fit this many px at their 0.56, an ellipsis ending what doesn't:
+ * its box, 48 px wider, stays inside the 4:3 stage as the info bar does. */
+#define UI_SAVE_CUBES_MESSAGE_WIDTH 512
 
 /* The frame the icon of cell shows seconds into the page: frame 0 with
  * Motion Off, or NULL for none. */
