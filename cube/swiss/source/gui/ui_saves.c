@@ -27,24 +27,30 @@ static void swapPairs(uint8_t *bytes, size_t length)
 size_t UISaves_FindEntry(const uint8_t *file, size_t length,
 	uint8_t entry[UI_SAVES_ENTRY_SIZE])
 {
+	return UISaves_FindEntryPrefix(file, length, length, entry);
+}
+
+size_t UISaves_FindEntryPrefix(const uint8_t *head, size_t headLength,
+	size_t fileLength, uint8_t entry[UI_SAVES_ENTRY_SIZE])
+{
 	size_t at = 0u;
 	unsigned blocks;
 
-	if(file == NULL || entry == NULL) {
+	if(head == NULL || entry == NULL || headLength > fileLength) {
 		return 0u;
 	}
-	if(length >= sizeof(DATEL_MAGIC) - 1u &&
-		!memcmp(file, DATEL_MAGIC, sizeof(DATEL_MAGIC) - 1u)) {
+	if(headLength >= sizeof(DATEL_MAGIC) - 1u &&
+		!memcmp(head, DATEL_MAGIC, sizeof(DATEL_MAGIC) - 1u)) {
 		at = DATEL_ENTRY;
 	}
-	else if(length >= sizeof(GCS_MAGIC) - 1u &&
-		!memcmp(file, GCS_MAGIC, sizeof(GCS_MAGIC) - 1u)) {
+	else if(headLength >= sizeof(GCS_MAGIC) - 1u &&
+		!memcmp(head, GCS_MAGIC, sizeof(GCS_MAGIC) - 1u)) {
 		at = GCS_ENTRY;
 	}
-	if(length < at + UI_SAVES_ENTRY_SIZE) {
+	if(headLength < at + UI_SAVES_ENTRY_SIZE) {
 		return 0u;
 	}
-	memcpy(entry, file + at, UI_SAVES_ENTRY_SIZE);
+	memcpy(entry, head + at, UI_SAVES_ENTRY_SIZE);
 	if(at == DATEL_ENTRY) {
 		/* Action Replay keeps two stretches byte-swapped, as the file
 		 * browser's Copy reads them: bytes 6-7 and the 20 from the icon
@@ -53,7 +59,7 @@ size_t UISaves_FindEntry(const uint8_t *file, size_t length,
 		swapPairs(entry + 0x2C, 20u);
 	}
 	blocks = UISaves_Blocks(entry);
-	if(blocks == 0u || length - at - UI_SAVES_ENTRY_SIZE !=
+	if(blocks == 0u || fileLength - at - UI_SAVES_ENTRY_SIZE !=
 		(size_t)blocks * UI_SAVES_BLOCK_SIZE) {
 		return 0u;
 	}
@@ -139,4 +145,193 @@ int UISaves_Destinations(uiSavesPlace_t from, bool cardA, bool cardB,
 		out[count++] = UI_SAVES_PLACE_CHOOSE;
 	}
 	return count;
+}
+
+/* ------------------------------------------------------------------------
+ * Art.
+ * --------------------------------------------------------------------- */
+#define ART_ICON_PIXELS 1024u	/* 32 x 32 */
+#define ART_BANNER_PIXELS 3072u	/* 96 x 32 */
+#define ART_PALETTE_BYTES 512u	/* 256 RGB5A3 colours */
+
+static uint32_t be32(const uint8_t *bytes)
+{
+	return ((uint32_t)bytes[0] << 24) | ((uint32_t)bytes[1] << 16) |
+		((uint32_t)bytes[2] << 8) | (uint32_t)bytes[3];
+}
+
+/* The bytes a picture of pixels takes in form format. */
+static uint64_t artBytes(unsigned format, uint64_t pixels)
+{
+	return format == UI_SAVES_ART_RGB5A3 ? pixels * 2u :
+		format == UI_SAVES_ART_CI8_OWN ? pixels + ART_PALETTE_BYTES :
+		format == UI_SAVES_ART_CI8_SHARED ? pixels : 0u;
+}
+
+/* What frame shows: itself, or when it has no pixels the next frame that
+ * has them, or nothing (Dolphin's reading of the GameCube menu). */
+static uint8_t artShown(const uiSavesArt_t *art, unsigned frame)
+{
+	for(; frame < art->frames; frame++) {
+		if(art->frameFormat[frame] != UI_SAVES_ART_NONE) {
+			return (uint8_t)frame;
+		}
+	}
+	return UI_SAVES_ART_BLANK;
+}
+
+static void artAddStep(uiSavesArt_t *art, unsigned frame, unsigned speeds)
+{
+	uint8_t hold = (uint8_t)((speeds >> (2u * frame)) & 3u);
+
+	art->stepFrame[art->steps] = artShown(art, frame);
+	art->stepHold[art->steps] = hold;
+	art->period = (uint8_t)(art->period + hold);
+	art->steps++;
+}
+
+bool UISaves_ArtLayout(const uint8_t entry[UI_SAVES_ENTRY_SIZE],
+	size_t dataLength, uiSavesArt_t *art)
+{
+	uint64_t frameAt[UI_SAVES_ICON_FRAMES];
+	uint64_t limit, at, size;
+	uint32_t commentAt;
+	unsigned formats, speeds, frames = 0u, banner, i;
+	bool shared = false;
+
+	if(art == NULL) {
+		return false;
+	}
+	memset(art, 0, sizeof(*art));
+	if(entry == NULL) {
+		return false;
+	}
+	limit = dataLength < UI_SAVES_ART_MAX_END ? dataLength : UI_SAVES_ART_MAX_END;
+	formats = ((unsigned)entry[0x30] << 8) | entry[0x31];
+	speeds = ((unsigned)entry[0x32] << 8) | entry[0x33];
+	/* The banner, then the icon's frames, from the icon address. An address
+	 * of 0xFFFFFFFF, no banner and no icon, lies past any save's data. */
+	at = be32(entry + 0x2C);
+	/* 1 is CI8 with its palette after it, 2 is RGB5A3; else none. */
+	banner = entry[0x07] & 3u;
+	if(banner == 1u || banner == 2u) {
+		banner = banner == 1u ? UI_SAVES_ART_CI8_OWN : UI_SAVES_ART_RGB5A3;
+		size = artBytes(banner, ART_BANNER_PIXELS);
+		if(at + size <= limit) {
+			art->bannerFormat = (uint8_t)banner;
+			art->bannerAt = (uint32_t)at;
+			art->end = (uint32_t)(at + size);
+		}
+		at += size;
+	}
+	if((formats & 3u) != 0u) {
+		for(; frames < UI_SAVES_ICON_FRAMES &&
+			((speeds >> (2u * frames)) & 3u) != 0u; frames++) {
+			unsigned format = (formats >> (2u * frames)) & 3u;
+
+			frameAt[frames] = at;
+			at += artBytes(format, ART_ICON_PIXELS);
+			shared = shared || format == UI_SAVES_ART_CI8_SHARED;
+		}
+	}
+	if(frames > 0u && at + (shared ? ART_PALETTE_BYTES : 0u) <= limit) {
+		art->frames = (uint8_t)frames;
+		for(i = 0u; i < frames; i++) {
+			art->frameAt[i] = (uint32_t)frameAt[i];
+			art->frameFormat[i] = (uint8_t)((formats >> (2u * i)) & 3u);
+		}
+		art->paletteAt = (uint32_t)at;
+		art->end = (uint32_t)(at + (shared ? ART_PALETTE_BYTES : 0u));
+		for(i = 0u; i < frames; i++) {
+			artAddStep(art, i, speeds);
+		}
+		/* A bounce plays the frames between the last and the first back
+		 * again: 0 1 2 3 2 1. */
+		if((entry[0x07] & 4u) != 0u && frames >= 3u) {
+			for(i = frames - 2u; i > 0u; i--) {
+				artAddStep(art, i, speeds);
+			}
+		}
+	}
+	commentAt = be32(entry + 0x3C);
+	if((uint64_t)commentAt + UI_SAVES_ENTRY_SIZE <= limit) {
+		art->comment = true;
+		art->commentAt = commentAt;
+		if(commentAt + UI_SAVES_ENTRY_SIZE > art->end) {
+			art->end = commentAt + UI_SAVES_ENTRY_SIZE;
+		}
+	}
+	return art->end > 0u;
+}
+
+bool UISaves_ToRgb5a3(const uint8_t *data, size_t length,
+	const uiSavesArt_t *art, int frame, uint8_t *out)
+{
+	const uint8_t *palette;
+	unsigned width, x, y;
+	uint32_t at;
+	uint8_t format;
+
+	if(data == NULL || art == NULL || out == NULL) {
+		return false;
+	}
+	if(frame == UI_SAVES_ART_BANNER) {
+		width = 96u;
+		format = art->bannerFormat;
+		at = art->bannerAt;
+	}
+	else if(frame >= 0 && frame < (int)art->frames) {
+		width = 32u;
+		format = art->frameFormat[frame];
+		at = art->frameAt[frame];
+	}
+	else {
+		return false;
+	}
+	if(format == UI_SAVES_ART_NONE || at > length ||
+		artBytes(format, width * 32u) > length - at) {
+		return false;
+	}
+	if(format == UI_SAVES_ART_RGB5A3) {
+		memcpy(out, data + at, width * 32u * 2u);
+		return true;
+	}
+	if(format == UI_SAVES_ART_CI8_SHARED && (art->paletteAt > length ||
+		ART_PALETTE_BYTES > length - art->paletteAt)) {
+		return false;
+	}
+	palette = data + (format == UI_SAVES_ART_CI8_OWN ? at + width * 32u :
+		art->paletteAt);
+	/* CI8 is 8x4 tiles of palette indices; RGB5A3 is 4x4 tiles of
+	 * big-endian texels, as the palette holds them. */
+	for(y = 0u; y < 32u; y++) {
+		for(x = 0u; x < width; x++) {
+			unsigned index = data[at + ((y / 4u) * (width / 8u) + x / 8u) * 32u +
+				(y % 4u) * 8u + x % 8u];
+			unsigned texel = ((y / 4u) * (width / 4u) + x / 4u) * 16u +
+				(y % 4u) * 4u + x % 4u;
+
+			out[texel * 2u] = palette[index * 2u];
+			out[texel * 2u + 1u] = palette[index * 2u + 1u];
+		}
+	}
+	return true;
+}
+
+int UISaves_ArtStep(const uiSavesArt_t *art, uint32_t tick)
+{
+	unsigned i;
+
+	if(art == NULL || art->period == 0u) {
+		return -1;
+	}
+	tick %= art->period;
+	for(i = 0u; i < art->steps && i < UI_SAVES_ART_STEPS; i++) {
+		if(tick < art->stepHold[i]) {
+			return art->stepFrame[i] == UI_SAVES_ART_BLANK ? -1 :
+				(int)art->stepFrame[i];
+		}
+		tick -= art->stepHold[i];
+	}
+	return -1;
 }
