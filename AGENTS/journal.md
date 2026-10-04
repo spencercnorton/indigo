@@ -1,5 +1,14 @@
 # Indigo development journal
 
+## 2026-10-04 — Coordinate the remaining beta compatibility branches
+
+Memory Cards and motion are merged into beta. Metadata filtering and manual
+rewind remain pending their own pull requests. The rewind branch incorporates
+the pending metadata branch so the ordered merges retain the same combined
+implementation. The metadata branch keeps its focused production change.
+The shared journal preserves both branches' earlier entries exactly. CI for
+the refreshed heads remains pending.
+
 ## 2026-10-04 — Keep the reviewed beta compatibility fixes coherent
 
 Included the metadata filtering branch alongside the accepted beta renderer
