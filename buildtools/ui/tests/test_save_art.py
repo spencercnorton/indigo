@@ -35,22 +35,41 @@ import make_test_saves as gen  # noqa: E402
 # the second file.
 DRIVER = r"""
 #include "ui_saves.h"
+#include "ui_saves_raw.h"
 #include <stdio.h>
 #include <string.h>
 
-static uint8_t file[1u << 20], texels[8u * 2048u + 6144u];
+static uint8_t file[1u << 20], image[1u << 20], texels[8u * 2048u + 6144u];
+static size_t imageLength;
+
+static bool imageRead(void *opaque, uint32_t offset, void *out, uint32_t length)
+{
+    (void)opaque;
+    if(offset > imageLength || length > imageLength - offset) return false;
+    memcpy(out, image + offset, length);
+    return true;
+}
 
 int main(int argc, char **argv)
 {
 	uint8_t entry[UI_SAVES_ENTRY_SIZE];
 	uiSavesArt_t art;
-	FILE *in = argc == 3 ? fopen(argv[1], "rb") : NULL, *out;
+	FILE *in = argc == 3 || argc == 4 ? fopen(argv[1], "rb") : NULL, *out;
 	size_t length, start;
 	unsigned i;
 
 	if(in == NULL) return 2;
 	length = fread(file, 1u, sizeof(file), in);
 	fclose(in);
+	if(argc == 4) {
+		uiSavesRawCard_t card;
+		imageLength = length;
+		memcpy(image, file, length);
+		if(UISavesRaw_Parse(image, UI_SAVES_RAW_METADATA_SIZE, length, &card) != UI_SAVES_RAW_OK)
+			return 4;
+		length = UISavesRaw_GciSize(&card, 0u);
+		if(!UISavesRaw_ReadGci(&card, 0u, 0u, file, length, imageRead, NULL)) return 5;
+	}
 	start = UISaves_FindEntry(file, length, entry);
 	printf("{\"start\": %u", (unsigned)start);
 	if(start != 0u) {
@@ -117,7 +136,8 @@ class SaveArt(unittest.TestCase):
         (tmp / "driver.c").write_text(DRIVER)
         cc = os.environ.get("CC", "cc")
         subprocess.run([cc, "-std=c11", "-Wall", "-Wextra", "-Werror", "-O1", "-I", str(GUI),
-                        "-o", str(tmp / "driver"), str(tmp / "driver.c"), str(GUI / "ui_saves.c")],
+                        "-o", str(tmp / "driver"), str(tmp / "driver.c"), str(GUI / "ui_saves.c"),
+                        str(GUI / "ui_saves_raw.c")],
                        check=True)
         cls.out = tmp / "saves"
         subprocess.run([sys.executable, str(HERE.parent / "qa" / "make_test_saves.py"), str(cls.out)],
@@ -157,6 +177,25 @@ class SaveArt(unittest.TestCase):
                 self.assertEqual(found["steps"], timeline(save))
                 comment = b"".join(line.encode().ljust(32, b"\0") for line in save.comment)
                 self.assertEqual(bytes.fromhex(found["comment"]), comment)
+
+    def test_fragmented_raw_icon_pixels_and_timeline_reach_the_real_decoder(self) -> None:
+        tmp = pathlib.Path(self.tmp.name)
+        raw, _ = gen.virtual_card()
+        source, pixels = tmp / "animated.raw", tmp / "raw-texels"
+        source.write_bytes(raw)
+        result = subprocess.run([str(tmp / "driver"), str(source), str(pixels), "raw"],
+                                capture_output=True, text=True, check=True)
+        found, decoded = json.loads(result.stdout), pixels.read_bytes()
+        first, _ = gen.virtual_saves()
+        _, expected = gen.art(first)
+        self.assertEqual(found["frames"], [gen.RGB5A3, gen.RGB5A3])
+        self.assertEqual(found["steps"], [[0, 2], [1, 3]])
+        self.assertEqual(found["shown"], [0, 0, 1, 1, 1])
+        self.assertNotEqual(expected["frames"][0], expected["frames"][1])
+        for index, frame in enumerate(expected["frames"]):
+            self.assertEqual(decoded[index * 2048:(index + 1) * 2048], frame)
+        self.assertEqual(decoded[8 * 2048:], expected["banner"])
+        self.assertEqual(source.read_bytes(), raw, "parsing and decoding remain read-only")
 
     def test_the_timelines_play_as_dolphin_plays_them(self) -> None:
         def shown(path: str) -> list[int]:

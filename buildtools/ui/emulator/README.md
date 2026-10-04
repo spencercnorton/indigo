@@ -61,7 +61,7 @@ probe's game and launches it from its details: the probe must see the game's
 own disc ID, the 24 MB a game is promised, the music stopped and memory
 quiet.
 
-CI runs seven jobs, the first of them the required **Emulator** check:
+CI runs eight jobs, the first of them the required **Emulator** check:
 
 | Job | Console | Video | Storage |
 | --- | --- | --- | --- |
@@ -69,7 +69,8 @@ CI runs seven jobs, the first of them the required **Emulator** check:
 | game, PAL, component | PAL, component | 480p | disc |
 | smoke, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the card with `non-default.ini` |
 | game, NTSC, SD2SP2 | NTSC, composite | 480i | SD2SP2, a new card |
-| virtual cards, NTSC, GC Loader | NTSC, component | 480p | GC Loader, both memory-card slots empty |
+| virtual cards, NTSC, GC Loader | NTSC, component | 480p | GC Loader, both memory-card slots empty, 4:3 |
+| virtual cards, NTSC, GC Loader, widescreen | NTSC, component | 480p | same route with `save-details-wide.ini`, 16:9 |
 | save, NTSC, SD2SP2, failing card | NTSC, composite | 480i | SD2SP2, writes failing after 13 |
 | game, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the game in 40 pieces |
 
@@ -190,13 +191,13 @@ with. It checks that:
   restore Slot B. L, DOWN twice and A choose SD on the left, then L, UP
   twice and A restore Slot A. On the disc, SD has no configuration device:
   it is dimmed, A keeps the card displayed, and B cancels the menu;
-- A opens the box beside the save, which changes the buttons, and B closes
-  it;
+- A opens save details, B returns without an action; another A then
+  A Actions opens the box beside the save, and B closes it;
 - Copy and Yes copy the save to Slot B: the maroon box comes and closes by
   itself, and Slot B's folder gains the save, with the same game, maker and
   name and the same blocks as on Slot A (Dolphin writes a card's folder a
   second after the card's last write);
-- A on the copied save then dims Move, Slot B having it, and the buttons
+- A, then A Actions on the copied save dims Move, Slot B having it, and the buttons
   say why;
 - Erase, then Yes over the No it starts on, erases the save, and Slot A's
   folder loses it (Dolphin renames it `.gci.deleted`);
@@ -213,7 +214,23 @@ memory-card image made by the same public demonstration generator. It has
 two fictitious saves, with generated icon/banner art; its first save's
 blocks are deliberately separated at blocks 5 and 9.
 
-Memory Cards must start with both columns on SD. A opens the RAW image in
+Memory Cards must start with both columns on SD. The route opens Library
+first and sees the synthetic game's SAVES inset, then checks it again after
+export: one copy/two blocks becomes two copies/four blocks with the same
+recorded update. Renderer host contracts check the exact values; the route
+checks that the real fields appear and their count text changes.
+
+A on each RAW save opens details first: the known `2024-02-29 12:34` date
+and an unknown date have different text, both show Created: Not recorded,
+and their block counts differ. B cancels without an action. Opening RAW
+independently in both columns still allows details and Back; an unusable
+Copy stays in its action menu. Before the real Copy, the source RAW is
+byte-identical and no exported GCI exists. The first icon's generated
+texture contains red and green patches in separate frames; captures must
+show both patches on its selected cube, so cube motion or backdrop changes
+cannot stand in for icon playback. The same route runs in 4:3 and 16:9.
+
+A opens the RAW image in
 the left column; RIGHT and LEFT browse its saves, and the right column keeps
 its own SD folder. Copy exports the selected save as a GCI there. The route
 reads the actual FAT file back and checks its game, maker, name and every

@@ -336,6 +336,23 @@ class MemoryCards(unittest.TestCase):
         self.assertNotEqual(raw[5 * block:7 * block], gcis[0][64:])
         self.assertEqual(raw[5 * block:6 * block] + raw[9 * block:10 * block], gcis[0][64:])
 
+    def test_details_proof_rejects_source_change_or_an_early_export(self):
+        raw, gcis = run.make_test_saves.virtual_card()
+        for actual, export, passes in ((raw, None, True),
+                                      (raw, gcis[0], False),
+                                      (raw[:-1] + bytes([raw[-1] ^ 1]), None, False)):
+            with self.subTest(passes=passes):
+                route = run.Route.__new__(run.Route)
+                route.sd_image, route.checks, route.report, route.last_rgb = Path("test.img"), [], None, None
+                route.emulator = mock.Mock(where=lambda: None)
+                with mock.patch.object(card, "read_card", side_effect=[actual, export]):
+                    if passes:
+                        route.virtual_popup_checks()
+                        self.assertEqual(len(route.checks), 2)
+                    else:
+                        with self.assertRaises(run.Failed):
+                            route.virtual_popup_checks()
+
     def test_virtual_export_proof_rejects_wrong_payload_and_changed_source(self):
         raw, gcis = run.make_test_saves.virtual_card()
         exported = bytearray(gcis[0])
@@ -504,6 +521,26 @@ class Screen(unittest.TestCase):
         waves = self.frame()
         waves[372:396, 200:440] = 120
         self.assertFalse(run.text_mask(waves).any())
+
+    def test_stage_fields_follow_menu_widescreen_projection(self):
+        self.assertEqual(run.stage_box((100, 10, 540, 20)), (100, 10, 540, 20))
+        self.assertEqual(run.stage_box((100, 10, 540, 20), True), (155, 10, 485, 20))
+
+    def test_raw_animation_proof_requires_both_texture_colors_on_the_cube(self):
+        rgb = np.full((run.HEIGHT, run.WIDTH, 3), (35, 25, 60), np.uint8)
+        # Arbitrary cube/background motion without authored patch colors is
+        # not a frame. Nor are the colors somewhere else in the picture.
+        rgb[220:240, 300:330] = run.make_test_saves.RAW_ICON_COLOURS[0]
+        self.assertIsNone(run.raw_icon_frame(rgb))
+        for wide in (False, True):
+            x0, y0, _, _ = run.stage_box(run.RAW_ICON_BOX, wide)
+            for frame, colour in enumerate(run.make_test_saves.RAW_ICON_COLOURS):
+                picture = rgb.copy()
+                picture[y0+15:y0+25, x0+15:x0+25] = colour
+                self.assertEqual(run.raw_icon_frame(picture, wide), frame)
+                # The other color must appear; translating this static
+                # texture cannot be mistaken for that second frame.
+                self.assertEqual(run.raw_icon_frame(np.roll(picture, 2, axis=1), wide), frame)
 
     def test_crash_and_black_screens_are_named(self):
         crash = np.zeros((run.HEIGHT, run.WIDTH, 3), np.uint8)

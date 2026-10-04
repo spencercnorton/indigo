@@ -9,7 +9,7 @@ erases saves from one stack to the other. On Home, turn the cube to
 **System**, press A, choose **Memory Cards** and press A.
 
 <p align="center">
-  <img alt="Memory Cards opening: the Home cube recedes, graph paper fades in, and the saves of Slot A and Slot B spiral out of the middle into two stacks of cubes, each cube showing its game's animated icon. A on Copper Orchard opens Move, Copy and Erase beside its cube; Copy asks Copy to Slot B?, a pale cube pulsing in Slot B's first free place. The save's cube flies there in an arc, lands, and a maroon box reads Finished copying." src="images/memory-cards.png" width="640">
+  <img alt="Memory Cards opening: the Home cube recedes, graph paper fades in, and the saves of Slot A and Slot B spiral out of the middle into two stacks of cubes, each cube showing its game's animated icon. A on Copper Orchard opens save details, then A Actions opens Move, Copy and Erase beside its cube; Copy asks Copy to Slot B?, a pale cube pulsing in Slot B's first free place. The save's cube flies there in an arc, lands, and a maroon box reads Finished copying." src="images/memory-cards.png" width="640">
 </p>
 
 ## What's on the screen
@@ -77,7 +77,8 @@ the containing folder. An unformatted or damaged image gets a clear message
 and is left unchanged.
 
 Images are read-only. With the other column on an SD folder, highlight a
-save, press **A** and choose **Copy** to export it as a `.gci` file. Move
+save, press **A** to see its details, then **A Actions** and choose **Copy**
+to export it as a `.gci` file. Move
 and Erase are dimmed; importing into, formatting or repairing an image is
 not offered. The exported file is read back and compared before the copy
 is reported as finished.
@@ -86,9 +87,27 @@ is reported as finished.
   <img alt="Demo Card.raw opened on the left shows Copper Archive and another save, with the other column still on the SD folder. The info bar shows the save's banner and two-block size, and says that Copy exports a GCI from the read-only card image." src="images/memory-cards-raw.png" width="640">
 </p>
 
+## Save details
+
+Highlight a save and press **A** to open its details. This works even when
+both columns show read-only card images and no action can be used.
+
+- **Size** shows blocks and KiB. One block is 8 KiB of save data; the GCI
+  wrapper and a RAW image's system blocks aren't part of that size.
+- **Created: Not recorded** is explicit because GameCube saves don't store
+  a separate creation date.
+- **Last updated** shows the date recorded in the save, or **Unknown** when
+  it has no usable date. It uses the console's recorded clock without
+  assuming a time zone. The SD file's dates aren't substituted for it.
+- **Source** names the physical slot, SD save or read-only card image.
+
+Press **B Back** to return without changing anything, or **A Actions** to
+open Move, Copy and Erase. A dimmed action always explains why it can't be
+used.
+
 ## Move, copy and erase
 
-Highlight a save and press **A**. A box opens beside its cube:
+From save details, press **A Actions**. A box opens beside its cube:
 
 - **Move** puts the save in the other stack's card or folder, then removes
   it here.
@@ -96,7 +115,7 @@ Highlight a save and press **A**. A box opens beside its cube:
 - **Erase** removes it.
 
 <p align="center">
-  <img alt="A on Copper Orchard opens a box beside its cube with Move, Copy and Erase, Move highlighted." src="images/memory-cards-options.png" width="640">
+  <img alt="A Actions from Copper Orchard’s details opens a box beside its cube with Move, Copy and Erase, Move highlighted." src="images/memory-cards-options.png" width="640">
 </p>
 
 Move and Copy always go to the other stack: to put a save somewhere else,

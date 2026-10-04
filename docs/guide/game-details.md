@@ -21,9 +21,14 @@ that one game, and every way to start it, on one screen.
   play recorded". Indigo records it when your settings live on the card the
   game starts from, as with a single SD card. With no settings device to
   read it from, it says "History unavailable".
-- **Save data**: "Check in game". This screen doesn't look for the game's
-  saves; System › [Memory Cards](memory-cards.md) lists the saves on your
-  memory cards.
+- **Saves**, above Settings and Cheats: the number of save copies and
+  their total blocks, from inserted memory cards and the configured Save
+  Folder, including readable RAW images there. It matches the full game and
+  maker ID, not the title. A RAW save and an exported GCI count as separate
+  copies; this isn't a progress score. **Updated** is the newest date
+  recorded in those saves. An incomplete or unavailable scan says so,
+  rather than reporting no saves. System › [Memory Cards](memory-cards.md)
+  opens the individual saves and their details.
 - **Settings**: "Game Defaults" while the game follows them, or how many of
   its settings are its own and the first of them, such as "1 custom" and
   "Force Video Mode: 480p". See [below](#this-games-own-settings).

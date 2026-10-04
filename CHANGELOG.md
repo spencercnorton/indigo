@@ -8,6 +8,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### New
 
+- A on a save opens its size, source and recorded update date before Actions;
+  creation dates are explicitly not recorded. Library game details show save
+  copies, blocks and latest update from cards and the Save Folder.
+
 - Memory Cards opens Swiss `.raw` virtual memory cards on SD, showing their
   saves and animated icons. Copy exports a save as a verified `.gci` file;
   images remain read-only, with Move and Erase dimmed. Unformatted or damaged
@@ -56,7 +60,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
   Slot A, Slot B and SD card choices. With no physical cards, both columns
   open on SD and keep independent folder positions. The screen opens with the Home cube drawing away and the
   saves spiralling out into place, and closes back into the cube.
-- A on a save opens the GameCube's Move, Copy and Erase beside its cube.
+- A Actions from save details opens the GameCube's Move, Copy and Erase
+  beside its cube.
   Move and Copy go to the other stack and ask first, a pale cube pulsing
   where the save will land; Erase asks with No highlighted. While the card
   works, the save's cube flies across and waits, and it lands only once the

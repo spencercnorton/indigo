@@ -54,6 +54,7 @@ RAW_CARD_NAME = "Demo Card.raw"
 RAW_GAME_ID = "GACZ01"  # Astral Circuit on the emulator's demonstration disc
 RAW_UPDATED_SECONDS = 762525240  # 2024-02-29 12:34, seconds since 2000-01-01
 RAW_EXPORT_NAME = "01-GACZ-Demo Save.gci"
+RAW_ICON_COLOURS = ((240, 40, 40), (40, 230, 80))
 
 
 @dataclass
@@ -68,6 +69,7 @@ class Save:
     blocks: int = 1                 # at least; more when the art needs them
     icon_addr: int = ICON_ADDR
     maker: str = MAKER
+    frame_colours: tuple[tuple[int, int, int], ...] = ()
 
 
 def rgb5a3(r: int, g: int, b: int, a: int = 255) -> int:
@@ -112,6 +114,10 @@ def icon_art(save: Save, frame: int, rounded: bool) -> Image.Image:
     draw.rectangle([x, 0, x + 2, ICON - 1], fill=(255, 255, 255, 255))
     draw.ellipse([5, 5, 26, 26], outline=(20, 20, 40, 255), width=2)
     draw.text((12, 9), str(frame + 1), fill=(10, 10, 20, 255))
+    if save.frame_colours:
+        # A unique patch per frame lets a screen test distinguish icon
+        # playback from the cube rotating or the backdrop moving.
+        draw.rectangle([8, 8, 23, 23], fill=save.frame_colours[frame] + (255,))
     if rounded:
         mask = Image.new("L", (ICON, ICON), 0)
         ImageDraw.Draw(mask).rounded_rectangle([0, 0, ICON - 1, ICON - 1], radius=8, fill=255)
@@ -217,6 +223,17 @@ def encode(save: Save, when: int) -> bytes:
     return entry + bytes(data)
 
 
+def virtual_saves(game_id: str = RAW_GAME_ID) -> tuple[Save, Save]:
+    """The two public saves used by virtual_card and renderer expectations."""
+    if len(game_id) != 6 or not game_id.isascii() or not game_id.isalnum() or not game_id.isupper():
+        raise ValueError("a synthetic save needs a six-byte uppercase game/maker ID")
+    return (Save(game_id[:4], "Demo Save", ("Copper Archive", "SD card image"),
+                       banner=BANNER_RGB5A3, frames=((RGB5A3, 2), (RGB5A3, 3)),
+                       maker=game_id[4:], frame_colours=RAW_ICON_COLOURS),
+           Save("ZRVE", "Other Save", ("Moonlit Lake", "Synthetic save"),
+                       banner=0, frames=(), icon_addr=NO_ART))
+
+
 def virtual_card(game_id: str = RAW_GAME_ID,
                  updated: int = RAW_UPDATED_SECONDS) -> tuple[bytes, tuple[bytes, bytes]]:
     """A public 59-block RAW card and its two synthetic GCI saves.
@@ -224,17 +241,12 @@ def virtual_card(game_id: str = RAW_GAME_ID,
     The first save's two blocks live at 5 and 9, with the second at 6:
     exporting it must follow the BAT chain, not assume contiguous data.
     Both redundant directories and BATs have real checksums. The art comes
-    from this generator, with fictitious game/maker codes and save comments.
+    from this generator, with public demonstration IDs and fictitious comments.
     The first save matches the selected six-byte demonstration game ID;
     the second has no recorded date. Tests may choose another ID or date.
     """
-    if len(game_id) != 6 or not game_id.isascii() or not game_id.isalnum() or not game_id.isupper():
-        raise ValueError("a synthetic save needs a six-byte uppercase game/maker ID")
-    gci = (encode(Save(game_id[:4], "Demo Save", ("Copper Archive", "SD card image"),
-                       banner=BANNER_RGB5A3, frames=((RGB5A3, 2), (RGB5A3, 3)),
-                       maker=game_id[4:]), updated),
-           encode(Save("ZRVE", "Other Save", ("Moonlit Lake", "Synthetic save"),
-                       banner=0, frames=(), icon_addr=NO_ART), 0))
+    first, second = virtual_saves(game_id)
+    gci = (encode(first, updated), encode(second, 0))
     chains = ((5, 9), (6,))
     header, directory = bytearray(b"\xff" * BLOCK), bytearray(b"\xff" * BLOCK)
     bat = bytearray(BLOCK)
