@@ -343,7 +343,8 @@ typedef struct drawGameflowDetailPresentation {
 	float factsScale;
 	float statusScale;
 	float lastPlayedScale;
-	float saveStatusScale;
+	float savesSummaryScale;
+	float savesUpdatedScale;
 	float cheatSummaryScale;
 	float cheatPreviewScale;
 	float settingsSummaryScale;
@@ -3417,13 +3418,15 @@ static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
 	presentation->statusScale = _GameflowPrepareDetailText(
 		data->detail.statusText, sizeof(data->detail.statusText),
 		310, 0.44f, 0.44f);
-	/* LAST PLAYED and SAVE DATA share a line, so each has half of it. */
 	presentation->lastPlayedScale = _GameflowPrepareDetailText(
 		data->detail.lastPlayedText, sizeof(data->detail.lastPlayedText),
-		154, 0.46f, 0.46f);
-	presentation->saveStatusScale = _GameflowPrepareDetailText(
-		data->detail.saveStatusText, sizeof(data->detail.saveStatusText),
-		150, 0.46f, 0.46f);
+		310, 0.46f, 0.46f);
+	presentation->savesSummaryScale = _GameflowPrepareDetailText(
+		data->detail.savesSummary, sizeof(data->detail.savesSummary),
+		234, 0.42f, 0.42f);
+	presentation->savesUpdatedScale = _GameflowPrepareDetailText(
+		data->detail.savesUpdated, sizeof(data->detail.savesUpdated),
+		294, 0.42f, 0.42f);
 	presentation->cheatSummaryScale = _GameflowPrepareDetailText(
 		data->detail.cheatSummary, sizeof(data->detail.cheatSummary),
 		294, 0.46f, 0.46f);
@@ -3490,7 +3493,7 @@ static void _GameflowDrawDetailPlanes(
 	uiGameflowDetailFocus_t focusRow)
 {
 	/* The rows the focus moves between, bottom up: Launch, Cheats, Settings. */
-	static const int rowTop[] = {348, 281, 232};
+	static const int rowTop[] = {367, 301, 252};
 	static const int rowHeight[] = {43, 59, 42};
 	float litTop = (float)rowTop[focusRow];
 	float litBottom = litTop + (float)rowHeight[focusRow];
@@ -3526,7 +3529,7 @@ static void _GameflowDrawDetailPlanes(
 	GXColor litHaloColor = {117, 88, 244,
 		_GameflowAlpha(78.0f * alpha * focus)};
 	bool hasSettings = detail->settingsSummary[0] != '\0';
-	u16 panelCount = (u16)(3u + (hasAdvanced ? 1u : 0u) +
+	u16 panelCount = (u16)(4u + (hasAdvanced ? 1u : 0u) +
 		(hasSettings ? 1u : 0u));
 
 	panelGlow.a = _GameflowAlpha(34.0f * alpha);
@@ -3537,8 +3540,10 @@ static void _GameflowDrawDetailPlanes(
 	drawInit();
 	_SetupRasterColor();
 	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(panelCount * 12u + 48u));
-		_GameflowPutDetailPanel(246, 76, 358, 328, 2,
+		_GameflowPutDetailPanel(246, 76, 358, 344, 2,
 			panelGlow, panelFill, panelEdge);
+		_GameflowPutDetailPanel(260, 202, 330, 43, 2,
+			insetGlow, insetFill, insetEdge);
 		/* The focused row takes the bright edge and the glow, and the
 		 * grid's frame round it; Launch keeps its button fill. */
 		for(row = UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH;
@@ -3594,51 +3599,53 @@ static void _GameflowDrawDetailDashboard(
 	drawStringMedium(264, 122, detail->title, presentation->titleScale,
 		ALIGN_LEFT, primary);
 	if(detail->company[0] != '\0') {
-		drawStringMedium(264, 148, detail->company,
+		drawStringMedium(264, 140, detail->company,
 			presentation->companyScale, ALIGN_LEFT, secondary);
 	}
 	if(detail->statusText[0] != '\0') {
-		drawStringMedium(264, 177, detail->statusText,
+		drawStringMedium(264, 159, detail->statusText,
 			presentation->statusScale, ALIGN_LEFT, muted);
 	}
 
-	drawStringMedium(264, 202, "LAST PLAYED", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(264, 219, detail->lastPlayedText,
+	drawStringMedium(264, 176, "LAST PLAYED", 0.42f, ALIGN_LEFT, secondary);
+	drawStringMedium(264, 191, detail->lastPlayedText,
 		presentation->lastPlayedScale, ALIGN_LEFT, primary);
-	drawStringMedium(430, 202, "SAVE DATA", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(430, 219, detail->saveStatusText,
-		presentation->saveStatusScale, ALIGN_LEFT, muted);
+	drawStringMedium(274, 214, "SAVES", 0.42f, ALIGN_LEFT, secondary);
+	drawStringMedium(576, 214, detail->savesSummary,
+		presentation->savesSummaryScale, ALIGN_RIGHT, primary);
+	drawStringMedium(274, 232, detail->savesUpdated,
+		presentation->savesUpdatedScale, ALIGN_LEFT, muted);
 
 	/* SETTINGS, like CHEATS below it: this game's own rows, or how to set
 	 * some (X opens them). */
 	if(detail->settingsSummary[0] != '\0') {
-		drawStringMedium(274, 244, "SETTINGS", 0.42f, ALIGN_LEFT, secondary);
-		drawStringMedium(576, 244, detail->settingsSummary,
+		drawStringMedium(274, 264, "SETTINGS", 0.42f, ALIGN_LEFT, secondary);
+		drawStringMedium(576, 264, detail->settingsSummary,
 			presentation->settingsSummaryScale, ALIGN_RIGHT, muted);
 		if(detail->customSettings != 0u) {
-			drawStringMedium(274, 262, "\267", 0.50f, ALIGN_LEFT, focus);
-			drawStringMedium(288, 262, detail->settingsPreview,
+			drawStringMedium(274, 282, "\267", 0.50f, ALIGN_LEFT, focus);
+			drawStringMedium(288, 282, detail->settingsPreview,
 				presentation->settingsPreviewScale, ALIGN_LEFT, primary);
 		}
 		else {
-			_DrawHintText(274, 262, detail->settingsPreview,
+			_DrawHintText(274, 282, detail->settingsPreview,
 				presentation->settingsPreviewScale, ALIGN_LEFT, muted);
 		}
 	}
 
-	drawStringMedium(274, 293, "CHEATS", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(274, 311, detail->cheatSummary,
+	drawStringMedium(274, 313, "CHEATS", 0.42f, ALIGN_LEFT, secondary);
+	drawStringMedium(274, 331, detail->cheatSummary,
 		presentation->cheatSummaryScale, ALIGN_LEFT, muted);
 	if(detail->cheatPreview[0] != '\0') {
 		if(detail->enabledCheatCount != 0u) {
-			drawStringMedium(274, 329, "\267", 0.50f, ALIGN_LEFT, focus);
-			drawStringMedium(288, 329, detail->cheatPreview,
+			drawStringMedium(274, 349, "\267", 0.50f, ALIGN_LEFT, focus);
+			drawStringMedium(288, 349, detail->cheatPreview,
 				presentation->cheatPreviewScale, ALIGN_LEFT, primary);
 		}
 		else {
 			/* "Y  Choose cheats": a hint only while nothing is on, since
 			 * cheat names are free text. */
-			_DrawHintText(274, 329, detail->cheatPreview,
+			_DrawHintText(274, 349, detail->cheatPreview,
 				presentation->cheatPreviewScale, ALIGN_LEFT, muted);
 		}
 	}
@@ -3648,9 +3655,9 @@ static void _GameflowDrawDetailDashboard(
 	launchScale = frame->launchProgress > 0.02f ?
 		0.56f : presentation->launchScale;
 	if(focusRow == UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH) {
-		drawStringMedium(278, 369, "\267", 0.58f, ALIGN_LEFT, focus);
+		drawStringMedium(278, 388, "\267", 0.58f, ALIGN_LEFT, focus);
 	}
-	_DrawHintText(425, 369, launchText, launchScale, ALIGN_CENTER, focus);
+	_DrawHintText(425, 388, launchText, launchScale, ALIGN_CENTER, focus);
 
 	if(detail->advancedLineOne[0] != '\0' ||
 		detail->advancedLineTwo[0] != '\0') {

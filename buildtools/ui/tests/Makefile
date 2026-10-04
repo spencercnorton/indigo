@@ -82,7 +82,8 @@ test_gameflow_state.libs := -lm
 test_gameflow_library.src := $(GUI)/ui_gameflow_library.c
 test_gameflow_resolver.src := $(GUI)/ui_gameflow_resolver.c \
 	$(GUI)/ui_gameflow_library.c
-test_gameflow_detail.src := $(GUI)/ui_gameflow_detail.c $(GUI)/ui_game_history.c
+test_gameflow_detail.src := $(GUI)/ui_gameflow_detail.c $(GUI)/ui_game_history.c \
+	$(GUI)/ui_saves_metadata.c $(GUI)/ui_saves.c
 test_ui_game_history.src := $(GUI)/ui_game_history.c
 # Spotlight's game descriptions (swiss/ui/descriptions.txt).
 test_ui_about.src := $(GUI)/ui_about.c

@@ -388,9 +388,14 @@ def build(work: Path, gui: Path, frame_c: str, frame_h: str, layouts: bool, name
              "-I" + str(gui)]
     if os.uname().sysname == "Linux":
         flags += ["-fno-pie", "-no-pie"]
+    # The archived comparison predates save metadata. Only today's Detail
+    # header uses the shared formatter; missing current sources still fail
+    # compilation rather than quietly excluding the new feature.
+    metadata = (("ui_saves_metadata.c", "ui_saves.c") if
+                '#include "ui_saves_metadata.h"' in (gui / "ui_gameflow_detail.h").read_text() else ())
     result = subprocess.run(shlex.split(os.environ.get("CC", "cc")) + flags +
                             ["-o", str(binary), str(source)] +
-                            [str(gui / pure) for pure in PURE + (LAUNCH if layouts else ())] +
+                            [str(gui / pure) for pure in PURE + metadata + (LAUNCH if layouts else ())] +
                             ["-lm"],
                             capture_output=True, text=True, timeout=180)
     if result.returncode:

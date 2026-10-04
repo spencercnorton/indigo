@@ -65,7 +65,8 @@ for forbidden in (
 for retained_field in (
     "detail->statusText",
     "detail->lastPlayedText",
-    "detail->saveStatusText",
+    "detail->savesSummary",
+    "detail->savesUpdated",
     "detail->cheatSummary",
     "detail->cheatPreview",
     "detail->settingsSummary",
@@ -120,7 +121,8 @@ require(clear_capability >= 0 and format_at > clear_capability,
 for field in (
     "statusText",
     "lastPlayedText",
-    "saveStatusText",
+    "savesSummary",
+    "savesUpdated",
     "cheatSummary",
     "cheatPreview",
     "settingsSummary",
@@ -164,9 +166,23 @@ require("_GameflowPutBorder(&litRow, &litInner, litEdgeColor);" in planes and
 require("_GameflowDrawDetailPlanes(detail, presentation, frame, alpha, focusRow);"
         in renderer, "the planes do not know the focus")
 require("if(focusRow == UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH) {\n"
-        "\t\tdrawStringMedium(278, 369, \"\\267\"" in renderer,
+        "\t\tdrawStringMedium(278, 388, \"\\267\"" in renderer,
         "Launch's dot does not follow the focus")
 for advanced in ('"Z  AUTOLOAD"', '"R  VERIFY"', '"L+A  CLEAN BOOT"'):
     require(advanced in presentation, f"advanced shortcut {advanced} missing")
+
+saves_line = extract_function(detail_source, "static void buildSavesPresentation(")
+require("UISaves_FormatUpdated(" in saves_line and "snapshot->saveStats = *stats;" in saves_line,
+        "save snapshot or shared date formatter missing")
+require('"Unavailable"' in saves_line and "stats->partial" in saves_line and
+        "stats->checkedSources == 0u" in saves_line,
+        "unreadable save sources would look like a complete zero")
+require(renderer.index('"SAVES"') < renderer.index('"SETTINGS"') < renderer.index('"CHEATS"'),
+        "save copies are not above the settings and cheats insets")
+require("_GameflowPutDetailPanel(260, 202, 330, 43, 2," in planes,
+        "read-only save inset has no panel")
+for forbidden in ("Saves_CollectGameStats(", "UISaves_FormatUpdated(", "->readFile(", "->readDir("):
+    require(forbidden not in renderer and forbidden not in planes,
+            f"Detail draw performs menu-thread save work: {forbidden}")
 
 print("detail presentation audit OK")
