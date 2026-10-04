@@ -33,7 +33,10 @@ card did it, and a failed one on a card shows the driver's box alone. The
 screen leaves before the cards are let go. A message is fitted to its
 box with an ellipsis. A save copied to a folder that lists as many as a
 stack shows has no cell to land in: no ghost shows, the folder's stack
-keeps its selection on a cell it has, and the question says why.
+keeps its selection on a cell it has, and the question says why. A copy
+the memory left can't hold twice, with the card driver's room, lets the
+art's pool go first, the screen without it out before it is freed, and the
+pool comes back afterwards with every slot read again.
 """
 
 from __future__ import annotations
@@ -199,6 +202,18 @@ def check(source: str) -> None:
     ordered(options, "eraseBegin(", "ok = saveDelete(save);", "opEnd(ok);",
             "if(ok) {", 'savesSay("The data was erased.");', "else if(!card) {",
             'savesTell(D_FAIL, "The save couldn\'t be deleted.')
+    # A copy that the memory left can't hold twice, with the card driver's
+    # room, has the art's pool let go first: the screen without it goes out
+    # before it is freed, and it comes back after the operation with every
+    # slot to be read again into it.
+    ordered(transfer, "artRoom(isCard(save->device) ? save->size + UI_SAVES_ENTRY_SIZE : save->size);",
+            "opBegin(", "saveRead(save, &length)")
+    ordered(function(source, "heapFree"), "mallinfo()", "info.fordblks + SYS_GetArena1Size()")
+    ordered(function(source, "artRoom"), "UISaves_CopyCrowded(heapFree(), bytes)", "pool = NULL;",
+            "screenRedraw();", "free(gone);")
+    ordered(function(source, "artReturn"), "memalign(32, (SAVES_SLOTS + 1) * SAVES_SLOT_BYTES)",
+            "memset(slotTags, 0, sizeof(slotTags));", "artFresh = true;")
+    ordered(show, "saveOptions(stacks[focus]);", "artReturn();")
     # A save lands in the other stack's first free cell. A folder listing as
     # many as a stack shows has none: then no ghost shows, the stack's
     # selection stays on a cell it has, and the question says why.
@@ -300,6 +315,16 @@ def mutants(source: str) -> list[tuple[str, str]]:
          source.replace("\t\telse if(!card) {\n", "\t\telse {\n")),
         ("the cards go before the screen does",
          source.replace("\tover.leaving = 1;\n", "")),
+        ("a crowded copy runs beside the art's pool",
+         source.replace("\tartRoom(isCard(save->device) ? save->size + UI_SAVES_ENTRY_SIZE : save->size);\n", "")),
+        ("the pool is freed while the screen still names it",
+         source.replace("\tpool = NULL;\n\tscreenRedraw();\n\tfree(gone);\n",
+                        "\tfree(gone);\n\tpool = NULL;\n\tscreenRedraw();\n")),
+        ("the pool comes back with slots named that it doesn't hold",
+         source.replace("\tmemset(slotTags, 0, sizeof(slotTags));\n\tartFresh = true;\n",
+                        "\tartFresh = true;\n")),
+        ("the pool never comes back",
+         source.replace("\t\t\t\tartReturn();\n", "")),
         ("a save aims past the end of a folder's stack",
          source.replace("plan.toCell = UISaveCubes_Landing(dest->count - placeSkip(dest));",
                         "plan.toCell = dest->count - placeSkip(dest);")),

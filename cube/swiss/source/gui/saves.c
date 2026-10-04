@@ -161,8 +161,9 @@ static u32 slotTags[SAVES_SLOTS];		/* each slot's save, 0 for none */
 static savesSlot_t slots[SAVES_SLOTS];
 /* A ceiling chosen on purpose: one 1.03 MiB block while the page is open,
  * as big as the Library's poster reservation, and one slot more for a cube
- * in flight (operations come one at a time). A shared pool of 2 KiB frames
- * is the way on if that ever crowds a copy. */
+ * in flight (operations come one at a time). A copy it would crowd has it
+ * let go first (artRoom); a shared pool of 2 KiB frames is the way on if
+ * that is ever too often. */
 static u8 *pool;				/* SAVES_SLOTS + 1 x SAVES_SLOT_BYTES, or NULL */
 #define SAVES_FLIGHT (pool + SAVES_SLOTS * SAVES_SLOT_BYTES)
 static savesSlot_t flight;			/* the art of the save in flight */
@@ -969,6 +970,46 @@ static void screenRedraw(void)
 	screenShow(&screenPage);
 }
 
+/* What malloc can still hand out: its heap's free chunks, and the arena
+ * past the heap that sbrk grows it into. */
+static u32 heapFree(void)
+{
+	struct mallinfo info = mallinfo();
+
+	return (u32)info.fordblks + SYS_GetArena1Size();
+}
+
+/* Before a copy of a save bytes long as it is read: when the memory left
+ * can't hold it twice and the card driver's room besides, the pool goes,
+ * as a copy is worth more than its icons. The screen built without it goes
+ * out first, so nothing the video thread draws names it, then it is freed;
+ * the cubes are plain until artReturn takes it back. The card device
+ * handler doesn't check the write buffer it allocates
+ * (deviceHandler-CARD.c), so this headroom is what keeps a large copy
+ * beside the pool from failing there. */
+static void artRoom(u32 bytes)
+{
+	u8 *gone = pool;
+
+	if(pool == NULL || !UISaves_CopyCrowded(heapFree(), bytes)) {
+		return;
+	}
+	pool = NULL;
+	screenRedraw();
+	free(gone);
+}
+
+/* After an operation: the pool back if artRoom let it go, every slot read
+ * again into it at once, as no slot's texels are in it. */
+static void artReturn(void)
+{
+	if(pool != NULL || (pool = memalign(32, (SAVES_SLOTS + 1) * SAVES_SLOT_BYTES)) == NULL) {
+		return;
+	}
+	memset(slotTags, 0, sizeof(slotTags));
+	artFresh = true;
+}
+
 /* ------------------------------------------------------------------------
  * Over the screen: the box beside the focused cube, an operation's cube
  * flying while the card works, and messages.
@@ -1446,6 +1487,7 @@ static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 		sizeof(folder))) {
 		return;
 	}
+	artRoom(isCard(save->device) ? save->size + UI_SAVES_ENTRY_SIZE : save->size);
 	opBegin(move, to >= UI_SAVES_PLACE_FOLDER ? folder : NULL);
 	data = saveRead(save, &length);
 	blocksAt = 0u;
@@ -1924,6 +1966,7 @@ void show_saves(void)
 			menuaudio_select();
 			if(chosen->fileType == IS_FILE) {
 				saveOptions(stacks[focus]);
+				artReturn();
 			}
 			else {
 				snprintf(place->dir.name, sizeof(place->dir.name), "%s",

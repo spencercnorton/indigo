@@ -482,6 +482,22 @@ static void expectVerdict(bool move, bool fromCard, uint8_t permissions,
     assert(strcmp(text, why) == 0);
 }
 
+/* A copy holds its save twice and needs 192 KiB besides. */
+static void testCopyRoom(void)
+{
+    const uint32_t save = 59u * UI_SAVES_BLOCK_SIZE + UI_SAVES_ENTRY_SIZE;
+
+    assert(!UISaves_CopyCrowded(4u << 20, save));
+    assert(!UISaves_CopyCrowded(2u * save + UI_SAVES_COPY_MARGIN, save));
+    assert(UISaves_CopyCrowded(2u * save + UI_SAVES_COPY_MARGIN - 1u, save));
+    assert(UISaves_CopyCrowded(save + UI_SAVES_COPY_MARGIN, save));
+    assert(UISaves_CopyCrowded(UI_SAVES_COPY_MARGIN - 1u, 0u));
+    /* The largest save a card holds, in 16 MiB; and no wrap past 4 GiB. */
+    assert(UISaves_CopyCrowded(16u << 20, 0x150u + 2043u * UI_SAVES_BLOCK_SIZE));
+    assert(UISaves_CopyCrowded(0xFFFFFFFFu, 0x80000000u));
+    assert(!UISaves_CopyCrowded(0xFFFFFFFFu, 0x7FF00000u));
+}
+
 static void testVerdict(void)
 {
     uiSavesRoom_t card = {"Slot B", true, true, false, false, 12, 40};
@@ -638,5 +654,6 @@ int main(void)
     testArtLayout();
     testPool();
     testVerdict();
+    testCopyRoom();
     return 0;
 }

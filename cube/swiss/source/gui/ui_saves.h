@@ -84,6 +84,16 @@ typedef struct {
 uiSavesVerdict_t UISaves_Verdict(bool move, bool fromCard, uint8_t permissions,
 	unsigned blocks, const uiSavesRoom_t *to, char *why, size_t size);
 
+/* A copy holds its save twice at once (as read, and as the card driver's
+ * write buffer or the copy read back) and needs room besides: the card
+ * driver's listing of a card's 127 saves, about 1.2 KiB each, and a sector,
+ * with some to spare. */
+#define UI_SAVES_COPY_MARGIN (192u * 1024u)
+
+/* Whether a copy of a save bytes long as it is read could run short of
+ * memory with freeBytes left: less than twice it and UI_SAVES_COPY_MARGIN. */
+bool UISaves_CopyCrowded(uint32_t freeBytes, uint32_t bytes);
+
 /* ------------------------------------------------------------------------
  * A save's art: its banner, its animated icon and its comment, where the
  * entry puts them in the save's data (the bytes after the entry), read as

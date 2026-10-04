@@ -169,6 +169,11 @@ uiSavesVerdict_t UISaves_Verdict(bool move, bool fromCard, uint8_t permissions,
 	return verdict;
 }
 
+bool UISaves_CopyCrowded(uint32_t freeBytes, uint32_t bytes)
+{
+	return (uint64_t)freeBytes < 2u * (uint64_t)bytes + UI_SAVES_COPY_MARGIN;
+}
+
 /* ------------------------------------------------------------------------
  * Art.
  * --------------------------------------------------------------------- */
