@@ -63,7 +63,15 @@ typedef struct {
 	u32 repeatHeld;
 	u32 repeatTime;
 	bool repeated;
+	u32 quiet;				/* VSyncs in a row with nothing held */
 } savesInput_t;
+
+/* A save's art as the pool holds it. */
+typedef struct {
+	bool failed;				/* unreadable or nonsense: not read again */
+	uiSavesArt_t art;
+	char line[2][33];			/* its comment's two lines */
+} savesSlot_t;
 
 static savesPlace_t places[SAVES_TABS];
 static savesPlace_t chooser;
@@ -101,6 +109,202 @@ static bool isSaveName(const char *name)
 }
 
 /* ------------------------------------------------------------------------
+ * Saves' art: banners, icons and comments, read one save at a time while
+ * nothing is pressed, into a slot for each save on screen.
+ * --------------------------------------------------------------------- */
+/* Two stacks of six rows of four: the window and a row either side. */
+#define SAVES_SLOTS 48
+/* A slot's texels, all RGB5A3: the icon's 8 frames, then the banner. */
+#define SAVES_SLOT_BYTES (UI_SAVES_ICON_FRAMES * UI_SAVES_ICON_BYTES + \
+	UI_SAVES_BANNER_BYTES)
+/* What one save's art is read into: a wrapper's header and entry, then the
+ * part of the save the art spans. */
+#define SAVES_SCRATCH_BYTES (UI_SAVES_HEAD_SIZE + UI_SAVES_ART_MAX_END)
+/* VSyncs in a row with no button or stick held before a save is read. A
+ * read holds input up for tens of milliseconds, so a tap never falls in one. */
+#define SAVES_QUIET 15
+
+static u32 slotTags[SAVES_SLOTS];		/* each slot's save, 0 for none */
+static savesSlot_t slots[SAVES_SLOTS];
+/* A ceiling chosen on purpose: one 1.03 MiB block while the page is open,
+ * as big as the Library's poster reservation. A shared pool of 2 KiB
+ * frames is the way on if that ever crowds a copy. */
+static u8 *pool;				/* SAVES_SLOTS x SAVES_SLOT_BYTES, or NULL */
+static u8 *scratch;				/* SAVES_SCRATCH_BYTES, or NULL */
+/* The saves on screen, nearest the focus first. placeClear empties it, as
+ * the handles point into the listing it frees. */
+static file_handle *wanted[SAVES_SLOTS];
+static u32 wantTags[SAVES_SLOTS];
+static int wantCount;
+
+/* Which save this is, for its slot: its place, then its game, maker and
+ * name on a card or its path in a folder, then its size. */
+static u32 saveTag(int tab, const file_handle *save)
+{
+	u8 place = (u8)tab;
+	u32 tag = UISaves_Id(UI_SAVES_ID_START, &place, 1u);
+
+	if(isCard(save->device)) {
+		const card_dir *dir = (const card_dir *)save->other;
+
+		tag = UISaves_Id(tag, dir->gamecode, 4u);
+		tag = UISaves_Id(tag, dir->company, 2u);
+		tag = UISaves_Id(tag, dir->filename, strnlen(dir->filename,
+			CARD_FILENAMELEN));
+	}
+	else {
+		tag = UISaves_Id(tag, save->name, strlen(save->name));
+	}
+	return UISaves_Id(tag, &save->size, sizeof(save->size));
+}
+
+/* The saves in rows first .. first + rows - 1 of a place, columns wide,
+ * nearest its selection first. */
+static void artWant(int tab, int first, int rows, int columns)
+{
+	savesPlace_t *place = &places[tab];
+	int order[SAVES_SLOTS];
+	int count = UISaves_LoadOrder(place->selection, first, rows, columns,
+		place->count, order);
+	int i;
+
+	wantCount = 0;
+	for(i = 0; i < count && wantCount < SAVES_SLOTS; i++) {
+		file_handle *save = place->list[order[i]];
+
+		if(save->fileType == IS_FILE) {
+			wanted[wantCount] = save;
+			wantTags[wantCount++] = saveTag(tab, save);
+		}
+	}
+}
+
+/* Reads save's art into slot s: its entry, then the part of its data the art
+ * spans, decoded into the slot's texels, and its comment. A card's save is
+ * read as a .gci, entry first, so one Swiss wrote isn't read 8 KiB in. A save
+ * that can't be read, or whose entry makes no sense, stays failed: it isn't
+ * read again while it's on screen, as the card driver's readFile leaks a
+ * buffer on an error. */
+static void artRead(file_handle *save, int s, u32 tag)
+{
+	savesSlot_t *slot = &slots[s];
+	u8 *texels = pool != NULL ? pool + s * SAVES_SLOT_BYTES : NULL;
+	bool card = isCard(save->device);
+	u8 entry[UI_SAVES_ENTRY_SIZE];
+	size_t at = 0u;
+	u32 want;
+	s32 got;
+	int i;
+
+	memset(slot, 0, sizeof(*slot));
+	slot->failed = true;
+	save->device->seekFile(save, 0, DEVICE_HANDLER_SEEK_SET);
+	if(card) {
+		/* The entry alone: the driver writes it before any block. It takes
+		 * banner_fmt from libogc2's CARD_GetStatus, which keeps only the
+		 * banner's bits when there is a banner, so a card's bouncing icon
+		 * plays as a loop here; a file's keeps its bounce. */
+		setCopyGCIMode(true);
+		got = save->device->readFile(save, scratch, UI_SAVES_ENTRY_SIZE);
+		setCopyGCIMode(false);
+		if(got == UI_SAVES_ENTRY_SIZE) {
+			memcpy(entry, scratch, UI_SAVES_ENTRY_SIZE);
+			at = UI_SAVES_ENTRY_SIZE;
+		}
+	}
+	else {
+		want = save->size < UI_SAVES_HEAD_SIZE ? save->size : UI_SAVES_HEAD_SIZE;
+		got = save->device->readFile(save, scratch, want);
+		if(got == (s32)want) {
+			at = UISaves_FindEntryPrefix(scratch, want, save->size, entry);
+		}
+	}
+	if(at != 0u && UISaves_ArtLayout(entry, card ? save->size :
+		save->size - at, &slot->art)) {
+		want = (u32)at + slot->art.end;
+		save->device->seekFile(save, 0, DEVICE_HANDLER_SEEK_SET);
+		if(card) {
+			setCopyGCIMode(true);
+		}
+		got = save->device->readFile(save, scratch, want);
+		if(card) {
+			setCopyGCIMode(false);
+		}
+		slot->failed = got != (s32)want;
+	}
+	save->device->closeFile(save);
+	if(!slot->failed) {
+		const u8 *data = scratch + at;
+		const uiSavesArt_t *art = &slot->art;
+
+		if(art->comment) {
+			snprintf(slot->line[0], sizeof(slot->line[0]), "%.32s",
+				(const char *)data + art->commentAt);
+			snprintf(slot->line[1], sizeof(slot->line[1]), "%.32s",
+				(const char *)data + art->commentAt + 32);
+		}
+		if(texels != NULL) {
+			for(i = 0; i < (int)art->frames; i++) {
+				if(art->frameFormat[i] != UI_SAVES_ART_NONE &&
+					!UISaves_ToRgb5a3(data, art->end, art, i,
+						texels + i * UI_SAVES_ICON_BYTES)) {
+					slot->failed = true;
+				}
+			}
+			if(art->bannerFormat != UI_SAVES_ART_NONE &&
+				!UISaves_ToRgb5a3(data, art->end, art, UI_SAVES_ART_BANNER,
+					texels + UI_SAVES_ICON_FRAMES * UI_SAVES_ICON_BYTES)) {
+				slot->failed = true;
+			}
+			DCFlushRange(texels, SAVES_SLOT_BYTES);
+		}
+	}
+	slotTags[s] = tag;
+}
+
+/* The slot holding the save tag names, or -1. */
+static int artSlot(u32 tag)
+{
+	int s;
+
+	for(s = 0; s < SAVES_SLOTS; s++) {
+		if(slotTags[s] == tag) {
+			return s;
+		}
+	}
+	return -1;
+}
+
+/* The loader: reads the art of the first save on screen that no slot holds
+ * yet into a slot that holds no save on screen. Returns whether it read
+ * one. Writing a slot is safe only because no snapshot the video thread can
+ * draw names a save that isn't on screen: DrawUpdate copies a snapshot in
+ * under _videomutex, which the video thread holds from the start of a frame
+ * to GX_DrawDone. Drawing outside that lock would turn this into a stale
+ * texture or a use after free. */
+static bool artLoad(void)
+{
+	int i, s;
+
+	if(scratch == NULL) {
+		return false;
+	}
+	for(i = 0; i < wantCount; i++) {
+		/* Read already, or failed: never again while it's on screen. */
+		if(artSlot(wantTags[i]) >= 0) {
+			continue;
+		}
+		s = UISaves_SlotPick(slotTags, SAVES_SLOTS, wantTags, wantCount);
+		if(s < 0) {
+			return false;
+		}
+		artRead(wanted[i], s, wantTags[i]);
+		return true;
+	}
+	return false;
+}
+
+/* ------------------------------------------------------------------------
  * Input: the cheat browser's, one press at a time with held directions
  * repeating on the shared schedule.
  * --------------------------------------------------------------------- */
@@ -131,6 +335,8 @@ static void inputInit(savesInput_t *input)
 	input->lastRetrace = VIDEO_GetRetraceCount();
 }
 
+/* The buttons pressed, or 0 when it read a save's art while waiting and the
+ * page should be built again. */
 static u32 inputNext(savesInput_t *input)
 {
 	while(1) {
@@ -161,8 +367,19 @@ static u32 inputNext(savesInput_t *input)
 		}
 		if(analog == UI_MENU_INPUT_UP) pressed |= BUTTON_UP;
 		if(analog == UI_MENU_INPUT_DOWN) pressed |= BUTTON_DOWN;
+		if(held != 0u || input->menu.owner != UI_MENU_INPUT_NO_OWNER) {
+			input->quiet = 0u;
+		}
 		if(pressed != 0u) {
 			return pressed;
+		}
+		/* Idle: one save's art a VSync, once nothing has been held for
+		 * SAVES_QUIET of them. */
+		if(input->quiet < SAVES_QUIET) {
+			input->quiet++;
+		}
+		else if(artLoad()) {
+			return 0u;
 		}
 	}
 }
@@ -242,6 +459,7 @@ static void placeClear(savesPlace_t *place)
 {
 	int i;
 
+	wantCount = 0;
 	for(i = 0; i < place->entryCount; i++) {
 		if(place->entries[i].meta != NULL) {
 			meta_free(place->entries[i].meta);
@@ -607,6 +825,9 @@ static void pageBuild(savesPlace_t *place, int tab, int tabCount,
 	int i;
 
 	placeWindow(place, first);
+	if(tabCount > 0) {
+		artWant(tab, first, UI_SAVES_PAGE_ROWS, 1);
+	}
 	memset(s, 0, sizeof(*s));
 	snprintf(s->title, sizeof(s->title), tabCount ? "Memory Cards" :
 		"Choose a Folder");
@@ -1171,6 +1392,10 @@ void show_saves(void)
 	int tab, i;
 
 	memset(places, 0, sizeof(places));
+	memset(slotTags, 0, sizeof(slotTags));
+	wantCount = 0;
+	pool = memalign(32, SAVES_SLOTS * SAVES_SLOT_BYTES);
+	scratch = memalign(32, SAVES_SCRATCH_BYTES);
 	if(folderMounted) {
 		folderSet(&places[SAVES_TAB_FOLDER], saves_folder());
 		folderEnsure(devices[DEVICE_CONFIG], saves_folder());
@@ -1258,6 +1483,10 @@ void show_saves(void)
 		config_unset_device();
 	}
 	DrawDispose(page);
+	/* Only now: nothing the video thread draws reads the slots. */
+	free(pool);
+	free(scratch);
+	pool = scratch = NULL;
 	while(padsButtonsHeld() & BUTTON_B) {
 		VIDEO_WaitVSync();
 	}
