@@ -1341,6 +1341,12 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 	s32 written;
 	bool has, same;
 
+	/* A leading 0xff is a libogc2 lookup wildcard, not an exact save id.
+	 * Check here as well as in the SD parser: card-to-card copies bypass it. */
+	if(entry[0] == 0xff || entry[4] == 0xff) {
+		snprintf(why, whySize, "This save's game or maker code can't be written.");
+		return false;
+	}
 	memset(&dest, 0, sizeof(dest));
 	if(device->init(device->initial) != 0) {
 		snprintf(why, whySize, "%s has no memory card.", slotName(slot));
@@ -1393,6 +1399,8 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 	copy = cardFind(slot, entry, &entries, &count, &used);
 	back = copy != NULL ? saveRead(copy, &backLength) : NULL;
 	same = back != NULL && backLength == blockBytes + UI_SAVES_ENTRY_SIZE &&
+		!memcmp(back, entry, 6) &&
+		!strncmp((const char *)back + 8, (const char *)entry + 8, CARD_FILENAMELEN) &&
 		!memcmp(back + UI_SAVES_ENTRY_SIZE, blocks, blockBytes);
 	free(back);
 	if(!same) {

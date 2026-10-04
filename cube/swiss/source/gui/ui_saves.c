@@ -58,6 +58,11 @@ size_t UISaves_FindEntryPrefix(const uint8_t *head, size_t headLength,
 		swapPairs(entry + 0x06, 2u);
 		swapPairs(entry + 0x2C, 20u);
 	}
+	/* libogc2 uses these leading bytes as lookup wildcards. They cannot
+	 * identify one save when a wrapper is copied to a memory card. */
+	if(entry[0] == 0xffu || entry[4] == 0xffu) {
+		return 0u;
+	}
 	blocks = UISaves_Blocks(entry);
 	if(blocks == 0u || fileLength - at - UI_SAVES_ENTRY_SIZE !=
 		(size_t)blocks * UI_SAVES_BLOCK_SIZE) {

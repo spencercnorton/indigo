@@ -117,6 +117,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Memory Cards reads and erases the selected save when different games or
+  makers use the same save name. Copy checks and failed-copy cleanup keep
+  that identity too, so an existing save is left intact. A save header with
+  a wildcard game or maker code is rejected before it can write to a card.
 - Memory Cards moved a card's save that its game marks as not to be moved:
   libogc2's listing of a card leaves a save's permissions out, so the check
   never saw them. It reads them from the card's directory now, Move is

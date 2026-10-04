@@ -49,6 +49,44 @@ static void swapPairs(uint8_t *bytes, size_t length)
     }
 }
 
+/* These bytes are libogc2 wildcard filters, so no wrapper may offer an
+ * import with them as the first game or maker byte. Other bytes, including
+ * NUL (which is an exact code), do not have that meaning. */
+static void testWildcardEntries(void)
+{
+    uint8_t entry[UI_SAVES_ENTRY_SIZE], found[UI_SAVES_ENTRY_SIZE];
+    const size_t headers[3] = {0u, 0x80u, 0x110u};
+    unsigned wrapper, code;
+
+    for(wrapper = 0u; wrapper < 3u; wrapper++) {
+        for(code = 0u; code <= 4u; code += 4u) {
+            uint8_t *file;
+            size_t length;
+            makeEntry(entry, "same-name", 1u);
+            entry[code] = 0xFFu;
+            if(wrapper == 1u) {
+                swapPairs(entry + 6u, 2u);
+                swapPairs(entry + 0x2Cu, 20u);
+            }
+            file = makeFile(headers[wrapper], entry, 1u, &length);
+            if(wrapper == 1u) memcpy(file, "DATELGC_SAVE", 12u);
+            if(wrapper == 2u) memcpy(file, "GCSAVE", 6u);
+            assert(UISaves_FindEntry(file, length, found) == 0u);
+            assert(UISaves_FindEntryPrefix(file, UI_SAVES_HEAD_SIZE,
+                length, found) == 0u);
+            free(file);
+        }
+    }
+    makeEntry(entry, "zero-code", 1u);
+    entry[0] = 0u;
+    {
+        size_t length;
+        uint8_t *file = makeFile(0u, entry, 1u, &length);
+        assert(UISaves_FindEntry(file, length, found) == UI_SAVES_ENTRY_SIZE);
+        free(file);
+    }
+}
+
 static void expectFileName(const char *name, const char *expected)
 {
     uint8_t entry[UI_SAVES_ENTRY_SIZE];
@@ -569,6 +607,8 @@ int main(void)
     uint8_t *file;
     size_t length;
     char out[96];
+
+    testWildcardEntries();
 
     /* A plain .gci: the entry comes first, the blocks start at 64. */
     makeEntry(entry, "SuperSmashBros0110290334", 3u);

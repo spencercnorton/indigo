@@ -77,11 +77,17 @@ why:
 | The reason | Why |
 | --- | --- |
 | No memory card in Slot B | The other stack has no card to write to. |
-| Slot B already has this save | A card is never written over: a save of the same game and name is there. Erase one of them first. |
+| Slot B already has this save | A card is never written over: a save of the same game, maker and name is there. Erase one of them first. |
 | Slot B has 127 saves | A card holds 127 saves at most. |
 | Slot B has 4 free blocks; this needs 11 | The card has too little room. |
 | This game doesn't let its save move | The game ties its save to its memory card, and moving it would lose it. Copy it instead: the original stays where it works. |
 | The SD card can't be written | The SD card is read-only. |
+
+Saves with the same name from different games or makers are separate saves:
+Copy, Move and Erase act on the one highlighted. A damaged save header with
+a wildcard game or maker code cannot be copied to a memory card; an SD
+save with such a header is not offered as an import. An entry with such a
+code on a memory card cannot be read or erased safely and is left untouched.
 
 Choose Move or Copy and Memory Cards asks first, **Yes** highlighted: "Copy
 to Slot B?", or "Copy to the SD card?" for the folder the SD card's stack
