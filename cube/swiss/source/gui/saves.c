@@ -1709,7 +1709,9 @@ static void saveOptions(int tab)
 	static const char *const actions[3] = {"Move", "Copy", "Erase"};
 	static const char *const answers[2] = {"Yes", "No"};
 	savesPlace_t *place = &places[tab];
-	file_handle *save = place->list[place->selection];
+	/* The cube the cursor is on: a folder's selection still counts the
+	 * ".." no cube shows. */
+	file_handle *save = placeAt(place, placeCell(place));
 	int toTab = screenStacks[!screenFocus];
 	savesPlace_t *dest = &places[toTab];
 	char reason[2][96], title[64], open[PATHNAME_MAX];

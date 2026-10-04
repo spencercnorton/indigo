@@ -17,7 +17,8 @@ the saves of both stacks before it names a slot, and publishes only then;
 B goes up a folder the SD card's stack opened, never past where it opened
 or the card's root, and L or R looks again at a slot without a card before
 swapping a stack. Copy and Move go only to the other stack, never to the
-place a save is in. A card's listing reads each save's permissions, which
+place a save is in, and Move, Copy and Erase take the save whose cube the
+cursor is on, never a folder's "..". A card's listing reads each save's permissions, which
 libogc2's listing leaves out, so the Move guard has them to read.
 
 An operation's cube flies while the card works: it starts before the save
@@ -178,6 +179,12 @@ def check(source: str) -> None:
     # original, and there is no Move within one folder or card.
     ordered(options, "int toTab = screenStacks[!screenFocus];", "saveRoom(toTab,",
             "saveTransfer(save, to, move);")
+    # The save acted on is the cube the cursor is on, the cell the info bar
+    # and A read, never a folder's ".." its selection still counts.
+    ordered(options, "file_handle *save = placeAt(place, placeCell(place));",
+            "saveEntry(save, entry)")
+    ordered(show, "file_handle *chosen = placeAt(place, placeCell(place));",
+            "saveOptions(stacks[focus]);")
     # An erase is done once the card did it; a card's failure shows only the
     # box its driver shows.
     ordered(options, "eraseBegin(", "ok = saveDelete(save);", "opEnd(ok);",
@@ -263,6 +270,9 @@ def mutants(source: str) -> list[tuple[str, str]]:
          source.replace("\tover.leaving = 1;\n", "")),
         ("a card's permissions left as libogc2 lists them",
          source.replace("\t\tCARD_GetAttributes(slot, dir->fileno, &dir->permissions);\n", "")),
+        ("a folder's save is taken by its selection, which counts its \"..\"",
+         source.replace("file_handle *save = placeAt(place, placeCell(place));",
+                        "file_handle *save = place->list[place->selection];")),
         ("a save goes to the stack it is in",
          source.replace("int toTab = screenStacks[!screenFocus];", "int toTab = screenStacks[screenFocus];")),
         ("a half-written card copy is left on the card",
