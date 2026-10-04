@@ -1,4 +1,4 @@
-These are untouched 640×480 Dolphin captures of commit dcfbdc5, using only
+The save-related pictures are untouched 640×480 Dolphin captures of commit dcfbdc5, using only
 public demonstration games and synthetic saves. No user's save or physical
 memory card was involved.
 
@@ -34,3 +34,21 @@ Value-only probes exclude Blocks/KiB captions and Source/Created/Last
 updated labels. Regressions erase each value and retain its caption or
 label; labels alone cannot satisfy a missing value. Positive captures are
 never altered. Mutations are made only to in-memory copies during tests.
+
+`folder-horizontal.png` and `folder-legacy-browser.png` are untouched
+640×480 captures of exact commit 08e536aa from the public demonstration SD
+image. The latter shows the actual defect: X from the `/games` Library
+opens Swiss's list at the device root. The folder transition classifier
+requires its separate left device card and long, regularly spaced file-row
+borders. Controls dim these native pixels down to 10%, remove either
+geometry component and inject a single legacy frame into an otherwise
+valid sequence, including a delayed encoder tail. Blank frames are allowed
+as fades and cannot satisfy the eventual Library/Home title check.
+
+`folder-vertical.png`, `folder-grid.png`, `folder-spotlight.png` and
+`folder-home.png` are untouched 640×480 captures of the repaired product
+at commit 1645d023, built with the pinned SDK. They use the same public
+demonstration games and dotted-folder SD image. Every Library layout and
+Home rejects the legacy predicate, including faded copies made in memory.
+Grid and Spotlight were captured in separate, explicitly seeded layout
+controls; Vertical and Home came from the repaired folder route.

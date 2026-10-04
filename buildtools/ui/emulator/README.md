@@ -61,7 +61,7 @@ probe's game and launches it from its details: the probe must see the game's
 own disc ID, the 24 MB a game is promised, the music stopped and memory
 quiet.
 
-CI runs eight jobs, the first of them the required **Emulator** check:
+CI runs nine jobs, the first of them the required **Emulator** check:
 
 | Job | Console | Video | Storage |
 | --- | --- | --- | --- |
@@ -69,6 +69,7 @@ CI runs eight jobs, the first of them the required **Emulator** check:
 | game, PAL, component | PAL, component | 480p | disc |
 | smoke, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the card with `non-default.ini` |
 | game, NTSC, SD2SP2 | NTSC, composite | 480i | SD2SP2, a new card |
+| folders, NTSC, component, SD2SP2 | NTSC, component | 480p | SD2SP2, a new card, all four Library layouts |
 | virtual cards, NTSC, GC Loader | NTSC, component | 480p | GC Loader, both memory-card slots empty, 4:3 |
 | virtual cards, NTSC, GC Loader, widescreen | NTSC, component | 480p | same route with `save-details-wide.ini`, 16:9 |
 | save, NTSC, SD2SP2, failing card | NTSC, composite | 480i | SD2SP2, writes failing after 13 |
@@ -104,6 +105,47 @@ presses again, as a person would, and the report lists each such press
 (`pressed_again`), so the misses stay in sight. A press that changed the
 screen is never repeated. A failed step says why, names the crash when there
 is one, and where the console's CPU was.
+
+## Folder return transitions
+
+The **folders route** (`--route folders`) uses the build's exact SD-card zip
+on a fresh SD2SP2 FAT image, an NTSC console and component video. Through
+Settings it walks Horizontal, Vertical, Grid and Spotlight. `Nintendo.GC`
+is empty; `Racing.v1/Classics.Set/Old.Saves.v2` holds direct and flattened
+games. Each dotted ancestor and the multiple dots in the final component
+are ordinary folder names. A sibling `Racing.v1.png` becomes the folder's
+poster; oversized and damaged sibling pictures remain absent.
+
+In each layout A on Return to parent, B and X return to the selected child
+folder at both nested levels. At `/games` all three return Home. Reopening
+after A on the root parent chooses the first actual folder, as Library
+entry normally skips the parent card. Reopening after B or X keeps the
+exact selected non-first folder, compared with its own earlier title.
+
+A final steady title alone could miss a brief legacy-browser flash. This
+route enables Dolphin's sequential **raw XFB PNG dumps** and classifies
+every presented framebuffer in each folder action, from before the press
+through its settled result. Two advancing dump indices cover the pending
+readback/encoder tail; the next PNG proves the final file has completed.
+Every inclusive index must be consumed. The classifier identifies Swiss's
+actual device panel and long bordered file rows; Indigo fades and blank
+transition frames are allowed. A single legacy frame fails the action.
+It uses its own geometry predicate; global text thresholds, waits and
+button retry rules are unchanged.
+
+`folder-transitions.json` records each index range, frame count and digest
+of the index/RGB sequence. `folder-transitions/` retains representative
+first, middle and last images and every rejected legacy frame. Other dump
+files are consumed and deleted as they arrive; each span keeps three RGB
+buffers and the whole run is limited to 60,000 frames. Actual native
+legacy/Library fixtures and one-frame, delayed-tail and missing-index
+controls test the recorder without Dolphin.
+
+```bash
+python3 buildtools/ui/emulator/run.py cube/swiss/swiss.dol \
+  --route folders --region ntsc --cable component --storage sd2sp2 \
+  --card-zip Indigo-<version>.zip --out emulator-folders
+```
 
 ## Running it
 
