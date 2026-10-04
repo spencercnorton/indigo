@@ -90,6 +90,37 @@ tag on `beta`. The newest changes are at the top until their release is named.
   50 Hz as at 60 Hz.
 - The Home controller's idle animation no longer stops after Indigo has been
   running for an hour and three quarters.
+- Holding the stick in the Library's Horizontal, Vertical and Spotlight
+  layouts, the games glide past without a jump. The strip could fall only
+  one game behind the selection, so at the stick's pace it skipped forward
+  two fifths of a card every step; with nine games or more it can fall two
+  behind now.
+- The waves behind the menus ease between Home's quieter strength and the
+  other screens' as the cube moves, instead of brightening or dimming in one
+  frame as you leave or come back to Home.
+- Coming back to Home, the face's name and the hint under the cube fade in
+  as the cube grows back to its place, instead of appearing at once over a
+  cube still on its way.
+- On Home, Source's and System's rows and the restart question fade in when
+  they open, and the highlight fades from row to row as you move instead of
+  jumping.
+- As the boot's cube lands on Home, the icon on the face beside the front
+  one fades in with the glass's light instead of appearing in one frame.
+- A cover, a gameplay still or an app's or folder's poster fades in over a
+  fifth of a second as it arrives, over the card that stood in for it,
+  rather than replacing it in one frame. One read while it was off screen
+  shows at once when you scroll to it, as before.
+- The highlight in Game Details slides from row to row, and so do the current
+  tab's cell in Settings and its underline in Memory Cards, as the focus in
+  the cheat list already did, instead of jumping.
+- A moving cover in the Library slides one way to rest, its edges never
+  stepping back as it settles, and Settings' focus card no longer nudges an
+  edge back the other way as it moves to a row of another width.
+- In Spotlight, moving from one game with a gameplay still to another, the
+  new still fades in over the old one, instead of both fading through a
+  darker panel half way.
+- The Home controller lets go of its idle play over a moment when you touch
+  the pad, instead of its sticks jumping to your hand in one frame.
 
 ### Fixes
 
