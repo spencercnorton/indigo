@@ -20,6 +20,11 @@ while a crash, a hang, a black screen or a broken control does:
     another device and B leaves it;
   - on the Settings face, Setup > Console > Apps Face Off takes Apps off the
     cube (System's next face is Library) and On puts it back;
+  - Setup > Console > Cube Classic lays the faces out as the GameCube's menu
+    does, Library between them: from Settings, LEFT goes nowhere and RIGHT
+    twice is Library, then System; there UP goes nowhere and B is Library;
+    UP is Source, DOWN Library, DOWN Apps and UP Library. Cube goes back to
+    Infinite after;
   - Setup > Library > Library Folders On shows the disc's folders in the
     Library: an empty folder opens with only its way back, A opens a folder
     and a folder in it, which lists the game a level further down too, and B
@@ -636,9 +641,10 @@ class Route:
         for n, face in enumerate(faces[:4]):
             # Home starts on the Library face: browse it while it is open,
             # change the source on the Source face, and turn Apps Face off
-            # and on again in Settings.
+            # and on again in Settings, then walk a Classic cube.
             if n == 2:
                 self.apps_face_off_and_on(faces)
+                self.classic_cube(faces)
                 self.library_folders(faces)
             else:
                 inside = {0: self.browse_library, 1: self.change_source}.get(n)
@@ -783,29 +789,64 @@ class Route:
                    memory=f"{report['memsize']:08X}")
 
     def flip_apps_face(self, settings: np.ndarray, tag: str) -> None:
+        """Apps Face, eight DOWNs into Console (flip_console)."""
+        self.flip_console(settings, 8, "apps-face", tag)
+
+    def flip_console(self, settings: np.ndarray, downs: int, name: str, tag: str) -> None:
         """From the Settings face: R and R to Setup, DOWN and A into Console,
-        eight DOWNs to Apps Face and RIGHT to flip it. B goes back to Setup and
+        downs DOWNs to a row and RIGHT to flip it. B goes back to Setup and
         B again saves and exits (the demo disc can't keep the file; the
         setting holds until Indigo restarts), back to the Settings face."""
+        detail = {name.replace("-", "_"): tag}
         self.press("A")
         opened = self.covered(settings)
-        self.shot(f"settings-apps-face-{tag}", self.last_rgb)
-        self.check("A opens Settings", opened, apps_face=tag)
+        self.shot(f"settings-{name}-{tag}", self.last_rgb)
+        self.check("A opens Settings", opened, **detail)
         for button, pause in (("R", 1.0), ("R", 1.0), ("DOWN", 0.6), ("A", 1.5)):
             self.press(button)
             self.pause(pause)
-        for _ in range(8):
+        for _ in range(downs):
             self.press("DOWN")
             self.pause(0.4)
         self.press("RIGHT")
         self.pause(1.0)
-        self.shot(f"apps-face-{tag}", self.emulator.frame())
+        self.shot(f"{name}-{tag}", self.emulator.frame())
         self.press("B")
         self.pause(1.0)
         self.press("B")
         mask, _ = self.settled_label(like=settings)
-        self.shot(f"apps-face-{tag}-home", self.last_rgb)
-        self.check("Save & Exit comes back to the Settings face", mask is not None, apps_face=tag)
+        self.shot(f"{name}-{tag}-home", self.last_rgb)
+        self.check("Save & Exit comes back to the Settings face", mask is not None, **detail)
+
+    def classic_cube(self, faces: list[np.ndarray]) -> None:
+        """From the Settings face: Setup > Console > Cube (nine DOWNs, just
+        after Apps Face) to Classic. The faces then sit as on the GameCube's
+        menu, Library in front and the way between them: Settings is its
+        left side, so LEFT goes nowhere, and RIGHT twice is Library and then
+        System, not round. From System UP goes nowhere and B is Library; UP
+        is Source, DOWN back, DOWN Apps (the disc has the probe app) and UP
+        back. LEFT returns to Settings, where Cube goes back to Infinite.
+        A press that should go nowhere has had a second of the console's
+        time to turn the cube when its face is checked."""
+        library, source, settings, system, apps = faces[:5]
+        self.flip_console(settings, 9, "cube", "classic")
+        walk = (("LEFT", "Settings", False), ("LEFT", "Settings", False), ("RIGHT", "Library", True),
+                ("RIGHT", "System", True), ("UP", "System", False), ("B", "Library", True),
+                ("UP", "Source", True), ("DOWN", "Library", True), ("DOWN", "Apps", True),
+                ("UP", "Library", True), ("LEFT", "Settings", True))
+        named = {"Library": library, "Source": source, "Settings": settings, "System": system,
+                 "Apps": apps}
+        for n, (button, name, turns) in enumerate(walk, 1):
+            if turns:
+                mask, _ = self.press_until(button, like=named[name])
+            else:
+                self.press(button)
+                self.pause(1.0)
+                mask, _ = self.settled_label(like=named[name])
+            self.shot(f"classic-{n}-{button.lower()}", self.last_rgb)
+            self.check(f"Cube Classic: {button} {'turns to' if turns else 'stays on'} {name}",
+                       mask is not None, step=n)
+        self.flip_console(settings, 9, "cube", "infinite")
 
     def apps_face_off_and_on(self, faces: list[np.ndarray]) -> None:
         """Setup > Console > Apps Face: Off takes Apps off the cube, so the

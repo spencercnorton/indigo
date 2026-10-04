@@ -211,6 +211,7 @@ Press Y on any row for the same explanations on the console.
 | Wave Speed | How fast the waves drift: **Slow** (half as fast), **Normal** or **Fast** (three times as fast). See [Make it yours](personalize.md#backdrop-and-wave-color). |
 | Library Icon, Source Icon, Settings Icon, System Icon | The icon on each face of the Home cube. See [Make it yours](personalize.md#cube-icons). |
 | Apps Face | **On** shows [Apps](apps.md) on Home while the card has a program in `/apps`; **Off** never shows it. |
+| Cube | How the [Home](home.md#infinite-or-classic) cube turns. **Infinite** turns round every face in a ring. **Classic** puts each menu on its own side of the cube, as on the GameCube: Settings left of Library, System right, Source above and Apps below, and you turn back to Library to reach another. |
 | Clock | Where the time sits: **Right** (the top right corner), **Left**, or **Off** to hide it. |
 | Temperature | Where the temperature dial sits, the same way. In the clock's corner it sits nearer the edge, beside the time. |
 | System Sound | The audio output most games use: mono or stereo. |

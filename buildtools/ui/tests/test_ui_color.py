@@ -312,19 +312,40 @@ class MenuColorTest(unittest.TestCase):
 
     def test_a_jet_black_backdrop_is_darker(self):
         """Jet Black, the color with no saturation, shades the backdrop to about a
-        third; every other color and anything out of range draws it as designed."""
+        quarter; every other color and anything out of range draws it as designed.
+        Shaded, the wash's brightest corner (the bottom right) is a grey of 7 at
+        most: at 10 it read as a grey cloud on a TV."""
         work = Path(self.tmp.name)
+        wash = extract_function((GUI / "indigo_background.c").read_text(),
+                                "static void drawIndigoWash(")
+        corners = re.findall(r"WASH\((\d+), (\d+), (\d+)\)", wash)
+        self.assertEqual(len(corners), 4)
         (work / "shade.c").write_text("\n".join([
-            "#include <stdio.h>", '#include "ui_color.h"',
-            "int main(void) { for(int c = -1; c <= 9; c++) printf(\"%d %.3f\\n\", c, "
-            "UIColor_BackdropShade(c)); return 0; }", ""]))
+            "#include <stdint.h>", "#include <stdio.h>", '#include "ui_color.h"',
+            "static const int corners[4][3] = {" +
+            ", ".join("{%s, %s, %s}" % corner for corner in corners) + "};",
+            "int main(void) {",
+            "\tfor(int c = -1; c <= 9; c++) printf(\"%d %.3f\\n\", c, UIColor_BackdropShade(c));",
+            "\tUIColor_Select(%d);" % (self.count - 1),
+            "\tfor(int k = 0; k < 4; k++) {",
+            "\t\tfloat shade = UIColor_BackdropShade(%d);" % (self.count - 1),
+            "\t\tuint8_t rgb[3];",
+            "\t\tfor(int i = 0; i < 3; i++) rgb[i] = (uint8_t)(corners[k][i] * shade + 0.5f);",
+            "\t\tUIColor_Apply(&rgb[0], &rgb[1], &rgb[2]);",
+            "\t\tprintf(\"corner %d %d %d\\n\", rgb[0], rgb[1], rgb[2]);",
+            "\t}",
+            "\treturn 0;", "}", ""]))
         result = subprocess.run(shlex.split(os.environ.get("CC", "cc")) +
             ["-std=c99", "-Wall", "-Wextra", "-Werror", "-I" + str(GUI), str(work / "shade.c"),
              str(GUI / "ui_color.c"), "-o", str(work / "shade"), "-lm"],
             capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        shades = dict(line.split() for line in subprocess.run(
-            [str(work / "shade")], capture_output=True, text=True, timeout=30).stdout.splitlines())
+        lines = subprocess.run([str(work / "shade")], capture_output=True, text=True,
+                               timeout=30).stdout.splitlines()
+        shades = dict(line.split() for line in lines if not line.startswith("corner"))
+        greys = [tuple(map(int, line.split()[1:])) for line in lines if line.startswith("corner")]
+        self.assertEqual(len(greys), 4)
+        self.assertLessEqual(max(max(grey) for grey in greys), 7, greys)
         jet_black = str(self.count - 1)
         self.assertLess(float(shades[jet_black]), 0.5)
         self.assertGreater(float(shades[jet_black]), 0.0)

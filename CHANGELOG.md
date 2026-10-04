@@ -29,6 +29,14 @@ tag on `beta`. The newest changes are at the top until their release is named.
   time now. In the same corner the time sits beside the dial as before; apart,
   each sits in its own corner. In `global.ini` it is `Temperature`; settings
   saved by 2.2, which has no `Temperature`, keep the dial with the clock.
+- Settings › Setup › Console › **Cube** chooses how Home's cube turns.
+  Infinite (the default) turns round every face in a ring, as before. Classic
+  lays the faces out like the GameCube's own menu: Library in front, Settings
+  on the left, System on the right, Source on top and Apps underneath. From
+  Library a direction turns to that side; from a side, only the way back or
+  B returns to Library. The icons stay on their sides as the cube turns, and
+  a Classic turn arrives in about a quarter of a second. In `global.ini` it
+  is `Cube`.
 
 ### Changes
 
@@ -44,6 +52,13 @@ tag on `beta`. The newest changes are at the top until their release is named.
   it is drawn plain now.
 - The halo around the Home cube is gone, as the glow spot under it went in
   2.2.
+- The Home cube's icons stand a little off the glass instead of lying in it:
+  the face you are on lifts its icon, which shifts against the glass as the
+  cube turns and sways. Under it a soft shadow falls on the glass, down and
+  to the left, away from the light; the icon itself stays sharp. Faces turned
+  away keep their icons down, so none hangs past the cube's edge.
+- A Jet Black backdrop is darker still. Its bottom right corner, the
+  brightest, read as a grey cloud.
 - The CPU temperature holds steady. The console's sensor reads in 4 degree
   steps, so a CPU sitting on a step showed one side and then the other every
   second (40 °C, 44 °C, 40 °C...). Indigo now shows an average of the last few

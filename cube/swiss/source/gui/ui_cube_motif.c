@@ -23,6 +23,14 @@ void UICubeMotif_Build(const uiHomeState_t *home, uiCubeMotifBasis_t *out)
 		{{1,0,0}, {0,-1,0}, {0,0,-1}},
 		{{1,0,0}, {0,0,1}, {0,-1,0}}
 	};
+	/* Classic: each face's side of the cube for good, from Library's turn
+	 * to it: Library front, Source on top, Settings left, System right
+	 * and Apps underneath. Each reads upright once turned to the front. */
+	static const int classicSide[UI_HOME_FACE_COUNT] = {0, 3, 3, 1, 1};
+	static const bool classicPitch[UI_HOME_FACE_COUNT] = {
+		false, true, false, false, true
+	};
+	bool classic;
 	int count;
 
 	if(out == NULL) return;
@@ -31,8 +39,10 @@ void UICubeMotif_Build(const uiHomeState_t *home, uiCubeMotifBasis_t *out)
 			home->faceCount != UI_HOME_FACE_COUNT) ||
 		(int)home->face >= home->faceCount ||
 		home->turnAxis < UI_HOME_TURN_NONE || home->turnAxis > UI_HOME_TURN_VERTICAL ||
+		(home->style != UI_HOME_CUBE_INFINITE && home->style != UI_HOME_CUBE_CLASSIC) ||
 		!UIHome_OrientationValid(&home->orientation))) home = NULL;
 	count = home != NULL ? home->faceCount : UI_HOME_FACE_APPS;
+	classic = home != NULL && home->style == UI_HOME_CUBE_CLASSIC;
 	out->faceCount = count;
 	for(int face = 0; face < UI_HOME_FACE_COUNT; face++) {
 		/* The side of the band: 0 front, 1 next, 2 back and 3 previous. */
@@ -41,7 +51,14 @@ void UICubeMotif_Build(const uiHomeState_t *home, uiCubeMotifBasis_t *out)
 		const uiHomeState_t *placed = home;
 		bool pitch;
 
-		if(shown) {
+		/* Placed in the cube's own frame, Classic's glyphs never move as it
+		 * turns; Apps keeps its side while it is not shown, so it only fades
+		 * when it comes and goes. */
+		if(classic) {
+			side = classicSide[face];
+			placed = NULL;
+		}
+		else if(shown) {
 			int relative = home != NULL ?
 				(face - (int)home->face + count) % count : face;
 
@@ -55,7 +72,8 @@ void UICubeMotif_Build(const uiHomeState_t *home, uiCubeMotifBasis_t *out)
 		/* A face with no side keeps one place, behind the authored front,
 		 * however the cube turns: it never moves, and never draws. */
 		if(!shown) placed = NULL;
-		pitch = placed != NULL && placed->turnAxis == UI_HOME_TURN_VERTICAL;
+		pitch = classic ? classicPitch[face] :
+			placed != NULL && placed->turnAxis == UI_HOME_TURN_VERTICAL;
 		out->shown[face] = shown;
 		for(int row = 0; row < 3; row++) {
 			for(int column = 0; column < 3; column++) {

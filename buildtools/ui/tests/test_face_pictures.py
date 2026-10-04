@@ -112,15 +112,21 @@ static void GX_TexCoord2f32(float s,float t) {
     CHECK(qphase==2 && blendDest==GX_BL_ONE,"picture not added light"); qs[qn]=s; qt[qn]=t; qtex[qn]=bound; qn++; qphase=0;
 }
 static void GX_End(void) {}
-/* What the icon pass is asked to draw, at the size it draws it. */
-static int drawn[8], drawnCount; static float drawnScale[8], drawnScaleY[8], drawnAlpha[8];
+/* What the icon pass is asked to draw, at the size it draws it, and how far
+ * out along its face's normal (its normal's length: the pose's are unit). */
+static int drawn[8], drawnCount;
+static float drawnScale[8], drawnScaleY[8], drawnAlpha[8], drawnStretch[8];
 static void drawOneFaceIcon(const cubeRasterTransform_t *r,int face,int choice,float seconds,
     bool animated,const uiClockFrame_t *clock,const indigoPadFrame_t *pad) {
     (void)choice;(void)seconds;(void)animated;(void)clock;(void)pad;
     CHECK(loadedType==GX_PERSPECTIVE,"picture drawn without the doubled projection");
     drawn[drawnCount]=face; drawnScale[drawnCount]=r->scaleX/pose.scaleX;
     drawnScaleY[drawnCount]=r->scaleY/pose.scaleY;
-    drawnAlpha[drawnCount]=r->motifAlpha[face]; drawnCount++;
+    drawnAlpha[drawnCount]=r->motifAlpha[face];
+    drawnStretch[drawnCount]=sqrtf(r->semanticFaces[face][0][2]*r->semanticFaces[face][0][2]+
+        r->semanticFaces[face][1][2]*r->semanticFaces[face][1][2]+
+        r->semanticFaces[face][2][2]*r->semanticFaces[face][2][2]);
+    drawnCount++;
 }
 /* EMITTERS */
 static void frameOf(Mtx44 p,guVector e,float *x,float *y) {
@@ -201,9 +207,13 @@ static void testHome(void) {
             float facing=faceFacing(&pose,drawn[i]);
             CHECK(fabsf(p->weight-(1-faceStrokeShare(facing)))<1e-5f,
                 "picture and strokes do not add up to the whole icon");
+            /* Drawn at its strokes' plane, lifted as they are. */
+            float plane=FACE_ICON_PLANE+faceIconLift(facing);
+            CHECK(fabsf(drawnStretch[i]-plane/FACE_ICON_PLANE)<1e-5f,
+                "picture not drawn where its strokes are");
             /* The icon's square lies inside its picture. */
             for(int corner=0;corner<4;corner++) {
-                guVector b=semanticFacePoint(&pose,drawn[i],corner&1?.74f:-.74f,corner&2?.74f:-.74f,1.012f);
+                guVector b=semanticFacePoint(&pose,drawn[i],corner&1?.74f:-.74f,corner&2?.74f:-.74f,plane);
                 guVector e; indigoPoint_t at;
                 CHECK(projectRailPoint(&pose,b.x,b.y,b.z,&e,&at),"icon behind the camera");
                 float x=320+at.x,y=240-at.y;
@@ -263,7 +273,9 @@ class FacePictureTests(unittest.TestCase):
         blocks += [extract_function(source, s) for s in (
             "static float glassSmoothstep(", "static float fastSqrt(",
             "static bool projectRailPoint(", "static guVector semanticFacePoint(",
-            "static float faceFacing(", "static float faceStrokeShare(")]
+            "static float faceFacing(", "static float faceStrokeShare(",
+            "static float faceIconLift(", "static void liftFaceIcon(")]
+        blocks = re.findall(r"^#define FACE_ICON_\w+ .*$", source, re.M) + blocks
         blocks += re.findall(r"^#define FACE_PICTURE_\w+ .*$", source, re.M)
         blocks.append(re.search(r"typedef struct facePicture \{.*?\} facePicture_t;",
                                 source, re.S).group(0))
@@ -290,6 +302,20 @@ class FacePictureTests(unittest.TestCase):
         result = self.run_harness(self.emitters)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    # No face both lifts and shows a picture: a picture fades out before its
+    # face turns far enough to the camera to lift. These runs lift every
+    # face, so a picture is seen to follow its strokes up; by half the lift,
+    # since a whole one makes the squarest face's picture too big for a slot.
+    LIFT = "return FACE_ICON_LIFT * UIMotion_Smoothstep((facing - 0.80f) / 0.15f);"
+
+    def lifted(self):
+        self.assertIn(self.LIFT, self.emitters)
+        return self.emitters.replace(self.LIFT, "return FACE_ICON_LIFT * 0.5f + 0.0f * facing;")
+
+    def test_pictures_follow_their_strokes_up(self):
+        result = self.run_harness(self.lifted())
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_regressions_are_rejected(self):
         mutants = {
             "projection not scaled across": ("projection[0][column] = 4.0f * projection[0][column]",
@@ -311,6 +337,16 @@ class FacePictureTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn(old, self.emitters)
                 result = self.run_harness(self.emitters.replace(old, new, 1))
+                self.assertNotEqual(result.returncode, 0, "mutant survived: " + name)
+        lifted = self.lifted()
+        for name, (old, new) in {
+            "picture drawn below its strokes": ("liftFaceIcon(&fine, face, lift);",
+                "liftFaceIcon(&fine, face, 0.0f);"),
+            "picture framed below its strokes": ("FACE_ICON_PLANE + lift);", "FACE_ICON_PLANE);"),
+        }.items():
+            with self.subTest(name=name):
+                self.assertIn(old, lifted)
+                result = self.run_harness(lifted.replace(old, new, 1))
                 self.assertNotEqual(result.returncode, 0, "mutant survived: " + name)
 
 

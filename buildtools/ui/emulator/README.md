@@ -36,7 +36,11 @@ exception screen as it would on a console. The route:
    must say so and come back to the Library once A dismisses it. On the Source
    face, A on Change Source opens the device picker, RIGHT shows another
    device and B leaves the picker. On the Settings face, Setup › Console › Apps
-   Face Off takes Apps off the cube and On puts it back, and Setup › Library
+   Face Off takes Apps off the cube and On puts it back; Setup › Console › Cube
+   at Classic lays the faces out as the GameCube's menu does, and the route
+   walks it (LEFT goes nowhere from Settings, RIGHT twice is Library then
+   System, B is Library, UP Source, DOWN Library and DOWN Apps) before setting
+   it back to Infinite; and Setup › Library
    › Library Folders On shows the disc's folders in the Library: an empty
    folder opens with only its way back, A opens a folder and a folder in it,
    which also lists the game a level further down, and B goes back up a

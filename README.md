@@ -42,7 +42,8 @@ front you see the cube's far edges, bent and slightly magnified, and a smoked
 panel under each face's icon; the rounded edges part the light into colour
 like a prism. Soft lights mirrored in the glass slide across it as it turns.
 Highlights glow, a fine rim lights the edges that face the light, and the face
-icons sit sharp on the glass. Each face carries its own
+you are on lifts its icon a little off the glass, sharp, with a soft shadow
+under it. Each face carries its own
 emblem, and only the face you are on is named, under the cube. The Library face is a GameCube
 controller that mirrors yours: its sticks lean with your sticks and its
 buttons light as you press them, and when you leave it alone it plays by
@@ -414,6 +415,9 @@ Indigo's interface was built with [Claude Code](https://claude.com/claude-code).
   <a href="https://github.com/spencercnorton/xnote">XNote</a> ·
   <a href="https://github.com/spencercnorton/xnote-placement">XNote Placement</a> ·
   <a href="https://github.com/spencercnorton/snipsnap">SnipSnap</a> ·
+  <a href="https://github.com/spencercnorton/conductor">Conductor</a> ·
+  <a href="https://github.com/spencercnorton/norvi-os">NorviOS</a> ·
   <a href="https://github.com/spencercnorton/indigo">Indigo</a> ·
+  <a href="https://github.com/spencercnorton/roadtrack">Road Track</a> ·
   <a href="https://norvitech.com">norvitech.com</a>
 </p>

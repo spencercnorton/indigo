@@ -7,6 +7,14 @@ static const char *const faceLabels[UI_HOME_FACE_COUNT] = {
 	"LIBRARY", "SOURCE", "SETTINGS", "SYSTEM", "APPS"
 };
 
+/* Classic: the direction that turns Library's side to each face. Library
+ * is in front; Settings is on the left, System on the right, Source on top
+ * and Apps underneath, as the GameCube's own menu has its four. */
+static const uiHomeInput_t classicSides[UI_HOME_FACE_COUNT] = {
+	UI_HOME_INPUT_NONE, UI_HOME_INPUT_UP, UI_HOME_INPUT_LEFT,
+	UI_HOME_INPUT_RIGHT, UI_HOME_INPUT_DOWN
+};
+
 static int positiveModulo(int value, int modulus)
 {
 	int result = value % modulus;
@@ -122,12 +130,49 @@ static void normalizeSelection(uiHomeState_t *state,
 	}
 }
 
+static uiHomeCubeStyle_t cubeStyle(uiHomeCapabilities_t capabilities)
+{
+	return capabilities.style == UI_HOME_CUBE_CLASSIC ?
+		UI_HOME_CUBE_CLASSIC : UI_HOME_CUBE_INFINITE;
+}
+
+/* A direction turns the cube as the ring does: Left and Right about the
+ * vertical axis, Up and Down about the horizontal one; Left and Up count
+ * down, Right and Down up. */
+static uiHomeTurnAxis_t inputAxis(uiHomeInput_t input)
+{
+	return input == UI_HOME_INPUT_UP || input == UI_HOME_INPUT_DOWN ?
+		UI_HOME_TURN_VERTICAL : UI_HOME_TURN_HORIZONTAL;
+}
+
+static int inputStep(uiHomeInput_t input)
+{
+	return input == UI_HOME_INPUT_LEFT || input == UI_HOME_INPUT_UP ? -1 : 1;
+}
+
+/* Classic's orientation for a face: the quarter turn from Library that
+ * brings the face's side to the front. */
+static void classicOrientation(uiHomeFace_t face,
+	uiHomeOrientation_t *orientation)
+{
+	uiHomeInput_t side = classicSides[face];
+
+	UIHome_OrientationInit(orientation);
+	if(side != UI_HOME_INPUT_NONE) {
+		UIHome_OrientationTurn(orientation, inputAxis(side), inputStep(side));
+	}
+}
+
 void UIHome_Init(uiHomeState_t *state, uiHomeCapabilities_t capabilities)
 {
 	if(state == NULL) {
 		return;
 	}
-	state->face = capabilities.hasSource ?
+	state->style = cubeStyle(capabilities);
+	/* Classic always starts on Library, the way to every other face. Its
+	 * side is the front, so the orientation below is already Library's. */
+	state->face = capabilities.hasSource ||
+		state->style == UI_HOME_CUBE_CLASSIC ?
 		UI_HOME_FACE_LIBRARY : UI_HOME_FACE_SOURCE;
 	state->surface = UI_HOME_SURFACE_RING;
 	state->selection = 0;
@@ -226,6 +271,67 @@ static uiHomeEffect_t applyRing(uiHomeState_t *state, uiHomeInput_t input,
 	return UI_HOME_EFFECT_NONE;
 }
 
+/* One quarter turn the way a direction points, onto face, in Classic. */
+static void classicTurn(uiHomeState_t *state, uiHomeInput_t input,
+	uiHomeFace_t face)
+{
+	UIHome_OrientationTurn(&state->orientation, inputAxis(input),
+		inputStep(input));
+	state->turnAxis = inputAxis(input);
+	state->turnDirection = inputStep(input);
+	state->face = face;
+	state->turnOrdinal = (int32_t)face;
+	state->surface = UI_HOME_SURFACE_RING;
+	state->selection = 0;
+	state->revision++;
+}
+
+/* Classic: Library is the way between the faces, as the GameCube's main menu
+ * is. From Library a direction turns to the face on that side, when there is
+ * one; from any other face only the way back, or B, turns back to Library.
+ * Any other turn is refused and changes nothing: there is no way round, so
+ * Settings to System is Right, Right. A and Start are the ring's, but for A
+ * with no source, which turns up to Source as the ring's turns to it. */
+static uiHomeEffect_t applyClassic(uiHomeState_t *state,
+	uiHomeInput_t input, uiHomeCapabilities_t capabilities)
+{
+	uiHomeInput_t back;
+	int face;
+
+	if(input == UI_HOME_INPUT_ACTIVATE &&
+		state->face == UI_HOME_FACE_LIBRARY && !capabilities.hasSource) {
+		classicTurn(state, classicSides[UI_HOME_FACE_SOURCE],
+			UI_HOME_FACE_SOURCE);
+		/* Keep one visible state revision per accepted input. */
+		state->surface = UI_HOME_SURFACE_SOURCE;
+		return UI_HOME_EFFECT_NONE;
+	}
+	if(input != UI_HOME_INPUT_LEFT && input != UI_HOME_INPUT_RIGHT &&
+		input != UI_HOME_INPUT_UP && input != UI_HOME_INPUT_DOWN &&
+		input != UI_HOME_INPUT_BACK) {
+		return applyRing(state, input, capabilities);
+	}
+	if(state->face != UI_HOME_FACE_LIBRARY) {
+		switch(classicSides[state->face]) {
+			case UI_HOME_INPUT_LEFT: back = UI_HOME_INPUT_RIGHT; break;
+			case UI_HOME_INPUT_RIGHT: back = UI_HOME_INPUT_LEFT; break;
+			case UI_HOME_INPUT_UP: back = UI_HOME_INPUT_DOWN; break;
+			default: back = UI_HOME_INPUT_UP; break;
+		}
+		if(input == back || input == UI_HOME_INPUT_BACK) {
+			classicTurn(state, back, UI_HOME_FACE_LIBRARY);
+		}
+		return UI_HOME_EFFECT_NONE;
+	}
+	for(face = (int)UI_HOME_FACE_SOURCE; face < state->faceCount; ++face) {
+		if(classicSides[face] == input) {
+			classicTurn(state, input, (uiHomeFace_t)face);
+			break;
+		}
+	}
+	return UI_HOME_EFFECT_NONE;
+}
+
 static uiHomeEffect_t applySource(uiHomeState_t *state,
 	uiHomeInput_t input, uiHomeCapabilities_t capabilities)
 {
@@ -300,15 +406,20 @@ static uiHomeEffect_t applyRestartConfirm(uiHomeState_t *state,
 }
 
 /* The ring follows the capabilities: Apps comes when the source has apps and
- * goes when it has none. The cube stays where it is; standing on Apps as it
- * goes lands on Library. Like the selection's repair, this is published, not
- * counted as an input: the revision stays. */
+ * goes when it has none, and the style is Settings'. The cube stays where it
+ * is; standing on Apps as it goes lands on Library. Classic's glyphs keep
+ * their sides, so there the cube turns to the face in front's own: Library's
+ * as Apps goes, or the face Settings was opened from once Cube is Classic.
+ * Like the selection's repair, this is published, not counted as an input:
+ * the revision stays. */
 static void reconcileFaces(uiHomeState_t *state,
 	uiHomeCapabilities_t capabilities)
 {
 	int count = UIHome_FaceCount(capabilities);
+	uiHomeCubeStyle_t style = cubeStyle(capabilities);
 
-	if(state->faceCount == count && (int)state->face < count) {
+	if(state->faceCount == count && (int)state->face < count &&
+		state->style == style) {
 		return;
 	}
 	if((int)state->face >= count) {
@@ -318,6 +429,10 @@ static void reconcileFaces(uiHomeState_t *state,
 	}
 	state->turnOrdinal = (int32_t)state->face;
 	state->faceCount = count;
+	state->style = style;
+	if(style == UI_HOME_CUBE_CLASSIC) {
+		classicOrientation(state->face, &state->orientation);
+	}
 }
 
 uiHomeEffect_t UIHome_Apply(uiHomeState_t *state, uiHomeInput_t input,
@@ -331,7 +446,9 @@ uiHomeEffect_t UIHome_Apply(uiHomeState_t *state, uiHomeInput_t input,
 	normalizeSelection(state, capabilities);
 	switch(state->surface) {
 		case UI_HOME_SURFACE_RING:
-			return applyRing(state, input, capabilities);
+			return state->style == UI_HOME_CUBE_CLASSIC ?
+				applyClassic(state, input, capabilities) :
+				applyRing(state, input, capabilities);
 		case UI_HOME_SURFACE_SOURCE:
 			return applySource(state, input, capabilities);
 		case UI_HOME_SURFACE_SYSTEM:

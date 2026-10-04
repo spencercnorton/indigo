@@ -7,9 +7,11 @@
 #include "ui_scene.h"
 
 static unsigned checks;
-static const uiHomeCapabilities_t caps = {true, true, false};
+static const uiHomeCapabilities_t caps = {true, true, false, UI_HOME_CUBE_INFINITE};
 /* With an app on the source: a ring of five faces. */
-static const uiHomeCapabilities_t appsCaps = {true, true, true};
+static const uiHomeCapabilities_t appsCaps = {true, true, true, UI_HOME_CUBE_INFINITE};
+/* Setup > Console > Cube set to Classic, with Apps: every side has a face. */
+static const uiHomeCapabilities_t classicCaps = {true, true, true, UI_HOME_CUBE_CLASSIC};
 static const float identity[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
 
 #define CHECK(c) do { ++checks; if(!(c)) { \
@@ -54,10 +56,11 @@ static void settle(float dt, uiMotionMode_t mode)
 	CHECK(!UIScene_Frame()->transitioning);
 	near(UIScene_Frame()->homeFocusProgress, 1.0f, 0.00001f);
 }
-static uiHomeState_t start(float dt, uiMotionMode_t mode)
+static uiHomeState_t startWith(uiHomeCapabilities_t with, float dt,
+	uiMotionMode_t mode)
 {
 	uiHomeState_t home;
-	UIHome_Init(&home, caps);
+	UIHome_Init(&home, with);
 	UIScene_Reset(); UIScene_RequestHome(&home); UIScene_Activate();
 	advance(4.0f, dt, mode);
 	CHECK(UIScene_Frame()->scene == UI_SCENE_HOME);
@@ -65,6 +68,10 @@ static uiHomeState_t start(float dt, uiMotionMode_t mode)
 	near(UIScene_Frame()->cubeYaw, 0.28f, 0.0001f);
 	matrixNear(&UIScene_Frame()->homeOrientation[0][0], &identity[0][0], 0.0f);
 	return home;
+}
+static uiHomeState_t start(float dt, uiMotionMode_t mode)
+{
+	return startWith(caps, dt, mode);
 }
 static void turn(uiHomeState_t *home, uiHomeInput_t input)
 {
@@ -293,7 +300,7 @@ static void testPublicationAndInvalidRequests(void)
 	CHECK(!UIScene_Frame()->visible);
 	UIScene_Activate(); settle(0.02f, UI_MOTION_FULL);
 	CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_SYSTEM);
-	for(int which = 0; which < 12; ++which) {
+	for(int which = 0; which < 13; ++which) {
 		uiHomeState_t invalid = home;
 		switch(which) {
 		case 0: invalid.face = (uiHomeFace_t)-1; break;
@@ -309,6 +316,8 @@ static void testPublicationAndInvalidRequests(void)
 		case 8: invalid.faceCount = 6; break;
 		case 9: invalid.face = UI_HOME_FACE_APPS; invalid.turnOrdinal = 4; break;
 		case 10: invalid.faceCount = 5; break;
+		/* A cube that is neither Infinite nor Classic. */
+		case 11: invalid.style = UI_HOME_CUBE_COUNT; break;
 		default: invalid.surface = UI_HOME_SURFACE_COUNT; break;
 		}
 		invalid.revision++;
@@ -346,6 +355,88 @@ static void testAppsRing(void)
 	CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_LIBRARY);
 	near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_APPS], 0.0f, 0.0f);
 	near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SOURCE], 1.0f, 0.0f);
+}
+
+/* How far a quarter turn has come seconds after it was asked for. */
+static float turnedAfter(uiHomeCapabilities_t with, uiMotionMode_t mode,
+	float seconds)
+{
+	uiHomeState_t home = startWith(with, 1.0f/60.0f, mode);
+	CHECK(UIHome_Apply(&home, UI_HOME_INPUT_LEFT, with) == UI_HOME_EFFECT_NONE);
+	UIScene_RequestHome(&home);
+	advance(seconds, 1.0f/60.0f, mode);
+	return UIScene_Frame()->homeFocusProgress;
+}
+
+/* Classic: its turns arrive as the GameCube's do, nine tenths of the way in
+ * a quarter of a second, where Infinite's keep their pace; Reduced is
+ * faster still. Its style travels with the state, and is checked. Every
+ * glyph keeps its side through every turn and every scene, so none fades. */
+static void testClassicCube(void)
+{
+	uiHomeCapabilities_t infinite = classicCaps;
+	infinite.style = UI_HOME_CUBE_INFINITE;
+	CHECK(turnedAfter(classicCaps, UI_MOTION_FULL, 0.25f) > 0.88f);
+	CHECK(turnedAfter(infinite, UI_MOTION_FULL, 0.25f) < 0.80f);
+	CHECK(turnedAfter(classicCaps, UI_MOTION_FULL, 0.15f) < 0.80f);
+	CHECK(turnedAfter(classicCaps, UI_MOTION_REDUCED, 0.15f) > 0.88f);
+	CHECK(turnedAfter(infinite, UI_MOTION_REDUCED, 0.15f) < 0.80f);
+
+	/* Every face from Library and back: the target is the face's own side,
+	 * and no glyph moves or fades on the way. */
+	static const uiHomeInput_t out[4] = {UI_HOME_INPUT_LEFT, UI_HOME_INPUT_RIGHT,
+		UI_HOME_INPUT_UP, UI_HOME_INPUT_DOWN};
+	uiHomeState_t home = startWith(classicCaps, 0.02f, UI_MOTION_FULL);
+	float basis[UI_HOME_FACE_COUNT][3][3];
+	memcpy(basis, UIScene_Frame()->homeMotifBasis, sizeof(basis));
+	for(int i = 0; i < 4; ++i) {
+		float expected[9];
+		memcpy(expected, identity, sizeof(expected));
+		oracleTurn(expected, out[i]);
+		CHECK(UIHome_Apply(&home, out[i], classicCaps) == UI_HOME_EFFECT_NONE);
+		UIScene_RequestHome(&home);
+		for(int frame = 0; frame < 60; ++frame) {
+			tick(0.02f, UI_MOTION_FULL);
+			for(int face = 0; face < UI_HOME_FACE_COUNT; ++face)
+				near(UIScene_Frame()->homeMotifAlpha[face], 1.0f, 0.0f);
+			CHECK(memcmp(basis, UIScene_Frame()->homeMotifBasis, sizeof(basis)) == 0);
+		}
+		matrixNear(&UIScene_Frame()->homeOrientation[0][0], expected, 0.0f);
+		CHECK(UIScene_Frame()->homeFace == home.face);
+		CHECK(UIHome_Apply(&home, UI_HOME_INPUT_BACK, classicCaps) == UI_HOME_EFFECT_NONE);
+		UIScene_RequestHome(&home);
+		settle(0.02f, UI_MOTION_FULL);
+		matrixNear(&UIScene_Frame()->homeOrientation[0][0], &identity[0][0], 0.0f);
+		CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_LIBRARY);
+	}
+	/* Leaving Home for Settings from its face, and coming back: the cube
+	 * turns to Library and back, and still no glyph moves. */
+	CHECK(UIHome_Apply(&home, UI_HOME_INPUT_LEFT, classicCaps) == UI_HOME_EFFECT_NONE);
+	UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+	static const uiSceneId_t away[2] = {UI_SCENE_SETTINGS, UI_SCENE_HOME};
+	for(int i = 0; i < 2; ++i) {
+		UIScene_Request(away[i]);
+		for(int frame = 0; frame < 120; ++frame) {
+			tick(0.02f, UI_MOTION_FULL);
+			for(int face = 0; face < UI_HOME_FACE_COUNT; ++face)
+				near(UIScene_Frame()->homeMotifAlpha[face], 1.0f, 0.0f);
+			CHECK(memcmp(basis, UIScene_Frame()->homeMotifBasis, sizeof(basis)) == 0);
+		}
+	}
+
+	/* The style alone changing, Library in front either way, reaches the
+	 * scene: Source's glyph goes from the right side to the top. */
+	uiHomeCapabilities_t classicFour = caps;
+	classicFour.style = UI_HOME_CUBE_CLASSIC;
+	home = start(0.02f, UI_MOTION_FULL);
+	near(UIScene_Frame()->homeMotifBasis[UI_HOME_FACE_SOURCE][0][2], 1.0f, 0.0f);
+	uint32_t revision = home.revision;
+	(void)UIHome_Apply(&home, UI_HOME_INPUT_NONE, classicFour);
+	CHECK(home.revision == revision);
+	UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+	near(UIScene_Frame()->homeMotifBasis[UI_HOME_FACE_SOURCE][1][2], 1.0f, 0.0f);
+	near(UIScene_Frame()->homeMotifBasis[UI_HOME_FACE_SETTINGS][0][2], -1.0f, 0.0f);
+	matrixNear(&UIScene_Frame()->homeOrientation[0][0], &identity[0][0], 0.0f);
 }
 
 /* Exercise visible composition, not just arrival: posters remain transparent
@@ -537,6 +628,7 @@ int main(void)
 	testMixedCoalescingAndInterruptions(); testModeChangesAndBadTiming();
 	testContextAndSceneReturns(); testPublicationAndInvalidRequests();
 	testAppsRing();
+	testClassicCube();
 	testLibraryLayoutPoses();
 	testHomeDecorativeBlend();
 	printf("ui_scene: %u checks passed\n", checks);
