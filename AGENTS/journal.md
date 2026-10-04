@@ -1,5 +1,18 @@
 # Indigo development journal
 
+## 2026-10-04 — Update the shared tab harness for the current save interface
+
+The incorporated motion harness still tried to extract the old Memory Cards
+row renderer. The current interface uses save cubes, so the extractor failed
+before running any assertions. The harness now matches the tested combined
+implementation: Settings tabs retain their real spring and edge checks;
+current save controls and geometry remain covered by the production controller
+and save-cube GX suites. The product renderer is unchanged.
+
+Beta incorporation preserves both features and all previous journal entries.
+The focused shared-tab regression and ownership gate pass. The complete
+contract lane and refreshed branch CI remain pending.
+
 ## 2026-10-04 — Preserve motion and save details together on beta
 
 Incorporated the accepted beta icon and motion changes into Memory Cards.
