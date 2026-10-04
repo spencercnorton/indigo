@@ -421,6 +421,53 @@ static void testArtLayout(void)
     }
 }
 
+static void testPool(void)
+{
+    uint32_t tags[4] = {7u, 0u, 9u, 0u};
+    const uint32_t want[3] = {9u, 7u, 11u};
+    int order[24];
+
+    /* A slot never used first, then one whose save isn't wanted; never a
+     * slot a wanted save is in. */
+    assert(UISaves_SlotPick(tags, 4, want, 3) == 1);
+    tags[1] = 11u;
+    assert(UISaves_SlotPick(tags, 4, want, 3) == 3);
+    tags[3] = 12u;
+    assert(UISaves_SlotPick(tags, 4, want, 3) == 3);
+    tags[3] = 9u;
+    assert(UISaves_SlotPick(tags, 4, want, 3) == -1);
+    assert(UISaves_SlotPick(tags, 4, want, 2) == 1);
+    assert(UISaves_SlotPick(tags, 4, NULL, 0) == 0);
+    assert(UISaves_SlotPick(NULL, 4, want, 3) == -1);
+    tags[0] = 12u;
+    tags[2] = 0u;
+    assert(UISaves_SlotPick(tags, 4, want, 3) == 2);
+
+    /* FNV-1a, never 0: hash 5 meeting byte 5 would give 0. */
+    assert(UISaves_Id(UI_SAVES_ID_START, "a", 1u) == 0xE40C292Cu);
+    assert(UISaves_Id(UISaves_Id(UI_SAVES_ID_START, "GALE", 4u), "01", 2u) ==
+        UISaves_Id(UI_SAVES_ID_START, "GALE01", 6u));
+    assert(UISaves_Id(5u, "\x05", 1u) == 1u);
+    assert(UISaves_Id(UI_SAVES_ID_START, NULL, 3u) == UI_SAVES_ID_START);
+
+    /* A list (one column) of six rows from row 2, focus 4: the focus, then
+     * out from it, the earlier first on a tie. */
+    assert(UISaves_LoadOrder(4, 2, 6, 1, 20, order) == 6);
+    assert(order[0] == 4 && order[1] == 3 && order[2] == 5 && order[3] == 2 &&
+        order[4] == 6 && order[5] == 7);
+    /* A grid four wide, rows -1 to 4 (the row before the first is skipped),
+     * 22 cells, focus 5 (row 1, column 1). */
+    assert(UISaves_LoadOrder(5, -1, 6, 4, 22, order) == 20);
+    assert(order[0] == 5 && order[1] == 1 && order[2] == 4 && order[3] == 6 &&
+        order[4] == 9 && order[5] == 0 && order[6] == 2);
+    assert(order[19] == 19);
+    /* A short grid stops at its last cell; no focus keeps the order. */
+    assert(UISaves_LoadOrder(-1, 0, 6, 4, 3, order) == 3);
+    assert(order[0] == 0 && order[1] == 1 && order[2] == 2);
+    assert(UISaves_LoadOrder(0, 7, 6, 4, 22, order) == 0);
+    assert(UISaves_LoadOrder(0, 0, 6, 4, 22, NULL) == 0);
+}
+
 int main(void)
 {
     uint8_t entry[UI_SAVES_ENTRY_SIZE];
@@ -529,5 +576,6 @@ int main(void)
     assert(UISaves_Destinations(UI_SAVES_PLACE_FOLDER, false, false, true, false, NULL) == 0);
 
     testArtLayout();
+    testPool();
     return 0;
 }

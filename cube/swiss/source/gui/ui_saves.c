@@ -335,3 +335,87 @@ int UISaves_ArtStep(const uiSavesArt_t *art, uint32_t tick)
 	}
 	return -1;
 }
+
+/* ------------------------------------------------------------------------
+ * The art pool.
+ * --------------------------------------------------------------------- */
+uint32_t UISaves_Id(uint32_t hash, const void *bytes, size_t length)
+{
+	const uint8_t *byte = bytes;
+	size_t i;
+
+	for(i = 0u; byte != NULL && i < length; i++) {
+		hash = (hash ^ byte[i]) * 16777619u;
+	}
+	return hash != 0u ? hash : 1u;
+}
+
+static bool slotWanted(uint32_t tag, const uint32_t *want, int wantCount)
+{
+	int w;
+
+	for(w = 0; want != NULL && w < wantCount; w++) {
+		if(want[w] == tag) {
+			return true;
+		}
+	}
+	return false;
+}
+
+int UISaves_SlotPick(const uint32_t *tags, int slots, const uint32_t *want,
+	int wantCount)
+{
+	int s;
+
+	if(tags == NULL) {
+		return -1;
+	}
+	for(s = 0; s < slots; s++) {
+		if(tags[s] == 0u) {
+			return s;
+		}
+	}
+	for(s = 0; s < slots; s++) {
+		if(!slotWanted(tags[s], want, wantCount)) {
+			return s;
+		}
+	}
+	return -1;
+}
+
+static int loadDistance(int cell, int focus, int columns)
+{
+	int rows, across;
+
+	if(focus < 0) {
+		return cell;
+	}
+	rows = cell / columns - focus / columns;
+	across = cell % columns - focus % columns;
+	return (rows < 0 ? -rows : rows) + (across < 0 ? -across : across);
+}
+
+int UISaves_LoadOrder(int focus, int firstRow, int rows, int columns,
+	int count, int *out)
+{
+	int end = (firstRow + rows) * columns;
+	int n = 0;
+	int cell, i;
+
+	if(out == NULL || rows <= 0 || columns <= 0) {
+		return 0;
+	}
+	for(cell = firstRow > 0 ? firstRow * columns : 0; cell < end && cell < count;
+		cell++) {
+		int distance = loadDistance(cell, focus, columns);
+
+		/* Cells come in order, so a tie keeps it. */
+		for(i = n; i > 0 && loadDistance(out[i - 1], focus, columns) > distance;
+			i--) {
+			out[i] = out[i - 1];
+		}
+		out[i] = cell;
+		n++;
+	}
+	return n;
+}

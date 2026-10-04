@@ -118,4 +118,29 @@ bool UISaves_ToRgb5a3(const uint8_t *data, size_t length,
  * or -1 for nothing. Every icon runs on the same clock. */
 int UISaves_ArtStep(const uiSavesArt_t *art, uint32_t tick);
 
+/* ------------------------------------------------------------------------
+ * The art pool: a fixed number of slots, filled one save at a time while
+ * nothing is pressed.
+ * --------------------------------------------------------------------- */
+#define UI_SAVES_ID_START 2166136261u	/* FNV-1a's offset basis */
+
+/* FNV-1a over length bytes, continuing from hash. A save's id is its place,
+ * then its game, maker and name on a card or its path in a folder. Never 0,
+ * which marks a free slot. */
+uint32_t UISaves_Id(uint32_t hash, const void *bytes, size_t length);
+
+/* A slot to read a save's art into: one never used, else one whose save
+ * isn't in want, so nothing on screen draws the slot while it is written.
+ * -1 when every slot holds a save in want. */
+int UISaves_SlotPick(const uint32_t *tags, int slots, const uint32_t *want,
+	int wantCount);
+
+/* The cells of rows firstRow .. firstRow + rows - 1 of a grid columns wide
+ * holding count cells (rows before the first or after the last are skipped),
+ * nearest the focus cell first: by rows and columns apart, then in order. A
+ * focus below 0 keeps them in order. Writes up to rows * columns cells to out
+ * and returns how many. */
+int UISaves_LoadOrder(int focus, int firstRow, int rows, int columns,
+	int count, int *out);
+
 #endif
