@@ -110,14 +110,16 @@ DETAIL_TITLE_BOX = (264, 106, 600, 134)
 INFO_BOX = (164, 377, 590, 396)
 LEFT_HEADER_BOX, RIGHT_HEADER_BOX = (66, 56, 222, 92), (354, 56, 510, 92)
 FOOTER_BOX = (30, 442, 610, 464)
-SAVE_DETAILS_TITLE_BOX = (100, 180, 540, 206)
-SAVE_DETAILS_SIZE_BOX = (100, 256, 540, 278)
-SAVE_DETAILS_BLOCKS_BOX = (100, 256, 190, 278)  # block/KiB phrase; one digit aliases at 16:9
-LIBRARY_SAVES_SUMMARY_BOX = (335, 204, 586, 224)
-LIBRARY_SAVES_UPDATED_BOX = (266, 224, 586, 241)
-SAVE_DETAILS_CREATED_BOX = (100, 281, 540, 302)
-SAVE_DETAILS_UPDATED_BOX = (100, 303, 540, 325)
-SAVE_DETAILS_ACTIONS_BOX = (100, 325, 540, 346)
+SAVE_DETAILS_EYEBROW_BOX = (100, 108, 274, 132)
+SAVE_DETAILS_TITLE_BOX = (100, 132, 540, 168)
+SAVE_DETAILS_SIZE_BOX = (350, 178, 528, 212)
+SAVE_DETAILS_BLOCKS_BOX = (122, 178, 302, 212)
+SAVE_DETAILS_SOURCE_BOX = (246, 244, 540, 270)
+LIBRARY_SAVES_SUMMARY_BOX = (266, 204, 538, 224)
+LIBRARY_SAVES_UPDATED_BOX = (308, 224, 586, 241)
+SAVE_DETAILS_CREATED_BOX = (246, 274, 540, 300)
+SAVE_DETAILS_UPDATED_BOX = (246, 304, 540, 330)
+SAVE_DETAILS_ACTIONS_BOX = (104, 360, 536, 387)
 RAW_ICON_BOX = (68, 100, 120, 161)  # selected cell 0; excludes banner/info bar
 UP_ARROW_BOX = (169, 96, 184, 112)
 MESSAGE_BOX = (160, 200, 480, 250)
@@ -130,7 +132,6 @@ ART_SECONDS = 0.8
 # Dolphin writes a GCI folder's files a second after the card's last write.
 FLUSH_SECONDS = 10
 TEXT_LEVEL = 160          # label text is bright; the waves behind it are not
-SAVE_DETAILS_SIZE_LEVEL = 128  # muted detail text becomes gray with Menu Color=Jet Black
 SAME, DIFFERENT = 0.85, 0.5  # intersection over union of two label masks
 # Waits count the console's own seconds (Emulator.emulated) when Dolphin
 # reports them, so a busy machine slows a run instead of failing it; the
@@ -373,18 +374,53 @@ def has_label(mask: np.ndarray) -> bool:
     return columns.size > 0 and 20 <= columns[-1] - columns[0] <= mask.shape[1] - 4
 
 
+def has_save_number(mask: np.ndarray) -> bool:
+    """A value-only metric may be a thin single digit, without its caption.
+
+    Native captures at the unchanged bright-text threshold show 32 pixels
+    for 1, 30 for wide 1 and 58 for wide 2. Require bounded ink, width and glyph height;
+    a pixel or short bar cannot stand in for a number. Word checks retain
+    their existing coverage and spread requirement.
+    """
+    lit = int(mask.sum())
+    if not 24 <= lit <= mask.size // 3:
+        return False
+    columns = np.flatnonzero(mask.any(axis=0))
+    rows = np.flatnonzero(mask.any(axis=1))
+    return (columns.size > 0 and rows.size > 0 and
+            3 <= columns[-1] - columns[0] <= mask.shape[1] - 4 and
+            rows[-1] - rows[0] >= 8)
+
+
 def save_details_panel(gray: np.ndarray) -> bool:
     """The presentation panel in authored coordinates, distinct from save cubes.
 
     Its four long border edges remain visible in both the normal and gray
     palettes. A cube may overlap the title band, but cannot supply this frame.
     """
-    edges = (((70, 130, 78, 342), 1), ((564, 130, 572, 342), 1),
-             ((92, 108, 548, 115), 0), ((92, 361, 548, 368), 0))
+    edges = (((70, 108, 78, 386), 1), ((564, 108, 572, 386), 1),
+             ((92, 88, 548, 96), 0), ((92, 399, 548, 407), 0))
     for (x0, y0, x1, y1), axis in edges:
         if (gray[y0:y1, x0:x1] >= 64).any(axis=axis).mean() < .9:
             return False
-    return has_label(text_mask(gray, SAVE_DETAILS_TITLE_BOX))
+    return has_save_details_eyebrow(text_mask(gray, SAVE_DETAILS_EYEBROW_BOX))
+
+
+def has_save_details_eyebrow(mask: np.ndarray) -> bool:
+    """The fixed small marker: Jet Black retains 49 bright pixels at 160.
+
+    Its ink, word span and short glyph height are bounded separately from
+    normal value fields. This marker is accepted only inside all four panel
+    borders; a short save name never determines whether the dialog is open.
+    """
+    lit = int(mask.sum())
+    if not 40 <= lit <= mask.size // 3:
+        return False
+    columns = np.flatnonzero(mask.any(axis=0))
+    rows = np.flatnonzero(mask.any(axis=1))
+    return (columns.size > 0 and rows.size > 0 and
+            40 <= columns[-1] - columns[0] <= mask.shape[1] - 4 and
+            4 <= rows[-1] - rows[0] <= 10)
 
 
 def probe_field(rgb: np.ndarray) -> np.ndarray:
@@ -629,13 +665,14 @@ class Route:
     def settled_label(self, seconds: float = SETTLE_SECONDS, unlike: np.ndarray | None = None,
                       like: np.ndarray | None = None,
                       box: tuple[int, int, int, int] = LABEL_BOX,
-                      level: int = TEXT_LEVEL) -> tuple[np.ndarray | None, float]:
+                      level: int = TEXT_LEVEL,
+                      numeric: bool = False) -> tuple[np.ndarray | None, float]:
         """Wait for steady text in a box (the face's name by default), optionally unlike or like a given one."""
         deadline = Deadline(self.emulator, seconds)
         previous, steady = None, 0
         while not deadline.expired():
             mask = text_mask(self.gray(), box, level)
-            ok = has_label(mask)
+            ok = has_save_number(mask) if numeric else has_label(mask)
             if ok and unlike is not None:
                 ok = overlap(mask, unlike) < DIFFERENT
             if ok and like is not None:
@@ -1469,20 +1506,16 @@ class Route:
         action is selected until another A press.
         """
         self.check("A opens the save details panel", self.open_save_details())
-        boxes = {"title": SAVE_DETAILS_TITLE_BOX, "size": SAVE_DETAILS_SIZE_BOX,
+        boxes = {"title": SAVE_DETAILS_TITLE_BOX, "blocks": SAVE_DETAILS_BLOCKS_BOX,
+                 "size": SAVE_DETAILS_SIZE_BOX, "source": SAVE_DETAILS_SOURCE_BOX,
                  "created": SAVE_DETAILS_CREATED_BOX, "updated": SAVE_DETAILS_UPDATED_BOX,
                  "actions": SAVE_DETAILS_ACTIONS_BOX}
         fields = {}
         for field, box in boxes.items():
-            # The presentation's size/source line uses the renderer's muted
-            # color. Jet Black removes its violet chroma; its visible gray
-            # peaks below TEXT_LEVEL. Keep normal label checks unchanged.
-            level = SAVE_DETAILS_SIZE_LEVEL if field == "size" else TEXT_LEVEL
-            mask, _ = self.settled_label(box=box, level=level)
+            mask, _ = self.settled_label(box=box, numeric=field in {"blocks", "size"})
             self.check(f"save details displays its {field} field", mask is not None,
                        aspect="16:9" if self.menu_wide else "4:3")
             fields[field] = mask
-        fields["blocks"] = text_mask(self.gray(), SAVE_DETAILS_BLOCKS_BOX, SAVE_DETAILS_SIZE_LEVEL)
         self.shot(name, self.last_rgb)
         return fields
 

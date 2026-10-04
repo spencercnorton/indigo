@@ -112,18 +112,24 @@ open Move, Copy and Erase. A dimmed action always explains why it can't be
 used.
 
 <p align="center">
-  <img alt="Copper Archive’s Save details: 2 blocks (16 KiB), Read-only card image, Created: Not recorded, Last updated: 2024-02-29 12:34, A Actions and B Back." src="images/memory-cards-details.png" width="640">
+  <img alt="Copper Archive is the Save details headline. Separate metric cells show 2 Blocks and 16 KiB; aligned rows show Read-only card image, Created: Not recorded and Last updated: 2024-02-29 12:34. The footer has native A Actions and B Back button icons." src="images/memory-cards-details.png" width="640">
 </p>
 
 A save without a recorded update date shows **Unknown**. The dialog remains
 available when both columns hold read-only RAW images.
 
 <p align="center">
-  <img alt="Moonlit Lake’s Save details shows 1 block (8 KiB), Created: Not recorded and Last updated: Unknown." src="images/memory-cards-details-unknown.png" width="640">
+  <img alt="Moonlit Lake’s Save details shows separate 1 Block and 8 KiB cells, Created: Not recorded and Last updated: Unknown." src="images/memory-cards-details-unknown.png" width="640">
 </p>
 
 <p align="center">
   <img alt="Copper Archive’s details remains available with Demo Card.raw independently open in both columns. A Actions and B Back are visible even though the images are read-only." src="images/memory-cards-details-both-raw.png" width="640">
+</p>
+
+A save on a physical memory card names its slot in **Source**.
+
+<p align="center">
+  <img alt="Copper Orchard’s details on simulated Slot A, with the Jet Black palette: 1 Block, 8 KiB, Source Slot A, Created Not recorded and Last updated 2026-09-21 14:13. Native A Actions and B Back icons remain visible." src="images/memory-cards-details-slot-a.png" width="640">
 </p>
 
 ## Move, copy and erase

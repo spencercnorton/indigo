@@ -550,7 +550,8 @@ class Screen(unittest.TestCase):
         rgb = np.zeros((run.HEIGHT, run.WIDTH, 3), np.uint8)
         # A small actual-wide glyph band:52 native bright pixels is below the
         # unchanged60-pixel floor, though it is visible in the letterbox.
-        rgb[232:236, 286:338:4] = 183
+        x0, y0, _, _ = run.stage_box(run.LIBRARY_SAVES_UPDATED_BOX, True)
+        rgb[y0 + 4:y0 + 8, x0 + 8:x0 + 60:4] = 183
         original = rgb.copy()
         native = run.text_mask(rgb.max(axis=2), run.stage_box(run.LIBRARY_SAVES_UPDATED_BOX, True))
         self.assertEqual(int(native.sum()), 52)
@@ -566,9 +567,7 @@ class Screen(unittest.TestCase):
         from PIL import Image
         source = Path(__file__).resolve().parent / "fixtures/wide-save-stats.png"
         rgb = np.asarray(Image.open(source).convert("RGB"))
-        native = run.text_mask(rgb.max(axis=2), run.stage_box(run.LIBRARY_SAVES_UPDATED_BOX, True))
-        self.assertEqual(int(native.sum()), 52)
-        self.assertFalse(run.has_label(native))
+        original = rgb.copy()
         detected = run.detection_frame(rgb, True).max(axis=2)
         self.assertTrue(run.has_label(run.text_mask(detected, run.LIBRARY_SAVES_UPDATED_BOX)))
         missing = rgb.copy()
@@ -576,40 +575,84 @@ class Screen(unittest.TestCase):
         missing[y0:y1, x0:x1] = (16, 14, 40)
         self.assertFalse(run.has_label(run.text_mask(
             run.detection_frame(missing, True).max(axis=2), run.LIBRARY_SAVES_UPDATED_BOX)))
+        self.assertGreater(int(run.text_mask(run.detection_frame(missing, True).max(axis=2),
+                                            (266, 224, 307, 241)).sum()), 0,
+                           "the Updated label cannot replace its missing date")
+        np.testing.assert_array_equal(rgb, original, "the native capture remains untouched")
 
-    def test_actual_wide_block_values_are_distinguished_as_a_size_phrase(self):
+    def test_actual_block_values_distinguish_one_and_two_in_both_shapes(self):
         from PIL import Image
         root = Path(__file__).resolve().parent / "fixtures"
-        gray = [run.detection_frame(np.asarray(Image.open(root / ("wide-save-details-" + name + ".png"))
-                                .convert("RGB")), True).max(axis=2) for name in ("known", "unknown")]
-        narrow = [run.text_mask(frame, (100, 256, 119, 278)) for frame in gray]
-        self.assertTrue(run.same_text(*narrow), "a single low-resolution glyph aliases")
-        values = [run.text_mask(frame, run.SAVE_DETAILS_BLOCKS_BOX, run.SAVE_DETAILS_SIZE_LEVEL)
-                  for frame in gray]
-        self.assertTrue(all(run.has_label(value) for value in values))
-        self.assertFalse(run.same_text(*values), "two blocks/16KiB differs from one block/8KiB")
-        self.assertTrue(run.same_text(values[0], values[0].copy()))
-        self.assertTrue(run.same_text(values[1], values[1].copy()))
+        for shape, wide in (("default", False), ("wide", True)):
+            gray = [run.detection_frame(np.asarray(Image.open(root /
+                    (shape + "-save-details-" + name + ".png")).convert("RGB")), wide).max(axis=2)
+                    for name in ("known", "unknown")]
+            values = [run.text_mask(frame, run.SAVE_DETAILS_BLOCKS_BOX) for frame in gray]
+            self.assertTrue(all(run.has_save_number(value) for value in values), shape)
+            self.assertFalse(run.same_text(*values), shape + " actually distinguishes 2 from 1")
+            self.assertTrue(all(run.same_text(value, value.copy()) for value in values))
+            kib = [run.text_mask(frame, run.SAVE_DETAILS_SIZE_BOX) for frame in gray]
+            self.assertTrue(all(run.has_save_number(value) for value in kib), shape)
+            self.assertFalse(run.same_text(*kib), shape + " actually distinguishes 16 from 8")
+            dates = [run.text_mask(frame, run.SAVE_DETAILS_UPDATED_BOX) for frame in gray]
+            self.assertFalse(run.same_text(*dates), "recorded date and Unknown differ")
+            created = [run.text_mask(frame, run.SAVE_DETAILS_CREATED_BOX) for frame in gray]
+            self.assertTrue(run.same_text(*created), "both creation values are Not recorded")
 
-    def test_actual_gray_theme_size_is_visible_and_erased_size_is_rejected(self):
+    def test_actual_popup_value_only_boxes_reject_erasure_and_label_only_frames(self):
         from PIL import Image
-        path = Path(__file__).resolve().parent / "fixtures/themed-save-details.png"
-        rgb = np.asarray(Image.open(path).convert("RGB"))
-        gray = rgb.max(axis=2)
-        box = run.SAVE_DETAILS_SIZE_BOX
-        x0, y0, x1, y1 = box
-        self.assertEqual(int(gray[y0:y1, x0:x1].max()), 147)
-        self.assertFalse(run.has_label(run.text_mask(gray, box)), "normal bright labels retain threshold160")
-        muted = run.text_mask(gray, box, run.SAVE_DETAILS_SIZE_LEVEL)
-        self.assertEqual(int(muted.sum()), 112)
-        self.assertTrue(run.has_label(muted), "same coverage/spread requirement for the visible muted size")
-        for other in (run.SAVE_DETAILS_TITLE_BOX, run.SAVE_DETAILS_CREATED_BOX,
-                      run.SAVE_DETAILS_UPDATED_BOX, run.SAVE_DETAILS_ACTIONS_BOX):
-            self.assertTrue(run.has_label(run.text_mask(gray, other)))
-        missing = gray.copy()
-        missing[y0:y1, x0:x1] = 11
-        self.assertFalse(run.has_label(run.text_mask(missing, box, run.SAVE_DETAILS_SIZE_LEVEL)))
-        np.testing.assert_array_equal(gray, rgb.max(axis=2), "the capture remains unaltered")
+        root = Path(__file__).resolve().parent / "fixtures"
+        fields = ((run.SAVE_DETAILS_BLOCKS_BOX, (122, 214, 302, 234), True),
+                  (run.SAVE_DETAILS_SIZE_BOX, (350, 214, 528, 234), True),
+                  (run.SAVE_DETAILS_SOURCE_BOX, (100, 244, 234, 270), False),
+                  (run.SAVE_DETAILS_CREATED_BOX, (100, 274, 234, 300), False),
+                  (run.SAVE_DETAILS_UPDATED_BOX, (100, 304, 234, 330), False))
+        for name, wide in (("default-save-details-known.png", False),
+                           ("default-save-details-unknown.png", False),
+                           ("wide-save-details-known.png", True),
+                           ("wide-save-details-unknown.png", True),
+                           ("themed-save-details.png", False)):
+            rgb = np.asarray(Image.open(root / name).convert("RGB"))
+            original = rgb.copy()
+            gray = run.detection_frame(rgb, wide).max(axis=2)
+            self.assertTrue(run.save_details_panel(gray), name)
+            for value_box, label_box, numeric in fields:
+                predicate = run.has_save_number if numeric else run.has_label
+                self.assertTrue(predicate(run.text_mask(gray, value_box)), (name, value_box))
+                missing_native = rgb.copy()
+                x0, y0, x1, y1 = run.stage_box(value_box, wide)
+                missing_native[y0:y1, x0:x1] = 0
+                missing = run.detection_frame(missing_native, wide).max(axis=2)
+                self.assertFalse(predicate(run.text_mask(missing, value_box)), (name, "erased", value_box))
+                self.assertGreater(int(run.text_mask(missing, label_box).sum()), 0,
+                                   (name, "caption/label is still visible", value_box))
+                self.assertTrue(run.save_details_panel(missing), "an erased value cannot hide the dialog")
+            label_only_native = rgb.copy()
+            for value_box, _, _ in fields:
+                x0, y0, x1, y1 = run.stage_box(value_box, wide)
+                label_only_native[y0:y1, x0:x1] = 0
+            label_only = run.detection_frame(label_only_native, wide).max(axis=2)
+            for value_box, _, numeric in fields:
+                predicate = run.has_save_number if numeric else run.has_label
+                self.assertFalse(predicate(run.text_mask(label_only, value_box)), (name, "labels only"))
+            for box in (run.SAVE_DETAILS_TITLE_BOX, run.SAVE_DETAILS_CREATED_BOX,
+                        run.SAVE_DETAILS_UPDATED_BOX, run.SAVE_DETAILS_ACTIONS_BOX):
+                self.assertTrue(run.has_label(run.text_mask(gray, box)), (name, box))
+            np.testing.assert_array_equal(rgb, original, "positive native capture remains untouched")
+
+    def test_numeric_metric_rejects_pixel_short_bar_and_tall_thin_noise(self):
+        self.assertEqual(run.TEXT_LEVEL, 160)
+        empty = np.zeros((34, 180), bool)
+        self.assertFalse(run.has_save_number(empty))
+        pixel = empty.copy(); pixel[10, 8] = True
+        self.assertFalse(run.has_save_number(pixel))
+        bar = empty.copy(); bar[10, 8:40] = True
+        self.assertFalse(run.has_save_number(bar), "32-pixel bar is too short to be a glyph")
+        thin = empty.copy(); thin[2:32, 8] = True
+        self.assertFalse(run.has_save_number(thin), "30-pixel line is too narrow")
+        short = empty.copy(); short[8:15, 8:12] = True
+        self.assertFalse(run.has_save_number(short), "28-pixel short patch is too low")
+        self.assertFalse(run.has_save_number(np.ones_like(empty)), "dense block is not sparse text")
 
     def test_failed_check_keeps_its_native_frame(self):
         from PIL import Image
@@ -633,9 +676,50 @@ class Screen(unittest.TestCase):
             gray = run.detection_frame(np.asarray(Image.open(root/name).convert("RGB")), wide).max(axis=2)
             self.assertTrue(run.save_details_panel(gray), name)
         browser = np.asarray(Image.open(root/"themed-save-browser.png").convert("RGB")).max(axis=2)
-        self.assertTrue(run.has_label(run.text_mask(browser, run.SAVE_DETAILS_TITLE_BOX)),
-                        "the underlying cube can satisfy the old title-only check")
         self.assertFalse(run.save_details_panel(browser))
+
+    def test_popup_open_marker_is_independent_of_variable_name_and_requires_every_border(self):
+        from PIL import Image
+        root = Path(__file__).resolve().parent / "fixtures"
+        for name, wide in (("default-save-details-known.png", False),
+                           ("default-save-details-unknown.png", False),
+                           ("wide-save-details-known.png", True),
+                           ("wide-save-details-unknown.png", True),
+                           ("themed-save-details.png", False)):
+            gray = run.detection_frame(np.asarray(Image.open(root/name).convert("RGB")), wide).max(axis=2)
+            self.assertTrue(run.save_details_panel(gray), name)
+            marker = run.text_mask(gray, run.SAVE_DETAILS_EYEBROW_BOX)
+            self.assertTrue(run.has_save_details_eyebrow(marker), name)
+            if name == "themed-save-details.png":
+                self.assertLess(int(marker.sum()), 60, "the small themed marker is not a body word")
+            missing_name = gray.copy()
+            x0, y0, x1, y1 = run.SAVE_DETAILS_TITLE_BOX
+            missing_name[y0:y1, x0:x1] = 0
+            self.assertTrue(run.save_details_panel(missing_name), "opening does not depend on name length")
+            missing_marker = gray.copy()
+            x0, y0, x1, y1 = run.SAVE_DETAILS_EYEBROW_BOX
+            missing_marker[y0:y1, x0:x1] = 0
+            self.assertFalse(run.save_details_panel(missing_marker), name)
+            for box in ((70, 108, 78, 386), (564, 108, 572, 386),
+                        (92, 88, 548, 96), (92, 399, 548, 407)):
+                missing_edge = gray.copy()
+                x0, y0, x1, y1 = box
+                missing_edge[y0:y1, x0:x1] = 0
+                self.assertFalse(run.save_details_panel(missing_edge), (name, box))
+
+    def test_fixed_marker_rejects_pixel_bar_narrow_tall_and_dense_noise(self):
+        self.assertEqual(run.TEXT_LEVEL, 160)
+        empty = np.zeros((24, 174), bool)
+        self.assertFalse(run.has_save_details_eyebrow(empty))
+        pixel = empty.copy(); pixel[10, 8] = True
+        self.assertFalse(run.has_save_details_eyebrow(pixel))
+        bar = empty.copy(); bar[10, 8:60] = True
+        self.assertFalse(run.has_save_details_eyebrow(bar), "long bar is too low")
+        narrow = empty.copy(); narrow[8:14, 8:20] = True
+        self.assertFalse(run.has_save_details_eyebrow(narrow), "short patch is too narrow")
+        tall = empty.copy(); tall[2:18, 8:68:12] = True
+        self.assertFalse(run.has_save_details_eyebrow(tall), "tall noise exceeds the fixed glyph height")
+        self.assertFalse(run.has_save_details_eyebrow(np.ones_like(empty)), "dense block is not sparse text")
 
     def test_save_details_retry_never_presses_a_after_popup_or_context_change(self):
         from PIL import Image

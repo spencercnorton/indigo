@@ -233,6 +233,16 @@ cannot stand in for icon playback. The same route runs in 4:3 and 16:9. Dolphin 
 nearest-neighbor sampling; native screenshots remain untouched, and text
 thresholds are unchanged.
 
+The details probes measure values separately from their labels and metric
+captions. Single-digit metrics use bounded ink (at least 24 bright pixels,
+horizontal span 3 and height 8); word fields keep their 60-pixel rule. Native
+capture tests distinguish 1 from 2 in both shapes and reject erased values,
+captions alone, small noise and the browser beneath the dialog. The opening
+guard requires all four borders and the fixed SAVE DETAILS eyebrow, so a
+short save name cannot hide an open dialog. Only that small fixed marker
+uses a 40-pixel minimum with bounded word span and glyph height; Jet Black
+retains 49 pixels at the unchanged threshold 160. Field steadiness remains 0.95.
+
 A opens the RAW image in
 the left column; RIGHT and LEFT browse its saves, and the right column keeps
 its own SD folder. Copy exports the selected save as a GCI there. The route
