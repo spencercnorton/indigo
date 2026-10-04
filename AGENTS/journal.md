@@ -1,5 +1,22 @@
 # Indigo development journal
 
+## 2026-10-04 — Themed save details detection and popup input guard
+
+The previous final-source CI gate failed only in the themed GC Loader smoke
+route. Native captures from its exact binary show the size text correctly;
+Jet Black desaturates the muted text below the detector's global threshold.
+Only the size phrase now uses its measured threshold. Native regressions
+reject erased size text and the browser beneath the popup. Popup detection
+requires all four borders before accepting any fields, and A retries stop
+after any context change, including a transient change that returns to the
+browser. Failed checks retain their native screenshot.
+
+The emulator harness's 52 tests pass, including an independent mutation
+check for unsafe retries. Focused default and widescreen virtual-card routes
+against the exact previous binary pass 76 and 75 checks, respectively. Product
+sources and global frame budgets are unchanged. The themed smoke rerun, new
+final-source CI, SD installation and console acceptance remain pending.
+
 ## 2026-10-04 — Save details test candidate and native captures
 
 The console build, SD package checks and full host suite pass, including
