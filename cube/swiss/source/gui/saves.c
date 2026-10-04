@@ -1,11 +1,12 @@
 /* saves.c - Memory Cards (Home > System > Memory Cards)
 
    The saves on the memory cards in Slot A and Slot B and in folders on the
-   device Indigo keeps its settings on, with Copy, Move and Delete between
-   them: the IPL's Memory Card screen, plus folders. The card and FAT drivers
-   do the reading and writing, as they do for the file browser's Copy. This
-   file decides what to call, reads every copy back before calling it done,
-   and removes a Move's original only after that. */
+   device Indigo keeps its settings on, as the IPL's Memory Card screen shows
+   two cards: two stacks of save cubes, either of them Slot A, Slot B or the
+   SD card, with Move, Copy and Erase from one to the other. The card and FAT
+   drivers do the reading and writing, as they do for the file browser's
+   Copy. This file decides what to call, reads every copy back before
+   calling it done, and removes a Move's original only after that. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,7 +17,6 @@
 #include <gccore.h>
 #include <ogc/card.h>
 #include "deviceHandler.h"
-#include "filemeta.h"
 #include "FrameBufferMagic.h"
 #include "IPLFontWrite.h"
 #include "swiss.h"
@@ -80,7 +80,7 @@ typedef struct {
 static savesPlace_t places[SAVES_TABS];
 static savesPlace_t chooser;
 static u32 listings;
-static uiSavesPageSnapshot_t shown ATTRIBUTE_ALIGN(32);
+static uiSavesPageSnapshot_t shown;
 static uiSaveCubesPageSnapshot_t screen;
 /* The folder the SD card's stack opens at, the Save Folder: A opens the
  * folders in it and B goes back up, no further. */
@@ -449,17 +449,13 @@ static void savesTell(int type, const char *text)
  * Places: a card, or a folder on the settings device.
  * --------------------------------------------------------------------- */
 
-/* Lets go of what a place listed, and the banners its rows read. */
+/* Lets go of what a place listed. */
 static void placeClear(savesPlace_t *place)
 {
 	int i;
 
 	wantCount = 0;
 	for(i = 0; i < place->entryCount; i++) {
-		if(place->entries[i].meta != NULL) {
-			meta_free(place->entries[i].meta);
-			place->entries[i].meta = NULL;
-		}
 		if(place->device != NULL) {
 			place->device->closeFile(&place->entries[i]);
 		}
@@ -697,75 +693,20 @@ static void folderEnsure(DEVICEHANDLER_INTERFACE *device, const char *path)
 	device->makeDir(&dir);
 }
 
-/* Reads banners and comments for the rows on screen and lets the rest go,
- * so a long list holds six at a time. */
-static void placeWindow(savesPlace_t *place, int first)
-{
-	int i;
-
-	for(i = 0; i < place->count; i++) {
-		file_handle *entry = place->list[i];
-
-		if(entry->fileType != IS_FILE) {
-			continue;
-		}
-		if(i >= first && i < first + UI_SAVES_PAGE_ROWS) {
-			if(entry->meta == NULL) {
-				populate_meta(entry);
-				place->device->closeFile(entry);
-			}
-		}
-		else if(entry->meta != NULL) {
-			meta_free(entry->meta);
-			entry->meta = NULL;
-		}
-	}
-}
-
 /* ------------------------------------------------------------------------
- * What the page shows.
+ * What a save is called, and its size.
  * --------------------------------------------------------------------- */
 
-/* The first line of its comment names a save the way its game does. */
+/* A save's name on its card, or its file's in a folder: what it's called
+ * until its comment is read. */
 static void saveTitle(char *out, size_t size, file_handle *save)
 {
-	const char *comment = save->meta ? save->meta->bannerDesc.description : "";
-	const char *end = strchr(comment, '\n');
-	int length = end ? (int)(end - comment) : (int)strlen(comment);
-
-	if(length > 0) {
-		snprintf(out, size, "%.*s", length, comment);
-	}
-	else if(isCard(save->device)) {
+	if(isCard(save->device)) {
 		snprintf(out, size, "%.*s", CARD_FILENAMELEN,
 			((card_dir *)save->other)->filename);
 	}
 	else {
 		snprintf(out, size, "%s", getRelativeName(save->name));
-	}
-}
-
-/* The comment's second line, and what the save is on the card or in the
- * folder: its game code, or its file name. */
-static void saveDetail(char *out, size_t size, file_handle *save)
-{
-	const char *comment = save->meta ? save->meta->bannerDesc.description : "";
-	const char *second = strchr(comment, '\n');
-	char what[64];
-
-	if(isCard(save->device)) {
-		card_dir *dir = (card_dir *)save->other;
-		snprintf(what, sizeof(what), "%.4s%.2s", (const char *)dir->gamecode,
-			(const char *)dir->company);
-	}
-	else {
-		snprintf(what, sizeof(what), "%s", getRelativeName(save->name));
-	}
-	if(second != NULL && second[1] != '\0') {
-		snprintf(out, size, "%s   \267   %s", second + 1, what);
-	}
-	else {
-		snprintf(out, size, "%s", what);
 	}
 }
 
@@ -777,136 +718,6 @@ static unsigned saveBlocks(const file_handle *save)
 	return isCard(save->device) ?
 		(save->size + UI_SAVES_BLOCK_SIZE - 1u) / UI_SAVES_BLOCK_SIZE :
 		(blocks > 0u ? blocks : 1u);
-}
-
-static void pageRow(uiSavesPageRow_t *row, savesPlace_t *place,
-	file_handle *entry)
-{
-	char text[PATHNAME_MAX];
-
-	if(entry->fileType == IS_SPECIAL) {
-		char parent[PATHNAME_MAX];
-
-		row->kind = UI_SAVES_ROW_PARENT;
-		getParentPath(place->dir.name, parent);
-		snprintf(text, sizeof(text), "Up to %s", getDevicePath(parent));
-	}
-	else if(entry->fileType == IS_DIR) {
-		row->kind = UI_SAVES_ROW_FOLDER;
-		snprintf(text, sizeof(text), "%s", getRelativeName(entry->name));
-		snprintf(row->blocks, sizeof(row->blocks), "Folder");
-	}
-	else {
-		unsigned blocks = saveBlocks(entry);
-
-		row->kind = UI_SAVES_ROW_SAVE;
-		saveTitle(text, sizeof(text), entry);
-		snprintf(row->blocks, sizeof(row->blocks), "%u block%s", blocks,
-			blocks == 1u ? "" : "s");
-		if(entry->meta != NULL && entry->meta->banner != NULL) {
-			if(entry->meta->bannerSize == CARD_BANNER_W * CARD_BANNER_H * 2) {
-				row->bannerFormat = CARD_BANNER_RGB;
-				memcpy(row->banner, entry->meta->banner,
-					CARD_BANNER_W * CARD_BANNER_H * 2);
-			}
-			else if(entry->meta->bannerSize ==
-				CARD_BANNER_W * CARD_BANNER_H + 512) {
-				row->bannerFormat = CARD_BANNER_CI;
-				memcpy(row->banner, entry->meta->banner,
-					CARD_BANNER_W * CARD_BANNER_H + 512);
-			}
-		}
-	}
-	UICheats_Fit(row->title, sizeof(row->title), text, 330, 0.62f,
-		GetTextSizeInPixels);
-}
-
-/* tabCount 0 is the folder chooser: one place, folders only. */
-static void pageBuild(savesPlace_t *place, int tab, int tabCount,
-	const char *warning)
-{
-	static const char *const tabNames[SAVES_TABS] = {
-		"SLOT A", "SLOT B", "SD CARD"
-	};
-	uiSavesPageSnapshot_t *s = &shown;
-	int first = UICheats_WindowStart(place->selection, place->count);
-	file_handle *focus = place->count > 0 ? place->list[place->selection] : NULL;
-	char text[PATHNAME_MAX];
-	int i;
-
-	placeWindow(place, first);
-	memset(s, 0, sizeof(*s));
-	snprintf(s->title, sizeof(s->title), tabCount ? "Memory Cards" :
-		"Choose a Folder");
-	s->tabCount = (s8)tabCount;
-	s->tab = (s8)tab;
-	for(i = 0; i < tabCount; i++) {
-		snprintf(s->tabs[i], sizeof(s->tabs[i]), "%s", tabNames[i]);
-	}
-	if(isCard(place->device)) {
-		if(place->ready) {
-			snprintf(s->status, sizeof(s->status), "%d block%s free",
-				place->freeBlocks, place->freeBlocks == 1 ? "" : "s");
-			snprintf(s->section, sizeof(s->section), "MEMORY CARD %d",
-				place->totalBlocks);
-		}
-	}
-	else if(place->device != NULL) {
-		snprintf(s->status, sizeof(s->status), "%s",
-			DeviceDisplayName(place->device));
-		UICheats_Fit(s->section, sizeof(s->section),
-			getDevicePath(place->dir.name), 420, 0.42f, GetTextSizeInPixels);
-	}
-	if(place->count > 0) {
-		snprintf(s->position, sizeof(s->position), "%d / %d",
-			place->selection + 1, place->count);
-	}
-	for(i = 0; i < UI_SAVES_PAGE_ROWS && first + i < place->count; i++) {
-		pageRow(&s->rows[i], place, place->list[first + i]);
-		s->rowCount++;
-	}
-	s->first = first;
-	s->count = place->count;
-	s->list = place->listing;
-	s->focusRow = (s8)(place->selection - first);
-	if(s->rowCount == 0 || (place->count == 1 &&
-		place->list[0]->fileType == IS_SPECIAL)) {
-		snprintf(s->empty[0], sizeof(s->empty[0]), "%s", place->note[0]);
-		snprintf(s->empty[1], sizeof(s->empty[1]), "%s", place->note[1]);
-	}
-	if(warning != NULL) {
-		UICheats_Fit(s->detail, sizeof(s->detail), warning, 560, 0.48f,
-			GetTextSizeInPixels);
-		s->warning = 1;
-	}
-	else if(focus != NULL && focus->fileType == IS_FILE) {
-		saveDetail(text, sizeof(text), focus);
-		UICheats_Fit(s->detail, sizeof(s->detail), text, 560, 0.48f,
-			GetTextSizeInPixels);
-	}
-	if(tabCount == 0) {
-		snprintf(s->hint[0], sizeof(s->hint[0]), "%sX  Choose this folder",
-			focus != NULL ? "A  Open   " : "");
-		snprintf(s->hint[1], sizeof(s->hint[1]), "B  Cancel");
-	}
-	else {
-		snprintf(s->hint[0], sizeof(s->hint[0]), "%sB  Back",
-			focus == NULL ? "" : focus->fileType == IS_FILE ?
-			"A  Options   " : "A  Open   ");
-		snprintf(s->hint[1], sizeof(s->hint[1]), "L/R  Switch");
-	}
-}
-
-static void pageShow(uiDrawObj_t **page)
-{
-	if(*page == NULL) {
-		if((*page = DrawSavesPage(&shown)) != NULL) {
-			DrawPublish(*page);
-		}
-	}
-	else {
-		DrawUpdateSavesPage(*page, &shown);
-	}
 }
 
 /* ------------------------------------------------------------------------
@@ -1699,8 +1510,80 @@ static void saveTransfer(file_handle *save, int tab, uiSavesPlace_t to,
 }
 
 /* ------------------------------------------------------------------------
- * The folder chooser, and the explorer.
+ * The folder chooser, for Another folder and for Settings > Storage > Save
+ * Folder: a list page of the settings device's folders.
  * --------------------------------------------------------------------- */
+
+/* The folder chooser lists folders, and first the way back up. */
+static void pageRow(uiSavesPageRow_t *row, savesPlace_t *place,
+	file_handle *entry)
+{
+	char text[PATHNAME_MAX];
+
+	if(entry->fileType == IS_SPECIAL) {
+		char parent[PATHNAME_MAX];
+
+		getParentPath(place->dir.name, parent);
+		snprintf(text, sizeof(text), "Up to %s", getDevicePath(parent));
+	}
+	else {
+		snprintf(text, sizeof(text), "%s", getRelativeName(entry->name));
+		snprintf(row->blocks, sizeof(row->blocks), "Folder");
+	}
+	UICheats_Fit(row->title, sizeof(row->title), text, 330, 0.62f,
+		GetTextSizeInPixels);
+}
+
+/* The folder chooser's page: the folder open in place, its folders a row
+ * each. */
+static void pageBuild(savesPlace_t *place)
+{
+	uiSavesPageSnapshot_t *s = &shown;
+	int first = UICheats_WindowStart(place->selection, place->count);
+	file_handle *focus = place->count > 0 ? place->list[place->selection] : NULL;
+	int i;
+
+	memset(s, 0, sizeof(*s));
+	snprintf(s->title, sizeof(s->title), "Choose a Folder");
+	if(place->device != NULL) {
+		snprintf(s->status, sizeof(s->status), "%s",
+			DeviceDisplayName(place->device));
+		UICheats_Fit(s->section, sizeof(s->section),
+			getDevicePath(place->dir.name), 420, 0.42f, GetTextSizeInPixels);
+	}
+	if(place->count > 0) {
+		snprintf(s->position, sizeof(s->position), "%d / %d",
+			place->selection + 1, place->count);
+	}
+	for(i = 0; i < UI_SAVES_PAGE_ROWS && first + i < place->count; i++) {
+		pageRow(&s->rows[i], place, place->list[first + i]);
+		s->rowCount++;
+	}
+	s->first = first;
+	s->count = place->count;
+	s->list = place->listing;
+	s->focusRow = (s8)(place->selection - first);
+	if(s->rowCount == 0 || (place->count == 1 &&
+		place->list[0]->fileType == IS_SPECIAL)) {
+		snprintf(s->empty[0], sizeof(s->empty[0]), "%s", place->note[0]);
+		snprintf(s->empty[1], sizeof(s->empty[1]), "%s", place->note[1]);
+	}
+	snprintf(s->hint[0], sizeof(s->hint[0]), "%sX  Choose this folder",
+		focus != NULL ? "A  Open   " : "");
+	snprintf(s->hint[1], sizeof(s->hint[1]), "B  Cancel");
+}
+
+static void pageShow(uiDrawObj_t **page)
+{
+	if(*page == NULL) {
+		if((*page = DrawSavesPage(&shown)) != NULL) {
+			DrawPublish(*page);
+		}
+	}
+	else {
+		DrawUpdateSavesPage(*page, &shown);
+	}
+}
 
 /* Browses the settings device's folders from start; X chooses the one open.
  * The device must be mounted. */
@@ -1722,7 +1605,7 @@ static bool chooseFolder(const char *start, char *path, size_t size)
 		u32 pressed;
 		file_handle *focus;
 
-		pageBuild(&chooser, 0, 0, NULL);
+		pageBuild(&chooser);
 		pageShow(&page);
 		pressed = inputNext(&input);
 		focus = chooser.count > 0 ? chooser.list[chooser.selection] : NULL;
