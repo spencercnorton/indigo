@@ -52,3 +52,14 @@ demonstration games and dotted-folder SD image. Every Library layout and
 Home rejects the legacy predicate, including faded copies made in memory.
 Grid and Spotlight were captured in separate, explicitly seeded layout
 controls; Vertical and Home came from the repaired folder route.
+
+## Folder color words
+
+`folder-color-indigo.png` and `folder-color-azure.png` are unscaled native
+Dolphin RGB crops of the folder page's value box (240, 328, 570, 351) from
+commit `ea0946fd7d740a958e78dedf486bdd17d4734876`, NTSC component video with
+SD2SP2 and a fresh demonstration card. Indigo has 73 pixels at the reader's
+brightness threshold; Azure has 50, below the ordinary Library-title minimum
+of 60. The crops preserve the original pixel values and reproduce that
+rejection without launching Dolphin. Their test also exercises stable changed
+words, rejects unchanged values, and rejects a single changed frame.

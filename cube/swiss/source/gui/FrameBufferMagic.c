@@ -187,13 +187,16 @@ enum VideoEventType
 	EV_CHEATS,
 	EV_SETTINGSLIST,
 	EV_SETTINGSHELP,
+	EV_LIBRARY_FOLDER,
 	EV_SAVES,
 	EV_SAVE_CUBES,
 	EV_SAVE_DETAILS
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Background", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "Saves", "SaveCubes", "SaveDetails"};
+						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "LibraryFolder", "Saves", "SaveCubes", "SaveDetails"};
+_Static_assert(sizeof(typeStrings) / sizeof(typeStrings[0]) == EV_SAVE_DETAILS + 1u,
+	"every video event needs a diagnostic name");
 
 typedef struct drawTexObjEvent {
 	GXTexObj *texObj;
@@ -410,6 +413,7 @@ typedef struct {
 	float kibScale;
 	float sourceScale;
 	float updatedScale;
+	float iconScale;
 } drawSaveDetailsEvent_t;
 
 _Static_assert(sizeof(uiGameflowCardSnapshot_t) % 32u == 0u,
@@ -1439,10 +1443,11 @@ static void _DrawSaveDetails(uiDrawObj_t *evt)
 	drawStringMedium(104, 257, "Source", 0.54f, ALIGN_LEFT, secondary);
 	drawStringMedium(250, 257, data->snapshot.source, data->sourceScale,
 		ALIGN_LEFT, primary);
-	drawStringMedium(104, 287, "Created", 0.54f, ALIGN_LEFT, secondary);
-	drawStringMedium(250, 287, "Not recorded", 0.60f, ALIGN_LEFT, primary);
-	drawStringMedium(104, 317, "Last updated", 0.54f, ALIGN_LEFT, secondary);
-	drawStringMedium(250, 317, data->snapshot.updated, data->updatedScale,
+	drawStringMedium(104, 287, "Last updated", 0.54f, ALIGN_LEFT, secondary);
+	drawStringMedium(250, 287, data->snapshot.updated, data->updatedScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(104, 317, "Save icon", 0.54f, ALIGN_LEFT, secondary);
+	drawStringMedium(250, 317, data->snapshot.icon, data->iconScale,
 		ALIGN_LEFT, primary);
 	_DrawHintText(216, 373, "A  Actions", 0.60f, ALIGN_CENTER, primary);
 	_DrawHintText(412, 373, "B  Back", 0.60f, ALIGN_CENTER, primary);
@@ -1466,6 +1471,9 @@ static bool _PrepareSaveDetails(drawSaveDetailsEvent_t *data,
 		GetTextSizeInPixels, NULL);
 	data->updatedScale = UIHomeText_CopyFitted(data->snapshot.updated,
 		sizeof(data->snapshot.updated), snapshot->updated, 286, 0.60f,
+		GetTextSizeInPixels, NULL);
+	data->iconScale = UIHomeText_CopyFitted(data->snapshot.icon,
+		sizeof(data->snapshot.icon), snapshot->icon, 286, 0.60f,
 		GetTextSizeInPixels, NULL);
 	snprintf(data->blocks, sizeof(data->blocks), "%u", (unsigned)snapshot->blocks);
 	snprintf(data->kib, sizeof(data->kib), "%u", (unsigned)(snapshot->blocks * 8u));
@@ -2876,6 +2884,36 @@ static void _GameflowPutBorder(const gameflowQuad_t *outer,
 	}
 }
 
+/* Folder colors are identities, independent of Menu Color. Bypass the
+ * menu hue transform only for these explicit borders and their swatch. */
+static void _GameflowPutFolderVertex(gameflowPoint_t point, GXColor color)
+{
+	GX_Position3f32(point.x, point.y, 0.0f);
+	GX_Color4u8(color.r, color.g, color.b, color.a);
+	GX_TexCoord2f32(0.0f, 0.0f);
+}
+
+static void _GameflowDrawFolderColor(const gameflowRenderCard_t *card,
+	float reveal)
+{
+	gameflowQuad_t inner;
+	GXColor color = {0, 0, 0, _GameflowAlpha(255.0f * card->presence * reveal)};
+	if(!card->record->subfolder || card->record->folderColor == 0u) return;
+	UIFolder_ColorRGB(card->record->folderColor, &color.r, &color.g, &color.b);
+	inner = _GameflowInsetPixels(&card->quad, card->tile ? 3.0f : 4.0f);
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 16);
+	for(int i = 0; i < 4; ++i) {
+		int next = (i + 1) % 4;
+		_GameflowPutFolderVertex(card->quad.point[i], color);
+		_GameflowPutFolderVertex(card->quad.point[next], color);
+		_GameflowPutFolderVertex(inner.point[next], color);
+		_GameflowPutFolderVertex(inner.point[i], color);
+	}
+	GX_End();
+}
+
 static GXColor _GameflowAccent(const uiGameflowCardSnapshot_t *record,
 	u8 alpha)
 {
@@ -3322,6 +3360,7 @@ static void _GameflowDrawSpotlightCover(drawGameflowEvent_t *data,
 	else {
 		_GameflowDrawFallback(&cover, artwork, bannerTexture, 1.0f);
 	}
+	_GameflowDrawFolderColor(&cover, 1.0f);
 	if(record->flags & UI_GAMEFLOW_CARD_CUSTOM) {
 		_GameflowDrawCustomMark(&cover, 1.0f);
 	}
@@ -4451,6 +4490,9 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		}
 		_GameflowDrawFallback(&cards[i], artwork, bannerTexture, reveal);
 	}
+	for(i = 0u; i < count; ++i) {
+		_GameflowDrawFolderColor(&cards[i], reveal);
+	}
 	/* Every card that shows its art carries the mark, sized to the card.
 	 * Spotlight's banners are too small for one: its panel carries the
 	 * selected game's. */
@@ -4525,6 +4567,10 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			command.a = _GameflowAlpha(180.0f * reveal * commandRail.alpha);
 			_DrawHintText(320, 428, apps ?
 				"D-PAD  BROWSE   A  START   B  HOME" :
+				selectedRecord != NULL && selectedRecord->subfolder ?
+				(data->snapshot.folder[0] ?
+				"D-PAD  BROWSE   A  OPEN   Y  FOLDER   B  BACK" :
+				"D-PAD  BROWSE   A  OPEN   Y  FOLDER   X  BACK   B  HOME") :
 				data->snapshot.folder[0] ?
 				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   B  BACK" :
 				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   X  BACK   B  HOME",
@@ -6710,6 +6756,65 @@ uiDrawObj_t* DrawSettingsHelp(const char *help)
 	return event;
 }
 
+/* Library folder identity page: prepared text, no draw-time I/O or heap. */
+static void _DrawLibraryFolder(uiDrawObj_t *event)
+{
+	const uiFolderSnapshot_t *s = (const uiFolderSnapshot_t*)event->data;
+	GXColor ink = {246, 243, 255, 255};
+	GXColor quiet = {190, 181, 231, 255};
+	GXColor color = {0, 0, 0, 255};
+	char position[32];
+	gameflowQuad_t swatch = {{{48, 326}, {70, 326}, {70, 348}, {48, 348}}};
+	_PagePanel(24, 52, 592, 394, (GXColor){18, 14, 39, 250});
+	drawStringMedium(48, 78, "FOLDER", 0.72f, ALIGN_LEFT, ink);
+	drawStringMedium(48, 120, "FULL PATH", 0.42f, ALIGN_LEFT, quiet);
+	for(u32 i = 0u; i < UI_FOLDER_VISIBLE_LINES && s->firstLine + i < s->lineCount; ++i) {
+		drawStringMedium(48, 150 + (int)i * 22, s->lines[s->firstLine + i],
+			0.46f, ALIGN_LEFT, ink);
+	}
+	if(s->lineCount > UI_FOLDER_VISIBLE_LINES) {
+		snprintf(position, sizeof(position), "%u-%u of %u", (unsigned)s->firstLine + 1u,
+			(unsigned)MIN(s->firstLine + UI_FOLDER_VISIBLE_LINES, s->lineCount),
+			(unsigned)s->lineCount);
+		drawStringMedium(584, 291, position, 0.40f, ALIGN_RIGHT, quiet);
+		_DrawHintText(48, 291, "UP/DOWN  Scroll path", 0.42f, ALIGN_LEFT, quiet);
+	}
+	UIFolder_ColorRGB(s->color, &color.r, &color.g, &color.b);
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+	for(int i = 0; i < 4; ++i) _GameflowPutFolderVertex(swatch.point[i], color);
+	GX_End();
+	drawStringMedium(88, 328, "COLOR", 0.46f, ALIGN_LEFT, quiet);
+	drawStringMedium(240, 328, UIFolder_ColorName(s->color), 0.55f, ALIGN_LEFT, ink);
+	drawStringMedium(48, 363, s->status[0] ? s->status :
+		"Choose a color with Left/Right; Default keeps the original card.",
+		0.36f, ALIGN_LEFT, quiet);
+	_DrawHintText(48, 400, "LEFT/RIGHT  Color   Y  Reset   A  Save   B  Cancel",
+		0.44f, ALIGN_LEFT, ink);
+	drawInit();
+}
+
+uiDrawObj_t* DrawLibraryFolder(const uiFolderSnapshot_t *snapshot)
+{
+	uiDrawObj_t *event = calloc(1, sizeof(*event));
+	uiFolderSnapshot_t *data = malloc(sizeof(*data));
+	if(event == NULL || data == NULL) { free(event); free(data); return NULL; }
+	*data = *snapshot;
+	event->type = EV_LIBRARY_FOLDER;
+	event->data = data;
+	return event;
+}
+
+void DrawUpdateLibraryFolder(uiDrawObj_t *event, const uiFolderSnapshot_t *snapshot)
+{
+	if(event == NULL || snapshot == NULL) return;
+	LWP_MutexLock(_videomutex);
+	if(!event->disposed && event->type == EV_LIBRARY_FOLDER && event->data != NULL)
+		*(uiFolderSnapshot_t*)event->data = *snapshot;
+	LWP_MutexUnlock(_videomutex);
+}
+
 /* ------------------------------------------------------------------------
  * Memory Cards' folder chooser (saves.c), in the same language: a row per
  * folder, and the focus card springing from row to row as the cheat list's
@@ -7622,6 +7727,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 			break;
 		case EV_SETTINGSLIST:
 			_DrawSettingsList(videoEvent);
+			break;
+		case EV_LIBRARY_FOLDER:
+			_DrawLibraryFolder(videoEvent);
 			break;
 		case EV_SETTINGSHELP:
 			_DrawSettingsHelp(videoEvent);

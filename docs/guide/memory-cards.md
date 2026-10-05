@@ -100,26 +100,35 @@ aligned source and date rows. Unreadable headers mark the size as estimated.
 
 - **Size** shows blocks and KiB. One block is 8 KiB of save data; the GCI
   wrapper and a RAW image's system blocks aren't part of that size.
-- **Created: Not recorded** is explicit because GameCube saves don't store
-  a separate creation date.
 - **Last updated** shows the date recorded in the save, or **Unknown** when
   it has no usable date. It uses the console's recorded clock without
   assuming a time zone. The SD file's dates aren't substituted for it.
 - **Source** names the physical slot, SD save or read-only card image.
+- **Save icon** explains its preview: **Animated** uses the game's stored
+  frames, **Static** has one picture, and **None stored** means the save
+  supplies no icon. **Paused: UI Motion Off** means an animated icon is
+  held still by [UI Motion](personalize.md#motion); choose Full or Reduced
+  to let it play. **Preview unavailable** means Indigo could not load or
+  safely decode its artwork; **Unavailable** means its metadata could not
+  be read.
+
+GameCube saves record one last-update date. The format has no separate
+creation date. Some games intentionally use a static icon or store no icon
+at all; their cubes show the original artwork.
 
 Press **B Back** to return without changing anything, or **A Actions** to
 open Move, Copy and Erase. A dimmed action always explains why it can't be
 used.
 
 <p align="center">
-  <img alt="Copper Archive is the Save details headline. Separate metric cells show 2 Blocks and 16 KiB; aligned rows show Read-only card image, Created: Not recorded and Last updated: 2024-02-29 12:34. The footer has native A Actions and B Back button icons." src="images/memory-cards-details.png" width="640">
+  <img alt="Copper Archive is the Save details headline. Separate metric cells show 2 Blocks and 16 KiB; aligned rows show Read-only card image, Last updated: 2024-02-29 12:34 and Save icon: Animated. The footer has native A Actions and B Back button icons." src="images/memory-cards-details.png" width="640">
 </p>
 
 A save without a recorded update date shows **Unknown**. The dialog remains
 available when both columns hold read-only RAW images.
 
 <p align="center">
-  <img alt="Moonlit Lake’s Save details shows separate 1 Block and 8 KiB cells, Created: Not recorded and Last updated: Unknown." src="images/memory-cards-details-unknown.png" width="640">
+  <img alt="Moonlit Lake’s Save details shows separate 1 Block and 8 KiB cells, Last updated: Unknown and Save icon: None stored." src="images/memory-cards-details-unknown.png" width="640">
 </p>
 
 <p align="center">
@@ -127,10 +136,6 @@ available when both columns hold read-only RAW images.
 </p>
 
 A save on a physical memory card names its slot in **Source**.
-
-<p align="center">
-  <img alt="Copper Orchard’s details on simulated Slot A, with the Jet Black palette: 1 Block, 8 KiB, Source Slot A, Created Not recorded and Last updated 2026-09-21 14:13. Native A Actions and B Back icons remain visible." src="images/memory-cards-details-slot-a.png" width="640">
-</p>
 
 ## Move, copy and erase
 

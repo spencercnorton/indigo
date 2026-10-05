@@ -160,6 +160,11 @@ bool UISaves_ToRgb5a3(const uint8_t *data, size_t length,
  * or -1 for nothing. Every icon runs on the same clock. */
 int UISaves_ArtStep(const uiSavesArt_t *art, uint32_t tick);
 
+/* Why the icon does or does not move, from its checked layout. NULL means
+ * the header could not be read. UI Motion Off pauses only animated icons. */
+const char *UISaves_IconDescription(const uint8_t entry[UI_SAVES_ENTRY_SIZE],
+	size_t dataLength, bool motionOff);
+
 /* ------------------------------------------------------------------------
  * The art pool: a fixed number of slots, filled one save at a time while
  * nothing is pressed.

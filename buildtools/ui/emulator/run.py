@@ -125,10 +125,14 @@ SAVE_DETAILS_BLOCKS_BOX = (122, 178, 302, 212)
 SAVE_DETAILS_SOURCE_BOX = (246, 244, 540, 270)
 LIBRARY_SAVES_SUMMARY_BOX = (266, 204, 538, 224)
 LIBRARY_SAVES_UPDATED_BOX = (308, 224, 586, 241)
-SAVE_DETAILS_CREATED_BOX = (246, 274, 540, 300)
-SAVE_DETAILS_UPDATED_BOX = (246, 304, 540, 330)
+SAVE_DETAILS_ICON_BOX = (246, 304, 540, 330)
+SAVE_DETAILS_UPDATED_BOX = (246, 274, 540, 300)
 SAVE_DETAILS_ACTIONS_BOX = (104, 360, 536, 387)
 RAW_ICON_BOX = (68, 100, 120, 161)  # selected cell 0; excludes banner/info bar
+FOLDER_PAGE_TITLE_BOX = (48, 78, 300, 105)
+FOLDER_PATH_BOX = (48, 150, 584, 278)
+FOLDER_COLOR_BOX = (240, 328, 570, 351)
+FOLDER_SWATCH_BOX = (49, 327, 69, 347)
 UP_ARROW_BOX = (169, 96, 184, 112)
 MESSAGE_BOX = (160, 200, 480, 250)
 MESSAGE_COLOUR = (120, 16, 36)  # the same under every Menu Color
@@ -521,6 +525,24 @@ def has_label(mask: np.ndarray) -> bool:
         return False
     columns = np.flatnonzero(mask.any(axis=0))
     return columns.size > 0 and 20 <= columns[-1] - columns[0] <= mask.shape[1] - 4
+
+
+def has_folder_color_label(mask: np.ndarray) -> bool:
+    """The folder page's small color value, within its dedicated text box.
+
+    Native Azure has 50 bright pixels; the Library-title minimum is 60.
+    Short names retain their bounded word span and exclude a filled panel.
+    """
+    lit = int(mask.sum())
+    if not 30 <= lit <= mask.size // 3:
+        return False
+    columns = np.flatnonzero(mask.any(axis=0))
+    rows = np.flatnonzero(mask.any(axis=1))
+    if columns.size == 0 or rows.size == 0:
+        return False
+    word_area = (columns[-1] - columns[0] + 1) * (rows[-1] - rows[0] + 1)
+    return (16 <= columns[-1] - columns[0] <= mask.shape[1] - 4 and
+            rows[-1] - rows[0] >= 2 and lit * 10 < word_area * 9)
 
 
 def has_save_number(mask: np.ndarray) -> bool:
@@ -1333,6 +1355,72 @@ class Route:
                    not proof["bad_frames"], **proof)
         return label
 
+    def folder_color(self, like: np.ndarray | None = None,
+                     unlike: np.ndarray | None = None) -> np.ndarray | None:
+        """Steady color words, with the folder value's own small-text bounds.
+        A changed value must differ from the preceding words; it cannot pass
+        on a stale frame. Other screens retain their existing title bounds.
+        """
+        return self.text_until(FOLDER_COLOR_BOX,
+                               lambda mask: has_folder_color_label(mask)
+                               and (like is None or same_text(mask, like))
+                               and (unlike is None or not same_text(mask, unlike)))
+
+    def folder_identity(self, prefix: str, library_box, selected: np.ndarray) -> None:
+        """Y's real path/color page: save, revisit, cancel and reset in each layout.
+
+        Every page entry must differ from the preceding Library frame before
+        its path/color fields count. Every exit must recover the exact folder.
+        A persisted settings read binds the color to the real device path.
+        """
+        before = text_mask(self.gray(), FOLDER_PAGE_TITLE_BOX)
+        title = self.folder_step("Y", f"{prefix}-folder-path", FOLDER_PAGE_TITLE_BOX,
+                                 unlike=before)
+        self.check("Y on a folder opens its identity page", title is not None, layout=prefix)
+        path, _ = self.settled_label(box=FOLDER_PATH_BOX)
+        self.check("the folder page shows a stable full path", path is not None, layout=prefix)
+        self.press("Y", FOLDER_PRESS_SECONDS)  # reset preview to the known default
+        default = self.folder_color()
+        self.press("RIGHT", FOLDER_PRESS_SECONDS)
+        indigo = self.folder_color(unlike=default)
+        self.check("Right selects a named folder color", indigo is not None, layout=prefix)
+        self.press("RIGHT", FOLDER_PRESS_SECONDS)
+        azure = self.folder_color(unlike=indigo)
+        self.check("Right advances the folder color", azure is not None, layout=prefix)
+        self.shot(f"{prefix}-folder-color-azure", self.last_rgb)
+        returned = self.folder_step("A", f"{prefix}-folder-color-save", library_box, like=selected)
+        self.check("Save returns to the same selected folder", returned is not None, layout=prefix)
+        saved = card.read_card(self.sd_image, "swiss/settings/global.ini") or b""
+        self.check("the folder color is persisted with its device-prefixed full path",
+                   bool(re.search(rb"Library Folder Colors=[^\r\n]*[a-z]+:/games/Nintendo\.GC~2", saved)),
+                   layout=prefix)
+        before = text_mask(self.gray(), FOLDER_PAGE_TITLE_BOX)
+        reopened = self.folder_step("Y", f"{prefix}-folder-color-reopen", FOLDER_PAGE_TITLE_BOX,
+                                    like=title, unlike=before)
+        self.check("Y reopens the folder page", reopened is not None, layout=prefix)
+        self.check("the complete path remains the same after saving",
+                   self.settled_label(box=FOLDER_PATH_BOX, like=path)[0] is not None, layout=prefix)
+        self.check("the saved color remains selected",
+                   self.folder_color(like=azure) is not None, layout=prefix)
+        self.press("RIGHT", FOLDER_PRESS_SECONDS)
+        changed = self.folder_color(unlike=azure)
+        self.check("a new color can be previewed", changed is not None, layout=prefix)
+        self.folder_step("B", f"{prefix}-folder-color-cancel", library_box, like=selected)
+        before = text_mask(self.gray(), FOLDER_PAGE_TITLE_BOX)
+        self.folder_step("Y", f"{prefix}-folder-color-cancel-reopen", FOLDER_PAGE_TITLE_BOX,
+                         like=title, unlike=before)
+        self.check("Cancel keeps the saved color",
+                   self.folder_color(like=azure) is not None, layout=prefix)
+        self.press("Y", FOLDER_PRESS_SECONDS)
+        self.check("Reset selects the original Default card appearance",
+                   self.folder_color(like=default, unlike=azure) is not None,
+                   layout=prefix)
+        self.shot(f"{prefix}-folder-color-reset", self.last_rgb)
+        self.folder_step("A", f"{prefix}-folder-color-reset-save", library_box, like=selected)
+        saved = card.read_card(self.sd_image, "swiss/settings/global.ini") or b""
+        self.check("saving Default frees the folder's stored color entry",
+                   b"/games/Nintendo.GC~" not in saved, layout=prefix)
+
     def folder_layout(self, faces: list[np.ndarray], name: str, first: bool) -> None:
         """From Home Settings, set the next layout and folders on, then browse."""
         library, source, settings = faces
@@ -1376,6 +1464,7 @@ class Route:
                 _, refused = self.pictures(8.0)
                 self.check("the dotted empty folder's oversized PNG never shows",
                            refused < PICTURE_PIXELS, pixels=refused)
+            self.folder_identity(prefix, box, stray)
             parent = None
             for button in ("A", "B", "X"):
                 empty = self.folder_step("A", f"{prefix}-empty-open-{button.lower()}",
@@ -1830,7 +1919,7 @@ class Route:
         self.check("A opens the save details panel", self.open_save_details())
         boxes = {"title": SAVE_DETAILS_TITLE_BOX, "blocks": SAVE_DETAILS_BLOCKS_BOX,
                  "size": SAVE_DETAILS_SIZE_BOX, "source": SAVE_DETAILS_SOURCE_BOX,
-                 "created": SAVE_DETAILS_CREATED_BOX, "updated": SAVE_DETAILS_UPDATED_BOX,
+                 "icon": SAVE_DETAILS_ICON_BOX, "updated": SAVE_DETAILS_UPDATED_BOX,
                  "actions": SAVE_DETAILS_ACTIONS_BOX}
         fields = {}
         for field, box in boxes.items():
@@ -1920,8 +2009,8 @@ class Route:
         unknown = self.save_details("virtual-cards-details-unknown")
         self.check("known and unknown save dates have different text",
                    not same_text(known["updated"], unknown["updated"]))
-        self.check("both saves report creation date as not recorded",
-                   same_text(known["created"], unknown["created"]))
+        self.check("animated and missing save icons have different status text",
+                   not same_text(known["icon"], unknown["icon"]))
         self.check("two-block and one-block save sizes have different text",
                    not same_text(known["blocks"], unknown["blocks"]))
         self.press("B")

@@ -127,6 +127,9 @@ static bool getRawDTVStatus(void) { return false; }
     re.search(r"^enum setupStream\s*\{.*?\};", MAIN_H, re.S | re.M).group(0),
     SWISS_SETTINGS,
     "SwissSettings swissSettings;",
+    (SWISS / "source/gui/ui_folder.h").read_text(),
+    (SWISS / "source/gui/ui_folder.c").read_text().replace('#include "ui_folder.h"', ""),
+    "static uiFolderColors_t folderColors;",
     CONFIG_ENTRY,
     "\n".join(STRING_ARRAYS),
     re.search(r"^const int simulatedMemSizeInt\[\] = \{.*?\};", SETTINGS_C, re.S | re.M).group(0),
@@ -185,6 +188,7 @@ static bool getRawDTVStatus(void) { return false; }
     "static void write_game(FILE *fp, ConfigEntry *entry, ConfigEntry *defaults)\n{\n"
     + between(GAME_WRITER, 'fprintf(fp, "# Game specific', "fclose(fp);") + "}",
     "static void set_defaults(void)\n{\n"
+    "\tmemset(&folderColors, 0, sizeof(folderColors));\n"
     "\tmemset(&swissSettings, 0, sizeof(SwissSettings));\n"
     '\tstrcpy(swissSettings.flattenDir, "*/games");\n'
     + DEFAULTS + "}",
@@ -414,6 +418,8 @@ def writer_keys(writer: str, subject: str) -> dict:
             keys[key] = re.search(r'\? "([^"]+)":"([^"]+)"', rest).groups()
         else:
             keys[key] = "raw"
+    for key in re.findall(r'fputs\("([^"=]+)=", fp\)', writer):
+        keys[key] = "raw"
     return keys
 
 
@@ -472,6 +478,18 @@ class SettingsFileTest(unittest.TestCase):
         self.assertEqual(set(GLOBAL_KEYS) - READ_KEYS, set())
         self.assertEqual(set(GAME_KEYS) - READ_KEYS - WRITE_ONLY, set())
         self.assertEqual(READ_KEYS - set(GLOBAL_KEYS) - set(GAME_KEYS) - OLD_NAMES, set())
+
+    def test_folder_colors_survive_the_real_global_parser_and_writer(self):
+        encoded = "sda:/games/Spaces%20#%3B%7E%25%3D%0A%09%0D~3"
+        second = "sdb:/games/Spaces%20#%3B%7E%25%3D%0A%09%0D~2"
+        written = self.global_file(f"Library Folder Colors={encoded};{second}\nMenu Color=Gold\n")
+        self.assertEqual(written["Library Folder Colors"], f"{encoded};{second}")
+        self.assertEqual(written["Menu Color"], "Gold")
+        again = self.global_file("\n".join(f"{key}={value}" for key, value in written.items()))
+        self.assertEqual(written, again)
+        self.assertEqual(self.global_file("Library Folder Colors=bad%00path~1;wrong~9;good~8\n")
+                         ["Library Folder Colors"], "good~8")
+        self.assertEqual(self.global_file("Library Folder Colors=\n")["Library Folder Colors"], "")
 
     def test_defaults_survive_a_round_trip(self):
         first = self.run_harness("global")

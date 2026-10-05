@@ -12,6 +12,12 @@
 
 ## Start here
 
+Your first session: **[install for your boot setup](install.md#1-find-the-right-card-and-boot-method)**
+→ **[confirm the first launch](install.md#4-confirm-the-first-launch)**
+→ **[choose your source](source.md#change-the-source)**
+→ **[find your games](library.md#set-up-the-games-folder)**.
+Add posters and cheats after that first successful launch.
+
 - **[Install](install.md)**: put Indigo on your SD card, boot it, update it,
   and get back to stock Swiss when you want it.
 - **[Controls](controls.md)**: what each button does on every screen.

@@ -1,4 +1,76 @@
+## 2026-10-05 — Cover the Library controls beneath the folder page
+
+A native capture exposed the bottoms of the Library button glyphs below
+the folder page. Its panel now covers the complete underlying control row.
+The prepared content and dialog controls retain their positions.
+
+## 2026-10-05 — Keep metadata evidence tied to current captures
+
+The value-row regression uses the four refreshed save-details pictures.
+The older themed picture remains useful for general panel detection only.
+Clarification of the folder entry below: a readable settings recovery copy
+is accepted; unreadable settings or recovery metadata cannot be mistaken
+for an absent file when saving folder colors.
+
+## 2026-10-05 — Integrate save explanations, folder controls and installation guides
+
+Save details shows the recorded last-update date and the save icon's status.
+Animated, static and absent icons are distinguished, with clear messages for
+paused or unavailable previews. No creation date is invented: the save format
+has no separate field. Original animation decoding remains unchanged.
+
+Y on a Library folder opens its full path and color controls. A saves, B
+cancels and Y resets the color. Path identity includes its device prefix;
+settings writes preserve other preferences and restore prior colors on failure.
+The native folder route covers save, reopen, cancel and reset in all layouts.
+
+The README, walkthrough and package/release instructions now give exact loader
+filenames and card destinations, preservation, folder merging, first launch,
+updates and recovery. Focused host and sanitizer regressions pass. Fresh native
+save-details captures match the revised panel in both screen shapes; full
+integrated protected checks and console acceptance remain required.
+
 # Indigo development journal
+
+## 2026-10-05 — Bound the folder settings sanitizer regression
+
+The Linux GCC contracts lane reached the new folder settings fault test but
+stalled before main: its PIE sanitizer executable recursively emitted
+AddressSanitizer DEADLYSIGNAL on a host with high ASLR entropy. Match every
+other sanitizer harness with Linux non-PIE flags, and bound compilation and
+execution so a startup failure cannot consume the whole job timeout. The
+production folder save code and UI are unchanged.
+
+## 2026-10-05 — Read native folder color words at their own size
+
+Fresh Dolphin proof showed that Right correctly changed Indigo to Azure,
+but the folder route rejected Azure: its 50 bright pixels are below the
+Library-title reader's 60-pixel minimum. Use a scoped bounded color-word
+reader and stable word comparisons for selection, revisit, cancel and
+reset. Other routes retain their existing title thresholds. Native Indigo
+and Azure text crops reproduce the old rejection; the new regression also
+rejects unchanged labels and a single changed frame between stale samples.
+
+## 2026-10-05 — Give Library folders a path and persistent color
+
+Y on a selected folder opens a retained identity page with the full
+device-prefixed path, wrapping and scrolling without ellipses. Left/Right
+preview the folder color, Y restores Default, A saves and B cancels. Explicit
+color frames remain visible on custom posters in every Library layout and
+keep their chosen color when Menu Color changes.
+
+A bounded 32-entry map is saved under Library Folder Colors in global.ini.
+Paths escape separators and control bytes; display controls use printable
+hex escapes. Saving changes only that key, refuses unreadable settings and
+recovery copies, and restores the exact in-memory map on failure. A proven
+absent file is created with only this key. The settings fuzzer exercises the
+same parser. The guide and settings reference describe controls and limits.
+
+Validation: strict C and ASan/UBSan codec/path tests, production save fault
+regressions, real folder navigation, 32 settings parser/writer tests and all
+23 GX renderer tests pass. The target DOL compiles and links. The folders
+Dolphin route now records save, revisit, cancel and reset for all layouts;
+its native captures remain to be recorded by CI on the integrated build.
 
 ## 2026-10-04 — Prepare the validated candidate for v2.3.0
 

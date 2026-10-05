@@ -146,7 +146,8 @@ static uiDrawObj_t *DrawSaveDetails(const uiSaveDetailsSnapshot_t *snapshot) {
 }
 static uiDrawObj_t *DrawPublish(uiDrawObj_t *box) {assert(box);return box;}
 static void DrawDispose(uiDrawObj_t *box) {assert(box);free(box);}
-typedef struct {char gamecode[4],company[2],filename[32];u32 time,len;} card_stat;
+typedef struct {char gamecode[4],company[2],filename[32];u32 time,len,icon_addr,comment_addr;u16 icon_fmt,icon_speed;u8 banner_fmt;} card_stat;
+static struct {bool disableUIAnimations;} swissSettings;
 static card_stat status;
 static int statusResult,statusReads,expectedStatusChannel;
 static int CARD_GetStatus(int channel,int file,card_stat *out) {
@@ -284,7 +285,7 @@ static void setup(void) {
     memset(&over,0,sizeof(over));over.storageStack=-1;
     inputCount=inputAt=menusShown=detailsShown=seenDim=0;storageChoice=-1;
     memset(&detailSnapshot,0,sizeof(detailSnapshot));
-    memset(&status,0,sizeof(status));statusResult=CARD_ERROR_READY;statusReads=0;expectedStatusChannel=0;
+    memset(&status,0,sizeof(status));statusResult=CARD_ERROR_READY;statusReads=0;expectedStatusChannel=0;swissSettings.disableUIAnimations=false;
     fixture(imageA,"GALP","01",'A','B');fixture(imageB,"GZLP","02",'C','D');
     memcpy(frozenA,imageA,IMAGE_BYTES);memcpy(frozenB,imageB,IMAGE_BYTES);
 }
@@ -416,6 +417,7 @@ static void detailsInput(void) {
     assert(detailSnapshot.blocks==2 && !detailSnapshot.estimated);
     assert(!strcmp(detailSnapshot.source,"Read-only card image"));
     assert(!strcmp(detailSnapshot.updated,"Unknown"));
+    assert(!strcmp(detailSnapshot.icon,"Static"));
     assert(starts==0 && writes==0 && deletes==0);
     script(back,1);selectPress(0,BUTTON_A);assert(detailsShown==2);
     selectPress(0,BUTTON_B);assert(detailsShown==2);
@@ -440,6 +442,25 @@ static void detailsInput(void) {
     setup();openImage(2,"A");sd.features=0;script(allDim,8);selectPress(0,BUTTON_A);
     assert(detailsShown==1 && seenDim==7 && starts==0 && writes==0);unchanged();clean();
 }
+static void detailsIconStates(void) {
+    const u32 back[]={BUTTON_B};
+    const char *expected[]={"Animated","Paused: UI Motion Off","None stored","Preview unavailable","Preview unavailable"};
+    for(int mode=0;mode<5;mode++) {
+        setup();openImage(2,"A");
+        u8 *entry=places[2].rawCard->entry[0];
+        entry[0x31]=0x0a;entry[0x33]=0x0e;
+        swissSettings.disableUIAnimations=mode==1;
+        if(mode==2)entry[0x31]=0;
+        if(mode==3) {
+            slotTags[0]=saveTag(2,places[2].list[0]);slots[0].failed=true;
+        }
+        if(mode==4) {free(pool);pool=NULL;}
+        script(back,1);selectPress(0,BUTTON_A);
+        assert(!strcmp(detailSnapshot.icon,expected[mode]));
+        assert(detailsShown==1 && writes==0 && deletes==0);
+        unchanged();clean();
+    }
+}
 static void detailsMetadata(void) {
     const u32 back[]={BUTTON_B};
     setup();openImage(2,"A");
@@ -459,6 +480,7 @@ static void detailsMetadata(void) {
     strcpy(save.name,"sda:/right/unreadable.gci");
     places[2].list[0]=&save;places[2].count=1;script(back,1);selectPress(0,BUTTON_A);
     assert(detailSnapshot.estimated && !strcmp(detailSnapshot.updated,"Unable to read metadata"));
+    assert(!strcmp(detailSnapshot.icon,"Unavailable"));
     assert(detailsShown==1 && writes==0 && deletes==0);unchanged();clean();
 
     /* A physical card's real status date is used only on a successful
@@ -471,6 +493,8 @@ static void detailsMetadata(void) {
         dir->chn=slot;dir->fileno=7;dir->filelen=card.size;expectedStatusChannel=slot;
         memcpy(dir->gamecode,"GALP",4);memcpy(dir->company,"01",2);strcpy(dir->filename,"raw-save");
         memcpy(status.gamecode,"GALP",4);memcpy(status.company,"01",2);strcpy(status.filename,"raw-save");status.time=86400+120;status.len=card.size;
+        status.icon_addr=0x123;status.icon_fmt=0x15;status.icon_speed=0x2a;
+        status.banner_fmt=0;status.comment_addr=UINT32_MAX;
         if(mode==1)statusResult=-1;
         if(mode==2)memcpy(status.gamecode,"GZLP",4);
         if(mode==3)memcpy(status.company,"02",2);
@@ -487,11 +511,12 @@ static void detailsMetadata(void) {
         assert(!strcmp(detailSnapshot.updated,(mode==0 || mode==11) ?
             "2000-01-02 00:02" : (mode==5 || mode==6) ?
             "Unknown" : "Unable to read metadata"));
+        assert(!strcmp(detailSnapshot.icon,(mode==0 || mode==5 || mode==6 || mode==11) ? "Animated" : "Unavailable"));
         assert(detailsShown==1 && reads==0 && writes==0 && deletes==0);unchanged();clean();
     }
 }
 int main(void) {
-    readExport();twoColumns();destinationsAndFailures();openingFailures();emptyImage();storageFocus();detailsInput();detailsMetadata();
+    readExport();twoColumns();destinationsAndFailures();openingFailures();emptyImage();storageFocus();detailsInput();detailsIconStates();detailsMetadata();
     puts("RAW controller: load, virtual entry/art/read, details A/B, guarded actions/export, read-only operations, reload and two SD columns PASS");
     return 0;
 }
@@ -530,7 +555,7 @@ static void savesSay(const char *why) {
     pieces += [model, extract_function(saves, 'static bool isSaveName(')]
     pieces += [extract_function(saves, marker) for marker in ('static int placeOrder(', 'static bool folderIsRoot(', 'static void loadFolder(', 'static void loadRaw(', 'static void loadTab(', 'static void folderPath(', 'static void placeRemember(')]
     pieces += [extract_function(cube, marker) for marker in ('uiSaveCubesChange_t UISaveCubes_Change(', 'int UISaveCubes_Cells(', 'int UISaveCubes_Home(')]
-    pieces += [extract_function(saves, marker) for marker in ('static void placesRemember(', 'static void placesReload(', 'static u8 *saveRead(', 'static bool folderWrite(', 'static bool saveDelete(', 'static bool destinationFolder(uiSavesPlace_t to, char *path, size_t size)\n{', 'static void saveTransfer(', 'static unsigned saveBlocks(', 'static bool saveEntry(', 'static void saveRoom(', 'static int placeCells(', 'static int placeCell(', 'static file_handle *placeAt(', 'static int stackFocus(', 'static int artSlot(', 'static void saveLine(', 'static void saveTitle(', 'static void saveHeading(', 'static bool saveUpdated(', 'static bool saveDetails(', 'static int savesMenu(', 'static void saveOptions(', 'static void chooseStorage(')]
+    pieces += [extract_function(saves, marker) for marker in ('static void placesRemember(', 'static void placesReload(', 'static u8 *saveRead(', 'static bool folderWrite(', 'static bool saveDelete(', 'static bool destinationFolder(uiSavesPlace_t to, char *path, size_t size)\n{', 'static void saveTransfer(', 'static unsigned saveBlocks(', 'static bool saveEntry(', 'static void saveRoom(', 'static int placeCells(', 'static int placeCell(', 'static file_handle *placeAt(', 'static int stackFocus(', 'static int artSlot(', 'static void saveLine(', 'static void saveTitle(', 'static void saveHeading(', 'static void saveEntry32(', 'static bool saveUpdated(', 'static bool saveDetails(', 'static int savesMenu(', 'static void saveOptions(', 'static void chooseStorage(')]
     show = extract_function(saves, 'void show_saves(')
     opening = extract_function(show, 'if(SavesRaw_IsImageName(chosen->name))')
     pieces += ['static void openSelected(savesPlace_t *place,file_handle *chosen) {' + opening + '}']

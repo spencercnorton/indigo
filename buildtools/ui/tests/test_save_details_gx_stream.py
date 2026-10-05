@@ -79,9 +79,8 @@ static void drawStringMedium(int x,int y,const char *text,float scale,int align,
     assert(color.a==255 && (77*color.r+150*color.g+29*color.b)/256>=160);
     if(y==119 && x==104) assert(!strcmp(text,"SAVE DETAILS"));
     if(y==257 && x==104) assert(!strcmp(text,"Source"));
-    if(y==287 && x==104) assert(!strcmp(text,"Created"));
-    if(y==287 && x==250) assert(!strcmp(text,"Not recorded") && scale==0.60f);
-    if(y==317 && x==104) assert(!strcmp(text,"Last updated"));
+    if(y==287 && x==104) assert(!strcmp(text,"Last updated"));
+    if(y==317 && x==104) assert(!strcmp(text,"Save icon"));
     strings++;
 }
 static void _DrawHintText(int x,int y,const char *text,float scale,int align,GXColor color) {
@@ -100,11 +99,12 @@ int main(void) {
     char longName[64];memset(longName,'W',63);longName[63]=0;
     const char *names[]={"Copper Archive",longName,"Moonlit Lake","Unreadable save"};
     const char *dates[]={"2024-02-29 12:34","2136-02-07 06:28","Unknown","Unable to read metadata"};
+    const char *icons[]={"Animated","Paused: UI Motion Off","Static","Unavailable"};
     const uint32_t blocks[]={2,UINT32_MAX/8u,1,0};
     for(int wide=0;wide<2;wide++) for(int theme=0;theme<8;theme++) for(int variant=0;variant<4;variant++) {
         UIStage_SetWide(wide!=0);UIColor_Select(theme);
         assert(UISaveDetails_Build(&snapshot,names[variant],blocks[variant],variant==3,
-            variant==2 ? "Slot A" : "Read-only card image",dates[variant]));
+            variant==2 ? "Slot A" : "Read-only card image",dates[variant],icons[variant]));
         uiDrawObj_t *event=DrawSaveDetails(&snapshot);assert(event && event->type==EV_SAVE_DETAILS);
         drawSaveDetailsEvent_t frozen=*(drawSaveDetailsEvent_t *)event->data;
         if(variant==1) assert(!strcmp(frozen.blocks,"536870911") && !strcmp(frozen.kib,"4294967288"));
@@ -122,7 +122,7 @@ int main(void) {
         free(event->data);free(event);
     }
     assert(DrawSaveDetails(NULL)==NULL);
-    assert(UISaveDetails_Build(&snapshot,"Save",1,false,"SD save","Unknown"));
+    assert(UISaveDetails_Build(&snapshot,"Save",1,false,"SD save","Unknown","None stored"));
     for(int fail=1;fail<=2;fail++) {
         failAllocation=allocations+fail;assert(DrawSaveDetails(&snapshot)==NULL);failAllocation=0;
     }

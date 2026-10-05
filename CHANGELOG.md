@@ -4,6 +4,25 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## Unreleased
+
+### New
+
+- Press **Y Folder** on a Library folder to see its complete path and choose
+  a color. The color marks its card in every layout and is remembered by path.
+  Reset restores the default; B cancels changes.
+
+### Improved
+
+- Save details shows **Last updated** and **Save icon** instead of the empty
+  creation-date field. It distinguishes animated, static and missing icons,
+  previews that could not be loaded, and animations paused by UI Motion Off.
+  The GameCube save format does not record a separate creation date.
+- Installation starts with the boot method and card you use. The README,
+  walkthrough, release notes and ZIP instructions give exact file destinations,
+  card layouts, first-launch checks, updates and recovery steps, with clear
+  folder-merge instructions and preservation of existing boot files.
+
 ## v2.3.0 — Memory Cards, game folders and smoother motion
 
 ### New

@@ -1901,11 +1901,19 @@ static void saveRoom(int tab, const u8 entry[UI_SAVES_ENTRY_SIZE], bool known,
 	}
 }
 
-/* A physical listing has identity and size, but not the directory date.
+static void saveEntry32(u8 *bytes, u32 value)
+{
+	bytes[0] = (u8)(value >> 24);
+	bytes[1] = (u8)(value >> 16);
+	bytes[2] = (u8)(value >> 8);
+	bytes[3] = (u8)value;
+}
+
+/* A physical listing has identity and size, but no date or icon metadata.
  * Read status without changing the save, and don't display another entry's
- * date if the card changed since it was listed. */
+ * metadata if the card changed since it was listed. */
 static bool saveUpdated(file_handle *save,
-	const u8 entry[UI_SAVES_ENTRY_SIZE], bool known, u32 *seconds)
+	u8 entry[UI_SAVES_ENTRY_SIZE], bool known, u32 *seconds)
 {
 	*seconds = 0u;
 	if(!known) return false;
@@ -1921,6 +1929,14 @@ static bool saveUpdated(file_handle *save,
 			strncmp(status.filename, dir->filename, CARD_FILENAMELEN) ||
 			status.len != save->size) return false;
 		*seconds = status.time;
+		entry[0x07] = status.banner_fmt;
+		saveEntry32(entry + 0x28, status.time);
+		saveEntry32(entry + 0x2C, status.icon_addr);
+		entry[0x30] = (u8)(status.icon_fmt >> 8);
+		entry[0x31] = (u8)status.icon_fmt;
+		entry[0x32] = (u8)(status.icon_speed >> 8);
+		entry[0x33] = (u8)status.icon_speed;
+		saveEntry32(entry + 0x3C, status.comment_addr);
 	}
 	else {
 		*seconds = UISaves_UpdatedSeconds(entry);
@@ -1931,17 +1947,18 @@ static bool saveUpdated(file_handle *save,
 /* Details are available even when the other stack cannot take a copy.
  * The save format has one update date, never a separate creation date. */
 static bool saveDetails(int tab, file_handle *save,
-	const u8 entry[UI_SAVES_ENTRY_SIZE], bool known, unsigned blocks)
+	u8 entry[UI_SAVES_ENTRY_SIZE], bool known, unsigned blocks)
 {
 	uiSaveDetailsSnapshot_t details;
 	savesInput_t input;
 	uiDrawObj_t *box;
 	char heading[64], date[24];
-	const char *updated;
+	const char *updated, *icon;
 	const char *source = places[tab].rawOpen ? "Read-only card image" :
 		(isCard(save->device) ? slotName(tab) : "SD save");
 	u32 seconds;
 	bool actions = false, readable = saveUpdated(save, entry, known, &seconds);
+	int slot = artSlot(saveTag(tab, save));
 	size_t i;
 
 	saveHeading(heading, sizeof(heading), tab, save);
@@ -1953,7 +1970,13 @@ static bool saveDetails(int tab, file_handle *save,
 	if(heading[0] == '\0') snprintf(heading, sizeof(heading), "Unnamed save");
 	updated = !readable ? "Unable to read metadata" :
 		(UISaves_FormatUpdated(seconds, date, sizeof(date)) ? date : "Unknown");
-	if(!UISaveDetails_Build(&details, heading, blocks, !known, source, updated)) {
+	icon = UISaves_IconDescription(readable ? entry : NULL,
+		(size_t)blocks * UI_SAVES_BLOCK_SIZE, swissSettings.disableUIAnimations);
+	if(readable && strcmp(icon, "None stored") &&
+		(pool == NULL || (slot >= 0 && slots[slot].failed))) {
+		icon = "Preview unavailable";
+	}
+	if(!UISaveDetails_Build(&details, heading, blocks, !known, source, updated, icon)) {
 		savesTell(D_FAIL, "Save details couldn't be opened.\nPress A to continue.");
 		return false;
 	}

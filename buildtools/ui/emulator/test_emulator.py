@@ -538,6 +538,50 @@ class Screen(unittest.TestCase):
         from PIL import Image
         return np.asarray(Image.open(Path(__file__).parent / "fixtures" / name).convert("RGB"))
 
+    def test_native_short_folder_colors_and_stale_frames(self):
+        from PIL import Image
+        fixture = Path(__file__).parent / "fixtures"
+        indigo, azure = [np.asarray(Image.open(fixture / f"folder-color-{name}.png")
+                                   .convert("RGB")).max(axis=2) >= run.TEXT_LEVEL
+                         for name in ("indigo", "azure")]
+        self.assertEqual((int(indigo.sum()), int(azure.sum())), (73, 50))
+        # The original generic title waiter rejected this real Azure word.
+        self.assertTrue(run.has_label(indigo))
+        self.assertFalse(run.has_label(azure))
+        self.assertTrue(run.has_folder_color_label(azure))
+        self.assertFalse(run.same_text(indigo, azure))
+        self.assertFalse(run.has_folder_color_label(np.zeros_like(azure)))
+        self.assertFalse(run.has_folder_color_label(np.ones_like(azure)))
+        pixel = np.zeros_like(azure)
+        pixel[8, 20] = True
+        self.assertFalse(run.has_folder_color_label(pixel))
+        bar = np.zeros_like(azure)
+        bar[8:11, 10:35] = True
+        self.assertFalse(run.has_folder_color_label(bar))
+
+        class Samples:
+            def __init__(self, *unused):
+                self.remaining = 6
+
+            def expired(self):
+                self.remaining -= 1
+                return self.remaining < 0
+
+        def wait(sequence, **match):
+            route = run.Route.__new__(run.Route)
+            route.emulator = mock.Mock()
+            frames = iter(sequence)
+            route.gray = lambda: None
+            with mock.patch.object(run, "Deadline", Samples), \
+                 mock.patch.object(run.time, "sleep"), \
+                 mock.patch.object(run, "text_mask", side_effect=lambda *unused: next(frames, sequence[-1])):
+                return route.folder_color(**match)
+
+        self.assertIsNone(wait([indigo] * 6, unlike=indigo))
+        self.assertIsNone(wait([indigo, azure, indigo, indigo, indigo, indigo], unlike=indigo))
+        self.assertTrue(np.array_equal(wait([indigo, azure, indigo, azure, azure], unlike=indigo), azure))
+        self.assertTrue(np.array_equal(wait([azure, azure], like=azure), azure))
+
     def test_actual_legacy_folder_chrome_and_its_fades(self):
         legacy = self.folder_frame("folder-legacy-browser.png")
         for strength in (1.0, 0.75, 0.5, 0.25, 0.1):
@@ -737,8 +781,10 @@ class Screen(unittest.TestCase):
             self.assertFalse(run.same_text(*kib), shape + " actually distinguishes 16 from 8")
             dates = [run.text_mask(frame, run.SAVE_DETAILS_UPDATED_BOX) for frame in gray]
             self.assertFalse(run.same_text(*dates), "recorded date and Unknown differ")
-            created = [run.text_mask(frame, run.SAVE_DETAILS_CREATED_BOX) for frame in gray]
-            self.assertTrue(run.same_text(*created), "both creation values are Not recorded")
+            metadata = [run.text_mask(frame, run.SAVE_DETAILS_ICON_BOX) for frame in gray]
+            self.assertTrue(all(run.has_label(value) for value in metadata),
+                            "the save icon status must be visible in both native captures")
+            self.assertFalse(run.same_text(*metadata), "Animated and None stored differ")
 
     def test_actual_popup_value_only_boxes_reject_erasure_and_label_only_frames(self):
         from PIL import Image
@@ -746,13 +792,12 @@ class Screen(unittest.TestCase):
         fields = ((run.SAVE_DETAILS_BLOCKS_BOX, (122, 214, 302, 234), True),
                   (run.SAVE_DETAILS_SIZE_BOX, (350, 214, 528, 234), True),
                   (run.SAVE_DETAILS_SOURCE_BOX, (100, 244, 234, 270), False),
-                  (run.SAVE_DETAILS_CREATED_BOX, (100, 274, 234, 300), False),
-                  (run.SAVE_DETAILS_UPDATED_BOX, (100, 304, 234, 330), False))
+                  (run.SAVE_DETAILS_ICON_BOX, (100, 304, 234, 330), False),
+                  (run.SAVE_DETAILS_UPDATED_BOX, (100, 274, 234, 300), False))
         for name, wide in (("default-save-details-known.png", False),
                            ("default-save-details-unknown.png", False),
                            ("wide-save-details-known.png", True),
-                           ("wide-save-details-unknown.png", True),
-                           ("themed-save-details.png", False)):
+                           ("wide-save-details-unknown.png", True)):
             rgb = np.asarray(Image.open(root / name).convert("RGB"))
             original = rgb.copy()
             gray = run.detection_frame(rgb, wide).max(axis=2)
@@ -776,7 +821,7 @@ class Screen(unittest.TestCase):
             for value_box, _, numeric in fields:
                 predicate = run.has_save_number if numeric else run.has_label
                 self.assertFalse(predicate(run.text_mask(label_only, value_box)), (name, "labels only"))
-            for box in (run.SAVE_DETAILS_TITLE_BOX, run.SAVE_DETAILS_CREATED_BOX,
+            for box in (run.SAVE_DETAILS_TITLE_BOX, run.SAVE_DETAILS_ICON_BOX,
                         run.SAVE_DETAILS_UPDATED_BOX, run.SAVE_DETAILS_ACTIONS_BOX):
                 self.assertTrue(run.has_label(run.text_mask(gray, box)), (name, box))
             np.testing.assert_array_equal(rgb, original, "positive native capture remains untouched")

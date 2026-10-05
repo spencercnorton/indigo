@@ -20,6 +20,7 @@
 #include "deviceHandler-FAT.h"
 #include "ui_game_history.h"
 #include "ui_gameflow_library.h"
+#include "ui_folder.h"
 
 // This is an example Swiss settings entry (sits at the top of global.ini)
 //!!Swiss Settings Start!!
@@ -72,6 +73,11 @@ static int playHistorySlot = -1;
 /* Whether global.ini holds the settings: it was read at boot or a save has
  * written it since. Setup > Storage says so. */
 static bool globalFileLoaded;
+static uiFolderColors_t folderColors;
+
+uint8_t config_folder_color(const char *path) {
+	return UIFolder_GetColor(&folderColors, path);
+}
 
 bool config_global_file_loaded(void) {
 	return globalFileLoaded;
@@ -567,6 +573,9 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Wave Speed=%s\r\n", waveSpeedStr[swissSettings.waveSpeed]);
 	fprintf(fp, "Library Layout=%s\r\n", libraryLayoutStr[swissSettings.libraryLayout]);
 	fprintf(fp, "Library Folders=%s\r\n", swissSettings.libraryFolders ? "Yes":"No");
+	fputs("Library Folder Colors=", fp);
+	UIFolder_WriteColors(&folderColors, fp);
+	fputs("\r\n", fp);
 	fprintf(fp, "Init DVD Drive at startup=%s\r\n", swissSettings.initDVDDriveAtStart ? "Yes":"No");
 	fprintf(fp, "Stop DVD Drive motor=%s\r\n", swissSettings.stopMotor ? "Yes":"No");
 	fprintf(fp, "Configure Audio Buffer=%s\r\n", configAudioBufferStr[swissSettings.configAudioBuffer]);
@@ -661,6 +670,67 @@ int config_update_global(bool checkConfigDevice) {
 		config_unset_device();
 	}
 	return res;
+}
+
+/* Folder changes save only their key. Unsaved or temporary global values
+ * in memory must not be written as a side effect of coloring a folder. */
+static bool config_folder_settings_absent(char *path) {
+	DEVICEHANDLER_INTERFACE *device = devices[DEVICE_CONFIG];
+	file_handle file = {0};
+	/* A failed read is never proof of absence. Only FAT's explicit missing
+	 * codes for both the live file and recovery copy permit a new file. */
+	if(device->statFile != deviceHandler_FAT_statFile) return false;
+	concat_path(file.name, device->initial->name, path);
+	s32 status = device->statFile(&file);
+	device->closeFile(&file);
+	if(status != FR_NO_FILE && status != FR_NO_PATH) return false;
+	config_name_new(file.name);
+	status = device->statFile(&file);
+	device->closeFile(&file);
+	return status == FR_NO_FILE || status == FR_NO_PATH;
+}
+
+bool config_set_folder_color(const char *path, uint8_t color) {
+	uiFolderColors_t *previous = malloc(sizeof(*previous));
+	char *line = NULL;
+	size_t length = 0u;
+	FILE *fp;
+	int result = 0;
+	if(previous == NULL) return false;
+	*previous = folderColors;
+	if(!UIFolder_SetColor(&folderColors, path, color)) { free(previous); return false; }
+	if(!config_set_device()) goto done;
+	fp = open_memstream(&line, &length);
+	if(fp != NULL) {
+		char configPath[PATHNAME_MAX];
+		fputs("Library Folder Colors=", fp);
+		UIFolder_WriteColors(&folderColors, fp);
+		fputs("\r\n", fp);
+		if(fclose(fp) == 0) {
+			concat_path(configPath, SWISS_SETTINGS_DIR, SWISS_SETTINGS_FILENAME);
+			char *existing = config_file_read(configPath);
+			char *merged = config_merge_file(existing, line, NULL);
+			if(existing != NULL) {
+				/* Do not replace a readable settings file if merging ran out
+				 * of memory: that would discard unrelated settings. */
+				if(merged != NULL) result = config_file_write(configPath, merged);
+			}
+			else if(config_folder_settings_absent(configPath)) {
+				ensure_path(DEVICE_CONFIG, SWISS_BASE_DIR, NULL, true);
+				ensure_path(DEVICE_CONFIG, SWISS_SETTINGS_DIR, NULL, false);
+				result = config_file_write(configPath, line);
+			}
+			free(merged);
+			free(existing);
+		}
+		free(line);
+	}
+	config_unset_device();
+done:
+	if(!result) folderColors = *previous;
+	else globalFileLoaded = true;
+	free(previous);
+	return result != 0;
 }
 
 /* What an autoload toggle saves over an existing global.ini: the same file
@@ -1399,6 +1469,9 @@ void config_parse_global(char *configData, bool settingsFile) {
 				else if(!strcmp("Disable Menu SFX", name)) {
 					swissSettings.disableMenuSFX = !strcmp("Yes", value);
 				}
+				else if(!strcmp("Library Folder Colors", name)) {
+					UIFolder_ParseColors(&folderColors, value);
+				}
 				else if(!strcmp("Menu Color", name)) {
 					for(int i = 0; i < UI_COLOR_MAX; i++) {
 						if(!strcmp(uiColorStr[i], value)) {
@@ -1956,6 +2029,7 @@ void config_find(ConfigEntry *entry) {
 */
 int config_init(void (*progress_indicator)(char*, int, int)) {
 	int res = 0;
+	memset(&folderColors, 0, sizeof(folderColors));
 	progress_indicator("Loading settings", 1, -2);
 	if(!config_set_device()) {
 		progress_indicator(NULL, 0, 0);
