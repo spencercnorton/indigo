@@ -27,6 +27,20 @@ uint32_t UISaves_UpdatedSeconds(const uint8_t entry[UI_SAVES_ENTRY_SIZE]);
  * False leaves an empty string for an unavailable date or short buffer. */
 bool UISaves_FormatUpdated(uint32_t seconds, char *out, size_t capacity);
 
+/* A bounded caption for the ANSI IPL font: collapse controls/whitespace,
+ * preserve Windows-1252 accents and symbols, and decode their common UTF-8
+ * forms. The output is always terminated; false means no readable text. */
+bool UISaves_DisplayText(char *out, size_t capacity, const uint8_t *text,
+	size_t length);
+
+/* Prefer a readable declared comment. A small identity fallback names games
+ * whose saves can omit that comment; it changes display text only. Unknown
+ * entries retain their bounded directory name, with separators as spaces.
+ * Never scans arbitrary save payloads or changes art/date metadata. */
+bool UISaves_DisplayTitle(char *out, size_t capacity,
+	const uint8_t entry[UI_SAVES_ENTRY_SIZE], const uint8_t *comment,
+	size_t commentLength);
+
 /* Add one valid directory entry only when all six game/maker bytes match.
  * Blocks count the save data; wrappers and RAW system blocks are excluded. */
 bool UISaves_StatsAdd(uiSavesGameStats_t *stats,

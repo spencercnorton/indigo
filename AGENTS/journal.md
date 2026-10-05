@@ -362,3 +362,15 @@ retaining the address and undefined-behavior checks.
 
 Validation: the plain and sanitized harness passes on macOS; the sanitized
 harness passes with GCC and Clang in the pinned Linux build image.
+## 2026-10-05 — Normalize save captions and missing-title identities
+
+Bounded save text now collapses control bytes and whitespace, preserves the
+IPL font's Windows-1252 accents and symbols, and converts their common UTF-8
+forms. Missing comments use conservative game-and-maker identity captions
+for the supported fallback families, then a bounded readable directory name.
+Valid comments retain precedence. This changes display text only; icon frames
+and the recorded update date remain governed by their existing metadata.
+
+Strict host and ASan/UBSan regressions cover absent comments, exact identity,
+wrong makers, invalid entries, unterminated names, encoding and short buffers.
+Controller integration and native screen verification remain separate gates.
