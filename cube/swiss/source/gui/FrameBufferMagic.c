@@ -6765,7 +6765,7 @@ static void _DrawLibraryFolder(uiDrawObj_t *event)
 	GXColor color = {0, 0, 0, 255};
 	char position[32];
 	gameflowQuad_t swatch = {{{48, 326}, {70, 326}, {70, 348}, {48, 348}}};
-	_PagePanel(24, 52, 592, 380, (GXColor){18, 14, 39, 250});
+	_PagePanel(24, 52, 592, 394, (GXColor){18, 14, 39, 250});
 	drawStringMedium(48, 78, "FOLDER", 0.72f, ALIGN_LEFT, ink);
 	drawStringMedium(48, 120, "FULL PATH", 0.42f, ALIGN_LEFT, quiet);
 	for(u32 i = 0u; i < UI_FOLDER_VISIBLE_LINES && s->firstLine + i < s->lineCount; ++i) {

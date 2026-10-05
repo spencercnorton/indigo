@@ -1,3 +1,9 @@
+## 2026-10-05 — Cover the Library controls beneath the folder page
+
+A native capture exposed the bottoms of the Library button glyphs below
+the folder page. Its panel now covers the complete underlying control row.
+The prepared content and dialog controls retain their positions.
+
 ## 2026-10-05 — Keep metadata evidence tied to current captures
 
 The value-row regression uses the four refreshed save-details pictures.
