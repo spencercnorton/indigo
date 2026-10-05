@@ -34,7 +34,7 @@ test_ui_saves_raw.src := $(GUI)/ui_saves_raw.c $(GUI)/ui_saves.c
 test_ui_saves_metadata.src := $(GUI)/ui_saves_metadata.c $(GUI)/ui_saves.c
 test_ui_saves_details.src := $(GUI)/ui_saves_details.c
 # Memory Cards' screen: its cubes, their motion and the cursor.
-test_ui_save_cubes.src := $(GUI)/ui_save_cubes.c $(GUI)/ui_motion.c $(GUI)/ui_saves.c
+test_ui_save_cubes.src := $(GUI)/ui_save_cubes.c $(GUI)/ui_motion.c $(GUI)/ui_saves.c $(GUI)/ui_folder.c
 test_ui_save_cubes.libs := -lm
 test_ui_apps.src := $(GUI)/ui_apps.c
 # test_ui_png.py drives these with the pictures it writes. test_ui_png.c

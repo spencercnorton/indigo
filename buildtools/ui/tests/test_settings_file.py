@@ -482,14 +482,14 @@ class SettingsFileTest(unittest.TestCase):
     def test_folder_colors_survive_the_real_global_parser_and_writer(self):
         encoded = "sda:/games/Spaces%20#%3B%7E%25%3D%0A%09%0D~3"
         second = "sdb:/games/Spaces%20#%3B%7E%25%3D%0A%09%0D~2"
-        written = self.global_file(f"Library Folder Colors={encoded};{second}\nMenu Color=Gold\n")
-        self.assertEqual(written["Library Folder Colors"], f"{encoded};{second}")
+        written = self.global_file(f"Memory Card Folder Colors={encoded};{second}\nMenu Color=Gold\n")
+        self.assertEqual(written["Memory Card Folder Colors"], f"{encoded};{second}")
         self.assertEqual(written["Menu Color"], "Gold")
         again = self.global_file("\n".join(f"{key}={value}" for key, value in written.items()))
         self.assertEqual(written, again)
-        self.assertEqual(self.global_file("Library Folder Colors=bad%00path~1;wrong~9;good~8\n")
-                         ["Library Folder Colors"], "good~8")
-        self.assertEqual(self.global_file("Library Folder Colors=\n")["Library Folder Colors"], "")
+        self.assertEqual(self.global_file("Memory Card Folder Colors=bad%00path~1;wrong~9;good~8\n")
+                         ["Memory Card Folder Colors"], "good~8")
+        self.assertEqual(self.global_file("Memory Card Folder Colors=\n")["Memory Card Folder Colors"], "")
 
     def test_defaults_survive_a_round_trip(self):
         first = self.run_harness("global")

@@ -161,6 +161,8 @@ run_contracts() {
 	echo "== settings saves: power lost at any step leaves them whole =="
 	python3 ./test_folder_config.py
 	python3 ./test_folder_config.py --sanitize
+	python3 ./test_memory_folder_controls.py
+	python3 ./test_memory_folder_controls.py --sanitize
 	python3 ./test_config_save.py
 	echo "== settings views: every setting in exactly one view =="
 	python3 ./test_settings_views.py

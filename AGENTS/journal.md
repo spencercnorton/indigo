@@ -1,3 +1,22 @@
+## 2026-10-05 — Put folder identity on Memory Cards mini cubes
+
+Memory Cards now offers Y Folder only for its SD folders and RAW image
+cubes. Its native page shows the full device-prefixed path, direct counts
+and two contained save names prepared through the bounded metadata helpers.
+RAW images stay read-only. A saves a path color, B cancels, Y restores Default
+and Up/Down scrolls the complete path. Saved colors mark only folder cube
+rims and glyphs, independently of Menu Color, in both screen shapes.
+
+The settings namespace is Memory Card Folder Colors. A failed settings save
+keeps the page open and restores the in-memory map; old Library colors are
+not imported. Saves with explicitly absent art retain their readable identity,
+and checked captions use the shared bounded text normalization.
+
+Validation: folder/cube unit tests, settings fault rollback, production
+controller sequences in plain and sanitized builds, and 18 GX renderer
+regressions pass. The settings reference names the new key. Native captures
+and integrated target/CI checks remain pending.
+
 ## 2026-10-05 — Remove folder identity controls from the game Library
 
 Folder paths and identity colors belong to the folders shown as mini cubes

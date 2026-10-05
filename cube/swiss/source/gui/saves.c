@@ -35,6 +35,7 @@
 #include "ui_settings_layout.h"
 #include "saves.h"
 #include "saves_raw.h"
+#include "ui_folder.h"
 
 #define SAVES_DEFAULT_FOLDER "swiss/saves"
 #define SAVES_LIST_MAX 256
@@ -186,6 +187,105 @@ static bool readSaveAt(file_handle *save, u32 offset, void *data, u32 length)
 	return ok;
 }
 
+/* One-time folder previews read only the checked directory entry and, when
+ * present, its first comment line. No icon pixels or save payload are loaded. */
+static void folderSaveTitle(file_handle *source, const uiSavesRawCard_t *raw,
+	unsigned ordinal, char *out, size_t capacity)
+{
+	file_handle file = *source;
+	u8 head[UI_SAVES_HEAD_SIZE] ATTRIBUTE_ALIGN(32);
+	u8 entry[UI_SAVES_ENTRY_SIZE], comment[32] ATTRIBUTE_ALIGN(32);
+	uiSavesArt_t art;
+	size_t body = 0u;
+	bool hasComment = false;
+	file.fp = NULL; file.ffsFp = NULL; file.meta = NULL; file.uiObj = NULL;
+	if(raw != NULL) {
+		const u8 *selected = UISavesRaw_Entry(raw, ordinal);
+		if(selected != NULL) {
+			memcpy(entry, selected, sizeof(entry));
+			body = UI_SAVES_ENTRY_SIZE;
+			if(UISaves_ArtLayout(entry, UISavesRaw_GciSize(raw, ordinal) - body, &art) &&
+				art.comment) hasComment = SavesRaw_ReadGci(&file, raw, ordinal,
+					(u32)body + art.commentAt, comment, sizeof(comment));
+		}
+	}
+	else {
+		u32 length = file.size < sizeof(head) ? file.size : sizeof(head);
+		if(readSaveAt(&file, 0u, head, length))
+			body = UISaves_FindEntryPrefix(head, length, file.size, entry);
+		if(body != 0u && UISaves_ArtLayout(entry, file.size - body, &art) && art.comment)
+			hasComment = readSaveAt(&file, (u32)body + art.commentAt, comment, sizeof(comment));
+	}
+	if(body != 0u && UISaves_DisplayTitle(out, capacity, entry,
+		hasComment ? comment : NULL, hasComment ? sizeof(comment) : 0u)) return;
+	const char *leaf = getRelativeName(source->name);
+	if(!UISaves_DisplayText(out, capacity, (const u8*)leaf, strnlen(leaf, PATHNAME_MAX)))
+		snprintf(out, capacity, "Unnamed save");
+}
+
+static bool folderIdentity(const file_handle *entry)
+{
+	return entry != NULL && entry->fileType != IS_SPECIAL &&
+		(entry->fileType == IS_DIR || (entry->fileType == IS_FILE &&
+		SavesRaw_IsImageName(entry->name))) && !isCard(entry->device);
+}
+
+static void folderContents(uiFolderSnapshot_t *snapshot, file_handle *chosen)
+{
+	file_handle source = *chosen;
+	source.fp = NULL; source.ffsFp = NULL; source.meta = NULL; source.uiObj = NULL;
+	if(SavesRaw_IsImageName(source.name)) {
+		uiSavesRawCard_t *card = calloc(1, sizeof(*card));
+		uiSavesRawStatus_t status = card != NULL ? SavesRaw_Load(&source, card) :
+			UI_SAVES_RAW_READ_ERROR;
+		if(status == UI_SAVES_RAW_OK) {
+			snprintf(snapshot->summary, sizeof(snapshot->summary), "%u saves. Read-only card image.",
+				(unsigned)card->count);
+			for(unsigned i = 0; i < card->count && i < 2u; ++i)
+				folderSaveTitle(&source, card, i, snapshot->contents[i], sizeof(snapshot->contents[i]));
+			if(card->count == 0u) strcpy(snapshot->contents[0], "This card image has no saves.");
+		}
+		else {
+			strcpy(snapshot->summary, "Read-only card image. Contents unavailable.");
+			snprintf(snapshot->contents[0], sizeof(snapshot->contents[0]), "%s", UISavesRaw_StatusText(status));
+		}
+		strcpy(snapshot->status, "Color is saved in Indigo settings; the card image stays read-only.");
+		free(card);
+		return;
+	}
+	file_handle *entries = NULL;
+	int count = source.device != NULL && source.device->readDir != NULL ?
+		source.device->readDir(&source, &entries, -1) : -1;
+	if(count < 0 || (count > 0 && entries == NULL)) {
+		strcpy(snapshot->summary, "This folder's contents could not be read.");
+		free(entries);
+		return;
+	}
+	unsigned saves = 0u, images = 0u, folders = 0u, shown = 0u;
+	const int maximum = 4096;
+	for(int i = 0; i < count && i < maximum; ++i) {
+		file_handle *entry = &entries[i];
+		const char *leaf = getRelativeName(entry->name);
+		if(entry->fileType == IS_SPECIAL || leaf[0] == '.') continue;
+		if(entry->fileType == IS_DIR) ++folders;
+		else if(entry->fileType == IS_FILE && isSaveName(leaf)) {
+			++saves;
+			if(shown < 2u) folderSaveTitle(entry, NULL, 0u,
+				snapshot->contents[shown++], sizeof(snapshot->contents[0]));
+		}
+		else if(entry->fileType == IS_FILE && SavesRaw_IsImageName(leaf)) ++images;
+	}
+	snprintf(snapshot->summary, sizeof(snapshot->summary), "%u save files, %u card images, %u folders%s",
+		saves, images, folders, count > maximum ? " (preview limit)" : "");
+	if(shown == 0u) strcpy(snapshot->contents[0], images > 0u ?
+		"Open a card image to browse its saves." : "No save files in this folder.");
+	for(int i = 0; i < count; ++i) {
+		if(source.device->closeFile != NULL) source.device->closeFile(&entries[i]);
+	}
+	free(entries);
+	if(source.device != NULL && source.device->closeFile != NULL) source.device->closeFile(&source);
+}
+
 /* ------------------------------------------------------------------------
  * Saves' art: banners, icons and comments, read one save at a time while
  * nothing is pressed, into a slot for each save on screen.
@@ -325,21 +425,29 @@ static void artRead(file_handle *save, int s, u32 tag)
 			at = UISaves_FindEntryPrefix(scratch, want, save->size, entry);
 		}
 	}
-	if(at != 0u && UISaves_ArtLayout(entry, card ? save->size :
-		save->size - at, &slot->art)) {
-		want = (u32)at + slot->art.end;
-		got = readSaveAt(save, 0u, scratch, want) ? (s32)want : -1;
-		slot->failed = got != (s32)want;
+	if(at != 0u) {
+		u32 dataLength = card ? save->size : save->size - at;
+		UISaves_DisplayTitle(slot->line[0], sizeof(slot->line[0]), entry, NULL, 0u);
+		if(UISaves_ArtLayout(entry, dataLength, &slot->art)) {
+			want = (u32)at + slot->art.end;
+			got = readSaveAt(save, 0u, scratch, want) ? (s32)want : -1;
+			slot->failed = got != (s32)want;
+		}
+		else if((entry[0x07] & 3u) == 0u &&
+			!strcmp(UISaves_IconDescription(entry, dataLength, false), "None stored")) {
+			/* A valid save can deliberately have neither icons nor comments. */
+			slot->failed = false;
+		}
 	}
 	if(!slot->failed) {
 		const u8 *data = scratch + at;
 		const uiSavesArt_t *art = &slot->art;
 
 		if(art->comment) {
-			snprintf(slot->line[0], sizeof(slot->line[0]), "%.32s",
-				(const char *)data + art->commentAt);
-			snprintf(slot->line[1], sizeof(slot->line[1]), "%.32s",
-				(const char *)data + art->commentAt + 32);
+			UISaves_DisplayTitle(slot->line[0], sizeof(slot->line[0]), entry,
+				data + art->commentAt, 32u);
+			UISaves_DisplayText(slot->line[1], sizeof(slot->line[1]),
+				data + art->commentAt + 32u, 32u);
 		}
 		if(texels != NULL) {
 			for(i = 0; i < (int)art->frames; i++) {
@@ -407,7 +515,7 @@ static bool artLoad(void)
  * repeating on the shared schedule.
  * --------------------------------------------------------------------- */
 #define SAVES_DIRECTIONS (BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT | BUTTON_RIGHT)
-#define SAVES_BUTTONS (SAVES_DIRECTIONS | BUTTON_A | BUTTON_B | BUTTON_X | \
+#define SAVES_BUTTONS (SAVES_DIRECTIONS | BUTTON_A | BUTTON_B | BUTTON_X | BUTTON_Y | \
 	BUTTON_L | BUTTON_R)
 
 static u32 inputElapsed(u32 *lastRetrace)
@@ -818,12 +926,17 @@ static void saveTitle(char *out, size_t size, file_handle *save)
 	savesPlace_t *raw = rawSource(save, &ordinal);
 
 	if(raw != NULL) {
-		snprintf(out, size, "%.*s", UI_SAVES_NAME_LENGTH,
-			(const char *)UISavesRaw_Entry(raw->rawCard, ordinal) + 8);
+		if(!UISaves_DisplayTitle(out, size, UISavesRaw_Entry(raw->rawCard, ordinal), NULL, 0u))
+			snprintf(out, size, "Unnamed save");
 	}
 	else if(isCard(save->device)) {
-		snprintf(out, size, "%.*s", CARD_FILENAMELEN,
-			((card_dir *)save->other)->filename);
+		const card_dir *dir = (const card_dir *)save->other;
+		u8 entry[UI_SAVES_ENTRY_SIZE] = {0};
+		unsigned blocks = (save->size + UI_SAVES_BLOCK_SIZE - 1u) / UI_SAVES_BLOCK_SIZE;
+		memcpy(entry, dir->gamecode, 4u); memcpy(entry + 4u, dir->company, 2u);
+		memcpy(entry + 8u, dir->filename, CARD_FILENAMELEN);
+		entry[0x38] = (u8)(blocks >> 8); entry[0x39] = (u8)blocks;
+		if(!UISaves_DisplayTitle(out, size, entry, NULL, 0u)) snprintf(out, size, "Unnamed save");
 	}
 	else {
 		snprintf(out, size, "%s", getRelativeName(save->name));
@@ -884,12 +997,7 @@ static bool folderBelowHome(int tab)
 /* A comment line as it shows: without the spaces that pad it. */
 static void saveLine(char *out, size_t size, const char *line)
 {
-	size_t length;
-
-	snprintf(out, size, "%s", line);
-	for(length = strlen(out); length > 0 && out[length - 1] == ' '; length--) {
-		out[length - 1] = '\0';
-	}
+	UISaves_DisplayText(out, size, (const u8*)line, strnlen(line, 33u));
 }
 
 /* What a save is called: the first line of its comment, once its art is
@@ -898,10 +1006,11 @@ static void saveHeading(char *out, size_t size, int tab, file_handle *save)
 {
 	int s = artSlot(saveTag(tab, save));
 
-	if(s >= 0) {
+	out[0] = '\0';
+	if(s >= 0 && !slots[s].failed) {
 		saveLine(out, size, slots[s].line[0]);
 	}
-	if(s < 0 || out[0] == '\0') {
+	if(out[0] == '\0') {
 		saveTitle(out, size, save);
 	}
 }
@@ -1023,6 +1132,8 @@ static void screenBuild(const int stacks[UI_SAVE_CUBES_STACKS], int focus)
 				(entry->fileType == IS_DIR || SavesRaw_IsImageName(entry->name)) ?
 				UI_SAVE_CUBES_KIND_FOLDER :
 				UI_SAVE_CUBES_KIND_SAVE;
+			if(cell->kind == UI_SAVE_CUBES_KIND_FOLDER && folderIdentity(entry))
+				cell->folderColor = config_folder_color(entry->name);
 			if(cell->kind == UI_SAVE_CUBES_KIND_SAVE && pool != NULL &&
 				(slot = artSlot(saveTag(stacks[s], entry))) >= 0 && !slots[slot].failed) {
 				cell->texels = pool + slot * SAVES_SLOT_BYTES;
@@ -1067,10 +1178,13 @@ static void screenBuild(const int stacks[UI_SAVE_CUBES_STACKS], int focus)
 		snprintf(g->hint[0], sizeof(g->hint[0]), "B  Cancel   A  Confirm");
 	}
 	else {
-		snprintf(g->hint[0], sizeof(g->hint[0]),
-			"STICK / D-PAD  Select   B  %s   A  Confirm",
-			focus >= 0 && folderBelowHome(stacks[focus]) ? "Up" : "Finish");
-		snprintf(g->hint[1], sizeof(g->hint[1]), "L  Left storage   R  Right storage");
+			bool folder = folderIdentity(chosen);
+			snprintf(g->hint[0], sizeof(g->hint[0]),
+				"STICK / D-PAD  Select   B  %s   A  %s",
+				focus >= 0 && folderBelowHome(stacks[focus]) ? "Up" : "Finish",
+				folder ? "Open" : "Confirm");
+			snprintf(g->hint[1], sizeof(g->hint[1]), "%s", folder ?
+				"Y  Folder" : "L  Left storage   R  Right storage");
 	}
 }
 
@@ -1153,6 +1267,54 @@ static void savesWait(u32 since, float seconds)
 	while((float)(VIDEO_GetRetraceCount() - since) < seconds * rate) {
 		VIDEO_WaitVSync();
 	}
+}
+
+/* Y belongs only to the small folder cubes on Memory Cards. The dialog
+ * keeps prepared text and previews separate from the published save art. */
+static void showFolderIdentity(file_handle *chosen)
+{
+	uiFolderSnapshot_t *snapshot;
+	uiDrawObj_t *page;
+	savesInput_t input;
+	if(!folderIdentity(chosen)) return;
+	snapshot = calloc(1, sizeof(*snapshot));
+	if(snapshot == NULL) return;
+	if(!UIFolder_PreparePath(snapshot, chosen->name, GetTextSizeInPixels)) {
+		free(snapshot);
+		return;
+	}
+	snapshot->color = config_folder_color(chosen->name);
+	folderContents(snapshot, chosen);
+	for(unsigned i = 0; i < 2u; ++i) {
+		char text[sizeof(snapshot->contents[0])];
+		memcpy(text, snapshot->contents[i], sizeof(text));
+		UICheats_Fit(snapshot->contents[i], sizeof(snapshot->contents[i]), text,
+			532, 0.42f, GetTextSizeInPixels);
+	}
+	page = DrawMemoryCardFolder(snapshot);
+	if(page == NULL) { free(snapshot); return; }
+	DrawPublish(page);
+	inputInit(&input);
+	while(1) {
+		u32 pressed = inputNext(&input), actions = 0u;
+		if(pressed & BUTTON_A) actions |= UI_FOLDER_INPUT_SAVE;
+		if(pressed & BUTTON_B) actions |= UI_FOLDER_INPUT_CANCEL;
+		if(pressed & BUTTON_Y) actions |= UI_FOLDER_INPUT_RESET;
+		if(pressed & BUTTON_LEFT) actions |= UI_FOLDER_INPUT_LEFT;
+		if(pressed & BUTTON_RIGHT) actions |= UI_FOLDER_INPUT_RIGHT;
+		if(pressed & BUTTON_UP) actions |= UI_FOLDER_INPUT_UP;
+		if(pressed & BUTTON_DOWN) actions |= UI_FOLDER_INPUT_DOWN;
+		uiFolderAction_t action = UIFolder_Input(snapshot, actions);
+		if(action == UI_FOLDER_ACTION_CANCEL) break;
+		if(action == UI_FOLDER_ACTION_SAVE) {
+			if(config_set_folder_color(chosen->name, snapshot->color)) break;
+			strcpy(snapshot->status, "Could not save. Check the Configuration Device or the 32-folder limit.");
+		}
+		DrawUpdateMemoryCardFolder(page, snapshot);
+	}
+	DrawDispose(page);
+	free(snapshot);
+	while(padsButtonsHeld() & SAVES_BUTTONS) VIDEO_WaitVSync();
 }
 
 /* The box beside the focused cube, the IPL's, or a question with title
@@ -2223,6 +2385,12 @@ void show_saves(void)
 
 			chooseStorage(stacks, stack);
 			focus = stackFocus(stacks, focus);
+			inputInit(&input);
+		}
+		else if((pressed & BUTTON_Y) && !(pressed & BUTTON_A) && focus >= 0) {
+			file_handle *chosen = placeAt(&places[stacks[focus]],
+				placeCell(&places[stacks[focus]]));
+			if(folderIdentity(chosen)) showFolderIdentity(chosen);
 			inputInit(&input);
 		}
 		else if((pressed & BUTTON_A) && focus >= 0) {
