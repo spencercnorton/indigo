@@ -89,15 +89,17 @@ files listed above. The empty `ui` folder must not replace your poster pack.
 
 `apploader.img` changes the **Apploader** In-Game Reset destination to
 Indigo, including for games started in stock Swiss. Keep its old copy in
-your backup if you want to restore that destination later. With two cards,
-put the patch on the device used for game patches; check **Settings › Setup
-› Storage › Configuration Device** for the device holding your settings.
+your backup if you want to restore that destination later. If your setup
+already uses a second SD adapter for game patches, copy
+`swiss/patches/apploader.img` onto that card too. Keep your settings on their
+existing **Configuration Device** (Settings › Setup › Storage).
 
 ### PicoBoot or PicoLoader using gekkoboot
 
 Use this route when the installed firmware already reads `/ipl.dol` from
 an SD adapter. PicoLoader kits can instead start Swiss from flash; those
-can use the next route without a firmware change.
+can use [Launch from Swiss](#launch-from-swiss-gc-loader-and-other-setups)
+without a firmware change.
 
 1. Identify the existing `/ipl.dol` before replacing it. It may be Swiss,
    an older Indigo, or cubeboot. If it is cubeboot or you are unsure, use
