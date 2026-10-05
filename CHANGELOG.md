@@ -4,6 +4,14 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## v2.3.1 — Clearer installation instructions
+
+- The install guide starts with your boot method and card, then shows the exact
+  download-to-card destination and a complete card layout. PicoBoot/PicoLoader,
+  FlippyDrive and launching from Swiss have separate instructions.
+- The README, release notes and ZIP instructions explain extraction, folder
+  merging, preserving existing boot files, first launch, upgrades and recovery.
+
 ## v2.3.0 — Memory Cards, game folders and smoother motion
 
 ### New

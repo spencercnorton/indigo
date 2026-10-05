@@ -1,3 +1,15 @@
+## 2026-10-05 — Prepare an installation-documentation correction
+
+The installation walkthrough now identifies the boot method separately from
+SD adapters and names each source file and destination. It preserves existing
+boot programs and shortcuts, explains extraction and folder merging, and covers
+first launch, upgrades and recovery. The release and download instructions use
+the same three launch routes.
+
+This stable correction changes documentation and package text only. The entire
+console source tree matches v2.3.0. Publication remains subject to the normal
+stable-release decision and protected checks.
+
 # Indigo development journal
 
 ## 2026-10-04 — Prepare the validated candidate for v2.3.0
