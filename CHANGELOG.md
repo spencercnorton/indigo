@@ -27,10 +27,20 @@ tag on `beta`. The newest changes are at the top until their release is named.
   creation-date field. It distinguishes animated, static and missing icons,
   previews that could not be loaded, and animations paused by UI Motion Off.
   The GameCube save format does not record a separate creation date.
-- Installation starts with the boot method and card you use. The README,
-  walkthrough, release notes and ZIP instructions give exact file destinations,
-  card layouts, first-launch checks, updates and recovery steps, with clear
-  folder-merge instructions and preservation of existing boot files.
+- The install guide asks what starts your GameCube, then gives four steps for
+  that setup: download, back up, copy two files, start Indigo. Each setup,
+  GC Loader included, shows a picture of the card afterwards. PicoBoot,
+  PicoLoader and FlippyDrive can start Indigo at power-on or from Swiss.
+- Installing copies two files, `ipl.dol` and `swiss/patches/apploader.img`,
+  instead of merging the whole `swiss` folder. When the card already has an
+  `apploader.img`, a Mac offers only Replace for the folder, and Replace
+  deletes the settings and saves inside it.
+- PicoBoot and PicoLoader owners can check whether their chip starts the
+  card's `ipl.dol` or has Swiss built in. The README, release notes and the
+  ZIP's readme give the same steps.
+- The guides say how to show Swiss's hidden `swiss` folder on a computer, and
+  the poster and cheat packs are copied file by file into `swiss/ui` and
+  `swiss/cheats`, never as a whole `swiss` folder.
 
 ## v2.3.0 — Memory Cards, game folders and smoother motion
 

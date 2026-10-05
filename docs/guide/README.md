@@ -12,8 +12,8 @@
 
 ## Start here
 
-Your first session: **[install for your boot setup](install.md#1-find-the-right-card-and-boot-method)**
-→ **[confirm the first launch](install.md#4-confirm-the-first-launch)**
+Your first session: **[install for your setup](install.md)**
+→ **[after the first start](install.md#after-the-first-start)**
 → **[choose your source](source.md#change-the-source)**
 → **[find your games](library.md#set-up-the-games-folder)**.
 Add posters and cheats after that first successful launch.
