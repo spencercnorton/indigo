@@ -6,6 +6,12 @@
 </p>
 
 <p align="center">
+  <strong><a href="https://norvitech.com/indigo/guide/install/">Install Guide →</a></strong><br>
+  Choose your loader, how to launch Indigo and your SD card.<br>
+  The interactive layout shows the files to copy and where they go.
+</p>
+
+<p align="center">
   <a href="https://norvitech.com"><img alt="NorviTech Suite" src="https://img.shields.io/badge/NorviTech-Suite-FD8024.svg"></a>
   <a href="https://github.com/spencercnorton/indigo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/spencercnorton/indigo/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/spencercnorton/indigo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/spencercnorton/indigo?label=release"></a>
@@ -20,7 +26,7 @@
 
 Captured in the Dolphin emulator. The library and game detail pictures show a real poster pack and cheat file in use; box art belongs to its publishers.
 
-**New to Indigo?** Start with the [interactive installer](https://norvitech.com/indigo/guide/install/),
+**New to Indigo?** Start with the [Install Guide](https://norvitech.com/indigo/guide/install/),
 then explore every screen and setting in the [Indigo guide](docs/guide/README.md).
 Watch it in motion: [the video tour](https://norvitech.com/indigo/#videos) on norvitech.com.
 
@@ -187,12 +193,15 @@ Storage › Save Folder sets the folder the SD card's stack opens on
   <img alt="Memory Cards with Demo Card.raw open on the left and an independent SD folder on the right. Copper Archive’s save cube is selected; its banner and two-block size appear below." src="docs/guide/images/memory-cards.png" width="640">
 </p>
 
-## Install
+<a id="install"></a>
+<a id="installation"></a>
 
-**[Open the interactive installer →](https://norvitech.com/indigo/guide/install/)**
+## Install Guide
 
-Choose your loader and SD adapter. Click a file or folder in the card diagram
-for its location and any limits.
+**[Install Guide →](https://norvitech.com/indigo/guide/install/)**
+
+Choose your loader, launch method and SD card. Select a file or folder in the
+interactive layout for its location and limits.
 
 [GC Loader](https://norvitech.com/indigo/guide/install/?loader=gcloader) ·
 [PicoBoot / PicoLoader](https://norvitech.com/indigo/guide/install/?loader=picoboot) ·

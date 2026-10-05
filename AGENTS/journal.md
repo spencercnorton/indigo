@@ -1,3 +1,15 @@
+## 2026-10-05 — Make the Install Guide visible at the top of the README
+
+A bold Install Guide link now appears before the README badges and screenshots.
+Its short introduction identifies the loader, launch method and SD card as the
+choices in the interactive guide. The new-reader link and installation heading
+use the same label; old install and installation fragments remain available.
+The existing three-step instructions and detailed guide remain the references.
+
+Only README, changelog and this journal entry change. The console source tree
+still matches v2.3.0. This prepares the documentation for review; stable
+publication remains subject to its normal decision and protected checks.
+
 ## 2026-10-05 — Start installation with the loader chooser
 
 The README now gives three installation steps and sends readers to the online

@@ -14,6 +14,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - The README opens with three steps and an online loader chooser. Its clickable
   card diagram supplies file locations and limits; the full guide remains
   available as a reference.
+- A prominent **Install Guide** link appears above the README screenshots,
+  leading directly to the interactive loader, launch-method and SD-card setup.
 
 ## v2.3.0 — Memory Cards, game folders and smoother motion
 
