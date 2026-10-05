@@ -1,3 +1,25 @@
+## 2026-10-05 — Verify Memory Cards identity and save captions in native builds
+
+Integrated the corrected Memory Cards folder controls, removed their Library
+placement, and refreshed the guide with actual synthetic-data captures.
+Native default and widescreen routes pass 170 and 169 checks, including the
+visible Y hint, full path and contained save captions, cube colors, save,
+cancel, reset and a second process that restores the saved color. Authored
+animated icon textures change on screen; static and absent artwork retain
+their separate meanings. RAW images, source saves and exported payloads are
+unchanged after the route. No retries or fatal log lines occur.
+
+All four Library layouts pass 299 checks and 11,432 presented frames with
+no legacy-browser frames. Y on a Library folder keeps normal navigation;
+there is no folder path/color dialog. The native product source is unchanged
+by the subsequent host-harness and documentation corrections. The frame
+budget retains its existing twenty-scene ceilings.
+
+The format supplies a last-update date, not a separate creation date. Saves
+without declared captions receive bounded, validated identity fallbacks;
+missing icon data is not replaced by invented game animation. Protected CI
+on the final head and release-candidate packaging remain separate gates.
+
 ## 2026-10-05 — Put folder identity on Memory Cards mini cubes
 
 Memory Cards now offers Y Folder only for its SD folders and RAW image
