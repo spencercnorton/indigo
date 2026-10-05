@@ -1,3 +1,21 @@
+## 2026-10-05 — Integrate save explanations, folder controls and installation guides
+
+Save details shows the recorded last-update date and the save icon's status.
+Animated, static and absent icons are distinguished, with clear messages for
+paused or unavailable previews. No creation date is invented: the save format
+has no separate field. Original animation decoding remains unchanged.
+
+Y on a Library folder opens its full path and color controls. A saves, B
+cancels and Y resets the color. Path identity includes its device prefix;
+settings writes preserve other preferences and restore prior colors on failure.
+The native folder route covers save, reopen, cancel and reset in all layouts.
+
+The README, walkthrough and package/release instructions now give exact loader
+filenames and card destinations, preservation, folder merging, first launch,
+updates and recovery. Focused host and sanitizer regressions pass. Fresh native
+save-details captures match the revised panel in both screen shapes; full
+integrated protected checks and console acceptance remain required.
+
 # Indigo development journal
 
 ## 2026-10-05 — Give Library folders a path and persistent color

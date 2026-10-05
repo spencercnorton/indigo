@@ -125,8 +125,8 @@ SAVE_DETAILS_BLOCKS_BOX = (122, 178, 302, 212)
 SAVE_DETAILS_SOURCE_BOX = (246, 244, 540, 270)
 LIBRARY_SAVES_SUMMARY_BOX = (266, 204, 538, 224)
 LIBRARY_SAVES_UPDATED_BOX = (308, 224, 586, 241)
-SAVE_DETAILS_CREATED_BOX = (246, 274, 540, 300)
-SAVE_DETAILS_UPDATED_BOX = (246, 304, 540, 330)
+SAVE_DETAILS_ICON_BOX = (246, 304, 540, 330)
+SAVE_DETAILS_UPDATED_BOX = (246, 274, 540, 300)
 SAVE_DETAILS_ACTIONS_BOX = (104, 360, 536, 387)
 RAW_ICON_BOX = (68, 100, 120, 161)  # selected cell 0; excludes banner/info bar
 FOLDER_PAGE_TITLE_BOX = (48, 78, 300, 105)
@@ -1890,7 +1890,7 @@ class Route:
         self.check("A opens the save details panel", self.open_save_details())
         boxes = {"title": SAVE_DETAILS_TITLE_BOX, "blocks": SAVE_DETAILS_BLOCKS_BOX,
                  "size": SAVE_DETAILS_SIZE_BOX, "source": SAVE_DETAILS_SOURCE_BOX,
-                 "created": SAVE_DETAILS_CREATED_BOX, "updated": SAVE_DETAILS_UPDATED_BOX,
+                 "icon": SAVE_DETAILS_ICON_BOX, "updated": SAVE_DETAILS_UPDATED_BOX,
                  "actions": SAVE_DETAILS_ACTIONS_BOX}
         fields = {}
         for field, box in boxes.items():
@@ -1980,8 +1980,8 @@ class Route:
         unknown = self.save_details("virtual-cards-details-unknown")
         self.check("known and unknown save dates have different text",
                    not same_text(known["updated"], unknown["updated"]))
-        self.check("both saves report creation date as not recorded",
-                   same_text(known["created"], unknown["created"]))
+        self.check("animated and missing save icons have different status text",
+                   not same_text(known["icon"], unknown["icon"]))
         self.check("two-block and one-block save sizes have different text",
                    not same_text(known["blocks"], unknown["blocks"]))
         self.press("B")
