@@ -335,7 +335,6 @@ static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 			memset(record->banner, 0, 16);
 			memset(record->gameId, 0, sizeof(record->gameId));
 			record->subfolder = 1u;
-			record->folderColor = 2u;
 			snprintf(record->title, sizeof(record->title), "Folder of games %u", slots[i].index);
 			snprintf(record->company, sizeof(record->company), "FOLDER");
 			snprintf(record->facts, sizeof(record->facts), "A  OPEN");
@@ -710,15 +709,16 @@ class GameflowGxStream(unittest.TestCase):
         self.assertLess(rest["G039E0"][0][2], 240)
         self.assertGreater(rest["G039E0"][0][3] - rest["G039E0"][0][1], 200)
 
-    def test_folder_identity_color_and_controls_in_every_layout(self):
+    def test_game_folders_offer_navigation_without_identity_controls(self):
         for layout in range(4):
             with self.subTest(layout=layout):
                 result = subprocess.run([str(self.binary)], input=f"O {layout} 12 2\nN 40 0.0167\n",
                                         capture_output=True, encoding="latin-1", timeout=120)
                 self.assertEqual(result.returncode, 0, result.stderr[-2000:])
                 frame = frames(result.stdout)[-1]
-                self.assertIn("C 68 170 230 255", frame)
-                self.assertIn("Y  FOLDER", frame)
+                self.assertNotIn("C 68 170 230 255", frame)
+                self.assertNotIn("Y  FOLDER", frame)
+                self.assertIn("A  OPEN", frame)
                 self.assertNotIn("Y  SETTINGS", frame)
 
     def test_grid_rows_and_highlight(self):

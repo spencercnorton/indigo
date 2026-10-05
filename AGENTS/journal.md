@@ -1,3 +1,15 @@
+## 2026-10-05 — Remove folder identity controls from the game Library
+
+Folder paths and identity colors belong to the folders shown as mini cubes
+in Memory Cards. Removed the Library's Y Folder page, controller route and
+color frames. Library folder navigation and artwork remain intact; games
+retain Y Settings. The Library guide now describes navigation only.
+
+The four-layout GX regression confirms that selected game folders offer A
+Open without Y Folder or the explicit folder color frame. Memory Cards
+folder identity controls and save caption validation are separate changes
+to be integrated before the next release candidate.
+
 ## 2026-10-05 — Cover the Library controls beneath the folder page
 
 A native capture exposed the bottoms of the Library button glyphs below

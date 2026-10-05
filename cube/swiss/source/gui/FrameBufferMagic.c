@@ -2886,34 +2886,6 @@ static void _GameflowPutBorder(const gameflowQuad_t *outer,
 
 /* Folder colors are identities, independent of Menu Color. Bypass the
  * menu hue transform only for these explicit borders and their swatch. */
-static void _GameflowPutFolderVertex(gameflowPoint_t point, GXColor color)
-{
-	GX_Position3f32(point.x, point.y, 0.0f);
-	GX_Color4u8(color.r, color.g, color.b, color.a);
-	GX_TexCoord2f32(0.0f, 0.0f);
-}
-
-static void _GameflowDrawFolderColor(const gameflowRenderCard_t *card,
-	float reveal)
-{
-	gameflowQuad_t inner;
-	GXColor color = {0, 0, 0, _GameflowAlpha(255.0f * card->presence * reveal)};
-	if(!card->record->subfolder || card->record->folderColor == 0u) return;
-	UIFolder_ColorRGB(card->record->folderColor, &color.r, &color.g, &color.b);
-	inner = _GameflowInsetPixels(&card->quad, card->tile ? 3.0f : 4.0f);
-	drawInit();
-	_SetupRasterColor();
-	GX_Begin(GX_QUADS, GX_VTXFMT0, 16);
-	for(int i = 0; i < 4; ++i) {
-		int next = (i + 1) % 4;
-		_GameflowPutFolderVertex(card->quad.point[i], color);
-		_GameflowPutFolderVertex(card->quad.point[next], color);
-		_GameflowPutFolderVertex(inner.point[next], color);
-		_GameflowPutFolderVertex(inner.point[i], color);
-	}
-	GX_End();
-}
-
 static GXColor _GameflowAccent(const uiGameflowCardSnapshot_t *record,
 	u8 alpha)
 {
@@ -3360,7 +3332,6 @@ static void _GameflowDrawSpotlightCover(drawGameflowEvent_t *data,
 	else {
 		_GameflowDrawFallback(&cover, artwork, bannerTexture, 1.0f);
 	}
-	_GameflowDrawFolderColor(&cover, 1.0f);
 	if(record->flags & UI_GAMEFLOW_CARD_CUSTOM) {
 		_GameflowDrawCustomMark(&cover, 1.0f);
 	}
@@ -4491,7 +4462,6 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		_GameflowDrawFallback(&cards[i], artwork, bannerTexture, reveal);
 	}
 	for(i = 0u; i < count; ++i) {
-		_GameflowDrawFolderColor(&cards[i], reveal);
 	}
 	/* Every card that shows its art carries the mark, sized to the card.
 	 * Spotlight's banners are too small for one: its panel carries the
@@ -4569,8 +4539,8 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 				"D-PAD  BROWSE   A  START   B  HOME" :
 				selectedRecord != NULL && selectedRecord->subfolder ?
 				(data->snapshot.folder[0] ?
-				"D-PAD  BROWSE   A  OPEN   Y  FOLDER   B  BACK" :
-				"D-PAD  BROWSE   A  OPEN   Y  FOLDER   X  BACK   B  HOME") :
+				"D-PAD  BROWSE   A  OPEN   B  BACK" :
+				"D-PAD  BROWSE   A  OPEN   X  BACK   B  HOME") :
 				data->snapshot.folder[0] ?
 				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   B  BACK" :
 				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   X  BACK   B  HOME",

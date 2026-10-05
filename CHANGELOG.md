@@ -6,11 +6,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ## Unreleased
 
-### New
+### Removed
 
-- Press **Y Folder** on a Library folder to see its complete path and choose
-  a color. The color marks its card in every layout and is remembered by path.
-  Reset restores the default; B cancels changes.
+- Removed the Library folder path and color page. Game folders retain their
+  existing navigation and artwork without folder identity colors.
 
 ### Improved
 

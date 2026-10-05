@@ -87,7 +87,6 @@ typedef struct {
 	u8 column;	/* grid only */
 	/* Library Folders: a folder of games, which A opens, not a game. */
 	u8 subfolder;
-	u8 folderColor; /* 0 follows the native card; 1..8 explicit identity color */
 	u8 reserved[7];
 } uiGameflowCardSnapshot_t;
 

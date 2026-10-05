@@ -1250,7 +1250,6 @@ static void gameflowSnapshotRecord(uiGameflowCardSnapshot_t *record,
 	if(mode == UI_GAMEFLOW_LIBRARY_NONE && file->fileType == IS_DIR) {
 		/* Library Folders: a folder of games, which A opens. */
 		record->subfolder = 1u;
-		record->folderColor = config_folder_color(file->name);
 		gameflowCopyText(record->title, sizeof(record->title), relativeName,
 			PATHNAME_MAX);
 		gameflowCopyText(record->company, sizeof(record->company),
@@ -2141,52 +2140,6 @@ static void folderArtClose(void)
 	folderArtOpen = false;
 }
 
-/* Y on a Library folder: a prepared, retained page. Every path byte is
- * reachable with Up/Down, including a long device prefix or leaf name. */
-static void gameflowShowFolder(file_handle *folder)
-{
-	uiFolderSnapshot_t *snapshot = calloc(1, sizeof(*snapshot));
-	uiDrawObj_t *page;
-	const u32 buttons = BUTTON_A | BUTTON_B | BUTTON_Y | BUTTON_LEFT |
-		BUTTON_RIGHT | BUTTON_UP | BUTTON_DOWN;
-	if(snapshot == NULL) return;
-	if(!UIFolder_PreparePath(snapshot, folder->name, GetTextSizeInPixels)) {
-		free(snapshot);
-		return;
-	}
-	snapshot->color = config_folder_color(folder->name);
-	page = DrawLibraryFolder(snapshot);
-	if(page == NULL) { free(snapshot); return; }
-	DrawPublish(page);
-	while(padsButtonsHeld() & SELECTOR_RELEASE_BUTTONS) VIDEO_WaitVSync();
-	while(1) {
-		u32 pressed;
-		do { VIDEO_WaitVSync(); pressed = padsButtonsHeld() & buttons; } while(!pressed);
-		if(pressed & BUTTON_B) break;
-		if(pressed & BUTTON_A) {
-			if(config_set_folder_color(folder->name, snapshot->color)) break;
-			strcpy(snapshot->status, "Could not save. Check the Configuration Device or the 32-folder limit.");
-		}
-		else if(pressed & BUTTON_Y) snapshot->color = 0u;
-		else if(pressed & BUTTON_LEFT) snapshot->color =
-			(uint8_t)((snapshot->color + UI_FOLDER_COLOR_COUNT - 1u) % UI_FOLDER_COLOR_COUNT);
-		else if(pressed & BUTTON_RIGHT) snapshot->color =
-			(uint8_t)((snapshot->color + 1u) % UI_FOLDER_COLOR_COUNT);
-		else if(pressed & BUTTON_UP) {
-			if(snapshot->firstLine > 0u) --snapshot->firstLine;
-		}
-		else if(pressed & BUTTON_DOWN) {
-			if(snapshot->firstLine + UI_FOLDER_VISIBLE_LINES < snapshot->lineCount)
-				++snapshot->firstLine;
-		}
-		DrawUpdateLibraryFolder(page, snapshot);
-		while(padsButtonsHeld() & buttons) VIDEO_WaitVSync();
-	}
-	DrawDispose(page);
-	free(snapshot);
-	while(padsButtonsHeld() & SELECTOR_RELEASE_BUTTONS) VIDEO_WaitVSync();
-}
-
 // Carousel (one main file in the middle, entries to either side)
 uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
 {
@@ -2285,11 +2238,6 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				CardArt_Poll();
 			}
 		}
-		bool openFolder = useGameflow && !(browserButtons & BUTTON_A) &&
-			(browserButtons & PAD_BUTTON_Y) && directory[curSelection]->fileType == IS_DIR &&
-			gameflowEntryMode(gameflowMode, directory[curSelection]) == UI_GAMEFLOW_LIBRARY_NONE;
-		bool retainedActivation = useGameflow &&
-			(browserButtons & (BUTTON_A | PAD_BUTTON_Y));
 		/* Y on a game opens its settings through its Detail: never on the
 		 * parent card, and A wins a press of both. */
 		bool openSettings = useGameflow && !(browserButtons & BUTTON_A) &&
@@ -2297,6 +2245,8 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			UIGameflowLibrary_UsesRetainedDetail(
 				gameflowEntryMode(gameflowMode, directory[curSelection]),
 				gameflowEntryType(directory[curSelection]));
+		bool retainedActivation = useGameflow &&
+			((browserButtons & BUTTON_A) || openSettings);
 		/* A and Y own a retained-library input frame. Moving curSelection
 		 * first would pair the new directory entry with the previous
 		 * immutable snapshot and bypass the strict folder resolver/dashboard. */
@@ -2367,15 +2317,6 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			DrawUpdateProgressLoading(loadingBox, -1);
 		}
 		
-		if(openFolder) {
-			CardArt_Pause();
-			meta_thread_stop();
-			gameflowShowFolder(directory[curSelection]);
-			meta_thread_start(loadingBox);
-			UIMenuInput_Init(&menuInput);
-			menuInputRetrace = VIDEO_GetRetraceCount();
-			continue;
-		}
 		if((browserButtons & BUTTON_A) || openSettings) {
 			/* What follows may start a game or read the listing again:
 			 * no folder's poster is made meanwhile. */
