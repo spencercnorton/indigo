@@ -117,6 +117,7 @@ DETAIL_TITLE_BOX = (264, 106, 600, 134)
 # same_text, not overlap.
 INFO_BOX = (164, 377, 590, 396)
 LEFT_HEADER_BOX, RIGHT_HEADER_BOX = (66, 56, 222, 92), (354, 56, 510, 92)
+MEMORY_LEFT_PATH_BOX = (128, 66, 280, 92)
 FOOTER_BOX = (30, 442, 610, 464)
 SAVE_DETAILS_EYEBROW_BOX = (100, 108, 274, 132)
 SAVE_DETAILS_TITLE_BOX = (100, 132, 540, 168)
@@ -1991,10 +1992,14 @@ class Route:
 
     def memory_folder_saves(self, selected: np.ndarray) -> None:
         """Readable metadata and truthful static/missing icons inside the SD folder."""
-        header = text_mask(self.gray(), LEFT_HEADER_BOX)
+        # The large SD glyph stays unchanged. Read only the actual folder path;
+        # including that glyph can hide a shorter path change in widescreen.
+        header = text_mask(self.gray(), MEMORY_LEFT_PATH_BOX)
         footer = text_mask(self.gray(), FOLDER_HINT_BOX)
         self.press("A")
-        self.check("A opens the selected memory-card save folder", self.differs(header, LEFT_HEADER_BOX))
+        self.check("A opens the selected memory-card save folder",
+                   self.text_until(MEMORY_LEFT_PATH_BOX, lambda mask: has_label(mask)
+                                   and not same_text(mask, header)) is not None)
         self.pause(ART_SECONDS)
         first = self.settled_label(box=INFO_BOX)[0]
         self.check("the opaque save filename is replaced by readable comment metadata", first is not None)

@@ -1013,6 +1013,23 @@ class Screen(unittest.TestCase):
                 # texture cannot be mistaken for that second frame.
                 self.assertEqual(run.raw_icon_frame(np.roll(picture, 2, axis=1), wide), frame)
 
+    def test_native_wide_folder_path_change_is_not_hidden_by_the_sd_glyph(self):
+        from PIL import Image
+        root = Path(__file__).parent / "fixtures"
+        before, opened = [np.asarray(Image.open(root / ("memory-folder-path-" + name + ".png"))
+                                     .convert("RGB")).max(axis=2) >= run.TEXT_LEVEL
+                          for name in ("root", "open")]
+        self.assertTrue(run.has_label(before))
+        self.assertTrue(run.has_label(opened))
+        self.assertFalse(run.same_text(before, opened))
+        self.assertTrue(run.same_text(before, before.copy()))
+        self.assertFalse(run.has_label(np.zeros_like(opened)), "an empty transition is not the new path")
+        # The actual unchanged SD marker reproduces the whole-header rejection.
+        old_before, old_opened = [np.asarray(Image.open(root / ("memory-folder-header-" + name + ".png"))
+                                             .convert("RGB")).max(axis=2) >= run.TEXT_LEVEL
+                                  for name in ("root", "open")]
+        self.assertTrue(run.same_text(old_before, old_opened))
+
     def test_folder_color_proof_is_scoped_to_the_mini_cube_in_both_shapes(self):
         for wide in (False, True):
             rgb = np.zeros((run.HEIGHT, run.WIDTH, 3), np.uint8)
