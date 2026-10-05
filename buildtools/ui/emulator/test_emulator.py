@@ -753,8 +753,7 @@ class Screen(unittest.TestCase):
         for name, wide in (("default-save-details-known.png", False),
                            ("default-save-details-unknown.png", False),
                            ("wide-save-details-known.png", True),
-                           ("wide-save-details-unknown.png", True),
-                           ("themed-save-details.png", False)):
+                           ("wide-save-details-unknown.png", True)):
             rgb = np.asarray(Image.open(root / name).convert("RGB"))
             original = rgb.copy()
             gray = run.detection_frame(rgb, wide).max(axis=2)
@@ -827,8 +826,7 @@ class Screen(unittest.TestCase):
         for name, wide in (("default-save-details-known.png", False),
                            ("default-save-details-unknown.png", False),
                            ("wide-save-details-known.png", True),
-                           ("wide-save-details-unknown.png", True),
-                           ("themed-save-details.png", False)):
+                           ("wide-save-details-unknown.png", True)):
             gray = run.detection_frame(np.asarray(Image.open(root/name).convert("RGB")), wide).max(axis=2)
             self.assertTrue(run.save_details_panel(gray), name)
             marker = run.text_mask(gray, run.SAVE_DETAILS_EYEBROW_BOX)

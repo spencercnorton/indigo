@@ -1,3 +1,11 @@
+## 2026-10-05 — Keep metadata evidence tied to current captures
+
+The value-row regression uses the four refreshed save-details pictures.
+The older themed picture remains useful for general panel detection only.
+Clarification of the folder entry below: a readable settings recovery copy
+is accepted; unreadable settings or recovery metadata cannot be mistaken
+for an absent file when saving folder colors.
+
 ## 2026-10-05 — Integrate save explanations, folder controls and installation guides
 
 Save details shows the recorded last-update date and the save icon's status.
