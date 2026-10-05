@@ -34,15 +34,23 @@ cat <<NOTES
 
 ## Install
 
-**New to Indigo:**
+Download **\`Indigo-$tag.zip\`** from Assets below, rather than GitHub's Source code ZIP. Back up your working card and **extract the ZIP on your computer**. The **card root** is the first level you see when you open it; copy files from inside the extracted folder, rather than the ZIP or its enclosing Indigo folder.
 
-1. First, before you copy anything: if the card already has an \`ipl.dol\` in its root, that is your current Swiss. Rename it to \`z.dol\` to keep it; with PicoBoot or PicoLoader, holding Z at power-on starts it.
-2. Unzip \`Indigo-$tag.zip\` (below), select everything inside and drag it onto the root of the card. Let it replace files of the same name. On a Mac, hold Option as you drop and choose **Merge**: **Replace** deletes what is already in the card's \`swiss\` folder (your settings, cheats and saves).
-3. Put your games in \`/games\` (make the folder if the card has none), with nothing else in it or in the game folders, and power on.
+| Your current setup | Download → card destination | Launch |
+| --- | --- | --- |
+| PicoBoot / PicoLoader using gekkoboot | \`ipl.dol\` → \`/ipl.dol\` on its SD adapter | Power on normally |
+| FlippyDrive | \`ipl.dol\` → \`/boot.dol\` on FlippyDrive's microSD | Normal boot mode |
+| GC Loader, Swiss in flash, cubeboot, or unsure | \`ipl.dol\` → \`/apps/indigo.dol\` | Start Swiss, browse to Apps, launch \`indigo.dol\` |
 
-**Updating from Indigo 1.x:** \`ipl.dol\` is already Indigo, so don't rename it; copy the new files over the old ones, choosing Merge on a Mac. If 1.25.0 made you rename stock Swiss to \`swiss.dol\`, you can rename it back to \`z.dol\`: since 2.0, Indigo doesn't start it by itself ([#3](https://github.com/spencercnorton/indigo/issues/3)).
+Identify and back up your existing boot program before replacing it: an \`ipl.dol\` is not always Swiss. With gekkoboot, preserve stock Swiss as \`z.dol\` only if that shortcut is unused; keep existing shortcuts. The Launch from Swiss route keeps your original boot files and needs no firmware change. The Indigo ZIP contains no \`boot.iso\`; keep GC Loader's current boot image.
 
-PicoBoot and PicoLoader boot \`ipl.dol\`. FlippyDrive boots \`boot.dol\`, and with GC Loader or another loader that boots a disc image you start \`ipl.dol\` from Swiss: the [install guide]($repo/blob/$tag/docs/guide/install.md) covers every loader, updating and going back to stock Swiss.
+**Merge the download's \`swiss\` files into your existing folder.** On a Mac, hold Option while dragging and choose **Merge**, never Replace for the whole folder. If Merge is unavailable, copy the individual files into the matching subfolders. Keep settings, posters, cheats, saves and games. The new \`swiss/patches/apploader.img\` makes Apploader In-Game Reset return to Indigo, including for games started in stock Swiss.
+
+Safely eject, launch by your route, and check **System › System Information › About Indigo**. Choose the source holding your games; the Library looks for \`/games\` there by default. SD2SP2 and SD Gecko are adapters, not boot methods, and your boot card and game-storage card may differ.
+
+**Updating Indigo 1.x or 2.x:** replace the executable you actually launch (\`/ipl.dol\`, \`/boot.dol\` or \`/apps/indigo.dol\`), renaming the new copy as needed, and merge the shared files again. Keep your recovery copy.
+
+The [step-by-step install guide](https://norvitech.com/indigo/guide/install/) has exact card trees, first-launch checks, upgrades and recovery; the [guide included with this release]($repo/blob/$tag/docs/guide/install.md) is also available on GitHub.
 
 **Posters and cheats** (optional; unzip one and drag its \`swiss\` folder onto the card the same way): [Posters](https://indigo.norvitech.com/indigo-posters-all.zip) (every region, with Spotlight's stills and descriptions) · [Cheats](https://indigo.norvitech.com/indigo-cheats.zip)
 
