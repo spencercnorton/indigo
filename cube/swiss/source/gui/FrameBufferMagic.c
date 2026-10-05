@@ -4568,7 +4568,9 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			_DrawHintText(320, 428, apps ?
 				"D-PAD  BROWSE   A  START   B  HOME" :
 				selectedRecord != NULL && selectedRecord->subfolder ?
+				(data->snapshot.folder[0] ?
 				"D-PAD  BROWSE   A  OPEN   Y  FOLDER   B  BACK" :
+				"D-PAD  BROWSE   A  OPEN   Y  FOLDER   X  BACK   B  HOME") :
 				data->snapshot.folder[0] ?
 				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   B  BACK" :
 				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   X  BACK   B  HOME",
