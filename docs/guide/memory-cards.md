@@ -68,6 +68,26 @@ back up, as far as the folder it opened on.
   <img alt="Both columns open on SD when no physical cards are inserted. L Choose storage and R Choose storage are visible above them; Demo Card.raw appears as a folder cube in the Save Folder." src="images/memory-cards-sd.png" width="640">
 </p>
 
+### Identify and color a folder
+
+Highlight a small **folder cube** or **card-image cube** and press **Y Folder**.
+The page shows its complete path, including the source device prefix. A folder
+also shows the number of direct save files, card images and subfolders, with
+up to two readable save names. A card image shows its save count and names;
+an unreadable image explains why its contents are unavailable. Long paths
+wrap onto several lines; **Up** and **Down** scroll through every part.
+
+**Left** and **Right** preview a color. **A Save** keeps it, **B Cancel** leaves
+the saved choice unchanged, and **Y Reset** chooses Default; press A to keep
+the reset. The color marks that small cube's rim and folder symbol in either
+column. It is remembered by the full path on that device, so folders with
+the same name elsewhere have independent colors. Up to 32 folders or images
+can have a saved color; resetting one frees its place.
+
+Colors are saved with Indigo's settings on the Configuration Device. If that
+save fails, the page stays open with an explanation and the previous saved
+color remains in place. Card images keep their read-only status throughout.
+
 ### Virtual memory cards
 
 Swiss's **Emulate Memory Card** keeps saves in `.raw` images such as

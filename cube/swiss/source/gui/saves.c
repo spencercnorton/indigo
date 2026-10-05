@@ -188,7 +188,7 @@ static bool readSaveAt(file_handle *save, u32 offset, void *data, u32 length)
 }
 
 /* One-time folder previews read only the checked directory entry and, when
- * present, its first comment line. No icon pixels or save payload are loaded. */
+ * present, its first comment line. No icon pixels or full save payload are loaded. */
 static void folderSaveTitle(file_handle *source, const uiSavesRawCard_t *raw,
 	unsigned ordinal, char *out, size_t capacity)
 {

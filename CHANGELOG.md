@@ -6,6 +6,13 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ## Unreleased
 
+### New
+
+- Press **Y Folder** on Memory Cards' small folder or card-image cubes to
+  see the full device-prefixed path, direct contents and up to two save names.
+  Choose a persistent color for that cube's rim and folder symbol, or restore
+  Default. A saves; B cancels. Card images remain read-only.
+
 ### Removed
 
 - Removed the Library folder path and color page. Game folders retain their
@@ -13,6 +20,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Improved
 
+- Save captions use readable comment text and verified game identities when
+  games omit display metadata, including Need for Speed: Underground 2.
+  Static and missing icons remain distinct from stored animations.
 - Save details shows **Last updated** and **Save icon** instead of the empty
   creation-date field. It distinguishes animated, static and missing icons,
   previews that could not be loaded, and animations paused by UI Motion Off.
