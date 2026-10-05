@@ -16,7 +16,7 @@ absent file is created with only this key. The settings fuzzer exercises the
 same parser. The guide and settings reference describe controls and limits.
 
 Validation: strict C and ASan/UBSan codec/path tests, production save fault
-regressions, real folder navigation, 31 settings parser/writer tests and all
+regressions, real folder navigation, 32 settings parser/writer tests and all
 23 GX renderer tests pass. The target DOL compiles and links. The folders
 Dolphin route now records save, revisit, cancel and reset for all layouts;
 its native captures remain to be recorded by CI on the integrated build.

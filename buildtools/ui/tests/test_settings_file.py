@@ -479,6 +479,18 @@ class SettingsFileTest(unittest.TestCase):
         self.assertEqual(set(GAME_KEYS) - READ_KEYS - WRITE_ONLY, set())
         self.assertEqual(READ_KEYS - set(GLOBAL_KEYS) - set(GAME_KEYS) - OLD_NAMES, set())
 
+    def test_folder_colors_survive_the_real_global_parser_and_writer(self):
+        encoded = "sda:/games/Spaces%20#%3B%7E%25%3D%0A%09%0D~3"
+        second = "sdb:/games/Spaces%20#%3B%7E%25%3D%0A%09%0D~2"
+        written = self.global_file(f"Library Folder Colors={encoded};{second}\nMenu Color=Gold\n")
+        self.assertEqual(written["Library Folder Colors"], f"{encoded};{second}")
+        self.assertEqual(written["Menu Color"], "Gold")
+        again = self.global_file("\n".join(f"{key}={value}" for key, value in written.items()))
+        self.assertEqual(written, again)
+        self.assertEqual(self.global_file("Library Folder Colors=bad%00path~1;wrong~9;good~8\n")
+                         ["Library Folder Colors"], "good~8")
+        self.assertEqual(self.global_file("Library Folder Colors=\n")["Library Folder Colors"], "")
+
     def test_defaults_survive_a_round_trip(self):
         first = self.run_harness("global")
         self.assertEqual(first, self.run_harness("global", stdin=first))
