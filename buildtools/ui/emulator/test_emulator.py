@@ -227,6 +227,8 @@ class Card(unittest.TestCase):
             raw, _ = run.make_test_saves.virtual_card()
             folder = run.make_test_saves.SAVE_FOLDER
             self.assertEqual(card.read_card(image, f"{folder}/{run.make_test_saves.RAW_CARD_NAME}"), raw)
+            for name, data in run.make_test_saves.memory_folder_files().items():
+                self.assertEqual(card.read_card(image, f"{folder}/{run.make_test_saves.MEMORY_FOLDER_NAME}/{name}"), data)
             self.assertIsNone(card.read_card(image, f"{folder}/{run.make_test_saves.RAW_EXPORT_NAME}"),
                               "only Indigo's Copy operation should create the export")
 
@@ -405,13 +407,64 @@ class MemoryCards(unittest.TestCase):
                     route.out, route.report, route.last_rgb = Path(directory), None, None
                     route.checks = []
                     route.emulator = mock.Mock(where=lambda: None)
-                    with mock.patch.object(card, "read_card", side_effect=[changed_raw, changed_export]):
+                    fixtures = list(run.make_test_saves.memory_folder_files().values())
+                    with mock.patch.object(card, "read_card", side_effect=fixtures + [changed_raw, changed_export]):
                         if passed:
                             route.virtual_card_checks(Path("test.img"))
-                            self.assertEqual(len(route.checks), 2)
+                            self.assertEqual(len(route.checks), 2 + len(fixtures))
                         else:
                             with self.assertRaises(run.Failed):
                                 route.virtual_card_checks(Path("test.img"))
+
+    def test_public_folder_fixtures_have_static_and_disabled_metadata_shapes(self):
+        files = run.make_test_saves.memory_folder_files()
+        static = files[run.make_test_saves.MEMORY_STATIC_NAME]
+        absent = files[run.make_test_saves.MEMORY_NO_ART_NAME]
+        self.assertEqual(set(files), {"opaque-profile.gci", "racing-profile.gci"})
+        self.assertEqual(struct.unpack_from(">HH", static, 0x30), (2, 2))
+        self.assertEqual(static[64:96].rstrip(b"\0"), b"Copper Garage")
+        self.assertEqual(absent[:6], b"GUGE69")
+        self.assertEqual(absent[7], 0)
+        self.assertEqual(struct.unpack_from(">IHH", absent, 0x2C), (0xFFFFFFFF, 0, 0))
+        self.assertEqual(struct.unpack_from(">I", absent, 0x3C)[0], 0xFFFFFFFF)
+        self.assertEqual(absent[64 + 0x10:64 + 0x20], b"Night Circuit 2\0")
+        self.assertNotIn(b"Need for Speed", absent, "the fallback cannot get its title by scanning payload")
+        self.assertEqual(len(absent), 64 + run.make_test_saves.BLOCK)
+
+    def test_folder_color_readback_requires_its_memory_card_key_and_exact_path(self):
+        for settings, colour, passed in (
+                (b"Memory Card Folder Colors=gcldr:/swiss/saves/Backups~2\r\n", 2, True),
+                (b"Memory Card Folder Colors=sd2sp2:/swiss/saves/Backups~2\r\n", 2, True),
+                (b"Library Folder Colors=gcldr:/swiss/saves/Backups~2\r\n", 2, False),
+                (b"Memory Card Folder Colors=gcldr:/games/Backups~2\r\n", 2, False),
+                (b"Memory Card Folder Colors=gcldr:/swiss/saves/Backups~3\r\n", 2, False),
+                (b"Memory Card Folder Colors=gcldr:/swiss/saves/Backups~20\r\n", 2, False),
+                (b"Memory Card Folder Colors=\r\n", None, True),
+                (b"Memory Card Folder Colors=gcldr:/swiss/saves/Backups~2\r\n", None, False)):
+            with self.subTest(settings=settings, colour=colour):
+                route = run.Route.__new__(run.Route)
+                route.sd_image, route.checks, route.report, route.last_rgb = Path("test.img"), [], None, None
+                route.emulator = mock.Mock(where=lambda: None)
+                with mock.patch.object(card, "read_card", return_value=settings):
+                    if passed:
+                        route.memory_folder_saved(colour)
+                        self.assertTrue(all(check["passed"] for check in route.checks))
+                    else:
+                        with self.assertRaises(run.Failed):
+                            route.memory_folder_saved(colour)
+
+    def test_folder_identity_proof_rejects_a_changed_save(self):
+        raw, gcis = run.make_test_saves.virtual_card()
+        fixtures = run.make_test_saves.memory_folder_files()
+        changed = next(iter(fixtures.values()))
+        changed = changed[:-1] + bytes([changed[-1] ^ 1])
+        route = run.Route.__new__(run.Route)
+        route.out, route.report, route.last_rgb = Path("."), None, None
+        route.checks = []
+        route.emulator = mock.Mock(where=lambda: None)
+        with mock.patch.object(card, "read_card", side_effect=[changed, *list(fixtures.values())[1:], raw, gcis[0]]):
+            with self.assertRaises(run.Failed):
+                route.virtual_card_checks(Path("test.img"))
 
     def test_the_cards_hold_saves_dolphin_lists(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -959,6 +1012,16 @@ class Screen(unittest.TestCase):
                 # The other color must appear; translating this static
                 # texture cannot be mistaken for that second frame.
                 self.assertEqual(run.raw_icon_frame(np.roll(picture, 2, axis=1), wide), frame)
+
+    def test_folder_color_proof_is_scoped_to_the_mini_cube_in_both_shapes(self):
+        for wide in (False, True):
+            rgb = np.zeros((run.HEIGHT, run.WIDTH, 3), np.uint8)
+            rgb[300:350, 300:350] = run.FOLDER_AZURE
+            self.assertEqual(run.folder_cube_azure(rgb, wide), 0,
+                             "dialog swatches and backdrop colors cannot stand in for the cube")
+            x0, y0, _, _ = run.stage_box(run.FOLDER_CUBE_BOX, wide)
+            rgb[y0+8:y0+12, x0+8:x0+20] = run.FOLDER_AZURE
+            self.assertEqual(run.folder_cube_azure(rgb, wide), 48)
 
     def test_crash_and_black_screens_are_named(self):
         crash = np.zeros((run.HEIGHT, run.WIDTH, 3), np.uint8)

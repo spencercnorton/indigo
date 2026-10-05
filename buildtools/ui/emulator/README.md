@@ -254,7 +254,22 @@ The **virtual-cards route** (`--route virtual-cards --storage gcloader`, or
 The release zip's SD image also holds `swiss/saves/Demo Card.raw`, a 59-block
 memory-card image made by the same public demonstration generator. It has
 two fictitious saves, with generated icon/banner art; its first save's
-blocks are deliberately separated at blocks 5 and 9.
+blocks are deliberately separated at blocks 5 and 9. `Backups` beside it
+contains a synthetic save with an opaque filename, readable comment and
+one static icon texture, plus a synthetic racing profile whose header
+advertises neither comments nor art. Its public game ID supplies the
+readable title; arbitrary text inside its generated payload is ignored.
+
+Y on the selected folder cube must have a visible contextual hint and open
+its full path, contents and color page. The route previews Indigo and Azure,
+saves Azure, verifies the cube's native rim pixels and the device-prefixed
+`Memory Card Folder Colors` FAT settings entry, reopens the page, cancels a
+new preview, and resets to Default. It saves Azure again, restarts Dolphin
+with a fresh user directory and the same SD image, verifies the restored
+path, contents and color, then resets. Y also opens the RAW image's path and
+read-only contents. Browsing these pages preserves every source save and
+image byte. Library folders retain their ordinary appearance and navigation;
+the four-layout route verifies that Y opens no folder color page there.
 
 Memory Cards must start with both columns on SD. The route opens Library
 first and sees the synthetic game's SAVES inset, then checks it again after
@@ -263,8 +278,8 @@ recorded update. Renderer host contracts check the exact values; the route
 checks that the real fields appear and their count text changes.
 
 A on each RAW save opens details first: the known `2024-02-29 12:34` date
-and an unknown date have different text, both show Created: Not recorded,
-and their block counts differ. B cancels without an action. Opening RAW
+and an unknown date have different text, their stored icon statuses differ,
+and their block counts differ. A save has no separate creation-date field. B cancels without an action. Opening RAW
 independently in both columns still allows details and Back; an unusable
 Copy stays in its action menu. Before the real Copy, the source RAW is
 byte-identical and no exported GCI exists. The first icon's generated
