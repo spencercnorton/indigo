@@ -20,7 +20,8 @@
 
 Captured in the Dolphin emulator. The library and game detail pictures show a real poster pack and cheat file in use; box art belongs to its publishers.
 
-**New to Indigo?** The [Indigo guide](docs/guide/README.md) walks through every screen and setting, with pictures.
+**New to Indigo?** Start with the [step-by-step installation](docs/guide/install.md),
+then explore every screen and setting in the [Indigo guide](docs/guide/README.md).
 Watch it in motion: [the video tour](https://norvitech.com/indigo/#videos) on norvitech.com.
 
 Indigo is an unofficial fork of [Swiss](https://github.com/emukidid/swiss-gc),
@@ -188,42 +189,58 @@ Storage › Save Folder sets the folder the SD card's stack opens on
 
 ## Install
 
-### Download — drag and drop
+### Download and choose your launch route
 
-Each [release](https://github.com/spencercnorton/indigo/releases/latest) has
-an `Indigo-vX.Y.Z.zip` laid out exactly as it goes on the card:
+Download **`Indigo-vX.Y.Z.zip`** from the [latest release's Assets](https://github.com/spencercnorton/indigo/releases/latest).
+Choose the SD card ZIP, rather than GitHub's Source code ZIP. Back up your
+working card, then **extract the ZIP on your computer**.
+
+The **card root** is the first level you see when you open the card. Copy
+files inside the extracted download to the destinations below; putting the
+ZIP or its enclosing `Indigo-vX.Y.Z` folder on the card will not install it.
+
+| Your current boot setup | Indigo file: download → card | What starts it |
+| --- | --- | --- |
+| PicoBoot / PicoLoader using gekkoboot | `ipl.dol` → `/ipl.dol` on the SD adapter it boots from | Power on normally |
+| FlippyDrive | `ipl.dol` → `/boot.dol` on FlippyDrive's microSD | Power on in its normal boot mode |
+| GC Loader, Swiss in flash, cubeboot, or an uncertain setup | `ipl.dol` → `/apps/indigo.dol` on a card Swiss reads | Start Swiss, open Apps in its file browser, launch `indigo.dol` |
+
+**Keep the boot program you already have.** An existing `ipl.dol` can be
+Swiss, Indigo or cubeboot. Identify it and back it up before direct boot.
+With gekkoboot, stock Swiss can stay on an unused button shortcut such as
+`z.dol`; preserve any shortcut already using that name. If unsure, launch
+Indigo from Swiss using `/apps/indigo.dol` and keep your startup unchanged.
+The Indigo ZIP contains no `boot.iso`: keep GC Loader's existing boot image.
+SD2SP2 and SD Gecko are card adapters, rather than boot methods.
+
+**Merge the shared `swiss` files into the existing folder:**
 
 ```text
-Indigo-README.txt              what goes where, in plain words
-ipl.dol                        Indigo; PicoBoot and other modchips boot this
-swiss/patches/apploader.img    Indigo again, for In-Game Reset
-swiss/ui/                      posters.pak, if you add one (see Posters)
-swiss/indigo/                  the licence and notice
+SD card root/
+└── swiss/
+    ├── patches/apploader.img    from the download: In-Game Reset to Indigo
+    ├── ui/                     keep your existing poster pack here
+    └── indigo/                 licence and notice from the download
 ```
 
-**New to Indigo:**
+Keep the rest of `swiss`, including settings, cheats and saves. On a Mac,
+hold Option while dropping the folder and choose **Merge**, never Replace
+for the whole folder. If Merge is unavailable, copy its files individually
+into the matching subfolders.
 
-1. First, before you copy anything: if your card already has an `ipl.dol` in
-   its root, that is your current Swiss. Rename it to `z.dol` to keep it; with
-   PicoBoot or PicoLoader, holding Z at power-on starts it.
-2. Unzip the download, select everything inside and drag it onto the root of
-   the card. Let it replace files of the same name. On a Mac, hold Option as
-   you drop and choose **Merge**: **Replace** deletes what is already in the
-   card's `swiss` folder (your settings, cheats and saves).
-3. Put your games in `/games` (make the folder if the card has none), with
-   nothing else in it or in the game folders, and power on.
+Safely eject the card, launch using your route, and check **System › System
+Information › About Indigo**. Choose the source holding your games and
+open Library; it looks for `/games` there by default. Your boot card and
+game-storage card can be different cards.
 
-**Updating from Indigo 1.x:** `ipl.dol` is already Indigo, so don't rename
-it; copy the new files over it the same way (on a Mac, Merge). If you renamed
-stock Swiss to `swiss.dol` for 1.25.0, you can rename it back to `z.dol`: 2.0
-no longer starts it by itself
-([#3](https://github.com/spencercnorton/indigo/issues/3)).
+**Already using Indigo?** Replace the executable you actually launch
+(`/ipl.dol`, `/boot.dol` or `/apps/indigo.dol`), renaming the new copy as
+needed, and merge the shared files again. Keep your games and recovery copy.
+This applies to Indigo 1.x and 2.x.
 
-FlippyDrive boots `boot.dol`: replace that file with `ipl.dol`, keeping the
-name `boot.dol`. With GC Loader and other loaders that boot a disc image,
-start `ipl.dol` from Swiss instead. The
-[install guide](docs/guide/install.md) covers every loader, updating and
-going back to stock Swiss.
+The **[step-by-step install guide](docs/guide/install.md)** has a card tree
+for each route, exact copy destinations, first-launch checks, upgrades and
+recovery. Start there if this is your first installation.
 
 ### Any platform — from source
 
@@ -246,32 +263,9 @@ here: they need prebuilt tools and device firmware images that this fork does
 not redistribute. `make dev` builds the executable, which is what the fork
 changes.
 
-### On the console
-
-`cube/swiss/swiss.dol` is where the build leaves the file, not a path on your
-SD card. On the card, Indigo takes the place of the file your loader already
-boots, under that file's name. Your Swiss settings carry over.
-
-- **PicoBoot and PicoLoader** boot `ipl.dol` from the root of the card.
-  If that file is your current Swiss, rename it to `z.dol`; then copy
-  `swiss.dol` to the root as `ipl.dol`.
-  They start `z.dol` when Z is held at power-on, so stock Swiss stays one
-  button away.
-- **PicoBoot or PicoLoader with no `ipl.dol` on the card** has Swiss in the
-  chip's flash. First flash the firmware that starts the card's `ipl.dol`:
-  PicoBoot's `picoboot_full_pico.uf2` or `picoboot_full_pico2.uf2` (see its
-  [installation guide](https://support.webhdx.dev/gc/picoboot/installation-guide)),
-  or PicoLoader's `picoloader_gekkoboot.uf2`. Then do the step above.
-- **Another loader that boots a `.dol` from the card by name**: replace that
-  file the same way, keeping its name (FlippyDrive boots `boot.dol`).
-- **GC Loader, and other loaders that boot a disc image**: start `swiss.dol`
-  from Swiss's file browser. This fork does not build `boot.iso` or the other
-  packaged formats.
-
-With In-Game Reset set to **Apploader**, a reset returns to the program in
-`/swiss/patches/apploader.img`. The release zip puts Indigo there, and
-`buildtools/sd_package.sh` builds that file from `make dev`'s output.
-**Reboot** resets the console, which starts whatever your loader boots.
+`cube/swiss/swiss.dol` is the build output on your computer. Package it
+with `buildtools/sd_package.sh dev`, then follow the same launch route above
+using the ZIP's `ipl.dol`.
 
 ## Set up your library
 

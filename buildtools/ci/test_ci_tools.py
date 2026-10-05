@@ -331,15 +331,19 @@ class Release(unittest.TestCase):
         self.assertNotIn("](docs/", notes)
 
     def test_install_keeps_the_card_safe(self):
-        """Someone new to Indigo renames the Swiss already on the card before anything
-        is copied over it, and a Mac's Replace, which deletes the card's games and
-        swiss folders, is warned about."""
+        """Release instructions preserve unknown boot programs and existing folders,
+        and name the executable to update for every supported launch route."""
         install = self.notes("v2.0.0-rc.1").split("## Install", 1)[1]
-        self.assertLess(install.index("**New to Indigo:**"), install.index("Rename it to `z.dol`"))
-        self.assertLess(install.index("Rename it to `z.dol`"), install.index("drag it onto the root"))
-        self.assertIn("choose **Merge**", install)
-        self.assertIn("nothing else in it or in the game folders", install)
-        self.assertIn("Updating from Indigo 1.x", install)
+        self.assertLess(install.index("Back up your working card"), install.index("Download → card destination"))
+        self.assertIn("an `ipl.dol` is not always Swiss", install)
+        self.assertIn("only if that shortcut is unused", install)
+        self.assertIn("keeps your original boot files", install)
+        self.assertIn("choose **Merge**, never Replace", install)
+        self.assertIn("contains no `boot.iso`", install)
+        updating = install.split("**Updating Indigo 1.x or 2.x:**", 1)[1]
+        for destination in ("/ipl.dol", "/boot.dol", "/apps/indigo.dol"):
+            self.assertIn(f"`{destination}`", updating)
+
 
 
 if __name__ == "__main__":
