@@ -287,9 +287,10 @@ Put each game in its own folder or put the disc images there directly:
 
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. The Library skips
 anything else there, such as a text file, a cover image or an empty folder.
-If `/games` holds no disc images at all, you get Swiss's plain file list
-instead. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn the
-cube to Library and press A.
+With **Library Folders** off, if `/games` holds no disc images at all, you
+get Swiss's plain file list instead. With it on, an empty `/games` stays
+in Indigo. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn
+the cube to Library and press A.
 
 To sort your games into folders, turn on Settings › Setup › Library ›
 **Library Folders**: the Library then shows the folders in `/games` as cards

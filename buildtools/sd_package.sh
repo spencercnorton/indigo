@@ -69,8 +69,9 @@ directly:
     /games/Super Mario Sunshine [GMSE01]/game.iso
     /games/Super Mario Sunshine.iso
 Disc images end in .iso, .gcm, .tgc or .fdi. The Library skips anything
-else there (a text file, a cover image, an empty folder). If /games holds
-no disc images, you get Swiss's plain file list instead.
+else there (a text file, a cover image, an empty folder). With Library Folders
+off, if /games holds no disc images, you get Swiss's plain file list instead.
+With Library Folders on, an empty /games stays in Indigo.
 On Home, turn the cube to Library and press A.
 To sort your games into folders, turn on Settings > Setup > Library >
 Library Folders: the Library then shows the folders in /games, two levels
