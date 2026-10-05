@@ -5,6 +5,8 @@
  *   buildtools/ui/tests/test_gameflow_detail.c \
  *   cube/swiss/source/gui/ui_gameflow_detail.c \
  *   cube/swiss/source/gui/ui_game_history.c \
+ *   cube/swiss/source/gui/ui_saves_metadata.c \
+ *   cube/swiss/source/gui/ui_saves.c \
  *   -o /tmp/test_gameflow_detail && /tmp/test_gameflow_detail
  */
 
@@ -434,8 +436,80 @@ static void testCustomSettingsLine(void)
 	CHECK(snapshot.settingsPreview[0] == '\0');
 }
 
+static void testReadOnlySaveCopies(void)
+{
+	uiSavesGameStats_t stats = {
+		.saves = 1u, .blocks = 2u, .latestUpdated = 762525240u,
+		.sourceSaves = {0u, 0u, 1u}, .checkedSources = 4u,
+		.updatedKnown = true
+	};
+	uiGameflowDetailSource_t source = {
+		.gameId = "GACZ01", .title = "Astral Circuit", .saveStats = &stats,
+		.flags = UI_GAMEFLOW_DETAIL_CAN_SETTINGS
+	};
+	uiGameflowDetailSnapshot_t snapshot;
+
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "1 save copy | 2 blocks") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "Updated 2024-02-29 12:34") == 0);
+	CHECK(snapshot.saveStats.sourceSaves[2] == 1u);
+	/* Retained statistics and labels survive mutation of the menu source. */
+	stats.saves = 2u;
+	stats.blocks = 4u;
+	stats.sourceSaves[2] = 2u;
+	CHECK(snapshot.saveStats.saves == 1u);
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "2 save copies | 4 blocks") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "Updated 2024-02-29 12:34") == 0);
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot,
+		UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS, UI_GAMEFLOW_DETAIL_INPUT_UP) ==
+		UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS);
+	CHECK(UIGameflowDetail_ResolveAction(&snapshot,
+		UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS, UI_GAMEFLOW_DETAIL_INPUT_A) ==
+		UI_GAMEFLOW_DETAIL_ACTION_SETTINGS);
+
+	stats.partial = true;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesUpdated, "Partial scan | Updated 2024-02-29 12:34") == 0);
+	stats.updatedKnown = false;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesUpdated, "Partial scan | Update date unavailable") == 0);
+	stats.saves = 0u;
+	stats.blocks = 0u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "Unavailable") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "Save scan incomplete") == 0);
+	stats.partial = false;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "No save copies found") == 0);
+	stats.checkedSources = 0u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "Unavailable") == 0);
+	source.saveStats = NULL;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "Unavailable") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "Save sources not checked") == 0);
+	CHECK(snapshot.saveStats.saves == 0u);
+	CHECK(snapshot.saveStats.checkedSources == 0u);
+
+	source.saveStats = &stats;
+	stats.saves = UINT32_MAX;
+	stats.blocks = UINT32_MAX;
+	stats.checkedSources = 7u;
+	stats.updatedKnown = true;
+	stats.latestUpdated = UINT32_MAX;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary,
+		"4294967295 save copies | 4294967295 blocks") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "Update date unavailable") == 0);
+	stats.latestUpdated = 0u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesUpdated, "Update date unavailable") == 0);
+}
+
 int main(void)
 {
+	testReadOnlySaveCopies();
 	testPointerFreeCopyAndMatch();
 	testCustomSettingsLine();
 	testNoCheatsClearsCapability();

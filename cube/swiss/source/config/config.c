@@ -19,6 +19,7 @@
 #include "bba.h"
 #include "deviceHandler-FAT.h"
 #include "ui_game_history.h"
+#include "ui_gameflow_library.h"
 
 // This is an example Swiss settings entry (sits at the top of global.ini)
 //!!Swiss Settings Start!!
@@ -113,12 +114,24 @@ void config_unset_device() {
 	}
 }
 
+/* A save writes NAME.new and closes it, then swaps it in for NAME, so power
+ * lost at any point leaves one whole copy: NAME until the swap, NAME.new
+ * alone during it. */
+static void config_name_new(char name[PATHNAME_MAX]) {
+	size_t used = strlen(name);
+	snprintf(name + used, PATHNAME_MAX - used, ".new");
+}
+
 // Reads from a file and returns a populated buffer, NULL if anything goes wrong.
 char* config_file_read(char* filename) {
 	char* readBuffer = NULL;
 	file_handle *configFile = (file_handle*)calloc(1, sizeof(file_handle));
 	concat_path(configFile->name, devices[DEVICE_CONFIG]->initial->name, filename);
 	print_debug("config_file_read: looking for %s\n", configFile->name);
+	if(devices[DEVICE_CONFIG]->statFile(configFile)) {
+		/* A save that lost power mid-swap left the settings in NAME.new. */
+		config_name_new(configFile->name);
+	}
 	if(!devices[DEVICE_CONFIG]->statFile(configFile) && configFile->size) {
 		readBuffer = (char*)calloc(1, configFile->size + 1);
 		if (readBuffer) {
@@ -176,20 +189,41 @@ int config_each_game_file(void (*visit)(const char *gameId, char *text, void *co
 }
 
 int config_file_write(char* filename, char* contents) {
+	DEVICEHANDLER_INTERFACE *device = devices[DEVICE_CONFIG];
 	file_handle *configFile = (file_handle*)calloc(1, sizeof(file_handle));
-	concat_path(configFile->name, devices[DEVICE_CONFIG]->initial->name, filename);
+	file_handle *newFile = (file_handle*)calloc(1, sizeof(file_handle));
+	int written = 0;
+
+	if(configFile == NULL || newFile == NULL) {
+		free(configFile);
+		free(newFile);
+		return 0;
+	}
+	concat_path(configFile->name, device->initial->name, filename);
+	strcpy(newFile->name, configFile->name);
+	config_name_new(newFile->name);
 
 	u32 len = strlen(contents);
 	print_debug("config_file_write: writing %i bytes to %s\n", len, configFile->name);
-	devices[DEVICE_CONFIG]->deleteFile(configFile);
-	if(devices[DEVICE_CONFIG]->writeFile(configFile, contents, len) == len &&
-		!devices[DEVICE_CONFIG]->closeFile(configFile)) {
-		free(configFile);
-		return 1;
+	/* NAME.new alone is the settings: make it NAME before writing over it. */
+	if(device->statFile(configFile) && !device->statFile(newFile)) {
+		device->renameFile(newFile, configFile->name);
+		strcpy(newFile->name, configFile->name);
+		config_name_new(newFile->name);
 	}
-	devices[DEVICE_CONFIG]->closeFile(configFile);
+	device->deleteFile(newFile);
+	if(device->writeFile(newFile, contents, len) == len &&
+		!device->closeFile(newFile)) {
+		/* FatFs will not rename onto a file that exists. */
+		device->deleteFile(configFile);
+		written = !device->renameFile(newFile, configFile->name);
+	}
+	else {
+		device->closeFile(newFile);
+	}
+	free(newFile);
 	free(configFile);
-	return 0;
+	return written;
 }
 
 /* Slots alternate so a short/failed write cannot destroy the last complete
@@ -308,6 +342,9 @@ void config_file_delete(char* filename) {
 	file_handle *configFile = (file_handle*)calloc(1, sizeof(file_handle));
 	concat_path(configFile->name, devices[DEVICE_CONFIG]->initial->name, filename);
 	print_debug("config_file_delete: deleting %s\n", configFile->name);
+	devices[DEVICE_CONFIG]->deleteFile(configFile);
+	/* And a NAME.new, which a read would take for it. */
+	config_name_new(configFile->name);
 	devices[DEVICE_CONFIG]->deleteFile(configFile);
 	free(configFile);
 }
@@ -524,8 +561,12 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Settings Icon=%s\r\n", settingsIconStr[swissSettings.settingsIcon]);
 	fprintf(fp, "System Icon=%s\r\n", systemIconStr[swissSettings.systemIcon]);
 	fprintf(fp, "Hide Apps Face=%s\r\n", swissSettings.hideAppsFace ? "Yes":"No");
+	fprintf(fp, "Cube=%s\r\n", swissSettings.cubeStyle ? "Classic":"Infinite");
 	fprintf(fp, "Clock=%s\r\n", clockPositionStr[swissSettings.clockPosition]);
+	fprintf(fp, "Temperature=%s\r\n", clockPositionStr[swissSettings.temperaturePosition]);
+	fprintf(fp, "Wave Speed=%s\r\n", waveSpeedStr[swissSettings.waveSpeed]);
 	fprintf(fp, "Library Layout=%s\r\n", libraryLayoutStr[swissSettings.libraryLayout]);
+	fprintf(fp, "Library Folders=%s\r\n", swissSettings.libraryFolders ? "Yes":"No");
 	fprintf(fp, "Init DVD Drive at startup=%s\r\n", swissSettings.initDVDDriveAtStart ? "Yes":"No");
 	fprintf(fp, "Stop DVD Drive motor=%s\r\n", swissSettings.stopMotor ? "Yes":"No");
 	fprintf(fp, "Configure Audio Buffer=%s\r\n", configAudioBufferStr[swissSettings.configAudioBuffer]);
@@ -571,7 +612,8 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "GCLoaderHWVersion=%i\r\n", swissSettings.gcloaderHwVersion);
 	fprintf(fp, "GCLoaderTopVersion=%s\r\n", swissSettings.gcloaderTopVersion);
 	fprintf(fp, "Autoload=%s\r\n", swissSettings.autoload);
-	fprintf(fp, "FlattenDir=%s\r\n", swissSettings.flattenDir);
+	fprintf(fp, "FlattenDir=%s\r\n", swissSettings.libraryFolders ?
+		swissSettings.libraryFoldersFlattenDir : swissSettings.flattenDir);
 	fprintf(fp, "Save Folder=%s\r\n", swissSettings.saveFolder);
 
 	// Write out the default game config portion too
@@ -812,9 +854,18 @@ void config_defaults(ConfigEntry *entry) {
 }
 
 // TODO kill this off in one major version from now. Don't add new settings to it.
+/* Entries for the games a legacy swiss.ini carries over and for Game
+ * Defaults: 2,047 games at most, the rest dropped. About 650 KB, so on the
+ * heap: the menu thread's stack is 128 KB. */
+#define LEGACY_ENTRIES 2048
+
 void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int, int)) {
-	ConfigEntry configEntries[2048]; // That's a lot of Games!
+	ConfigEntry *configEntries = calloc(LEGACY_ENTRIES, sizeof(ConfigEntry));
 	int configEntriesCount = 0;
+	if(configEntries == NULL) {
+		// No room to migrate: swiss.ini stays for another try.
+		return;
+	}
 	// Parse each entry and put it into our array
 	char *line, *linectx = NULL;
 	int first = 1;
@@ -832,7 +883,8 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 
 				if(!strcmp("ID", name)) {
 					defaultPassed = true;
-					if(!first) {
+					// Games past the last slot are read into it, then dropped.
+					if(!first && configEntriesCount < LEGACY_ENTRIES - 1) {
 						configEntriesCount++;
 					}
 					strncpy(configEntries[configEntriesCount].game_id, value, 4);
@@ -1087,8 +1139,10 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 		line = strtok_r( NULL, "\r\n", &linectx);
 	}
 
-	if(configEntriesCount > 0 || !first) {
+	if((configEntriesCount > 0 || !first) && configEntriesCount < LEGACY_ENTRIES - 1) {
 		configEntriesCount++;
+	}
+	if(configEntriesCount > 0 || !first) {
 		config_defaults(&configEntries[configEntriesCount]);
 	}
 	 print_debug("Found %i entries in the (legacy) config file\n",configEntriesCount);
@@ -1105,10 +1159,17 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 	 config_update_recent(false);
 	 // Kill off the old swiss.ini
 	 config_file_delete(SWISS_SETTINGS_FILENAME_LEGACY);
+	 free(configEntries);
 }
 
-void config_parse_global(char *configData) {
+/* settingsFile: configData is a whole global.ini. Otherwise it is a loader's
+ * arguments, which change only the settings they name. */
+void config_parse_global(char *configData, bool settingsFile) {
 	char *line, *linectx = NULL;
+	/* Before Temperature had its own line, Clock placed the dial too. */
+	int clockRead = -1;
+	bool temperatureRead = false;
+	int libraryFolders = -1;	/* -1: not named */
 	line = strtok_r( configData, "\r\n", &linectx );
 	while( line != NULL ) {
 		//print_debug("Line [%s]\n", line);
@@ -1400,13 +1461,36 @@ void config_parse_global(char *configData) {
 				else if(!strcmp("Hide Apps Face", name)) {
 					swissSettings.hideAppsFace = !strcmp("Yes", value);
 				}
+				else if(!strcmp("Cube", name)) {
+					swissSettings.cubeStyle = !strcmp("Classic", value);
+				}
 				else if(!strcmp("Clock", name)) {
 					for(int i = 0; i < CLOCK_POSITION_MAX; i++) {
 						if(!strcmp(clockPositionStr[i], value)) {
-							swissSettings.clockPosition = i;
+							swissSettings.clockPosition = clockRead = i;
 							break;
 						}
 					}
+				}
+				else if(!strcmp("Temperature", name)) {
+					for(int i = 0; i < CLOCK_POSITION_MAX; i++) {
+						if(!strcmp(clockPositionStr[i], value)) {
+							swissSettings.temperaturePosition = i;
+							temperatureRead = true;
+							break;
+						}
+					}
+				}
+				else if(!strcmp("Wave Speed", name)) {
+					for(int i = 0; i < WAVE_SPEED_MAX; i++) {
+						if(!strcmp(waveSpeedStr[i], value)) {
+							swissSettings.waveSpeed = i;
+							break;
+						}
+					}
+				}
+				else if(!strcmp("Library Folders", name)) {
+					libraryFolders = !strcmp("Yes", value);
 				}
 				else if(!strcmp("Library Layout", name)) {
 					for(int i = 0; i < UI_GAMEFLOW_LAYOUT_COUNT; i++) {
@@ -1617,6 +1701,40 @@ void config_parse_global(char *configData) {
 		// And round we go again
 		line = strtok_r( NULL, "\r\n", &linectx);
 	}
+	if(settingsFile && clockRead >= 0 && !temperatureRead) {
+		swissSettings.temperaturePosition = clockRead;
+	}
+	if(settingsFile) {
+		// FlattenDir was just read as saved: Library Folders takes it from there
+		swissSettings.libraryFolders = 0;
+		config_set_library_folders(libraryFolders == 1);
+	}
+	else if(libraryFolders >= 0) {
+		config_set_library_folders(libraryFolders);
+	}
+}
+
+void config_set_library_folders(bool on) {
+	// Keep the FlattenDir it replaces, to save and to put back
+	if(on && !swissSettings.libraryFolders) {
+		/* Off is one list of every game: a FlattenDir that is empty or
+		 * already the folders' own pattern keeps the default instead. */
+		const char *own = swissSettings.flattenDir;
+		if(!own[0] || !strcmp(own, UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN)) {
+			own = "*/games";
+		}
+		strlcpy(swissSettings.libraryFoldersFlattenDir, own,
+			sizeof(swissSettings.libraryFoldersFlattenDir));
+	}
+	if(on) {
+		strlcpy(swissSettings.flattenDir, UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN,
+			sizeof(swissSettings.flattenDir));
+	}
+	else if(swissSettings.libraryFolders) {
+		strlcpy(swissSettings.flattenDir, swissSettings.libraryFoldersFlattenDir,
+			sizeof(swissSettings.flattenDir));
+	}
+	swissSettings.libraryFolders = on;
 }
 
 void config_parse_args(int argc, char *argv[]) {
@@ -1628,7 +1746,7 @@ void config_parse_args(int argc, char *argv[]) {
 	argz_create(&argv[1], &argz, &argz_len);
 	argz_stringify(argz, argz_len, '\n');
 	if(argz != NULL) {
-		config_parse_global(argz);
+		config_parse_global(argz, false);
 		free(argz);
 	}
 }
@@ -1863,7 +1981,7 @@ int config_init(void (*progress_indicator)(char*, int, int)) {
 	configData = config_file_read(txtbuffer);
 	globalFileLoaded = configData != NULL;
 	if(configData != NULL) {
-		config_parse_global(configData);
+		config_parse_global(configData, true);
 		free(configData);
 		res = 1;
 	}

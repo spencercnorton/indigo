@@ -51,13 +51,18 @@ SOURCES		:=  source \
 DATA		:=	data  
 TEXTURES	:=	source/images \
               source/images/buttons
-INCLUDES	:=	include $(SOURCES) ..
+INCLUDES	:=	include $(SOURCES) .. aesnd/libogc2/include
 
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
 
-CFLAGS		= -g -O2 -Wall -Wno-format-truncation -Wno-scalar-storage-order -fno-strict-aliasing -D_GNU_SOURCE $(MACHDEP) $(INCLUDE) $(shell $(PREFIX)pkg-config --cflags libdeflate iconv mad uchardet libxxhash zlib) -D'GIT_COMMIT="$(shell git rev-parse --short HEAD)"' -D'GIT_REVISION="$(shell git rev-list HEAD | wc -l)"' -DLFS_MULTIVERSION
+# UI_PERF=1 builds the frame-time and GPU-counter overlay (gui/ui_perf.h).
+UI_PERF		?= 0
+# No unwind tables: nothing in Swiss unwinds (no C++, and a crash report walks
+# the stack's back chain), and they were about 100 KB of the DOL. Source paths
+# are named from this folder, so the DOL is the same wherever it is built.
+CFLAGS		= -g -O2 -Wall -Wno-format-truncation -Wno-scalar-storage-order -fno-strict-aliasing -fno-asynchronous-unwind-tables -fno-unwind-tables -ffile-prefix-map=$(abspath $(CURDIR)/..)/= -D_GNU_SOURCE $(MACHDEP) $(INCLUDE) $(shell $(PREFIX)pkg-config --cflags libdeflate iconv mad uchardet libxxhash zlib) -D'GIT_COMMIT="$(shell git rev-parse HEAD | cut -c1-7)"' -D'GIT_REVISION="$(shell git rev-list HEAD | wc -l)"' -DLFS_MULTIVERSION -DUI_PERF_CAPTURE=$(UI_PERF)
 CXXFLAGS	= $(CFLAGS)
 
 ASFLAGS		= $(MACHDEP) -mregnames -D_LANGUAGE_ASSEMBLY $(INCLUDE)
@@ -66,7 +71,7 @@ LDFLAGS		= $(CFLAGS) -Wl,-Map,$(notdir $@).map -T ../../linker-script/ogc.ld -T 
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with the project
 #---------------------------------------------------------------------------------
-LIBS	:=	-ldvm -ltinysmb -lbba -laesnd -ldb -logc -lm -lpsoarchive $(shell $(PREFIX)pkg-config --libs libdeflate iconv mad uchardet libxxhash zlib)
+LIBS	:=	-ldvm -ltinysmb -lbba -ldb -logc -lm -lpsoarchive $(shell $(PREFIX)pkg-config --libs libdeflate iconv mad uchardet libxxhash zlib)
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -92,12 +97,14 @@ export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 #---------------------------------------------------------------------------------
 # automatically build a list of object files for our project
 #---------------------------------------------------------------------------------
-CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
-CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
-sFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
-SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.S)))
-BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
-SCFFILES	:=	$(foreach dir,$(TEXTURES),$(notdir $(wildcard $(dir)/*.scf)))
+# Each directory's files in byte order: wildcard follows the locale, and the
+# link order decides the DOL's bytes.
+CFILES		:=	$(foreach dir,$(SOURCES),$(sort $(notdir $(wildcard $(dir)/*.c))))
+CPPFILES	:=	$(foreach dir,$(SOURCES),$(sort $(notdir $(wildcard $(dir)/*.cpp))))
+sFILES		:=	$(foreach dir,$(SOURCES),$(sort $(notdir $(wildcard $(dir)/*.s))))
+SFILES		:=	$(foreach dir,$(SOURCES),$(sort $(notdir $(wildcard $(dir)/*.S))))
+BINFILES	:=	$(foreach dir,$(DATA),$(sort $(notdir $(wildcard $(dir)/*.*))))
+SCFFILES	:=	$(foreach dir,$(TEXTURES),$(sort $(notdir $(wildcard $(dir)/*.scf))))
 TPLFILES	:=	$(SCFFILES:.scf=.tpl)
 
 #---------------------------------------------------------------------------------
@@ -111,7 +118,9 @@ endif
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) $(addsuffix .o,$(TPLFILES))
 export OFILES_SOURCES := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(sFILES:.s=.o) $(SFILES:.S=.o)
-export OFILES := $(OFILES_BIN) $(OFILES_SOURCES)
+# libogc2's AESND, from aesnd/ with Indigo's patches rather than -laesnd
+export OFILES_AESND := aesndlib.o aesndmp3player.o
+export OFILES := $(OFILES_BIN) $(OFILES_SOURCES) $(OFILES_AESND)
 
 export HFILES := $(addsuffix .h,$(subst .,_,$(BINFILES))) $(addsuffix .h,$(subst .,_,$(TPLFILES))) tags.h
 
@@ -172,7 +181,26 @@ $(OFILES_SOURCES) : $(HFILES)
 tags.h :
 #---------------------------------------------------------------------------------
 	$(SILENTMSG) $(notdir $@)
-	$(SILENTCMD)git for-each-ref --format='"%(objectname:short)",' refs/tags | grep -vx '"$(shell git rev-parse --short HEAD)",' > $@ || true
+	$(SILENTCMD): > $@  # the tags load_auto_dol would skip: it never runs in Indigo
+
+#---------------------------------------------------------------------------------
+# libogc2's AESND: the copy in aesnd/libogc2, with the patches beside it
+# applied in order (aesnd/README.md), and its DSP code assembled from source
+#---------------------------------------------------------------------------------
+AESND	:=	$(CURDIR)/../aesnd
+
+aesndlib.c : $(AESND)/libogc2/libaesnd/aesndlib.c $(sort $(wildcard $(AESND)/*.patch))
+	$(SILENTMSG) $(notdir $@)
+	$(SILENTCMD)cp $< $@ && for p in $(filter %.patch,$^); do patch -s -F0 $@ $$p || exit 1; done
+
+aesndmp3player.c : $(AESND)/libogc2/libaesnd/aesndmp3player.c
+	$(SILENTCMD)cp $< $@
+
+aesnddspmixer.h : $(AESND)/libogc2/libaesnd/dspcode/dspmixer.s
+	$(SILENTMSG) $(notdir $@)
+	$(SILENTCMD)$(DEVKITPRO)/tools/bin/gcdsptool -c $< -o $@ > /dev/null
+
+aesndlib.o : aesnddspmixer.h
 
 -include $(DEPENDS)
 

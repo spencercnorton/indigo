@@ -27,12 +27,33 @@ gameplay-first GameCube launcher by mvizensk, with its author's permission:
 
 Indigo's code for the layout is its own. System › Credits thanks mvizensk too.
 
+Memory Cards' save cubes are sized, coloured and moved by the GameCube's own
+Memory Card screen as Cubeboot and Gameplay Spotlight document it from their
+study of the console's menu: how far the highlighted cube sways and how
+fast, how much it grows, and how big an empty cube and an icon are beside a
+save's cube. Indigo's code for the screen is its own; nothing of either is
+copied.
+
+    Cubeboot — https://github.com/OffBroadway/cubeboot
+
 Third-party components redistributed in this tree:
 
   littlefs — https://github.com/littlefs-project/littlefs
     Copyright (c) 2022, The littlefs authors. BSD-3-Clause.
     Vendored at commit 6cb4e86540eca0d9ba62500a298385c9d863c8be;
     see cube/swiss/source/littlefs/LICENSE.md.
+
+  SD2SP2 adapter emulation for Dolphin — https://github.com/dfederspiel/dolphin/pull/1
+    By CodeFly. GNU General Public License, version 2 or later, as Dolphin.
+    A patch CI applies to Dolphin when it builds the emulator test's runner;
+    see buildtools/ci/runner/dolphin/. Nothing of it is in Indigo's DOL.
+
+  AESND, libogc2's audio library — https://github.com/extremscorner/libogc2
+    Copyright (C) 2004 - 2026 Michael Wiedenbauer (shagkur), Dave Murphy
+    (WinterMute), Extrems' Corner.org. A zlib-style licence; see
+    cube/swiss/aesnd/libogc2/libogc2_license.txt. Copied at commit
+    34a540d9ed2f99249bd11e200aa979afe62789ba and built into Indigo's DOL with
+    one alteration, to AESND_Reset; see cube/swiss/aesnd/README.md.
 
   FatFs — http://elm-chan.org/fsw/ff/
     Copyright (C) ChaN. One-clause BSD-style licence, retained in the source.

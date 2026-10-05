@@ -7,10 +7,15 @@
  *   -o /tmp/test_gameflow_library && /tmp/test_gameflow_library
  */
 
+/* FNM_CASEFOLD and FNM_LEADING_DIR, as newlib has them, for the flatten
+ * pattern's checks. */
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <fnmatch.h>
 
 #include "ui_gameflow_library.h"
 
@@ -356,9 +361,9 @@ static void testHomeLibraryStartupRoute(void)
 
 static void testWindow(void)
 {
-	static const uint32_t expectedIndices[7] = {0u, 4u, 1u, 3u, 2u, 2u, 3u};
-	static const int8_t expectedRelative[7] = {0, -1, 1, -2, 2, -3, 3};
-	uiGameflowLibraryWindowSlot_t slots[7];
+	static const uint32_t expectedIndices[5] = {0u, 4u, 1u, 3u, 2u};
+	static const int8_t expectedRelative[5] = {0, -1, 1, -2, 2};
+	uiGameflowLibraryWindowSlot_t slots[UI_GAMEFLOW_LIBRARY_WINDOW];
 	size_t count;
 	size_t i;
 	size_t j;
@@ -378,12 +383,16 @@ static void testWindow(void)
 		}
 	}
 
-	count = UIGameflowLibrary_BuildWindow(9u, 8u,
+	/* Four either side: a held stick's strip runs up to two cards behind
+	 * the selection, and the third card out must still be there. */
+	count = UIGameflowLibrary_BuildWindow(12u, 8u,
 		UI_GAMEFLOW_DIRECTION_NONE, slots);
-	CHECK(count == 7u);
+	CHECK(count == 9u);
 	CHECK(slots[0].index == 8u && slots[0].relativeSlot == 0);
 	CHECK(slots[1].index == 7u && slots[1].relativeSlot == -1);
-	CHECK(slots[2].index == 0u && slots[2].relativeSlot == 1);
+	CHECK(slots[2].index == 9u && slots[2].relativeSlot == 1);
+	CHECK(slots[7].index == 4u && slots[7].relativeSlot == -4);
+	CHECK(slots[8].index == 0u && slots[8].relativeSlot == 4);
 
 	count = UIGameflowLibrary_BuildWindow(1u, 99u,
 		UI_GAMEFLOW_DIRECTION_NONE, slots);
@@ -410,7 +419,7 @@ static void checkWindowScale(uint32_t itemCount)
 		UI_GAMEFLOW_DIRECTION_NONE,
 		UI_GAMEFLOW_DIRECTION_NEXT
 	};
-	uiGameflowLibraryWindowSlot_t slots[7];
+	uiGameflowLibraryWindowSlot_t slots[UI_GAMEFLOW_LIBRARY_WINDOW];
 	uint32_t selections[3];
 	size_t expectedCount = itemCount < UI_GAMEFLOW_LIBRARY_WINDOW ?
 		(size_t)itemCount : (size_t)UI_GAMEFLOW_LIBRARY_WINDOW;
@@ -436,8 +445,8 @@ static void checkWindowScale(uint32_t itemCount)
 			CHECK(slots[0].relativeSlot == 0);
 			for(i = 0u; i < count; ++i) {
 				CHECK(slots[i].index < itemCount);
-				CHECK(slots[i].relativeSlot >= -3);
-				CHECK(slots[i].relativeSlot <= 3);
+				CHECK(slots[i].relativeSlot >= -4);
+				CHECK(slots[i].relativeSlot <= 4);
 				for(j = i + 1u; j < count; ++j) {
 					CHECK(slots[i].index != slots[j].index);
 				}
@@ -788,6 +797,278 @@ static void testGridWindow(void)
 	}
 }
 
+/* Library Folders: /games and two levels of folders below it. */
+static void testLibraryFoldersLocations(void)
+{
+	CHECK(UIGameflowLibrary_LocateFolders("sd:/games", "sd:/games") ==
+		UI_GAMEFLOW_LIBRARY_LOCATION_FOLDERS_ROOT);
+	CHECK(UIGameflowLibrary_LocateFolders("sd:/games", "SD:/Games/") ==
+		UI_GAMEFLOW_LIBRARY_LOCATION_FOLDERS_ROOT);
+	CHECK(UIGameflowLibrary_LocateFolders("sd:/games", "sd:/games/RPGs") ==
+		UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER);
+	CHECK(UIGameflowLibrary_LocateFolders("sd:/games",
+		"sd:/games/RPGs/JRPG") == UI_GAMEFLOW_LIBRARY_LOCATION_SUBFOLDER);
+	/* Never deeper: the second level lists everything below it. */
+	CHECK(UIGameflowLibrary_LocateFolders("sd:/games",
+		"sd:/games/RPGs/JRPG/Old") == UI_GAMEFLOW_LIBRARY_LOCATION_NONE);
+	/* A game folder is a game, not a folder of games. */
+	CHECK(UIGameflowLibrary_LocateFolders("sd:/games",
+		"sd:/games/Pikmin [GPIE01]") ==
+		UI_GAMEFLOW_LIBRARY_LOCATION_STRICT_LEAF);
+	CHECK(UIGameflowLibrary_LocateFolders("sd:/games",
+		"sd:/games/Pikmin [GPIE01]/extras") ==
+		UI_GAMEFLOW_LIBRARY_LOCATION_NONE);
+	CHECK(UIGameflowLibrary_LocateFolders("sd:/games", "sd:/gamesx") ==
+		UI_GAMEFLOW_LIBRARY_LOCATION_NONE);
+	CHECK(UIGameflowLibrary_LocateFolders("sd:/games", "sd:/apps/RPGs") ==
+		UI_GAMEFLOW_LIBRARY_LOCATION_NONE);
+	CHECK(UIGameflowLibrary_LocateFolders(NULL, "sd:/games") ==
+		UI_GAMEFLOW_LIBRARY_LOCATION_NONE);
+
+	CHECK(!UIGameflowLibrary_IsInsideFolder(
+		UI_GAMEFLOW_LIBRARY_LOCATION_FOLDERS_ROOT));
+	CHECK(UIGameflowLibrary_IsInsideFolder(UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER));
+	CHECK(UIGameflowLibrary_IsInsideFolder(
+		UI_GAMEFLOW_LIBRARY_LOCATION_SUBFOLDER));
+	CHECK(!UIGameflowLibrary_IsInsideFolder(
+		UI_GAMEFLOW_LIBRARY_LOCATION_STRICT_LEAF));
+
+	/* The flatten pattern, as scanFiles and the recent list use it: only a
+	 * second-level folder is listed flat, and a game below one is found
+	 * from that folder. */
+	CHECK(fnmatch(UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN, "sd:/games/RPGs/JRPG",
+		FNM_PATHNAME | FNM_CASEFOLD) == 0);
+	CHECK(fnmatch(UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN, "sd:/games/RPGs",
+		FNM_PATHNAME | FNM_CASEFOLD) == FNM_NOMATCH);
+	CHECK(fnmatch(UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN, "sd:/games",
+		FNM_PATHNAME | FNM_CASEFOLD) == FNM_NOMATCH);
+	CHECK(fnmatch(UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN, "sd:/apps/a/b",
+		FNM_PATHNAME | FNM_CASEFOLD) == FNM_NOMATCH);
+	CHECK(fnmatch(UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN,
+		"sd:/games/RPGs/JRPG/Old/Deeper", FNM_PATHNAME | FNM_CASEFOLD) ==
+		FNM_NOMATCH);
+	CHECK(fnmatch(UI_GAMEFLOW_LIBRARY_FOLDERS_FLATTEN,
+		"sd:/games/RPGs/JRPG/Old/Deeper",
+		FNM_PATHNAME | FNM_CASEFOLD | FNM_LEADING_DIR) == 0);
+}
+
+/* A folder's picture: the folder's own path and ".png", case aside. */
+static void testLibraryFoldersPicture(void)
+{
+	CHECK(UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintendo.png"));
+	CHECK(UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"SD:/GAMES/nintendo.PNG"));
+	CHECK(UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo/",
+		"sd:/games/Nintendo.png"));
+	CHECK(UIGameflowLibrary_IsFolderPicture("sd:/games/RPGs/Old saves",
+		"sd:/games/RPGs/Old saves.png"));
+	/* Only the folder's own name, beside it. */
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintendo.jpg"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintendo 2.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintend.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintendo.png.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintendo/Nintendo.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Other/Nintendo.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/RPGs/Nintendo",
+		"sd:/games/Nintendo.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/Nintendo",
+		"sd:/games/Nintendo"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("", ".png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("/", "/.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture(NULL, "sd:/games/x.png"));
+	CHECK(!UIGameflowLibrary_IsFolderPicture("sd:/games/x", NULL));
+}
+
+static void testLibraryFoldersHeading(void)
+{
+	char heading[64];
+	char tiny[12];
+
+	CHECK(UIGameflowLibrary_FolderHeading("sd:/games", "sd:/games/RPGs/JRPG",
+		heading, sizeof(heading)));
+	CHECK(strcmp(heading, "RPGS / JRPG") == 0);
+	CHECK(UIGameflowLibrary_FolderHeading("sd:/games", "SD:/Games/rpgs/",
+		heading, sizeof(heading)));
+	CHECK(strcmp(heading, "RPGS") == 0);
+	/* /games itself and anywhere else have no heading. */
+	CHECK(!UIGameflowLibrary_FolderHeading("sd:/games", "sd:/games",
+		heading, sizeof(heading)));
+	CHECK(heading[0] == '\0');
+	CHECK(!UIGameflowLibrary_FolderHeading("sd:/games", "sd:/apps/RPGs",
+		heading, sizeof(heading)));
+	CHECK(!UIGameflowLibrary_FolderHeading("sd:/games", "sd:/gamesx/RPGs",
+		heading, sizeof(heading)));
+	/* Too long: the start gives way, so the folder shown still ends it. */
+	CHECK(UIGameflowLibrary_FolderHeading("sd:/games",
+		"sd:/games/Flight and Space Games From Every Region of the World/"
+		"The Very Long Second Level Folder", heading, sizeof(heading)));
+	CHECK(strcmp(heading, "\205 / THE VERY LONG SECOND LEVEL FOLDER") == 0);
+	/* A name too long even alone is cut at its end. */
+	CHECK(UIGameflowLibrary_FolderHeading("sd:/games",
+		"sd:/games/A/Abcdefghijklmnop", tiny, sizeof(tiny)));
+	CHECK(strcmp(tiny, "\205 / ABCDEF\205") == 0);
+	CHECK(UIGameflowLibrary_FolderHeading("sd:/games",
+		"sd:/games/Abcdefghijklmnop", tiny, sizeof(tiny)));
+	CHECK(strcmp(tiny, "ABCDEFGHIJ\205") == 0);
+	/* Exactly full: no ellipsis. */
+	CHECK(UIGameflowLibrary_FolderHeading("sd:/games", "sd:/games/Abcdefghijk",
+		tiny, sizeof(tiny)));
+	CHECK(strcmp(tiny, "ABCDEFGHIJK") == 0);
+	CHECK(!UIGameflowLibrary_FolderHeading("sd:/games", "sd:/games/RPGs",
+		heading, 0u));
+}
+
+static void testLibraryFoldersClassifier(void)
+{
+	uiGameflowLibraryClassifier_t classifier;
+
+	/* Folders, game folders and images together. */
+	UIGameflowLibrary_ClassifierInit(&classifier,
+		UI_GAMEFLOW_LIBRARY_LOCATION_FOLDERS_ROOT);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "RPGs"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Pikmin [GPIE01]"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "Zelda.iso"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "readme.txt"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_FOLDERS);
+
+	/* Images alone: the same Library as with Library Folders off. */
+	UIGameflowLibrary_ClassifierInit(&classifier,
+		UI_GAMEFLOW_LIBRARY_LOCATION_FOLDERS_ROOT);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "Zelda.iso"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+
+	/* A folder that holds only folders is still a Library. */
+	UIGameflowLibrary_ClassifierInit(&classifier,
+		UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "JRPG"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_FOLDERS);
+
+	/* The deepest folder takes images only: what's left of its folders
+	 * after Swiss lists their games is empty. */
+	UIGameflowLibrary_ClassifierInit(&classifier,
+		UI_GAMEFLOW_LIBRARY_LOCATION_SUBFOLDER);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Empty"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "Tales disc 1.iso"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+
+	/* With Library Folders on, /games and both folder levels stay in the
+	 * Library with only their way back when they hold no games. */
+	UIGameflowLibrary_ClassifierInit(&classifier,
+		UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "notes.txt"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+	CHECK(UIGameflowLibrary_EntryEligible(UI_GAMEFLOW_LIBRARY_IMAGE_FILES, 0u,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(!UIGameflowLibrary_EntryEligible(UI_GAMEFLOW_LIBRARY_IMAGE_FILES, 1u,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "notes.txt"));
+	UIGameflowLibrary_ClassifierInit(&classifier,
+		UI_GAMEFLOW_LIBRARY_LOCATION_SUBFOLDER);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Empty"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+	UIGameflowLibrary_ClassifierInit(&classifier,
+		UI_GAMEFLOW_LIBRARY_LOCATION_FOLDERS_ROOT);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "notes.txt"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+
+	/* With Library Folders off, /games keeps today's rule. */
+	UIGameflowLibrary_ClassifierInit(&classifier,
+		UI_GAMEFLOW_LIBRARY_LOCATION_ROOT);
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "RPGs"));
+	CHECK(UIGameflowLibrary_ClassifierAdd(&classifier,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "Zelda.iso"));
+	CHECK(UIGameflowLibrary_ClassifierFinish(&classifier) ==
+		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+}
+
+static void testLibraryFoldersEntries(void)
+{
+	const uiGameflowLibraryMode_t folders = UI_GAMEFLOW_LIBRARY_FOLDERS;
+
+	CHECK(UIGameflowLibrary_EntryEligible(folders, 0u,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(!UIGameflowLibrary_EntryEligible(folders, 1u,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."));
+	CHECK(UIGameflowLibrary_EntryEligible(folders, 1u,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "RPGs"));
+	CHECK(UIGameflowLibrary_EntryEligible(folders, 1u,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Pikmin [GPIE01]"));
+	CHECK(UIGameflowLibrary_EntryEligible(folders, 1u,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "Zelda.iso"));
+	CHECK(!UIGameflowLibrary_EntryEligible(folders, 1u,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "readme.txt"));
+
+	CHECK(UIGameflowLibrary_EntryMode(folders,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "Zelda.iso") ==
+		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+	CHECK(UIGameflowLibrary_EntryMode(folders,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Pikmin [GPIE01]") ==
+		UI_GAMEFLOW_LIBRARY_GAME_FOLDERS);
+	CHECK(UIGameflowLibrary_EntryMode(folders,
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "RPGs") ==
+		UI_GAMEFLOW_LIBRARY_NONE);
+	CHECK(UIGameflowLibrary_EntryMode(folders,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, "..") ==
+		UI_GAMEFLOW_LIBRARY_NONE);
+	CHECK(UIGameflowLibrary_EntryMode(UI_GAMEFLOW_LIBRARY_IMAGE_FILES,
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, "..") ==
+		UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+
+	/* A game in a folder opens its Detail; a folder of games and the
+	 * parent card never do. */
+	CHECK(UIGameflowLibrary_UsesRetainedDetail(UIGameflowLibrary_EntryMode(
+		folders, UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "Zelda.iso"),
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE));
+	CHECK(UIGameflowLibrary_UsesRetainedDetail(UIGameflowLibrary_EntryMode(
+		folders, UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Pikmin [GPIE01]"),
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY));
+	CHECK(!UIGameflowLibrary_UsesRetainedDetail(UIGameflowLibrary_EntryMode(
+		folders, UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "RPGs"),
+		UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY));
+	CHECK(!UIGameflowLibrary_UsesRetainedDetail(UIGameflowLibrary_EntryMode(
+		folders, UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."),
+		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL));
+
+	CHECK(UIGameflowLibrary_SelectBrowser(folders, 1, 2) == 2);
+}
+
 int main(void)
 {
 	testImageEligibility();
@@ -798,6 +1079,11 @@ int main(void)
 	testProductionFlattenedUpgrade();
 	testClassifierFallbackMatrix();
 	testClassifierSkipsStrays();
+	testLibraryFoldersLocations();
+	testLibraryFoldersPicture();
+	testLibraryFoldersHeading();
+	testLibraryFoldersClassifier();
+	testLibraryFoldersEntries();
 	testHomeLibraryStartupRoute();
 	testWindow();
 	testWindowScaleMatrix();

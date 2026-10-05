@@ -68,6 +68,8 @@ SYSTEM_INFO = read(GUI / "ui_system_info.c")
 SWISS = read(ROOT / "cube/swiss/source/swiss.c")
 
 apply_ring = extract_function(HOME_C, "static uiHomeEffect_t applyRing(")
+apply_classic = extract_function(HOME_C, "static uiHomeEffect_t applyClassic(")
+home_apply = extract_function(HOME_C, "uiHomeEffect_t UIHome_Apply(")
 apply_source = extract_function(HOME_C, "static uiHomeEffect_t applySource(")
 apply_system = extract_function(HOME_C, "static uiHomeEffect_t applySystem(")
 apply_confirm = extract_function(HOME_C, "static uiHomeEffect_t applyRestartConfirm(")
@@ -183,7 +185,8 @@ ordered(scene_apply_home, "request.orientation", "state.home = request;",
         "state.homeTurnDirection = request.turnDirection;")
 scene_request_home = extract_function(SCENE_C, "void UIScene_RequestHome(")
 scene_load_home = extract_function(SCENE_C, "static uiSceneHomeRequest_t loadHomeRequest(")
-for field in ("requestedHomeOrientation", "requestedHomeTurnAxis", "requestedHomeTurnDirection"):
+for field in ("requestedHomeOrientation", "requestedHomeTurnAxis", "requestedHomeTurnDirection",
+              "requestedHomeStyle"):
     assert field in scene_request_home and field in scene_load_home
 assert "__ATOMIC_ACQ_REL" in scene_request_home
 assert "__atomic_thread_fence(__ATOMIC_ACQUIRE)" in scene_load_home
@@ -202,8 +205,22 @@ for field in ("homeFace", "homeTurnDirection", "homeTurnAxis", "homeFocusProgres
     assert f"state.frame.{field} =" in scene_update, f"video thread does not publish {field}"
 
 
-# --- Root B is inert; all Home actions flow through one reducer effect. ---
-assert "UI_HOME_INPUT_BACK" not in apply_ring, "root reducer B is no longer inert"
+# --- Root B is inert on the Infinite ring; all Home actions flow through one
+# reducer effect. Setup > Console > Cube > Classic lays the faces out as the
+# GameCube's menu does, Library the way between them, and there B turns back
+# to Library from a side face, as the GameCube's does (2026-10-02, the
+# maintainer's choice). That B lives in Classic's own reducer, never in the
+# ring's, and the ring surface picks one of the two by the state's style. ---
+assert "UI_HOME_INPUT_BACK" not in apply_ring, "Infinite's root B is no longer inert"
+assert "UI_HOME_INPUT_BACK" in apply_classic, "Classic's B no longer turns back to Library"
+assert "return applyRing(state, input, capabilities);" in apply_classic, (
+    "Classic no longer leaves A and Start to the ring"
+)
+ordered(home_apply, "case UI_HOME_SURFACE_RING:",
+        "state->style == UI_HOME_CUBE_CLASSIC ?",
+        "applyClassic(state, input, capabilities) :",
+        "applyRing(state, input, capabilities);",
+        "case UI_HOME_SURFACE_SOURCE:")
 ordered(
     home_input,
     "if(btns & BUTTON_B)",
@@ -258,6 +275,13 @@ ordered(
 )
 ordered(dispatch, "case UI_HOME_EFFECT_OPEN_SAVES:", "show_saves();")
 assert SWISS.count("show_saves();") == 1
+# Memory Cards hands the Home cube over where it stands, System side to the
+# front: any scene but Home's would turn it while it goes and comes back.
+open_saves = dispatch[dispatch.index("case UI_HOME_EFFECT_OPEN_SAVES:"):]
+open_saves = open_saves[: open_saves.index("break;")]
+assert set(re.findall(r"UIScene_Request\((\w+)\)", open_saves)) <= {"UI_SCENE_HOME"}, (
+    "Memory Cards turns the Home cube away from its System side as it hands it over"
+)
 assert 'return row == 0 ? "CANCEL" : "RESTART";' in row_labels
 ordered(
     apply_confirm,
@@ -548,8 +572,11 @@ for icon, vertices in (("Hub", 180), ("Sliders", 120), ("Clock", 220), ("Books",
 	)
 # The little rails that framed the cube on four sides are gone everywhere.
 assert "_DrawSpatialRails" not in FRAME_C
-dispatch = extract_function(INDIGO, "static void drawFaceIcons(")
+dispatch = extract_function(INDIGO, "static void drawOneFaceIcon(")
 # Four icons per face, in face order; a face's choice picks one of its own.
+# drawFaceIcons and the turned faces' pictures both draw through it.
+assert "drawOneFaceIcon(raster, face, choices[face]" in extract_function(INDIGO, "static void drawFaceIcons(")
+assert "drawOneFaceIcon(&fine, face, icons[face]" in extract_function(INDIGO, "static void renderFacePictures(")
 assert "switch(face * UI_HOME_ICON_CHOICES + choice) {" in dispatch
 for icon, name in (("CONTROLLER", "Controller"), ("BOOKS", "Books"), ("COVERS", "Covers"),
 		("PLAY", "Play"), ("HUB", "Hub"), ("DISC", "Disc"), ("SD_CARD", "SdCard"),
@@ -566,6 +593,11 @@ decorative_strength = re.search(
 )
 assert decorative_strength and 0.0 < float(decorative_strength.group(1)) <= 0.8
 assert "orbitStrength * HOME_DECORATIVE_STRENGTH" in INDIGO
+# The quieter Home waves ease in and out with the scene's own spring; a test
+# of the scene id here steps them on the frame the scene changes.
+background_draw = extract_function(INDIGO, "void IndigoBackground_Draw(")
+assert "scene->homeDecorativeBlend" in background_draw
+assert "scene->scene == UI_SCENE_HOME" not in background_draw
 system_motif = extract_function(INDIGO, "static void drawClockIcon(")
 for frame_edge in (
 	"-0.55f, 0.55f",

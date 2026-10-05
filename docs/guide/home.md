@@ -22,7 +22,7 @@ press A.
 | **Source** | A short list: **Change Source** picks the device your games come from, and **Refresh Library** reads it again, for example after you swap the disc. See [Source](source.md). |
 | **Settings** | Settings. See [Settings](settings.md). |
 | **System** | A short list: **System Information**, **Memory Cards** and **Restart Indigo**. See [System](system.md) and [Memory Cards](memory-cards.md). |
-| **Apps** | Your emulators and other programs, as posters. Only there when the card's `/apps` folder has a program; it comes one turn left of Library. Settings › Setup › Console › Apps Face turns it off. See [Apps](apps.md). |
+| **Apps** | Your emulators and other programs, as posters. Only there when the card's `/apps` folder has a program; it comes one turn left of Library (below it with a Classic cube). Settings › Setup › Console › Apps Face turns it off. See [Apps](apps.md). |
 
 Left and Right turn the cube sideways; Up and Down tip it over. Either way you
 reach the next face, and the name under the cube tells you which face is in
@@ -30,6 +30,24 @@ front. The face icons can be changed: see [Make it yours](personalize.md#cube-ic
 
 Indigo starts on Library when it finds a device to read games from. If it
 doesn't, it starts on Source, and A on Library takes you there too.
+
+### Infinite or Classic
+
+Settings › Setup › Console › **Cube** chooses how the faces sit on the cube.
+
+- **Infinite** (the default) is the cube described above: every direction
+  turns on to the next face, round and round.
+- **Classic** is laid out like the GameCube's own menu. Library is in front
+  and is where you start. Every other menu has a side of its own: Settings
+  on the left, System on the right, Source on top and Apps underneath. From
+  Library, a direction turns the cube a quarter turn to that side. From a
+  side, only the way back, or B, turns it back to Library; the cube doesn't
+  go round, so Settings to System is Right, Right. Each face keeps its icon
+  where it is, so the icons never move as the cube turns, and a Classic turn
+  is a little quicker. With no device to read games from, Indigo still
+  starts on Library, and A turns up to Source with its list open.
+
+A change of Cube takes effect as you leave Settings.
 
 When Indigo starts, the cube flies in from the distance, spinning, and comes
 to rest on that face within a second. With UI Motion set to Reduced it fades
@@ -54,9 +72,14 @@ The cube is clear glass, and it treats light the way glass does:
   glass as the cube turns, and while Home rests they drift a little, so the
   glass is never quite still.
 - **It glows.** Highlights and glints have a soft glow, a fine rim lights
-  the edges that face the light, and a halo sits behind the cube. The face
-  icons stay sharp on top of the glass, and each fades as its face turns
-  away, so the faces to either side show clear glass.
+  the edges that face the light. The face
+  icons stay sharp on top of the glass. Every face shows its icon, moving,
+  as the cube turns: the faces to either side show theirs too, narrowed by
+  the angle.
+- **Its icons stand off it.** The face you are on lifts its icon a little off
+  the glass, so the icon shifts against the glass as the cube turns and
+  sways, and casts a soft shadow on it, down and to the left, away from the
+  light. The faces to either side keep their icons down on the glass.
 
 Every part follows your [Menu Color](personalize.md), except the prism's
 fringes, which keep their own colors. With UI Motion set
@@ -80,9 +103,12 @@ never plays by itself. UI Motion is in Settings › Quick.
 ## Around the cube
 
 - **Top right:** the time and the console's CPU temperature. Settings ›
-  Setup › Console › Clock moves them to the top left or hides them. The
-  temperature has no factory calibration; adjust it in Settings › Setup ›
-  Console › CPU Temperature Calibration.
+  Setup › Console › Clock and Temperature each move theirs to the top left
+  or hide it. The
+  CPU's sensor reads in 4 degree steps, so the temperature shown is an
+  average of the last few seconds' readings: it holds steady and moves a
+  degree at a time. It has no factory calibration; adjust it in Settings ›
+  Setup › Console › CPU Temperature Calibration.
 - **Bottom:** the buttons that work here.
 - **Music and sounds:** Indigo plays its own menu music and soft navigation
   sounds. Turn either off in Settings › Quick.

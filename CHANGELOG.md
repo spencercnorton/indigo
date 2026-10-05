@@ -4,6 +4,329 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## v2.3.0 — Memory Cards, game folders and smoother motion
+
+### New
+
+- A on a save opens its size, source and recorded update date before Actions;
+  creation dates are explicitly not recorded. Library game details show save
+  copies, blocks and latest update from cards and the Save Folder.
+
+- Memory Cards opens Swiss `.raw` virtual memory cards on SD, showing their
+  saves and animated icons. Copy exports a save as a verified `.gci` file;
+  images remain read-only, with Move and Erase dimmed. Unformatted or damaged
+  images get a clear message.
+
+- Settings › Setup › Library › **Library Folders** lets you sort your games
+  into folders. On, the Library shows the folders in `/games` as cards beside
+  the games, two levels deep: A opens one, B goes back up, and the heading
+  names the folder you are in. A folder in a folder shows every game below
+  it. Off (the default), the Library is one list of every game, as before.
+  In `global.ini` it is `Library Folders`.
+- A folder can have a picture: a PNG beside it with its name, such as
+  `Nintendo.png` for the Nintendo folder, becomes its poster, as an app's
+  picture does. A folder without one shows a poster of its name. A picture
+  over 2 MB is never read, and posters are made one at a time on a thread of
+  their own, so a large picture neither holds up a button nor runs the
+  console short of memory.
+- Settings › Setup › Console › **Wave Speed** sets how fast the waves drift:
+  Slow (half as fast), Normal (the default) or Fast (three times as fast). A
+  new speed picks up from where the waves are. In `global.ini` it is
+  `Wave Speed`.
+- Settings › Setup › Console › **Temperature** places the temperature dial on
+  its own: Right, Left or Off, as Clock places the time. Clock moves only the
+  time now. In the same corner the time sits beside the dial as before; apart,
+  each sits in its own corner. In `global.ini` it is `Temperature`; settings
+  saved by 2.2, which has no `Temperature`, keep the dial with the clock.
+- Settings › Setup › Console › **Cube** chooses how Home's cube turns.
+  Infinite (the default) turns round every face in a ring, as before. Classic
+  lays the faces out like the GameCube's own menu: Library in front, Settings
+  on the left, System on the right, Source on top and Apps underneath. From
+  Library a direction turns to that side; from a side, only the way back or
+  B returns to Library. The icons stay on their sides as the cube turns, and
+  a Classic turn arrives in about a quarter of a second. In `global.ini` it
+  is `Cube`.
+- **Memory Cards is the GameCube's own Memory Card screen now.** System ›
+  Memory Cards shows two stacks of small cubes over graph paper, Slot A on
+  the left and Slot B on the right, a save to a cube. Each cube carries its
+  game's icon, every frame at its own speed as the GameCube plays it, and
+  free space shows as smaller, see-through cubes. The
+  highlighted cube is larger and pale and sways slowly; every cube floats
+  gently. A bar below shows the highlighted save's banner (or its icon), its
+  comment and its size in blocks, and above each stack are its letter, Open
+  and the free blocks. The stick or the D-pad moves from cube to cube and
+  across from one stack to the other, and a stack scrolls a row at a time.
+  Visible **L Choose storage** and **R Choose storage** buttons open named
+  Slot A, Slot B and SD card choices. With no physical cards, both columns
+  open on SD and keep independent folder positions. The screen opens with the Home cube drawing away and the
+  saves spiralling out into place, and closes back into the cube.
+- A Actions from save details opens the GameCube's Move, Copy and Erase
+  beside its cube.
+  Move and Copy go to the other stack and ask first, a pale cube pulsing
+  where the save will land; Erase asks with No highlighted. While the card
+  works, the save's cube flies across and waits, and it lands only once the
+  copy has been read back the same and a Move's original removed. The saves
+  after it slide along, and a maroon box says "Finished copying.",
+  "Finished moving." or "The data was erased.", closing by itself. An erased
+  save's cube bursts; a copy that fails flies back and says why.
+- Move or Copy is dimmed, its reason shown before you choose it, when the
+  save can't go: no card, the card has it already, 127 saves, too few free
+  blocks, a game that won't let its save move, or an SD card that can't be
+  written.
+
+### Changes
+
+- Game folders skip Mac `._` metadata files, so copying a game from a Mac
+  no longer makes its folder report an invalid disc image. Hidden files in
+  a game's folder follow Show hidden files, as they do in the file list.
+- Save details gives the save name a larger headline, separates blocks and
+  KiB into clear summaries, aligns source and date fields, and shows distinct
+  controller hints for Actions and Back.
+- The Library's Saves inset gives the copy and block totals more space and
+  larger text, with a brighter update line beneath them.
+
+- Memory Cards copies and moves a save to the SD card into the folder the
+  SD card's stack has open, which starts at the Save Folder, rather than
+  always into the Save Folder; when that folder holds folders, a list offers
+  it or another folder. A save is no longer moved from one folder of the SD
+  card to another there: the file browser does that. Delete is Erase now,
+  and B on the SD card's stack goes up a folder instead of an Up to row.
+- The Library's parent card and X return directly to Home at `/games`,
+  retaining that Library root. B and X keep the current game or folder for
+  the next visit; the root parent card opens on the first actual card.
+  With Library Folders on, an empty `/games` stays in Indigo with its way
+  back to Home.
+- Every face of the Home cube shows its icon as the cube turns, animated, the
+  side faces at rest included. An icon on a face turned away from the screen
+  is drawn four times as wide and twice as tall, then scaled down, so its
+  thinnest lines keep their light, without breaking into fragments, fading
+  out or flickering as the cube sways. Mostly horizontal icons, such as
+  Settings' sliders, still look narrow on a face seen nearly edge-on.
+- A slanted line on a face seen nearly edge-on, such as the clock's minute
+  hand at ten to the hour, no longer disappears at some angles as the cube
+  sways. Its corners were too sharp for its soft edge, and it was skipped;
+  it is drawn plain now.
+- The halo around the Home cube is gone, as the glow spot under it went in
+  2.2.
+- The Home cube's icons stand a little off the glass instead of lying in it:
+  the face you are on lifts its icon, which shifts against the glass as the
+  cube turns and sways. Under it a soft shadow falls on the glass, down and
+  to the left, away from the light; the icon itself stays sharp. Faces turned
+  away keep their icons down, so none hangs past the cube's edge.
+- A Jet Black backdrop is darker still. Its bottom right corner, the
+  brightest, read as a grey cloud.
+- The CPU temperature holds steady. The console's sensor reads in 4 degree
+  steps, so a CPU sitting on a step showed one side and then the other every
+  second (40 °C, 44 °C, 40 °C...). Indigo now shows an average of the last few
+  seconds' readings, which moves a degree at a time, at the top of the screen
+  and in System Information alike.
+- With Clock at Left, the loading spinner at the top right ran its word
+  "Loading" from the wheel out to the screen's edge, where a TV can crop it.
+  It reads inward from the wheel now, in either corner.
+- The menus' animated background costs the console far less each frame: the
+  cube works out its square roots without newlib's slow loop, keeps its
+  outline's lengths, skips icons that can't be seen, copies only the part of
+  the frame its glass shows, and isn't drawn at all under a full-screen page
+  or when Grid and Spotlight park it beside the screen. Upstream's backdrop
+  picture, which Indigo's background always covered, is no longer drawn under
+  it. In Dolphin the background's time a frame went from 8.75 ms to 4.25 ms
+  on Home and from 9.00 ms to 4.50 ms on the Settings face.
+- Scrolling back through the Library shows the covers at once: a cover
+  scrolled past keeps its place in memory until a new one needs it, instead
+  of being read from the card again.
+- Starting a two-disc game no longer reads every disc image in its folder to
+  find the other disc, only those whose details don't already rule them out.
+- A settings save that loses power (or a card pulled mid-save) keeps the
+  settings from before it or the new ones, never none.
+- Moving between games, the old title fades out before the new one fades
+  in, rather than the two showing over each other.
+- With UI Motion on Reduced, the cube no longer moves during the boot and
+  then stops short.
+- The Loading spinner and the progress bar's sweep keep the same speed at
+  50 Hz as at 60 Hz.
+- The Home controller's idle animation no longer stops after Indigo has been
+  running for an hour and three quarters.
+- Holding the stick in the Library's Horizontal, Vertical and Spotlight
+  layouts, the games glide past without a jump. The strip could fall only
+  one game behind the selection, so at the stick's pace it skipped forward
+  two fifths of a card every step; with nine games or more it can fall two
+  behind now.
+- The waves behind the menus ease between Home's quieter strength and the
+  other screens' as the cube moves, instead of brightening or dimming in one
+  frame as you leave or come back to Home.
+- Coming back to Home, the face's name and the hint under the cube fade in
+  as the cube grows back to its place, instead of appearing at once over a
+  cube still on its way.
+- On Home, Source's and System's rows and the restart question fade in when
+  they open, and the highlight fades from row to row as you move instead of
+  jumping.
+- As the boot's cube lands on Home, the icon on the face beside the front
+  one fades in with the glass's light instead of appearing in one frame.
+- A cover, a gameplay still or an app's or folder's poster fades in over a
+  fifth of a second as it arrives, over the card that stood in for it,
+  rather than replacing it in one frame. One read while it was off screen
+  shows at once when you scroll to it, as before.
+- The highlight in Game Details slides from row to row, and so do the current
+  tab's cell in Settings and its underline in Memory Cards, as the focus in
+  the cheat list already did, instead of jumping.
+- A moving cover in the Library slides one way to rest, its edges never
+  stepping back as it settles, and Settings' focus card no longer nudges an
+  edge back the other way as it moves to a row of another width.
+- In Spotlight, moving from one game with a gameplay still to another, the
+  new still fades in over the old one, instead of both fading through a
+  darker panel half way.
+- The Home controller lets go of its idle play over a moment when you touch
+  the pad, instead of its sticks jumping to your hand in one frame.
+
+### Fixes
+
+- Rewinding an MP3 near its start goes back to the start instead of skipping
+  the track, and Forward near the end of a large track no longer wraps to
+  the start. Its progress marker stays inside the bar, including an empty
+  file or a device reading beyond the end of the track.
+- Memory Cards' small cubes have smooth outlines as they float and turn,
+  including the highlighted cube, free cells and folders. Their game icons
+  and banners keep the game's own artwork.
+- Memory Cards reads and erases the selected save when different games or
+  makers use the same save name. Copy checks and failed-copy cleanup keep
+  that identity too, so an existing save is left intact. A save header with
+  a wildcard game or maker code is rejected before it can write to a card.
+- Memory Cards moved a card's save that its game marks as not to be moved:
+  libogc2's listing of a card leaves a save's permissions out, so the check
+  never saw them. It reads them from the card's directory now, Move is
+  dimmed for such a save, and a copy of one on the SD card keeps them.
+- Since 2.3.0-rc.1: a loader that starts Indigo with settings as arguments no
+  longer turns Library Folders off and loses the FlattenDir it keeps, and a
+  Clock argument no longer moves the temperature dial. Turning Library
+  Folders on over a FlattenDir that was empty or already its own pattern now
+  comes back to `*/games` when it goes off.
+- Apps: a picture with a long block of data in it, more than 256 KB in one
+  piece (some programs save a PNG that way, or put a large block of
+  metadata in it), crashed Indigo while it made the app's poster. The
+  checksum zlib-ng takes of a block that long needs more stack than the
+  poster thread has; Indigo now takes it 8 KB at a time. Folder pictures
+  are made the same way.
+- A game or app could freeze as it started, until the console was switched
+  off. Stopping the menu's music and sounds could catch the audio DSP with an
+  answer the CPU had not read yet; the DSP then never took the stop, and the
+  CPU waited for it with interrupts off. Indigo now builds libogc2's audio
+  library from its own copy, with the stop fixed to let the DSP finish first.
+- After a game failed to launch, the menu stayed in the video mode the launch
+  had switched to for the game. A PAL game left an NTSC console's menu at
+  50 Hz, which a TV that only takes 60 Hz shows as a black screen, and an
+  NTSC game left a PAL console's at 60 Hz. The menu goes back to its own mode.
+- Migrating a settings file from Swiss before 2019 (a single swiss.ini) no
+  longer overruns the menu's stack, and a cheats file of 4 GiB, or the
+  console running out of memory while reading one, no longer crashes it.
+
+### For developers
+
+- CI also opens a synthetic RAW memory card on SD with both physical slots
+  empty, browses its saves and exports one as a GCI. The exported identity
+  and block-chain payload must match, and the RAW image must stay unchanged.
+- The emulator test's smoke route walks Memory Cards with a memory card in
+  each slot, GCI folders of made-up saves with every kind of icon
+  (`buildtools/ui/qa/make_test_saves.py`): it moves across the cubes and
+  between the stacks, scrolls, swaps a stack with L and R, copies a save to
+  Slot B and checks Slot B's folder gained it with the same blocks, then
+  erases it and checks Slot A's folder lost it.
+- Memory Cards' save art (banners, every icon frame and comments) is read
+  by pure, fuzzed code in `ui_saves.c`, and its cubes are laid out, moved
+  and projected on the CPU by `ui_save_cubes.c` and drawn in the 2D
+  pipeline. Both have host tests, and the cube screen's GX stream, its
+  safety audit and its frame budget scenes are pinned.
+- `test_frame_budget.py` runs the real cube renderer against counting GX
+  stubs and holds each scene's per-frame cost (square roots, trig, vertices,
+  GX_Begin calls, EFB pixels copied) to the ceilings in
+  `frame_budget.json`; `--update` locks in a gain.
+- `make -C cube/swiss BUILD=build-perf TARGET=swiss-perf UI_PERF=1` builds the
+  performance overlay, now with the GPU's own counters; CI builds it beside
+  every DOL.
+- One list of C tests drives both the test Makefile and `run_tests.sh`, and
+  the contracts lane builds every fuzzer, so a broken one fails CI.
+- The DOL is the same bytes in any locale, any folder and whatever tags the
+  clone has: the build links its files in byte order, names no build path,
+  and `tags.h` (read only by upstream's startup autoload, which Indigo drops)
+  is empty. CI's second build runs in another folder.
+- New fuzzers and harnesses: `fuzz_cheats` (with allocations failing on
+  purpose), the settings fuzzer now also merges files and migrates a legacy
+  swiss.ini, and `test_config_save.py` cuts the power at every step of a
+  settings save.
+- Fuzz runs after "CI passed", so it never holds a runner a required job is
+  waiting for, and the weekly run fits its hour. Build runs `make -j8 dev`,
+  30 s faster; Reproducible build still builds one file at a time, as the
+  README does, and proves the two give the same DOL.
+- The toolchain's digest moves by hand, every copy at once: Dependabot leaves
+  libogc2 alone and `check_workflows.py` holds all 13 copies equal.
+- The menu music is `menu_music.mp3`, embedded with `#embed`, instead of a
+  5 MB header of numbers.
+- The DOL is 106 KB smaller: Swiss is built without unwind tables, which
+  nothing in it reads.
+- A thread whose stack overflows now crashes in the emulator test as it does on
+  a console: the runner's Dolphin emulates the data address breakpoint libogc
+  guards each thread's stack with, where it used to let the overrun corrupt
+  memory unseen. A stack overflow that crashed a console, but passed CI, now
+  fails there too.
+- The emulator test presses a cube turn or a step along a row again when the
+  menu was too busy to see the press and the screen did not change, as a
+  person would; the report lists each such press.
+- AESND, libogc2's audio library, is built from `cube/swiss/aesnd`: a copy
+  byte-identical to the toolchain's libogc2, with Indigo's fix as a patch
+  applied at build time. CI checks the copy against that commit and the
+  toolchain, and stops AESND 300 times in the emulator test.
+- CI saves settings to a card whose writes fail, boots it again and checks
+  the settings still load in their colours, and its smoke job with every
+  setting changed now runs on a GC Loader.
+- The emulator test can put the probe's game in pieces on the SD card
+  (`run.py --fragments N`), as a copy onto a used card can leave a game: in
+  40 it must launch, the most Swiss and a GC Loader can serve, and in more it
+  must be refused with a message. CI's GC Loader job launches it in 40.
+- The emulator test can put the SD card in a GC Loader (`run.py --storage
+  gcloader`): the runner's Dolphin answers as one, so Indigo finds it, keeps
+  its settings on its card and launches a game by the game file's fragments,
+  as on a console with one. CI launches the probe's game that way, in 480p.
+- The emulator test counts the console's own seconds, which the runner's
+  Dolphin now reports, for its waits and presses, so a busy machine slows a
+  run instead of failing it; a failed step says where the console's CPU was.
+- The emulated SD card can fail as a test asks (`run.py --sd-faults`), and
+  `--route save` checks that settings saved to a failing card are still there
+  on the next boot.
+- The emulator test runs each job in a video mode of its own: PAL composite
+  576i, NTSC composite 480i and a component cable's 480p, in both regions. A
+  console's SRAM now matches its region, and the probe reports the mode the
+  menu was in, which the smoke route checks after a failed launch of a game
+  from the other region. Until now every job ran interlaced: 480p never ran.
+- An SD card can start with settings (`run.py --settings <name>`, from
+  `buildtools/ui/emulator/settings/`), which must all survive Indigo's own
+  saves. CI's GC Loader smoke job starts with every setting of Indigo's own
+  away from its default, but Menu Widescreen.
+- The emulator test launches a game and an app all the way. A small program,
+  the probe ([`buildtools/ui/emulator/probe/`](buildtools/ui/emulator/probe/probe.c)),
+  sits on the demonstration disc as a game and as an app. Launched, it
+  reports what the hand-off left it, drawn as blocks the test reads back
+  from the screen: the menu music stopped, nothing still writing to memory,
+  a game's own disc ID and its 24 MB, an app's own path. Launches used to
+  stop at the launch screen in Dolphin: its stand-ins for the DSP don't know
+  libogc2's audio library, so the DSP now runs its own microcode, in step
+  with the CPU, and its controller answered nothing to commands a real one
+  ignores, which hung Swiss's GameID packet before every launch (see below).
+- CI runs the emulator test four times: every menu, and a game's launch from
+  the Library, each from the demonstration disc in PAL and from an SD card in
+  NTSC. Dolphin's own default region had been PAL.
+- The emulator test boots from an SD card, as Indigo is installed: the
+  build's zip unpacked onto a FAT32 card image with the demonstration games
+  beside it, served by an SD2SP2 adapter that CI's Dolphin gains from a patch
+  ([`buildtools/ci/runner/dolphin/`](buildtools/ci/runner/dolphin/README.md)),
+  so libogc2's SD driver, FatFs and Swiss's device code run as on a console.
+  A new card starts in Settings, and the test checks what Indigo writes to
+  the card: its settings, the recent list and its play history.
+- CI's Dolphin is built from source, a pinned March 2026 commit, in place of
+  Ubuntu's 2512 package, with a fix of ours: a controller answers the serial
+  commands a real one ignores (a steering wheel's probe, Swiss's GameID
+  packet) with no response, where Dolphin's answer of nothing hung the
+  transfer for good. That was why Swiss in Dolphin stalled starting up with a
+  controller connected, and why a launch stalled.
+
 ## v2.2.0 — Backdrop and Wave Color, a Clock setting and a cleaner cube
 
 The backdrop and the waves can each have a color of their own, the clock can

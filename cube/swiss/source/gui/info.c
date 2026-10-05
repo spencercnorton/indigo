@@ -381,7 +381,7 @@ static void infoDrawOverview(uiDrawObj_t *container,
 	struct tm localTimeStorage;
 	struct tm *localTime = now == (time_t)-1 ? NULL :
 		localtime_r(&now, &localTimeStorage);
-	int coreTemperature = SYS_GetCoreTemperature();
+	int coreTemperature = CoreTemperature();
 	DEVICEHANDLER_INTERFACE *current = devices[DEVICE_CUR];
 	bool sourceAvailable = current != NULL &&
 		deviceHandler_getDeviceAvailable(current);

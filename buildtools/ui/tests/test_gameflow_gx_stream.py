@@ -51,6 +51,41 @@ BASE_EDITS = (
     ("FrameBufferMagic.c", "if(fabsf(cards[i].visualSlot) < 1.5f &&",
      "if(fabsf(cards[i].visualSlot) < 3.0f &&"),
     ("ui_gameflow_library.c", "if(distance >= 1.5f) {", "if(distance >= 3.0f) {"),
+    # The titles fade through: out over the first half of a move, then in.
+    ("FrameBufferMagic.c", "\t\ttitleTravel * (1.0f - frame->detailProgress), reveal);",
+     "\t\t_GameflowClamp(2.0f * titleTravel - 1.0f, 0.0f, 1.0f) *\n"
+     "\t\t(1.0f - frame->detailProgress), reveal);"),
+    ("FrameBufferMagic.c", "\t\t(1.0f - titleTravel) * (1.0f - frame->detailProgress), reveal);",
+     "\t\t_GameflowClamp(1.0f - 2.0f * titleTravel, 0.0f, 1.0f) *\n"
+     "\t\t(1.0f - frame->detailProgress), reveal);"),
+    # A held stick: the strip may run two cards behind, so the window holds
+    # four either side.
+    ("ui_gameflow.c", "if(travel < -1.0f) {\n\t\treturn -1.0f;\n\t}\n"
+     "\tif(travel > 1.0f) {\n\t\treturn 1.0f;",
+     "if(travel < -2.0f) {\n\t\treturn -2.0f;\n\t}\n"
+     "\tif(travel > 2.0f) {\n\t\treturn 2.0f;"),
+    # A ring smaller than that window keeps within one card.
+    ("ui_gameflow.c", "\ttravel = clampCarouselTravel(travel + visualStep);\n",
+     "\ttravel = clampCarouselTravel(travel + visualStep);\n"
+     "\tif(state->itemCount < 9u) {\n"
+     "\t\ttravel = travel < -1.0f ? -1.0f : (travel > 1.0f ? 1.0f : travel);\n\t}\n"),
+    ("ui_gameflow_library.c", "0, -1, 1, -2, 2, -3, 3\n", "0, -1, 1, -2, 2, -3, 3, -4, 4\n"),
+    ("ui_gameflow_library.h", "#define UI_GAMEFLOW_LIBRARY_WINDOW 7u",
+     "#define UI_GAMEFLOW_LIBRARY_WINDOW 9u"),
+    ("FrameBufferMagic.h", "#define UI_GAMEFLOW_RENDER_SLOTS 7u",
+     "#define UI_GAMEFLOW_RENDER_SLOTS 9u"),
+    ("FrameBufferMagic.c", "record->relativeSlot < -3 || record->relativeSlot > 3) {",
+     "record->relativeSlot < -4 || record->relativeSlot > 4) {"),
+    # A moving card goes a whole pixel of its farthest-moving corner at a
+    # time, so each edge moves one way and its size changes one way.
+    ("FrameBufferMagic.c", "\tfloat progress = clamped - (float)lower;\n\tint i;\n",
+     "\tfloat progress = clamped - (float)lower;\n\tint i;\n\tfloat travel = 0.0f;\n"
+     "\tfor(i = 0; i < 4; ++i) {\n"
+     "\t\ttravel = fmaxf(travel, fabsf(gameflowSlotPoses[upper + 3].point[i].x -\n"
+     "\t\t\tgameflowSlotPoses[lower + 3].point[i].x));\n"
+     "\t\ttravel = fmaxf(travel, fabsf(gameflowSlotPoses[upper + 3].point[i].y -\n"
+     "\t\t\tgameflowSlotPoses[lower + 3].point[i].y));\n\t}\n"
+     "\tif(travel > 0.0f) {\n\t\tprogress = _GameflowRound(progress * travel) / travel;\n\t}\n"),
 )
 PURE = ("ui_gameflow.c", "ui_motion.c", "ui_gameflow_library.c",
         "ui_command_rail.c", "ui_gameflow_detail.c", "ui_game_history.c")
@@ -145,7 +180,11 @@ static void GX_InitTexObj(GXTexObj *t, void *d, int w, int h, int f, int s, int 
 { (void)w; (void)h; (void)f; (void)s; (void)tt; (void)m; t->data = d; }
 static void GX_InitTexObjFilterMode(GXTexObj *t, int a, int b) { (void)t; (void)a; (void)b; }
 static void drawStringMedium(int x, int y, const char *text, float scale, int align, GXColor c)
-{ CHECK(!active); fprintf(out, "S %d %d %.3f %d %u %s\n", x, y, scale, align, c.a, text); }
+{
+	CHECK(!active);
+	fprintf(out, "S %d %d %.3f %d %u %s\n", x, y, scale, align, c.a, text);
+	fprintf(out, "I %d %d %u %u %u %u\n", x, y, c.r, c.g, c.b, c.a);
+}
 static void _DrawHintText(int x, int y, const char *text, float scale, int align, GXColor c)
 { CHECK(!active); fprintf(out, "H %d %d %.3f %d %u %s\n", x, y, scale, align, c.a, text); }
 static void _HintRoundRect(float cx, float cy, float w, float h, float r, GXColor c)
@@ -157,6 +196,17 @@ static float GetTextScaleToFitInWidthWithMax(const char *text, int width, float 
 	float scale = size < (float)width ? 1.0f : (float)width / size;
 	return scale < maximum ? scale : maximum;
 }
+/* When every picture arrived, by a clock the frames advance: long ago,
+ * until "Y" has them all arrive now, or "Y n" game n's still. */
+static u32 clockMs = 600000u, artArrivedMs, stillArrivedMs[1000];
+u32 UIAssets_PeekAgeMs(uiPosterHandle_t handle) { (void)handle; return clockMs - artArrivedMs; }
+u32 UIStills_PeekAgeMs(uiPosterHandle_t handle)
+{
+	return clockMs - (handle.slot < 1000u &&
+		stillArrivedMs[handle.slot] > artArrivedMs ?
+		stillArrivedMs[handle.slot] : artArrivedMs);
+}
+static u32 CardArt_PosterAgeMs(int32_t card) { (void)card; return clockMs - artArrivedMs; }
 /* Every seventh game has no cover, so the fallback art is drawn too. The
  * launch test closes the pack, as the hand-off does. */
 static GXTexObj covers[1000];
@@ -199,15 +249,16 @@ GXTexObj *UIStills_Peek(uiPosterHandle_t handle)
 	return &stills[handle.slot];
 }
 #endif
-/* Apps' posters (gui/apps.c): every third app has none. */
-static GXTexObj appPosters[64];
-static char appPosterNames[64][8];
-static GXTexObj *apps_poster(u32 app)
+/* Posters made on the console (gui/card_art.c), an app's or a folder of
+ * games': every third card has none. */
+static GXTexObj artPosters[64];
+static char artPosterNames[64][8];
+static GXTexObj *CardArt_Poster(int32_t card)
 {
-	if(app >= 64u || app % 3u == 2u) return NULL;
-	snprintf(appPosterNames[app], sizeof(appPosterNames[0]), "APP%03u", app);
-	appPosters[app].data = appPosterNames[app];
-	return &appPosters[app];
+	if(card < 0 || card >= 64 || card % 3 == 2) return NULL;
+	snprintf(artPosterNames[card], sizeof(artPosterNames[0]), "ART%03d", (int)card);
+	artPosters[card].data = artPosterNames[card];
+	return &artPosters[card];
 }
 static uiSceneFrame_t sceneFrame;
 const uiSceneFrame_t *UIScene_Frame(void) { return &sceneFrame; }
@@ -225,9 +276,15 @@ static uiGameflowRenderSnapshot_t snapshot;
 static uint32_t generation;
 /* A: the cards are apps, as Apps shows them. */
 static bool apps;
+/* O: Library Folders, inside a folder: every fourth card is a folder of
+ * games, and the heading names the folder. */
+static bool folders;
+/* W: every game has a disc banner, as Spotlight's always do. */
+static bool banners;
 
-/* L layout count selected (A: apps) | P selected hint rowDirection snap
- * | M motion | D mode | N frames dt  -- the log has one "F" per frame. */
+/* L layout count selected (A: apps, O: folders) | P selected hint rowDirection snap
+ * | M motion | D mode | W (banners) | Y [game] (pictures, or its still, arrive)
+ * | N frames dt  -- the log has one "F" per frame. */
 static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 	int rowDirection, int snap, bool first)
 {
@@ -267,9 +324,19 @@ static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 		snprintf(record->company, sizeof(record->company), "Company %u", slots[i].index % 9u);
 		snprintf(record->facts, sizeof(record->facts), "%s  |  1.4 GB", record->gameId);
 #if LAYOUTS
-		if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
+		if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT || banners) {
 			record->flags |= UI_GAMEFLOW_CARD_HAS_BANNER;
 			snprintf((char *)record->banner, 16, "banner:%s", record->gameId);
+		}
+		if(folders && slots[i].index % 4u == 2u) {
+			/* No ID, no banner, and a name longer than a card holds. */
+			record->flags = (u8)(record->flags & ~UI_GAMEFLOW_CARD_HAS_BANNER);
+			memset(record->banner, 0, 16);
+			memset(record->gameId, 0, sizeof(record->gameId));
+			record->subfolder = 1u;
+			snprintf(record->title, sizeof(record->title), "Folder of games %u", slots[i].index);
+			snprintf(record->company, sizeof(record->company), "FOLDER");
+			snprintf(record->facts, sizeof(record->facts), "A  OPEN");
 		}
 #endif
 #ifdef UI_GAMEFLOW_CARD_APP	/* the reference renderer has no Apps */
@@ -284,7 +351,12 @@ static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 #endif
 	}
 #if LAYOUTS
-	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT && selected != 27u) {
+	if(folders) {
+		snprintf(snapshot.folder, sizeof(snapshot.folder), "RACING / CLASSICS");
+	}
+	/* A folder of games has no description, as swiss.c leaves it. */
+	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT && selected != 27u &&
+		!(folders && selected % 4u == 2u)) {
 		/* Padded with spaces and no NUL, as a banner's may be: anything
 		 * read past it would show as a word. Game 27 has none. */
 		memset(snapshot.description, ' ', sizeof(snapshot.description));
@@ -321,15 +393,21 @@ int main(void)
 	while(fgets(line, sizeof(line), stdin)) {
 		unsigned a, b; int c, d, e; float dt;
 		if(sscanf(line, "L %d %u %u", &layout, &a, &b) == 3) {
-			count = a; apps = false; publish(layout, count, b, 0, 0, 0, true);
+			count = a; apps = false; folders = false; publish(layout, count, b, 0, 0, 0, true);
 		}
 		else if(sscanf(line, "A %d %u %u", &layout, &a, &b) == 3) {
-			count = a; apps = true; publish(layout, count, b, 0, 0, 0, true);
+			count = a; apps = true; folders = false; publish(layout, count, b, 0, 0, 0, true);
+		}
+		else if(sscanf(line, "O %d %u %u", &layout, &a, &b) == 3) {
+			count = a; apps = false; folders = true; publish(layout, count, b, 0, 0, 0, true);
 		}
 		else if(sscanf(line, "P %u %d %d %d", &a, &c, &d, &e) == 4) {
 			publish(layout, count, a, c, d, e, false);
 		}
 		else if(sscanf(line, "M %d", &c) == 1) motionMode = (uiMotionMode_t)c;
+		else if(sscanf(line, "Y %u", &a) == 1) stillArrivedMs[a % 1000u] = clockMs;
+		else if(line[0] == 'Y') artArrivedMs = clockMs;
+		else if(line[0] == 'W') banners = true;
 		else if(sscanf(line, "D %d", &c) == 1) {
 			UIGameflow_SetMode(&eventData->state, (uiGameflowMode_t)c, motionMode);
 			sceneFrame.scene = c ? UI_SCENE_GAME_DETAIL : UI_SCENE_LIBRARY;
@@ -337,6 +415,7 @@ int main(void)
 		else if(sscanf(line, "N %u %f", &a, &dt) == 2) {
 			for(b = 0; b < a; ++b) {
 				animDelta = dt; animSeconds += dt;
+				clockMs += (u32)(dt * 1000.0f + 0.5f);
 				fprintf(out, "F\n");
 				_DrawGameflow(&event);
 			}
@@ -359,9 +438,14 @@ def build(work: Path, gui: Path, frame_c: str, frame_h: str, layouts: bool, name
              "-I" + str(gui)]
     if os.uname().sysname == "Linux":
         flags += ["-fno-pie", "-no-pie"]
+    # The archived comparison predates save metadata. Only today's Detail
+    # header uses the shared formatter; missing current sources still fail
+    # compilation rather than quietly excluding the new feature.
+    metadata = (("ui_saves_metadata.c", "ui_saves.c") if
+                '#include "ui_saves_metadata.h"' in (gui / "ui_gameflow_detail.h").read_text() else ())
     result = subprocess.run(shlex.split(os.environ.get("CC", "cc")) + flags +
                             ["-o", str(binary), str(source)] +
-                            [str(gui / pure) for pure in PURE + (LAUNCH if layouts else ())] +
+                            [str(gui / pure) for pure in PURE + metadata + (LAUNCH if layouts else ())] +
                             ["-lm"],
                             capture_output=True, text=True, timeout=180)
     if result.returncode:
@@ -390,6 +474,27 @@ def covers(frame: str) -> dict:
 
 def centre(box):
     return ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+
+
+def shells(frame: str) -> dict:
+    """gameId -> the corners of its card in one frame: of the quads every card
+    is drawn as first, its foot dark, the one nearest the middle of its cover."""
+    lines = frame.splitlines()
+    quads = []
+    for i, line in enumerate(lines):
+        block = lines[i + 1:i + 1 + 3 * int(line.split()[1])] if line.startswith("B ") else []
+        if block and "strip" not in line and block[7].startswith("C 10 8 30 "):
+            points = [tuple(map(float, block[k].split()[1:])) for k in range(0, len(block), 3)]
+            quads = [points[k:k + 4] for k in range(0, len(points), 4)]
+            break
+    found = {}
+    for game, boxes in covers(frame).items():
+        if game.startswith("still:"):  # Spotlight's picture, not a card
+            continue
+        x, y = centre(boxes[0])
+        found[game] = min(quads, key=lambda q: (sum(p[0] for p in q) / 4 - x) ** 2 +
+                          (sum(p[1] for p in q) / 4 - y) ** 2)
+    return found
 
 
 # Horizontal through moves, wraps, page snaps, Detail and back, in each
@@ -501,9 +606,9 @@ class GameflowGxStream(unittest.TestCase):
                 self.assertIn("D-PAD  BROWSE   A  START   B  HOME", last)
                 self.assertNotIn("SETTINGS", last)
                 drawn = set(covers(last))
-                self.assertIn("APP004", drawn)
-                self.assertFalse({name for name in drawn if not name.startswith("APP")})
-                self.assertFalse({f"APP{n:03d}" for n in range(12) if n % 3 == 2} & drawn)
+                self.assertIn("ART004", drawn)
+                self.assertFalse({name for name in drawn if not name.startswith("ART")})
+                self.assertFalse({f"ART{n:03d}" for n in range(12) if n % 3 == 2} & drawn)
                 texts = [l.split(" ", 6)[6] for l in last.splitlines() if l.startswith("S ")]
                 self.assertIn("gbi4", texts)
         # In front, an app without a picture (every third) shows its name
@@ -518,7 +623,56 @@ class GameflowGxStream(unittest.TestCase):
             texts = [l.split(" ", 6)[6] for l in last.split("\n") if l.startswith("S ")]
             self.assertIn(name, texts)
             self.assertIn("APP", texts)
-            self.assertNotIn(f"APP{selected:03d}", covers(last))
+            self.assertNotIn(f"ART{selected:03d}", covers(last))
+
+    def test_a_folder_of_games(self):
+        """Library Folders, inside a folder: in every layout the heading names
+        the folder and B goes back up it. A folder of games without art shows
+        its name cut to a card's eight letters over FOLDER, on a cover card and
+        on Spotlight's row alike; selected in Spotlight, the column holds no
+        description line, since a folder has none. A folder with a picture
+        shows its poster, as an app does."""
+        def last_frame(script):
+            result = subprocess.run([str(self.binary)], input=script, capture_output=True,
+                                    encoding="latin-1", timeout=120)
+            self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+            return frames(result.stdout)[-1]
+
+        def texts(frame):
+            # split, not splitlines: the IPL font's ellipsis is U+0085.
+            return [l.split(" ", 6)[6] for l in frame.split("\n") if l.startswith("S ")]
+
+        for layout, heading in ((0, "S 320 70 0.500 1"), (1, "S 262 177 0.420 0"),
+                                (2, "S 320 40 0.460 1"), (3, "S 36 62 0.420 0")):
+            with self.subTest(layout=layout):
+                last = last_frame(f"O {layout} 12 4\nN 40 0.0167\n")
+                self.assertTrue(any(l.startswith(heading) and l.endswith(" RACING / CLASSICS")
+                                    for l in last.split("\n")), heading)
+                self.assertNotIn("GAME LIBRARY", last)
+                self.assertIn("D-PAD  BROWSE   A  OPEN   Y  SETTINGS   B  BACK", last)
+                self.assertNotIn("B  HOME", last)
+        # Selected: card 2 in the carousel shows FOLDER OF\x85 over FOLDER.
+        shown = texts(last_frame("O 0 12 2\nN 40 0.0167\n"))
+        self.assertIn("FOLDER O\x85", shown)
+        self.assertIn("FOLDER", shown)
+        self.assertNotIn("Folder of games 2", [t for t in shown if t.startswith("FOLDER")])
+        # Spotlight: folder 26 selected. Its tile on the row has its short
+        # name, never the whole one, and the column no description line.
+        frame = last_frame("O 3 40 26\nN 40 0.0167\n")
+        whole = [l.split(" ")[1] for l in frame.split("\n")
+                 if l.startswith("S ") and l.split(" ", 6)[6] == "Folder of games 26"]
+        self.assertEqual(whole, ["380"])  # only the column's title, not the row
+        self.assertGreaterEqual(texts(frame).count("FOLDER O\x85"), 2)  # panel and tile
+        column = self.column(frame)
+        self.assertEqual(column[92], "Folder of games 26")
+        self.assertNotIn(154, column)
+        # A game beside it still says when it has no description.
+        self.assertEqual(self.column(last_frame("O 3 40 27\nN 40 0.0167\n")).get(154),
+                         "No description for this game.")
+        # Folder 6 has a picture: its poster, in front and in Spotlight's
+        # panel.
+        for script in ("O 0 12 6\nN 40 0.0167\n", "O 3 40 6\nN 40 0.0167\n"):
+            self.assertIn("ART006", covers(last_frame(script)))
 
     def test_vertical_column(self):
         log = self.run_script(["L 1 40 12", "N 40 0.0167"])
@@ -747,6 +901,174 @@ class GameflowGxStream(unittest.TestCase):
         self.assertNotIn("still:G021E0", rest)
         self.assertAlmostEqual(centre(rest["banner:G022E0"][0])[0], 320, delta=1.0)
         self.assertEqual(self.column(frames(log)[-1])[92], "Game number 22")
+
+    @staticmethod
+    def texture_alpha(frame: str, name: str):
+        """The alpha a texture is first drawn with in a frame, or None."""
+        lines = frame.splitlines()
+        if f"X {name}" not in lines:
+            return None
+        at = lines.index(f"X {name}")
+        return int(next(l for l in lines[at:] if l.startswith("C ")).split()[4])
+
+    def test_a_picture_fades_in_as_it_arrives(self):
+        for script, picture, fallbacks in (
+                # A cover, over the card it stood in for; five cards show.
+                (["L 0 40 20"], "G020E0", 5),
+                # An app's poster made on the console.
+                (["A 0 10 4"], "ART004", None),
+                # Spotlight's still, over the cover it stood in for.
+                (["L 3 40 21"], "still:G021E0", None)):
+            with self.subTest(picture=picture):
+                log = frames(self.run_script(script + ["N 40 0.0167", "Y", "N 20 0.0167"]))
+                # Read long before it shows, it shows at once.
+                self.assertEqual(self.texture_alpha(log[0], picture), 255)
+                alphas = [self.texture_alpha(f, picture) for f in log[40:]]
+                self.assertLess(alphas[0], 255 * 0.15)
+                self.assertEqual(alphas, sorted(alphas))
+                self.assertTrue(all(b - a < 255 * 0.3 for a, b in zip(alphas, alphas[1:])),
+                                alphas)
+                # About 200 ms: full by the thirteenth frame.
+                self.assertEqual(alphas[13:], [255] * 7)
+                if fallbacks:
+                    self.assertEqual(log[40].count("B 24\n"), fallbacks)
+                    self.assertEqual(log[-1].count("B 24\n"), 0)
+                if picture.startswith("still:"):
+                    self.assertIsNotNone(self.texture_alpha(log[40], "G021E0"))
+                    self.assertIsNone(self.texture_alpha(log[-1], "G021E0"))
+        # Off shows it at once.
+        log = frames(self.run_script(["M 2", "L 0 40 20", "N 5 0.0167", "Y", "N 1 0.0167"]))
+        self.assertEqual(self.texture_alpha(log[-1], "G020E0"), 255)
+
+    def test_a_stand_in_gives_way_as_its_picture_arrives(self):
+        """What stood in for a picture shows only as much as the arriving
+        picture does not cover yet: the two read as one card at the card's
+        own strength, so nothing of the stand-in is left to vanish when the
+        picture is whole. The cards either side are drawn at less than full
+        strength, which is where it showed."""
+        log = frames(self.run_script(["W", "L 0 40 20", "N 40 0.0167", "Y",
+                                      "N 20 0.0167"]))[40:]
+        for game in ("G019E0", "G020E0", "G021E0"):
+            with self.subTest(game=game):
+                shown = []
+                for frame in log:
+                    picture = self.texture_alpha(frame, game) / 255
+                    stand_in = (self.texture_alpha(frame, "banner:" + game) or 0) / 255
+                    shown.append(round(picture + stand_in * (1 - picture), 3))
+                self.assertIsNotNone(self.texture_alpha(log[5], "banner:" + game))
+                self.assertTrue(all(abs(s - shown[-1]) < 0.01 for s in shown), shown)
+        # Spotlight: a still that arrives as the row moves fades in over its
+        # cover, and the two come in together, never more and then less.
+        log = frames(self.run_script(["L 3 40 21", "N 40 0.0167", "P 22 1 0 0", "Y 22",
+                                      "N 30 0.0167"]))[40:]
+        shown = []
+        for frame in log:
+            still = (self.texture_alpha(frame, "still:G022E0") or 0) / 255
+            cover = (self.texture_alpha(frame, "G022E0") or 0) / 255
+            shown.append(still + cover * (1 - still))
+        self.assertIsNotNone(self.texture_alpha(log[5], "G022E0"))
+        self.assertIsNone(self.texture_alpha(log[-1], "G022E0"))
+        self.assertTrue(all(b >= a - 0.005 for a, b in zip(shown, shown[1:])), shown)
+
+    def test_spotlight_keeps_the_old_picture_as_a_new_still_arrives(self):
+        """The old picture only ever fades as the row moves: when the new
+        still arrives part way through the move and takes over from its
+        cover, the old one does not step back up under it; and opening
+        Detail part way through fades it with the new one, rather than
+        showing more of it as the panel fades."""
+        def old_shown(log):
+            shown = []
+            for frame in log:
+                old = (self.texture_alpha(frame, "still:G021E0") or 0) / 255
+                new = (self.texture_alpha(frame, "still:G022E0") or 0) / 255
+                shown.append(round(old * (1 - new), 3))
+            return shown
+        shown = old_shown(frames(self.run_script(
+            ["L 3 40 21", "N 40 0.0167", "P 22 1 0 0", "Y 22", "N 60 0.0167"]))[40:])
+        self.assertGreater(shown[0], 0.9)
+        self.assertEqual(shown[-1], 0)
+        self.assertTrue(all(b <= a + 0.005 for a, b in zip(shown, shown[1:])), shown)
+        # The old picture against the new one: their share of the mix is
+        # the move's, however far the panel has faded.
+        mix = []
+        for frame in frames(self.run_script(
+                ["L 3 40 21", "N 40 0.0167", "P 22 1 0 0", "N 6 0.0167", "D 1",
+                 "N 30 0.0167"]))[45:]:
+            old = (self.texture_alpha(frame, "still:G021E0") or 0) / 255
+            new = (self.texture_alpha(frame, "still:G022E0") or 0) / 255
+            if new > 0.05:
+                mix.append(round(old * (1 - new) / new, 3))
+        self.assertGreater(len(mix), 10)
+        self.assertTrue(all(b <= a + 0.01 for a, b in zip(mix, mix[1:])), mix)
+
+    def test_moving_cards_change_size_one_way(self):
+        """A step moves every card between two poses: its size along the
+        strip changes one way, never a pixel back and forth as its corners
+        round. Each card goes a whole pixel of its farthest-moving corner at
+        a time."""
+        width = lambda box: box[2] - box[0]
+        height = lambda box: box[3] - box[1]
+        for script, sizes in ((["L 0 40 20", "P 21 1 0 0"], (width,)),
+                              (["L 1 40 20", "P 21 1 0 0"], (height,)),
+                              (["L 2 40 12", "P 13 1 0 0"], (width, height)),
+                              (["L 2 40 12", "P 17 1 0 0"], (width, height))):
+            with self.subTest(script=script):
+                log = [covers(f) for f in frames(self.run_script(
+                    [script[0], "N 40 0.0167", script[1], "N 50 0.0167"]))[40:]]
+                games = set.intersection(*(set(f) for f in log))
+                self.assertGreater(len(games), 1)
+                for game in games:
+                    for size in sizes:
+                        seen = [size(f[game][0]) for f in log if len(f[game]) == 1]
+                        steps = [b - a for a, b in zip(seen, seen[1:]) if abs(b - a) > 0.001]
+                        self.assertTrue(all(step > 0 for step in steps) or
+                                        all(step < 0 for step in steps), (game, seen))
+
+    def test_moving_cards_edges_move_one_way(self):
+        """Through a step each corner of every card moves one way to rest,
+        never a pixel back as the spring's tail crosses half pixels: a card
+        whose edge steps back and forth shakes before it stops."""
+        for script in (["L 0 40 20", "P 21 1 0 0"], ["L 0 40 20", "P 19 -1 0 0"],
+                       ["L 1 40 20", "P 21 1 0 0"], ["L 3 40 20", "P 21 1 0 0"],
+                       ["L 2 40 12", "P 13 1 0 0"], ["L 2 40 12", "P 17 1 0 0"]):
+            with self.subTest(script=script):
+                log = frames(self.run_script([script[0], "N 40 0.0167", script[1],
+                                              "N 50 0.0167"]))[40:]
+                corners = [shells(f) for f in log]
+                games = set.intersection(*({game for game, boxes in covers(f).items()
+                                            if len(boxes) == 1} & set(c)
+                                           for f, c in zip(log, corners)))
+                self.assertGreater(len(games), 1)
+                for game in games:
+                    for corner in range(4):
+                        for axis in (0, 1):
+                            seen = [f[game][corner][axis] for f in corners]
+                            steps = [b - a for a, b in zip(seen, seen[1:]) if b != a]
+                            self.assertTrue(all(step > 0 for step in steps) or
+                                            all(step < 0 for step in steps),
+                                            (game, corner, "xy"[axis], seen))
+
+    def test_spotlight_mixes_stills_without_a_dip(self):
+        """Still to still, the old one stays whole under the new one as it
+        fades in, so the panel never shows through half way; still to cover,
+        the old still fades out round the smaller cover."""
+        log = frames(self.run_script(["L 3 40 21", "N 40 0.0167", "P 22 1 0 0",
+                                      "N 40 0.0167"]))[40:]
+        mixed = [(self.texture_alpha(f, "still:G021E0"), self.texture_alpha(f, "still:G022E0"))
+                 for f in log]
+        during = [(old, new) for old, new in mixed if old is not None]
+        self.assertGreater(len(during), 5)
+        self.assertTrue(all(old == 255 for old, _ in during), during)
+        news = [new for _, new in mixed]
+        self.assertEqual(news, sorted(news))
+        self.assertEqual(mixed[-1], (None, 255))
+        log = frames(self.run_script(["L 3 40 22", "N 40 0.0167", "P 23 1 0 0",
+                                      "N 40 0.0167"]))[40:]
+        olds = [self.texture_alpha(f, "still:G022E0") for f in log]
+        olds = [alpha for alpha in olds if alpha is not None]
+        self.assertGreater(len(olds), 5)
+        self.assertEqual(olds, sorted(olds, reverse=True))
+        self.assertLess(olds[-1], 128)
 
     def test_every_layout_flies_to_detail(self):
         for layout in (0, 1, 2, 3):

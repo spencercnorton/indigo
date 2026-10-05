@@ -11,12 +11,99 @@
  *                                       letters. Exit 3 when refused.
  *   test_ui_png poster-stopped IN OUT    / name-stopped NAME OUT: the same
  *                                       with the stop already set: exit 3.
+ *   test_ui_png limits                  "MAX_FILE MAX_SIDE MAX_WORK"
+ *   test_ui_png peak IN | peak-name NAME | peak-stopped IN
+ *                                       a poster, counting what ui_png
+ *                                       allocates: "MADE PEAK LIVE CRC",
+ *                                       made 1 or 0, the most held at once,
+ *                                       what is still held after, and the
+ *                                       most bytes one zlib CRC call was
+ *                                       given. Only a build with
+ *                                       UI_PNG_COUNT counts (exit 4); the
+ *                                       Makefile builds both with it.
  */
+#include <math.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <zlib.h>
 
+#ifdef UI_PNG_COUNT
+/* ui_png.c built in, its malloc, calloc and free (zlib's through them)
+ * counted in the peak modes, where each block carries its size in front of
+ * it. In the others they are the C library's own, whole, for the
+ * sanitizers. main decides before ui_png allocates anything. */
+typedef union {
+	size_t size;
+	max_align_t align;
+} countHeader_t;
+
+static bool counting;
+static size_t countLive, countPeak;
+static uInt countCrcLongest;
+
+static void *countMalloc(size_t size)
+{
+	countHeader_t *block;
+
+	if(!counting) return malloc(size);
+	if(size > SIZE_MAX - sizeof(countHeader_t) ||
+		(block = malloc(sizeof(countHeader_t) + size)) == NULL) {
+		return NULL;
+	}
+	block->size = size;
+	countLive += size;
+	if(countLive > countPeak) countPeak = countLive;
+	return block + 1;
+}
+
+static void *countCalloc(size_t count, size_t size)
+{
+	void *data;
+
+	if(!counting) return calloc(count, size);
+	if(size != 0u && count > SIZE_MAX / size) return NULL;
+	data = countMalloc(count * size);
+	if(data != NULL) memset(data, 0, count * size);
+	return data;
+}
+
+static void countFree(void *data)
+{
+	countHeader_t *block = data;
+
+	if(!counting) {
+		free(data);
+		return;
+	}
+	if(block == NULL) return;
+	countLive -= block[-1].size;
+	free(&block[-1]);
+}
+
+/* zlib's CRC, the longest run it is given at once noted: zlib-ng takes a
+ * long run's table on the stack, more than the poster thread has. */
+static uLong countCrc32(uLong crc, const Bytef *buf, uInt len)
+{
+	if(len > countCrcLongest) countCrcLongest = len;
+	return crc32(crc, buf, len);
+}
+
+#define malloc countMalloc
+#define calloc countCalloc
+#define free countFree
+#define crc32 countCrc32
+#include "ui_png.c"
+#undef malloc
+#undef calloc
+#undef free
+#undef crc32
+#else
 #include "ui_png.h"
+#endif
 
 static unsigned char *slurp(const char *path, size_t *size)
 {
@@ -81,6 +168,42 @@ int main(int argc, char **argv)
 {
 	size_t size;
 	unsigned char *data;
+
+#ifdef UI_PNG_COUNT
+	counting = argc == 3 && strncmp(argv[1], "peak", 4) == 0;
+#endif
+
+	if(argc == 2 && strcmp(argv[1], "limits") == 0) {
+		printf("%u %u %u\n", (unsigned)UI_PNG_MAX_FILE,
+			(unsigned)UI_PNG_MAX_SIDE, (unsigned)UI_PNG_MAX_WORK);
+		return 0;
+	}
+	if(argc == 3 && strncmp(argv[1], "peak", 4) == 0) {
+#ifdef UI_PNG_COUNT
+		static const volatile bool stop = true;
+		uiPngFont_t font = {12, blockGlyph, NULL};
+		unsigned char *poster = malloc(UI_PNG_POSTER_BYTES);
+		bool ok;
+
+		if(poster == NULL) return 2;
+		if(strcmp(argv[1], "peak-name") == 0) {
+			ok = UIPng_NamePoster(argv[2], &font, poster);
+		}
+		else {
+			data = slurp(argv[2], &size);
+			ok = UIPng_PosterUntil(data, size, poster,
+				strcmp(argv[1], "peak-stopped") == 0 ? &stop : NULL);
+			free(data);
+		}
+		free(poster);
+		printf("%d %zu %zu %u\n", ok ? 1 : 0, countPeak, countLive,
+			(unsigned)countCrcLongest);
+		return 0;
+#else
+		fprintf(stderr, "%s: this build doesn't count allocations\n", argv[0]);
+		return 4;
+#endif
+	}
 
 	if(argc == 4 && strcmp(argv[1], "poster-stopped") == 0) {
 		static const volatile bool stop = true;
@@ -154,6 +277,7 @@ int main(int argc, char **argv)
 		return ok ? 0 : 3;
 	}
 	fprintf(stderr, "usage: %s poster IN OUT | info IN | cmpr IN SIZE OUT"
-		" | name[-wide|-empty] NAME OUT\n", argv[0]);
+		" | name[-wide|-empty] NAME OUT | limits | peak[-stopped] IN"
+		" | peak-name NAME\n", argv[0]);
 	return 2;
 }

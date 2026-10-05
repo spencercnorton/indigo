@@ -60,6 +60,9 @@ programs (`.dol`, `.elf`) and MP3s:
 - Settings › Setup › Library › **File Browser Type** changes how the list
   looks.
 
+While an MP3 plays, Left rewinds and Right goes forward. Rewinding near the
+start returns to the start of the same track. B stops playback.
+
 ## Refresh Library
 
 The other choice on the Source face, **Refresh Library**, reads the current

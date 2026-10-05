@@ -62,6 +62,8 @@ SEMANTIC = {
     (255, 0, 0), (0, 255, 0),                          # glass: TEV channel masks, not colors
     (255, 247, 236),                                   # glass: the sun's warm white core
     (255, 184, 150), (90, 224, 246),                   # glass: dispersion fringes on the rim
+    (255, 236, 170), (255, 190, 80),                   # Memory Cards: the box's focus, a reason,
+    (120, 16, 36), (255, 210, 220),                    # and the IPL's maroon message
 }
 # Pure blue can't turn without clipping, so its luma moves. It is the legacy
 # backdrop's tint, which the opaque Indigo wash covers.
@@ -286,14 +288,18 @@ class MenuColorTest(unittest.TestCase):
     def test_each_layer_is_drawn_in_its_own_color(self):
         background = (GUI / "indigo_background.c").read_text()
         draw = extract_function(background, "void IndigoBackground_Draw(")
-        order = [draw.index(token) for token in (
-            "UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);",
-            "drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));",
-            "drawGlobeGrid(", "UIColor_Select(layerColors[UI_COLOR_LAYER_WAVES]);",
-            "drawSilkWaves(", "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);",
-            "if(!scene->visible) {", "drawRadialDisc(", "drawCubeLight(", "drawCube(scene,")]
-        self.assertEqual(order, sorted(order))
-        self.assertEqual(draw.count("UIColor_Select("), 3)
+        # In this order: the turned faces' icon pictures in the menus' color
+        # (before the wash covers their corner), then the backdrop, the waves,
+        # and the menus' again for the cube.
+        at = 0
+        for token in ("UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);", "renderFacePictures(",
+                "UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);",
+                "drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));",
+                "drawGlobeGrid(", "UIColor_Select(layerColors[UI_COLOR_LAYER_WAVES]);",
+                "drawSilkWaves(", "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);",
+                "if(!scene->visible) {", "drawRadialDisc(", "drawCube(scene,"):
+            at = draw.index(token, at) + 1
+        self.assertEqual(draw.count("UIColor_Select("), 4)
         # The boot veil is the backdrop too; the cube under it is the menus'.
         boot = extract_function(background, "void IndigoBackground_DrawBootOverlay(")
         order = [boot.index(token) for token in (
@@ -301,26 +307,57 @@ class MenuColorTest(unittest.TestCase):
             "drawIndigoWash(veilAlpha, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));",
             "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);")]
         self.assertEqual(order, sorted(order))
-        self.assertEqual(background.count("drawIndigoWash("), 3)   # its definition and these two
+        # Memory Cards' stage is the backdrop too, its graph paper with it;
+        # the cubes after it are the menus'.
+        saves = extract_function(background, "void IndigoBackground_DrawSavesBackdrop(")
+        order = [saves.index(token) for token in (
+            "UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);",
+            "drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));",
+            "GX_Begin(", "putVertex(", "GX_End();",
+            "UIColor_Select(layerColors[UI_COLOR_LAYER_MENU]);")]
+        self.assertEqual(order, sorted(order))
+        self.assertEqual(saves.count("UIColor_Select("), 2)
+        self.assertEqual(background.count("drawIndigoWash("), 4)   # its definition and these three
         # The wash's four corners all go through the shade.
         wash = extract_function(background, "static void drawIndigoWash(")
         self.assertEqual(wash.count("WASH("), 5)   # the macro and its four corners
 
     def test_a_jet_black_backdrop_is_darker(self):
         """Jet Black, the color with no saturation, shades the backdrop to about a
-        third; every other color and anything out of range draws it as designed."""
+        quarter; every other color and anything out of range draws it as designed.
+        Shaded, the wash's brightest corner (the bottom right) is a grey of 7 at
+        most: at 10 it read as a grey cloud on a TV."""
         work = Path(self.tmp.name)
+        wash = extract_function((GUI / "indigo_background.c").read_text(),
+                                "static void drawIndigoWash(")
+        corners = re.findall(r"WASH\((\d+), (\d+), (\d+)\)", wash)
+        self.assertEqual(len(corners), 4)
         (work / "shade.c").write_text("\n".join([
-            "#include <stdio.h>", '#include "ui_color.h"',
-            "int main(void) { for(int c = -1; c <= 9; c++) printf(\"%d %.3f\\n\", c, "
-            "UIColor_BackdropShade(c)); return 0; }", ""]))
+            "#include <stdint.h>", "#include <stdio.h>", '#include "ui_color.h"',
+            "static const int corners[4][3] = {" +
+            ", ".join("{%s, %s, %s}" % corner for corner in corners) + "};",
+            "int main(void) {",
+            "\tfor(int c = -1; c <= 9; c++) printf(\"%d %.3f\\n\", c, UIColor_BackdropShade(c));",
+            "\tUIColor_Select(%d);" % (self.count - 1),
+            "\tfor(int k = 0; k < 4; k++) {",
+            "\t\tfloat shade = UIColor_BackdropShade(%d);" % (self.count - 1),
+            "\t\tuint8_t rgb[3];",
+            "\t\tfor(int i = 0; i < 3; i++) rgb[i] = (uint8_t)(corners[k][i] * shade + 0.5f);",
+            "\t\tUIColor_Apply(&rgb[0], &rgb[1], &rgb[2]);",
+            "\t\tprintf(\"corner %d %d %d\\n\", rgb[0], rgb[1], rgb[2]);",
+            "\t}",
+            "\treturn 0;", "}", ""]))
         result = subprocess.run(shlex.split(os.environ.get("CC", "cc")) +
             ["-std=c99", "-Wall", "-Wextra", "-Werror", "-I" + str(GUI), str(work / "shade.c"),
              str(GUI / "ui_color.c"), "-o", str(work / "shade"), "-lm"],
             capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        shades = dict(line.split() for line in subprocess.run(
-            [str(work / "shade")], capture_output=True, text=True, timeout=30).stdout.splitlines())
+        lines = subprocess.run([str(work / "shade")], capture_output=True, text=True,
+                               timeout=30).stdout.splitlines()
+        shades = dict(line.split() for line in lines if not line.startswith("corner"))
+        greys = [tuple(map(int, line.split()[1:])) for line in lines if line.startswith("corner")]
+        self.assertEqual(len(greys), 4)
+        self.assertLessEqual(max(max(grey) for grey in greys), 7, greys)
         jet_black = str(self.count - 1)
         self.assertLess(float(shades[jet_black]), 0.5)
         self.assertGreater(float(shades[jet_black]), 0.0)

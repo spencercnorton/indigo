@@ -68,143 +68,80 @@ make_fixture() {
 	return 3
 }
 
-run_plain() {
-	echo "== cheat menu presentation and navigation (plain) =="
-	./test_ui_cheats
-	echo "== Memory Cards save files and destinations (plain) =="
-	./test_ui_saves
-	echo "== Apps: what is an app, its picture, its poster slots (plain) =="
-	./test_ui_apps
-	python3 ./test_ui_png.py ./test_ui_png
-	echo "== ui_assets runtime (plain + target-sync policy) =="
+# Every C test in the Makefile's list, plain ("") or under ASan/UBSan (_san).
+run_binaries() {
+	suffix=$1
+	fixtures=
+	echo "== game folder navigation$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_gameflow_folder_navigation.py; else python3 ./test_gameflow_folder_navigation.py --sanitize; fi
 	if make_fixture; then
-		./test_ui_assets "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
-		./test_ui_assets_target_sync "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
+		fixtures="$TMP/fixture.pak $TMP/fixture-stills.pak"
 	else
 		status=$?
 		if [ "$status" -ne 3 ] || [ "${UI_TEST_REQUIRE_GXTEXCONV:-0}" = "1" ]; then
 			return "$status"
 		fi
-		./test_ui_assets
-		./test_ui_assets_target_sync
 	fi
-
-	echo "== settings layout and focus (plain) =="
-	./test_ui_settings_layout
-	./test_ui_settings_focus
-
-	echo "== System Information presentation (plain) =="
-	./test_ui_system_info
-
-	echo "== per-port menu input policy and live clock geometry (plain) =="
-	./test_ui_menu_input
-	./test_ui_clock
-	./test_ui_hint
-
-	echo "== widescreen stage (plain) =="
-	./test_ui_stage
-
-	echo "== Home reducer, lifecycle, layout, scene, and command rail (plain) =="
-	./test_ui_home
-	./test_ui_cube_motif
-	./test_ui_home_safety
-	./test_ui_home_layout
-	./test_ui_scene
-	./test_ui_command_rail
-
-	echo "== shared retained presentation states (plain) =="
-	./test_ui_presentation
-
-	echo "== retained Gameflow (plain) =="
-	./test_gameflow_state
-	./test_gameflow_library
-	./test_gameflow_resolver
-	./test_gameflow_detail
-	./test_ui_game_history
-	./test_ui_about
-	./test_gameflow_ownership
-
-	echo "== cheat identity, launch policy, and bounded writer (plain) =="
-	./test_cheat_policy
-
-	echo "== launch screen steps, pinned to Swiss's messages (plain) =="
-	./test_ui_launch
+	for test in $(make -s list); do
+		echo "== $test$suffix =="
+		# shellcheck disable=SC2086 # $fixtures is two paths or none
+		case $test in
+			test_ui_png) python3 ./test_ui_png.py "./$test$suffix" ;;
+			test_ui_assets|test_ui_assets_target_sync) "./$test$suffix" $fixtures ;;
+			*) "./$test$suffix" ;;
+		esac
+	done
+	echo "== raw card device adapter$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_saves_raw_backend.py; else python3 ./test_saves_raw_backend.py --sanitize; fi
+	echo "== game save stats$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_saves_stats.py; else python3 ./test_saves_stats.py --sanitize; fi
+	echo "== manual MP3 player$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_mp3_player.py; else python3 ./test_mp3_player.py --sanitize; fi
+	# card_art builds its own binaries: posters of apps and folders, their guards.
+	echo "== test_card_art$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_card_art.py; else python3 ./test_card_art.py --sanitize; fi
+	echo "== game folder visibility$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_gameflow_folder_visibility.py; else python3 ./test_gameflow_folder_visibility.py --sanitize; fi
+	echo "== test_saves_card_io$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_saves_card_io.py; else python3 ./test_saves_card_io.py --sanitize; fi
+	echo "== test_saves_raw_controller$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_saves_raw_controller.py; else python3 ./test_saves_raw_controller.py --sanitize; fi
 }
 
-run_sanitized() {
-	echo "== cheat menu presentation and navigation (ASan/UBSan) =="
-	./test_ui_cheats_san
-	echo "== Memory Cards save files and destinations (ASan/UBSan) =="
-	./test_ui_saves_san
-	echo "== Apps: what is an app, its picture, its poster slots (ASan/UBSan) =="
-	./test_ui_apps_san
-	python3 ./test_ui_png.py ./test_ui_png_san
-	echo "== ui_assets runtime (ASan/UBSan + target-sync policy) =="
-	if make_fixture; then
-		./test_ui_assets_san "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
-		./test_ui_assets_target_sync_san "$TMP/fixture.pak" "$TMP/fixture-stills.pak"
+# The fuzzers (fuzz/) must build on every change, since a Fuzz run is not
+# required. They need clang with libFuzzer; UI_TEST_REQUIRE_FUZZERS=1 makes
+# a missing one an error rather than a skip.
+build_fuzzers() {
+	echo "== the fuzzers build =="
+	if printf 'int LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\n' |
+		"${FUZZ_CC:-clang}" -x c -fsanitize=fuzzer -o "$TMP/probe" - >/dev/null 2>&1; then
+		./fuzz/run_fuzz.sh --build-only "$TMP/fuzz"
+	elif [ "${UI_TEST_REQUIRE_FUZZERS:-0}" = "1" ]; then
+		echo "fuzzers required, but clang with libFuzzer is unavailable" >&2
+		return 3
 	else
-		status=$?
-		if [ "$status" -ne 3 ] || [ "${UI_TEST_REQUIRE_GXTEXCONV:-0}" = "1" ]; then
-			return "$status"
-		fi
-		./test_ui_assets_san
-		./test_ui_assets_target_sync_san
+		echo "fuzzer build skipped (no clang with libFuzzer; set UI_TEST_REQUIRE_FUZZERS=1 to fail)"
 	fi
-
-	echo "== settings layout and focus (ASan/UBSan) =="
-	./test_ui_settings_layout_san
-	./test_ui_settings_focus_san
-
-	echo "== System Information presentation (ASan/UBSan) =="
-	./test_ui_system_info_san
-
-	echo "== per-port menu input policy and live clock geometry (ASan/UBSan) =="
-	./test_ui_menu_input_san
-	./test_ui_clock_san
-	./test_ui_hint_san
-
-	echo "== widescreen stage (ASan/UBSan) =="
-	./test_ui_stage_san
-
-	echo "== Home reducer, lifecycle, layout, scene, and command rail (ASan/UBSan) =="
-	./test_ui_home_san
-	./test_ui_cube_motif_san
-	./test_ui_home_safety_san
-	./test_ui_home_layout_san
-	./test_ui_scene_san
-	./test_ui_command_rail_san
-
-	echo "== shared retained presentation states (ASan/UBSan) =="
-	./test_ui_presentation_san
-
-	echo "== retained Gameflow (ASan/UBSan) =="
-	./test_gameflow_state_san
-	./test_gameflow_library_san
-	./test_gameflow_resolver_san
-	./test_gameflow_detail_san
-	./test_ui_game_history_san
-	./test_ui_about_san
-	./test_gameflow_ownership_san
-
-	echo "== cheat identity, launch policy, and bounded writer (ASan/UBSan) =="
-	./test_cheat_policy_san
-
-	echo "== launch screen steps, pinned to Swiss's messages (ASan/UBSan) =="
-	./test_ui_launch_san
 }
 
 run_contracts() {
+	build_fuzzers
 	echo "== play-history device faults and handoff boundaries =="
 	python3 ./test_history_persistence.py
 	echo "== cheat panel GX vertex stream and geometry =="
 	python3 ./test_cheats_gx_stream.py
 	echo "== Source picker: GX stream, sliding row, both screen shapes =="
 	python3 ./test_source_picker_gx_stream.py
+	echo "== Home: its name, hint and rows fade in, never pop =="
+	python3 ./test_home_gx_stream.py
+	echo "== Settings and Memory Cards: the current tab's mark slides =="
+	python3 ./test_page_tabs_gx_stream.py
 	echo "== native stroke GX stream and perspective coverage =="
 	python3 ./test_stroke_gx_stream.py
 	echo "== wave and grid native coverage =="
 	python3 ./test_background_gx_stream.py
+	echo "== turned faces' icon pictures: doubled, copied, laid on the glass =="
+	python3 ./test_face_pictures.py
 	echo "== cube glass light: refraction, dispersion, bloom, rim, glint =="
 	python3 ./test_glass_light.py
 	echo "== display copy clear and poster retreat =="
@@ -217,8 +154,12 @@ run_contracts() {
 	python3 ./test_gameflow_layout_mutants.py
 	echo "== cube orientation and visible face binding =="
 	python3 ./test_cube_render_pose.py
+	echo "== frame budget: what one frame of each scene costs the console =="
+	python3 ./test_frame_budget.py
 	echo "== settings files: real parser/writer vs docs/SETTINGS.md =="
 	python3 ./test_settings_file.py
+	echo "== settings saves: power lost at any step leaves them whole =="
+	python3 ./test_config_save.py
 	echo "== settings views: every setting in exactly one view =="
 	python3 ./test_settings_views.py
 	echo "== Menu Color: Indigo's colors turn, meanings and neutrals stay =="
@@ -245,7 +186,16 @@ run_contracts() {
 	echo "== cheat runtime integration and mutation audit =="
 	python3 ./audit_cheat_safety.py
 
-	echo "== Memory Cards copy, move and delete safety audit =="
+	echo "== Memory Cards: the test saves' icons and banners through the decoder =="
+	python3 ./test_save_art.py
+
+	echo "== Memory Cards: the cube screen's GX stream, its passes and icons =="
+	python3 ./test_save_cubes_gx_stream.py
+
+	echo "== Memory Cards: save details hierarchy, text bounds and GX budget =="
+	python3 ./test_save_details_gx_stream.py
+
+	echo "== Memory Cards move, copy and erase safety audit =="
 	python3 ./audit_saves_safety.py
 
 	echo "== strict Game Library dispatch audit =="
@@ -276,19 +226,19 @@ case "$SUITE" in
 		echo "== poster_pack generator tests =="
 		python3 -m unittest -v test_poster_pack
 		build_binaries all
-		run_plain
-		run_sanitized
+		run_binaries ""
+		run_binaries _san
 		run_contracts
 		;;
 	plain)
 		echo "== poster_pack generator tests =="
 		python3 -m unittest -v test_poster_pack
 		build_binaries plain
-		run_plain
+		run_binaries ""
 		;;
 	sanitized)
 		build_binaries sanitized
-		run_sanitized
+		run_binaries _san
 		;;
 	contracts)
 		run_contracts

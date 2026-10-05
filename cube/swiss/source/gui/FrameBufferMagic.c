@@ -28,7 +28,6 @@
 #include "main.h"
 #include "util.h"
 #include "ata.h"
-#include "btns.h"
 #include "dolparameters.h"
 #include "cheats.h"
 #include "indigo_background.h"
@@ -39,6 +38,7 @@
 #include "ui_scene.h"
 #include "ui_stage.h"
 #include "ui_hint.h"
+#include "ui_system_info.h"
 #include "ui_assets.h"
 #include "ui_command_rail.h"
 #include "ui_home_layout.h"
@@ -49,19 +49,14 @@
 #include "ui_cheats.h"
 #include "ui_about.h"
 #include "ui_launch.h"
-#include "apps.h"
+#include "card_art.h"
 
 #define GUI_MSGBOX_ALPHA 225
 #define GUI_PANEL_ALPHA 150	// Phase 2: translucent content panels (config-gated; dialogs stay at GUI_MSGBOX_ALPHA)
 
 TPLFile imagesTPL;
 TPLFile buttonsTPL;
-TPLFile backdropTPL;
-GXTexObj backdropTexObj;
-GXTlutObj backdropTlutObj;
-GXTexObj backdropIndTexObj;
 GXTexObj bannerMaskTexObj;
-GXTexObj swissTexObj;
 GXTexObj gcdvdsmallTexObj;
 GXTexObj sdsmallTexObj;
 GXTlutObj sdsmallTlutObj;
@@ -79,12 +74,6 @@ GXTexObj memcardIndTexObj;
 GXTexObj bbaTexObj;
 GXTexObj wiikeyTexObj;
 GXTexObj systemTexObj;
-GXTexObj btnhilightTexObj;
-GXTexObj btndeviceTexObj;
-GXTexObj btnsettingsTexObj;
-GXTexObj btninfoTexObj;
-GXTexObj btnrefreshTexObj;
-GXTexObj btnexitTexObj;
 GXTexObj boxinnerTexObj;
 GXTexObj boxouterTexObj;
 GXTexObj ntscjTexObj;
@@ -119,7 +108,6 @@ static char  video_thread_stack[VIDEO_STACK_SIZE] ATTRIBUTE_ALIGN (8);
 static lwp_t video_thread = LWP_THREAD_NULL;
 static mutex_t _videomutex = LWP_MUTEX_NULL;
 static bool sceneRenderingEnabled;
-static u32 videoFrameSerial;
 /* While a Settings page is up, the screen keeps the colors that page was
  * drawn with (DrawUpdateSettingsPage): Menu, Backdrop and Wave Color, one per
  * UI_COLOR_LAYER_; disposing the page lets them go. While one of their lists
@@ -139,6 +127,7 @@ typedef struct {
 	char timeText[9];
 	char temperatureText[8];
 	s8 coreTemperature;
+	uiSystemTemperature_t temperatureFilter;
 	bool civilSecondSampled;
 	bool civilTimeAvailable;
 	bool temperatureSampled;
@@ -147,6 +136,8 @@ typedef struct {
 static uiSystemInstrument_t systemInstrument;
 static void _UpdateSystemInstrument(void);
 static indigoPadFrame_t padInstrument;
+/* This frame shows a full-screen page over everything before it. */
+static bool backgroundCovered;
 static file_handle posterPackFile;
 static DEVICEHANDLER_INTERFACE *posterPackDevice;
 static bool posterPackAttempted;
@@ -196,11 +187,13 @@ enum VideoEventType
 	EV_CHEATS,
 	EV_SETTINGSLIST,
 	EV_SETTINGSHELP,
-	EV_SAVES
+	EV_SAVES,
+	EV_SAVE_CUBES,
+	EV_SAVE_DETAILS
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Background", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "Saves"};
+						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "Saves", "SaveCubes", "SaveDetails"};
 
 typedef struct drawTexObjEvent {
 	GXTexObj *texObj;
@@ -300,7 +293,17 @@ typedef struct drawHomeEvent {
 	float contextCommandScale;
 	float confirmCommandScale;
 	float consequenceScale;
+	/* Seconds since the surface changed, up to HOME_SURFACE_REVEAL: a new
+	 * surface fades in. */
+	float surfaceAge;
+	/* Each row's style from idle (0) to selected (1), springing between as
+	 * the selection moves; a new surface's rows start where they rest. */
+	uiMotionSpring_t rowWeight[UI_HOME_LAYOUT_MAX_ROWS];
+	bool rowsPlaced;
 } drawHomeEvent_t;
+
+#define HOME_SURFACE_REVEAL 0.18f
+#define HOME_ROW_RESPONSE 25.0f
 
 static const char homeContextCommand[] =
 	"D-PAD  SELECT    A  OPEN    B  BACK";
@@ -351,7 +354,8 @@ typedef struct drawGameflowDetailPresentation {
 	float factsScale;
 	float statusScale;
 	float lastPlayedScale;
-	float saveStatusScale;
+	float savesSummaryScale;
+	float savesUpdatedScale;
 	float cheatSummaryScale;
 	float cheatPreviewScale;
 	float settingsSummaryScale;
@@ -380,6 +384,9 @@ typedef struct drawGameflowEvent {
 	GXTexObj detailBannerTexObj;
 	/* Outside the snapshot, so a republished Detail keeps it. */
 	uiGameflowDetailFocus_t detailFocus;
+	/* The focused row's frame, its top and height, sliding between rows;
+	 * placed afresh (response 0) each time Detail opens. */
+	uiMotionSpring_t detailLit[2];
 	/* Spotlight: the selected game's description, wrapped for its column
 	 * when the snapshot is published. */
 	char spotlightLines[UI_GAMEFLOW_DESCRIPTION_LINES][UI_CHEATS_TEXT_CAPACITY];
@@ -392,6 +399,18 @@ typedef struct drawPresentationEvent {
 	float detailScale;
 	float actionScale;
 } drawPresentationEvent_t;
+
+/* Every fit is computed before this immutable event is published. */
+typedef struct {
+	uiSaveDetailsSnapshot_t snapshot;
+	char blocks[12];
+	char kib[12];
+	float nameScale;
+	float blocksScale;
+	float kibScale;
+	float sourceScale;
+	float updatedScale;
+} drawSaveDetailsEvent_t;
 
 _Static_assert(sizeof(uiGameflowCardSnapshot_t) % 32u == 0u,
 	"Gameflow record stride must preserve banner alignment");
@@ -411,7 +430,8 @@ typedef struct drawProgressEvent {
 	bool miniMode;
 	bool hidden;	/* a launch's: the launch screen shows its step */
 	int miniModePos;
-	int miniModeAlpha;
+	float miniModeAlpha;
+	float seconds;	/* shown for: the spinner's and sweep's clock */
 	int percent;
 	int speed;	// in bytes
 	int timestart;
@@ -435,9 +455,37 @@ static void _DrawDialogCard(int x, int y, int width, int height, int type);
 static void _DrawDialogBar(int x, int y, int width, int start, int length);
 
 #if UI_PERF_CAPTURE
+/* The GPU's own counters, summed between two refreshes of the overlay: the
+ * vertices, pixels and texels it drew and the clocks it spent copying the
+ * EFB (the glass copies and the display copy). A console counts them;
+ * Dolphin may not. */
+static u64 perfGpuVertices, perfGpuPixels, perfGpuTexels, perfGpuCopyClocks;
+static u32 perfGpuFrames;
+
+static void _PerfGpuFrameStart(void)
+{
+	GX_ClearGPMetric();
+	GX_ClearPixMetric();
+}
+
+/* After GX_DrawDone: the frame's work is finished. */
+static void _PerfGpuFrameEnd(void)
+{
+	u32 vertices, texels, topIn, topOut, bottomIn, bottomOut, clearIn, copyClocks;
+
+	GX_ReadGPMetric(&vertices, &texels);
+	GX_ReadPixMetric(&topIn, &topOut, &bottomIn, &bottomOut, &clearIn, &copyClocks);
+	perfGpuVertices += vertices;
+	perfGpuPixels += (u64)topIn + bottomIn;
+	perfGpuTexels += texels;
+	perfGpuCopyClocks += copyClocks;
+	perfGpuFrames++;
+}
+
 static void _DrawPerfOverlay(void)
 {
 	static char summary[128] = "PERF capture warming up";
+	static char gpu[128] = "";
 	static u32 framesUntilRefresh = 1;
 	uiPerfSnapshot_t snapshot;
 	u64 workP99;
@@ -459,13 +507,26 @@ static void _DrawPerfOverlay(void)
 			(unsigned long long)(periodP99 / 1000),
 			(unsigned long long)((periodP99 % 1000) / 10),
 			(unsigned long long)snapshot.metrics[UI_PERF_METRIC_FRAME_PERIOD].thresholdExceedances);
+		if(perfGpuFrames) {
+			/* Per frame: vertices, then thousands of pixels and texels,
+			 * then thousands of copy clocks (162 per microsecond). */
+			snprintf(gpu, sizeof(gpu),
+				"GPU/frame verts %llu  kpx %llu  ktex %llu  copy %llu kclk",
+				(unsigned long long)(perfGpuVertices / perfGpuFrames),
+				(unsigned long long)(perfGpuPixels / perfGpuFrames / 1000),
+				(unsigned long long)(perfGpuTexels / perfGpuFrames / 1000),
+				(unsigned long long)(perfGpuCopyClocks / perfGpuFrames / 1000));
+		}
+		perfGpuVertices = perfGpuPixels = perfGpuTexels = perfGpuCopyClocks = 0;
+		perfGpuFrames = 0;
 		framesUntilRefresh = 60;
 	}
 
 	drawInit();
-	_DrawSimpleBox(118, 82, 404, 22, 0,
+	_DrawSimpleBox(118, 82, 404, 36, 0,
 		(GXColor) {7, 6, 24, 218}, (GXColor) {135, 124, 209, 150});
 	drawString(320, 94, summary, 0.42f, ALIGN_CENTER, defaultColor);
+	drawString(320, 108, gpu, 0.42f, ALIGN_CENTER, defaultColor);
 }
 #endif
 
@@ -573,12 +634,7 @@ static void init_textures()
 {
 	TPL_OpenTPLFromMemory(&imagesTPL, (void *)images_tpl, images_tpl_size);
 	TPL_OpenTPLFromMemory(&buttonsTPL, (void *)buttons_tpl, buttons_tpl_size);
-	TPL_GetTextureCI(&imagesTPL, backdrop, &backdropTexObj, &backdropTlutObj, GX_TLUT0);
-	GX_InitTexObjUserData(&backdropTexObj, &backdropTlutObj);
-	TPL_GetTexture(&imagesTPL, backdrop_ind, &backdropIndTexObj);
-	GX_InitTexObjUserData(&backdropIndTexObj, &backdropTexObj);
 	TPL_GetTexture(&imagesTPL, banner_mask, &bannerMaskTexObj);
-	TPL_GetTexture(&imagesTPL, swissimg, &swissTexObj);
 	TPL_GetTexture(&imagesTPL, gcdvdsmall, &gcdvdsmallTexObj);
 	TPL_GetTextureCI(&imagesTPL, sdsmall, &sdsmallTexObj, &sdsmallTlutObj, GX_TLUT0);
 	GX_InitTexObjUserData(&sdsmallTexObj, &sdsmallTlutObj);
@@ -596,12 +652,6 @@ static void init_textures()
 	TPL_GetTextureCI(&imagesTPL, usbgeckoimg, &usbgeckoTexObj, &usbgeckoTlutObj, GX_TLUT0);
 	GX_InitTexObjUserData(&usbgeckoTexObj, &usbgeckoTlutObj);
 	TPL_GetTexture(&imagesTPL, bbaimg, &bbaTexObj);
-	TPL_GetTexture(&buttonsTPL, btnhilight, &btnhilightTexObj);
-	TPL_GetTexture(&buttonsTPL, btndevice, &btndeviceTexObj);
-	TPL_GetTexture(&buttonsTPL, btnsettings, &btnsettingsTexObj);
-	TPL_GetTexture(&buttonsTPL, btninfo, &btninfoTexObj);
-	TPL_GetTexture(&buttonsTPL, btnrefresh, &btnrefreshTexObj);
-	TPL_GetTexture(&buttonsTPL, btnexit, &btnexitTexObj);
 	TPL_GetTexture(&buttonsTPL, boxinner, &boxinnerTexObj);
 	TPL_GetTexture(&buttonsTPL, boxouter, &boxouterTexObj);
 	TPL_GetTexture(&imagesTPL, ntscjimg, &ntscjTexObj);
@@ -755,48 +805,6 @@ static void _DrawImageNow(int textureId, int x, int y, int width, int height, in
 	
 	switch(textureId)
 	{
-		case TEX_BACKDROP:
-			switch(GX_GetTexObjFmt(&backdropTexObj)) {
-				case GX_TF_CI4:
-				case GX_TF_CI8:
-				case GX_TF_CI14:
-					if(GX_GetTlutObjFmt(&backdropTlutObj) != GX_TL_IA8) {
-						texObj = &backdropTexObj;
-						break;
-					}
-				case GX_TF_IA4:
-				case GX_TF_IA8:
-					GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_TEXA, GX_CC_TEXC, GX_CC_RASC, GX_CC_ZERO);
-					GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
-					
-					texObj = &backdropTexObj; color = (GXColor) {0,0,255,255};
-					break;
-				default:
-					texObj = &backdropTexObj;
-					break;
-			}
-			if(GX_GetTexObjUserData(&backdropIndTexObj) == texObj) {
-				indTexObj = &backdropIndTexObj;
-				ss = 640; ts = 480;
-			}
-			// Phase 2: subtle GameCube-menu-style backdrop drift. Runs once per frame
-			// on the vsync-locked video thread (no timer needed — same pattern as the
-			// Phase 1 highlight tween). Config-gated; when off, the original full-frame
-			// coords pass through unchanged => byte-identical to stock.
-			if(!swissSettings.disableUIAnimations &&
-				!swissSettings.reduceUIAnimations &&
-				!swissSettings.disableAnimatedBackdrop) {
-				float bgPhase = UIAnim_Seconds() * 0.72f;
-				const float M = 0.03f;           // inset margin keeps texcoords in [0,1]: no edge smear, wrap-agnostic
-				float dx = M * sinf(bgPhase);
-				float dy = M * cosf(bgPhase * 0.9f);
-				s1 = M + dx; s2 = (1.0f - M) + dx;
-				t1 = M + dy; t2 = (1.0f - M) + dy;
-			}
-			break;
-		case TEX_SWISS:
-			texObj = &swissTexObj;
-			break;
 		case TEX_GCDVDSMALL:
 			texObj = &gcdvdsmallTexObj;
 			break;
@@ -830,27 +838,6 @@ static void _DrawImageNow(int textureId, int x, int y, int width, int height, in
 			break;
 		case TEX_BBA:
 			texObj = &bbaTexObj;
-			break;
-		case TEX_BTNHILIGHT:
-			GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_TEXC, GX_CC_RASC, GX_CC_ZERO);
-			GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
-			
-			texObj = &btnhilightTexObj; color = (GXColor) {127,134,255,255};
-			break;
-		case TEX_BTNDEVICE:
-			texObj = &btndeviceTexObj;
-			break;
-		case TEX_BTNSETTINGS:
-			texObj = &btnsettingsTexObj;
-			break;
-		case TEX_BTNINFO:
-			texObj = &btninfoTexObj;
-			break;
-		case TEX_BTNREFRESH:
-			texObj = &btnrefreshTexObj;
-			break;
-		case TEX_BTNEXIT:
-			texObj = &btnexitTexObj;
 			break;
 		case TEX_CHECKED:
 			texObj = &checkedTexObj; color = (GXColor) {0,128,0,255};
@@ -943,9 +930,17 @@ static void _HomeFaceIcons(int icons[UI_HOME_FACE_COUNT])
 
 static void _DrawBackground(uiDrawObj_t *evt)
 {
+	/* Wave Speed, in swiss.h's order: Normal, Fast, Slow. */
+	static const float waveSpeeds[WAVE_SPEED_MAX] = {1.0f, 3.0f, 0.5f};
 	bool decorativeAnimated = _CurrentMotionMode() == UI_MOTION_FULL;
 	int icons[UI_HOME_FACE_COUNT];
 
+	if(backgroundCovered) {
+		/* Not a pixel of it would show. */
+		IndigoBackground_TrackPad(UIAnim_Seconds(),
+			decorativeAnimated && UIScene_Frame()->visible, &padInstrument);
+		return;
+	}
 	UI_PERF_BEGIN(backgroundStart);
 
 	(void)evt;
@@ -953,6 +948,7 @@ static void _DrawBackground(uiDrawObj_t *evt)
 	/* The glass copies the frame it is drawn in. */
 	IndigoBackground_SetFramebuffer(getVideoMode()->fbWidth,
 		getVideoMode()->efbHeight);
+	IndigoBackground_SetWaveSpeed(waveSpeeds[swissSettings.waveSpeed]);
 	IndigoBackground_Draw(UIAnim_Seconds(),
 		decorativeAnimated && !swissSettings.disableAnimatedBackdrop,
 		decorativeAnimated,
@@ -1048,16 +1044,30 @@ uiDrawObj_t* DrawTexObj(GXTexObj *texObj, int x, int y, int width, int height, i
 	return event;
 }
 
-/* The top corner the clock and its temperature dial take (Clock): 1 the
- * right (the default), -1 the left, 0 neither. The header's other corner
- * items take the corner it leaves free. */
-static int _ClockCorner(void)
+/* The top corner Clock or Temperature puts its instrument in: 1 the right
+ * (the default), -1 the left, 0 neither. */
+static int _Corner(int position)
 {
-	switch(swissSettings.clockPosition) {
+	switch(position) {
 		case CLOCK_LEFT: return -1;
 		case CLOCK_OFF: return 0;
 		default: return 1;
 	}
+}
+
+/* The top corner the header's other items take (the loading spinner, the
+ * Source picker's label): the left while the time and the dial leave it,
+ * else the right; when they hold a corner each, the dial's, inside it. */
+static int _FreeCorner(float *inset)
+{
+	int clock = _Corner(swissSettings.clockPosition);
+	int dial = _Corner(swissSettings.temperaturePosition);
+
+	*inset = 0.0f;
+	if(clock != -1 && dial != -1) return -1;
+	if(clock != 1 && dial != 1) return 1;
+	*inset = 48.0f;
+	return dial;
 }
 
 // Internal
@@ -1072,34 +1082,40 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 	if(data->hidden) {
 		return;
 	}
+	data->seconds += UIAnim_Delta();
 	if(data->miniMode) {	
-		int x = 30, y = 420;
-		/* The header's corner the clock leaves free, level with the clock
-		 * and as far in from the edge the frame shows. */
+		int x = 30, y = 420, corner = -1;
+		/* The header's free corner, level with the clock and as far in from
+		 * the edge the frame shows; the word on the wheel's inner side. */
 		if(data->miniModePos == PROGRESS_BOX_TOPLEFT) {
-			x = (int)(_ClockCorner() < 0 ? UIStage_Right() - 44.0f : UIStage_Left() + 44.0f);
+			float inset;
+			corner = _FreeCorner(&inset);
+			x = (int)(corner > 0 ? UIStage_Right() - 44.0f - inset : UIStage_Left() + 44.0f + inset);
 			y = 43;
 		}
-		GXColor loadingColor = (GXColor) {255,255,255,data->miniModeAlpha};
-		int numSegments = (data->percent*8)/100;
-		data->percent += (data->percent + 2 > 200 ? -200 : 2);
+		GXColor loadingColor = (GXColor) {255,255,255,(u8)data->miniModeAlpha};
+		/* In seconds, the same at 50 Hz and 60 Hz: a turn of the eight
+		 * segments every 5/6 s, a fade in or out over 1.4 s. */
+		int numSegments = (int)(data->seconds * 9.6f) % 8;
 		if(data->speed != 0) {
-			data->miniModeAlpha = MIN(255, data->miniModeAlpha + 3);
+			data->miniModeAlpha = MIN(255.0f, data->miniModeAlpha + UIAnim_Delta() * 180.0f);
 		}
 		else {
-			data->miniModeAlpha = MAX(0, data->miniModeAlpha - 3);
+			data->miniModeAlpha = MAX(0.0f, data->miniModeAlpha - UIAnim_Delta() * 180.0f);
 		}
 		GX_InvalidateTexAll();
 		GX_LoadTexObj(&loadingTexObj, GX_TEXMAP0);
 		_drawRect(x-8, y-8, 16, 16, 0, loadingColor, (float) (numSegments)/8, (float) (numSegments+1)/8, 0.0f, 1.0f);
-		drawString(x+8, y, "Loading\205", 0.55f, ALIGN_LEFT, loadingColor);
+		drawString(x - 8 * corner, y, "Loading\205", 0.55f,
+			corner > 0 ? ALIGN_RIGHT : ALIGN_LEFT, loadingColor);
 		return;
 	}
 	_DrawDialogCard(x1, y1, x2-x1, y2-y1, -1);
 
 	int middleY = (y2+y1)/2;
 	if(data->indeterminate) {
-		data->percent += (data->percent + 2 == 400 ? -398 : 2);
+		/* There and back every 3 1/3 s. */
+		data->percent = (int)fmodf(data->seconds * 120.0f, 400.0f);
 		int multiplier = (PROGRESS_BOX_WIDTH-20)/100;
 		int progressBarWidth = multiplier*100;
 		int progressStart = 0;
@@ -1377,6 +1393,108 @@ bool DrawUpdatePresentation(uiDrawObj_t *evt,
 	}
 	LWP_MutexUnlock(_videomutex);
 	return updated;
+}
+
+/* Save details has its own hierarchy; other retained dialogs stay compact. */
+static void _DrawSaveDetails(uiDrawObj_t *evt)
+{
+	const drawSaveDetailsEvent_t *data = evt->data;
+	const GXColor transparent = {0, 0, 0, 0};
+	const GXColor primary = {244, 239, 255, 255};
+	const GXColor secondary = {204, 193, 239, 255};
+	const GXColor accent = {176, 153, 248, 255};
+	int scrimLeft;
+
+	if(data == NULL) {
+		return;
+	}
+	drawInit();
+	scrimLeft = (int)floorf(UIStage_Left());
+	_DrawSimpleBox(scrimLeft, 0, (int)ceilf(UIStage_Right()) - scrimLeft, 480,
+		0, (GXColor) {4, 3, 15, 184}, transparent);
+	_DrawSimpleBox(68, 95, 504, 312, 0,
+		(GXColor) {2, 1, 10, 194}, transparent);
+	_DrawSimpleBox(72, 91, 496, 312, 0,
+		(GXColor) {10, 8, 31, 250}, (GXColor) {135, 122, 199, 220});
+	_DrawSimpleBox(72, 91, 5, 312, 0, accent, transparent);
+	_DrawSimpleBox(104, 174, 204, 61, 0,
+		(GXColor) {33, 25, 67, 255}, (GXColor) {103, 87, 166, 180});
+	_DrawSimpleBox(332, 174, 204, 61, 0,
+		(GXColor) {33, 25, 67, 255}, (GXColor) {103, 87, 166, 180});
+	_DrawSimpleBox(104, 345, 432, 1, 0,
+		(GXColor) {135, 122, 199, 160}, transparent);
+
+	drawStringMedium(104, 119, "SAVE DETAILS", 0.48f, ALIGN_LEFT, accent);
+	if(data->snapshot.estimated) {
+		drawStringMedium(536, 119, "Estimated size", 0.48f, ALIGN_RIGHT, secondary);
+	}
+	drawStringMedium(104, 150, data->snapshot.name, data->nameScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(128, 197, data->blocks, data->blocksScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(128, 221, "Blocks", 0.48f, ALIGN_LEFT, secondary);
+	drawStringMedium(356, 197, data->kib, data->kibScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(356, 221, "KiB", 0.48f, ALIGN_LEFT, secondary);
+	drawStringMedium(104, 257, "Source", 0.54f, ALIGN_LEFT, secondary);
+	drawStringMedium(250, 257, data->snapshot.source, data->sourceScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(104, 287, "Created", 0.54f, ALIGN_LEFT, secondary);
+	drawStringMedium(250, 287, "Not recorded", 0.60f, ALIGN_LEFT, primary);
+	drawStringMedium(104, 317, "Last updated", 0.54f, ALIGN_LEFT, secondary);
+	drawStringMedium(250, 317, data->snapshot.updated, data->updatedScale,
+		ALIGN_LEFT, primary);
+	_DrawHintText(216, 373, "A  Actions", 0.60f, ALIGN_CENTER, primary);
+	_DrawHintText(412, 373, "B  Back", 0.60f, ALIGN_CENTER, primary);
+	drawInit();
+}
+
+static bool _PrepareSaveDetails(drawSaveDetailsEvent_t *data,
+	const uiSaveDetailsSnapshot_t *snapshot)
+{
+	if(data == NULL || !UISaveDetails_Valid(snapshot)) {
+		return false;
+	}
+	memset(data, 0, sizeof(*data));
+	data->snapshot.blocks = snapshot->blocks;
+	data->snapshot.estimated = snapshot->estimated;
+	data->nameScale = UIHomeText_CopyFitted(data->snapshot.name,
+		sizeof(data->snapshot.name), snapshot->name, 432, 0.86f,
+		GetTextSizeInPixels, NULL);
+	data->sourceScale = UIHomeText_CopyFitted(data->snapshot.source,
+		sizeof(data->snapshot.source), snapshot->source, 286, 0.60f,
+		GetTextSizeInPixels, NULL);
+	data->updatedScale = UIHomeText_CopyFitted(data->snapshot.updated,
+		sizeof(data->snapshot.updated), snapshot->updated, 286, 0.60f,
+		GetTextSizeInPixels, NULL);
+	snprintf(data->blocks, sizeof(data->blocks), "%u", (unsigned)snapshot->blocks);
+	snprintf(data->kib, sizeof(data->kib), "%u", (unsigned)(snapshot->blocks * 8u));
+	data->blocksScale = UIHomeText_FitScale(data->blocks, 156, 0.92f,
+		GetTextSizeInPixels);
+	data->kibScale = UIHomeText_FitScale(data->kib, 156, 0.92f,
+		GetTextSizeInPixels);
+	return UISaveDetails_Valid(&data->snapshot);
+}
+
+uiDrawObj_t* DrawSaveDetails(const uiSaveDetailsSnapshot_t *snapshot)
+{
+	drawSaveDetailsEvent_t *eventData;
+	uiDrawObj_t *event;
+
+	if(!UISaveDetails_Valid(snapshot)) {
+		return NULL;
+	}
+	eventData = calloc(1, sizeof(*eventData));
+	event = calloc(1, sizeof(*event));
+	if(eventData == NULL || event == NULL ||
+		!_PrepareSaveDetails(eventData, snapshot)) {
+		free(eventData);
+		free(event);
+		return NULL;
+	}
+	event->type = EV_SAVE_DETAILS;
+	event->data = eventData;
+	return event;
 }
 
 // Internal
@@ -2107,24 +2225,41 @@ static void _HintShape(float cx, float cy, const float (*points)[2], int count,
 }
 
 /* A rectangle with round corners; radius = half the height makes a pill. */
+#define HINT_CORNER_STEPS 6
 static void _HintRoundRect(float cx, float cy, float width, float height,
 	float radius, GXColor color)
 {
-	static const int steps = 6;
+	/* The corners' points on a unit circle, worked out on the first call:
+	 * cosf and sinf are software on the console, and every disc, pill and
+	 * badge in a hint line draws through here each frame. */
+	static float unit[4 * (HINT_CORNER_STEPS + 1)][2];
+	static bool unitReady = false;
 	float points[HINT_POINTS_MAX][2];
 	float halfW = width / 2.0f - radius;
 	float halfH = height / 2.0f - radius;
 	int corner, i, count = 0;
 
+	if(!unitReady) {
+		for(corner = 0; corner < 4; corner++) {
+			for(i = 0; i <= HINT_CORNER_STEPS; i++) {
+				float angle = HINT_QUARTER_TURN *
+					((float)corner + (float)i / (float)HINT_CORNER_STEPS);
+
+				unit[count][0] = cosf(angle);
+				unit[count][1] = sinf(angle);
+				count++;
+			}
+		}
+		unitReady = true;
+		count = 0;
+	}
 	for(corner = 0; corner < 4; corner++) {
 		float ox = (corner == 0 || corner == 3) ? halfW : -halfW;
 		float oy = (corner < 2) ? halfH : -halfH;
 
-		for(i = 0; i <= steps; i++) {
-			float angle = HINT_QUARTER_TURN * ((float)corner + (float)i / (float)steps);
-
-			points[count][0] = cx + ox + radius * cosf(angle);
-			points[count][1] = cy + oy + radius * sinf(angle);
+		for(i = 0; i <= HINT_CORNER_STEPS; i++) {
+			points[count][0] = cx + ox + radius * unit[count][0];
+			points[count][1] = cy + oy + radius * unit[count][1];
 			count++;
 		}
 	}
@@ -2334,6 +2469,28 @@ static void _DrawSystemDial(float centerX, float centerY, s8 coreTemperature,
 	drawInit();
 }
 
+/* A sensor reading into the dial, smoothed: the sensor answers in 4 degree
+ * steps (UISystem_SmoothTemperature). */
+static void _SetCoreTemperature(int reading)
+{
+	systemInstrument.coreTemperature = (s8)UISystem_SmoothTemperature(
+		&systemInstrument.temperatureFilter, reading);
+	if(systemInstrument.coreTemperature >= 0) {
+		(void)snprintf(systemInstrument.temperatureText,
+			sizeof(systemInstrument.temperatureText), "%i\260C",
+			systemInstrument.coreTemperature);
+	}
+	else {
+		systemInstrument.temperatureText[0] = '\0';
+	}
+	systemInstrument.temperatureSampled = true;
+}
+
+int CoreTemperature(void)
+{
+	return systemInstrument.coreTemperature;
+}
+
 static void _UpdateSystemInstrument(void)
 {
 	struct timeval now;
@@ -2341,16 +2498,7 @@ static void _UpdateSystemInstrument(void)
 	if(gettimeofday(&now, NULL) != 0) {
 		/* Civil time and thermal telemetry are independent instruments. */
 		if(!systemInstrument.temperatureSampled) {
-			systemInstrument.coreTemperature = SYS_GetCoreTemperature();
-			if(systemInstrument.coreTemperature >= 0) {
-				(void)snprintf(systemInstrument.temperatureText,
-					sizeof(systemInstrument.temperatureText), "%i\260C",
-					systemInstrument.coreTemperature);
-			}
-			else {
-				systemInstrument.temperatureText[0] = '\0';
-			}
-			systemInstrument.temperatureSampled = true;
+			_SetCoreTemperature(SYS_GetCoreTemperature());
 		}
 		(void)UIClock_Compose(&systemInstrument.clock, -1, -1, -1.0f);
 		systemInstrument.civilSecondSampled = false;
@@ -2375,16 +2523,7 @@ static void _UpdateSystemInstrument(void)
 			systemInstrument.civilTimeAvailable = false;
 			memcpy(systemInstrument.timeText, "--:--:--", 9u);
 		}
-		systemInstrument.coreTemperature = SYS_GetCoreTemperature();
-		if(systemInstrument.coreTemperature >= 0) {
-			(void)snprintf(systemInstrument.temperatureText,
-				sizeof(systemInstrument.temperatureText), "%i\260C",
-				systemInstrument.coreTemperature);
-		}
-		else {
-			systemInstrument.temperatureText[0] = '\0';
-		}
-		systemInstrument.temperatureSampled = true;
+		_SetCoreTemperature(SYS_GetCoreTemperature());
 		systemInstrument.sampledSecond = now.tv_sec;
 		systemInstrument.civilSecondSampled = true;
 	}
@@ -2402,15 +2541,18 @@ static void _UpdateSystemInstrument(void)
 // Internal
 static void _DrawTitleBar(uiDrawObj_t *evt) {
 	float reveal = UIScene_Frame()->chromeProgress;
-	int corner = _ClockCorner();
-	/* The dial sits 40 in from the edge the frame shows, the time on its
-	 * inner side. */
-	int dialX = (int)(corner < 0 ? UIStage_Left() + 40.0f : UIStage_Right() - 40.0f);
+	int clock = _Corner(swissSettings.clockPosition);
+	int dial = _Corner(swissSettings.temperaturePosition);
+	/* The dial sits 40 in from the edge the frame shows; the time on its
+	 * inner side in the same corner, else 40 in itself. */
+	int dialX = (int)(dial < 0 ? UIStage_Left() + 40.0f : UIStage_Right() - 40.0f);
+	int timeX = clock == dial ? dialX - 32 * clock :
+		(int)(clock < 0 ? UIStage_Left() + 40.0f : UIStage_Right() - 40.0f);
 	int offsetY;
 	GXColor textColor;
 
 	(void)evt;
-	if(reveal <= 0.0f || corner == 0) {
+	if(reveal <= 0.0f || (clock == 0 && dial == 0)) {
 		return;
 	}
 	if(reveal > 1.0f) {
@@ -2420,15 +2562,17 @@ static void _DrawTitleBar(uiDrawObj_t *evt) {
 	textColor = (GXColor) {209, 201, 255, (u8)(232.0f * reveal)};
 
 	/* A single pre-traversal instrument snapshot owns both header and cube. */
-	_DrawSystemDial((float)dialX, 43.0f + offsetY, systemInstrument.coreTemperature, (u8)(255.0f * reveal));
-	if(systemInstrument.temperatureText[0]) {
-		drawStringMedium(dialX, 43 + offsetY,
-			systemInstrument.temperatureText,
-			0.42f, ALIGN_CENTER, textColor);
+	if(dial != 0) {
+		_DrawSystemDial((float)dialX, 43.0f + offsetY, systemInstrument.coreTemperature, (u8)(255.0f * reveal));
+		if(systemInstrument.temperatureText[0]) {
+			drawStringMedium(dialX, 43 + offsetY,
+				systemInstrument.temperatureText,
+				0.42f, ALIGN_CENTER, textColor);
+		}
 	}
-	if(systemInstrument.clock.available) {
-		drawStringMedium(dialX - 32 * corner, 43 + offsetY, systemInstrument.timeText,
-			0.54f, corner < 0 ? ALIGN_LEFT : ALIGN_RIGHT, textColor);
+	if(clock != 0 && systemInstrument.clock.available) {
+		drawStringMedium(timeX, 43 + offsetY, systemInstrument.timeText,
+			0.54f, clock < 0 ? ALIGN_LEFT : ALIGN_RIGHT, textColor);
 	}
 }
 
@@ -2563,6 +2707,11 @@ static gameflowPoint_t _GameflowLerpPoint(gameflowPoint_t from,
 	return point;
 }
 
+/* A card between two poses, in whole pixels. It goes from one pose to the
+ * next a whole pixel of its farthest-moving corner at a time, and each corner
+ * rounds on its own there: every edge moves one way through a move, never a
+ * pixel back as the spring's tail crosses half pixels, and the card's size
+ * from that corner changes one way too. */
 static gameflowQuad_t _GameflowSamplePoseIn(const gameflowQuad_t poses[7],
 	float slot)
 {
@@ -2570,13 +2719,22 @@ static gameflowQuad_t _GameflowSamplePoseIn(const gameflowQuad_t poses[7],
 	float clamped = _GameflowClamp(slot, -3.0f, 3.0f);
 	int lower = (int)floorf(clamped);
 	int upper = lower < 3 ? lower + 1 : lower;
+	const gameflowQuad_t *from = &poses[lower + 3];
+	const gameflowQuad_t *to = &poses[upper + 3];
 	float progress = clamped - (float)lower;
+	float travel = 0.0f;
 	int i;
 
 	for(i = 0; i < 4; ++i) {
-		result.point[i] = _GameflowLerpPoint(
-			poses[lower + 3].point[i],
-			poses[upper + 3].point[i], progress);
+		travel = fmaxf(travel, fabsf(to->point[i].x - from->point[i].x));
+		travel = fmaxf(travel, fabsf(to->point[i].y - from->point[i].y));
+	}
+	if(travel > 0.0f) {
+		progress = _GameflowRound(progress * travel) / travel;
+	}
+	for(i = 0; i < 4; ++i) {
+		result.point[i] = _GameflowLerpPoint(from->point[i], to->point[i],
+			progress);
 		result.point[i].x = _GameflowRound(result.point[i].x);
 		result.point[i].y = _GameflowRound(result.point[i].y);
 	}
@@ -2589,20 +2747,22 @@ static gameflowQuad_t _GameflowSamplePose(float slot)
 }
 
 /* A grid card at a column and a row (0 is the focused row), grown by
- * focus. Whole pixels, like the carousel's poses. */
+ * focus. Whole pixels, like the carousel's poses: its centre rounded and
+ * its rounded half size either side, so it grows and shrinks one way. */
 static gameflowQuad_t _GameflowGridQuad(float column, float row, float focus)
 {
 	float scale = 1.0f + GAMEFLOW_GRID_FOCUS_GROWTH * focus;
-	float halfWidth = GAMEFLOW_GRID_CARD_W * 0.5f * scale;
-	float halfHeight = GAMEFLOW_GRID_CARD_H * 0.5f * scale;
-	float x = GAMEFLOW_GRID_CENTER_X +
+	float halfWidth = _GameflowRound(GAMEFLOW_GRID_CARD_W * 0.5f * scale);
+	float halfHeight = _GameflowRound(GAMEFLOW_GRID_CARD_H * 0.5f * scale);
+	float x = _GameflowRound(GAMEFLOW_GRID_CENTER_X +
 		(column - (float)(UI_GAMEFLOW_LIBRARY_GRID_COLUMNS - 1u) * 0.5f) *
-		GAMEFLOW_GRID_PITCH_X;
-	float y = GAMEFLOW_GRID_CENTER_Y + row * GAMEFLOW_GRID_PITCH_Y;
-	float left = _GameflowRound(x - halfWidth);
-	float right = _GameflowRound(x + halfWidth);
-	float top = _GameflowRound(y - halfHeight);
-	float bottom = _GameflowRound(y + halfHeight);
+		GAMEFLOW_GRID_PITCH_X);
+	float y = _GameflowRound(GAMEFLOW_GRID_CENTER_Y +
+		row * GAMEFLOW_GRID_PITCH_Y);
+	float left = x - halfWidth;
+	float right = x + halfWidth;
+	float top = y - halfHeight;
+	float bottom = y + halfHeight;
 	gameflowQuad_t quad = {{{left, top}, {right, top}, {right, bottom},
 		{left, bottom}}};
 	return quad;
@@ -2737,6 +2897,24 @@ static GXColor _GameflowAccent(const uiGameflowCardSnapshot_t *record,
 	}
 	color.a = alpha;
 	return color;
+}
+
+/* A name where a game's ID goes: its first eight characters in capitals,
+ * with an ellipsis when it is longer, so a card or a tile holds it. */
+#define GAMEFLOW_SHORT_NAME_SIZE 12
+static void _GameflowShortName(const char *title,
+	char name[GAMEFLOW_SHORT_NAME_SIZE])
+{
+	size_t k;
+
+	for(k = 0; k < 8u && title[k] != '\0'; ++k) {
+		char c = title[k];
+		name[k] = c >= 'a' && c <= 'z' ? (char)(c - 'a' + 'A') : c;
+	}
+	if(title[k] != '\0') {
+		name[k++] = '\205';
+	}
+	name[k] = '\0';
 }
 
 static const uiGameflowCardSnapshot_t *_GameflowFindRecord(
@@ -2971,23 +3149,16 @@ static void _GameflowDrawFallback(const gameflowRenderCard_t *card,
 		const char *regionText = card->record->flags & UI_GAMEFLOW_CARD_PARENT ?
 			"GAME LIBRARY" :
 			UIGameflowLibrary_RegionLabel(card->record->gameId);
-		/* An app whose poster isn't made yet: its name where a game's ID
-		 * goes, cut to what a card holds, so the cards tell apart. */
-		char appName[12];
+		/* An app whose poster isn't made yet, or a folder of games: its
+		 * name where a game's ID goes, cut to what a card holds, so the
+		 * cards tell apart. */
+		char appName[GAMEFLOW_SHORT_NAME_SIZE];
 
-		if(card->record->flags & UI_GAMEFLOW_CARD_APP) {
-			size_t k;
-
-			for(k = 0; k < 8u && card->record->title[k] != '\0'; ++k) {
-				char c = card->record->title[k];
-				appName[k] = c >= 'a' && c <= 'z' ? (char)(c - 'a' + 'A') : c;
-			}
-			if(card->record->title[k] != '\0') {
-				appName[k++] = '\205';
-			}
-			appName[k] = '\0';
+		if(card->record->flags & UI_GAMEFLOW_CARD_APP ||
+			card->record->subfolder) {
+			_GameflowShortName(card->record->title, appName);
 			identityText = appName;
-			regionText = "APP";
+			regionText = card->record->subfolder ? "FOLDER" : "APP";
 		}
 		gameflowPoint_t idPoint = _GameflowQuadPoint(&card->quad, 0.5f,
 			layout.idBaseline);
@@ -3010,25 +3181,64 @@ static void _GameflowDrawFallback(const gameflowRenderCard_t *card,
 	_SetupRasterColor();
 }
 
+/* A picture fades in over this long from when it arrived. One read while it
+ * was off screen, as the cards either side are, is older than that by the
+ * time it shows, so scrolling to it shows it at once. */
+#define GAMEFLOW_ART_ARRIVAL_MS 200u
+
+/* How far a picture that arrived ageMs ago has faded in, 0 to 1. */
+static float _GameflowArrival(u32 ageMs)
+{
+	if(ageMs >= GAMEFLOW_ART_ARRIVAL_MS ||
+		_CurrentMotionMode() == UI_MOTION_OFF) {
+		return 1.0f;
+	}
+	return UIMotion_Smoothstep((float)ageMs / (float)GAMEFLOW_ART_ARRIVAL_MS);
+}
+
+/* The share of alpha to draw what a picture fades in over, under the
+ * picture at alpha * arrival: together they show as one card at alpha, and
+ * nothing of it is left just as the picture is whole. */
+static float _GameflowUnderneath(float alpha, float arrival)
+{
+	float rest = 1.0f - alpha * arrival;
+
+	return rest > 0.0f ? (1.0f - arrival) / rest : 0.0f;
+}
+
+/* The record's poster, or NULL; *arrival (when asked for) is how far it has
+ * faded in since it arrived. */
 static GXTexObj *_GameflowPosterTexture(
-	const uiGameflowCardSnapshot_t *record)
+	const uiGameflowCardSnapshot_t *record, float *arrival)
 {
 	uiPosterHandle_t handle;
 	uiPosterResult_t result;
+	GXTexObj *texture;
+	u32 ageMs;
 
-	/* An app's poster is its own picture, from Apps' slots. */
-	if(record->flags & UI_GAMEFLOW_CARD_APP) {
-		return apps_poster(record->libraryIndex);
+	/* An app's poster, or a folder of games', is made on the console from
+	 * its own picture or its name (card_art.c). */
+	if((record->flags & UI_GAMEFLOW_CARD_APP) || record->subfolder) {
+		texture = CardArt_Poster((int32_t)record->libraryIndex);
+		ageMs = CardArt_PosterAgeMs((int32_t)record->libraryIndex);
 	}
-	/* _DrawGameflow runs under _videomutex. Query and Peek deliberately do
-	 * not lock and the borrowed texture is consumed before that lock drops. */
-	result = UIAssets_Query(record->gameId,
-		strnlen(record->gameId, sizeof(record->gameId)),
-		(record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) != 0u, &handle);
-	if(result != UI_POSTER_EXACT && result != UI_POSTER_UNIVERSAL) {
-		return NULL;
+	else {
+		/* _DrawGameflow runs under _videomutex. Query and Peek deliberately
+		 * do not lock and the borrowed texture is consumed before that lock
+		 * drops. */
+		result = UIAssets_Query(record->gameId,
+			strnlen(record->gameId, sizeof(record->gameId)),
+			(record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) != 0u, &handle);
+		if(result != UI_POSTER_EXACT && result != UI_POSTER_UNIVERSAL) {
+			return NULL;
+		}
+		texture = UIAssets_Peek(handle);
+		ageMs = UIAssets_PeekAgeMs(handle);
 	}
-	return UIAssets_Peek(handle);
+	if(arrival != NULL) {
+		*arrival = _GameflowArrival(ageMs);
+	}
+	return texture;
 }
 
 /* The game's gameplay still from stills.pak, or NULL; the same borrowing
@@ -3043,6 +3253,19 @@ static GXTexObj *_GameflowStillTexture(const uiGameflowCardSnapshot_t *record)
 		return NULL;
 	}
 	return UIStills_Peek(handle);
+}
+
+/* How far the game's still has faded in since it arrived. */
+static float _GameflowStillArrival(const uiGameflowCardSnapshot_t *record)
+{
+	uiPosterHandle_t handle;
+	uiPosterResult_t result = UIStills_Query(record->gameId,
+		strnlen(record->gameId, sizeof(record->gameId)), false, &handle);
+
+	if(result != UI_POSTER_EXACT && result != UI_POSTER_UNIVERSAL) {
+		return 1.0f;
+	}
+	return _GameflowArrival(UIStills_PeekAgeMs(handle));
 }
 
 /* Spotlight's picture panel: a frame and a dark field, faded by alpha. */
@@ -3064,36 +3287,17 @@ static void _GameflowDrawSpotlightPanel(float alpha)
 	GX_End();
 }
 
-/* One game's picture in Spotlight's panel, faded by alpha: its gameplay
- * still filling the panel, else its cover in the middle, drawn as Detail
- * draws it, so the cover can leave from there for Detail. A game with
- * settings of its own carries the mark a cover does, on either. */
-static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
+/* One game's cover in the middle of Spotlight's panel, faded by alpha,
+ * drawn as Detail draws it, so the cover can leave from there for Detail. */
+static void _GameflowDrawSpotlightCover(drawGameflowEvent_t *data,
 	const uiGameflowCardSnapshot_t *record, u32 recordIndex, float alpha)
 {
 	gameflowRenderCard_t cover;
 	GXTexObj *texture;
 	GXTexObj *bannerTexture = NULL;
 	uiGameflowLibraryArtwork_t artwork;
+	float arrival;
 
-	if(record == NULL || alpha <= 0.001f) {
-		return;
-	}
-	texture = _GameflowStillTexture(record);
-	if(texture != NULL) {
-		gameflowQuad_t inner = _GameflowInsetPixels(&gameflowSpotlightPanel,
-			4.0f);
-		_GameflowDrawBanner(&inner, texture, _GameflowAlpha(255.0f * alpha));
-		drawInit();
-		_SetupRasterColor();
-		if(record->flags & UI_GAMEFLOW_CARD_CUSTOM) {
-			memset(&cover, 0, sizeof(cover));
-			cover.quad = inner;
-			cover.presence = alpha;
-			_GameflowDrawCustomMark(&cover, 1.0f);
-		}
-		return;
-	}
 	memset(&cover, 0, sizeof(cover));
 	cover.record = record;
 	cover.recordIndex = recordIndex;
@@ -3101,14 +3305,19 @@ static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
 	cover.presence = alpha;
 	cover.art = true;
 	cover.quad = gameflowSpotlightCover;
-	texture = _GameflowPosterTexture(record);
+	texture = _GameflowPosterTexture(record, &arrival);
 	if(record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) {
 		bannerTexture = &data->bannerTexObj[recordIndex];
 	}
 	artwork = UIGameflowLibrary_ChooseArtwork(texture != NULL,
 		bannerTexture != NULL);
 	if(artwork == UI_GAMEFLOW_LIBRARY_ART_POSTER) {
-		_GameflowDrawPoster(&cover, texture, 1.0f);
+		if(arrival < 1.0f) {
+			_GameflowDrawFallback(&cover, UIGameflowLibrary_ChooseArtwork(
+				false, bannerTexture != NULL), bannerTexture,
+				_GameflowUnderneath(alpha, arrival));
+		}
+		_GameflowDrawPoster(&cover, texture, arrival);
 	}
 	else {
 		_GameflowDrawFallback(&cover, artwork, bannerTexture, 1.0f);
@@ -3118,8 +3327,45 @@ static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
 	}
 }
 
+/* One game's picture in Spotlight's panel, faded by alpha: its gameplay
+ * still filling the panel, else its cover in the middle. A still that has
+ * just arrived fades in over the cover. A game with settings of its own
+ * carries the mark a cover does, on either. */
+static void _GameflowDrawSpotlightArt(drawGameflowEvent_t *data,
+	const uiGameflowCardSnapshot_t *record, u32 recordIndex, float alpha)
+{
+	gameflowRenderCard_t mark;
+	GXTexObj *texture;
+
+	if(record == NULL || alpha <= 0.001f) {
+		return;
+	}
+	texture = _GameflowStillTexture(record);
+	if(texture != NULL) {
+		gameflowQuad_t inner = _GameflowInsetPixels(&gameflowSpotlightPanel,
+			4.0f);
+		float arrival = _GameflowStillArrival(record);
+		if(arrival < 1.0f) {
+			_GameflowDrawSpotlightCover(data, record, recordIndex,
+				alpha * _GameflowUnderneath(alpha, arrival));
+		}
+		_GameflowDrawBanner(&inner, texture,
+			_GameflowAlpha(255.0f * alpha * arrival));
+		drawInit();
+		_SetupRasterColor();
+		if(record->flags & UI_GAMEFLOW_CARD_CUSTOM) {
+			memset(&mark, 0, sizeof(mark));
+			mark.quad = inner;
+			mark.presence = alpha * arrival;
+			_GameflowDrawCustomMark(&mark, 1.0f);
+		}
+		return;
+	}
+	_GameflowDrawSpotlightCover(data, record, recordIndex, alpha);
+}
+
 /* A game on Spotlight's row: its disc banner inside the tile's frame, or its
- * game ID when it has no banner. */
+ * game ID when it has no banner; a folder of games, its short name. */
 static void _GameflowDrawSpotlightTile(const gameflowRenderCard_t *card,
 	GXTexObj *banner, float reveal)
 {
@@ -3135,9 +3381,16 @@ static void _GameflowDrawSpotlightTile(const gameflowRenderCard_t *card,
 	{
 		GXColor text = {190, 181, 231, _GameflowAlpha(220.0f * alpha)};
 		gameflowPoint_t middle = _GameflowQuadPoint(&card->quad, 0.5f, 0.5f);
+		char shortName[GAMEFLOW_SHORT_NAME_SIZE];
+		const char *label = card->record->gameId[0] ?
+			card->record->gameId : card->record->title;
+
+		if(card->record->subfolder) {
+			_GameflowShortName(card->record->title, shortName);
+			label = shortName;
+		}
 		drawStringMedium((int)_GameflowRound(middle.x),
-			(int)_GameflowRound(middle.y) - 6, card->record->gameId[0] ?
-			card->record->gameId : card->record->title, 0.38f,
+			(int)_GameflowRound(middle.y) - 6, label, 0.38f,
 			ALIGN_CENTER, text);
 	}
 }
@@ -3338,7 +3591,7 @@ static void _GameflowPrepareSpotlight(drawGameflowEvent_t *data)
 	}
 	text[out] = '\0';
 	if(out == 0u && selected != NULL &&
-		!(selected->flags & UI_GAMEFLOW_CARD_PARENT)) {
+		!(selected->flags & UI_GAMEFLOW_CARD_PARENT) && !selected->subfolder) {
 		memcpy(text, GAMEFLOW_SPOTLIGHT_NO_DESCRIPTION,
 			sizeof(GAMEFLOW_SPOTLIGHT_NO_DESCRIPTION));
 	}
@@ -3383,13 +3636,15 @@ static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
 	presentation->statusScale = _GameflowPrepareDetailText(
 		data->detail.statusText, sizeof(data->detail.statusText),
 		310, 0.44f, 0.44f);
-	/* LAST PLAYED and SAVE DATA share a line, so each has half of it. */
 	presentation->lastPlayedScale = _GameflowPrepareDetailText(
 		data->detail.lastPlayedText, sizeof(data->detail.lastPlayedText),
-		154, 0.46f, 0.46f);
-	presentation->saveStatusScale = _GameflowPrepareDetailText(
-		data->detail.saveStatusText, sizeof(data->detail.saveStatusText),
-		150, 0.46f, 0.46f);
+		310, 0.46f, 0.46f);
+	presentation->savesSummaryScale = _GameflowPrepareDetailText(
+		data->detail.savesSummary, sizeof(data->detail.savesSummary),
+		264, 0.54f, 0.46f);
+	presentation->savesUpdatedScale = _GameflowPrepareDetailText(
+		data->detail.savesUpdated, sizeof(data->detail.savesUpdated),
+		294, 0.46f, 0.46f);
 	presentation->cheatSummaryScale = _GameflowPrepareDetailText(
 		data->detail.cheatSummary, sizeof(data->detail.cheatSummary),
 		294, 0.46f, 0.46f);
@@ -3408,10 +3663,10 @@ static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
 	presentation->primaryActionsScale = _GameflowPrepareDetailText(
 		data->detail.primaryActions, sizeof(data->detail.primaryActions),
 		590, 0.46f, 0.46f);
-	/* ponytail: the shortcut, launch and cheat hints fit by their text
-	 * width. Their strings are fixed and the icons leave room (the widest,
-	 * "Z  AUTOLOAD ON   R  VERIFY", draws about 115 px of 164); measure with
-	 * GetHintSizeInPixels if a longer one is added. */
+	/* The shortcut, launch and cheat hints fit by their text width alone:
+	 * their strings are fixed and the icons leave room (the widest, "Z
+	 * AUTOLOAD ON   R  VERIFY", draws about 115 px of 164). A longer one is
+	 * measured with GetHintSizeInPixels. */
 	presentation->advancedLineOneScale = _GameflowPrepareDetailText(
 		data->detail.advancedLineOne, sizeof(data->detail.advancedLineOne),
 		164, 0.42f, 0.42f);
@@ -3453,18 +3708,18 @@ static void _GameflowDrawDetailPlanes(
 	const uiGameflowDetailSnapshot_t *detail,
 	const drawGameflowDetailPresentation_t *presentation,
 	const uiGameflowFrame_t *frame, float alpha,
-	uiGameflowDetailFocus_t focusRow)
+	uiGameflowDetailFocus_t focusRow, uiMotionSpring_t lit[2])
 {
 	/* The rows the focus moves between, bottom up: Launch, Cheats, Settings. */
-	static const int rowTop[] = {348, 281, 232};
+	static const int rowTop[] = {367, 301, 252};
 	static const int rowHeight[] = {43, 59, 42};
-	float litTop = (float)rowTop[focusRow];
-	float litBottom = litTop + (float)rowHeight[focusRow];
-	gameflowQuad_t litRow = {{{260.0f, litTop}, {590.0f, litTop},
-		{590.0f, litBottom}, {260.0f, litBottom}}};
-	gameflowQuad_t litInner = _GameflowGrowQuad(&litRow, -2.0f);
-	gameflowQuad_t litGlow = _GameflowGrowQuad(&litRow, 2.0f);
-	gameflowQuad_t litHalo = _GameflowGrowQuad(&litGlow, 3.0f);
+	uiMotionMode_t motion = _CurrentMotionMode();
+	float litTop;
+	float litBottom;
+	gameflowQuad_t litRow;
+	gameflowQuad_t litInner;
+	gameflowQuad_t litGlow;
+	gameflowQuad_t litHalo;
 	int row;
 	bool hasAdvanced = detail->advancedLineOne[0] != '\0' ||
 		detail->advancedLineTwo[0] != '\0';
@@ -3492,8 +3747,25 @@ static void _GameflowDrawDetailPlanes(
 	GXColor litHaloColor = {117, 88, 244,
 		_GameflowAlpha(78.0f * alpha * focus)};
 	bool hasSettings = detail->settingsSummary[0] != '\0';
-	u16 panelCount = (u16)(3u + (hasAdvanced ? 1u : 0u) +
+	u16 panelCount = (u16)(4u + (hasAdvanced ? 1u : 0u) +
 		(hasSettings ? 1u : 0u));
+
+	/* The bright frame slides from row to row, as the cheat list's focus
+	 * does; Detail opening places it on its row at once. */
+	if(lit[0].response <= 0.0f) {
+		UIMotion_SpringInit(&lit[0], (float)rowTop[focusRow], 25.0f);
+		UIMotion_SpringInit(&lit[1], (float)rowHeight[focusRow], 25.0f);
+	}
+	UIMotion_SpringRetarget(&lit[0], (float)rowTop[focusRow], motion);
+	UIMotion_SpringRetarget(&lit[1], (float)rowHeight[focusRow], motion);
+	litTop = UIMotion_SpringUpdate(&lit[0], UIAnim_Delta(), motion);
+	litBottom = litTop + UIMotion_SpringUpdate(&lit[1], UIAnim_Delta(),
+		motion);
+	litRow = (gameflowQuad_t) {{{260.0f, litTop}, {590.0f, litTop},
+		{590.0f, litBottom}, {260.0f, litBottom}}};
+	litInner = _GameflowGrowQuad(&litRow, -2.0f);
+	litGlow = _GameflowGrowQuad(&litRow, 2.0f);
+	litHalo = _GameflowGrowQuad(&litGlow, 3.0f);
 
 	panelGlow.a = _GameflowAlpha(34.0f * alpha);
 	panelEdge.a = _GameflowAlpha(172.0f * alpha);
@@ -3503,8 +3775,10 @@ static void _GameflowDrawDetailPlanes(
 	drawInit();
 	_SetupRasterColor();
 	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(panelCount * 12u + 48u));
-		_GameflowPutDetailPanel(246, 76, 358, 328, 2,
+		_GameflowPutDetailPanel(246, 76, 358, 344, 2,
 			panelGlow, panelFill, panelEdge);
+		_GameflowPutDetailPanel(260, 202, 330, 43, 2,
+			insetGlow, insetFill, insetEdge);
 		/* The focused row takes the bright edge and the glow, and the
 		 * grid's frame round it; Launch keeps its button fill. */
 		for(row = UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH;
@@ -3534,7 +3808,8 @@ static void _GameflowDrawDetailDashboard(
 	const uiGameflowDetailSnapshot_t *detail,
 	const drawGameflowDetailPresentation_t *presentation,
 	const uiGameflowFrame_t *frame, float reveal,
-	const uiCommandRailFrame_t *commandRail, uiGameflowDetailFocus_t focusRow)
+	const uiCommandRailFrame_t *commandRail, uiGameflowDetailFocus_t focusRow,
+	uiMotionSpring_t lit[2])
 {
 	const char *launchText;
 	float launchScale;
@@ -3546,6 +3821,7 @@ static void _GameflowDrawDetailDashboard(
 
 	if(detail == NULL || presentation == NULL || frame == NULL ||
 		frame->detailProgress <= 0.001f) {
+		lit[0].response = 0.0f;
 		return;
 	}
 	alpha = _GameflowClamp(frame->detailProgress * reveal, 0.0f, 1.0f);
@@ -3553,58 +3829,63 @@ static void _GameflowDrawDetailDashboard(
 	secondary = (GXColor) {202, 192, 244, _GameflowAlpha(235.0f * alpha)};
 	muted = (GXColor) {165, 158, 201, _GameflowAlpha(218.0f * alpha)};
 	focus = (GXColor) {244, 239, 255, _GameflowAlpha(255.0f * alpha)};
-	_GameflowDrawDetailPlanes(detail, presentation, frame, alpha, focusRow);
+	_GameflowDrawDetailPlanes(detail, presentation, frame, alpha, focusRow,
+		lit);
 
 	drawStringMedium(264, 95, frame->launchProgress > 0.02f ?
 		"LAUNCHING" : "GAME DETAIL", 0.42f, ALIGN_LEFT, secondary);
 	drawStringMedium(264, 122, detail->title, presentation->titleScale,
 		ALIGN_LEFT, primary);
 	if(detail->company[0] != '\0') {
-		drawStringMedium(264, 148, detail->company,
+		drawStringMedium(264, 140, detail->company,
 			presentation->companyScale, ALIGN_LEFT, secondary);
 	}
 	if(detail->statusText[0] != '\0') {
-		drawStringMedium(264, 177, detail->statusText,
+		drawStringMedium(264, 159, detail->statusText,
 			presentation->statusScale, ALIGN_LEFT, muted);
 	}
 
-	drawStringMedium(264, 202, "LAST PLAYED", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(264, 219, detail->lastPlayedText,
+	drawStringMedium(264, 176, "LAST PLAYED", 0.42f, ALIGN_LEFT, secondary);
+	drawStringMedium(264, 191, detail->lastPlayedText,
 		presentation->lastPlayedScale, ALIGN_LEFT, primary);
-	drawStringMedium(430, 202, "SAVE DATA", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(430, 219, detail->saveStatusText,
-		presentation->saveStatusScale, ALIGN_LEFT, muted);
+	/* The count is the headline. A small trailing label leaves the two-line
+	 * inset readable without competing with the actions below it. */
+	drawStringMedium(576, 214, "SAVES", 0.38f, ALIGN_RIGHT, secondary);
+	drawStringMedium(274, 214, detail->savesSummary,
+		presentation->savesSummaryScale, ALIGN_LEFT, primary);
+	drawStringMedium(274, 232, detail->savesUpdated,
+		presentation->savesUpdatedScale, ALIGN_LEFT, secondary);
 
 	/* SETTINGS, like CHEATS below it: this game's own rows, or how to set
 	 * some (X opens them). */
 	if(detail->settingsSummary[0] != '\0') {
-		drawStringMedium(274, 244, "SETTINGS", 0.42f, ALIGN_LEFT, secondary);
-		drawStringMedium(576, 244, detail->settingsSummary,
+		drawStringMedium(274, 264, "SETTINGS", 0.42f, ALIGN_LEFT, secondary);
+		drawStringMedium(576, 264, detail->settingsSummary,
 			presentation->settingsSummaryScale, ALIGN_RIGHT, muted);
 		if(detail->customSettings != 0u) {
-			drawStringMedium(274, 262, "\267", 0.50f, ALIGN_LEFT, focus);
-			drawStringMedium(288, 262, detail->settingsPreview,
+			drawStringMedium(274, 282, "\267", 0.50f, ALIGN_LEFT, focus);
+			drawStringMedium(288, 282, detail->settingsPreview,
 				presentation->settingsPreviewScale, ALIGN_LEFT, primary);
 		}
 		else {
-			_DrawHintText(274, 262, detail->settingsPreview,
+			_DrawHintText(274, 282, detail->settingsPreview,
 				presentation->settingsPreviewScale, ALIGN_LEFT, muted);
 		}
 	}
 
-	drawStringMedium(274, 293, "CHEATS", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(274, 311, detail->cheatSummary,
+	drawStringMedium(274, 313, "CHEATS", 0.42f, ALIGN_LEFT, secondary);
+	drawStringMedium(274, 331, detail->cheatSummary,
 		presentation->cheatSummaryScale, ALIGN_LEFT, muted);
 	if(detail->cheatPreview[0] != '\0') {
 		if(detail->enabledCheatCount != 0u) {
-			drawStringMedium(274, 329, "\267", 0.50f, ALIGN_LEFT, focus);
-			drawStringMedium(288, 329, detail->cheatPreview,
+			drawStringMedium(274, 349, "\267", 0.50f, ALIGN_LEFT, focus);
+			drawStringMedium(288, 349, detail->cheatPreview,
 				presentation->cheatPreviewScale, ALIGN_LEFT, primary);
 		}
 		else {
 			/* "Y  Choose cheats": a hint only while nothing is on, since
 			 * cheat names are free text. */
-			_DrawHintText(274, 329, detail->cheatPreview,
+			_DrawHintText(274, 349, detail->cheatPreview,
 				presentation->cheatPreviewScale, ALIGN_LEFT, muted);
 		}
 	}
@@ -3614,9 +3895,9 @@ static void _GameflowDrawDetailDashboard(
 	launchScale = frame->launchProgress > 0.02f ?
 		0.56f : presentation->launchScale;
 	if(focusRow == UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH) {
-		drawStringMedium(278, 369, "\267", 0.58f, ALIGN_LEFT, focus);
+		drawStringMedium(278, 388, "\267", 0.58f, ALIGN_LEFT, focus);
 	}
-	_DrawHintText(425, 369, launchText, launchScale, ALIGN_CENTER, focus);
+	_DrawHintText(425, 388, launchText, launchScale, ALIGN_CENTER, focus);
 
 	if(detail->advancedLineOne[0] != '\0' ||
 		detail->advancedLineTwo[0] != '\0') {
@@ -3726,7 +4007,7 @@ static void _GameflowSetLaunch(drawGameflowEvent_t *data, bool on)
 		const uiGameflowCardSnapshot_t *record = _GameflowFindRecord(
 			&data->snapshot, UIGameflow_Frame(&data->state)->focusIndex, NULL);
 		GXTexObj *poster = record != NULL ?
-			_GameflowPosterTexture(record) : NULL;
+			_GameflowPosterTexture(record, NULL) : NULL;
 
 		UILaunch_Begin(&launchState);
 		launchWarningScale = 0.0f;
@@ -4060,12 +4341,30 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 	titleTravel = _GameflowClamp(titleTravel, 0.0f, 1.0f);
 	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
 		/* The picture changes with the title: the old game's fades out as
-		 * the row moves and the new game's fades in. */
+		 * the row moves and the new game's fades in. A new still fills the
+		 * panel, so it fades in over the old picture, which keeps what of
+		 * the mix the still leaves: a true mix at the panel's strength, with
+		 * no dip to the empty panel half way. A new cover is smaller, so
+		 * the old picture fades out around it; a still arriving over its
+		 * cover moves from the one to the other as it fades in. */
 		float heroAlpha = reveal * (1.0f - frame->detailProgress) *
 			(1.0f - frame->launchProgress);
+		float previousAlpha = heroAlpha * titleTravel;
+
+		if(selectedRecord != NULL &&
+			_GameflowStillTexture(selectedRecord) != NULL) {
+			float arrival = _GameflowStillArrival(selectedRecord);
+			float mixed = heroAlpha *
+				_GameflowUnderneath(heroAlpha, 1.0f - titleTravel);
+
+			/* Nothing of it shows once the still over it is opaque. */
+			previousAlpha = _GameflowAlpha(255.0f * heroAlpha *
+				(1.0f - titleTravel) * arrival) == 255u ? 0.0f :
+				previousAlpha + (mixed - previousAlpha) * arrival;
+		}
 		_GameflowDrawSpotlightPanel(heroAlpha);
 		_GameflowDrawSpotlightArt(data, previousRecord, previousRecordIndex,
-			heroAlpha * titleTravel);
+			previousAlpha);
 		_GameflowDrawSpotlightArt(data, selectedRecord, selectedRecordIndex,
 			heroAlpha * (1.0f - titleTravel));
 	}
@@ -4117,13 +4416,14 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		GXTexObj *posterTexture;
 		GXTexObj *bannerTexture = NULL;
 		uiGameflowLibraryArtwork_t artwork;
+		float arrival = 1.0f;
 
 		if(!cards[i].art) {
 			continue;
 		}
 		posterTexture = launchActive && launchHasPoster &&
 			cards[i].record->libraryIndex == frame->focusIndex ?
-			&launchPoster : _GameflowPosterTexture(cards[i].record);
+			&launchPoster : _GameflowPosterTexture(cards[i].record, &arrival);
 		if(cards[i].record->flags & UI_GAMEFLOW_CARD_HAS_BANNER) {
 			bannerTexture = &data->bannerTexObj[cards[i].recordIndex];
 		}
@@ -4139,7 +4439,14 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		artwork = UIGameflowLibrary_ChooseArtwork(posterTexture != NULL,
 			bannerTexture != NULL);
 		if(artwork == UI_GAMEFLOW_LIBRARY_ART_POSTER) {
-			_GameflowDrawPoster(&cards[i], posterTexture, reveal);
+			/* A poster just read fades in over what stood in for it. */
+			if(arrival < 1.0f) {
+				_GameflowDrawFallback(&cards[i],
+					UIGameflowLibrary_ChooseArtwork(false,
+					bannerTexture != NULL), bannerTexture, reveal *
+					_GameflowUnderneath(cards[i].presence * reveal, arrival));
+			}
+			_GameflowDrawPoster(&cards[i], posterTexture, reveal * arrival);
 			continue;
 		}
 		_GameflowDrawFallback(&cards[i], artwork, bannerTexture, reveal);
@@ -4159,15 +4466,20 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			reveal * (1.0f - frame->detailProgress));
 	}
 
+	/* The old game's words fade out over the first half of a move and the
+	 * new game's in over the second, as the Source picker's names do: never
+	 * the two at once. */
 	_GameflowDrawMetadata(previousRecord, previousRecord != NULL ?
 		&data->cardPresentation[previousRecordIndex] : NULL,
-		titleTravel * (1.0f - frame->detailProgress), reveal, layout);
+		_GameflowClamp(2.0f * titleTravel - 1.0f, 0.0f, 1.0f) *
+		(1.0f - frame->detailProgress), reveal, layout);
 	_GameflowDrawMetadata(selectedRecord, selectedRecord != NULL ?
 		&data->cardPresentation[selectedRecordIndex] : NULL,
-		(1.0f - titleTravel) * (1.0f - frame->detailProgress), reveal,
-		layout);
+		_GameflowClamp(1.0f - 2.0f * titleTravel, 0.0f, 1.0f) *
+		(1.0f - frame->detailProgress), reveal, layout);
 	if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
-		_GameflowDrawSpotlightDescription(data, (1.0f - titleTravel) *
+		_GameflowDrawSpotlightDescription(data,
+			_GameflowClamp(1.0f - 2.0f * titleTravel, 0.0f, 1.0f) *
 			(1.0f - frame->detailProgress), reveal);
 	}
 
@@ -4176,7 +4488,7 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 	if(frame->launchProgress < 0.999f) {
 		_GameflowDrawDetailDashboard(detail, &data->detailPresentation,
 			frame, reveal * (1.0f - frame->launchProgress), &commandRail,
-			data->detailFocus);
+			data->detailFocus, data->detailLit);
 	}
 	if(frame->detailProgress < 0.999f) {
 		GXColor label = {177, 168, 220,
@@ -4186,7 +4498,10 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		 * and with their own controls: A starts one, and that is all. */
 		bool apps = (data->snapshot.records[0].flags &
 			UI_GAMEFLOW_CARD_APP) != 0u;
-		const char *heading = apps ? "APPS" : "GAME LIBRARY";
+		/* Inside a Library Folders folder the heading names it. */
+		const char *heading = apps ? "APPS" :
+			data->snapshot.folder[0] ? data->snapshot.folder :
+			"GAME LIBRARY";
 
 		if(layout == UI_GAMEFLOW_LAYOUT_VERTICAL) {
 			drawStringMedium(262, 177, heading, 0.42f, ALIGN_LEFT,
@@ -4197,7 +4512,7 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 				label);
 		}
 		else if(layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT) {
-			drawStringMedium(36, 62, "GAME LIBRARY", 0.42f, ALIGN_LEFT,
+			drawStringMedium(36, 62, heading, 0.42f, ALIGN_LEFT,
 				label);
 		}
 		else {
@@ -4210,6 +4525,8 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			command.a = _GameflowAlpha(180.0f * reveal * commandRail.alpha);
 			_DrawHintText(320, 428, apps ?
 				"D-PAD  BROWSE   A  START   B  HOME" :
+				data->snapshot.folder[0] ?
+				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   B  BACK" :
 				"D-PAD  BROWSE   A  OPEN   Y  SETTINGS   X  BACK   B  HOME",
 				0.46f, ALIGN_CENTER, command);
 		}
@@ -4225,8 +4542,9 @@ static void _DrawHomeText(int x, int y, const char *text, float scale,
 	drawStringMedium(x, y, text, scale, align, color);
 }
 
+/* weight runs from the idle panel (0) to the selected one (1). */
 static void _DrawHomePanel(int x, int y, int width, int height,
-		float reveal, bool selected, bool danger)
+		float reveal, float weight, bool danger)
 {
 	GXColor fill = danger ? (GXColor) {82, 20, 42, 0} :
 		(GXColor) {20, 13, 58, 0};
@@ -4235,9 +4553,9 @@ static void _DrawHomePanel(int x, int y, int width, int height,
 	GXColor glow = danger ? (GXColor) {255, 75, 118, 0} :
 		(GXColor) {117, 88, 244, 0};
 
-	fill.a = (u8)((selected ? 148.0f : 72.0f) * reveal);
-	edge.a = (u8)((selected ? 218.0f : 92.0f) * reveal);
-	glow.a = (u8)((selected ? 84.0f : 28.0f) * reveal);
+	fill.a = (u8)((72.0f + 76.0f * weight) * reveal);
+	edge.a = (u8)((92.0f + 126.0f * weight) * reveal);
+	glow.a = (u8)((28.0f + 56.0f * weight) * reveal);
 	drawInit();
 	GX_SetNumTexGens(0);
 	GX_SetNumIndStages(0);
@@ -4260,7 +4578,7 @@ static void _DrawHomePanel(int x, int y, int width, int height,
 		_putFlatRect((float)x - 3.0f, (float)y - 3.0f,
 			(float)width + 6.0f, (float)height + 6.0f, glow);
 		_putFlatRect((float)x, (float)y, (float)width, (float)height, fill);
-		_putFlatRect((float)x, (float)y, selected ? 4.0f : 2.0f,
+		_putFlatRect((float)x, (float)y, 2.0f + 2.0f * weight,
 			(float)height, edge);
 	GX_End();
 	drawInit();
@@ -4323,9 +4641,7 @@ static void _DrawHomeRoot(const drawHomeEvent_t *data,
 	GXColor incoming;
 	uiMotionMode_t motionMode = _CurrentMotionMode();
 
-	if(progress < 0.0f) progress = 0.0f;
-	if(progress > 1.0f) progress = 1.0f;
-	eased = progress * progress * (3.0f - 2.0f * progress);
+	eased = UIMotion_Smoothstep(progress);
 
 	/* The ring names only the selected face, under the cube. Nothing sits
 	 * above or beside it: a label the cube does not carry through the turn
@@ -4365,13 +4681,14 @@ static void _DrawHomeRows(const drawHomeEvent_t *data, float reveal)
 		const uiHomeLayoutItem_t *item = &layout->rows[row];
 		int width = item->panelBounds.right - item->panelBounds.left;
 		int height = item->panelBounds.bottom - item->panelBounds.top;
-		bool selected = item->selected;
+		float weight = data->rowWeight[row].value;
 		const char *label = UIHome_RowLabel(data->state.surface, row);
 		_DrawHomePanel(item->panelBounds.left, item->panelBounds.top,
-			width, height, reveal, selected, false);
+			width, height, reveal, weight, false);
 		_DrawHomeText(item->labelCenter.x, item->labelCenter.y, label,
-			selected ? data->rowSelectedScale[row] : data->rowIdleScale[row],
-			ALIGN_CENTER, selected ? primary : muted);
+			data->rowIdleScale[row] + (data->rowSelectedScale[row] -
+				data->rowIdleScale[row]) * weight,
+			ALIGN_CENTER, _GameflowMixColor(muted, primary, weight));
 	}
 	_DrawHintText(layout->commandCenter.x, layout->commandCenter.y,
 		homeContextCommand, data->contextCommandScale,
@@ -4407,18 +4724,41 @@ static void _DrawHomeRestartConfirm(const drawHomeEvent_t *data,
 		const uiHomeLayoutItem_t *item = &data->layout.options[row];
 		int width = item->panelBounds.right - item->panelBounds.left;
 		int height = item->panelBounds.bottom - item->panelBounds.top;
-		bool selected = item->selected;
+		float weight = data->rowWeight[row].value;
 		const char *label = UIHome_RowLabel(
 			UI_HOME_SURFACE_RESTART_CONFIRM, row);
 		_DrawHomePanel(item->panelBounds.left, item->panelBounds.top,
-			width, height, reveal, selected, row == 1);
+			width, height, reveal, weight, row == 1);
 		_DrawHomeText(item->labelCenter.x, item->labelCenter.y, label,
-			selected ? 0.54f : 0.49f,
-			ALIGN_CENTER, selected ? primary : muted);
+			0.49f + 0.05f * weight,
+			ALIGN_CENTER, _GameflowMixColor(muted, primary, weight));
 	}
 	_DrawHintText(data->layout.commandCenter.x, data->layout.commandCenter.y,
 		homeConfirmCommand, data->confirmCommandScale,
 		ALIGN_CENTER, muted);
+}
+
+/* Spring each row of the surface towards its style: selected or idle. */
+static void _HomeUpdateRowWeights(drawHomeEvent_t *data,
+		uiMotionMode_t motionMode)
+{
+	bool confirm = data->state.surface == UI_HOME_SURFACE_RESTART_CONFIRM;
+	const uiHomeLayoutItem_t *items = confirm ?
+		data->layout.options : data->layout.rows;
+	int count = confirm ? data->layout.optionCount : data->layout.rowCount;
+	int row;
+
+	for(row = 0; row < count && row < UI_HOME_LAYOUT_MAX_ROWS; ++row) {
+		float target = items[row].selected ? 1.0f : 0.0f;
+		if(!data->rowsPlaced) {
+			UIMotion_SpringInit(&data->rowWeight[row], target,
+				HOME_ROW_RESPONSE);
+		}
+		UIMotion_SpringRetarget(&data->rowWeight[row], target, motionMode);
+		UIMotion_SpringUpdate(&data->rowWeight[row], UIAnim_Delta(),
+			motionMode);
+	}
+	data->rowsPlaced = true;
 }
 
 // Internal
@@ -4426,7 +4766,12 @@ static void _DrawHome(uiDrawObj_t *evt)
 {
 	drawHomeEvent_t *data = (drawHomeEvent_t*)evt->data;
 	const uiSceneFrame_t *scene = UIScene_Frame();
-	float reveal = scene->chromeProgress;
+	/* Back from another screen the name and hint fade in as the cube grows
+	 * to its Home size (every other scene's is 0.70 or less), as the Source
+	 * row rises with it. Off snaps the cube, so they show at once. */
+	float reveal = scene->chromeProgress *
+		UIMotion_Smoothstep((scene->cubeScale - 0.70f) / 0.18f);
+	uiMotionMode_t motionMode = _CurrentMotionMode();
 
 	if(!data->visible || !data->layoutValid || reveal <= 0.0f ||
 		scene->scene != UI_SCENE_HOME || scene->homeFace != data->state.face ||
@@ -4435,6 +4780,15 @@ static void _DrawHome(uiDrawObj_t *evt)
 		return;
 	}
 	if(reveal > 1.0f) reveal = 1.0f;
+	/* A new surface (the ring, a face's rows, the restart question) fades
+	 * in over a moment rather than appearing whole. */
+	if(data->surfaceAge < HOME_SURFACE_REVEAL) {
+		data->surfaceAge += UIAnim_Delta();
+	}
+	if(motionMode != UI_MOTION_OFF) {
+		reveal *= UIMotion_Smoothstep(data->surfaceAge / HOME_SURFACE_REVEAL);
+	}
+	_HomeUpdateRowWeights(data, motionMode);
 	if(data->state.surface == UI_HOME_SURFACE_RING) {
 		_DrawHomeRoot(data, scene, reveal);
 	}
@@ -4453,6 +4807,8 @@ uiDrawObj_t* DrawHome(void)
 	drawHomeEvent_t *eventData = calloc(1, sizeof(drawHomeEvent_t));
 	event->type = EV_HOME;
 	event->data = eventData;
+	/* The first surface shows with the boot's chrome, not after it. */
+	eventData->surfaceAge = HOME_SURFACE_REVEAL;
 	return event;
 }
 
@@ -4562,13 +4918,12 @@ static void _DrawDeviceSelector(uiDrawObj_t *evt)
 	const uiSceneFrame_t *scene = UIScene_Frame();
 	/* The row rises into view as the cube lifts and shrinks out of its way,
 	 * as the Library's posters follow the cube's retreat. */
-	float rise = fminf(fmaxf((0.92f - scene->cubeScale) / 0.30f, 0.0f), 1.0f);
+	float rise = UIMotion_Smoothstep((0.92f - scene->cubeScale) / 0.30f);
 	float reveal = fminf(scene->chromeProgress, 1.0f);
-	float position, first, last, y, pulse, labels;
+	float position, first, last, y, pulse, labels, inset;
 	int tiles = 0;
-	int nearest, k, i;
+	int nearest, k, i, corner;
 
-	rise = rise * rise * (3.0f - 2.0f * rise);
 	reveal *= rise;
 	if(s->count <= 0 || reveal <= 0.0f) {
 		return;
@@ -4640,10 +4995,11 @@ static void _DrawDeviceSelector(uiDrawObj_t *evt)
 	nearest = (int)floorf(position + 0.5f);
 	labels = reveal * (1.0f - 2.0f * fabsf(position - (float)nearest));
 	tile = &s->tiles[_DeviceIndex(nearest, s->count)];
-	/* In the header's corner the clock leaves free. */
-	drawStringMedium(_ClockCorner() < 0 ? 600 : 40, 44,
+	/* In the header's free corner. */
+	corner = _FreeCorner(&inset);
+	drawStringMedium((int)(corner > 0 ? 600.0f - inset : 40.0f + inset), 44,
 		data->destination ? "DESTINATION" : "SOURCE", 0.50f,
-		_ClockCorner() < 0 ? ALIGN_RIGHT : ALIGN_LEFT,
+		corner > 0 ? ALIGN_RIGHT : ALIGN_LEFT,
 		(GXColor) {216, 207, 255, (u8)(230.0f * reveal)});
 	drawStringMedium(320, (int)(y + 88.0f), tile->name, tile->nameScale,
 		ALIGN_CENTER, (GXColor) {246, 243, 255, (u8)(255.0f * labels)});
@@ -4853,6 +5209,10 @@ void DrawUpdateHome(const uiHomeState_t *state,
 		data->visible = state != NULL;
 		data->layoutValid = false;
 		if(state != NULL) {
+			if(state->surface != data->state.surface) {
+				data->surfaceAge = 0.0f;
+				data->rowsPlaced = false;
+			}
 			data->state = *state;
 			data->capabilities = capabilities;
 			if(sourceName != NULL) {
@@ -4898,7 +5258,7 @@ static bool _GameflowSnapshotValid(const uiGameflowRenderSnapshot_t *snapshot)
 		snapshot->layout >= UI_GAMEFLOW_LAYOUT_COUNT) {
 		return false;
 	}
-	/* A grid names its columns; the carousels keep their seven cards. */
+	/* A grid names its columns; the carousels keep their nine cards. */
 	grid = snapshot->layout == UI_GAMEFLOW_LAYOUT_GRID;
 	if(grid ? snapshot->columns == 0u ||
 		snapshot->columns > UI_GAMEFLOW_LIBRARY_GRID_COLUMNS :
@@ -4910,7 +5270,7 @@ static bool _GameflowSnapshotValid(const uiGameflowRenderSnapshot_t *snapshot)
 		const uiGameflowCardSnapshot_t *record = &snapshot->records[i];
 		if(!(record->flags & UI_GAMEFLOW_CARD_VALID) ||
 			record->libraryIndex >= snapshot->selection.itemCount ||
-			record->relativeSlot < -3 || record->relativeSlot > 3 ||
+			record->relativeSlot < -4 || record->relativeSlot > 4 ||
 			(grid && (record->column >= snapshot->columns ||
 			record->relativeSlot < -2 || record->relativeSlot > 2))) {
 			return false;
@@ -5138,7 +5498,7 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	}
 	for(i = 0u; i < snapshot->recordCount; ++i) {
 		const uiGameflowCardSnapshot_t *record = &snapshot->records[i];
-		int position = (int)record->relativeSlot + 3;
+		int position = (int)record->relativeSlot + 4;
 		if(position < 0 || position >= UI_ASSETS_WINDOW ||
 			strnlen(record->gameId, sizeof(record->gameId)) !=
 				UI_ASSETS_ID_LEN) {
@@ -5146,9 +5506,9 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 		}
 		memcpy(ids[position], record->gameId, UI_ASSETS_ID_LEN);
 	}
-	/* Fixed -3..+3 placement preserves true carousel distance even when
+	/* Fixed -4..+4 placement preserves true carousel distance even when
 	 * the parent entry has no poster ID or a small library has gaps. */
-	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 3);
+	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 4);
 }
 
 bool DrawGameflowPollPosters(void)
@@ -5667,7 +6027,7 @@ static void _DrawCheats(uiDrawObj_t *evt)
 	focusY = (int)lrintf(UIMotion_SpringUpdate(&data->focusY,
 		UIAnim_Delta(), motion));
 
-	_PagePanel(-6, -6, 652, 492, (GXColor){8, 12, 27, 254});
+	_PagePanel(-6, -6, 652, 492, (GXColor){8, 12, 27, 255});
 	_CheatsPanel(40, 30, 40, 3, accent);
 	drawStringMedium(40, 63, "Cheats", 1.05f, ALIGN_LEFT, primary);
 	drawStringMedium(600, 63, s->enabledText, 0.54f, ALIGN_RIGHT, accent);
@@ -5892,6 +6252,11 @@ typedef struct {
 	uiSetPageSnapshot_t snapshot;
 	uiSettingsFocusState_t focus;
 	int focusView;
+	/* The current tab's cell, its left edge and width, sliding between
+	 * tabs; placed when the page first draws. */
+	uiMotionSpring_t tabX;
+	uiMotionSpring_t tabW;
+	bool tabPlaced;
 } drawSettingsEvent_t;
 
 typedef struct {
@@ -6035,6 +6400,8 @@ static void _DrawSettingsPage(uiDrawObj_t *evt)
 	GXColor back = settingsBack;
 	int focusSlot = l->selectedRow >= 0 ?
 		l->selectedRow - l->firstVisibleRow : -1;
+	int focusLeft;
+	int focusTop;
 	int i;
 
 	/* A new view snaps the focus card; within one it springs. */
@@ -6054,8 +6421,24 @@ static void _DrawSettingsPage(uiDrawObj_t *evt)
 	drawStringMedium(l->titleX, l->titleY, s->title, s->titleScale,
 		ALIGN_LEFT, settingsInk);
 	if(l->tabCount > 0) {
+		const uiSetLayoutRect_t *cell = &l->tabCell[l->currentTab];
+		int cellLeft;
+
+		if(!data->tabPlaced) {
+			UIMotion_SpringInit(&data->tabX, (float)cell->x, 25.0f);
+			UIMotion_SpringInit(&data->tabW, (float)cell->w, 25.0f);
+			data->tabPlaced = true;
+		}
+		UIMotion_SpringRetarget(&data->tabX, (float)cell->x, motion);
+		UIMotion_SpringRetarget(&data->tabW, (float)cell->w, motion);
+		UIMotion_SpringUpdate(&data->tabX, UIAnim_Delta(), motion);
+		UIMotion_SpringUpdate(&data->tabW, UIAnim_Delta(), motion);
+		/* Whole-pixel edges: each moves one way as the cell slides. */
+		cellLeft = (int)lrintf(data->tabX.value);
 		_SettingsBox(&l->tabTrack, settingsCard);
-		_SettingsBox(&l->tabCell[l->currentTab], settingsFocus);
+		_CheatsPanel(cellLeft, cell->y,
+			(int)lrintf(data->tabX.value + data->tabW.value) - cellLeft,
+			cell->h, settingsFocus);
 		for(i = 0; i < l->tabCount; i++) {
 			drawStringMedium(l->tabLabelCenterX[i], l->tabLabelY, s->tab[i],
 				s->tabScale[i], ALIGN_CENTER,
@@ -6084,8 +6467,12 @@ static void _DrawSettingsPage(uiDrawObj_t *evt)
 	for(i = 0; i < l->actionCount; i++) {
 		_SettingsBox(&l->actionRect[i], settingsCard);
 	}
-	_SettingsFocusCard((int)lrintf(frame.x), (int)lrintf(frame.y),
-		(int)lrintf(frame.w), (int)lrintf(frame.h));
+	/* Whole-pixel edges: each moves one way as the card slides. */
+	focusLeft = (int)lrintf(frame.x);
+	focusTop = (int)lrintf(frame.y);
+	_SettingsFocusCard(focusLeft, focusTop,
+		(int)lrintf(frame.x + frame.w) - focusLeft,
+		(int)lrintf(frame.y + frame.h) - focusTop);
 	for(i = 0; i < l->visibleRowCount; i++) {
 		_SettingsRow(l, i, &s->rows[i], i == focusSlot);
 	}
@@ -6324,55 +6711,16 @@ uiDrawObj_t* DrawSettingsHelp(const char *help)
 }
 
 /* ------------------------------------------------------------------------
- * Memory Cards (saves.c), in the same language: a tab for each slot and the
- * SD card, a row per save with its banner, and the focus card springing from
- * row to row as the cheat list's does.
+ * Memory Cards' folder chooser (saves.c), in the same language: a row per
+ * folder, and the focus card springing from row to row as the cheat list's
+ * does.
  * --------------------------------------------------------------------- */
-_Static_assert(sizeof(uiSavesPageRow_t) % 32 == 0,
-	"each save's banner stays 32-byte aligned");
-
 typedef struct {
-	uiSavesPageSnapshot_t snapshot;	/* first: its banners stay aligned */
-	GXTexObj banner[UI_SAVES_PAGE_ROWS];
-	GXTlutObj palette[UI_SAVES_PAGE_ROWS];
+	uiSavesPageSnapshot_t snapshot;
 	uiMotionSpring_t focusY;
 	bool focusInitialized;
 	u32 focusList;
 } drawSavesEvent_t;
-
-static void _SavesCopySnapshot(drawSavesEvent_t *data,
-	const uiSavesPageSnapshot_t *snapshot)
-{
-	int i;
-
-	data->snapshot = *snapshot;
-	for(i = 0; i < UI_SAVES_PAGE_ROWS; i++) {
-		uiSavesPageRow_t *row = &data->snapshot.rows[i];
-
-		memset(&data->banner[i], 0, sizeof(data->banner[i]));
-		if(i >= data->snapshot.rowCount) {
-			continue;
-		}
-		if(row->bannerFormat == CARD_BANNER_RGB) {
-			DCFlushRange(row->banner, CARD_BANNER_W * CARD_BANNER_H * 2);
-			GX_InitTexObj(&data->banner[i], row->banner, CARD_BANNER_W,
-				CARD_BANNER_H, GX_TF_RGB5A3, GX_CLAMP, GX_CLAMP, GX_FALSE);
-		}
-		else if(row->bannerFormat == CARD_BANNER_CI) {
-			DCFlushRange(row->banner, CARD_BANNER_W * CARD_BANNER_H + 512);
-			GX_InitTlutObj(&data->palette[i],
-				row->banner + CARD_BANNER_W * CARD_BANNER_H, GX_TL_RGB5A3, 256);
-			GX_InitTexObjCI(&data->banner[i], row->banner, CARD_BANNER_W,
-				CARD_BANNER_H, GX_TF_CI8, GX_CLAMP, GX_CLAMP, GX_FALSE,
-				GX_TLUT0);
-			GX_InitTexObjUserData(&data->banner[i], &data->palette[i]);
-		}
-		else {
-			continue;
-		}
-		GX_InitTexObjFilterMode(&data->banner[i], GX_LINEAR, GX_NEAR);
-	}
-}
 
 /* A folder: its tab and body. */
 static void _SavesFolder(int x, int y, GXColor color)
@@ -6381,25 +6729,16 @@ static void _SavesFolder(int x, int y, GXColor color)
 	_CheatsPanel(x + 31, y + 9, 34, 19, color);
 }
 
-/* A save without a banner: a memory card and its label. */
-static void _SavesCard(int x, int y)
-{
-	_CheatsPanel(x + 36, y + 2, 24, 28, settingsTrack);
-	_CheatsPanel(x + 40, y + 6, 16, 9, settingsValue);
-}
-
 static void _DrawSaves(uiDrawObj_t *evt)
 {
 	drawSavesEvent_t *data = (drawSavesEvent_t*)evt->data;
 	const uiSavesPageSnapshot_t *s = &data->snapshot;
-	const GXColor amber = {255, 207, 139, 255};
 	uiMotionMode_t motion = _CurrentMotionMode();
 	float target = (float)(148 + s->focusRow * 40);
 	int focusY;
 	int i;
-	int x;
 
-	/* Another place or folder snaps the focus; within a list it slides. */
+	/* Another folder snaps the focus; within one it slides. */
 	if(!data->focusInitialized || data->focusList != s->list) {
 		UIMotion_SpringInit(&data->focusY, target, 25.0f);
 		data->focusInitialized = true;
@@ -6413,16 +6752,6 @@ static void _DrawSaves(uiDrawObj_t *evt)
 	_CheatsPanel(40, 30, 40, 3, settingsAccent);
 	drawStringMedium(40, 63, s->title, 1.05f, ALIGN_LEFT, settingsInk);
 	drawStringMedium(600, 63, s->status, 0.54f, ALIGN_RIGHT, settingsAccent);
-	for(i = 0, x = 40; i < s->tabCount; i++) {
-		int width = (int)((float)GetTextSizeInPixels(s->tabs[i]) * 0.54f);
-
-		drawStringMedium(x, 98, s->tabs[i], 0.54f, ALIGN_LEFT,
-			i == s->tab ? settingsInk : settingsQuiet);
-		if(i == s->tab) {
-			_CheatsPanel(x, 108, width, 2, settingsAccent);
-		}
-		x += width + 32;
-	}
 	_CheatsPanel(40, 115, 560, 1, settingsRule);
 	drawStringMedium(40, 132, s->section, 0.42f, ALIGN_LEFT, settingsAccent);
 	drawStringMedium(600, 132, s->position, 0.46f, ALIGN_RIGHT, settingsQuiet);
@@ -6438,18 +6767,7 @@ static void _DrawSaves(uiDrawObj_t *evt)
 		bool focused = i == s->focusRow;
 		int y = 148 + i * 40;
 
-		if(row->bannerFormat != CARD_BANNER_NONE) {
-			drawInit();
-			_DrawTexObjNow(&data->banner[i], 52, y + 1, CARD_BANNER_W,
-				CARD_BANNER_H, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0);
-			drawInit();
-		}
-		else if(row->kind == UI_SAVES_ROW_SAVE) {
-			_SavesCard(52, y + 1);
-		}
-		else {
-			_SavesFolder(52, y + 1, focused ? settingsAccent : settingsSwatch);
-		}
+		_SavesFolder(52, y + 1, focused ? settingsAccent : settingsSwatch);
 		drawStringMedium(160, y + 17, row->title, 0.62f, ALIGN_LEFT,
 			focused ? settingsInk : settingsQuiet);
 		drawStringMedium(588, y + 17, row->blocks, 0.50f, ALIGN_RIGHT,
@@ -6471,10 +6789,6 @@ static void _DrawSaves(uiDrawObj_t *evt)
 		drawStringMedium(320, 269, s->empty[1], 0.54f, ALIGN_CENTER,
 			settingsQuiet);
 	}
-	if(s->detail[0] != '\0') {
-		drawStringMedium(40, 400, s->detail, 0.48f, ALIGN_LEFT,
-			s->warning ? amber : settingsQuiet);
-	}
 	_CheatsPanel(40, 413, 560, 1, settingsRule);
 	_DrawHintText(40, 435, s->hint[0], 0.48f, ALIGN_LEFT, settingsInk);
 	_DrawHintText(600, 435, s->hint[1], 0.48f, ALIGN_RIGHT, settingsQuiet);
@@ -6492,7 +6806,7 @@ uiDrawObj_t* DrawSavesPage(const uiSavesPageSnapshot_t *snapshot)
 		return NULL;
 	}
 	memset(data, 0, sizeof(*data));
-	_SavesCopySnapshot(data, snapshot);
+	data->snapshot = *snapshot;
 	event->type = EV_SAVES;
 	event->data = data;
 	return event;
@@ -6506,7 +6820,457 @@ void DrawUpdateSavesPage(uiDrawObj_t *page,
 	}
 	LWP_MutexLock(_videomutex);
 	if(!page->disposed && page->type == EV_SAVES && page->data != NULL) {
-		_SavesCopySnapshot((drawSavesEvent_t*)page->data, snapshot);
+		((drawSavesEvent_t*)page->data)->snapshot = *snapshot;
+	}
+	LWP_MutexUnlock(_videomutex);
+}
+
+/* ------------------------------------------------------------------------
+ * Memory Cards' cube screen (saves.c): two stacks of save cubes over graph
+ * paper, as the IPL's Memory Card screen shows Slot A and Slot B, with the
+ * focused save's banner and comment below. ui_save_cubes.c lays the cubes
+ * out, moves them and projects their faces on the CPU; here they go through
+ * the 2D pipeline every page uses, Z off and nothing culled, so a frame
+ * asks nothing new of GX.
+ * --------------------------------------------------------------------- */
+
+/* The backdrop: the graph paper as much as it shows, and the Home cube while
+ * it hands over to the cubes or back, as _DrawBackground would draw it. */
+static void _SaveCubesBackdrop(float paper, float handover)
+{
+	int icons[UI_HOME_FACE_COUNT];
+
+	_HomeFaceIcons(icons);
+	IndigoBackground_DrawSavesBackdrop(paper, handover, UIAnim_Seconds(),
+		_CurrentMotionMode() == UI_MOTION_FULL, UIScene_Frame(),
+		&systemInstrument.clock, icons);
+}
+
+/* What one frame's cubes need. */
+typedef struct {
+	uiSaveCube_t cubes[UI_SAVE_CUBES_OUT];
+	uiSaveCubesQuad_t quads[UI_SAVE_CUBES_OUT * UI_SAVE_CUBES_QUADS];
+	uiSaveCubesQuad_t coverage[UI_SAVE_CUBES_OUT * UI_SAVE_CUBES_COVERAGE];
+	u16 quadEnd[UI_SAVE_CUBES_OUT];
+	u16 coverageEnd[UI_SAVE_CUBES_OUT];
+	GXColor shades[UI_SAVE_CUBES_SHADES][UI_SAVE_CUBES_ROLES];
+	GXTexObj icon;
+	bool invalidated;	/* the texture cache, this frame */
+} saveCubesDraw_t;
+
+/* Each shade of each part of a cube, through Menu Color once a frame. */
+static void _SaveCubesShades(saveCubesDraw_t *draw)
+{
+	int shade, role;
+
+	for(shade = 0; shade < UI_SAVE_CUBES_SHADES; shade++) {
+		for(role = 0; role < UI_SAVE_CUBES_ROLES; role++) {
+			u8 rgba[4];
+
+			UISaveCubes_Colour(shade, role, rgba);
+			UIColor_Apply(&rgba[0], &rgba[1], &rgba[2]);
+			draw->shades[shade][role] = (GXColor) {rgba[0], rgba[1], rgba[2], rgba[3]};
+		}
+	}
+}
+
+static void _SaveCubesVertex(float x, float y, GXColor color, float s, float t)
+{
+	GX_Position3f32(x, y, 0.0f);
+	GX_Color4u8(color.r, color.g, color.b, color.a);
+	GX_TexCoord2f32(s, t);
+}
+
+/* Cubes first .. end - 1: all their faces in one batch, then each icon on
+ * its quad in the game's own colors, blended by its alpha (drawInit's blend
+ * would add a clear texel's color). The texture cache is cleared before the
+ * frame's first icon only, not per icon as _DrawTexObjNow would: the loader
+ * writes only slots no published cube names. */
+static void _SaveCubesEmit(saveCubesDraw_t *draw, int first, int end)
+{
+	static const float s[4] = {0.0f, 1.0f, 1.0f, 0.0f};
+	static const float t[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+	float left = UIStage_Left(), right = UIStage_Right();
+	int quads = 0, coverage = 0, bodies = 0, i, k, v;
+	bool icons = false;
+
+	for(i = first; i < end; i++) {
+		int n = UISaveCubes_Faces(&draw->cubes[i], left, right, draw->quads + quads);
+		int edges = UISaveCubes_Coverage(draw->quads + quads, n,
+			UIStage_PixelWidth(), draw->coverage + coverage);
+
+		quads += n;
+		coverage += edges;
+		bodies += n + edges - (n > 0 && draw->quads[quads - 1].role == UI_SAVE_CUBES_ROLE_ICON);
+		draw->quadEnd[i] = (u16)quads;
+		draw->coverageEnd[i] = (u16)coverage;
+	}
+	if(bodies > 0) {
+		drawInit();
+		_SetupRasterColor();
+		GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(4 * bodies));
+		for(i = first; i < end; i++) {
+			const uiSaveCube_t *cube = &draw->cubes[i];
+
+			for(k = i > first ? draw->quadEnd[i - 1] : 0; k < draw->quadEnd[i]; k++) {
+				const uiSaveCubesQuad_t *quad = &draw->quads[k];
+				GXColor color;
+
+				if(quad->role == UI_SAVE_CUBES_ROLE_ICON) {
+					continue;
+				}
+				color = draw->shades[cube->shade][quad->role];
+				color.a = (u8)(color.a * cube->alpha / 255);
+				for(v = 0; v < 4; v++) {
+					_SaveCubesVertex(quad->x[v], quad->y[v], color, 0.0f, 0.0f);
+				}
+			}
+			for(k = i > first ? draw->coverageEnd[i - 1] : 0; k < draw->coverageEnd[i]; k++) {
+				const uiSaveCubesQuad_t *quad = &draw->coverage[k];
+				GXColor color = draw->shades[cube->shade][quad->role];
+
+				color.a = (u8)(color.a * cube->alpha / 255);
+				for(v = 0; v < 4; v++) {
+					GXColor faded = color;
+					if(v >= 2) faded.a = 0;
+					_SaveCubesVertex(quad->x[v], quad->y[v], faded, 0.0f, 0.0f);
+				}
+			}
+		}
+		GX_End();
+	}
+	for(i = first; i < end; i++) {
+		const uiSaveCubesQuad_t *quad;
+		GXColor white = {255, 255, 255, draw->cubes[i].alpha};
+
+		if(draw->quadEnd[i] == (i > first ? draw->quadEnd[i - 1] : 0)) {
+			continue;
+		}
+		quad = &draw->quads[draw->quadEnd[i] - 1];
+		if(quad->role != UI_SAVE_CUBES_ROLE_ICON) {
+			continue;
+		}
+		if(!icons) {
+			drawInit();
+			GX_SetNumTevStages(1);
+			GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA,
+				GX_LO_CLEAR);
+			if(!draw->invalidated) {
+				GX_InvalidateTexAll();
+				draw->invalidated = true;
+			}
+			icons = true;
+		}
+		GX_InitTexObj(&draw->icon, (void *)draw->cubes[i].icon, 32, 32,
+			GX_TF_RGB5A3, GX_CLAMP, GX_CLAMP, GX_FALSE);
+		GX_LoadTexObj(&draw->icon, GX_TEXMAP0);
+		GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+		for(v = 0; v < 4; v++) {
+			_SaveCubesVertex(quad->x[v], quad->y[v], white, s[v], t[v]);
+		}
+		GX_End();
+	}
+	if(icons) {
+		drawInit();
+	}
+}
+
+typedef struct {
+	uiSaveCubesPageSnapshot_t snapshot;
+	uiSaveCubesMotion_t motion;
+	saveCubesDraw_t draw;
+	GXTexObj picture;	/* the info bar's banner, or its icon */
+	/* The last box and message shown, drawn while they fade out. */
+	uiSaveCubesMenu_t menu;
+	u8 menuFocus;
+	char message[96];
+} drawSaveCubesEvent_t;
+
+static GXColor _SaveCubesFaded(GXColor color, float alpha)
+{
+	color.a = (u8)((float)color.a * alpha + 0.5f);
+	return color;
+}
+
+/* A box of fill shading top to bottom, inside an edge line px wide. */
+static void _SaveCubesBox(float x, float y, float width, float height,
+	GXColor top, GXColor bottom, GXColor edge, float line)
+{
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 20);
+		_putFlatVertex(x, y, top);
+		_putFlatVertex(x + width, y, top);
+		_putFlatVertex(x + width, y + height, bottom);
+		_putFlatVertex(x, y + height, bottom);
+		_putFlatRect(x, y, width, line, edge);
+		_putFlatRect(x, y + height - line, width, line, edge);
+		_putFlatRect(x, y + line, line, height - 2.0f * line, edge);
+		_putFlatRect(x + width - line, y + line, line, height - 2.0f * line, edge);
+	GX_End();
+}
+
+/* A stack's header, "A  Open" and its free blocks in a box, or the SD
+ * card's open folder; the arrows when rows lie above or below the window;
+ * or, with no grid, why. */
+static void _SaveCubesHeader(const uiSaveCubesStack_t *stack,
+	const uiSaveCubesStackText_t *text, float middle, float alpha)
+{
+	const GXColor white = _SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha);
+	const GXColor shadow = _SaveCubesFaded((GXColor) {0, 0, 0, 200}, alpha);
+	const GXColor quiet = _SaveCubesFaded(settingsQuiet, alpha);
+	int rows = stack->cells / UI_SAVE_CUBES_COLUMNS;
+	int i;
+
+	_SaveCubesBox(middle - 112.0f, 28.0f, 224.0f, 27.0f,
+		_SaveCubesFaded((GXColor) {18, 27, 91, 180}, alpha), shadow, quiet, 1.0f);
+	drawStringMedium((int)middle, 42, text->control, 0.5f, ALIGN_CENTER, white);
+	drawStringMedium((int)middle - 100, 74, text->name, 1.5f, ALIGN_LEFT, white);
+	if(text->free[0] != '\0') {
+		drawStringMedium((int)middle - 66, 80, "Open", 0.5f, ALIGN_LEFT, white);
+		_SaveCubesBox(middle - 20.0f, 60.0f, 56.0f, 28.0f, shadow, shadow, white, 2.0f);
+		drawStringMedium((int)middle + 8, 74, text->free, 0.6f, ALIGN_CENTER, white);
+	}
+	else {
+		drawStringMedium((int)middle - 44, 78, text->path, 0.42f, ALIGN_LEFT,
+			quiet);
+	}
+	if(stack->cells <= 0) {
+		drawStringMedium((int)middle, 220, text->note[0], text->noteScale[0],
+			ALIGN_CENTER, white);
+		drawStringMedium((int)middle, 248, text->note[1], text->noteScale[1],
+			ALIGN_CENTER, quiet);
+		return;
+	}
+	for(i = 0; i < 2; i++) {
+		float tip = i ? 354.5f : 99.5f, base = i ? 345.5f : 108.5f;
+
+		if(i ? stack->first + UI_SAVE_CUBES_ROWS >= rows : stack->first <= 0) {
+			continue;
+		}
+		drawInit();
+		_SetupRasterColor();
+		GX_Begin(GX_TRIANGLES, GX_VTXFMT0, 3);
+			_putFlatVertex(middle - 7.0f, base, white);
+			_putFlatVertex(middle + 7.0f, base, white);
+			_putFlatVertex(middle, tip, white);
+		GX_End();
+	}
+}
+
+/* A 96x32 banner or a 32x32 icon frame, RGB5A3, at (x, y). */
+static void _SaveCubesPicture(GXTexObj *picture, const u8 *texels, int x,
+	int y, int width)
+{
+	memset(picture, 0, sizeof(*picture));
+	GX_InitTexObj(picture, (void *)texels, width, 32, GX_TF_RGB5A3, GX_CLAMP,
+		GX_CLAMP, GX_FALSE);
+	GX_InitTexObjFilterMode(picture, GX_LINEAR, GX_NEAR);
+	drawInit();
+	_DrawTexObjNow(picture, x, y, width, 32, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0);
+	drawInit();
+}
+
+/* A flat bar, x .. x + width across, y .. y + height down. */
+static void _SaveCubesBar(float x, float y, float width, float height,
+	GXColor color)
+{
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+		_putFlatRect(x, y, width, height, color);
+	GX_End();
+}
+
+/* The box beside the focused cube, as the IPL's: dimmed items grey, the
+ * focus's bar sliding to its item. It opens from 0.92x and fades, about its
+ * middle. */
+static void _SaveCubesMenu(const uiSaveCubesMenu_t *menu, int focus,
+	const uiSaveCubesGrid_t *grid, const uiSaveCubesMotion_t *motion)
+{
+	const float alpha = motion->menuAlpha, scale = motion->menuScale;
+	const GXColor fill = _SaveCubesFaded((GXColor) {18, 27, 91, 230}, alpha);
+	const GXColor edge = _SaveCubesFaded((GXColor) {196, 186, 255, 255}, alpha);
+	uiSaveCubesBox_t box;
+	float cubeX, cubeY, middleX, middleY, top;
+	bool titled = menu->title[0] != '\0';
+	int i;
+
+	if(!(alpha > 0.0f) || menu->count == 0 || grid->focusStack < 0 ||
+		grid->focusStack >= UI_SAVE_CUBES_STACKS) {
+		return;
+	}
+	UISaveCubes_Where(grid->focusStack, grid->focusCell,
+		(float)grid->stack[grid->focusStack].first, &cubeX, &cubeY);
+	UISaveCubes_MenuBox(cubeX, cubeY, (float)menu->width, menu->count, titled, &box);
+	top = titled ? box.titleY : box.y;
+	middleX = box.x + 0.5f * box.width;
+	middleY = 0.5f * (top + box.y + box.height);
+#define MENU_X(x) (middleX + ((x) - middleX) * scale)
+#define MENU_Y(y) (middleY + ((y) - middleY) * scale)
+	if(titled) {
+		_SaveCubesBox(MENU_X(box.x), MENU_Y(box.titleY), box.width * scale,
+			UI_SAVE_CUBES_MENU_TITLE * scale, fill, fill, edge, 2.0f);
+		drawStringMedium((int)MENU_X(box.x + 12.0f),
+			(int)MENU_Y(box.titleY + 0.5f * UI_SAVE_CUBES_MENU_TITLE), menu->title,
+			0.56f * scale, ALIGN_LEFT, _SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha));
+	}
+	_SaveCubesBox(MENU_X(box.x), MENU_Y(box.y), box.width * scale, box.height * scale,
+		fill, fill, edge, 2.0f);
+	_SaveCubesBar(MENU_X(box.x + 4.0f),
+		MENU_Y(box.y + 8.0f + UI_SAVE_CUBES_MENU_PITCH * motion->menuItem),
+		(box.width - 8.0f) * scale, UI_SAVE_CUBES_MENU_PITCH * scale,
+		_SaveCubesFaded((GXColor) {70, 92, 200, 230}, alpha));
+	for(i = 0; i < menu->count && i < 4; i++) {
+		GXColor ink = (menu->dim >> i) & 1u ? (GXColor) {120, 120, 140, 255} :
+			i == focus ? (GXColor) {255, 236, 170, 255} : (GXColor) {255, 255, 255, 255};
+
+		drawStringMedium((int)MENU_X(box.x + 16.0f), (int)MENU_Y(box.y + 8.0f +
+			UI_SAVE_CUBES_MENU_PITCH * ((float)i + 0.5f)), menu->item[i],
+			0.56f * scale, ALIGN_LEFT, _SaveCubesFaded(ink, alpha));
+	}
+#undef MENU_X
+#undef MENU_Y
+}
+
+/* The IPL's maroon message over the middle of the stage. */
+static void _SaveCubesMessage(const char *text, float alpha)
+{
+	float width = (float)GetTextSizeInPixels(text) * 0.56f + 48.0f;
+
+	if(!(alpha > 0.0f) || text[0] == '\0') {
+		return;
+	}
+	if(width < 320.0f) {
+		width = 320.0f;
+	}
+	_SaveCubesBox(320.0f - 0.5f * width, 200.0f, width, 50.0f,
+		_SaveCubesFaded((GXColor) {120, 16, 36, 235}, alpha),
+		_SaveCubesFaded((GXColor) {120, 16, 36, 235}, alpha),
+		_SaveCubesFaded((GXColor) {255, 210, 220, 255}, alpha), 2.0f);
+	drawStringMedium(320, 225, text, 0.56f, ALIGN_CENTER,
+		_SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha));
+}
+
+static void _DrawSaveCubes(uiDrawObj_t *evt)
+{
+	drawSaveCubesEvent_t *data = (drawSaveCubesEvent_t*)evt->data;
+	const uiSaveCubesPageSnapshot_t *s = &data->snapshot;
+	const uiSaveCubesGrid_t *grid = &s->grid;
+	uiMotionMode_t motion = _CurrentMotionMode();
+	float left = UIStage_Left() + 40.0f, right = UIStage_Right() - 40.0f;
+	float chrome;
+	int count, floating, i;
+
+	/* The cubes first: their motion says how much of the rest shows. */
+	count = UISaveCubes_Frame(&data->motion, grid, UIAnim_Delta(), motion,
+		data->draw.cubes, &floating);
+	chrome = data->motion.chrome;
+	_SaveCubesBackdrop(data->motion.paper, data->motion.handover);
+	drawInit();
+	_SaveCubesShades(&data->draw);
+	data->draw.invalidated = false;
+	for(i = 0; i < UI_SAVE_CUBES_STACKS && chrome > 0.0f; i++) {
+		_SaveCubesHeader(&grid->stack[i], &s->stack[i],
+			UI_SAVE_CUBES_STACK_X + (float)i * UI_SAVE_CUBES_STACK_GAP, chrome);
+	}
+	_SaveCubesEmit(&data->draw, 0, floating);
+	/* The info bar: the focused save's banner (or its icon), its comment
+	 * and its size, as the IPL's. Empty for a free cell. */
+	if(chrome > 0.0f) {
+		const GXColor white = _SaveCubesFaded((GXColor) {255, 255, 255, 255}, chrome);
+		const GXColor box = _SaveCubesFaded((GXColor) {0, 0, 0, 200}, chrome);
+
+		_SaveCubesBox(left, 362.0f, right - left, 70.0f,
+			_SaveCubesFaded((GXColor) {39, 53, 153, 220}, chrome),
+			_SaveCubesFaded((GXColor) {58, 31, 127, 220}, chrome),
+			_SaveCubesFaded((GXColor) {196, 186, 255, 255}, chrome), 2.0f);
+		if(s->info) {
+			int blocks = 0;
+
+			/* Pictures can't fade: they come with the words' second half. */
+			bool pictures = chrome >= 0.5f;
+
+			if(pictures && s->banner != NULL) {
+				_SaveCubesPicture(&data->picture, s->banner, 56, 381, 96);
+			}
+			else if(pictures && s->folder) {
+				_SavesFolder(56, 381, settingsSwatch);
+			}
+			else if(pictures && grid->focusStack >= 0) {
+				const uiSaveCubesStack_t *stack = &grid->stack[grid->focusStack];
+				int k = grid->focusCell - (stack->first - 1) * UI_SAVE_CUBES_COLUMNS;
+				const u8 *icon = k >= 0 && k < UI_SAVE_CUBES_DRAWN ?
+					UISaveCubes_Icon(&stack->cell[k], data->motion.seconds, motion) : NULL;
+
+				if(icon != NULL) {
+					_SaveCubesPicture(&data->picture, icon, 88, 381, 32);
+				}
+			}
+			drawStringMedium(168, 388, s->line[0], 0.62f, ALIGN_LEFT, white);
+			if(s->blocks[0] != '\0') {
+				blocks = (int)((float)GetTextSizeInPixels(s->blocks) * 0.5f) + 16;
+				if(blocks < 48) {
+					blocks = 48;
+				}
+				_SaveCubesBox(168.0f, 398.0f, (float)blocks, 24.0f, box, box, white, 2.0f);
+				drawStringMedium(168 + blocks / 2, 410, s->blocks, 0.5f, ALIGN_CENTER,
+					white);
+			}
+			/* A dimmed item's reason takes the second line, in amber. */
+			drawStringMedium(180 + blocks, 410, s->line[1], 0.5f, ALIGN_LEFT,
+				_SaveCubesFaded(s->warn ? (GXColor) {255, 190, 80, 255} : settingsQuiet,
+				chrome));
+		}
+	}
+	for(i = floating; i < count; i++) {
+		_SaveCubesEmit(&data->draw, i, i + 1);
+	}
+	if(grid->menu) {
+		data->menu = s->menu;
+		data->menuFocus = grid->menuFocus;
+	}
+	_SaveCubesMenu(&data->menu, data->menuFocus, grid, &data->motion);
+	if(grid->message) {
+		memcpy(data->message, s->message, sizeof(data->message));
+		data->message[sizeof(data->message) - 1] = '\0';
+	}
+	_SaveCubesMessage(data->message, data->motion.messageAlpha);
+	if(chrome > 0.0f) {
+		_DrawHintText(40, 454, s->hint[0], 0.46f, ALIGN_LEFT,
+			_SaveCubesFaded(settingsInk, chrome));
+		_DrawHintText(600, 454, s->hint[1], 0.46f, ALIGN_RIGHT,
+			_SaveCubesFaded(settingsQuiet, chrome));
+	}
+	drawInit();
+}
+
+uiDrawObj_t* DrawSaveCubesPage(const uiSaveCubesPageSnapshot_t *snapshot)
+{
+	drawSaveCubesEvent_t *data = memalign(32, sizeof(*data));
+	uiDrawObj_t *event = calloc(1, sizeof(*event));
+
+	if(data == NULL || event == NULL) {
+		free(data);
+		free(event);
+		return NULL;
+	}
+	memset(data, 0, sizeof(*data));
+	data->snapshot = *snapshot;
+	event->type = EV_SAVE_CUBES;
+	event->data = data;
+	return event;
+}
+
+void DrawUpdateSaveCubesPage(uiDrawObj_t *page,
+	const uiSaveCubesPageSnapshot_t *snapshot)
+{
+	if(page == NULL) {
+		return;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!page->disposed && page->type == EV_SAVE_CUBES && page->data != NULL) {
+		((drawSaveCubesEvent_t*)page->data)->snapshot = *snapshot;
 	}
 	LWP_MutexUnlock(_videomutex);
 }
@@ -6844,6 +7608,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 		case EV_GAMEFLOW:
 			_DrawGameflow(videoEvent);
 			break;
+		case EV_SAVE_DETAILS:
+			_DrawSaveDetails(videoEvent);
+			break;
 		case EV_PRESENTATION:
 			_DrawPresentation(videoEvent);
 			break;
@@ -6861,6 +7628,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 			break;
 		case EV_SAVES:
 			_DrawSaves(videoEvent);
+			break;
+		case EV_SAVE_CUBES:
+			_DrawSaveCubes(videoEvent);
 			break;
 		default:
 			break;
@@ -6914,6 +7684,22 @@ static void _SelectFrameColors(void)
 	IndigoBackground_SetColors(frameColors);
 }
 
+/* Settings, the cheats and Memory Cards are opaque pages over the whole
+ * stage (_PagePanel, or the cube screen's own backdrop), so while one is up
+ * nothing drawn before it shows. */
+static bool _FrameCovered(uiDrawObjQueue_t *queue)
+{
+	for(; queue != NULL; queue = queue->next) {
+		const uiDrawObj_t *event = queue->event;
+		if(!event->disposed && (event->type == EV_SETTINGS ||
+			event->type == EV_CHEATS || event->type == EV_SAVES ||
+			event->type == EV_SAVE_CUBES)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 static void *videoUpdate(void *videoEventQueue) {
 	GX_SetCurrentGXThread();
 	
@@ -6926,6 +7712,9 @@ static void *videoUpdate(void *videoEventQueue) {
 		UI_PERF_BEGIN(frameWorkStart);
 		//frames++;
 		LWP_MutexLock(_videomutex);
+#if UI_PERF_CAPTURE
+		_PerfGpuFrameStart();
+#endif
 		/* One color per layer a frame, taken with the page it goes with:
 		 * every emitter recolors with the menus', the backdrop and its waves
 		 * with their own. */
@@ -6940,7 +7729,6 @@ static void *videoUpdate(void *videoEventQueue) {
 			true, padsStickX(), padsStickY(), padsSubStickX(), padsSubStickY(),
 			padsButtonsHeld()
 		};
-		videoFrameSerial++;
 		// Mark events recursively as disposed
 		uiDrawObjQueue_t *videoEventQueueEntry = (uiDrawObjQueue_t*)videoEventQueue;
 		while(videoEventQueueEntry != NULL) {
@@ -6963,6 +7751,7 @@ static void *videoUpdate(void *videoEventQueue) {
 			videoEventQueueEntry = videoEventQueueEntry->next;
 		}
 		
+		backgroundCovered = _FrameCovered((uiDrawObjQueue_t*)videoEventQueue);
 		GXRModeObj *vmode = getVideoMode();
 		if(vmode->field_rendering) {
 			GX_SetViewportJitter(0.0f, 0.0f, vmode->fbWidth, vmode->efbHeight, 0.0f, 1.0f, VIDEO_GetNextField());
@@ -6987,7 +7776,7 @@ static void *videoUpdate(void *videoEventQueue) {
 			_HomeFaceIcons(icons);
 			drawInit();
 			IndigoBackground_DrawBootOverlay(UIAnim_Seconds(),
-				!swissSettings.disableUIAnimations, UIScene_Frame(),
+				_CurrentMotionMode() == UI_MOTION_FULL, UIScene_Frame(),
 				&systemInstrument.clock, icons);
 			drawInit();
 		}
@@ -7006,6 +7795,9 @@ static void *videoUpdate(void *videoEventQueue) {
 		copyDisplayFrame(xfb[whichfb]);
 		GX_DrawDone();
 		UI_PERF_END(UI_PERF_METRIC_FRAME_WORK, frameWorkStart);
+#if UI_PERF_CAPTURE
+		_PerfGpuFrameEnd();
+#endif
 
 		LWP_MutexUnlock(_videomutex);
 		VIDEO_SetNextFramebuffer(xfb[whichfb]);
@@ -7090,13 +7882,14 @@ void DrawInit(GXRModeObj *videoMode, bool black) {
 	memset(&systemInstrument, 0, sizeof(systemInstrument));
 	systemInstrument.coreTemperature = -1;
 	memcpy(systemInstrument.timeText, "--:--:--", 9u);
-	videoFrameSerial = 0u;
 	UIPerf_Reset();
+#if UI_PERF_CAPTURE
+	GX_SetGPMetric(GX_PERF0_VERTICES, GX_PERF1_TEXELS);
+#endif
 	UIScene_Reset();
 	sceneRenderingEnabled = !black;
 	uiDrawObj_t *container = DrawContainer();
 	if(!black) {
-		DrawAddChild(container, DrawImage(TEX_BACKDROP, 0, 0, 640, 480, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0));
 		DrawAddChild(container, DrawBackground());
 		DrawAddChild(container, DrawTitleBar());
 		buttonPanel = DrawHome();
@@ -7106,76 +7899,11 @@ void DrawInit(GXRModeObj *videoMode, bool black) {
 	LWP_CreateThread(&video_thread, videoUpdate, videoEventQueue, video_thread_stack, VIDEO_STACK_SIZE, VIDEO_PRIORITY);
 }
 
+/* Indigo's own background (indigo_background.c) covers the whole stage, so
+ * a custom swiss/backdrop.tpl could never show: nothing is loaded. main.c
+ * still calls this, as upstream's does. */
 void DrawLoadBackdrop(DEVICEHANDLER_INTERFACE *device) {
-	file_handle *backdropFile = calloc(1, sizeof(file_handle));
-	concat_path(backdropFile->name, device->initial->name, "swiss/backdrop.tpl");
-	backdropFile->device = device;
-	
-	s32 id = 0;
-	u32 fmt;
-	u16 width, height;
-	if(TPL_OpenTPLFromHandle(&backdropTPL, openFileStream(backdropFile)) >= 0) {
-		time_t curtime;
-		if(time(&curtime) != (time_t)-1) {
-			struct tm *tm = localtime(&curtime);
-			switch(backdropTPL.ntextures) {
-				case 2:
-					id = (tm->tm_mon + 2) % 12 / 6;
-					break;
-				case 3:
-					id = (tm->tm_mon + 2) % 12 / 4;
-					break;
-				case 4:
-					id = (tm->tm_mon + 1) % 12 / 3;
-					break;
-				case 6:
-					id = (tm->tm_mon + 1) % 12 / 2;
-					break;
-				case 7:
-					id = tm->tm_wday;
-					break;
-				case 12:
-					id = tm->tm_mon;
-					break;
-				case 24:
-					id = tm->tm_hour;
-					break;
-				case 30 ... 31:
-					id = tm->tm_mday - 1;
-					break;
-				case 365 ... 366:
-					id = tm->tm_yday;
-					break;
-				default:
-					srand(curtime);
-					id = rand();
-					break;
-			}
-			id %= backdropTPL.ntextures;
-		}
-		if(TPL_GetTextureInfo(&backdropTPL, id, &fmt, &width, &height) >= 0) {
-			switch(fmt) {
-				case GX_TF_CI4:
-				case GX_TF_CI8:
-				case GX_TF_CI14:
-					TPL_GetTextureCI(&backdropTPL, id, &backdropTexObj, &backdropTlutObj, fmt == GX_TF_CI14 ? GX_BIGTLUT0 : GX_TLUT0);
-					GX_InitTexObjUserData(&backdropTexObj, &backdropTlutObj);
-					break;
-				default:
-					TPL_GetTexture(&backdropTPL, id, &backdropTexObj);
-					break;
-			}
-			GX_InitTexObjUserData(&backdropIndTexObj, NULL);
-		}
-		else {
-			TPL_CloseTPLFile(&backdropTPL);
-			free(backdropFile);
-		}
-	}
-	else {
-		TPL_CloseTPLFile(&backdropTPL);
-		free(backdropFile);
-	}
+	(void)device;
 }
 
 void DrawShutdown() {

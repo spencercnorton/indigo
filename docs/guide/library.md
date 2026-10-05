@@ -10,6 +10,12 @@ choose. On Home, turn the cube to **Library** and press A.
   <img alt="The Library: moving right through the James Bond games to 1080° Avalanche, each cover raised in turn between two covers either side, with its title and publisher below; A opens its details, B returns to the Library, and 1080° Avalanche is still selected." src="images/library-browse.png" width="640">
 </p>
 
+The [game details](game-details.md) screen also shows **Saves** above
+Settings and Cheats: save copies, total blocks and the latest recorded
+update date from memory cards and the Save Folder, including RAW images.
+Incomplete scans are marked. Open System › [Memory Cards](memory-cards.md)
+for an individual save’s size, date and actions.
+
 ## Choose a layout
 
 **Library Layout**, the first row of [Settings](settings.md) › Setup ›
@@ -101,6 +107,8 @@ its own folder, or put the disc images there directly:
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`, in capitals or not.
 The Library skips anything else in `/games` or in a game's folder, such as a
 text file, a cover image or an empty folder.
+Mac metadata files whose names start with `._` are skipped too. Hidden files
+in a game's folder follow **Show hidden files**, as they do in the file list.
 
 <p align="center">
   <img alt="Swiss's plain file list of a games folder, one entry per row with its banner, name and region flag." src="images/library-file-list.png" width="640">
@@ -111,6 +119,63 @@ Compressed images (`.rvz`, `.gcz`) don't count: Swiss can't start them, and
 choosing one tells you to decompress it with NKit or Dolphin.
 
 Games on two discs appear twice, once for each disc.
+
+## Folders of games
+
+With **Library Folders** off (the default), the Library is one list of every
+game in `/games`, however you have sorted them into folders there. To browse
+by folder instead, turn on Settings › Setup › Library › **Library Folders**.
+The Library then shows the folders in `/games` as cards beside the games:
+
+```text
+/games/Pikmin.iso
+/games/Nintendo/Super Mario Sunshine [GMSE01]/game.iso
+/games/Nintendo/Zelda/The Wind Waker.iso
+/games/Nintendo/Zelda/Older/Ocarina of Time.iso
+```
+
+Here `/games` shows Pikmin and a **Nintendo** folder; Nintendo shows Super
+Mario Sunshine and a **Zelda** folder.
+
+- **A** on a folder opens it. The heading names the folder you are in, such
+  as `NINTENDO / ZELDA`.
+- **B**, **X**, or A on the parent card goes back up one folder. From
+  `/games`, each returns directly to Home; opening Library again keeps
+  the current game or folder. Returning from the parent card starts at
+  the first game or folder on your next visit.
+- Folders go two levels deep. A folder in a folder is the last level: it
+  shows every game below it, in folders of its own or not, so Zelda above
+  shows both The Wind Waker and Ocarina of Time.
+- A folder named like a game, `Title [GAMEID]`, is a game, not a folder of
+  games: it shows as that game, as it does in `/games`.
+- Keep a game's discs in the same folder. Indigo looks for the other disc
+  next to the one you start.
+- A folder with no games in it shows only the way back. This includes an
+  empty `/games` while Library Folders is on.
+- Folder names can contain periods, such as `Nintendo.GC` or `Racing.v1`.
+  Names beginning with a period follow **Show hidden files**.
+
+While Library Folders is on, it sets **Flatten directory** itself, and the
+row can't be changed. Turn Library Folders off and your own value comes
+back.
+
+### Give a folder a picture
+
+Put a PNG beside the folder, with the folder's name: `Nintendo.png` in
+`/games` for the Nintendo folder, `Zelda.png` in `/games/Nintendo` for Zelda.
+Keep periods in the full name too: `Nintendo.GC.png` for `Nintendo.GC`.
+It becomes the folder's poster, made on the console the first time the
+folder is shown, as an app's picture is (see
+[Give an app a picture](apps.md#give-an-app-a-picture)):
+
+- Any size up to 2048 × 2048 pixels, and up to 2 MB.
+- Any PNG, but not interlaced.
+- A picture shaped like a poster (3:4, such as 600 × 800) fills the card;
+  any other shape sits whole in the middle of it.
+
+A folder without a picture, or with one Indigo can't read, gets a poster of
+its name. Indigo never reads a picture over 2 MB, and makes one poster at a
+time, so even a very large picture can't use up the console's memory.
 
 ## Posters
 

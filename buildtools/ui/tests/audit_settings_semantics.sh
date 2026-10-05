@@ -8,15 +8,21 @@
 # new Menu Color arm (SET_UI_COLOR) only steps swissSettings.uiColor round
 # its colors, the Backdrop and Wave Color arms (SET_UI_BACKDROP_COLOR,
 # SET_UI_WAVE_COLOR) each only step their own setting round Menu Color and
-# the colors, the Clock arm (SET_CLOCK_POSITION) only steps
-# swissSettings.clockPosition round Right, Left and Off, the four new face icon arms (SET_*_ICON) each only step
+# the colors, the Clock and Temperature arms (SET_CLOCK_POSITION,
+# SET_TEMPERATURE_POSITION) each only step swissSettings.clockPosition or
+# swissSettings.temperaturePosition round Right, Left and Off, the Wave Speed arm
+# (SET_WAVE_SPEED) only steps swissSettings.waveSpeed round Normal, Fast and
+# Slow, the four new face icon arms (SET_*_ICON) each only step
 # their own face's icon round that face's own four, the Library Layout arm
 # (SET_LIBRARY_LAYOUT) only steps swissSettings.libraryLayout round its
 # three layouts, the Save Folder arm (SET_SAVE_FOLDER) only sets
 # swissSettings.saveFolder to the folder Memory Cards' chooser returns, the
 # Menu Widescreen arm (SET_MENU_WIDESCREEN) only flips
-# swissSettings.menuWidescreen, and the Apps Face arm (SET_APPS_FACE) only
-# flips swissSettings.hideAppsFace.
+# swissSettings.menuWidescreen, the Apps Face arm (SET_APPS_FACE) only
+# flips swissSettings.hideAppsFace, the Cube arm (SET_CUBE) only flips
+# swissSettings.cubeStyle between Infinite and Classic, and the Library
+# Folders arm (SET_LIBRARY_FOLDERS) only turns Library Folders on or off
+# through config_set_library_folders, which swaps FlattenDir with it.
 #
 # The Right/Left/Up/Down/L/R/B/A action block changed on purpose in the Settings redesign:
 # phase 1 made B leave (Save & Exit when something changed), A advance choice
@@ -27,7 +33,9 @@
 # long choices; on a video row A applies the value Left and Right stepped
 # to, instead of stepping it; Discard takes the page down last, after the
 # video mode is put back and B is let go, so no frame shows the screen
-# behind it bare. It is pinned by content hash rather than
+# behind it bare; A does nothing on a row another setting owns for now
+# (Flatten directory while Library Folders sets it). It is pinned by content
+# hash rather than
 # by a base commit, so a rebase cannot break the pin but any further drift
 # still fails until SHOW_ACTIONS_SHA256 is updated deliberately.
 #
@@ -93,11 +101,25 @@ normalized, layers = re.subn(
     r"\t+break;\n",
     lambda arm: "" if arm.group(1).lower() == arm.group(2).lower() else arm.group(0),
     normalized)
-# So is the Clock arm, round Right, Left and Off.
+# So is the Library Folders arm.
 normalized = re.sub(
-    r"(?ms)^\t+case SET_CLOCK_POSITION:\n"
-    r"\t+swissSettings\.clockPosition \+= direction;\n"
-    r"\t+swissSettings\.clockPosition = \(swissSettings\.clockPosition \+ CLOCK_POSITION_MAX\) % CLOCK_POSITION_MAX;\n"
+    r"(?ms)^\t+case SET_LIBRARY_FOLDERS:\n"
+    r"\t+config_set_library_folders\(!swissSettings\.libraryFolders\);\n"
+    r"\t+break;\n",
+    "", normalized, count=1)
+# So are the Clock and Temperature arms, round Right, Left and Off.
+normalized = re.sub(
+    r"(?ms)^\t+case SET_(CLOCK|TEMPERATURE)_POSITION:\n"
+    r"\t+swissSettings\.(clock|temperature)Position \+= direction;\n"
+    r"\t+swissSettings\.\2Position = \(swissSettings\.\2Position \+ CLOCK_POSITION_MAX\) % CLOCK_POSITION_MAX;\n"
+    r"\t+break;\n",
+    lambda arm: "" if arm.group(1).lower() == arm.group(2) else arm.group(0),
+    normalized)
+# So is the Wave Speed arm, round Normal, Fast and Slow.
+normalized = re.sub(
+    r"(?ms)^\t+case SET_WAVE_SPEED:\n"
+    r"\t+swissSettings\.waveSpeed \+= direction;\n"
+    r"\t+swissSettings\.waveSpeed = \(swissSettings\.waveSpeed \+ WAVE_SPEED_MAX\) % WAVE_SPEED_MAX;\n"
     r"\t+break;\n",
     "", normalized, count=1)
 # So are the four face icon arms, one per Home face.
@@ -139,6 +161,12 @@ normalized = re.sub(
     r"\t+swissSettings\.hideAppsFace \^= 1;\n"
     r"\t+break;\n",
     "", normalized, count=1)
+# And the Cube arm, a flip between Infinite and Classic.
+normalized = re.sub(
+    r"(?ms)^\t+case SET_CUBE:\n"
+    r"\t+swissSettings\.cubeStyle \^= 1;\n"
+    r"\t+break;\n",
+    "", normalized, count=1)
 normalized = re.sub(r"[ \t]+(?=\n|$)", "", normalized)
 Path(sys.argv[2]).write_text(normalized)
 PY
@@ -156,9 +184,9 @@ for fn in settings_toggle; do
 			normalize_intended_changes "$TMP/base_$fn" "$TMP/base_${fn}_normalized"
 			normalize_intended_changes "$TMP/head_$fn" "$TMP/head_${fn}_normalized"
 			if cmp -s "$TMP/base_${fn}_normalized" "$TMP/head_${fn}_normalized"; then
-				printf '  %-18s unchanged outside motion, color, backdrop and wave color, clock, icon, layout, save folder, widescreen and apps face arms and game reset\n' "$fn"
+				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, temperature, icon, layout, library folders, save folder, widescreen, apps face and cube arms and game reset\n' "$fn"
 			else
-				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_CLOCK_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_APPS_FACE and the game reset" >&2
+				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_TEMPERATURE_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_LIBRARY_FOLDERS, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_APPS_FACE, SET_CUBE and the game reset" >&2
 				diff -u "$TMP/base_${fn}_normalized" \
 					"$TMP/head_${fn}_normalized" | head -40 >&2 || true
 				fail=1
@@ -206,7 +234,7 @@ PY
 }
 
 normalize_show_actions "$FILE" "$TMP/head_show_actions"
-SHOW_ACTIONS_SHA256="870b12f07cd681f113587e9563ee22f729bff9aaab99eb5517c9394167c9075a"
+SHOW_ACTIONS_SHA256="ce10b773b4682e2d05e90a6ed3f1085f6e83d6c9083e06bacde982a41c22e515"
 actual_show_actions=$(shasum -a 256 < "$TMP/head_show_actions" | cut -d' ' -f1)
 if [ "$actual_show_actions" = "$SHOW_ACTIONS_SHA256" ]; then
 	echo "  show actions       B/A/L/R/value semantics match the pinned hash"

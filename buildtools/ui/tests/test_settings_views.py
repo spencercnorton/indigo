@@ -221,6 +221,29 @@ class SettingsViewsTest(unittest.TestCase):
             for page, option in table(name):
                 self.assertIn(option, help_for[page], f"{name}: {option} has no help")
 
+    def test_console_value_lines_fit_the_help_line(self):
+        # Under the rows, the help line shows the help's line for the
+        # row's value, with the lines continuing it (they start lower
+        # case). About 100 characters fit across the page: Cube's Classic
+        # line once ran to 121 and lost its end.
+        tooltips = {}
+        for table_name in ("tooltips_global", "tooltips_interface"):
+            body = re.search(r"static char \*" + table_name + r"\[[^\]]*\] = \{(.*?)\n\};",
+                             SETTINGS_C, re.S).group(1)
+            for option, text in re.findall(r'\[(SET_\w+)\] = ((?:"(?:[^"\\]|\\.)*"\s*)+)', body):
+                tooltips[option] = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', text)).replace("\\n", "\n")
+        for _, option in table("console"):
+            value_line = None
+            for line in tooltips[option].split("\n")[1:]:
+                if " - " in line and line[0].isupper():
+                    value_line = line.split(" - ", 1)[1]
+                elif value_line is not None and line and line[0].islower():
+                    value_line += " " + line
+                else:
+                    value_line = None
+                    continue
+                self.assertLessEqual(len(value_line), 100, f"{option}: {value_line}")
+
     def test_storage_says_whether_the_settings_file_loaded(self):
         chrome = SETTINGS_C[SETTINGS_C.index("static void drawSettingsChrome("):]
         chrome = chrome[:chrome.index("\n}\n")]
@@ -250,7 +273,8 @@ class SettingsViewsTest(unittest.TestCase):
         # Only these can dim a text row; a new one needs its hint decided.
         self.assertEqual(set(re.findall(r'rowText(?:Number)?\(row, "[^"]*", [^;]*, ([^;]*?)\);',
                                         SETTINGS_C)),
-                         {"true", "netEnable", "devices[DEVICE_CONFIG] != NULL"})
+                         {"true", "netEnable", "devices[DEVICE_CONFIG] != NULL",
+                          "!swissSettings.libraryFolders"})
         arms = toggle_arms()
         network = re.findall(r'case (SET_\w+): rowText(?:Number)?\(row, "[^"]*", [^;]*, netEnable\);',
                              SETTINGS_C)
@@ -258,6 +282,15 @@ class SettingsViewsTest(unittest.TestCase):
         for option in network:
             self.assertTrue(arms[option].strip().startswith("DrawGetTextEntry("), option)
         self.assertIn("devices[DEVICE_CONFIG] != NULL &&", arms["SET_SAVE_FOLDER"])
+        # Flatten directory dims while Library Folders sets it, and then
+        # neither A nor Left and Right reach its editor.
+        locked = SETTINGS_C[SETTINGS_C.index("static bool settingsRowLocked("):]
+        locked = locked[:locked.index("\n}\n")]
+        self.assertIn("option == SET_FLATTEN_DIR &&\n\t\tswissSettings.libraryFolders", locked)
+        change = SETTINGS_C[SETTINGS_C.index("static void settingsChangeValue("):]
+        self.assertIn("if(settingsRowLocked(page, option)) {\n\t\treturn;", change[:200])
+        self.assertRegex(SETTINGS_C, r"else if\(settingsRowLocked\(ref->page, ref->option\)\) \{"
+                                     r"[^}]*\}\s*else if\(settingsRowIsAction\(ref->page, ref->option\)\)")
 
     def test_entry_points_land_where_they_should(self):
         self.assertIn("show_settings_view(VIEW_QUICK, 0, NULL)", SWISS_C)

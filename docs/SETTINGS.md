@@ -154,8 +154,11 @@ most use the same key there.
 | `Source Icon` | `Hub`, `Disc`, `SD Card`, `Folder`. The picture on the Source face, from its own four icons. | `Hub` | Source Icon |
 | `Settings Icon` | `Sliders`, `Gear`, `Toggles`, `Dial`. The picture on the Settings face, from its own four icons. | `Sliders` | Settings Icon |
 | `System Icon` | `Clock`, `Info`, `Power`, `Chip`. The picture on the System face, from its own four icons. | `Clock` | System Icon |
-| `Clock` | `Right`, `Left`, `Off`. Where the time and the temperature dial sit: the top right or top left corner, or neither. | `Right` | Clock |
+| `Wave Speed` | `Normal`, `Fast`, `Slow`. How fast the waves drift: `Fast` three times as fast, `Slow` half as fast. | `Normal` | Wave Speed |
+| `Clock` | `Right`, `Left`, `Off`. Where the time sits: the top right or top left corner, or neither. | `Right` | Clock |
+| `Temperature` | `Right`, `Left`, `Off`. Where the temperature dial sits, the same way. Without this line, the dial follows `Clock`. | `Right` | Temperature |
 | `Hide Apps Face` | `Yes`, `No`. `Yes` shows as Apps Face › Off: Home never shows Apps, even with programs in `/apps`. | `No` | Apps Face |
+| `Cube` | `Infinite`, `Classic`. How Home's faces sit on the cube: `Infinite` turns round them in a ring; `Classic` gives each its own side, Library in front, as the GameCube's menu does. Any other value means `Infinite`. | `Infinite` | Cube |
 | `System Boot Mode` | `Default`, `Production`. Any other value means `Default`. | the console's SRAM | System Boot Mode |
 | `System Sound` | `Mono`, `Stereo`. Any other value means `Mono`. | the console's SRAM | System Sound |
 | `System Language` | `English`, `German`, `French`, `Spanish`, `Italian`, `Dutch`, `Japanese`, `English (US)` | the console's SRAM | System Language |
@@ -165,7 +168,7 @@ most use the same key there.
 
 | Key | Values | Default | On screen |
 | --- | --- | --- | --- |
-| `Save Folder` | A folder on the Configuration Device, such as `swiss/saves`, or `/` for its root. Where Memory Cards copies saves off a memory card and the folder it opens first. Empty means `swiss/saves`. | empty | Save Folder |
+| `Save Folder` | A folder on the Configuration Device, such as `swiss/saves`, or `/` for its root. The folder Memory Cards opens on the SD card, where saves copied off a memory card go unless another is opened or picked there. Empty means `swiss/saves`. | empty | Save Folder |
 | `Init DVD Drive at startup` | `Yes`, `No` | `No` | Init DVD Drive at startup |
 | `Stop DVD Drive motor` | `Yes`, `No` | `No` | Stop DVD Drive motor |
 | `Configure Audio Buffer` | `Off`, `Auto`, `On` | `On` | Configure Audio Buffer |
@@ -201,6 +204,7 @@ most use the same key there.
 
 | Key | Values | Default | On screen |
 | --- | --- | --- | --- |
+| `Library Folders` | `Yes`, `No`. `Yes` shows as Library Folders › On: the Library shows the folders in `/games`, two levels deep. While it is `Yes`, Indigo flattens by `*/games/*/*` and `FlattenDir` keeps the value it replaced. | `No` | Library Folders |
 | `Library Layout` | `Horizontal`, `Vertical`, `Grid`, `Spotlight`. How the Library shows your games: a row, a column, rows of five, or a gameplay still over a row of banners. | `Horizontal` | Library Layout |
 | `FileBrowserType` | `Standard`, `Fullwidth`, `Carousel` | `Standard` | File Browser Type |
 | `AppsBrowserType` | `Standard`, `Fullwidth`, `Carousel` | `Fullwidth` | File Browser Type for apps |
@@ -212,7 +216,7 @@ most use the same key there.
 | `Disable Panel Transparency` | `Yes`, `No`. `Yes` shows as Panel Transparency › Off. | `No` | Panel Transparency |
 | `Disable Animated Backdrop` | `Yes`, `No`. `Yes` shows as Animated Backdrop › Off. | `No` | Animated Backdrop |
 | `Autoload` | The path of the game or folder to open when Indigo starts. Z on a game's detail screen sets a game and saves only this key. | empty | Load at startup |
-| `FlattenDir` | A folder pattern, such as `*/games`. | `*/games` | Flatten directory |
+| `FlattenDir` | A folder pattern, such as `*/games`. While `Library Folders` is `Yes`, Indigo uses its own pattern and this key keeps yours. | `*/games` | Flatten directory |
 
 ### Setup › Developer
 

@@ -40,6 +40,9 @@ bool UIMotion_SpringSettled(const uiMotionSpring_t *spring, float positionEpsilo
 /* Clamped, normalized ease-out curve for finite scene transitions. */
 float UIMotion_EaseOutCubic(float progress);
 
+/* Clamped, normalized ease in and out: 3t^2 - 2t^3. */
+float UIMotion_Smoothstep(float progress);
+
 /* Scales optional decorative travel while preserving required layout motion. */
 float UIMotion_Amplitude(float amplitude, uiMotionMode_t mode);
 

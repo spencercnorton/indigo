@@ -54,7 +54,10 @@
 #include "gui/FrameBufferMagic.h"
 #include "gui/IPLFontWrite.h"
 #include "gui/apps.h"
+#include "gui/card_art.h"
+#include "gui/ui_apps.h"
 #include "gui/ui_gameflow_detail.h"
+#include "gui/saves_stats.h"
 #include "gui/ui_gameflow_library.h"
 #include "gui/ui_gameflow_ownership.h"
 #include "gui/ui_gameflow_resolver.h"
@@ -170,7 +173,9 @@ static uiHomeCapabilities_t homeCapabilities(void)
 	uiHomeCapabilities_t capabilities = {
 		.hasSource = homeSourceIsReady(),
 		.hasRecent = swissSettings.recentListLevel > 0 &&
-			swissSettings.recent[0][0] != '\0'
+			swissSettings.recent[0][0] != '\0',
+		.style = swissSettings.cubeStyle ?
+			UI_HOME_CUBE_CLASSIC : UI_HOME_CUBE_INFINITE
 	};
 	/* The Apps face shows while the mounted source has an app, unless
 	 * Setup > Console > Apps Face is Off; then the card isn't read for it. */
@@ -210,6 +215,8 @@ static void homePublish(bool visible)
 		capabilities, sourceName);
 }
 
+static void folderArtClose(void);
+
 /* A browser panel belongs to the file-list surface. Retaining only the file
  * selection keeps Library re-entry stable without leaving an unconditional
  * legacy browser container over Home and every child menu opened from it. */
@@ -223,6 +230,9 @@ static void homePublishBrowserTransition(uiDrawObj_t **filePanel)
 	/* Disposal precedes publication: the video thread removes the old panel
 	 * before any frame can draw the newly visible Home composition. */
 	homePublish(visible);
+	if(visible) {
+		folderArtClose();
+	}
 }
 
 /* re-init video for a given game */
@@ -776,7 +786,9 @@ static uiGameflowLibraryMode_t gameflowLibraryMode(file_handle **directory,
 		return UI_GAMEFLOW_LIBRARY_NONE;
 	}
 	concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
-	location = UIGameflowLibrary_Locate(gamesRoot, curDir.name);
+	location = swissSettings.libraryFolders ?
+		UIGameflowLibrary_LocateFolders(gamesRoot, curDir.name) :
+		UIGameflowLibrary_Locate(gamesRoot, curDir.name);
 	if(location == UI_GAMEFLOW_LIBRARY_LOCATION_NONE) {
 		return UI_GAMEFLOW_LIBRARY_NONE;
 	}
@@ -839,6 +851,52 @@ static int gameflowLibraryEntries(file_handle **directory, int numFiles)
 	return count;
 }
 
+/* How the Library treats one entry: in a Library Folders location, an
+ * image, a game folder, or a folder of games (NONE: A opens it). */
+static uiGameflowLibraryMode_t gameflowEntryMode(uiGameflowLibraryMode_t mode,
+	file_handle *file)
+{
+	return UIGameflowLibrary_EntryMode(mode, gameflowEntryType(file),
+		file != NULL ? getRelativeName(file->name) : NULL);
+}
+
+/* Library Folders: curDir is a folder below /games, where B goes up a
+ * folder and the heading names it. */
+static bool gameflowInsideFolder(void)
+{
+	char gamesRoot[PATHNAME_MAX];
+
+	if(!swissSettings.libraryFolders || devices[DEVICE_CUR] == NULL ||
+		devices[DEVICE_CUR]->initial == NULL) {
+		return false;
+	}
+	concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
+	return UIGameflowLibrary_IsInsideFolder(
+		UIGameflowLibrary_LocateFolders(gamesRoot, curDir.name));
+}
+
+/* The retained Library ends at /games. Its parent card and X return Home,
+ * keeping this listing ready for the next visit instead of opening Swiss's
+ * device-root browser. Within a folder, keep scanFiles' child selection. */
+static void gameflowNavigateParent(bool useGameflow, const file_handle *parent)
+{
+	char gamesRoot[PATHNAME_MAX];
+
+	if(useGameflow && devices[DEVICE_CUR] != NULL &&
+		devices[DEVICE_CUR]->initial != NULL) {
+		concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
+		if(UIGameflowLibrary_Locate(gamesRoot, curDir.name) ==
+			UI_GAMEFLOW_LIBRARY_LOCATION_ROOT) {
+			curMenuLocation = ON_OPTIONS;
+			return;
+		}
+	}
+	memcpy(&curFile, &curDir, sizeof(file_handle));
+	curDir.fileBase = parent->fileBase;
+	needsDeviceChange = upToParent(&curDir);
+	needsRefresh = 1;
+}
+
 static bool gameflowEnterLibraryFromHome(void)
 {
 	char gamesRoot[PATHNAME_MAX];
@@ -853,7 +911,7 @@ static bool gameflowEnterLibraryFromHome(void)
 	concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
 	/* Returning Home must not destroy the retained /games selection. */
 	if(UIGameflowLibrary_Locate(gamesRoot, curDir.name) ==
-			UI_GAMEFLOW_LIBRARY_LOCATION_ROOT) {
+			UI_GAMEFLOW_LIBRARY_LOCATION_ROOT || gameflowInsideFolder()) {
 		return true;
 	}
 	directory = getSortedDirEntries();
@@ -1084,7 +1142,10 @@ static void homeDispatchEffect(uiHomeEffect_t effect)
 			UIScene_Request(UI_SCENE_HOME);
 			break;
 		case UI_HOME_EFFECT_OPEN_SAVES:
-			UIScene_Request(UI_SCENE_SYSTEM);
+			/* Memory Cards covers the screen and hands the Home cube over
+			 * where it stands, its System side to the front, going back into
+			 * the distance and coming back; the System scene would turn it to
+			 * the Library's side on the way and back again after. */
 			show_saves();
 			UIScene_Request(UI_SCENE_HOME);
 			break;
@@ -1183,6 +1244,17 @@ static void gameflowSnapshotRecord(uiGameflowCardSnapshot_t *record,
 			"GAME LIBRARY", sizeof("GAME LIBRARY"));
 		gameflowCopyText(record->facts, sizeof(record->facts),
 			"A  RETURN", sizeof("A  RETURN"));
+		return;
+	}
+	if(mode == UI_GAMEFLOW_LIBRARY_NONE && file->fileType == IS_DIR) {
+		/* Library Folders: a folder of games, which A opens. */
+		record->subfolder = 1u;
+		gameflowCopyText(record->title, sizeof(record->title), relativeName,
+			PATHNAME_MAX);
+		gameflowCopyText(record->company, sizeof(record->company),
+			"FOLDER", sizeof("FOLDER"));
+		gameflowCopyText(record->facts, sizeof(record->facts),
+			"A  OPEN", sizeof("A  OPEN"));
 		return;
 	}
 	if(mode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS) {
@@ -1298,6 +1370,13 @@ static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 	snapshot->selection.snapTransition = snapTransition;
 	gameflowCopyText(snapshot->deviceName, sizeof(snapshot->deviceName),
 		DeviceDisplayName(devices[DEVICE_CUR]), sizeof(snapshot->deviceName));
+	if(gameflowInsideFolder()) {
+		char gamesRoot[PATHNAME_MAX];
+
+		concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
+		UIGameflowLibrary_FolderHeading(gamesRoot, curDir.name,
+			snapshot->folder, sizeof(snapshot->folder));
+	}
 	snapshot->layout = (u8)layout;
 	if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
 		size_t kept = 0u;
@@ -1340,12 +1419,15 @@ static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 		if(file == NULL) {
 			return false;
 		}
-		memset(record, 0, sizeof(*record));
+		/* All but the banner, which is read only under its flag: 256 of
+		 * the record's 6,400 bytes. */
+		memset(record->title, 0, sizeof(*record) -
+			offsetof(uiGameflowCardSnapshot_t, title));
 		record->libraryIndex = slots[i].index;
 		record->relativeSlot = slots[i].relativeSlot;
 		record->column = slots[i].column;
 		lockFile(file);
-		gameflowSnapshotRecord(record, file, mode);
+		gameflowSnapshotRecord(record, file, gameflowEntryMode(mode, file));
 		unlockFile(file);
 	}
 	/* Spotlight shows the selected game's description: the card's
@@ -1446,11 +1528,25 @@ static file_handle *gameflowFindOppositeImage(file_handle *image,
 	for(i = 0; entries != NULL && i < entryCount; ++i) {
 		uiGameflowResolverEntry_t candidateHeader;
 		file_handle *candidate = &entries[i];
+		char knownId[UI_GAMEFLOW_RESOLVER_ID_LENGTH];
+		bool known;
 		bool headerValid;
 
 		if(candidate == image || candidate->fileType != IS_FILE ||
 			candidate->device == NULL ||
 			!UIGameflowLibrary_IsGameImageName(candidate->name)) {
+			continue;
+		}
+		/* An image whose metadata names another game is not read. The lock
+		 * keeps the metadata cache from freeing it meanwhile. */
+		lockFile(candidate);
+		known = candidate->meta != NULL;
+		if(known) {
+			memcpy(knownId, &candidate->meta->diskId, sizeof(knownId));
+		}
+		unlockFile(candidate);
+		if(!UIGameflowResolver_MayBeOppositeDisc(primaryHeader,
+			known ? knownId : NULL)) {
 			continue;
 		}
 		memset(&candidateHeader, 0, sizeof(candidateHeader));
@@ -1636,6 +1732,12 @@ static bool gameflowResolveAndLoadFolder(file_handle *folder,
 
 			entry->type = gameflowEntryType(child);
 			entry->sourceIndex = (u32)i;
+			if(strncmp(leafName, "._", 2u) == 0 ||
+				(!swissSettings.showHiddenFiles &&
+				((child->fileAttrib & ATTRIB_HIDDEN) || leafName[0] == '.'))) {
+				entry->type = UI_GAMEFLOW_LIBRARY_ENTRY_OTHER;
+				continue;
+			}
 			if(leafLength >= sizeof(entry->name)) {
 				strcpy(entry->name, "invalid.iso");
 				continue;
@@ -1887,6 +1989,156 @@ static uiGameflowLayout_t gameflowSceneLayout(void)
 		gameflowLayout() : UI_GAMEFLOW_LAYOUT_HORIZONTAL;
 }
 
+/* Library Folders: a folder's poster is its picture, the PNG beside it
+ * with its name (Racing.png beside Racing), or else its name (card_art).
+ * Card i is the listing's entry i, and card_art holds the posters of the
+ * listing folderArtListing names until Home takes over. Its poster thread
+ * reads the listing, so it is paused whenever the browser below returns or
+ * does anything that may read the listing again or start a game. */
+static bool folderArtOpen;
+static u64 folderArtListing;
+static DEVICEHANDLER_INTERFACE *folderArtDevice;
+static u8 *folderArtFailed;	/* by card: its picture made no poster */
+
+/* The folder's picture, from the listing as the device read it: the sorted
+ * listing leaves a PNG out when unknown file types are hidden. */
+static file_handle *folderArtPicture(int32_t card)
+{
+	file_handle *entries = getCurrentDirEntries();
+	const char *folder = getSortedDirEntries()[card]->name;
+	int count = getCurrentDirEntryCount();
+
+	for(int i = 0; i < count; ++i) {
+		if(entries[i].fileType == IS_FILE &&
+			UIGameflowLibrary_IsFolderPicture(folder, entries[i].name)) {
+			return &entries[i];
+		}
+	}
+	return NULL;
+}
+
+static uint32_t folderArtPictureSize(int32_t card)
+{
+	file_handle *picture;
+
+	if((folderArtFailed != NULL && folderArtFailed[card]) ||
+		(picture = folderArtPicture(card)) == NULL) {
+		return 0u;
+	}
+	return picture->size;
+}
+
+static bool folderArtReadPicture(int32_t card, uint8_t *data, uint32_t size)
+{
+	file_handle *picture = folderArtPicture(card);
+	file_handle file;
+	s32 read;
+
+	if(picture == NULL) {
+		return false;
+	}
+	/* A copy, nothing of it open, as Apps reads its pictures. */
+	memcpy(&file, picture, sizeof(file));
+	file.offset = 0;
+	file.fp = NULL;
+	file.ffsFp = NULL;
+	file.meta = NULL;
+	file.uiObj = NULL;
+	file.lockCount = 0;
+	file.thread = LWP_THREAD_NULL;
+	read = folderArtDevice->readFile(&file, data, size);
+	folderArtDevice->closeFile(&file);
+	return read == (s32)size;
+}
+
+static const char *folderArtName(int32_t card)
+{
+	return getRelativeName(getSortedDirEntries()[card]->name);
+}
+
+/* A picture that made no poster isn't tried again in this listing. */
+static void folderArtVerdict(int32_t card, bool ok)
+{
+	if(folderArtFailed != NULL) {
+		folderArtFailed[card] = !ok;
+	}
+}
+
+/* The listing, as its posters are kept: its device, its folder and its
+ * entries in order (FNV-1a). Read again unchanged, it keeps them. */
+static u64 folderArtIdentity(file_handle **directory, int count)
+{
+	u64 hash = 14695981039346656037ull ^ (uintptr_t)devices[DEVICE_CUR];
+
+	for(int i = -1; i < count; ++i) {
+		const char *name = i < 0 ? curDir.name : directory[i]->name;
+
+		do {
+			hash = (hash ^ (u8)*name) * 1099511628211ull;
+		} while(*name++ != '\0');
+	}
+	return hash;
+}
+
+/* Before a snapshot with a folder on it is shown: card_art goes on with
+ * this listing's posters, or starts on them. */
+static void folderArtShow(const uiGameflowRenderSnapshot_t *snapshot,
+	u64 listing)
+{
+	cardArtSource_t source = {folderArtPictureSize, folderArtReadPicture,
+		folderArtName, folderArtVerdict, false};
+	u32 i;
+
+	for(i = 0u; i < snapshot->recordCount && !snapshot->records[i].subfolder;
+		++i) {
+	}
+	if(i == snapshot->recordCount) {
+		return;
+	}
+	if(folderArtOpen && folderArtListing == listing) {
+		CardArt_Resume();
+		return;
+	}
+	CardArt_Pause();
+	free(folderArtFailed);
+	folderArtFailed = calloc(getSortedDirEntryCount(), 1);
+	folderArtDevice = devices[DEVICE_CUR];
+	folderArtListing = listing;
+	folderArtOpen = true;
+	source.threadSafe = (folderArtDevice->features & FEAT_THREAD_SAFE) != 0u;
+	CardArt_Open(&source);
+}
+
+/* The folders on screen, nearest first: the posters to keep or make. */
+static void folderArtWant(const uiGameflowRenderSnapshot_t *snapshot,
+	u64 listing)
+{
+	int32_t want[UI_APPS_ART_SLOTS];
+	u32 wanted = 0u;
+
+	if(!folderArtOpen || folderArtListing != listing) {
+		return;
+	}
+	for(u32 i = 0u; i < snapshot->recordCount && wanted < UI_APPS_ART_SLOTS;
+		++i) {
+		if(snapshot->records[i].subfolder) {
+			want[wanted++] = (int32_t)snapshot->records[i].libraryIndex;
+		}
+	}
+	CardArt_Want(want, wanted);
+}
+
+static void folderArtClose(void)
+{
+	if(!folderArtOpen) {
+		return;
+	}
+	CardArt_Close();
+	free(folderArtFailed);
+	folderArtFailed = NULL;
+	folderArtOpen = false;
+}
+
 // Carousel (one main file in the middle, entries to either side)
 uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
 {
@@ -1901,6 +2153,9 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 	}
 	uiGameflowLibraryMode_t gameflowMode = gameflowLibraryMode(directory, num_files);
 	bool useGameflow = gameflowMode != UI_GAMEFLOW_LIBRARY_NONE;
+	/* Only Library Folders shows folders, and their posters. */
+	u64 folderListing = useGameflow && swissSettings.libraryFolders ?
+		folderArtIdentity(directory, num_files) : 0u;
 	uiGameflowDirection_t gameflowDirection = UI_GAMEFLOW_DIRECTION_NONE;
 	/* The last move between grid rows: a two-row grid keeps its other row
 	 * on the side that move left it. */
@@ -1934,6 +2189,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			else {
 				gameflowDirection = UI_GAMEFLOW_DIRECTION_NONE;
 				gameflowSnapTransition = false;
+				folderArtShow(gameflowSnapshot, folderListing);
 				if(!DrawUpdateGameflow(filePanel, gameflowSnapshot)) {
 					uiDrawObj_t *newPanel = DrawGameflow(gameflowSnapshot);
 					if(newPanel != NULL) {
@@ -1948,6 +2204,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 					 * both proven before the private poster pack is touched. */
 					DrawGameflowRequestPosters(devices[DEVICE_CUR],
 						gameflowSnapshot);
+					folderArtWant(gameflowSnapshot, folderListing);
 				}
 			}
 		}
@@ -1977,6 +2234,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				/* Poll performs at most one bounded read; tying it to an idle
 				 * retrace keeps input/navigation frames free of pack I/O. */
 				DrawGameflowPollPosters();
+				CardArt_Poll();
 			}
 		}
 		bool retainedActivation = useGameflow &&
@@ -1985,7 +2243,8 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 		 * parent card, and A wins a press of both. */
 		bool openSettings = useGameflow && !(browserButtons & BUTTON_A) &&
 			(browserButtons & PAD_BUTTON_Y) &&
-			UIGameflowLibrary_UsesRetainedDetail(gameflowMode,
+			UIGameflowLibrary_UsesRetainedDetail(
+				gameflowEntryMode(gameflowMode, directory[curSelection]),
 				gameflowEntryType(directory[curSelection]));
 		/* A and Y own a retained-library input frame. Moving curSelection
 		 * first would pair the new directory entry with the previous
@@ -2058,8 +2317,15 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 		}
 		
 		if((browserButtons & BUTTON_A) || openSettings) {
+			/* What follows may start a game or read the listing again:
+			 * no folder's poster is made meanwhile. */
+			CardArt_Pause();
+			/* A folder of games (Library Folders) opens below, as
+			 * Swiss opens any folder. */
+			uiGameflowLibraryMode_t entryMode =
+				gameflowEntryMode(gameflowMode, directory[curSelection]);
 			if(useGameflow && UIGameflowLibrary_UsesRetainedDetail(
-				gameflowMode,
+				entryMode,
 				gameflowEntryType(directory[curSelection]))) {
 				bool handled = false;
 
@@ -2070,7 +2336,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				 * so Detail uses per-frame Query/Peek and its copied BNR when
 				 * this one bounded poll cannot produce a cover. */
 				DrawGameflowPollPosters();
-				if(gameflowMode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS) {
+				if(entryMode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS) {
 					file_handle folderSnapshot;
 
 					lockFile(directory[curSelection]);
@@ -2109,10 +2375,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				needsRefresh=1;
 			}
 			else if(directory[curSelection]->fileType==IS_SPECIAL){
-				memcpy(&curFile, &curDir, sizeof(file_handle));
-				curDir.fileBase = directory[curSelection]->fileBase;
-				needsDeviceChange = upToParent(&curDir);
-				needsRefresh=1;
+				gameflowNavigateParent(useGameflow, directory[curSelection]);
 			}
 			else if(directory[curSelection]->fileType==IS_FILE){
 				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
@@ -2130,10 +2393,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			break;
 		}
 		if(browserButtons & BUTTON_X) {
-			memcpy(&curFile, &curDir, sizeof(file_handle));
-			curDir.fileBase = directory[0]->fileBase;
-			needsDeviceChange = upToParent(&curDir);
-			needsRefresh=1;
+			gameflowNavigateParent(useGameflow, directory[0]);
 			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
 			break;
 		}
@@ -2142,6 +2402,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			if(directory[curSelection]->fileType == IS_FILE || directory[curSelection]->fileType == IS_DIR) {
 				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
 				meta_thread_stop();
+				CardArt_Pause();
 				needsRefresh = manage_file() ? 1:0;
 				memcpy(directory[curSelection], &curFile, sizeof(file_handle));
 				while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
@@ -2168,6 +2429,14 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			unlockFile(directory[curSelection]);
 		}
 		
+		if((browserButtons & BUTTON_B) && useGameflow &&
+			gameflowInsideFolder()) {
+			/* Library Folders: B goes up a folder, as X does; at /games
+			 * it goes Home. */
+			gameflowNavigateParent(useGameflow, directory[0]);
+			while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
+			break;
+		}
 		if(browserButtons & BUTTON_B) {
 			curMenuLocation = ON_OPTIONS;
 			if(!useGameflow)
@@ -2176,6 +2445,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 		}
 		if((browserButtons & BUTTON_START) && swissSettings.recentListLevel > 0) {
 			meta_thread_stop();
+			CardArt_Pause();
 			select_recent_entry();
 			break;
 		}
@@ -2187,6 +2457,8 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 		}
 	}
 	meta_thread_stop();
+	/* The folders' posters stay on screen while the next listing is read. */
+	CardArt_Pause();
 	DrawDispose(loadingBox);
 	free(gameflowSnapshot);
 	return filePanel;
@@ -3876,6 +4148,13 @@ fail:
 	gameID_unset();
 	rt4k_load_profile(swissSettings.rt4kProfile);
 	config_unload_current();
+	/* The launch switched to the game's video mode before anything could
+	 * fail: go back to the menu's, or a game from another region leaves the
+	 * menu at its rate (PAL's 50 Hz on an NTSC TV) and a component cable's
+	 * 480p at the game's 480i. */
+	GXRModeObj *menuMode = getVideoModeFromSwissSetting(swissSettings.uiVMode);
+	if(menuMode != getVideoMode())
+		DrawVideoMode(menuMode);
 	free(config);
 exit:
 	if(context == NULL) {
@@ -4206,6 +4485,7 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 {
 	uiGameflowDetailSnapshot_t *snapshot;
 	uiGameflowDetailSource_t source;
+	uiSavesGameStats_t saveStats;
 	uiGameflowDetailCheatSource_t *cheatSources = NULL;
 	CheatEntries *cheats = getCheats();
 	file_meta *meta = curFile.meta;
@@ -4295,6 +4575,14 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 	source.lastPlayedUnixSeconds = config_last_played(context->gameId, 6u,
 		&source.playHistoryAvailable);
 	source.saveStatus = UI_GAME_SAVE_NOT_CHECKED;
+	/* Only the verified disc launch context owns a save identity. Apps use
+	 * the same Library renderer but never take this snapshot path. */
+	if(context->primary != NULL && context->primary->fileType == IS_FILE &&
+		valid_gcm_magic(&GCMDisk) &&
+		memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0) {
+		Saves_CollectGameStats(context->gameId, &saveStats);
+		source.saveStats = &saveStats;
+	}
 	source.customSettings = (uint32_t)settings_game_custom_count(config);
 	source.firstCustomSetting = settings_game_custom_first(config);
 	if(meta != NULL && meta->banner != NULL &&
@@ -4915,9 +5203,9 @@ void menu_loop()
 			/* A games folder with a game in it owns the retained presentation.
 			 * Existing configurations default GameBrowserType to Fullwidth;
 			 * allowing that legacy preference to win would make the custom
-			 * Library unreachable on upgraded cards. A folder with no games, or
-			 * loose images beside game folders, still returns NONE and keeps
-			 * its requested legacy browser. */
+			 * Library unreachable on upgraded cards. Library Folders also owns
+			 * empty /games and its folder views. Outside those locations, the
+			 * requested legacy browser remains available. */
 			fileBrowserType = UIGameflowLibrary_SelectBrowser(
 				gameflowLibraryMode(getSortedDirEntries(),
 					getSortedDirEntryCount()),

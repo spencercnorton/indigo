@@ -36,10 +36,10 @@
 #define UI_SETLAYOUT_ROWS_GAME_DEFAULTS 21
 #define UI_SETLAYOUT_ROWS_SETUP 6
 #define UI_SETLAYOUT_ROWS_DISPLAY 10
-#define UI_SETLAYOUT_ROWS_CONSOLE 14
+#define UI_SETLAYOUT_ROWS_CONSOLE 17
 #define UI_SETLAYOUT_ROWS_STORAGE 7
 #define UI_SETLAYOUT_ROWS_NETWORK 20
-#define UI_SETLAYOUT_ROWS_LIBRARY 12
+#define UI_SETLAYOUT_ROWS_LIBRARY 13
 #define UI_SETLAYOUT_ROWS_DEVELOPER 4
 #define UI_SETLAYOUT_ROWS_GAME 22
 
@@ -61,7 +61,7 @@
 #define UI_SETLAYOUT_PAGE_Y (-6)
 #define UI_SETLAYOUT_PAGE_W 652
 #define UI_SETLAYOUT_PAGE_H 492
-#define UI_SETLAYOUT_PAGE_ALPHA 254
+#define UI_SETLAYOUT_PAGE_ALPHA 255
 
 /* Display values are bounded before font measurement or Draw* allocation.
  * The setting itself is never modified; only its one-frame presentation is

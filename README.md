@@ -42,7 +42,8 @@ front you see the cube's far edges, bent and slightly magnified, and a smoked
 panel under each face's icon; the rounded edges part the light into colour
 like a prism. Soft lights mirrored in the glass slide across it as it turns.
 Highlights glow, a fine rim lights the edges that face the light, and the face
-icons sit sharp on the glass. Each face carries its own
+you are on lifts its icon a little off the glass, sharp, with a soft shadow
+under it. Each face carries its own
 emblem, and only the face you are on is named, under the cube. The Library face is a GameCube
 controller that mirrors yours: its sticks lean with your sticks and its
 buttons light as you press them, and when you leave it alone it plays by
@@ -167,19 +168,22 @@ each face has four icons of its own. Library has Controller, Books, Covers
 and Play; Source has Hub, Disc, SD Card and Folder; Settings has Sliders,
 Gear, Toggles and Dial; System has Clock, Info, Power and Chip. The time
 and the temperature sit in the top right corner; Setup › Console › Clock
-moves them to the top left or hides them.
+and Temperature each move theirs to the top left or hide it.
 
 **Memory Cards moves your saves, like the GameCube's own screen.** System ›
-Memory Cards lists the saves on the cards in Slot A and Slot B, each with its
-banner, and the saves in any folder on your SD card. A on a save copies,
-moves or deletes it: to the other slot, to your Save Folder, or to a folder
-you choose. Every copy is read back before it counts, and a Move removes the
-original only then. Setup › Storage › Save Folder sets where saves copied off
-a card go (`swiss/saves` until you choose one). See
+Memory Cards shows two stacks of cubes side by side, Slot A's saves and Slot
+B's, each cube with its game's animated icon. L and R choose storage;
+with no physical cards, both columns open on SD. RAW virtual cards open to
+browse and export their saves. A on a save shows its size, source and
+recorded update date; A Actions opens Move, Copy and Erase. Move and Copy
+send its cube flying to the other stack. Every copy is read back
+before it counts, and a Move removes the original only then. Setup ›
+Storage › Save Folder sets the folder the SD card's stack opens on
+(`swiss/saves` until you choose one). See
 [Memory Cards](docs/guide/memory-cards.md).
 
 <p align="center">
-  <img alt="Memory Cards: Slot A lists four saves with their banners. R shows Slot B, then the SD CARD tab with no saves in the Save Folder. Back on Slot A, A on Indigo Quest offers Copy, Move and Delete; Copy to lists Slot B, the Save Folder and Another folder; the save is copied to /swiss/saves, and the SD CARD tab now holds it." src="docs/guide/images/memory-cards.png" width="640">
+  <img alt="Memory Cards with Demo Card.raw open on the left and an independent SD folder on the right. Copper Archive’s save cube is selected; its banner and two-block size appear below." src="docs/guide/images/memory-cards.png" width="640">
 </p>
 
 ## Install
@@ -283,9 +287,15 @@ Put each game in its own folder or put the disc images there directly:
 
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. The Library skips
 anything else there, such as a text file, a cover image or an empty folder.
-If `/games` holds no disc images at all, you get Swiss's plain file list
-instead. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn the
-cube to Library and press A.
+With **Library Folders** off, if `/games` holds no disc images at all, you
+get Swiss's plain file list instead. With it on, an empty `/games` stays
+in Indigo. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn
+the cube to Library and press A.
+
+To sort your games into folders, turn on Settings › Setup › Library ›
+**Library Folders**: the Library then shows the folders in `/games` as cards
+you open, two levels deep. See
+[Folders of games](docs/guide/library.md#folders-of-games).
 
 ### Posters
 
@@ -409,6 +419,9 @@ Indigo's interface was built with [Claude Code](https://claude.com/claude-code).
   <a href="https://github.com/spencercnorton/xnote">XNote</a> ·
   <a href="https://github.com/spencercnorton/xnote-placement">XNote Placement</a> ·
   <a href="https://github.com/spencercnorton/snipsnap">SnipSnap</a> ·
+  <a href="https://github.com/spencercnorton/conductor">Conductor</a> ·
+  <a href="https://github.com/spencercnorton/norvi-os">NorviOS</a> ·
   <a href="https://github.com/spencercnorton/indigo">Indigo</a> ·
+  <a href="https://github.com/spencercnorton/roadtrack">Road Track</a> ·
   <a href="https://norvitech.com">norvitech.com</a>
 </p>

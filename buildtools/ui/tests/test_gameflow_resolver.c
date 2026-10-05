@@ -102,6 +102,36 @@ static void testOnlyImage(void)
 	CHECK(!result.hasOppositeDisc);
 }
 
+static void testAppleDoubleIgnored(void)
+{
+	uiGameflowResolverFolder_t folder = makeFolder("GMSE01");
+	uiGameflowResolverEntry_t entries[] = {
+		makeEntry(0u, UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, "..", false,
+			NULL, 0u, 0u),
+		makeEntry(1u, UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "game.iso", true,
+			"GMSE01", 0u, 0u),
+		makeEntry(2u, UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "._game.iso", false,
+			NULL, 0u, 0u)
+	};
+	uiGameflowResolverResult_t result;
+
+	CHECK(UIGameflowResolver_Resolve(&folder, entries, 3u, &result) ==
+		UI_GAMEFLOW_RESOLVE_OK);
+	CHECK(result.primarySourceIndex == 1u);
+	CHECK(!result.hasOppositeDisc);
+	CHECK(!UIGameflowLibrary_IsGameImageName("sd:/games/._game.iso"));
+
+	entries[1] = makeEntry(1u, UI_GAMEFLOW_LIBRARY_ENTRY_FILE,
+		"Super Mario Sunshine.iso", true, "GMSE01", 0u, 0u);
+	entries[2] = makeEntry(2u, UI_GAMEFLOW_LIBRARY_ENTRY_FILE,
+		"._Super Mario Sunshine.iso", false, NULL, 0u, 0u);
+	CHECK(UIGameflowResolver_Resolve(&folder, entries, 3u, &result) ==
+		UI_GAMEFLOW_RESOLVE_OK);
+	CHECK(result.primarySourceIndex == 1u);
+	CHECK(UIGameflowResolver_Resolve(&folder, &entries[2], 1u, &result) ==
+		UI_GAMEFLOW_RESOLVE_NO_IMAGE);
+}
+
 static void testCanonicalDiscOnePreferred(void)
 {
 	uiGameflowResolverFolder_t folder = makeFolder("G4BE08");
@@ -221,6 +251,24 @@ static void testOppositeDiscPredicate(void)
 	CHECK(!UIGameflowResolver_IsOppositeDisc(NULL, &candidate));
 }
 
+static void testOppositeDiscNeedsNoReadOfAnotherGame(void)
+{
+	static const char unknown[UI_GAMEFLOW_RESOLVER_ID_LENGTH];
+	uiGameflowResolverEntry_t primary = makeEntry(1u,
+		UI_GAMEFLOW_LIBRARY_ENTRY_FILE, "game.iso", true,
+		"G4BE08", 0u, 3u);
+
+	/* Nothing known (no metadata, or a TGC's empty ID): read it. */
+	CHECK(UIGameflowResolver_MayBeOppositeDisc(&primary, NULL));
+	CHECK(UIGameflowResolver_MayBeOppositeDisc(&primary, unknown));
+	/* The same game: read it for its disc number and version. */
+	CHECK(UIGameflowResolver_MayBeOppositeDisc(&primary, "G4BE08"));
+	/* Another game, by one character at either end: skip it. */
+	CHECK(!UIGameflowResolver_MayBeOppositeDisc(&primary, "G4BE09"));
+	CHECK(!UIGameflowResolver_MayBeOppositeDisc(&primary, "X4BE08"));
+	CHECK(!UIGameflowResolver_MayBeOppositeDisc(NULL, "G4BE08"));
+}
+
 static void testParentAndDirectoriesIgnored(void)
 {
 	uiGameflowResolverFolder_t folder = makeFolder("GMSE01");
@@ -322,12 +370,14 @@ int main(void)
 {
 	testCanonicalPreferred();
 	testOnlyImage();
+	testAppleDoubleIgnored();
 	testCanonicalDiscOnePreferred();
 	testAmbiguity();
 	testNoImage();
 	testIdMismatch();
 	testDiscPair();
 	testOppositeDiscPredicate();
+	testOppositeDiscNeedsNoReadOfAnotherGame();
 	testParentAndDirectoriesIgnored();
 	testDeterministicOrder();
 	testMetadataAndVersionRejection();

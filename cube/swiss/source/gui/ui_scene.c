@@ -18,6 +18,9 @@
 #define UI_SCENE_ORIENTATION_EPSILON 0.0002f
 #define UI_SCENE_CUBE_YAW_RESPONSE 6.5f
 #define UI_SCENE_HOME_TURN_RESPONSE 10.0f
+/* Classic turns arrive as the GameCube's own menu does: nine tenths of a
+ * quarter turn in a quarter of a second. */
+#define UI_SCENE_CLASSIC_TURN_RESPONSE 15.6f
 
 typedef struct {
 	float cubeX;
@@ -38,6 +41,7 @@ typedef struct {
 	uiMotionSpring_t cubeYaw;
 	uiMotionSpring_t orbitStrength;
 	uiMotionSpring_t homeIdleBlend;
+	uiMotionSpring_t homeDecorative;
 	uiSceneFrame_t frame;
 	float bootElapsed;
 	uiMotionSpring_t orientation[4]; /* Unit quaternion: w, x, y, z. */
@@ -75,6 +79,7 @@ static uint32_t requestedHomeRevision;
 static int32_t requestedHomeOrientation[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
 static uint32_t requestedHomeTurnAxis;
 static int32_t requestedHomeTurnDirection;
+static uint32_t requestedHomeStyle = UI_HOME_CUBE_INFINITE;
 static uint32_t sceneReady;
 static uint32_t requestedLibraryLayout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
 static uiSceneState_t state;
@@ -156,6 +161,9 @@ static bool homeRequestValid(const uiHomeState_t *home)
 			face == UI_HOME_FACE_SYSTEM);
 
 	if(faceCount != UI_HOME_FACE_APPS && faceCount != UI_HOME_FACE_COUNT)
+		return false;
+	if(home->style != UI_HOME_CUBE_INFINITE &&
+		home->style != UI_HOME_CUBE_CLASSIC)
 		return false;
 	return isHomeFace((int)face) && (int32_t)face < faceCount &&
 		faceForTurn(turnOrdinal, faceCount) == face &&
@@ -241,6 +249,8 @@ static uiSceneHomeRequest_t loadHomeRequest(void)
 			&requestedHomeTurnAxis, __ATOMIC_RELAXED);
 		request.turnDirection = __atomic_load_n(&requestedHomeTurnDirection,
 			__ATOMIC_RELAXED);
+		request.style = (uiHomeCubeStyle_t)__atomic_load_n(
+			&requestedHomeStyle, __ATOMIC_RELAXED);
 		for(row = 0; row < 3; ++row) {
 			for(col = 0; col < 3; ++col) {
 				request.orientation.m[row][col] = (int8_t)__atomic_load_n(
@@ -266,6 +276,7 @@ static void clearSpringVelocities(void)
 	state.cubePitch.velocity = 0.0f;
 	state.cubeYaw.velocity = 0.0f;
 	state.orbitStrength.velocity = 0.0f;
+	state.homeDecorative.velocity = 0.0f;
 	state.homeIdleBlend.velocity = 0.0f;
 	for(int i = 0; i < 4; ++i) state.orientation[i].velocity = 0.0f;
 }
@@ -342,6 +353,11 @@ static void retargetOrientation(uiSceneId_t scene, uiMotionMode_t motionMode)
 	if(isHomeYawScene(scene)) target = state.homeTarget;
 	if(memcmp(&target, &state.navigationTarget, sizeof(target)) == 0) return;
 	state.navigationTarget = target;
+	/* Each leg takes its pace from the style it is turned in. */
+	for(int i = 0; i < 4; ++i)
+		state.orientation[i].response = isHomeYawScene(scene) &&
+			state.home.style == UI_HOME_CUBE_CLASSIC ?
+			UI_SCENE_CLASSIC_TURN_RESPONSE : UI_SCENE_HOME_TURN_RESPONSE;
 	orientationQuaternion(&target, q);
 	for(int i = 0; i < 4; ++i) {
 		current[i] = state.orientation[i].value;
@@ -448,8 +464,13 @@ static void retargetPose(uiSceneId_t scene, uiMotionMode_t motionMode)
 	UIMotion_SpringRetarget(&state.cubePitch, pose->cubePitch, motionMode);
 	UIMotion_SpringRetarget(&state.cubeYaw, cubeYaw, motionMode);
 	UIMotion_SpringRetarget(&state.orbitStrength, pose->orbitStrength, motionMode);
+	UIMotion_SpringRetarget(&state.homeDecorative,
+		isHomeYawScene(scene) ? 1.0f : 0.0f, motionMode);
 	retargetOrientation(scene, motionMode);
-	UICubeMotif_Request(&state.motifs, isHomeYawScene(scene) ? &state.home : NULL,
+	/* Classic's glyphs keep their sides in every scene, so leaving Home
+	 * moves none of them. */
+	UICubeMotif_Request(&state.motifs, isHomeYawScene(scene) ||
+		state.home.style == UI_HOME_CUBE_CLASSIC ? &state.home : NULL,
 		motionMode);
 	state.appliedScene = scene;
 }
@@ -465,6 +486,7 @@ static void applyHomeRequest(uiMotionMode_t motionMode)
 		request.revision == state.appliedHomeRevision &&
 		request.turnAxis == state.homeTurnAxis &&
 		request.turnDirection == state.homeTurnDirection &&
+		request.style == state.home.style &&
 		memcmp(&request.orientation, &state.homeTarget, sizeof(state.homeTarget)) == 0)
 		return;
 	state.home = request;
@@ -542,6 +564,7 @@ void UIScene_Reset(void)
 			UI_SCENE_HOME_TURN_RESPONSE);
 	__atomic_store_n(&requestedHomeTurnAxis, UI_HOME_TURN_NONE, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeTurnDirection, 0, __ATOMIC_RELAXED);
+	__atomic_store_n(&requestedHomeStyle, UI_HOME_CUBE_INFINITE, __ATOMIC_RELAXED);
 	for(int row = 0; row < 3; ++row)
 		for(int col = 0; col < 3; ++col)
 			__atomic_store_n(&requestedHomeOrientation[row][col], row == col ? 1 : 0,
@@ -557,6 +580,8 @@ void UIScene_Reset(void)
 	UIMotion_SpringInit(&state.cubeYaw, bootPose->cubeYaw,
 		UI_SCENE_CUBE_YAW_RESPONSE);
 	UIMotion_SpringInit(&state.orbitStrength, bootPose->orbitStrength, 5.5f);
+	/* The boot arrives on Home. */
+	UIMotion_SpringInit(&state.homeDecorative, 1.0f, 5.5f);
 	UIMotion_SpringInit(&state.homeIdleBlend, 0.0f, 7.0f);
 	state.frame = (uiSceneFrame_t) {
 		.scene = UI_SCENE_BOOT,
@@ -566,6 +591,7 @@ void UIScene_Reset(void)
 		.cubePitch = bootPose->cubePitch,
 		.cubeYaw = bootPose->cubeYaw,
 		.orbitStrength = bootPose->orbitStrength,
+		.homeDecorativeBlend = 1.0f,
 		.introProgress = 0.0f,
 		.chromeProgress = 0.0f,
 		.homeFace = UI_HOME_FACE_LIBRARY,
@@ -620,6 +646,7 @@ void UIScene_RequestHome(const uiHomeState_t *home)
 	__atomic_store_n(&requestedHomeRevision, home->revision, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeTurnAxis, (uint32_t)home->turnAxis, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeTurnDirection, home->turnDirection, __ATOMIC_RELAXED);
+	__atomic_store_n(&requestedHomeStyle, (uint32_t)home->style, __ATOMIC_RELAXED);
 	for(int row = 0; row < 3; ++row)
 		for(int col = 0; col < 3; ++col)
 			__atomic_store_n(&requestedHomeOrientation[row][col],
@@ -705,6 +732,8 @@ void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode)
 		deltaSeconds, motionMode);
 	state.frame.orbitStrength = UIMotion_SpringUpdate(&state.orbitStrength,
 		deltaSeconds, motionMode);
+	state.frame.homeDecorativeBlend = UIMotion_SpringUpdate(
+		&state.homeDecorative, deltaSeconds, motionMode);
 	state.frame.introProgress = state.bootComplete ? 1.0f :
 		state.bootElapsed / UI_SCENE_BOOT_HOLD_SECONDS;
 	state.frame.chromeProgress = UIMotion_EaseOutCubic(
@@ -721,12 +750,9 @@ void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode)
 	 * cube on the first destination frame. Derive their reveal from the live
 	 * retreat pose: interruption and Off therefore need no separate timeline.
 	 * Library/detail changes stay fully visible once the cube is in the back. */
-	float retreat = (0.88f - state.frame.cubeScale) / 0.24f;
-	if(retreat < 0.0f) retreat = 0.0f;
-	if(retreat > 1.0f) retreat = 1.0f;
 	state.frame.libraryReveal = (targetScene == UI_SCENE_LIBRARY ||
 		targetScene == UI_SCENE_GAME_DETAIL) ?
-		retreat * retreat * (3.0f - 2.0f * retreat) : 0.0f;
+		UIMotion_Smoothstep((0.88f - state.frame.cubeScale) / 0.24f) : 0.0f;
 	/* The boot already shows its destination, so the chrome that scene draws
 	 * fades in with chromeProgress rather than appearing when the boot ends. */
 	state.frame.scene = targetScene;

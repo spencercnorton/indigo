@@ -59,21 +59,26 @@ static bool suffixEquals(const char *name, const char *suffix)
 
 bool UIGameflowLibrary_IsGameImageName(const char *name)
 {
+	const char *leafName = name != NULL ? strrchr(name, '/') : NULL;
+
+	leafName = leafName != NULL ? leafName + 1 : name;
+	if(leafName == NULL || strncmp(leafName, "._", 2u) == 0) {
+		return false;
+	}
 	return suffixEquals(name, ".fdi") || suffixEquals(name, ".gcm") ||
 		suffixEquals(name, ".iso") || suffixEquals(name, ".tgc");
 }
 
-bool UIGameflowLibrary_ParseGameFolderName(const char *name, char gameId[7],
-	char *title, size_t titleSize)
+/* ParseGameFolderName over the first length bytes of name. */
+static bool parseGameFolderName(const char *name, size_t length,
+	char gameId[7], char *title, size_t titleSize)
 {
-	size_t length;
 	size_t titleLength;
 	size_t i;
 
 	if(name == NULL) {
 		return false;
 	}
-	length = strlen(name);
 	if(length < 10u || name[length - 8u] != '[' || name[length - 1u] != ']' ||
 		name[length - 9u] != ' ') {
 		return false;
@@ -104,6 +109,13 @@ bool UIGameflowLibrary_ParseGameFolderName(const char *name, char gameId[7],
 	return true;
 }
 
+bool UIGameflowLibrary_ParseGameFolderName(const char *name, char gameId[7],
+	char *title, size_t titleSize)
+{
+	return name != NULL &&
+		parseGameFolderName(name, strlen(name), gameId, title, titleSize);
+}
+
 bool UIGameflowLibrary_EntryEligible(uiGameflowLibraryMode_t mode,
 	uint32_t index, uiGameflowLibraryEntryType_t type, const char *name)
 {
@@ -117,6 +129,11 @@ bool UIGameflowLibrary_EntryEligible(uiGameflowLibraryMode_t mode,
 	if(mode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS) {
 		return type == UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY &&
 			UIGameflowLibrary_ParseGameFolderName(name, NULL, NULL, 0u);
+	}
+	if(mode == UI_GAMEFLOW_LIBRARY_FOLDERS) {
+		return type == UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY ||
+			UIGameflowLibrary_EntryEligible(UI_GAMEFLOW_LIBRARY_IMAGE_FILES,
+				index, type, name);
 	}
 	return false;
 }
@@ -147,6 +164,134 @@ uiGameflowLibraryLocation_t UIGameflowLibrary_Locate(
 	return UI_GAMEFLOW_LIBRARY_LOCATION_STRICT_LEAF;
 }
 
+uiGameflowLibraryLocation_t UIGameflowLibrary_LocateFolders(
+	const char *gamesRoot, const char *currentPath)
+{
+	uiGameflowLibraryLocation_t location =
+		UIGameflowLibrary_Locate(gamesRoot, currentPath);
+	size_t rootLength = trimmedPathLength(gamesRoot);
+	size_t pathLength = trimmedPathLength(currentPath);
+	const char *leaf;
+	const char *slash;
+
+	if(location == UI_GAMEFLOW_LIBRARY_LOCATION_ROOT) {
+		return UI_GAMEFLOW_LIBRARY_LOCATION_FOLDERS_ROOT;
+	}
+	if(location == UI_GAMEFLOW_LIBRARY_LOCATION_STRICT_LEAF) {
+		return location;
+	}
+	if(rootLength == 0u || pathLength <= rootLength + 1u ||
+		!asciiPrefixEquals(gamesRoot, currentPath, rootLength) ||
+		currentPath[rootLength] != '/' || currentPath[pathLength] != '\0') {
+		return UI_GAMEFLOW_LIBRARY_LOCATION_NONE;
+	}
+	leaf = &currentPath[rootLength + 1u];
+	slash = memchr(leaf, '/', pathLength - rootLength - 1u);
+	if(slash == NULL) {
+		return UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER;
+	}
+	/* Only a folder of games holds a second level: one in a game folder
+	 * is that game's, and anything deeper is listed in the second level. */
+	if(slash == leaf || slash[1] == '\0' ||
+		memchr(slash + 1, '/', (size_t)(&currentPath[pathLength] - slash - 1)) != NULL ||
+		parseGameFolderName(leaf, (size_t)(slash - leaf), NULL, NULL, 0u)) {
+		return UI_GAMEFLOW_LIBRARY_LOCATION_NONE;
+	}
+	return UI_GAMEFLOW_LIBRARY_LOCATION_SUBFOLDER;
+}
+
+bool UIGameflowLibrary_IsInsideFolder(uiGameflowLibraryLocation_t location)
+{
+	return location == UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER ||
+		location == UI_GAMEFLOW_LIBRARY_LOCATION_SUBFOLDER;
+}
+
+bool UIGameflowLibrary_IsFolderPicture(const char *folder, const char *file)
+{
+	size_t length = trimmedPathLength(folder);
+
+	return length > 0u && file != NULL && strlen(file) == length + 4u &&
+		asciiPrefixEquals(folder, file, length) &&
+		asciiPrefixEquals(".png", &file[length], 4u);
+}
+
+/* Copies count bytes of a path into heading at length, in capitals and with
+ * each '/' as " / ", stopping while one byte is left for the NUL. */
+static size_t headingPut(char *heading, size_t size, size_t length,
+	const char *text, size_t count)
+{
+	size_t i;
+
+	for(i = 0u; i < count && length + 1u < size; ++i) {
+		unsigned char c = (unsigned char)text[i];
+
+		if(c == '/') {
+			const char *separator = " / ";
+			size_t k;
+
+			for(k = 0u; k < 3u && length + 1u < size; ++k) {
+				heading[length++] = separator[k];
+			}
+			continue;
+		}
+		heading[length++] = (char)(c >= 'a' && c <= 'z' ? c - ('a' - 'A') : c);
+	}
+	return length;
+}
+
+bool UIGameflowLibrary_FolderHeading(const char *gamesRoot,
+	const char *currentPath, char *heading, size_t size)
+{
+	size_t rootLength = trimmedPathLength(gamesRoot);
+	size_t pathLength = trimmedPathLength(currentPath);
+	const char *folder;
+	const char *last;
+	size_t folderLength;
+	size_t full;
+	size_t length = 0u;
+	size_t i;
+
+	if(heading == NULL || size == 0u) {
+		return false;
+	}
+	heading[0] = '\0';
+	if(size < 8u || rootLength == 0u || pathLength <= rootLength + 1u ||
+		!asciiPrefixEquals(gamesRoot, currentPath, rootLength) ||
+		currentPath[rootLength] != '/') {
+		return false;
+	}
+	folder = &currentPath[rootLength + 1u];
+	folderLength = pathLength - rootLength - 1u;
+	last = folder;
+	full = folderLength;
+	for(i = 0u; i < folderLength; ++i) {
+		if(folder[i] == '/') {
+			last = &folder[i + 1u];
+			full += 2u;
+		}
+	}
+	if(full < size) {
+		length = headingPut(heading, size, 0u, folder, folderLength);
+	}
+	else {
+		size_t lastLength = (size_t)(&folder[folderLength] - last);
+
+		if(last != folder) {
+			heading[length++] = '\205';
+			length = headingPut(heading, size, length, "/", 1u);
+		}
+		if(length + lastLength < size) {
+			length = headingPut(heading, size, length, last, lastLength);
+		}
+		else {
+			length = headingPut(heading, size - 1u, length, last, lastLength);
+			heading[length++] = '\205';
+		}
+	}
+	heading[length] = '\0';
+	return true;
+}
+
 bool UIGameflowLibrary_IsGamesRootEntry(const char *gamesRoot,
 	uiGameflowLibraryEntryType_t type, const char *entryPath)
 {
@@ -169,8 +314,7 @@ void UIGameflowLibrary_ClassifierInit(uiGameflowLibraryClassifier_t *state,
 	}
 	memset(state, 0, sizeof(*state));
 	state->location = location;
-	state->valid = location == UI_GAMEFLOW_LIBRARY_LOCATION_ROOT ||
-		location == UI_GAMEFLOW_LIBRARY_LOCATION_STRICT_LEAF;
+	state->valid = location != UI_GAMEFLOW_LIBRARY_LOCATION_NONE;
 }
 
 bool UIGameflowLibrary_ClassifierAdd(uiGameflowLibraryClassifier_t *state,
@@ -190,10 +334,17 @@ bool UIGameflowLibrary_ClassifierAdd(uiGameflowLibraryClassifier_t *state,
 		index, type, name)) {
 		state->imageCount++;
 	}
-	else if(state->location == UI_GAMEFLOW_LIBRARY_LOCATION_ROOT &&
+	else if((state->location == UI_GAMEFLOW_LIBRARY_LOCATION_ROOT ||
+		state->location == UI_GAMEFLOW_LIBRARY_LOCATION_FOLDERS_ROOT ||
+		state->location == UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER) &&
 		UIGameflowLibrary_EntryEligible(UI_GAMEFLOW_LIBRARY_GAME_FOLDERS,
 			index, type, name)) {
 		state->folderCount++;
+	}
+	else if((state->location == UI_GAMEFLOW_LIBRARY_LOCATION_FOLDERS_ROOT ||
+		state->location == UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER) &&
+		type == UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY) {
+		state->subfolderCount++;
 	}
 	/* Anything else isn't a game: the Library skips it. */
 	return true;
@@ -205,10 +356,40 @@ uiGameflowLibraryMode_t UIGameflowLibrary_ClassifierFinish(
 	if(state == NULL || !state->valid) {
 		return UI_GAMEFLOW_LIBRARY_NONE;
 	}
+	if(state->folderCount + state->subfolderCount > 0u &&
+		(state->location == UI_GAMEFLOW_LIBRARY_LOCATION_FOLDERS_ROOT ||
+		state->location == UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER)) {
+		return UI_GAMEFLOW_LIBRARY_FOLDERS;
+	}
 	if(state->imageCount > 0u && state->folderCount == 0u) {
 		return UI_GAMEFLOW_LIBRARY_IMAGE_FILES;
 	}
 	if(state->folderCount > 0u && state->imageCount == 0u) {
+		return UI_GAMEFLOW_LIBRARY_GAME_FOLDERS;
+	}
+	/* With Library Folders on, /games and its folders stay in the Library
+	 * even when empty or holding only pictures, with just their way back. */
+	if(state->location == UI_GAMEFLOW_LIBRARY_LOCATION_FOLDERS_ROOT ||
+		state->location == UI_GAMEFLOW_LIBRARY_LOCATION_FOLDER ||
+		state->location == UI_GAMEFLOW_LIBRARY_LOCATION_SUBFOLDER) {
+		return UI_GAMEFLOW_LIBRARY_IMAGE_FILES;
+	}
+	return UI_GAMEFLOW_LIBRARY_NONE;
+}
+
+uiGameflowLibraryMode_t UIGameflowLibrary_EntryMode(
+	uiGameflowLibraryMode_t mode, uiGameflowLibraryEntryType_t type,
+	const char *name)
+{
+	if(mode != UI_GAMEFLOW_LIBRARY_FOLDERS) {
+		return mode;
+	}
+	if(type == UI_GAMEFLOW_LIBRARY_ENTRY_FILE &&
+		UIGameflowLibrary_IsGameImageName(name)) {
+		return UI_GAMEFLOW_LIBRARY_IMAGE_FILES;
+	}
+	if(type == UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY &&
+		UIGameflowLibrary_ParseGameFolderName(name, NULL, NULL, 0u)) {
 		return UI_GAMEFLOW_LIBRARY_GAME_FOLDERS;
 	}
 	return UI_GAMEFLOW_LIBRARY_NONE;
@@ -218,7 +399,8 @@ int UIGameflowLibrary_SelectBrowser(uiGameflowLibraryMode_t mode,
 	int requestedBrowser, int retainedBrowser)
 {
 	if(mode == UI_GAMEFLOW_LIBRARY_IMAGE_FILES ||
-		mode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS) {
+		mode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS ||
+		mode == UI_GAMEFLOW_LIBRARY_FOLDERS) {
 		return retainedBrowser;
 	}
 	return requestedBrowser;
@@ -325,10 +507,10 @@ const char *UIGameflowLibrary_RegionLabel(const char *gameId)
 
 size_t UIGameflowLibrary_BuildWindow(uint32_t itemCount,
 	uint32_t selectedIndex, uiGameflowDirection_t directionHint,
-	uiGameflowLibraryWindowSlot_t slots[7])
+	uiGameflowLibraryWindowSlot_t slots[UI_GAMEFLOW_LIBRARY_WINDOW])
 {
 	static const int8_t relativeOrder[UI_GAMEFLOW_LIBRARY_WINDOW] = {
-		0, -1, 1, -2, 2, -3, 3
+		0, -1, 1, -2, 2, -3, 3, -4, 4
 	};
 	size_t count = 0u;
 	size_t i;

@@ -98,11 +98,14 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 			uiPosterResult_t result = UIAssets_Query(ids[i], UI_ASSETS_ID_LEN, i & 1, &handle);
 			if (result == UI_POSTER_EXACT || result == UI_POSTER_UNIVERSAL) {
 				(void)UIAssets_Peek(handle);
-				if (UIAssets_Acquire(handle) != NULL)
-					UIAssets_Release(handle);
+				(void)UIAssets_PeekAgeMs(handle);
 			}
 			(void)UIAssets_DominantColor(ids[i], UI_ASSETS_ID_LEN, &r, &g, &b);
 		}
+		/* Scroll on by one: the poster left behind keeps its slot. */
+		UIAssets_RequestWindow((const char (*)[8])ids + 1, 3, 0);
+		for (int step = 0; step < 32 && UIAssets_Poll(); step++)
+			clockMs += UI_ASSETS_EVICT_QUARANTINE_MS + 1;
 	}
 	if (UIStills_Init(&source, NULL) == UI_ASSETS_OK) {
 		UIStills_RequestWindow((const char (*)[8])ids, 3, 1);
@@ -112,8 +115,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 			uiPosterHandle_t handle;
 			u8 r, g, b;
 			uiPosterResult_t result = UIStills_Query(ids[i], UI_ASSETS_ID_LEN, i & 1, &handle);
-			if (result == UI_POSTER_EXACT || result == UI_POSTER_UNIVERSAL)
+			if (result == UI_POSTER_EXACT || result == UI_POSTER_UNIVERSAL) {
 				(void)UIStills_Peek(handle);
+				(void)UIStills_PeekAgeMs(handle);
+			}
 			(void)UIStills_DominantColor(ids[i], UI_ASSETS_ID_LEN, &r, &g, &b);
 		}
 	}

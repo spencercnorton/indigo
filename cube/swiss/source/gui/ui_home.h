@@ -10,7 +10,7 @@ typedef enum {
 	UI_HOME_FACE_SETTINGS,
 	UI_HOME_FACE_SYSTEM,
 	/* Only while the source has apps (hasApps below): the ring is then five
-	 * faces, Apps one turn left of Library. */
+	 * faces, Apps one turn left of Library (below it in Classic). */
 	UI_HOME_FACE_APPS,
 	UI_HOME_FACE_COUNT
 } uiHomeFace_t;
@@ -74,11 +74,23 @@ typedef enum {
 	UI_HOME_EFFECT_OPEN_APPS
 } uiHomeEffect_t;
 
+/* How the faces sit on the cube (Setup > Console > Cube). Infinite turns
+ * round a ring of them in every direction. Classic keeps each face on a side
+ * of its own, as the GameCube's own menu does: Library in front, Settings on
+ * the left, System on the right, Source on top and Apps underneath, and
+ * Library the way between them. */
+typedef enum {
+	UI_HOME_CUBE_INFINITE = 0,
+	UI_HOME_CUBE_CLASSIC,
+	UI_HOME_CUBE_COUNT
+} uiHomeCubeStyle_t;
+
 typedef struct {
 	bool hasSource;
 	bool hasRecent;
 	/* The source's /apps folder holds a program: the Apps face shows. */
 	bool hasApps;
+	uiHomeCubeStyle_t style;
 } uiHomeCapabilities_t;
 
 typedef enum {
@@ -107,6 +119,10 @@ typedef struct {
 	uiHomeOrientation_t orientation;
 	uiHomeTurnAxis_t turnAxis;
 	int turnDirection;
+	/* The capabilities' style, for the scene to place the glyphs and time
+	 * the turns by. In Classic turnOrdinal is the face, and the orientation
+	 * always the one that has the face's own side in front. */
+	uiHomeCubeStyle_t style;
 } uiHomeState_t;
 
 void UIHome_OrientationInit(uiHomeOrientation_t *orientation);

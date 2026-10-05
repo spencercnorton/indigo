@@ -11,6 +11,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
+import check_aesnd
 import check_package
 import check_upstream
 import check_workflows
@@ -166,6 +167,18 @@ class Workflows(unittest.TestCase):
                     good.replace("1" * 64, "2" * 64, 1)):
             self.assertNotEqual(self.check(bad), [], bad)
 
+    def test_every_copy_of_the_toolchain_digest_matches(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.root(Path(directory), self.good())
+            (root / "README.md").write_text("docker pull x/libogc2@sha256:" + "1" * 64 + "\n")
+            (root / "pack.py").write_text('IMAGE = ("x/libogc2@sha256:"\n    "' + "1" * 64 + '")\n')
+            self.assertEqual(check_workflows.problems(root), [])
+            for name in ("README.md", "pack.py"):
+                text = (root / name).read_text()
+                (root / name).write_text(text.replace("1" * 64, "3" * 64))
+                self.assertEqual(len(check_workflows.problems(root)), 1, name)
+                (root / name).write_text(text)
+
 
 class Upstream(unittest.TestCase):
     """Outside the interface, a file matches the upstream commit UPSTREAM names,
@@ -185,18 +198,26 @@ class Upstream(unittest.TestCase):
             "commit", "-qm", "c")
         return git("rev-parse", "HEAD")
 
-    def check(self, patcher: bytes, listed: str = "") -> list[str]:
+    def check(self, patcher: bytes, listed: str = "",
+              extra: dict[str, bytes] | None = None) -> list[str]:
         with tempfile.TemporaryDirectory() as tmp:
             up, ours = Path(tmp, "up"), Path(tmp, "ours")
             commit = self.commit(up, {"cube/swiss/source/patcher.c": b"a\r\nb\r\n",
                                       "cube/swiss/source/gui/menu.c": b"swiss\n"})
             self.commit(ours, {"UPSTREAM": f"upstream {up}\ncommit {commit}\n{listed}".encode(),
                                "cube/swiss/source/patcher.c": patcher,
-                               "cube/swiss/source/gui/menu.c": b"indigo\n"})
+                               "cube/swiss/source/gui/menu.c": b"indigo\n", **(extra or {})})
             return check_upstream.problems(ours)
 
     def test_line_endings_and_the_interface_are_not_changes(self):
         self.assertEqual(self.check(b"a\nb\n"), [])
+
+    def test_project_journal_is_owned_without_exempting_upstream_code(self):
+        journal = {"AGENTS/journal.md": b"Project development history\n"}
+        self.assertEqual(self.check(b"a\nb\n", extra=journal), [])
+        self.assertIn("does not list it", self.check(b"a\nc\n", extra=journal)[0])
+        self.assertIn("does not list it", self.check(b"a\nb\n", extra={
+            "AGENTS-unowned/journal.md": b"Not a project-owned path\n"})[0])
 
     def test_a_change_is_listed_and_the_list_stays_true(self):
         self.assertEqual(self.check(b"a\nc\n", "cube/swiss/source/patcher.c  a fix\n"), [])
@@ -230,6 +251,35 @@ class Upstream(unittest.TestCase):
         self.assertEqual(done.returncode, 1)
         self.assertIn("  a.c\n", done.stdout)
         self.assertIn(b"<<<<<<<", (indigo / "a.c").read_bytes())
+
+
+class Aesnd(unittest.TestCase):
+    """The AESND copy is byte-identical to the libogc2 commit it names, and that
+    commit is the toolchain's: changes go in patches, and a moved toolchain fails."""
+
+    def check(self, copied: dict[str, bytes], toolchain: str = "libogc2 r1.abc") -> list[str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            up, ours = Path(tmp, "up"), Path(tmp, "ours")
+            commit = Upstream.commit(self, up, {"libaesnd/aesndlib.c": b"void AESND_Reset(void);\r\n",
+                                                "include/aesndlib.h": b"#pragma once\n"})
+            copy = ours / check_aesnd.COPY
+            (copy / "libogc2").mkdir(parents=True)
+            (copy / "UPSTREAM").write_text(f"upstream {up}\ncommit {commit}\ntoolchain libogc2 r1.abc\n")
+            for name, data in copied.items():
+                (copy / "libogc2" / name).parent.mkdir(parents=True, exist_ok=True)
+                (copy / "libogc2" / name).write_bytes(data)
+            libversion = Path(tmp, "libversion.h")
+            libversion.write_text(f'#define _V_STRING "{toolchain}"\n')
+            return check_aesnd.problems(ours, libversion=libversion)
+
+    def test_the_copy_is_the_commit_byte_for_byte(self):
+        self.assertEqual(self.check({"libaesnd/aesndlib.c": b"void AESND_Reset(void);\r\n"}), [])
+        self.assertIn("differs from libogc2", self.check({"libaesnd/aesndlib.c": b"void AESND_Reset(void);\n"})[0])
+        self.assertIn("is not in libogc2", self.check({"libaesnd/extra.c": b""})[0])
+
+    def test_a_toolchain_that_moves_on_fails(self):
+        self.assertIn("the toolchain's libogc2 is libogc2 r2.def",
+                      self.check({"include/aesndlib.h": b"#pragma once\n"}, toolchain="libogc2 r2.def")[0])
 
 
 ROOT = Path(__file__).resolve().parents[2]

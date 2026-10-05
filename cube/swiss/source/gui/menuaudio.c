@@ -307,7 +307,7 @@ bool menuaudio_shutdown(void) {
 	if(!inited) return false;
 	stop_music();
 	if(sfxVoice) AESND_SetVoiceStop(sfxVoice, true);
-	AESND_Reset();
+	AESND_Reset();	/* waits for the DSP to finish first: cube/swiss/aesnd */
 	musicVoice = NULL;
 	sfxVoice = NULL;
 	musicPlaying = false;

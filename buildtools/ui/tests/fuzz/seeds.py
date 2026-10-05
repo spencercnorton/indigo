@@ -43,6 +43,49 @@ def saves(out: Path) -> None:
     gcs = bytearray(0x110)
     gcs[:6] = b"GCSAVE"
     (out / "save.gcs").write_bytes(bytes(gcs) + bytes(entry) + block)
+    # Saves with art, from the generator Memory Cards is tried with (it
+    # needs Pillow): RGB5A3 frames, CI8 frames on a shared palette and on
+    # their own, a bounce, frames with no pixels, no banner, and an icon
+    # address near 2^32.
+    sys.path.insert(0, str(ROOT / "buildtools/ui/qa"))
+    import make_test_saves as gen
+    by_game = {save.game: save for save in gen.SLOT_A}
+    for name, game in (("art-rgb", "ZIQE"), ("art-ci8-shared-bounce", "ZSRE"),
+                       ("art-ci8-own-no-banner", "ZPPE"), ("art-empty-frames", "ZLKE"),
+                       ("art-eight-mixed", "ZTPE"), ("art-no-icon", "ZCHE")):
+        (out / f"{name}.gci").write_bytes(gen.encode(by_game[game], 0))
+    (out / "art-datel.sav").write_bytes(gen.datel(gen.encode(by_game["ZLKE"], 0)))
+    hostile = bytearray(gen.encode(by_game["ZIQE"], 0))
+    hostile[0x2C:0x30] = b"\xff\xff\xf8\x00"
+    (out / "art-hostile-address.gci").write_bytes(bytes(hostile))
+
+
+def raw_saves(out: Path) -> None:
+    def checksum(block: bytearray, start: int, end: int, at: int) -> None:
+        words = struct.unpack(f">{(end - start) // 2}H", block[start:end])
+        value, inverse = sum(words) & 0xFFFF, sum(word ^ 0xFFFF for word in words) & 0xFFFF
+        struct.pack_into(">HH", block, at, 0 if value == 0xFFFF else value,
+                         0 if inverse == 0xFFFF else inverse)
+
+    header = bytearray(b"\xff" * 8192)
+    struct.pack_into(">HH", header, 0x22, 4, 0)
+    checksum(header, 0, 0x1FC, 0x1FC)
+    directory = bytearray(b"\xff" * 8192)
+    directory[:64] = bytes(64)
+    directory[:6] = b"DEMO01"
+    directory[8:18] = b"Demo Save\0"
+    struct.pack_into(">HH", directory, 0x36, 5, 2)
+    struct.pack_into(">H", directory, 0x1FFA, 0)
+    checksum(directory, 0, 0x1FFC, 0x1FFC)
+    block_map = bytearray(8192)
+    struct.pack_into(">HHH", block_map, 4, 0, 57, 9)
+    struct.pack_into(">H", block_map, 10, 9)
+    struct.pack_into(">H", block_map, 18, 0xFFFF)
+    checksum(block_map, 4, 8192, 0)
+    size = struct.pack(">I", 512 * 1024)
+    (out / "two-block-save").write_bytes(size + header + directory * 2 + block_map * 2)
+    (out / "unformatted").write_bytes(size + bytes(5 * 8192))
+    (out / "truncated").write_bytes(size + header)
 
 
 def posters(out: Path) -> None:
@@ -118,9 +161,20 @@ def png(out: Path) -> None:
     (out / "name-separators").write_bytes(b"N-_. +a")
 
 
+def cheats(out: Path) -> None:
+    # A cheats file as the downloads write it (each name above its codes),
+    # one with an unsupported XX code, and a code with no name above it.
+    (out / "codes.txt").write_bytes(
+        b"GALE01\r\nSuper Smash Bros. Melee\r\n\r\nInfinite Jumps\r\n"
+        b"04275CAC FFFFFFFF\r\n\r\nPlay As Master Hand\r\n"
+        b"0445C388 00000014\r\n0445C380 00000001\r\n\r\n"
+        b"Random Stage\r\n2845BF28 0000XXXX\r\n0445BF28 00000000\r\n")
+    (out / "no-name.txt").write_bytes(b"04275CAC FFFFFFFF\n")
+
+
 def main() -> int:
     out = Path(sys.argv[1])
-    for target in (history, saves, posters, about, settings, fst, png):
+    for target in (history, saves, raw_saves, posters, about, settings, fst, png, cheats):
         folder = out / target.__name__
         folder.mkdir(parents=True, exist_ok=True)
         target(folder)

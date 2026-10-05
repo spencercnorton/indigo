@@ -234,6 +234,24 @@ bool UISystem_FormatCalibration(char *out, size_t capacity, int offsetCelsius)
 	return true;
 }
 
+int UISystem_SmoothTemperature(uiSystemTemperature_t *state, int reading)
+{
+	float drift;
+
+	if(reading < 0 || !state->primed) {
+		state->average = (float)reading;
+		state->shown = reading;
+		state->primed = reading >= 0;
+		return reading;
+	}
+	state->average += ((float)reading - state->average) / 8.0f;
+	drift = state->average - (float)state->shown;
+	if(drift >= 1.0f || drift <= -1.0f) {
+		state->shown = (int)(state->average + 0.5f);
+	}
+	return state->shown;
+}
+
 void UISystem_FormatPageStatus(char *out, size_t capacity, int page)
 {
 	if(out == NULL || capacity == 0u) {

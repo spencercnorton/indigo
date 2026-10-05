@@ -8,7 +8,12 @@ here), which is all the Library reads of a game. Two more images have a
 missing or corrupt file table, which the Library must survive (DAMAGED).
 A text file and an empty folder sit beside them, as they do on real cards:
 the Library skips both (STRAYS), and the text file sorts first, so the
-games move up past it.
+games move up past it. Three games sit in folders (FOLDERS), one of them three
+levels down in Old.Saves.v2: Swiss's default flattening lists them with the rest, and Library
+Folders shows the folders, two levels deep, with the pictures beside them
+(FOLDER_PICTURES) as their posters: Racing.v1's, in a colour nothing else on the
+disc has, and two that must never show, in another: Nintendo.GC's, a picture
+past the 2 MB one may have, and Classics.Set's, damaged.
 /swiss/ui/posters.pak holds posters drawn here from gradients and shapes, for
 all but two of the games, so the Library shows both kinds of card, and
 /swiss/ui/stills.pak gameplay stills drawn the same way for all but three, so
@@ -19,7 +24,15 @@ in each shape Indigo fits to a card, one in a Homebrew Channel folder whose
 boot.dol Apps must leave out. Nothing in it is anyone else's: no game, no
 box art, no screenshot, no text, no font.
 
-usage: card.py OUT.iso [--no-posters]
+Given the probe (probe/probe.c, built with the toolchain), the disc also holds
+it twice, as a real program Indigo can launch: a game image whose boot program
+is the probe (PROBE_GAME) and an app (PROBE_APP).
+
+With --card-zip it makes an SD card image instead (build_card): the release
+zip unpacked onto a FAT32 card, the same games, packs and apps beside it.
+
+usage: card.py OUT.iso [--no-posters] [--probe probe.dol]
+       card.py OUT.img --card-zip Indigo-<version>.zip [--no-posters] [--probe probe.dol]
 Needs genisoimage; the posters need gxtexconv (see buildtools/ui/poster_pack.py)
 and are left out, with a notice, when it is missing.
 """
@@ -43,7 +56,13 @@ GAMES = (
     ("GPLZ01", "Paper Lantern"), ("GRZZ01", "Rally Cross Zero"), ("GSSZ01", "Skyward Salvage"),
 )
 NO_POSTER = frozenset({"GPLZ01", "GSSZ01"})
-STRAYS = ("About these games.txt", "Old saves/")
+STRAYS = ("About these games.txt", "Nintendo.GC/")
+# Games in folders below /games, the last one past the second level.
+FOLDERS = {"GRZZ01": "Racing.v1", "GNTZ01": "Racing.v1/Classics.Set", "GPLZ01": "Racing.v1/Classics.Set/Old.Saves.v2"}
+# Pictures beside folders, each a poster-shaped field of one colour: the one
+# Library Folders shows, and the ones it must refuse (run.py looks for both).
+FOLDER_PICTURES = {"Racing.v1": "shown", "Nintendo.GC": "too big", "Racing.v1/Classics.Set": "damaged"}
+SHOWN_PICTURE, REFUSED_PICTURE = (255, 0, 255), (0, 255, 255)
 NO_STILL = frozenset({"GDRZ01", "GPLZ01", "GSSZ01"})
 # Spotlight's descriptions; Rally Cross Zero keeps its banner's.
 DESCRIPTIONS = {
@@ -65,6 +84,12 @@ GAME_BANNER = 0x5000
 BANNER_BYTES = 0x1960     # BNR1: magic, padding, 96x32 RGB5A3 pixels, one description
 DESCRIPTION = "A fictitious game on the disc Indigo's emulator test boots with."
 SYSTEM_AREA = 0x8000  # ISO 9660 leaves the first 32 KiB to the platform
+
+
+# A disc's region code (0x458, in bi2 after the header), which Swiss takes a
+# game's region from: 0 Japan, 1 the Americas, 2 PAL.
+REGION_CODES = {"J": 0, "E": 1, "P": 2}
+REGION_CODE_AT = 0x458
 
 
 def disc_header(game_id: str, title: str) -> bytearray:
@@ -104,10 +129,11 @@ def banner(index: int, title: str) -> bytes:
     return bytes(data)
 
 
-def game_image(index: int, game_id: str, title: str) -> bytes:
+def game_image(index: int, game_id: str, title: str, region: int = 0) -> bytes:
     """A game as the Library reads it: its header, a one-file table, its banner."""
     image = bytearray(STUB_BYTES)
     image[:0x440] = disc_header(game_id, title)
+    struct.pack_into(">I", image, REGION_CODE_AT, region)
     fst = struct.pack(">BBHII", 1, 0, 0, 0, 2) + struct.pack(">BBHII", 0, 0, 0, GAME_BANNER, BANNER_BYTES)
     fst += b"opening.bnr\0"
     struct.pack_into(">III", image, 0x424, GAME_FST, len(fst), len(fst))
@@ -146,6 +172,61 @@ def runaway_table(game_id: str, title: str) -> bytes:
 DAMAGED = (("GBHZ01", "Broken Header", header_only), ("GCTZ01", "Corrupt Table", runaway_table))
 
 
+# The probe, as a game: an ID with a real region letter, and a title that
+# sorts among the games the route does not browse.
+PROBE_GAME = ("GPRE01", "Indigo Probe")
+PROBE_APP = "Probe.dol"
+PROBE_DOL_OFFSET = 0x10000
+# A GC Loader boots boot.iso from its card: on a card for one, the release's
+# ipl.dol made into a disc.
+BOOT_ISO = ("GSWE01", "Indigo")
+
+
+def probe_image(dol: bytes, game_id: str = PROBE_GAME[0], title: str = PROBE_GAME[1]) -> bytes:
+    """A disc image whose boot program is the probe, laid out as Swiss reads a
+    game: header, an apploader header at 0x2440 (Swiss patches the apploader
+    too, but boots the DOL itself), the DOL, and a file table with the banner."""
+    header = disc_header(game_id, title)
+    apploader = bytearray(0x40)
+    apploader[0:10] = b"2026/10/01"
+    struct.pack_into(">IIII", apploader, 0x10, 0x81200000, 0x20, 0, 0)
+    struct.pack_into(">I", apploader, 0x20, 0x4E800020)  # blr: never run
+    bnr = banner(len(GAMES), title)
+    bnr_offset = (PROBE_DOL_OFFSET + len(dol) + 0xFFF) & ~0xFFF
+    fst_offset = (bnr_offset + len(bnr) + 0xFFF) & ~0xFFF
+    fst = struct.pack(">BBHII", 1, 0, 0, 0, 2) + struct.pack(">BBHII", 0, 0, 0, bnr_offset, len(bnr))
+    fst += b"opening.bnr\0"
+    struct.pack_into(">IIII", header, 0x420, PROBE_DOL_OFFSET, fst_offset, len(fst), len(fst))
+    image = bytearray((fst_offset + len(fst) + 0x7FFF) & ~0x7FFF)
+    image[:0x440] = header
+    struct.pack_into(">I", image, REGION_CODE_AT, REGION_CODES[game_id[3]])
+    image[0x2440:0x2440 + len(apploader)] = apploader
+    image[PROBE_DOL_OFFSET:PROBE_DOL_OFFSET + len(dol)] = dol
+    image[bnr_offset:bnr_offset + len(bnr)] = bnr
+    image[fst_offset:fst_offset + len(fst)] = fst
+    return bytes(image)
+
+
+def game_file(game_id: str, title: str) -> str:
+    return f"{title} [{game_id}].iso"
+
+
+def game_path(game_id: str, title: str) -> str:
+    """A game's image below /games: in its folder (FOLDERS), if it has one."""
+    folder = FOLDERS.get(game_id)
+    return f"{folder}/{game_file(game_id, title)}" if folder else game_file(game_id, title)
+
+
+def library_order(probe: bool) -> list[str]:
+    """The titles in the order the Library lists them. Swiss flattens the
+    folders in /games into one list and sorts it by path, case aside
+    (files.c), so a game in a folder sorts by its folder's name."""
+    games = [(game_id, title) for game_id, title in GAMES] + [(i, t) for i, t, _ in DAMAGED]
+    if probe:
+        games.append(PROBE_GAME)
+    return [title for game_id, title in sorted(games, key=lambda g: game_path(*g).lower())]
+
+
 def outer_header() -> bytes:
     """The disc itself: a header Dolphin accepts, with an empty file table."""
     area = bytearray(FST_OFFSET + 12)
@@ -153,6 +234,29 @@ def outer_header() -> bytes:
     struct.pack_into(">III", area, 0x424, FST_OFFSET, 12, 12)
     struct.pack_into(">BBHII", area, FST_OFFSET, 1, 0, 0, 0, 1)  # root directory, one entry
     return bytes(area)
+
+
+def folder_picture(kind: str) -> bytes:
+    """A folder's picture: shown, or a picture Indigo can read but must not
+    (too big: 3 MB, padded with a chunk a reader skips), or one it can't
+    (damaged: a bit of its image data flipped, so its CRC fails). The one
+    shown carries a 1.5 MB chunk a reader skips as well: a chunk that long
+    once overran the poster thread's stack in zlib-ng's CRC."""
+    import io
+    import zlib
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (192, 256), SHOWN_PICTURE if kind == "shown" else REFUSED_PICTURE).save(out, "PNG")
+    data = out.getvalue()
+    if kind in ("shown", "too big"):
+        pad = bytes(3 << 20 if kind == "too big" else 3 << 19)
+        data = (data[:-12] + struct.pack(">I", len(pad)) + b"paDd" + pad +
+                struct.pack(">I", zlib.crc32(b"paDd" + pad)) + data[-12:])
+    elif kind == "damaged":
+        at = data.index(b"IDAT") + 8
+        data = data[:at] + bytes([data[at] ^ 1]) + data[at + 1:]
+    return data
 
 
 def poster(index: int):
@@ -271,6 +375,11 @@ def app_picture(kind: str):
     return image
 
 
+def app_order(probe: bool) -> list[str]:
+    """The apps in the order Apps lists them: by name."""
+    return sorted(APPS + ((PROBE_APP[:-4],) if probe else ()), key=str.lower)
+
+
 def build_apps(apps: Path) -> int:
     """/apps, as Apps reads it; returns how many apps it should list."""
     apps.mkdir()
@@ -288,29 +397,51 @@ def build_apps(apps: Path) -> int:
     return len(APPS)
 
 
-def build(out: Path, posters: bool = True) -> dict[str, object]:
+def populate(root: Path, work: Path, posters: bool = True, probe: Path | None = None,
+             foreign: int = 0) -> dict[str, object]:
+    """What the disc and the card both hold: /games, the packs and
+    descriptions in /swiss/ui, and /apps. The first game, whose launch the
+    route lets fail, has the region code foreign: a console's other region,
+    so the menu must come back from that region's video mode."""
+    (root / "games").mkdir(parents=True, exist_ok=True)
+    (root / "swiss/ui").mkdir(parents=True, exist_ok=True)
+    for index, (game_id, title) in enumerate(GAMES):
+        path = root / "games" / game_path(game_id, title)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(game_image(index, game_id, title, foreign if index == 0 else 0))
+    for game_id, title, image in DAMAGED:
+        (root / "games" / game_file(game_id, title)).write_bytes(image(game_id, title))
+    if probe:
+        (root / "games" / game_file(*PROBE_GAME)).write_bytes(probe_image(probe.read_bytes()))
+    for name in STRAYS:
+        if name.endswith("/"):
+            (root / "games" / name).mkdir()
+        else:
+            (root / "games" / name).write_text("Not a game.\n")
+    for folder, kind in FOLDER_PICTURES.items():
+        (root / "games" / f"{folder}.png").write_bytes(folder_picture(kind))
+    with_posters = posters and build_pack(work, root / "swiss/ui/posters.pak", "posters")
+    with_stills = posters and build_pack(work, root / "swiss/ui/stills.pak", "stills")
+    (root / "swiss/ui/descriptions.txt").write_text(
+        "# Descriptions of the demonstration disc's fictitious games\n" +
+        "".join(f"{game_id} {text}\n" for game_id, text in sorted(DESCRIPTIONS.items())))
+    apps = build_apps(root / "apps")
+    if probe:
+        (root / "apps" / PROBE_APP).write_bytes(probe.read_bytes())
+        apps += 1
+    return {"games": len(GAMES), "damaged": len(DAMAGED),
+            "posters": len(GAMES) - len(NO_POSTER) if with_posters else 0,
+            "stills": len(GAMES) - len(NO_STILL) if with_stills else 0, "apps": apps,
+            "probe": bool(probe)}
+
+
+def build(out: Path, posters: bool = True, probe: Path | None = None, foreign: int = 0) -> dict[str, object]:
     if not shutil.which("genisoimage"):
         raise SystemExit("card.py: genisoimage is missing")
     with tempfile.TemporaryDirectory() as directory:
         folder = Path(directory)
         root = folder / "root"
-        (root / "games").mkdir(parents=True)
-        (root / "swiss/ui").mkdir(parents=True)
-        for index, (game_id, title) in enumerate(GAMES):
-            (root / "games" / f"{title} [{game_id}].iso").write_bytes(game_image(index, game_id, title))
-        for game_id, title, image in DAMAGED:
-            (root / "games" / f"{title} [{game_id}].iso").write_bytes(image(game_id, title))
-        for name in STRAYS:
-            if name.endswith("/"):
-                (root / "games" / name).mkdir()
-            else:
-                (root / "games" / name).write_text("Not a game.\n")
-        with_posters = posters and build_pack(folder, root / "swiss/ui/posters.pak", "posters")
-        with_stills = posters and build_pack(folder, root / "swiss/ui/stills.pak", "stills")
-        (root / "swiss/ui/descriptions.txt").write_text(
-            "# Descriptions of the demonstration disc's fictitious games\n" +
-            "".join(f"{game_id} {text}\n" for game_id, text in sorted(DESCRIPTIONS.items())))
-        apps = build_apps(root / "apps")
+        info = populate(root, folder, posters, probe, foreign)
         for path in sorted(root.rglob("*")) + [root]:
             os.utime(path, (1000000000, 1000000000))
         subprocess.run(["genisoimage", "-quiet", "-R", "-J", "-V", "INDIGO_DEMO", "-o", str(out), str(root)],
@@ -321,18 +452,161 @@ def build(out: Path, posters: bool = True) -> dict[str, object]:
     header = outer_header()
     image[:len(header)] = header
     out.write_bytes(image)
-    return {"games": len(GAMES), "damaged": len(DAMAGED),
-            "posters": len(GAMES) - len(NO_POSTER) if with_posters else 0,
-            "stills": len(GAMES) - len(NO_STILL) if with_stills else 0, "apps": apps,
-            "bytes": len(image)}
+    return {**info, "bytes": len(image)}
+
+
+# The SD card: as big as a small real one, formatted as the SD Association's
+# formatter does an SDHC card (FAT32, 32 KiB clusters). The file is sparse.
+CARD_BYTES = 8 << 30
+CLUSTER_BYTES = 64 * 512  # mkfs.fat -s 64
+# The most pieces a game file can be in for Swiss to launch it (MAX_FRAGS in
+# deviceHandler.h), and for a GC Loader to serve it.
+MAX_FRAGMENTS = 40
+MTOOLS = dict(os.environ, MTOOLS_SKIP_CHECK="1")
+
+
+def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | None = None,
+               foreign: int = 0, settings: str | None = None, boot_iso: bool = False,
+               fragments: int = 0, virtual_cards: bool = False) -> dict[str, object]:
+    """A FAT32 SD card image set up as someone would: the release zip
+    unpacked onto it, then games, the packs and apps beside it. Without
+    settings it has no swiss/settings/global.ini, so Indigo starts in
+    Settings, as on a new card; with them that file holds them."""
+    import zipfile
+    for tool in ("mkfs.fat", "mcopy"):
+        if not shutil.which(tool):
+            raise SystemExit(f"card.py: {tool} is missing (dosfstools, mtools)")
+    with tempfile.TemporaryDirectory() as directory:
+        folder = Path(directory)
+        root = folder / "root"
+        root.mkdir()
+        with zipfile.ZipFile(card_zip) as package:
+            package.extractall(root)
+        info = populate(root, folder, posters, probe, foreign)
+        if virtual_cards:
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "qa"))
+            import make_test_saves
+            saves = root / make_test_saves.SAVE_FOLDER
+            saves.mkdir(parents=True, exist_ok=True)
+            raw, _ = make_test_saves.virtual_card()
+            (saves / make_test_saves.RAW_CARD_NAME).write_bytes(raw)
+            info["virtual_cards"] = {"images": 1, "saves": 2, "physical_slots": False}
+        if settings is not None:  # a card that has been used: its settings folders made
+            (root / "swiss/settings/game").mkdir(parents=True, exist_ok=True)
+            (root / "swiss/settings/global.ini").write_text(settings.replace("\n", "\r\n"))
+        if boot_iso:
+            (root / "boot.iso").write_bytes(probe_image((root / "ipl.dol").read_bytes(), *BOOT_ISO))
+        if fragments:  # the probe's game, with enough clusters for that many pieces
+            game = root / "games" / game_file(*PROBE_GAME)
+            game.write_bytes(game.read_bytes().ljust(fragments * CLUSTER_BYTES, b"\0"))
+        with open(out, "wb") as image:
+            image.truncate(CARD_BYTES)
+        subprocess.run(["mkfs.fat", "-F", "32", "-s", "64", "-n", "INDIGO", str(out)], check=True,
+                       capture_output=True)
+        for entry in sorted(root.iterdir()):
+            subprocess.run(["mcopy", "-s", "-i", str(out), str(entry), "::/"], check=True, env=MTOOLS,
+                           capture_output=True)
+    if fragments:
+        info["fragments"] = fragment(out, f"games/{game_file(*PROBE_GAME)}", fragments)
+    return {**info, "zip": card_zip.name, "bytes": CARD_BYTES}
+
+
+def fragment(image: Path, path: str, pieces: int) -> int:
+    """Move a file on a card image (FAT32, as build_card makes it) into that
+    many runs of clusters, a free cluster between each, as a copy onto a card
+    that has seen deletions can leave it. Returns how many runs it is in."""
+    with open(image, "r+b") as disk:
+        boot = disk.read(512)
+        sector, per_cluster, reserved, fats = struct.unpack_from("<HBHB", boot, 11)
+        total, fat_sectors = struct.unpack_from("<I", boot, 32)[0], struct.unpack_from("<I", boot, 36)[0]
+        cluster = sector * per_cluster
+        fat_at, data_at = reserved * sector, (reserved + fats * fat_sectors) * sector
+        limit = (total - data_at // sector) // per_cluster + 2  # cluster numbers start at 2
+        disk.seek(fat_at)
+        fat = list(struct.unpack(f"<{fat_sectors * sector // 4}I", disk.read(fat_sectors * sector)))
+
+        def chain(first: int) -> list[int]:
+            clusters = []
+            while 2 <= first < 0x0FFFFFF8:
+                clusters.append(first)
+                first = fat[first] & 0x0FFFFFFF
+            return clusters
+
+        def entries(first: int):
+            """(name, where its entry is, the entry) for each file in a directory."""
+            parts: dict[int, str] = {}
+            for number in chain(first):
+                at = data_at + (number - 2) * cluster
+                disk.seek(at)
+                block = disk.read(cluster)
+                for i in range(0, cluster, 32):
+                    entry = block[i:i + 32]
+                    if entry[0] == 0:
+                        return
+                    if entry[0] == 0xE5:
+                        parts = {}
+                    elif entry[11] == 0x0F:  # a piece of a long name
+                        parts[entry[0] & 0x1F] = (entry[1:11] + entry[14:26] + entry[28:32]).decode("utf-16-le")
+                    else:
+                        base, ext = entry[0:8].decode("latin-1").rstrip(), entry[8:11].decode("latin-1").rstrip()
+                        name = "".join(parts[k] for k in sorted(parts)).split("\0")[0]
+                        yield name or base + (f".{ext}" if ext else ""), at + i, entry
+                        parts = {}
+
+        first, where = struct.unpack_from("<I", boot, 44)[0], 0
+        for part in path.split("/"):
+            found = next(((at, entry) for name, at, entry in entries(first) if name.lower() == part.lower()), None)
+            if found is None:
+                raise FileNotFoundError(path)
+            where, entry = found
+            first = struct.unpack_from("<H", entry, 20)[0] << 16 | struct.unpack_from("<H", entry, 26)[0]
+        old = chain(first)
+        if len(old) < pieces:
+            raise ValueError(f"{path} has {len(old)} clusters, too few for {pieces} pieces")
+        new, number = [], limit - len(old) - pieces  # at the card's end, which build_card leaves free
+        for piece in range(pieces):
+            size = len(old) // pieces + (piece < len(old) % pieces)
+            new += range(number, number + size)
+            number += size + 1
+        if any(fat[n] for n in new):
+            raise ValueError("the card's end is not free")
+        for source, target in zip(old, new):
+            disk.seek(data_at + (source - 2) * cluster)
+            data = disk.read(cluster)
+            disk.seek(data_at + (target - 2) * cluster)
+            disk.write(data)
+        for source in old:
+            fat[source] = 0
+        for i, target in enumerate(new):
+            fat[target] = new[i + 1] if i + 1 < len(new) else 0x0FFFFFFF
+        table = struct.pack(f"<{len(fat)}I", *fat)
+        for copy in range(fats):
+            disk.seek(fat_at + copy * fat_sectors * sector)
+            disk.write(table)
+        disk.seek(where + 20)
+        disk.write(struct.pack("<H", new[0] >> 16))
+        disk.seek(where + 26)
+        disk.write(struct.pack("<H", new[0] & 0xFFFF))
+    return 1 + sum(b != a + 1 for a, b in zip(new, new[1:]))
+
+
+def read_card(card: Path, path: str) -> bytes | None:
+    """A file from the card image, or None when it isn't there."""
+    result = subprocess.run(["mcopy", "-n", "-i", str(card), f"::/{path}", "-"], capture_output=True, env=MTOOLS)
+    return result.stdout if result.returncode == 0 else None
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("out", type=Path)
     parser.add_argument("--no-posters", action="store_true")
+    parser.add_argument("--probe", type=Path, help="the probe DOL, to add as a game and an app")
+    parser.add_argument("--card-zip", type=Path, help="make an SD card image from this release zip instead")
     args = parser.parse_args(argv)
-    print(json.dumps(build(args.out, posters=not args.no_posters)))
+    if args.card_zip:
+        print(json.dumps(build_card(args.out, args.card_zip, posters=not args.no_posters, probe=args.probe)))
+    else:
+        print(json.dumps(build(args.out, posters=not args.no_posters, probe=args.probe)))
     return 0
 
 

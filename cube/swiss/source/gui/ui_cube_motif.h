@@ -30,7 +30,9 @@ typedef struct {
  * turning vertically), the previous one on the left (above), and the
  * remaining one of a ring of four behind. A ring of five puts the face two
  * behind the one in front at the back and does not show the one two ahead:
- * turning either way then only moves glyphs on sides facing away. */
+ * turning either way then only moves glyphs on sides facing away.
+ * In Classic every face keeps its own side wherever the cube turns: Library
+ * front, Source top, Settings left, System right and Apps bottom. */
 void UICubeMotif_Build(const uiHomeState_t *home, uiCubeMotifBasis_t *out);
 void UICubeMotif_Reset(uiCubeMotifState_t *state);
 void UICubeMotif_Request(uiCubeMotifState_t *state,

@@ -1,0 +1,198 @@
+Indigo's change: with DOLPHIN_DABR set (and the MMU emulated), the data
+address breakpoint works as on a 750. libogc points the DABR at the lowest
+doubleword of the running thread's stack and switches it with the thread, so
+on a console a stack that overflows into its guard raises a DSI and libogc's
+exception screen comes up; Dolphin ignored the DABR, and the overrun went on
+corrupting memory. Every doubleword the DABR names gets a watch, which sends
+the accesses there to the slow path, and MMU::Memcheck raises the DSI (DAR
+the address, DSISR the DABR match and store bits), without making the access,
+when it is the DABR's current one: a read if DR is set, a write if DW, while
+MSR[DR] is as BT says. Each hit is logged ("DABR: write to ..."). GNU General
+Public License version 2 or later, as Dolphin.
+
+diff --git a/Source/Core/Core/PowerPC/BreakPoints.cpp b/Source/Core/Core/PowerPC/BreakPoints.cpp
+index e5dca73..1f5655b 100644
+--- a/Source/Core/Core/PowerPC/BreakPoints.cpp
++++ b/Source/Core/Core/PowerPC/BreakPoints.cpp
+@@ -4,6 +4,7 @@
+ #include "Core/PowerPC/BreakPoints.h"
+ 
+ #include <algorithm>
++#include <cstdlib>
+ #include <cstddef>
+ #include <optional>
+ #include <sstream>
+@@ -405,6 +406,35 @@ TMemCheck* MemChecks::GetMemCheck(u32 address, size_t size)
+   return &*iter;
+ }
+ 
++// With DOLPHIN_DABR set, every doubleword the DABR names gets a watch, so
++// accesses there take the slow path, where MMU::Memcheck raises the DSI a 750
++// would while it is the DABR's current one. libogc guards each thread's stack
++// this way and switches the DABR with the thread, so a guard stays watched once
++// named. MMU mode already compiles watch-capable code: no JIT cache clear,
++// which mtspr could not do safely anyway.
++// ponytail: one watch per guard ever named, never removed; a cap if a program
++// ever creates threads without end.
++void MemChecks::WatchDABR(u32 dabr)
++{
++  static const bool enabled = std::getenv("DOLPHIN_DABR") != nullptr;
++  if (!enabled || !m_system.IsMMUMode() || (dabr & 3) == 0)
++    return;
++  const u32 start = dabr & ~7u;
++  if (std::ranges::any_of(m_mem_checks, [start](const TMemCheck& mc) {
++        return mc.is_dabr && mc.start_address == start;
++      }))
++    return;
++  TMemCheck watch;
++  watch.start_address = start;
++  watch.end_address = start + 7;
++  watch.is_ranged = true;
++  watch.is_break_on_read = true;
++  watch.is_break_on_write = true;
++  watch.is_dabr = true;
++  m_mem_checks.push_back(std::move(watch));
++  m_system.GetMMU().DBATUpdated();
++}
++
+ bool MemChecks::OverlapsMemcheck(u32 address, u32 length) const
+ {
+   if (!HasAny())
+diff --git a/Source/Core/Core/PowerPC/BreakPoints.h b/Source/Core/Core/PowerPC/BreakPoints.h
+index da5e755..8c11a9e 100644
+--- a/Source/Core/Core/PowerPC/BreakPoints.h
++++ b/Source/Core/Core/PowerPC/BreakPoints.h
+@@ -42,6 +42,10 @@ struct TMemCheck
+ 
+   u32 num_hits = 0;
+ 
++  // A doubleword the data address breakpoint (DABR) has named: MMU::Memcheck
++  // raises a DSI when it is the DABR's current one, as a 750 does.
++  bool is_dabr = false;
++
+   std::optional<Expression> condition;
+ 
+   // returns whether to break
+@@ -127,6 +131,7 @@ public:
+   bool ToggleEnable(u32 address);
+ 
+   TMemCheck* GetMemCheck(u32 address, size_t size = 1);
++  void WatchDABR(u32 dabr);
+   bool OverlapsMemcheck(u32 address, u32 length) const;
+   DelayedMemCheckUpdate Remove(u32 address);
+ 
+diff --git a/Source/Core/Core/PowerPC/Interpreter/Interpreter_SystemRegisters.cpp b/Source/Core/Core/PowerPC/Interpreter/Interpreter_SystemRegisters.cpp
+index 8f30be8..6647d4a 100644
+--- a/Source/Core/Core/PowerPC/Interpreter/Interpreter_SystemRegisters.cpp
++++ b/Source/Core/Core/PowerPC/Interpreter/Interpreter_SystemRegisters.cpp
+@@ -342,6 +342,10 @@ void Interpreter::mtspr(Interpreter& interpreter, UGeckoInstruction inst)
+     ppc_state.spr[index] = old_value;
+     break;
+ 
++  case SPR_DABR:  // libogc guards each thread's stack with it (MemChecks::WatchDABR)
++    interpreter.m_system.GetPowerPC().GetMemChecks().WatchDABR(ppc_state.spr[SPR_DABR]);
++    break;
++
+   case SPR_HID0:  // HID0
+   {
+     UReg_HID0 old_hid0;
+diff --git a/Source/Core/Core/PowerPC/MMU.cpp b/Source/Core/Core/PowerPC/MMU.cpp
+index 07f8993..4e04cf7 100644
+--- a/Source/Core/Core/PowerPC/MMU.cpp
++++ b/Source/Core/Core/PowerPC/MMU.cpp
+@@ -586,26 +586,47 @@ std::optional<ReadResult<u32>> MMU::HostTryReadInstruction(const Core::CPUThread
+   return std::nullopt;
+ }
+ 
+-void MMU::Memcheck(u32 address, u64 var, bool write, size_t size)
++// A 750 raises a DSI, and does not make the access, when it touches the
++// doubleword its DABR names: a read if DR is set, a write if DW, while data
++// translation (MSR[DR]) is as BT says. Returns whether it did.
++bool MMU::DABRMatch(u32 address, bool write, size_t size)
++{
++  const u32 dabr = m_ppc_state.spr[SPR_DABR];
++  const u32 start = dabr & ~7u;
++  if (!(dabr & (write ? 2u : 1u)) || bool(dabr & 4) != bool(m_ppc_state.msr.DR) ||
++      address > start + 7 || address + size - 1 < start)
++    return false;
++  NOTICE_LOG_FMT(POWERPC, "DABR: {} {:#010x} at PC {:#010x}, the doubleword the DABR guards",
++                 write ? "write to" : "read of", address, m_ppc_state.pc);
++  m_ppc_state.spr[SPR_DAR] = address;
++  m_ppc_state.spr[SPR_DSISR] = (1U << 22) | (write ? 1U << 25 : 0);  // DABR match; a store
++  m_ppc_state.Exceptions |= EXCEPTION_DSI;
++  return true;
++}
++
++bool MMU::Memcheck(u32 address, u64 var, bool write, size_t size)
+ {
+   if (!m_power_pc.GetMemChecks().HasAny())
+-    return;
++    return false;
+ 
+   TMemCheck* mc = m_power_pc.GetMemChecks().GetMemCheck(address, size);
+   if (mc == nullptr)
+-    return;
++    return false;
++
++  if (mc->is_dabr)
++    return DABRMatch(address, write, size);
+ 
+   if (m_system.GetCPU().IsStepping())
+   {
+     // Disable when stepping so that resume works.
+-    return;
++    return false;
+   }
+ 
+   mc->num_hits++;
+ 
+   const bool pause = mc->Action(m_system, var, address, write, size, m_ppc_state.pc);
+   if (!pause)
+-    return;
++    return false;
+ 
+   m_system.GetCPU().Break();
+ 
+@@ -620,6 +641,7 @@ void MMU::Memcheck(u32 address, u64 var, bool write, size_t size)
+   // It doesn't matter if ReadFromHardware triggers its own DSI because
+   // we'll take it after resuming.
+   m_ppc_state.Exceptions |= EXCEPTION_DSI | EXCEPTION_FAKE_MEMCHECK_HIT;
++  return false;
+ }
+ 
+ template <std::unsigned_integral T>
+@@ -682,8 +704,8 @@ template std::optional<ReadResult<u64>> MMU::HostTryRead<u64>(const Core::CPUThr
+ template <std::unsigned_integral T>
+ void MMU::Write(const Common::MakeAtLeastU32<T> var, const u32 address)
+ {
+-  Memcheck(address, var, true, sizeof(T));
+-  WriteToHardware<XCheckTLBFlag::Write>(address, var, sizeof(T));
++  if (!Memcheck(address, var, true, sizeof(T)))
++    WriteToHardware<XCheckTLBFlag::Write>(address, var, sizeof(T));
+ }
+ template void MMU::Write<u8>(const u32 var, const u32 address);
+ template void MMU::Write<u16>(const u32 var, const u32 address);
+@@ -691,7 +713,8 @@ template void MMU::Write<u32>(const u32 var, const u32 address);
+ template <>
+ void MMU::Write<u64>(const u64 var, const u32 address)
+ {
+-  Memcheck(address, var, true, 8);
++  if (Memcheck(address, var, true, 8))
++    return;
+   WriteToHardware<XCheckTLBFlag::Write>(address, static_cast<u32>(var >> 32), 4);
+   WriteToHardware<XCheckTLBFlag::Write>(address + sizeof(u32), static_cast<u32>(var), 4);
+ }
+diff --git a/Source/Core/Core/PowerPC/MMU.h b/Source/Core/Core/PowerPC/MMU.h
+index 14196df..32ea0d5 100644
+--- a/Source/Core/Core/PowerPC/MMU.h
++++ b/Source/Core/Core/PowerPC/MMU.h
+@@ -333,7 +333,8 @@ private:
+   void GenerateDSIException(u32 effective_address, bool write);
+   void GenerateISIException(u32 effective_address);
+ 
+-  void Memcheck(u32 address, u64 var, bool write, size_t size);
++  bool Memcheck(u32 address, u64 var, bool write, size_t size);
++  bool DABRMatch(u32 address, bool write, size_t size);
+ 
+   void ClearPageTable();
+   void ReloadPageTable();

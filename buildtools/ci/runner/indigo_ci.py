@@ -79,13 +79,20 @@ class Pool:
     cpus: str
     memory: str
     repo: str = REPO  # whose runners the pool's slots register as
+    # CPU weight when the machine is short of it (docker --cpu-shares): an
+    # emulator's console runs in real time, a build only waits longer.
+    shares: int = 1024
 
 
 POOLS = {
     "build": Pool("build", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py"),
                   "indigo-build", "8", "6g"),
-    "emulator": Pool("emulator", "emulator.Dockerfile", ("entrypoint.sh",),
-                     "indigo-emulator", "8", "6g"),
+    "emulator": Pool("emulator", "emulator.Dockerfile",
+                     ("entrypoint.sh", "dolphin/0001-sd2sp2-adapter.patch", "dolphin/0002-flush-sd-writes.patch",
+                      "dolphin/0003-controller-no-response.patch", "dolphin/0004-sd-faults.patch",
+                      "dolphin/0005-emulated-clock.patch", "dolphin/0006-gcloader.patch",
+                      "dolphin/0007-dabr.patch"),
+                     "indigo-emulator", "8", "6g", shares=4096),
     # norvitech.com's checks (Python, Node, gitleaks) on the build image.
     "site": Pool("site", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py"),
                  "norvitech-site", "2", "2g", repo="spencercnorton/norvitech-site"),
@@ -328,7 +335,8 @@ class Supervisor:
                    "--label", LABEL, "--label", f"{LABEL}.pool={pool.name}",
                    "--label", f"{LABEL}.runner={name}", "--network", network, "--runtime", "runc",
                    "--user", RUNNER_UID, "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-                   "--pids-limit", "4096", "--cpus", pool.cpus, "--memory", pool.memory,
+                   "--pids-limit", "4096", "--cpus", pool.cpus, "--cpu-shares", str(pool.shares),
+                   "--memory", pool.memory,
                    "--memory-swap", pool.memory, "--shm-size", "1g", "--env-file", env.name,
                    self.images[pool.name])
         log(f"started {name} in {container_name(pool.name, slot)}")

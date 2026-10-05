@@ -42,24 +42,44 @@ static char *newlib_strtok_r(char *s, const char *delim, char **lasts)
 """
 
 ENTRY = r"""
-/* A global.ini and a game's settings file are the same text to the fuzzer. */
+static char *copy(const uint8_t *data, size_t size)
+{
+	char *text = malloc(size + 1);
+	if(text) {
+		memcpy(text, data, size);
+		text[size] = '\0';
+	}
+	return text;
+}
+
+/* A global.ini, a game's settings file and a legacy swiss.ini are the same
+ * text to the fuzzer. A save merges what Swiss writes over the file on the
+ * card: here the input's second half over its first. A loader's arguments
+ * are parsed like a global.ini but change only what they name: the second half
+ * again. */
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
-	char *global = malloc(size + 1), *game = malloc(size + 1);
+	char *global = copy(data, size), *game = copy(data, size), *legacy = copy(data, size);
+	char *card = copy(data, size / 2), *written = copy(data + size / 2, size - size / 2);
+	char *arguments = copy(data + size / 2, size - size / 2);
 	ConfigEntry entry;
 
-	if(global && game) {
-		memcpy(global, data, size);
-		global[size] = '\0';
-		memcpy(game, data, size);
-		game[size] = '\0';
+	if(global && game && legacy && card && written && arguments) {
 		set_defaults();
-		config_parse_global(global);
+		config_parse_global(global, true);
+		config_parse_global(arguments, false);
 		memset(&entry, 0, sizeof(entry));
 		config_parse_game(game, &entry);
+		free(config_merge_file(card, written, globalOldKeys));
+		free(config_merge_file(card, written, gameFileKeys));
+		config_parse_legacy(legacy, harness_progress);
 	}
 	free(global);
 	free(game);
+	free(legacy);
+	free(card);
+	free(written);
+	free(arguments);
 	return 0;
 }
 """

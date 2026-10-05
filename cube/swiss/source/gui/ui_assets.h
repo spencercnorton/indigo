@@ -15,7 +15,7 @@
  * section, in practice FrameBufferMagic's _videomutex, supplied by the
  * retained-event wrapper as lock/unlock callbacks at Init):
  *
- *   Menu-thread APIs -- Init, RequestWindow, Poll, Acquire, Release, and
+ *   Menu-thread APIs -- Init, RequestWindow, Poll and
  *   CancelForDeviceChange -- must be called WITHOUT the lock
  *   held; they enter the critical section internally for every metadata
  *   mutation and publication. Poll is split so its bounded device read,
@@ -28,9 +28,7 @@
  *   caller (the EV_GAMEFLOW render pass owns it); they never lock, so a
  *   non-recursive mutex is safe. Pointers they return (GXTexObj, or
  *   anything derived from the pack index) must not be retained after the
- *   caller releases the lock, except a texture pointer that the menu
- *   thread has pinned via Acquire, which stays valid until Release plus
- *   eviction, CancelForDeviceChange, or final disposal.
+ *   caller releases the lock.
  *
  *   Target Init requires both callbacks. A NULL sync (or an all-zero
  *   callback pair) degrades to no synchronization only in single-threaded
@@ -76,8 +74,6 @@
  *   case UI_POSTER_PROCEDURAL_CARD: drawTintedCard(); break;  // DominantColor
  *   case UI_POSTER_CORRUPT_OR_UNAVAILABLE: drawBnrCard(); break;
  *   }
- *   // entering Game Detail (menu thread, WITHOUT the lock):
- *   GXTexObj *kept = UIAssets_Acquire(h);   // Release(h) on the way back
  *   // before load_game()/device deinit (menu thread):
  *   UIAssets_CancelForDeviceChange();       // every handle now stale
  *   // final teardown, after the video thread has stopped:
@@ -115,10 +111,11 @@ typedef struct {
 
 #include <stdbool.h>
 
-/* The carousels' window: the selected card and three either side. */
-#define UI_ASSETS_WINDOW 7
+/* The carousels' window: the selected card and four either side. */
+#define UI_ASSETS_WINDOW 9
 /* Poster slots, enough for the Grid layout's window of five rows of five.
- * A smaller window keeps only its own posters: the others are evicted. */
+ * Under a carousel's nine the rest keep the posters it scrolled past, so
+ * scrolling back reads nothing. */
 #define UI_ASSETS_SLOTS 25
 #define UI_ASSETS_CANVAS_W 256
 #define UI_ASSETS_CANVAS_H 256
@@ -202,8 +199,11 @@ bool UIAssets_Ready(void);
 
 /* Menu thread, lock NOT held. ids: count entries of at least 7 bytes each
  * (6-char ID, NUL-terminated); count <= UI_ASSETS_SLOTS; selected indexes
- * into ids. Slots already holding a requested poster are kept; others are
- * evicted unless pinned. Loading proceeds selected-outward. */
+ * into ids. Slots already holding a requested poster are kept. A poster
+ * loaded (or failed) before keeps its slot after it leaves the window,
+ * until a requested poster needs the slot: the one that left longest ago
+ * goes first. A poster still waiting for its read is dropped. Loading
+ * proceeds selected-outward. */
 void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected);
 
 /* Menu thread, lock NOT held. At most one bounded read + CRC per call,
@@ -226,18 +226,15 @@ uiPosterResult_t UIAssets_Query(const char *gameId, size_t gameIdLen,
                                 bool bnrAvailable, uiPosterHandle_t *out);
 
 /* Video thread, lock ALREADY HELD; never locks. Per-frame borrow: the
- * pointer is valid only until the caller releases the lock (unless the
- * menu thread holds a pin on the same slot). NULL while loading, after
- * eviction/cancel/final disposal, or on a stale generation. */
+ * pointer is valid only until the caller releases the lock. NULL while
+ * loading, after eviction/cancel/final disposal, or on a stale generation. */
 GXTexObj *UIAssets_Peek(uiPosterHandle_t handle);
 
-/* Menu thread, lock NOT held (locks internally; do NOT call from inside
- * the video pass -- the mutex is not recursive). Pins the poster so it
- * survives window shifts (Library -> Detail -> Launch). Returns the
- * texture or NULL if stale/not ready. Pair with Release. Pinned slots
- * still go stale on CancelForDeviceChange/final disposal. */
-GXTexObj *UIAssets_Acquire(uiPosterHandle_t handle);
-void UIAssets_Release(uiPosterHandle_t handle);
+/* Video thread, lock ALREADY HELD; never locks. How many milliseconds ago
+ * the texture Peek returns for handle was published, from the clock Init
+ * was given; 0 when Peek returns NULL. A poster read while it was off
+ * screen is old by the time it is drawn. */
+u32 UIAssets_PeekAgeMs(uiPosterHandle_t handle);
 
 /* Video thread, lock ALREADY HELD; never locks. Pack-declared dominant
  * color for procedural cards. gameIdLen as for Query. False when the ID
@@ -246,7 +243,7 @@ bool UIAssets_DominantColor(const char *gameId, size_t gameIdLen,
                             u8 *r, u8 *g, u8 *b);
 
 /* Menu thread, lock NOT held. Unpublishes the index and invalidates every
- * slot and handle (pinned included) inside the critical section, then
+ * slot and handle inside the critical section, then
  * frees the index outside it -- no locked reader can ever observe freed
  * memory. Poster texels stay resident so a frame already in flight
  * samples stale-but-intact data. Call before the device is deinitialized;
@@ -286,6 +283,7 @@ bool UIStills_Poll(void);
 uiPosterResult_t UIStills_Query(const char *gameId, size_t gameIdLen,
                                 bool bnrAvailable, uiPosterHandle_t *out);
 GXTexObj *UIStills_Peek(uiPosterHandle_t handle);
+u32 UIStills_PeekAgeMs(uiPosterHandle_t handle);
 bool UIStills_DominantColor(const char *gameId, size_t gameIdLen,
                             u8 *r, u8 *g, u8 *b);
 void UIStills_CancelForDeviceChange(void);
