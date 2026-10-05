@@ -100,12 +100,21 @@ aligned source and date rows. Unreadable headers mark the size as estimated.
 
 - **Size** shows blocks and KiB. One block is 8 KiB of save data; the GCI
   wrapper and a RAW image's system blocks aren't part of that size.
-- **Created: Not recorded** is explicit because GameCube saves don't store
-  a separate creation date.
 - **Last updated** shows the date recorded in the save, or **Unknown** when
   it has no usable date. It uses the console's recorded clock without
   assuming a time zone. The SD file's dates aren't substituted for it.
 - **Source** names the physical slot, SD save or read-only card image.
+- **Save icon** explains its preview: **Animated** uses the game's stored
+  frames, **Static** has one picture, and **None stored** means the save
+  supplies no icon. **Paused: UI Motion Off** means an animated icon is
+  held still by [UI Motion](personalize.md#motion); choose Full or Reduced
+  to let it play. **Preview unavailable** means Indigo could not load or
+  safely decode its artwork; **Unavailable** means its metadata could not
+  be read.
+
+GameCube saves record one last-update date. The format has no separate
+creation date. Some games intentionally use a static icon or store no icon
+at all; their cubes show the original artwork.
 
 Press **B Back** to return without changing anything, or **A Actions** to
 open Move, Copy and Erase. A dimmed action always explains why it can't be

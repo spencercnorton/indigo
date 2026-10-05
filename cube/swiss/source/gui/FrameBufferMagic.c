@@ -410,6 +410,7 @@ typedef struct {
 	float kibScale;
 	float sourceScale;
 	float updatedScale;
+	float iconScale;
 } drawSaveDetailsEvent_t;
 
 _Static_assert(sizeof(uiGameflowCardSnapshot_t) % 32u == 0u,
@@ -1439,10 +1440,11 @@ static void _DrawSaveDetails(uiDrawObj_t *evt)
 	drawStringMedium(104, 257, "Source", 0.54f, ALIGN_LEFT, secondary);
 	drawStringMedium(250, 257, data->snapshot.source, data->sourceScale,
 		ALIGN_LEFT, primary);
-	drawStringMedium(104, 287, "Created", 0.54f, ALIGN_LEFT, secondary);
-	drawStringMedium(250, 287, "Not recorded", 0.60f, ALIGN_LEFT, primary);
-	drawStringMedium(104, 317, "Last updated", 0.54f, ALIGN_LEFT, secondary);
-	drawStringMedium(250, 317, data->snapshot.updated, data->updatedScale,
+	drawStringMedium(104, 287, "Last updated", 0.54f, ALIGN_LEFT, secondary);
+	drawStringMedium(250, 287, data->snapshot.updated, data->updatedScale,
+		ALIGN_LEFT, primary);
+	drawStringMedium(104, 317, "Save icon", 0.54f, ALIGN_LEFT, secondary);
+	drawStringMedium(250, 317, data->snapshot.icon, data->iconScale,
 		ALIGN_LEFT, primary);
 	_DrawHintText(216, 373, "A  Actions", 0.60f, ALIGN_CENTER, primary);
 	_DrawHintText(412, 373, "B  Back", 0.60f, ALIGN_CENTER, primary);
@@ -1466,6 +1468,9 @@ static bool _PrepareSaveDetails(drawSaveDetailsEvent_t *data,
 		GetTextSizeInPixels, NULL);
 	data->updatedScale = UIHomeText_CopyFitted(data->snapshot.updated,
 		sizeof(data->snapshot.updated), snapshot->updated, 286, 0.60f,
+		GetTextSizeInPixels, NULL);
+	data->iconScale = UIHomeText_CopyFitted(data->snapshot.icon,
+		sizeof(data->snapshot.icon), snapshot->icon, 286, 0.60f,
 		GetTextSizeInPixels, NULL);
 	snprintf(data->blocks, sizeof(data->blocks), "%u", (unsigned)snapshot->blocks);
 	snprintf(data->kib, sizeof(data->kib), "%u", (unsigned)(snapshot->blocks * 8u));

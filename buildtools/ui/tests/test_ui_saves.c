@@ -140,6 +140,33 @@ static void expectSteps(const uiSavesArt_t *art, const char *frames,
     }
 }
 
+static void testIconDescription(void)
+{
+    uint8_t entry[UI_SAVES_ENTRY_SIZE] = {0};
+    const unsigned formats[3] = {2, 1, 3}, speeds[3] = {1, 2, 3};
+    const unsigned gap[3] = {2, 0, 0}, zeroSpeed[3] = {0, 2, 3};
+    uiSavesArt_t art;
+
+    assert(!strcmp(UISaves_IconDescription(NULL, 8192u, false), "Unavailable"));
+    setArt(entry, 64u, 0u, formats, speeds, 1u, UINT32_MAX);
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, false), "Static"));
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, true), "Static"));
+    setArt(entry, 64u, 0u, formats, speeds, 3u, UINT32_MAX);
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, false), "Animated"));
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, true), "Paused: UI Motion Off"));
+    assert(!strcmp(UISaves_IconDescription(entry, 1024u, false), "Preview unavailable"));
+    setArt(entry, UINT32_MAX, 0u, formats, speeds, 3u, UINT32_MAX);
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, false), "None stored"));
+    setArt(entry, 64u, 0u, formats, zeroSpeed, 3u, UINT32_MAX);
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, false), "None stored"));
+    setArt(entry, 64u, 0u, gap, speeds, 3u, UINT32_MAX);
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, false), "Animated"));
+    assert(UISaves_ArtLayout(entry, 8192u, &art));
+    assert(UISaves_ArtStep(&art, 0u) == 0 && UISaves_ArtStep(&art, 1u) == -1);
+    entry[0x31] = 0u;
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, false), "None stored"));
+}
+
 /* Decodes a picture the slow way, written apart from ui_saves.c: walk the
  * source in its own tile order (CI8 8x4, RGB5A3 4x4) into rows of 16-bit
  * texels, as Dolphin's DecodeCI8Image and Decode5A3Image do. */
@@ -716,6 +743,7 @@ int main(void)
 
     testStorage();
     testArtLayout();
+    testIconDescription();
     testPool();
     testVerdict();
     testCopyRoom();
