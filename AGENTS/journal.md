@@ -32,6 +32,16 @@ integrated protected checks and console acceptance remain required.
 
 # Indigo development journal
 
+## 2026-10-05 — Read native folder color words at their own size
+
+Fresh Dolphin proof showed that Right correctly changed Indigo to Azure,
+but the folder route rejected Azure: its 50 bright pixels are below the
+Library-title reader's 60-pixel minimum. Use a scoped bounded color-word
+reader and stable word comparisons for selection, revisit, cancel and
+reset. Other routes retain their existing title thresholds. Native Indigo
+and Azure text crops reproduce the old rejection; the new regression also
+rejects unchanged labels and a single changed frame between stale samples.
+
 ## 2026-10-05 — Give Library folders a path and persistent color
 
 Y on a selected folder opens a retained identity page with the full

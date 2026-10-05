@@ -538,6 +538,44 @@ class Screen(unittest.TestCase):
         from PIL import Image
         return np.asarray(Image.open(Path(__file__).parent / "fixtures" / name).convert("RGB"))
 
+    def test_native_short_folder_colors_and_stale_frames(self):
+        from PIL import Image
+        fixture = Path(__file__).parent / "fixtures"
+        indigo, azure = [np.asarray(Image.open(fixture / f"folder-color-{name}.png")
+                                   .convert("RGB")).max(axis=2) >= run.TEXT_LEVEL
+                         for name in ("indigo", "azure")]
+        self.assertEqual((int(indigo.sum()), int(azure.sum())), (73, 50))
+        # The original generic title waiter rejected this real Azure word.
+        self.assertTrue(run.has_label(indigo))
+        self.assertFalse(run.has_label(azure))
+        self.assertTrue(run.has_folder_color_label(azure))
+        self.assertFalse(run.same_text(indigo, azure))
+        self.assertFalse(run.has_folder_color_label(np.zeros_like(azure)))
+        self.assertFalse(run.has_folder_color_label(np.ones_like(azure)))
+
+        class Samples:
+            def __init__(self, *unused):
+                self.remaining = 6
+
+            def expired(self):
+                self.remaining -= 1
+                return self.remaining < 0
+
+        def wait(sequence, **match):
+            route = run.Route.__new__(run.Route)
+            route.emulator = mock.Mock()
+            frames = iter(sequence)
+            route.gray = lambda: None
+            with mock.patch.object(run, "Deadline", Samples), \
+                 mock.patch.object(run.time, "sleep"), \
+                 mock.patch.object(run, "text_mask", side_effect=lambda *unused: next(frames, sequence[-1])):
+                return route.folder_color(**match)
+
+        self.assertIsNone(wait([indigo] * 6, unlike=indigo))
+        self.assertIsNone(wait([indigo, azure, indigo, indigo, indigo, indigo], unlike=indigo))
+        self.assertTrue(np.array_equal(wait([indigo, azure, indigo, azure, azure], unlike=indigo), azure))
+        self.assertTrue(np.array_equal(wait([azure, azure], like=azure), azure))
+
     def test_actual_legacy_folder_chrome_and_its_fades(self):
         legacy = self.folder_frame("folder-legacy-browser.png")
         for strength in (1.0, 0.75, 0.5, 0.25, 0.1):

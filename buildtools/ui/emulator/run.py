@@ -527,6 +527,22 @@ def has_label(mask: np.ndarray) -> bool:
     return columns.size > 0 and 20 <= columns[-1] - columns[0] <= mask.shape[1] - 4
 
 
+def has_folder_color_label(mask: np.ndarray) -> bool:
+    """The folder page's small color value, within its dedicated text box.
+
+    Native Azure has 50 bright pixels; the Library-title minimum is 60.
+    Short names retain their bounded word span and exclude a filled panel.
+    """
+    lit = int(mask.sum())
+    if not 30 <= lit <= mask.size // 3:
+        return False
+    columns = np.flatnonzero(mask.any(axis=0))
+    rows = np.flatnonzero(mask.any(axis=1))
+    return (columns.size > 0 and rows.size > 0 and
+            16 <= columns[-1] - columns[0] <= mask.shape[1] - 4 and
+            rows[-1] - rows[0] >= 2)
+
+
 def has_save_number(mask: np.ndarray) -> bool:
     """A value-only metric may be a thin single digit, without its caption.
 
@@ -1337,6 +1353,17 @@ class Route:
                    not proof["bad_frames"], **proof)
         return label
 
+    def folder_color(self, like: np.ndarray | None = None,
+                     unlike: np.ndarray | None = None) -> np.ndarray | None:
+        """Steady color words, with the folder value's own small-text bounds.
+        A changed value must differ from the preceding words; it cannot pass
+        on a stale frame. Other screens retain their existing title bounds.
+        """
+        return self.text_until(FOLDER_COLOR_BOX,
+                               lambda mask: has_folder_color_label(mask)
+                               and (like is None or same_text(mask, like))
+                               and (unlike is None or not same_text(mask, unlike)))
+
     def folder_identity(self, prefix: str, library_box, selected: np.ndarray) -> None:
         """Y's real path/color page: save, revisit, cancel and reset in each layout.
 
@@ -1351,12 +1378,12 @@ class Route:
         path, _ = self.settled_label(box=FOLDER_PATH_BOX)
         self.check("the folder page shows a stable full path", path is not None, layout=prefix)
         self.press("Y", FOLDER_PRESS_SECONDS)  # reset preview to the known default
-        default, _ = self.settled_label(box=FOLDER_COLOR_BOX)
+        default = self.folder_color()
         self.press("RIGHT", FOLDER_PRESS_SECONDS)
-        indigo, _ = self.settled_label(box=FOLDER_COLOR_BOX, unlike=default)
+        indigo = self.folder_color(unlike=default)
         self.check("Right selects a named folder color", indigo is not None, layout=prefix)
         self.press("RIGHT", FOLDER_PRESS_SECONDS)
-        azure, _ = self.settled_label(box=FOLDER_COLOR_BOX, unlike=indigo)
+        azure = self.folder_color(unlike=indigo)
         self.check("Right advances the folder color", azure is not None, layout=prefix)
         self.shot(f"{prefix}-folder-color-azure", self.last_rgb)
         returned = self.folder_step("A", f"{prefix}-folder-color-save", library_box, like=selected)
@@ -1372,19 +1399,19 @@ class Route:
         self.check("the complete path remains the same after saving",
                    self.settled_label(box=FOLDER_PATH_BOX, like=path)[0] is not None, layout=prefix)
         self.check("the saved color remains selected",
-                   self.settled_label(box=FOLDER_COLOR_BOX, like=azure)[0] is not None, layout=prefix)
+                   self.folder_color(like=azure) is not None, layout=prefix)
         self.press("RIGHT", FOLDER_PRESS_SECONDS)
-        changed, _ = self.settled_label(box=FOLDER_COLOR_BOX, unlike=azure)
+        changed = self.folder_color(unlike=azure)
         self.check("a new color can be previewed", changed is not None, layout=prefix)
         self.folder_step("B", f"{prefix}-folder-color-cancel", library_box, like=selected)
         before = text_mask(self.gray(), FOLDER_PAGE_TITLE_BOX)
         self.folder_step("Y", f"{prefix}-folder-color-cancel-reopen", FOLDER_PAGE_TITLE_BOX,
                          like=title, unlike=before)
         self.check("Cancel keeps the saved color",
-                   self.settled_label(box=FOLDER_COLOR_BOX, like=azure)[0] is not None, layout=prefix)
+                   self.folder_color(like=azure) is not None, layout=prefix)
         self.press("Y", FOLDER_PRESS_SECONDS)
         self.check("Reset selects the original Default card appearance",
-                   self.settled_label(box=FOLDER_COLOR_BOX, like=default, unlike=azure)[0] is not None,
+                   self.folder_color(like=default, unlike=azure) is not None,
                    layout=prefix)
         self.shot(f"{prefix}-folder-color-reset", self.last_rgb)
         self.folder_step("A", f"{prefix}-folder-color-reset-save", library_box, like=selected)
