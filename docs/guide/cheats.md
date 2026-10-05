@@ -17,7 +17,11 @@ Indigo reads one file per game, `/swiss/cheats/<game ID>.txt`, such as
 get them is the ready-made pack, which covers every region:
 
 - [Download the cheat pack](https://indigo.norvitech.com/indigo-cheats.zip)
-  and unzip it into the root of the card.
+  and unzip it on your computer. Copy the files in its `swiss/cheats`
+  folder into the card's `swiss/cheats` folder; make the folder if it isn't
+  there. Swiss hides its `swiss` folder, so first show hidden folders:
+  press Shift-Command-Period in a Mac's Finder, or turn on **Hidden items**
+  under **View** in Windows File Explorer.
 
 Cheats that the pack's checks show would break Indigo are switched off in
 the file and marked; the

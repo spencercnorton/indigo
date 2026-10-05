@@ -34,25 +34,20 @@ cat <<NOTES
 
 ## Install
 
-Download **\`Indigo-$tag.zip\`** from Assets below, rather than GitHub's Source code ZIP. Back up your working card and **extract the ZIP on your computer**. The **card root** is the first level you see when you open it; copy files from inside the extracted folder, rather than the ZIP or its enclosing Indigo folder.
+Follow the **[install guide](https://norvitech.com/indigo/guide/install/)**: pick what starts your GameCube, then four steps. In short: download **\`Indigo-$tag.zip\`** from Assets below (not the Source code ZIP), unzip it on your computer, back up the card's \`swiss\` folder (Swiss hides it) and any \`ipl.dol\` or \`boot.dol\` you replace, then copy two files onto the card.
 
-| Your current setup | Download → card destination | Launch |
+| What starts your GameCube? | Copy \`ipl.dol\` to | Indigo starts |
 | --- | --- | --- |
-| PicoBoot / PicoLoader using gekkoboot | \`ipl.dol\` → \`/ipl.dol\` on its SD adapter | Power on normally |
-| FlippyDrive | \`ipl.dol\` → \`/boot.dol\` on FlippyDrive's microSD | Normal boot mode |
-| GC Loader, Swiss in flash, cubeboot, or unsure | \`ipl.dol\` → \`/apps/indigo.dol\` | Start Swiss, browse to Apps, launch \`indigo.dol\` |
+| GC Loader | \`apps/indigo.dol\` (make \`apps\` if needed) | From Swiss: open \`apps\`, then \`indigo.dol\` |
+| PicoBoot or PicoLoader | \`ipl.dol\` at the top of the card, replacing the old one | When you switch on |
+| FlippyDrive | \`boot.dol\` at the top of its microSD card | When you switch on |
+| Something else, or not sure | \`apps/indigo.dol\` (make \`apps\` if needed) | From Swiss: open \`apps\`, then \`indigo.dol\` |
 
-Identify and back up your existing boot program before replacing it: an \`ipl.dol\` is not always Swiss. With gekkoboot, preserve stock Swiss as \`z.dol\` only if that shortcut is unused; keep existing shortcuts. The Launch from Swiss route keeps your original boot files and needs no firmware change. The Indigo ZIP contains no \`boot.iso\`; keep GC Loader's current boot image.
+The second file is \`swiss/patches/apploader.img\`: copy it into the card's \`swiss/patches\` folder (make the folders if needed), replacing the old one, so In-Game Reset set to Apploader returns to Indigo. Any setup can use \`apps/indigo.dol\` and keep starting as it does today. Some PicoBoot and PicoLoader chips have Swiss built in and never read \`ipl.dol\`: the guide shows how to check.
 
-**Merge the download's \`swiss\` files into your existing folder.** On a Mac, hold Option while dragging and choose **Merge**, never Replace for the whole folder. If Merge is unavailable, copy the individual files into the matching subfolders. Keep settings, posters, cheats, saves and games. The new \`swiss/patches/apploader.img\` makes Apploader In-Game Reset return to Indigo, including for games started in stock Swiss.
+**Updating:** back up the card's \`swiss\` folder, rename the new \`ipl.dol\` to the name of the Indigo file you start now (\`ipl.dol\`, \`boot.dol\` or \`indigo.dol\`) and copy it over that file. Then copy the new \`swiss/patches/apploader.img\` over the old one.
 
-Safely eject, launch by your route, and check **System › System Information › About Indigo**. Choose the source holding your games; the Library looks for \`/games\` there by default. SD2SP2 and SD Gecko are adapters, not boot methods, and your boot card and game-storage card may differ.
-
-**Updating Indigo 1.x or 2.x:** replace the executable you actually launch (\`/ipl.dol\`, \`/boot.dol\` or \`/apps/indigo.dol\`), renaming the new copy as needed, and merge the shared files again. Keep your recovery copy.
-
-The [step-by-step install guide](https://norvitech.com/indigo/guide/install/) has exact card trees, first-launch checks, upgrades and recovery; the [guide included with this release]($repo/blob/$tag/docs/guide/install.md) is also available on GitHub.
-
-**Posters and cheats** (optional; unzip one and drag its \`swiss\` folder onto the card the same way): [Posters](https://indigo.norvitech.com/indigo-posters-all.zip) (every region, with Spotlight's stills and descriptions) · [Cheats](https://indigo.norvitech.com/indigo-cheats.zip)
+**Posters and cheats** (optional; unzip one and copy the files in its \`swiss/ui\` or \`swiss/cheats\` folder into the card's folder of the same name, making it if needed): [Posters](https://indigo.norvitech.com/indigo-posters-all.zip) (every region, with Spotlight's stills and descriptions) · [Cheats](https://indigo.norvitech.com/indigo-cheats.zip)
 
 **Verify:** \`SHA256SUMS.txt\` lists the zip's SHA-256, and the zip carries a build provenance attestation: \`gh attestation verify Indigo-$tag.zip --repo spencercnorton/indigo\`.
 NOTES

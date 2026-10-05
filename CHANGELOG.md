@@ -4,18 +4,23 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
-## v2.3.1 — Clearer installation instructions
+## v2.3.1 — Simpler installation instructions
 
-- The install guide starts with your boot method and card, then shows the exact
-  download-to-card destination and a complete card layout. PicoBoot/PicoLoader,
-  FlippyDrive and launching from Swiss have separate instructions.
-- The README, release notes and ZIP instructions explain extraction, folder
-  merging, preserving existing boot files, first launch, upgrades and recovery.
-- The README opens with three steps and an online loader chooser. Its clickable
-  card diagram supplies file locations and limits; the full guide remains
-  available as a reference.
-- A prominent **Install Guide** link appears above the README screenshots,
-  leading directly to the interactive loader, launch-method and SD-card setup.
+- The install guide asks what starts your GameCube, then gives four steps for
+  that setup: download, back up, copy two files, start Indigo. Each setup,
+  GC Loader included, shows a picture of the card afterwards. PicoBoot,
+  PicoLoader and FlippyDrive can start Indigo at power-on or from Swiss.
+- Installing copies two files, `ipl.dol` and `swiss/patches/apploader.img`,
+  instead of merging the whole `swiss` folder. When the card already has an
+  `apploader.img`, a Mac offers only Replace for the folder, and Replace
+  deletes the settings and saves inside it.
+- PicoBoot and PicoLoader owners can check whether their chip starts the
+  card's `ipl.dol` or has Swiss built in.
+- The README, release notes and the ZIP's readme give the same steps, and an
+  **Install Guide** link sits above the README screenshots.
+- The guides say how to show Swiss's hidden `swiss` folder on a computer, and
+  the poster and cheat packs are copied file by file into `swiss/ui` and
+  `swiss/cheats`, never as a whole `swiss` folder.
 
 ## v2.3.0 — Memory Cards, game folders and smoother motion
 
