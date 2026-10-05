@@ -552,6 +552,12 @@ class Screen(unittest.TestCase):
         self.assertFalse(run.same_text(indigo, azure))
         self.assertFalse(run.has_folder_color_label(np.zeros_like(azure)))
         self.assertFalse(run.has_folder_color_label(np.ones_like(azure)))
+        pixel = np.zeros_like(azure)
+        pixel[8, 20] = True
+        self.assertFalse(run.has_folder_color_label(pixel))
+        bar = np.zeros_like(azure)
+        bar[8:11, 10:35] = True
+        self.assertFalse(run.has_folder_color_label(bar))
 
         class Samples:
             def __init__(self, *unused):

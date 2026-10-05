@@ -538,9 +538,11 @@ def has_folder_color_label(mask: np.ndarray) -> bool:
         return False
     columns = np.flatnonzero(mask.any(axis=0))
     rows = np.flatnonzero(mask.any(axis=1))
-    return (columns.size > 0 and rows.size > 0 and
-            16 <= columns[-1] - columns[0] <= mask.shape[1] - 4 and
-            rows[-1] - rows[0] >= 2)
+    if columns.size == 0 or rows.size == 0:
+        return False
+    word_area = (columns[-1] - columns[0] + 1) * (rows[-1] - rows[0] + 1)
+    return (16 <= columns[-1] - columns[0] <= mask.shape[1] - 4 and
+            rows[-1] - rows[0] >= 2 and lit * 10 < word_area * 9)
 
 
 def has_save_number(mask: np.ndarray) -> bool:
