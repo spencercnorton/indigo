@@ -32,6 +32,15 @@ integrated protected checks and console acceptance remain required.
 
 # Indigo development journal
 
+## 2026-10-05 — Bound the folder settings sanitizer regression
+
+The Linux GCC contracts lane reached the new folder settings fault test but
+stalled before main: its PIE sanitizer executable recursively emitted
+AddressSanitizer DEADLYSIGNAL on a host with high ASLR entropy. Match every
+other sanitizer harness with Linux non-PIE flags, and bound compilation and
+execution so a startup failure cannot consume the whole job timeout. The
+production folder save code and UI are unchanged.
+
 ## 2026-10-05 — Read native folder color words at their own size
 
 Fresh Dolphin proof showed that Right correctly changed Indigo to Azure,

@@ -135,5 +135,9 @@ with tempfile.TemporaryDirectory() as temporary:
     command = shlex.split(os.environ.get("CC", "cc")) + ["-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function"]
     if "--sanitize" in __import__("sys").argv:
         command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
-    subprocess.run(command + [str(source), "-o", str(binary)], check=True)
-    subprocess.run([str(binary)], check=True)
+        # Match the host suite: high-ASLR Linux can place a PIE binary in
+        # ASan's shadow map and recursively fault before main (see Makefile).
+        if os.uname().sysname == "Linux":
+            command += ["-fno-pie", "-no-pie"]
+    subprocess.run(command + [str(source), "-o", str(binary)], check=True, timeout=60)
+    subprocess.run([str(binary)], check=True, timeout=15)
