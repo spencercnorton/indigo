@@ -1,5 +1,16 @@
 # Indigo development journal
 
+## 2026-10-04 — Prepare the validated candidate for v2.3.0
+
+The maintainer tested the final release candidate on a GameCube and approved
+promotion to stable. Named the v2.3.0 changelog and corrected the download
+README to describe empty game folders with Library Folders enabled.
+The accepted release candidate's product source remains unchanged.
+
+The stable release is rebuilt from its tagged main commit through the normal
+release workflow. Required promotion checks and signed package provenance
+remain release gates.
+
 ## 2026-10-04 — Coordinate the remaining beta compatibility branches
 
 Memory Cards and motion are merged into beta. Metadata filtering and manual
