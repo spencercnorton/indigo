@@ -2,6 +2,26 @@
 
 #include <string.h>
 
+uiFolderAction_t UIFolder_Input(uiFolderSnapshot_t *snapshot, uint32_t input)
+{
+	if(snapshot == NULL) return UI_FOLDER_ACTION_NONE;
+	if(input & UI_FOLDER_INPUT_CANCEL) return UI_FOLDER_ACTION_CANCEL;
+	if(input & UI_FOLDER_INPUT_SAVE) return UI_FOLDER_ACTION_SAVE;
+	if(input & UI_FOLDER_INPUT_RESET) snapshot->color = 0u;
+	else if(input & UI_FOLDER_INPUT_LEFT) snapshot->color =
+		(uint8_t)((snapshot->color + UI_FOLDER_COLOR_COUNT - 1u) % UI_FOLDER_COLOR_COUNT);
+	else if(input & UI_FOLDER_INPUT_RIGHT) snapshot->color =
+		(uint8_t)((snapshot->color + 1u) % UI_FOLDER_COLOR_COUNT);
+	else if(input & UI_FOLDER_INPUT_UP) {
+		if(snapshot->firstLine > 0u) --snapshot->firstLine;
+	}
+	else if(input & UI_FOLDER_INPUT_DOWN) {
+		if(snapshot->firstLine + UI_FOLDER_VISIBLE_LINES < snapshot->lineCount)
+			++snapshot->firstLine;
+	}
+	return UI_FOLDER_ACTION_NONE;
+}
+
 static size_t pathLength(const char *path)
 {
 	size_t length = 0u;

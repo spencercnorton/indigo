@@ -213,8 +213,14 @@ first_nav = carousel.index("browserButtons & BUTTON_LEFT", nav_guard)
 activate_branch = carousel.index("if((browserButtons & BUTTON_A) || openSettings)",
                                  first_nav)
 assert declaration < sample < activation < nav_guard < first_nav < activate_branch
-# Y, like A, owns its frame: no navigation runs while either is down.
-assert "(browserButtons & (BUTTON_A | PAD_BUTTON_Y))" in carousel[activation:nav_guard]
+# A and an eligible game's Y Settings own their frame. Y on an ordinary
+# folder has no retained action and must not activate a folder page.
+settings = carousel.index("bool openSettings", sample)
+assert sample < settings < activation
+assert "UIGameflowLibrary_UsesRetainedDetail(" in carousel[settings:activation]
+assert "(browserButtons & PAD_BUTTON_Y)" in carousel[settings:activation]
+assert "((browserButtons & BUTTON_A) || openSettings)" in carousel[activation:nav_guard]
+assert "(BUTTON_A | PAD_BUTTON_Y)" not in carousel[activation:nav_guard]
 
 cheats_renderer = extract_function(framebuffer_source, "static void _DrawCheats")
 scroll_block = extract_function(

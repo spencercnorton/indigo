@@ -63,3 +63,11 @@ brightness threshold; Azure has 50, below the ordinary Library-title minimum
 of 60. The crops preserve the original pixel values and reproduce that
 rejection without launching Dolphin. Their test also exercises stable changed
 words, rejects unchanged values, and rejects a single changed frame.
+
+`memory-folder-path-root.png` and `memory-folder-path-open.png` are the
+actual widescreen header path values before and after opening the synthetic
+Backups folder, captured from build `738bb96`. They retain the nearest-neighbor
+authored-coordinate detection pixels. The native captures showed that reading
+the whole header lets its unchanged large SD glyph hide the path change.
+`memory-folder-header-root.png` and `memory-folder-header-open.png` preserve
+those actual wider header crops to reproduce the previous rejection.

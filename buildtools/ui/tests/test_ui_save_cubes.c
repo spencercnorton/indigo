@@ -1458,6 +1458,20 @@ static void testOverlays(void)
 
 int main(void)
 {
+	uiSaveCube_t identity = cubeAt(320, 224, 19, UI_SAVE_CUBES_KIND_FOLDER);
+	uint8_t rgba[4];
+	identity.folderColor = 2u;
+	assert(UISaveCubes_FolderColour(&identity, UI_SAVE_CUBES_ROLE_RIM_LEFT, rgba));
+	assert(rgba[0] == 68u && rgba[1] == 170u && rgba[2] == 230u && rgba[3] == 255u);
+	assert(UISaveCubes_FolderColour(&identity, UI_SAVE_CUBES_ROLE_GLYPH, rgba));
+	assert(!UISaveCubes_FolderColour(&identity, UI_SAVE_CUBES_ROLE_BODY, rgba));
+	identity.kind = UI_SAVE_CUBES_KIND_SAVE;
+	assert(!UISaveCubes_FolderColour(&identity, UI_SAVE_CUBES_ROLE_RIM_LEFT, rgba));
+	identity.kind = UI_SAVE_CUBES_KIND_FOLDER;
+	identity.folderColor = 0u;
+	assert(!UISaveCubes_FolderColour(&identity, UI_SAVE_CUBES_ROLE_RIM_LEFT, rgba));
+	identity.folderColor = 255u;
+	assert(!UISaveCubes_FolderColour(&identity, UI_SAVE_CUBES_ROLE_RIM_LEFT, rgba));
 	testFaces();
 	testCoverage();
 	testFootprints();

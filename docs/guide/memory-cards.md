@@ -65,8 +65,32 @@ folder. A on a folder opens it, and B, with the cursor on that stack, goes
 back up, as far as the folder it opened on.
 
 <p align="center">
-  <img alt="Both columns open on SD when no physical cards are inserted. L Choose storage and R Choose storage are visible above them; Demo Card.raw appears as a folder cube in the Save Folder." src="images/memory-cards-sd.png" width="640">
+  <img alt="Both columns open on SD. The Backups folder cube has its saved Azure rim and folder symbol in both columns; Y Folder is visible beside the navigation controls." src="images/memory-cards-sd.png" width="640">
 </p>
+
+### Identify and color a folder
+
+Highlight a small **folder cube** or **card-image cube** and press **Y Folder**.
+The page shows its complete path, including the source device prefix. A folder
+also shows the number of direct save files, card images and subfolders, with
+up to two readable save names. A card image shows its save count and names;
+an unreadable image explains why its contents are unavailable. Long paths
+wrap onto several lines; **Up** and **Down** scroll through every part.
+
+**Left** and **Right** preview a color. **A Save** keeps it, **B Cancel** leaves
+the saved choice unchanged, and **Y Reset** chooses Default; press A to keep
+the reset. The color marks that small cube's rim and folder symbol in either
+column. It is remembered by the full path on that device, so folders with
+the same name elsewhere have independent colors. Up to 32 folders or images
+can have a saved color; resetting one frees its place.
+
+<p align="center">
+  <img alt="Y Folder on Backups opens its complete device-prefixed path, direct save count, Copper Garage and Need for Speed Underground 2 captions, color choice and Reset, Save and Cancel controls." src="images/memory-cards-folder.png" width="640">
+</p>
+
+Colors are saved with Indigo's settings on the Configuration Device. If that
+save fails, the page stays open with an explanation and the previous saved
+color remains in place. Card images keep their read-only status throughout.
 
 ### Virtual memory cards
 

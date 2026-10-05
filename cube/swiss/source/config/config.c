@@ -359,7 +359,7 @@ void config_file_delete(char* filename) {
  * but never written, so a save drops them instead of keeping a stale copy
  * that could override the current key. */
 static const char *const globalOldKeys[] = {
-	"Enable Debug", "USB Gecko debug output", "Stop DVD Motor on startup", NULL
+	"Enable Debug", "USB Gecko debug output", "Stop DVD Motor on startup", "Library Folder Colors", NULL
 };
 
 /* Every key a game's file can hold. A save drops the ones it no longer
@@ -573,7 +573,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Wave Speed=%s\r\n", waveSpeedStr[swissSettings.waveSpeed]);
 	fprintf(fp, "Library Layout=%s\r\n", libraryLayoutStr[swissSettings.libraryLayout]);
 	fprintf(fp, "Library Folders=%s\r\n", swissSettings.libraryFolders ? "Yes":"No");
-	fputs("Library Folder Colors=", fp);
+	fputs("Memory Card Folder Colors=", fp);
 	UIFolder_WriteColors(&folderColors, fp);
 	fputs("\r\n", fp);
 	fprintf(fp, "Init DVD Drive at startup=%s\r\n", swissSettings.initDVDDriveAtStart ? "Yes":"No");
@@ -703,13 +703,14 @@ bool config_set_folder_color(const char *path, uint8_t color) {
 	fp = open_memstream(&line, &length);
 	if(fp != NULL) {
 		char configPath[PATHNAME_MAX];
-		fputs("Library Folder Colors=", fp);
+		fputs("Memory Card Folder Colors=", fp);
 		UIFolder_WriteColors(&folderColors, fp);
 		fputs("\r\n", fp);
 		if(fclose(fp) == 0) {
 			concat_path(configPath, SWISS_SETTINGS_DIR, SWISS_SETTINGS_FILENAME);
 			char *existing = config_file_read(configPath);
-			char *merged = config_merge_file(existing, line, NULL);
+			const char *const oldColorKey[] = {"Library Folder Colors", NULL};
+			char *merged = config_merge_file(existing, line, oldColorKey);
 			if(existing != NULL) {
 				/* Do not replace a readable settings file if merging ran out
 				 * of memory: that would discard unrelated settings. */
@@ -1469,7 +1470,7 @@ void config_parse_global(char *configData, bool settingsFile) {
 				else if(!strcmp("Disable Menu SFX", name)) {
 					swissSettings.disableMenuSFX = !strcmp("Yes", value);
 				}
-				else if(!strcmp("Library Folder Colors", name)) {
+				else if(!strcmp("Memory Card Folder Colors", name)) {
 					UIFolder_ParseColors(&folderColors, value);
 				}
 				else if(!strcmp("Menu Color", name)) {

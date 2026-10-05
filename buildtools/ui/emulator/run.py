@@ -117,6 +117,7 @@ DETAIL_TITLE_BOX = (264, 106, 600, 134)
 # same_text, not overlap.
 INFO_BOX = (164, 377, 590, 396)
 LEFT_HEADER_BOX, RIGHT_HEADER_BOX = (66, 56, 222, 92), (354, 56, 510, 92)
+MEMORY_LEFT_PATH_BOX = (128, 66, 280, 92)
 FOOTER_BOX = (30, 442, 610, 464)
 SAVE_DETAILS_EYEBROW_BOX = (100, 108, 274, 132)
 SAVE_DETAILS_TITLE_BOX = (100, 132, 540, 168)
@@ -130,9 +131,12 @@ SAVE_DETAILS_UPDATED_BOX = (246, 274, 540, 300)
 SAVE_DETAILS_ACTIONS_BOX = (104, 360, 536, 387)
 RAW_ICON_BOX = (68, 100, 120, 161)  # selected cell 0; excludes banner/info bar
 FOLDER_PAGE_TITLE_BOX = (48, 78, 300, 105)
-FOLDER_PATH_BOX = (48, 150, 584, 278)
-FOLDER_COLOR_BOX = (240, 328, 570, 351)
-FOLDER_SWATCH_BOX = (49, 327, 69, 347)
+FOLDER_PATH_BOX = (48, 130, 584, 259)
+FOLDER_CONTENTS_BOX = (48, 280, 584, 339)
+FOLDER_COLOR_BOX = (240, 341, 570, 373)
+FOLDER_CUBE_BOX = (66, 100, 132, 164)
+FOLDER_AZURE = (68, 170, 230)
+FOLDER_HINT_BOX = (500, 442, 610, 466)
 UP_ARROW_BOX = (169, 96, 184, 112)
 MESSAGE_BOX = (160, 200, 480, 250)
 MESSAGE_COLOUR = (120, 16, 36)  # the same under every Menu Color
@@ -478,6 +482,12 @@ def raw_icon_frame(rgb: np.ndarray, wide: bool = False) -> int | None:
     counts = [coloured(crop, colour) for colour in make_test_saves.RAW_ICON_COLOURS]
     best = int(np.argmax(counts))
     return best if counts[best] >= 12 and counts[best] >= counts[1 - best] * 3 else None
+
+
+def folder_cube_azure(rgb: np.ndarray, wide: bool = False) -> int:
+    """Count authored Azure rim pixels only inside the selected folder cube."""
+    x0, y0, x1, y1 = stage_box(FOLDER_CUBE_BOX, wide)
+    return coloured(rgb[y0:y1, x0:x1], FOLDER_AZURE)
 
 
 def backdrop(rgb: np.ndarray) -> np.ndarray:
@@ -1366,61 +1376,6 @@ class Route:
                                and (like is None or same_text(mask, like))
                                and (unlike is None or not same_text(mask, unlike)))
 
-    def folder_identity(self, prefix: str, library_box, selected: np.ndarray) -> None:
-        """Y's real path/color page: save, revisit, cancel and reset in each layout.
-
-        Every page entry must differ from the preceding Library frame before
-        its path/color fields count. Every exit must recover the exact folder.
-        A persisted settings read binds the color to the real device path.
-        """
-        before = text_mask(self.gray(), FOLDER_PAGE_TITLE_BOX)
-        title = self.folder_step("Y", f"{prefix}-folder-path", FOLDER_PAGE_TITLE_BOX,
-                                 unlike=before)
-        self.check("Y on a folder opens its identity page", title is not None, layout=prefix)
-        path, _ = self.settled_label(box=FOLDER_PATH_BOX)
-        self.check("the folder page shows a stable full path", path is not None, layout=prefix)
-        self.press("Y", FOLDER_PRESS_SECONDS)  # reset preview to the known default
-        default = self.folder_color()
-        self.press("RIGHT", FOLDER_PRESS_SECONDS)
-        indigo = self.folder_color(unlike=default)
-        self.check("Right selects a named folder color", indigo is not None, layout=prefix)
-        self.press("RIGHT", FOLDER_PRESS_SECONDS)
-        azure = self.folder_color(unlike=indigo)
-        self.check("Right advances the folder color", azure is not None, layout=prefix)
-        self.shot(f"{prefix}-folder-color-azure", self.last_rgb)
-        returned = self.folder_step("A", f"{prefix}-folder-color-save", library_box, like=selected)
-        self.check("Save returns to the same selected folder", returned is not None, layout=prefix)
-        saved = card.read_card(self.sd_image, "swiss/settings/global.ini") or b""
-        self.check("the folder color is persisted with its device-prefixed full path",
-                   bool(re.search(rb"Library Folder Colors=[^\r\n]*[a-z]+:/games/Nintendo\.GC~2", saved)),
-                   layout=prefix)
-        before = text_mask(self.gray(), FOLDER_PAGE_TITLE_BOX)
-        reopened = self.folder_step("Y", f"{prefix}-folder-color-reopen", FOLDER_PAGE_TITLE_BOX,
-                                    like=title, unlike=before)
-        self.check("Y reopens the folder page", reopened is not None, layout=prefix)
-        self.check("the complete path remains the same after saving",
-                   self.settled_label(box=FOLDER_PATH_BOX, like=path)[0] is not None, layout=prefix)
-        self.check("the saved color remains selected",
-                   self.folder_color(like=azure) is not None, layout=prefix)
-        self.press("RIGHT", FOLDER_PRESS_SECONDS)
-        changed = self.folder_color(unlike=azure)
-        self.check("a new color can be previewed", changed is not None, layout=prefix)
-        self.folder_step("B", f"{prefix}-folder-color-cancel", library_box, like=selected)
-        before = text_mask(self.gray(), FOLDER_PAGE_TITLE_BOX)
-        self.folder_step("Y", f"{prefix}-folder-color-cancel-reopen", FOLDER_PAGE_TITLE_BOX,
-                         like=title, unlike=before)
-        self.check("Cancel keeps the saved color",
-                   self.folder_color(like=azure) is not None, layout=prefix)
-        self.press("Y", FOLDER_PRESS_SECONDS)
-        self.check("Reset selects the original Default card appearance",
-                   self.folder_color(like=default, unlike=azure) is not None,
-                   layout=prefix)
-        self.shot(f"{prefix}-folder-color-reset", self.last_rgb)
-        self.folder_step("A", f"{prefix}-folder-color-reset-save", library_box, like=selected)
-        saved = card.read_card(self.sd_image, "swiss/settings/global.ini") or b""
-        self.check("saving Default frees the folder's stored color entry",
-                   b"/games/Nintendo.GC~" not in saved, layout=prefix)
-
     def folder_layout(self, faces: list[np.ndarray], name: str, first: bool) -> None:
         """From Home Settings, set the next layout and folders on, then browse."""
         library, source, settings = faces
@@ -1460,11 +1415,13 @@ class Route:
             self.folder_layout(faces, layout, first=index == 0)
             stray = self.folder_step("A", f"{prefix}-root-open", box)
             self.check("the dotted empty folder is a Library card", stray is not None, layout=layout)
+            no_page = self.folder_step("Y", f"{prefix}-library-folder-y", box, like=stray)
+            self.check("Library folders keep their normal navigation when Y is pressed",
+                       no_page is not None, layout=layout)
             if index == 0:
                 _, refused = self.pictures(8.0)
                 self.check("the dotted empty folder's oversized PNG never shows",
                            refused < PICTURE_PIXELS, pixels=refused)
-            self.folder_identity(prefix, box, stray)
             parent = None
             for button in ("A", "B", "X"):
                 empty = self.folder_step("A", f"{prefix}-empty-open-{button.lower()}",
@@ -1930,6 +1887,168 @@ class Route:
         self.shot(name, self.last_rgb)
         return fields
 
+    def memory_folder_open(self, name: str, like: np.ndarray | None = None) -> np.ndarray:
+        """Y opens the selected save-folder cube's retained identity page."""
+        before = text_mask(self.gray(), FOLDER_PAGE_TITLE_BOX)
+        self.press("Y")
+        title = self.text_until(FOLDER_PAGE_TITLE_BOX,
+                                lambda mask: has_label(mask) and not same_text(mask, before)
+                                and (like is None or same_text(mask, like)))
+        self.check("Y on the selected memory-card folder cube opens its identity page",
+                   title is not None)
+        self.check("the memory-card folder page displays its full path",
+                   self.settled_label(box=FOLDER_PATH_BOX)[0] is not None)
+        self.check("the memory-card folder page displays its contents and status",
+                   self.settled_label(box=FOLDER_CONTENTS_BOX)[0] is not None)
+        self.shot(name, self.last_rgb)
+        return title
+
+    def memory_folder_return(self, button: str, selected: np.ndarray, name: str) -> None:
+        self.press(button)
+        self.check("the folder page returns to the same selected memory-card cube",
+                   self.text_until(INFO_BOX, lambda mask: same_text(mask, selected)) is not None,
+                   button=button)
+        self.shot(name, self.last_rgb)
+
+    def memory_folder_saved(self, colour: int | None) -> None:
+        """Bind native color selection to the actual device-prefixed FAT key."""
+        settings = card.read_card(self.sd_image, "swiss/settings/global.ini") or b""
+        key = rb"Memory Card Folder Colors=([^\r\n]*)"
+        row = re.search(key, settings)
+        path = rb"[a-z0-9]+:/swiss/saves/" + make_test_saves.MEMORY_FOLDER_NAME.encode() + rb"~"
+        present = re.search(path + (str(colour).encode() if colour is not None else rb"[0-9]+") + rb"(?=;|$)",
+                            row[1] if row else b"")
+        self.check("memory-card folder color is saved under its device-prefixed path",
+                   bool(present) if colour is not None else not present, colour=colour)
+        self.check("memory-card color operations do not create Library folder colors",
+                   b"Library Folder Colors=" not in settings)
+
+    def memory_folder_identity(self, selected: np.ndarray) -> None:
+        """Preview, save, cancel and reset; leave Azure for the next boot."""
+        hint = self.settled_label(box=FOLDER_HINT_BOX)[0]
+        self.check("the selected memory-card folder displays its contextual Y hint", hint is not None)
+        self.shot("memory-folder-y-hint", self.last_rgb)
+        normal = folder_cube_azure(self.last_rgb, self.menu_wide)
+        title = self.memory_folder_open("memory-folder-path")
+        path = self.settled_label(box=FOLDER_PATH_BOX)[0]
+        contents = self.settled_label(box=FOLDER_CONTENTS_BOX)[0]
+        self.press("Y")
+        default = self.folder_color()
+        self.check("Y resets the folder preview to Default", default is not None)
+        self.press("RIGHT")
+        indigo = self.folder_color(unlike=default)
+        self.check("Right selects Indigo for the memory-card folder", indigo is not None)
+        self.press("RIGHT")
+        azure = self.folder_color(unlike=indigo)
+        self.check("Right selects Azure for the memory-card folder", azure is not None)
+        self.shot("memory-folder-azure-preview", self.last_rgb)
+        self.memory_folder_return("A", selected, "memory-folder-azure-saved")
+        self.memory_folder_saved(2)
+        azure_pixels = folder_cube_azure(self.last_rgb, self.menu_wide)
+        self.check("saving Azure colors the selected memory-card folder cube",
+                   azure_pixels >= 12 and azure_pixels > normal + 8, pixels=azure_pixels)
+        self.memory_folder_open("memory-folder-reopened", like=title)
+        self.check("reopening keeps the selected folder's full path and contents",
+                   self.settled_label(box=FOLDER_PATH_BOX, like=path)[0] is not None and
+                   self.settled_label(box=FOLDER_CONTENTS_BOX, like=contents)[0] is not None)
+        self.check("reopening selects the saved Azure value", self.folder_color(like=azure) is not None)
+        self.press("RIGHT")
+        self.check("another color can be previewed", self.folder_color(unlike=azure) is not None)
+        self.memory_folder_return("B", selected, "memory-folder-cancel")
+        self.memory_folder_saved(2)
+        self.memory_folder_open("memory-folder-after-cancel", like=title)
+        self.check("Cancel retains Azure", self.folder_color(like=azure) is not None)
+        self.press("Y")
+        self.check("Reset selects the original Default value",
+                   self.folder_color(like=default, unlike=azure) is not None)
+        self.memory_folder_return("A", selected, "memory-folder-default-saved")
+        self.memory_folder_saved(None)
+        self.memory_folder_open("memory-folder-before-restart", like=title)
+        self.press("RIGHT")
+        self.check("Indigo can be selected after reset", self.folder_color(like=indigo) is not None)
+        self.press("RIGHT")
+        self.check("Azure can be selected after reset", self.folder_color(like=azure) is not None)
+        self.memory_folder_return("A", selected, "memory-folder-ready-for-restart")
+        self.memory_folder_saved(2)
+        self.memory_folder_reference = {"title": title, "path": path, "contents": contents,
+                                        "azure": azure, "default": default, "selected": selected}
+
+    def static_icon(self) -> None:
+        """Watch a single authored texture; cube movement never counts as animation."""
+        seen = 0
+        animated = set()
+        deadline = Deadline(self.emulator, 3.0)
+        while not deadline.expired():
+            rgb = self.emulator.frame()
+            x0, y0, x1, y1 = stage_box(RAW_ICON_BOX, self.menu_wide)
+            seen += coloured(rgb[y0:y1, x0:x1], make_test_saves.MEMORY_STATIC_COLOUR) >= 12
+            frame = raw_icon_frame(rgb, self.menu_wide)
+            if frame is not None:
+                animated.add(frame)
+            self.pause(.1)
+        self.check("the static save displays its authored icon without invented animation frames",
+                   seen >= 2 and not animated, samples=seen, unexpected_frames=sorted(animated))
+        self.shot("memory-folder-static-icon", rgb)
+
+    def memory_folder_saves(self, selected: np.ndarray) -> None:
+        """Readable metadata and truthful static/missing icons inside the SD folder."""
+        # The large SD glyph stays unchanged. Read only the actual folder path;
+        # including that glyph can hide a shorter path change in widescreen.
+        header = text_mask(self.gray(), MEMORY_LEFT_PATH_BOX)
+        footer = text_mask(self.gray(), FOLDER_HINT_BOX)
+        self.press("A")
+        self.check("A opens the selected memory-card save folder",
+                   self.text_until(MEMORY_LEFT_PATH_BOX, lambda mask: has_label(mask)
+                                   and not same_text(mask, header)) is not None)
+        self.pause(ART_SECONDS)
+        first = self.settled_label(box=INFO_BOX)[0]
+        self.check("the opaque save filename is replaced by readable comment metadata", first is not None)
+        self.check("a save's footer differs from the folder's contextual Y controls",
+                   not same_text(text_mask(self.gray(), FOLDER_HINT_BOX), footer))
+        self.static_icon()
+        static = self.save_details("memory-folder-static-details")
+        self.press("B")
+        self.check("B returns to the same static save", self.text_until(INFO_BOX,
+                   lambda mask: same_text(mask, first)) is not None)
+        second = self.info("RIGHT", unlike=first)
+        self.check("the metadata-disabled racing save has a readable title", second is not None)
+        absent = self.save_details("memory-folder-no-art-details")
+        columns = np.flatnonzero(absent["title"].any(axis=0))
+        self.check("the racing save displays its full public game title rather than its opaque filename",
+                   columns.size > 0 and columns[-1] - columns[0] >= 180)
+        self.check("static and absent stored icons have distinct status text",
+                   not same_text(static["icon"], absent["icon"]))
+        self.press("B")
+        self.press("B")
+        self.check("B returns from the save folder to its selected folder cube",
+                   self.text_until(INFO_BOX, lambda mask: same_text(mask, selected)) is not None)
+        self.shot("memory-folder-saves-return", self.last_rgb)
+
+    def memory_folders_again(self) -> None:
+        """A new emulator process loads the previous native FAT settings."""
+        self.fresh_card = False
+        home = self.boot()
+        faces = [home]
+        for n in range(1, 4):
+            faces.append(self.turn(faces, "RIGHT", f"memory-folder-restart-home-{n}"))
+        self.press("A")
+        self.check("after restart A opens System", self.covered(faces[-1]))
+        self.steps("DOWN A")
+        self.pause(2.0)
+        ref = self.memory_folder_reference
+        self.check("after restart the same save-folder cube is selected",
+                   self.text_until(INFO_BOX, lambda mask: same_text(mask, ref["selected"])) is not None)
+        self.memory_folder_open("memory-folder-after-restart", like=ref["title"])
+        self.check("restart preserves the folder's full path and contents",
+                   self.settled_label(box=FOLDER_PATH_BOX, like=ref["path"])[0] is not None and
+                   self.settled_label(box=FOLDER_CONTENTS_BOX, like=ref["contents"])[0] is not None)
+        self.check("restart loads the saved Azure color", self.folder_color(like=ref["azure"]) is not None)
+        self.memory_folder_saved(2)
+        self.press("Y")
+        self.check("Reset still selects Default after restart", self.folder_color(like=ref["default"]) is not None)
+        self.memory_folder_return("A", ref["selected"], "memory-folder-reset-after-restart")
+        self.memory_folder_saved(None)
+
     def raw_animation(self) -> None:
         """Capture both colors authored in RAW's animated icon, not cube motion."""
         seen = set()
@@ -1991,7 +2110,15 @@ class Route:
                    same_text(text_mask(self.gray(), LEFT_HEADER_BOX), left) and
                    same_text(text_mask(self.gray(), RIGHT_HEADER_BOX), right))
         # The source focus must stay on the left after choosing right storage.
-        self.press("A")  # the only SD item is Demo Card.raw
+        folder, _ = self.settled_label(box=INFO_BOX)
+        self.check("the SD column selects its demonstration save folder", folder is not None)
+        self.memory_folder_identity(folder)
+        self.memory_folder_saves(folder)
+        raw_title = self.info("RIGHT", unlike=folder)
+        self.check("Right selects the RAW image beside the save folder", raw_title is not None)
+        self.memory_folder_open("memory-image-path-and-read-only-status")
+        self.memory_folder_return("B", raw_title, "memory-image-cancel")
+        self.press("A")
         self.check("A opens the SD card's RAW image", self.differs(left, LEFT_HEADER_BOX))
         self.pause(ART_SECONDS)
         first, _ = self.settled_label(box=INFO_BOX)
@@ -2018,7 +2145,7 @@ class Route:
         self.check("LEFT returns to the RAW save to export", again is not None)
         # Open the same image independently on the right. All actions are
         # unavailable, but details still opens and B always returns.
-        self.steps("RIGHT RIGHT RIGHT RIGHT")
+        self.steps("RIGHT RIGHT RIGHT RIGHT RIGHT")
         self.press("A")
         self.check("right SD independently opens RAW", self.differs(right, RIGHT_HEADER_BOX))
         self.pause(ART_SECONDS)
@@ -2038,7 +2165,7 @@ class Route:
         self.press("B")  # right RAW -> independent writable folder
         self.check("right RAW closes to the independent SD folder",
                    self.text_until(RIGHT_HEADER_BOX, lambda mask: same_text(mask, right)) is not None)
-        self.steps("LEFT LEFT LEFT LEFT")
+        self.steps("LEFT LEFT LEFT LEFT LEFT")
         self.check("left source stays in its RAW image",
                    self.text_until(INFO_BOX, lambda mask: same_text(mask, first)) is not None)
         self.virtual_popup_checks()
@@ -2088,6 +2215,10 @@ class Route:
         """The actual FAT bytes, after navigating and exporting in Indigo."""
         original, gcis = make_test_saves.virtual_card()
         folder = make_test_saves.SAVE_FOLDER
+        for name, data in make_test_saves.memory_folder_files().items():
+            unchanged = card.read_card(image, f"{folder}/{make_test_saves.MEMORY_FOLDER_NAME}/{name}")
+            self.check("folder identity, colors and native save browsing preserve the save bytes",
+                       unchanged == data, file=name, bytes=len(data))
         raw = card.read_card(image, f"{folder}/{make_test_saves.RAW_CARD_NAME}")
         exported = card.read_card(image, f"{folder}/{make_test_saves.RAW_EXPORT_NAME}")
         self.check("the source RAW image is byte-identical after browsing and export", raw == original,
@@ -2216,6 +2347,15 @@ def main(argv: list[str] | None = None) -> int:
                 route.boot_again()
             elif sd:
                 if args.route == "virtual-cards":
+                    # Real power cycle: a fresh Dolphin user/process, the same FAT image.
+                    emulator.close()
+                    (work / "again").mkdir()
+                    (args.out / "next-boot").mkdir(exist_ok=True)
+                    emulator = Emulator(dol, disc.resolve() if disc else None, work / "again",
+                                        args.out / "next-boot", args.region, args.storage, sd,
+                                        args.cable, empty_slots=True)
+                    route.emulator, route.pad = emulator, emulator.pad
+                    route.memory_folders_again()
                     route.virtual_card_checks(sd)
                 route.card_checks(sd, args.route, seeded(start) if start else None)
         except Failed as failure:
@@ -2232,6 +2372,7 @@ def main(argv: list[str] | None = None) -> int:
                     status = 2
                     report["error"] = f"native frame proof: {error}"
     fatal = fatal_lines(args.out / "dolphin.log")
+    fatal += fatal_lines(args.out / "next-boot/dolphin.log")
     if fatal and status == 0:
         status = 1
         report["failure"] = "Dolphin reported a crash or an invalid access"

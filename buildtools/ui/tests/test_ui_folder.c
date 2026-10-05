@@ -73,6 +73,29 @@ int main(void)
 	assert(strlen(joined) == (UI_FOLDER_PATH_SIZE - 1u) * 4u);
 	assert(snapshot.lineCount > UI_FOLDER_VISIBLE_LINES);
 	assert(strcmp(UIFolder_ColorName(0u), "Default") == 0);
+	/* The production Memory Cards reducer owns local previews only. Saving
+	 * and cancelling have priority over simultaneous navigation presses. */
+	snapshot.color = 0u;
+	assert(UIFolder_Input(&snapshot, UI_FOLDER_INPUT_LEFT) == UI_FOLDER_ACTION_NONE);
+	assert(snapshot.color == 8u);
+	UIFolder_Input(&snapshot, UI_FOLDER_INPUT_RIGHT);
+	assert(snapshot.color == 0u);
+	UIFolder_Input(&snapshot, UI_FOLDER_INPUT_RIGHT);
+	assert(snapshot.color == 1u);
+	assert(UIFolder_Input(&snapshot, UI_FOLDER_INPUT_SAVE | UI_FOLDER_INPUT_RIGHT) == UI_FOLDER_ACTION_SAVE);
+	assert(snapshot.color == 1u);
+	assert(UIFolder_Input(&snapshot, UI_FOLDER_INPUT_CANCEL | UI_FOLDER_INPUT_SAVE) == UI_FOLDER_ACTION_CANCEL);
+	assert(snapshot.color == 1u);
+	UIFolder_Input(&snapshot, UI_FOLDER_INPUT_RESET);
+	assert(snapshot.color == 0u);
+	snapshot.firstLine = 0u;
+	UIFolder_Input(&snapshot, UI_FOLDER_INPUT_UP);
+	assert(snapshot.firstLine == 0u);
+	for(unsigned i = 0u; i < snapshot.lineCount + 2u; ++i)
+		UIFolder_Input(&snapshot, UI_FOLDER_INPUT_DOWN);
+	assert(snapshot.firstLine + UI_FOLDER_VISIBLE_LINES == snapshot.lineCount);
+	UIFolder_Input(&snapshot, UI_FOLDER_INPUT_UP);
+	assert(snapshot.firstLine + UI_FOLDER_VISIBLE_LINES + 1u == snapshot.lineCount);
 	puts("folder identities, settings roundtrip, bounded map and full path paging: PASS");
 	return 0;
 }

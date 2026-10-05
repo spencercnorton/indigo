@@ -138,7 +138,8 @@ See [System](system.md).
 | --- | --- |
 | Control stick or D-pad | Move from cube to cube. Left and Right cross from one stack to the other; Up and Down scroll a stack. Hold to keep moving. |
 | L, R | Swap the left (L) or right (R) stack for Slot A, Slot B or the SD card. |
-| A | On a save: Move, Copy or Erase, then Yes or No. On a folder: open it. |
+| A | On a save: open its details, then A Actions for Move, Copy or Erase. On a folder or card image: open it. |
+| Y | On a small folder or card-image cube: its full path, contained saves and color. |
 | B | Close a box or cancel. On the SD card's stack, in a folder it opened: up a folder. Otherwise: leave Memory Cards. |
 | X | When choosing a folder: choose the one that's open. |
 

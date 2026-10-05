@@ -490,7 +490,12 @@ def build_card(out: Path, card_zip: Path, posters: bool = True, probe: Path | No
             saves.mkdir(parents=True, exist_ok=True)
             raw, _ = make_test_saves.virtual_card()
             (saves / make_test_saves.RAW_CARD_NAME).write_bytes(raw)
-            info["virtual_cards"] = {"images": 1, "saves": 2, "physical_slots": False}
+            backup = saves / make_test_saves.MEMORY_FOLDER_NAME
+            backup.mkdir()
+            for name, data in make_test_saves.memory_folder_files().items():
+                (backup / name).write_bytes(data)
+            info["virtual_cards"] = {"images": 1, "saves": 2, "physical_slots": False,
+                                     "folders": 1, "folder_saves": len(make_test_saves.memory_folder_files())}
         if settings is not None:  # a card that has been used: its settings folders made
             (root / "swiss/settings/game").mkdir(parents=True, exist_ok=True)
             (root / "swiss/settings/global.ini").write_text(settings.replace("\n", "\r\n"))

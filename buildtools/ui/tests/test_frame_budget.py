@@ -42,31 +42,73 @@ def hint_source() -> str:
     return "\n\n".join(parts) + "\n"
 
 
-def save_cubes_source() -> str:
+def renderer_definition(source: str, name: str, optional: bool = False) -> str:
+    """Select a definition rather than a forward declaration before a dialog.
+
+    A semicolon cannot occur between the argument list and opening brace.
+    Keep the return type so the extracted helper remains valid standalone C.
+    """
+    matches = list(re.finditer(r"^static\s+[^;{}\n]+\b" + re.escape(name) +
+                              r"\([^;{}]*\)\s*\{", source, re.M))
+    if optional and not matches:
+        return ""
+    if len(matches) != 1:
+        raise ValueError(f"Expected one renderer definition for {name}, found {len(matches)}")
+    start = matches[0].start()
+    return extract_function(source[start:], source[start:matches[0].end() - 1].rstrip())
+
+
+def save_cubes_source(source: str | None = None) -> str:
     """Memory Cards' cube emitter, out of FrameBufferMagic.c, and the cubes
     it draws (ui_save_cubes.c), under the counting maths."""
-    fbm = (GUI / "FrameBufferMagic.c").read_text(encoding="utf-8")
+    fbm = source if source is not None else (GUI / "FrameBufferMagic.c").read_text(encoding="utf-8")
     start = fbm.index("/* What one frame's cubes need. */")
     parts = ['#include "ui_save_cubes.c"',
              "static void drawInit(void) {}",
              "static void _SetupRasterColor(void) {}",
              fbm[start:fbm.index("} saveCubesDraw_t;", start) + len("} saveCubesDraw_t;")]]
-    for marker in ("static void _SaveCubesShades(", "static void _SaveCubesVertex(",
-                   "static void _SaveCubesEmit("):
-        parts.append(extract_function(fbm, marker))
+    for name in ("_SaveCubesShades", "_SaveCubesColour", "_SaveCubesVertex", "_SaveCubesEmit"):
+        definition = renderer_definition(fbm, name, optional=name == "_SaveCubesColour")
+        if definition:
+            parts.append(definition)
     return "\n\n".join(parts) + "\n"
 
 
-def measure() -> dict:
+def check_renderer_selection() -> None:
+    """Forward declarations and unrelated pages must never enter the emitter."""
+    current = (GUI / "FrameBufferMagic.c").read_text(encoding="utf-8")
+    emitter = save_cubes_source(current)
+    inserted = ("static void _SaveCubesEmit(void);\n"
+                "static GXColor _SaveCubesColour(void);\n"
+                "static void _SaveCubesVertex(void);\n"
+                "static void unrelated_dialog(void) { unknown_page_type(); }\n" + current)
+    assert save_cubes_source(inserted) == emitter
+    assert "_DrawMemoryCardFolder" not in emitter and "uiDrawObj_t" not in emitter
+    # Older baselines use themed shades directly and have no color helper.
+    color = renderer_definition(current, "_SaveCubesColour", optional=True)
+    historical = current.replace(color, "") if color else current
+    historical = historical.replace("_SaveCubesColour(draw, cube, quad->role)",
+                                    "draw->shades[cube->shade][quad->role]")
+    historical_emitter = save_cubes_source(historical)
+    assert renderer_definition(historical, "_SaveCubesVertex") in historical_emitter
+    assert not renderer_definition(historical, "_SaveCubesColour", optional=True)
+
+
+def measure(renderer_source: str | None = None) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         Path(tmp, "hint_source.c").write_text(hint_source(), encoding="utf-8")
-        Path(tmp, "save_cubes_source.c").write_text(save_cubes_source(), encoding="utf-8")
+        Path(tmp, "save_cubes_source.c").write_text(save_cubes_source(renderer_source), encoding="utf-8")
         binary = Path(tmp, "frame_budget")
+        sources = [GUI / name for name in SOURCES]
+        # Only the folder-color emitter depends on this newer helper. Keeping
+        # it conditional also permits measuring pre-feature source trees.
+        if (GUI / "ui_folder.c").is_file():
+            sources.append(GUI / "ui_folder.c")
         command = shlex.split(os.environ.get("CC", "cc")) + [
             "-std=gnu11", "-O1", "-ffp-contract=off", "-Wall",
             "-I", str(HERE / "fixtures/gx"), "-I", str(GUI), "-I", tmp,
             "-o", str(binary), str(HERE / "frame_budget.c"),
-            *(str(GUI / name) for name in SOURCES), "-lm"]
+            *(str(path) for path in sources), "-lm"]
         subprocess.run(command, check=True)
         output = subprocess.run([str(binary)], check=True, capture_output=True,
                                 text=True).stdout
@@ -74,6 +116,7 @@ def measure() -> dict:
 
 
 def main() -> int:
+    check_renderer_selection()
     measured = measure()
     if "--update" in sys.argv[1:]:
         BUDGET.write_text(json.dumps(measured, indent=1, sort_keys=True) + "\n",

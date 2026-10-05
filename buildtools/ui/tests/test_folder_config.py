@@ -82,11 +82,11 @@ static void reset(void)
 {
  mountFailure = readFailure = writeFailure = unknownStat = false;
  liveExists = true; recoveryExists = false; writes = defaultWrites = mkdirs = 0; globalFileLoaded = false;
- strcpy(stored, "# Keep this note\nMenu Color=Gold\nFuture Setting=on\nLibrary Folder Colors=\n");
+ strcpy(stored, "# Keep this note\nMenu Color=Gold\nFuture Setting=on\nMemory Card Folder Colors=\n");
  memset(&folderColors, 0, sizeof(folderColors));
- assert(UIFolder_SetColor(&folderColors, "sda:/games/first", 1u));
- assert(UIFolder_SetColor(&folderColors, "sda:/games/second", 2u));
- assert(UIFolder_SetColor(&folderColors, "sda:/games/first", 0u));
+ assert(UIFolder_SetColor(&folderColors, "sda:/swiss/saves/first", 1u));
+ assert(UIFolder_SetColor(&folderColors, "sda:/swiss/saves/second", 2u));
+ assert(UIFolder_SetColor(&folderColors, "sda:/swiss/saves/first", 0u));
 }
 int main(void)
 {
@@ -96,12 +96,12 @@ int main(void)
  (void)globalOldKeys; (void)gameFileKeys;
  uiFolderColors_t before;
  reset();
- assert(config_set_folder_color("sda:/games/Spaces #;~%=\n", 4u));
+ assert(config_set_folder_color("sda:/swiss/saves/Spaces #;~%=\n", 4u));
  assert(strstr(written, "# Keep this note") != NULL);
  assert(strstr(written, "Menu Color=Gold") != NULL);
  assert(strstr(written, "Future Setting=on") != NULL);
- assert(strstr(written, "sda:/games/Spaces%20#%3B%7E%25%3D%0A~4") != NULL);
- assert(config_folder_color("sda:/games/Spaces #;~%=\n") == 4u);
+ assert(strstr(written, "sda:/swiss/saves/Spaces%20#%3B%7E%25%3D%0A~4") != NULL);
+ assert(config_folder_color("sda:/swiss/saves/Spaces #;~%=\n") == 4u);
  assert(writes == 1u && defaultWrites == 0u);
  for(unsigned fault = 0; fault < 5; ++fault) {
   reset(); before = folderColors;
@@ -110,19 +110,19 @@ int main(void)
   if(fault == 2) writeFailure = true;
   if(fault == 3) { readFailure = true; unknownStat = true; }
   if(fault == 4) { readFailure = true; liveExists = false; recoveryExists = true; }
-  assert(!config_set_folder_color("sda:/games/second", 0u));
+  assert(!config_set_folder_color("sda:/swiss/saves/second", 0u));
   assert(memcmp(&folderColors, &before, sizeof(before)) == 0);
   assert(defaultWrites == 0u);
   if(fault != 2) assert(writes == 0u);
  }
  reset(); liveExists = recoveryExists = false;
- assert(config_set_folder_color("sda:/games/new", 3u));
+ assert(config_set_folder_color("sda:/swiss/saves/new", 3u));
  assert(defaultWrites == 0u && writes == 1u && mkdirs == 2u);
  assert(globalFileLoaded);
  assert(strstr(written, "Menu Color") == NULL);
- assert(strstr(written, "Library Folder Colors=") == written);
+ assert(strstr(written, "Memory Card Folder Colors=") == written);
  reset(); liveExists = recoveryExists = false; writeFailure = true; before = folderColors;
- assert(!config_set_folder_color("sda:/games/new", 3u));
+ assert(!config_set_folder_color("sda:/swiss/saves/new", 3u));
  assert(memcmp(&folderColors, &before, sizeof(before)) == 0);
  puts("production folder save, independent settings and fault rollback: PASS");
  return 0;

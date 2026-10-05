@@ -1,3 +1,56 @@
+## 2026-10-05 — Verify Memory Cards identity and save captions in native builds
+
+Integrated the corrected Memory Cards folder controls, removed their Library
+placement, and refreshed the guide with actual synthetic-data captures.
+Native default and widescreen routes pass 170 and 169 checks, including the
+visible Y hint, full path and contained save captions, cube colors, save,
+cancel, reset and a second process that restores the saved color. Authored
+animated icon textures change on screen; static and absent artwork retain
+their separate meanings. RAW images, source saves and exported payloads are
+unchanged after the route. No retries or fatal log lines occur.
+
+All four Library layouts pass 299 checks and 11,432 presented frames with
+no legacy-browser frames. Y on a Library folder keeps normal navigation;
+there is no folder path/color dialog. The native product source is unchanged
+by the subsequent host-harness and documentation corrections. The frame
+budget retains its existing twenty-scene ceilings.
+
+The format supplies a last-update date, not a separate creation date. Saves
+without declared captions receive bounded, validated identity fallbacks;
+missing icon data is not replaced by invented game animation. Protected CI
+on the final head and release-candidate packaging remain separate gates.
+
+## 2026-10-05 — Put folder identity on Memory Cards mini cubes
+
+Memory Cards now offers Y Folder only for its SD folders and RAW image
+cubes. Its native page shows the full device-prefixed path, direct counts
+and two contained save names prepared through the bounded metadata helpers.
+RAW images stay read-only. A saves a path color, B cancels, Y restores Default
+and Up/Down scrolls the complete path. Saved colors mark only folder cube
+rims and glyphs, independently of Menu Color, in both screen shapes.
+
+The settings namespace is Memory Card Folder Colors. A failed settings save
+keeps the page open and restores the in-memory map; old Library colors are
+not imported. Saves with explicitly absent art retain their readable identity,
+and checked captions use the shared bounded text normalization.
+
+Validation: folder/cube unit tests, settings fault rollback, production
+controller sequences in plain and sanitized builds, and 18 GX renderer
+regressions pass. The settings reference names the new key. Native captures
+and integrated target/CI checks remain pending.
+
+## 2026-10-05 — Remove folder identity controls from the game Library
+
+Folder paths and identity colors belong to the folders shown as mini cubes
+in Memory Cards. Removed the Library's Y Folder page, controller route and
+color frames. Library folder navigation and artwork remain intact; games
+retain Y Settings. The Library guide now describes navigation only.
+
+The four-layout GX regression confirms that selected game folders offer A
+Open without Y Folder or the explicit folder color frame. Memory Cards
+folder identity controls and save caption validation are separate changes
+to be integrated before the next release candidate.
+
 ## 2026-10-05 — Cover the Library controls beneath the folder page
 
 A native capture exposed the bottoms of the Library button glyphs below
@@ -350,3 +403,15 @@ retaining the address and undefined-behavior checks.
 
 Validation: the plain and sanitized harness passes on macOS; the sanitized
 harness passes with GCC and Clang in the pinned Linux build image.
+## 2026-10-05 — Normalize save captions and missing-title identities
+
+Bounded save text now collapses control bytes and whitespace, preserves the
+IPL font's Windows-1252 accents and symbols, and converts their common UTF-8
+forms. Missing comments use conservative game-and-maker identity captions
+for the supported fallback families, then a bounded readable directory name.
+Valid comments retain precedence. This changes display text only; icon frames
+and the recorded update date remain governed by their existing metadata.
+
+Strict host and ASan/UBSan regressions cover absent comments, exact identity,
+wrong makers, invalid entries, unterminated names, encoding and short buffers.
+Controller integration and native screen verification remain separate gates.

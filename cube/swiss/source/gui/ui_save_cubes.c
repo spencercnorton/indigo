@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "ui_save_cubes.h"
+#include "ui_folder.h"
 
 /* The window's edges: a row fades out over half a cell past them. */
 #define CUBES_FADE_TOP 112.0f
@@ -384,6 +385,26 @@ void UISaveCubes_Colour(int shade, int role, uint8_t rgba[4])
 		rgba[i] = (uint8_t)(value > 255u ? 255u : value);
 	}
 	rgba[3] = color[3];
+}
+
+bool UISaveCubes_FolderColour(const uiSaveCube_t *cube, int role, uint8_t rgba[4])
+{
+	unsigned light;
+	if(cube == NULL || rgba == NULL || cube->kind != UI_SAVE_CUBES_KIND_FOLDER ||
+		cube->folderColor == 0u || cube->folderColor >= UI_FOLDER_COLOR_COUNT) return false;
+	if(role == UI_SAVE_CUBES_ROLE_GLYPH) light = 125u;
+	else if(role >= UI_SAVE_CUBES_ROLE_RIM_TOP && role <= UI_SAVE_CUBES_ROLE_RIM_BOTTOM) {
+		static const uint8_t lights[4] = {125u, 100u, 85u, 70u};
+		light = lights[role - UI_SAVE_CUBES_ROLE_RIM_TOP];
+	}
+	else return false;
+	UIFolder_ColorRGB(cube->folderColor, &rgba[0], &rgba[1], &rgba[2]);
+	for(unsigned i = 0; i < 3u; ++i) {
+		unsigned value = (unsigned)rgba[i] * light / 100u;
+		rgba[i] = (uint8_t)(value > 255u ? 255u : value);
+	}
+	rgba[3] = 255u;
+	return true;
 }
 
 /* ------------------------------------------------------------------------
@@ -1206,6 +1227,7 @@ int UISaveCubes_Frame(uiSaveCubesMotion_t *motion,
 			}
 			memset(cube, 0, sizeof(*cube));
 			cube->kind = kind;
+			cube->folderColor = kind == UI_SAVE_CUBES_KIND_FOLDER ? what->folderColor : 0u;
 			cube->shade = (uint8_t)(kind == UI_SAVE_CUBES_KIND_EMPTY ?
 				(focused ? UI_SAVE_CUBES_SHADE_EMPTY_FOCUS : UI_SAVE_CUBES_SHADE_EMPTY) :
 				(focused ? UI_SAVE_CUBES_SHADE_SAVE_FOCUS : UI_SAVE_CUBES_SHADE_SAVE));

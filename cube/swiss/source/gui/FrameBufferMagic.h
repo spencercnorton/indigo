@@ -87,7 +87,6 @@ typedef struct {
 	u8 column;	/* grid only */
 	/* Library Folders: a folder of games, which A opens, not a game. */
 	u8 subfolder;
-	u8 folderColor; /* 0 follows the native card; 1..8 explicit identity color */
 	u8 reserved[7];
 } uiGameflowCardSnapshot_t;
 
@@ -253,8 +252,8 @@ void DrawUpdateSettingsList(uiDrawObj_t *list,
 	const uiSetListSnapshot_t *snapshot, int previewLayer, int previewColor);
 /* A row's help (its tooltip) as a card over the page. */
 uiDrawObj_t* DrawSettingsHelp(const char *help);
-uiDrawObj_t* DrawLibraryFolder(const uiFolderSnapshot_t *snapshot);
-void DrawUpdateLibraryFolder(uiDrawObj_t *event, const uiFolderSnapshot_t *snapshot);
+uiDrawObj_t* DrawMemoryCardFolder(const uiFolderSnapshot_t *snapshot);
+void DrawUpdateMemoryCardFolder(uiDrawObj_t *event, const uiFolderSnapshot_t *snapshot);
 
 /* Memory Cards' folder chooser (saves.c): one page event, drawn from this
  * snapshot in the cheat browser's language, a row for each folder. */
