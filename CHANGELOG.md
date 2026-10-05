@@ -11,6 +11,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   FlippyDrive and launching from Swiss have separate instructions.
 - The README, release notes and ZIP instructions explain extraction, folder
   merging, preserving existing boot files, first launch, upgrades and recovery.
+- The README opens with three steps and an online loader chooser. Its clickable
+  card diagram supplies file locations and limits; the full guide remains
+  available as a reference.
 
 ## v2.3.0 — Memory Cards, game folders and smoother motion
 

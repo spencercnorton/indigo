@@ -20,7 +20,7 @@
 
 Captured in the Dolphin emulator. The library and game detail pictures show a real poster pack and cheat file in use; box art belongs to its publishers.
 
-**New to Indigo?** Start with the [step-by-step installation](docs/guide/install.md),
+**New to Indigo?** Start with the [interactive installer](https://norvitech.com/indigo/guide/install/),
 then explore every screen and setting in the [Indigo guide](docs/guide/README.md).
 Watch it in motion: [the video tour](https://norvitech.com/indigo/#videos) on norvitech.com.
 
@@ -189,58 +189,29 @@ Storage › Save Folder sets the folder the SD card's stack opens on
 
 ## Install
 
-### Download and choose your launch route
+**[Open the interactive installer →](https://norvitech.com/indigo/guide/install/)**
 
-Download **`Indigo-vX.Y.Z.zip`** from the [latest release's Assets](https://github.com/spencercnorton/indigo/releases/latest).
-Choose the SD card ZIP, rather than GitHub's Source code ZIP. Back up your
-working card, then **extract the ZIP on your computer**.
+Choose your loader and SD adapter. Click a file or folder in the card diagram
+for its location and any limits.
 
-The **card root** is the first level you see when you open the card. Copy
-files inside the extracted download to the destinations below; putting the
-ZIP or its enclosing `Indigo-vX.Y.Z` folder on the card will not install it.
+[GC Loader](https://norvitech.com/indigo/guide/install/?loader=gcloader) ·
+[PicoBoot / PicoLoader](https://norvitech.com/indigo/guide/install/?loader=picoboot) ·
+[FlippyDrive](https://norvitech.com/indigo/guide/install/?loader=flippy) ·
+[Other / launch from Swiss](https://norvitech.com/indigo/guide/install/?loader=other)
 
-| Your current boot setup | Indigo file: download → card | What starts it |
-| --- | --- | --- |
-| PicoBoot / PicoLoader using gekkoboot | `ipl.dol` → `/ipl.dol` on the SD adapter it boots from | Power on normally |
-| FlippyDrive | `ipl.dol` → `/boot.dol` on FlippyDrive's microSD | Power on in its normal boot mode |
-| GC Loader, Swiss in flash, cubeboot, or an uncertain setup | `ipl.dol` → `/apps/indigo.dol` on a card Swiss reads | Start Swiss, open Apps in its file browser, launch `indigo.dol` |
+1. **Download and extract.** Get `Indigo-vX.Y.Z.zip` from the
+   [release Assets](https://github.com/spencercnorton/indigo/releases/latest).
+   Back up your card and unzip the download on your computer.
+2. **Copy the files shown by the installer.** Use its exact filename and card
+   destination. Merge the shared `swiss` files; keep your settings, saves,
+   artwork and existing boot files.
+3. **Launch Indigo.** Safely eject the card and follow your loader's launch
+   step. Check **System › System Information › About Indigo**, then choose
+   the source holding your games and open Library.
 
-**Keep the boot program you already have.** An existing `ipl.dol` can be
-Swiss, Indigo or cubeboot. Identify it and back it up before direct boot.
-With gekkoboot, stock Swiss can stay on an unused button shortcut such as
-`z.dol`; preserve any shortcut already using that name. If unsure, launch
-Indigo from Swiss using `/apps/indigo.dol` and keep your startup unchanged.
-The Indigo ZIP contains no `boot.iso`: keep GC Loader's existing boot image.
-SD2SP2 and SD Gecko are card adapters, rather than boot methods.
-
-**Merge the shared `swiss` files into the existing folder:**
-
-```text
-SD card root/
-└── swiss/
-    ├── patches/apploader.img    from the download: In-Game Reset to Indigo
-    ├── ui/                     keep your existing poster pack here
-    └── indigo/                 licence and notice from the download
-```
-
-Keep the rest of `swiss`, including settings, cheats and saves. On a Mac,
-hold Option while dropping the folder and choose **Merge**, never Replace
-for the whole folder. If Merge is unavailable, copy its files individually
-into the matching subfolders.
-
-Safely eject the card, launch using your route, and check **System › System
-Information › About Indigo**. Choose the source holding your games and
-open Library; it looks for `/games` there by default. Your boot card and
-game-storage card can be different cards.
-
-**Already using Indigo?** Replace the executable you actually launch
-(`/ipl.dol`, `/boot.dol` or `/apps/indigo.dol`), renaming the new copy as
-needed, and merge the shared files again. Keep your games and recovery copy.
-This applies to Indigo 1.x and 2.x.
-
-The **[step-by-step install guide](docs/guide/install.md)** has a card tree
-for each route, exact copy destinations, first-launch checks, upgrades and
-recovery. Start there if this is your first installation.
+[Updating](docs/guide/install.md#update-indigo) ·
+[Recovery](docs/guide/install.md#go-back-to-stock-swiss) ·
+[Full technical guide](docs/guide/install.md)
 
 ### Any platform — from source
 
@@ -264,8 +235,8 @@ not redistribute. `make dev` builds the executable, which is what the fork
 changes.
 
 `cube/swiss/swiss.dol` is the build output on your computer. Package it
-with `buildtools/sd_package.sh dev`, then follow the same launch route above
-using the ZIP's `ipl.dol`.
+with `buildtools/sd_package.sh dev`, then follow the installer using the
+ZIP's `ipl.dol`.
 
 ## Set up your library
 

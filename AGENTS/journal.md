@@ -1,3 +1,15 @@
+## 2026-10-05 — Start installation with the loader chooser
+
+The README now gives three installation steps and sends readers to the online
+loader and SD-adapter chooser. Direct links preselect GC Loader, PicoBoot,
+FlippyDrive or launching from Swiss. The card diagram supplies the exact
+filenames and destinations; updating, recovery and the full technical guide
+remain linked references.
+
+This revision changes documentation only. The technical install guide stays
+unchanged, and the console source tree still matches v2.3.0. Stable publication
+remains subject to its normal decision and protected checks.
+
 ## 2026-10-05 — Prepare an installation-documentation correction
 
 The installation walkthrough now identifies the boot method separately from
