@@ -139,6 +139,17 @@ Mario Sunshine and a **Zelda** folder.
 
 - **A** on a folder opens it. The heading names the folder you are in, such
   as `NINTENDO / ZELDA`.
+- **Y — Folder** on a selected folder shows its **full path**, including the
+  device prefix. Long paths wrap onto several lines; Up and Down scroll until
+  every part is visible. The same page lets you give that folder a color.
+  Left and Right choose a color, **Y — Reset** chooses Default, **A — Save**
+  keeps the choice and returns, and **B — Cancel** leaves it unchanged.
+  The colored frame shows in every layout, including folders with pictures.
+  Colors stay tied to the full path on that source device when you restart
+  Indigo. Up to 32 folders can have a saved color; resetting one frees its
+  place. A renamed or moved folder starts with Default.
+  Saving needs a writable [Configuration Device](settings.md#where-settings-are-saved); a
+  failed save leaves the page open with an explanation.
 - **B**, **X**, or A on the parent card goes back up one folder. From
   `/games`, each returns directly to Home; opening Library again keeps
   the current game or folder. Returning from the parent card starts at

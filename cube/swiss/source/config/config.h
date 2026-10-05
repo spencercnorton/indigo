@@ -53,6 +53,10 @@ int config_update_global(bool checkConfigDevice);
 /* Turns Library Folders on or off. While it is on, FlattenDir is its
  * pattern and the one it replaced is kept to save and to put back. */
 void config_set_library_folders(bool on);
+/* Library folder appearance: the whole device-prefixed path identifies it.
+ * Saving rolls memory back on failure and preserves other global settings. */
+uint8_t config_folder_color(const char *path);
+bool config_set_folder_color(const char *path, uint8_t color);
 int config_update_autoload(bool checkConfigDevice);
 bool config_global_file_loaded(void);
 int config_update_recent(bool checkConfigDevice);

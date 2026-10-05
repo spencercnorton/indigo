@@ -129,6 +129,10 @@ SAVE_DETAILS_CREATED_BOX = (246, 274, 540, 300)
 SAVE_DETAILS_UPDATED_BOX = (246, 304, 540, 330)
 SAVE_DETAILS_ACTIONS_BOX = (104, 360, 536, 387)
 RAW_ICON_BOX = (68, 100, 120, 161)  # selected cell 0; excludes banner/info bar
+FOLDER_PAGE_TITLE_BOX = (48, 78, 300, 105)
+FOLDER_PATH_BOX = (48, 150, 584, 278)
+FOLDER_COLOR_BOX = (240, 328, 570, 351)
+FOLDER_SWATCH_BOX = (49, 327, 69, 347)
 UP_ARROW_BOX = (169, 96, 184, 112)
 MESSAGE_BOX = (160, 200, 480, 250)
 MESSAGE_COLOUR = (120, 16, 36)  # the same under every Menu Color
@@ -1333,6 +1337,61 @@ class Route:
                    not proof["bad_frames"], **proof)
         return label
 
+    def folder_identity(self, prefix: str, library_box, selected: np.ndarray) -> None:
+        """Y's real path/color page: save, revisit, cancel and reset in each layout.
+
+        Every page entry must differ from the preceding Library frame before
+        its path/color fields count. Every exit must recover the exact folder.
+        A persisted settings read binds the color to the real device path.
+        """
+        before = text_mask(self.gray(), FOLDER_PAGE_TITLE_BOX)
+        title = self.folder_step("Y", f"{prefix}-folder-path", FOLDER_PAGE_TITLE_BOX,
+                                 unlike=before)
+        self.check("Y on a folder opens its identity page", title is not None, layout=prefix)
+        path, _ = self.settled_label(box=FOLDER_PATH_BOX)
+        self.check("the folder page shows a stable full path", path is not None, layout=prefix)
+        self.press("Y", FOLDER_PRESS_SECONDS)  # reset preview to the known default
+        default, _ = self.settled_label(box=FOLDER_COLOR_BOX)
+        self.press("RIGHT", FOLDER_PRESS_SECONDS)
+        indigo, _ = self.settled_label(box=FOLDER_COLOR_BOX, unlike=default)
+        self.check("Right selects a named folder color", indigo is not None, layout=prefix)
+        self.press("RIGHT", FOLDER_PRESS_SECONDS)
+        azure, _ = self.settled_label(box=FOLDER_COLOR_BOX, unlike=indigo)
+        self.check("Right advances the folder color", azure is not None, layout=prefix)
+        self.shot(f"{prefix}-folder-color-azure", self.last_rgb)
+        returned = self.folder_step("A", f"{prefix}-folder-color-save", library_box, like=selected)
+        self.check("Save returns to the same selected folder", returned is not None, layout=prefix)
+        saved = card.read_card(self.sd_image, "swiss/settings/global.ini") or b""
+        self.check("the folder color is persisted with its device-prefixed full path",
+                   bool(re.search(rb"Library Folder Colors=[^\r\n]*[a-z]+:/games/Nintendo\.GC~2", saved)),
+                   layout=prefix)
+        before = text_mask(self.gray(), FOLDER_PAGE_TITLE_BOX)
+        reopened = self.folder_step("Y", f"{prefix}-folder-color-reopen", FOLDER_PAGE_TITLE_BOX,
+                                    like=title, unlike=before)
+        self.check("Y reopens the folder page", reopened is not None, layout=prefix)
+        self.check("the complete path remains the same after saving",
+                   self.settled_label(box=FOLDER_PATH_BOX, like=path)[0] is not None, layout=prefix)
+        self.check("the saved color remains selected",
+                   self.settled_label(box=FOLDER_COLOR_BOX, like=azure)[0] is not None, layout=prefix)
+        self.press("RIGHT", FOLDER_PRESS_SECONDS)
+        changed, _ = self.settled_label(box=FOLDER_COLOR_BOX, unlike=azure)
+        self.check("a new color can be previewed", changed is not None, layout=prefix)
+        self.folder_step("B", f"{prefix}-folder-color-cancel", library_box, like=selected)
+        before = text_mask(self.gray(), FOLDER_PAGE_TITLE_BOX)
+        self.folder_step("Y", f"{prefix}-folder-color-cancel-reopen", FOLDER_PAGE_TITLE_BOX,
+                         like=title, unlike=before)
+        self.check("Cancel keeps the saved color",
+                   self.settled_label(box=FOLDER_COLOR_BOX, like=azure)[0] is not None, layout=prefix)
+        self.press("Y", FOLDER_PRESS_SECONDS)
+        self.check("Reset selects the original Default card appearance",
+                   self.settled_label(box=FOLDER_COLOR_BOX, like=default, unlike=azure)[0] is not None,
+                   layout=prefix)
+        self.shot(f"{prefix}-folder-color-reset", self.last_rgb)
+        self.folder_step("A", f"{prefix}-folder-color-reset-save", library_box, like=selected)
+        saved = card.read_card(self.sd_image, "swiss/settings/global.ini") or b""
+        self.check("saving Default frees the folder's stored color entry",
+                   b"/games/Nintendo.GC~" not in saved, layout=prefix)
+
     def folder_layout(self, faces: list[np.ndarray], name: str, first: bool) -> None:
         """From Home Settings, set the next layout and folders on, then browse."""
         library, source, settings = faces
@@ -1376,6 +1435,7 @@ class Route:
                 _, refused = self.pictures(8.0)
                 self.check("the dotted empty folder's oversized PNG never shows",
                            refused < PICTURE_PIXELS, pixels=refused)
+            self.folder_identity(prefix, box, stray)
             parent = None
             for button in ("A", "B", "X"):
                 empty = self.folder_step("A", f"{prefix}-empty-open-{button.lower()}",

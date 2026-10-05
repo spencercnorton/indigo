@@ -98,6 +98,7 @@ STUBS = r'''
 #define FNM_LEADING_DIR 0
 #endif
 #define PATHNAME_MAX 1024
+static uint8_t config_folder_color(const char *path) { (void)path; return 0u; }
 #define ATTRIB_HIDDEN 2
 #define FEAT_BOOT_GCM 4
 #define DEVICE_CUR 0

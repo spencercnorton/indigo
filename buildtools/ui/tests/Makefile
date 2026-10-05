@@ -24,7 +24,7 @@ TESTS := test_ui_cheats test_ui_saves test_ui_saves_raw test_ui_saves_metadata t
 	test_ui_menu_input test_ui_clock test_ui_hint test_ui_stage \
 	test_ui_home test_ui_cube_motif test_ui_home_safety test_ui_home_layout \
 	test_ui_scene test_ui_command_rail test_ui_presentation \
-	test_gameflow_state test_gameflow_library test_gameflow_resolver \
+	test_gameflow_state test_gameflow_library test_ui_folder test_gameflow_resolver \
 	test_gameflow_detail test_ui_game_history test_ui_about \
 	test_gameflow_ownership test_cheat_policy test_ui_launch
 
@@ -81,6 +81,7 @@ test_ui_presentation.src := $(GUI)/ui_presentation.c
 test_gameflow_state.src := $(GUI)/ui_gameflow.c $(GUI)/ui_motion.c
 test_gameflow_state.libs := -lm
 test_gameflow_library.src := $(GUI)/ui_gameflow_library.c
+test_ui_folder.src := $(GUI)/ui_folder.c
 test_gameflow_resolver.src := $(GUI)/ui_gameflow_resolver.c \
 	$(GUI)/ui_gameflow_library.c
 test_gameflow_detail.src := $(GUI)/ui_gameflow_detail.c $(GUI)/ui_game_history.c \

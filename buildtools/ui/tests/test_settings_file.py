@@ -127,6 +127,9 @@ static bool getRawDTVStatus(void) { return false; }
     re.search(r"^enum setupStream\s*\{.*?\};", MAIN_H, re.S | re.M).group(0),
     SWISS_SETTINGS,
     "SwissSettings swissSettings;",
+    (SWISS / "source/gui/ui_folder.h").read_text(),
+    (SWISS / "source/gui/ui_folder.c").read_text().replace('#include "ui_folder.h"', ""),
+    "static uiFolderColors_t folderColors;",
     CONFIG_ENTRY,
     "\n".join(STRING_ARRAYS),
     re.search(r"^const int simulatedMemSizeInt\[\] = \{.*?\};", SETTINGS_C, re.S | re.M).group(0),
@@ -185,6 +188,7 @@ static bool getRawDTVStatus(void) { return false; }
     "static void write_game(FILE *fp, ConfigEntry *entry, ConfigEntry *defaults)\n{\n"
     + between(GAME_WRITER, 'fprintf(fp, "# Game specific', "fclose(fp);") + "}",
     "static void set_defaults(void)\n{\n"
+    "\tmemset(&folderColors, 0, sizeof(folderColors));\n"
     "\tmemset(&swissSettings, 0, sizeof(SwissSettings));\n"
     '\tstrcpy(swissSettings.flattenDir, "*/games");\n'
     + DEFAULTS + "}",
@@ -414,6 +418,8 @@ def writer_keys(writer: str, subject: str) -> dict:
             keys[key] = re.search(r'\? "([^"]+)":"([^"]+)"', rest).groups()
         else:
             keys[key] = "raw"
+    for key in re.findall(r'fputs\("([^"=]+)=", fp\)', writer):
+        keys[key] = "raw"
     return keys
 
 

@@ -1,5 +1,26 @@
 # Indigo development journal
 
+## 2026-10-05 — Give Library folders a path and persistent color
+
+Y on a selected folder opens a retained identity page with the full
+device-prefixed path, wrapping and scrolling without ellipses. Left/Right
+preview the folder color, Y restores Default, A saves and B cancels. Explicit
+color frames remain visible on custom posters in every Library layout and
+keep their chosen color when Menu Color changes.
+
+A bounded 32-entry map is saved under Library Folder Colors in global.ini.
+Paths escape separators and control bytes; display controls use printable
+hex escapes. Saving changes only that key, refuses unreadable settings and
+recovery copies, and restores the exact in-memory map on failure. A proven
+absent file is created with only this key. The settings fuzzer exercises the
+same parser. The guide and settings reference describe controls and limits.
+
+Validation: strict C and ASan/UBSan codec/path tests, production save fault
+regressions, real folder navigation, 31 settings parser/writer tests and all
+23 GX renderer tests pass. The target DOL compiles and links. The folders
+Dolphin route now records save, revisit, cancel and reset for all layouts;
+its native captures remain to be recorded by CI on the integrated build.
+
 ## 2026-10-04 — Prepare the validated candidate for v2.3.0
 
 The maintainer tested the final release candidate on a GameCube and approved

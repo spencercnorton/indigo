@@ -159,6 +159,8 @@ run_contracts() {
 	echo "== settings files: real parser/writer vs docs/SETTINGS.md =="
 	python3 ./test_settings_file.py
 	echo "== settings saves: power lost at any step leaves them whole =="
+	python3 ./test_folder_config.py
+	python3 ./test_folder_config.py --sanitize
 	python3 ./test_config_save.py
 	echo "== settings views: every setting in exactly one view =="
 	python3 ./test_settings_views.py
