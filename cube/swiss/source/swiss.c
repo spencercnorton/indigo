@@ -831,7 +831,17 @@ typedef struct {
 	/* Y in the Library: Detail opens this game's settings first, once. */
 	bool openSettings;
 	char gameId[UI_GAMEFLOW_DETAIL_ID_LENGTH + 1u];
+	/* Detail reads the save copies once while it is open: their totals, the
+	 * slot the game reads its save from (-1: no card), and the copy Left and
+	 * Right chose (-1: none). Where the copies are: gameflowSaveCopies. */
+	bool savesScanned;
+	uiSavesGameStats_t saveStats;
+	int saveSlot;
+	int saveChoice;
 } gameflowLaunchContext_t;
+
+/* The copies of the open Detail's save, one Detail at a time. */
+static savesCopies_t gameflowSaveCopies;
 
 static void load_file_with_context(gameflowLaunchContext_t *context);
 static void load_game_with_context(gameflowLaunchContext_t *context);
@@ -4604,12 +4614,148 @@ static u32 gameflowDetailInput(u32 buttons)
 	return input;
 }
 
+/* The slot whose card the game reads its save from: the first holding a copy
+ * of it, else the first with a card in it. -1: no card. */
+static int gameflowSaveSlot(const savesCopies_t *copies)
+{
+	unsigned slot, i;
+
+	for(slot = 0u; slot < 2u; slot++) {
+		for(i = 0u; i < copies->count; i++) {
+			if(copies->copy[i].source == (savesCopySource_t)slot) return (int)slot;
+		}
+	}
+	for(slot = 0u; slot < 2u; slot++) {
+		if(copies->cards[slot]) return (int)slot;
+	}
+	return -1;
+}
+
+/* The first copy on that slot's card, the one the game will read. -1: none. */
+static int gameflowSaveInUse(const savesCopies_t *copies, int slot)
+{
+	unsigned i;
+
+	for(i = 0u; slot >= 0 && i < copies->count; i++) {
+		if(copies->copy[i].source == (savesCopySource_t)slot) return (int)i;
+	}
+	return -1;
+}
+
+static const char *gameflowSaveWhere(const savesCopy_t *copy)
+{
+	switch(copy->source) {
+		case SAVES_COPY_SLOT_A: return "Slot A";
+		case SAVES_COPY_SLOT_B: return "Slot B";
+		case SAVES_COPY_FILE: return "Save Folder";
+		default: return getRelativeName((char *)copy->path);
+	}
+}
+
+/* The copy Left and Right show, while there are two or more to choose from. */
+static void gameflowSaveChoiceSource(const gameflowLaunchContext_t *context,
+	uiGameflowDetailSource_t *source)
+{
+	const savesCopy_t *copy;
+
+	if(gameflowSaveCopies.count < 2u || context->saveChoice < 0 ||
+		(unsigned)context->saveChoice >= gameflowSaveCopies.count) {
+		source->saveCopies = gameflowSaveCopies.count;
+		return;
+	}
+	copy = &gameflowSaveCopies.copy[context->saveChoice];
+	source->saveCopies = gameflowSaveCopies.count;
+	source->saveChoice = (uint32_t)context->saveChoice + 1u;
+	source->saveChoiceEntry = copy->entry;
+	source->saveChoiceWhere = gameflowSaveWhere(copy);
+	source->saveChoiceInUse = context->saveSlot >= 0 &&
+		copy->source == (savesCopySource_t)context->saveSlot;
+}
+
+/* A box until A or B, once the press that opened it is let go. */
+static bool gameflowSaveAsk(const char *text)
+{
+	uiDrawObj_t *box = DrawPublish(DrawMessageBox(D_INFO, text));
+	bool released = false;
+	bool yes = false;
+
+	while(1) {
+		u32 held = padsButtonsHeld();
+
+		if(!released) {
+			released = (held & (BUTTON_A | BUTTON_B)) == 0u;
+		}
+		else if(held & BUTTON_A) {
+			yes = true;
+			break;
+		}
+		else if(held & BUTTON_B) {
+			break;
+		}
+		VIDEO_WaitVSync();
+	}
+	DrawDispose(box);
+	while(padsButtonsHeld() & (BUTTON_A | BUTTON_B)) {
+		VIDEO_WaitVSync();
+	}
+	return yes;
+}
+
+/* Before a launch: a copy chosen with Left and Right that isn't the one on
+ * the card the game reads goes on that card first, once A says so. False:
+ * Detail stays open (B, or it didn't go on). */
+static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
+{
+	const savesCopy_t *copy;
+	char why[256];
+	char text[512];
+	uiDrawObj_t *box;
+	bool ok;
+
+	if(!context->savesScanned || context->saveChoice < 0 ||
+		(unsigned)context->saveChoice >= gameflowSaveCopies.count) {
+		return true;
+	}
+	copy = &gameflowSaveCopies.copy[context->saveChoice];
+	if(context->saveSlot >= 0 &&
+		copy->source == (savesCopySource_t)context->saveSlot) {
+		return true;
+	}
+	if(context->saveSlot < 0) {
+		gameflowSaveAsk("There's no memory card for this save.\n"
+			"Insert one, or choose the save on a card.\nA  OK");
+		return false;
+	}
+	if(swissSettings.emulateMemoryCard) {
+		gameflowSaveAsk("Emulate Memory Card is on, so the game reads its\n"
+			"card image, not the card in the slot.\nA  OK");
+		return false;
+	}
+	snprintf(text, sizeof(text), "Start with the save from %s?\n"
+		"%s's own copy of it goes to the Save Folder first.\n"
+		"A  LOAD    B  KEEP", gameflowSaveWhere(copy),
+		context->saveSlot == 0 ? "Slot A" : "Slot B");
+	if(!gameflowSaveAsk(text)) {
+		return false;
+	}
+	box = DrawPublish(DrawProgressBar(true, 0, "Loading save\205"));
+	ok = Saves_LoadCopy(context->saveSlot, copy, why, sizeof(why));
+	DrawDispose(box);
+	if(!ok) {
+		snprintf(text, sizeof(text), "The save didn't go on the card.\n%s\nA  OK",
+			why);
+		gameflowSaveAsk(text);
+		/* The cards may have changed: read them again. */
+		context->savesScanned = false;
+	}
+	return ok;
+}
+
 static bool gameflowPublishDetail(ConfigEntry *config,
 	gameflowLaunchContext_t *context)
 {
 	uiGameflowDetailSnapshot_t *snapshot;
 	uiGameflowDetailSource_t source;
-	uiSavesGameStats_t saveStats;
 	uiGameflowDetailCheatSource_t *cheatSources = NULL;
 	CheatEntries *cheats = getCheats();
 	file_meta *meta = curFile.meta;
@@ -4702,13 +4848,21 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 	/* Only the verified disc launch context owns a save identity, and only
 	 * Saves on Details (on by default) reads the memory cards for it: off, a
 	 * game's details leave them alone. Apps use the same Library renderer
-	 * but never take this snapshot path. */
+	 * but never take this snapshot path. Read once while Detail is open. */
 	if(!swissSettings.hideDetailSaves &&
 		context->primary != NULL && context->primary->fileType == IS_FILE &&
 		valid_gcm_magic(&GCMDisk) &&
 		memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0) {
-		Saves_CollectGameStats(context->gameId, &saveStats);
-		source.saveStats = &saveStats;
+		if(!context->savesScanned) {
+			Saves_CollectGameStats(context->gameId, &context->saveStats,
+				&gameflowSaveCopies);
+			context->savesScanned = true;
+			context->saveSlot = gameflowSaveSlot(&gameflowSaveCopies);
+			context->saveChoice = gameflowSaveInUse(&gameflowSaveCopies,
+				context->saveSlot);
+		}
+		source.saveStats = &context->saveStats;
+		gameflowSaveChoiceSource(context, &source);
 	}
 	source.customSettings = (uint32_t)settings_game_custom_count(config);
 	source.firstCustomSetting = settings_game_custom_first(config);
@@ -4738,7 +4892,8 @@ static int gameflow_info_game(ConfigEntry *config,
 	gameflowLaunchContext_t *context)
 {
 	const u32 detailButtons = PAD_BUTTON_X | BUTTON_B | BUTTON_A |
-		PAD_BUTTON_Y | BUTTON_Z | BUTTON_R | BUTTON_UP | BUTTON_DOWN;
+		PAD_BUTTON_Y | BUTTON_Z | BUTTON_R | BUTTON_UP | BUTTON_DOWN |
+		BUTTON_LEFT | BUTTON_RIGHT;
 	uiMenuActionState_t detailInput;
 	uiMenuInputState_t detailStick;
 	uiGameflowDetailFocus_t focus = UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH;
@@ -4800,11 +4955,29 @@ static int gameflow_info_game(ConfigEntry *config,
 				 * centre first, never while a button is down. With no
 				 * repeat it needs no clock. */
 				analog = padsMenuInputPoll(&detailStick, 0u,
-					UI_MENU_INPUT_AXIS_VERTICAL,
+					UI_MENU_INPUT_AXIS_BOTH,
 					(padsButtonsHeld() & detailButtons) != 0u);
 				if(analog == UI_MENU_INPUT_UP) buttons |= BUTTON_UP;
 				if(analog == UI_MENU_INPUT_DOWN) buttons |= BUTTON_DOWN;
+				if(analog == UI_MENU_INPUT_LEFT) buttons |= BUTTON_LEFT;
+				if(analog == UI_MENU_INPUT_RIGHT) buttons |= BUTTON_RIGHT;
 			} while(buttons == 0u);
+			/* Left and Right choose the save copy to start with, while the
+			 * Saves box has two or more. */
+			if(buttons & (BUTTON_LEFT | BUTTON_RIGHT)) {
+				int copies = (int)gameflowSaveCopies.count;
+
+				if(context->savesScanned && copies >= 2) {
+					int step = (buttons & BUTTON_RIGHT) ? 1 : -1;
+
+					context->saveChoice = context->saveChoice < 0 ?
+						(step > 0 ? 0 : copies - 1) :
+						(context->saveChoice + step + copies) % copies;
+					gameflowPublishDetail(config, context);
+					menuaudio_blip();
+				}
+				continue;
+			}
 			memset(&actionSnapshot, 0, sizeof(actionSnapshot));
 			actionSnapshot.flags = UI_GAMEFLOW_DETAIL_VALID |
 				UI_GAMEFLOW_DETAIL_CAN_SETTINGS |
@@ -4837,7 +5010,13 @@ static int gameflow_info_game(ConfigEntry *config,
 			}
 		}
 
-		if(action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||
+		if((action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||
+			action == UI_GAMEFLOW_DETAIL_ACTION_CLEAN_BOOT) &&
+			!gameflowLoadChosenSave(context)) {
+			/* Not now: the save stays as it was, and so does Detail. */
+			gameflowPublishDetail(config, context);
+		}
+		else if(action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||
 			action == UI_GAMEFLOW_DETAIL_ACTION_CLEAN_BOOT) {
 			if(action == UI_GAMEFLOW_DETAIL_ACTION_CLEAN_BOOT) {
 				config->forceCleanBoot = 1;

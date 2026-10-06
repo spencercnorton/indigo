@@ -133,8 +133,11 @@ def check_save_publication(source: str) -> None:
     assert "context->primary->fileType == IS_FILE" in collection
     assert "valid_gcm_magic(&GCMDisk)" in collection
     assert "memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0" in collection
-    assert "Saves_CollectGameStats(context->gameId, &saveStats);" in collection
-    assert "source.saveStats = &saveStats;" in collection
+    # Read once while Detail is open; Left and Right only republish it.
+    assert "if(!context->savesScanned) {" in collection
+    assert ("Saves_CollectGameStats(context->gameId, &context->saveStats,\n"
+            "\t\t\t\t&gameflowSaveCopies);") in collection
+    assert "source.saveStats = &context->saveStats;" in collection
     assert source.count("Saves_CollectGameStats(") == 1
     assert "source.saveStats" not in publication[:publication.index(collection)]
     assert "UIGameflowDetail_Build(snapshot, &source)" in publication
@@ -145,7 +148,8 @@ for old, new in (
     ("context->primary->fileType == IS_FILE", "true"),
     ("valid_gcm_magic(&GCMDisk)", "true"),
     ("memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0", "true"),
-    ("source.saveStats = &saveStats;", "source.saveStats = NULL;"),
+    ("source.saveStats = &context->saveStats;", "source.saveStats = NULL;"),
+    ("if(!context->savesScanned) {", "if(true) {"),
 ):
     try:
         publication = extract_function(swiss_source, "static bool gameflowPublishDetail(")
@@ -159,13 +163,15 @@ def check_detail_input(controller: str, mapping: str) -> None:
     # Host policy tests exercise the edges. Bind the actual controller to that
     # policy, including the entry/modal quarantine and physical face buttons.
     assert "const u32 detailButtons = PAD_BUTTON_X | BUTTON_B | BUTTON_A |" in controller
-    assert "PAD_BUTTON_Y | BUTTON_Z | BUTTON_R | BUTTON_UP | BUTTON_DOWN;" in controller
+    assert ("PAD_BUTTON_Y | BUTTON_Z | BUTTON_R | BUTTON_UP | BUTTON_DOWN |\n"
+            "\t\tBUTTON_LEFT | BUTTON_RIGHT;") in controller
     assert "buttons = UIMenuAction_Update(&detailInput, padsButtonsHeld()," in controller
     assert "detailButtons, BUTTON_L, BUTTON_B);" in controller
     assert controller.count("UIMenuAction_Init(&detailInput, padsButtonsHeld());") == 2
-    # The stick steps like the D-pad: vertical, once a push (no repeat), quiet
-    # while a button is down, and re-armed with the buttons after a modal.
-    assert ("padsMenuInputPoll(&detailStick, 0u,\n\t\t\t\t\tUI_MENU_INPUT_AXIS_VERTICAL,\n"
+    # The stick steps like the D-pad, on both axes (Left and Right choose a
+    # save copy), once a push (no repeat), quiet while a button is down, and
+    # re-armed with the buttons after a modal.
+    assert ("padsMenuInputPoll(&detailStick, 0u,\n\t\t\t\t\tUI_MENU_INPUT_AXIS_BOTH,\n"
             "\t\t\t\t\t(padsButtonsHeld() & detailButtons) != 0u);") in controller
     assert controller.count("UIMenuInput_Init(&detailStick);") == 2
     assert "gameflowWaitDetailButtonsReleased" not in controller
@@ -194,10 +200,11 @@ detail_input_mutants = (
     (detail.replace("PAD_BUTTON_X", "BUTTON_X", 1), detail_mapping),
     (detail, detail_mapping.replace("PAD_BUTTON_Y", "BUTTON_Y", 1)),
     (detail, detail_mapping.replace("if(buttons & BUTTON_L)", "if(false)", 1)),
-    (detail.replace(" | BUTTON_UP | BUTTON_DOWN;", ";", 1), detail_mapping),
+    (detail.replace(" | BUTTON_UP | BUTTON_DOWN |", " |", 1), detail_mapping),
+    (detail.replace("\t\tBUTTON_LEFT | BUTTON_RIGHT;", "\t\t0u;", 1), detail_mapping),
     (detail, detail_mapping.replace("if(buttons & BUTTON_DOWN)", "if(false)", 1)),
-    (detail.replace("UI_MENU_INPUT_AXIS_VERTICAL,",
-                    "UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,", 1), detail_mapping),
+    (detail.replace("UI_MENU_INPUT_AXIS_BOTH,",
+                    "UI_MENU_INPUT_AXIS_BOTH | UI_MENU_INPUT_REPEAT,", 1), detail_mapping),
     (detail.replace("(padsButtonsHeld() & detailButtons) != 0u);", "false);", 1), detail_mapping),
     (detail.replace("UIMenuInput_Init(&detailStick);", "", 1), detail_mapping),
 )
@@ -208,6 +215,33 @@ for mutant_controller, mutant_mapping in detail_input_mutants:
         pass
     else:
         raise AssertionError("Detail input regression escaped wiring audit")
+
+def check_save_load(controller: str, load: str) -> None:
+    # A save copy chosen with Left and Right goes on the card only after A in
+    # its own box, and before the launch screen takes over: B, or a load that
+    # didn't go on, keeps Detail open with the card as it was.
+    boot = controller.index("if((action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||")
+    load_at = controller.index("!gameflowLoadChosenSave(context)) {", boot)
+    assert load_at < controller.index(
+        "DrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LAUNCH);", boot)
+    ask = load.index("if(!gameflowSaveAsk(text)) {\n\t\treturn false;\n\t}")
+    assert load.count("Saves_LoadCopy(") == 1 and ask < load.index("Saves_LoadCopy(")
+    assert "swissSettings.emulateMemoryCard" in load[:ask]
+
+
+save_load = extract_function(swiss_source, "static bool gameflowLoadChosenSave(")
+check_save_load(detail, save_load)
+for mutant_controller, mutant_load in (
+    (detail.replace("!gameflowLoadChosenSave(context)) {", "false) {", 1), save_load),
+    (detail, save_load.replace("if(!gameflowSaveAsk(text)) {\n\t\treturn false;\n\t}", "", 1)),
+    (detail, save_load.replace("swissSettings.emulateMemoryCard", "false", 1)),
+):
+    try:
+        check_save_load(mutant_controller, mutant_load)
+    except (AssertionError, ValueError):
+        pass
+    else:
+        raise AssertionError("Detail save load regression escaped its audit")
 
 carousel = extract_function(swiss_source, "uiDrawObj_t* renderFileCarousel")
 declaration = carousel.index("u32 browserButtons;")

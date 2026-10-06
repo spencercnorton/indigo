@@ -520,9 +520,63 @@ static void testReadOnlySaveCopies(void)
 	CHECK(strcmp(snapshot.savesUpdated, "Update date unavailable") == 0);
 }
 
+static void testSaveCopyChoice(void)
+{
+	uiSavesGameStats_t stats = {
+		.saves = 3u, .blocks = 6u, .latestUpdated = 762525240u,
+		.sourceSaves = {1u, 0u, 2u}, .checkedSources = 5u,
+		.updatedKnown = true
+	};
+	uint8_t entry[UI_SAVES_ENTRY_SIZE] = {0};
+	uiGameflowDetailSource_t source = {
+		.gameId = "GACZ01", .title = "Astral Circuit", .saveStats = &stats,
+		.saveCopies = 3u, .flags = UI_GAMEFLOW_DETAIL_SAVE_CHOICE
+	};
+	uiGameflowDetailSnapshot_t snapshot;
+
+	/* 2024-02-29 12:34 in the entry's clock (seconds since 2000). */
+	entry[0x28] = 0x2d; entry[0x29] = 0x73; entry[0x2a] = 0x36; entry[0x2b] = 0x38;
+	/* Nothing chosen: the totals, and Left and Right can choose. */
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) != 0u);
+	CHECK(strcmp(snapshot.savesSummary, "3 save copies | 6 blocks") == 0);
+	/* A copy chosen elsewhere goes on at launch; the card's own is in use. */
+	source.saveChoice = 2u;
+	source.saveChoiceEntry = entry;
+	source.saveChoiceWhere = "Save Folder";
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "Copy 2 of 3 | Save Folder") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "Loads at launch | 2024-02-29 12:34") == 0);
+	source.saveChoice = 1u;
+	source.saveChoiceWhere = "Slot A";
+	source.saveChoiceInUse = true;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "Copy 1 of 3 | Slot A") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "In use | 2024-02-29 12:34") == 0);
+	memset(entry + 0x28, 0, 4u);
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesUpdated, "In use | Date unavailable") == 0);
+	/* A choice out of range shows the totals. */
+	source.saveChoice = 4u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "3 save copies | 6 blocks") == 0);
+	/* One copy, or no SAVES box: no choice, whatever the caller's flags. */
+	source.saveCopies = 1u;
+	source.saveChoice = 1u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) == 0u);
+	CHECK(strcmp(snapshot.savesSummary, "3 save copies | 6 blocks") == 0);
+	source.saveCopies = 3u;
+	stats.saves = 1u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & (UI_GAMEFLOW_DETAIL_SAVE_CHOICE |
+		UI_GAMEFLOW_DETAIL_HAS_SAVES)) == 0u);
+}
+
 int main(void)
 {
 	testReadOnlySaveCopies();
+	testSaveCopyChoice();
 	testPointerFreeCopyAndMatch();
 	testCustomSettingsLine();
 	testNoCheatsClearsCapability();

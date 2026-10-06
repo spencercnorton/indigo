@@ -119,6 +119,15 @@ static void detail(void)
 		stats.blocks = 2u;
 	}
 	source.saveStats = savesVariant == 0u ? NULL : &stats;
+	if(savesVariant == 9u) {
+		/* Left and Right chose the second of three: a Save Folder copy. */
+		static uint8_t chosen[UI_SAVES_ENTRY_SIZE];
+		chosen[0x28] = 0x2d; chosen[0x29] = 0x73; chosen[0x2a] = 0x36; chosen[0x2b] = 0x38;
+		source.saveCopies = 3u;
+		source.saveChoice = 2u;
+		source.saveChoiceEntry = chosen;
+		source.saveChoiceWhere = "Save Folder";
+	}
 	CHECK(UIGameflowDetail_Build(&eventData->detail, &source));
 	/* The video event must never retain borrowed menu-thread storage. */
 	memset(&stats, 0, sizeof(stats));
@@ -505,6 +514,24 @@ class LaunchGxStream(unittest.TestCase):
                 self.assertIn((274, 232, "Update date unavailable"), unknown_date)
                 partial_date = strings(self.detail_rest(wide, 7))
                 self.assertIn((274, 232, "Partial scan | Update date unavailable"), partial_date)
+
+    def test_save_choice_draws_the_chosen_copy(self):
+        # With Left and Right choosing among the copies, the label says so,
+        # and the inset names the chosen copy and that it goes on at launch,
+        # in the inset's own places.
+        for wide in (0, 1):
+            with self.subTest(wide=wide):
+                drawn = strings(self.detail_rest(wide, 9))
+                self.assertIn((576, 214, "\xab SAVES \xbb"), drawn)
+                self.assertIn((274, 214, "Copy 2 of 3 | Save Folder"), drawn)
+                self.assertIn((274, 232, "Loads at launch | 2024-02-29 12:34"), drawn)
+                self.assertIn((274, 264, "SETTINGS"), drawn)
+                cells = [c for c in text_cells(self.detail_rest(wide, 9))
+                         if 202 <= c["box"][1] and c["box"][3] <= 245]
+                self.assertEqual(len(cells), 3)
+                tag, summary, _ = cells
+                self.assertGreater(tag["box"][0] - summary["box"][2], 12)
+                self.assertTrue(all(c["box"][2] < 580 for c in cells))
 
     def test_fewer_than_two_copies_leave_saves_out(self):
         # Saves on Details off (no statistics), no copies, a partial scan

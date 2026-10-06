@@ -289,9 +289,31 @@ def check(source: str) -> None:
     ordered(show, "over.leaving = 1;", "screenRedraw();", "savesWait(",
             "placeClear(&places[i]);", "DrawDispose(page);", "free(pool);")
 
+    # Detail's load keeps the card's own copy of the save on the SD card
+    # before anything on the card changes, and replaces it only after that.
+    load = function(source, "Saves_LoadCopy")
+    ordered(load, "if(!config_set_device())", "return false;",
+            "own = found != NULL ? saveRead(found, &ownLength) : NULL;",
+            "if(own == NULL ||\n\t\t\t\tfolderWrite(folder, name, own, ownLength, why, whySize)) {",
+            "ok = cardReplace(")
+    if load.count("cardReplace(") != 1:
+        raise AssertionError("Detail's load replaces a card's save outside its one guard")
+    # And puts the card's own copy back when the chosen one doesn't go on.
+    replace = function(source, "cardReplace")
+    ordered(replace, "gone = found != NULL && device->deleteFile(found) == 0;",
+            "if(!gone) {", "return false;",
+            "if(cardWrite(slot, entry, blocks, blockBytes, failed, sizeof(failed))) {",
+            "else if(cardWrite(slot, own, own + UI_SAVES_ENTRY_SIZE,")
+
 
 def mutants(source: str) -> list[tuple[str, str]]:
     cases = [
+        ("Detail's load replaces a card's save without keeping it",
+         source.replace("if(own == NULL ||\n\t\t\t\tfolderWrite(folder, name, own, ownLength, why, whySize)) {",
+                        "if(true) {")),
+        ("Detail's load never puts the card's own copy back",
+         source.replace("else if(cardWrite(slot, own, own + UI_SAVES_ENTRY_SIZE,",
+                        "else if(false && cardWrite(slot, own, own + UI_SAVES_ENTRY_SIZE,")),
         ("a Move deletes without a good copy",
          source.replace("if(ok && move && !saveDelete(save))",
                         "if(move && !saveDelete(save))")),

@@ -298,6 +298,39 @@ static void buildSavesPresentation(uiGameflowDetailSnapshot_t *snapshot,
 	}
 }
 
+/* With two or more copies Left and Right step through, the one chosen: where
+ * it is, and whether the game reads it already or it goes on at launch. */
+static void buildSaveChoicePresentation(uiGameflowDetailSnapshot_t *snapshot,
+	const uiGameflowDetailSource_t *source)
+{
+	char updated[17];
+	const char *when;
+
+	if((snapshot->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) == 0u ||
+		source->saveCopies < 2u) {
+		return;
+	}
+	snapshot->flags |= UI_GAMEFLOW_DETAIL_SAVE_CHOICE;
+	if(source->saveChoice == 0u || source->saveChoice > source->saveCopies ||
+		source->saveChoiceEntry == NULL) {
+		return;
+	}
+	(void)snprintf(snapshot->savesSummary, sizeof(snapshot->savesSummary),
+		"Copy %lu of %lu | %s", (unsigned long)source->saveChoice,
+		(unsigned long)source->saveCopies,
+		source->saveChoiceWhere != NULL ? source->saveChoiceWhere : "");
+	when = source->saveChoiceInUse ? "In use" : "Loads at launch";
+	if(UISaves_FormatUpdated(UISaves_UpdatedSeconds(source->saveChoiceEntry),
+		updated, sizeof(updated))) {
+		(void)snprintf(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
+			"%s | %s", when, updated);
+	}
+	else {
+		(void)snprintf(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
+			"%s | Date unavailable", when);
+	}
+}
+
 bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 	const uiGameflowDetailSource_t *source)
 {
@@ -320,7 +353,7 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 	snapshot->customSettings = source->customSettings;
 	snapshot->flags =
 		(source->flags & ~(uint32_t)(UI_GAMEFLOW_DETAIL_HAS_BANNER |
-			UI_GAMEFLOW_DETAIL_HAS_SAVES)) |
+			UI_GAMEFLOW_DETAIL_HAS_SAVES | UI_GAMEFLOW_DETAIL_SAVE_CHOICE)) |
 		UI_GAMEFLOW_DETAIL_VALID;
 	memcpy(snapshot->gameId, source->gameId,
 		UI_GAMEFLOW_DETAIL_ID_LENGTH + 1u);
@@ -370,6 +403,7 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 	buildPresentation(snapshot);
 	buildSettingsPresentation(snapshot, source->firstCustomSetting);
 	buildSavesPresentation(snapshot, source->saveStats);
+	buildSaveChoicePresentation(snapshot, source);
 	return true;
 }
 

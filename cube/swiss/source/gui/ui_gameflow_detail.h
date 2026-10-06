@@ -38,7 +38,9 @@ typedef enum {
 	UI_GAMEFLOW_DETAIL_AUDIO_STREAMING = 1u << 11,
 	UI_GAMEFLOW_DETAIL_HAS_DISC_TWO = 1u << 12,
 	/* Set by Build: the SAVES inset shows, for two or more save copies. */
-	UI_GAMEFLOW_DETAIL_HAS_SAVES = 1u << 13
+	UI_GAMEFLOW_DETAIL_HAS_SAVES = 1u << 13,
+	/* Set by Build: Left and Right choose the copy to start the game with. */
+	UI_GAMEFLOW_DETAIL_SAVE_CHOICE = 1u << 14
 } uiGameflowDetailFlags_t;
 
 typedef struct {
@@ -60,6 +62,14 @@ typedef struct {
 	bool playHistoryAvailable;
 	uiGameSaveStatus_t saveStatus;
 	const uiSavesGameStats_t *saveStats;
+	/* Left and Right's choice among saveCopies copies (1-based; 0: none, the
+	 * totals show): its entry, where it is, and whether it is on the card the
+	 * game reads. */
+	uint32_t saveCopies;
+	uint32_t saveChoice;
+	const uint8_t *saveChoiceEntry;
+	const char *saveChoiceWhere;
+	bool saveChoiceInUse;
 	const uint8_t *banner;
 	size_t bannerSize;
 	const uiGameflowDetailCheatSource_t *cheats;

@@ -86,6 +86,7 @@ See [Apps](apps.md).
 | Button | Does |
 | --- | --- |
 | Up, Down | Move between Launch Game, Cheats and Settings. |
+| Left, Right | Choose the copy of the game's save to start with, when the Saves box shows two or more. |
 | A | Open the one you're on: launch the game, or its cheats or settings. |
 | L + A | Clean boot: start the disc with no changes applied (disc drive only). |
 | B | Back to the Library. |

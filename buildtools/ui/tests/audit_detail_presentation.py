@@ -181,15 +181,16 @@ require("if(stats == NULL || stats->saves < 2u) {\n\t\treturn;" in saves_line an
 require("stats->partial" in saves_line and "stats->checkedSources == 0u" in saves_line and
         '"Partial scan | "' in saves_line,
         "a partial save scan would look complete")
-require("UI_GAMEFLOW_DETAIL_HAS_SAVES)) |" in build,
-        "a caller's flags could show SAVES without two or more copies")
+require("UI_GAMEFLOW_DETAIL_HAS_SAVES | UI_GAMEFLOW_DETAIL_SAVE_CHOICE)) |" in build,
+        "a caller's flags could show SAVES or its choice without two or more copies")
 require(renderer.index('"SAVES"') < renderer.index('"SETTINGS"') < renderer.index('"CHEATS"'),
         "save copies are not above the settings and cheats insets")
 require("if(hasSaves) {\n\t\t\t_GameflowPutDetailPanel(260, 202, 330, 43, 2," in planes,
         "read-only save inset has no panel, or one without SAVES")
-require("if(detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) {\n"
-        "\t\tdrawStringMedium(576, 214, \"SAVES\"" in renderer,
-        "the SAVES inset draws without two or more copies")
+require("if(detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) {\n" in renderer and
+        "drawStringMedium(576, 214, (detail->flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) ?\n"
+        "\t\t\t\"\\253 SAVES \\273\" : \"SAVES\"" in renderer,
+        "the SAVES inset draws without two or more copies, or hides its choice")
 for forbidden in ("Saves_CollectGameStats(", "UISaves_FormatUpdated(", "->readFile(", "->readDir("):
     require(forbidden not in renderer and forbidden not in planes,
             f"Detail draw performs menu-thread save work: {forbidden}")

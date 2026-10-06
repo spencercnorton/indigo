@@ -43,6 +43,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
   up. Settings › Setup › Library › **Saves on Details** turns it off, and
   then a game's details don't read your memory cards at all. In `global.ini`
   it is `Hide Saves on Details`.
+- **Left** and **Right** on a game's details choose which copy of its save to
+  start with. Launching with another copy chosen asks first, keeps the
+  memory card's own copy in the Save Folder, puts the chosen one on the card
+  and reads it back; if anything fails, the card's own copy goes back and the
+  game doesn't start.
 - Save captions use readable comment text and verified game identities when
   games omit display metadata, including Need for Speed: Underground 2.
   Static and missing icons remain distinct from stored animations.

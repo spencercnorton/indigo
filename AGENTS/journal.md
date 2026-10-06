@@ -1,3 +1,37 @@
+## 2026-10-06 — Choose the save copy a game starts with
+
+Left and Right on a game's details step through the copies the Saves box
+counts. Saves_CollectGameStats now also lists where each is (Slot A or B, a
+Save Folder file, or a card image and its ordinal; the first eight), and
+Detail reads the cards once per open (context->savesScanned): Left and Right
+republish without reading them again. The box shows "Copy N of M | where"
+and In use or Loads at launch; its label becomes « SAVES ».
+
+A on Launch Game with a copy that isn't on the card the game reads asks
+first (A LOAD, B KEEP). Saves_LoadCopy then writes the card's own copy of
+that save to the Save Folder (read back), removes it, writes the chosen copy
+(cardWrite reads it back) and, if that fails, puts the card's own copy back
+(cardReplace); Detail stays open on B or any failure. The card is the first
+slot holding a copy (Slot A first), else the first with a card. Not offered
+while Emulate Memory Card is on.
+
+Validation: test_saves_stats (copy places), test_saves_card_io (replace:
+success, write fails, read-back fails, restore fails, no own copy),
+test_gameflow_detail, test_launch_gx_stream (the choice inside the inset),
+audit_game_detail_safety (asked before the load, the load before the launch
+screen, Emulate Memory Card), audit_saves_safety (kept before replaced, put
+back on failure), both host lanes; end to end in Dolphin with a GC Loader
+card and a GCI card in Slot A: RIGHT, A, A left Slot A holding the image's
+copy and the Save Folder the card's own. With a MemCard PRO emulated in
+Slot A (the issue #102 lab patch, GameID on): the game ID goes out before
+Detail opens (load_game_with_context), so on the first open after a switch
+Detail's read of Slot A is cut off by the switch and the box misses that
+card's copies (only the image's: no box); on a reopen the card is in already,
+Detail reads the game's own card, and RIGHT, A, A put the image's copy on it,
+its own copy in the Save Folder, the startup card untouched. That first-open
+read is issue #102's open question, not this change's. Known:
+game-details-saves-after-copy.png shows the old label.
+
 ## 2026-10-06 — Show the details screen's Saves box for two or more copies
 
 UIGameflowDetail_Build sets UI_GAMEFLOW_DETAIL_HAS_SAVES only for two or
