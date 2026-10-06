@@ -298,22 +298,23 @@ class HomeGXStreamTests(unittest.TestCase):
         return f"M {motion}\n{SYSTEM}N 60 {DT}\n{OPEN}"
 
     def test_the_harness_reaches_system_and_restart(self):
-        result = subprocess.run([str(self.program)], input=self.system_rows() + DOWN + DOWN + OPEN,
+        result = subprocess.run([str(self.program)], input=self.system_rows() + DOWN + DOWN + DOWN + OPEN,
                                 capture_output=True, text=True, encoding="latin-1", timeout=30)
         states = [line for line in result.stdout.splitlines() if line.startswith("A ")]
-        # Face 3 (System): the ring, its rows, two rows down, the question.
-        self.assertEqual(states, ["A 3 0 0", "A 3 2 0", "A 3 2 1", "A 3 2 2", "A 3 3 0"])
+        # Face 3 (System): the ring, its rows, three rows down, the question.
+        self.assertEqual(states, ["A 3 0 0", "A 3 2 0", "A 3 2 1", "A 3 2 2", "A 3 2 3",
+                                  "A 3 3 0"])
 
     def test_a_new_surface_fades_in(self):
         frames = self.run_script(self.system_rows() + f"N 30 {DT}\n")[-30:]
         rest = frames[-1]
         labels = [s["alpha"] for s in rest["strings"][1:]]
-        # The heading, then three rows: the first selected, as always drawn.
-        self.assertEqual(labels, [255, 190, 190])
+        # The heading, then four rows: the first selected, as always drawn.
+        self.assertEqual(labels, [255, 190, 190, 190])
         self.assertEqual([[r["alpha"] for r in panel] for panel in panels(rest)],
-                         [[84, 148, 218], [28, 72, 92], [28, 72, 92]])
-        self.assertEqual([panel[2]["w"] for panel in panels(rest)], [4.0, 2.0, 2.0])
-        for row in range(3):
+                         [[84, 148, 218], [28, 72, 92], [28, 72, 92], [28, 72, 92]])
+        self.assertEqual([panel[2]["w"] for panel in panels(rest)], [4.0, 2.0, 2.0, 2.0])
+        for row in range(4):
             alphas = [f["strings"][row + 1]["alpha"] for f in frames]
             self.assertLess(alphas[0], labels[row] * 0.2, "the rows popped in")
             self.assertEqual(alphas, sorted(alphas))
@@ -332,13 +333,13 @@ class HomeGXStreamTests(unittest.TestCase):
     def test_off_shows_a_new_surface_at_once(self):
         frames = self.run_script(self.system_rows(2) + f"N 3 {DT}\n")[-3:]
         for frame in frames:
-            self.assertEqual([s["alpha"] for s in frame["strings"][1:]], [255, 190, 190])
+            self.assertEqual([s["alpha"] for s in frame["strings"][1:]], [255, 190, 190, 190])
 
     def test_rows_spring_between_their_styles(self):
         frames = self.run_script(self.system_rows() + f"N 30 {DT}\n{DOWN}N 30 {DT}\n")[-31:]
         before, after = frames[0], frames[-1]
-        self.assertEqual([s["alpha"] for s in after["strings"][1:]], [190, 255, 190])
-        self.assertEqual([panel[2]["w"] for panel in panels(after)], [2.0, 4.0, 2.0])
+        self.assertEqual([s["alpha"] for s in after["strings"][1:]], [190, 255, 190, 190])
+        self.assertEqual([panel[2]["w"] for panel in panels(after)], [2.0, 4.0, 2.0, 2.0])
         for row, (start, end) in ((0, (255, 190)), (1, (190, 255))):
             scales = [f["strings"][row + 1]["scale"] for f in frames]
             alphas = [f["strings"][row + 1]["alpha"] for f in frames]
@@ -359,10 +360,10 @@ class HomeGXStreamTests(unittest.TestCase):
     def test_off_moves_the_rows_at_once(self):
         frames = self.run_script(self.system_rows(2) + f"N 3 {DT}\n{DOWN}N 2 {DT}\n")[-2:]
         for frame in frames:
-            self.assertEqual([s["alpha"] for s in frame["strings"][1:]], [190, 255, 190])
+            self.assertEqual([s["alpha"] for s in frame["strings"][1:]], [190, 255, 190, 190])
 
     def test_the_restart_question_fades_in_and_its_choices_spring(self):
-        script = self.system_rows() + f"N 30 {DT}\n{DOWN}{DOWN}N 30 {DT}\n{OPEN}N 30 {DT}\n"
+        script = self.system_rows() + f"N 30 {DT}\n{DOWN}{DOWN}{DOWN}N 30 {DT}\n{OPEN}N 30 {DT}\n"
         frames = self.run_script(script)[-30:]
         rest = frames[-1]
         # The title, the consequence, then CANCEL (selected) and RESTART.

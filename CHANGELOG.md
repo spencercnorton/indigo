@@ -17,7 +17,15 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - Two more menus for the cube's sides: **Memory Cards**, the screen System's
   row opens, and **Emulators**, an Apps screen for the programs in
   `/emulators`. Neither is on a side until you give it one.
-
+- **File Browser**, on the System face below Memory Cards, opens Swiss's own
+  file list at the top of the source, even when the games are in the
+  Library. Z there always offers Swiss's copy, move, rename, hide and
+  delete, whatever File Management is set to. B goes back to the System
+  face.
+- Swiss's file list now asks before Move, before Hide, before turning
+  Autoload on (Z on `..`, or Z on Swiss's game screen), and before writing a
+  `.fzn` file to a WiiKey Fusion or a `.fpkg` file to a FlippyDrive. Delete
+  says when a folder's contents go with it.
 - Press **Y Folder** on Memory Cards' small folder or card-image cubes to
   see the full device-prefixed path, direct contents and up to two save names.
   Choose a persistent color for that cube's rim and folder symbol, or restore

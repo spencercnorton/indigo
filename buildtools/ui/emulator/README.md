@@ -36,7 +36,10 @@ exception screen as it would on a console. The route:
    must say so and come back to the Library once A dismisses it. On the Source
    face, A on Change Source opens the device picker, RIGHT shows another
    device and B leaves the picker. On the System face, Memory Cards opens
-   with a memory card in each slot: see [Memory Cards](#memory-cards). On the
+   with a memory card in each slot: see [Memory Cards](#memory-cards). Then
+   DOWN and A on File Browser open Swiss's own file list at the disc's root
+   (its device card beside the rows), though the disc has games, and B comes
+   back to System's rows. On the
    Settings face, Setup › Console › Apps
    Face Off takes Apps off the cube and On puts it back; Setup › Console › Cube
    at Classic lays the faces out as the GameCube's menu does, and the route
@@ -47,13 +50,16 @@ exception screen as it would on a console. The route:
    folder opens with only its way back, A opens a folder and a folder in it,
    which also lists the game a level further down, and B goes back up a
    folder at a time to the same card, then Home.
-4. **Apps, last.** RIGHT and LEFT move between the disc's apps and back, and
+4. **Library again.** From Apps, RIGHT comes round to Library, and A opens
+   the Library on a game, not Swiss's list: File Browser is over once Home
+   is back. B and LEFT return to Apps.
+5. **Apps, last.** RIGHT and LEFT move between the disc's apps and back, and
    A on the probe brings up the launch screen and then the probe itself,
    which must report that the menu music stopped before the hand-off, that
    nothing still writes to memory after it, and that the app was started
    with its own path (`dvd:/apps/Probe.dol`), which homebrew uses to find
    its files.
-5. **Nothing crashed.** No step lands on the exception screen or a black
+6. **Nothing crashed.** No step lands on the exception screen or a black
    screen, and Dolphin's log reports no exception or invalid access.
 
 The **game route** (`--route game`) boots, opens the Library, moves to the

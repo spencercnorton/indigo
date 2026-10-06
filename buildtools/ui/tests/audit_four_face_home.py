@@ -279,17 +279,30 @@ assert "SYS_ResetSystem(" not in home_input + dispatch
 assert "SYS_ResetSystem(SYS_HOTRESET, 0, !swissSettings.hasFlippyDrive);" in restart_helper
 assert "SYS_POWEROFF" not in restart_helper + dispatch + home_input
 
-# System's rows: Information, Memory Cards (row one, its own screen) and
-# Restart, last. Confirmation opens on Cancel (row zero), only Restart's row
-# opens it, and only its row one can emit Restart.
+# System's rows: Information, Memory Cards (row one, its own screen), File
+# Browser (row two, Swiss's list at the source's root) and Restart, last.
+# Confirmation opens on Cancel (row zero), only Restart's row opens it, and
+# only its row one can emit Restart.
 ordered(
     apply_system,
     "state->selection == 1",
     "return UI_HOME_EFFECT_OPEN_SAVES;",
     "state->selection == 2",
+    "UI_HOME_EFFECT_OPEN_FILES",
+    "state->selection == 3",
     "enterSurface(state, UI_HOME_SURFACE_RESTART_CONFIRM, 0);",
 )
+assert HOME_C.count("UI_HOME_EFFECT_OPEN_FILES") == 1
 ordered(dispatch, "case UI_HOME_EFFECT_OPEN_SAVES:", "show_saves();")
+# File Browser lists the source's root in Swiss's own list: the flag that
+# keeps the Library away is set only there and dropped by Home.
+open_files = dispatch[dispatch.index("case UI_HOME_EFFECT_OPEN_FILES:"):]
+open_files = open_files[: open_files.index("break;")]
+ordered(open_files, "homeFileBrowser = true;", "devices[DEVICE_CUR]->initial",
+    "curMenuLocation = ON_FILLIST;")
+assert SWISS.count("homeFileBrowser = true;") == 1
+assert "homeFileBrowser = false;" in home_input
+assert "swissSettings.enableFileManagement =" not in SWISS
 assert SWISS.count("show_saves();") == 1
 # Memory Cards hands the Home cube over where it stands, System side to the
 # front: any scene but Home's would turn it while it goes and comes back.
@@ -302,7 +315,7 @@ assert 'return row == 0 ? "CANCEL" : "RESTART";' in row_labels
 ordered(
     apply_confirm,
     "state->selection == 0",
-    "enterSurface(state, UI_HOME_SURFACE_SYSTEM, 2);",
+    "enterSurface(state, UI_HOME_SURFACE_SYSTEM, 3);",
     "state->selection == 1",
     "return UI_HOME_EFFECT_RESTART;",
 )
@@ -555,7 +568,11 @@ for field in ("modalBounds", "consequenceCenter", "consequenceBounds"):
 assert "modalBounds" in draw_modal
 assert "consequenceCenter" in draw_confirm
 assert "consequenceBounds" in prepare_text
-assert "item->glowBounds.top > UI_HOME_LAYOUT_CUBE_RAIL_BOTTOM" in LAYOUT_C
+assert "item->glowBounds.top > rail" in LAYOUT_C
+# Rows clear the cube's rail; only System's four, under its raised cube,
+# clear the higher one.
+assert re.search(r"int rail = count == 4 \? UI_HOME_LAYOUT_SYSTEM_RAIL_BOTTOM :\s*UI_HOME_LAYOUT_CUBE_RAIL_BOTTOM;", LAYOUT_C)
+assert "#define UI_HOME_LAYOUT_SYSTEM_RAIL_BOTTOM 349" in LAYOUT_H
 assert "UIHomeLayout_RectsDisjoint(items[first].glowBounds, command)" in LAYOUT_C
 assert "UIHomeLayout_RectIsSafe(selectedTravelBounds)" in LAYOUT_C
 assert "UIHomeLayout_RectsDisjoint(selectedTravelBounds, cubeKeepOut)" in LAYOUT_C

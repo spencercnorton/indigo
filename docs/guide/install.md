@@ -63,8 +63,9 @@ Loader cards.
 4. **Start Indigo.** Eject the card, put it back and switch on. Indigo
    starts straight away.
 
-To use Swiss's file list again, take `boot.dol` off the card or rename it:
-while it is there, Swiss starts it every time.
+Swiss's own file list is in Indigo too: System › File Browser. To start
+stock Swiss again, take `boot.dol` off the card or rename it: while it is
+there, Swiss starts it every time.
 
 ## GC Loader, from Swiss
 

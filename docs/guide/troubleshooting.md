@@ -19,12 +19,14 @@
 ## I see Swiss's file list instead of the Library
 
 <p align="center">
-  <img alt="Swiss's plain file list, shown in place of the Library." src="images/library-file-list.png" width="640">
+  <img alt="Swiss's plain file list, which the Library face opens when it has no games to show." src="images/library-file-list.png" width="640">
 </p>
 
-The Library appears when `/games` holds at least one disc image (`.iso`,
-`.gcm`, `.tgc`, `.fdi`), directly or in a game's folder, and it skips
-anything else there. You get the file list when:
+Swiss's file list is part of Indigo: System › [File Browser](system.md#file-browser)
+opens it on purpose. The Library face shows the poster Library when `/games`
+holds at least one disc image (`.iso`, `.gcm`, `.tgc`, `.fdi`), directly or
+in a game's folder, and it skips anything else there. It opens the file list
+instead when:
 
 - `/games` holds no disc images, for example only compressed `.rvz` or `.gcz`
   images, which must be decompressed with NKit or Dolphin first.

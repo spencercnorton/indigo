@@ -1023,10 +1023,11 @@ class Route:
                 self.library_folders(faces)
             else:
                 inside = {0: self.browse_library, 1: self.change_source,
-                          3: self.memory_cards if self.cards else None}.get(n)
+                          3: self.system_rows}.get(n)
                 self.open_and_close(face, n, inside)
             mask, _ = self.press_until("RIGHT", like=faces[n + 1])
             self.check("the cube turns on to the next face", mask is not None, face=n + 1)
+        self.library_after_file_browser(faces)
         # Apps last: a launch never comes back.
         self.start_an_app(faces[4])
 
@@ -1699,6 +1700,54 @@ class Route:
         for button in buttons.split():
             self.press(button)
             self.pause(seconds)
+
+    def system_rows(self) -> None:
+        """Memory Cards (row one) when the route has cards, then File Browser
+        (row two)."""
+        if self.cards:
+            self.memory_cards()
+        self.file_browser(1 if self.cards else 2)
+
+    def legacy_list(self, shown: bool) -> bool:
+        """Waits for Swiss's own file list to be on the screen, or gone."""
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        while not deadline.expired():
+            self.gray()
+            if legacy_folder_browser(self.last_rgb) == shown:
+                return True
+            time.sleep(0.3)
+        return False
+
+    def file_browser(self, downs: int) -> None:
+        """DOWN to File Browser and A: Swiss's own file list at the disc's
+        root, its device card beside the rows, though the disc has games the
+        Library would show. B comes back to System's rows."""
+        self.steps(" ".join(["DOWN"] * downs))
+        self.press("A")
+        shown = self.legacy_list(True)
+        self.shot("file-browser", self.last_rgb)
+        self.check("File Browser opens Swiss's own file list", shown)
+        self.press("B")
+        gone = self.legacy_list(False)
+        rows, _ = self.settled_label()
+        self.shot("file-browser-back", self.last_rgb)
+        self.check("B leaves the file list for System's rows", gone and rows is not None)
+
+    def library_after_file_browser(self, faces: list[np.ndarray]) -> None:
+        """From Apps, RIGHT to Library and A: after File Browser, the Library
+        opens on a game again, not Swiss's list. B and LEFT come back to Apps."""
+        mask, _ = self.press_until("RIGHT", like=faces[0])
+        self.check("RIGHT from Apps comes round to Library", mask is not None)
+        self.press("A")
+        title, _ = self.settled_label(box=TITLE_BOX)
+        self.shot("library-after-file-browser", self.last_rgb)
+        self.check("after File Browser, A on Library opens the Library",
+                   title is not None and not legacy_folder_browser(self.last_rgb))
+        self.press("B")
+        mask, _ = self.settled_label(like=faces[0])
+        self.check("B comes back to Library", mask is not None)
+        mask, _ = self.press_until("LEFT", like=faces[4])
+        self.check("LEFT turns back to Apps", mask is not None)
 
     def memory_cards(self) -> None:
         """On the System face, DOWN and A open Memory Cards, with a GCI folder

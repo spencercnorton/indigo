@@ -570,6 +570,10 @@ static uiHomeEffect_t applySystem(uiHomeState_t *state,
 			return UI_HOME_EFFECT_OPEN_SAVES;
 		}
 		if(state->selection == 2) {
+			return capabilities.hasSource ? UI_HOME_EFFECT_OPEN_FILES :
+				UI_HOME_EFFECT_CHANGE_SOURCE;
+		}
+		if(state->selection == 3) {
 			/* Cancellation is always the initially selected confirmation. */
 			enterSurface(state, UI_HOME_SURFACE_RESTART_CONFIRM, 0);
 		}
@@ -587,11 +591,11 @@ static uiHomeEffect_t applyRestartConfirm(uiHomeState_t *state,
 		moveRow(state, 1, capabilities);
 	}
 	else if(input == UI_HOME_INPUT_BACK) {
-		enterSurface(state, UI_HOME_SURFACE_SYSTEM, 2);
+		enterSurface(state, UI_HOME_SURFACE_SYSTEM, 3);
 	}
 	else if(input == UI_HOME_INPUT_ACTIVATE) {
 		if(state->selection == 0) {
-			enterSurface(state, UI_HOME_SURFACE_SYSTEM, 2);
+			enterSurface(state, UI_HOME_SURFACE_SYSTEM, 3);
 		}
 		else if(state->selection == 1) {
 			return UI_HOME_EFFECT_RESTART;
@@ -673,7 +677,7 @@ int UIHome_RowCount(uiHomeSurface_t surface,
 		case UI_HOME_SURFACE_SOURCE:
 			return capabilities.hasSource ? 2 : 1;
 		case UI_HOME_SURFACE_SYSTEM:
-			return 3;
+			return 4;
 		case UI_HOME_SURFACE_RESTART_CONFIRM:
 			return 2;
 		default:
@@ -730,12 +734,12 @@ const char *UIHome_SurfaceTitle(uiHomeSurface_t surface)
 
 const char *UIHome_RowLabel(uiHomeSurface_t surface, int row)
 {
-	static const char *const systemRows[3] = {
-		"SYSTEM INFORMATION", "MEMORY CARDS", "RESTART INDIGO"
+	static const char *const systemRows[4] = {
+		"SYSTEM INFORMATION", "MEMORY CARDS", "FILE BROWSER", "RESTART INDIGO"
 	};
 
 	if(surface == UI_HOME_SURFACE_SYSTEM) {
-		return row >= 0 && row < 3 ? systemRows[row] : "";
+		return row >= 0 && row < 4 ? systemRows[row] : "";
 	}
 	if(row < 0 || row >= 2) {
 		return "";

@@ -110,6 +110,59 @@ static bool homeAppsFound;
 static bool homeEmulatorsKnown;
 static bool homeEmulatorsFound;
 
+/* System > File Browser: Swiss's own file list, even where the Library
+ * would show, until Home or a Recent entry takes over again. */
+static bool homeFileBrowser;
+
+/* Setup > Library > File Management, which File Browser always has. Only
+ * read here: the setting itself is never changed, so never saved changed. */
+static bool fileManagementAllowed(void)
+{
+	return swissSettings.enableFileManagement || homeFileBrowser;
+}
+
+/* Asks before an action that is hard to undo. text ends with its hint line
+ * ("A  MOVE    B  CANCEL"); true on A. */
+static bool confirmAction(const char *text)
+{
+	bool released = false;
+	bool confirmed = false;
+	uiDrawObj_t *box = DrawPublish(DrawMessageBox(D_WARN, text));
+
+	while(1) {
+		u32 held = padsButtonsHeld();
+
+		/* The press that chose the action must be let go first. */
+		if(!released) {
+			released = held == 0u;
+		}
+		else if(held & BUTTON_A) {
+			confirmed = true;
+			break;
+		}
+		else if(held & BUTTON_B) {
+			break;
+		}
+		VIDEO_WaitVSync();
+	}
+	do {VIDEO_WaitVSync();} while(padsButtonsHeld() & (BUTTON_A | BUTTON_B));
+	DrawDispose(box);
+	return confirmed;
+}
+
+/* Autoload skips Home at every start, so turning it on asks first; turning
+ * it off doesn't. */
+static bool autoloadToggleConfirmed(const char *path, bool folder)
+{
+	if(!strcmp(&swissSettings.autoload[0], path) ||
+		!fnmatch(&swissSettings.autoload[0], path, FNM_PATHNAME)) {
+		return true;
+	}
+	return confirmAction(folder ?
+		"Open this folder at every start?\nHome is skipped until you turn it off.\nA  AUTOLOAD    B  CANCEL" :
+		"Open this game at every start?\nHome is skipped until you turn it off.\nA  AUTOLOAD    B  CANCEL");
+}
+
 static void homeSourceRecord(DEVICEHANDLER_INTERFACE *handler,
 	uiHomeSourceMountState_t state)
 {
@@ -500,6 +553,11 @@ void select_recent_entry() {
 			DrawGameflowCancelPosters();
 		}
 		int res = find_existing_entry(&swissSettings.recent[idx][0], true);
+		if(res != RECENT_ERR_DEV_MISSING) {
+			/* An entry opens as it does from Home: in the Library where
+			 * that would show. */
+			homeFileBrowser = false;
+		}
 		if(res == RECENT_ERR_DEV_MISSING && targetSource != NULL &&
 				!targetWasAvailable) {
 			deviceHandler_setDeviceAvailable(targetSource, false);
@@ -657,7 +715,7 @@ uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj
 					meta_thread_stop();
 					load_file();
 				}
-				else if(swissSettings.enableFileManagement) {
+				else if(fileManagementAllowed()) {
 					meta_thread_stop();
 					needsRefresh = manage_file() ? 1:0;
 				}
@@ -674,7 +732,7 @@ uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj
 			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
 			break;
 		}
-		if((browserButtons & BUTTON_Z) && swissSettings.enableFileManagement) {
+		if((browserButtons & BUTTON_Z) && fileManagementAllowed()) {
 			lockFile(directory[curSelection]);
 			if(directory[curSelection]->fileType == IS_FILE || directory[curSelection]->fileType == IS_DIR) {
 				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
@@ -688,7 +746,8 @@ uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj
 					break;
 				}
 			}
-			else if(directory[curSelection]->fileType == IS_SPECIAL) {
+			else if(directory[curSelection]->fileType == IS_SPECIAL &&
+				autoloadToggleConfirmed(&curDir.name[0], true)) {
 				// Toggle autoload
 				if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
 				|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
@@ -807,8 +866,8 @@ static uiGameflowLibraryMode_t gameflowLibraryMode(file_handle **directory,
 	bool flattened;
 	int i;
 
-	if(directory == NULL || numFiles <= 0 || devices[DEVICE_CUR] == NULL ||
-		devices[DEVICE_CUR]->initial == NULL ||
+	if(homeFileBrowser || directory == NULL || numFiles <= 0 ||
+		devices[DEVICE_CUR] == NULL || devices[DEVICE_CUR]->initial == NULL ||
 		!(devices[DEVICE_CUR]->features & FEAT_BOOT_GCM)) {
 		return UI_GAMEFLOW_LIBRARY_NONE;
 	}
@@ -1184,6 +1243,17 @@ static void homeDispatchEffect(uiHomeEffect_t effect)
 		case UI_HOME_EFFECT_OPEN_EMULATORS:
 			show_emulators();
 			UIScene_Request(UI_SCENE_HOME);
+			break;
+		case UI_HOME_EFFECT_OPEN_FILES:
+			if(devices[DEVICE_CUR] != NULL &&
+					devices[DEVICE_CUR]->initial != NULL) {
+				homeFileBrowser = true;
+				memcpy(&curDir, devices[DEVICE_CUR]->initial,
+					sizeof(file_handle));
+				curSelection = 0;
+				needsRefresh = 1;
+				curMenuLocation = ON_FILLIST;
+			}
 			break;
 		case UI_HOME_EFFECT_RESTART:
 			homeConfirmRestartEffect();
@@ -2415,7 +2485,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 					meta_thread_stop();
 					load_file();
 				}
-				else if(swissSettings.enableFileManagement) {
+				else if(fileManagementAllowed()) {
 					meta_thread_stop();
 					needsRefresh = manage_file() ? 1:0;
 				}
@@ -2429,7 +2499,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
 			break;
 		}
-		if((browserButtons & BUTTON_Z) && swissSettings.enableFileManagement) {
+		if((browserButtons & BUTTON_Z) && fileManagementAllowed()) {
 			lockFile(directory[curSelection]);
 			if(directory[curSelection]->fileType == IS_FILE || directory[curSelection]->fileType == IS_DIR) {
 				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
@@ -2444,7 +2514,8 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 					break;
 				}
 			}
-			else if(directory[curSelection]->fileType == IS_SPECIAL) {
+			else if(directory[curSelection]->fileType == IS_SPECIAL &&
+				autoloadToggleConfirmed(&curDir.name[0], true)) {
 				// Toggle autoload
 				if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
 				|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
@@ -2615,7 +2686,7 @@ uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawO
 					meta_thread_stop();
 					load_file();
 				}
-				else if(swissSettings.enableFileManagement) {
+				else if(fileManagementAllowed()) {
 					meta_thread_stop();
 					needsRefresh = manage_file() ? 1:0;
 				}
@@ -2632,7 +2703,7 @@ uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawO
 			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
 			break;
 		}
-		if((browserButtons & BUTTON_Z) && swissSettings.enableFileManagement) {
+		if((browserButtons & BUTTON_Z) && fileManagementAllowed()) {
 			lockFile(directory[curSelection]);
 			if(directory[curSelection]->fileType == IS_FILE || directory[curSelection]->fileType == IS_DIR) {
 				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
@@ -2646,7 +2717,8 @@ uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawO
 					break;
 				}
 			}
-			else if(directory[curSelection]->fileType == IS_SPECIAL) {
+			else if(directory[curSelection]->fileType == IS_SPECIAL &&
+				autoloadToggleConfirmed(&curDir.name[0], true)) {
 				// Toggle autoload
 				if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
 				|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
@@ -3370,6 +3442,10 @@ bool manage_file() {
 	bool canDelete = canWrite && devices[DEVICE_CUR]->deleteFile;
 	bool canRename = canWrite && devices[DEVICE_CUR]->renameFile;
 	bool canHide = canWrite && devices[DEVICE_CUR]->hideFile;
+	/* The Apps and Emulators faces look in /apps and /emulators again
+	 * after any change here. */
+	homeAppsKnown = false;
+	homeEmulatorsKnown = false;
 	
 	// Ask the user what they want to do with the selected entry
 	uiDrawObj_t* manageFileBox = DrawEmptyBox(10,150, getVideoMode()->fbWidth-10, 320);
@@ -3424,9 +3500,20 @@ bool manage_file() {
 	do {VIDEO_WaitVSync();} while (padsButtonsHeld() & waitButtons);
 	DrawDispose(manageFileBox);
 	
+	if(option == MOVE_OPTION && !confirmAction(
+		"Move this file?\nIt is removed from here once copied.\nA  MOVE    B  CANCEL")) {
+		return false;
+	}
+	if(option == HIDE_OPTION && canHide && !isHidden && !confirmAction(isFile ?
+		"Hide this file?\nIt shows only with Show hidden files on.\nA  HIDE    B  CANCEL" :
+		"Hide this folder?\nIt shows only with Show hidden files on.\nA  HIDE    B  CANCEL")) {
+		return false;
+	}
 	// "Are you sure option" for deletes.
 	if(option == DELETE_OPTION) {
-		uiDrawObj_t *msgBox = DrawMessageBox(D_WARN, "Delete confirmation required.\n \nPress L + A to continue, or B to cancel.");
+		uiDrawObj_t *msgBox = DrawMessageBox(D_WARN, isFile ?
+			"Delete this file?\n \nPress L + A to continue, or B to cancel." :
+			"Delete this folder and all it holds?\n \nPress L + A to continue, or B to cancel.");
 		DrawPublish(msgBox);
 		bool cancel = false;
 		while(1) {
@@ -4216,7 +4303,9 @@ static void load_file_with_context(gameflowLaunchContext_t *context)
 		}
 		else if(endsWith(fileName,".fpkg")) {
 			if(devices[DEVICE_CUR] == &__device_flippy || devices[DEVICE_CUR] == &__device_flippyflash) {
-				homeFlippyUpdatePending = true;
+				if(confirmAction("Update the FlippyDrive with this file?\nA  UPDATE    B  CANCEL")) {
+					homeFlippyUpdatePending = true;
+				}
 				needsRefresh = 0;
 				return;
 			}
@@ -4228,6 +4317,9 @@ static void load_file_with_context(gameflowLaunchContext_t *context)
 				uiDrawObj_t *msgBox = DrawPublish(DrawMessageBox(D_WARN, "File Size must be 0x1D0000 bytes!"));
 				sleep(2);
 				DrawDispose(msgBox);
+				return;
+			}
+			if(!confirmAction("Write this file to the WiiKey's flash?\nA  FLASH    B  CANCEL")) {
 				return;
 			}
 			uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Reading Flash File\205"));
@@ -4849,7 +4941,8 @@ int info_game(ConfigEntry *config)
 			needsRefresh = show_settings_view(VIEW_GAME, 0, config);
 			infoPanel = DrawRepublish(infoPanel, draw_game_info(config));
 		}
-		if((buttons & BUTTON_Z) && devices[DEVICE_CONFIG] != NULL) {
+		if((buttons & BUTTON_Z) && devices[DEVICE_CONFIG] != NULL &&
+			autoloadToggleConfirmed(&curFile.name[0], false)) {
 			// Toggle autoload
 			if(!strcmp(&swissSettings.autoload[0], &curFile.name[0])
 			|| !fnmatch(&swissSettings.autoload[0], &curFile.name[0], FNM_PATHNAME)) {
@@ -5271,6 +5364,7 @@ void menu_loop()
 			uint32_t revision;
 			bool navigated = false;
 
+			homeFileBrowser = false;
 			UIScene_Request(UI_SCENE_HOME);
 			homePublish(true);
 			if(homeState.surface == UI_HOME_SURFACE_RING) {
