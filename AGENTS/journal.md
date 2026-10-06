@@ -1,3 +1,44 @@
+## 2026-10-06 — GC Loader starts Indigo at power-on as boot.dol
+
+Stock Swiss auto-starts `*/boot.dol` from the device it booted from (util.c
+autoboot_dols; before r1730 any name ending in `/boot.dol`), when the device
+has FEAT_AUTOLOAD_DOL, before it draws anything; no setting turns it off.
+Indigo's DOL carries no Swiss commit trailer, so it qualifies. Console test
+2026-10-06 on Spencer's GC Loader: stock Swiss r2119 as `boot.iso` (15 pieces)
+and the v2.3.1-rc.2 `ipl.dol` as `/boot.dol` started straight into Indigo with
+no Swiss screen. The guide gains "GC Loader, at power-on" as its default for
+GC Loader; "from Swiss" stays. No Indigo `boot.iso` is shipped: GC Loader can't
+boot one in more than 40 pieces, and new copies on macOS 27 often are.
+
+## 2026-10-05 — Install in four steps, copying two files
+
+The install guide now asks what starts the GameCube and gives four steps per
+setup: GC Loader; PicoBoot or PicoLoader at power-on or from Swiss; FlippyDrive
+at power-on or from Swiss; and something else, which works everywhere. Each
+setup shows the card afterwards as a text tree, which norvitech.com draws as a
+list; the site's two questions show one setup's section, keyed on these
+headings (`ROUTES` in its `build_indigo.py`), so renaming a heading needs the
+site changed with it.
+
+Step 3 copies `ipl.dol` and `swiss/patches/apploader.img` instead of merging
+the whole `swiss` folder. Finder offers Merge only when one folder holds items
+the other lacks; with an existing `apploader.img` (every update) it offers only
+Stop or Replace, and Replace deletes settings and saves. A sourced fact check
+corrected the PicoBoot test (hold D-Pad Down with the card in and a wired
+pad: gekkoboot's text screen means the chip reads `ipl.dol`), FlippyDrive's
+menu versus boot mode, GC Loader's device name in Swiss, and where Apploader
+reads `apploader.img` (copy it to every card used with Swiss).
+
+Swiss creates its `swiss` folder hidden (`ensure_path(..., "swiss", ..., true)`
+in files.c), so every backup step says how to show hidden folders, and the
+poster and cheat packs are now copied file by file (README, posters.md,
+cheats.md, the ZIP readme) for the same Finder Replace reason. The guide has
+one whole-card map after the setups (where posters, stills, descriptions,
+cheats, apps and folder pictures go), which the site draws under each setup
+with that setup's own files merged in.
+
+Documentation and package text only; the console source tree matches v2.3.0.
+
 ## 2026-10-05 — Verify Memory Cards identity and save captions in native builds
 
 Integrated the corrected Memory Cards folder controls, removed their Library

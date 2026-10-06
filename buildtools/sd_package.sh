@@ -1,6 +1,6 @@
 #!/bin/sh
-# Assemble the drag-and-drop download for one release. The zip's root IS the
-# shared files retain their paths; the executable name depends on the loader.
+# Assemble the download for one release. Its swiss/ files keep their card
+# paths; ipl.dol's name and place depend on what starts the console.
 #   Indigo-<version>.zip
 #     Indigo-README.txt              what goes where, in plain words
 #     ipl.dol                        Indigo; rename for your chosen boot route
@@ -32,59 +32,47 @@ Indigo $version - an unofficial fork of Swiss with the interface rebuilt
 Guide:  https://norvitech.com/indigo/
 Source: https://github.com/spencercnorton/indigo/tree/$version
 
-INSTALL: CHOOSE YOUR LAUNCH ROUTE
-Full walkthrough with card trees and recovery:
+INSTALL
+The install guide shows each setup step by step, with a picture of the card:
 https://norvitech.com/indigo/guide/install/
 
-1. Back up your working card to your computer. Keep existing boot files,
-   games and the whole swiss folder. No formatting is needed.
-2. Extract the ZIP on your computer. The card root is the first level you
-   see when you open the card, beside its existing swiss or games folders.
-   Copy the files INSIDE the extracted folder, not the ZIP or its enclosing
-   Indigo folder. Choose the route that matches your current setup:
+1. Unzip this download on your computer.
+2. Back up the card: copy its swiss folder to your computer, and the
+   ipl.dol or boot.dol you are about to replace. Swiss hides its swiss
+   folder: show hidden folders first (Shift-Command-Period in a Mac's
+   Finder; in Windows File Explorer, turn on Hidden items and File name
+   extensions under View).
+3. Copy two files onto the card:
+   - swiss/patches/apploader.img, into the card's swiss/patches folder,
+     replacing the old one. Make the folders if they aren't there.
+   - ipl.dol, named and placed for what starts your GameCube:
+       GC Loader: rename it boot.dol and put it at the top of the card,
+         keeping boot.iso. Swiss starts it when you switch on.
+       PicoBoot or PicoLoader: ipl.dol at the top of the card, replacing
+         the old one. Indigo then starts when you switch on.
+       FlippyDrive: rename it boot.dol and put it at the top of its
+         microSD card. Indigo then starts when you switch on.
+       Something else, or not sure: rename it indigo.dol and put it in
+         the card's apps folder (make it if it isn't there). Your
+         console starts as it does today.
+     Any setup can use apps/indigo.dol and open Indigo from Swiss. Some
+     PicoBoot and PicoLoader chips have Swiss built in and never read
+     ipl.dol: the guide shows how to check.
+   Copy files, not the whole swiss folder: on a Mac, Replace on a folder
+   deletes the settings and saves inside it.
+4. Put the card back and switch on. If you put Indigo at the top of the
+   card as ipl.dol or boot.dol, it starts. Otherwise start Swiss as usual
+   and open the card (on FlippyDrive: FlippyDrive, not FlippyDrive Flash),
+   then apps, then indigo.dol.
 
-   PicoBoot/PicoLoader using gekkoboot:
-     download's ipl.dol -> SD adapter card root/ipl.dol
-     Identify the old ipl.dol first: it could be Swiss, Indigo or cubeboot.
-     Preserve stock Swiss as z.dol only if that shortcut name is free.
-     Hold Z at power-on for that backup. Keep existing shortcuts.
-
-   FlippyDrive:
-     download's ipl.dol -> FlippyDrive microSD root/boot.dol
-     Rename the new copy to boot.dol and back up the old boot.dol.
-
-   GC Loader, Swiss in flash, cubeboot, or unsure:
-     download's ipl.dol -> card root/apps/indigo.dol
-     Keep all root boot files. Start Swiss as usual, browse to apps, and
-     launch indigo.dol. The ZIP has no boot.iso; don't rename a DOL to ISO.
-     This route needs no firmware change and keeps your usual startup.
-
-   SD2SP2 and SD Gecko are card adapters, not boot methods. Your boot card
-   and the card holding your games may be different cards.
-
-3. Merge the shared files into the EXISTING swiss folder:
-     swiss/patches/apploader.img -> /swiss/patches/apploader.img
-     swiss/indigo/LICENSE.txt   -> /swiss/indigo/LICENSE.txt
-     swiss/indigo/NOTICE.txt    -> /swiss/indigo/NOTICE.txt
-   Make /swiss/ui if missing; keep any poster pack already in it.
-   On a Mac, hold Option while dragging swiss and choose Merge. Never
-   Replace the entire swiss folder: that removes settings, cheats and
-   saves. If Merge is unavailable, copy the individual files above.
-   On Windows/Linux, merge folders and replace only matching files.
-   apploader.img changes Apploader In-Game Reset to Indigo, even for
-   games launched in stock Swiss. Keep the old file in your backup.
-4. Safely eject, return the card and launch using your chosen route.
-   Check System > System Information > About Indigo. Choose the Source
-   holding your games, then open Library. See GAMES below.
-
-UPDATING INDIGO (1.x OR 2.x)
-Back up first. Replace the executable you ACTUALLY launch: /ipl.dol,
-/boot.dol or /apps/indigo.dol. Rename the new ipl.dol copy as needed.
-Merge the shared files again; keep games, settings, artwork, cheats,
-saves and recovery shortcuts. Launch and check About Indigo.
+UPDATING INDIGO
+Back up the card's swiss folder. Rename the new ipl.dol to the name of the
+Indigo file you start now (ipl.dol, boot.dol or indigo.dol) and copy it
+over that file. Then copy the new swiss/patches/apploader.img over the old
+one.
 
 WHAT EACH FILE IS FOR
-  ipl.dol                      Indigo itself (rename for your launch route)
+  ipl.dol                      Indigo itself (renamed for some setups)
   swiss/patches/apploader.img  In-Game Reset returns to Indigo (see below)
   swiss/ui/                    the poster pack goes here, if you add it
   swiss/indigo/                Indigo's licence and notice
@@ -104,11 +92,12 @@ Library Folders: the Library then shows the folders in /games, two levels
 deep. A opens a folder and B goes back. Keep a game's discs together. A PNG
 beside a folder with its name (Nintendo.png for Nintendo) is its poster.
 
-POSTERS AND CHEATS (optional, also drag and drop)
+POSTERS AND CHEATS (optional)
 Without posters, each game shows its disc banner and its six-character game
 ID (GMSE01). The poster pack and the cheat pack are on https://norvitech.com/indigo/
-- unzip one and drag its swiss folder onto the root of the card, choosing
-Merge on a Mac.
+- unzip one on your computer and copy the files in its swiss/ui (posters)
+or swiss/cheats (cheats) folder into the card's folder of the same name,
+making it if it isn't there.
 
 IN-GAME RESET
 With In-Game Reset set to Apploader (Settings > Quick), A + Z + START
@@ -118,6 +107,6 @@ to Indigo too. Reboot resets the console, back to whatever your loader boots.
 TXT
 
 rm -f "$out/Indigo-$version.zip"
-# Directory entries included, so the empty folders arrive on the card too.
+# Directory entries included, so the ZIP shows the card's folders.
 (cd "$card" && zip -qrX "$out/Indigo-$version.zip" Indigo-README.txt ipl.dol swiss)
 shasum -a 256 "$out/Indigo-$version.zip"
