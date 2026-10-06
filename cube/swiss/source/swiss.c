@@ -4576,9 +4576,12 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 	source.lastPlayedUnixSeconds = config_last_played(context->gameId, 6u,
 		&source.playHistoryAvailable);
 	source.saveStatus = UI_GAME_SAVE_NOT_CHECKED;
-	/* Only the verified disc launch context owns a save identity. Apps use
-	 * the same Library renderer but never take this snapshot path. */
-	if(context->primary != NULL && context->primary->fileType == IS_FILE &&
+	/* Only the verified disc launch context owns a save identity, and only
+	 * Saves on Details reads the memory cards for it: off, a game's details
+	 * leave them alone. Apps use the same Library renderer but never take
+	 * this snapshot path. */
+	if(swissSettings.detailSaves &&
+		context->primary != NULL && context->primary->fileType == IS_FILE &&
 		valid_gcm_magic(&GCMDisk) &&
 		memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0) {
 		Saves_CollectGameStats(context->gameId, &saveStats);

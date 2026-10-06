@@ -126,6 +126,7 @@ SAVE_DETAILS_BLOCKS_BOX = (122, 178, 302, 212)
 SAVE_DETAILS_SOURCE_BOX = (246, 244, 540, 270)
 LIBRARY_SAVES_SUMMARY_BOX = (266, 204, 538, 224)
 LIBRARY_SAVES_UPDATED_BOX = (308, 224, 586, 241)
+LIBRARY_SAVES_TAG_BOX = (540, 204, 586, 224)  # SAVES, right of the count
 SAVE_DETAILS_ICON_BOX = (246, 304, 540, 330)
 SAVE_DETAILS_UPDATED_BOX = (246, 274, 540, 300)
 SAVE_DETAILS_ACTIONS_BOX = (104, 360, 536, 387)
@@ -805,8 +806,9 @@ class Route:
     def __init__(self, emulator: Emulator, out: Path, probe: bool = False, fresh_card: bool = False,
                  cable: str = "composite", region: str = "pal", fragments: int = 0,
                  cards: Path | None = None, storage: str = "dvd", menu_wide: bool = False,
-                 sd_image: Path | None = None) -> None:
+                 sd_image: Path | None = None, detail_saves: bool = False) -> None:
         self.emulator = emulator
+        self.detail_saves = detail_saves  # the card starts with Saves on Details on
         self.cards = cards  # the memory cards' GCI folders, cards/A and cards/B
         self.storage = storage
         self.menu_wide = menu_wide
@@ -2063,19 +2065,24 @@ class Route:
         self.check("RAW icon plays both distinct texture frames on its selected cube",
                    seen == {0, 1}, frames=sorted(seen))
 
-    def library_save_stats(self, name: str) -> tuple[dict[str, np.ndarray], np.ndarray]:
-        """From Home's Library face, inspect the synthetic game's saves inset."""
+    def library_save_stats(self, name: str, shown: bool) -> np.ndarray:
+        """From Home's Library face, open the synthetic game's details: SAVES
+        shows there only with Saves on Details on and two or more copies."""
         self.press("A")
         title, _ = self.settled_label(box=TITLE_BOX)
         self.check("Library opens the demonstration game", title is not None)
         self.press("A")
         self.check("A opens Library game details", self.covered(title, TITLE_BOX))
-        fields = {}
-        for field, box in (("summary", LIBRARY_SAVES_SUMMARY_BOX),
-                           ("updated", LIBRARY_SAVES_UPDATED_BOX)):
-            mask, _ = self.settled_label(box=box)
-            self.check(f"Library SAVES displays its {field}", mask is not None)
-            fields[field] = mask
+        if shown:
+            for field, box in (("summary", LIBRARY_SAVES_SUMMARY_BOX),
+                               ("updated", LIBRARY_SAVES_UPDATED_BOX)):
+                mask, _ = self.settled_label(box=box)
+                self.check(f"Library SAVES displays its {field}", mask is not None)
+        else:
+            detail, _ = self.settled_label(box=DETAIL_TITLE_BOX)
+            self.check("Library game details settle", detail is not None)
+            self.check("Library game details leave SAVES out",
+                       not text_mask(self.gray(), LIBRARY_SAVES_TAG_BOX).any())
         self.shot(name, self.last_rgb)
         self.press("B")
         self.check("B returns from details to the same Library game",
@@ -2083,13 +2090,14 @@ class Route:
         self.press("B")
         home, _ = self.settled_label()
         self.check("B returns to Home Library", home is not None)
-        return fields, home
+        return home
 
     def virtual_cards(self) -> None:
         """No physical cards: both columns start on SD, one opens a RAW image
         and exports a save through Copy into the other's SD folder."""
         home = self.boot()
-        stats_before, home = self.library_save_stats("virtual-cards-library-before-export")
+        # One save copy: no SAVES on its details, whether Saves on Details is on or off.
+        home = self.library_save_stats("virtual-cards-library-before-export", shown=False)
         faces = [home]
         for n in range(1, 4):
             faces.append(self.turn(faces, "RIGHT", f"virtual-cards-home-right-{n}"))
@@ -2193,11 +2201,8 @@ class Route:
         for n in (2, 1, 0):
             mask, _ = self.press_until("LEFT", like=faces[n])
             self.check("LEFT returns toward Home Library", mask is not None, to=n)
-        stats_after, _ = self.library_save_stats("virtual-cards-library-after-export")
-        self.check("Library counts change after one GCI export",
-                   not same_text(stats_before["summary"], stats_after["summary"]))
-        self.check("Library retains the save's recorded latest date after export",
-                   same_text(stats_before["updated"], stats_after["updated"]))
+        # Two copies after the export: SAVES shows only with Saves on Details on.
+        self.library_save_stats("virtual-cards-library-after-export", shown=self.detail_saves)
 
     def virtual_popup_checks(self) -> None:
         """The private emulator image after dialogs, before authorizing Copy."""
@@ -2334,7 +2339,8 @@ def main(argv: list[str] | None = None) -> int:
             route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd) and start is None,
                           cable=args.cable, region=args.region, fragments=args.fragments, cards=cards,
                           storage=args.storage, menu_wide=bool(start and "Menu Widescreen=Yes" in start),
-                          sd_image=sd)
+                          sd_image=sd,
+                          detail_saves=bool(start) and seeded(start).get("Saves on Details") == "Yes")
             getattr(route, args.route.replace("-", "_"))()
             if args.route == "save":
                 # Power off and on again, with a card that works.

@@ -3714,6 +3714,27 @@ static void _GameflowPutDetailPanel(int x, int y, int width, int height,
 
 static gameflowQuad_t _GameflowGrowQuad(const gameflowQuad_t *quad, float by);
 
+/* Where Detail's lines and rows sit. The SAVES inset takes its room from the
+ * title block above it and moves the rows down; without it, Detail keeps the
+ * places it had before the inset. */
+typedef struct {
+	int company, status, lastPlayed, lastPlayedValue;
+	int settings, cheats, launch, panelHeight;
+	int rowTop[3];	/* the rows the focus moves between, bottom up */
+} gameflowDetailLayout_t;
+
+static const gameflowDetailLayout_t gameflowDetailLayouts[2] = {
+	{148, 177, 202, 219, 244, 293, 369, 328, {348, 281, 232}},
+	{140, 159, 176, 191, 264, 313, 388, 344, {367, 301, 252}},
+};
+
+static const gameflowDetailLayout_t *_GameflowDetailLayout(
+	const uiGameflowDetailSnapshot_t *detail)
+{
+	return &gameflowDetailLayouts[
+		(detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u];
+}
+
 static void _GameflowDrawDetailPlanes(
 	const uiGameflowDetailSnapshot_t *detail,
 	const drawGameflowDetailPresentation_t *presentation,
@@ -3721,8 +3742,10 @@ static void _GameflowDrawDetailPlanes(
 	uiGameflowDetailFocus_t focusRow, uiMotionSpring_t lit[2])
 {
 	/* The rows the focus moves between, bottom up: Launch, Cheats, Settings. */
-	static const int rowTop[] = {367, 301, 252};
+	const gameflowDetailLayout_t *layout = _GameflowDetailLayout(detail);
+	const int *rowTop = layout->rowTop;
 	static const int rowHeight[] = {43, 59, 42};
+	bool hasSaves = (detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u;
 	uiMotionMode_t motion = _CurrentMotionMode();
 	float litTop;
 	float litBottom;
@@ -3757,8 +3780,8 @@ static void _GameflowDrawDetailPlanes(
 	GXColor litHaloColor = {117, 88, 244,
 		_GameflowAlpha(78.0f * alpha * focus)};
 	bool hasSettings = detail->settingsSummary[0] != '\0';
-	u16 panelCount = (u16)(4u + (hasAdvanced ? 1u : 0u) +
-		(hasSettings ? 1u : 0u));
+	u16 panelCount = (u16)(3u + (hasSaves ? 1u : 0u) +
+		(hasAdvanced ? 1u : 0u) + (hasSettings ? 1u : 0u));
 
 	/* The bright frame slides from row to row, as the cheat list's focus
 	 * does; Detail opening places it on its row at once. */
@@ -3785,10 +3808,12 @@ static void _GameflowDrawDetailPlanes(
 	drawInit();
 	_SetupRasterColor();
 	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(panelCount * 12u + 48u));
-		_GameflowPutDetailPanel(246, 76, 358, 344, 2,
+		_GameflowPutDetailPanel(246, 76, 358, layout->panelHeight, 2,
 			panelGlow, panelFill, panelEdge);
-		_GameflowPutDetailPanel(260, 202, 330, 43, 2,
-			insetGlow, insetFill, insetEdge);
+		if(hasSaves) {
+			_GameflowPutDetailPanel(260, 202, 330, 43, 2,
+				insetGlow, insetFill, insetEdge);
+		}
 		/* The focused row takes the bright edge and the glow, and the
 		 * grid's frame round it; Launch keeps its button fill. */
 		for(row = UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH;
@@ -3821,6 +3846,7 @@ static void _GameflowDrawDetailDashboard(
 	const uiCommandRailFrame_t *commandRail, uiGameflowDetailFocus_t focusRow,
 	uiMotionSpring_t lit[2])
 {
+	const gameflowDetailLayout_t *layout;
 	const char *launchText;
 	float launchScale;
 	float alpha;
@@ -3834,6 +3860,7 @@ static void _GameflowDrawDetailDashboard(
 		lit[0].response = 0.0f;
 		return;
 	}
+	layout = _GameflowDetailLayout(detail);
 	alpha = _GameflowClamp(frame->detailProgress * reveal, 0.0f, 1.0f);
 	primary = (GXColor) {246, 243, 255, _GameflowAlpha(255.0f * alpha)};
 	secondary = (GXColor) {202, 192, 244, _GameflowAlpha(235.0f * alpha)};
@@ -3847,55 +3874,63 @@ static void _GameflowDrawDetailDashboard(
 	drawStringMedium(264, 122, detail->title, presentation->titleScale,
 		ALIGN_LEFT, primary);
 	if(detail->company[0] != '\0') {
-		drawStringMedium(264, 140, detail->company,
+		drawStringMedium(264, layout->company, detail->company,
 			presentation->companyScale, ALIGN_LEFT, secondary);
 	}
 	if(detail->statusText[0] != '\0') {
-		drawStringMedium(264, 159, detail->statusText,
+		drawStringMedium(264, layout->status, detail->statusText,
 			presentation->statusScale, ALIGN_LEFT, muted);
 	}
 
-	drawStringMedium(264, 176, "LAST PLAYED", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(264, 191, detail->lastPlayedText,
+	drawStringMedium(264, layout->lastPlayed, "LAST PLAYED", 0.42f,
+		ALIGN_LEFT, secondary);
+	drawStringMedium(264, layout->lastPlayedValue, detail->lastPlayedText,
 		presentation->lastPlayedScale, ALIGN_LEFT, primary);
 	/* The count is the headline. A small trailing label leaves the two-line
 	 * inset readable without competing with the actions below it. */
-	drawStringMedium(576, 214, "SAVES", 0.38f, ALIGN_RIGHT, secondary);
-	drawStringMedium(274, 214, detail->savesSummary,
-		presentation->savesSummaryScale, ALIGN_LEFT, primary);
-	drawStringMedium(274, 232, detail->savesUpdated,
-		presentation->savesUpdatedScale, ALIGN_LEFT, secondary);
+	if(detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) {
+		drawStringMedium(576, 214, "SAVES", 0.38f, ALIGN_RIGHT, secondary);
+		drawStringMedium(274, 214, detail->savesSummary,
+			presentation->savesSummaryScale, ALIGN_LEFT, primary);
+		drawStringMedium(274, 232, detail->savesUpdated,
+			presentation->savesUpdatedScale, ALIGN_LEFT, secondary);
+	}
 
 	/* SETTINGS, like CHEATS below it: this game's own rows, or how to set
 	 * some (X opens them). */
 	if(detail->settingsSummary[0] != '\0') {
-		drawStringMedium(274, 264, "SETTINGS", 0.42f, ALIGN_LEFT, secondary);
-		drawStringMedium(576, 264, detail->settingsSummary,
+		drawStringMedium(274, layout->settings, "SETTINGS", 0.42f,
+			ALIGN_LEFT, secondary);
+		drawStringMedium(576, layout->settings, detail->settingsSummary,
 			presentation->settingsSummaryScale, ALIGN_RIGHT, muted);
 		if(detail->customSettings != 0u) {
-			drawStringMedium(274, 282, "\267", 0.50f, ALIGN_LEFT, focus);
-			drawStringMedium(288, 282, detail->settingsPreview,
-				presentation->settingsPreviewScale, ALIGN_LEFT, primary);
+			drawStringMedium(274, layout->settings + 18, "\267", 0.50f,
+				ALIGN_LEFT, focus);
+			drawStringMedium(288, layout->settings + 18,
+				detail->settingsPreview, presentation->settingsPreviewScale,
+				ALIGN_LEFT, primary);
 		}
 		else {
-			_DrawHintText(274, 282, detail->settingsPreview,
+			_DrawHintText(274, layout->settings + 18, detail->settingsPreview,
 				presentation->settingsPreviewScale, ALIGN_LEFT, muted);
 		}
 	}
 
-	drawStringMedium(274, 313, "CHEATS", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(274, 331, detail->cheatSummary,
+	drawStringMedium(274, layout->cheats, "CHEATS", 0.42f, ALIGN_LEFT,
+		secondary);
+	drawStringMedium(274, layout->cheats + 18, detail->cheatSummary,
 		presentation->cheatSummaryScale, ALIGN_LEFT, muted);
 	if(detail->cheatPreview[0] != '\0') {
 		if(detail->enabledCheatCount != 0u) {
-			drawStringMedium(274, 349, "\267", 0.50f, ALIGN_LEFT, focus);
-			drawStringMedium(288, 349, detail->cheatPreview,
+			drawStringMedium(274, layout->cheats + 36, "\267", 0.50f,
+				ALIGN_LEFT, focus);
+			drawStringMedium(288, layout->cheats + 36, detail->cheatPreview,
 				presentation->cheatPreviewScale, ALIGN_LEFT, primary);
 		}
 		else {
 			/* "Y  Choose cheats": a hint only while nothing is on, since
 			 * cheat names are free text. */
-			_DrawHintText(274, 349, detail->cheatPreview,
+			_DrawHintText(274, layout->cheats + 36, detail->cheatPreview,
 				presentation->cheatPreviewScale, ALIGN_LEFT, muted);
 		}
 	}
@@ -3905,9 +3940,11 @@ static void _GameflowDrawDetailDashboard(
 	launchScale = frame->launchProgress > 0.02f ?
 		0.56f : presentation->launchScale;
 	if(focusRow == UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH) {
-		drawStringMedium(278, 388, "\267", 0.58f, ALIGN_LEFT, focus);
+		drawStringMedium(278, layout->launch, "\267", 0.58f, ALIGN_LEFT,
+			focus);
 	}
-	_DrawHintText(425, 388, launchText, launchScale, ALIGN_CENTER, focus);
+	_DrawHintText(425, layout->launch, launchText, launchScale, ALIGN_CENTER,
+		focus);
 
 	if(detail->advancedLineOne[0] != '\0' ||
 		detail->advancedLineTwo[0] != '\0') {

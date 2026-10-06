@@ -1,3 +1,25 @@
+## 2026-10-06 — Make the details screen's Saves box opt-in
+
+Settings › Setup › Library › Saves on Details (`Saves on Details` in
+global.ini, off by default) now gates the read-only save scan behind a
+game's details. Off, gameflowPublishDetail never calls
+Saves_CollectGameStats, so opening a game's details touches neither memory
+card slot. On, UIGameflowDetail_Build sets UI_GAMEFLOW_DETAIL_HAS_SAVES only
+for two or more copies; with fewer, Detail is drawn in its v2.2 places (no
+inset, rows 20 px higher, panel 328 tall) from one layout table.
+
+Why (issue #102): a MemCard PRO GC switches its virtual card when Indigo
+sends the game ID as the details open, and the box read the card straight
+after, so it counted the previous game's card. Whether that read also stops
+the switch is unconfirmed on hardware; the GameID send itself is upstream's
+code at the same point as in Swiss.
+
+Validation: host plain and contracts lanes; GX stream tests pin both
+layouts and the focus frame's rows; detail_frame_budget re-baselined (124
+vertices without the inset); the emulator's virtual-cards route checks no
+box with one copy, none with two while off (4:3 job) and the box with two
+while on (16:9 job, save-details-wide.ini).
+
 ## 2026-10-06 — GC Loader starts Indigo at power-on as boot.dol
 
 Stock Swiss auto-starts `*/boot.dol` from the device it booted from (util.c

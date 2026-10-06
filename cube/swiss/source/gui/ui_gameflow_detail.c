@@ -268,31 +268,23 @@ static void buildSettingsPresentation(uiGameflowDetailSnapshot_t *snapshot,
 	}
 }
 
+/* SAVES shows only for two or more save copies: with one, none, or a scan
+ * that found fewer, the details leave it out. */
 static void buildSavesPresentation(uiGameflowDetailSnapshot_t *snapshot,
 	const uiSavesGameStats_t *stats)
 {
 	char updated[17];
 	bool incomplete;
 
-	if(stats == NULL) {
-		copyText(snapshot->savesSummary, sizeof(snapshot->savesSummary),
-			"Unavailable");
-		copyText(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
-			"Save sources not checked");
+	if(stats == NULL || stats->saves < 2u) {
 		return;
 	}
+	snapshot->flags |= UI_GAMEFLOW_DETAIL_HAS_SAVES;
 	snapshot->saveStats = *stats;
 	incomplete = stats->partial || stats->checkedSources == 0u;
-	if(stats->saves == 0u) {
-		copyText(snapshot->savesSummary, sizeof(snapshot->savesSummary),
-			incomplete ? "Unavailable" : "No save copies found");
-		copyText(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
-			incomplete ? "Save scan incomplete" : "Checked save sources");
-		return;
-	}
 	(void)snprintf(snapshot->savesSummary, sizeof(snapshot->savesSummary),
-		"%lu save %s | %lu %s", (unsigned long)stats->saves,
-		stats->saves == 1u ? "copy" : "copies", (unsigned long)stats->blocks,
+		"%lu save copies | %lu %s", (unsigned long)stats->saves,
+		(unsigned long)stats->blocks,
 		stats->blocks == 1u ? "block" : "blocks");
 	if(stats->updatedKnown &&
 		UISaves_FormatUpdated(stats->latestUpdated, updated, sizeof(updated))) {
@@ -327,7 +319,8 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 	snapshot->focusIndex = source->focusIndex;
 	snapshot->customSettings = source->customSettings;
 	snapshot->flags =
-		(source->flags & ~(uint32_t)UI_GAMEFLOW_DETAIL_HAS_BANNER) |
+		(source->flags & ~(uint32_t)(UI_GAMEFLOW_DETAIL_HAS_BANNER |
+			UI_GAMEFLOW_DETAIL_HAS_SAVES)) |
 		UI_GAMEFLOW_DETAIL_VALID;
 	memcpy(snapshot->gameId, source->gameId,
 		UI_GAMEFLOW_DETAIL_ID_LENGTH + 1u);

@@ -87,8 +87,8 @@ static void detail(void)
 	const uiGameflowCardSnapshot_t *record = _GameflowFindRecord(
 		&eventData->snapshot, frame->focusIndex, NULL);
 	uiSavesGameStats_t stats = {
-		.saves = 1u, .blocks = 2u, .latestUpdated = 762525240u,
-		.sourceSaves = {0u, 0u, 1u}, .checkedSources = 4u, .updatedKnown = true
+		.saves = 2u, .blocks = 4u, .latestUpdated = 762525240u,
+		.sourceSaves = {0u, 0u, 2u}, .checkedSources = 4u, .updatedKnown = true
 	};
 	uiGameflowDetailCheatSource_t cheat = {"Infinite energy", true};
 	char title[96];
@@ -113,6 +113,10 @@ static void detail(void)
 	else if(savesVariant == 7u) {
 		stats.checkedSources = 0u;
 		stats.updatedKnown = false;
+	}
+	else if(savesVariant == 8u) {
+		stats.saves = 1u;
+		stats.blocks = 2u;
 	}
 	source.saveStats = savesVariant == 0u ? NULL : &stats;
 	CHECK(UIGameflowDetail_Build(&eventData->detail, &source));
@@ -480,7 +484,7 @@ class LaunchGxStream(unittest.TestCase):
                 rest = self.detail_rest(wide)
                 drawn = strings(rest)
                 self.assertIn((576, 214, "SAVES"), drawn)
-                self.assertIn((274, 214, "1 save copy | 2 blocks"), drawn)
+                self.assertIn((274, 214, "2 save copies | 4 blocks"), drawn)
                 self.assertIn((274, 232, "Updated 2024-02-29 12:34"), drawn)
                 self.assertIn((274, 264, "SETTINGS"), drawn)
                 self.assertIn((274, 313, "CHEATS"), drawn)
@@ -495,27 +499,43 @@ class LaunchGxStream(unittest.TestCase):
                 for row, expected in ((0, (367.0, 410.0)), (1, (301.0, 360.0)),
                                       (2, (252.0, 294.0))):
                     self.assertEqual(self.lit_frame(self.detail_rest(wide, focus=row)), expected)
-                unknown = strings(self.detail_rest(wide, 0))
-                self.assertIn((274, 214, "Unavailable"), unknown)
                 partial = strings(self.detail_rest(wide, 2))
                 self.assertIn((274, 232, "Partial scan | Updated 2024-02-29 12:34"), partial)
-                empty = strings(self.detail_rest(wide, 4))
-                self.assertIn((274, 214, "No save copies found"), empty)
                 unknown_date = strings(self.detail_rest(wide, 5))
                 self.assertIn((274, 232, "Update date unavailable"), unknown_date)
-                incomplete = strings(self.detail_rest(wide, 6))
-                self.assertIn((274, 214, "Unavailable"), incomplete)
-                self.assertIn((274, 232, "Save scan incomplete"), incomplete)
-                self.assertNotIn((274, 214, "No save copies found"), incomplete)
                 partial_date = strings(self.detail_rest(wide, 7))
                 self.assertIn((274, 232, "Partial scan | Update date unavailable"), partial_date)
+
+    def test_fewer_than_two_copies_leave_saves_out(self):
+        # Saves on Details off (no statistics), no copies, a partial scan
+        # that found none, or one copy: no SAVES inset, and Detail keeps the
+        # places it had before the inset.
+        for wide in (0, 1):
+            for variant in (0, 4, 6, 8):
+                with self.subTest(wide=wide, variant=variant):
+                    rest = self.detail_rest(wide, variant)
+                    drawn = strings(rest)
+                    self.assertFalse([t for _, _, t in drawn if t == "SAVES" or "save cop" in t])
+                    self.assertIn((264, 148, "Detail publisher"), drawn)
+                    self.assertIn((264, 202, "LAST PLAYED"), drawn)
+                    self.assertIn((274, 244, "SETTINGS"), drawn)
+                    self.assertIn((274, 293, "CHEATS"), drawn)
+                    quads = [p["points"][i:i + 4] for p in primitives(rest)
+                             if p["kind"] == "quads" for i in range(0, p["count"], 4)]
+                    self.assertIn([(246.0, 76.0), (604.0, 76.0),
+                                   (604.0, 404.0), (246.0, 404.0)], quads)
+                    self.assertFalse([q for q in quads if q[0] == (260.0, 202.0)])
+                    for row, expected in ((0, (348.0, 391.0)), (1, (281.0, 340.0)),
+                                          (2, (232.0, 274.0))):
+                        self.assertEqual(
+                            self.lit_frame(self.detail_rest(wide, variant, focus=row)), expected)
 
     def test_save_inset_hierarchy_and_full_cells_fit(self):
         # Both lines occupy full font cells, not just baseline anchors.
         # Max totals and partial/date status share the same fixed inset;
         # none may touch its border, the trailing label or the next row.
         for wide in (0, 1):
-            for variant in range(8):
+            for variant in (1, 2, 3, 5, 7):
                 with self.subTest(wide=wide, variant=variant):
                     rest = self.detail_rest(wide, variant)
                     cells = [c for c in text_cells(rest)

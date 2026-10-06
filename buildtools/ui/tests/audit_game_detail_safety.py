@@ -125,7 +125,11 @@ assert "loadCheatsSelection();" not in detail
 def check_save_publication(source: str) -> None:
     publication = extract_function(source, "static bool gameflowPublishDetail(")
     assert publication.count("Saves_CollectGameStats(") == 1
-    collection = extract_function(publication, "if(context->primary != NULL")
+    collection = extract_function(publication, "context->primary != NULL")
+    # Saves on Details gates the read: off, a game's details never touch the
+    # memory cards.
+    assert publication[:publication.index(collection)].endswith(
+        "if(swissSettings.detailSaves &&\n\t\t")
     assert "context->primary->fileType == IS_FILE" in collection
     assert "valid_gcm_magic(&GCMDisk)" in collection
     assert "memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0" in collection
@@ -137,6 +141,7 @@ def check_save_publication(source: str) -> None:
 
 check_save_publication(swiss_source)
 for old, new in (
+    ("if(swissSettings.detailSaves &&", "if(true &&"),
     ("context->primary->fileType == IS_FILE", "true"),
     ("valid_gcm_magic(&GCMDisk)", "true"),
     ("memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0", "true"),
