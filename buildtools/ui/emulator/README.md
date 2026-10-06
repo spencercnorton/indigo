@@ -273,9 +273,9 @@ the four-layout route verifies that Y opens no folder color page there.
 
 Memory Cards must start with both columns on SD. The route opens Library
 first: with one save copy, the synthetic game's details leave SAVES out.
-After the export there are two copies: with `save-details-wide.ini` (Saves
-on Details on) the SAVES inset shows its count and recorded update; without
-it (off, the default) the details still leave SAVES out. Renderer host
+After the export there are two copies, and the SAVES inset shows their count
+and recorded update (Saves on Details is on by default; a card seeded with
+`Hide Saves on Details=Yes` would still leave it out). Renderer host
 contracts check the exact values; the route checks that the real fields
 appear, or that the inset is absent.
 

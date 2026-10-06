@@ -10,11 +10,11 @@ choose. On Home, turn the cube to **Library** and press A.
   <img alt="The Library: moving right through the James Bond games to 1080° Avalanche, each cover raised in turn between two covers either side, with its title and publisher below; A opens its details, B returns to the Library, and 1080° Avalanche is still selected." src="images/library-browse.png" width="640">
 </p>
 
-With **Saves on Details** on (Settings › Setup › Library; off by default),
-the [game details](game-details.md) screen also shows **Saves** above
-Settings and Cheats for a game with two or more save copies: copies, total
-blocks and the latest recorded update date from memory cards and the Save
-Folder, including RAW images. Incomplete scans are marked. Open System ›
+For a game with two or more save copies, the [game details](game-details.md)
+screen also shows **Saves** above Settings and Cheats: copies, total blocks
+and the latest recorded update date from memory cards and the Save Folder,
+including RAW images. Incomplete scans are marked. Settings › Setup ›
+Library › **Saves on Details** turns it off. Open System ›
 [Memory Cards](memory-cards.md) for an individual save’s size, date and
 actions.
 

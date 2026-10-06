@@ -573,7 +573,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Wave Speed=%s\r\n", waveSpeedStr[swissSettings.waveSpeed]);
 	fprintf(fp, "Library Layout=%s\r\n", libraryLayoutStr[swissSettings.libraryLayout]);
 	fprintf(fp, "Library Folders=%s\r\n", swissSettings.libraryFolders ? "Yes":"No");
-	fprintf(fp, "Saves on Details=%s\r\n", swissSettings.detailSaves ? "Yes":"No");
+	fprintf(fp, "Hide Saves on Details=%s\r\n", swissSettings.hideDetailSaves ? "Yes":"No");
 	fputs("Memory Card Folder Colors=", fp);
 	UIFolder_WriteColors(&folderColors, fp);
 	fputs("\r\n", fp);
@@ -1567,8 +1567,8 @@ void config_parse_global(char *configData, bool settingsFile) {
 				else if(!strcmp("Library Folders", name)) {
 					libraryFolders = !strcmp("Yes", value);
 				}
-				else if(!strcmp("Saves on Details", name)) {
-					swissSettings.detailSaves = !strcmp("Yes", value);
+				else if(!strcmp("Hide Saves on Details", name)) {
+					swissSettings.hideDetailSaves = !strcmp("Yes", value);
 				}
 				else if(!strcmp("Library Layout", name)) {
 					for(int i = 0; i < UI_GAMEFLOW_LAYOUT_COUNT; i++) {

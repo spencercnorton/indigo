@@ -806,9 +806,9 @@ class Route:
     def __init__(self, emulator: Emulator, out: Path, probe: bool = False, fresh_card: bool = False,
                  cable: str = "composite", region: str = "pal", fragments: int = 0,
                  cards: Path | None = None, storage: str = "dvd", menu_wide: bool = False,
-                 sd_image: Path | None = None, detail_saves: bool = False) -> None:
+                 sd_image: Path | None = None, detail_saves: bool = True) -> None:
         self.emulator = emulator
-        self.detail_saves = detail_saves  # the card starts with Saves on Details on
+        self.detail_saves = detail_saves  # Saves on Details is on (the default)
         self.cards = cards  # the memory cards' GCI folders, cards/A and cards/B
         self.storage = storage
         self.menu_wide = menu_wide
@@ -2201,7 +2201,7 @@ class Route:
         for n in (2, 1, 0):
             mask, _ = self.press_until("LEFT", like=faces[n])
             self.check("LEFT returns toward Home Library", mask is not None, to=n)
-        # Two copies after the export: SAVES shows only with Saves on Details on.
+        # Two copies after the export: SAVES shows, unless Saves on Details is off.
         self.library_save_stats("virtual-cards-library-after-export", shown=self.detail_saves)
 
     def virtual_popup_checks(self) -> None:
@@ -2340,7 +2340,7 @@ def main(argv: list[str] | None = None) -> int:
                           cable=args.cable, region=args.region, fragments=args.fragments, cards=cards,
                           storage=args.storage, menu_wide=bool(start and "Menu Widescreen=Yes" in start),
                           sd_image=sd,
-                          detail_saves=bool(start) and seeded(start).get("Saves on Details") == "Yes")
+                          detail_saves=not start or seeded(start).get("Hide Saves on Details") != "Yes")
             getattr(route, args.route.replace("-", "_"))()
             if args.route == "save":
                 # Power off and on again, with a card that works.

@@ -129,7 +129,7 @@ def check_save_publication(source: str) -> None:
     # Saves on Details gates the read: off, a game's details never touch the
     # memory cards.
     assert publication[:publication.index(collection)].endswith(
-        "if(swissSettings.detailSaves &&\n\t\t")
+        "if(!swissSettings.hideDetailSaves &&\n\t\t")
     assert "context->primary->fileType == IS_FILE" in collection
     assert "valid_gcm_magic(&GCMDisk)" in collection
     assert "memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0" in collection
@@ -141,7 +141,7 @@ def check_save_publication(source: str) -> None:
 
 check_save_publication(swiss_source)
 for old, new in (
-    ("if(swissSettings.detailSaves &&", "if(true &&"),
+    ("if(!swissSettings.hideDetailSaves &&", "if(true &&"),
     ("context->primary->fileType == IS_FILE", "true"),
     ("valid_gcm_magic(&GCMDisk)", "true"),
     ("memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0", "true"),

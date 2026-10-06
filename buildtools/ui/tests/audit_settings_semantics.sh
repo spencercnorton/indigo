@@ -24,7 +24,7 @@
 # Folders arm (SET_LIBRARY_FOLDERS) only turns Library Folders on or off
 # through config_set_library_folders, which swaps FlattenDir with it, and
 # the Saves on Details arm (SET_DETAIL_SAVES) only flips
-# swissSettings.detailSaves.
+# swissSettings.hideDetailSaves.
 #
 # The Right/Left/Up/Down/L/R/B/A action block changed on purpose in the Settings redesign:
 # phase 1 made B leave (Save & Exit when something changed), A advance choice
@@ -172,7 +172,7 @@ normalized = re.sub(
 # And the Saves on Details arm, a flip.
 normalized = re.sub(
     r"(?ms)^\t+case SET_DETAIL_SAVES:\n"
-    r"\t+swissSettings\.detailSaves \^= 1;\n"
+    r"\t+swissSettings\.hideDetailSaves \^= 1;\n"
     r"\t+break;\n",
     "", normalized, count=1)
 normalized = re.sub(r"[ \t]+(?=\n|$)", "", normalized)
