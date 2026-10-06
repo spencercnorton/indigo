@@ -46,13 +46,15 @@ https://norvitech.com/indigo/guide/install/
    - swiss/patches/apploader.img, into the card's swiss/patches folder,
      replacing the old one. Make the folders if they aren't there.
    - ipl.dol, named and placed for what starts your GameCube:
-       GC Loader, something else, or not sure: rename it indigo.dol
-         and put it in the card's apps folder (make it if it isn't
-         there). Your console starts as it does today.
+       GC Loader: rename it boot.dol and put it at the top of the card,
+         keeping boot.iso. Swiss starts it when you switch on.
        PicoBoot or PicoLoader: ipl.dol at the top of the card, replacing
          the old one. Indigo then starts when you switch on.
        FlippyDrive: rename it boot.dol and put it at the top of its
          microSD card. Indigo then starts when you switch on.
+       Something else, or not sure: rename it indigo.dol and put it in
+         the card's apps folder (make it if it isn't there). Your
+         console starts as it does today.
      Any setup can use apps/indigo.dol and open Indigo from Swiss. Some
      PicoBoot and PicoLoader chips have Swiss built in and never read
      ipl.dol: the guide shows how to check.

@@ -14,16 +14,63 @@ you open Indigo from Swiss: that works with every setup.
 
 | What starts your GameCube? | When Indigo starts |
 | --- | --- |
-| GC Loader | [From Swiss](#gc-loader) |
+| GC Loader | [At power-on](#gc-loader-at-power-on) or [from Swiss](#gc-loader-from-swiss) |
 | PicoBoot or PicoLoader | [At power-on](#picoboot-or-picoloader-at-power-on) or [from Swiss](#picoboot-or-picoloader-from-swiss) |
 | FlippyDrive | [At power-on](#flippydrive-at-power-on) or [from Swiss](#flippydrive-from-swiss) |
 | Something else, or not sure | [From Swiss](#something-else-or-not-sure) |
 
-## GC Loader
+## GC Loader, at power-on
+
+GC Loader starts Swiss from the `boot.iso` (or `boot.gcm`) on its SD card,
+and Swiss starts a `boot.dol` at the top of that card by itself, before it
+shows anything. Indigo takes that name, so Indigo starts every time you
+switch on. Leave `boot.iso` as it is: this needs Swiss there, as on most GC
+Loader cards.
+
+1. **Download and unzip.** [Download the Indigo
+   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
+   your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
+   readmes say to drag the whole `swiss` folder onto the card: don't.
+2. **Back up the card.** Put GC Loader's SD card in your computer. Swiss hides
+   its `swiss` folder, so first show hidden folders: press
+   Shift-Command-Period in a Mac's Finder; on Windows, turn on **Hidden
+   items** and **File name extensions** under **View** in File Explorer (View
+   › Show on Windows 11). Then copy its `swiss` folder, and its `boot.dol` if
+   it has one, to a folder on your computer.
+3. **Copy two files onto the card.**
+   - **`ipl.dol`:** rename it to `boot.dol` and copy it to the top of the
+     card (not into a folder), replacing the old `boot.dol` if there is one.
+   - **`apploader.img`:** it is in the download's `swiss/patches` folder. Copy
+     it into the card's `swiss/patches` folder, replacing the old one; make
+     the folders if they aren't there. With **In-Game Reset** set to Apploader
+     (Settings › Quick), leaving a game then returns to Indigo, even from
+     games you start in the normal Swiss. If you also use an SD2SP2 or SD
+     Gecko, copy it into that card's `swiss/patches` folder too.
+
+   The card then looks like this:
+
+   ```text
+   SD card
+   ├── boot.iso               unchanged
+   ├── boot.dol               new
+   ├── swiss/
+   │   └── patches/
+   │       └── apploader.img  new
+   └── games/                 unchanged
+   ```
+
+4. **Start Indigo.** Eject the card, put it back and switch on. Indigo
+   starts straight away.
+
+To use Swiss's file list again, take `boot.dol` off the card or rename it:
+while it is there, Swiss starts it every time.
+
+## GC Loader, from Swiss
 
 GC Loader starts Swiss from the `boot.iso` (or `boot.gcm`) on its SD card.
-Leave that file as it is, and don't rename anything to `boot.iso`: you open
-Indigo from Swiss.
+Leave that file as it is, and don't rename anything to `boot.iso`. Your
+console starts as it does today, and you open Indigo from Swiss.
 
 1. **Download and unzip.** [Download the Indigo
    ZIP](https://github.com/spencercnorton/indigo/releases/latest)
@@ -436,7 +483,7 @@ Stock Swiss is the normal Swiss, without Indigo's menus. Show hidden folders
 on your computer first, as in Update Indigo, to see the card's `swiss` folder.
 
 - **At power-on:** put your old `ipl.dol` or `boot.dol` back from the
-  backup. If FlippyDrive had no `boot.dol` before, delete Indigo's. With a
+  backup. If the card had no `boot.dol` before, delete Indigo's. With a
   `z.dol` shortcut, you can also hold Z while you switch on.
 - **From Swiss:** start Swiss as usual and don't open `indigo.dol`. Delete
   `apps/indigo.dol` to remove Indigo.

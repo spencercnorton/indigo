@@ -1,3 +1,15 @@
+## 2026-10-06 — GC Loader starts Indigo at power-on as boot.dol
+
+Stock Swiss auto-starts `*/boot.dol` from the device it booted from (util.c
+autoboot_dols; before r1730 any name ending in `/boot.dol`), when the device
+has FEAT_AUTOLOAD_DOL, before it draws anything; no setting turns it off.
+Indigo's DOL carries no Swiss commit trailer, so it qualifies. Console test
+2026-10-06 on Spencer's GC Loader: stock Swiss r2119 as `boot.iso` (15 pieces)
+and the v2.3.1-rc.2 `ipl.dol` as `/boot.dol` started straight into Indigo with
+no Swiss screen. The guide gains "GC Loader, at power-on" as its default for
+GC Loader; "from Swiss" stays. No Indigo `boot.iso` is shipped: GC Loader can't
+boot one in more than 40 pieces, and new copies on macOS 27 often are.
+
 ## 2026-10-05 — Install in four steps, copying two files
 
 The install guide now asks what starts the GameCube and gives four steps per

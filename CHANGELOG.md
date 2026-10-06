@@ -29,8 +29,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
   The GameCube save format does not record a separate creation date.
 - The install guide asks what starts your GameCube, then gives four steps for
   that setup: download, back up, copy two files, start Indigo. Each setup,
-  GC Loader included, shows a picture of the card afterwards. PicoBoot,
-  PicoLoader and FlippyDrive can start Indigo at power-on or from Swiss.
+  GC Loader included, shows a picture of the card afterwards. GC Loader,
+  PicoBoot, PicoLoader and FlippyDrive can start Indigo at power-on or from
+  Swiss; on GC Loader, Indigo as `boot.dol` is started by the Swiss in
+  `boot.iso`.
 - Installing copies two files, `ipl.dol` and `swiss/patches/apploader.img`,
   instead of merging the whole `swiss` folder. When the card already has an
   `apploader.img`, a Mac offers only Replace for the folder, and Replace

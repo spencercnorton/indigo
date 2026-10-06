@@ -38,7 +38,7 @@ Follow the **[install guide](https://norvitech.com/indigo/guide/install/)**: pic
 
 | What starts your GameCube? | Copy \`ipl.dol\` to | Indigo starts |
 | --- | --- | --- |
-| GC Loader | \`apps/indigo.dol\` (make \`apps\` if needed) | From Swiss: open \`apps\`, then \`indigo.dol\` |
+| GC Loader | \`boot.dol\` at the top of the card, keeping \`boot.iso\` (Swiss starts it) | When you switch on |
 | PicoBoot or PicoLoader | \`ipl.dol\` at the top of the card, replacing the old one | When you switch on |
 | FlippyDrive | \`boot.dol\` at the top of its microSD card | When you switch on |
 | Something else, or not sure | \`apps/indigo.dol\` (make \`apps\` if needed) | From Swiss: open \`apps\`, then \`indigo.dol\` |
