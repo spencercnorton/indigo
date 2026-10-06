@@ -76,6 +76,22 @@ tag on `beta`. The newest changes are at the top until their release is named.
   the poster and cheat packs are copied file by file into `swiss/ui` and
   `swiss/cheats`, never as a whole `swiss` folder.
 
+### Fixes
+
+- A quick press made while Indigo reads from a device is no longer missed:
+  B in the Library or Apps while a folder's picture loads from a disc, and
+  B to cancel a copy or a verify in Swiss's file list while a piece of the
+  file is read or written.
+
+### For developers
+
+- The emulator test holds each button for its full time from Dolphin's next
+  clock report, so a press can no longer end within a frame of starting and
+  never reach the console.
+- The dispatch audit finds every loop that reads held buttons around a
+  device read or write and fails unless it also takes the presses the
+  retrace scans latched, with mutants for each loop.
+
 ## v2.3.0 — Memory Cards, game folders and smoother motion
 
 ### New

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Mechanical contract for strict /games retained-Library dispatch."""
 
+import re
+import sys
 from pathlib import Path
 
 
@@ -374,46 +376,123 @@ for label, old_text, new_text in layout_mutants:
 
 
 
-# A wait loop that reads card art between its pad reads (a whole picture from
-# a source that is not thread safe, about a second from DVD) takes the presses
-# the scans saw as well as the buttons held, or a quick tap made during the
-# read is lost. It drops the presses from before it just ahead of the loop.
+# A loop that reads the pad as held buttons and does I/O between those reads
+# (card art from a source that is not thread safe, about a second from DVD; a
+# file copied or verified a chunk at a time) also takes the presses the
+# retrace scans latched (padsButtonsTaken), or a quick tap made during the I/O
+# is lost. Just ahead of the loop it drops the presses from before, so the A
+# or B that led there is not acted on twice, and it never drops them inside
+# the loop. Loops are found, not listed: a new one that reads held buttons
+# around I/O fails here. Indigo's own sources only; upstream's keep upstream's
+# code (UPSTREAM).
+sys.path.insert(0, str(ROOT / "buildtools/ci"))
+from check_upstream import OWN  # noqa: E402
+
 SOURCE = ROOT / "cube/swiss/source"
-POLLERS = {path: path.read_text() for path in sorted(SOURCE.rglob("*.c"))
-           if "CardArt_Poll();" in path.read_text() and path.name != "card_art.c"}
+WAITERS = {path: path.read_text() for path in sorted(SOURCE.rglob("*.c"))
+           if OWN.match(path.relative_to(ROOT).as_posix())}
+IO = ("CardArt_Poll(", "artLoad(", "->readFile(", "->writeFile(", "->readDir(",
+      "populate_meta(")
+# Memory Cards' inputNext takes its presses, and inputInit drops the old ones
+# at the start of each screen (audit_saves_safety.py checks both).
+CLEARED_BY_CALLER = {"inputNext"}
+LATCHED = {"showPrograms", "renderFileCarousel", "manage_file", "verify_game",
+           "inputNext"}
+CLEAR = re.compile(r"\(void\)padsButtonsTaken\((\w+)\);")
+TAKE = re.compile(r"(?<!\(void\))padsButtonsTaken\((\w+)\)")
 
 
-def check_pollers(sources: dict) -> None:
-    sites = 0
+def blank(text: str) -> str:
+    """Comments and literals as spaces, so offsets stay the source's."""
+    return re.sub(r"/\*.*?\*/|//[^\n]*|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'",
+                  lambda m: re.sub(r"[^\n]", " ", m.group()), text, flags=re.S)
+
+
+def closing(text: str, at: int) -> int:
+    pair = {"(": ")", "{": "}"}[text[at]]
+    depth = 0
+    for index in range(at, len(text)):
+        depth += (text[index] == text[at]) - (text[index] == pair)
+        if depth == 0:
+            return index
+    raise AssertionError("unbalanced source")
+
+
+def loops(code: str) -> list:
+    """(start, condition span, body span) of every while, for and do loop."""
+    found = []
+    for match in re.finditer(r"\b(?:while|for)\s*\(|\bdo\s*\{", code):
+        if match.group().startswith("do"):
+            body = (match.end() - 1, closing(code, match.end() - 1) + 1)
+            tail = code.index(";", body[1])
+            found.append((match.start(), (body[1], tail), body))
+            continue
+        condition = (match.end() - 1, closing(code, match.end() - 1) + 1)
+        rest = condition[1] + len(code[condition[1]:]) - len(code[condition[1]:].lstrip())
+        end = closing(code, rest) + 1 if code[rest] == "{" else code.index(";", rest) + 1
+        found.append((match.start(), condition, (condition[1], end)))
+    return found
+
+
+def wait_sites(sources: dict) -> list:
+    sites = []
     for path, text in sources.items():
-        at = -1
-        while (at := text.find("CardArt_Poll();", at + 1)) >= 0:
-            sites += 1
-            loop = max(text.rfind("while(1) {", 0, at), text.rfind("for(;;) {", 0, at))
-            assert loop >= 0, f"{path.name}: CardArt_Poll outside a wait loop"
-            assert "padsButtonsHeld() | padsButtonsTaken(waitButtons)" in text[loop:at], \
-                f"{path.name}: a press made while card art is read is lost"
-            assert text[:loop].rstrip().endswith("(void)padsButtonsTaken(waitButtons);"), \
-                f"{path.name}: the loop takes a press made before it"
-    assert sites >= 2, "the Library and Apps wait loops poll card art"
+        code = blank(text)
+        every = loops(code)
+        for start, condition, (body, end) in every:
+            direct = list(code[body:end])
+            for inner, _, (_, inner_end) in every:
+                if body <= inner < end:
+                    direct[inner - body:inner_end - body] = " " * (inner_end - inner)
+            direct = "".join(direct)
+            reads = code[slice(*condition)] + direct
+            if "padsButtonsHeld()" not in reads or not any(io in direct for io in IO):
+                continue
+            function = re.findall(r"^\w[^\n;]*?\b(\w+)\([^;{}]*\)\s*\{", code[:start], re.M)
+            sites.append((path, function[-1], start, body, direct, code))
+    return sites
 
 
-check_pollers(POLLERS)
-poller_mutants = []
-for path, text in POLLERS.items():
-    poller_mutants += [
-        (f"{path.name} reads only held buttons",
-         path, "padsButtonsHeld() | padsButtonsTaken(waitButtons)", "padsButtonsHeld()"),
-        (f"{path.name} keeps the presses from before",
-         path, "(void)padsButtonsTaken(waitButtons);", ""),
-    ]
-for label, path, old_text, new_text in poller_mutants:
-    assert POLLERS[path].count(old_text) == 1, f"mutation anchor missing: {label}"
+def check_waits(sources: dict) -> None:
+    found = set()
+    for path, function, start, body, direct, code in wait_sites(sources):
+        where = f"{path.name} {function}"
+        taken = TAKE.findall(direct)
+        assert taken, f"{where}: a press made during the loop's I/O is lost"
+        assert not CLEAR.search(direct), f"{where}: the loop drops a press made during it"
+        if function not in CLEARED_BY_CALLER:
+            cleared = re.search(CLEAR.pattern + "$", code[:start].rstrip())
+            assert cleared, f"{where}: the loop takes a press made before it"
+            assert cleared.group(1) == taken[0], f"{where}: it drops other buttons than it takes"
+        found.add(function)
+    assert LATCHED <= found, f"loops not found: {sorted(LATCHED - found)}"
+
+
+check_waits(WAITERS)
+wait_mutants = []
+for path, function, start, body, direct, code in wait_sites(WAITERS):
+    text = WAITERS[path]
+    take = TAKE.search(code, body)
+    wait_mutants.append((f"{path.name} {function} reads only held buttons", path,
+                         text[:take.start()] + "0u" + text[take.end():]))
+    wait_mutants.append((f"{path.name} {function} drops presses made during it", path,
+                         text[:body + 1] + f"(void)padsButtonsTaken({take.group(1)});" +
+                         text[body + 1:]))
+    if function not in CLEARED_BY_CALLER:
+        clear = list(CLEAR.finditer(code, 0, start))[-1]
+        wait_mutants.append((f"{path.name} {function} keeps the presses from before", path,
+                             text[:clear.start()] + text[clear.end():]))
+settings = SOURCE / "gui/settings.c"
+anchor = "SETTINGS_MENU_INPUT_POLICY, buttons != 0u);\n"
+assert WAITERS[settings].count(anchor) == 1, "mutation anchor missing: settings wait"
+wait_mutants.append(("a Settings wait starts reading card art", settings,
+                     WAITERS[settings].replace(anchor, anchor + "\t\tCardArt_Poll();\n", 1)))
+for label, path, mutated in wait_mutants:
     try:
-        check_pollers({**POLLERS, path: POLLERS[path].replace(old_text, new_text, 1)})
+        check_waits({**WAITERS, path: mutated})
     except AssertionError:
         continue
-    raise AssertionError(f"poller mutant escaped the dispatch audit: {label}")
+    raise AssertionError(f"wait mutant escaped the dispatch audit: {label}")
 
 print(f"gameflow dispatch audit OK ({len(layout_mutants)} layout mutants, "
-      f"{len(poller_mutants)} card art input mutants rejected)")
+      f"{len(wait_mutants)} wait input mutants rejected)")

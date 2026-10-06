@@ -1,3 +1,44 @@
+## 2026-10-06 — Take latched presses around every device read; whole presses in the emulator test
+
+Follow-up to the Library and Apps lost-press fix. A survey of every
+menu-thread loop that reads padsButtonsHeld(): Home, Settings
+(settingsWaitForInput and its boxes), the retained Detail, the cheat
+browser, System info, the legacy lists (renderFileFullwidth, Recent,
+select_dest_dir, select_alt_dol) and the confirm boxes read once per VSync
+with nothing else between reads, so held buttons see any press of a frame or
+more. I/O there runs between waits, where the per-wait clear drops a press
+anyway. Memory Cards' boxes (save details, Actions, storage, folder page)
+already read through inputNext, which takes the latch. The loops that read
+held buttons around I/O were manage_file's copy and verify_game, a chunk
+(up to 256 KB and 512 KB) per pass with B to cancel: both now take
+padsButtonsTaken(BUTTON_B) too, after dropping an older B.
+
+audit_gameflow_dispatch.py's check_pollers became check_waits: it finds
+every loop in Indigo's own sources (check_upstream.OWN) whose own body reads
+held buttons and does I/O (CardArt_Poll, artLoad, readFile, writeFile,
+readDir, populate_meta), and requires a padsButtonsTaken read in it, no
+clear inside it, and a clear of the same mask right before it (inputNext's
+is inputInit, which audit_saves_safety checks). 15 mutants per run: each
+loop reading held only, clearing inside, or keeping old presses, and a
+Settings wait that starts polling card art.
+
+The CI failure that started this (run 37541764782, GC Loader smoke, "B
+closes the box") was not the console: the box reads the latch, the PC
+samples show the idle thread for all ten seconds after B with no card read,
+and libogc2's PAD_ScanPads keeps an edge across reads that fail. B never
+reached the console. Deadline took its start from Dolphin's last TICKS
+report, which is up to 0.1 s old, so press() could let go about 20 ms after
+holding when it followed a screen grab (the step before reads the screen
+twice and saves a picture). press() now uses fresh waits: they count from
+the first report after the wait began, so a press and the release after it
+each last at least their seconds of console time, at up to 0.1 s more per
+press.
+
+Validation: host plain and contracts lanes, the emulator harness tests
+(new test_a_fresh_wait_counts_from_a_report_after_it_began),
+check_whitespace.sh origin/beta, source_checks.sh. The audit fails on the
+copy loop as it was. Not run on a console.
+
 ## 2026-10-07 — File Browser as a face of the cube
 
 UI_HOME_FACE_FILES after Emulators, on no side until Settings gives it one

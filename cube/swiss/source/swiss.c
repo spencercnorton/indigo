@@ -3788,8 +3788,12 @@ bool manage_file() {
 			int speed = 0;
 			int timeremain = 0;
 			print_debug("Copying %i byte file from %s to %s\n", curFile.size, &curFile.name[0], destFile->name);
+			/* A B pressed before this (to leave another screen) isn't a cancel. */
+			(void)padsButtonsTaken(BUTTON_B);
 			while(curOffset < curFile.size) {
-				u32 buttons = padsButtonsHeld();
+				/* Taken from the scans as well as held: a B tapped while a
+				 * chunk was read or written still cancels. */
+				u32 buttons = padsButtonsHeld() | padsButtonsTaken(BUTTON_B);
 				if(buttons & BUTTON_B) {
 					cancelled = 1;
 					break;
@@ -3911,8 +3915,12 @@ void verify_game()
 	u32 lastOffset = 0;
 	int speed = 0;
 	int timeremain = 0;
+	/* A B pressed before this (to leave another screen) isn't a cancel. */
+	(void)padsButtonsTaken(BUTTON_B);
 	while(curOffset < curFile.size) {
-		u32 buttons = padsButtonsHeld();
+		/* Taken from the scans as well as held: a B tapped while a chunk
+		 * was read still cancels. */
+		u32 buttons = padsButtonsHeld() | padsButtonsTaken(BUTTON_B);
 		if(buttons & BUTTON_B) {
 			cancelled = 1;
 			break;
