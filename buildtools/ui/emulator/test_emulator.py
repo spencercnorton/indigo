@@ -1108,6 +1108,23 @@ class Screen(unittest.TestCase):
             self.assertTrue(wait.expired())
             self.assertEqual(emulator.where(), "PC 801179a0 LR 8011774c at 3.5 s")
 
+    def test_a_fresh_wait_counts_from_a_report_after_it_began(self):
+        """A press must not end at the next report when the last one is old."""
+        with tempfile.TemporaryDirectory() as directory:
+            emulator = run.Emulator.__new__(run.Emulator)
+            emulator.log = Path(directory) / "dolphin.log"
+            emulator.log.write_text("TICKS 486000000 PC 80003100 LR 00000000\n")
+            stale, fresh = run.Deadline(emulator, 0.25), run.Deadline(emulator, 0.25, fresh=True)
+            self.assertEqual(fresh.elapsed(), 0.0, "nothing reported since it began")
+            with emulator.log.open("a") as log:
+                log.write("TICKS 607500000 PC 80003100 LR 00000000\n")
+            self.assertTrue(stale.expired(), "a stale start can end a press at once")
+            self.assertFalse(fresh.expired())
+            with emulator.log.open("a") as log:
+                log.write("TICKS 729000000 PC 80003100 LR 00000000\n")
+            self.assertEqual(fresh.elapsed(), 0.25)
+            self.assertTrue(fresh.expired())
+
     def test_without_the_consoles_clock_a_wait_counts_the_machines(self):
         with tempfile.TemporaryDirectory() as directory:
             emulator = run.Emulator.__new__(run.Emulator)

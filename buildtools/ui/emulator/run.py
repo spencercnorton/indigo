@@ -679,20 +679,25 @@ def printable(data: bytes) -> str:
 
 class Deadline:
     """A wait of some seconds of the console's own time when Dolphin reports
-    it (patch 0005, DOLPHIN_TICKS), else of the machine's."""
+    it (patch 0005, DOLPHIN_TICKS), else of the machine's.
 
-    def __init__(self, emulator: "Emulator", seconds: float) -> None:
+    Dolphin reports ten times a second, so its last report can be most of a
+    tenth of a second old when a wait begins. A fresh wait counts from the
+    first report after it began instead: never less than its seconds."""
+
+    def __init__(self, emulator: "Emulator", seconds: float, fresh: bool = False) -> None:
         self.emulator, self.seconds = emulator, seconds
         self.wall = time.monotonic()
-        self.start = emulator.emulated()
+        self.last = emulator.emulated()
+        self.start = None if fresh else self.last
 
     def elapsed(self) -> float:
         now = self.emulator.emulated()
-        if now is not None and self.start is None:
-            self.start = now  # Dolphin began reporting after the wait began
-        if now is not None:
-            return now - self.start
-        return time.monotonic() - self.wall
+        if now is None:
+            return time.monotonic() - self.wall
+        if self.start is None and now != self.last:
+            self.start = now  # a report after the wait began
+        return 0.0 if self.start is None else now - self.start
 
     def expired(self) -> bool:
         return self.elapsed() >= self.seconds or time.monotonic() - self.wall >= self.seconds * WALL_FACTOR
@@ -899,16 +904,18 @@ class Route:
 
     def press(self, button: str, seconds: float = PRESS_SECONDS) -> None:
         """Hold a button for some of the console's time, then leave it up for
-        a little: a busy machine must not shorten a press below a frame."""
+        a little: a busy machine must not shorten a press below a frame. Both
+        are fresh waits: from a stale report, a press begun just before the
+        next one could end within a frame and never reach the console."""
         self.pad.hold(button)
-        self.pause(seconds)
+        self.pause(seconds, fresh=True)
         self.pad.hold()
-        self.pause(PRESS_SECONDS)
+        self.pause(PRESS_SECONDS, fresh=True)
 
-    def pause(self, seconds: float) -> None:
+    def pause(self, seconds: float, fresh: bool = False) -> None:
         """Let some of the console's time pass: a menu's animation takes as
         much of it however busy the machine is."""
-        wait = Deadline(self.emulator, seconds)
+        wait = Deadline(self.emulator, seconds, fresh=fresh)
         while not wait.expired():
             time.sleep(0.02)
 
