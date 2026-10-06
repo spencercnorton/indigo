@@ -22,7 +22,7 @@ press A.
 | **Source** | A short list: **Change Source** picks the device your games come from, and **Refresh Library** reads it again, for example after you swap the disc. See [Source](source.md). |
 | **Settings** | Settings. See [Settings](settings.md). |
 | **System** | A short list: **System Information**, **Memory Cards** and **Restart Indigo**. See [System](system.md) and [Memory Cards](memory-cards.md). |
-| **Apps** | Your emulators and other programs, as posters. Only there when the card's `/apps` folder has a program; it comes one turn left of Library (below it with a Classic cube). Settings › Setup › Console › Apps Face turns it off. See [Apps](apps.md). |
+| **Apps** | Your emulators and other programs, as posters. Only there when the card's `/apps` folder has a program; it comes one turn left of Library (below it with a Classic cube). Set Down Face to None to turn it off (see [Choose the sides](#choose-the-sides)). See [Apps](apps.md). |
 
 Left and Right turn the cube sideways; Up and Down tip it over. Either way you
 reach the next face, and the name under the cube tells you which face is in
@@ -38,8 +38,9 @@ Settings › Setup › Console › **Cube** chooses how the faces sit on the cub
 - **Infinite** (the default) is the cube described above: every direction
   turns on to the next face, round and round.
 - **Classic** is laid out like the GameCube's own menu. Library is in front
-  and is where you start. Every other menu has a side of its own: Settings
-  on the left, System on the right, Source on top and Apps underneath. From
+  and is where you start. Every other menu has a side of its own, by
+  default Settings on the left, System on the right, Source on top and Apps
+  underneath ([Choose the sides](#choose-the-sides) moves them). From
   Library, a direction turns the cube a quarter turn to that side. From a
   side, only the way back, or B, turns it back to Library; the cube doesn't
   go round, so Settings to System is Right, Right. Each face keeps its icon
@@ -48,6 +49,22 @@ Settings › Setup › Console › **Cube** chooses how the faces sit on the cub
   starts on Library, and A turns up to Source with its list open.
 
 A change of Cube takes effect as you leave Settings.
+
+### Choose the sides
+
+Settings › Setup › Console › **Up Face**, **Left Face**, **Right Face** and
+**Down Face** choose the menu above, left of, right of and below Library:
+Source, Settings, System, Apps, or **None** to leave that side empty. A
+Classic cube turns that way to it; the Infinite ring turns through the
+faces up, left, right and down, after Library. A menu on no side is off the
+cube. Y on Home opens Settings wherever its face is, and while Settings has
+no side the hint along the bottom says so. A menu named for two sides keeps
+the first. With no device to read games from and Source on no side, A on
+Library opens the device list straight away.
+
+For example, Down Face **Settings** and Left Face **Apps** put Settings
+below Library and Apps on its left, as on a GameCube with its Settings
+underneath.
 
 When Indigo starts, the cube flies in from the distance, spinning, and comes
 to rest on that face within a second. With UI Motion set to Reduced it fades

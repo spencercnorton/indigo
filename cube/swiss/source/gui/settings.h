@@ -86,7 +86,10 @@ enum SETTINGS_INTERFACE {
 	SET_FLATTEN_DIR,
 	SET_LIBRARY_LAYOUT,
 	SET_MENU_WIDESCREEN,
-	SET_APPS_FACE,
+	SET_UP_FACE,
+	SET_LEFT_FACE,
+	SET_RIGHT_FACE,
+	SET_DOWN_FACE,
 	SET_UI_BACKDROP_COLOR,
 	SET_UI_WAVE_COLOR,
 	SET_CLOCK_POSITION,
@@ -242,6 +245,10 @@ extern char *libraryIconStr[];
 extern char *sourceIconStr[];
 extern char *settingsIconStr[];
 extern char *systemIconStr[];
+extern char *upFaceStr[];
+extern char *leftFaceStr[];
+extern char *rightFaceStr[];
+extern char *downFaceStr[];
 extern char *libraryLayoutStr[];
 
 int show_settings(int page, int option, ConfigEntry *config);

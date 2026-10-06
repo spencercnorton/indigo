@@ -58,7 +58,9 @@ typedef enum {
 	UI_HOME_INPUT_DOWN,
 	UI_HOME_INPUT_ACTIVATE,
 	UI_HOME_INPUT_BACK,
-	UI_HOME_INPUT_RECENT
+	UI_HOME_INPUT_RECENT,
+	/* Y: Settings from the ring, wherever its face is, or with none. */
+	UI_HOME_INPUT_SETTINGS
 } uiHomeInput_t;
 
 typedef enum {
@@ -175,6 +177,13 @@ int UIHome_RingIndex(const uiHomeState_t *state, uiHomeFace_t face);
 /* The side a face is on, there now or not; -1 for Library, or a face on
  * none. */
 int UIHome_FaceSide(const uiHomeState_t *state, uiHomeFace_t face);
+/* The sides are Source, Settings, System and Apps, as they are unless
+ * Settings names others. */
+bool UIHome_DefaultSides(const uiHomeState_t *state);
+/* The face Settings' choice for a side puts there: choice 0 is the side's
+ * default, and each next choice the next face round, none (Library)
+ * included, so a zeroed choice is the default cube. */
+uiHomeFace_t UIHome_SideFace(int side, int choice);
 void UIHome_Init(uiHomeState_t *state, uiHomeCapabilities_t capabilities);
 uiHomeEffect_t UIHome_Apply(uiHomeState_t *state, uiHomeInput_t input,
 	uiHomeCapabilities_t capabilities);

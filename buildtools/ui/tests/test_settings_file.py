@@ -121,6 +121,8 @@ static bool getRawDTVStatus(void) { return false; }
 """,
     # swiss.h reaches the Home face icons through FrameBufferMagic.h.
     re.search(r"^#define UI_HOME_ICON_CHOICES \d+$", UI_HOME_H, re.M).group(0),
+    # And the faces the cube's sides name.
+    re.search(r"^typedef enum \{[^}]*\} uiHomeFace_t;", UI_HOME_H, re.M).group(0),
     # And the Library layouts, through the same header.
     re.search(r"^typedef enum \{[^}]*\} uiGameflowLayout_t;", UI_GAMEFLOW_H, re.M).group(0),
     "\n".join(re.findall(r"^enum \w+\s*\{.*?\};", SWISS_H, re.S | re.M)),
@@ -429,7 +431,8 @@ READ_KEYS = set(re.findall(r'strcmp\("([^"]+)", name\)', GLOBAL_PARSER + GAME_PA
 # Written by Swiss but never read back (the ID comes from the file name).
 WRITE_ONLY = {"ID"}
 # Earlier names the parser still accepts.
-OLD_NAMES = {"Enable Debug", "USB Gecko debug output", "Stop DVD Motor on startup"}
+OLD_NAMES = {"Enable Debug", "USB Gecko debug output", "Stop DVD Motor on startup",
+             "Hide Apps Face"}
 # Listed values global.ini does not accept, all explained in SETTINGS.md: the
 # NTSC default only takes NTSC modes, "Default" is a game's language, and
 # 32 MiB and up exceed a retail GameCube's memory.
@@ -537,6 +540,31 @@ class SettingsFileTest(unittest.TestCase):
         for other in ("Infinite", "classic", "Ring", ""):
             self.assertEqual(self.global_file(f"Cube=Classic\r\nCube={other}\r\n")["Cube"],
                              "Infinite", other)
+
+    def test_the_sides_default_to_the_cube_of_before(self):
+        # Setup > Console > Up, Left, Right and Down Face. Without them the
+        # cube is Source up, Settings left, System right and Apps down; an
+        # older Hide Apps Face=Yes empties Apps' side unless the file names
+        # the sides, and is never written again.
+        sides = ("Up Face", "Left Face", "Right Face", "Down Face")
+        self.assertEqual([self.global_file()[key] for key in sides],
+                         ["Source", "Settings", "System", "Apps"])
+        moved = self.global_file("Down Face=Settings\r\nLeft Face=Apps\r\n")
+        self.assertEqual([moved[key] for key in sides], ["Source", "Apps", "System", "Settings"])
+        self.assertEqual(self.global_file("Up Face=None")["Up Face"], "None")
+        self.assertEqual(self.global_file("Up Face=Library")["Up Face"], "Source")
+        old = self.global_file("Hide Apps Face=Yes\r\n")
+        self.assertEqual(old["Down Face"], "None")
+        self.assertNotIn("Hide Apps Face", old)
+        self.assertEqual(self.global_file("Hide Apps Face=No\r\n")["Down Face"], "Apps")
+        named = self.global_file("Hide Apps Face=Yes\r\nDown Face=Apps\r\n")
+        self.assertEqual(named["Down Face"], "Apps")
+        # Each side's choices start at its default and go round the faces,
+        # None among them (UIHome_SideFace): zeroed settings are that cube.
+        faces = ["None", "Source", "Settings", "System", "Apps"]
+        for side, default in (("up", 1), ("left", 2), ("right", 3), ("down", 4)):
+            self.assertEqual(VALUES[f"{side}FaceStr"],
+                             [faces[(default + i) % len(faces)] for i in range(len(faces))], side)
 
     def test_a_face_icon_only_takes_that_faces_own(self):
         # Each face has its own four icons; a name from another face's list

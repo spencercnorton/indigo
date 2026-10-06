@@ -138,7 +138,10 @@ typedef struct {
 	int sourceIcon;
 	int settingsIcon;
 	int systemIcon;
-	int hideAppsFace;	// 0 = Home shows Apps while /apps has a program (default); 1 = never
+	int upFace;	// the Home face on each of Library's sides: a choice of upFaceStr and the others
+	int leftFace;	// (gui/settings.c, UIHome_SideFace); 0 = the side's default: Source up, Settings left, System right, Apps down
+	int rightFace;
+	int downFace;
 	int cubeStyle;	// uiHomeCubeStyle_t (gui/ui_home.h): 0 = Infinite, a ring of faces (default); 1 = Classic, a face on each side
 	int clockPosition;	// CLOCK_RIGHT (default), CLOCK_LEFT or CLOCK_OFF: the time
 	int temperaturePosition;	// the same three for the temperature dial

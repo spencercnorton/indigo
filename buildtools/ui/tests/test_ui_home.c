@@ -439,7 +439,7 @@ static void testEveryRingFaceAndInput(void)
 	for(faceIndex = 0; faceIndex < faceCount; ++faceIndex) {
 		uiHomeFace_t face = (uiHomeFace_t)faceIndex;
 		for(inputIndex = (int)UI_HOME_INPUT_NONE;
-			inputIndex <= (int)UI_HOME_INPUT_RECENT; ++inputIndex) {
+			inputIndex <= (int)UI_HOME_INPUT_SETTINGS; ++inputIndex) {
 			uiHomeInput_t input = (uiHomeInput_t)inputIndex;
 			uiHomeState_t state = stateAt(face, UI_HOME_SURFACE_RING, 0,
 				(int32_t)faceIndex);
@@ -496,6 +496,10 @@ static void testEveryRingFaceAndInput(void)
 					CHECK(effect == UI_HOME_EFFECT_OPEN_RECENT);
 					checkSameState(&state, &before);
 					break;
+				case UI_HOME_INPUT_SETTINGS:
+					CHECK(effect == UI_HOME_EFFECT_OPEN_SETTINGS);
+					checkSameState(&state, &before);
+					break;
 				case UI_HOME_INPUT_NONE:
 				case UI_HOME_INPUT_BACK:
 					CHECK(effect == UI_HOME_EFFECT_NONE);
@@ -542,7 +546,7 @@ static void testSourceSurface(void)
 	int inputIndex;
 
 	for(inputIndex = (int)UI_HOME_INPUT_NONE;
-		inputIndex <= (int)UI_HOME_INPUT_RECENT; ++inputIndex) {
+		inputIndex <= (int)UI_HOME_INPUT_SETTINGS; ++inputIndex) {
 		uiHomeInput_t input = (uiHomeInput_t)inputIndex;
 		state = stateAt(UI_HOME_FACE_SOURCE, UI_HOME_SURFACE_SOURCE, 0, 1);
 		before = state;
@@ -567,6 +571,7 @@ static void testSourceSurface(void)
 			case UI_HOME_INPUT_LEFT:
 			case UI_HOME_INPUT_RIGHT:
 			case UI_HOME_INPUT_RECENT:
+			case UI_HOME_INPUT_SETTINGS:
 				CHECK(effect == UI_HOME_EFFECT_NONE);
 				checkSameState(&state, &before);
 				break;
@@ -614,7 +619,7 @@ static void testSystemSurface(void)
 	int inputIndex;
 
 	for(inputIndex = (int)UI_HOME_INPUT_NONE;
-		inputIndex <= (int)UI_HOME_INPUT_RECENT; ++inputIndex) {
+		inputIndex <= (int)UI_HOME_INPUT_SETTINGS; ++inputIndex) {
 		uiHomeInput_t input = (uiHomeInput_t)inputIndex;
 		state = stateAt(UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 0, 3);
 		before = state;
@@ -643,6 +648,7 @@ static void testSystemSurface(void)
 			case UI_HOME_INPUT_LEFT:
 			case UI_HOME_INPUT_RIGHT:
 			case UI_HOME_INPUT_RECENT:
+			case UI_HOME_INPUT_SETTINGS:
 				CHECK(effect == UI_HOME_EFFECT_NONE);
 				checkSameState(&state, &before);
 				break;
@@ -686,7 +692,7 @@ static void testRestartConfirmation(void)
 	int inputIndex;
 
 	for(inputIndex = (int)UI_HOME_INPUT_NONE;
-		inputIndex <= (int)UI_HOME_INPUT_RECENT; ++inputIndex) {
+		inputIndex <= (int)UI_HOME_INPUT_SETTINGS; ++inputIndex) {
 		uiHomeInput_t input = (uiHomeInput_t)inputIndex;
 		state = stateAt(UI_HOME_FACE_SYSTEM,
 			UI_HOME_SURFACE_RESTART_CONFIRM, 0, 3);
@@ -713,6 +719,7 @@ static void testRestartConfirmation(void)
 				break;
 			case UI_HOME_INPUT_NONE:
 			case UI_HOME_INPUT_RECENT:
+			case UI_HOME_INPUT_SETTINGS:
 				CHECK(effect == UI_HOME_EFFECT_NONE);
 				checkSameState(&state, &before);
 				break;
@@ -1471,7 +1478,7 @@ static void testExhaustiveReducerOracle(void)
 
 static void testInvalidInputAndStateOracle(void)
 {
-	static const int invalidInputs[] = { -1, 8, 99, INT_MAX };
+	static const int invalidInputs[] = { -1, 9, 99, INT_MAX };
 	static const int invalidFaces[] = { -1, UI_HOME_FACE_COUNT, INT_MAX };
 	static const int invalidSurfaces[] = {
 		-1, UI_HOME_SURFACE_COUNT, INT_MAX
@@ -2015,6 +2022,69 @@ static void testLayouts(void)
 	}
 }
 
+/* Y opens Settings from the ring in either cube, whatever face is in front
+ * and wherever Settings is, or with Settings on no side; the lists and the
+ * Restart question keep it. Nothing turns, nothing counts as an input. */
+static void testSettingsInput(void)
+{
+	static const uint8_t noSettings[UI_HOME_SIDE_COUNT] = {
+		UI_HOME_FACE_SOURCE, NO_FACE, UI_HOME_FACE_SYSTEM, UI_HOME_FACE_APPS
+	};
+	int mask;
+
+	for(mask = 0; mask < 8; ++mask) {
+		uiHomeCapabilities_t caps = (mask & 4) != 0 ?
+			layoutCaps(noSettings, (mask & 1) != 0, true, (mask & 2) != 0) :
+			withApps(capabilities((mask & 1) != 0, false));
+		uiHomeState_t state;
+		int place;
+
+		if((mask & 2) != 0) {
+			caps = classic(caps);
+		}
+		UIHome_Init(&state, caps);
+		for(place = 0; place < state.faceCount; ++place) {
+			uiHomeState_t at = state;
+			uiHomeState_t before;
+
+			at.face = UIHome_RingFace(&state, place);
+			at.turnOrdinal = (int32_t)place;
+			if((mask & 2) == 0) {
+				before = at;
+				CHECK(UIHome_Apply(&at, UI_HOME_INPUT_SETTINGS, caps) ==
+					UI_HOME_EFFECT_OPEN_SETTINGS);
+				checkSameState(&at, &before);
+			}
+			else if(at.face == UI_HOME_FACE_LIBRARY) {
+				before = at;
+				CHECK(UIHome_Apply(&at, UI_HOME_INPUT_SETTINGS, caps) ==
+					UI_HOME_EFFECT_OPEN_SETTINGS);
+				checkSameState(&at, &before);
+			}
+		}
+	}
+	{
+		uiHomeCapabilities_t caps = capabilities(true, true);
+		static const uiHomeSurface_t lists[] = {
+			UI_HOME_SURFACE_SOURCE, UI_HOME_SURFACE_SYSTEM,
+			UI_HOME_SURFACE_RESTART_CONFIRM
+		};
+		unsigned index;
+
+		for(index = 0; index < sizeof(lists) / sizeof(lists[0]); ++index) {
+			uiHomeState_t state = stateAt(
+				lists[index] == UI_HOME_SURFACE_SOURCE ? UI_HOME_FACE_SOURCE :
+				UI_HOME_FACE_SYSTEM, lists[index], 1,
+				lists[index] == UI_HOME_SURFACE_SOURCE ? 1 : 3);
+			uiHomeState_t before = state;
+
+			CHECK(UIHome_Apply(&state, UI_HOME_INPUT_SETTINGS, caps) ==
+				UI_HOME_EFFECT_NONE);
+			checkSameState(&state, &before);
+		}
+	}
+}
+
 enum { RESTART_BRUTE_DEPTH = 6 };
 
 static unsigned int restartReachableCount;
@@ -2191,6 +2261,7 @@ int main(void)
 	testInvalidInputAndStateOracle();
 	testRestartReachabilityOracle();
 	testLayouts();
+	testSettingsInput();
 	printf("ui_home: %u checks passed\n", checks);
 	return EXIT_SUCCESS;
 }

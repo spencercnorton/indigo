@@ -527,6 +527,30 @@ static void testCustomSides(void)
 		CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_APPS);
 		near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SOURCE], 0.0f, 0.0f);
 	}
+
+	/* Away from Home, Infinite shows Library in front of its own ring, not
+	 * the default four: Source, on no side, stays off the cube. */
+	{
+		uiHomeCapabilities_t noSource = caps;
+
+		noSource.customSides = true;
+		noSource.sides[UI_HOME_SIDE_LEFT] = UI_HOME_FACE_SETTINGS;
+		noSource.sides[UI_HOME_SIDE_RIGHT] = UI_HOME_FACE_SYSTEM;
+		noSource.sides[UI_HOME_SIDE_DOWN] = UI_HOME_FACE_APPS;
+		home = startWith(noSource, 0.02f, UI_MOTION_FULL);
+		CHECK(UIHome_Apply(&home, UI_HOME_INPUT_RIGHT, noSource) ==
+			UI_HOME_EFFECT_NONE);
+		UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+		static const uiSceneId_t away[] = {UI_SCENE_LIBRARY, UI_SCENE_SETTINGS};
+		for(int i = 0; i < 2; ++i) {
+			UIScene_Request(away[i]);
+			advance(4.0f, 0.02f, UI_MOTION_FULL);
+			near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SOURCE], 0.0f, 0.0f);
+			near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_LIBRARY], 1.0f, 0.0f);
+			near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SETTINGS], 1.0f, 0.0f);
+			near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SYSTEM], 1.0f, 0.0f);
+		}
+	}
 }
 
 /* Exercise visible composition, not just arrival: posters remain transparent

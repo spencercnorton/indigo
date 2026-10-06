@@ -90,6 +90,17 @@ _Static_assert(sizeof(libraryIconStr) / sizeof(libraryIconStr[0]) == UI_HOME_ICO
 _Static_assert(sizeof(sourceIconStr) / sizeof(sourceIconStr[0]) == UI_HOME_ICON_CHOICES, "source icon names drift");
 _Static_assert(sizeof(settingsIconStr) / sizeof(settingsIconStr[0]) == UI_HOME_ICON_CHOICES, "settings icon names drift");
 _Static_assert(sizeof(systemIconStr) / sizeof(systemIconStr[0]) == UI_HOME_ICON_CHOICES, "system icon names drift");
+/* What each of Library's sides can show, its default first and then each
+ * face after it round (UIHome_SideFace), so a zeroed setting is the cube of
+ * before. */
+char *upFaceStr[] = {"Source", "Settings", "System", "Apps", "None"};
+char *leftFaceStr[] = {"Settings", "System", "Apps", "None", "Source"};
+char *rightFaceStr[] = {"System", "Apps", "None", "Source", "Settings"};
+char *downFaceStr[] = {"Apps", "None", "Source", "Settings", "System"};
+_Static_assert(sizeof(upFaceStr) / sizeof(upFaceStr[0]) == UI_HOME_FACE_COUNT, "up face names drift");
+_Static_assert(sizeof(leftFaceStr) / sizeof(leftFaceStr[0]) == UI_HOME_FACE_COUNT, "left face names drift");
+_Static_assert(sizeof(rightFaceStr) / sizeof(rightFaceStr[0]) == UI_HOME_FACE_COUNT, "right face names drift");
+_Static_assert(sizeof(downFaceStr) / sizeof(downFaceStr[0]) == UI_HOME_FACE_COUNT, "down face names drift");
 char *libraryLayoutStr[] = {"Horizontal", "Vertical", "Grid", "Spotlight"};
 _Static_assert(sizeof(libraryLayoutStr) / sizeof(libraryLayoutStr[0]) == UI_GAMEFLOW_LAYOUT_COUNT, "library layout names drift");
 static const char *uiMotionModeStr[] = {"Full", "Reduced", "Off"};
@@ -155,8 +166,11 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_WAVE_SPEED] = "Wave Speed:\n\nHow fast the waves behind the cube drift.\nSlow - Half as fast\nNormal - As they always have (default)\nFast - Three times as fast\n\nUI Motion Off or Reduced, or Animated Backdrop off (Setup >\nLibrary), still stops them.",
 	[SET_CLOCK_POSITION] = "Clock:\n\nRight - The time sits in the top right corner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nTemperature places the temperature dial on its own.",
 	[SET_TEMPERATURE_POSITION] = "Temperature:\n\nRight - The CPU temperature dial sits in the top right\ncorner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nIn the clock's corner, the dial sits nearer the edge.",
-	[SET_APPS_FACE] = "Apps Face:\n\nOn - Home shows Apps, one turn from Library, while the\nsource has a program in /apps (default)\nOff - Home never shows Apps. The programs stay in /apps,\nand the file list still starts them.",
-	[SET_CUBE] = "Cube:\n\nInfinite - Left and Right turn round every face in a ring (default)\nClassic - Every menu sits on its own side of the cube, as on\nthe GameCube\n\nIn Classic, turn to a side, and back to Library to reach the\nothers: Settings is left of Library, System right, Source\nabove and Apps below. B turns back to Library.",
+	[SET_UP_FACE] = "Up Face:\n\nThe menu above Library: Source (default), None,\nSettings, System or Apps.\n\nClassic turns Up to it; Infinite turns through the faces\nabove, left, right and below Library, in that order. A menu\non no side is off the cube. Y on Home always opens Settings,\nand Apps shows while the source has a program in /apps.",
+	[SET_LEFT_FACE] = "Left Face:\n\nThe menu left of Library: Settings (default), None,\nSource, System or Apps.\n\nClassic turns Left to it; Infinite turns through the faces\nabove, left, right and below Library, in that order. A menu\non no side is off the cube. Y on Home always opens Settings,\nand Apps shows while the source has a program in /apps.",
+	[SET_RIGHT_FACE] = "Right Face:\n\nThe menu right of Library: System (default), None,\nSource, Settings or Apps.\n\nClassic turns Right to it; Infinite turns through the faces\nabove, left, right and below Library, in that order. A menu\non no side is off the cube. Y on Home always opens Settings,\nand Apps shows while the source has a program in /apps.",
+	[SET_DOWN_FACE] = "Down Face:\n\nThe menu below Library: Apps (default), None,\nSource, Settings or System.\n\nClassic turns Down to it; Infinite turns through the faces\nabove, left, right and below Library, in that order. A menu\non no side is off the cube. Y on Home always opens Settings,\nand Apps shows while the source has a program in /apps.",
+	[SET_CUBE] = "Cube:\n\nInfinite - Left and Right turn round every face in a ring (default)\nClassic - Every menu sits on its own side of the cube, as on\nthe GameCube\n\nIn Classic, turn to a side, and back to Library to reach the\nothers; Up Face, Left Face, Right Face and Down Face say\nwhat is on each side. B turns back to Library.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
 
@@ -582,7 +596,10 @@ static const settingsRowRef_t consoleRows[] = {
 	{PAGE_INTERFACE, SET_SOURCE_ICON},
 	{PAGE_INTERFACE, SET_SETTINGS_ICON},
 	{PAGE_INTERFACE, SET_SYSTEM_ICON},
-	{PAGE_INTERFACE, SET_APPS_FACE},
+	{PAGE_INTERFACE, SET_UP_FACE},
+	{PAGE_INTERFACE, SET_LEFT_FACE},
+	{PAGE_INTERFACE, SET_RIGHT_FACE},
+	{PAGE_INTERFACE, SET_DOWN_FACE},
 	{PAGE_INTERFACE, SET_CUBE},
 	{PAGE_INTERFACE, SET_CLOCK_POSITION},
 	{PAGE_INTERFACE, SET_TEMPERATURE_POSITION},
@@ -1064,7 +1081,10 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_SOURCE_ICON: rowCycle(row, "Source Icon:", sourceIconStr[swissSettings.sourceIcon], true); break;
 			case SET_SETTINGS_ICON: rowCycle(row, "Settings Icon:", settingsIconStr[swissSettings.settingsIcon], true); break;
 			case SET_SYSTEM_ICON: rowCycle(row, "System Icon:", systemIconStr[swissSettings.systemIcon], true); break;
-			case SET_APPS_FACE: rowOnOff(row, "Apps Face:", !swissSettings.hideAppsFace, true); break;
+			case SET_UP_FACE: rowCycle(row, "Up Face:", upFaceStr[swissSettings.upFace], true); break;
+			case SET_LEFT_FACE: rowCycle(row, "Left Face:", leftFaceStr[swissSettings.leftFace], true); break;
+			case SET_RIGHT_FACE: rowCycle(row, "Right Face:", rightFaceStr[swissSettings.rightFace], true); break;
+			case SET_DOWN_FACE: rowCycle(row, "Down Face:", downFaceStr[swissSettings.downFace], true); break;
 			case SET_CUBE: rowCycle(row, "Cube:", swissSettings.cubeStyle ? "Classic" : "Infinite", true); break;
 			case SET_CLOCK_POSITION: rowCycle(row, "Clock:", clockPositionStr[swissSettings.clockPosition], true); break;
 			case SET_TEMPERATURE_POSITION: rowCycle(row, "Temperature:", clockPositionStr[swissSettings.temperaturePosition], true); break;
@@ -1609,8 +1629,21 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 				swissSettings.systemIcon += direction;
 				swissSettings.systemIcon = (swissSettings.systemIcon + UI_HOME_ICON_CHOICES) % UI_HOME_ICON_CHOICES;
 			break;
-			case SET_APPS_FACE:
-				swissSettings.hideAppsFace ^= 1;
+			case SET_UP_FACE:
+				swissSettings.upFace += direction;
+				swissSettings.upFace = (swissSettings.upFace + UI_HOME_FACE_COUNT) % UI_HOME_FACE_COUNT;
+			break;
+			case SET_LEFT_FACE:
+				swissSettings.leftFace += direction;
+				swissSettings.leftFace = (swissSettings.leftFace + UI_HOME_FACE_COUNT) % UI_HOME_FACE_COUNT;
+			break;
+			case SET_RIGHT_FACE:
+				swissSettings.rightFace += direction;
+				swissSettings.rightFace = (swissSettings.rightFace + UI_HOME_FACE_COUNT) % UI_HOME_FACE_COUNT;
+			break;
+			case SET_DOWN_FACE:
+				swissSettings.downFace += direction;
+				swissSettings.downFace = (swissSettings.downFace + UI_HOME_FACE_COUNT) % UI_HOME_FACE_COUNT;
 			break;
 			case SET_CUBE:
 				swissSettings.cubeStyle ^= 1;
@@ -2428,6 +2461,10 @@ static const settingsPickerRow_t settingsPickerRows[] = {
 	PICK_SETTING(PAGE_INTERFACE, SET_SOURCE_ICON, sourceIcon),
 	PICK_SETTING(PAGE_INTERFACE, SET_SETTINGS_ICON, settingsIcon),
 	PICK_SETTING(PAGE_INTERFACE, SET_SYSTEM_ICON, systemIcon),
+	PICK_SETTING(PAGE_INTERFACE, SET_UP_FACE, upFace),
+	PICK_SETTING(PAGE_INTERFACE, SET_LEFT_FACE, leftFace),
+	PICK_SETTING(PAGE_INTERFACE, SET_RIGHT_FACE, rightFace),
+	PICK_SETTING(PAGE_INTERFACE, SET_DOWN_FACE, downFace),
 	PICK_SETTING(PAGE_GAME_GLOBAL, SET_BS2BOOT, bs2Boot),
 	PICK_SETTING(PAGE_GAME_GLOBAL, SET_DISABLE_MCPGAMEID, disableMCPGameID),
 	PICK_SETTING(PAGE_GAME_DEFAULTS, SET_DEFAULT_NTSC_VIDEOMODE, gameVModeNtsc),

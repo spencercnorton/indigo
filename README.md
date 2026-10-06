@@ -317,8 +317,8 @@ a PNG with the program's name. Home then gets an Apps face:
 ```
 
 A file called `boot.dol` is left out: in the Wii's Homebrew Channel layout it
-is the Wii program. Settings › Setup › Console › Apps Face turns the face
-off. [Apps](docs/guide/apps.md) has the rest.
+is the Wii program. Settings › Setup › Console › Down Face set to None
+takes the face off the cube. [Apps](docs/guide/apps.md) has the rest.
 
 ### Cheats
 

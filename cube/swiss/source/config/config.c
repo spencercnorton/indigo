@@ -359,7 +359,8 @@ void config_file_delete(char* filename) {
  * but never written, so a save drops them instead of keeping a stale copy
  * that could override the current key. */
 static const char *const globalOldKeys[] = {
-	"Enable Debug", "USB Gecko debug output", "Stop DVD Motor on startup", "Library Folder Colors", NULL
+	"Enable Debug", "USB Gecko debug output", "Stop DVD Motor on startup", "Library Folder Colors",
+	"Hide Apps Face", NULL
 };
 
 /* Every key a game's file can hold. A save drops the ones it no longer
@@ -566,7 +567,10 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Source Icon=%s\r\n", sourceIconStr[swissSettings.sourceIcon]);
 	fprintf(fp, "Settings Icon=%s\r\n", settingsIconStr[swissSettings.settingsIcon]);
 	fprintf(fp, "System Icon=%s\r\n", systemIconStr[swissSettings.systemIcon]);
-	fprintf(fp, "Hide Apps Face=%s\r\n", swissSettings.hideAppsFace ? "Yes":"No");
+	fprintf(fp, "Up Face=%s\r\n", upFaceStr[swissSettings.upFace]);
+	fprintf(fp, "Left Face=%s\r\n", leftFaceStr[swissSettings.leftFace]);
+	fprintf(fp, "Right Face=%s\r\n", rightFaceStr[swissSettings.rightFace]);
+	fprintf(fp, "Down Face=%s\r\n", downFaceStr[swissSettings.downFace]);
 	fprintf(fp, "Cube=%s\r\n", swissSettings.cubeStyle ? "Classic":"Infinite");
 	fprintf(fp, "Clock=%s\r\n", clockPositionStr[swissSettings.clockPosition]);
 	fprintf(fp, "Temperature=%s\r\n", clockPositionStr[swissSettings.temperaturePosition]);
@@ -1241,6 +1245,9 @@ void config_parse_global(char *configData, bool settingsFile) {
 	int clockRead = -1;
 	bool temperatureRead = false;
 	int libraryFolders = -1;	/* -1: not named */
+	/* Before the sides were named, Hide Apps Face took Apps off the cube. */
+	bool hideAppsRead = false;
+	bool sidesRead = false;
 	line = strtok_r( configData, "\r\n", &linectx );
 	while( line != NULL ) {
 		//print_debug("Line [%s]\n", line);
@@ -1532,8 +1539,23 @@ void config_parse_global(char *configData, bool settingsFile) {
 						}
 					}
 				}
+				else if(!strcmp("Up Face", name) || !strcmp("Left Face", name) ||
+						!strcmp("Right Face", name) || !strcmp("Down Face", name)) {
+					int *side = name[0] == 'U' ? &swissSettings.upFace :
+						name[0] == 'L' ? &swissSettings.leftFace :
+						name[0] == 'R' ? &swissSettings.rightFace : &swissSettings.downFace;
+					char **names = name[0] == 'U' ? upFaceStr : name[0] == 'L' ? leftFaceStr :
+						name[0] == 'R' ? rightFaceStr : downFaceStr;
+					for(int i = 0; i < UI_HOME_FACE_COUNT; i++) {
+						if(!strcmp(names[i], value)) {
+							*side = i;
+							sidesRead = true;
+							break;
+						}
+					}
+				}
 				else if(!strcmp("Hide Apps Face", name)) {
-					swissSettings.hideAppsFace = !strcmp("Yes", value);
+					hideAppsRead = !strcmp("Yes", value);
 				}
 				else if(!strcmp("Cube", name)) {
 					swissSettings.cubeStyle = !strcmp("Classic", value);
@@ -1777,6 +1799,17 @@ void config_parse_global(char *configData, bool settingsFile) {
 	}
 	if(settingsFile && clockRead >= 0 && !temperatureRead) {
 		swissSettings.temperaturePosition = clockRead;
+	}
+	if(hideAppsRead && !sidesRead) {
+		int *sides[] = {&swissSettings.upFace, &swissSettings.leftFace,
+			&swissSettings.rightFace, &swissSettings.downFace};
+		char **names[] = {upFaceStr, leftFaceStr, rightFaceStr, downFaceStr};
+		for(int i = 0; i < 4; i++) {
+			if(strcmp(names[i][*sides[i]], "Apps")) continue;
+			for(int choice = 0; choice < UI_HOME_FACE_COUNT; choice++) {
+				if(!strcmp(names[i][choice], "None")) *sides[i] = choice;
+			}
+		}
 	}
 	if(settingsFile) {
 		// FlattenDir was just read as saved: Library Folders takes it from there

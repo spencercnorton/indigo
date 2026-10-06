@@ -39,6 +39,26 @@ with that setup's own files merged in.
 
 Documentation and package text only; the console source tree matches v2.3.0.
 
+## 2026-10-06 — Choose the menu on each side of the cube
+
+Setup › Console gains Up Face, Left Face, Right Face and Down Face in place
+of Apps Face: each None, Source, Settings, System or Apps, by default the
+cube of before. Each side's choices start at its default and go round the
+faces (UIHome_SideFace), so a zeroed setting is that cube and main.c keeps
+upstream's defaults. Their arms step only their own field, so the picker's
+step-to-target commit and its own-field rule hold; a face named twice keeps
+its first side. `Hide Apps Face=Yes` in an older file
+empties Apps' side unless the file names the sides, and is no longer
+written. Y on Home opens Settings from the ring in either cube, and the
+hint says so while Settings has no side. Away from Home, an Infinite cube
+with other sides shows Library in front of its own ring instead of the
+authored four; the default sides keep the authored background.
+
+The Dolphin route's Console offsets moved: Down Face is eleven DOWNs
+(RIGHT from Apps is None, LEFT back), Cube twelve. The seeded keys
+(`non-default.ini`) leave the sides at their defaults, because the
+Classic walk expects the default cube.
+
 ## 2026-10-06 — Lay the Home cube's faces out by side
 
 Home's faces now sit on Library's four sides, Up, Left, Right and Down,

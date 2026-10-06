@@ -8,6 +8,13 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### New
 
+- Choose the menu on each side of the Home cube: Settings › Setup › Console
+  › **Up Face**, **Left Face**, **Right Face** and **Down Face**, each
+  Source, Settings, System, Apps or None. Classic turns that way to it; the
+  Infinite ring goes up, left, right and down after Library. They replace
+  Apps Face: Down Face None turns Apps off, and an older Apps Face › Off
+  carries over. Y on Home opens Settings wherever its face is.
+
 - Press **Y Folder** on Memory Cards' small folder or card-image cubes to
   see the full device-prefixed path, direct contents and up to two save names.
   Choose a persistent color for that cube's rim and folder symbol, or restore

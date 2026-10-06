@@ -176,15 +176,27 @@ static uiHomeCapabilities_t homeCapabilities(void)
 		.hasRecent = swissSettings.recentListLevel > 0 &&
 			swissSettings.recent[0][0] != '\0',
 		.style = swissSettings.cubeStyle ?
-			UI_HOME_CUBE_CLASSIC : UI_HOME_CUBE_INFINITE
+			UI_HOME_CUBE_CLASSIC : UI_HOME_CUBE_INFINITE,
+		.customSides = true,
+		.sides = {
+			UIHome_SideFace(UI_HOME_SIDE_UP, swissSettings.upFace),
+			UIHome_SideFace(UI_HOME_SIDE_LEFT, swissSettings.leftFace),
+			UIHome_SideFace(UI_HOME_SIDE_RIGHT, swissSettings.rightFace),
+			UIHome_SideFace(UI_HOME_SIDE_DOWN, swissSettings.downFace)
+		}
 	};
-	/* The Apps face shows while the mounted source has an app, unless
-	 * Setup > Console > Apps Face is Off; then the card isn't read for it. */
-	if(capabilities.hasSource && !swissSettings.hideAppsFace && !homeAppsKnown) {
+	bool appsPlaced = false;
+
+	for(int side = 0; side < UI_HOME_SIDE_COUNT; side++) {
+		appsPlaced = appsPlaced || capabilities.sides[side] == UI_HOME_FACE_APPS;
+	}
+	/* The Apps face shows while the mounted source has an app, when Setup >
+	 * Console puts it on a side; otherwise the card isn't read for it. */
+	if(capabilities.hasSource && appsPlaced && !homeAppsKnown) {
 		homeAppsFound = apps_available(devices[DEVICE_CUR]);
 		homeAppsKnown = true;
 	}
-	capabilities.hasApps = capabilities.hasSource && !swissSettings.hideAppsFace &&
+	capabilities.hasApps = capabilities.hasSource && appsPlaced &&
 		homeAppsFound;
 	return capabilities;
 }
@@ -5229,7 +5241,7 @@ void menu_loop()
 			}
 		}
 		else if (curMenuLocation==ON_OPTIONS) {
-			const u32 homeButtons = HOME_CONFIRMATION_BUTTONS;
+			const u32 homeButtons = HOME_CONFIRMATION_BUTTONS | BUTTON_Y;
 			uiHomeCapabilities_t capabilities;
 			uiHomeInput_t navigation = UI_HOME_INPUT_NONE;
 			uiHomeInput_t command = UI_HOME_INPUT_NONE;
@@ -5321,6 +5333,9 @@ void menu_loop()
 			}
 			else if(btns & BUTTON_START) {
 				command = UI_HOME_INPUT_RECENT;
+			}
+			else if(btns & BUTTON_Y) {
+				command = UI_HOME_INPUT_SETTINGS;
 			}
 			if(command != UI_HOME_INPUT_NONE && !navigated) {
 				revision = homeState.revision;

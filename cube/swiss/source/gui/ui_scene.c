@@ -478,10 +478,26 @@ static void retargetPose(uiSceneId_t scene, uiMotionMode_t motionMode)
 		isHomeYawScene(scene) ? 1.0f : 0.0f, motionMode);
 	retargetOrientation(scene, motionMode);
 	/* Classic's glyphs keep their sides in every scene, so leaving Home
-	 * moves none of them. */
-	UICubeMotif_Request(&state.motifs, isHomeYawScene(scene) ||
-		state.home.style == UI_HOME_CUBE_CLASSIC ? &state.home : NULL,
-		motionMode);
+	 * moves none of them. Away from Home Infinite shows Library in front of
+	 * its ring: the authored background for the default sides. */
+	if(isHomeYawScene(scene) || state.home.style == UI_HOME_CUBE_CLASSIC) {
+		UICubeMotif_Request(&state.motifs, &state.home, motionMode);
+	}
+	else if(UIHome_DefaultSides(&state.home)) {
+		UICubeMotif_Request(&state.motifs, NULL, motionMode);
+	}
+	else {
+		uiHomeState_t away = state.home;
+
+		away.face = UI_HOME_FACE_LIBRARY;
+		away.turnOrdinal = 0;
+		away.surface = UI_HOME_SURFACE_RING;
+		away.selection = 0;
+		UIHome_OrientationInit(&away.orientation);
+		away.turnAxis = UI_HOME_TURN_NONE;
+		away.turnDirection = 0;
+		UICubeMotif_Request(&state.motifs, &away, motionMode);
+	}
 	state.appliedScene = scene;
 }
 

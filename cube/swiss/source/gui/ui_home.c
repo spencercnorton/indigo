@@ -177,6 +177,21 @@ int UIHome_RingIndex(const uiHomeState_t *state, uiHomeFace_t face)
 	return -1;
 }
 
+bool UIHome_DefaultSides(const uiHomeState_t *state)
+{
+	return state != NULL &&
+		memcmp(state->sides, defaultSides, sizeof(defaultSides)) == 0;
+}
+
+uiHomeFace_t UIHome_SideFace(int side, int choice)
+{
+	if(side < 0 || side >= UI_HOME_SIDE_COUNT) {
+		return UI_HOME_FACE_LIBRARY;
+	}
+	return (uiHomeFace_t)positiveModulo(defaultSides[side] + choice,
+		UI_HOME_FACE_COUNT);
+}
+
 int UIHome_FaceSide(const uiHomeState_t *state, uiHomeFace_t face)
 {
 	int side;
@@ -400,6 +415,9 @@ static uiHomeEffect_t applyRing(uiHomeState_t *state, uiHomeInput_t input,
 	else if(input == UI_HOME_INPUT_RECENT) {
 		return capabilities.hasRecent ?
 			UI_HOME_EFFECT_OPEN_RECENT : UI_HOME_EFFECT_NONE;
+	}
+	else if(input == UI_HOME_INPUT_SETTINGS) {
+		return UI_HOME_EFFECT_OPEN_SETTINGS;
 	}
 	else if(input == UI_HOME_INPUT_ACTIVATE) {
 		switch(state->face) {

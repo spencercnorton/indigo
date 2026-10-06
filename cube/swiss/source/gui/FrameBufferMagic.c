@@ -5160,16 +5160,14 @@ static void _PrepareHomeText(drawHomeEvent_t *data)
 			UIHome_FaceLabel((uiHomeFace_t)face),
 			focusWidth, 0.78f, GetTextSizeInPixels);
 	}
-	if(data->capabilities.hasRecent) {
-		snprintf(data->command, sizeof(data->command),
-			"STICK / D-PAD  TURN    %s    START  RECENT",
-			UIHome_PrimaryHint(data->state.face, data->capabilities));
-	}
-	else {
-		snprintf(data->command, sizeof(data->command),
-			"STICK / D-PAD  TURN    %s",
-			UIHome_PrimaryHint(data->state.face, data->capabilities));
-	}
+	/* Y opens Settings anywhere on Home; it says so while Settings has no
+	 * side to turn to. */
+	snprintf(data->command, sizeof(data->command),
+		"STICK / D-PAD  TURN    %s%s%s",
+		UIHome_PrimaryHint(data->state.face, data->capabilities),
+		data->capabilities.hasRecent ? "    START  RECENT" : "",
+		UIHome_RingIndex(&data->state, UI_HOME_FACE_SETTINGS) < 0 ?
+			"    Y  SETTINGS" : "");
 	data->commandScale = UIHomeText_FitScale(data->command,
 		commandWidth, 0.46f, GetHintSizeInPixels);
 	if(data->state.surface == UI_HOME_SURFACE_SOURCE) {

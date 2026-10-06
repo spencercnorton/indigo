@@ -18,8 +18,8 @@
 # three layouts, the Save Folder arm (SET_SAVE_FOLDER) only sets
 # swissSettings.saveFolder to the folder Memory Cards' chooser returns, the
 # Menu Widescreen arm (SET_MENU_WIDESCREEN) only flips
-# swissSettings.menuWidescreen, the Apps Face arm (SET_APPS_FACE) only
-# flips swissSettings.hideAppsFace, the Cube arm (SET_CUBE) only flips
+# swissSettings.menuWidescreen, the four side arms (SET_*_FACE) each only
+# step their own side round the faces and none, the Cube arm (SET_CUBE) only flips
 # swissSettings.cubeStyle between Infinite and Classic, and the Library
 # Folders arm (SET_LIBRARY_FOLDERS) only turns Library Folders on or off
 # through config_set_library_folders, which swaps FlattenDir with it.
@@ -155,12 +155,14 @@ normalized = re.sub(
     r"\t+swissSettings\.menuWidescreen \^= 1;\n"
     r"\t+break;\n",
     "", normalized, count=1)
-# And the Apps Face arm, a flip.
-normalized = re.sub(
-    r"(?ms)^\t+case SET_APPS_FACE:\n"
-    r"\t+swissSettings\.hideAppsFace \^= 1;\n"
+# And the four side arms, each round the faces and none.
+normalized, sides = re.subn(
+    r"(?ms)^\t+case SET_(UP|LEFT|RIGHT|DOWN)_FACE:\n"
+    r"\t+swissSettings\.(up|left|right|down)Face \+= direction;\n"
+    r"\t+swissSettings\.\2Face = \(swissSettings\.\2Face \+ UI_HOME_FACE_COUNT\) % UI_HOME_FACE_COUNT;\n"
     r"\t+break;\n",
-    "", normalized, count=1)
+    lambda arm: "" if arm.group(1).lower() == arm.group(2) else arm.group(0),
+    normalized)
 # And the Cube arm, a flip between Infinite and Classic.
 normalized = re.sub(
     r"(?ms)^\t+case SET_CUBE:\n"
@@ -184,9 +186,9 @@ for fn in settings_toggle; do
 			normalize_intended_changes "$TMP/base_$fn" "$TMP/base_${fn}_normalized"
 			normalize_intended_changes "$TMP/head_$fn" "$TMP/head_${fn}_normalized"
 			if cmp -s "$TMP/base_${fn}_normalized" "$TMP/head_${fn}_normalized"; then
-				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, temperature, icon, layout, library folders, save folder, widescreen, apps face and cube arms and game reset\n' "$fn"
+				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, temperature, icon, layout, library folders, save folder, widescreen, side and cube arms and game reset\n' "$fn"
 			else
-				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_TEMPERATURE_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_LIBRARY_FOLDERS, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_APPS_FACE, SET_CUBE and the game reset" >&2
+				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_TEMPERATURE_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_LIBRARY_FOLDERS, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_*_FACE, SET_CUBE and the game reset" >&2
 				diff -u "$TMP/base_${fn}_normalized" \
 					"$TMP/head_${fn}_normalized" | head -40 >&2 || true
 				fail=1

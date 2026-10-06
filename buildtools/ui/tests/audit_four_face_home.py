@@ -110,9 +110,9 @@ show_info = extract_function(INFO, "void show_info()")
 
 # --- Canonical semantic model: four clockwise faces, and Apps. ---
 # Apps is the fifth face only while the source has an app (hasApps) and
-# Setup > Console > Apps Face is On: the ring is otherwise exactly the four,
-# and it comes last so their order and numbers never change (2026-09-29, the
-# maintainer's choice).
+# Setup > Console puts it on a side: by default the ring is otherwise exactly
+# the four, and Apps comes last so their order and numbers never change
+# (2026-09-29, the maintainer's choice).
 face_enum = re.search(
     r"typedef\s+enum\s*\{\s*"
     r"UI_HOME_FACE_LIBRARY\s*=\s*0\s*,\s*"
@@ -147,13 +147,14 @@ assert "face == (int)UI_HOME_FACE_APPS && !capabilities.hasApps" in resolve_layo
 assert "reconcileFaces(state, capabilities);" in HOME_C
 assert "case UI_HOME_FACE_APPS:\n\t\t\t\treturn UI_HOME_EFFECT_OPEN_APPS;" in apply_ring
 assert re.search(
-    r"capabilities\.hasApps = capabilities\.hasSource && !swissSettings\.hideAppsFace &&\s*homeAppsFound;",
+    r"capabilities\.hasApps = capabilities\.hasSource && appsPlaced &&\s*homeAppsFound;",
     capabilities,
-), "Apps Face > Off no longer keeps the Apps face off Home"
+), "Apps on no side no longer keeps the Apps face off Home"
 assert re.search(
-    r"if\(capabilities\.hasSource && !swissSettings\.hideAppsFace && !homeAppsKnown\)",
+    r"if\(capabilities\.hasSource && appsPlaced && !homeAppsKnown\)",
     capabilities,
-), "Apps Face > Off no longer keeps Home from reading /apps"
+), "Apps on no side no longer keeps Home from reading /apps"
+assert ".customSides = true," in capabilities, "Home no longer takes its sides from Settings"
 ordered(dispatch, "case UI_HOME_EFFECT_OPEN_APPS:", "show_apps();",
         "UIScene_Request(UI_SCENE_HOME);")
 assert "#define UI_HOME_QUARTER_TURN_RADIANS 1.57079632679f" in HOME_H
@@ -330,7 +331,7 @@ ordered(
 assert "homeState.surface" not in restart_confirm, (
 	"Restart confirmation bypasses the reducer when a late B cancels"
 )
-assert "const u32 homeButtons = HOME_CONFIRMATION_BUTTONS;" in home_input
+assert "const u32 homeButtons = HOME_CONFIRMATION_BUTTONS | BUTTON_Y;" in home_input
 
 
 # --- Source cancellation is lossless; teardown begins only after confirmed A. ---

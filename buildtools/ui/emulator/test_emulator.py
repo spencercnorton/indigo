@@ -266,7 +266,7 @@ class Card(unittest.TestCase):
         text = (run.SETTINGS / "save-details-wide.ini").read_text()
         start = run.seeded(text)
         self.assertEqual(start, {"Menu Widescreen": "Yes", "Swiss Video Mode": "Auto",
-                                 "Hide Apps Face": "No"})
+                                 "Down Face": "Apps"})
         route = run.Route.__new__(run.Route)
         route.checks, route.report, route.last_rgb = [], None, None
         route.folders_on = False

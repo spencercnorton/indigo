@@ -193,7 +193,7 @@ its own, and Save & Exit must write the file and go Home. With `--settings
 it must still be on the card, through Indigo's own saves. CI's GC Loader smoke
 job starts with [`non-default.ini`](settings/non-default.ini): colours, icons,
 the clock on the left, no menu music or sounds, reduced motion, In-Game Reset. At the end the
-test reads the card back: the settings Indigo saved (with Apps Face as the
+test reads the card back: the settings Indigo saved (with Down Face as the
 route left it, and Library Folders saved on with the card's own
 `FlattenDir=*/games` kept beside it), and after the game route the launched
 game first in the recent list and in Indigo's play history. The card holds
