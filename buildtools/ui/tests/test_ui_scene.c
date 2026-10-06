@@ -328,6 +328,33 @@ static void testPublicationAndInvalidRequests(void)
 	tick(0.02f, UI_MOTION_OFF);
 	CHECK(UIScene_Frame()->scene == UI_SCENE_HOME);
 }
+/* System's four rows each publish, Restart's (the last) included, and its
+ * cube stays up above them all, only tilting: they start a row higher. */
+static void testSystemRows(void)
+{
+	uiHomeState_t home;
+	uiHomeState_t invalid;
+	float rowY;
+	float rowPitch;
+
+	UIHome_Init(&home, caps); UIHome_Apply(&home, UI_HOME_INPUT_UP, caps);
+	UIScene_Reset(); UIScene_RequestHome(&home); UIScene_Activate();
+	UIHome_Apply(&home, UI_HOME_INPUT_ACTIVATE, caps);
+	UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+	CHECK(UIScene_Frame()->homeSurface == UI_HOME_SURFACE_SYSTEM);
+	rowY = UIScene_Frame()->cubeY;
+	rowPitch = UIScene_Frame()->cubePitch;
+	for(int row = 1; row < 4; ++row) {
+		UIHome_Apply(&home, UI_HOME_INPUT_DOWN, caps);
+		UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+		CHECK(UIScene_Frame()->homeSelection == row);
+		near(UIScene_Frame()->cubeY, rowY, 0.0001f);
+		CHECK(UIScene_Frame()->cubePitch > rowPitch);
+	}
+	invalid = home; invalid.selection = 4; invalid.revision++;
+	UIScene_RequestHome(&invalid); tick(0.02f, UI_MOTION_OFF);
+	CHECK(UIScene_Frame()->homeSelection == 3);
+}
 /* Apps' face is published with its ring: the frame names it, and the
  * glyphs are placed for five faces, then four again when the apps go. */
 static void testAppsRing(void)
@@ -627,6 +654,7 @@ int main(void)
 	testHalfTurnsFromEveryOrientation();
 	testMixedCoalescingAndInterruptions(); testModeChangesAndBadTiming();
 	testContextAndSceneReturns(); testPublicationAndInvalidRequests();
+	testSystemRows();
 	testAppsRing();
 	testClassicCube();
 	testLibraryLayoutPoses();

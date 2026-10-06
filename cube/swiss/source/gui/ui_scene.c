@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "ui_cube_motif.h"
+#include "ui_home_layout.h"
 
 #include "ui_scene.h"
 
@@ -153,7 +154,7 @@ static bool homeRequestValid(const uiHomeState_t *home)
 	uiHomeSurface_t surface = home->surface;
 	int selection = home->selection;
 	bool selectionValid = surface == UI_HOME_SURFACE_RING ? selection == 0 :
-		selection >= 0 && selection < 2;
+		selection >= 0 && selection < UI_HOME_LAYOUT_MAX_ROWS;
 	bool surfaceMatchesFace = surface == UI_HOME_SURFACE_RING ||
 		(surface == UI_HOME_SURFACE_SOURCE && face == UI_HOME_FACE_SOURCE) ||
 		((surface == UI_HOME_SURFACE_SYSTEM ||
@@ -194,7 +195,9 @@ static uiScenePose_t homePose(void)
 	if(state.appliedHomeSurface == UI_HOME_SURFACE_SOURCE ||
 		state.appliedHomeSurface == UI_HOME_SURFACE_SYSTEM) {
 		float rowDirection = state.appliedHomeSelection == 0 ? 1.0f : -1.0f;
-		pose.cubeY += rowDirection * 0.055f;
+		/* System's four rows start a row higher, so its cube stays up. */
+		pose.cubeY += state.appliedHomeSurface == UI_HOME_SURFACE_SYSTEM ?
+			0.055f : rowDirection * 0.055f;
 		pose.cubePitch -= rowDirection * 0.095f;
 		pose.cubeScale += 0.030f;
 	}

@@ -145,6 +145,21 @@ See [System](system.md).
 
 See [Memory Cards](memory-cards.md).
 
+### File Browser
+
+Swiss's own file list, from System › File Browser. See
+[File Browser](system.md#file-browser).
+
+| Button | Does |
+| --- | --- |
+| Up, Down | Move through the list. |
+| Left, Right, L, R | A page at a time. |
+| A | Open a folder or start a file. |
+| X | Up a folder. |
+| Z | A file or folder: Copy, Move, Delete, Rename or Hide. `..`: Autoload this folder. |
+| START | Recently played games. |
+| B | Back to the System face. |
+
 ### During a game
 
 With **In-Game Reset** on (Settings › Quick):

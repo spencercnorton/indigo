@@ -114,7 +114,9 @@ in a game's folder follow **Show hidden files**, as they do in the file list.
   <img alt="Swiss's plain file list of a games folder, one entry per row with its banner, name and region flag." src="images/library-file-list.png" width="640">
 </p>
 
-If `/games` holds no disc images, you get the list above instead of posters.
+If `/games` holds no disc images, the Library face opens the list above
+instead of posters. System › [File Browser](system.md#file-browser) opens
+it whenever you want it.
 Compressed images (`.rvz`, `.gcz`) don't count: Swiss can't start them, and
 choosing one tells you to decompress it with NKit or Dolphin.
 

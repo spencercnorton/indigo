@@ -207,8 +207,8 @@ static void testLabelsHintsAndRows(void)
 	CHECK(UIHome_RowCount(UI_HOME_SURFACE_RING, withSource) == 0);
 	CHECK(UIHome_RowCount(UI_HOME_SURFACE_SOURCE, withSource) == 2);
 	CHECK(UIHome_RowCount(UI_HOME_SURFACE_SOURCE, withoutSource) == 1);
-	CHECK(UIHome_RowCount(UI_HOME_SURFACE_SYSTEM, withSource) == 3);
-	CHECK(UIHome_RowCount(UI_HOME_SURFACE_SYSTEM, withoutSource) == 3);
+	CHECK(UIHome_RowCount(UI_HOME_SURFACE_SYSTEM, withSource) == 4);
+	CHECK(UIHome_RowCount(UI_HOME_SURFACE_SYSTEM, withoutSource) == 4);
 	CHECK(UIHome_RowCount(UI_HOME_SURFACE_RESTART_CONFIRM, withSource) == 2);
 	CHECK(UIHome_RowCount((uiHomeSurface_t)-1, withSource) == 0);
 
@@ -221,7 +221,8 @@ static void testLabelsHintsAndRows(void)
 	CHECK(UIHome_RowEnabled(UI_HOME_SURFACE_SYSTEM, 0, withoutSource));
 	CHECK(UIHome_RowEnabled(UI_HOME_SURFACE_SYSTEM, 1, withoutSource));
 	CHECK(UIHome_RowEnabled(UI_HOME_SURFACE_SYSTEM, 2, withoutSource));
-	CHECK(!UIHome_RowEnabled(UI_HOME_SURFACE_SYSTEM, 3, withoutSource));
+	CHECK(UIHome_RowEnabled(UI_HOME_SURFACE_SYSTEM, 3, withoutSource));
+	CHECK(!UIHome_RowEnabled(UI_HOME_SURFACE_SYSTEM, 4, withoutSource));
 	CHECK(UIHome_RowEnabled(UI_HOME_SURFACE_RESTART_CONFIRM, 0,
 		withoutSource));
 	CHECK(UIHome_RowEnabled(UI_HOME_SURFACE_RESTART_CONFIRM, 1,
@@ -237,8 +238,10 @@ static void testLabelsHintsAndRows(void)
 	CHECK_TEXT(UIHome_RowLabel(UI_HOME_SURFACE_SYSTEM, 1),
 		"MEMORY CARDS");
 	CHECK_TEXT(UIHome_RowLabel(UI_HOME_SURFACE_SYSTEM, 2),
+		"FILE BROWSER");
+	CHECK_TEXT(UIHome_RowLabel(UI_HOME_SURFACE_SYSTEM, 3),
 		"RESTART INDIGO");
-	CHECK_TEXT(UIHome_RowLabel(UI_HOME_SURFACE_SYSTEM, 3), "");
+	CHECK_TEXT(UIHome_RowLabel(UI_HOME_SURFACE_SYSTEM, 4), "");
 	CHECK_TEXT(UIHome_RowLabel(UI_HOME_SURFACE_SYSTEM, -1), "");
 	CHECK_TEXT(UIHome_RowLabel(UI_HOME_SURFACE_RESTART_CONFIRM, 0),
 		"CANCEL");
@@ -590,7 +593,7 @@ static void testSystemSurface(void)
 			case UI_HOME_INPUT_UP:
 				CHECK(effect == UI_HOME_EFFECT_NONE);
 				checkState(&state, UI_HOME_FACE_SYSTEM,
-					UI_HOME_SURFACE_SYSTEM, 2, 3, 42u);
+					UI_HOME_SURFACE_SYSTEM, 3, 3, 42u);
 				break;
 			case UI_HOME_INPUT_DOWN:
 				CHECK(effect == UI_HOME_EFFECT_NONE);
@@ -622,7 +625,17 @@ static void testSystemSurface(void)
 	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_ACTIVATE, caps) ==
 		UI_HOME_EFFECT_OPEN_SAVES);
 	checkSameState(&state, &before);
+	/* File Browser opens Swiss's list and keeps the row; with no source it
+	 * asks for one, as the Library does. */
 	state = stateAt(UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 2, 3);
+	before = state;
+	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_ACTIVATE, caps) ==
+		UI_HOME_EFFECT_OPEN_FILES);
+	checkSameState(&state, &before);
+	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_ACTIVATE,
+		capabilities(false, false)) == UI_HOME_EFFECT_CHANGE_SOURCE);
+	checkSameState(&state, &before);
+	state = stateAt(UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 3, 3);
 	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_ACTIVATE, caps) ==
 		UI_HOME_EFFECT_NONE);
 	checkState(&state, UI_HOME_FACE_SYSTEM,
@@ -638,6 +651,11 @@ static void testSystemSurface(void)
 	checkState(&state, UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 2,
 		3, 42u);
 	state = stateAt(UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 2, 3);
+	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_DOWN, caps) ==
+		UI_HOME_EFFECT_NONE);
+	checkState(&state, UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 3,
+		3, 42u);
+	state = stateAt(UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 3, 3);
 	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_DOWN, caps) ==
 		UI_HOME_EFFECT_NONE);
 	checkState(&state, UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 0,
@@ -671,12 +689,12 @@ static void testRestartConfirmation(void)
 			case UI_HOME_INPUT_ACTIVATE:
 				CHECK(effect == UI_HOME_EFFECT_NONE);
 				checkState(&state, UI_HOME_FACE_SYSTEM,
-					UI_HOME_SURFACE_SYSTEM, 2, 3, 42u);
+					UI_HOME_SURFACE_SYSTEM, 3, 3, 42u);
 				break;
 			case UI_HOME_INPUT_BACK:
 				CHECK(effect == UI_HOME_EFFECT_NONE);
 				checkState(&state, UI_HOME_FACE_SYSTEM,
-					UI_HOME_SURFACE_SYSTEM, 2, 3, 42u);
+					UI_HOME_SURFACE_SYSTEM, 3, 3, 42u);
 				break;
 			case UI_HOME_INPUT_NONE:
 			case UI_HOME_INPUT_RECENT:
@@ -687,7 +705,7 @@ static void testRestartConfirmation(void)
 	}
 
 	/* The A press that opens confirmation cannot also confirm Restart. */
-	state = stateAt(UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 2, 3);
+	state = stateAt(UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 3, 3);
 	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_ACTIVATE, caps) ==
 		UI_HOME_EFFECT_NONE);
 	checkState(&state, UI_HOME_FACE_SYSTEM,
@@ -696,7 +714,7 @@ static void testRestartConfirmation(void)
 	/* A fresh press on the safe default cancels instead of restarting. */
 	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_ACTIVATE, caps) ==
 		UI_HOME_EFFECT_NONE);
-	checkState(&state, UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 2,
+	checkState(&state, UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 3,
 		3, 43u);
 
 	/* Re-enter, deliberately select Restart, then require another fresh A. */
@@ -717,7 +735,7 @@ static void testRestartConfirmation(void)
 		UI_HOME_SURFACE_RESTART_CONFIRM, 1, 3);
 	CHECK(UIHome_Apply(&state, UI_HOME_INPUT_BACK, caps) ==
 		UI_HOME_EFFECT_NONE);
-	checkState(&state, UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 2,
+	checkState(&state, UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM, 3,
 		3, 42u);
 }
 
@@ -1037,7 +1055,7 @@ static int oracleRowCount(uiHomeSurface_t surface,
 		return caps.hasSource ? 2 : 1;
 	}
 	if(surface == UI_HOME_SURFACE_SYSTEM) {
-		return 3;
+		return 4;
 	}
 	if(surface == UI_HOME_SURFACE_RESTART_CONFIRM) {
 		return 2;
@@ -1308,6 +1326,10 @@ static uiHomeEffect_t oracleApply(uiHomeState_t *state, uiHomeInput_t input,
 				return UI_HOME_EFFECT_OPEN_SAVES;
 			}
 			if(state->selection == 2) {
+				return caps.hasSource ? UI_HOME_EFFECT_OPEN_FILES :
+					UI_HOME_EFFECT_CHANGE_SOURCE;
+			}
+			if(state->selection == 3) {
 				oracleEnterSurface(state,
 					UI_HOME_SURFACE_RESTART_CONFIRM, 0);
 			}
@@ -1322,11 +1344,11 @@ static uiHomeEffect_t oracleApply(uiHomeState_t *state, uiHomeInput_t input,
 		oracleMoveRow(state, 1, caps);
 	}
 	else if(input == UI_HOME_INPUT_BACK) {
-		oracleEnterSurface(state, UI_HOME_SURFACE_SYSTEM, 2);
+		oracleEnterSurface(state, UI_HOME_SURFACE_SYSTEM, 3);
 	}
 	else if(input == UI_HOME_INPUT_ACTIVATE) {
 		if(state->selection == 0) {
-			oracleEnterSurface(state, UI_HOME_SURFACE_SYSTEM, 2);
+			oracleEnterSurface(state, UI_HOME_SURFACE_SYSTEM, 3);
 		}
 		else if(state->selection == 1) {
 			return UI_HOME_EFFECT_RESTART;
@@ -1346,7 +1368,7 @@ static void checkOracleTransition(uiHomeState_t before, uiHomeInput_t input,
 	CHECK(actualEffect == expectedEffect);
 	checkSameState(&actual, &expected);
 	CHECK((int)actualEffect >= (int)UI_HOME_EFFECT_NONE);
-	CHECK((int)actualEffect <= (int)UI_HOME_EFFECT_OPEN_APPS);
+	CHECK((int)actualEffect <= (int)UI_HOME_EFFECT_OPEN_FILES);
 	CHECK((int)actual.face < actual.faceCount);
 	CHECK(UIHome_FaceForTurn(actual.turnOrdinal, actual.faceCount) ==
 		actual.face);
@@ -1635,7 +1657,7 @@ static void testRestartReachabilityOracle(void)
 		}
 		else if(index == 2) {
 			checkState(&state, UI_HOME_FACE_SYSTEM, UI_HOME_SURFACE_SYSTEM,
-				2, -1, 4u);
+				3, -1, 4u);
 		}
 		else if(index == 3) {
 			checkState(&state, UI_HOME_FACE_SYSTEM,

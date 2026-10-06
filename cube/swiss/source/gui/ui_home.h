@@ -71,7 +71,10 @@ typedef enum {
 	UI_HOME_EFFECT_RESTART,
 	UI_HOME_EFFECT_OPEN_RECENT,
 	UI_HOME_EFFECT_OPEN_SAVES,
-	UI_HOME_EFFECT_OPEN_APPS
+	UI_HOME_EFFECT_OPEN_APPS,
+	/* Swiss's own file list at the source's root, even where the Library
+	 * would show. */
+	UI_HOME_EFFECT_OPEN_FILES
 } uiHomeEffect_t;
 
 /* How the faces sit on the cube (Setup > Console > Cube). Infinite turns

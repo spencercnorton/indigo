@@ -226,6 +226,8 @@ def check_runtime(swiss: str, main: str) -> None:
     )
     flippy = extract_block(load_file, 'else if(endsWith(fileName,".fpkg"))')
     assert "homeFlippyUpdatePending = true;" in flippy
+    # A firmware update asks first: only A on the question queues it.
+    ordered(flippy, "if(confirmAction(", "homeFlippyUpdatePending = true;")
     for unsafe_inline in ("freeFiles();", "flippy_closefrom(1);", "flippy_reset();"):
         assert unsafe_inline not in flippy
     ordered(

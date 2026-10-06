@@ -266,7 +266,7 @@ Passwords are saved as plain text in `global.ini`.
 | Flatten directory | A folder pattern whose game folders are listed as if their disc images sat directly in it. The default is `*/games`. While Library Folders is on, it sets this itself and the row can't be changed. |
 | Show hidden files | Lists hidden files and folders, such as `/swiss`. |
 | Hide unknown file types | Hides files that aren't games, programs, music or memory card saves from Swiss's file lists. The Library skips them either way. |
-| File Management | Z in a file list opens actions to copy, move, rename or delete. |
+| File Management | Z in a file list opens actions to copy, move, rename or delete. System › File Browser has them either way. |
 | Panel Transparency | Translucent panels, like the GameCube menu, or solid ones. |
 | Animated Backdrop | Whether the backdrop behind the cube drifts. |
 

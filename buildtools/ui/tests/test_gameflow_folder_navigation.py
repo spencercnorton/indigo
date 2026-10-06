@@ -150,6 +150,7 @@ static unsigned legacyPublishes, libraryPublishes, homePublishes, disposals;
 static uiDrawObj_t panelObject;
 static uiDrawObj_t *filePanel = &panelObject;
 static bool homeLibraryEntryPending;
+static bool homeFileBrowser;
 static void DrawGameflowCancelPosters(void) {}
 static void homeSourceRecord(DEVICEHANDLER_INTERFACE *d, int state) { (void)d; (void)state; }
 static void fakeDeinit(file_handle *f) { (void)f; }
@@ -338,6 +339,13 @@ static void legacyAndEmptyPolicy(void) {
     dispatch(); assert(legacyPublishes==1 && libraryPublishes==0);
     navigate(BUTTON_X,false); nextIteration(); assert(!strcmp(curDir.name,"sdc:/games"));
     reset("sdc:/games",false,true); dispatch(); assert(legacyPublishes==1);
+    reset("sdc:/games",false,false); dispatch(); assert(libraryPublishes==1);
+    /* System > File Browser: Swiss's own list where the Library would show,
+     * and the Library again once it is over. */
+    reset("sdc:/games",false,false); homeFileBrowser=true; dispatch();
+    assert(legacyPublishes==1 && !libraryPublishes);
+    assert(gameflowLibraryMode(sortedDirEntries,sortedDirEntryCount)==UI_GAMEFLOW_LIBRARY_NONE);
+    homeFileBrowser=false; dispatch(); assert(legacyPublishes==1 && libraryPublishes==1);
     reset("sdc:/games",false,false); dispatch(); assert(libraryPublishes==1);
     curSelection=0; /* Explicitly select the parent before activating it. */
     navigate(BUTTON_A,true); nextIteration(); assert(homePublishes==1 && !legacyPublishes);

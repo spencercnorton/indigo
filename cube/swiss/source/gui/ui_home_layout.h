@@ -17,6 +17,8 @@
 /* The hero cube and its contact rail own the frame through this scanline.
  * Context panels and the selected ring label start below it. */
 #define UI_HOME_LAYOUT_CUBE_RAIL_BOTTOM 368
+/* System's four rows start a row higher, where its raised cube has ended. */
+#define UI_HOME_LAYOUT_SYSTEM_RAIL_BOTTOM 349
 #define UI_HOME_LAYOUT_GLOW_EXTENT 3
 
 /* Explicit hero-cube keep-out. On the ring only the live selected title sits
@@ -34,7 +36,7 @@
 #define UI_HOME_LAYOUT_COMMAND_Y 433
 #define UI_HOME_LAYOUT_COMMAND_HALF_HEIGHT 5
 
-#define UI_HOME_LAYOUT_MAX_ROWS 3
+#define UI_HOME_LAYOUT_MAX_ROWS 4
 #define UI_HOME_LAYOUT_MAX_OPTIONS 2
 
 typedef struct {
