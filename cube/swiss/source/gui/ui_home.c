@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <limits.h>
+#include <string.h>
 
 #include "ui_home.h"
 
@@ -7,12 +8,21 @@ static const char *const faceLabels[UI_HOME_FACE_COUNT] = {
 	"LIBRARY", "SOURCE", "SETTINGS", "SYSTEM", "APPS"
 };
 
-/* Classic: the direction that turns Library's side to each face. Library
- * is in front; Settings is on the left, System on the right, Source on top
- * and Apps underneath, as the GameCube's own menu has its four. */
-static const uiHomeInput_t classicSides[UI_HOME_FACE_COUNT] = {
-	UI_HOME_INPUT_NONE, UI_HOME_INPUT_UP, UI_HOME_INPUT_LEFT,
-	UI_HOME_INPUT_RIGHT, UI_HOME_INPUT_DOWN
+/* Absent faces are bits of a byte. */
+_Static_assert(UI_HOME_FACE_COUNT <= 8, "a face's absent bit fits a byte");
+
+/* The cube unless Settings says otherwise: Source on top, Settings on the
+ * left, System on the right and Apps underneath, as the GameCube's own menu
+ * has its four. Infinite turns through them in that order after Library. */
+static const uint8_t defaultSides[UI_HOME_SIDE_COUNT] = {
+	UI_HOME_FACE_SOURCE, UI_HOME_FACE_SETTINGS, UI_HOME_FACE_SYSTEM,
+	UI_HOME_FACE_APPS
+};
+
+/* Classic: the direction that turns Library's side to each side. */
+static const uiHomeInput_t sideInputs[UI_HOME_SIDE_COUNT] = {
+	UI_HOME_INPUT_UP, UI_HOME_INPUT_LEFT, UI_HOME_INPUT_RIGHT,
+	UI_HOME_INPUT_DOWN
 };
 
 static int positiveModulo(int value, int modulus)
@@ -32,23 +42,154 @@ bool UIHome_IsSurface(int surface)
 		surface < UI_HOME_SURFACE_COUNT;
 }
 
+/* The capabilities' sides, each face once, and those of their faces that
+ * aren't there now: Apps without apps. */
+static void resolveLayout(uiHomeCapabilities_t capabilities,
+	uint8_t sides[UI_HOME_SIDE_COUNT], uint8_t *absent)
+{
+	const uint8_t *wanted = capabilities.customSides ? capabilities.sides :
+		defaultSides;
+	unsigned named = 0u;
+	int side;
+
+	*absent = 0u;
+	for(side = 0; side < UI_HOME_SIDE_COUNT; ++side) {
+		int face = wanted[side];
+
+		if(face <= (int)UI_HOME_FACE_LIBRARY || face >= (int)UI_HOME_FACE_COUNT ||
+			(named & (1u << face)) != 0u) {
+			sides[side] = UI_HOME_FACE_LIBRARY;
+			continue;
+		}
+		named |= 1u << face;
+		sides[side] = (uint8_t)face;
+		if(face == (int)UI_HOME_FACE_APPS && !capabilities.hasApps) {
+			*absent = (uint8_t)(*absent | (1u << face));
+		}
+	}
+}
+
+/* The face on a side when it is there now, else Library. */
+static int presentFace(const uint8_t sides[UI_HOME_SIDE_COUNT],
+	uint8_t absent, int side)
+{
+	int face = sides[side];
+
+	if(face <= (int)UI_HOME_FACE_LIBRARY || face >= (int)UI_HOME_FACE_COUNT ||
+		((unsigned)absent & (1u << face)) != 0u) {
+		return UI_HOME_FACE_LIBRARY;
+	}
+	return face;
+}
+
+static int ringCount(const uint8_t sides[UI_HOME_SIDE_COUNT], uint8_t absent)
+{
+	int count = 1;
+	int side;
+
+	for(side = 0; side < UI_HOME_SIDE_COUNT; ++side) {
+		if(presentFace(sides, absent, side) != (int)UI_HOME_FACE_LIBRARY) {
+			++count;
+		}
+	}
+	return count;
+}
+
 int UIHome_FaceCount(uiHomeCapabilities_t capabilities)
 {
-	return capabilities.hasApps ? UI_HOME_FACE_COUNT : UI_HOME_FACE_APPS;
+	uint8_t sides[UI_HOME_SIDE_COUNT];
+	uint8_t absent;
+
+	resolveLayout(capabilities, sides, &absent);
+	return ringCount(sides, absent);
 }
 
-static int ringSize(int faceCount)
+bool UIHome_LayoutValid(const uiHomeState_t *state)
 {
-	return faceCount == UI_HOME_FACE_COUNT ? UI_HOME_FACE_COUNT :
-		UI_HOME_FACE_APPS;
+	unsigned named = 0u;
+	int side;
+
+	if(state == NULL) {
+		return false;
+	}
+	for(side = 0; side < UI_HOME_SIDE_COUNT; ++side) {
+		int face = state->sides[side];
+
+		if(face == (int)UI_HOME_FACE_LIBRARY) {
+			continue;
+		}
+		if(face >= (int)UI_HOME_FACE_COUNT || (named & (1u << face)) != 0u) {
+			return false;
+		}
+		named |= 1u << face;
+	}
+	return ((unsigned)state->absent & ~named) == 0u &&
+		state->faceCount == ringCount(state->sides, state->absent);
 }
 
-uiHomeFace_t UIHome_FaceForTurn(int32_t turnOrdinal, int faceCount)
+uiHomeFace_t UIHome_RingFace(const uiHomeState_t *state, int32_t turnOrdinal)
 {
-	int count = ringSize(faceCount);
+	int place;
+	int index = 1;
+	int side;
 
-	return (uiHomeFace_t)positiveModulo((int)(turnOrdinal % (int32_t)count),
-		count);
+	if(state == NULL || state->faceCount < 1) {
+		return UI_HOME_FACE_LIBRARY;
+	}
+	place = positiveModulo((int)(turnOrdinal % (int32_t)state->faceCount),
+		state->faceCount);
+	for(side = 0; side < UI_HOME_SIDE_COUNT && place > 0; ++side) {
+		int face = presentFace(state->sides, state->absent, side);
+
+		if(face == (int)UI_HOME_FACE_LIBRARY) {
+			continue;
+		}
+		if(index == place) {
+			return (uiHomeFace_t)face;
+		}
+		++index;
+	}
+	return UI_HOME_FACE_LIBRARY;
+}
+
+int UIHome_RingIndex(const uiHomeState_t *state, uiHomeFace_t face)
+{
+	int index = 1;
+	int side;
+
+	if(state == NULL) {
+		return -1;
+	}
+	if(face == UI_HOME_FACE_LIBRARY) {
+		return 0;
+	}
+	for(side = 0; side < UI_HOME_SIDE_COUNT; ++side) {
+		int onSide = presentFace(state->sides, state->absent, side);
+
+		if(onSide == (int)UI_HOME_FACE_LIBRARY) {
+			continue;
+		}
+		if(onSide == (int)face) {
+			return index;
+		}
+		++index;
+	}
+	return -1;
+}
+
+int UIHome_FaceSide(const uiHomeState_t *state, uiHomeFace_t face)
+{
+	int side;
+
+	if(state == NULL || face == UI_HOME_FACE_LIBRARY) {
+		return -1;
+	}
+	for(side = 0; side < UI_HOME_SIDE_COUNT; ++side) {
+		if(state->sides[side] == (int)face) {
+			return side;
+		}
+	}
+	return -1;
 }
 
 void UIHome_OrientationInit(uiHomeOrientation_t *orientation)
@@ -152,32 +293,41 @@ static int inputStep(uiHomeInput_t input)
 
 /* Classic's orientation for a face: the quarter turn from Library that
  * brings the face's side to the front. */
-static void classicOrientation(uiHomeFace_t face,
+static void classicOrientation(const uiHomeState_t *state, uiHomeFace_t face,
 	uiHomeOrientation_t *orientation)
 {
-	uiHomeInput_t side = classicSides[face];
+	int side = UIHome_FaceSide(state, face);
 
 	UIHome_OrientationInit(orientation);
-	if(side != UI_HOME_INPUT_NONE) {
-		UIHome_OrientationTurn(orientation, inputAxis(side), inputStep(side));
+	if(side >= 0) {
+		UIHome_OrientationTurn(orientation, inputAxis(sideInputs[side]),
+			inputStep(sideInputs[side]));
 	}
 }
 
 void UIHome_Init(uiHomeState_t *state, uiHomeCapabilities_t capabilities)
 {
+	int sourcePlace;
+
 	if(state == NULL) {
 		return;
 	}
 	state->style = cubeStyle(capabilities);
+	resolveLayout(capabilities, state->sides, &state->absent);
+	state->faceCount = ringCount(state->sides, state->absent);
 	/* Classic always starts on Library, the way to every other face. Its
-	 * side is the front, so the orientation below is already Library's. */
-	state->face = capabilities.hasSource ||
-		state->style == UI_HOME_CUBE_CLASSIC ?
-		UI_HOME_FACE_LIBRARY : UI_HOME_FACE_SOURCE;
+	 * side is the front, so the orientation below is already Library's.
+	 * Infinite with no source starts on Source, where the ring has it. */
+	state->face = UI_HOME_FACE_LIBRARY;
+	state->turnOrdinal = 0;
+	sourcePlace = UIHome_RingIndex(state, UI_HOME_FACE_SOURCE);
+	if(!capabilities.hasSource && state->style != UI_HOME_CUBE_CLASSIC &&
+		sourcePlace > 0) {
+		state->face = UI_HOME_FACE_SOURCE;
+		state->turnOrdinal = (int32_t)sourcePlace;
+	}
 	state->surface = UI_HOME_SURFACE_RING;
 	state->selection = 0;
-	state->turnOrdinal = (int32_t)state->face;
-	state->faceCount = UIHome_FaceCount(capabilities);
 	state->revision = 1u;
 	UIHome_OrientationInit(&state->orientation);
 	state->turnAxis = UI_HOME_TURN_NONE;
@@ -191,13 +341,13 @@ static void moveFace(uiHomeState_t *state, uiHomeTurnAxis_t axis, int direction)
 	 * is absolute and does not depend on the counter's accumulated magnitude. */
 	if((state->turnOrdinal == INT32_MAX && step > 0) ||
 		(state->turnOrdinal == INT32_MIN && step < 0)) {
-		state->turnOrdinal %= (int32_t)ringSize(state->faceCount);
+		state->turnOrdinal %= (int32_t)state->faceCount;
 	}
 	state->turnOrdinal += (int32_t)step;
 	UIHome_OrientationTurn(&state->orientation, axis, step);
 	state->turnAxis = axis;
 	state->turnDirection = step;
-	state->face = UIHome_FaceForTurn(state->turnOrdinal, state->faceCount);
+	state->face = UIHome_RingFace(state, state->turnOrdinal);
 	state->surface = UI_HOME_SURFACE_RING;
 	state->selection = 0;
 	state->revision++;
@@ -232,6 +382,13 @@ static void enterSurface(uiHomeState_t *state, uiHomeSurface_t surface,
 static uiHomeEffect_t applyRing(uiHomeState_t *state, uiHomeInput_t input,
 	uiHomeCapabilities_t capabilities)
 {
+	int sourcePlace;
+
+	/* Library alone has nowhere to turn. */
+	if(state->faceCount < 2 && input >= UI_HOME_INPUT_LEFT &&
+		input <= UI_HOME_INPUT_DOWN) {
+		return UI_HOME_EFFECT_NONE;
+	}
 	if(input == UI_HOME_INPUT_LEFT || input == UI_HOME_INPUT_UP) {
 		moveFace(state, input == UI_HOME_INPUT_UP ?
 			UI_HOME_TURN_VERTICAL : UI_HOME_TURN_HORIZONTAL, -1);
@@ -250,7 +407,15 @@ static uiHomeEffect_t applyRing(uiHomeState_t *state, uiHomeInput_t input,
 				if(capabilities.hasSource) {
 					return UI_HOME_EFFECT_OPEN_LIBRARY;
 				}
-				moveFace(state, UI_HOME_TURN_HORIZONTAL, 1);
+				/* Turn to Source with its list open when it is a turn
+				 * away, else go straight to the source picker. */
+				sourcePlace = UIHome_RingIndex(state, UI_HOME_FACE_SOURCE);
+				if(sourcePlace != 1 && (sourcePlace < 1 ||
+					sourcePlace != state->faceCount - 1)) {
+					return UI_HOME_EFFECT_CHANGE_SOURCE;
+				}
+				moveFace(state, UI_HOME_TURN_HORIZONTAL,
+					sourcePlace == 1 ? 1 : -1);
 				/* Keep one visible state revision per accepted input. */
 				state->surface = UI_HOME_SURFACE_SOURCE;
 				break;
@@ -280,7 +445,7 @@ static void classicTurn(uiHomeState_t *state, uiHomeInput_t input,
 	state->turnAxis = inputAxis(input);
 	state->turnDirection = inputStep(input);
 	state->face = face;
-	state->turnOrdinal = (int32_t)face;
+	state->turnOrdinal = (int32_t)UIHome_RingIndex(state, face);
 	state->surface = UI_HOME_SURFACE_RING;
 	state->selection = 0;
 	state->revision++;
@@ -291,17 +456,21 @@ static void classicTurn(uiHomeState_t *state, uiHomeInput_t input,
  * one; from any other face only the way back, or B, turns back to Library.
  * Any other turn is refused and changes nothing: there is no way round, so
  * Settings to System is Right, Right. A and Start are the ring's, but for A
- * with no source, which turns up to Source as the ring's turns to it. */
+ * with no source, which turns to Source's side as the ring's turns to it,
+ * or opens the source picker when Source has no side. */
 static uiHomeEffect_t applyClassic(uiHomeState_t *state,
 	uiHomeInput_t input, uiHomeCapabilities_t capabilities)
 {
 	uiHomeInput_t back;
-	int face;
+	int side;
 
 	if(input == UI_HOME_INPUT_ACTIVATE &&
 		state->face == UI_HOME_FACE_LIBRARY && !capabilities.hasSource) {
-		classicTurn(state, classicSides[UI_HOME_FACE_SOURCE],
-			UI_HOME_FACE_SOURCE);
+		side = UIHome_FaceSide(state, UI_HOME_FACE_SOURCE);
+		if(side < 0) {
+			return UI_HOME_EFFECT_CHANGE_SOURCE;
+		}
+		classicTurn(state, sideInputs[side], UI_HOME_FACE_SOURCE);
 		/* Keep one visible state revision per accepted input. */
 		state->surface = UI_HOME_SURFACE_SOURCE;
 		return UI_HOME_EFFECT_NONE;
@@ -312,10 +481,10 @@ static uiHomeEffect_t applyClassic(uiHomeState_t *state,
 		return applyRing(state, input, capabilities);
 	}
 	if(state->face != UI_HOME_FACE_LIBRARY) {
-		switch(classicSides[state->face]) {
-			case UI_HOME_INPUT_LEFT: back = UI_HOME_INPUT_RIGHT; break;
-			case UI_HOME_INPUT_RIGHT: back = UI_HOME_INPUT_LEFT; break;
-			case UI_HOME_INPUT_UP: back = UI_HOME_INPUT_DOWN; break;
+		switch(UIHome_FaceSide(state, state->face)) {
+			case UI_HOME_SIDE_LEFT: back = UI_HOME_INPUT_RIGHT; break;
+			case UI_HOME_SIDE_RIGHT: back = UI_HOME_INPUT_LEFT; break;
+			case UI_HOME_SIDE_UP: back = UI_HOME_INPUT_DOWN; break;
 			default: back = UI_HOME_INPUT_UP; break;
 		}
 		if(input == back || input == UI_HOME_INPUT_BACK) {
@@ -323,8 +492,10 @@ static uiHomeEffect_t applyClassic(uiHomeState_t *state,
 		}
 		return UI_HOME_EFFECT_NONE;
 	}
-	for(face = (int)UI_HOME_FACE_SOURCE; face < state->faceCount; ++face) {
-		if(classicSides[face] == input) {
+	for(side = 0; side < UI_HOME_SIDE_COUNT; ++side) {
+		int face = presentFace(state->sides, state->absent, side);
+
+		if(sideInputs[side] == input && face != (int)UI_HOME_FACE_LIBRARY) {
 			classicTurn(state, input, (uiHomeFace_t)face);
 			break;
 		}
@@ -406,32 +577,43 @@ static uiHomeEffect_t applyRestartConfirm(uiHomeState_t *state,
 }
 
 /* The ring follows the capabilities: Apps comes when the source has apps and
- * goes when it has none, and the style is Settings'. The cube stays where it
- * is; standing on Apps as it goes lands on Library. Classic's glyphs keep
- * their sides, so there the cube turns to the face in front's own: Library's
- * as Apps goes, or the face Settings was opened from once Cube is Classic.
- * Like the selection's repair, this is published, not counted as an input:
- * the revision stays. */
+ * goes when it has none, and the sides and style are Settings'. The cube
+ * stays where it is; standing on a face as it goes lands on Library. Classic's
+ * glyphs keep their sides, so there the cube turns to the face in front's
+ * own: Library's as Apps goes, or the side of the face Settings was opened
+ * from once Settings closes. Like the selection's repair, this is published,
+ * not counted as an input: the revision stays. */
 static void reconcileFaces(uiHomeState_t *state,
 	uiHomeCapabilities_t capabilities)
 {
-	int count = UIHome_FaceCount(capabilities);
+	uint8_t sides[UI_HOME_SIDE_COUNT];
+	uint8_t absent;
 	uiHomeCubeStyle_t style = cubeStyle(capabilities);
+	int count;
+	int place;
 
-	if(state->faceCount == count && (int)state->face < count &&
-		state->style == style) {
+	resolveLayout(capabilities, sides, &absent);
+	count = ringCount(sides, absent);
+	if(state->faceCount == count && state->style == style &&
+		state->absent == absent &&
+		memcmp(state->sides, sides, sizeof(sides)) == 0 &&
+		UIHome_RingIndex(state, state->face) >= 0) {
 		return;
 	}
-	if((int)state->face >= count) {
+	memcpy(state->sides, sides, sizeof(sides));
+	state->absent = absent;
+	state->faceCount = count;
+	state->style = style;
+	place = UIHome_RingIndex(state, state->face);
+	if(place < 0) {
 		state->face = UI_HOME_FACE_LIBRARY;
 		state->surface = UI_HOME_SURFACE_RING;
 		state->selection = 0;
+		place = 0;
 	}
-	state->turnOrdinal = (int32_t)state->face;
-	state->faceCount = count;
-	state->style = style;
+	state->turnOrdinal = (int32_t)place;
 	if(style == UI_HOME_CUBE_CLASSIC) {
-		classicOrientation(state->face, &state->orientation);
+		classicOrientation(state, state->face, &state->orientation);
 	}
 }
 

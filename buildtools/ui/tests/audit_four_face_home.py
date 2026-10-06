@@ -131,9 +131,18 @@ assert re.search(
     HOME_C,
     re.S,
 ), "visible Home labels no longer match the semantic enum order"
-count_of = extract_function(HOME_C, "int UIHome_FaceCount(")
-assert "capabilities.hasApps ? UI_HOME_FACE_COUNT : UI_HOME_FACE_APPS" in count_of, (
-    "the ring is no longer four faces without apps and five with them"
+# The faces sit on Library's four sides; unless Settings names others they
+# are Source, Settings, System and Apps up, left, right and down, and Apps
+# keeps its side but leaves the ring while the source has no app.
+assert re.search(
+    r"defaultSides\[UI_HOME_SIDE_COUNT\]\s*=\s*\{\s*"
+    r"UI_HOME_FACE_SOURCE\s*,\s*UI_HOME_FACE_SETTINGS\s*,\s*"
+    r"UI_HOME_FACE_SYSTEM\s*,\s*UI_HOME_FACE_APPS\s*\}",
+    HOME_C,
+), "the default cube is no longer Source, Settings, System and Apps"
+resolve_layout = extract_function(HOME_C, "static void resolveLayout(")
+assert "face == (int)UI_HOME_FACE_APPS && !capabilities.hasApps" in resolve_layout, (
+    "the ring is no longer without Apps while the source has no app"
 )
 assert "reconcileFaces(state, capabilities);" in HOME_C
 assert "case UI_HOME_FACE_APPS:\n\t\t\t\treturn UI_HOME_EFFECT_OPEN_APPS;" in apply_ring

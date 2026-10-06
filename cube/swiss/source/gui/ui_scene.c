@@ -80,6 +80,7 @@ static int32_t requestedHomeOrientation[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
 static uint32_t requestedHomeTurnAxis;
 static int32_t requestedHomeTurnDirection;
 static uint32_t requestedHomeStyle = UI_HOME_CUBE_INFINITE;
+static uint32_t requestedHomeLayout;
 static uint32_t sceneReady;
 static uint32_t requestedLibraryLayout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
 static uiSceneState_t state;
@@ -133,14 +134,22 @@ static bool isHomeSurface(int surface)
 		surface < (int)UI_HOME_SURFACE_COUNT;
 }
 
-static uiHomeFace_t faceForTurn(int32_t turnOrdinal, int32_t faceCount)
+/* The sides, four bits each, and the absent faces above them: the layout
+ * travels as one word. */
+static uint32_t packHomeLayout(const uiHomeState_t *home)
 {
-	int32_t face = turnOrdinal % faceCount;
+	uint32_t word = (uint32_t)home->absent << 16;
 
-	if(face < 0) {
-		face += faceCount;
-	}
-	return (uiHomeFace_t)face;
+	for(int side = 0; side < UI_HOME_SIDE_COUNT; ++side)
+		word |= (uint32_t)(home->sides[side] & 15u) << (4 * side);
+	return word;
+}
+
+static void unpackHomeLayout(uint32_t word, uiHomeState_t *home)
+{
+	for(int side = 0; side < UI_HOME_SIDE_COUNT; ++side)
+		home->sides[side] = (uint8_t)((word >> (4 * side)) & 15u);
+	home->absent = (uint8_t)(word >> 16);
 }
 
 static bool homeRequestValid(const uiHomeState_t *home)
@@ -148,8 +157,6 @@ static bool homeRequestValid(const uiHomeState_t *home)
 	if(home == NULL) return false;
 	uiHomeFace_t face = home->face;
 	int32_t turnOrdinal = home->turnOrdinal;
-	/* Four faces, or five with Apps. */
-	int32_t faceCount = home->faceCount;
 	uiHomeSurface_t surface = home->surface;
 	int selection = home->selection;
 	bool selectionValid = surface == UI_HOME_SURFACE_RING ? selection == 0 :
@@ -160,13 +167,14 @@ static bool homeRequestValid(const uiHomeState_t *home)
 			surface == UI_HOME_SURFACE_RESTART_CONFIRM) &&
 			face == UI_HOME_FACE_SYSTEM);
 
-	if(faceCount != UI_HOME_FACE_APPS && faceCount != UI_HOME_FACE_COUNT)
+	/* Library and the faces on its sides, the face in front one of them. */
+	if(!UIHome_LayoutValid(home))
 		return false;
 	if(home->style != UI_HOME_CUBE_INFINITE &&
 		home->style != UI_HOME_CUBE_CLASSIC)
 		return false;
-	return isHomeFace((int)face) && (int32_t)face < faceCount &&
-		faceForTurn(turnOrdinal, faceCount) == face &&
+	return isHomeFace((int)face) && UIHome_RingIndex(home, face) >= 0 &&
+		UIHome_RingFace(home, turnOrdinal) == face &&
 		isHomeSurface((int)surface) && selectionValid && surfaceMatchesFace &&
 		UIHome_OrientationValid(&home->orientation) &&
 		((home->turnAxis == UI_HOME_TURN_NONE && home->turnDirection == 0) ||
@@ -251,6 +259,8 @@ static uiSceneHomeRequest_t loadHomeRequest(void)
 			__ATOMIC_RELAXED);
 		request.style = (uiHomeCubeStyle_t)__atomic_load_n(
 			&requestedHomeStyle, __ATOMIC_RELAXED);
+		unpackHomeLayout(__atomic_load_n(&requestedHomeLayout,
+			__ATOMIC_RELAXED), &request);
 		for(row = 0; row < 3; ++row) {
 			for(col = 0; col < 3; ++col) {
 				request.orientation.m[row][col] = (int8_t)__atomic_load_n(
@@ -487,6 +497,8 @@ static void applyHomeRequest(uiMotionMode_t motionMode)
 		request.turnAxis == state.homeTurnAxis &&
 		request.turnDirection == state.homeTurnDirection &&
 		request.style == state.home.style &&
+		request.absent == state.home.absent &&
+		memcmp(request.sides, state.home.sides, sizeof(request.sides)) == 0 &&
 		memcmp(&request.orientation, &state.homeTarget, sizeof(state.homeTarget)) == 0)
 		return;
 	state.home = request;
@@ -558,6 +570,8 @@ void UIScene_Reset(void)
 	UIHome_OrientationInit(&state.navigationTarget);
 	UIHome_Init(&state.home, (uiHomeCapabilities_t){.hasSource = true});
 	state.home.revision = 0u;
+	__atomic_store_n(&requestedHomeLayout, packHomeLayout(&state.home),
+		__ATOMIC_RELAXED);
 	UICubeMotif_Reset(&state.motifs);
 	for(int i = 0; i < 4; ++i)
 		UIMotion_SpringInit(&state.orientation[i], i == 0 ? 1.0f : 0.0f,
@@ -647,6 +661,7 @@ void UIScene_RequestHome(const uiHomeState_t *home)
 	__atomic_store_n(&requestedHomeTurnAxis, (uint32_t)home->turnAxis, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeTurnDirection, home->turnDirection, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeStyle, (uint32_t)home->style, __ATOMIC_RELAXED);
+	__atomic_store_n(&requestedHomeLayout, packHomeLayout(home), __ATOMIC_RELAXED);
 	for(int row = 0; row < 3; ++row)
 		for(int col = 0; col < 3; ++col)
 			__atomic_store_n(&requestedHomeOrientation[row][col],

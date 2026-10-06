@@ -39,6 +39,28 @@ with that setup's own files merged in.
 
 Documentation and package text only; the console source tree matches v2.3.0.
 
+## 2026-10-06 — Lay the Home cube's faces out by side
+
+Home's faces now sit on Library's four sides, Up, Left, Right and Down,
+through one list instead of their enum numbers. Infinite's ring is Library
+followed by each face on a side that is there now, in that order; Classic
+turns each side's own direction to it. The default list, Source, Settings,
+System and Apps, gives exactly the cubes of before: the existing reducer,
+motif and scene suites pass unchanged, except fixtures that set the ring by
+hand, which now set the whole layout.
+
+The capabilities carry the sides (zeroed capabilities are the default cube),
+the state carries them with the faces on a side that are not there now (Apps
+without apps), and the scene publishes both in one word of its snapshot. A
+face named twice keeps its first side. With no source, A on Library turns to
+Source when it is a turn away and otherwise opens the source picker; Library
+alone does not turn. The Classic side table that the reducer and the glyph
+placement each kept is now derived from the one list.
+
+Nothing in Settings names other sides yet. New tests: an independent layout
+oracle over twelve layouts in both cube styles, glyph placement for custom
+layouts, and the scene receiving a change of sides alone.
+
 ## 2026-10-05 — Verify Memory Cards identity and save captions in native builds
 
 Integrated the corrected Memory Cards folder controls, removed their Library

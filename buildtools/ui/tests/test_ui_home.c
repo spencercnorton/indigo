@@ -43,6 +43,8 @@ static uiHomeCapabilities_t capabilities(bool hasSource, bool hasRecent)
 {
 	uiHomeCapabilities_t value;
 
+	/* The default sides, as a zeroed Home has. */
+	memset(&value, 0, sizeof(value));
 	value.hasSource = hasSource;
 	value.hasRecent = hasRecent;
 	value.hasApps = false;
@@ -62,6 +64,19 @@ static uiHomeCapabilities_t classic(uiHomeCapabilities_t value)
 {
 	value.style = UI_HOME_CUBE_CLASSIC;
 	return value;
+}
+
+/* A state's ring of four, or of five with Apps: the fields a Home with or
+ * without apps publishes. */
+static void setRing(uiHomeState_t *state, int ring)
+{
+	uiHomeState_t shaped;
+
+	UIHome_Init(&shaped, ring == 5 ? withApps(capabilities(true, false)) :
+		capabilities(true, false));
+	state->faceCount = shaped.faceCount;
+	memcpy(state->sides, shaped.sides, sizeof(state->sides));
+	state->absent = shaped.absent;
 }
 
 static uiHomeState_t stateAt(uiHomeFace_t face, uiHomeSurface_t surface,
@@ -106,6 +121,8 @@ static void checkSameState(const uiHomeState_t *actual,
 	CHECK(actual->style == expected->style);
 	CHECK(memcmp(&actual->orientation, &expected->orientation,
 		sizeof(actual->orientation)) == 0);
+	CHECK(memcmp(actual->sides, expected->sides, sizeof(actual->sides)) == 0);
+	CHECK(actual->absent == expected->absent);
 }
 
 static void testValidationAndInitialization(void)
@@ -265,23 +282,39 @@ static void testFaceMappingAndSignedTurns(void)
 	uiHomeState_t left;
 	int index;
 
+	UIHome_Init(&right, caps);
+	UIHome_Init(&left, withApps(caps));
 	for(index = -1; index <= 5; ++index) {
-		CHECK(UIHome_FaceForTurn((int32_t)index, 4) == aroundZero[index + 1]);
-		/* A count that is neither ring is the ring without Apps. */
-		CHECK(UIHome_FaceForTurn((int32_t)index, 7) == aroundZero[index + 1]);
-		CHECK(UIHome_FaceForTurn((int32_t)index, 0) == aroundZero[index + 1]);
+		CHECK(UIHome_RingFace(&right, (int32_t)index) == aroundZero[index + 1]);
 	}
-	CHECK(UIHome_FaceForTurn(INT32_MIN, 4) == UI_HOME_FACE_LIBRARY);
-	CHECK(UIHome_FaceForTurn(INT32_MAX, 4) == UI_HOME_FACE_SYSTEM);
+	CHECK(UIHome_RingFace(&right, INT32_MIN) == UI_HOME_FACE_LIBRARY);
+	CHECK(UIHome_RingFace(&right, INT32_MAX) == UI_HOME_FACE_SYSTEM);
 	/* With Apps the ring is five faces, Apps just before Library. */
-	CHECK(UIHome_FaceForTurn(-1, 5) == UI_HOME_FACE_APPS);
-	CHECK(UIHome_FaceForTurn(4, 5) == UI_HOME_FACE_APPS);
-	CHECK(UIHome_FaceForTurn(5, 5) == UI_HOME_FACE_LIBRARY);
-	CHECK(UIHome_FaceForTurn(-6, 5) == UI_HOME_FACE_APPS);
-	CHECK(UIHome_FaceForTurn(INT32_MAX, 5) == UI_HOME_FACE_SETTINGS);
-	CHECK(UIHome_FaceForTurn(INT32_MIN, 5) == UI_HOME_FACE_SETTINGS);
+	CHECK(UIHome_RingFace(&left, -1) == UI_HOME_FACE_APPS);
+	CHECK(UIHome_RingFace(&left, 4) == UI_HOME_FACE_APPS);
+	CHECK(UIHome_RingFace(&left, 5) == UI_HOME_FACE_LIBRARY);
+	CHECK(UIHome_RingFace(&left, -6) == UI_HOME_FACE_APPS);
+	CHECK(UIHome_RingFace(&left, INT32_MAX) == UI_HOME_FACE_SETTINGS);
+	CHECK(UIHome_RingFace(&left, INT32_MIN) == UI_HOME_FACE_SETTINGS);
+	CHECK(UIHome_RingFace(NULL, 3) == UI_HOME_FACE_LIBRARY);
 	CHECK(UIHome_FaceCount(caps) == 4);
 	CHECK(UIHome_FaceCount(withApps(caps)) == 5);
+	/* The default cube: each face one turn further from Library, on the
+	 * GameCube's sides. Apps keeps its side while it isn't there. */
+	for(index = 0; index < (int)UI_HOME_FACE_COUNT; ++index) {
+		static const int defaultSide[UI_HOME_FACE_COUNT] = {
+			-1, UI_HOME_SIDE_UP, UI_HOME_SIDE_LEFT, UI_HOME_SIDE_RIGHT,
+			UI_HOME_SIDE_DOWN
+		};
+
+		CHECK(UIHome_RingIndex(&left, (uiHomeFace_t)index) == index);
+		CHECK(UIHome_RingIndex(&right, (uiHomeFace_t)index) ==
+			(index == (int)UI_HOME_FACE_APPS ? -1 : index));
+		CHECK(UIHome_FaceSide(&right, (uiHomeFace_t)index) ==
+			defaultSide[index]);
+	}
+	CHECK(UIHome_LayoutValid(&right) && UIHome_LayoutValid(&left));
+	CHECK(!UIHome_LayoutValid(NULL));
 
 	UIHome_Init(&right, caps);
 	CHECK(UIHome_Apply(&right, UI_HOME_INPUT_RIGHT, caps) ==
@@ -413,7 +446,7 @@ static void testEveryRingFaceAndInput(void)
 			uiHomeState_t before;
 			uiHomeEffect_t effect;
 
-			state.faceCount = faceCount;
+			setRing(&state, faceCount);
 			before = state;
 			effect = UIHome_Apply(&state, input, caps);
 			switch(input) {
@@ -421,7 +454,7 @@ static void testEveryRingFaceAndInput(void)
 				case UI_HOME_INPUT_UP:
 					CHECK(effect == UI_HOME_EFFECT_NONE);
 					checkState(&state,
-						UIHome_FaceForTurn((int32_t)faceIndex - 1, faceCount),
+						UIHome_RingFace(&before, (int32_t)faceIndex - 1),
 						UI_HOME_SURFACE_RING, 0,
 						(int32_t)faceIndex - 1, 42u);
 					break;
@@ -429,7 +462,7 @@ static void testEveryRingFaceAndInput(void)
 				case UI_HOME_INPUT_DOWN:
 					CHECK(effect == UI_HOME_EFFECT_NONE);
 					checkState(&state,
-						UIHome_FaceForTurn((int32_t)faceIndex + 1, faceCount),
+						UIHome_RingFace(&before, (int32_t)faceIndex + 1),
 						UI_HOME_SURFACE_RING, 0,
 						(int32_t)faceIndex + 1, 42u);
 					break;
@@ -478,7 +511,7 @@ static void testEveryRingFaceAndInput(void)
 			uiHomeCapabilities_t noRecent = capabilities(true, false);
 
 			noRecent.hasApps = caps.hasApps;
-			state.faceCount = faceCount;
+			setRing(&state, faceCount);
 			before = state;
 			CHECK(UIHome_Apply(&state, UI_HOME_INPUT_RECENT, noRecent) ==
 				UI_HOME_EFFECT_NONE);
@@ -731,8 +764,7 @@ static void testLongRunOrdinalAndRevision(void)
 	for(index = 0; index < 40000; ++index) {
 		CHECK(UIHome_Apply(&state, UI_HOME_INPUT_RIGHT, caps) ==
 			UI_HOME_EFFECT_NONE);
-		CHECK(state.face == UIHome_FaceForTurn(state.turnOrdinal,
-			state.faceCount));
+		CHECK(state.face == UIHome_RingFace(&state, state.turnOrdinal));
 	}
 	checkState(&state, UI_HOME_FACE_LIBRARY, UI_HOME_SURFACE_RING, 0,
 		40000, 40001u);
@@ -740,8 +772,7 @@ static void testLongRunOrdinalAndRevision(void)
 	for(index = 0; index < 80003; ++index) {
 		CHECK(UIHome_Apply(&state, UI_HOME_INPUT_LEFT, caps) ==
 			UI_HOME_EFFECT_NONE);
-		CHECK(state.face == UIHome_FaceForTurn(state.turnOrdinal,
-			state.faceCount));
+		CHECK(state.face == UIHome_RingFace(&state, state.turnOrdinal));
 	}
 	checkState(&state, UI_HOME_FACE_SOURCE, UI_HOME_SURFACE_RING, 0,
 		-40003, 120004u);
@@ -825,7 +856,7 @@ static void testClassicEveryFaceAndInput(void)
 			int target = column >= 0 && column <= 4 ?
 				turns[faceIndex][column] : -1;
 
-			state.faceCount = ring;
+			setRing(&state, ring);
 			state.style = UI_HOME_CUBE_CLASSIC;
 			memcpy(&state.orientation, oracleClassicPoses[faceIndex],
 				sizeof(state.orientation));
@@ -889,7 +920,7 @@ static void testClassicEveryFaceAndInput(void)
 			uiHomeCapabilities_t noRecent = caps;
 
 			noRecent.hasRecent = false;
-			state.faceCount = ring;
+			setRing(&state, ring);
 			state.style = UI_HOME_CUBE_CLASSIC;
 			memcpy(&state.orientation, oracleClassicPoses[faceIndex],
 				sizeof(state.orientation));
@@ -1071,6 +1102,13 @@ static void oracleReconcileRing(uiHomeState_t *state,
 			memcpy(&state->orientation, oracleClassicPoses[state->face],
 				sizeof(state->orientation));
 		}
+		/* Source, Settings, System and Apps up, left, right and down;
+		 * Apps there only with apps. */
+		state->sides[0] = UI_HOME_FACE_SOURCE;
+		state->sides[1] = UI_HOME_FACE_SETTINGS;
+		state->sides[2] = UI_HOME_FACE_SYSTEM;
+		state->sides[3] = UI_HOME_FACE_APPS;
+		state->absent = caps.hasApps ? 0u : (uint8_t)(1u << UI_HOME_FACE_APPS);
 	}
 }
 
@@ -1348,8 +1386,8 @@ static void checkOracleTransition(uiHomeState_t before, uiHomeInput_t input,
 	CHECK((int)actualEffect >= (int)UI_HOME_EFFECT_NONE);
 	CHECK((int)actualEffect <= (int)UI_HOME_EFFECT_OPEN_APPS);
 	CHECK((int)actual.face < actual.faceCount);
-	CHECK(UIHome_FaceForTurn(actual.turnOrdinal, actual.faceCount) ==
-		actual.face);
+	CHECK(UIHome_LayoutValid(&actual));
+	CHECK(UIHome_RingFace(&actual, actual.turnOrdinal) == actual.face);
 	/* Classic's cube always shows the face in front's own side. */
 	if(actual.style == UI_HOME_CUBE_CLASSIC) {
 		CHECK(actual.turnOrdinal == (int32_t)actual.face);
@@ -1409,7 +1447,7 @@ static void testExhaustiveReducerOracle(void)
 								(uiHomeSurface_t)surfaceIndex,
 								selection, ordinal);
 
-							state.faceCount = stateRing;
+							setRing(&state, stateRing);
 							/* A Classic state is always on its face's
 							 * own side, its ordinal the face. */
 							if(stateClassic) {
@@ -1531,6 +1569,450 @@ static void testInvalidInputAndStateOracle(void)
 		capabilities(false, true)) == UI_HOME_EFFECT_NONE);
 	checkState(&state, UI_HOME_FACE_SOURCE, UI_HOME_SURFACE_SOURCE, 0, 1,
 		41u);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Faces on other sides, and sides with none: an oracle of its own.          */
+/* ------------------------------------------------------------------------- */
+
+#define NO_FACE UI_HOME_FACE_LIBRARY
+
+/* Up, Left, Right and Down, as Settings may name them. */
+static const uint8_t layoutFixtures[][UI_HOME_SIDE_COUNT] = {
+	{ UI_HOME_FACE_SOURCE, UI_HOME_FACE_SETTINGS, UI_HOME_FACE_SYSTEM,
+		UI_HOME_FACE_APPS },
+	/* The issue's cube from today's faces: Settings down, Apps left. */
+	{ UI_HOME_FACE_SOURCE, UI_HOME_FACE_APPS, UI_HOME_FACE_SYSTEM,
+		UI_HOME_FACE_SETTINGS },
+	{ NO_FACE, UI_HOME_FACE_SETTINGS, UI_HOME_FACE_SYSTEM, UI_HOME_FACE_APPS },
+	{ UI_HOME_FACE_SOURCE, UI_HOME_FACE_SETTINGS, NO_FACE, UI_HOME_FACE_APPS },
+	{ NO_FACE, UI_HOME_FACE_SETTINGS, NO_FACE, UI_HOME_FACE_APPS },
+	{ NO_FACE, NO_FACE, NO_FACE, UI_HOME_FACE_SETTINGS },
+	{ NO_FACE, NO_FACE, NO_FACE, NO_FACE },
+	{ UI_HOME_FACE_APPS, UI_HOME_FACE_SOURCE, UI_HOME_FACE_SETTINGS,
+		UI_HOME_FACE_SYSTEM },
+	/* Source last, a turn left of Library. */
+	{ UI_HOME_FACE_SETTINGS, UI_HOME_FACE_SYSTEM, UI_HOME_FACE_APPS,
+		UI_HOME_FACE_SOURCE },
+	/* Source two turns from Library either way once Apps is there. */
+	{ UI_HOME_FACE_SETTINGS, UI_HOME_FACE_SOURCE, UI_HOME_FACE_SYSTEM,
+		UI_HOME_FACE_APPS },
+	/* A face named twice keeps its first side. */
+	{ UI_HOME_FACE_SETTINGS, UI_HOME_FACE_SETTINGS, UI_HOME_FACE_SYSTEM,
+		UI_HOME_FACE_SYSTEM },
+	/* Values that aren't faces are none. */
+	{ 7, 200, UI_HOME_FACE_COUNT, UI_HOME_FACE_SOURCE }
+};
+
+typedef struct {
+	/* Each face's side, -1 for none; the ring, Library first. */
+	int side[UI_HOME_FACE_COUNT];
+	uiHomeFace_t ring[UI_HOME_RING_MAX];
+	int count;
+	uint8_t sides[UI_HOME_SIDE_COUNT];
+	uint8_t absent;
+} oracleLayout_t;
+
+static oracleLayout_t oracleLayoutOf(const uint8_t wanted[UI_HOME_SIDE_COUNT],
+	bool hasApps)
+{
+	oracleLayout_t layout;
+	int side;
+	int face;
+
+	memset(&layout, 0, sizeof(layout));
+	for(face = 0; face < (int)UI_HOME_FACE_COUNT; ++face) {
+		layout.side[face] = -1;
+	}
+	layout.ring[0] = UI_HOME_FACE_LIBRARY;
+	layout.count = 1;
+	for(side = 0; side < UI_HOME_SIDE_COUNT; ++side) {
+		face = wanted[side];
+		layout.sides[side] = UI_HOME_FACE_LIBRARY;
+		if(face < 1 || face >= (int)UI_HOME_FACE_COUNT ||
+				layout.side[face] >= 0) {
+			continue;
+		}
+		layout.side[face] = side;
+		layout.sides[side] = (uint8_t)face;
+		if(face == (int)UI_HOME_FACE_APPS && !hasApps) {
+			layout.absent = (uint8_t)(1u << UI_HOME_FACE_APPS);
+			continue;
+		}
+		layout.ring[layout.count++] = (uiHomeFace_t)face;
+	}
+	return layout;
+}
+
+static int oraclePlace(const oracleLayout_t *layout, uiHomeFace_t face)
+{
+	int place;
+
+	for(place = 0; place < layout->count; ++place) {
+		if(layout->ring[place] == face) {
+			return place;
+		}
+	}
+	return -1;
+}
+
+static uiHomeCapabilities_t layoutCaps(const uint8_t wanted[UI_HOME_SIDE_COUNT],
+	bool hasSource, bool hasApps, bool isClassic)
+{
+	uiHomeCapabilities_t caps = capabilities(hasSource, true);
+
+	caps.hasApps = hasApps;
+	caps.customSides = true;
+	memcpy(caps.sides, wanted, sizeof(caps.sides));
+	return isClassic ? classic(caps) : caps;
+}
+
+/* Classic's pose for a side: the default face on that side has it. */
+static const int8_t (*oracleSidePose(int side))[3]
+{
+	static const uiHomeFace_t onSide[UI_HOME_SIDE_COUNT] = {
+		UI_HOME_FACE_SOURCE, UI_HOME_FACE_SETTINGS, UI_HOME_FACE_SYSTEM,
+		UI_HOME_FACE_APPS
+	};
+
+	return oracleClassicPoses[side < 0 ? UI_HOME_FACE_LIBRARY : onSide[side]];
+}
+
+static uiHomeEffect_t oracleFaceActivate(uiHomeFace_t face)
+{
+	switch(face) {
+		case UI_HOME_FACE_LIBRARY: return UI_HOME_EFFECT_OPEN_LIBRARY;
+		case UI_HOME_FACE_SETTINGS: return UI_HOME_EFFECT_OPEN_SETTINGS;
+		case UI_HOME_FACE_APPS: return UI_HOME_EFFECT_OPEN_APPS;
+		default: return UI_HOME_EFFECT_NONE;
+	}
+}
+
+static void testLayoutsInit(const oracleLayout_t *layout, uiHomeCapabilities_t caps)
+{
+	uiHomeState_t state;
+	int face;
+	int32_t ordinal;
+	int sourcePlace = oraclePlace(layout, UI_HOME_FACE_SOURCE);
+
+	UIHome_Init(&state, caps);
+	CHECK(state.faceCount == layout->count);
+	CHECK(UIHome_FaceCount(caps) == layout->count);
+	CHECK(memcmp(state.sides, layout->sides, sizeof(state.sides)) == 0);
+	CHECK(state.absent == layout->absent);
+	CHECK(UIHome_LayoutValid(&state));
+	CHECK(state.surface == UI_HOME_SURFACE_RING && state.selection == 0);
+	CHECK(state.revision == 1u && state.turnAxis == UI_HOME_TURN_NONE);
+	/* Infinite with no source starts on Source, when the ring has it. */
+	if(!caps.hasSource && caps.style != UI_HOME_CUBE_CLASSIC &&
+			sourcePlace > 0) {
+		CHECK(state.face == UI_HOME_FACE_SOURCE);
+		CHECK(state.turnOrdinal == sourcePlace);
+	}
+	else {
+		CHECK(state.face == UI_HOME_FACE_LIBRARY && state.turnOrdinal == 0);
+	}
+	for(ordinal = -2 * layout->count; ordinal <= 2 * layout->count; ++ordinal) {
+		CHECK(UIHome_RingFace(&state, ordinal) ==
+			layout->ring[oraclePositiveModulo((int)ordinal, layout->count)]);
+	}
+	for(face = 0; face < (int)UI_HOME_FACE_COUNT; ++face) {
+		CHECK(UIHome_RingIndex(&state, (uiHomeFace_t)face) ==
+			oraclePlace(layout, (uiHomeFace_t)face));
+		CHECK(UIHome_FaceSide(&state, (uiHomeFace_t)face) ==
+			layout->side[face]);
+	}
+}
+
+/* Infinite: Left and Up one face back round the ring, Right and Down one on;
+ * Library alone doesn't turn. A on Library with no source turns to Source
+ * a turn away, or opens the picker. */
+static void testLayoutRing(const oracleLayout_t *layout, uiHomeCapabilities_t caps)
+{
+	int place;
+	int inputIndex;
+
+	for(place = 0; place < layout->count; ++place) {
+		for(inputIndex = (int)UI_HOME_INPUT_NONE;
+				inputIndex <= (int)UI_HOME_INPUT_RECENT; ++inputIndex) {
+			uiHomeInput_t input = (uiHomeInput_t)inputIndex;
+			uiHomeFace_t face = layout->ring[place];
+			uiHomeState_t state;
+			uiHomeState_t expected;
+			uiHomeEffect_t effect;
+			uiHomeEffect_t expectedEffect = UI_HOME_EFFECT_NONE;
+			int step = 0;
+
+			UIHome_Init(&state, caps);
+			state.face = face;
+			state.turnOrdinal = (int32_t)place;
+			state.revision = 41u;
+			expected = state;
+			if(input >= UI_HOME_INPUT_LEFT && input <= UI_HOME_INPUT_DOWN) {
+				step = layout->count < 2 ? 0 :
+					input == UI_HOME_INPUT_LEFT || input == UI_HOME_INPUT_UP ? -1 : 1;
+			}
+			else if(input == UI_HOME_INPUT_ACTIVATE) {
+				int sourcePlace = oraclePlace(layout, UI_HOME_FACE_SOURCE);
+
+				if(face == UI_HOME_FACE_LIBRARY && !caps.hasSource) {
+					if(sourcePlace == 1) step = 1;
+					else if(sourcePlace > 1 && sourcePlace == layout->count - 1)
+						step = -1;
+					else expectedEffect = UI_HOME_EFFECT_CHANGE_SOURCE;
+				}
+				else if(face == UI_HOME_FACE_SOURCE || face == UI_HOME_FACE_SYSTEM) {
+					expected.surface = face == UI_HOME_FACE_SOURCE ?
+						UI_HOME_SURFACE_SOURCE : UI_HOME_SURFACE_SYSTEM;
+					expected.revision++;
+				}
+				else {
+					expectedEffect = oracleFaceActivate(face);
+				}
+			}
+			else if(input == UI_HOME_INPUT_RECENT) {
+				expectedEffect = UI_HOME_EFFECT_OPEN_RECENT;
+			}
+			if(step != 0) {
+				expected.turnOrdinal += step;
+				expected.face = layout->ring[oraclePositiveModulo(
+					place + step, layout->count)];
+				expected.turnAxis = input == UI_HOME_INPUT_UP ||
+					input == UI_HOME_INPUT_DOWN ? UI_HOME_TURN_VERTICAL :
+					UI_HOME_TURN_HORIZONTAL;
+				expected.turnDirection = step;
+				UIHome_OrientationTurn(&expected.orientation,
+					expected.turnAxis, step);
+				expected.revision++;
+				if(input == UI_HOME_INPUT_ACTIVATE) {
+					expected.surface = UI_HOME_SURFACE_SOURCE;
+				}
+			}
+			effect = UIHome_Apply(&state, input, caps);
+			CHECK(effect == expectedEffect);
+			checkSameState(&state, &expected);
+		}
+	}
+}
+
+/* Classic: Library turns to the face on each side there is one on; that face
+ * turns back the opposite way, or with B. */
+static void testLayoutClassic(const oracleLayout_t *layout,
+	uiHomeCapabilities_t caps)
+{
+	static const uiHomeInput_t out[UI_HOME_SIDE_COUNT] = {
+		UI_HOME_INPUT_UP, UI_HOME_INPUT_LEFT, UI_HOME_INPUT_RIGHT,
+		UI_HOME_INPUT_DOWN
+	};
+	static const uiHomeInput_t back[UI_HOME_SIDE_COUNT] = {
+		UI_HOME_INPUT_DOWN, UI_HOME_INPUT_RIGHT, UI_HOME_INPUT_LEFT,
+		UI_HOME_INPUT_UP
+	};
+	int place;
+	int inputIndex;
+
+	for(place = 0; place < layout->count; ++place) {
+		for(inputIndex = (int)UI_HOME_INPUT_NONE;
+				inputIndex <= (int)UI_HOME_INPUT_RECENT; ++inputIndex) {
+			uiHomeInput_t input = (uiHomeInput_t)inputIndex;
+			uiHomeFace_t face = layout->ring[place];
+			int side = layout->side[face];
+			uiHomeState_t state;
+			uiHomeState_t expected;
+			uiHomeEffect_t effect;
+			uiHomeEffect_t expectedEffect = UI_HOME_EFFECT_NONE;
+			uiHomeFace_t target = face;
+			uiHomeInput_t turn = UI_HOME_INPUT_NONE;
+			int index;
+
+			UIHome_Init(&state, caps);
+			state.face = face;
+			state.turnOrdinal = (int32_t)place;
+			memcpy(&state.orientation, oracleSidePose(side),
+				sizeof(state.orientation));
+			state.revision = 41u;
+			expected = state;
+			if(face == UI_HOME_FACE_LIBRARY) {
+				for(index = 0; index < UI_HOME_SIDE_COUNT; ++index) {
+					uiHomeFace_t there = (uiHomeFace_t)layout->sides[index];
+
+					if(input == out[index] && oraclePlace(layout, there) > 0) {
+						target = there;
+						turn = input;
+					}
+				}
+			}
+			else if(input == back[side] || input == UI_HOME_INPUT_BACK) {
+				target = UI_HOME_FACE_LIBRARY;
+				turn = back[side];
+			}
+			if(input == UI_HOME_INPUT_ACTIVATE) {
+				if(face == UI_HOME_FACE_LIBRARY && !caps.hasSource) {
+					if(oraclePlace(layout, UI_HOME_FACE_SOURCE) > 0) {
+						target = UI_HOME_FACE_SOURCE;
+						turn = out[layout->side[UI_HOME_FACE_SOURCE]];
+					}
+					else {
+						expectedEffect = UI_HOME_EFFECT_CHANGE_SOURCE;
+					}
+				}
+				else if(face == UI_HOME_FACE_SOURCE || face == UI_HOME_FACE_SYSTEM) {
+					expected.surface = face == UI_HOME_FACE_SOURCE ?
+						UI_HOME_SURFACE_SOURCE : UI_HOME_SURFACE_SYSTEM;
+					expected.revision++;
+				}
+				else {
+					expectedEffect = oracleFaceActivate(face);
+				}
+			}
+			else if(input == UI_HOME_INPUT_RECENT) {
+				expectedEffect = UI_HOME_EFFECT_OPEN_RECENT;
+			}
+			if(turn != UI_HOME_INPUT_NONE) {
+				expected.face = target;
+				expected.turnOrdinal = (int32_t)oraclePlace(layout, target);
+				memcpy(&expected.orientation,
+					oracleSidePose(target == UI_HOME_FACE_LIBRARY ? -1 :
+					layout->side[target]), sizeof(expected.orientation));
+				expected.turnAxis = turn == UI_HOME_INPUT_UP ||
+					turn == UI_HOME_INPUT_DOWN ? UI_HOME_TURN_VERTICAL :
+					UI_HOME_TURN_HORIZONTAL;
+				expected.turnDirection = turn == UI_HOME_INPUT_LEFT ||
+					turn == UI_HOME_INPUT_UP ? -1 : 1;
+				expected.surface = input == UI_HOME_INPUT_ACTIVATE ?
+					UI_HOME_SURFACE_SOURCE : UI_HOME_SURFACE_RING;
+				expected.selection = 0;
+				expected.revision++;
+			}
+			effect = UIHome_Apply(&state, input, caps);
+			CHECK(effect == expectedEffect);
+			checkSameState(&state, &expected);
+		}
+	}
+}
+
+/* A new layout from Settings: the face in front stays where it is still in
+ * the ring, its ordinal its new place and, in Classic, its new side in front;
+ * otherwise Library. Published, not an input: the revision stays. */
+static void testLayoutChanges(const oracleLayout_t *layouts, int layoutCount,
+	bool hasApps, bool isClassic)
+{
+	int from;
+	int to;
+	int place;
+
+	for(from = 0; from < layoutCount; ++from) {
+		for(to = 0; to < layoutCount; ++to) {
+			const oracleLayout_t *before = &layouts[from];
+			const oracleLayout_t *after = &layouts[to];
+			uiHomeCapabilities_t fromCaps = layoutCaps(layoutFixtures[from],
+				true, hasApps, isClassic);
+			uiHomeCapabilities_t toCaps = layoutCaps(layoutFixtures[to],
+				true, hasApps, isClassic);
+
+			for(place = 0; place < before->count; ++place) {
+				uiHomeFace_t face = before->ring[place];
+				int newPlace = oraclePlace(after, face);
+				uiHomeState_t state;
+				uiHomeState_t expected;
+
+				UIHome_Init(&state, fromCaps);
+				state.face = face;
+				state.turnOrdinal = (int32_t)place;
+				if(isClassic) {
+					memcpy(&state.orientation,
+						oracleSidePose(before->side[face]),
+						sizeof(state.orientation));
+				}
+				state.revision = 41u;
+				expected = state;
+				memcpy(expected.sides, after->sides, sizeof(expected.sides));
+				expected.absent = after->absent;
+				expected.faceCount = after->count;
+				if(newPlace < 0) {
+					expected.face = UI_HOME_FACE_LIBRARY;
+					newPlace = 0;
+				}
+				/* Nothing changed: nothing moves, the ordinal included. */
+				if(from != to || newPlace != place) {
+					expected.turnOrdinal = (int32_t)newPlace;
+				}
+				if(isClassic) {
+					memcpy(&expected.orientation,
+						oracleSidePose(after->side[expected.face]),
+						sizeof(expected.orientation));
+				}
+				CHECK(UIHome_Apply(&state, UI_HOME_INPUT_NONE, toCaps) ==
+					UI_HOME_EFFECT_NONE);
+				checkSameState(&state, &expected);
+				CHECK(UIHome_LayoutValid(&state));
+			}
+		}
+	}
+}
+
+static void testLayouts(void)
+{
+	enum { FIXTURES = (int)(sizeof(layoutFixtures) / sizeof(layoutFixtures[0])) };
+	oracleLayout_t layouts[FIXTURES];
+	int fixture;
+	int mask;
+
+	for(mask = 0; mask < 8; ++mask) {
+		bool hasSource = (mask & 1) != 0;
+		bool hasApps = (mask & 2) != 0;
+		bool isClassic = (mask & 4) != 0;
+
+		for(fixture = 0; fixture < FIXTURES; ++fixture) {
+			uiHomeCapabilities_t caps = layoutCaps(layoutFixtures[fixture],
+				hasSource, hasApps, isClassic);
+
+			layouts[fixture] = oracleLayoutOf(layoutFixtures[fixture], hasApps);
+			testLayoutsInit(&layouts[fixture], caps);
+			if(isClassic) {
+				testLayoutClassic(&layouts[fixture], caps);
+			}
+			else {
+				testLayoutRing(&layouts[fixture], caps);
+			}
+		}
+		if(hasSource) {
+			testLayoutChanges(layouts, FIXTURES, hasApps, isClassic);
+		}
+	}
+	/* The fixtures' rings, written out where it matters. */
+	CHECK(oracleLayoutOf(layoutFixtures[1], true).ring[4] ==
+		UI_HOME_FACE_SETTINGS);
+	CHECK(oracleLayoutOf(layoutFixtures[6], true).count == 1);
+	CHECK(oracleLayoutOf(layoutFixtures[10], true).count == 3);
+	CHECK(oracleLayoutOf(layoutFixtures[11], true).count == 2);
+	/* The default sides are the capabilities' default. */
+	{
+		uiHomeState_t custom;
+		uiHomeState_t plain;
+
+		UIHome_Init(&custom, layoutCaps(layoutFixtures[0], true, true, false));
+		UIHome_Init(&plain, withApps(capabilities(true, true)));
+		checkSameState(&custom, &plain);
+	}
+	/* Malformed sides and absent faces are not a layout. */
+	{
+		uiHomeState_t state;
+
+		UIHome_Init(&state, withApps(capabilities(true, true)));
+		state.sides[1] = UI_HOME_FACE_SOURCE;
+		CHECK(!UIHome_LayoutValid(&state));
+		UIHome_Init(&state, withApps(capabilities(true, true)));
+		state.sides[2] = UI_HOME_FACE_COUNT;
+		CHECK(!UIHome_LayoutValid(&state));
+		UIHome_Init(&state, withApps(capabilities(true, true)));
+		state.absent = (uint8_t)(1u << UI_HOME_FACE_APPS);
+		CHECK(!UIHome_LayoutValid(&state));
+		state.faceCount = 4;
+		CHECK(UIHome_LayoutValid(&state));
+		state.sides[3] = UI_HOME_FACE_LIBRARY;
+		CHECK(!UIHome_LayoutValid(&state));
+	}
 }
 
 enum { RESTART_BRUTE_DEPTH = 6 };
@@ -1708,6 +2190,7 @@ int main(void)
 	testExhaustiveReducerOracle();
 	testInvalidInputAndStateOracle();
 	testRestartReachabilityOracle();
+	testLayouts();
 	printf("ui_home: %u checks passed\n", checks);
 	return EXIT_SUCCESS;
 }

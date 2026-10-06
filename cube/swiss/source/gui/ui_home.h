@@ -85,12 +85,31 @@ typedef enum {
 	UI_HOME_CUBE_COUNT
 } uiHomeCubeStyle_t;
 
+/* The four sides round Library, in the order the Infinite ring turns through
+ * them after Library. Classic turns each to its own direction. */
+typedef enum {
+	UI_HOME_SIDE_UP = 0,
+	UI_HOME_SIDE_LEFT,
+	UI_HOME_SIDE_RIGHT,
+	UI_HOME_SIDE_DOWN,
+	UI_HOME_SIDE_COUNT
+} uiHomeSide_t;
+
+/* Library and a face on each side. */
+#define UI_HOME_RING_MAX (1 + UI_HOME_SIDE_COUNT)
+
 typedef struct {
 	bool hasSource;
 	bool hasRecent;
 	/* The source's /apps folder holds a program: the Apps face shows. */
 	bool hasApps;
 	uiHomeCubeStyle_t style;
+	/* The face on each side, UI_HOME_FACE_LIBRARY for none. Without
+	 * customSides the sides are Source, Settings, System and Apps: a zeroed
+	 * set of capabilities is the default cube. A face named twice keeps its
+	 * first side; Library and anything that isn't a face mean none. */
+	bool customSides;
+	uint8_t sides[UI_HOME_SIDE_COUNT];
 } uiHomeCapabilities_t;
 
 typedef enum {
@@ -112,17 +131,24 @@ typedef struct {
 	uiHomeSurface_t surface;
 	int selection;
 	int32_t turnOrdinal;
-	/* The faces the ring has now: 4, or 5 with Apps. face is always one of
-	 * them, turnOrdinal modulo faceCount. */
+	/* The faces the ring has now: Library, then each face on a side that is
+	 * there now, Up, Left, Right and Down. face is always one of them, the
+	 * one at turnOrdinal modulo faceCount. */
 	int faceCount;
 	uint32_t revision;
 	uiHomeOrientation_t orientation;
 	uiHomeTurnAxis_t turnAxis;
 	int turnDirection;
 	/* The capabilities' style, for the scene to place the glyphs and time
-	 * the turns by. In Classic turnOrdinal is the face, and the orientation
-	 * always the one that has the face's own side in front. */
+	 * the turns by. In Classic turnOrdinal is the face's place in the ring,
+	 * and the orientation always the one that has the face's own side in
+	 * front. */
 	uiHomeCubeStyle_t style;
+	/* The face on each side (UI_HOME_FACE_LIBRARY for none), and the faces
+	 * on a side that aren't there now (bit 1 << face): Apps while the
+	 * source has none. Such a face keeps its side but leaves the ring. */
+	uint8_t sides[UI_HOME_SIDE_COUNT];
+	uint8_t absent;
 } uiHomeState_t;
 
 void UIHome_OrientationInit(uiHomeOrientation_t *orientation);
@@ -136,11 +162,19 @@ void UIHome_OrientationMatrix(const uiHomeOrientation_t *orientation,
 
 bool UIHome_IsFace(int face);
 bool UIHome_IsSurface(int surface);
-/* 5 when the capabilities have apps, else 4. */
+/* The faces in the capabilities' ring: Library and each face on a side that
+ * is there; 5 for the default cube with apps, else 4. */
 int UIHome_FaceCount(uiHomeCapabilities_t capabilities);
-/* The face turnOrdinal lands on in a ring of faceCount faces (4 or 5; any
- * other count is taken as 4). */
-uiHomeFace_t UIHome_FaceForTurn(int32_t turnOrdinal, int faceCount);
+/* The state's sides name faces once each, its absent faces are on a side,
+ * and faceCount counts its ring. Everything below needs that. */
+bool UIHome_LayoutValid(const uiHomeState_t *state);
+/* The face turnOrdinal lands on in the state's ring. */
+uiHomeFace_t UIHome_RingFace(const uiHomeState_t *state, int32_t turnOrdinal);
+/* A face's place in the ring, 0 for Library; -1 when it isn't in it. */
+int UIHome_RingIndex(const uiHomeState_t *state, uiHomeFace_t face);
+/* The side a face is on, there now or not; -1 for Library, or a face on
+ * none. */
+int UIHome_FaceSide(const uiHomeState_t *state, uiHomeFace_t face);
 void UIHome_Init(uiHomeState_t *state, uiHomeCapabilities_t capabilities);
 uiHomeEffect_t UIHome_Apply(uiHomeState_t *state, uiHomeInput_t input,
 	uiHomeCapabilities_t capabilities);

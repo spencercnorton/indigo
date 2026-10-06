@@ -5,10 +5,11 @@
 #include "ui_motion.h"
 
 /* Columns are right, up and outward normal in cube-local coordinates.
- * faceCount is the ring the faces were placed for: 4, or 5 with Apps.
- * shown is false for a face with no side of its own, which draws nothing:
- * Apps outside a ring of four, and in a ring of five the face two ahead of
- * the one in front (a cube's band has four sides for five faces). */
+ * faceCount is the ring the faces were placed for: Library and the faces on
+ * its sides. shown is false for a face with no side of its own, which draws
+ * nothing: a face outside the ring, such as Apps without apps, and in a ring
+ * of five the face two ahead of the one in front (a cube's band has four
+ * sides for five faces). */
 typedef struct {
 	float face[UI_HOME_FACE_COUNT][3][3];
 	bool shown[UI_HOME_FACE_COUNT];
@@ -25,14 +26,15 @@ typedef struct {
 	bool changing;
 } uiCubeMotifState_t;
 
-/* NULL selects the authored background's original four lateral faces, Apps
- * not shown. Otherwise the face in front, the next one on the right (below,
- * turning vertically), the previous one on the left (above), and the
- * remaining one of a ring of four behind. A ring of five puts the face two
- * behind the one in front at the back and does not show the one two ahead:
- * turning either way then only moves glyphs on sides facing away.
- * In Classic every face keeps its own side wherever the cube turns: Library
- * front, Source top, Settings left, System right and Apps bottom. */
+/* NULL, or a malformed state, selects the authored background's original
+ * four lateral faces, Apps not shown. Otherwise the face in front, the next
+ * one in the ring on the right (below, turning vertically), the previous one
+ * on the left (above), and the remaining one of a ring of four behind. A ring
+ * of five puts the face two behind the one in front at the back and does not
+ * show the one two ahead: turning either way then only moves glyphs on sides
+ * facing away. In Classic every face keeps its own side wherever the cube
+ * turns: Library front and each other face on its side, by default Source
+ * top, Settings left, System right and Apps bottom. */
 void UICubeMotif_Build(const uiHomeState_t *home, uiCubeMotifBasis_t *out);
 void UICubeMotif_Reset(uiCubeMotifState_t *state);
 void UICubeMotif_Request(uiCubeMotifState_t *state,
