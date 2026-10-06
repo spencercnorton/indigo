@@ -245,7 +245,7 @@ for mutant_controller, mutant_load in (
 
 carousel = extract_function(swiss_source, "uiDrawObj_t* renderFileCarousel")
 declaration = carousel.index("u32 browserButtons;")
-sample = carousel.index("browserButtons = padsButtonsHeld();", declaration)
+sample = carousel.index("browserButtons = padsButtonsHeld() |", declaration)
 activation = carousel.index("bool retainedActivation", sample)
 nav_guard = carousel.index("if(!retainedActivation)", activation)
 first_nav = carousel.index("browserButtons & BUTTON_LEFT", nav_guard)

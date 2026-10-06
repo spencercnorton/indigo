@@ -480,8 +480,12 @@ static void showPrograms(appsScreen_t *which)
 				DrawRepublish(panel, fresh);
 		}
 		CardArt_Want(want, wanted);
+		/* Presses from before (the A that launched an app) aren't for here. */
+		(void)padsButtonsTaken(waitButtons);
 		for(;;) {
-			buttons = padsButtonsHeld();
+			/* Taken from the scans as well as held: a press made and let go
+			 * while a card was read is still seen. */
+			buttons = padsButtonsHeld() | padsButtonsTaken(waitButtons);
 			analog = padsMenuInputPoll(&menuInput,
 				menuInputElapsedMicroseconds(&menuInputRetrace), policy,
 				(buttons & waitButtons) != 0u);

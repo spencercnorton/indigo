@@ -2332,8 +2332,13 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 		u32 menuInputPolicy = gameflowMenuInputPolicy(layout);
 		u32 browserButtons;
 		uiMenuInputDirection_t analog;
+		/* Presses from before (the A that opened this, a B that left a
+		 * Detail) aren't for here. */
+		(void)padsButtonsTaken(waitButtons);
 		while(1) {
-			browserButtons = padsButtonsHeld();
+			/* Taken from the scans as well as held: a press made and let go
+			 * while a folder picture was read is still seen. */
+			browserButtons = padsButtonsHeld() | padsButtonsTaken(waitButtons);
 			analog = padsMenuInputPoll(&menuInput,
 				menuInputElapsedMicroseconds(&menuInputRetrace),
 				menuInputPolicy, (browserButtons & waitButtons) != 0u);
@@ -2343,8 +2348,10 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			}
 			VIDEO_WaitVSync();
 			if(useGameflow) {
-				/* Poll performs at most one bounded read; tying it to an idle
-				 * retrace keeps input/navigation frames free of pack I/O. */
+				/* Poll performs at most one read, tied to an idle retrace to
+				 * keep input/navigation frames free of pack I/O. From a source
+				 * that is not thread safe it reads the whole picture here, up
+				 * to 2 MB: about a second from DVD. */
 				DrawGameflowPollPosters();
 				CardArt_Poll();
 			}

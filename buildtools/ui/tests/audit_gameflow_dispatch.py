@@ -372,4 +372,48 @@ for label, old_text, new_text in layout_mutants:
         continue
     raise AssertionError(f"layout mutant escaped the dispatch audit: {label}")
 
-print(f"gameflow dispatch audit OK ({len(layout_mutants)} layout mutants rejected)")
+
+
+# A wait loop that reads card art between its pad reads (a whole picture from
+# a source that is not thread safe, about a second from DVD) takes the presses
+# the scans saw as well as the buttons held, or a quick tap made during the
+# read is lost. It drops the presses from before it just ahead of the loop.
+SOURCE = ROOT / "cube/swiss/source"
+POLLERS = {path: path.read_text() for path in sorted(SOURCE.rglob("*.c"))
+           if "CardArt_Poll();" in path.read_text() and path.name != "card_art.c"}
+
+
+def check_pollers(sources: dict) -> None:
+    sites = 0
+    for path, text in sources.items():
+        at = -1
+        while (at := text.find("CardArt_Poll();", at + 1)) >= 0:
+            sites += 1
+            loop = max(text.rfind("while(1) {", 0, at), text.rfind("for(;;) {", 0, at))
+            assert loop >= 0, f"{path.name}: CardArt_Poll outside a wait loop"
+            assert "padsButtonsHeld() | padsButtonsTaken(waitButtons)" in text[loop:at], \
+                f"{path.name}: a press made while card art is read is lost"
+            assert text[:loop].rstrip().endswith("(void)padsButtonsTaken(waitButtons);"), \
+                f"{path.name}: the loop takes a press made before it"
+    assert sites >= 2, "the Library and Apps wait loops poll card art"
+
+
+check_pollers(POLLERS)
+poller_mutants = []
+for path, text in POLLERS.items():
+    poller_mutants += [
+        (f"{path.name} reads only held buttons",
+         path, "padsButtonsHeld() | padsButtonsTaken(waitButtons)", "padsButtonsHeld()"),
+        (f"{path.name} keeps the presses from before",
+         path, "(void)padsButtonsTaken(waitButtons);", ""),
+    ]
+for label, path, old_text, new_text in poller_mutants:
+    assert POLLERS[path].count(old_text) == 1, f"mutation anchor missing: {label}"
+    try:
+        check_pollers({**POLLERS, path: POLLERS[path].replace(old_text, new_text, 1)})
+    except AssertionError:
+        continue
+    raise AssertionError(f"poller mutant escaped the dispatch audit: {label}")
+
+print(f"gameflow dispatch audit OK ({len(layout_mutants)} layout mutants, "
+      f"{len(poller_mutants)} card art input mutants rejected)")
