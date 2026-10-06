@@ -3889,7 +3889,9 @@ static void _GameflowDrawDetailDashboard(
 	/* The count is the headline. A small trailing label leaves the two-line
 	 * inset readable without competing with the actions below it. */
 	if(detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) {
-		drawStringMedium(576, 214, "SAVES", 0.38f, ALIGN_RIGHT, secondary);
+		/* With a choice, the label says Left and Right change it. */
+		drawStringMedium(576, 214, (detail->flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) ?
+			"\253 SAVES \273" : "SAVES", 0.38f, ALIGN_RIGHT, secondary);
 		drawStringMedium(274, 214, detail->savesSummary,
 			presentation->savesSummaryScale, ALIGN_LEFT, primary);
 		drawStringMedium(274, 232, detail->savesUpdated,

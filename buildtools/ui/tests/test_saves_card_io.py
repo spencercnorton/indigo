@@ -129,6 +129,7 @@ typedef struct {
 } record;
 static record cards[2][8];
 static bool failWrite, failReadBack, wrongReadIdentity;
+static int failWritesLeft, failReadBacksLeft;
 static int writes, deletes, mounts;
 static int lookup(int slot, const char *name) {
     for(int i = 0; i < 8; i++) {
@@ -169,7 +170,7 @@ static s32 CARD_Create(int slot, const char *name, u32 length, card_file *file) 
 static s32 CARD_Read(card_file *file, void *buffer, u32 length, u32 at) {
     assert(at == 0 && length == 8192);
     memcpy(buffer, cards[file->chn][file->filenum].bytes, length);
-    if(failReadBack) ((u8 *)buffer)[0] ^= 1;
+    if(failReadBack || (failReadBacksLeft > 0 && failReadBacksLeft--)) ((u8 *)buffer)[0] ^= 1;
     return CARD_ERROR_READY;
 }
 static s32 CARD_ReadUnaligned(card_file *file, void *buffer, u32 length, u32 at, int slot) {
@@ -178,7 +179,8 @@ static s32 CARD_ReadUnaligned(card_file *file, void *buffer, u32 length, u32 at,
 static s32 CARD_Write(card_file *file, const void *buffer, u32 length, u32 at) {
     writes++; assert(at == 0 && length == 8192);
     memcpy(cards[file->chn][file->filenum].bytes, buffer, length);
-    return failWrite ? CARD_ERROR_FATAL_ERROR : CARD_ERROR_READY;
+    return failWrite || (failWritesLeft > 0 && failWritesLeft--) ?
+        CARD_ERROR_FATAL_ERROR : CARD_ERROR_READY;
 }
 static s32 CARD_GetStatus(int slot, int i, card_stat *stat) {
     *stat = cards[slot][i].stat;
@@ -245,6 +247,7 @@ static void add(int slot, int i, const char *game, const char *maker, u8 byte) {
 static void reset(void) {
     memset(cards, 0, sizeof(cards)); writes = deletes = mounts = 0;
     failWrite = failReadBack = wrongReadIdentity = false;
+    failWritesLeft = failReadBacksLeft = 0;
     devices[0] = (DEVICEHANDLER_INTERFACE){ &initial_CARDA, mounted, info,
         readDir, deviceHandler_CARD_readFile, deviceHandler_CARD_writeFile,
         deviceHandler_CARD_deleteFile, closeFile, seekFile };
@@ -327,12 +330,54 @@ static void wildcardCases(void) {
         assert(writes == 0 && deletes == 0); verifySurvivor(1, 'E');
     }
 }
+/* Detail's load before a launch: the card's own copy of the game's save
+ * ('O') gives way to the chosen one ('N'), and comes back if that fails. */
+static int saveOn(int slot, const char *game) {
+    for(int i = 0; i < 8; i++)
+        if(cards[slot][i].live && !memcmp(cards[slot][i].dir.gamecode, game, 4)) return i;
+    return -1;
+}
+static void replaceCases(void) {
+    for(int failure = 0; failure < 5; failure++) {
+        reset(); add(1, 0, "GALE", "01", 'E'); add(1, 1, "GZLE", "01", 'O');
+        file_handle own; handle(&own, 1, 1);
+        u32 ownLength = 0; u8 *ownData = saveRead(&own, &ownLength);
+        assert(ownData != NULL && ownLength == 8256);
+        ownData[0x38] = 0; ownData[0x39] = 1;
+        u8 entry[64], blocks[8192]; char why[256] = "";
+        memcpy(entry, ownData, 64); memset(blocks, 'N', sizeof(blocks));
+        bool none = failure == 4;  /* the card had no copy of its own */
+        if(none) assert(deviceHandler_CARD_deleteFile(&own) == 0);
+        failWritesLeft = failure == 1 ? 1 : failure == 3 ? 2 : 0;
+        failReadBacksLeft = failure == 2 ? 1 : 0;
+        int before = deletes;
+        bool ok = cardReplace(1, entry, blocks, sizeof(blocks),
+            none ? NULL : ownData, ownLength, why, sizeof(why));
+        assert(ok == (failure == 0 || failure == 4));
+        verifySurvivor(1, 'E');
+        int at = saveOn(1, "GZLE");
+        u8 expect = ok ? 'N' : 'O';
+        if(failure == 3) {
+            /* Neither went on: the card's own copy is in the Save Folder. */
+            assert(at < 0 && strstr(why, "Save Folder") != NULL);
+        } else {
+            assert(at >= 0);
+            for(int i = 0; i < 8192; i++) assert(cards[1][at].bytes[i] == expect);
+            assert(!memcmp(cards[1][at].dir.company, "01", 2));
+            if(!ok) assert(strstr(why, "went back") != NULL);
+        }
+        /* The own copy is removed once, and a failed new one once more. */
+        assert(deletes - before == (none ? 0 : 1) + (ok ? 0 : failure == 3 ? 2 : 1));
+        free(ownData);
+    }
+}
 int main(void) {
+    replaceCases();
     readErase("GALP", "01"); readErase("GALE", "02");
     readErase("\0ABC", "\0D");
     copyCases("GALP", "01"); copyCases("GALE", "02");
     copyCases("\0ABC", "\0D"); wildcardCases();
-    puts("card identity: reads, Erase, Copy, Move, both rollback paths and wildcards PASS");
+    puts("card identity: reads, Erase, Copy, Move, both rollback paths, wildcards and Detail's load PASS");
     return 0;
 }
 """
@@ -375,7 +420,8 @@ static bool SavesRaw_ReadGci(file_handle *image, const uiSavesRawCard_t *card,
         for marker in ("static savesPlace_t *rawSource(", "static bool readSaveAt("):
             pieces.append(extract_function(saves, marker))
     for marker in ("static u8 *saveRead(", "static file_handle *cardFind(",
-                   "static const char *cardWhy(", "static bool cardWrite("):
+                   "static const char *cardWhy(", "static bool cardWrite(",
+                   "static bool cardReplace("):
         pieces.append(extract_function(saves, marker))
     return "\n".join(pieces + [MAIN])
 

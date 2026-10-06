@@ -1747,6 +1747,196 @@ static bool saveDelete(file_handle *save)
 	return save->device->deleteFile(save) == 0;
 }
 
+/* ------------------------------------------------------------------------
+ * Game Details: start a game with the copy of its save chosen there.
+ * --------------------------------------------------------------------- */
+
+/* Puts a game's chosen save on the card in slot in place of the card's own
+ * copy of it (own: that copy's entry and blocks, as saveRead reads it), or
+ * adds it when the card has none. The card's own copy goes back if the new
+ * one doesn't go on or doesn't read back the same. */
+static bool cardReplace(int slot, const u8 *entry, const u8 *blocks,
+	u32 blockBytes, const u8 *own, u32 ownLength, char *why, size_t whySize)
+{
+	DEVICEHANDLER_INTERFACE *device = slotDevice(slot);
+	file_handle *entries = NULL;
+	file_handle *found;
+	char failed[128];
+	int count, used;
+	bool gone;
+
+	if(own != NULL) {
+		found = cardFind(slot, entry, &entries, &count, &used);
+		gone = found != NULL && device->deleteFile(found) == 0;
+		free(entries);
+		if(!gone) {
+			snprintf(why, whySize, "%s's own copy couldn't be replaced.",
+				slotName(slot));
+			return false;
+		}
+	}
+	if(cardWrite(slot, entry, blocks, blockBytes, failed, sizeof(failed))) {
+		return true;
+	}
+	if(own == NULL) {
+		snprintf(why, whySize, "%s", failed);
+	}
+	else if(cardWrite(slot, own, own + UI_SAVES_ENTRY_SIZE,
+		ownLength - UI_SAVES_ENTRY_SIZE, why, whySize)) {
+		snprintf(why, whySize, "%s\n%s's own copy went back.", failed,
+			slotName(slot));
+	}
+	else {
+		snprintf(why, whySize, "%s\n%s's own copy is in the Save Folder.",
+			failed, slotName(slot));
+	}
+	return false;
+}
+
+/* A copy the details scan found, read whole: its entry and blocks, with *at
+ * where the blocks begin. NULL unless it is still the save the scan saw:
+ * the same game, maker and name. */
+static u8 *copyRead(const savesCopy_t *copy, u32 *length, size_t *at,
+	u8 entry[UI_SAVES_ENTRY_SIZE])
+{
+	file_handle file;
+	file_handle *entries = NULL;
+	file_handle *found;
+	uiSavesRawCard_t *raw;
+	u8 *data = NULL;
+	int count, used;
+
+	*at = 0u;
+	*length = 0u;
+	if(copy->source == SAVES_COPY_SLOT_A || copy->source == SAVES_COPY_SLOT_B) {
+		int slot = copy->source == SAVES_COPY_SLOT_B;
+		DEVICEHANDLER_INTERFACE *device = slotDevice(slot);
+
+		if(device->init(device->initial) == 0) {
+			found = cardFind(slot, copy->entry, &entries, &count, &used);
+			/* The card driver reads it as a .gci: its entry, then its blocks. */
+			data = found != NULL ? saveRead(found, length) : NULL;
+			free(entries);
+			*at = UI_SAVES_ENTRY_SIZE;
+		}
+	}
+	else if(devices[DEVICE_CONFIG] != NULL) {
+		memset(&file, 0, sizeof(file));
+		snprintf(file.name, sizeof(file.name), "%s", copy->path);
+		file.device = devices[DEVICE_CONFIG];
+		file.fileType = IS_FILE;
+		file.size = copy->size;
+		if(copy->source == SAVES_COPY_FILE) {
+			data = saveRead(&file, length);
+			if(data != NULL) {
+				*at = UISaves_FindEntry(data, *length, entry);
+			}
+		}
+		else if((raw = calloc(1, sizeof(*raw))) != NULL) {
+			if(SavesRaw_Load(&file, raw) == UI_SAVES_RAW_OK &&
+				copy->ordinal < raw->count) {
+				*length = UISavesRaw_GciSize(raw, copy->ordinal);
+				data = *length > UI_SAVES_ENTRY_SIZE && *length <= SAVES_MAX_BYTES ?
+					memalign(32, *length) : NULL;
+				if(data != NULL && !SavesRaw_ReadGci(&file, raw, copy->ordinal, 0u,
+					data, *length)) {
+					free(data);
+					data = NULL;
+				}
+				*at = UI_SAVES_ENTRY_SIZE;
+			}
+			free(raw);
+			file.device->closeFile(&file);
+		}
+	}
+	if(data != NULL && copy->source != SAVES_COPY_FILE) {
+		memcpy(entry, data, UI_SAVES_ENTRY_SIZE);
+	}
+	if(data == NULL || *at == 0u || *at >= *length ||
+		memcmp(entry, copy->entry, 6u) != 0 ||
+		strncmp((const char *)entry + 8, (const char *)copy->entry + 8,
+			CARD_FILENAMELEN) != 0) {
+		free(data);
+		return NULL;
+	}
+	return data;
+}
+
+bool Saves_LoadCopy(int slot, const savesCopy_t *copy, char *why,
+	size_t whySize)
+{
+	DEVICEHANDLER_INTERFACE *device;
+	DEVICEHANDLER_INTERFACE *config;
+	file_handle *entries = NULL;
+	file_handle *found;
+	char folder[PATHNAME_MAX] = "";
+	char name[PATHNAME_MAX] = "";
+	u8 entry[UI_SAVES_ENTRY_SIZE];
+	u8 *data;
+	u8 *own = NULL;
+	u32 length = 0, ownLength = 0;
+	size_t at = 0;
+	int count, used, i;
+	bool ok = false;
+
+	if(copy == NULL || slot < 0 || slot > 1) {
+		snprintf(why, whySize, "There's no save to put on a card.");
+		return false;
+	}
+	/* The card's own copy is kept on the SD card before anything changes. */
+	if(!config_set_device()) {
+		snprintf(why, whySize, "There's no SD card to keep the card's own copy on.");
+		return false;
+	}
+	config = devices[DEVICE_CONFIG];
+	device = slotDevice(slot);
+	data = copyRead(copy, &length, &at, entry);
+	if(data == NULL) {
+		snprintf(why, whySize, "The chosen save couldn't be read.");
+	}
+	else if(device->init(device->initial) != 0) {
+		snprintf(why, whySize, "%s has no memory card.", slotName(slot));
+	}
+	else {
+		found = cardFind(slot, entry, &entries, &count, &used);
+		own = found != NULL ? saveRead(found, &ownLength) : NULL;
+		free(entries);
+		if(found != NULL && own == NULL) {
+			snprintf(why, whySize, "%s's own copy couldn't be read.",
+				slotName(slot));
+		}
+		else if(own != NULL && ownLength - UI_SAVES_ENTRY_SIZE == length - at &&
+			!memcmp(own + UI_SAVES_ENTRY_SIZE, data + at, length - at)) {
+			ok = true;	/* the card has this save already */
+		}
+		else {
+			if(own != NULL) {
+				concat_path(folder, config->initial->name, saves_folder());
+				folderEnsure(config, saves_folder());
+				UISaves_FileName(name, sizeof(name), own);
+			}
+			if(own == NULL ||
+				folderWrite(folder, name, own, ownLength, why, whySize)) {
+				ok = cardReplace(slot, entry, data + at, length - (u32)at, own,
+					ownLength, why, whySize);
+			}
+		}
+	}
+	free(data);
+	free(own);
+	/* Unmount the cards this read, unless the game or settings device is one. */
+	for(i = 0; i < 2; i++) {
+		DEVICEHANDLER_INTERFACE *card = slotDevice(i);
+
+		if(card != devices[DEVICE_CUR] && card != config) {
+			card->deinit(card->initial);
+		}
+		places[i].mounted = false;
+	}
+	config_unset_device();
+	return ok;
+}
+
 /* The folder a Copy or Move goes to, as a path on the settings device. */
 static bool destinationFolder(uiSavesPlace_t to, char *path, size_t size);
 

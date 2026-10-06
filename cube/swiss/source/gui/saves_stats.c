@@ -9,6 +9,7 @@
 
 #include <ogc/card.h>
 #include <malloc.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -44,8 +45,25 @@ static void statsWrite32(u8 *out, u32 value)
 	out[3] = (u8)value;
 }
 
+/* A copy the scan counted, while there's room in the list. */
+static void statsCopy(savesCopies_t *copies, savesCopySource_t source,
+	const u8 entry[UI_SAVES_ENTRY_SIZE], const char *path, u32 size,
+	unsigned ordinal)
+{
+	savesCopy_t *copy;
+
+	if(copies == NULL || copies->count >= SAVES_COPIES_MAX) return;
+	copy = &copies->copy[copies->count++];
+	memset(copy, 0, sizeof(*copy));
+	copy->source = source;
+	if(path != NULL) snprintf(copy->path, sizeof(copy->path), "%s", path);
+	copy->size = size;
+	copy->ordinal = ordinal;
+	memcpy(copy->entry, entry, UI_SAVES_ENTRY_SIZE);
+}
+
 static void statsSlot(const char gameId[6], uiSavesGameStats_t *stats,
-	unsigned slot)
+	unsigned slot, savesCopies_t *copies)
 {
 	DEVICEHANDLER_INTERFACE *device = slot == 0u ? &__device_card_a : &__device_card_b;
 	card_dir dir;
@@ -60,6 +78,7 @@ static void statsSlot(const char gameId[6], uiSavesGameStats_t *stats,
 		stats->partial = true;
 		return;
 	}
+	if(copies != NULL) copies->cards[slot] = true;
 	memset(&dir, 0, sizeof(dir));
 	result = CARD_FindFirst((s32)slot, &dir, true);
 	while(result == CARD_ERROR_READY && count < UI_SAVES_CARD_FILES) {
@@ -76,6 +95,7 @@ static void statsSlot(const char gameId[6], uiSavesGameStats_t *stats,
 		if(!memcmp(dir.gamecode, gameId, 4u) && !memcmp(dir.company, gameId + 4, 2u)) {
 			memcpy(entry, dir.gamecode, 4u);
 			memcpy(entry + 4, dir.company, 2u);
+			memcpy(entry + 8, dir.filename, UI_SAVES_NAME_LENGTH);
 			entry[0x38] = (u8)(blocks >> 8);
 			entry[0x39] = (u8)blocks;
 			if(CARD_GetStatus((s32)slot, dir.fileno, &status) == CARD_ERROR_READY &&
@@ -86,7 +106,10 @@ static void statsSlot(const char gameId[6], uiSavesGameStats_t *stats,
 				statsWrite32(entry + 0x28, status.time);
 			}
 			else stats->partial = true;
-			UISaves_StatsAdd(stats, entry, gameId, slot);
+			if(UISaves_StatsAdd(stats, entry, gameId, slot)) {
+				statsCopy(copies, slot == 0u ? SAVES_COPY_SLOT_A : SAVES_COPY_SLOT_B,
+					entry, NULL, 0u, 0u);
+			}
 		}
 		result = CARD_FindNext(&dir);
 	}
@@ -121,7 +144,8 @@ static bool statsReadEntry(file_handle *file, u8 *head,
 	return ok && UISaves_FindEntryPrefix(head, want, file->size, entry) != 0u;
 }
 
-static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats)
+static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats,
+	savesCopies_t *copies)
 {
 	DEVICEHANDLER_INTERFACE *device = devices[DEVICE_CONFIG];
 	file_handle folder = {0}, *files = NULL;
@@ -187,12 +211,17 @@ static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats)
 				continue;
 			}
 			for(ordinal = 0u; ordinal < raw->count; ordinal++) {
-				UISaves_StatsAdd(stats, UISavesRaw_Entry(raw, ordinal), gameId, 2u);
+				if(UISaves_StatsAdd(stats, UISavesRaw_Entry(raw, ordinal), gameId, 2u)) {
+					statsCopy(copies, SAVES_COPY_IMAGE, UISavesRaw_Entry(raw, ordinal),
+						file->name, file->size, ordinal);
+				}
 			}
 		}
 		else if(statsSaveName(leaf)) {
 			if(statsReadEntry(file, head, entry)) {
-				UISaves_StatsAdd(stats, entry, gameId, 2u);
+				if(UISaves_StatsAdd(stats, entry, gameId, 2u)) {
+					statsCopy(copies, SAVES_COPY_FILE, entry, file->name, file->size, 0u);
+				}
 			}
 			else stats->partial = true;
 		}
@@ -202,11 +231,13 @@ static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats)
 	free(files);
 }
 
-void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats)
+void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats,
+	savesCopies_t *copies)
 {
 	bool mounted;
 	unsigned i;
 
+	if(copies != NULL) memset(copies, 0, sizeof(*copies));
 	if(stats == NULL) return;
 	memset(stats, 0, sizeof(*stats));
 	if(gameId == NULL) return;
@@ -217,8 +248,8 @@ void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats)
 			(gameId[i] >= '0' && gameId[i] <= '9'))) return;
 	}
 	mounted = config_set_device();
-	if(mounted) statsFolder(gameId, stats);
+	if(mounted) statsFolder(gameId, stats, copies);
 	else stats->partial = true;
-	for(i = 0u; i < 2u; i++) statsSlot(gameId, stats, i);
+	for(i = 0u; i < 2u; i++) statsSlot(gameId, stats, i, copies);
 	if(mounted) config_unset_device();
 }

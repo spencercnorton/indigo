@@ -50,6 +50,24 @@ update.
   <img alt="Astral Circuit’s Saves inset after exporting one GCI: 2 save copies, 4 blocks and Updated 2024-02-29 12:34." src="images/game-details-saves-after-copy.png" width="640">
 </p>
 
+### Start with another copy of the save
+
+With two or more copies, **Left** and **Right** step through them, and the
+label reads **« SAVES »**. The box shows one copy at a time, such as
+**Copy 2 of 3 | Save Folder**, with its date and either **In use**, for the
+copy on the memory card the game reads, or **Loads at launch**.
+
+Launch the game with another copy shown and Indigo asks first. **A** puts
+that copy on the memory card in place of the card's own copy of the save:
+the card's own copy goes to the Save Folder first, the new one is read back
+from the card, and if anything goes wrong the card's own copy goes back and
+the game doesn't start. **B** leaves the card as it is. The copy goes on
+the card that holds the game's save, Slot A first; with no copy on a card,
+on the card in Slot A, or in Slot B when Slot A is empty.
+
+It isn't offered while **Emulate Memory Card** is on, since the game then
+reads a card image on the SD card rather than the card in the slot.
+
 ## Start the game
 
 The screen opens with a bright frame on **Launch Game**: press **A** to
