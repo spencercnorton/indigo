@@ -20,9 +20,11 @@
 # Menu Widescreen arm (SET_MENU_WIDESCREEN) only flips
 # swissSettings.menuWidescreen, the four side arms (SET_*_FACE) each only
 # step their own side round the faces and none, the Cube arm (SET_CUBE) only flips
-# swissSettings.cubeStyle between Infinite and Classic, and the Library
+# swissSettings.cubeStyle between Infinite and Classic, the Library
 # Folders arm (SET_LIBRARY_FOLDERS) only turns Library Folders on or off
-# through config_set_library_folders, which swaps FlattenDir with it.
+# through config_set_library_folders, which swaps FlattenDir with it, and
+# the Saves on Details arm (SET_DETAIL_SAVES) only flips
+# swissSettings.hideDetailSaves.
 #
 # The Right/Left/Up/Down/L/R/B/A action block changed on purpose in the Settings redesign:
 # phase 1 made B leave (Save & Exit when something changed), A advance choice
@@ -169,6 +171,12 @@ normalized = re.sub(
     r"\t+swissSettings\.cubeStyle \^= 1;\n"
     r"\t+break;\n",
     "", normalized, count=1)
+# And the Saves on Details arm, a flip.
+normalized = re.sub(
+    r"(?ms)^\t+case SET_DETAIL_SAVES:\n"
+    r"\t+swissSettings\.hideDetailSaves \^= 1;\n"
+    r"\t+break;\n",
+    "", normalized, count=1)
 normalized = re.sub(r"[ \t]+(?=\n|$)", "", normalized)
 Path(sys.argv[2]).write_text(normalized)
 PY
@@ -186,9 +194,9 @@ for fn in settings_toggle; do
 			normalize_intended_changes "$TMP/base_$fn" "$TMP/base_${fn}_normalized"
 			normalize_intended_changes "$TMP/head_$fn" "$TMP/head_${fn}_normalized"
 			if cmp -s "$TMP/base_${fn}_normalized" "$TMP/head_${fn}_normalized"; then
-				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, temperature, icon, layout, library folders, save folder, widescreen, side and cube arms and game reset\n' "$fn"
+				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, temperature, icon, layout, library folders, save folder, widescreen, side, cube and saves on details arms and game reset\n' "$fn"
 			else
-				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_TEMPERATURE_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_LIBRARY_FOLDERS, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_*_FACE, SET_CUBE and the game reset" >&2
+				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_TEMPERATURE_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_LIBRARY_FOLDERS, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_*_FACE, SET_CUBE, SET_DETAIL_SAVES and the game reset" >&2
 				diff -u "$TMP/base_${fn}_normalized" \
 					"$TMP/head_${fn}_normalized" | head -40 >&2 || true
 				fail=1

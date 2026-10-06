@@ -504,6 +504,8 @@ class SettingsFileTest(unittest.TestCase):
         self.assertEqual(written["SD/IDE Speed"], "32MHz")
         self.assertEqual(written["FlattenDir"], "*/games")
         self.assertEqual(written["AVECompat"], "GCVideo")
+        # A game's details show two or more save copies unless this is Yes.
+        self.assertEqual(written["Hide Saves on Details"], "No")
 
     def test_every_listed_value_round_trips(self):
         known_exceptions = set()

@@ -163,6 +163,7 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_MENU_WIDESCREEN] = "Menu Widescreen:\n\nYes - Drawn for a TV set to 16:9: the background fills the\nscreen and the menus keep their shape.\nNo - Drawn for a 4:3 picture (default)\n\nSet your TV or HDMI adapter to 16:9 too. Games follow Force\nWidescreen in Game Defaults, not this.",
 	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\nSpotlight - A gameplay still over banners; Left and Right move\n\nThe selected game's title and details show beside its cover in\nVertical and its still in Spotlight, and above the controls in Grid.\nEvery layout wraps round from the last game to the first; L and R\njump a page. Y opens the focused game's settings.",
 	[SET_LIBRARY_FOLDERS] = "Library Folders:\n\nOff - The Library is one list of every game in /games, however\nthey sit in folders there (default)\nOn - The Library shows the folders in /games beside the games:\nA opens one, B goes back. A folder in a folder is the deepest;\nit lists every game below it.\n\nKeep a game's discs in the same folder.",
+	[SET_DETAIL_SAVES] = "Saves on Details:\n\nOn - A game's details show its saves on both memory cards and\nin the Save Folder when there are two or more copies (default)\nOff - A game's details leave the memory cards alone.",
 	[SET_WAVE_SPEED] = "Wave Speed:\n\nHow fast the waves behind the cube drift.\nSlow - Half as fast\nNormal - As they always have (default)\nFast - Three times as fast\n\nUI Motion Off or Reduced, or Animated Backdrop off (Setup >\nLibrary), still stops them.",
 	[SET_CLOCK_POSITION] = "Clock:\n\nRight - The time sits in the top right corner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nTemperature places the temperature dial on its own.",
 	[SET_TEMPERATURE_POSITION] = "Temperature:\n\nRight - The CPU temperature dial sits in the top right\ncorner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nIn the clock's corner, the dial sits nearer the edge.",
@@ -646,6 +647,7 @@ static const settingsRowRef_t networkRows[] = {
 static const settingsRowRef_t libraryRows[] = {
 	{PAGE_INTERFACE, SET_LIBRARY_LAYOUT},
 	{PAGE_INTERFACE, SET_LIBRARY_FOLDERS},
+	{PAGE_INTERFACE, SET_DETAIL_SAVES},
 	{PAGE_INTERFACE, SET_GAMEBROWSER_TYPE},
 	{PAGE_INTERFACE, SET_APPSBROWSER_TYPE},
 	{PAGE_INTERFACE, SET_FILEBROWSER_TYPE},
@@ -1098,6 +1100,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_FLATTEN_DIR: rowText(row, "Flatten directory:", swissSettings.flattenDir, !swissSettings.libraryFolders); break;
 			case SET_LIBRARY_LAYOUT: rowCycle(row, "Library Layout:", libraryLayoutStr[swissSettings.libraryLayout], true); break;
 			case SET_LIBRARY_FOLDERS: rowOnOff(row, "Library Folders:", swissSettings.libraryFolders, true); break;
+			case SET_DETAIL_SAVES: rowOnOff(row, "Saves on Details:", !swissSettings.hideDetailSaves, true); break;
 			case SET_MENU_WIDESCREEN: rowYesNo(row, "Menu Widescreen:", swissSettings.menuWidescreen, true); break;
 		}
 	}
@@ -1662,6 +1665,9 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_LIBRARY_FOLDERS:
 				config_set_library_folders(!swissSettings.libraryFolders);
+			break;
+			case SET_DETAIL_SAVES:
+				swissSettings.hideDetailSaves ^= 1;
 			break;
 			case SET_PANEL_TRANSPARENCY:
 				swissSettings.disablePanelTransparency ^= 1;

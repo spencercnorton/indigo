@@ -149,6 +149,7 @@ typedef struct {
 	int libraryLayout;	// uiGameflowLayout_t (gui/ui_gameflow.h): Horizontal (default), Vertical, Grid or Spotlight
 	int libraryFolders;	// 1 = the Library shows folders in /games, two deep; 0 = one list of games (default)
 	char libraryFoldersFlattenDir[PATHNAME_MAX];	// FlattenDir as saved, while Library Folders sets its own
+	int hideDetailSaves;	// 1 = a game's details never read the memory cards; 0 = they show two or more save copies (default)
 	int sram60Hz;
 	int sramProgressive;
 	int sramStereo;

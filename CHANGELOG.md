@@ -38,6 +38,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Improved
 
+- The **Saves** box on a game's details shows only for a game with two or
+  more save copies; with one or none, the details screen moves its rows back
+  up. Settings › Setup › Library › **Saves on Details** turns it off, and
+  then a game's details don't read your memory cards at all. In `global.ini`
+  it is `Hide Saves on Details`.
 - Save captions use readable comment text and verified game identities when
   games omit display metadata, including Need for Speed: Underground 2.
   Static and missing icons remain distinct from stored animations.

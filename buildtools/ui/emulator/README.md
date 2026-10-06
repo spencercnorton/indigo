@@ -278,10 +278,12 @@ image byte. Library folders retain their ordinary appearance and navigation;
 the four-layout route verifies that Y opens no folder color page there.
 
 Memory Cards must start with both columns on SD. The route opens Library
-first and sees the synthetic game's SAVES inset, then checks it again after
-export: one copy/two blocks becomes two copies/four blocks with the same
-recorded update. Renderer host contracts check the exact values; the route
-checks that the real fields appear and their count text changes.
+first: with one save copy, the synthetic game's details leave SAVES out.
+After the export there are two copies, and the SAVES inset shows their count
+and recorded update (Saves on Details is on by default; a card seeded with
+`Hide Saves on Details=Yes` would still leave it out). Renderer host
+contracts check the exact values; the route checks that the real fields
+appear, or that the inset is absent.
 
 A on each RAW save opens details first: the known `2024-02-29 12:34` date
 and an unknown date have different text, their stored icon statuses differ,

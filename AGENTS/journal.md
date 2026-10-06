@@ -1,3 +1,26 @@
+## 2026-10-06 — Show the details screen's Saves box for two or more copies
+
+UIGameflowDetail_Build sets UI_GAMEFLOW_DETAIL_HAS_SAVES only for two or
+more save copies; with fewer, Detail is drawn in its v2.2 places (no inset,
+rows 20 px higher, panel 328 tall) from one layout table. Settings › Setup ›
+Library › Saves on Details (on by default; `Hide Saves on Details` in
+global.ini, a hide flag so zero is the default) turns the box off, and then
+gameflowPublishDetail never calls Saves_CollectGameStats: opening a game's
+details touches neither memory card slot.
+
+Why (issue #102): with a MemCard PRO GC the box reads the cards straight
+after Indigo sends the game ID, so it can count the previous game's virtual
+card, and for one copy it says nothing useful; the reporter asked for a way
+to hide it. Whether that read also stops the switch is unconfirmed on
+hardware; the GameID send itself is upstream's code at the same point as in
+Swiss.
+
+Validation: host plain and contracts lanes; GX stream tests pin both
+layouts and the focus frame's rows; detail_frame_budget re-baselined (124
+vertices without the inset); the emulator's virtual-cards route checks no
+box with one copy and the box with two (both virtual-cards jobs);
+non-default.ini seeds `Hide Saves on Details=Yes` so the key survives saves.
+
 ## 2026-10-06 — GC Loader starts Indigo at power-on as boot.dol
 
 Stock Swiss auto-starts `*/boot.dol` from the device it booted from (util.c

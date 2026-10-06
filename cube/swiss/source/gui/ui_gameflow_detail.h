@@ -36,7 +36,9 @@ typedef enum {
 	UI_GAMEFLOW_DETAIL_CAN_CLEAN_BOOT = 1u << 9,
 	UI_GAMEFLOW_DETAIL_CLEAN_BOOT_DEFAULT = 1u << 10,
 	UI_GAMEFLOW_DETAIL_AUDIO_STREAMING = 1u << 11,
-	UI_GAMEFLOW_DETAIL_HAS_DISC_TWO = 1u << 12
+	UI_GAMEFLOW_DETAIL_HAS_DISC_TWO = 1u << 12,
+	/* Set by Build: the SAVES inset shows, for two or more save copies. */
+	UI_GAMEFLOW_DETAIL_HAS_SAVES = 1u << 13
 } uiGameflowDetailFlags_t;
 
 typedef struct {
@@ -86,7 +88,8 @@ typedef struct {
 	char lastPlayedText[64];
 	char saveStatusText[48];
 	uiSavesGameStats_t saveStats;
-	/* Read-only save copies in the checked slots and configured Save Folder. */
+	/* Read-only save copies in the checked slots and configured Save Folder,
+	 * formatted only when UI_GAMEFLOW_DETAIL_HAS_SAVES is set. */
 	char savesSummary[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
 	char savesUpdated[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
 	char facts[UI_GAMEFLOW_DETAIL_FACTS_CAPACITY];
@@ -124,8 +127,9 @@ typedef enum {
 } uiGameflowDetailInput_t;
 
 /* The rows up and down move between, counted from the bottom as they are
- * drawn: Launch, Cheats above it, Settings above that. The SAVES inset is
- * read-only and takes no focus. A zeroed event rests on Launch. */
+ * drawn: Launch, Cheats above it, Settings above that. The SAVES inset,
+ * when shown, is read-only and takes no focus. A zeroed event rests on
+ * Launch. */
 typedef enum {
 	UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH = 0,
 	UI_GAMEFLOW_DETAIL_FOCUS_CHEATS,
