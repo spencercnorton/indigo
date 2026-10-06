@@ -561,7 +561,7 @@ class SettingsFileTest(unittest.TestCase):
         self.assertEqual(named["Down Face"], "Apps")
         # Each side's choices start at its default and go round the faces,
         # None among them (UIHome_SideFace): zeroed settings are that cube.
-        faces = ["None", "Source", "Settings", "System", "Apps"]
+        faces = ["None", "Source", "Settings", "System", "Apps", "Memory Cards", "Emulators"]
         for side, default in (("up", 1), ("left", 2), ("right", 3), ("down", 4)):
             self.assertEqual(VALUES[f"{side}FaceStr"],
                              [faces[(default + i) % len(faces)] for i in range(len(faces))], side)

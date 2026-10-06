@@ -12,6 +12,11 @@ typedef enum {
 	/* Only while the source has apps (hasApps below): the ring is then five
 	 * faces, Apps one turn left of Library (below it in Classic). */
 	UI_HOME_FACE_APPS,
+	/* On a side only when Settings puts them there: Memory Cards, also a
+	 * row on System, and Emulators, while the source has a program in
+	 * /emulators (hasEmulators below). */
+	UI_HOME_FACE_SAVES,
+	UI_HOME_FACE_EMULATORS,
 	UI_HOME_FACE_COUNT
 } uiHomeFace_t;
 
@@ -37,8 +42,11 @@ typedef enum {
 	UI_HOME_ICON_INFO,
 	UI_HOME_ICON_POWER,
 	UI_HOME_ICON_CHIP,
-	/* Apps has one picture; its other choices draw nothing. */
+	/* Apps has one picture; its other choices draw nothing. So have Memory
+	 * Cards and Emulators. */
 	UI_HOME_ICON_APPS,
+	UI_HOME_ICON_SAVES = UI_HOME_FACE_SAVES * UI_HOME_ICON_CHOICES,
+	UI_HOME_ICON_EMULATORS = UI_HOME_FACE_EMULATORS * UI_HOME_ICON_CHOICES,
 	UI_HOME_ICON_COUNT
 } uiHomeIcon_t;
 
@@ -73,7 +81,8 @@ typedef enum {
 	UI_HOME_EFFECT_RESTART,
 	UI_HOME_EFFECT_OPEN_RECENT,
 	UI_HOME_EFFECT_OPEN_SAVES,
-	UI_HOME_EFFECT_OPEN_APPS
+	UI_HOME_EFFECT_OPEN_APPS,
+	UI_HOME_EFFECT_OPEN_EMULATORS
 } uiHomeEffect_t;
 
 /* How the faces sit on the cube (Setup > Console > Cube). Infinite turns
@@ -112,6 +121,8 @@ typedef struct {
 	 * first side; Library and anything that isn't a face mean none. */
 	bool customSides;
 	uint8_t sides[UI_HOME_SIDE_COUNT];
+	/* The source's /emulators folder holds a program. */
+	bool hasEmulators;
 } uiHomeCapabilities_t;
 
 typedef enum {

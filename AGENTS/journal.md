@@ -39,6 +39,23 @@ with that setup's own files merged in.
 
 Documentation and package text only; the console source tree matches v2.3.0.
 
+## 2026-10-06 — Memory Cards and Emulators as faces of the cube
+
+Two faces after Apps, on no side until Settings gives them one: Memory
+Cards opens the screen System's row opens (the cube's handover is generic,
+from the face in front), and Emulators is the Apps screen over `/emulators`
+(apps.c keeps one screen per folder: its heading, empty-folder line and
+remembered program). Emulators leaves the ring while the source has no
+program there, as Apps does; Home reads `/emulators` only while it is on a
+side. Each new face has one icon, a memory card and a game pad, at
+`face * UI_HOME_ICON_CHOICES`; the choices between are padding that draws
+nothing.
+
+Seven faces moved every per-face literal in the GX harnesses (the stroke
+stream, frame budget, render pose) and the motif state's size bound
+(512 to 640 bytes, two maps and an opacity per face). The Dolphin route
+takes three RIGHTs from Apps to None now, past the two new values.
+
 ## 2026-10-06 — Choose the menu on each side of the cube
 
 Setup › Console gains Up Face, Left Face, Right Face and Down Face in place

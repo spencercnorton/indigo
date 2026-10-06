@@ -14,6 +14,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   Infinite ring goes up, left, right and down after Library. They replace
   Apps Face: Down Face None turns Apps off, and an older Apps Face › Off
   carries over. Y on Home opens Settings wherever its face is.
+- Two more menus for the cube's sides: **Memory Cards**, the screen System's
+  row opens, and **Emulators**, an Apps screen for the programs in
+  `/emulators`. Neither is on a side until you give it one.
 
 - Press **Y Folder** on Memory Cards' small folder or card-image cubes to
   see the full device-prefixed path, direct contents and up to two save names.

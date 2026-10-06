@@ -287,9 +287,13 @@ static void classic_fixed_sides(void)
 		UICubeMotif_Build(&home,&map); proper_basis(&map);
 		CHECK(map.faceCount==ring);
 		for(int glyph=0;glyph<UI_HOME_FACE_COUNT;++glyph) {
+			/* Memory Cards and Emulators are on no side by default:
+			 * behind the authored front, never drawn. */
+			static const float behind[3][3]={{-1,0,0},{0,1,0},{0,0,-1}};
 			CHECK(map.shown[glyph]==(glyph<ring));
 			for(int r=0;r<3;++r) for(int c=0;c<3;++c)
-				CHECK(map.face[glyph][r][c]==(float)sides[glyph][c][r]);
+				CHECK(map.face[glyph][r][c]==(glyph<=UI_HOME_FACE_APPS ?
+					(float)sides[glyph][c][r]:behind[r][c]));
 		}
 	}
 	/* Every Classic turn the reducer makes, from Library and back, with
@@ -338,10 +342,12 @@ static void classic_fixed_sides(void)
 static void custom_sides(void)
 {
 	enum { N=UI_HOME_FACE_LIBRARY, SRC=UI_HOME_FACE_SOURCE, SET=UI_HOME_FACE_SETTINGS,
-		SYS=UI_HOME_FACE_SYSTEM, APP=UI_HOME_FACE_APPS };
+		SYS=UI_HOME_FACE_SYSTEM, APP=UI_HOME_FACE_APPS, MC=UI_HOME_FACE_SAVES,
+		EMU=UI_HOME_FACE_EMULATORS };
 	static const uint8_t layouts[][UI_HOME_SIDE_COUNT]={
 		{SRC,APP,SYS,SET}, {N,SET,SYS,APP}, {N,SET,N,APP}, {N,N,N,SET},
-		{N,N,N,N}, {APP,SRC,SET,SYS}, {SET,SYS,APP,SRC}
+		{N,N,N,N}, {APP,SRC,SET,SYS}, {SET,SYS,APP,SRC}, {MC,APP,EMU,SET},
+		{SRC,MC,SYS,EMU}
 	};
 	/* Today's face on each side, Up, Left, Right and Down. */
 	static const int onSide[UI_HOME_SIDE_COUNT]={SRC,SET,SYS,APP};
@@ -363,6 +369,7 @@ static void custom_sides(void)
 		int ring[UI_HOME_RING_MAX]={N}, place[UI_HOME_FACE_COUNT], side[UI_HOME_FACE_COUNT];
 		int n=1;
 		with.customSides=true;
+		with.hasEmulators=apps;
 		memcpy(with.sides,layouts[l],sizeof(with.sides));
 		if(classic) with.style=UI_HOME_CUBE_CLASSIC;
 		for(int f=0;f<UI_HOME_FACE_COUNT;++f) place[f]=side[f]=-1;
@@ -371,7 +378,7 @@ static void custom_sides(void)
 			int f=layouts[l][s];
 			if(f==N) continue;
 			side[f]=s;
-			if(f==APP && !apps) continue;
+			if((f==APP || f==EMU) && !apps) continue;
 			place[f]=n; ring[n++]=f;
 		}
 		for(size_t o=0u;o<count;++o) for(int front=0;front<n;++front) for(int a=0;a<3;++a) {
@@ -495,7 +502,8 @@ static void mixed_halfway_retarget_and_latest_pending(void)
 	}
 	for(int i=0;i<30;++i) update_without_visible_basis_swap(&state,0.01f,UI_MOTION_FULL);
 	CHECK(same(&state.basis,&wanted) && UICubeMotif_Settled(&state) && !state.changing);
-	CHECK(sizeof(state)<=512u);
+	/* Two maps and an opacity for each of the seven faces, no more. */
+	CHECK(sizeof(state)<=640u);
 	/* Returning to the currently displayed map cancels an obsolete swap. */
 	UICubeMotif_Reset(&state); UIHome_Init(&home,caps);
 	(void)UIHome_Apply(&home,UI_HOME_INPUT_UP,caps);

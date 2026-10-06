@@ -1,4 +1,4 @@
-/* apps.c - Apps (Home > Apps)
+/* apps.c - Apps and Emulators (Home > Apps, Home > Emulators)
 
    The programs in /apps on the source, and in the folders in it, shown the
    way the Library shows games: its layouts, cards, controls and launch
@@ -6,7 +6,8 @@
    has none. ui_apps decides what is an app, card_art makes the posters
    (with ui_png), and Swiss's boot_dol starts the app,
    reading its .cli arguments and offering its .dcp choices as it does from
-   the file list. This file reads the card and runs the screen. */
+   the file list. Emulators is the same screen over /emulators. This file
+   reads the card and runs the screen. */
 
 #include <malloc.h>
 #include <stddef.h>
@@ -32,7 +33,22 @@
 #include "ui_scene.h"
 #include "apps.h"
 
-#define APPS_FOLDER "apps"
+/* A screen of programs: the folder in the source's root it lists, its
+ * heading over the cards (empty: APPS), what it says when the folder has
+ * none, and the program last selected, by path, so it opens where it was
+ * left. */
+typedef struct {
+	const char *folder;
+	const char *heading;
+	const char *empty;
+	char lastProgram[UI_APPS_PATH_LENGTH];
+} appsScreen_t;
+
+static appsScreen_t appsScreen = {"apps", "", "No apps in /apps on this device", ""};
+static appsScreen_t emulatorsScreen = {"emulators", "EMULATORS",
+	"No emulators in /emulators on this device", ""};
+/* The screen showing, or last shown. */
+static appsScreen_t *screen = &appsScreen;
 
 /* The list shown and its device, and each app's program and picture as
  * the device listed them (two a app, the picture's empty without one). */
@@ -40,8 +56,6 @@ static uiApp_t *apps;
 static u32 appCount;
 static DEVICEHANDLER_INTERFACE *appsDevice;
 static file_handle *appsFiles;
-/* The app last selected, by path, so Apps opens where it was left. */
-static char lastProgram[UI_APPS_PATH_LENGTH];
 static u32 snapshotGeneration;
 
 /* A copy of a listed entry, nothing of it open: every device reads a file or
@@ -107,8 +121,9 @@ static bool listFolder(DEVICEHANDLER_INTERFACE *device, file_handle *dir,
 	return true;
 }
 
-/* device's apps folder, found in its root as its own file list finds it. */
-static bool findAppsFolder(DEVICEHANDLER_INTERFACE *device, file_handle *out)
+/* device's folder name, found in its root as its own file list finds it. */
+static bool findAppsFolder(DEVICEHANDLER_INTERFACE *device, const char *name,
+	file_handle *out)
 {
 	file_handle root;
 	appsFolder_t top;
@@ -120,7 +135,7 @@ static bool findAppsFolder(DEVICEHANDLER_INTERFACE *device, file_handle *out)
 		return false;
 	}
 	for(i = 0; i < top.count && !found; ++i) {
-		if(top.entries[i].folder && strcasecmp(top.entries[i].name, APPS_FOLDER) == 0) {
+		if(top.entries[i].folder && strcasecmp(top.entries[i].name, name) == 0) {
 			takeEntry(out, top.entries[i].handle);
 			found = true;
 		}
@@ -129,11 +144,11 @@ static bool findAppsFolder(DEVICEHANDLER_INTERFACE *device, file_handle *out)
 	return found;
 }
 
-/* The apps on device, sorted, at most max of them; NULL for none. Reads
- * /apps, then each folder in it until the list is full. With files, also
- * each app's program and picture entries, two an app. */
-static uiApp_t *scanApps(DEVICEHANDLER_INTERFACE *device, size_t max,
-	u32 *count, file_handle **files)
+/* The apps in device's folder name, sorted, at most max of them; NULL for
+ * none. Reads the folder, then each folder in it until the list is full.
+ * With files, also each app's program and picture entries, two an app. */
+static uiApp_t *scanApps(DEVICEHANDLER_INTERFACE *device, const char *name,
+	size_t max, u32 *count, file_handle **files)
 {
 	file_handle dir;
 	appsFolder_t top;
@@ -147,7 +162,7 @@ static uiApp_t *scanApps(DEVICEHANDLER_INTERFACE *device, size_t max,
 	*count = 0u;
 	if(files != NULL) *files = NULL;
 	if(device == NULL || device->initial == NULL || device->readDir == NULL ||
-		!findAppsFolder(device, &dir) || !listFolder(device, &dir, &top)) {
+		!findAppsFolder(device, name, &dir) || !listFolder(device, &dir, &top)) {
 		return NULL;
 	}
 	if((list = malloc(max * sizeof(uiApp_t))) == NULL ||
@@ -197,13 +212,24 @@ static uiApp_t *scanApps(DEVICEHANDLER_INTERFACE *device, size_t max,
 	return list;
 }
 
-bool apps_available(DEVICEHANDLER_INTERFACE *device)
+static bool programsAvailable(DEVICEHANDLER_INTERFACE *device,
+	const appsScreen_t *which)
 {
 	u32 count;
-	uiApp_t *one = scanApps(device, 1u, &count, NULL);
+	uiApp_t *one = scanApps(device, which->folder, 1u, &count, NULL);
 
 	free(one);
 	return count > 0u;
+}
+
+bool apps_available(DEVICEHANDLER_INTERFACE *device)
+{
+	return programsAvailable(device, &appsScreen);
+}
+
+bool emulators_available(DEVICEHANDLER_INTERFACE *device)
+{
+	return programsAvailable(device, &emulatorsScreen);
 }
 
 /* Apps' cards for card_art: card i is apps[i], and its picture the file
@@ -248,6 +274,7 @@ static bool buildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 	size_t count, i;
 
 	memset(snapshot, 0, offsetof(uiGameflowRenderSnapshot_t, records));
+	snprintf(snapshot->folder, sizeof(snapshot->folder), "%s", screen->heading);
 	snapshot->selection.generation = ++snapshotGeneration;
 	snapshot->selection.itemCount = appCount;
 	snapshot->selection.selectedIndex = selected;
@@ -372,7 +399,7 @@ static void moveSelection(uiGameflowLayout_t layout, u32 buttons,
 	}
 }
 
-void show_apps(void)
+static void showPrograms(appsScreen_t *which)
 {
 	const u32 waitButtons = BUTTON_A | BUTTON_B | BUTTON_UP | BUTTON_DOWN |
 		BUTTON_LEFT | BUTTON_RIGHT | BUTTON_L | BUTTON_R;
@@ -396,18 +423,19 @@ void show_apps(void)
 	 * a disc or a network share takes a moment for each folder. */
 	UIScene_RequestLibraryLayout(layout);
 	UIScene_Request(UI_SCENE_LIBRARY);
+	screen = which;
 	appsDevice = devices[DEVICE_CUR];
-	apps = scanApps(appsDevice, UI_APPS_MAX, &appCount, &appsFiles);
+	apps = scanApps(appsDevice, which->folder, UI_APPS_MAX, &appCount, &appsFiles);
 	if(apps == NULL) {
 		/* The card changed since Home looked. */
 		uiDrawObj_t *box = DrawPublish(DrawMessageBox(D_INFO,
-			"No apps in /apps on this device"));
+			which->empty));
 		sleep(2);
 		DrawDispose(box);
 		return;
 	}
 	for(i = 0u; i < appCount; ++i) {
-		if(strcmp(apps[i].program, lastProgram) == 0) {
+		if(strcmp(apps[i].program, which->lastProgram) == 0) {
 			selected = i;
 		}
 	}
@@ -481,7 +509,8 @@ void show_apps(void)
 			VIDEO_WaitVSync();
 		}
 	}
-	snprintf(lastProgram, sizeof(lastProgram), "%s", apps[selected].program);
+	snprintf(which->lastProgram, sizeof(which->lastProgram), "%s",
+		apps[selected].program);
 	CardArt_Pause();
 	DrawDispose(panel);
 	CardArt_Close();
@@ -491,4 +520,14 @@ void show_apps(void)
 	apps = NULL;
 	appsFiles = NULL;
 	appCount = 0u;
+}
+
+void show_apps(void)
+{
+	showPrograms(&appsScreen);
+}
+
+void show_emulators(void)
+{
+	showPrograms(&emulatorsScreen);
 }

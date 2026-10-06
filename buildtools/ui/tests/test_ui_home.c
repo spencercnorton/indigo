@@ -195,6 +195,8 @@ static void testLabelsHintsAndRows(void)
 	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_SETTINGS), "SETTINGS");
 	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_SYSTEM), "SYSTEM");
 	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_APPS), "APPS");
+	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_SAVES), "MEMORY CARDS");
+	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_EMULATORS), "EMULATORS");
 	CHECK_TEXT(UIHome_FaceLabel((uiHomeFace_t)-1), "");
 	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_COUNT), "");
 
@@ -211,6 +213,9 @@ static void testLabelsHintsAndRows(void)
 	CHECK_TEXT(UIHome_PrimaryHint(UI_HOME_FACE_SYSTEM, withSource),
 		"A  ENTER");
 	CHECK_TEXT(UIHome_PrimaryHint(UI_HOME_FACE_APPS, withApps(withSource)),
+		"A  OPEN");
+	CHECK_TEXT(UIHome_PrimaryHint(UI_HOME_FACE_SAVES, withSource), "A  OPEN");
+	CHECK_TEXT(UIHome_PrimaryHint(UI_HOME_FACE_EMULATORS, withSource),
 		"A  OPEN");
 	CHECK_TEXT(UIHome_PrimaryHint((uiHomeFace_t)-1, withSource), "");
 
@@ -301,8 +306,8 @@ static void testFaceMappingAndSignedTurns(void)
 	CHECK(UIHome_FaceCount(withApps(caps)) == 5);
 	/* The default cube: each face one turn further from Library, on the
 	 * GameCube's sides. Apps keeps its side while it isn't there. */
-	for(index = 0; index < (int)UI_HOME_FACE_COUNT; ++index) {
-		static const int defaultSide[UI_HOME_FACE_COUNT] = {
+	for(index = 0; index <= (int)UI_HOME_FACE_APPS; ++index) {
+		static const int defaultSide[UI_HOME_FACE_APPS + 1] = {
 			-1, UI_HOME_SIDE_UP, UI_HOME_SIDE_LEFT, UI_HOME_SIDE_RIGHT,
 			UI_HOME_SIDE_DOWN
 		};
@@ -312,6 +317,12 @@ static void testFaceMappingAndSignedTurns(void)
 			(index == (int)UI_HOME_FACE_APPS ? -1 : index));
 		CHECK(UIHome_FaceSide(&right, (uiHomeFace_t)index) ==
 			defaultSide[index]);
+	}
+	/* Memory Cards and Emulators are on no side unless Settings puts them
+	 * on one. */
+	for(index = (int)UI_HOME_FACE_SAVES; index < (int)UI_HOME_FACE_COUNT; ++index) {
+		CHECK(UIHome_RingIndex(&left, (uiHomeFace_t)index) == -1);
+		CHECK(UIHome_FaceSide(&left, (uiHomeFace_t)index) == -1);
 	}
 	CHECK(UIHome_LayoutValid(&right) && UIHome_LayoutValid(&left));
 	CHECK(!UIHome_LayoutValid(NULL));
@@ -1391,7 +1402,7 @@ static void checkOracleTransition(uiHomeState_t before, uiHomeInput_t input,
 	CHECK(actualEffect == expectedEffect);
 	checkSameState(&actual, &expected);
 	CHECK((int)actualEffect >= (int)UI_HOME_EFFECT_NONE);
-	CHECK((int)actualEffect <= (int)UI_HOME_EFFECT_OPEN_APPS);
+	CHECK((int)actualEffect <= (int)UI_HOME_EFFECT_OPEN_EMULATORS);
 	CHECK((int)actual.face < actual.faceCount);
 	CHECK(UIHome_LayoutValid(&actual));
 	CHECK(UIHome_RingFace(&actual, actual.turnOrdinal) == actual.face);
@@ -1608,7 +1619,13 @@ static const uint8_t layoutFixtures[][UI_HOME_SIDE_COUNT] = {
 	{ UI_HOME_FACE_SETTINGS, UI_HOME_FACE_SETTINGS, UI_HOME_FACE_SYSTEM,
 		UI_HOME_FACE_SYSTEM },
 	/* Values that aren't faces are none. */
-	{ 7, 200, UI_HOME_FACE_COUNT, UI_HOME_FACE_SOURCE }
+	{ 9, 200, UI_HOME_FACE_COUNT, UI_HOME_FACE_SOURCE },
+	/* Memory Cards and Emulators on sides of their own: the issue's cube
+	 * but for its file browser, and Source and System kept. */
+	{ UI_HOME_FACE_SAVES, UI_HOME_FACE_APPS, UI_HOME_FACE_EMULATORS,
+		UI_HOME_FACE_SETTINGS },
+	{ UI_HOME_FACE_SOURCE, UI_HOME_FACE_SAVES, UI_HOME_FACE_SYSTEM,
+		UI_HOME_FACE_EMULATORS }
 };
 
 typedef struct {
@@ -1642,8 +1659,10 @@ static oracleLayout_t oracleLayoutOf(const uint8_t wanted[UI_HOME_SIDE_COUNT],
 		}
 		layout.side[face] = side;
 		layout.sides[side] = (uint8_t)face;
-		if(face == (int)UI_HOME_FACE_APPS && !hasApps) {
-			layout.absent = (uint8_t)(1u << UI_HOME_FACE_APPS);
+		/* The fixtures have emulators when they have apps. */
+		if((face == (int)UI_HOME_FACE_APPS ||
+				face == (int)UI_HOME_FACE_EMULATORS) && !hasApps) {
+			layout.absent = (uint8_t)(layout.absent | (1u << face));
 			continue;
 		}
 		layout.ring[layout.count++] = (uiHomeFace_t)face;
@@ -1669,6 +1688,7 @@ static uiHomeCapabilities_t layoutCaps(const uint8_t wanted[UI_HOME_SIDE_COUNT],
 	uiHomeCapabilities_t caps = capabilities(hasSource, true);
 
 	caps.hasApps = hasApps;
+	caps.hasEmulators = hasApps;
 	caps.customSides = true;
 	memcpy(caps.sides, wanted, sizeof(caps.sides));
 	return isClassic ? classic(caps) : caps;
@@ -1691,6 +1711,8 @@ static uiHomeEffect_t oracleFaceActivate(uiHomeFace_t face)
 		case UI_HOME_FACE_LIBRARY: return UI_HOME_EFFECT_OPEN_LIBRARY;
 		case UI_HOME_FACE_SETTINGS: return UI_HOME_EFFECT_OPEN_SETTINGS;
 		case UI_HOME_FACE_APPS: return UI_HOME_EFFECT_OPEN_APPS;
+		case UI_HOME_FACE_SAVES: return UI_HOME_EFFECT_OPEN_SAVES;
+		case UI_HOME_FACE_EMULATORS: return UI_HOME_EFFECT_OPEN_EMULATORS;
 		default: return UI_HOME_EFFECT_NONE;
 	}
 }
@@ -1993,6 +2015,8 @@ static void testLayouts(void)
 	CHECK(oracleLayoutOf(layoutFixtures[6], true).count == 1);
 	CHECK(oracleLayoutOf(layoutFixtures[10], true).count == 3);
 	CHECK(oracleLayoutOf(layoutFixtures[11], true).count == 2);
+	CHECK(oracleLayoutOf(layoutFixtures[12], true).count == 5);
+	CHECK(oracleLayoutOf(layoutFixtures[12], false).count == 3);
 	/* The default sides are the capabilities' default. */
 	{
 		uiHomeState_t custom;

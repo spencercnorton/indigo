@@ -2029,6 +2029,32 @@ static void drawAppsIcon(const cubeRasterTransform_t *raster, int face, GXColor 
 	}
 }
 
+/* Memory Cards: a GameCube memory card, the edge it plugs in by along its
+ * top and its label below. */
+static void drawSavesIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = FACE_ICON_PLANE;
+
+	drawRoundedRect(raster, face, -0.26f, -0.38f, 0.26f, 0.38f, 0.05f, 0.018f,
+		plane, glow);
+	drawFaceBar(raster, face, -0.16f, 0.22f, 0.16f, 0.28f, plane, glow);
+	drawRoundedRect(raster, face, -0.15f, -0.26f, 0.15f, 0.06f, 0.03f, 0.018f,
+		plane, glow);
+}
+
+/* Emulators: a game pad, its cross on the left and two buttons on the right. */
+static void drawEmulatorsIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = FACE_ICON_PLANE;
+
+	drawRoundedRect(raster, face, -0.42f, -0.22f, 0.42f, 0.22f, 0.12f, 0.018f,
+		plane, glow);
+	drawFaceBar(raster, face, -0.31f, -0.03f, -0.11f, 0.03f, plane, glow);
+	drawFaceBar(raster, face, -0.24f, -0.10f, -0.18f, 0.10f, plane, glow);
+	drawFaceCircle(raster, face, 0.14f, -0.05f, 0.045f, 12, plane, glow);
+	drawFaceCircle(raster, face, 0.28f, 0.06f, 0.045f, 12, plane, glow);
+}
+
 /* Every face shows the icon chosen for it in Settings: choices[face] picks
  * one of that face's own four (uiHomeIcon_t face * UI_HOME_ICON_CHOICES +
  * choice). One additive pass without depth writes, every icon in the same
@@ -2114,6 +2140,8 @@ static void drawOneFaceIcon(const cubeRasterTransform_t *raster, int face,
 		case UI_HOME_ICON_POWER: drawPowerIcon(raster, face, glow); break;
 		case UI_HOME_ICON_CHIP: drawChipIcon(raster, face, glow); break;
 		case UI_HOME_ICON_APPS: drawAppsIcon(raster, face, glow); break;
+		case UI_HOME_ICON_SAVES: drawSavesIcon(raster, face, glow); break;
+		case UI_HOME_ICON_EMULATORS: drawEmulatorsIcon(raster, face, glow); break;
 		default: break;
 	}
 }

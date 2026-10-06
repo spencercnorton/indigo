@@ -54,7 +54,10 @@ A change of Cube takes effect as you leave Settings.
 
 Settings › Setup › Console › **Up Face**, **Left Face**, **Right Face** and
 **Down Face** choose the menu above, left of, right of and below Library:
-Source, Settings, System, Apps, or **None** to leave that side empty. A
+Source, Settings, System, Apps, Memory Cards, Emulators, or **None** to
+leave that side empty. Memory Cards opens the same screen as System's
+Memory Cards row; [Emulators](apps.md#emulators) lists the programs in
+`/emulators` as Apps lists `/apps`, and shows while that folder has one. A
 Classic cube turns that way to it; the Infinite ring turns through the
 faces up, left, right and down, after Library. A menu on no side is off the
 cube. Y on Home opens Settings wherever its face is, and while Settings has
@@ -62,9 +65,10 @@ no side the hint along the bottom says so. A menu named for two sides keeps
 the first. With no device to read games from and Source on no side, A on
 Library opens the device list straight away.
 
-For example, Down Face **Settings** and Left Face **Apps** put Settings
-below Library and Apps on its left, as on a GameCube with its Settings
-underneath.
+For example, Down Face **Settings**, Left Face **Apps**, Right Face
+**Emulators** and Up Face **Memory Cards** put Settings below Library, Apps
+on its left, Emulators on its right and Memory Cards above, with Source and
+System off the cube.
 
 When Indigo starts, the cube flies in from the distance, spinning, and comes
 to rest on that face within a second. With UI Motion set to Reduced it fades

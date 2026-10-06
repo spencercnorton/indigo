@@ -5,7 +5,8 @@
 #include "ui_home.h"
 
 static const char *const faceLabels[UI_HOME_FACE_COUNT] = {
-	"LIBRARY", "SOURCE", "SETTINGS", "SYSTEM", "APPS"
+	"LIBRARY", "SOURCE", "SETTINGS", "SYSTEM", "APPS", "MEMORY CARDS",
+	"EMULATORS"
 };
 
 /* Absent faces are bits of a byte. */
@@ -63,7 +64,8 @@ static void resolveLayout(uiHomeCapabilities_t capabilities,
 		}
 		named |= 1u << face;
 		sides[side] = (uint8_t)face;
-		if(face == (int)UI_HOME_FACE_APPS && !capabilities.hasApps) {
+		if((face == (int)UI_HOME_FACE_APPS && !capabilities.hasApps) ||
+			(face == (int)UI_HOME_FACE_EMULATORS && !capabilities.hasEmulators)) {
 			*absent = (uint8_t)(*absent | (1u << face));
 		}
 	}
@@ -447,6 +449,10 @@ static uiHomeEffect_t applyRing(uiHomeState_t *state, uiHomeInput_t input,
 				break;
 			case UI_HOME_FACE_APPS:
 				return UI_HOME_EFFECT_OPEN_APPS;
+			case UI_HOME_FACE_SAVES:
+				return UI_HOME_EFFECT_OPEN_SAVES;
+			case UI_HOME_FACE_EMULATORS:
+				return UI_HOME_EFFECT_OPEN_EMULATORS;
 			default:
 				break;
 		}
@@ -700,6 +706,8 @@ const char *UIHome_PrimaryHint(uiHomeFace_t face,
 			return "A  ENTER";
 		case UI_HOME_FACE_SETTINGS:
 		case UI_HOME_FACE_APPS:
+		case UI_HOME_FACE_SAVES:
+		case UI_HOME_FACE_EMULATORS:
 			return "A  OPEN";
 		default:
 			return "";

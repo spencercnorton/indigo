@@ -120,14 +120,18 @@ face_enum = re.search(
     r"UI_HOME_FACE_SETTINGS\s*,\s*"
     r"UI_HOME_FACE_SYSTEM\s*,\s*"
     r"(?:/\*.*?\*/\s*)?UI_HOME_FACE_APPS\s*,\s*"
+    r"(?:/\*.*?\*/\s*)?UI_HOME_FACE_SAVES\s*,\s*"
+    r"UI_HOME_FACE_EMULATORS\s*,\s*"
     r"UI_HOME_FACE_COUNT\s*\}\s*uiHomeFace_t\s*;",
     HOME_H,
     re.S,
 )
-assert face_enum, "Home faces are not Library/Source/Settings/System, then Apps"
+assert face_enum, ("Home faces are not Library/Source/Settings/System, then Apps, "
+                   "Memory Cards and Emulators")
 assert re.search(
     r"faceLabels\s*\[UI_HOME_FACE_COUNT\]\s*=\s*\{\s*"
-    r'"LIBRARY"\s*,\s*"SOURCE"\s*,\s*"SETTINGS"\s*,\s*"SYSTEM"\s*,\s*"APPS"\s*\}',
+    r'"LIBRARY"\s*,\s*"SOURCE"\s*,\s*"SETTINGS"\s*,\s*"SYSTEM"\s*,\s*"APPS"\s*,\s*'
+    r'"MEMORY CARDS"\s*,\s*"EMULATORS"\s*\}',
     HOME_C,
     re.S,
 ), "visible Home labels no longer match the semantic enum order"
@@ -156,6 +160,8 @@ assert re.search(
 ), "Apps on no side no longer keeps Home from reading /apps"
 assert ".customSides = true," in capabilities, "Home no longer takes its sides from Settings"
 ordered(dispatch, "case UI_HOME_EFFECT_OPEN_APPS:", "show_apps();",
+        "UIScene_Request(UI_SCENE_HOME);")
+ordered(dispatch, "case UI_HOME_EFFECT_OPEN_EMULATORS:", "show_emulators();",
         "UIScene_Request(UI_SCENE_HOME);")
 assert "#define UI_HOME_QUARTER_TURN_RADIANS 1.57079632679f" in HOME_H
 
@@ -592,7 +598,7 @@ for icon, name in (("CONTROLLER", "Controller"), ("BOOKS", "Books"), ("COVERS", 
 		("PLAY", "Play"), ("HUB", "Hub"), ("DISC", "Disc"), ("SD_CARD", "SdCard"),
 		("FOLDER", "Folder"), ("SLIDERS", "Sliders"), ("GEAR", "Gear"), ("TOGGLES", "Toggles"),
 		("DIAL", "Dial"), ("CLOCK", "Clock"), ("INFO", "Info"), ("POWER", "Power"),
-		("CHIP", "Chip")):
+		("CHIP", "Chip"), ("APPS", "Apps"), ("SAVES", "Saves"), ("EMULATORS", "Emulators")):
 	assert f"case UI_HOME_ICON_{icon}:" in dispatch
 	helper = extract_function(INDIGO, f"static void draw{name}Icon(")
 	assert "int face" in helper and "UI_HOME_FACE_" not in helper

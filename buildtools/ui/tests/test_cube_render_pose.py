@@ -86,12 +86,13 @@ int main(void) {
  {
   static const uiHomeInput_t toward[UI_HOME_FACE_COUNT]={UI_HOME_INPUT_NONE,UI_HOME_INPUT_UP,UI_HOME_INPUT_LEFT,UI_HOME_INPUT_RIGHT,UI_HOME_INPUT_DOWN};
   uiHomeCapabilities_t caps={.hasSource=true,.hasApps=true,.style=UI_HOME_CUBE_CLASSIC};
-  for(int face=0;face<UI_HOME_FACE_COUNT;face++) {
+  for(int face=0;face<=UI_HOME_FACE_APPS;face++) {
    uiHomeState_t home;UIHome_Init(&home,caps);
    if(toward[face]!=UI_HOME_INPUT_NONE) UIHome_Apply(&home,toward[face],caps);
    CHECK(home.face==(uiHomeFace_t)face);
    uiSceneFrame_t frame;frameFor(&frame,&home);cubeRasterTransform_t raster;memset(&raster,0,sizeof(raster));setupCubePipeline(&frame,0,false,&raster);
-   for(int f=0;f<UI_HOME_FACE_COUNT;f++) CHECK(fabsf(raster.motifAlpha[f]-.7f)<.0001f);
+   /* Memory Cards and Emulators are on no side by default. */
+   for(int f=0;f<UI_HOME_FACE_COUNT;f++) CHECK(fabsf(raster.motifAlpha[f]-(f<=UI_HOME_FACE_APPS?.7f:0.0f))<.0001f);
    guVector right=transformed(semanticFacePoint(&raster,face,1,0,0));
    guVector up=transformed(semanticFacePoint(&raster,face,0,1,0));
    guVector normal=transformed(semanticFacePoint(&raster,face,0,0,1));

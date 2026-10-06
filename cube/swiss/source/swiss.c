@@ -103,15 +103,19 @@ static u32 homeMenuInputRetrace;
  * therefore starts unmounted and can never inherit a predecessor's state. */
 static uiHomeSourceLifecycle_t homeSourceLifecycle;
 
-/* Whether the source has apps, looked for once per mount and refresh. */
+/* Whether the source has apps, and emulators, looked for once per mount
+ * and refresh. */
 static bool homeAppsKnown;
 static bool homeAppsFound;
+static bool homeEmulatorsKnown;
+static bool homeEmulatorsFound;
 
 static void homeSourceRecord(DEVICEHANDLER_INTERFACE *handler,
 	uiHomeSourceMountState_t state)
 {
 	UIHomeSafety_RecordSource(&homeSourceLifecycle, handler, state);
 	homeAppsKnown = false;
+	homeEmulatorsKnown = false;
 }
 
 static bool homeSourceLifecycleMounted(void)
@@ -186,9 +190,12 @@ static uiHomeCapabilities_t homeCapabilities(void)
 		}
 	};
 	bool appsPlaced = false;
+	bool emulatorsPlaced = false;
 
 	for(int side = 0; side < UI_HOME_SIDE_COUNT; side++) {
 		appsPlaced = appsPlaced || capabilities.sides[side] == UI_HOME_FACE_APPS;
+		emulatorsPlaced = emulatorsPlaced ||
+			capabilities.sides[side] == UI_HOME_FACE_EMULATORS;
 	}
 	/* The Apps face shows while the mounted source has an app, when Setup >
 	 * Console puts it on a side; otherwise the card isn't read for it. */
@@ -198,6 +205,13 @@ static uiHomeCapabilities_t homeCapabilities(void)
 	}
 	capabilities.hasApps = capabilities.hasSource && appsPlaced &&
 		homeAppsFound;
+	/* Emulators the same way, for /emulators. */
+	if(capabilities.hasSource && emulatorsPlaced && !homeEmulatorsKnown) {
+		homeEmulatorsFound = emulators_available(devices[DEVICE_CUR]);
+		homeEmulatorsKnown = true;
+	}
+	capabilities.hasEmulators = capabilities.hasSource && emulatorsPlaced &&
+		homeEmulatorsFound;
 	return capabilities;
 }
 
@@ -951,8 +965,9 @@ static bool gameflowEnterLibraryFromHome(void)
 static void homeRefreshLibrary(void)
 {
 	DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];
-	/* Refresh reads the card again, /apps included. */
+	/* Refresh reads the card again, /apps and /emulators included. */
 	homeAppsKnown = false;
+	homeEmulatorsKnown = false;
 	if(source == NULL) {
 		needsRefresh = 0;
 		return;
@@ -1164,6 +1179,10 @@ static void homeDispatchEffect(uiHomeEffect_t effect)
 			break;
 		case UI_HOME_EFFECT_OPEN_APPS:
 			show_apps();
+			UIScene_Request(UI_SCENE_HOME);
+			break;
+		case UI_HOME_EFFECT_OPEN_EMULATORS:
+			show_emulators();
 			UIScene_Request(UI_SCENE_HOME);
 			break;
 		case UI_HOME_EFFECT_RESTART:

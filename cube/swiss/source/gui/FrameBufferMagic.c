@@ -920,16 +920,18 @@ static void _DrawImage(uiDrawObj_t *evt) {
 }
 
 /* The icon Settings chose for each Home face, a choice of that face's own
- * four, in uiHomeFace_t order. Apps has its one icon, drawn while it shows
- * at all: without apps the cube draws exactly what it did. */
+ * four, in uiHomeFace_t order. Apps, Memory Cards and Emulators have their
+ * one icon each, drawn while the face shows at all: without them the cube
+ * draws exactly what it did. */
 static void _HomeFaceIcons(int icons[UI_HOME_FACE_COUNT])
 {
 	icons[UI_HOME_FACE_LIBRARY] = swissSettings.libraryIcon;
 	icons[UI_HOME_FACE_SOURCE] = swissSettings.sourceIcon;
 	icons[UI_HOME_FACE_SETTINGS] = swissSettings.settingsIcon;
 	icons[UI_HOME_FACE_SYSTEM] = swissSettings.systemIcon;
-	icons[UI_HOME_FACE_APPS] =
-		UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_APPS] > 0.0f ? 0 : -1;
+	for(int face = UI_HOME_FACE_APPS; face < UI_HOME_FACE_COUNT; face++) {
+		icons[face] = UIScene_Frame()->homeMotifAlpha[face] > 0.0f ? 0 : -1;
+	}
 }
 
 static void _DrawBackground(uiDrawObj_t *evt)
@@ -4511,9 +4513,8 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		bool apps = (data->snapshot.records[0].flags &
 			UI_GAMEFLOW_CARD_APP) != 0u;
 		/* Inside a Library Folders folder the heading names it. */
-		const char *heading = apps ? "APPS" :
-			data->snapshot.folder[0] ? data->snapshot.folder :
-			"GAME LIBRARY";
+		const char *heading = data->snapshot.folder[0] ?
+			data->snapshot.folder : apps ? "APPS" : "GAME LIBRARY";
 
 		if(layout == UI_GAMEFLOW_LAYOUT_VERTICAL) {
 			drawStringMedium(262, 177, heading, 0.42f, ALIGN_LEFT,

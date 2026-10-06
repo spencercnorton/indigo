@@ -407,7 +407,8 @@ static void testClassicCube(void)
 		for(int frame = 0; frame < 60; ++frame) {
 			tick(0.02f, UI_MOTION_FULL);
 			for(int face = 0; face < UI_HOME_FACE_COUNT; ++face)
-				near(UIScene_Frame()->homeMotifAlpha[face], 1.0f, 0.0f);
+				near(UIScene_Frame()->homeMotifAlpha[face],
+					face <= UI_HOME_FACE_APPS ? 1.0f : 0.0f, 0.0f);
 			CHECK(memcmp(basis, UIScene_Frame()->homeMotifBasis, sizeof(basis)) == 0);
 		}
 		matrixNear(&UIScene_Frame()->homeOrientation[0][0], expected, 0.0f);
@@ -428,7 +429,8 @@ static void testClassicCube(void)
 		for(int frame = 0; frame < 120; ++frame) {
 			tick(0.02f, UI_MOTION_FULL);
 			for(int face = 0; face < UI_HOME_FACE_COUNT; ++face)
-				near(UIScene_Frame()->homeMotifAlpha[face], 1.0f, 0.0f);
+				near(UIScene_Frame()->homeMotifAlpha[face],
+					face <= UI_HOME_FACE_APPS ? 1.0f : 0.0f, 0.0f);
 			CHECK(memcmp(basis, UIScene_Frame()->homeMotifBasis, sizeof(basis)) == 0);
 		}
 	}

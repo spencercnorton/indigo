@@ -1165,13 +1165,14 @@ class Route:
                    memory=f"{report['memsize']:08X}")
 
     def flip_apps_face(self, settings: np.ndarray, tag: str) -> None:
-        """Down Face, eleven DOWNs into Console (flip_console): RIGHT from
-        Apps is None, the cube's last value wrapping round ("off"), and LEFT
-        from None is Apps again ("on")."""
-        self.flip_console(settings, 11, "apps-face", tag, change="RIGHT" if tag == "off" else "LEFT")
+        """Down Face, eleven DOWNs into Console (flip_console): three RIGHTs
+        from Apps pass Memory Cards and Emulators to None ("off"), and three
+        LEFTs from None come back to Apps ("on")."""
+        self.flip_console(settings, 11, "apps-face", tag,
+                          change="RIGHT" if tag == "off" else "LEFT", presses=3)
 
     def flip_console(self, settings: np.ndarray, downs: int, name: str, tag: str,
-                     change: str = "RIGHT") -> None:
+                     change: str = "RIGHT", presses: int = 1) -> None:
         """From the Settings face: R and R to Setup, DOWN and A into Console,
         downs DOWNs to a row and change (a direction) to change it. B goes back to Setup and
         B again saves and exits (the demo disc can't keep the file; the
@@ -1187,8 +1188,9 @@ class Route:
         for _ in range(downs):
             self.press("DOWN")
             self.pause(0.4)
-        self.press(change)
-        self.pause(1.0)
+        for _ in range(presses):
+            self.press(change)
+            self.pause(1.0)
         self.shot(f"{name}-{tag}", self.emulator.frame())
         self.press("B")
         self.pause(1.0)

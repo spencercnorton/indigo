@@ -47,6 +47,16 @@ Home, set Settings › Setup › Console › **Down Face** to None (or put Apps
 on another side with its own row); the programs stay where they are, and
 the file list still starts them.
 
+## Emulators
+
+Programs in a folder called `emulators` at the root of the source make a
+second screen just like Apps: the same folders, pictures, `.cli` arguments
+and `.dcp` choices, headed EMULATORS. Its face is on no side of the cube
+until you give it one: Settings › Setup › Console › **Up Face**, **Left
+Face**, **Right Face** or **Down Face** › Emulators (see
+[Choose the sides](home.md#choose-the-sides)). Programs can stay in `/apps`
+too; Emulators only reads `/emulators`.
+
 <p align="center">
   <img alt="Home on the Apps face: the glass cube shows four rounded squares, two by two, and APPS is written underneath." src="images/home-apps-face.png" width="480">
 </p>
