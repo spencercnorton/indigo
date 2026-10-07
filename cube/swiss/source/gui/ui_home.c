@@ -6,7 +6,7 @@
 
 static const char *const faceLabels[UI_HOME_FACE_COUNT] = {
 	"LIBRARY", "SOURCE", "SETTINGS", "SYSTEM", "APPS", "MEMORY CARDS",
-	"EMULATORS"
+	"EMULATORS", "FILE BROWSER"
 };
 
 /* Absent faces are bits of a byte. */
@@ -396,6 +396,14 @@ static void enterSurface(uiHomeState_t *state, uiHomeSurface_t surface,
 	state->revision++;
 }
 
+/* File Browser, System's row or its own face: Swiss's list, or with no
+ * source the source picker, as the Library does. */
+static uiHomeEffect_t openFiles(uiHomeCapabilities_t capabilities)
+{
+	return capabilities.hasSource ? UI_HOME_EFFECT_OPEN_FILES :
+		UI_HOME_EFFECT_CHANGE_SOURCE;
+}
+
 static uiHomeEffect_t applyRing(uiHomeState_t *state, uiHomeInput_t input,
 	uiHomeCapabilities_t capabilities)
 {
@@ -453,6 +461,8 @@ static uiHomeEffect_t applyRing(uiHomeState_t *state, uiHomeInput_t input,
 				return UI_HOME_EFFECT_OPEN_SAVES;
 			case UI_HOME_FACE_EMULATORS:
 				return UI_HOME_EFFECT_OPEN_EMULATORS;
+			case UI_HOME_FACE_FILES:
+				return openFiles(capabilities);
 			default:
 				break;
 		}
@@ -570,8 +580,7 @@ static uiHomeEffect_t applySystem(uiHomeState_t *state,
 			return UI_HOME_EFFECT_OPEN_SAVES;
 		}
 		if(state->selection == 2) {
-			return capabilities.hasSource ? UI_HOME_EFFECT_OPEN_FILES :
-				UI_HOME_EFFECT_CHANGE_SOURCE;
+			return openFiles(capabilities);
 		}
 		if(state->selection == 3) {
 			/* Cancellation is always the initially selected confirmation. */
@@ -704,6 +713,7 @@ const char *UIHome_PrimaryHint(uiHomeFace_t face,
 {
 	switch(face) {
 		case UI_HOME_FACE_LIBRARY:
+		case UI_HOME_FACE_FILES:
 			return capabilities.hasSource ? "A  OPEN" : "A  SELECT SOURCE";
 		case UI_HOME_FACE_SOURCE:
 		case UI_HOME_FACE_SYSTEM:

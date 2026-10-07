@@ -287,7 +287,7 @@ static void classic_fixed_sides(void)
 		UICubeMotif_Build(&home,&map); proper_basis(&map);
 		CHECK(map.faceCount==ring);
 		for(int glyph=0;glyph<UI_HOME_FACE_COUNT;++glyph) {
-			/* Memory Cards and Emulators are on no side by default:
+			/* Memory Cards, Emulators and File Browser are on no side by default:
 			 * behind the authored front, never drawn. */
 			static const float behind[3][3]={{-1,0,0},{0,1,0},{0,0,-1}};
 			CHECK(map.shown[glyph]==(glyph<ring));
@@ -343,11 +343,14 @@ static void custom_sides(void)
 {
 	enum { N=UI_HOME_FACE_LIBRARY, SRC=UI_HOME_FACE_SOURCE, SET=UI_HOME_FACE_SETTINGS,
 		SYS=UI_HOME_FACE_SYSTEM, APP=UI_HOME_FACE_APPS, MC=UI_HOME_FACE_SAVES,
-		EMU=UI_HOME_FACE_EMULATORS };
+		EMU=UI_HOME_FACE_EMULATORS, FB=UI_HOME_FACE_FILES };
 	static const uint8_t layouts[][UI_HOME_SIDE_COUNT]={
 		{SRC,APP,SYS,SET}, {N,SET,SYS,APP}, {N,SET,N,APP}, {N,N,N,SET},
 		{N,N,N,N}, {APP,SRC,SET,SYS}, {SET,SYS,APP,SRC}, {MC,APP,EMU,SET},
-		{SRC,MC,SYS,EMU}
+		{SRC,MC,SYS,EMU},
+		/* File Browser on each side in turn, and with every other new face. */
+		{FB,SET,SYS,APP}, {SRC,FB,SYS,APP}, {SRC,SET,FB,APP}, {SRC,SET,SYS,FB},
+		{FB,MC,EMU,APP}
 	};
 	/* Today's face on each side, Up, Left, Right and Down. */
 	static const int onSide[UI_HOME_SIDE_COUNT]={SRC,SET,SYS,APP};
@@ -502,7 +505,7 @@ static void mixed_halfway_retarget_and_latest_pending(void)
 	}
 	for(int i=0;i<30;++i) update_without_visible_basis_swap(&state,0.01f,UI_MOTION_FULL);
 	CHECK(same(&state.basis,&wanted) && UICubeMotif_Settled(&state) && !state.changing);
-	/* Two maps and an opacity for each of the seven faces, no more. */
+	/* Two maps and an opacity for each of the eight faces, no more. */
 	CHECK(sizeof(state)<=640u);
 	/* Returning to the currently displayed map cancels an obsolete swap. */
 	UICubeMotif_Reset(&state); UIHome_Init(&home,caps);

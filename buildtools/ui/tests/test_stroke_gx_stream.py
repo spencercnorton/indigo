@@ -180,7 +180,7 @@ static void test_rail_joins(void) {
         "opposed join accepted");
 }
 /* The default Source, Settings and System icons, with None on Library. */
-static const int quadIcons[UI_HOME_FACE_COUNT]={-1,0,0,0,-1,-1,-1};
+static const int quadIcons[UI_HOME_FACE_COUNT]={-1,0,0,0,-1,-1,-1,-1};
 static void test_motifs(void) {
     cubeRasterTransform_t r;
     const Mtx semanticFaces[4]={
@@ -286,7 +286,7 @@ static int brighter(const u8 *before,int n) {
 }
 static void drawController(const cubeRasterTransform_t *r,float seconds,bool animated,
     const indigoPadFrame_t *pad) {
-    static const int icons[UI_HOME_FACE_COUNT]={0,-1,-1,-1,-1,-1,-1};
+    static const int icons[UI_HOME_FACE_COUNT]={0,-1,-1,-1,-1,-1,-1,-1};
     drawFaceIcons(seconds,animated,NULL,pad,icons,r);
 }
 static void test_controller(void) {
@@ -421,16 +421,18 @@ static void test_icons_on_their_faces(void) {
         [UI_HOME_ICON_GEAR]=2,[UI_HOME_ICON_TOGGLES]=2+2*2,[UI_HOME_ICON_DIAL]=1+2+7*2,
         [UI_HOME_ICON_CLOCK]=1,[UI_HOME_ICON_INFO]=1+2+2,[UI_HOME_ICON_POWER]=4+2,
         [UI_HOME_ICON_CHIP]=1+2+2+12*2,[UI_HOME_ICON_APPS]=4,
-        [UI_HOME_ICON_SAVES]=1+2+1,[UI_HOME_ICON_EMULATORS]=1+2*2+2*2};
+        [UI_HOME_ICON_SAVES]=1+2+1,[UI_HOME_ICON_EMULATORS]=1+2*2+2*2,
+        [UI_HOME_ICON_FILES]=1+2};
     static const int quadBudget[UI_HOME_ICON_COUNT]={
         [UI_HOME_ICON_BOOKS]=260,[UI_HOME_ICON_HUB]=180,[UI_HOME_ICON_SLIDERS]=120,[UI_HOME_ICON_CLOCK]=220};
-    /* Apps', Memory Cards' and Emulators' own icons are drawn alone, on
-     * the front. */
+    /* Apps', Memory Cards', Emulators' and File Browser's own icons are
+     * drawn alone, on the front. */
     const Mtx semanticFaces[UI_HOME_FACE_COUNT]={
         {{1,0,0,0},{0,1,0,0},{0,0,1,0}},
         {{0,0,1,0},{0,1,0,0},{-1,0,0,0}},
         {{-1,0,0,0},{0,1,0,0},{0,0,-1,0}},
         {{0,0,-1,0},{0,1,0,0},{1,0,0,0}},
+        {{1,0,0,0},{0,1,0,0},{0,0,1,0}},
         {{1,0,0,0},{0,1,0,0},{0,0,1,0}},
         {{1,0,0,0},{0,1,0,0},{0,0,1,0}},
         {{1,0,0,0},{0,1,0,0},{0,0,1,0}}
@@ -444,8 +446,9 @@ static void test_icons_on_their_faces(void) {
     r.scaleX=r.scaleY=625.221f;
     for(int face=0;face<UI_HOME_FACE_COUNT;face++) for(int choice=0;choice<UI_HOME_ICON_CHOICES;choice++) {
         int icon=face*UI_HOME_ICON_CHOICES+choice;
-        int choices[UI_HOME_FACE_COUNT]={-1,-1,-1,-1,-1,-1,-1};
-        /* Apps, Memory Cards and Emulators have one icon each. */
+        int choices[UI_HOME_FACE_COUNT]={-1,-1,-1,-1,-1,-1,-1,-1};
+        /* Apps, Memory Cards, Emulators and File Browser have one icon
+         * each. */
         if(icon>=UI_HOME_ICON_COUNT || primitives[icon]==0) continue;
         float nx=semanticFaces[face][0][2],nz=semanticFaces[face][2][2];
         bool shown=false;
@@ -483,7 +486,7 @@ static void test_icons_on_their_faces(void) {
         CHECK(shown,"no angle showed the icon");
     }
     /* A choice outside a face's four draws nothing. */
-    const int none[UI_HOME_FACE_COUNT]={UI_HOME_ICON_CHOICES,-1,1000,4,1,2,3};
+    const int none[UI_HOME_FACE_COUNT]={UI_HOME_ICON_CHOICES,-1,1000,4,1,2,3,1};
     guMtxIdentity(r.model); r.model[2][3]=-5.4f;
     reset(false); drawFaceIcons(1.0f,true,&clock,&pad,none,&r);
     CHECK(count==0 && begins==0 && matrixLoads==2,"an out-of-range choice drew");
@@ -627,6 +630,7 @@ static const Mtx homeFaces[UI_HOME_FACE_COUNT]={
     {{0,0,-1,0},{0,1,0,0},{1,0,0,0}},
     {{1,0,0,0},{0,1,0,0},{0,0,1,0}},
     {{1,0,0,0},{0,1,0,0},{0,0,1,0}},
+    {{1,0,0,0},{0,1,0,0},{0,0,1,0}},
     {{1,0,0,0},{0,1,0,0},{0,0,1,0}}
 };
 static void turnTo(cubeRasterTransform_t *r,float degrees,float scale) {
@@ -641,7 +645,7 @@ static void turnTo(cubeRasterTransform_t *r,float degrees,float scale) {
  * close to the glass. Read at each Books quad's core, whose half-pixel inset
  * cancels across its corners. */
 static void test_lift(void) {
-    const int books[UI_HOME_FACE_COUNT]={1,-1,-1,-1,-1,-1,-1};
+    const int books[UI_HOME_FACE_COUNT]={1,-1,-1,-1,-1,-1,-1,-1};
     uiClockFrame_t clock={true,0,1,1,0,0.70710678f,0.70710678f};
     cubeRasterTransform_t r;
     memcpy(r.semanticFaces,homeFaces,sizeof(homeFaces)); lightAll(&r);
@@ -689,8 +693,8 @@ static void streamSpread(const cubeRasterTransform_t *r,float *x,float *y,int *p
  * keeps its glass plain (strength 0). */
 static void test_shadows(void) {
     /* Books on Library, square on; the faces either side are edge-on. */
-    const int choices[UI_HOME_FACE_COUNT]={1,0,0,0,-1,-1,-1};
-    const int books[UI_HOME_FACE_COUNT]={1,-1,-1,-1,-1,-1,-1};
+    const int choices[UI_HOME_FACE_COUNT]={1,0,0,0,-1,-1,-1,-1};
+    const int books[UI_HOME_FACE_COUNT]={1,-1,-1,-1,-1,-1,-1,-1};
     uiClockFrame_t clock={true,0,1,1,0,0.70710678f,0.70710678f};
     indigoPadFrame_t pad={true,0,0,0,0,0u};
     cubeRasterTransform_t r;
@@ -760,7 +764,7 @@ static void test_hidden_controller_reads_the_pad(void) {
     };
     uiClockFrame_t clock={true,0,1,1,0,0.70710678f,0.70710678f};
     indigoPadFrame_t held={true,0,0,0,0,PAD_BUTTON_A},rest={true,0,0,0,0,0u};
-    int choices[UI_HOME_FACE_COUNT]={0,-1,-1,-1,-1,-1,-1};
+    int choices[UI_HOME_FACE_COUNT]={0,-1,-1,-1,-1,-1,-1,-1};
     memcpy(r.semanticFaces,semanticFaces,sizeof(semanticFaces)); lightAll(&r);
     r.scaleX=r.scaleY=625.221f;
     guMtxIdentity(r.model); r.model[0][0]=r.model[2][2]=-1; r.model[2][3]=-5.4f;

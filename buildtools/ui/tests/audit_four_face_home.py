@@ -122,16 +122,17 @@ face_enum = re.search(
     r"(?:/\*.*?\*/\s*)?UI_HOME_FACE_APPS\s*,\s*"
     r"(?:/\*.*?\*/\s*)?UI_HOME_FACE_SAVES\s*,\s*"
     r"UI_HOME_FACE_EMULATORS\s*,\s*"
+    r"(?:/\*.*?\*/\s*)?UI_HOME_FACE_FILES\s*,\s*"
     r"UI_HOME_FACE_COUNT\s*\}\s*uiHomeFace_t\s*;",
     HOME_H,
     re.S,
 )
 assert face_enum, ("Home faces are not Library/Source/Settings/System, then Apps, "
-                   "Memory Cards and Emulators")
+                   "Memory Cards, Emulators and File Browser")
 assert re.search(
     r"faceLabels\s*\[UI_HOME_FACE_COUNT\]\s*=\s*\{\s*"
     r'"LIBRARY"\s*,\s*"SOURCE"\s*,\s*"SETTINGS"\s*,\s*"SYSTEM"\s*,\s*"APPS"\s*,\s*'
-    r'"MEMORY CARDS"\s*,\s*"EMULATORS"\s*\}',
+    r'"MEMORY CARDS"\s*,\s*"EMULATORS"\s*,\s*"FILE BROWSER"\s*\}',
     HOME_C,
     re.S,
 ), "visible Home labels no longer match the semantic enum order"
@@ -288,11 +289,18 @@ ordered(
     "state->selection == 1",
     "return UI_HOME_EFFECT_OPEN_SAVES;",
     "state->selection == 2",
-    "UI_HOME_EFFECT_OPEN_FILES",
+    "return openFiles(capabilities);",
     "state->selection == 3",
     "enterSurface(state, UI_HOME_SURFACE_RESTART_CONFIRM, 0);",
 )
+# The File Browser face opens it the same way, through the same helper:
+# Swiss's list with a source, the source picker without one.
+ordered(apply_ring, "case UI_HOME_FACE_FILES:", "return openFiles(capabilities);")
+open_files_helper = extract_function(HOME_C, "static uiHomeEffect_t openFiles(")
+assert re.search(r"return capabilities\.hasSource \? UI_HOME_EFFECT_OPEN_FILES :\s*"
+                 r"UI_HOME_EFFECT_CHANGE_SOURCE;", open_files_helper)
 assert HOME_C.count("UI_HOME_EFFECT_OPEN_FILES") == 1
+assert HOME_C.count("openFiles(capabilities)") == 2
 ordered(dispatch, "case UI_HOME_EFFECT_OPEN_SAVES:", "show_saves();")
 # File Browser lists the source's root in Swiss's own list: the flag that
 # keeps the Library away is set only there and dropped by Home.
@@ -301,6 +309,9 @@ open_files = open_files[: open_files.index("break;")]
 ordered(open_files, "homeFileBrowser = true;", "devices[DEVICE_CUR]->initial",
     "curMenuLocation = ON_FILLIST;")
 assert SWISS.count("homeFileBrowser = true;") == 1
+# B from Swiss's list comes back to the face that opened it, System's rows
+# or File Browser's own face: opening it leaves Home's state alone.
+assert "homeState" not in open_files
 assert "homeFileBrowser = false;" in home_input
 assert "swissSettings.enableFileManagement =" not in SWISS
 assert SWISS.count("show_saves();") == 1
@@ -615,7 +626,8 @@ for icon, name in (("CONTROLLER", "Controller"), ("BOOKS", "Books"), ("COVERS", 
 		("PLAY", "Play"), ("HUB", "Hub"), ("DISC", "Disc"), ("SD_CARD", "SdCard"),
 		("FOLDER", "Folder"), ("SLIDERS", "Sliders"), ("GEAR", "Gear"), ("TOGGLES", "Toggles"),
 		("DIAL", "Dial"), ("CLOCK", "Clock"), ("INFO", "Info"), ("POWER", "Power"),
-		("CHIP", "Chip"), ("APPS", "Apps"), ("SAVES", "Saves"), ("EMULATORS", "Emulators")):
+		("CHIP", "Chip"), ("APPS", "Apps"), ("SAVES", "Saves"), ("EMULATORS", "Emulators"),
+		("FILES", "Folder")):
 	assert f"case UI_HOME_ICON_{icon}:" in dispatch
 	helper = extract_function(INDIGO, f"static void draw{name}Icon(")
 	assert "int face" in helper and "UI_HOME_FACE_" not in helper

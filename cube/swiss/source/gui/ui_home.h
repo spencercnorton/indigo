@@ -17,6 +17,9 @@ typedef enum {
 	 * /emulators (hasEmulators below). */
 	UI_HOME_FACE_SAVES,
 	UI_HOME_FACE_EMULATORS,
+	/* File Browser, also a row on System, the same way: Swiss's own file
+	 * list at the source's root. */
+	UI_HOME_FACE_FILES,
 	UI_HOME_FACE_COUNT
 } uiHomeFace_t;
 
@@ -43,10 +46,11 @@ typedef enum {
 	UI_HOME_ICON_POWER,
 	UI_HOME_ICON_CHIP,
 	/* Apps has one picture; its other choices draw nothing. So have Memory
-	 * Cards and Emulators. */
+	 * Cards, Emulators and File Browser (Source's folder). */
 	UI_HOME_ICON_APPS,
 	UI_HOME_ICON_SAVES = UI_HOME_FACE_SAVES * UI_HOME_ICON_CHOICES,
 	UI_HOME_ICON_EMULATORS = UI_HOME_FACE_EMULATORS * UI_HOME_ICON_CHOICES,
+	UI_HOME_ICON_FILES = UI_HOME_FACE_FILES * UI_HOME_ICON_CHOICES,
 	UI_HOME_ICON_COUNT
 } uiHomeIcon_t;
 

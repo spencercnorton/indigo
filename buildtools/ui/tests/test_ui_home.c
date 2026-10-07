@@ -197,6 +197,7 @@ static void testLabelsHintsAndRows(void)
 	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_APPS), "APPS");
 	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_SAVES), "MEMORY CARDS");
 	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_EMULATORS), "EMULATORS");
+	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_FILES), "FILE BROWSER");
 	CHECK_TEXT(UIHome_FaceLabel((uiHomeFace_t)-1), "");
 	CHECK_TEXT(UIHome_FaceLabel(UI_HOME_FACE_COUNT), "");
 
@@ -217,6 +218,10 @@ static void testLabelsHintsAndRows(void)
 	CHECK_TEXT(UIHome_PrimaryHint(UI_HOME_FACE_SAVES, withSource), "A  OPEN");
 	CHECK_TEXT(UIHome_PrimaryHint(UI_HOME_FACE_EMULATORS, withSource),
 		"A  OPEN");
+	/* File Browser asks for a source as Library does. */
+	CHECK_TEXT(UIHome_PrimaryHint(UI_HOME_FACE_FILES, withSource), "A  OPEN");
+	CHECK_TEXT(UIHome_PrimaryHint(UI_HOME_FACE_FILES, withoutSource),
+		"A  SELECT SOURCE");
 	CHECK_TEXT(UIHome_PrimaryHint((uiHomeFace_t)-1, withSource), "");
 
 	CHECK_TEXT(UIHome_SurfaceTitle(UI_HOME_SURFACE_RING), "HOME");
@@ -321,8 +326,8 @@ static void testFaceMappingAndSignedTurns(void)
 		CHECK(UIHome_FaceSide(&right, (uiHomeFace_t)index) ==
 			defaultSide[index]);
 	}
-	/* Memory Cards and Emulators are on no side unless Settings puts them
-	 * on one. */
+	/* Memory Cards, Emulators and File Browser are on no side unless
+	 * Settings puts them on one. */
 	for(index = (int)UI_HOME_FACE_SAVES; index < (int)UI_HOME_FACE_COUNT; ++index) {
 		CHECK(UIHome_RingIndex(&left, (uiHomeFace_t)index) == -1);
 		CHECK(UIHome_FaceSide(&left, (uiHomeFace_t)index) == -1);
@@ -622,6 +627,40 @@ static void testSourceSurface(void)
 		UI_HOME_EFFECT_CHANGE_SOURCE);
 	checkState(&state, UI_HOME_FACE_SOURCE, UI_HOME_SURFACE_SOURCE, 0,
 		1, 41u);
+}
+
+/* File Browser up, as issue #107 asks: Up from Library in Classic, a turn
+ * on in Infinite. A opens Swiss's list, or with no source the picker, as
+ * System's row does, and keeps the face: Swiss's list hands back to it. */
+static void testFileBrowserFace(void)
+{
+	for(int isClassic = 0; isClassic < 2; ++isClassic) {
+		for(int hasSource = 0; hasSource < 2; ++hasSource) {
+			uiHomeCapabilities_t caps = capabilities(hasSource != 0, false);
+			uiHomeState_t state;
+			uiHomeState_t before;
+
+			caps.customSides = true;
+			caps.sides[UI_HOME_SIDE_UP] = UI_HOME_FACE_FILES;
+			caps.sides[UI_HOME_SIDE_LEFT] = UI_HOME_FACE_SETTINGS;
+			caps.sides[UI_HOME_SIDE_RIGHT] = UI_HOME_FACE_SYSTEM;
+			caps.sides[UI_HOME_SIDE_DOWN] = UI_HOME_FACE_APPS;
+			if(isClassic) caps = classic(caps);
+			UIHome_Init(&state, caps);
+			CHECK(state.face == UI_HOME_FACE_LIBRARY);
+			(void)UIHome_Apply(&state, isClassic ? UI_HOME_INPUT_UP :
+				UI_HOME_INPUT_RIGHT, caps);
+			CHECK(state.face == UI_HOME_FACE_FILES);
+			CHECK(UIHome_FaceSide(&state, UI_HOME_FACE_FILES) ==
+				UI_HOME_SIDE_UP);
+			before = state;
+			CHECK(UIHome_Apply(&state, UI_HOME_INPUT_ACTIVATE, caps) ==
+				(hasSource ? UI_HOME_EFFECT_OPEN_FILES :
+					UI_HOME_EFFECT_CHANGE_SOURCE));
+			checkSameState(&state, &before);
+			CHECK(state.surface == UI_HOME_SURFACE_RING);
+		}
+	}
 }
 
 static void testSystemSurface(void)
@@ -1647,7 +1686,18 @@ static const uint8_t layoutFixtures[][UI_HOME_SIDE_COUNT] = {
 	{ UI_HOME_FACE_SAVES, UI_HOME_FACE_APPS, UI_HOME_FACE_EMULATORS,
 		UI_HOME_FACE_SETTINGS },
 	{ UI_HOME_FACE_SOURCE, UI_HOME_FACE_SAVES, UI_HOME_FACE_SYSTEM,
-		UI_HOME_FACE_EMULATORS }
+		UI_HOME_FACE_EMULATORS },
+	/* File Browser on each side in turn: the issue's Up first. */
+	{ UI_HOME_FACE_FILES, UI_HOME_FACE_SETTINGS, UI_HOME_FACE_SYSTEM,
+		UI_HOME_FACE_APPS },
+	{ UI_HOME_FACE_SOURCE, UI_HOME_FACE_FILES, UI_HOME_FACE_SYSTEM,
+		UI_HOME_FACE_APPS },
+	{ UI_HOME_FACE_SOURCE, UI_HOME_FACE_SETTINGS, UI_HOME_FACE_FILES,
+		UI_HOME_FACE_APPS },
+	{ UI_HOME_FACE_SOURCE, UI_HOME_FACE_SETTINGS, UI_HOME_FACE_SYSTEM,
+		UI_HOME_FACE_FILES },
+	/* Alone with Library, a turn either way. */
+	{ NO_FACE, NO_FACE, UI_HOME_FACE_FILES, NO_FACE }
 };
 
 typedef struct {
@@ -1727,7 +1777,8 @@ static const int8_t (*oracleSidePose(int side))[3]
 	return oracleClassicPoses[side < 0 ? UI_HOME_FACE_LIBRARY : onSide[side]];
 }
 
-static uiHomeEffect_t oracleFaceActivate(uiHomeFace_t face)
+static uiHomeEffect_t oracleFaceActivate(uiHomeFace_t face,
+	uiHomeCapabilities_t caps)
 {
 	switch(face) {
 		case UI_HOME_FACE_LIBRARY: return UI_HOME_EFFECT_OPEN_LIBRARY;
@@ -1735,6 +1786,10 @@ static uiHomeEffect_t oracleFaceActivate(uiHomeFace_t face)
 		case UI_HOME_FACE_APPS: return UI_HOME_EFFECT_OPEN_APPS;
 		case UI_HOME_FACE_SAVES: return UI_HOME_EFFECT_OPEN_SAVES;
 		case UI_HOME_FACE_EMULATORS: return UI_HOME_EFFECT_OPEN_EMULATORS;
+		/* As System's row: with no source, the source picker. */
+		case UI_HOME_FACE_FILES:
+			return caps.hasSource ? UI_HOME_EFFECT_OPEN_FILES :
+				UI_HOME_EFFECT_CHANGE_SOURCE;
 		default: return UI_HOME_EFFECT_NONE;
 	}
 }
@@ -1818,7 +1873,7 @@ static void testLayoutRing(const oracleLayout_t *layout, uiHomeCapabilities_t ca
 					expected.revision++;
 				}
 				else {
-					expectedEffect = oracleFaceActivate(face);
+					expectedEffect = oracleFaceActivate(face, caps);
 				}
 			}
 			else if(input == UI_HOME_INPUT_RECENT) {
@@ -1913,7 +1968,7 @@ static void testLayoutClassic(const oracleLayout_t *layout,
 					expected.revision++;
 				}
 				else {
-					expectedEffect = oracleFaceActivate(face);
+					expectedEffect = oracleFaceActivate(face, caps);
 				}
 			}
 			else if(input == UI_HOME_INPUT_RECENT) {
@@ -2039,6 +2094,11 @@ static void testLayouts(void)
 	CHECK(oracleLayoutOf(layoutFixtures[11], true).count == 2);
 	CHECK(oracleLayoutOf(layoutFixtures[12], true).count == 5);
 	CHECK(oracleLayoutOf(layoutFixtures[12], false).count == 3);
+	/* File Browser is there with or without apps. */
+	CHECK(oracleLayoutOf(layoutFixtures[14], false).ring[1] ==
+		UI_HOME_FACE_FILES);
+	CHECK(oracleLayoutOf(layoutFixtures[17], false).count == 5);
+	CHECK(oracleLayoutOf(layoutFixtures[18], false).count == 2);
 	/* The default sides are the capabilities' default. */
 	{
 		uiHomeState_t custom;
@@ -2300,6 +2360,7 @@ int main(void)
 	testClassicEveryFaceAndInput();
 	testClassicWalks();
 	testSourceSurface();
+	testFileBrowserFace();
 	testSystemSurface();
 	testRestartConfirmation();
 	testLongRunOrdinalAndRevision();

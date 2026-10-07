@@ -54,10 +54,12 @@ A change of Cube takes effect as you leave Settings.
 
 Settings › Setup › Console › **Up Face**, **Left Face**, **Right Face** and
 **Down Face** choose the menu above, left of, right of and below Library:
-Source, Settings, System, Apps, Memory Cards, Emulators, or **None** to
-leave that side empty. Memory Cards opens the same screen as System's
-Memory Cards row; [Emulators](apps.md#emulators) lists the programs in
-`/emulators` as Apps lists `/apps`, and shows while that folder has one. A
+Source, Settings, System, Apps, Memory Cards, Emulators, File Browser, or
+**None** to leave that side empty. Memory Cards opens the same screen as
+System's Memory Cards row, and [File Browser](system.md#file-browser) the
+same list as System's File Browser row; B there comes back to its face.
+[Emulators](apps.md#emulators) lists the programs in `/emulators` as Apps
+lists `/apps`, and shows while that folder has one. A
 Classic cube turns that way to it; the Infinite ring turns through the
 faces up, left, right and down, after Library. A menu on no side is off the
 cube. Y on Home opens Settings wherever its face is, and while Settings has
@@ -68,7 +70,9 @@ Library opens the device list straight away.
 For example, Down Face **Settings**, Left Face **Apps**, Right Face
 **Emulators** and Up Face **Memory Cards** put Settings below Library, Apps
 on its left, Emulators on its right and Memory Cards above, with Source and
-System off the cube.
+System off the cube. Up Face **File Browser** puts Swiss's file list in
+place of Source: one press of Up away with a Classic cube, one press of
+Right with Infinite.
 
 When Indigo starts, the cube flies in from the distance, spinning, and comes
 to rest on that face within a second. With UI Motion set to Reduced it fades

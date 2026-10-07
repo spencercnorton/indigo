@@ -580,6 +580,45 @@ static void testCustomSides(void)
 			near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SYSTEM], 1.0f, 0.0f);
 		}
 	}
+
+	/* File Browser in place of each side's face, Classic and Infinite: the
+	 * scene takes every snapshot that turns to it, shows its glyph and not
+	 * the face it replaced, and is back on it after Swiss's list (the
+	 * Library scene) hands Home back. */
+	for(int isClassic = 0; isClassic < 2; ++isClassic)
+	for(int side = 0; side < UI_HOME_SIDE_COUNT; ++side) {
+		static const uiHomeInput_t toward[UI_HOME_SIDE_COUNT] = {
+			UI_HOME_INPUT_UP, UI_HOME_INPUT_LEFT, UI_HOME_INPUT_RIGHT,
+			UI_HOME_INPUT_DOWN
+		};
+		uiHomeCapabilities_t files = isClassic ? classicCaps : caps;
+		int turns = 0;
+
+		files.customSides = true;
+		for(int s = 0; s < UI_HOME_SIDE_COUNT; ++s)
+			files.sides[s] = (uint8_t)(s + 1);
+		files.sides[side] = UI_HOME_FACE_FILES;
+		home = startWith(files, 0.02f, UI_MOTION_FULL);
+		near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_FILES], 1.0f, 0.0f);
+		near(UIScene_Frame()->homeMotifAlpha[side + 1], 0.0f, 0.0f);
+		while(home.face != UI_HOME_FACE_FILES && turns++ < UI_HOME_RING_MAX) {
+			CHECK(UIHome_Apply(&home, isClassic ? toward[side] :
+				UI_HOME_INPUT_RIGHT, files) == UI_HOME_EFFECT_NONE);
+			UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+			CHECK(UIScene_Frame()->homeFace == home.face);
+		}
+		CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_FILES);
+		CHECK(UIScene_Frame()->homeRevision == home.revision);
+		CHECK(UIHome_Apply(&home, UI_HOME_INPUT_ACTIVATE, files) ==
+			UI_HOME_EFFECT_OPEN_FILES);
+		UIScene_Request(UI_SCENE_LIBRARY);
+		advance(4.0f, 0.02f, UI_MOTION_FULL);
+		UIScene_Request(UI_SCENE_HOME); UIScene_RequestHome(&home);
+		settle(0.02f, UI_MOTION_FULL);
+		CHECK(UIScene_Frame()->scene == UI_SCENE_HOME);
+		CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_FILES);
+		near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_FILES], 1.0f, 0.0f);
+	}
 }
 
 /* Exercise visible composition, not just arrival: posters remain transparent

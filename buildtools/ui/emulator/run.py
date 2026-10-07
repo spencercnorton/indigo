@@ -26,7 +26,9 @@ while a crash, a hang, a black screen or a broken control does:
     gains the file, the same blocks), Move is dimmed for it then, Erase
     removes it from Slot A's folder, and B leaves;
   - on the Settings face, Setup > Console > Down Face None takes Apps off the
-    cube (System's next face is Library) and Apps puts it back;
+    cube (System's next face is Library), File Browser puts a face of its
+    own there (A opens Swiss's own file list, B comes back to that face) and
+    Apps puts Apps back;
   - Setup > Console > Cube Classic lays the faces out as the GameCube's menu
     does, Library between them: from Settings, LEFT goes nowhere and RIGHT
     twice is Library, then System; there UP goes nowhere and B is Library;
@@ -1168,11 +1170,12 @@ class Route:
                    memory=f"{report['memsize']:08X}")
 
     def flip_apps_face(self, settings: np.ndarray, tag: str) -> None:
-        """Down Face, eleven DOWNs into Console (flip_console): three RIGHTs
-        from Apps pass Memory Cards and Emulators to None ("off"), and three
-        LEFTs from None come back to Apps ("on")."""
-        self.flip_console(settings, 11, "apps-face", tag,
-                          change="RIGHT" if tag == "off" else "LEFT", presses=3)
+        """Down Face, eleven DOWNs into Console (flip_console): four RIGHTs
+        from Apps pass Memory Cards, Emulators and File Browser to None
+        ("off"), one LEFT from None is File Browser ("files"), and three LEFTs
+        more come back to Apps ("on")."""
+        change, presses = {"off": ("RIGHT", 4), "files": ("LEFT", 1), "on": ("LEFT", 3)}[tag]
+        self.flip_console(settings, 11, "apps-face", tag, change=change, presses=presses)
 
     def flip_console(self, settings: np.ndarray, downs: int, name: str, tag: str,
                      change: str = "RIGHT", presses: int = 1) -> None:
@@ -1234,12 +1237,19 @@ class Route:
 
     def apps_face_off_and_on(self, faces: list[np.ndarray]) -> None:
         """Setup > Console > Down Face: None takes Apps off the cube, so the
-        face after System is Library; Apps puts it back after System."""
+        face after System is Library; File Browser puts its own face there
+        (files_face); Apps puts Apps back after System."""
         library, settings, system, apps = faces[0], faces[2], faces[3], faces[4]
-        for tag, after_system in (("off", library), ("on", apps)):
+        for tag, after_system in (("off", library), ("files", None), ("on", apps)):
             self.flip_apps_face(settings, tag)
             self.check("RIGHT turns to System", self.press_until("RIGHT", like=system)[0] is not None,
                        apps_face=tag)
+            if after_system is None:
+                self.files_face(faces)
+                for back in (system, settings):
+                    self.check("LEFT turns back a face",
+                               self.press_until("LEFT", like=back)[0] is not None, apps_face=tag)
+                continue
             mask, _ = self.press_until("RIGHT", unlike=system)
             self.shot(f"after-system-apps-face-{tag}", self.last_rgb)
             self.check(f"Down Face {'None' if tag == 'off' else 'Apps'}: after System comes "
@@ -1734,6 +1744,27 @@ class Route:
         rows, _ = self.settled_label()
         self.shot("file-browser-back", self.last_rgb)
         self.check("B leaves the file list for System's rows", gone and rows is not None)
+
+    def files_face(self, faces: list[np.ndarray]) -> None:
+        """Down Face File Browser, from System: RIGHT turns to a face named
+        unlike every other, A there opens Swiss's own file list, and B comes
+        back to that face, not System's."""
+        mask, _ = self.press_until("RIGHT", unlike=faces[3])
+        self.shot("after-system-apps-face-files", self.last_rgb)
+        self.check("Down Face File Browser: after System comes a face of its own",
+                   mask is not None and all(overlap(mask, face) < DIFFERENT for face in faces[:5]),
+                   overlaps=[round(overlap(mask, face), 3) for face in faces[:5]]
+                   if mask is not None else None)
+        self.press("A")
+        shown = self.legacy_list(True)
+        self.shot("files-face-list", self.last_rgb)
+        self.check("A on the File Browser face opens Swiss's own file list", shown)
+        self.press("B")
+        gone = self.legacy_list(False)
+        back, _ = self.settled_label(like=mask) if mask is not None else (None, 0.0)
+        self.shot("files-face-back", self.last_rgb)
+        self.check("B from Swiss's list comes back to the File Browser face",
+                   gone and back is not None)
 
     def library_after_file_browser(self, faces: list[np.ndarray]) -> None:
         """From Apps, RIGHT to Library and A: after File Browser, the Library

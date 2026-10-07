@@ -100,6 +100,23 @@ int main(void) {
    CHECK(fabsf(up.x)<.0001f && fabsf(up.y-1)<.0001f && fabsf(up.z)<.0001f);
    CHECK(fabsf(normal.x)<.0001f && fabsf(normal.y)<.0001f && fabsf(normal.z-1)<.0001f);
   }
+  /* File Browser in place of each side's face: the same turn brings its
+     glyph to the front, upright, and the face it replaced draws nowhere. */
+  for(int side=0;side<UI_HOME_SIDE_COUNT;side++) {
+   uiHomeCapabilities_t files=caps;files.customSides=true;
+   for(int s=0;s<UI_HOME_SIDE_COUNT;s++) files.sides[s]=(uint8_t)(s+1);
+   files.sides[side]=UI_HOME_FACE_FILES;
+   uiHomeState_t home;UIHome_Init(&home,files);UIHome_Apply(&home,toward[side+1],files);
+   CHECK(home.face==UI_HOME_FACE_FILES);
+   uiSceneFrame_t frame;frameFor(&frame,&home);cubeRasterTransform_t raster;memset(&raster,0,sizeof(raster));setupCubePipeline(&frame,0,false,&raster);
+   for(int f=0;f<UI_HOME_FACE_COUNT;f++) CHECK(fabsf(raster.motifAlpha[f]-((f<=UI_HOME_FACE_APPS && f!=side+1) || f==UI_HOME_FACE_FILES?.7f:0.0f))<.0001f);
+   guVector right=transformed(semanticFacePoint(&raster,UI_HOME_FACE_FILES,1,0,0));
+   guVector up=transformed(semanticFacePoint(&raster,UI_HOME_FACE_FILES,0,1,0));
+   guVector normal=transformed(semanticFacePoint(&raster,UI_HOME_FACE_FILES,0,0,1));
+   CHECK(fabsf(right.x-1)<.0001f && fabsf(right.y)<.0001f && fabsf(right.z)<.0001f);
+   CHECK(fabsf(up.x)<.0001f && fabsf(up.y-1)<.0001f && fabsf(up.z)<.0001f);
+   CHECK(fabsf(normal.x)<.0001f && fabsf(normal.y)<.0001f && fabsf(normal.z-1)<.0001f);
+  }
  }
  /* An actual half-completed vertical turn moves the front normal vertically,
     while an equivalent horizontal turn moves it sideways. */
@@ -122,7 +139,7 @@ int main(void) {
   float expect[3][3]={{cy,sy*sx,sy*cx},{0,cx,-sx},{-sy,cy*sx,cy*cx}};
   for(int r=0;r<3;r++) for(int c=0;c<3;c++) CHECK(fabsf(loaded[r][c]-expect[r][c])<.0001f);
  }
- puts("cube render pose: 192 settled bindings, five Classic faces, four directional midpoints and the boot fly-in passed"); return 0;
+ puts("cube render pose: 192 settled bindings, five Classic faces, File Browser on each side, four directional midpoints and the boot fly-in passed"); return 0;
 }
 '''
 

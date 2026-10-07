@@ -555,6 +555,9 @@ class SettingsFileTest(unittest.TestCase):
         self.assertEqual([moved[key] for key in sides], ["Source", "Apps", "System", "Settings"])
         self.assertEqual(self.global_file("Up Face=None")["Up Face"], "None")
         self.assertEqual(self.global_file("Up Face=Library")["Up Face"], "Source")
+        # File Browser on any side, written back as read.
+        for key in sides:
+            self.assertEqual(self.global_file(f"{key}=File Browser\r\n")[key], "File Browser", key)
         old = self.global_file("Hide Apps Face=Yes\r\n")
         self.assertEqual(old["Down Face"], "None")
         self.assertNotIn("Hide Apps Face", old)
@@ -563,7 +566,8 @@ class SettingsFileTest(unittest.TestCase):
         self.assertEqual(named["Down Face"], "Apps")
         # Each side's choices start at its default and go round the faces,
         # None among them (UIHome_SideFace): zeroed settings are that cube.
-        faces = ["None", "Source", "Settings", "System", "Apps", "Memory Cards", "Emulators"]
+        faces = ["None", "Source", "Settings", "System", "Apps", "Memory Cards", "Emulators",
+                 "File Browser"]
         for side, default in (("up", 1), ("left", 2), ("right", 3), ("down", 4)):
             self.assertEqual(VALUES[f"{side}FaceStr"],
                              [faces[(default + i) % len(faces)] for i in range(len(faces))], side)

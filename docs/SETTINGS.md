@@ -157,10 +157,10 @@ most use the same key there.
 | `Wave Speed` | `Normal`, `Fast`, `Slow`. How fast the waves drift: `Fast` three times as fast, `Slow` half as fast. | `Normal` | Wave Speed |
 | `Clock` | `Right`, `Left`, `Off`. Where the time sits: the top right or top left corner, or neither. | `Right` | Clock |
 | `Temperature` | `Right`, `Left`, `Off`. Where the temperature dial sits, the same way. Without this line, the dial follows `Clock`. | `Right` | Temperature |
-| `Up Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`. The menu above Library on the Home cube; `None` leaves that side empty. A face named for two sides keeps the first, in the order Up, Left, Right, Down. Apps shows only while `/apps` has a program, and Emulators while `/emulators` has one. | `Source` | Up Face |
-| `Left Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`. The menu left of Library, the same way. | `Settings` | Left Face |
-| `Right Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`. The menu right of Library, the same way. | `System` | Right Face |
-| `Down Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`. The menu below Library, the same way. | `Apps` | Down Face |
+| `Up Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu above Library on the Home cube; `None` leaves that side empty. A face named for two sides keeps the first, in the order Up, Left, Right, Down. Apps shows only while `/apps` has a program, and Emulators while `/emulators` has one. | `Source` | Up Face |
+| `Left Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu left of Library, the same way. | `Settings` | Left Face |
+| `Right Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu right of Library, the same way. | `System` | Right Face |
+| `Down Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu below Library, the same way. | `Apps` | Down Face |
 | `Cube` | `Infinite`, `Classic`. How Home's faces sit on the cube: `Infinite` turns round them in a ring; `Classic` gives each its own side, Library in front, as the GameCube's menu does. Any other value means `Infinite`. | `Infinite` | Cube |
 | `System Boot Mode` | `Default`, `Production`. Any other value means `Default`. | the console's SRAM | System Boot Mode |
 | `System Sound` | `Mono`, `Stereo`. Any other value means `Mono`. | the console's SRAM | System Sound |

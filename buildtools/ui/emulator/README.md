@@ -40,8 +40,9 @@ exception screen as it would on a console. The route:
    DOWN and A on File Browser open Swiss's own file list at the disc's root
    (its device card beside the rows), though the disc has games, and B comes
    back to System's rows. On the
-   Settings face, Setup › Console › Apps
-   Face Off takes Apps off the cube and On puts it back; Setup › Console › Cube
+   Settings face, Setup › Console › Down Face None takes Apps off the cube,
+   File Browser puts its own face after System (A there opens Swiss's file
+   list and B comes back to that face) and Apps puts Apps back; Setup › Console › Cube
    at Classic lays the faces out as the GameCube's menu does, and the route
    walks it (LEFT goes nowhere from Settings, RIGHT twice is Library then
    System, B is Library, UP Source, DOWN Library and DOWN Apps) before setting

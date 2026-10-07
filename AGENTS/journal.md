@@ -1,3 +1,23 @@
+## 2026-10-07 — File Browser as a face of the cube
+
+UI_HOME_FACE_FILES after Emulators, on no side until Settings gives it one
+(Up, Left, Right or Down Face › File Browser); always there once placed, as
+Memory Cards is. A on it and System's row both go through ui_home.c's
+openFiles(): UI_HOME_EFFECT_OPEN_FILES with a source, CHANGE_SOURCE without
+(hint A OPEN / A SELECT SOURCE, as Library). Its icon is Source's folder
+(drawFolderIcon) at `UI_HOME_FACE_FILES * UI_HOME_ICON_CHOICES`. B from
+Swiss's list needs no new code: OPEN_FILES never touches homeState, so Home
+comes back on the face that opened the list (audit pins that).
+
+Eight faces: every per-face literal in the stroke stream (including the
+zero-filled icon arrays that would have drawn face 7's choice 0 on an
+uninitialised basis), frame budget, the scene's faceLift/facePitch; the
+motif state still fits 640 bytes (636). The scene, motif, reducer oracle and
+render pose tests put File Browser on each side, Classic and Infinite, with
+and without a source. The Dolphin route's Down Face flip now takes four
+RIGHTs from Apps to None, then one LEFT to File Browser: RIGHT from System
+turns to it, A shows Swiss's list, B returns to it; three LEFTs restore Apps.
+
 ## 2026-10-06 — Choose the save copy a game starts with
 
 Left and Right on a game's details step through the copies the Saves box

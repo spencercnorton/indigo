@@ -920,8 +920,8 @@ static void _DrawImage(uiDrawObj_t *evt) {
 }
 
 /* The icon Settings chose for each Home face, a choice of that face's own
- * four, in uiHomeFace_t order. Apps, Memory Cards and Emulators have their
- * one icon each, drawn while the face shows at all: without them the cube
+ * four, in uiHomeFace_t order. Apps, Memory Cards, Emulators and File
+ * Browser have their one icon each, drawn while the face shows at all: without them the cube
  * draws exactly what it did. */
 static void _HomeFaceIcons(int icons[UI_HOME_FACE_COUNT])
 {

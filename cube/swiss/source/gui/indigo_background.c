@@ -2142,6 +2142,7 @@ static void drawOneFaceIcon(const cubeRasterTransform_t *raster, int face,
 		case UI_HOME_ICON_APPS: drawAppsIcon(raster, face, glow); break;
 		case UI_HOME_ICON_SAVES: drawSavesIcon(raster, face, glow); break;
 		case UI_HOME_ICON_EMULATORS: drawEmulatorsIcon(raster, face, glow); break;
+		case UI_HOME_ICON_FILES: drawFolderIcon(raster, face, glow); break;
 		default: break;
 	}
 }

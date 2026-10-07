@@ -52,7 +52,9 @@ and erases them from one stack to the other. See
 **File Browser** opens Swiss's own file list at the top of your source, even
 when your games show in the Library. It is Swiss's list as Swiss has it, for
 the files the Library and Apps don't show: settings, cheats, saves, music and
-anything else on the card.
+anything else on the card. It can have a side of the Home cube of its own
+too: Settings › Setup › Console › **Up Face** (or Left, Right or Down Face)
+› File Browser; see [Choose the sides](home.md#choose-the-sides).
 
 <p align="center">
   <img alt="Swiss's plain file list, one entry per row with its banner, name and region flag." src="images/library-file-list.png" width="640">
@@ -61,8 +63,8 @@ anything else on the card.
 - **A** opens a folder or starts a file, and **X** or `..` goes up a
   folder. A on a disc image opens Swiss's own game screen rather than
   Indigo's [Game details](game-details.md).
-- **B** goes back to the System face. The Library face opens the Library
-  again as usual.
+- **B** goes back to the System face, or to the File Browser face when you
+  opened it from there. The Library face opens the Library again as usual.
 - **START** shows recently played games; choosing one leaves the File
   Browser.
 - Settings › Setup › Library › **File Browser Type** changes how the list

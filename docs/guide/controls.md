@@ -148,8 +148,8 @@ See [Memory Cards](memory-cards.md).
 
 ### File Browser
 
-Swiss's own file list, from System › File Browser. See
-[File Browser](system.md#file-browser).
+Swiss's own file list, from System › File Browser or the File Browser face.
+See [File Browser](system.md#file-browser).
 
 | Button | Does |
 | --- | --- |
@@ -159,7 +159,7 @@ Swiss's own file list, from System › File Browser. See
 | X | Up a folder. |
 | Z | A file or folder: Copy, Move, Delete, Rename or Hide. `..`: Autoload this folder. |
 | START | Recently played games. |
-| B | Back to the System face. |
+| B | Back to the face that opened it: System, or File Browser. |
 
 ### During a game
 
