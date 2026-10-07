@@ -1,3 +1,62 @@
+## 2026-10-07 — The two-pane File Browser's model
+
+First step of the two-pane File Browser: gui/ui_files.c and .h, pure C
+with no libogc, so the host tests build it. Nothing calls it yet; swiss.c
+and FrameBufferMagic.c are unchanged, and nothing a player sees changes.
+
+It holds: the two panes' focus (Up/Down wrap, pages stop at the ends,
+Left/Right cross and each pane keeps its row, an eight-row window with a
+row of margin, and the left window as current_view_start/end whichever
+pane is active); UIFiles_Layout for 4:3 and Menu Widescreen (outer edges
+at the stage's edge plus 40, inner edges fixed at 312 and 328); row kinds
+from the extension; UIFiles_IsProgramFolder and the folder a rewritten
+entry stands for; ".." row names; sizes as formatBytes writes them (a
+port, since util.c needs libogc), blocks on a card or a Qoob; the middle
+cut of real names keeping only the extension and a "(Disc N)" before it,
+never inside a UTF-8 sequence, and the path line cut from the left at a
+folder; the hint lines; UIFiles_Availability with every reason, the fit
+(unknown free space never greys; replace-only when only replacing makes
+room); UIFiles_FreeKnown, UIFiles_StorageClash with its reason,
+UIFiles_CanSwap, UIFiles_ExistsChoices, UIFiles_MenuBox,
+UIFiles_LandingIndex (fileComparator's order), the focus after an action,
+and confirmAction's texts read into a title, a line and two items.
+
+Choices made here: a card's or a Qoob's row size is "N
+blocks" (Swiss's own text, "56 KiB (7 blocks)", is too wide for the size
+column); Move's folder reason says "moved"; Move counts as possible when
+the device renames across folders (Swiss's same-device Move) or deletes
+the original after copying, so it never ends as a copy; the fit reason
+puts both amounts in the larger one's unit to three figures ("0.80 GB
+free; this needs 1.35 GB"); the 112..336 window holds 7 items with a
+title or 8 without (UI_FILES_MENU_ITEMS), so a storage menu lists at most
+6 devices (UI_FILES_STORAGE_DEVICES) and "Other devices..." reaches the
+rest; a cut keeps a tail only with at least 6 characters of the start
+before it (UI_FILES_NAME_MIN_HEAD), else the extension alone, so a
+narrow column never shows a bare "(Disc 1).rvz"; replace-only is per
+action, never set for a same-device Move (a rename); two network
+devices always clash, even before the adapter's slot is known.
+
+Tests: test_ui_files.c in TESTS and the Makefile, both lanes. The pane
+reducer is checked against an independent model over every input
+sequence of five on lists of 0 to 25 entries, with the window's rules
+(inside the list, the margin, moving only when it must) and the left
+window after every step. Layout to the pixel in 4:3, and the wide
+stage's edges; long Redump-style names at both shapes' name widths with
+and without a size, cut to the longest start that fits, with region and
+language tags right before the extension cut too; the shrink at the
+largest scale that fits and at both scale boundaries; every
+availability reason, in its order of priority where two apply, and the
+fit at exactly the free space and, over 4,096 combinations, never more than
+manage_file's own canCopy/canMove/canRename/canHide/canDelete; every
+storage pair; landing against a scan of a qsorted
+listing; delete and rename at the list's edges through a re-read and the
+reducer; every confirmAction text in swiss.c byte for byte. Hint lines
+parse through ui_hint.c with at most five round buttons in every
+context. No upstream file changed.
+
+Validation: host plain, sanitized and contracts lanes; whitespace,
+source and upstream checks.
+
 ## 2026-10-07 — One copy of the file list's actions
 
 Behaviour-free groundwork for a new file list. renderFileBrowser,
