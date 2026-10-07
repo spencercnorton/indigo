@@ -71,7 +71,7 @@ probe's game and launches it from its details: the probe must see the game's
 own disc ID, the 24 MB a game is promised, the music stopped and memory
 quiet.
 
-CI runs nine jobs, the first of them the required **Emulator** check:
+CI runs ten jobs, the first of them the required **Emulator** check:
 
 | Job | Console | Video | Storage |
 | --- | --- | --- | --- |
@@ -84,6 +84,7 @@ CI runs nine jobs, the first of them the required **Emulator** check:
 | virtual cards, NTSC, GC Loader, widescreen | NTSC, component | 480p | same route with `save-details-wide.ini`, 16:9 |
 | save, NTSC, SD2SP2, failing card | NTSC, composite | 480i | SD2SP2, writes failing after 13 |
 | game, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the game in 40 pieces |
+| files, NTSC, GC Loader and SD2SP2 | NTSC, component | 480p | GC Loader, a new card; a second SD card in SD2SP2, its writes failing on the second boot |
 
 `--region pal|pal60|ntsc` is the console: the region Dolphin starts the video
 hardware in, and an SRAM (`GC/SRAM.raw`) with the same video format, as a

@@ -66,7 +66,8 @@ SEMANTIC = {
     (120, 16, 36), (255, 210, 220),                    # and the IPL's maroon message
     (46, 150, 160), (210, 250, 255),                   # File Browser: programs start,
     (240, 176, 72), (80, 46, 0),                       # firmware writes,
-    (236, 120, 170),                                   # and music
+    (236, 120, 170),                                   # and music;
+    (255, 170, 186), (255, 220, 228),                  # Delete's rose edge, a message's line 2
 }
 # Pure blue can't turn without clipping, so its luma moves. It is the legacy
 # backdrop's tint, which the opaque Indigo wash covers.

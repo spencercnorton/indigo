@@ -261,6 +261,7 @@ typedef struct {
 	bool metric;		/* sizes in kB rather than KiB */
 	bool canWrite;		/* FEAT_WRITE */
 	bool canRename, canHide, canDelete;	/* the handler has them */
+	bool card;		/* a memory card slot: Memory Cards copies saves */
 } uiFilesDevice_t;
 
 /* Two different handlers on the same connector can't be open together; the
@@ -322,6 +323,7 @@ typedef struct {
 	bool hidden;
 	uint64_t needed;	/* its size, plus a GCI header off a memory card */
 	bool exists;		/* a same-named entry in the other folder */
+	bool existsFolder;	/* and that entry is a folder */
 	uint64_t existingSize;	/* that entry's size */
 } uiFilesEntry_t;
 
@@ -342,7 +344,8 @@ typedef struct {
 
 /* What manage_file allows on this entry (its canCopy .. canDelete), and
  * where Copy and Move can go: the other side ready, writable, another
- * folder, with room. Unknown free space never greys anything. */
+ * folder, no folder of the same name, not a memory card, with room.
+ * Unknown free space never greys anything. */
 void UIFiles_Availability(const uiFilesSide_t *source, const uiFilesSide_t *other,
 	const uiFilesEntry_t *entry, uiFilesAvailability_t *out);
 
@@ -361,8 +364,8 @@ typedef struct {
 void UIFiles_ExistsChoices(bool fitsBoth, uiFilesChoices_t *out);
 
 /* A box beside a row (Actions, a question, a storage menu): right-aligned
- * 6 px in from its own pane's right edge, so the other pane stays clear;
- * level with the row; kept between y 112 and 336. That holds
+ * 6 px in from its own pane's right edge, so the other pane stays clear,
+ * and never wider than the pane less 6 px each side; level with the row; kept between y 112 and 336. That holds
  * UI_FILES_MENU_ITEMS(titled) items; callers list no more, so a storage
  * menu shows UI_FILES_STORAGE_DEVICES devices and "Other devices..." reaches
  * the rest. */
@@ -383,7 +386,7 @@ void UIFiles_MenuBox(const uiFilesLayout_t *layout, const uiFilesRect_t *row,
  * the focus. serial changes for each box opened, so it opens again. */
 #define UI_FILES_MENU_MAX 9
 typedef struct {
-	char title[48];
+	char title[UI_FILES_TEXT_CAPACITY];
 	char item[UI_FILES_MENU_MAX][40];
 	uint16_t dim;		/* a bit per greyed item */
 	uint16_t serial;
@@ -391,6 +394,9 @@ typedef struct {
 	uint8_t count, focus;
 	uint8_t pane;		/* the pane it sits in */
 	uint8_t open;		/* 0: closing, its items kept to fade */
+	uint8_t row;		/* the row it sits beside: a storage menu's is 0 */
+	uint8_t rose;		/* Delete's: a rose edge */
+	char letter[UI_FILES_MENU_MAX];	/* each item's letter chip, or 0 */
 } uiFilesMenu_t;
 
 /* A box opening (open) or closing, since seconds ago: from 0.92x (0.97x on
@@ -406,9 +412,10 @@ void UIFiles_MenuMotion(float since, bool open, int mode, float *alpha, float *s
  * two lines: what choosing it does, and (amber) why it is greyed. */
 typedef struct {
 	uiFilesMenu_t box;
-	int devices;		/* items before "Other devices..." */
+	int devices;		/* items before "Other devices...", or -1: not storage */
 	char line[UI_FILES_MENU_MAX][UI_FILES_TEXT_CAPACITY];
 	char reason[UI_FILES_MENU_MAX][UI_FILES_TEXT_CAPACITY];
+	uint16_t warn;		/* a bit per item whose reason is amber */
 } uiFilesStorageMenu_t;
 
 void UIFiles_StorageMenu(int pane, const uiFilesDevice_t *devices, int count,
@@ -436,6 +443,28 @@ typedef struct {
 void UIFiles_FocusAfter(uiFilesAction_t action, bool done, int focus, int count,
 	bool showHidden, bool wasHidden, uiFilesFocusAfter_t *out);
 
+/* Line 1 of the info bar for an action in the Actions box: what it does.
+ * here: the entry's storage; there and folder: the other side's storage
+ * and folder (as the path line shows it). */
+void UIFiles_ActionLine(uiFilesAction_t action, bool hidden, const char *here,
+	const char *there, const char *folder, char *out, size_t capacity);
+
+/* How a copy or a move ended, in the maroon message's two lines. */
+typedef enum {
+	UI_FILES_RESULT_DONE = 0,
+	UI_FILES_RESULT_STOPPED,	/* B */
+	UI_FILES_RESULT_WRITE_FAILED,
+	UI_FILES_RESULT_READ_FAILED,
+	UI_FILES_RESULT_KEPT		/* moved, but the original couldn't be deleted */
+} uiFilesResult_t;
+
+/* name: the file's; here: its storage; there and folder: where it went;
+ * code: the device's error; removed: a stopped or failed copy's unfinished
+ * file was deleted; replaced: Replace it took the file there off first. */
+void UIFiles_Result(uiFilesResult_t result, bool move, const char *name, const char *here,
+	const char *there, const char *folder, int code, bool removed, bool replaced,
+	char out[2][UI_FILES_TEXT_CAPACITY]);
+
 /* ------------------------------------------------------------------------
  * Swiss's confirmAction texts ("Move this file?\nIt is removed from here
  * once copied.\nA  MOVE    B  CANCEL"), read for an IPL box: line 1 the
@@ -460,6 +489,8 @@ bool UIFiles_ParseQuestion(const char *text, uiFilesQuestion_t *out);
 
 #define UI_FILES_ROW_FOCUS 1u
 #define UI_FILES_ROW_HIDDEN 2u
+#define UI_FILES_ROW_GHOST 4u	/* where a copy will land, before it does */
+#define UI_FILES_ROW_FLASH 8u	/* a copy that just landed, under the message */
 
 typedef struct {
 	char name[UI_FILES_ROW_TEXT];
@@ -508,9 +539,26 @@ typedef struct {
 	uint8_t infoKind;	/* uiFilesKind_t: the info bar's cube */
 	uint8_t warn;		/* line 2 in amber */
 	uint8_t leaving;	/* B: the page goes, the Home cube comes back */
-	uint8_t reserved[3];
-	uiFilesMenu_t menu;	/* a storage menu beside its button */
+	uint8_t messageLeaving;	/* the message fades out */
+	uint8_t reserved[2];
+	uiFilesMenu_t menu;	/* a box: a storage menu, Actions, a question */
+	/* The maroon message over the page, and its second line; serial
+	 * changes for each one said, so it fades in again. */
+	char message[2][UI_FILES_TEXT_CAPACITY];
+	uint16_t messageSerial;
+	int16_t messageWidth;	/* its box's, measured on the menu thread */
 } uiFilesSnapshot_t;
+
+/* The Copy question's ghost row: ghost, where a copy will land (landing,
+ * in the listing's order), shown in pane's window as a row of its own; the
+ * rows after it move down one, the last falling out of view. */
+void UIFiles_InsertGhost(uiFilesPaneSnapshot_t *pane, int landing,
+	const uiFilesRowSnapshot_t *ghost);
+
+/* A copy's new row flashing under the message, since seconds after it
+ * came: two pulses over 0.6 s, one over 0.3 s on Reduced, none with UI
+ * Motion Off. 0 .. 1. mode is ui_motion.h's uiMotionMode_t. */
+float UIFiles_Flash(float since, int mode);
 
 /* The page coming and going, as Memory Cards' does: the Home cube going back
  * into the distance (handover 1 where it stood, 0 gone), the graph paper,

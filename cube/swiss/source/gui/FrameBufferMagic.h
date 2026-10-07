@@ -159,6 +159,7 @@ typedef struct kbBtn_ {
 uiDrawObj_t* DrawImage(int textureId, int x, int y, int width, int height, int depth, float s1, float s2, float t1, float t2, int centered);
 uiDrawObj_t* DrawTexObj(GXTexObj *texObj, int x, int y, int width, int height, int depth, float s1, float s2, float t1, float t2, int centered);
 uiDrawObj_t* DrawProgressBar(bool indeterminate, int percent, const char *message);
+uiDrawObj_t* DrawProgressBarFiles(const char *title, const char *path);
 uiDrawObj_t* DrawProgressLoading(int miniModePos);
 uiDrawObj_t* DrawContainer();
 uiDrawObj_t* DrawMessageBox(int type, const char *message);

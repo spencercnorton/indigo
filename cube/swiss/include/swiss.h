@@ -79,6 +79,10 @@ extern uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, ui
 extern void menu_loop();
 extern void boot_dol(file_handle* file, int argc, char *argv[]);
 extern bool manage_file();
+/* manage_file with its box's choice made (MANAGE_ASK: ask) and, for Copy
+ * and Move, the destination folder (NULL: ask). */
+#define MANAGE_ASK (-1)
+extern bool manage_file_ex(int option, const char *destDir);
 extern void load_file();
 extern int check_game(file_handle *file, file_handle *file2, ExecutableFile *filesToPatch);
 extern int cheats_game();

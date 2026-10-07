@@ -123,10 +123,20 @@ static bool fileManagementAllowed(void)
 	return swissSettings.enableFileManagement || homeFileBrowser;
 }
 
+/* While the File Browser runs one of Swiss's file operations, Swiss's
+ * questions and results are drawn as its own boxes beside the row (the
+ * question's words unchanged); everywhere else they are Swiss's. */
+static bool filesBoxes;
+static int filesAsk(const char *text);
+
 /* Asks before an action that is hard to undo. text ends with its hint line
  * ("A  MOVE    B  CANCEL"); true on A. */
 static bool confirmAction(const char *text)
 {
+	int asked = filesBoxes ? filesAsk(text) : -1;
+	if(asked >= 0) {
+		return asked;
+	}
 	bool released = false;
 	bool confirmed = false;
 	uiDrawObj_t *box = DrawPublish(DrawMessageBox(D_WARN, text));
@@ -581,7 +591,7 @@ void select_recent_entry() {
 			homeSourceRecord(NULL, UI_HOME_SOURCE_MOUNT_ABSENT);
 		}
 		if(res) {
-			uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,res == RECENT_ERR_ENT_MISSING ? "Recent entry not found.\nPress A to continue." 
+			uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,res == RECENT_ERR_ENT_MISSING ? "Recent entry not found.\nPress A to continue."
 																					:	"Recent device not found.\nPress A to continue.");
 			DrawPublish(msgBox);
 			wait_press_A();
@@ -633,7 +643,7 @@ bool upToParent(file_handle* entry)
 	// If we're a file, go up to the parent of the file
 	if(entry->fileType == IS_FILE)
 		getParentPath(entry->name, entry->name);
-	
+
 	// Go up a folder
 	return getParentPath(entry->name, entry->name);
 }
@@ -866,9 +876,15 @@ static bool filesManageFile(DEVICEHANDLER_INTERFACE *keep)
 }
 static void sourceCommit(DEVICEHANDLER_INTERFACE *device);
 static bool sourceMount(void);
-/* The storage menu open (L or R): its words, and the devices it lists. */
+/* The box open (a storage menu, Actions, a question): its words, the
+ * devices a storage menu lists, and the hints under it. */
 static uiFilesStorageMenu_t filesMenu;
 static DEVICEHANDLER_INTERFACE *filesMenuDevices[UI_FILES_STORAGE_DEVICES];
+static uiFilesHintMode_t filesMenuHints = UI_FILES_HINTS_BOX;
+static void manageDestName(char *out, const char *dir, const char *src,
+	DEVICEHANDLER_INTERFACE *srcDev, DEVICEHANDLER_INTERFACE *destDev);
+/* Where the last copy or move landed, after Keep both chose its number. */
+static char manageLanded[PATHNAME_MAX];
 
 static int filesMeasure(const char *text)
 {
@@ -898,6 +914,7 @@ static void filesDevice(DEVICEHANDLER_INTERFACE *device, uiFilesDevice_t *out)
 	out->canRename = device->renameFile != NULL;
 	out->canHide = device->hideFile != NULL;
 	out->canDelete = device->deleteFile != NULL;
+	out->card = device == &__device_card_a || device == &__device_card_b;
 }
 
 /* a and b can't be open together: two storages on one connector, or two on
@@ -1211,10 +1228,14 @@ static uiFilesKind_t filesKind(const file_handle *entry, int pane,
 	return UIFiles_Kind(entry->name, entry->fileType);
 }
 
+/* A starts it: a file Swiss loads, but a FlippyDrive update only on the
+ * FlippyDrive (elsewhere it is a file to copy, and A opens its Actions). */
 static bool filesLoads(const file_handle *entry)
 {
 	return entry->fileType == IS_FILE &&
-		canLoadFileType((char *)entry->name, devices[DEVICE_CUR]->extraExtensions);
+		canLoadFileType((char *)entry->name, devices[DEVICE_CUR]->extraExtensions) &&
+		(!endsWith((char *)entry->name, ".fpkg") || devices[DEVICE_CUR] == &__device_flippy ||
+		devices[DEVICE_CUR] == &__device_flippyflash);
 }
 
 static bool filesAutoloadFolder(const char *folder)
@@ -1500,20 +1521,22 @@ static void filesMenuInfo(uiFilesSnapshot_t *s, const uiFilesLayout_t *layout)
 	char line[UI_FILES_TEXT_CAPACITY], *second;
 	int room;
 
-	s->hasBanner = 0;
-	s->infoKind = UI_FILES_KIND_FOLDER;
-	s->chip[0] = '\0';
-	strlcpy(s->size, free, sizeof(s->size));
-	s->sizeWidth = (s16)(s->size[0] != '\0' ? MAX(48, filesWidth(s->size, 0.50f) + 16) : 0);
-	s->titleScale = UIFiles_FitName(s->title, sizeof(s->title), filesMenu.box.item[item],
-		layout->info.x1 - 16 - layout->infoTextX, filesMeasure);
-	s->titleWidth = (s16)filesWidth(s->title, s->titleScale);
+	if(filesMenu.devices >= 0) {
+		s->hasBanner = 0;
+		s->infoKind = UI_FILES_KIND_FOLDER;
+		s->chip[0] = '\0';
+		strlcpy(s->size, free, sizeof(s->size));
+		s->sizeWidth = (s16)(s->size[0] != '\0' ? MAX(48, filesWidth(s->size, 0.50f) + 16) : 0);
+		s->titleScale = UIFiles_FitName(s->title, sizeof(s->title), filesMenu.box.item[item],
+			layout->info.x1 - 16 - layout->infoTextX, filesMeasure);
+		s->titleWidth = (s16)filesWidth(s->title, s->titleScale);
+	}
 	room = layout->info.x1 - 112 - layout->infoTextX - (s->sizeWidth ? s->sizeWidth + 12 : 0);
 	/* Nothing greyed: line 2 is free, so the last sentence goes there (the
 	 * last: a folder's name in the first may hold a ". "). */
 	strlcpy(line, filesMenu.line[item], sizeof(line));
 	second = NULL;
-	for(char *at = line; filesMenu.reason[item][0] == '\0' &&
+	for(char *at = line; filesMenu.devices >= 0 && filesMenu.reason[item][0] == '\0' &&
 			(at = strstr(at, ". ")) != NULL; at++) {
 		second = at;
 	}
@@ -1524,8 +1547,8 @@ static void filesMenuInfo(uiFilesSnapshot_t *s, const uiFilesLayout_t *layout)
 	(void)UIFiles_FitName(s->line[0], sizeof(s->line[0]), line, room, filesMeasure);
 	(void)UIFiles_FitName(s->line[1], sizeof(s->line[1]),
 		second != NULL ? second : filesMenu.reason[item], room, filesMeasure);
-	s->warn = filesMenu.reason[item][0] != '\0';
-	UIFiles_Hints(UI_FILES_HINTS_BOX, s->active, UI_FILES_KIND_FOLDER, false, false, false,
+	s->warn = (filesMenu.warn >> item) & 1u;
+	UIFiles_Hints(filesMenuHints, s->active, UI_FILES_KIND_FOLDER, false, false, false,
 		s->hint[0], s->hint[1]);
 }
 
@@ -1591,35 +1614,6 @@ static bool filesMetaStep(file_handle **directory)
 	return false;
 }
 
-/* Z on an entry the screen holds itself: a right-pane entry, or the folder a
- * program folder stands for. Today's Z menu on it, then focus back in
- * curFile: leftFocus, the left pane's, or (NULL) the entry's own. True when
- * the panes must be read again. */
-static bool filesManageEntry(file_handle *entry, const char *leftFocus)
-{
-	DEVICEHANDLER_INTERFACE *cur = devices[DEVICE_CUR];
-	bool other = leftFocus != NULL && filesOther.device != cur;
-	bool changed;
-
-	meta_thread_stop();
-	/* An entry on the right pane's own storage: Swiss's box acts on the
-	 * Source's slot, so the slot holds that storage until the box is done,
-	 * and the Source is the one kept mounted. Otherwise the pane's own
-	 * storage is. */
-	if(other) {
-		devices[DEVICE_CUR] = filesOther.device;
-	}
-	memcpy(&curFile, entry, sizeof(file_handle));
-	changed = filesManageFile(other ? cur : NULL);
-	memcpy(entry, &curFile, sizeof(file_handle));
-	devices[DEVICE_CUR] = cur;
-	while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
-	if(leftFocus != NULL) {
-		strlcpy(curFile.name, leftFocus, sizeof(curFile.name));
-	}
-	return changed;
-}
-
 /* Waits until seconds of video have gone, at the screen's own rate. */
 static void filesWait(float seconds)
 {
@@ -1632,20 +1626,664 @@ static void filesWait(float seconds)
 	}
 }
 
+/* The box in filesMenu as the frame shows it, with the focused item's two
+ * lines in the info bar. */
+static void filesMenuShow(void)
+{
+	uiFilesLayout_t layout;
+
+	filesSnapshot.menu = filesMenu.box;
+	UIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);
+	if(filesSnapshot.menu.open) {
+		filesMenuInfo(&filesSnapshot, &layout);
+	}
+	(void)DrawUpdateFiles(filesPage, &filesSnapshot);
+}
+
+/* The box in filesMenu, open beside its row until a choice: Up and Down
+ * move and wrap, A chooses an item that isn't greyed (a greyed one keeps
+ * its reason showing), a letter chip's button does the same for its item,
+ * and B or a close button shuts it (-1). chord: Delete's question, which
+ * only L held with A answers, as Swiss's does; A alone on Delete does
+ * nothing. Once it is shut the buttons that answered are let go. */
+static int filesBox(uiFilesHintMode_t hints, u32 close, bool chord)
+{
+	static const char letters[] = "XYRLZ";
+	static const u32 letterButtons[] = {PAD_BUTTON_X, PAD_BUTTON_Y, BUTTON_R, BUTTON_L, BUTTON_Z};
+	uiFilesMenu_t *box = &filesMenu.box;
+	u32 buttons = BUTTON_UP | BUTTON_DOWN | BUTTON_A | BUTTON_B | close;
+	uiMenuInputState_t stick;
+	u32 stickRetrace = VIDEO_GetRetraceCount();
+	int choice = -1;
+
+	for(int i = 0; i < box->count; i++) {
+		const char *at = box->letter[i] != '\0' ? strchr(letters, box->letter[i]) : NULL;
+
+		if(at != NULL) {
+			buttons |= letterButtons[at - letters];
+		}
+	}
+	/* L+A: L is let go too before Swiss goes on, as its own prompt waits. */
+	if(chord) {
+		buttons |= BUTTON_L;
+	}
+	filesMenuHints = hints;
+	box->open = 1;
+	box->serial = (u16)(filesSnapshot.menu.serial + 1u);
+	UIMenuInput_Init(&stick);
+	(void)padsButtonsTaken(buttons);
+	while(choice < 0) {
+		uiMenuInputDirection_t analog;
+		u32 pressed;
+		int focus = box->focus, pick = -1;
+		bool chorded = false;
+
+		filesMenuShow();
+		while(1) {
+			pressed = padsButtonsTaken(buttons);
+			analog = padsMenuInputPoll(&stick, menuInputElapsedMicroseconds(&stickRetrace),
+				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,
+				(padsButtonsHeld() & buttons) != 0u);
+			chorded = chord && (padsButtonsHeld() & (BUTTON_A | BUTTON_L)) == (BUTTON_A | BUTTON_L);
+			if(chorded || pressed != 0u || analog != UI_MENU_INPUT_NONE) {
+				break;
+			}
+			VIDEO_WaitVSync();
+		}
+		if(chorded) {
+			choice = 0;
+			menuaudio_select();
+			break;
+		}
+		if((pressed & BUTTON_UP) || analog == UI_MENU_INPUT_UP) {
+			focus = (focus + box->count - 1) % box->count;
+		}
+		else if((pressed & BUTTON_DOWN) || analog == UI_MENU_INPUT_DOWN) {
+			focus = (focus + 1) % box->count;
+		}
+		if(focus != box->focus) {
+			box->focus = (u8)focus;
+			menuaudio_blip();
+			continue;
+		}
+		if(pressed & (BUTTON_B | close)) {
+			break;
+		}
+		for(int i = 0; i < box->count; i++) {
+			const char *at = box->letter[i] != '\0' ? strchr(letters, box->letter[i]) : NULL;
+
+			if(at != NULL && (pressed & letterButtons[at - letters])) {
+				pick = i;
+			}
+		}
+		if(pick < 0 && (pressed & BUTTON_A) && !(chord && focus == 0)) {
+			pick = focus;
+		}
+		if(pick >= 0 && ((box->dim >> pick) & 1u)) {
+			box->focus = (u8)pick;
+		}
+		else if(pick >= 0) {
+			/* Its lines stay in the info bar under what comes next. */
+			box->focus = (u8)pick;
+			choice = pick;
+			menuaudio_select();
+		}
+	}
+	/* What was chosen says what it does under whatever comes next. */
+	if(choice >= 0) {
+		filesMenuShow();
+	}
+	box->open = 0;
+	filesMenuShow();
+	do {VIDEO_WaitVSync();} while(padsButtonsHeld() & (buttons & ~(BUTTON_UP | BUTTON_DOWN)));
+	return choice;
+}
+
+/* text into out, cut in the middle as rows are, so that drawn at scale it
+ * is no wider than room. */
+static void filesFitAt(char *out, size_t capacity, const char *text, int room, float scale)
+{
+	/* What fits at the least scale in room * least / scale fits at scale. */
+	(void)UIFiles_FitName(out, capacity, text, (int)((float)room * UI_FILES_NAME_MIN_SCALE / scale),
+		filesMeasure);
+}
+
+/* filesMenu as a box beside the focused row of the focused pane: the title
+ * (none for Actions), its items, and the width they need. */
+static void filesMenuPlace(const char *title, int count)
+{
+	const uiFilesPaneSnapshot_t *pane = &filesSnapshot.pane[filesState.active];
+	uiFilesMenu_t *box = &filesMenu.box;
+	uiFilesLayout_t layout;
+	const uiFilesRect_t *side;
+	int widest;
+
+	/* A title's measure, with room to spare: the box must hold it, and the
+	 * box no more than its pane (UIFiles_MenuBox), so a long one is cut. */
+	UIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);
+	side = &layout.pane[filesState.active == UI_FILES_RIGHT];
+	filesFitAt(box->title, sizeof(box->title), title, (side->x1 - side->x0 - 12 - 24) * 10 / 11,
+		0.56f);
+	widest = box->title[0] != '\0' ? filesWidth(box->title, 0.56f) * 11 / 10 + 24 : 0;
+	box->count = (u8)count;
+	box->pane = (u8)filesState.active;
+	box->row = (u8)(pane->focusRow > 0 ? pane->focusRow : 0);
+	for(int i = 0; i < count; i++) {
+		widest = MAX(widest, filesWidth(box->item[i], 0.56f) + 32 + (box->letter[i] ? 28 : 0));
+	}
+	box->width = (s16)widest;
+}
+
+/* A question beside the row, Yes first: its title, its two answers, and the
+ * info bar's lines under it (line NULL keeps line 1 as it is; detail is
+ * amber when warn). */
+static void filesQuestion(const char *title, const char *yes, const char *no,
+	const char *line, const char *detail, bool warn)
+{
+	memset(&filesMenu, 0, sizeof(filesMenu));
+	filesMenu.devices = -1;
+	strlcpy(filesMenu.box.item[0], yes, sizeof(filesMenu.box.item[0]));
+	strlcpy(filesMenu.box.item[1], no, sizeof(filesMenu.box.item[1]));
+	for(int i = 0; i < 2; i++) {
+		strlcpy(filesMenu.line[i], line != NULL ? line : filesSnapshot.line[0],
+			sizeof(filesMenu.line[i]));
+		strlcpy(filesMenu.reason[i], detail, sizeof(filesMenu.reason[i]));
+	}
+	filesMenu.warn = warn ? 3u : 0u;
+	filesMenuPlace(title, 2);
+}
+
+/* entries[index]'s name and type, for UIFiles_LandingIndex. */
+static void filesEntryAt(const void *context, int index, const char **name, int *fileType)
+{
+	file_handle *const *entries = context;
+
+	*name = entries[index]->name;
+	*fileType = entries[index]->fileType;
+}
+
+/* The Copy question's ghost row: the other pane shows where the copy will
+ * land until the question is answered. */
+static int filesGhostPane = -1;
+static uiFilesPaneSnapshot_t filesGhostSaved;
+
+static void filesGhostOn(int pane, int landing, const char *name, const char *size)
+{
+	uiFilesLayout_t layout;
+	uiFilesRowSnapshot_t row;
+	uiFilesPaneSnapshot_t *shown = &filesSnapshot.pane[pane];
+
+	UIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);
+	memset(&row, 0, sizeof(row));
+	row.kind = (u8)UIFiles_Kind(name, IS_FILE);
+	UIFiles_RowMeta(row.meta, sizeof(row.meta), row.kind, size);
+	row.scale = UIFiles_FitName(row.name, sizeof(row.name), getRelativeName((char *)name),
+		UIFiles_NameWidth(&layout, pane, row.meta[0] != '\0' ? filesWidth(row.meta, 0.44f) : 0,
+		shown->count + 1 > UI_FILES_ROWS), filesMeasure);
+	filesGhostSaved = *shown;
+	filesGhostPane = pane;
+	UIFiles_InsertGhost(shown, landing, &row);
+}
+
+static void filesGhostOff(void)
+{
+	if(filesGhostPane >= 0) {
+		filesSnapshot.pane[filesGhostPane] = filesGhostSaved;
+		filesGhostPane = -1;
+	}
+}
+
+/* confirmAction's question as a box beside the row: its title, its verb
+ * focused and Cancel, its second line in the info bar's amber line; only
+ * the verb says yes. -1 when text isn't such a question. */
+static int filesAsk(const char *text)
+{
+	uiFilesQuestion_t question;
+	int choice;
+
+	if(!UIFiles_ParseQuestion(text, &question)) {
+		return -1;
+	}
+	filesQuestion(question.title, question.verb, question.cancel, NULL, question.detail,
+		question.detail[0] != '\0');
+	choice = filesBox(UI_FILES_HINTS_QUESTION, 0u, false);
+	filesGhostOff();
+	return choice == 0;
+}
+
+/* Delete's question, with Swiss's words (text's first line) and Swiss's
+ * chord: L held and A deletes; B, or A on Cancel, doesn't. */
+static bool filesAskDelete(const char *text)
+{
+	char title[UI_FILES_TEXT_CAPACITY];
+	size_t length = strcspn(text, "\n");
+
+	strlcpy(title, text, MIN(sizeof(title), length + 1));
+	filesQuestion(title, "Delete", "Cancel", NULL, "Hold L and press A to delete.", true);
+	filesMenu.box.rose = 1;
+	return filesBox(UI_FILES_HINTS_DELETE, 0u, true) == 0;
+}
+
+/* A copy's target is there already: Keep both (Swiss's Rename, the next
+ * free _NN), Replace it or Cancel, as the buttons Swiss's box reads (A, Z,
+ * B). Keep both is greyed when only replacing makes room. */
+static bool filesFitsBoth = true;
+
+static u32 filesAskExists(const char *destName)
+{
+	uiFilesChoices_t choices;
+	char title[UI_FILES_TEXT_CAPACITY], folder[PATHNAME_MAX];
+	int choice;
+
+	UIFiles_ExistsChoices(filesFitsBoth, &choices);
+	strlcpy(folder, destName, sizeof(folder));
+	getParentPath(folder, folder);
+	/* The file's name, however long, is the info bar's line 1. */
+	snprintf(title, sizeof(title), "It's already in %s.", *getRelativeName(folder) != '\0' ?
+		getRelativeName(folder) : DeviceDisplayName(devices[DEVICE_DEST]));
+	memset(&filesMenu, 0, sizeof(filesMenu));
+	filesMenu.devices = -1;
+	for(int i = 0; i < 3; i++) {
+		strlcpy(filesMenu.box.item[i], choices.item[i], sizeof(filesMenu.box.item[i]));
+		strlcpy(filesMenu.line[i], getRelativeName((char *)destName), sizeof(filesMenu.line[i]));
+	}
+	strlcpy(filesMenu.reason[0], choices.reason, sizeof(filesMenu.reason[0]));
+	filesMenu.warn = choices.dim;
+	filesMenu.box.dim = (u16)choices.dim;
+	filesMenu.box.focus = (u8)choices.focus;
+	filesMenuPlace(title, 3);
+	choice = filesBox(UI_FILES_HINTS_QUESTION, 0u, false);
+	return choice == 0 ? BUTTON_A : choice == 1 ? BUTTON_Z : BUTTON_B;
+}
+
+/* How an operation the File Browser ran ended: said done, failed, stopped,
+ * or (nothing said) not run. */
+enum { FILES_SAID_NOTHING = 0, FILES_SAID_DONE, FILES_SAID_STOPPED, FILES_SAID_FAILED };
+static int filesOutcome;
+/* What is copied, as the info bar named it: its banner's title, else its
+ * file name. */
+static char filesCopyName[UI_FILES_ROW_TEXT];
+
+/* A result as the File Browser says it: the maroon message over the page,
+ * each line cut to the stage, gone after 2 s or on A or B; a failure stays
+ * until A. It fades out over 0.15 s unless UI Motion is Off. */
+static void filesSay(const char *title, const char *detail, bool failed)
+{
+	u32 shown = VIDEO_GetRetraceCount();
+	float rate = VIDEO_GetRetraceRate();
+
+	if(!isfinite(rate) || rate < 1.0f) rate = 60.0f;
+	filesFitAt(filesSnapshot.message[0], sizeof(filesSnapshot.message[0]), title, 560, 0.56f);
+	filesFitAt(filesSnapshot.message[1], sizeof(filesSnapshot.message[1]), detail, 560, 0.46f);
+	filesSnapshot.messageWidth = (s16)MAX(filesWidth(filesSnapshot.message[0], 0.56f),
+		filesWidth(filesSnapshot.message[1], 0.46f)) + 48;
+	filesSnapshot.messageLeaving = 0;
+	filesSnapshot.messageSerial++;
+	filesSnapshot.menu.open = 0;
+	filesSnapshot.line[0][0] = filesSnapshot.line[1][0] = '\0';
+	filesSnapshot.warn = 0;
+	UIFiles_Hints(UI_FILES_HINTS_MESSAGE, filesState.active, UI_FILES_KIND_FOLDER, false,
+		false, false, filesSnapshot.hint[0], filesSnapshot.hint[1]);
+	(void)DrawUpdateFiles(filesPage, &filesSnapshot);
+	(void)padsButtonsTaken(BUTTON_A | BUTTON_B);
+	while(1) {
+		u32 pressed = padsButtonsTaken(BUTTON_A | BUTTON_B);
+
+		if((pressed & BUTTON_A) || (!failed && ((pressed & BUTTON_B) ||
+				(float)(VIDEO_GetRetraceCount() - shown) >= 2.0f * rate))) {
+			break;
+		}
+		VIDEO_WaitVSync();
+	}
+	if(UIMotion_ModeFromFlags(swissSettings.disableUIAnimations,
+			swissSettings.reduceUIAnimations) != UI_MOTION_OFF) {
+		filesSnapshot.messageLeaving = 1;
+		filesSnapshot.messageSerial++;
+		(void)DrawUpdateFiles(filesPage, &filesSnapshot);
+		filesWait(0.15f);
+	}
+	filesSnapshot.messageLeaving = 0;
+	filesSnapshot.message[0][0] = filesSnapshot.message[1][0] = '\0';
+	(void)DrawUpdateFiles(filesPage, &filesSnapshot);
+	while(padsButtonsHeld() & (BUTTON_A | BUTTON_B)) VIDEO_WaitVSync();
+}
+
+/* A result said while Swiss's operation runs is kept until both panes have
+ * been read again, so the message sits over what the operation left:
+ * filesSayLater keeps it, filesSayPending says it. flashPane: the pane
+ * whose focused row is a copy that just landed, which flashes under it. */
+static struct {
+	char title[UI_FILES_TEXT_CAPACITY], detail[UI_FILES_TEXT_CAPACITY];
+	bool failed, pending;
+	int flashPane;
+} filesLater = {.flashPane = -1};
+
+static void filesSayLater(const char *title, const char *detail, bool failed)
+{
+	strlcpy(filesLater.title, title, sizeof(filesLater.title));
+	strlcpy(filesLater.detail, detail, sizeof(filesLater.detail));
+	filesLater.failed = failed;
+	filesLater.pending = true;
+	filesOutcome = failed ? FILES_SAID_FAILED : FILES_SAID_DONE;
+}
+
+static void filesSayPending(void)
+{
+	uiFilesPaneSnapshot_t *pane = filesLater.flashPane >= 0 ?
+		&filesSnapshot.pane[filesLater.flashPane] : NULL;
+	bool flash = pane != NULL && pane->focusRow >= 0 && pane->focusRow < pane->rows;
+
+	filesLater.flashPane = -1;
+	if(!filesLater.pending) {
+		return;
+	}
+	filesLater.pending = false;
+	if(flash) {
+		pane->row[pane->focusRow].flags |= UI_FILES_ROW_FLASH;
+	}
+	filesSay(filesLater.title, filesLater.detail, filesLater.failed);
+	if(flash) {
+		pane->row[pane->focusRow].flags &= (u8)~UI_FILES_ROW_FLASH;
+	}
+}
+
+/* How a copy or a move ended, as the File Browser says it once the panes
+ * are read again. dest is where it was going. */
+static void filesSayCopy(uiFilesResult_t result, bool move, const char *dest, int code,
+	bool removed, bool replaced)
+{
+	char lines[2][UI_FILES_TEXT_CAPACITY], folder[PATHNAME_MAX];
+
+	strlcpy(folder, dest, sizeof(folder));
+	getParentPath(folder, folder);
+	UIFiles_Result(result, move, filesCopyName, DeviceDisplayName(devices[DEVICE_CUR]),
+		DeviceDisplayName(devices[DEVICE_DEST]), getRelativeName(folder), code, removed,
+		replaced, lines);
+	filesSayLater(lines[0], lines[1], result == UI_FILES_RESULT_WRITE_FAILED ||
+		result == UI_FILES_RESULT_READ_FAILED || result == UI_FILES_RESULT_KEPT);
+	filesOutcome = result == UI_FILES_RESULT_STOPPED ? FILES_SAID_STOPPED :
+		result == UI_FILES_RESULT_DONE || result == UI_FILES_RESULT_KEPT ? FILES_SAID_DONE :
+		FILES_SAID_FAILED;
+}
+
+/* A copy's progress card in the File Browser: "Copying <it> to <storage>",
+ * the destination's path, and B Stop. */
+static uiDrawObj_t *filesProgress(int option, const char *destName)
+{
+	char title[UI_FILES_TEXT_CAPACITY + 64], path[PATHNAME_MAX + 64];
+	const char *there = DeviceDisplayName(devices[DEVICE_DEST]);
+
+	snprintf(title, sizeof(title), "%s %s to %s", option == MOVE_OPTION ? "Moving" : "Copying",
+		filesCopyName, there);
+	snprintf(path, sizeof(path), "%s  \233  %s", there, getDevicePath((char *)destName));
+	return DrawProgressBarFiles(title, path);
+}
+
+/* The folder a program folder stands for: its path, as a folder, on the
+ * entry's storage. */
+static void filesProgramFolder(const file_handle *entry, const char *dirName, file_handle *out)
+{
+	memcpy(out, entry, sizeof(file_handle));
+	UIFiles_ProgramFolderPath(out->name, sizeof(out->name), entry->name, dirName);
+	out->fileType = IS_DIR;
+	out->size = 0;
+	out->meta = NULL;
+	out->fp = NULL;
+	out->ffsFp = NULL;
+	out->uiObj = NULL;
+	out->lockCount = 0;
+	out->thread = LWP_THREAD_NULL;
+}
+
+/* A side as UIFiles_Availability sees it, with its free space when it is
+ * mounted and gives a real figure. */
+static void filesSide(uiFilesSide_t *out, DEVICEHANDLER_INTERFACE *device, const char *folder,
+	int mount, bool readOk)
+{
+	device_info *info = NULL;
+
+	memset(out, 0, sizeof(*out));
+	filesDevice(device, &out->device);
+	out->folder = folder;
+	out->mount = (u8)mount;
+	out->readOk = readOk;
+	if((mount == UI_FILES_SHARED || mount == UI_FILES_OWN) && device->info != NULL) {
+		info = device->info(device->initial);
+	}
+	out->freeKnown = UIFiles_FreeKnown(info != NULL, info != NULL ? info->totalSpace : 0u,
+		out->device.network);
+	out->freeBytes = out->freeKnown ? info->freeSpace : 0u;
+}
+
+/* The name pane's row index is focused again by after a re-read: a left
+ * program folder's own path, else the entry's; "" for no row. */
+static void filesNameAt(int pane, file_handle **directory, int index, char *out, size_t capacity)
+{
+	file_handle **entries = pane == UI_FILES_LEFT ? directory : filesOther.sorted;
+	int count = pane == UI_FILES_LEFT ? getSortedDirEntryCount() : filesOther.count;
+
+	out[0] = '\0';
+	if(index < 0 || index >= count) {
+		return;
+	}
+	if(pane == UI_FILES_LEFT) {
+		lockFile(entries[index]);
+	}
+	if(pane == UI_FILES_LEFT && filesKind(entries[index], pane, curDir.name) ==
+			UI_FILES_KIND_PROGRAM_FOLDER) {
+		UIFiles_ProgramFolderPath(out, capacity, entries[index]->name, curDir.name);
+	}
+	else {
+		strlcpy(out, entries[index]->name, capacity);
+	}
+	if(pane == UI_FILES_LEFT) {
+		unlockFile(entries[index]);
+	}
+}
+
+/* filesManageFrom: one action on a pane's entry, to the other pane's
+ * folder, through Swiss's own manage_file_ex. A right-pane entry runs with
+ * the slots swapped (its storage as the Source, the Source as the
+ * destination); both slots come back on the one way out. True when the
+ * panes must be read again. */
+static bool filesManageFrom(file_handle *entry, int pane, int option, const char *destDir)
+{
+	DEVICEHANDLER_INTERFACE *cur = devices[DEVICE_CUR], *dest = devices[DEVICE_DEST];
+	bool fromRight = pane == UI_FILES_RIGHT;
+	bool changed;
+
+	meta_thread_stop();
+	devices[DEVICE_CUR] = fromRight ? filesOther.device : cur;
+	devices[DEVICE_DEST] = fromRight ? cur : filesOther.device;
+	memcpy(&curFile, entry, sizeof(file_handle));
+	filesBoxes = true;
+	changed = manage_file_ex(option, destDir);
+	filesBoxes = false;
+	memcpy(entry, &curFile, sizeof(file_handle));
+	devices[DEVICE_CUR] = cur;
+	devices[DEVICE_DEST] = dest;
+	return changed;
+}
+
+/* Z, or A on a file that doesn't start here: the Actions box beside the
+ * focused row of pane, then what it chose on that entry, Copy and Move to
+ * the other pane's folder. Copy asks first, with a ghost row where the copy
+ * will land; Move, Hide and Delete ask Swiss's questions as boxes. Focus
+ * afterwards goes by name: the left pane's into curFile, the right's into
+ * its focusName. True when both panes must be read again. */
+static bool filesActions(file_handle **directory, int pane)
+{
+	static const int options[UI_FILES_ACTIONS] = {
+		COPY_OPTION, MOVE_OPTION, RENAME_OPTION, HIDE_OPTION, DELETE_OPTION
+	};
+	static file_handle folder;
+	bool left = pane == UI_FILES_LEFT;
+	DEVICEHANDLER_INTERFACE *here = left ? devices[DEVICE_CUR] : filesOther.device;
+	DEVICEHANDLER_INTERFACE *there = left ? filesOther.device : devices[DEVICE_CUR];
+	const char *hereDir = left ? curDir.name : filesOther.dir.name;
+	const char *thereDir = left ? filesOther.dir.name : curDir.name;
+	file_handle **thereList = left ? filesOther.sorted : directory;
+	int thereCount = left ? filesOther.count : getSortedDirEntryCount();
+	const uiFilesPaneState_t *state = &filesState.pane[pane];
+	file_handle *entry = (left ? directory : filesOther.sorted)[state->focus];
+	bool card = here == &__device_card_a || here == &__device_card_b;
+	bool toCard = there == &__device_card_a || there == &__device_card_b;
+	uiFilesSide_t from, to;
+	uiFilesEntry_t what;
+	uiFilesAvailability_t avail;
+	uiFilesFocusAfter_t after;
+	char landing[PATHNAME_MAX], was[PATHNAME_MAX], name[PATHNAME_MAX];
+	int action;
+	bool changed, done;
+
+	meta_thread_stop();
+	memset(&what, 0, sizeof(what));
+	if(left) {
+		lockFile(entry);
+	}
+	/* A program folder acts as the folder, never the program in it. */
+	what.programFolder = filesKind(entry, pane, hereDir) == UI_FILES_KIND_PROGRAM_FOLDER;
+	if(what.programFolder) {
+		filesProgramFolder(entry, hereDir, &folder);
+	}
+	strlcpy(filesCopyName, left && entry->meta != NULL && entry->meta->displayName != NULL &&
+		entry->meta->displayName[0] != '\0' ? entry->meta->displayName :
+		getRelativeName(entry->name), sizeof(filesCopyName));
+	if(left) {
+		unlockFile(entry);
+	}
+	if(what.programFolder) {
+		entry = &folder;
+	}
+	filesSide(&from, here, hereDir, left ? UI_FILES_SHARED : filesOther.mount, true);
+	filesSide(&to, there, thereDir, left ? filesOther.mount : UI_FILES_SHARED,
+		left ? !filesOther.readFailed : true);
+	what.pane = pane;
+	what.isFile = entry->fileType == IS_FILE;
+	what.hidden = (entry->fileAttrib & ATTRIB_HIDDEN) != 0;
+	what.needed = entry->size + (card && !toCard ? sizeof(GCI) : 0u);
+	manageDestName(landing, thereDir, entry->name, here, there);
+	for(int i = 0; i < thereCount; i++) {
+		if(!strcasecmp(thereList[i]->name, landing)) {
+			what.exists = true;
+			what.existsFolder = thereList[i]->fileType == IS_DIR;
+			what.existingSize = thereList[i]->size;
+		}
+	}
+	UIFiles_Availability(&from, &to, &what, &avail);
+
+	memset(&filesMenu, 0, sizeof(filesMenu));
+	filesMenu.devices = -1;
+	for(int i = 0; i < UI_FILES_ACTIONS; i++) {
+		strlcpy(filesMenu.box.item[i], avail.label[i], sizeof(filesMenu.box.item[i]));
+		filesMenu.box.letter[i] = avail.letter[i];
+		filesMenu.box.dim |= (u16)(!avail.enabled[i] << i);
+		filesMenu.warn |= (u16)(avail.warn[i] << i);
+		UIFiles_ActionLine((uiFilesAction_t)i, what.hidden, DeviceDisplayName(here),
+			DeviceDisplayName(there), getDevicePath((char *)thereDir), filesMenu.line[i],
+			sizeof(filesMenu.line[i]));
+		strlcpy(filesMenu.reason[i], avail.line[i], sizeof(filesMenu.reason[i]));
+	}
+	filesMenu.box.focus = (u8)UIFiles_FirstEnabled(avail.enabled, UI_FILES_ACTIONS);
+	filesMenuPlace("", UI_FILES_ACTIONS);
+	action = filesBox(UI_FILES_HINTS_BOX, 0u, false);
+	/* Only what the box allowed: a Move it greys never runs as a copy. */
+	if(action < 0 || !avail.enabled[action]) {
+		return false;
+	}
+	if(action == UI_FILES_ACTION_COPY) {
+		char title[64], line[UI_FILES_TEXT_CAPACITY], size[24], free[24] = "";
+		file_handle **list = left ? filesOther.sorted : directory;
+
+		snprintf(title, sizeof(title), "Copy to %s?", DeviceDisplayName(there));
+		if(to.freeKnown) {
+			UIFiles_SizeText(free, sizeof(free), to.freeBytes, filesBlockSize(there),
+				to.device.metric);
+		}
+		snprintf(line, sizeof(line), free[0] != '\0' ? "To %s  \233  %s  \267  %s free" :
+			"To %s  \233  %s", DeviceDisplayName(there), getDevicePath((char *)thereDir), free);
+		filesSizeText(size, sizeof(size), entry);
+		filesQuestion(title, "Yes", "No", line, avail.line[action], avail.warn[action]);
+		filesGhostOn(left ? UI_FILES_RIGHT : UI_FILES_LEFT,
+			UIFiles_LandingIndex(list, thereCount, filesEntryAt, landing, IS_FILE), landing, size);
+		if(filesBox(UI_FILES_HINTS_QUESTION, 0u, false) != 0) {
+			filesGhostOff();
+			return false;
+		}
+		filesGhostOff();
+	}
+	else if(action == UI_FILES_ACTION_MOVE) {
+		/* Swiss's Move question shows the ghost row too. */
+		char size[24];
+
+		filesSizeText(size, sizeof(size), entry);
+		filesGhostOn(left ? UI_FILES_RIGHT : UI_FILES_LEFT,
+			UIFiles_LandingIndex(left ? filesOther.sorted : directory, thereCount, filesEntryAt,
+			landing, IS_FILE), landing, size);
+	}
+
+	filesFitsBoth = !avail.replaceOnly[action];
+	filesOutcome = FILES_SAID_NOTHING;
+	strlcpy(was, entry->name, sizeof(was));
+	if(left && !what.programFolder) {
+		lockFile(entry);
+	}
+	changed = filesManageFrom(entry, pane, options[action], thereDir);
+	if(left && !what.programFolder) {
+		unlockFile(entry);
+	}
+	filesGhostOff();
+	done = action == UI_FILES_ACTION_HIDE ? changed : filesOutcome == FILES_SAID_DONE;
+
+	/* Focus, by name, before the panes are read again: this pane's per
+	 * UIFiles_FocusAfter, the other's on what landed there. */
+	UIFiles_FocusAfter((uiFilesAction_t)action, done, state->focus, state->count,
+		swissSettings.showHiddenFiles, what.hidden, &after);
+	/* The message waits for the panes to be read again; with nothing
+	 * changed they stay as they are, so it comes now. */
+	filesLater.flashPane = after.flash ? (left ? UI_FILES_RIGHT : UI_FILES_LEFT) : -1;
+	if(!changed) {
+		filesSayPending();
+	}
+	if(after.sourceIndex == UI_FILES_FOCUS_NEW_NAME) {
+		strlcpy(name, entry->name, sizeof(name));
+	}
+	else {
+		filesNameAt(pane, directory, after.sourceIndex, name, sizeof(name));
+	}
+	if(left) {
+		strlcpy(curFile.name, name, sizeof(curFile.name));
+		if(after.otherToNew) {
+			strlcpy(filesOther.focusName, manageLanded, sizeof(filesOther.focusName));
+		}
+	}
+	else {
+		strlcpy(filesOther.focusName, name, sizeof(filesOther.focusName));
+		filesLeftFocusName(directory, curFile.name, sizeof(curFile.name));
+		if(after.otherToNew) {
+			strlcpy(curFile.name, manageLanded, sizeof(curFile.name));
+		}
+		/* The left pane's folder, or one above it, renamed or deleted on
+		 * the right: the left goes to the folder that held it, focusing it
+		 * by its new name, rather than reading a folder that is gone. */
+		if(changed && filesOther.device == devices[DEVICE_CUR] && filesWithin(curDir.name, was)) {
+			memcpy(&curDir, &filesOther.dir, sizeof(file_handle));
+			strlcpy(curFile.name, entry->name, sizeof(curFile.name));
+		}
+	}
+	return changed;
+}
+
 /* L or R: the storage menu beside that side's button, as Memory Cards'.
  * Up and Down move and wrap, A chooses (a greyed device keeps its reason
  * showing), B, L or R close it. The choice: an item, filesMenu.devices
  * being Other devices..., or -1. */
 static int filesStorageMenu(int pane, file_handle **directory, uiDrawObj_t **filePanel)
 {
-	const u32 boxButtons = BUTTON_UP | BUTTON_DOWN | BUTTON_A | BUTTON_B | BUTTON_L |
-		BUTTON_R;
 	uiFilesDevice_t listed[UI_FILES_STORAGE_DEVICES], current, other;
 	DEVICEHANDLER_INTERFACE *mine = pane == UI_FILES_LEFT ? devices[DEVICE_CUR] : filesOther.device;
 	DEVICEHANDLER_INTERFACE *theirs = pane == UI_FILES_LEFT ? filesOther.device : devices[DEVICE_CUR];
-	uiMenuInputState_t stick;
-	u32 stickRetrace = VIDEO_GetRetraceCount();
-	int count = 0, widest, choice = -1;
+	int count = 0, widest, choice;
 
 	/* Every detected storage that can be read, in Swiss's order. */
 	for(int i = 0; i < MAX_DEVICES && count < UI_FILES_STORAGE_DEVICES; i++) {
@@ -1666,47 +2304,7 @@ static int filesStorageMenu(int pane, file_handle **directory, uiDrawObj_t **fil
 		widest = MAX(widest, filesWidth(filesMenu.box.item[i], 0.56f) + 32);
 	}
 	filesMenu.box.width = (s16)widest;
-	filesMenu.box.serial = (u16)(filesSnapshot.menu.serial + 1u);
-	filesSnapshot.menu = filesMenu.box;
-	UIMenuInput_Init(&stick);
-	(void)padsButtonsTaken(boxButtons);
-	while(1) {
-		uiMenuInputDirection_t analog;
-		u32 buttons;
-		int focus = filesSnapshot.menu.focus;
-
-		(void)filesPublish(directory, filePanel, true);
-		while(1) {
-			buttons = padsButtonsTaken(boxButtons);
-			analog = padsMenuInputPoll(&stick, menuInputElapsedMicroseconds(&stickRetrace),
-				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,
-				(padsButtonsHeld() & boxButtons) != 0u);
-			if(buttons != 0u || analog != UI_MENU_INPUT_NONE) {
-				break;
-			}
-			VIDEO_WaitVSync();
-		}
-		if((buttons & BUTTON_UP) || analog == UI_MENU_INPUT_UP) {
-			focus = (focus + filesSnapshot.menu.count - 1) % filesSnapshot.menu.count;
-		}
-		else if((buttons & BUTTON_DOWN) || analog == UI_MENU_INPUT_DOWN) {
-			focus = (focus + 1) % filesSnapshot.menu.count;
-		}
-		if(focus != filesSnapshot.menu.focus) {
-			filesSnapshot.menu.focus = filesMenu.box.focus = (u8)focus;
-			menuaudio_blip();
-			continue;
-		}
-		if(buttons & (BUTTON_B | BUTTON_L | BUTTON_R)) {
-			break;
-		}
-		if((buttons & BUTTON_A) && !((filesSnapshot.menu.dim >> focus) & 1u)) {
-			choice = focus;
-			menuaudio_select();
-			break;
-		}
-	}
-	filesSnapshot.menu.open = 0;
+	choice = filesBox(UI_FILES_HINTS_BOX, BUTTON_L | BUTTON_R, false);
 	(void)filesPublish(directory, filePanel, true);
 	return choice;
 }
@@ -1777,7 +2375,6 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 	u32 menuInputRetrace, pageInputRetrace, repeatHeld = 0u, repeatAt = 0u;
 	float rate = VIDEO_GetRetraceRate();
 	uiDrawObj_t *loadingBox;
-	char leftFocus[PATHNAME_MAX];
 	int storage = -1, choice;
 
 	gameflowListFallback = false;
@@ -1822,6 +2419,8 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 		curMenuLocation = ON_OPTIONS;
 		return filePanel;
 	}
+	/* What an operation said, over both panes as it left them. */
+	filesSayPending();
 	loadingBox = DrawPublish(DrawProgressLoading(PROGRESS_BOX_FILES));
 	meta_thread_start(loadingBox);
 	UIMenuInput_Init(&menuInput);
@@ -1919,13 +2518,27 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 				if(type == IS_SPECIAL && filesAtRoot(&curDir)) {
 					storage = UI_FILES_LEFT;
 				}
+				else if(type == IS_FILE && !loads) {
+					/* A file that doesn't start here: its Actions. */
+					if(fileManagementAllowed() && filesActions(directory, UI_FILES_LEFT)) {
+						filesOther.listed = false;
+						needsRefresh = 1;
+						break;
+					}
+					meta_thread_stop();
+					meta_thread_start(loadingBox);
+				}
 				else {
 					/* Starting a file: nothing stays mounted that the game,
 					 * its details or the loader don't know about. */
 					if(type == IS_FILE && loads) {
 						filesOtherRelease();
 					}
+					/* A firmware file asks first, as a box beside its row. */
+					filesBoxes = type == IS_FILE && UIFiles_Kind(directory[curSelection]->name,
+						type) == UI_FILES_KIND_FIRMWARE;
 					filesActivate(directory, false);
+					filesBoxes = false;
 					filesKeepPresses = type == IS_DIR || type == IS_SPECIAL;
 					/* Z's box on a file that can't start changed something:
 					 * the right pane is read again too. */
@@ -1952,35 +2565,14 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 					directory[curSelection]->fileType == IS_SPECIAL) {
 				/* Autoload: a settings save mounts and unmounts the
 				 * Configuration Device, which may be the right pane's. */
+				filesBoxes = true;
 				filesOtherRelease();
 				filesToggleAutoload(&curDir.name[0]);
 				filesOtherAcquire();
+				filesBoxes = false;
 			}
 			else if((buttons & BUTTON_Z) && fileManagementAllowed()) {
-				file_handle folder;
-				bool program;
-
-				lockFile(directory[curSelection]);
-				program = filesKind(directory[curSelection], UI_FILES_LEFT, curDir.name) ==
-					UI_FILES_KIND_PROGRAM_FOLDER;
-				if(program) {
-					/* A program folder's Z acts on the folder, not the
-					 * program Swiss found in it. */
-					memcpy(&folder, directory[curSelection], sizeof(file_handle));
-					UIFiles_ProgramFolderPath(folder.name, sizeof(folder.name),
-						directory[curSelection]->name, curDir.name);
-					folder.fileType = IS_DIR;
-					folder.size = 0;
-					folder.meta = NULL;
-					folder.fp = NULL;
-					folder.ffsFp = NULL;
-					folder.uiObj = NULL;
-					folder.lockCount = 0;
-					folder.thread = LWP_THREAD_NULL;
-				}
-				unlockFile(directory[curSelection]);
-				if(program ? filesManageEntry(&folder, NULL) :
-						filesManage(directory, false)) {
+				if(filesActions(directory, UI_FILES_LEFT)) {
 					filesOther.listed = false;
 					needsRefresh = 1;
 					break;
@@ -2006,9 +2598,11 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 			}
 			else if(entry != NULL && entry->fileType == IS_SPECIAL) {
 				if(fileManagementAllowed()) {
+					filesBoxes = true;
 					filesOtherRelease();
 					filesToggleAutoload(filesOther.dir.name);
 					filesOtherAcquire();
+					filesBoxes = false;
 				}
 			}
 			else if(entry != NULL && (buttons & BUTTON_A) && entry->fileType == IS_DIR) {
@@ -2019,25 +2613,9 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 				filesNote = "Games start on the left. Y swaps the two sides.";
 			}
 			else if(entry != NULL && fileManagementAllowed()) {
-				char was[PATHNAME_MAX];
-
-				strlcpy(was, entry->name, sizeof(was));
-				filesLeftFocusName(directory, leftFocus, sizeof(leftFocus));
-				if(filesManageEntry(entry, leftFocus)) {
-					/* Both panes are read again, the right focusing the
-					 * entry by the name it has now. */
-					strlcpy(filesOther.focusName, entry->name, sizeof(filesOther.focusName));
+				if(filesActions(directory, UI_FILES_RIGHT)) {
 					filesOther.listed = false;
 					needsRefresh = 1;
-					/* The left pane's folder, or one above it, renamed or
-					 * deleted: the left goes to the folder that held it,
-					 * focusing it by its new name, rather than reading a
-					 * folder that is gone. */
-					if(filesOther.device == devices[DEVICE_CUR] &&
-							filesWithin(curDir.name, was)) {
-						memcpy(&curDir, &filesOther.dir, sizeof(file_handle));
-						strlcpy(curFile.name, entry->name, sizeof(curFile.name));
-					}
 					break;
 				}
 				meta_thread_stop();
@@ -4728,8 +5306,88 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	if(restartMenuAudio) menuaudio_init();
 }
 
+/* The name a copy of src lands under in dir on destDev: its own name less
+ * what FAT can't hold, and a memory card's save as a .gci anywhere else.
+ * The File Browser predicts the landing with it, so the name it shows is
+ * the name the copy writes. */
+static void manageDestName(char *out, const char *dir, const char *src,
+	DEVICEHANDLER_INTERFACE *srcDev, DEVICEHANDLER_INTERFACE *destDev)
+{
+	bool isSrcCard = srcDev == &__device_card_a || srcDev == &__device_card_b;
+	bool isDestCard = destDev == &__device_card_a || destDev == &__device_card_b;
+
+	concat_path(out, dir, stripInvalidChars(getRelativeName((char *)src)));
+	// Create a GCI if something is coming out from CARD to another device
+	if(isSrcCard && !isDestCard) {
+		strlcat(out, ".gci", PATHNAME_MAX);
+	}
+}
+
+/* A copy that stopped or failed leaves nothing half written behind: the
+ * destination is closed (closing twice is harmless) and deleted. False when
+ * it couldn't be, so the message says part of it is left. Two things are
+ * never deleted: a folder of that name, which the copy couldn't open, and
+ * anything on a memory card, whose delete goes by the save's own name and
+ * whose writes can report a short count for a save that is complete; a
+ * card keeps what it has, as Swiss's copy did. */
+static bool manageDropPartial(file_handle *destFile)
+{
+	static file_handle there;
+	DEVICEHANDLER_INTERFACE *dest = devices[DEVICE_DEST];
+
+	dest->closeFile(destFile);
+	if(dest == &__device_card_a || dest == &__device_card_b) {
+		return false;
+	}
+	memset(&there, 0, sizeof(there));
+	strlcpy(there.name, destFile->name, sizeof(there.name));
+	there.fileType = IS_FILE;
+	if(dest->statFile != NULL && dest->statFile(&there) == 0 && there.fileType == IS_DIR) {
+		return true;
+	}
+	return dest->deleteFile != NULL && dest->deleteFile(destFile) == 0;
+}
+
+/* One of manage_file's results: Swiss's box (type and text, then A), or
+ * in the File Browser its message (title and detail; failed waits for A),
+ * said once the panes are read again. */
+static void manageTell(int type, const char *text, const char *title, const char *detail,
+	bool failed)
+{
+	if(filesBoxes) {
+		filesSayLater(title, detail, failed);
+		return;
+	}
+	uiDrawObj_t *msgBox = DrawPublish(DrawMessageBox(type, text));
+	wait_press_A();
+	DrawDispose(msgBox);
+}
+
+/* How a copy or a move ended: Swiss's box (type and text, then A), or in
+ * the File Browser its message, from result. */
+static void manageCopied(uiFilesResult_t result, int option, const char *dest, int code,
+	bool removed, bool replaced, int type, const char *text)
+{
+	if(filesBoxes) {
+		filesSayCopy(result, option == MOVE_OPTION, dest, code, removed, replaced);
+		return;
+	}
+	uiDrawObj_t *msgBox = DrawPublish(DrawMessageBox(type, text));
+	wait_press_A();
+	DrawDispose(msgBox);
+}
+
 /* Manage file  - The user will be asked what they want to do with the currently selected file - copy/move/delete*/
 bool manage_file() {
+	return manage_file_ex(MANAGE_ASK, NULL);
+}
+
+/* manage_file with the File Browser's choice already made: option is one of
+ * enum fileOptions, or MANAGE_ASK for Swiss's box. For Copy and Move,
+ * destDir is a folder on devices[DEVICE_DEST], which the caller has set and
+ * mounted, so Swiss's destination picker, its mount and its folder chooser
+ * are skipped. Everything after them is Swiss's. */
+bool manage_file_ex(int preset, const char *destDir) {
 	bool isFile = curFile.fileType == IS_FILE;
 	bool isHidden = curFile.fileAttrib & ATTRIB_HIDDEN;
 	bool canWrite = devices[DEVICE_CUR]->features & FEAT_WRITE;
@@ -4743,58 +5401,61 @@ bool manage_file() {
 	homeAppsKnown = false;
 	homeEmulatorsKnown = false;
 	
-	// Ask the user what they want to do with the selected entry
-	uiDrawObj_t* manageFileBox = DrawEmptyBox(10,150, getVideoMode()->fbWidth-10, 320);
-	sprintf(txtbuffer, "Manage %s:", isFile ? "File" : "Directory");
-	DrawAddChild(manageFileBox, DrawStyledLabel(640/2, 160, txtbuffer, 1.0f, ALIGN_CENTER, defaultColor));
-	float scale = GetTextScaleToFitInWidth(getRelativeName(curFile.name), getVideoMode()->fbWidth-10-10);
-	DrawAddChild(manageFileBox, DrawStyledLabel(640/2, 190, getRelativeName(curFile.name), scale, ALIGN_CENTER, defaultColor));
-	sprintf(txtbuffer, "%s%s%s%s%s",
-					canCopy ? "X  Copy    " : "",
-					canMove ? "Y  Move    " : "",
-					canDelete ? "Z  Delete    " : "",
-					canRename ? "R  Rename    " : "",
-					canHide ? isHidden ? "L  Unhide" : "L  Hide" : "");
-	DrawAddChild(manageFileBox, DrawHintLabel(640/2, 250, txtbuffer, GetHintScaleToFitInWidthWithMax(txtbuffer, getVideoMode()->fbWidth-10-10, 1.0f), ALIGN_CENTER, defaultColor));
-	DrawAddChild(manageFileBox, DrawHintLabel(640/2, 310, "B  Return", 1.0f, ALIGN_CENTER, defaultColor));
-	DrawPublish(manageFileBox);
-	u32 waitButtons = BUTTON_X|BUTTON_Y|BUTTON_B|BUTTON_Z|BUTTON_R|BUTTON_L;
-	do {VIDEO_WaitVSync();} while (padsButtonsHeld() & waitButtons);
-	int option = 0;
-	while(1) {
-		u32 buttons = padsButtonsHeld();
-		if(canCopy && (buttons & BUTTON_X)) {
-			option = COPY_OPTION;
-			while(padsButtonsHeld() & BUTTON_X){ VIDEO_WaitVSync (); }
-			break;
+	int option = preset;
+	if(preset == MANAGE_ASK) {
+		// Ask the user what they want to do with the selected entry
+		uiDrawObj_t* manageFileBox = DrawEmptyBox(10,150, getVideoMode()->fbWidth-10, 320);
+		sprintf(txtbuffer, "Manage %s:", isFile ? "File" : "Directory");
+		DrawAddChild(manageFileBox, DrawStyledLabel(640/2, 160, txtbuffer, 1.0f, ALIGN_CENTER, defaultColor));
+		float scale = GetTextScaleToFitInWidth(getRelativeName(curFile.name), getVideoMode()->fbWidth-10-10);
+		DrawAddChild(manageFileBox, DrawStyledLabel(640/2, 190, getRelativeName(curFile.name), scale, ALIGN_CENTER, defaultColor));
+		sprintf(txtbuffer, "%s%s%s%s%s",
+						canCopy ? "X  Copy    " : "",
+						canMove ? "Y  Move    " : "",
+						canDelete ? "Z  Delete    " : "",
+						canRename ? "R  Rename    " : "",
+						canHide ? isHidden ? "L  Unhide" : "L  Hide" : "");
+		DrawAddChild(manageFileBox, DrawHintLabel(640/2, 250, txtbuffer, GetHintScaleToFitInWidthWithMax(txtbuffer, getVideoMode()->fbWidth-10-10, 1.0f), ALIGN_CENTER, defaultColor));
+		DrawAddChild(manageFileBox, DrawHintLabel(640/2, 310, "B  Return", 1.0f, ALIGN_CENTER, defaultColor));
+		DrawPublish(manageFileBox);
+		u32 waitButtons = BUTTON_X|BUTTON_Y|BUTTON_B|BUTTON_Z|BUTTON_R|BUTTON_L;
+		do {VIDEO_WaitVSync();} while (padsButtonsHeld() & waitButtons);
+		option = 0;
+		while(1) {
+			u32 buttons = padsButtonsHeld();
+			if(canCopy && (buttons & BUTTON_X)) {
+				option = COPY_OPTION;
+				while(padsButtonsHeld() & BUTTON_X){ VIDEO_WaitVSync (); }
+				break;
+			}
+			if(canMove && (buttons & BUTTON_Y)) {
+				option = MOVE_OPTION;
+				while(padsButtonsHeld() & BUTTON_Y){ VIDEO_WaitVSync (); }
+				break;
+			}
+			if(canDelete && (buttons & BUTTON_Z)) {
+				option = DELETE_OPTION;
+				while(padsButtonsHeld() & BUTTON_Z){ VIDEO_WaitVSync (); }
+				break;
+			}
+			if(canRename && (buttons & BUTTON_R)) {
+				option = RENAME_OPTION;
+				while(padsButtonsHeld() & BUTTON_R){ VIDEO_WaitVSync (); }
+				break;
+			}
+			if(canRename && (buttons & BUTTON_L)) {
+				option = HIDE_OPTION;
+				while(padsButtonsHeld() & BUTTON_L){ VIDEO_WaitVSync (); }
+				break;
+			}
+			if(buttons & BUTTON_B) {
+				DrawDispose(manageFileBox);
+				return false;
+			}
 		}
-		if(canMove && (buttons & BUTTON_Y)) {
-			option = MOVE_OPTION;
-			while(padsButtonsHeld() & BUTTON_Y){ VIDEO_WaitVSync (); }
-			break;
-		}
-		if(canDelete && (buttons & BUTTON_Z)) {
-			option = DELETE_OPTION;
-			while(padsButtonsHeld() & BUTTON_Z){ VIDEO_WaitVSync (); }
-			break;
-		}
-		if(canRename && (buttons & BUTTON_R)) {
-			option = RENAME_OPTION;
-			while(padsButtonsHeld() & BUTTON_R){ VIDEO_WaitVSync (); }
-			break;
-		}
-		if(canRename && (buttons & BUTTON_L)) {
-			option = HIDE_OPTION;
-			while(padsButtonsHeld() & BUTTON_L){ VIDEO_WaitVSync (); }
-			break;
-		}
-		if(buttons & BUTTON_B) {
-			DrawDispose(manageFileBox);
-			return false;
-		}
+		do {VIDEO_WaitVSync();} while (padsButtonsHeld() & waitButtons);
+		DrawDispose(manageFileBox);
 	}
-	do {VIDEO_WaitVSync();} while (padsButtonsHeld() & waitButtons);
-	DrawDispose(manageFileBox);
 	
 	if(option == MOVE_OPTION && !confirmAction(
 		"Move this file?\nIt is removed from here once copied.\nA  MOVE    B  CANCEL")) {
@@ -4805,8 +5466,13 @@ bool manage_file() {
 		"Hide this folder?\nIt shows only with Show hidden files on.\nA  HIDE    B  CANCEL")) {
 		return false;
 	}
+	if(option == DELETE_OPTION && filesBoxes && !filesAskDelete(isFile ?
+			"Delete this file?\n \nPress L + A to continue, or B to cancel." :
+			"Delete this folder and all it holds?\n \nPress L + A to continue, or B to cancel.")) {
+		return false;
+	}
 	// "Are you sure option" for deletes.
-	if(option == DELETE_OPTION) {
+	if(option == DELETE_OPTION && !filesBoxes) {
 		uiDrawObj_t *msgBox = DrawMessageBox(D_WARN, isFile ?
 			"Delete this file?\n \nPress L + A to continue, or B to cancel." :
 			"Delete this folder and all it holds?\n \nPress L + A to continue, or B to cancel.");
@@ -4847,10 +5513,8 @@ bool manage_file() {
 			print_debug("Renaming %s to %s\n", &curFile.name[0], txtbuffer);
 			u32 ret = devices[DEVICE_CUR]->renameFile(&curFile, txtbuffer);
 			sprintf(txtbuffer, "%s renamed!\nPress A to continue.", isFile ? "File" : "Directory");
-			uiDrawObj_t *msgBox = DrawMessageBox(D_INFO, ret ? "Move Failed! Press A to continue" : txtbuffer);
-			DrawPublish(msgBox);
-			wait_press_A();
-			DrawDispose(msgBox);
+			manageTell(D_INFO, ret ? "Move Failed! Press A to continue" : txtbuffer,
+				ret ? "Couldn't rename it." : "Renamed.", "", ret != 0);
 		}
 		free(nameBuffer);
 		free(parentPath);
@@ -4863,79 +5527,96 @@ bool manage_file() {
 		bool deleted = deleteFileOrDir(&curFile);
 		DrawDispose(progBar);
 		sprintf(txtbuffer, "%s %s\nPress A to continue.", isFile ? "File" : "Directory", deleted ? "deleted successfully" : "failed to delete!");
-		uiDrawObj_t *msgBox = DrawPublish(DrawMessageBox(deleted ? D_INFO : D_FAIL, txtbuffer));
-		wait_press_A();
-		DrawDispose(msgBox);
+		manageTell(deleted ? D_INFO : D_FAIL, txtbuffer, !deleted ? "Couldn't delete it." :
+			isFile ? "The file was deleted." : "The folder was deleted.", "", !deleted);
 		return deleted;
 	}
 	// If copy, ask which device is the destination device and copy
 	else if((option == COPY_OPTION) || (option == MOVE_OPTION)) {
 		u32 ret = 0;
-		// Show a list of destination devices (the same device is also a possibility)
-		select_device(DEVICE_DEST);
-		if(devices[DEVICE_DEST] == NULL) return false;
+		file_handle *destFile = NULL;
+		bool replaced = false;	/* Replace it took the file there off */
+		if(destDir == NULL) {
+			// Show a list of destination devices (the same device is also a possibility)
+			select_device(DEVICE_DEST);
+			if(devices[DEVICE_DEST] == NULL) return false;
 
-		// If the devices are not the same, init the destination, fail on non-existing device/etc
-		if(devices[DEVICE_DEST] != devices[DEVICE_CUR] && devices[DEVICE_DEST] != manageKeep) {
-			devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );	
-			deviceHandler_setStatEnabled(0);
-			if(devices[DEVICE_DEST]->init( devices[DEVICE_DEST]->initial )) {
-				deviceHandler_setStatEnabled(1);
-				sprintf(txtbuffer, "Failed to init destination device! (%u)\nPress A to continue.",ret);
-				uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,txtbuffer);
-				DrawPublish(msgBox);
-				wait_press_A();
-				DrawDispose(msgBox);
-				return false;
-			}
-			deviceHandler_setStatEnabled(1);
-		}
-		// Traverse this destination device and let the user select a directory to dump the file in
-		file_handle *destFile = calloc(1, sizeof(file_handle));
-		
-		// Show a directory only browser and get the destination file location
-		ret = select_dest_dir(devices[DEVICE_DEST]->initial, destFile->name);
-		if(ret) {
+			// If the devices are not the same, init the destination, fail on non-existing device/etc
 			if(devices[DEVICE_DEST] != devices[DEVICE_CUR] && devices[DEVICE_DEST] != manageKeep) {
 				devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );
+				deviceHandler_setStatEnabled(0);
+				if(devices[DEVICE_DEST]->init( devices[DEVICE_DEST]->initial )) {
+					deviceHandler_setStatEnabled(1);
+					sprintf(txtbuffer, "Failed to init destination device! (%u)\nPress A to continue.",ret);
+					uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,txtbuffer);
+					DrawPublish(msgBox);
+					wait_press_A();
+					DrawDispose(msgBox);
+					return false;
+				}
+				deviceHandler_setStatEnabled(1);
 			}
-			devices[DEVICE_DEST] = NULL;
-			return false;
+			// Traverse this destination device and let the user select a directory to dump the file in
+			destFile = calloc(1, sizeof(file_handle));
+
+			// Show a directory only browser and get the destination file location
+			ret = select_dest_dir(devices[DEVICE_DEST]->initial, destFile->name);
+			if(ret) {
+				if(devices[DEVICE_DEST] != devices[DEVICE_CUR] && devices[DEVICE_DEST] != manageKeep) {
+					devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );
+				}
+				devices[DEVICE_DEST] = NULL;
+				return false;
+			}
+		}
+		else {
+			destFile = calloc(1, sizeof(file_handle));
+			strlcpy(destFile->name, destDir, PATHNAME_MAX);
 		}
 		
 		u32 isDestCard = devices[DEVICE_DEST] == &__device_card_a || devices[DEVICE_DEST] == &__device_card_b;
 		u32 isSrcCard = devices[DEVICE_CUR] == &__device_card_a || devices[DEVICE_CUR] == &__device_card_b;
 		
-		concat_path(destFile->name, destFile->name, stripInvalidChars(getRelativeName(curFile.name)));
-		// Create a GCI if something is coming out from CARD to another device
-		if(isSrcCard && !isDestCard) {
-			strlcat(destFile->name, ".gci", PATHNAME_MAX);
-		}
+		manageDestName(destFile->name, destFile->name, curFile.name, devices[DEVICE_CUR],
+			devices[DEVICE_DEST]);
 
 		// If the destination file already exists, ask the user what to do
 		if(devices[DEVICE_DEST]->readFile(destFile, NULL, 0) == 0) {
 			devices[DEVICE_DEST]->closeFile(destFile);
-			uiDrawObj_t* dupeBox = DrawEmptyBox(10,150, getVideoMode()->fbWidth-10, 350);
-			DrawAddChild(dupeBox, DrawStyledLabel(640/2, 160, "File exists:", 1.0f, ALIGN_CENTER, defaultColor));
-			float scale = GetTextScaleToFitInWidth(getRelativeName(curFile.name), getVideoMode()->fbWidth-10-10);
-			DrawAddChild(dupeBox, DrawStyledLabel(640/2, 200, getRelativeName(curFile.name), scale, ALIGN_CENTER, defaultColor));
-			DrawAddChild(dupeBox, DrawHintLabel(640/2, 230, "A  Rename    Z  Overwrite", 1.0f, ALIGN_CENTER, defaultColor));
-			DrawAddChild(dupeBox, DrawHintLabel(640/2, 300, "B  Return", 1.0f, ALIGN_CENTER, defaultColor));
-			DrawPublish(dupeBox);
+			/* The File Browser asks with its own box: Keep both is A, Replace it
+			 * Z and Cancel B, as if pressed in Swiss's. */
+			u32 chosen = filesBoxes ? filesAskExists(destFile->name) : 0;
+			uiDrawObj_t* dupeBox = NULL;
+			if(!chosen) {
+				dupeBox = DrawEmptyBox(10,150, getVideoMode()->fbWidth-10, 350);
+				DrawAddChild(dupeBox, DrawStyledLabel(640/2, 160, "File exists:", 1.0f, ALIGN_CENTER, defaultColor));
+				float scale = GetTextScaleToFitInWidth(getRelativeName(curFile.name), getVideoMode()->fbWidth-10-10);
+				DrawAddChild(dupeBox, DrawStyledLabel(640/2, 200, getRelativeName(curFile.name), scale, ALIGN_CENTER, defaultColor));
+				DrawAddChild(dupeBox, DrawHintLabel(640/2, 230, "A  Rename    Z  Overwrite", 1.0f, ALIGN_CENTER, defaultColor));
+				DrawAddChild(dupeBox, DrawHintLabel(640/2, 300, "B  Return", 1.0f, ALIGN_CENTER, defaultColor));
+				DrawPublish(dupeBox);
+			}
 			while(padsButtonsHeld() & (BUTTON_A | BUTTON_Z)) { VIDEO_WaitVSync (); }
 			while(1) {
-				u32 buttons = padsButtonsHeld();
+				u32 buttons = chosen ? chosen : padsButtonsHeld();
 				if(buttons & BUTTON_Z) {
 					if(!strcmp(curFile.name, destFile->name)) {
 						DrawDispose(dupeBox);
-						uiDrawObj_t *msgBox = DrawMessageBox(D_INFO, "Can't overwrite a file with itself!");
-						DrawPublish(msgBox);
-						wait_press_A();
-						DrawDispose(msgBox);
+						manageTell(D_INFO, "Can't overwrite a file with itself!", "That's the same file.",
+							"", true);
 						return false; 
 					}
+					/* Replacing: the file there goes first. One that
+					 * won't go is kept, and nothing is copied. */
 					else if(devices[DEVICE_DEST]->deleteFile) {
-						devices[DEVICE_DEST]->deleteFile(destFile);
+						if(devices[DEVICE_DEST]->deleteFile(destFile) != 0) {
+							DrawDispose(dupeBox);
+							manageTell(D_FAIL, "Failed to delete the existing file!\nPress A to continue.",
+								"Couldn't replace it.", "The file there couldn't be removed.", true);
+							free(destFile);
+							return false;
+						}
+						replaced = true;
 					}
 
 					while(padsButtonsHeld() & BUTTON_Z){ VIDEO_WaitVSync (); }
@@ -4969,10 +5650,8 @@ bool manage_file() {
 						cursor += 3;
 						if((strlen(name_backup) + 4) >= 1024) {
 							DrawDispose(dupeBox);
-							uiDrawObj_t *msgBox = DrawMessageBox(D_INFO, "File name too long!");
-							DrawPublish(msgBox);
-							wait_press_A();
-							DrawDispose(msgBox);
+							manageTell(D_INFO, "File name too long!", "Its name is too long for another copy.",
+								"", true);
 							return false;
 						}
 						destFile->name[cursor - 3] = '_';
@@ -4987,10 +5666,8 @@ bool manage_file() {
 						copy_num++;
 						if(copy_num > 99) {
 							DrawDispose(dupeBox);
-							uiDrawObj_t *msgBox = DrawMessageBox(D_INFO, "Too many copies!");
-							DrawPublish(msgBox);
-							wait_press_A();
-							DrawDispose(msgBox);
+							manageTell(D_INFO, "Too many copies!", "There are 99 copies of it there already.",
+								"", true);
 							return false;
 						}
 						sprintf(destFile->name + cursor - 2, "%02i", copy_num);
@@ -5010,6 +5687,7 @@ bool manage_file() {
 			DrawDispose(dupeBox);
 		}
 
+		strlcpy(manageLanded, destFile->name, sizeof(manageLanded));
 		// Seek back to 0 after all these reads
 		devices[DEVICE_CUR]->seekFile(&curFile, 0, DEVICE_HANDLER_SEEK_SET);
 		devices[DEVICE_DEST]->seekFile(destFile, 0, DEVICE_HANDLER_SEEK_SET);
@@ -5019,10 +5697,8 @@ bool manage_file() {
 			&& canRename && option == MOVE_OPTION) {
 			ret = devices[DEVICE_CUR]->renameFile(&curFile, destFile->name);
 			needsRefresh=1;
-			uiDrawObj_t *msgBox = DrawMessageBox(D_INFO,ret ? "Move Failed! Press A to continue":"File moved! Press A to continue");
-			DrawPublish(msgBox);
-			wait_press_A();
-			DrawDispose(msgBox);
+			manageTell(D_INFO, ret ? "Move Failed! Press A to continue":"File moved! Press A to continue",
+				ret ? "Couldn't move it." : "Finished moving.", "", ret != 0);
 		}
 		else {
 			// If we're copying out from memory card, make a .GCI
@@ -5058,7 +5734,8 @@ bool manage_file() {
 			u32 curOffset = curFile.offset, cancelled = 0, chunkSize = bulkWrite ? curFile.size - curOffset : (256*1024);
 			char *readBuffer = (char*)memalign(32,chunkSize);
 			sprintf(txtbuffer, "Copying to: %s",getRelativeName(destFile->name));
-			uiDrawObj_t* progBar = DrawProgressBar(false, 0, txtbuffer);
+			uiDrawObj_t* progBar = filesBoxes ? filesProgress(option, destFile->name) :
+				DrawProgressBar(false, 0, txtbuffer);
 			DrawPublish(progBar);
 			
 			u64 startTime = gettime();
@@ -5097,11 +5774,10 @@ bool manage_file() {
 						free(readBuffer);
 						devices[DEVICE_CUR]->closeFile(&curFile);
 						devices[DEVICE_DEST]->closeFile(destFile);
+						bool removed = manageDropPartial(destFile);
 						sprintf(txtbuffer, "Failed to Read! (%d %d)\n%s",amountToCopy,ret, &curFile.name[0]);
-						uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,txtbuffer);
-						DrawPublish(msgBox);
-						wait_press_A();
-						DrawDispose(msgBox);
+						manageCopied(UI_FILES_RESULT_READ_FAILED, option, destFile->name, ret, removed,
+							replaced, D_FAIL, txtbuffer);
 						setGCIInfo(NULL);
 						setCopyGCIMode(FALSE);
 						return true;
@@ -5113,11 +5789,10 @@ bool manage_file() {
 					free(readBuffer);
 					devices[DEVICE_CUR]->closeFile(&curFile);
 					devices[DEVICE_DEST]->closeFile(destFile);
+					bool removed = manageDropPartial(destFile);
 					sprintf(txtbuffer, "Failed to Write! (%d %d)\n%s",amountToCopy,ret,destFile->name);
-					uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,txtbuffer);
-					DrawPublish(msgBox);
-					wait_press_A();
-					DrawDispose(msgBox);
+					manageCopied(UI_FILES_RESULT_WRITE_FAILED, option, destFile->name, ret, removed,
+						replaced, D_FAIL, txtbuffer);
 					setGCIInfo(NULL);
 					setCopyGCIMode(FALSE);
 					return true;
@@ -5132,37 +5807,41 @@ bool manage_file() {
 			if(ret == 0)
 				ret = devices[DEVICE_DEST]->closeFile(destFile);
 			if(ret != 0) {
+				bool removed = manageDropPartial(destFile);
 				sprintf(txtbuffer, "Failed to Write! (%d)\n%s",ret,destFile->name);
-				uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,txtbuffer);
-				DrawPublish(msgBox);
-				wait_press_A();
-				DrawDispose(msgBox);
+				manageCopied(UI_FILES_RESULT_WRITE_FAILED, option, destFile->name, ret, removed,
+					replaced, D_FAIL, txtbuffer);
 				setGCIInfo(NULL);
 				setCopyGCIMode(FALSE);
 				return true;
 			}
 			setGCIInfo(NULL);
 			setCopyGCIMode(FALSE);
-			free(destFile);
-			uiDrawObj_t *msgBox = NULL;
+			bool removed = cancelled && manageDropPartial(destFile);
+			bool kept = false;
+			uiFilesResult_t result = UI_FILES_RESULT_DONE;
+			const char *message;
 			if(!cancelled) {
 				// If cut, delete from source device
 				if(canDelete && option == MOVE_OPTION) {
-					devices[DEVICE_CUR]->deleteFile(&curFile);
+					kept = devices[DEVICE_CUR]->deleteFile(&curFile) != 0;
 					needsRefresh=1;
-					msgBox = DrawMessageBox(D_INFO,"Move Complete!");
+					message = "Move Complete!";
+					result = kept ? UI_FILES_RESULT_KEPT : UI_FILES_RESULT_DONE;
 				}
 				else {
-					msgBox = DrawMessageBox(D_INFO,"Copy Complete.\nPress A to continue");
+					message = "Copy Complete.\nPress A to continue";
 				}
 			} 
 			else {
 				sprintf(txtbuffer, "%s cancelled.\nPress A to continue", (option == MOVE_OPTION) ? "Move" : "Copy");
-				msgBox = DrawMessageBox(D_INFO,txtbuffer);
+				message = txtbuffer;
+				result = UI_FILES_RESULT_STOPPED;
 			}
-			DrawPublish(msgBox);
-			wait_press_A();
-			DrawDispose(msgBox);
+			/* A Move that couldn't take the original off says it copied. */
+			manageCopied(result, canDelete || cancelled ? option : COPY_OPTION, destFile->name, 0,
+				removed, replaced, D_INFO, message);
+			free(destFile);
 		}
 	}
 

@@ -85,10 +85,12 @@ the spans that stay put when Menu Widescreen widens the panes outward;
 The tests blank each part in an in-memory copy, bridge the gutter, and check
 the legacy list, the Library layouts, Home and Memory Cards never pass.
 
-`files-screen-z.png` is the same screen with Swiss's Manage File box open over
-the rows (Z on a game), from the same run as `files-screen.png`: the route's
-Z step tells the box from the rows by the text in the band it covers, and
-`files_text` reads each pane's path line in both screen shapes.
+`files-screen-z.png` is the File Browser on the demonstration disc with the
+Actions box open beside the left pane's games folder (Z), every action greyed
+on a read-only disc: `files_box` finds the box by its top and bottom edges
+across the right of the left pane, which the right pane's focus outline,
+running on across its pane, never passes for. `files_text` reads each pane's
+path line in both screen shapes.
 
 `files-storage-right.png` and `files-storage-left.png` are the File Browser
 with a storage menu open, from the demonstration disc (R: the right pane's

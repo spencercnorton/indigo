@@ -180,6 +180,11 @@ jobs:
           - { name: "Emulator (virtual cards, NTSC, GC Loader, widescreen)", route: virtual-cards, region: ntsc,
               cable: component, storage: gcloader, settings: save-details-wide,
               artifact: emulator-virtual-cards-ntsc-gcloader-wide }
+          # The File Browser with a second SD card in SD2SP2 beside the GC
+          # Loader: copy, keep both, move, rename, delete and a stopped copy,
+          # each checked on the card images.
+          - { name: "Emulator (files, NTSC, GC Loader and SD2SP2)", route: files, region: ntsc,
+              cable: component, storage: gcloader, artifact: emulator-files-ntsc-gcloader }
           # A save on a card whose writes fail after 13, then the same card
           # booted again: the settings must still load, in their colours.
           - { name: "Emulator (save, NTSC, SD2SP2, failing card)", route: save, region: ntsc,

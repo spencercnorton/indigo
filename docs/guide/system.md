@@ -80,7 +80,9 @@ game its banner and title.
 - **A** opens a folder or starts a file in the left pane, and **X** or `..`
   goes up a folder. A on a disc image opens Swiss's own game screen rather
   than Indigo's [Game details](game-details.md). In the right pane, A opens
-  folders; games start from the left.
+  folders; games start from the left. A on a file that doesn't start (a
+  text file, a save, a FlippyDrive update anywhere but on the FlippyDrive)
+  opens its actions.
 - **L** and **R** choose the storage on each side, as in Memory Cards: **L**
   the left pane's, **R** the right pane's. **X** or `..` at the top of a
   pane does the same.
@@ -118,22 +120,53 @@ The info bar says what choosing the focused device does.
   **File Management**. After that it keeps its device and folder until
   Indigo restarts.
 
-**Z** on a file or folder, in either pane, opens Swiss's actions for it:
-**X** Copy, **Y** Move, **Z** Delete, **R** Rename and **L** Hide, as far as
-the device allows. Opened from System or its face, the File Browser always
-has them; opened any other way, they need **File Management** on (Settings ›
-Setup › Library). File Browser leaves that setting as it is. A program
-folder, which starts its program when you press A on it, is acted on as the
-folder.
+### Copy, move, rename, hide and delete
 
-- **Copy** asks for a device, then a folder: **X** picks the folder you are
-  in. Copying from the right pane copies from the right pane's device. If the file is already there, **A** keeps both by numbering the copy
-  and **Z** replaces it.
-- **Move** asks first, and removes the original once it is copied.
-- **Delete** asks for **L** and **A** together. Deleting a folder deletes
-  everything in it.
+<p align="center">
+  <img alt="The File Browser with the Actions box open beside a file in the left pane: Copy, Move, Rename, Hide and Delete, each with its button's letter. The info bar says Copy puts a copy in the right pane's folder, and that it fits." src="images/files-actions.png" width="640">
+</p>
+
+**Z** on a file or folder, in either pane, opens its **Actions** beside it:
+**Copy**, **Move**, **Rename**, **Hide** (or **Unhide**) and **Delete**. Up
+and Down move and **A** chooses, or press an action's letter: **X** Copy,
+**Y** Move, **R** Rename, **L** Hide, **Z** Delete. **B** closes the box. An
+action the file or the device doesn't allow stays in the list, greyed, and
+the info bar says why. Opened from System or its face, the File Browser always
+has its actions; opened any other way, they need **File Management** on
+(Settings › Setup › Library). File Browser leaves that setting as it is. A
+program folder, which starts its program when you press A on it, is acted on
+as the folder.
+
+**Copy** and **Move** take the file to the folder open in the other pane.
+The info bar says whether it fits there, from the other device's free space
+(a network share's free space isn't known, so nothing is greyed for it).
+
+<p align="center">
+  <img alt="Copy to SD Card - SD2SP2? beside the file, with Yes and No. A lit row in the right pane shows where the copy will go; the info bar names the folder, its free space, and that the file fits." src="images/files-copy.png" width="640">
+</p>
+
+- **Copy** asks first, and a row in the other pane shows where the copy will
+  go. A card shows its progress and **B** stops it; a stopped copy is
+  removed, so nothing half copied is left behind. A copy that fails part way
+  is removed too.
+- **Move** asks first, then copies the file and removes the original once
+  the copy is whole. In another folder of the same device it just moves.
+- If the file is already there, choose **Keep both** (the copy gets a
+  number) or **Replace it**. When there is room only for one, Keep both is
+  greyed. Replace it removes the old file first, so a replacing copy that
+  is stopped or fails leaves neither; the message says so.
+- Copy and Move don't go onto a memory card: use **Memory Cards** to copy
+  saves. Copying a save off a card is fine.
+- **Rename** shows the keyboard with the file's name: change it and press
+  START.
 - **Hide** asks first. A hidden file or folder shows again with **Show hidden
   files** on (Settings › Setup › Library).
+- **Delete** asks for **L** held with **A**: A on its own deletes nothing.
+  Deleting a folder deletes everything in it.
+
+When it's done, both panes show what changed and a message says how it
+went: the copy focused (and flashing) where it went, a moved or deleted
+file's neighbour where it was, a renamed file under its new name.
 
 Indigo also asks before the File Browser changes how your console starts:
 
@@ -145,7 +178,8 @@ Indigo also asks before the File Browser changes how your console starts:
 
 What it can't do:
 
-- Copy or move a folder: only files.
+- Copy or move a folder: only files. Copying somewhere else than the other
+  pane's folder: open that folder there first.
 - Show `/games` folder by folder in the left pane. Swiss lists the disc
   images in `/games`'s folders as one list there (**Flatten directory**,
   Settings › Setup › Library); the right pane shows the folders.

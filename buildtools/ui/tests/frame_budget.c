@@ -454,7 +454,10 @@ static void memoryCards(const char *name, bool wide, int what)
  * the hint line with five round buttons. The banner is one texture. */
 static int filesMeasure(const char *text) { return GetTextSizeInPixels(text); }
 
-static void files(const char *name, bool wide, int active, int menu)
+/* What else is open over the panes. */
+enum { FILES_PLAIN = 0, FILES_ACTIONS, FILES_COPY, FILES_MESSAGE };
+
+static void files(const char *name, bool wide, int active, int menu, int extra)
 {
 	static const u8 kinds[UI_FILES_ROWS] = {
 		UI_FILES_KIND_PARENT, UI_FILES_KIND_FOLDER, UI_FILES_KIND_DISC,
@@ -552,14 +555,79 @@ static void files(const char *name, bool wide, int active, int menu)
 				"No card is inserted.", NULL);
 		}
 	}
+	/* Z: the Actions box beside the focused row, its letters, Copy and Move
+	 * greyed with the reason on line 2. */
+	if(extra == FILES_ACTIONS) {
+		static const char *const labels[UI_FILES_ACTIONS] = {"Copy", "Move", "Rename", "Hide",
+			"Delete"};
+		int widest = 0;
+
+		memset(&snapshot.menu, 0, sizeof(snapshot.menu));
+		for(i = 0; i < UI_FILES_ACTIONS; i++) {
+			int width = (int)(GetTextSizeInPixels(labels[i]) * 0.56f) + 60;
+
+			strcpy(snapshot.menu.item[i], labels[i]);
+			snapshot.menu.letter[i] = "XYRLZ"[i];
+			widest = width > widest ? width : widest;
+		}
+		snapshot.menu.count = UI_FILES_ACTIONS;
+		snapshot.menu.dim = 3u;
+		snapshot.menu.focus = 2;
+		snapshot.menu.row = 2;
+		snapshot.menu.pane = (u8)active;
+		snapshot.menu.open = 1;
+		snapshot.menu.width = (s16)widest;
+		UIFiles_ActionLine(UI_FILES_ACTION_COPY, false, "GC Loader", "SD Card - SD2SP2",
+			"/Backups/Old consoles/GameCube", snapshot.line[0], sizeof(snapshot.line[0]));
+		strcpy(snapshot.line[1], "SD Card - SD2SP2 has 0.80 GB free; this needs 1.35 GB.");
+		snapshot.warn = 1;
+		UIFiles_Hints(UI_FILES_HINTS_BOX, active, UI_FILES_KIND_FOLDER, false, false, false,
+			snapshot.hint[0], snapshot.hint[1]);
+	}
+	/* The Copy question beside the row, and the ghost row in the other pane
+	 * where the copy will land. */
+	if(extra == FILES_COPY) {
+		uiFilesRowSnapshot_t ghost = snapshot.pane[active].row[2];
+
+		memset(&snapshot.menu, 0, sizeof(snapshot.menu));
+		strcpy(snapshot.menu.title, "Copy to SD Card - SD2SP2?");
+		strcpy(snapshot.menu.item[0], "Yes");
+		strcpy(snapshot.menu.item[1], "No");
+		snapshot.menu.count = 2;
+		snapshot.menu.row = 2;
+		snapshot.menu.pane = (u8)active;
+		snapshot.menu.open = 1;
+		snapshot.menu.width = (s16)(GetTextSizeInPixels(snapshot.menu.title) * 0.56f) + 24;
+		UIFiles_InsertGhost(&snapshot.pane[!active], 4, &ghost);
+		strcpy(snapshot.line[0], "To SD Card - SD2SP2  \233  /Backups  \267  29.1 GB free");
+		strcpy(snapshot.line[1], "Needs 1.35 GB. It fits.");
+		UIFiles_Hints(UI_FILES_HINTS_QUESTION, active, UI_FILES_KIND_FOLDER, false, false, false,
+			snapshot.hint[0], snapshot.hint[1]);
+	}
+	/* A copy stopped: the maroon message, two lines. */
+	if(extra == FILES_MESSAGE) {
+		UIFiles_Result(UI_FILES_RESULT_STOPPED, false, "Copper Orchard", "GC Loader",
+			"SD Card - SD2SP2", "Backups", 0, true, false, snapshot.message);
+		/* Under it, the copy that landed flashes. */
+		if(snapshot.pane[!active].rows > 0) {
+			snapshot.pane[!active].row[0].flags |= UI_FILES_ROW_FLASH;
+		}
+		snapshot.messageWidth = (s16)(GetTextSizeInPixels(snapshot.message[1]) * 0.46f) + 48;
+		UIFiles_Hints(UI_FILES_HINTS_MESSAGE, active, UI_FILES_KIND_FOLDER, false, false, false,
+			snapshot.hint[0], snapshot.hint[1]);
+	}
 	memset(&cost, 0, sizeof(cost));
 	cost.hash = 1469598103934665603ULL;
 	stubStateCalls = 0;
 	IndigoBackground_DrawSavesBackdrop(1.0f, 0.0f, seconds, true, UIScene_Frame(), &clock, icons);
-	_FilesShapes(&snapshot, &layout, 1.0f, (float)active, focusY, 0.0f);
-	_FilesWords(&snapshot, &layout, 1.0f, (float)active);
-	if(menu >= 0) {
+	_FilesShapes(&snapshot, &layout, 1.0f, (float)active, focusY, 0.0f, 0.84f,
+		extra == FILES_MESSAGE ? 1.0f : 0.0f);
+	_FilesWords(&snapshot, &layout, 1.0f, (float)active, 0.84f);
+	if(menu >= 0 || extra == FILES_ACTIONS || extra == FILES_COPY) {
 		_FilesMenu(&snapshot.menu, &layout, 1.0f, 1.0f, (float)snapshot.menu.focus);
+	}
+	if(extra == FILES_MESSAGE) {
+		_FilesMessage(snapshot.message, snapshot.messageWidth, 1.0f);
 	}
 	printf("{\"scene\": \"%s\", \"sqrtf\": %ld, \"trig\": %ld, \"minmax\": %ld, "
 		"\"vertices\": %ld, \"begins\": %ld, \"copy_pixels\": %.0f, \"state\": %ld, "
@@ -606,10 +674,13 @@ int main(void)
 	memoryCards("memory-cards-copy", true, CARDS_COPY);
 	memoryCards("memory-cards-erase", true, CARDS_ERASE);
 	memoryCards("memory-cards-opening", true, CARDS_OPENING);
-	files("files", false, UI_FILES_LEFT, -1);
-	files("files-right", false, UI_FILES_RIGHT, -1);
-	files("files-wide", true, UI_FILES_LEFT, -1);
-	files("files-storage", false, UI_FILES_LEFT, UI_FILES_LEFT);
-	files("files-storage-right", true, UI_FILES_RIGHT, UI_FILES_RIGHT);
+	files("files", false, UI_FILES_LEFT, -1, FILES_PLAIN);
+	files("files-right", false, UI_FILES_RIGHT, -1, FILES_PLAIN);
+	files("files-wide", true, UI_FILES_LEFT, -1, FILES_PLAIN);
+	files("files-storage", false, UI_FILES_LEFT, UI_FILES_LEFT, FILES_PLAIN);
+	files("files-storage-right", true, UI_FILES_RIGHT, UI_FILES_RIGHT, FILES_PLAIN);
+	files("files-actions", false, UI_FILES_LEFT, -1, FILES_ACTIONS);
+	files("files-copy", true, UI_FILES_LEFT, -1, FILES_COPY);
+	files("files-message", false, UI_FILES_RIGHT, -1, FILES_MESSAGE);
 	return 0;
 }

@@ -87,7 +87,7 @@ def files_source() -> str:
                  "_SaveCubesBar", "_FilesVertex", "_FilesQuad", "_FilesRect", "_FilesColor",
                  "_FilesEmblemVertices", "_FilesCube", "_FilesOutline", "_FilesShapes",
                  "_HintDisc", "_HintAlpha", "_HintOctagon", "_HintLetter", "_DrawHintGlyph",
-                 "_DrawHintText", "_FilesWords", "_FilesMenu"):
+                 "_DrawHintText", "_FilesWords", "_FilesMenu", "_FilesMessage"):
         parts.append(renderer_definition(fbm, name))
     return "\n\n".join(parts) + "\n"
 

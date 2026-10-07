@@ -254,6 +254,21 @@ class Card(unittest.TestCase):
             with self.assertRaises(ValueError):
                 card.fragment(image, "ipl.dol", 2)  # one cluster can't be two pieces
 
+    @unittest.skipUnless(shutil.which("mkfs.fat") and shutil.which("mdir"), "needs dosfstools and mtools")
+    def test_the_files_routes_second_card(self):
+        """The second SD card holds its files, and its listing reads as the
+        File Browser sorts it: "..", folders, then names ignoring case."""
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "second.img"
+            card.second_card(image)
+            for name, data in card.SECOND_FILES.items():
+                self.assertEqual(card.read_card(image, name), data)
+            self.assertEqual(card.listing(image), ["..", "backups/", "a-one.txt", "b-two.txt",
+                                                  "big.bin", "c-three.txt"])
+        ini = run.dolphin_ini("gcloader", Path("/work/card.img"), second=Path("/work/second.img"))
+        self.assertIn("SerialPort2 = 15\nSP2SDCardImage = /work/second.img\n", ini)
+        self.assertNotIn("/work/card.img", ini)  # the GC Loader's card is the drive's
+
     def test_settings_to_start_with(self):
         text = (run.SETTINGS / "non-default.ini").read_text()
         pairs = run.seeded(text)
@@ -673,12 +688,17 @@ class Screen(unittest.TestCase):
         self.assertLess(run.overlap(run.files_text(main, box=run.FILES_RIGHT_ROWS_BOX),
                                     run.files_text(right, box=run.FILES_RIGHT_ROWS_BOX)),
                         run.DIFFERENT)
-        # Swiss's Z box over the rows, which files_screen still finds.
+        # The Actions box beside the left pane's row, which files_screen still
+        # finds; not on the plain screens, nor beside the right pane.
         boxed = self.folder_frame("files-screen-z.png")
         self.assertTrue(run.files_screen(boxed))
-        band = [run.text_mask(frame.max(axis=2), run.FILES_BOX_BAND) for frame in (main, boxed)]
-        self.assertLess(run.overlap(*band), run.DIFFERENT)
-        self.assertTrue(run.same_text(band[0], band[0]))
+        self.assertTrue(run.files_box(boxed, 0))
+        self.assertFalse(run.files_box(boxed, 1))
+        for frame in (main, right):
+            self.assertFalse(run.files_box(frame, 0))
+            self.assertFalse(run.files_box(frame, 1))
+        # A storage menu is a box beside the pane too.
+        self.assertTrue(run.files_box(self.folder_frame("files-storage-right.png"), 1))
 
     def test_the_file_browser_and_its_focused_pane(self):
         for name, wide, pane in (("files-screen.png", False, 0), ("files-screen-right.png", False, 1),

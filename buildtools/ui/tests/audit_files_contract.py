@@ -16,9 +16,23 @@ or unmounts storage itself (menu_loop's Library and its empty-folder branch,
 starting a file, Autoload, Recent, a Source change, either Other devices...,
 B), a reset shuts it down, a read that fails mounts it once more, and Swiss's
 box on its entries borrows the Source's slot and gives it back. Swiss's box
-on either side keeps the other side's storage mounted. Every rule has a
-mutant that must fail it.
+on either side keeps the other side's storage mounted.
+
+Its Actions run Swiss's own file operations (manage_file_ex) with the
+choice made and the other pane's folder as the destination: then Swiss's
+destination picker, its mount and its folder chooser never run, and without
+a preset they are exactly Swiss's. The landing name is built in one place;
+a stopped or failed copy deletes its partial file at each of the four places
+it can end early, on the destination only, never a folder of that name nor
+anything on a memory card; a stopped Move keeps its original; Replace goes
+on only once the file there is gone; a Move that can't take the original
+off never runs, and one whose delete fails says so; the copy goes to the
+other pane's folder; Delete still needs L held with A; Swiss's questions
+keep their words; a result is said once both panes are read again. Every
+rule has a mutant that must fail it.
 """
+
+import hashlib
 
 import re
 import sys
@@ -30,6 +44,13 @@ if not __debug__:
 ROOT = Path(__file__).resolve().parents[3]
 SWISS = (ROOT / "cube/swiss/source/swiss.c").read_text()
 FRAME = (ROOT / "cube/swiss/source/gui/FrameBufferMagic.c").read_text()
+FILES = (ROOT / "cube/swiss/source/gui/ui_files.c").read_text()
+TEST = (ROOT / "buildtools/ui/tests/test_ui_files.c").read_text()
+# Swiss's lines kept under the presets, one tab in and without trailing
+# blanks: its Z box (option = 0 where it declared it) and its destination
+# picker, mount and folder chooser (destFile assigned where it declared it).
+SWISS_BOX_SHA256 = "63ca2ad0f785996016ffce191f798465a1b00e7bc9cb3b7931fd935b00212783"
+SWISS_DESTINATION_SHA256 = "6ea7ed015c852e7ce3d0ef2fd84569c7c5eeba0144b1336da202a77741ba00a4"
 
 
 def function(source: str, marker: str) -> str:
@@ -48,11 +69,11 @@ def before(text: str, first: str, second: str, start: int = 0) -> None:
     assert a < text.index(second, a), f"{first!r} must come before {second!r}"
 
 
-def check(swiss: str, frame: str) -> None:
+def check(swiss: str, frame: str, files: str = FILES) -> None:
     screen = function(swiss, "static uiDrawObj_t* renderFileList(")
     menu = function(swiss, "void menu_loop()")
     dispatch = function(menu, "if(devices[DEVICE_CUR] != NULL && curMenuLocation==ON_FILLIST)")
-    manage = function(swiss, "static bool filesManageEntry(")
+    manage = function(swiss, "static bool filesManageFrom(")
     step = function(swiss, "static bool filesMetaStep(")
     panes = function(swiss, "static bool filesPaneSnapshot(")
     info = function(swiss, "static bool filesInfoSnapshot(")
@@ -64,11 +85,11 @@ def check(swiss: str, frame: str) -> None:
                      dispatch), "the File Browser reads another listing"
     # The meta thread: started once the page is up, stopped on every way out
     # and before any action on a file (filesActivate and filesManage stop it
-    # themselves; filesManageEntry is the screen's own).
+    # themselves; filesManageFrom is the screen's own).
     before(screen, "filesPublish(directory, &filePanel, true)", "meta_thread_start(loadingBox);")
     assert screen.rstrip().endswith("return filePanel;\n}") and \
         "meta_thread_stop();\n\tDrawDispose(loadingBox);" in screen, "the meta thread outlives the screen"
-    before(manage, "meta_thread_stop();", "filesManageFile(")
+    before(manage, "meta_thread_stop();", "manage_file_ex(")
     for action in ("static void filesActivate(", "static bool filesManage("):
         body = function(swiss, action)
         assert "manage_file()" not in body, f"{action} runs Swiss's box past filesManageFile"
@@ -77,10 +98,10 @@ def check(swiss: str, frame: str) -> None:
                 before(body, "meta_thread_stop();", call)
     # After an action on the right pane, scanFiles finds the left pane's
     # focus again, not the right entry's path.
-    before(manage, "memcpy(entry, &curFile, sizeof(file_handle));",
-           "strlcpy(curFile.name, leftFocus, sizeof(curFile.name));")
-    before(screen, "filesLeftFocusName(directory, leftFocus, sizeof(leftFocus));",
-           "filesManageEntry(entry, leftFocus)")
+    actions = function(swiss, "static bool filesActions(")
+    right = actions[actions.index("\telse {\n\t\tstrlcpy(filesOther.focusName, name"):]
+    before(actions, "filesManageFrom(", "filesLeftFocusName(directory, curFile.name, sizeof(curFile.name));")
+    assert "filesLeftFocusName(directory, curFile.name, sizeof(curFile.name));" in right
     # Entries the meta thread may be filling are read under their lock.
     for body, name in ((panes, "rows"), (info, "info bar")):
         # Locked, or (refreshing while idle) given up when the entry is busy.
@@ -159,6 +180,7 @@ def check(swiss: str, frame: str) -> None:
     # The page covers the frame, so nothing behind it is drawn.
     assert "event->type == EV_FILES" in function(frame, "static bool _FrameCovered(")
     check_second_device(swiss, screen, menu, dispatch, refresh, manage)
+    check_operations(swiss, screen, manage, actions, frame, files)
 
 
 def check_second_device(swiss: str, screen: str, menu: str, dispatch: str, refresh: str,
@@ -232,12 +254,14 @@ def check_second_device(swiss: str, screen: str, menu: str, dispatch: str, refre
     assert re.search(r"if\(!final && filesOther\.mount == UI_FILES_OWN && filesOther\.device != NULL &&\s*"
                      r"!\(filesOther\.device->quirks & QUIRK_NO_DEINIT\)\) \{\s*filesOther\.device->deinit\(",
                      reset), "the reset shuts down what it shouldn't, or nothing"
-    # Swiss's box on a right-pane entry borrows the Source's slot and gives
-    # it back on its one way out; the Source stays mounted meanwhile.
-    before(manage, "devices[DEVICE_CUR] = filesOther.device;", "filesManageFile(")
-    before(manage, "filesManageFile(", "devices[DEVICE_CUR] = cur;")
-    assert "filesManageFile(other ? cur : NULL);" in manage and "manage_file()" not in manage, \
-        "the box on a right entry doesn't keep the Source mounted"
+    # An action on a right-pane entry borrows the Source's slot for the
+    # pane's storage and the destination's for the Source, and gives both
+    # back on its one way out; nothing is mounted or unmounted meanwhile.
+    before(manage, "devices[DEVICE_CUR] = fromRight ? filesOther.device : cur;", "manage_file_ex(")
+    before(manage, "devices[DEVICE_DEST] = fromRight ? cur : filesOther.device;", "manage_file_ex(")
+    before(manage, "manage_file_ex(", "devices[DEVICE_CUR] = cur;")
+    before(manage, "manage_file_ex(", "devices[DEVICE_DEST] = dest;")
+    assert "manage_file()" not in manage and "->init(" not in manage and "->deinit(" not in manage
     # Swiss's box keeps the other side's storage: the Source for a right
     # entry, else the right pane's own mount; never in DEVICE_DEST, where the
     # destination picker unmounts it.
@@ -263,8 +287,10 @@ def check_second_device(swiss: str, screen: str, menu: str, dispatch: str, refre
     before(pick, "filesClash(chosen, devices[DEVICE_CUR], filesNoteText", "filesOtherChoose(chosen);")
     assert re.search(r"filesNote = filesNoteText;\s*chosen = NULL;", pick), "the picker's clash is silent"
     # A greyed storage can't be chosen.
-    assert "if((buttons & BUTTON_A) && !((filesSnapshot.menu.dim >> focus) & 1u)) {" in function(
-        swiss, "static int filesStorageMenu("), "A chooses a greyed storage"
+    assert "filesBox(UI_FILES_HINTS_BOX, BUTTON_L | BUTTON_R, false);" in function(
+        swiss, "static int filesStorageMenu("), "the storage menu isn't a box"
+    assert "if(pick >= 0 && ((box->dim >> pick) & 1u)) {" in function(swiss, "static int filesBox("), \
+        "A chooses a greyed item"
     # L's device becomes the Source in place, mounted, and X at the top
     # opens the left menu rather than Swiss's Source picker.
     before(change, "sourceCommit(device);", "(void)sourceMount();")
@@ -273,7 +299,8 @@ def check_second_device(swiss: str, screen: str, menu: str, dispatch: str, refre
     before(screen, "else if((buttons & PAD_BUTTON_X) && filesAtRoot(&curDir)) {\n\t\t\t\tstorage = UI_FILES_LEFT;",
            "else if(buttons & PAD_BUTTON_X) {\n\t\t\t\tfilesUp(directory[0]);")
     assert manage.count("return") == 1 and manage.index("devices[DEVICE_CUR] = cur;") < manage.index("return")
-    manager = function(swiss, "bool manage_file() {")
+    assert manage.index("devices[DEVICE_DEST] = dest;") < manage.index("return")
+    manager = function(swiss, "bool manage_file_ex(int preset, const char *destDir) {")
     assert manager.count("devices[DEVICE_DEST] != devices[DEVICE_CUR] && devices[DEVICE_DEST] != manageKeep") == 2
     # L and R choose storage; only the C-stick pages.
     for page in ("UI_FILES_INPUT_PAGE_UP", "UI_FILES_INPUT_PAGE_DOWN"):
@@ -288,14 +315,167 @@ def check_second_device(swiss: str, screen: str, menu: str, dispatch: str, refre
     assert "!sourceMount()" in menu
 
 
+def kept(block: str) -> str:
+    """Swiss's lines as they were: one tab less, no trailing blanks."""
+    return "\n".join((line[1:] if line.startswith("\t") else line).rstrip()
+                     for line in block.split("\n"))
+
+
+def check_operations(swiss: str, screen: str, manage: str, actions: str, frame: str,
+                     files: str) -> None:
+    ex = function(swiss, "bool manage_file_ex(int preset, const char *destDir) {")
+    # Swiss's callers ask; the File Browser presets.
+    assert re.search(r"bool manage_file\(\) \{\s*return manage_file_ex\(MANAGE_ASK, NULL\);\s*\}", swiss)
+    assert "int option = preset;\n\tif(preset == MANAGE_ASK) {\n" in ex, "Swiss's box asks over a preset"
+    box = ex[ex.index("\tif(preset == MANAGE_ASK) {\n") + len("\tif(preset == MANAGE_ASK) {\n"):]
+    box = box[:box.index("\n\t}\n")]
+    assert hashlib.sha256(kept(box).encode()).hexdigest() == SWISS_BOX_SHA256, "Swiss's box changed"
+    # With a destination, Swiss's picker, its mount and its folder chooser
+    # never run; without one they are Swiss's, unchanged.
+    opening = "\t\tif(destDir == NULL) {\n"
+    picker = ex[ex.index(opening) + len(opening):]
+    picker = picker[:picker.index("\n\t\t}\n\t\telse {\n\t\t\tdestFile = calloc")]
+    assert hashlib.sha256(kept(picker).encode()).hexdigest() == SWISS_DESTINATION_SHA256, \
+        "Swiss's destination picker, mount or folder chooser changed"
+    rest = ex.replace(picker, "")
+    for step in ("select_device(", "->init(", "select_dest_dir("):
+        assert step in picker and step not in rest, f"{step} runs with a preset destination"
+    assert re.search(r"else \{\s*destFile = calloc\(1, sizeof\(file_handle\)\);\s*"
+                     r"strlcpy\(destFile->name, destDir, PATHNAME_MAX\);", ex), "the preset folder isn't used"
+    # The landing name is built in one place, which the screen predicts with.
+    assert swiss.count("stripInvalidChars(getRelativeName(") == 1
+    namer = function(swiss, "DEVICEHANDLER_INTERFACE *srcDev, DEVICEHANDLER_INTERFACE *destDev)\n{")
+    assert "stripInvalidChars(getRelativeName(" in namer and 'strlcat(out, ".gci", PATHNAME_MAX);' in namer
+    assert "manageDestName(destFile->name, destFile->name, curFile.name," in ex
+    assert "manageDestName(landing, thereDir, entry->name, here, there);" in actions
+    # A stopped or failed copy deletes its partial file, on the destination,
+    # at each of the four places it ends early, and only those.
+    drop = function(swiss, "static bool manageDropPartial(file_handle *destFile)")
+    assert "DEVICEHANDLER_INTERFACE *dest = devices[DEVICE_DEST];" in drop
+    assert "DEVICE_CUR" not in drop
+    before(drop, "dest->closeFile(destFile);", "dest->deleteFile(destFile)")
+    last = "return dest->deleteFile != NULL && dest->deleteFile(destFile) == 0;"
+    assert drop.count("deleteFile(") == 1 and last in drop, "the partial file isn't deleted"
+    # A card's delete goes by the save's own name, and its writes report
+    # short counts for saves that are whole: a card keeps what it has.
+    assert re.search(r"if\(dest == &__device_card_a \|\| dest == &__device_card_b\) \{\s*return false;", drop)
+    before(drop, "dest == &__device_card_a", last)
+    # A folder of that name is no partial file.
+    assert re.search(r"dest->statFile\(&there\) == 0 && there\.fileType == IS_DIR\) \{\s*return true;", drop)
+    before(drop, "there.fileType == IS_DIR", last)
+    assert ex.count("manageDropPartial(destFile)") == 4 and swiss.count("manageDropPartial(") == 5
+    for message in ('"Failed to Read! (%d %d)', '"Failed to Write! (%d %d)', '"Failed to Write! (%d)\\n'):
+        at = ex.index(message)
+        site = ex[:ex.rfind("\n", 0, at)].rstrip().rsplit("\n", 1)[1].strip()
+        assert site == "bool removed = manageDropPartial(destFile);", f"{message}: the partial file stays"
+        assert "return true;" in ex[at:at + 400]
+    before(ex, "devices[DEVICE_DEST]->closeFile(destFile);\n\t\t\t\t\t\tbool removed", '"Failed to Read!')
+    stop = "bool removed = cancelled && manageDropPartial(destFile);"
+    assert stop in ex, "a stopped copy keeps its partial file, or a finished one loses its file"
+    before(ex, "ret = devices[DEVICE_DEST]->writeFile(destFile, NULL, 0);", stop)
+    before(ex, stop, "free(destFile);")
+    # A stopped Move keeps its original: it is deleted only past a copy
+    # that wasn't stopped.
+    assert re.search(r"if\(!cancelled\) \{\s*// If cut, delete from source device\s*"
+                     r"if\(canDelete && option == MOVE_OPTION\) \{\s*"
+                     r"kept = devices\[DEVICE_CUR\]->deleteFile\(&curFile\) != 0;", ex), \
+        "a stopped Move deletes its original"
+    assert ex.count("devices[DEVICE_CUR]->deleteFile(") == 1
+    # Replace it: the copy goes on only once the file there is gone.
+    assert re.search(r"if\(devices\[DEVICE_DEST\]->deleteFile\(destFile\) != 0\) \{\s*"
+                     r"DrawDispose\(dupeBox\);\s*manageTell\(D_FAIL,[^;]*;\s*free\(destFile\);\s*"
+                     r"return false;\s*\}\s*replaced = true;", ex), "Replace copies over a file it couldn't remove"
+    assert ex.count("devices[DEVICE_DEST]->deleteFile(") == 1
+    assert ex.count(", removed,\n") == 3 and ex.count("replaced, D_FAIL, txtbuffer);") == 3
+    assert "removed, replaced, D_INFO, message);" in ex, "a stopped Replace doesn't say the old file is gone"
+    # A Move only runs when the box allowed it (the box greys one whose
+    # original can't be taken off), and one whose delete fails says so.
+    assert re.search(r"if\(action < 0 \|\| !avail\.enabled\[action\]\) \{\s*return false;", actions), \
+        "a greyed action runs"
+    assert "move && !(from->canWrite && (renames || from->canDelete))" in function(
+        files, "void UIFiles_Availability("), "a Move offered where the original stays"
+    assert "kept = devices[DEVICE_CUR]->deleteFile(&curFile) != 0;" in ex
+    assert "result = kept ? UI_FILES_RESULT_KEPT : UI_FILES_RESULT_DONE;" in ex
+    assert "manageCopied(result, canDelete || cancelled ? option : COPY_OPTION," in ex, \
+        "a Move that couldn't take the original off says it moved"
+    # manage_file_ex's permissions are the ones the availability table test
+    # checks UIFiles_Availability against, line for line.
+    flags = re.findall(r"^\tbool can\w+ = .*;$", ex, re.M)
+    assert len(flags) == 6 and all(line in TEST for line in flags), "manage_file's permissions moved"
+    # Delete: Swiss's words, and only L held with A deletes; A alone on
+    # Delete doesn't; L, A and B are let go before Swiss goes on.
+    asks = function(swiss, "static bool filesAskDelete(")
+    assert "filesBox(UI_FILES_HINTS_DELETE, 0u, true) == 0" in asks
+    runner = function(swiss, "static int filesBox(")
+    assert "chorded = chord && (padsButtonsHeld() & (BUTTON_A | BUTTON_L)) == (BUTTON_A | BUTTON_L);" in runner
+    assert "(pressed & BUTTON_A) && !(chord && focus == 0)" in runner, "A alone deletes"
+    assert re.search(r"if\(chord\) \{\s*buttons \|= BUTTON_L;", runner)
+    assert "while(padsButtonsHeld() & (buttons & ~(BUTTON_UP | BUTTON_DOWN)));" in runner
+    assert "((box->dim >> pick) & 1u)" in runner, "a greyed item is chosen"
+    for words in ('"Delete this file?\\n \\nPress L + A to continue, or B to cancel."',
+                  '"Delete this folder and all it holds?\\n \\nPress L + A to continue, or B to cancel."'):
+        assert swiss.count(words) == 2, f"Delete's words differ: {words}"
+    assert re.search(r"if\(option == DELETE_OPTION && filesBoxes && !filesAskDelete\(", ex)
+    assert "if(option == DELETE_OPTION && !filesBoxes) {" in ex
+    # Swiss's questions keep their words; the File Browser only draws them.
+    for words in ('"Move this file?\\nIt is removed from here once copied.\\nA  MOVE    B  CANCEL"',
+                  '"Hide this file?\\nIt shows only with Show hidden files on.\\nA  HIDE    B  CANCEL"',
+                  '"Hide this folder?\\nIt shows only with Show hidden files on.\\nA  HIDE    B  CANCEL"',
+                  '"Open this folder at every start?\\nHome is skipped until you turn it off.\\nA  AUTOLOAD    B  CANCEL"',
+                  '"Update the FlippyDrive with this file?\\nA  UPDATE    B  CANCEL"',
+                  '"Write this file to the WiiKey\'s flash?\\nA  FLASH    B  CANCEL"'):
+        assert swiss.count(words) == 1, words
+    confirm = function(swiss, "static bool confirmAction(const char *text)")
+    assert "int asked = filesBoxes ? filesAsk(text) : -1;" in confirm
+    # filesBoxes holds only while the screen runs Swiss's operation.
+    before(manage, "filesBoxes = true;", "manage_file_ex(")
+    before(manage, "manage_file_ex(", "filesBoxes = false;")
+    # File exists: the box's choice is Swiss's button; Keep both greyed when
+    # only replacing makes room.
+    assert "u32 buttons = chosen ? chosen : padsButtonsHeld();" in ex
+    assert "filesFitsBoth = !avail.replaceOnly[action];" in actions
+    assert "UIFiles_ExistsChoices(filesFitsBoth, &choices);" in function(swiss, "static u32 filesAskExists(")
+    # The screen's operations go through filesManageFrom alone; A on a file
+    # that doesn't start here opens Actions rather than Swiss's box.
+    assert "filesManageEntry" not in swiss
+    assert screen.count("filesActions(directory, UI_FILES_LEFT)") == 2
+    assert screen.count("filesActions(directory, UI_FILES_RIGHT)") == 1
+    assert actions.count("filesManageFrom(") == 1
+    # Copy and Move go to the other pane's folder, and a same-named folder
+    # there, or a memory card, greys them (UIFiles_Availability).
+    assert "changed = filesManageFrom(entry, pane, options[action], thereDir);" in actions
+    assert "const char *thereDir = left ? filesOther.dir.name : curDir.name;" in actions
+    assert "what.existsFolder = thereList[i]->fileType == IS_DIR;" in actions
+    assert "out->card = device == &__device_card_a || device == &__device_card_b;" in \
+        function(swiss, "static void filesDevice(")
+    # A result waits until both panes are read again: Swiss's operation
+    # only keeps it, the page says it once it is published, and at once
+    # when nothing changed.
+    tell = function(swiss, "static void manageTell(")
+    copied = function(swiss, "static void filesSayCopy(")
+    assert "filesSayLater(title, detail, failed);" in tell and "filesSay(" not in tell
+    assert "filesSayLater(lines[0], lines[1]," in copied and "filesSay(" not in copied
+    assert swiss.count("filesSayPending();") == 2
+    before(screen, "if(!filesPublish(directory, &filePanel, true)) {", "filesSayPending();")
+    before(screen, "filesSayPending();", "meta_thread_start(loadingBox);")
+    assert re.search(r"if\(!changed\) \{\s*filesSayPending\(\);", actions)
+    # The progress card says what goes where and B Stop.
+    assert "filesBoxes ? filesProgress(option, destFile->name) :" in ex
+    assert "if(data->files) {\n\t\t_DrawHintText(x1 + 16, y2 - 12, \"B  Stop\"" in frame
+    # The message and the ghost row are drawn, never measured, in a draw.
+    for draw in ("static void _FilesMessage(", "static void _FilesMenu("):
+        body = function(frame, draw)
+        assert "GetTextSizeInPixels" not in body and "alloc(" not in body, draw
+
+
 check(SWISS, FRAME)
 
 MUTANTS = (
     ("the meta thread runs into manage_file", SWISS,
-     "\tmeta_thread_stop();\n\t/* An entry on the right pane's own storage",
-     "\t/* An entry on the right pane's own storage"),
+     "\tmeta_thread_stop();\n\tdevices[DEVICE_CUR] = fromRight ? filesOther.device : cur;",
+     "\tdevices[DEVICE_CUR] = fromRight ? filesOther.device : cur;"),
     ("the left focus is not put back", SWISS,
-     "\tif(leftFocus != NULL) {\n\t\tstrlcpy(curFile.name, leftFocus, sizeof(curFile.name));\n\t}\n", ""),
+     "\t\tfilesLeftFocusName(directory, curFile.name, sizeof(curFile.name));\n", ""),
     ("rows read unlocked", SWISS, "\t\t\tif(wait) {\n\t\t\t\tlockFile(entry);\n\t\t\t}\n\t\t}\n\t\trow->kind",
      "\t\t}\n\t\trow->kind"),
     ("the view follows the right pane", SWISS,
@@ -382,16 +562,18 @@ MUTANTS = (
      "\tmemcpy(entry, &curFile, sizeof(file_handle));\n\tdevices[DEVICE_CUR] = cur;\n",
      "\tmemcpy(entry, &curFile, sizeof(file_handle));\n"),
     ("Swiss's box unmounts the Source it borrowed from", SWISS,
-     "\t\tif(devices[DEVICE_DEST] != devices[DEVICE_CUR] && devices[DEVICE_DEST] != manageKeep) {\n\t\t\tdevices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );\t",
-     "\t\tif(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {\n\t\t\tdevices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );\t"),
+     "\t\t\tif(devices[DEVICE_DEST] != devices[DEVICE_CUR] && devices[DEVICE_DEST] != manageKeep) {\n\t\t\t\tdevices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );\n",
+     "\t\t\tif(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {\n\t\t\t\tdevices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );\n"),
     ("a left box unmounts the right pane's storage", SWISS,
      "\tif(keep == NULL && filesOther.mount == UI_FILES_OWN) {\n\t\tkeep = filesOther.device;\n\t}\n", ""),
     ("the picker unmounts the kept storage", SWISS,
      "\tif(keep != NULL && devices[DEVICE_DEST] == keep) {\n\t\tdevices[DEVICE_DEST] = NULL;\n\t}\n", ""),
     ("manage_file doesn't know what to keep", SWISS,
      "\tmanageKeep = keep;\n", ""),
-    ("the right box keeps nothing", SWISS,
-     "filesManageFile(other ? cur : NULL);", "filesManageFile(NULL);"),
+    ("the destination slot isn't the other pane's", SWISS,
+     "\tdevices[DEVICE_DEST] = fromRight ? cur : filesOther.device;\n", ""),
+    ("the destination slot isn't given back", SWISS,
+     "\tdevices[DEVICE_DEST] = dest;\n\treturn changed;", "\treturn changed;"),
     ("A's box keeps nothing", SWISS,
      "\t\t\tneedsRefresh = filesManageFile(NULL) ? 1:0;\n\t\t}\n\t\tmemcpy(directory[curSelection]",
      "\t\t\tneedsRefresh = manage_file() ? 1:0;\n\t\t}\n\t\tmemcpy(directory[curSelection]"),
@@ -403,8 +585,8 @@ MUTANTS = (
      "UIFiles_RightOnConfig(fileManagementAllowed(),", "UIFiles_RightOnConfig(true,"),
     ("the picker's clash replaced silently", SWISS,
      "\t\tfilesNote = filesNoteText;\n\t\tchosen = NULL;\n", ""),
-    ("A chooses a greyed storage", SWISS,
-     "if((buttons & BUTTON_A) && !((filesSnapshot.menu.dim >> focus) & 1u)) {", "if(buttons & BUTTON_A) {"),
+    ("A chooses a greyed item", SWISS,
+     "\t\tif(pick >= 0 && ((box->dim >> pick) & 1u)) {", "\t\tif(false) {"),
     ("L's Source isn't mounted", SWISS,
      "\tsourceCommit(device);\n\t(void)sourceMount();\n", "\tsourceCommit(device);\n"),
     ("L's choice does nothing", SWISS,
@@ -413,6 +595,92 @@ MUTANTS = (
      "\t\t\telse if((buttons & PAD_BUTTON_X) && filesAtRoot(&curDir)) {\n\t\t\t\tstorage = UI_FILES_LEFT;\n\t\t\t}\n", ""),
     ("L still pages", SWISS,
      "\t\tif(page == UI_MENU_INPUT_UP) {", "\t\tif((buttons & BUTTON_L) || page == UI_MENU_INPUT_UP) {"),
+    # Operations to the other side.
+    ("Swiss's box asks over a preset", SWISS,
+     "\tif(preset == MANAGE_ASK) {\n", "\tif(true) {\n"),
+    ("Swiss's box changed", SWISS,
+     "\t\t\tif(canRename && (buttons & BUTTON_L)) {", "\t\t\tif(canHide && (buttons & BUTTON_L)) {"),
+    ("the folder chooser runs with a preset destination", SWISS,
+     "\t\t\tstrlcpy(destFile->name, destDir, PATHNAME_MAX);\n",
+     "\t\t\tstrlcpy(destFile->name, destDir, PATHNAME_MAX);\n"
+     "\t\t\tselect_dest_dir(devices[DEVICE_DEST]->initial, destFile->name);\n"),
+    ("the preset folder is ignored", SWISS,
+     "\t\t\tstrlcpy(destFile->name, destDir, PATHNAME_MAX);\n", ""),
+    ("the screen builds the landing name itself", SWISS,
+     "\tmanageDestName(landing, thereDir, entry->name, here, there);",
+     "\tconcat_path(landing, thereDir, stripInvalidChars(getRelativeName(entry->name)));"),
+    ("a failed read keeps its partial file", SWISS,
+     "\t\t\t\t\t\tbool removed = manageDropPartial(destFile);\n\t\t\t\t\t\tsprintf(txtbuffer, \"Failed to Read!",
+     "\t\t\t\t\t\tbool removed = false;\n\t\t\t\t\t\tsprintf(txtbuffer, \"Failed to Read!"),
+    ("a failed write keeps its partial file", SWISS,
+     "\t\t\t\t\tbool removed = manageDropPartial(destFile);\n\t\t\t\t\tsprintf(txtbuffer, \"Failed to Write! (%d %d)",
+     "\t\t\t\t\tbool removed = false;\n\t\t\t\t\tsprintf(txtbuffer, \"Failed to Write! (%d %d)"),
+    ("a failed last write keeps its partial file", SWISS,
+     "\t\t\t\tbool removed = manageDropPartial(destFile);\n\t\t\t\tsprintf(txtbuffer, \"Failed to Write! (%d)\\n",
+     "\t\t\t\tbool removed = false;\n\t\t\t\tsprintf(txtbuffer, \"Failed to Write! (%d)\\n"),
+    ("a stopped copy keeps its partial file", SWISS,
+     "bool removed = cancelled && manageDropPartial(destFile);", "bool removed = false;"),
+    ("a finished copy is deleted", SWISS,
+     "bool removed = cancelled && manageDropPartial(destFile);", "bool removed = manageDropPartial(destFile);"),
+    ("the partial file is looked for on the Source", SWISS,
+     "\tDEVICEHANDLER_INTERFACE *dest = devices[DEVICE_DEST];\n\n\tdest->closeFile(destFile);",
+     "\tDEVICEHANDLER_INTERFACE *dest = devices[DEVICE_CUR];\n\n\tdest->closeFile(destFile);"),
+    ("the partial file is never deleted", SWISS,
+     "return dest->deleteFile != NULL && dest->deleteFile(destFile) == 0;",
+     "return dest->deleteFile == NULL && dest->deleteFile(destFile) == 0;"),
+    ("a card's whole save is deleted after a short write", SWISS,
+     "\tif(dest == &__device_card_a || dest == &__device_card_b) {\n\t\treturn false;\n\t}\n", ""),
+    ("a folder of the same name is deleted", SWISS,
+     "dest->statFile(&there) == 0 && there.fileType == IS_DIR) {", "false) {"),
+    ("a stopped Move deletes its original", SWISS,
+     "\t\t\tif(!cancelled) {\n\t\t\t\t// If cut, delete from source device",
+     "\t\t\tif(1) {\n\t\t\t\t// If cut, delete from source device"),
+    ("Replace copies over a file it couldn't remove", SWISS,
+     "\t\t\t\t\t\tif(devices[DEVICE_DEST]->deleteFile(destFile) != 0) {",
+     "\t\t\t\t\t\tif(devices[DEVICE_DEST]->deleteFile(destFile) != 0 && false) {"),
+    ("a stopped Replace doesn't say the old file is gone", SWISS,
+     "removed, replaced, D_INFO, message);", "removed, false, D_INFO, message);"),
+    ("the copy goes to this pane's own folder", SWISS,
+     "changed = filesManageFrom(entry, pane, options[action], thereDir);",
+     "changed = filesManageFrom(entry, pane, options[action], hereDir);"),
+    ("a same-named folder isn't seen", SWISS,
+     "\t\t\twhat.existsFolder = thereList[i]->fileType == IS_DIR;\n", ""),
+    ("a memory card isn't known as one", SWISS,
+     "\tout->card = device == &__device_card_a || device == &__device_card_b;\n", ""),
+    ("the result is said over the panes it changed", SWISS,
+     "\t\tfilesSayLater(title, detail, failed);\n\t\treturn;", "\t\tfilesSay(title, detail, failed);\n\t\treturn;"),
+    ("the kept result is never said", SWISS,
+     "\t/* What an operation said, over both panes as it left them. */\n\tfilesSayPending();\n", ""),
+    ("nothing changed and nothing said", SWISS,
+     "\tif(!changed) {\n\t\tfilesSayPending();\n\t}\n", ""),
+    ("a greyed action runs", SWISS,
+     "if(action < 0 || !avail.enabled[action]) {", "if(action < 0) {"),
+    ("a Move is offered where the original can't be taken off", FILES,
+     "move && !(from->canWrite && (renames || from->canDelete))", "move && !(from->canWrite)"),
+    ("a failed delete of the original says nothing", SWISS,
+     "kept = devices[DEVICE_CUR]->deleteFile(&curFile) != 0;", "devices[DEVICE_CUR]->deleteFile(&curFile);"),
+    ("a Move that couldn't take the original off says it moved", SWISS,
+     "manageCopied(result, canDelete || cancelled ? option : COPY_OPTION,", "manageCopied(result, option,"),
+    ("A alone deletes", SWISS,
+     "(pressed & BUTTON_A) && !(chord && focus == 0)", "(pressed & BUTTON_A)"),
+    ("L and A no longer delete", SWISS,
+     "chorded = chord && (padsButtonsHeld() & (BUTTON_A | BUTTON_L)) == (BUTTON_A | BUTTON_L);",
+     "chorded = false;"),
+    ("Delete asks without the chord", SWISS,
+     "filesBox(UI_FILES_HINTS_DELETE, 0u, true) == 0", "filesBox(UI_FILES_HINTS_DELETE, 0u, false) == 0"),
+    ("L still held as Swiss deletes", SWISS,
+     "\tif(chord) {\n\t\tbuttons |= BUTTON_L;\n\t}\n", ""),
+    ("Delete's words change in the File Browser", SWISS,
+     "filesAskDelete(isFile ?\n\t\t\t\"Delete this file?", "filesAskDelete(isFile ?\n\t\t\t\"Delete it?"),
+    ("Delete doesn't ask in the File Browser", SWISS,
+     "if(option == DELETE_OPTION && filesBoxes && !filesAskDelete(", "if(option == DELETE_OPTION && false && !filesAskDelete("),
+    ("Move's words change", SWISS,
+     "\"Move this file?\\nIt is removed from here once copied.\\nA  MOVE    B  CANCEL\"",
+     "\"Move this file?\\nA  MOVE    B  CANCEL\""),
+    ("Swiss's boxes stay the File Browser's", SWISS,
+     "\tfilesBoxes = false;\n\tmemcpy(entry, &curFile", "\tmemcpy(entry, &curFile"),
+    ("Keep both offered when only Replace makes room", SWISS,
+     "filesFitsBoth = !avail.replaceOnly[action];", "filesFitsBoth = true;"),
     ("the page leaves the background drawn", FRAME,
      " || event->type == EV_FILES", ""),
     ("a draw reads banners", FRAME,
@@ -423,7 +691,8 @@ for label, source, old, new in MUTANTS:
     assert source.count(old) == 1, f"mutation anchor missing: {label}"
     mutated = source.replace(old, new, 1)
     try:
-        check(mutated if source is SWISS else SWISS, mutated if source is FRAME else FRAME)
+        check(mutated if source is SWISS else SWISS, mutated if source is FRAME else FRAME,
+              mutated if source is FILES else FILES)
     except (AssertionError, ValueError):
         continue
     raise AssertionError(f"mutant escaped the File Browser contract audit: {label}")

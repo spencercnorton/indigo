@@ -843,6 +843,14 @@ void UIFiles_Availability(const uiFilesSide_t *source, const uiFilesSide_t *othe
 		else if(sameFolder) {
 			copyText(line, UI_FILES_TEXT_CAPACITY, "It's already in this folder.");
 		}
+		else if(to->card) {
+			/* A card's own write goes by the save inside the file, not
+			 * its name: saves go card to card in Memory Cards. */
+			copyText(line, UI_FILES_TEXT_CAPACITY, "Use Memory Cards to copy saves.");
+		}
+		else if(entry->existsFolder) {
+			copyText(line, UI_FILES_TEXT_CAPACITY, "A folder there has the same name.");
+		}
 		else if(move && !(from->canWrite && (renames || from->canDelete))) {
 			format(line, UI_FILES_TEXT_CAPACITY, "%s is read-only, so it can't be moved off it.",
 				nameOf(from));
@@ -905,7 +913,10 @@ void UIFiles_MenuBox(const uiFilesLayout_t *layout, const uiFilesRect_t *row,
 	int title = titled ? UI_FILES_MENU_TITLE + 4 : 0;
 	int top = row->y0;
 
+	int widest = layout->pane[pane == UI_FILES_RIGHT].x1 - layout->pane[pane == UI_FILES_RIGHT].x0 - 12;
+
 	out->width = width > UI_FILES_MENU_WIDTH ? width : UI_FILES_MENU_WIDTH;
+	if(out->width > widest) out->width = widest;
 	out->height = 16 + UI_FILES_MENU_PITCH * (items > 0 ? items : 0);
 	out->x = layout->pane[pane == UI_FILES_RIGHT].x1 - 6 - out->width;
 	if(top < UI_FILES_BOX_TOP) top = UI_FILES_BOX_TOP;
@@ -992,6 +1003,7 @@ void UIFiles_StorageMenu(int pane, const uiFilesDevice_t *devices, int count,
 		"Every storage that can be written to." :
 		"Every storage, with each one's settings.");
 	out->box.count = (uint8_t)(count + 1);
+	out->warn = out->box.dim;
 	if(focus < 0) {
 		for(focus = 0; focus < count && (((unsigned)out->box.dim >> (unsigned)focus) & 1u); focus++) {
 		}
@@ -1061,6 +1073,113 @@ void UIFiles_FocusAfter(uiFilesAction_t action, bool done, int focus, int count,
 	default:
 		break;
 	}
+}
+
+void UIFiles_ActionLine(uiFilesAction_t action, bool hidden, const char *here,
+	const char *there, const char *folder, char *out, size_t capacity)
+{
+	const char *place = folder != NULL && folder[0] != '\0' ? folder : "/";
+
+	if(here == NULL || here[0] == '\0') here = "This storage";
+	if(there == NULL || there[0] == '\0') there = "This storage";
+	switch(action) {
+	case UI_FILES_ACTION_COPY:
+		format(out, capacity, "Copy puts a copy in %s  \233  %s. It stays here.", there, place);
+		break;
+	case UI_FILES_ACTION_MOVE:
+		format(out, capacity, "Move puts it in %s  \233  %s and takes it off %s.", there, place,
+			here);
+		break;
+	case UI_FILES_ACTION_RENAME:
+		copyText(out, capacity, "Rename gives it a new name.");
+		break;
+	case UI_FILES_ACTION_HIDE:
+		copyText(out, capacity, hidden ? "Unhide shows it again." :
+			"Hide keeps it out of sight until Show hidden files is on.");
+		break;
+	default:
+		format(out, capacity, "Delete takes it off %s for good.", here);
+		break;
+	}
+}
+
+void UIFiles_Result(uiFilesResult_t result, bool move, const char *name, const char *here,
+	const char *there, const char *folder, int code, bool removed, bool replaced,
+	char out[2][UI_FILES_TEXT_CAPACITY])
+{
+	const char *place = folder != NULL && folder[0] != '\0' ? folder : there;
+	char left[UI_FILES_TEXT_CAPACITY];
+
+	out[0][0] = out[1][0] = '\0';
+	format(left, sizeof(left), replaced ? "Part of it is left in %s; the old file is gone." :
+		"Part of it is left in %s.", place);
+	switch(result) {
+	case UI_FILES_RESULT_DONE:
+		copyText(out[0], UI_FILES_TEXT_CAPACITY, move ? "Finished moving." : "Finished copying.");
+		break;
+	case UI_FILES_RESULT_STOPPED:
+		copyText(out[0], UI_FILES_TEXT_CAPACITY, move ? "Moving was stopped." :
+			"Copying was stopped.");
+		if(removed && replaced) {
+			copyText(out[1], UI_FILES_TEXT_CAPACITY,
+				"The unfinished copy and the file it replaced are gone.");
+		}
+		else if(removed) {
+			format(out[1], UI_FILES_TEXT_CAPACITY, "The unfinished copy was removed from %s.",
+				there);
+		}
+		else {
+			copyText(out[1], UI_FILES_TEXT_CAPACITY, left);
+		}
+		break;
+	case UI_FILES_RESULT_WRITE_FAILED:
+	case UI_FILES_RESULT_READ_FAILED:
+		if(result == UI_FILES_RESULT_WRITE_FAILED) {
+			format(out[0], UI_FILES_TEXT_CAPACITY, "Couldn't write to %s. (%d)", there, code);
+		}
+		else {
+			format(out[0], UI_FILES_TEXT_CAPACITY, "Couldn't read %s. (%d)", name, code);
+		}
+		format(out[1], UI_FILES_TEXT_CAPACITY, "%s%s",
+			removed && replaced ? "The unfinished copy and the file it replaced are gone." :
+			removed ? "The unfinished copy was removed." : left,
+			move ? " Nothing was moved." : "");
+		break;
+	default:
+		format(out[0], UI_FILES_TEXT_CAPACITY, "Copied, but couldn't take it off %s.", here);
+		copyText(out[1], UI_FILES_TEXT_CAPACITY, "It is in both places now.");
+		break;
+	}
+}
+
+void UIFiles_InsertGhost(uiFilesPaneSnapshot_t *pane, int landing,
+	const uiFilesRowSnapshot_t *ghost)
+{
+	int at = landing - pane->first, i;
+
+	if(at < 0) at = 0;
+	if(at > pane->rows) at = pane->rows;
+	if(at >= UI_FILES_ROWS) at = UI_FILES_ROWS - 1;
+	for(i = (pane->rows < UI_FILES_ROWS ? pane->rows : UI_FILES_ROWS - 1); i > at; --i) {
+		pane->row[i] = pane->row[i - 1];
+	}
+	pane->row[at] = *ghost;
+	pane->row[at].flags = (uint8_t)((ghost->flags & ~UI_FILES_ROW_FOCUS) | UI_FILES_ROW_GHOST);
+	if(pane->rows < UI_FILES_ROWS) pane->rows++;
+	if(pane->focusRow >= at) {
+		pane->focusRow = (int16_t)(pane->focusRow + 1 < UI_FILES_ROWS ? pane->focusRow + 1 : -1);
+	}
+	pane->count++;
+}
+
+float UIFiles_Flash(float since, int mode)
+{
+	float pulses = mode == UI_MOTION_FULL ? 2.0f : mode == UI_MOTION_REDUCED ? 1.0f : 0.0f;
+	float t = since / 0.3f;
+
+	if(!(t >= 0.0f) || t >= pulses) return 0.0f;
+	t -= (float)(int)t;
+	return 1.0f - (t > 0.5f ? 2.0f * t - 1.0f : 1.0f - 2.0f * t);
 }
 
 /* ------------------------------------------------------------------------

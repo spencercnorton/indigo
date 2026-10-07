@@ -441,6 +441,7 @@ typedef struct drawProgressEvent {
 	int speed;	// in bytes
 	int timestart;
 	int timeremain;
+	bool files;	/* the File Browser's copy: a scrim under it, and B Stop */
 } drawProgressEvent_t;
 
 typedef struct uiDrawObjQueue {
@@ -458,6 +459,8 @@ static void _DrawSimpleBox(int x, int y, int width, int height, int depth,
 	GXColor fillColor, GXColor borderColor);
 static void _DrawDialogCard(int x, int y, int width, int height, int type);
 static void _DrawDialogBar(int x, int y, int width, int start, int length);
+static void _SaveCubesBar(float x, float y, float width, float height,
+	GXColor color);
 
 #if UI_PERF_CAPTURE
 /* The GPU's own counters, summed between two refreshes of the overlay: the
@@ -1123,7 +1126,14 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 			corner > 0 ? ALIGN_RIGHT : ALIGN_LEFT, loadingColor);
 		return;
 	}
+	if(data->files) {
+		_SaveCubesBar(UIStage_Left(), 0.0f, UIStage_Right() - UIStage_Left(), 480.0f,
+			(GXColor) {8, 12, 27, 200});
+	}
 	_DrawDialogCard(x1, y1, x2-x1, y2-y1, -1);
+	if(data->files) {
+		_DrawHintText(x1 + 16, y2 - 12, "B  Stop", 0.46f, ALIGN_LEFT, defaultColor);
+	}
 
 	int middleY = (y2+y1)/2;
 	if(data->indeterminate) {
@@ -5172,6 +5182,23 @@ void DrawUpdateDeviceSelector(uiDrawObj_t *selector,
 	LWP_MutexUnlock(_videomutex);
 }
 
+/* A copy in the File Browser: the same card over a scrim, titled with what
+ * goes where, the destination's path under it, and B Stop. */
+uiDrawObj_t* DrawProgressBarFiles(const char *title, const char *path)
+{
+	uiDrawObj_t *event = DrawProgressBar(false, 0, NULL);
+	int middleY = ((480/2) - (PROGRESS_BOX_HEIGHT/2) + (480/2) + (PROGRESS_BOX_HEIGHT/2)) / 2;
+
+	((drawProgressEvent_t*)event->data)->files = true;
+	DrawAddChild(event, DrawStyledLabel(640/2, middleY - 6, title,
+		GetTextScaleToFitInWidthWithMax(title, PROGRESS_BOX_WIDTH - 40, 0.8f), ALIGN_CENTER,
+		defaultColor));
+	DrawAddChild(event, DrawStyledLabel(640/2, middleY + 12, path,
+		GetTextScaleToFitInWidthWithMax(path, PROGRESS_BOX_WIDTH - 40, 0.46f), ALIGN_CENTER,
+		defaultColor));
+	return event;
+}
+
 void DrawUpdateProgressBar(uiDrawObj_t *evt, int percent) {
 	drawProgressEvent_t *data = (drawProgressEvent_t*)evt->data;
 	data->percent = percent;
@@ -7431,6 +7458,8 @@ typedef struct {
 	float menuSince;		/* since the box opened or closed */
 	uint16_t menuSerial;
 	bool menuOpen;
+	float messageSince;		/* since the message came */
+	uint16_t messageSerial;
 	uint16_t listing[UI_FILES_PANES];
 	bool started;
 	GXTexObj picture;
@@ -7646,7 +7675,8 @@ static void _FilesOutline(float x, float y, float width, float height,
  * emphasis 0 when the left pane has the focus, 1 the right; focusY each
  * focus bar's row, sprung. */
 static void _FilesShapes(const uiFilesSnapshot_t *s, const uiFilesLayout_t *layout,
-	float alpha, float emphasis, const float focusY[UI_FILES_PANES], float seconds)
+	float alpha, float emphasis, const float focusY[UI_FILES_PANES], float seconds,
+	float ghost, float flash)
 {
 	const GXColor white = _SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha);
 	const GXColor shadow = _SaveCubesFaded((GXColor) {0, 0, 0, 200}, alpha);
@@ -7702,6 +7732,22 @@ static void _FilesShapes(const uiFilesSnapshot_t *s, const uiFilesLayout_t *layo
 				(pane->reading ? 0.6f : 1.0f);
 			uiFilesRect_t rect = UIFiles_RowRect(layout, p, i);
 
+			/* Where a copy will land, pulsing, and a copy that just
+			 * landed, flashing: a light fill with a white edge, unlike
+			 * the focus's outline. */
+			if(row->flags & (UI_FILES_ROW_GHOST | UI_FILES_ROW_FLASH)) {
+				float lit = (row->flags & UI_FILES_ROW_GHOST) ? ghost : flash;
+
+				if(row->flags & UI_FILES_ROW_GHOST) {
+					rowAlpha *= ghost;
+				}
+				if(lit > 0.0f) {
+					_SaveCubesBox(rect.x0, rect.y0, rect.x1 - rect.x0, UI_FILES_ROW_HEIGHT,
+						_SaveCubesFaded((GXColor) {196, 186, 255, 108}, alpha * lit),
+						_SaveCubesFaded((GXColor) {196, 186, 255, 108}, alpha * lit),
+						_SaveCubesFaded((GXColor) {255, 255, 255, 215}, alpha * lit), 2.0f);
+				}
+			}
 			_FilesCube(row->kind, UIFiles_CubeX(layout, p),
 				0.5f * (rect.y0 + rect.y1), focused ? 16.0f : 13.0f, rowAlpha,
 				focused && active > 0.5f);
@@ -7755,7 +7801,7 @@ static void _FilesShapes(const uiFilesSnapshot_t *s, const uiFilesLayout_t *layo
 
 /* The words: what the shapes leave for text. */
 static void _FilesWords(const uiFilesSnapshot_t *s, const uiFilesLayout_t *layout,
-	float alpha, float emphasis)
+	float alpha, float emphasis, float ghost)
 {
 	const GXColor white = _SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha);
 	const GXColor quiet = _SaveCubesFaded(settingsQuiet, alpha);
@@ -7808,7 +7854,7 @@ static void _FilesWords(const uiFilesSnapshot_t *s, const uiFilesLayout_t *layou
 				continue;
 			}
 			rowAlpha = ((row->flags & UI_FILES_ROW_HIDDEN) ? 0.5f : 1.0f) *
-				(pane->reading ? 0.6f : 1.0f);
+				(pane->reading ? 0.6f : 1.0f) * ((row->flags & UI_FILES_ROW_GHOST) ? ghost : 1.0f);
 			ink = (row->flags & UI_FILES_ROW_FOCUS) && active >= 0.5f ?
 				(GXColor) {255, 236, 170, 255} : (GXColor) {255, 255, 255, 255};
 
@@ -7848,15 +7894,19 @@ static void _FilesWords(const uiFilesSnapshot_t *s, const uiFilesLayout_t *layou
 		quiet);
 }
 
-/* A box beside its pane (a storage menu): Memory Cards' look, any number of
- * items up to UI_FILES_MENU_MAX, greyed ones grey, the focus's bar at item
- * (sprung). It opens from scale about its middle and fades. */
+/* A box beside a row of its pane (a storage menu, Actions, a question):
+ * Memory Cards' look, any number of items up to UI_FILES_MENU_MAX, greyed
+ * ones grey, each item's letter in a chip at its right, the focus's bar at
+ * item (sprung); Delete's edge is rose. It opens from scale about its
+ * middle and fades. */
 static void _FilesMenu(const uiFilesMenu_t *menu, const uiFilesLayout_t *layout,
 	float alpha, float scale, float item)
 {
-	const GXColor fill = _SaveCubesFaded((GXColor) {18, 27, 91, 230}, alpha);
-	const GXColor edge = _SaveCubesFaded((GXColor) {196, 186, 255, 255}, alpha);
-	uiFilesRect_t row = UIFiles_RowRect(layout, menu->pane, 0);
+	/* Opaque: it sits over rows of text. */
+	const GXColor fill = _SaveCubesFaded((GXColor) {18, 27, 91, 255}, alpha);
+	const GXColor edge = _SaveCubesFaded(menu->rose ? (GXColor) {255, 170, 186, 255} :
+		(GXColor) {196, 186, 255, 255}, alpha);
+	uiFilesRect_t row = UIFiles_RowRect(layout, menu->pane, menu->row);
 	uiFilesBox_t box;
 	float middleX, middleY, top;
 	bool titled = menu->title[0] != '\0';
@@ -7890,9 +7940,40 @@ static void _FilesMenu(const uiFilesMenu_t *menu, const uiFilesLayout_t *layout,
 		drawStringMedium((int)MENU_X(box.x + 16), (int)MENU_Y((float)box.y + 8.0f +
 			UI_FILES_MENU_PITCH * ((float)i + 0.5f)), menu->item[i], 0.56f * scale,
 			ALIGN_LEFT, _SaveCubesFaded(ink, alpha));
+		if(menu->letter[i] != '\0') {
+			char letter[2] = {menu->letter[i], '\0'};
+			float x = (float)(box.x + box.width - 30), y = (float)box.y + 12.0f +
+				UI_FILES_MENU_PITCH * (float)i;
+
+			_SaveCubesBar(MENU_X(x), MENU_Y(y), 18.0f * scale, 16.0f * scale,
+				_SaveCubesFaded((GXColor) {70, 80, 130, 255}, alpha));
+			drawStringMedium((int)MENU_X(x + 9.0f), (int)MENU_Y(y + 8.0f), letter,
+				0.40f * scale, ALIGN_CENTER, _SaveCubesFaded(ink, alpha));
+		}
 	}
 #undef MENU_X
 #undef MENU_Y
+}
+
+/* The result of an operation: Memory Cards' maroon box over the middle of
+ * the stage, as wide as measured (at least 320), with a second, smaller
+ * line when there is one. */
+static void _FilesMessage(const char message[2][UI_FILES_TEXT_CAPACITY], int measured,
+	float alpha)
+{
+	float width = measured > 320 ? (float)measured : 320.0f;
+	bool two = message[1][0] != '\0';
+
+	_SaveCubesBox(320.0f - 0.5f * width, two ? 194.0f : 200.0f, width, two ? 62.0f : 50.0f,
+		_SaveCubesFaded((GXColor) {120, 16, 36, 255}, alpha),
+		_SaveCubesFaded((GXColor) {120, 16, 36, 255}, alpha),
+		_SaveCubesFaded((GXColor) {255, 210, 220, 255}, alpha), 2.0f);
+	drawStringMedium(320, two ? 215 : 225, message[0], 0.56f, ALIGN_CENTER,
+		_SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha));
+	if(two) {
+		drawStringMedium(320, 238, message[1], 0.46f, ALIGN_CENTER,
+			_SaveCubesFaded((GXColor) {255, 220, 228, 255}, alpha));
+	}
 }
 
 static void _DrawFiles(uiDrawObj_t *evt)
@@ -7902,7 +7983,7 @@ static void _DrawFiles(uiDrawObj_t *evt)
 	uiMotionMode_t motion = _CurrentMotionMode();
 	uiFilesLayout_t layout;
 	uiFilesStage_t stage;
-	float focusY[UI_FILES_PANES], emphasis;
+	float focusY[UI_FILES_PANES], emphasis, ghost, flash;
 	int p;
 
 	if(!data->started) {
@@ -7916,13 +7997,25 @@ static void _DrawFiles(uiDrawObj_t *evt)
 		data->menuOpen = s->menu.open != 0u;
 		data->menuSerial = s->menu.serial;
 		data->menuSince = data->menuOpen ? 0.0f : 1.0f;
+		data->messageSerial = s->messageSerial;
+		data->messageSince = 1.0f;
 		data->leave = -1.0f;
 		data->started = true;
 	}
 	else {
 		data->seconds += UIAnim_Delta();
 		data->menuSince += UIAnim_Delta();
+		data->messageSince += UIAnim_Delta();
 	}
+	if(s->messageSerial != data->messageSerial) {
+		data->messageSerial = s->messageSerial;
+		data->messageSince = 0.0f;
+	}
+	/* The ghost row pulses (steady with less motion). */
+	ghost = motion == UI_MOTION_FULL ? 0.84f + 0.16f * sinf(3.0f * data->seconds) :
+		motion == UI_MOTION_REDUCED ? 0.9f : 1.0f;
+	/* A copy that just landed flashes as its message comes. */
+	flash = s->messageLeaving ? 0.0f : UIFiles_Flash(data->messageSince, motion);
 	/* Another box, or this one closing: from now. */
 	if((s->menu.open != 0u) != data->menuOpen ||
 			(s->menu.open && s->menu.serial != data->menuSerial)) {
@@ -7954,14 +8047,14 @@ static void _DrawFiles(uiDrawObj_t *evt)
 	UIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);
 	_SaveCubesBackdrop(stage.paper, stage.handover);
 	if(stage.chrome > 0.0f) {
-		_FilesShapes(s, &layout, stage.chrome, emphasis, focusY, data->seconds);
+		_FilesShapes(s, &layout, stage.chrome, emphasis, focusY, data->seconds, ghost, flash);
 		/* Pictures can't fade: the banner comes with the words' second
 		 * half, as Memory Cards' does. */
 		if(s->hasBanner && stage.chrome >= 0.5f) {
 			_SaveCubesPicture(&data->picture, s->banner, layout.picture.x0,
 				layout.picture.y0, 96);
 		}
-		_FilesWords(s, &layout, stage.chrome, emphasis);
+		_FilesWords(s, &layout, stage.chrome, emphasis, ghost);
 		if(s->menu.count > 0) {
 			float menuAlpha, menuScale;
 
@@ -7970,6 +8063,12 @@ static void _DrawFiles(uiDrawObj_t *evt)
 				&menuScale);
 			_FilesMenu(&s->menu, &layout, menuAlpha * stage.chrome, menuScale,
 				UIMotion_SpringUpdate(&data->menuBar, UIAnim_Delta(), motion));
+		}
+		if(s->message[0][0] != '\0') {
+			/* In over 0.10 s, out over 0.15 s, at once with UI Motion Off. */
+			_FilesMessage(s->message, s->messageWidth, stage.chrome * (motion == UI_MOTION_OFF ? 1.0f :
+				s->messageLeaving ? fmaxf(0.0f, 1.0f - data->messageSince / 0.15f) :
+				fminf(1.0f, data->messageSince / 0.10f)));
 		}
 	}
 	drawInit();

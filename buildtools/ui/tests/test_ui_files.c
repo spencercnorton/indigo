@@ -1029,6 +1029,8 @@ static void testSecondDevice(void)
 	CHECK_TEXT(menu.box.item[0], "GC Loader");
 	CHECK_TEXT(menu.box.item[5], "Other devices\205");
 	CHECK(menu.box.dim == (1u << 4) && menu.box.focus == 0);
+	/* A greyed device's reason is amber, and only its. */
+	CHECK(menu.warn == menu.box.dim);
 	CHECK_TEXT(menu.line[0], "Shown on the left now. Games start from it.");
 	CHECK_TEXT(menu.line[1], "Becomes the Source: games start from it.");
 	CHECK_TEXT(menu.line[3], "Also open on the right, in /share/backups. Both sides can show it, each in its own folder.");
@@ -1182,6 +1184,23 @@ static void testAvailability(void)
 		UIFiles_Availability(&gcl, &same, &e, &a);
 		CHECK_TEXT(a.line[UI_FILES_ACTION_COPY], "GC Loader isn't ready. Choose storage with R.");
 	}
+	/* Onto a memory card: Memory Cards copies saves; off one is fine. */
+	sd.device.card = true;
+	UIFiles_Availability(&gcl, &sd, &e, &a);
+	CHECK(!a.enabled[0] && !a.enabled[1] && a.enabled[2] && a.warn[0]);
+	CHECK_TEXT(a.line[UI_FILES_ACTION_COPY], "Use Memory Cards to copy saves.");
+	CHECK_TEXT(a.line[UI_FILES_ACTION_MOVE], "Use Memory Cards to copy saves.");
+	UIFiles_Availability(&sd, &gcl, &e, &a);
+	CHECK(a.enabled[0] && a.enabled[1]);
+	sd.device.card = false;
+	/* A folder there with the file's name: neither, room or not. */
+	e.exists = true;
+	e.existsFolder = true;
+	UIFiles_Availability(&gcl, &sd, &e, &a);
+	CHECK(!a.enabled[0] && !a.enabled[1] && a.warn[1]);
+	CHECK_TEXT(a.line[UI_FILES_ACTION_COPY], "A folder there has the same name.");
+	e.exists = false;
+	e.existsFolder = false;
 	/* Exactly the room it needs: it fits. */
 	sd.freeBytes = e.needed;
 	UIFiles_Availability(&gcl, &sd, &e, &a);
@@ -1383,6 +1402,17 @@ static void testMenuBox(void)
 		CHECK(box.width == 124);
 		UIFiles_MenuBox(&layouts[0], &r, 1, 2, true, 124, &box);
 		CHECK(box.width == 124);
+		/* A box asked wider than its pane stays in it. */
+		for(shape = 0; shape < 2; ++shape) {
+			for(pane = 0; pane < 2; ++pane) {
+				const uiFilesRect_t *edge = &layouts[shape].pane[pane];
+
+				r = UIFiles_RowRect(&layouts[shape], pane, 3);
+				UIFiles_MenuBox(&layouts[shape], &r, pane, 3, true, 900, &box);
+				CHECK(box.width == edge->x1 - edge->x0 - 12);
+				CHECK(box.x == edge->x0 + 6 && box.x + box.width == edge->x1 - 6);
+			}
+		}
 		/* A storage menu: its devices and "Other devices..." under a title. */
 		CHECK(UI_FILES_STORAGE_DEVICES + 1 <= UI_FILES_MENU_ITEMS(true));
 		/* A storage menu opening below its button. */
@@ -1617,6 +1647,231 @@ static void testQuestions(void)
 	CHECK(!UIFiles_ParseQuestion("x", NULL));
 }
 
+/* manage_file_ex's permissions, its own lines (audit_files_contract.py
+ * holds them to swiss.c's), on a made-up Source and entry: Swiss's device
+ * slots, its entry and its constants as far as those lines read them. */
+enum { IS_FILE = 2, IS_DIR = 1, ATTRIB_HIDDEN = 0x02, FEAT_WRITE = 0x200 };
+enum { DEVICE_CUR = 0 };
+typedef struct {
+	int features;
+	void (*deleteFile)(void), (*renameFile)(void), (*hideFile)(void);
+} fakeDevice_t;
+typedef struct {
+	int fileType, fileAttrib;
+} fakeFile_t;
+typedef struct {
+	bool canMove, canCopy, canDelete, canRename, canHide;
+} manageFlags_t;
+
+static void fakeOperation(void) {}
+
+static manageFlags_t manageFlags(fakeDevice_t *source, fakeFile_t entry)
+{
+	fakeDevice_t *devices[1] = {source};
+	fakeFile_t curFile = entry;
+	manageFlags_t out;
+
+	bool isFile = curFile.fileType == IS_FILE;
+	bool isHidden = curFile.fileAttrib & ATTRIB_HIDDEN;
+	bool canWrite = devices[DEVICE_CUR]->features & FEAT_WRITE;
+	bool canMove = canWrite && isFile;
+	bool canCopy = isFile;
+	bool canDelete = canWrite && devices[DEVICE_CUR]->deleteFile;
+	bool canRename = canWrite && devices[DEVICE_CUR]->renameFile;
+	bool canHide = canWrite && devices[DEVICE_CUR]->hideFile;
+	(void)isHidden;
+	out.canMove = canMove;
+	out.canCopy = canCopy;
+	out.canDelete = canDelete;
+	out.canRename = canRename;
+	out.canHide = canHide;
+	return out;
+}
+
+/* What the Actions box allows is what manage_file_ex does, for every
+ * device and entry: Rename, Hide and Delete exactly its permissions; Copy
+ * and Move only where it allows them, and a Move only where Swiss either
+ * renames it across the same device or deletes the original after copying,
+ * so a Move never ends as a copy. */
+static void testAvailabilityTable(void)
+{
+	int bits;
+
+	for(bits = 0; bits < 1 << 9; ++bits) {
+		bool write = bits & 1, del = bits & 2, ren = bits & 4, hide = bits & 8;
+		bool isFile = bits & 16, sameDevice = bits & 32, otherWrite = bits & 64;
+		bool program = bits & 128, hidden = bits & 256;
+		fakeDevice_t source = {write ? FEAT_WRITE : 0, del ? fakeOperation : NULL,
+			ren ? fakeOperation : NULL, hide ? fakeOperation : NULL};
+		fakeFile_t entry = {isFile ? IS_FILE : IS_DIR, hidden ? ATTRIB_HIDDEN : 0};
+		manageFlags_t swiss = manageFlags(&source, entry);
+		uiFilesSide_t from = side(1, "SD Card", "sd:/games", write);
+		uiFilesSide_t to = side(sameDevice ? 1 : 2, "Other", "other:/backups", otherWrite);
+		uiFilesEntry_t e = file(1000u);
+		uiFilesAvailability_t a;
+
+		from.device.canRename = ren;
+		from.device.canHide = hide;
+		from.device.canDelete = del;
+		from.mount = UI_FILES_SHARED;
+		if(sameDevice) {
+			to.device = from.device;
+			to.device.canWrite = write;
+		}
+		e.isFile = isFile;
+		e.programFolder = program && isFile;
+		e.hidden = hidden;
+		UIFiles_Availability(&from, &to, &e, &a);
+		CHECK(a.enabled[UI_FILES_ACTION_RENAME] == swiss.canRename);
+		CHECK(a.enabled[UI_FILES_ACTION_HIDE] == swiss.canHide);
+		CHECK(a.enabled[UI_FILES_ACTION_DELETE] == swiss.canDelete);
+		if(a.enabled[UI_FILES_ACTION_COPY]) {
+			CHECK(swiss.canCopy && !e.programFolder);
+		}
+		if(a.enabled[UI_FILES_ACTION_MOVE]) {
+			CHECK(swiss.canMove && !e.programFolder);
+			CHECK((sameDevice && swiss.canRename) || swiss.canDelete);
+		}
+		/* A file Swiss could copy is greyed only for the other side. */
+		if(swiss.canCopy && !e.programFolder && (sameDevice ? write : otherWrite)) {
+			CHECK(a.enabled[UI_FILES_ACTION_COPY]);
+		}
+	}
+}
+
+/* Line 1 under each action, and how a copy ended in the message. */
+static void testActionWords(void)
+{
+	char line[UI_FILES_TEXT_CAPACITY], out[2][UI_FILES_TEXT_CAPACITY];
+
+	UIFiles_ActionLine(UI_FILES_ACTION_COPY, false, "GC Loader", "SD Card", "/backups", line,
+		sizeof(line));
+	CHECK_TEXT(line, "Copy puts a copy in SD Card  \233  /backups. It stays here.");
+	UIFiles_ActionLine(UI_FILES_ACTION_MOVE, false, "GC Loader", "SD Card", "", line,
+		sizeof(line));
+	CHECK_TEXT(line, "Move puts it in SD Card  \233  / and takes it off GC Loader.");
+	UIFiles_ActionLine(UI_FILES_ACTION_RENAME, false, "GC Loader", "SD Card", "/", line,
+		sizeof(line));
+	CHECK_TEXT(line, "Rename gives it a new name.");
+	UIFiles_ActionLine(UI_FILES_ACTION_HIDE, true, "GC Loader", "SD Card", "/", line,
+		sizeof(line));
+	CHECK_TEXT(line, "Unhide shows it again.");
+	UIFiles_ActionLine(UI_FILES_ACTION_HIDE, false, "GC Loader", "SD Card", "/", line,
+		sizeof(line));
+	CHECK_TEXT(line, "Hide keeps it out of sight until Show hidden files is on.");
+	UIFiles_ActionLine(UI_FILES_ACTION_DELETE, false, NULL, "SD Card", "/", line, sizeof(line));
+	CHECK_TEXT(line, "Delete takes it off This storage for good.");
+
+	UIFiles_Result(UI_FILES_RESULT_DONE, false, "Copper Orchard", "GC Loader", "SD Card",
+		"backups", 0, false, false, out);
+	CHECK_TEXT(out[0], "Finished copying.");
+	CHECK_TEXT(out[1], "");
+	UIFiles_Result(UI_FILES_RESULT_DONE, true, "Copper Orchard", "GC Loader", "SD Card",
+		"backups", 0, false, false, out);
+	CHECK_TEXT(out[0], "Finished moving.");
+	UIFiles_Result(UI_FILES_RESULT_STOPPED, false, "Copper Orchard", "GC Loader", "SD Card",
+		"backups", 0, true, false, out);
+	CHECK_TEXT(out[0], "Copying was stopped.");
+	CHECK_TEXT(out[1], "The unfinished copy was removed from SD Card.");
+	UIFiles_Result(UI_FILES_RESULT_STOPPED, true, "Copper Orchard", "GC Loader", "SD Card",
+		"backups", 0, false, false, out);
+	CHECK_TEXT(out[0], "Moving was stopped.");
+	CHECK_TEXT(out[1], "Part of it is left in backups.");
+	UIFiles_Result(UI_FILES_RESULT_WRITE_FAILED, true, "Copper Orchard", "GC Loader", "SD Card",
+		"", -5, true, false, out);
+	CHECK_TEXT(out[0], "Couldn't write to SD Card. (-5)");
+	CHECK_TEXT(out[1], "The unfinished copy was removed. Nothing was moved.");
+	UIFiles_Result(UI_FILES_RESULT_READ_FAILED, false, "Copper Orchard", "GC Loader", "SD Card",
+		"", 3, false, false, out);
+	CHECK_TEXT(out[0], "Couldn't read Copper Orchard. (3)");
+	CHECK_TEXT(out[1], "Part of it is left in SD Card.");
+	UIFiles_Result(UI_FILES_RESULT_KEPT, true, "Copper Orchard", "GC Loader", "SD Card",
+		"backups", 0, false, false, out);
+	CHECK_TEXT(out[0], "Copied, but couldn't take it off GC Loader.");
+	CHECK_TEXT(out[1], "It is in both places now.");
+	/* Replace it took the file there off first: the message says so. */
+	UIFiles_Result(UI_FILES_RESULT_STOPPED, false, "Copper Orchard", "GC Loader", "SD Card",
+		"backups", 0, true, true, out);
+	CHECK_TEXT(out[1], "The unfinished copy and the file it replaced are gone.");
+	UIFiles_Result(UI_FILES_RESULT_STOPPED, false, "Copper Orchard", "GC Loader", "SD Card",
+		"backups", 0, false, true, out);
+	CHECK_TEXT(out[1], "Part of it is left in backups; the old file is gone.");
+	UIFiles_Result(UI_FILES_RESULT_WRITE_FAILED, true, "Copper Orchard", "GC Loader", "SD Card",
+		"", -5, true, true, out);
+	CHECK_TEXT(out[1], "The unfinished copy and the file it replaced are gone. Nothing was moved.");
+	UIFiles_Result(UI_FILES_RESULT_DONE, false, "Copper Orchard", "GC Loader", "SD Card",
+		"backups", 0, false, true, out);
+	CHECK_TEXT(out[0], "Finished copying.");
+	CHECK_TEXT(out[1], "");
+}
+
+/* The ghost row opens where the copy lands in the window: the rows after
+ * it move down, the last out of view, the focus with its row; the window
+ * holds it even when it lands above or below. */
+static void testGhost(void)
+{
+	uiFilesPaneSnapshot_t pane;
+	uiFilesRowSnapshot_t ghost;
+	int i;
+
+	memset(&ghost, 0, sizeof(ghost));
+	strcpy(ghost.name, "new.iso");
+	ghost.flags = UI_FILES_ROW_FOCUS;
+	memset(&pane, 0, sizeof(pane));
+	pane.rows = 3;
+	pane.count = 3;
+	pane.focusRow = 1;
+	for(i = 0; i < 3; i++) snprintf(pane.row[i].name, sizeof(pane.row[i].name), "%d", i);
+	pane.row[1].flags = UI_FILES_ROW_FOCUS;
+	UIFiles_InsertGhost(&pane, 1, &ghost);
+	CHECK(pane.rows == 4 && pane.count == 4 && pane.focusRow == 2);
+	CHECK_TEXT(pane.row[0].name, "0");
+	CHECK_TEXT(pane.row[1].name, "new.iso");
+	CHECK(pane.row[1].flags == UI_FILES_ROW_GHOST);
+	CHECK_TEXT(pane.row[2].name, "1");
+	CHECK(pane.row[2].flags == UI_FILES_ROW_FOCUS);
+	CHECK_TEXT(pane.row[3].name, "2");
+
+	/* A full window from row 10: before it, it opens the window; after it,
+	 * it takes the last row; the focus on the last row falls out. */
+	memset(&pane, 0, sizeof(pane));
+	pane.rows = UI_FILES_ROWS;
+	pane.count = 40;
+	pane.first = 10;
+	pane.focusRow = UI_FILES_ROWS - 1;
+	for(i = 0; i < UI_FILES_ROWS; i++) snprintf(pane.row[i].name, sizeof(pane.row[i].name), "%d", 10 + i);
+	UIFiles_InsertGhost(&pane, 2, &ghost);
+	CHECK(pane.rows == UI_FILES_ROWS && pane.focusRow == -1);
+	CHECK_TEXT(pane.row[0].name, "new.iso");
+	CHECK_TEXT(pane.row[1].name, "10");
+	CHECK_TEXT(pane.row[UI_FILES_ROWS - 1].name, "16");
+	UIFiles_InsertGhost(&pane, 90, &ghost);
+	CHECK_TEXT(pane.row[UI_FILES_ROWS - 1].name, "new.iso");
+	CHECK_TEXT(pane.row[UI_FILES_ROWS - 2].name, "15");
+
+	/* An empty folder: the ghost is its only row. */
+	memset(&pane, 0, sizeof(pane));
+	pane.focusRow = -1;
+	UIFiles_InsertGhost(&pane, 0, &ghost);
+	CHECK(pane.rows == 1 && pane.focusRow == -1 && pane.count == 1);
+}
+
+/* A copy's new row flashes as its message comes: two pulses on Full, one on
+ * Reduced, none Off, each from nothing to full and back. */
+static void testFlash(void)
+{
+	CHECK(UIFiles_Flash(0.0f, UI_MOTION_FULL) == 0.0f);
+	CHECK(UIFiles_Flash(0.15f, UI_MOTION_FULL) > 0.99f);
+	CHECK(UIFiles_Flash(0.30f, UI_MOTION_FULL) < 0.01f);
+	CHECK(UIFiles_Flash(0.45f, UI_MOTION_FULL) > 0.99f);
+	CHECK(UIFiles_Flash(0.60f, UI_MOTION_FULL) == 0.0f);
+	CHECK(UIFiles_Flash(5.0f, UI_MOTION_FULL) == 0.0f);
+	CHECK(UIFiles_Flash(0.15f, UI_MOTION_REDUCED) > 0.99f);
+	CHECK(UIFiles_Flash(0.45f, UI_MOTION_REDUCED) == 0.0f);
+	CHECK(UIFiles_Flash(0.15f, UI_MOTION_OFF) == 0.0f);
+	CHECK(UIFiles_Flash(-1.0f, UI_MOTION_FULL) == 0.0f);
+}
+
 /* The page comes as Memory Cards' does and goes before Home shows: the Home
  * cube going back, the paper, then the words; on B the words first, the
  * paper, and the cube back by the time leaving ends. */
@@ -1676,6 +1931,10 @@ int main(void)
 	testLanding();
 	testFocusAfter();
 	testQuestions();
+	testAvailabilityTable();
+	testActionWords();
+	testGhost();
+	testFlash();
 	testStage();
 	printf("test_ui_files: %u checks passed\n", checks);
 	return 0;

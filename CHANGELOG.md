@@ -55,6 +55,31 @@ tag on `beta`. The newest changes are at the top until their release is named.
   open Recent. Z on a right-pane file now acts on the right pane's device,
   and Z in either pane leaves the other pane's device mounted, even when it
   is the copy's destination or the copy is cancelled.
+- **Z** in the File Browser opens the file's **Actions** beside its row:
+  Copy, Move, Rename, Hide and Delete, each with its button's letter (X, Y,
+  R, L, Z), which chooses it at once. An action the file or its device
+  doesn't allow stays listed, greyed, with why in the info bar. **Copy** and
+  **Move** go to the folder open in the other pane, with no device or folder
+  to pick: the info bar says whether the file fits there (never greying it
+  for a network share, whose free space isn't known), and Copy asks first
+  while a row in the other pane shows where the copy will go. A file that is
+  already there offers Keep both, Replace it or Cancel; Keep both is greyed
+  when there is room only for one. The copy's card names what goes where and
+  shows **B Stop**; both panes are read again, focused on the copy (which
+  flashes), the renamed file or the row that took a moved or deleted file's
+  place, and the result shows over them as Memory Cards' maroon message.
+  Copy and Move are greyed onto a memory card (Memory Cards copies saves)
+  and where a folder there has the file's name. Swiss's questions keep their
+  words and are drawn beside the row; Delete still needs L held with A. A
+  on a file that doesn't start opens its Actions, as does a FlippyDrive
+  update anywhere but on a FlippyDrive.
+- A copy that is stopped, or fails part way, deletes the unfinished file,
+  in the File Browser and from Swiss's own copy alike, except on a memory
+  card, which keeps what was written, as before. The File Browser's message
+  says when part of it could not be removed, and when Replace it had already
+  removed the file there. Replace now goes ahead only once that file is
+  gone. A Move whose original can't be deleted afterwards says the file was
+  copied but is in both places.
 - The File Browser now asks before Move, before Hide, before turning
   Autoload on (Z on `..`, or Z on Swiss's game screen), and before writing a
   `.fzn` file to a WiiKey Fusion or a `.fpkg` file to a FlippyDrive. Delete
@@ -123,6 +148,16 @@ tag on `beta`. The newest changes are at the top until their release is named.
   the focus; the frame budget counts its shapes (`files`, `files-right`,
   `files-wide`), and `audit_files_contract.py` holds it to Swiss's list
   contract, with mutants.
+- A new emulator route, `files`, boots from a GC Loader with a second SD
+  card in SD2SP2 and copies, keeps both, moves, renames, deletes and stops a
+  copy between them, checking every result on the card images. The frame
+  budget adds `files-actions`, `files-copy` and `files-message`;
+  `manage_file_ex` runs Swiss's file operations with the choice and the
+  destination folder given, and the contract audit pins Swiss's own box,
+  picker and folder chooser under it, the partial-file deletion at each of
+  its four places, the Delete chord and the question texts, with mutants.
+  `test_ui_files` checks the Actions box's choices against Swiss's own
+  permissions for every device and file.
 
 - The emulator test holds each button for its full time from Dolphin's next
   clock report, so a press can no longer end within a frame of starting and

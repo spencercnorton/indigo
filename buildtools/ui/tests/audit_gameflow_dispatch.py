@@ -417,7 +417,7 @@ IO = ("CardArt_Poll(", "artLoad(", "->readFile(", "->writeFile(", "->readDir(",
 # Browser drops them on opening and after each box, but keeps those made
 # while a folder is read (audit_files_contract.py checks both).
 CLEARED_BY_CALLER = {"inputNext", "renderFileList"}
-LATCHED = {"showPrograms", "renderFileCarousel", "manage_file", "verify_game",
+LATCHED = {"showPrograms", "renderFileCarousel", "manage_file_ex", "verify_game",
            "inputNext", "renderFileList"}
 CLEAR = re.compile(r"\(void\)padsButtonsTaken\((\w+)\);")
 TAKE = re.compile(r"(?<!\(void\))padsButtonsTaken\((\w+)\)")

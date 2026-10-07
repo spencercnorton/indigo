@@ -1,3 +1,121 @@
+## 2026-10-07 — The File Browser's operations to the other side
+
+Fourth step of the two-pane File Browser: Z opens Indigo's Actions box
+beside the row, and Copy and Move go to the folder open in the other pane,
+through Swiss's own file operations.
+
+swiss.c: manage_file is manage_file_ex(MANAGE_ASK, NULL). manage_file_ex
+(option, destDir) runs Swiss's Z box only for MANAGE_ASK (re-indented,
+`int option = 0` now an assignment) and, with destDir, skips
+select_device(DEVICE_DEST), the destination mount and select_dest_dir: the
+caller has set and mounted DEVICE_DEST, and destFile->name is destDir. Both
+blocks are pinned by hash (one tab in, trailing blanks off) in the contract
+audit. The target name is manageDestName (stripInvalidChars, .gci off a
+card), which the screen uses for the fit, the same-name lookup and the
+ghost row. manageDropPartial (closeFile again, harmless, then the
+destination's deleteFile) runs at the read failure, the write failure, the
+final write or close failure, and on Stop (`cancelled &&`), before
+free(destFile); Swiss's own callers get it too. Move's deleteFile result is
+now kept: a failed delete says "Copied, but couldn't take it off ...", and a
+Move without deleteFile reports as a copy. Presentation hooks, all behind
+filesBoxes (set only around manage_file_ex in filesManageFrom, both Autoload
+toggles and A on a firmware file): confirmAction asks filesAsk
+(UIFiles_ParseQuestion; -1 falls back to Swiss's box); Delete asks
+filesAskDelete with Swiss's own strings (duplicated, pinned twice); the
+file-exists box is filesAskExists, whose choice becomes the button Swiss's
+loop reads (A Keep both, Z Replace it, B Cancel), Keep both greyed when
+only replacing makes room (filesFitsBoth); the progress card is
+DrawProgressBarFiles; every result is manageTell / manageCopied →
+filesSay (maroon message, 2 s or A/B, failures wait for A; the outcome
+feeds the focus rule). manageLanded records where a copy landed after Keep
+both. filesBox is the one box runner (storage menus now use it too): Up/
+Down wrap, A or a letter chip chooses, greyed items take the focus and show
+why, B or the close buttons shut it, chord = L held with A (A alone on
+Delete does nothing; L, A and B let go after). filesActions builds
+UIFiles_Availability from both sides (filesSide reads info() only on a
+mounted side), the letters, line 1 (UIFiles_ActionLine) and line 2 (the
+reason or the fit); runs only an enabled action; Copy asks "Copy to <x>?"
+with the ghost row (UIFiles_LandingIndex, UIFiles_InsertGhost on the
+snapshot, restored after); Move's ghost shows under Swiss's Move question.
+filesManageFrom swaps the slots for a right-pane entry and restores both on
+its one exit. Focus after (UIFiles_FocusAfter, by name, from the old
+listing): the left pane's into curFile, the right's into focusName, the
+other side on manageLanded; a right-entry action always writes the left's
+own focus back. A on a file that doesn't start, and on a .fpkg off a
+FlippyDrive (filesLoads), opens Actions. filesManageEntry is gone; the
+legacy lists still use filesManage / filesManageFile. Two Swiss lines lost
+trailing blanks (select_recent_entry, upToParent) for the whitespace gate.
+
+ui_files.c/.h: UIFiles_ActionLine, UIFiles_Result (finished, stopped,
+write/read failed, kept), UIFiles_InsertGhost, UI_FILES_ROW_GHOST;
+uiFilesMenu_t gains row, rose and letter[]; uiFilesStorageMenu_t gains warn
+(a storage menu's = dim); the snapshot carries message[2], its serial and
+measured width. FrameBufferMagic.c: _FilesMenu beside any row, letter chips
+(flat, no sqrtf), Delete's rose edge; ghost rows outlined and pulsing
+(0.84 + 0.16 sin 3t, steady with less motion); _FilesMessage (one or two
+lines, in over 0.10 s); the progress card's files flag (scrim, B Stop).
+
+Tests: test_ui_files testAvailabilityTable (manage_file_ex's six permission
+lines copied verbatim, held equal to swiss.c's by the audit; every device
+and entry: Rename/Hide/Delete exactly Swiss's, Copy/Move only where Swiss
+allows them, a Move only where Swiss renames or deletes the original),
+testActionWords, testGhost, the storage menu's warn bits;
+audit_files_contract 91 mutants (the four drop sites, a finished copy
+deleted, the drop on the Source, Swiss's box and picker hashes, the preset
+folder, the name built twice, a greyed action run, Move offered without
+delete, a failed delete silent, the chord and its release, Delete's and
+Move's words, filesBoxes left on, Keep both offered, the slots); the waits
+audit names manage_file_ex; test_ui_color keeps the rose edge and the
+message's second line. Frame budget: files-actions 9,800 vertices, 116
+sqrtf; files-copy 12,168; files-message 9,644 (with a flashing row), 87
+sqrtf; the five earlier scenes unchanged. Emulator: files_box (a box's top and bottom edges
+across the right of a pane, not a row's outline), the Z step now reads it;
+a new route `files` (GC Loader Source, card.second_card in SD2SP2): copy
+(byte for byte on the second image), Keep both, Move right to left (gone,
+whole on the GC Loader), Rename via the keyboard, Delete (A alone deletes
+nothing, L+A does), and a 160 MB copy stopped after 0.6 s (nothing left on
+the GC Loader); a CI matrix job runs it. Docs: system.md (Copy, move,
+rename, hide and delete, two pictures), controls.md, CHANGELOG.
+
+Review follow-up, before merging. Memory cards: a card's write strips the
+GCI header and returns length-64, and the trailing writeFile(NULL, 0) on a
+plain file asks for another block (-11), so card copies reported failure
+and the cleanup's delete (by the save's internal name) removed the finished
+save; Keep both onto a card wrote over the save in place. Now
+manageDropPartial never deletes on a card (Swiss's own copy keeps what it
+wrote, as before) and UIFiles_Availability greys Copy and Move onto a card
+("Use Memory Cards to copy saves."; uiFilesDevice_t.card). manageDropPartial
+also leaves a same-named folder alone (statFile says IS_DIR), and the box
+greys Copy and Move when the landing name is a folder there
+(uiFilesEntry_t.existsFolder). Replace it now checks deleteFile and cancels
+with "Couldn't replace it." when the old file stays; a replacing copy that
+stops or fails says the old file is gone (UIFiles_Result's replaced). The
+result message is kept (filesSayLater) and said by renderFileList after
+both panes are read again (filesSayPending; at once when nothing changed),
+so it sits over the new state; a Copy's landed row flashes under it
+(UI_FILES_ROW_FLASH, UIFiles_Flash: two pulses Full, one Reduced, none
+Off) and the message fades out over 0.15 s (messageLeaving). The ghost row
+is a light lilac fill with a 2 px white edge, unlike the focus outline; the
+File Browser's boxes and message are opaque. Box titles are cut in the
+middle to the pane (filesFitAt, title is UI_FILES_TEXT_CAPACITY,
+UIFiles_MenuBox caps the width at the pane less 12) and message lines to
+560 px. The audit pins manageDropPartial's body, the card and folder guards,
+the stopped Move's `if(!cancelled)`, Replace's checked delete, the
+destination argument (thereDir) and the kept message, each with a mutant.
+The files route adds a stopped Move (original whole on the SD card,
+nothing on the GC Loader), a copy into backups/ on the right, a progress
+check before each B (the red B glyph, files_progress) and a stop message
+unlike the finished one; then it boots again with the SD2SP2 card failing
+writes to every cluster it had free (card.free_sectors) and copies into
+backups/: the failure waits for A and no whole copy lands. On that
+emulated card every write after the first failed one fails too (deleting
+another file fails), so the unfinished file stays and the message says part
+of it is left; deleting where the card allows rests on the audit.
+
+Lab (CI's emulator image, one Dolphin at a time): the files route, both
+boots, passes; earlier the DVD smoke and the GC Loader smoke (non-default
+settings) routes passed with the Actions box.
+
 ## 2026-10-07 — The File Browser's second device
 
 Third step of the two-pane File Browser: the right pane can hold a storage
