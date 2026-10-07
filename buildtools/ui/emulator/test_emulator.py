@@ -265,6 +265,15 @@ class Card(unittest.TestCase):
                 self.assertEqual(card.read_card(image, name), data)
             self.assertEqual(card.listing(image), ["..", "backups/", "a-one.txt", "b-two.txt",
                                                   "big.bin", "c-three.txt"])
+            # A folder below the top reads the same way.
+            self.assertEqual(card.listing(image, "backups"), [".."])
+            note = Path(directory) / "Zed.txt"
+            note.write_bytes(b"z")
+            subprocess.run(["mcopy", "-i", str(image), str(note), "::/backups/"], check=True,
+                           env=card.MTOOLS, capture_output=True)
+            subprocess.run(["mmd", "-i", str(image), "::/backups/old"], check=True, env=card.MTOOLS,
+                           capture_output=True)
+            self.assertEqual(card.listing(image, "backups/"), ["..", "old/", "Zed.txt"])
         ini = run.dolphin_ini("gcloader", Path("/work/card.img"), second=Path("/work/second.img"))
         self.assertIn("SerialPort2 = 15\nSP2SDCardImage = /work/second.img\n", ini)
         self.assertNotIn("/work/card.img", ini)  # the GC Loader's card is the drive's

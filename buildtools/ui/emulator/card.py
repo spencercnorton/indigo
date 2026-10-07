@@ -272,7 +272,7 @@ def poster(index: int):
     for y in range(height):
         t = y / (height - 1)
         draw.line([(0, y), (width, y)], fill=tuple(round(a + (b - a) * t) for a, b in zip(top, bottom)))
-    light = _rgb((hue + 180) % 360, 0.35, 0.92)
+    light = poster_light(index)
     cx, cy, r = width // 2, 200, 70 + index * 6
     if index % 3 == 0:
         draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=light, width=14)
@@ -284,6 +284,11 @@ def poster(index: int):
         y = 360 + n * 26
         draw.rectangle([48 + n * 22, y, width - 48 - n * 22, y + 10], fill=light)
     return image
+
+
+def poster_light(index: int) -> tuple[int, int, int]:
+    """The colour of a poster's shapes, which its game's banner doesn't have."""
+    return _rgb((index * 67 + 180) % 360, 0.35, 0.92)
 
 
 def still(index: int):
@@ -652,12 +657,15 @@ def free_sectors(card: Path) -> list[tuple[int, int]]:
     return ranges
 
 
-def listing(card: Path) -> list[str]:
-    """A card's top folder as the File Browser sorts it: folders first, then
-    by name ignoring case (fileComparator), after its ".." row."""
-    result = subprocess.run(["mdir", "-b", "-i", str(card), "::/"], capture_output=True, text=True,
+def listing(card: Path, folder: str = "") -> list[str]:
+    """A card's folder (its top by default) as the File Browser sorts it:
+    folders first, then by name ignoring case (fileComparator), after its
+    ".." row."""
+    where = "::/" + (folder.strip("/") + "/" if folder.strip("/") else "")
+    result = subprocess.run(["mdir", "-b", "-i", str(card), where], capture_output=True, text=True,
                             env=MTOOLS, check=True)
-    names = [line.strip()[3:] for line in result.stdout.splitlines() if line.strip().startswith("::/")]
+    names = [line.strip()[len(where):] for line in result.stdout.splitlines()
+             if line.strip().startswith(where)]
     return [".."] + sorted(names, key=lambda name: (not name.endswith("/"), name.rstrip("/").lower()))
 
 

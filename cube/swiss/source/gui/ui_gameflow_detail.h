@@ -40,7 +40,9 @@ typedef enum {
 	/* Set by Build: the SAVES inset shows, for two or more save copies. */
 	UI_GAMEFLOW_DETAIL_HAS_SAVES = 1u << 13,
 	/* Set by Build: Left and Right choose the copy to start the game with. */
-	UI_GAMEFLOW_DETAIL_SAVE_CHOICE = 1u << 14
+	UI_GAMEFLOW_DETAIL_SAVE_CHOICE = 1u << 14,
+	/* Opened from the File Browser: B goes back there, not to the Library. */
+	UI_GAMEFLOW_DETAIL_BACK_FILES = 1u << 15
 } uiGameflowDetailFlags_t;
 
 typedef struct {

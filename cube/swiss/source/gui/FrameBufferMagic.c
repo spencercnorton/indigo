@@ -5688,7 +5688,8 @@ bool DrawUpdateGameflow(uiDrawObj_t *evt,
 	return updated;
 }
 
-bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode)
+static bool _GameflowSetMode(uiDrawObj_t *evt, uiGameflowMode_t mode,
+	uiMotionMode_t motion)
 {
 	bool updated = false;
 
@@ -5698,13 +5699,23 @@ bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode)
 	LWP_MutexLock(_videomutex);
 	if(!evt->disposed && evt->type == EV_GAMEFLOW && evt->data != NULL) {
 		drawGameflowEvent_t *data = (drawGameflowEvent_t*)evt->data;
-		UIGameflow_SetMode(&data->state, mode, _CurrentMotionMode());
+		UIGameflow_SetMode(&data->state, mode, motion);
 		_GameflowSetLaunch(data, UIGameflow_Frame(&data->state)->mode ==
 			UI_GAMEFLOW_MODE_LAUNCH);
 		updated = true;
 	}
 	LWP_MutexUnlock(_videomutex);
 	return updated;
+}
+
+bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode)
+{
+	return _GameflowSetMode(evt, mode, _CurrentMotionMode());
+}
+
+bool DrawSetGameflowModeNow(uiDrawObj_t *evt, uiGameflowMode_t mode)
+{
+	return _GameflowSetMode(evt, mode, UI_MOTION_OFF);
 }
 
 bool DrawSetGameflowDetailFocus(uiDrawObj_t *evt,
@@ -8092,6 +8103,17 @@ uiDrawObj_t* DrawFiles(const uiFilesSnapshot_t *snapshot)
 	return event;
 }
 
+uiDrawObj_t* DrawFilesSettled(const uiFilesSnapshot_t *snapshot)
+{
+	uiDrawObj_t *page = DrawFiles(snapshot);
+
+	if(page != NULL) {
+		/* Past every step of the opening. */
+		((drawFilesEvent_t*)page->data)->seconds = 60.0f;
+	}
+	return page;
+}
+
 bool DrawUpdateFiles(uiDrawObj_t *page, const uiFilesSnapshot_t *snapshot)
 {
 	bool updated = false;
@@ -8712,6 +8734,14 @@ uiDrawObj_t* DrawRepublish(uiDrawObj_t *old, uiDrawObj_t *new)
 	uiDrawObj_t* event = addVideoEvent(new);
 	LWP_MutexUnlock(_videomutex);
 	return event;
+}
+
+void DrawDiscard(uiDrawObj_t *evt)
+{
+	if(evt != NULL) {
+		evt->disposed = true;
+		clearNestedEvent(evt);
+	}
 }
 
 void DrawDispose(uiDrawObj_t *evt)

@@ -78,9 +78,11 @@ game its banner and title.
 - **Up** and **Down** move a row, and keep going while held. The C-stick
   goes a page up or down.
 - **A** opens a folder or starts a file in the left pane, and **X** or `..`
-  goes up a folder. A on a disc image opens Swiss's own game screen rather
-  than Indigo's [Game details](game-details.md). In the right pane, A opens
-  folders; games start from the left. A on a file that doesn't start (a
+  goes up a folder. A on a game (a disc image), on storage that starts
+  games, opens its [Game details](game-details.md), as in the Library: its
+  cover, saves, settings, cheats and Launch Game. **B** there comes back to
+  the same row.
+  In the right pane, A opens folders; games start from the left. A on a file that doesn't start (a
   text file, a save, a FlippyDrive update anywhere but on the FlippyDrive)
   opens its actions.
 - **L** and **R** choose the storage on each side, as in Memory Cards: **L**
@@ -171,8 +173,8 @@ file's neighbour where it was, a renamed file under its new name.
 Indigo also asks before the File Browser changes how your console starts:
 
 - **Z** on `..` sets **Autoload**: that folder opens every time Indigo
-  starts, instead of Home. Z there again turns it off. On Swiss's game
-  screen, Z does the same for the game.
+  starts, instead of Home. Z there again turns it off. On a game's
+  details, Z does the same for the game.
 - **A** on a `.fzn` file writes it to a WiiKey Fusion's flash, and on a
   `.fpkg` file updates a FlippyDrive's firmware.
 

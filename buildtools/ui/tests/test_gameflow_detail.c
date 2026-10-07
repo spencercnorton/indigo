@@ -436,6 +436,40 @@ static void testCustomSettingsLine(void)
 	CHECK(snapshot.settingsPreview[0] == '\0');
 }
 
+/* Opened from the File Browser, B says it goes back there; nothing else
+ * on the screen changes, and B still does what it did. */
+static void testBackToFiles(void)
+{
+	uiGameflowDetailSource_t source = {
+		.gameId = "GALE01",
+		.title = "Super Smash Bros. Melee",
+		.facts = "GALE01",
+		.description = "",
+		.saveStatus = UI_GAME_SAVE_NOT_CHECKED,
+		.flags = UI_GAMEFLOW_DETAIL_CHEATS_KNOWN |
+			UI_GAMEFLOW_DETAIL_CAN_SETTINGS | UI_GAMEFLOW_DETAIL_CAN_LIBRARY
+	};
+	uiGameflowDetailSnapshot_t library, files;
+
+	CHECK(UIGameflowDetail_Build(&library, &source));
+	source.flags |= UI_GAMEFLOW_DETAIL_BACK_FILES;
+	CHECK(UIGameflowDetail_Build(&files, &source));
+	CHECK(strcmp(library.primaryActions,
+		"D-PAD  MOVE   A  SELECT   B  LIBRARY   X  SETTINGS") == 0);
+	CHECK(strcmp(files.primaryActions,
+		"D-PAD  MOVE   A  SELECT   B  BACK   X  SETTINGS") == 0);
+	CHECK(UIGameflowDetail_ResolveAction(&files, UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
+		UI_GAMEFLOW_DETAIL_INPUT_B) == UI_GAMEFLOW_DETAIL_ACTION_LIBRARY);
+	/* Every other byte is the Library's. */
+	memcpy(files.primaryActions, library.primaryActions, sizeof(files.primaryActions));
+	files.flags &= ~(uint32_t)UI_GAMEFLOW_DETAIL_BACK_FILES;
+	CHECK(memcmp(&files, &library, sizeof(files)) == 0);
+	/* Without a way back, no B either way. */
+	source.flags &= ~(uint32_t)UI_GAMEFLOW_DETAIL_CAN_LIBRARY;
+	CHECK(UIGameflowDetail_Build(&files, &source));
+	CHECK(strstr(files.primaryActions, "B  ") == NULL);
+}
+
 static void testReadOnlySaveCopies(void)
 {
 	uiSavesGameStats_t stats = {
@@ -586,6 +620,7 @@ int main(void)
 	testControllerPrecedence();
 	testFocus();
 	testInvalidInputResetsSnapshot();
+	testBackToFiles();
 	puts("gameflow detail tests passed");
 	return EXIT_SUCCESS;
 }

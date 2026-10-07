@@ -82,4 +82,11 @@ bool UIGameflowResolver_IsOppositeDisc(
 bool UIGameflowResolver_MayBeOppositeDisc(
 	const uiGameflowResolverEntry_t *primary, const char *knownId);
 
+/* Swiss's choice between two possible other discs (meta_find_disc2): the
+ * one whose name is as long as primary's and first differs from it, case
+ * aside, by as much as the disc numbers do ("Game (Disc 2).iso" beside
+ * "Game (Disc 1).iso"). */
+bool UIGameflowResolver_NamedAsOppositeDisc(const char *primaryName,
+	uint8_t primaryDisc, const char *candidateName, uint8_t candidateDisc);
+
 #endif

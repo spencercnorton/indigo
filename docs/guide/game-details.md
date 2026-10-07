@@ -3,7 +3,9 @@
 # Game details
 
 A on a game in the [Library](library.md) opens its details: everything about
-that one game, and every way to start it, on one screen.
+that one game, and every way to start it, on one screen. A on a game in the
+left pane of the [File Browser](system.md#file-browser) opens the same
+screen, and **B** there goes back to the File Browser, on the same row.
 
 <p align="center">
   <img alt="Astral Circuit’s game details: its demonstration cover on the left; Last played says No play recorded, above Settings and Cheats. Launch Game is selected." src="images/game-details.png" width="640">
@@ -85,8 +87,8 @@ without its glint, and the screen goes straight to black.
   <img alt="A on Launch Game for 1080° Avalanche: the details have made way for its cover, centred in a ring that is filling, with the title, the publisher and the step under it, Loading game." src="images/game-details-launch.png" width="640">
 </p>
 
-If the game can't start, a message says why, and then the Library comes
-back.
+If the game can't start, a message says why, and then the Library (or the
+File Browser) comes back.
 
 Up and down on the D-pad or the control stick move the frame between
 **Launch Game**, **Cheats** and **Settings**, and **A** opens the one it's

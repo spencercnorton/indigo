@@ -89,7 +89,7 @@ See [Apps](apps.md).
 | Left, Right | Choose the copy of the game's save to start with, when the Saves box shows two or more. |
 | A | Open the one you're on: launch the game, or its cheats or settings. |
 | L + A | Clean boot: start the disc with no changes applied (disc drive only). |
-| B | Back to the Library. |
+| B | Back to the Library, or to the File Browser when it opened them. |
 | X | This game's own settings. |
 | Y | Cheats. |
 | Z | Autoload: open this game every time Indigo starts. Press again to turn it off. |
@@ -157,7 +157,7 @@ See [File Browser](system.md#file-browser).
 | Up, Down | Move a row. Hold to keep moving. |
 | Left, Right | Move to the other pane. |
 | C-stick | A page up or down. |
-| A | Open a folder. In the left pane, start a file. A file that doesn't start: its actions. |
+| A | Open a folder. In the left pane, a game's details, or start a file. A file that doesn't start: its actions. |
 | X | Up a folder. At the top, choose that side's storage. |
 | L, R | Choose the left or the right side's storage. |
 | Y | Swap the two sides: the right pane becomes your source. |

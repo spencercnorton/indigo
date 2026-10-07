@@ -165,9 +165,15 @@ def check_detail_input(controller: str, mapping: str) -> None:
     assert "const u32 detailButtons = PAD_BUTTON_X | BUTTON_B | BUTTON_A |" in controller
     assert ("PAD_BUTTON_Y | BUTTON_Z | BUTTON_R | BUTTON_UP | BUTTON_DOWN |\n"
             "\t\tBUTTON_LEFT | BUTTON_RIGHT;") in controller
-    assert "buttons = UIMenuAction_Update(&detailInput, padsButtonsHeld()," in controller
+    # Held or taken from the scans: a press made and let go while an idle
+    # frame read a poster still counts; each re-arm drops older presses.
+    assert ("buttons = UIMenuAction_Update(&detailInput,\n"
+            "\t\t\t\t\tpadsButtonsHeld() | padsButtonsTaken(detailButtons),") in controller
     assert "detailButtons, BUTTON_L, BUTTON_B);" in controller
-    assert controller.count("UIMenuAction_Init(&detailInput, padsButtonsHeld());") == 2
+    assert controller.count("UIMenuAction_Init(&detailInput, padsButtonsHeld());\n"
+                            "\t\t(void)padsButtonsTaken(detailButtons);") == 1
+    assert controller.count("UIMenuAction_Init(&detailInput, padsButtonsHeld());\n"
+                            "\t(void)padsButtonsTaken(detailButtons);") == 1
     # The stick steps like the D-pad, on both axes (Left and Right choose a
     # save copy), once a push (no repeat), quiet while a button is down, and
     # re-armed with the buttons after a modal.
@@ -193,6 +199,10 @@ detail_mapping = extract_function(swiss_source, "static u32 gameflowDetailInput"
 check_detail_input(detail, detail_mapping)
 detail_input_mutants = (
     (detail.replace("UIMenuAction_Update", "oldHeldAction", 1), detail_mapping),
+    (detail.replace("padsButtonsHeld() | padsButtonsTaken(detailButtons),",
+                    "padsButtonsHeld(),", 1), detail_mapping),
+    (detail.replace("(void)padsButtonsTaken(detailButtons);", "", 1), detail_mapping),
+    (detail.replace("(void)padsButtonsTaken(detailButtons);", "", 2), detail_mapping),
     (detail.replace("detailButtons, BUTTON_L, BUTTON_B);",
                     "detailButtons, BUTTON_L, 0u);", 1), detail_mapping),
     (detail.replace("UIMenuAction_Init(&detailInput, padsButtonsHeld());", "", 1), detail_mapping),

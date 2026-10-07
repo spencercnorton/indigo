@@ -63,8 +63,11 @@ card what Indigo wrote there.
 
 The files route boots from a GC Loader with a second SD card in SD2SP2 and
 copies, keeps both, moves, renames, deletes, stops a copy and a move, and
-copies into a folder between them, checking each on the card images; then it
-boots again with that SD card failing its writes, and a copy fails.
+copies into a folder between them, checking each on the card images, and
+a game's Detail from there shows its poster; then it boots again with that
+SD card failing its writes, and a copy fails. Last, A on the probe's game in
+the File Browser opens its Game Detail, B comes back to the same row, and
+Detail's Launch Game starts the probe as that game.
 
 The virtual-cards route leaves both physical slots empty, browses a public
 synthetic RAW image on SD and exports a GCI into the other SD column. The
@@ -122,6 +125,17 @@ FOLDER_LAYOUTS = {
 SETTINGS_TITLE_BOX = (30, 46, 230, 80)
 COUNTER_BOX = (560, 120, 610, 142)  # Settings' "row / rows", shown while a row has the focus
 DETAIL_TITLE_BOX = (264, 106, 600, 134)
+# The cover on the game's details from the File Browser, inside its frame, and
+# how far (mean, 0-255) a frame of it may differ from where it settles.
+DETAIL_CARD_BOX = (56, 104, 210, 300)
+DETAIL_CARD_MOVED = 8.0
+# A poster on Detail's card: this many pixels of its shapes' colour
+# (card.poster_light) in DETAIL_CARD_BOX, which its banner never has, within
+# this many captured frames of Detail's first. The first details after boot
+# read their poster before they show, so it is there at once; a poster that
+# came late would fade in about half a second on, and fail.
+POSTER_PIXELS = 1000
+POSTER_FRAMES = 2
 # Memory Cards: the focused save's name in the info bar, each stack's header
 # ("A  Open" and its free blocks), the buttons along the bottom, where the
 # arrow above the left stack shows once it scrolls, and the maroon box that
@@ -899,6 +913,27 @@ class Emulator:
         if raw.returncode or len(raw.stdout) != WIDTH * HEIGHT * 3:
             raise Broken(f"cannot read the screen: {raw.stderr.decode(errors='replace')[-200:]}")
         return np.frombuffer(raw.stdout, np.uint8).reshape(HEIGHT, WIDTH, 3)
+
+    def burst(self, seconds: float, start) -> np.memmap:
+        """The screen at 60 frames a second for a while, from one ffmpeg, so
+        the frames come a vsync apart (frame() starts a process for each).
+        start() runs once the first frame is in: a press seen from before it."""
+        path = self.user.parent / "burst.rgb"
+        grab = subprocess.Popen(
+            ["ffmpeg", "-loglevel", "error", "-f", "x11grab", "-framerate", "60",
+             "-video_size", f"{WIDTH}x{HEIGHT}", "-draw_mouse", "0", "-i", f"{self.display}+0,0",
+             "-t", f"{seconds}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-y", str(path)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        size, until = WIDTH * HEIGHT * 3, time.monotonic() + 20
+        while (not path.exists() or path.stat().st_size < size) and grab.poll() is None \
+                and time.monotonic() < until:
+            time.sleep(0.01)
+        start()
+        _, error = grab.communicate(timeout=seconds + 30)
+        frames = path.stat().st_size // size if path.exists() else 0
+        if grab.returncode or frames == 0:
+            raise Broken(f"cannot read the screen: {error.decode(errors='replace')[-200:]}")
+        return np.memmap(path, np.uint8, "r", shape=(frames, HEIGHT, WIDTH, 3))
 
     def _ticks(self) -> tuple[float, str] | None:
         """The last TICKS line in Dolphin's output: the console's seconds, and its PC and LR."""
@@ -2075,10 +2110,11 @@ class Route:
                    back is not None and not files_text(self.last_rgb, self.menu_wide,
                                                        box=FILES_RIGHT_MESSAGE_BOX).any())
 
-    def files_goto(self, image: Path, focus: str, target: str) -> None:
+    def files_goto(self, image: Path, focus: str, target: str, folder: str = "") -> None:
         """Moves the focused pane's focus from one entry to another, by their
-        rows in the card's top folder as the File Browser sorts it."""
-        names = card.listing(image)
+        rows in the card's folder (its top by default) as the File Browser
+        sorts it."""
+        names = card.listing(image, folder)
         rows = names.index(target) - names.index(focus)
         self.steps(" ".join(["DOWN" if rows > 0 else "UP"] * abs(rows)), 0.4)
 
@@ -2135,6 +2171,8 @@ class Route:
             card whole and nothing of it is left on the GC Loader;
           - A on backups opens it on the right; LEFT, Z, X and A on b-two.txt
             copy it into that folder, not the SD card's top;
+          - a game's Detail, the first since boot, shows its poster
+            (files_poster);
         and B leaves. files_write_fails runs on the next boot."""
         gcl, sd2 = self.sd_image, self.second_sd
         faces = [self.boot()]
@@ -2247,19 +2285,22 @@ class Route:
         self.check("the copy lands in the folder open on the right, not the SD card's top",
                    card.read_card(sd2, "backups/b-two.txt") == card.SECOND_FILES["b-two.txt"] and
                    card.read_card(sd2, "b-two.txt") is None)
+        self.files_poster(gcl, "b-two.txt")
         self.press("B")
         self.check("B leaves the File Browser", self.files_list(False))
 
     def files_write_fails(self) -> None:
         """The next boot, with the SD card in SD2SP2 failing every write to
         a cluster it had free (card.free_sectors): R, DOWN and A put it on
-        the right, A on backups opens it, and LEFT, Z, X and A copy
-        Indigo-README.txt into it. The write fails: the message says so and
-        waits for A, and no whole copy is on the card. Once a write has
-        failed, this card refuses every write after it (deleting another file
-        fails too), so the unfinished file stays and the message says part of
-        it is left; that the File Browser deletes it where the card allows is
-        pinned by audit_files_contract.py."""
+        the right, A on backups opens it, and LEFT focuses the GC Loader. A
+        game's Detail from the File Browser (files_detail), while the card
+        still works, and X back up. Then Z, X and A copy Indigo-README.txt
+        into backups. The write fails: the message says so and waits for A,
+        and no whole copy is on the card. Once a write has failed, this card
+        refuses every write after it (deleting another file fails too), so
+        the unfinished file stays and the message says part of it is left;
+        that the File Browser deletes it where the card allows is pinned by
+        audit_files_contract.py. Last, the game's launch (files_launch)."""
         gcl, sd2 = self.sd_image, self.second_sd
         readme = "Indigo-README.txt"
         original = card.read_card(gcl, readme)
@@ -2279,14 +2320,121 @@ class Route:
         self.pause(1.0)
         self.press("LEFT")
         self.check("LEFT focuses the GC Loader's pane", self.files_list(True, pane=0))
-        self.files_goto(gcl, "apps/", readme)
+        top = self.files_detail(gcl, "apps/")
+        self.press("X")
+        self.check("X goes back up, to games/", self.files_path(like=top) is not None)
+        self.files_goto(gcl, "games/", readme)
         self.steps("Z X", 0.8)
         self.press("A")
         self.files_said("failed write", failed=True)
         self.check("a copy whose write failed isn't on the SD card whole",
                    original is not None and card.read_card(sd2, f"backups/{readme}") != original)
+        self.files_launch(gcl, readme)
+
+    def files_game(self, image: Path, focus: str,
+                   game: tuple[str, str] = card.PROBE_GAME) -> np.ndarray | None:
+        """A on games/ opens it in the left pane, and DOWN goes to a game,
+        the probe's by default. The path line at the top, as a mask."""
+        self.files_goto(image, focus, "games/")
+        top = self.files_path()
+        self.press("A")
+        inside = self.files_path(unlike=top) if top is not None else None
+        self.check("A on games/ opens it in the left pane", inside is not None)
+        # Flatten directory (on for /games) lists a folder's files in its
+        # place: such a folder has no row, and they sort after the probe.
+        names = [name for name in card.listing(image, "games")
+                 if not (name.endswith("/") and len(card.listing(image, f"games/{name}")) > 1)]
+        rows = names.index(card.game_file(*game)) - 1
+        self.steps(" ".join(["DOWN"] * rows), 0.4)
+        self.pause(1.0)
+        return top
+
+    def files_poster(self, image: Path, focus: str) -> None:
+        """The first Detail since boot, opened from the File Browser on a
+        game the poster pack has (files_game), so the pack opens only then:
+        from Detail's first frame (POSTER_FRAMES) its card shows the game's
+        poster, not the banner standing in for it. B comes back and
+        X goes up again."""
+        index = 0
+        top = self.files_game(image, focus, card.GAMES[index])
+        frames = self.emulator.burst(8.0, lambda: self.press("A"))
+        shown = next((n for n, rgb in enumerate(frames) if not files_screen(rgb, self.menu_wide)), None)
+        x0, y0, x1, y1 = DETAIL_CARD_BOX
+        light = card.poster_light(index)
+        poster = None
+        for n in range(shown if shown is not None else len(frames), len(frames)):
+            rgb = np.array(frames[n])
+            if coloured(detection_frame(rgb, self.menu_wide)[y0:y1, x0:x1], light) >= POSTER_PIXELS:
+                poster = n
+                self.shot("files-detail-poster", rgb)
+                break
+        last = np.array(frames[len(frames) - 1])
+        del frames
+        if poster is None:
+            self.shot("files-detail-no-poster", last)
+        self.check("Detail from the File Browser shows the game's poster, not its banner",
+                   poster is not None and poster - shown <= POSTER_FRAMES, first=shown, poster=poster)
         self.press("B")
-        self.check("B leaves the File Browser", self.files_list(False))
+        self.check("B comes back to the File Browser", self.files_list(True, pane=0))
+        self.press("X")
+        self.check("X goes back up", top is not None and self.files_path(like=top) is not None)
+
+    def files_detail(self, image: Path, focus: str) -> np.ndarray | None:
+        """The probe's game (files_game) and A open its Game Detail over the
+        File Browser, already in place: every frame of its first 0.3 s, at 60
+        a second, has the title Detail settles on (no card flies in). B comes
+        back to the File Browser, the left pane on the same row and the right
+        pane's storage, let go meanwhile, showing the same rows. Returns the
+        top's path line."""
+        top = self.files_game(image, focus)
+        row = self.files_path(box=FILES_INFO_TITLE_BOX)
+        rows = self.files_rows(right=False)
+        right = self.files_rows(right=True)
+        self.shot("files-game", self.last_rgb)
+        frames = self.emulator.burst(8.0, lambda: self.press("A"))
+        title, _ = self.settled_label(box=DETAIL_TITLE_BOX)
+        self.shot("files-detail", self.last_rgb)
+        self.check("A on a game in the File Browser opens its Game Detail",
+                   title is not None and not files_screen(self.last_rgb, self.menu_wide))
+        # The card where Detail settles it, in each of the first 0.3 s of
+        # frames without the File Browser against the burst's last: a card
+        # flying in, or nothing drawn yet (the Home cube), differs.
+        x0, y0, x1, y1 = DETAIL_CARD_BOX
+        card_at = lambda n: detection_frame(np.array(frames[n]), self.menu_wide)[y0:y1, x0:x1].astype(int)
+        shown = next((n for n, rgb in enumerate(frames) if not files_screen(rgb, self.menu_wide)), None)
+        moving = None
+        if shown is not None:
+            settled = card_at(len(frames) - 1)
+            away = [round(float(np.abs(card_at(n) - settled).mean()), 1)
+                    for n in range(shown, min(shown + 18, len(frames)))]
+            moving = [shown + n for n, d in enumerate(away) if d > DETAIL_CARD_MOVED]
+            self.shot("files-detail-first", np.array(frames[shown]))
+        self.check("... already in place: its card doesn't move in its first frames",
+                   moving is not None and len(moving) <= 1, first=shown, frames=len(frames), moving=moving,
+                   away=away if shown is not None else None)
+        del frames
+        self.press("B")
+        back = self.files_list(True, pane=0)
+        same = self.files_path(like=row, box=FILES_INFO_TITLE_BOX) if row is not None else None
+        again = self.files_rows(right=False, like=rows) if rows is not None else None
+        other = self.files_rows(right=True, like=right) if right is not None else None
+        self.shot("files-detail-back", self.last_rgb)
+        self.check("B comes back to the File Browser, on the same row",
+                   back and same is not None and again is not None)
+        self.check("... with the right pane's storage back as it was", other is not None)
+        return top
+
+    def files_launch(self, image: Path, focus: str) -> None:
+        """The probe's game (files_game), A and A again: Launch Game from its
+        Detail must reach the probe as that game."""
+        self.files_game(image, focus)
+        self.press("A")
+        detail, _ = self.settled_label(box=DETAIL_TITLE_BOX)
+        self.check("A opens the game's Detail again", detail is not None)
+        self.press("A")
+        report = self.handoff("files-game")
+        self.check("Launch Game from the File Browser starts the game with its own disc ID",
+                   report["disc_id"] == card.PROBE_GAME[0], disc_id=report["disc_id"])
 
     def files_face(self, faces: list[np.ndarray]) -> None:
         """Down Face File Browser, from System: RIGHT turns to a face named

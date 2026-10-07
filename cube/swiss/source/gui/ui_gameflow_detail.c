@@ -209,7 +209,9 @@ static void buildPresentation(uiGameflowDetailSnapshot_t *snapshot)
 		"A  SELECT");
 	if((flags & UI_GAMEFLOW_DETAIL_CAN_LIBRARY) != 0u) {
 		appendText(snapshot->primaryActions,
-			sizeof(snapshot->primaryActions), "B  LIBRARY");
+			sizeof(snapshot->primaryActions),
+			(flags & UI_GAMEFLOW_DETAIL_BACK_FILES) != 0u ?
+			"B  BACK" : "B  LIBRARY");
 	}
 	if((flags & UI_GAMEFLOW_DETAIL_CAN_SETTINGS) != 0u) {
 		appendText(snapshot->primaryActions,

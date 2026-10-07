@@ -1378,6 +1378,8 @@ static bool filesPaneSnapshot(uiFilesPaneSnapshot_t *out, file_handle **entries,
 	return true;
 }
 
+static bool filesOpensDetail(const file_handle *entry);
+
 /* The info bar and the hints, for the focused entry of the focused pane. */
 static bool filesInfoSnapshot(uiFilesSnapshot_t *s, file_handle **entries,
 	const char *dirName, const uiFilesLayout_t *layout, bool wait)
@@ -1499,6 +1501,12 @@ static bool filesInfoSnapshot(uiFilesSnapshot_t *s, file_handle **entries,
 	}
 	if(entry != NULL && entry->fileType == IS_SPECIAL) {
 		autoload = filesAutoloadFolder(dirName);
+	}
+	/* A on a disc opens its Detail only where filesOpensDetail says so;
+	 * elsewhere it is Swiss's load_file, as for any file that starts. */
+	if(kind == UI_FILES_KIND_DISC && pane == UI_FILES_LEFT &&
+		!filesOpensDetail(entry)) {
+		kind = UI_FILES_KIND_OTHER;
 	}
 	/* A right pane with no entry, at its top or not ready: A, X and R
 	 * choose its storage, and Z has nothing to act on. */
@@ -2365,6 +2373,8 @@ static bool filesSwapSides(file_handle **directory)
 /* The File Browser on the shared listing, as Swiss's lists were: it returns
  * to menu_loop for a left folder change, a Source change, B, START, a
  * launch, and anything that needs the listing read again. */
+static void filesOpenDetail(file_handle **directory, uiDrawObj_t **filePanel);
+
 static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
 {
 	const u32 waitButtons = BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT | BUTTON_RIGHT |
@@ -2506,7 +2516,7 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 		if(filesState.active == UI_FILES_LEFT && storage < 0) {
 			if(buttons & BUTTON_A) {
 				int type;
-				bool loads;
+				bool loads, detail;
 
 				/* What A does depends on the meta (a program folder, a
 				 * second disc): read it now if no one has yet. */
@@ -2514,6 +2524,7 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 				populate_meta(directory[curSelection]);
 				type = directory[curSelection]->fileType;
 				loads = filesLoads(directory[curSelection]);
+				detail = loads && filesOpensDetail(directory[curSelection]);
 				unlockFile(directory[curSelection]);
 				if(type == IS_SPECIAL && filesAtRoot(&curDir)) {
 					storage = UI_FILES_LEFT;
@@ -2527,6 +2538,14 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 					}
 					meta_thread_stop();
 					meta_thread_start(loadingBox);
+				}
+				else if(detail) {
+					/* A game: its Detail, as the Library's. The page under it
+					 * changes, and the wheel goes with the old one. */
+					DrawDispose(loadingBox);
+					loadingBox = NULL;
+					filesOpenDetail(directory, &filePanel);
+					break;
 				}
 				else {
 					/* Starting a file: nothing stays mounted that the game,
@@ -3590,9 +3609,12 @@ static bool gameflowPopulateResolvedMeta(file_handle *file,
 	return true;
 }
 
+/* The Library gives up on two possible other discs. From the File Browser,
+ * whose folders aren't laid out for the Library, Swiss's choice stands
+ * (meta_find_disc2): the one named as the other disc, else the last. */
 static file_handle *gameflowFindOppositeImage(file_handle *image,
 	const uiGameflowResolverEntry_t *primaryHeader,
-	uiGameflowResolverEntry_t *oppositeHeader)
+	uiGameflowResolverEntry_t *oppositeHeader, bool swissChoice)
 {
 	file_handle *entries;
 	file_handle *match = NULL;
@@ -3641,7 +3663,7 @@ static file_handle *gameflowFindOppositeImage(file_handle *image,
 			primaryHeader, &candidateHeader)) {
 			continue;
 		}
-		if(match != NULL) {
+		if(match != NULL && !swissChoice) {
 			if(oppositeHeader != NULL) {
 				memset(oppositeHeader, 0, sizeof(*oppositeHeader));
 			}
@@ -3651,6 +3673,11 @@ static file_handle *gameflowFindOppositeImage(file_handle *image,
 		if(oppositeHeader != NULL) {
 			memcpy(oppositeHeader, &candidateHeader,
 				sizeof(*oppositeHeader));
+		}
+		if(swissChoice && UIGameflowResolver_NamedAsOppositeDisc(image->name,
+			primaryHeader->discNumber, candidate->name,
+			candidateHeader.discNumber)) {
+			break;
 		}
 	}
 	return match;
@@ -3898,6 +3925,48 @@ static bool gameflowResolveAndLoadFolder(file_handle *folder,
 	return true;
 }
 
+/* Detail opened from the File Browser (filesOpenDetail): the event isn't on
+ * screen until Detail is ready, and the File Browser's page comes back over
+ * it before it turns back to the Library. gameflowFilesPage is that page
+ * while it is up; gameflowFilesShown, once the event has been. */
+static bool gameflowFromFiles;
+static bool gameflowFilesShown;
+static uiDrawObj_t *gameflowFilesPage;
+
+/* Detail or the launch screen first shows: from the File Browser, the event
+ * takes the page's place already in that mode, so no card flies in from a
+ * Library slot and no Library frame is drawn. */
+static void gameflowShowFromFiles(uiDrawObj_t *event, uiGameflowMode_t mode)
+{
+	if(!gameflowFromFiles || gameflowFilesShown) {
+		DrawSetGameflowMode(event, mode);
+		return;
+	}
+	/* Detail draws nothing until the cube is back behind it (libraryReveal):
+	 * from a File Browser over Home, the page hides the cube going back. */
+	for(int vsync = 0; vsync < 60 && UIScene_Frame()->libraryReveal < 1.0f;
+		vsync++) {
+		VIDEO_WaitVSync();
+	}
+	DrawSetGameflowModeNow(event, mode);
+	DrawRepublish(gameflowFilesPage, event);
+	gameflowFilesPage = NULL;
+	gameflowFilesShown = true;
+}
+
+/* Before the event goes back to Library mode: from the File Browser, its
+ * page again, settled, on top, so the slide back to a Library slot happens
+ * under it. Once is enough. */
+static void gameflowBackToFiles(void)
+{
+	if(gameflowFromFiles && gameflowFilesPage == NULL) {
+		gameflowFilesPage = DrawFilesSettled(&filesSnapshot);
+		if(gameflowFilesPage != NULL) {
+			DrawPublish(gameflowFilesPage);
+		}
+	}
+}
+
 /* A launch starts from a fresh handle. A Library entry keeps the file
  * its banner was read through, and a read error on a slow SD card over EXI
  * leaves that file failing every later read. A launch that failed after setup
@@ -3949,7 +4018,7 @@ static bool gameflowLoadImageWithContext(file_handle *image,
 	gameflowPopulateResolvedMeta(image, &headerEntry);
 	memcpy(&curFile, image, sizeof(curFile));
 	context.oppositeDisc = gameflowFindOppositeImage(image, &headerEntry,
-		&oppositeHeader);
+		&oppositeHeader, gameflowFromFiles);
 	if(context.oppositeDisc != NULL) {
 		gameflowFreshHandle(context.oppositeDisc);
 	}
@@ -3966,9 +4035,94 @@ static bool gameflowLoadImageWithContext(file_handle *image,
 	devices[DEVICE_CUR]->closeFile(&curFile);
 	devices[DEVICE_CUR]->closeFile(context.oppositeDisc);
 	memcpy(image, &curFile, sizeof(*image));
+	gameflowBackToFiles();
 	DrawSetGameflowMode(context.event, UI_GAMEFLOW_MODE_LIBRARY);
 	DrawClearGameflowDetail(context.event);
 	return true;
+}
+
+/* A one-game Library window for Detail: the File Browser's focused entry,
+ * selected, with the ID its disc header gave (the Library's identity check
+ * and the posters go by it). */
+static void filesDetailSnapshot(uiGameflowRenderSnapshot_t *snapshot,
+	file_handle *entry, const uiGameflowResolverEntry_t *header)
+{
+	uiGameflowCardSnapshot_t *record = &snapshot->records[0];
+
+	memset(snapshot, 0, offsetof(uiGameflowRenderSnapshot_t, records) +
+		sizeof(snapshot->records[0]));
+	snapshot->selection.generation = ++gameflowSnapshotGeneration;
+	snapshot->selection.itemCount = (u32)getSortedDirEntryCount();
+	snapshot->selection.selectedIndex = (u32)curSelection;
+	snapshot->recordCount = 1u;
+	snapshot->layout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
+	gameflowCopyText(snapshot->deviceName, sizeof(snapshot->deviceName),
+		DeviceDisplayName(devices[DEVICE_CUR]), sizeof(snapshot->deviceName));
+	record->libraryIndex = (u32)curSelection;
+	record->relativeSlot = 0;
+	gameflowSnapshotRecord(record, entry, UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+	gameflowCopyText(record->gameId, sizeof(record->gameId), header->gameId,
+		sizeof(header->gameId));
+}
+
+/* A on a game in the File Browser's left pane opens Indigo's Game Detail,
+ * as the Library does: its posters, its Saves box, settings and cheats,
+ * Launch Game. Nothing else is mounted meanwhile. The page stays up until
+ * Detail is ready and is back before Detail goes, so neither is seen
+ * leaving; B comes back to the same row. A disc whose header won't read,
+ * or a Detail that can't be built, goes to Swiss's own load_file. */
+static bool filesOpensDetail(const file_handle *entry)
+{
+	return entry->fileType == IS_FILE &&
+		UIGameflowLibrary_IsGameImageName(entry->name) &&
+		(devices[DEVICE_CUR]->features & FEAT_BOOT_GCM);
+}
+
+static void filesOpenDetail(file_handle **directory, uiDrawObj_t **filePanel)
+{
+	file_handle *entry = directory[curSelection];
+	uiGameflowRenderSnapshot_t *snapshot = NULL;
+	uiGameflowResolverEntry_t header;
+	uiDrawObj_t *event = NULL;
+	bool handled = false;
+
+	meta_thread_stop();
+	filesOtherRelease();
+	lockFile(entry);
+	memset(&header, 0, sizeof(header));
+	gameflowFreshHandle(entry);
+	if(gameflowReadResolverHeader(entry, &header)) {
+		snapshot = memalign(32, sizeof(*snapshot));
+	}
+	if(snapshot != NULL) {
+		filesDetailSnapshot(snapshot, entry, &header);
+		/* The Library's one bounded poster read before Detail. */
+		DrawGameflowRequestPosters(devices[DEVICE_CUR], snapshot);
+		DrawGameflowPollPosters();
+		event = DrawGameflow(snapshot);
+	}
+	if(event != NULL) {
+		gameflowFilesPage = *filePanel;
+		gameflowFilesShown = false;
+		gameflowFromFiles = true;
+		handled = gameflowLoadImageWithContext(entry, event, snapshot, false);
+		gameflowFromFiles = false;
+		if(gameflowFilesShown) {
+			DrawDispose(event);
+		}
+		else {
+			DrawDiscard(event);
+		}
+		*filePanel = filesPage = gameflowFilesPage;
+		gameflowFilesPage = NULL;
+	}
+	free(snapshot);
+	unlockFile(entry);
+	if(!handled) {
+		filesActivate(directory, false);
+	}
+	/* Detail turned the cube to its own scene and the Library's. */
+	UIScene_Request(filesScene);
 }
 
 // Draws all the files in the current dir.
@@ -4424,10 +4578,8 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 
 				meta_thread_stop();
 				/* Complete at most the already-requested center-cover job
-				 * before Detail freezes the request window. Acquire/Release
-				 * remain menu mutators with no proven non-recursive ordering,
-				 * so Detail uses per-frame Query/Peek and its copied BNR when
-				 * this one bounded poll cannot produce a cover. */
+				 * before Detail freezes the request window. Detail draws its
+				 * BNR until the cover lands: its idle retraces poll for it. */
 				DrawGameflowPollPosters();
 				if(entryMode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS) {
 					file_handle folderSnapshot;
@@ -6040,7 +6192,7 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 	/* A Library launch shows the launch screen from here to the hand-off,
 	 * Boot without prompts included. */
 	if(context != NULL) {
-		DrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LAUNCH);
+		gameflowShowFromFiles(context->event, UI_GAMEFLOW_MODE_LAUNCH);
 	}
 	
 	if(devices[DEVICE_CONFIG] != NULL) {
@@ -6780,6 +6932,9 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 	if(devices[DEVICE_CUR] != &__device_wode) {
 		flags |= UI_GAMEFLOW_DETAIL_CAN_LIBRARY;
 	}
+	if(gameflowFromFiles) {
+		flags |= UI_GAMEFLOW_DETAIL_BACK_FILES;
+	}
 	if(devices[DEVICE_CONFIG] != NULL) {
 		flags |= UI_GAMEFLOW_DETAIL_CAN_AUTOLOAD;
 		if(!strcmp(swissSettings.autoload, curFile.name) ||
@@ -6900,10 +7055,12 @@ static int gameflow_info_game(ConfigEntry *config,
 		return openSettings ? 0 : info_game(config);
 	}
 	DrawSetGameflowDetailFocus(context->event, focus);
-	DrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_DETAIL);
+	gameflowShowFromFiles(context->event, UI_GAMEFLOW_MODE_DETAIL);
 	/* The entry A press is consumed, but held L and the C-stick cannot
-	 * block the detail screen. Only physical X/Y invoke those shortcuts. */
+	 * block the detail screen. Only physical X/Y invoke those shortcuts.
+	 * Presses made and let go before now aren't for here either. */
 	UIMenuAction_Init(&detailInput, padsButtonsHeld());
+	(void)padsButtonsTaken(detailButtons);
 	UIMenuInput_Init(&detailStick);
 
 	while(1) {
@@ -6922,7 +7079,10 @@ static int gameflow_info_game(ConfigEntry *config,
 		else {
 			do {
 				VIDEO_WaitVSync();
-				buttons = UIMenuAction_Update(&detailInput, padsButtonsHeld(),
+				/* Taken from the scans as well as held: a press made and
+				 * let go while a poster was read is still seen. */
+				buttons = UIMenuAction_Update(&detailInput,
+					padsButtonsHeld() | padsButtonsTaken(detailButtons),
 					detailButtons, BUTTON_L, BUTTON_B);
 				/* The stick steps like the D-pad: once a push, back to
 				 * centre first, never while a button is down. With no
@@ -6934,6 +7094,12 @@ static int gameflow_info_game(ConfigEntry *config,
 				if(analog == UI_MENU_INPUT_DOWN) buttons |= BUTTON_DOWN;
 				if(analog == UI_MENU_INPUT_LEFT) buttons |= BUTTON_LEFT;
 				if(analog == UI_MENU_INPUT_RIGHT) buttons |= BUTTON_RIGHT;
+				/* A poster still on its way (its slot was just let go, or
+				 * the pack only now opened) is read on an idle retrace, one
+				 * at most, as the Library does, and fades in when it lands. */
+				if(buttons == 0u) {
+					DrawGameflowPollPosters();
+				}
 			} while(buttons == 0u);
 			/* Left and Right choose the save copy to start with, while the
 			 * Saves box has two or more. */
@@ -7004,6 +7170,7 @@ static int gameflow_info_game(ConfigEntry *config,
 			return 1;
 		}
 		if(action == UI_GAMEFLOW_DETAIL_ACTION_LIBRARY) {
+			gameflowBackToFiles();
 			DrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LIBRARY);
 			/* The browser owns its B release drain after restoring Library. */
 			return 0;
@@ -7019,7 +7186,11 @@ static int gameflow_info_game(ConfigEntry *config,
 			UIScene_Request(UI_SCENE_GAME_DETAIL);
 			gameflowPublishDetail(config, context);
 		}
-		else if(action == UI_GAMEFLOW_DETAIL_ACTION_AUTOLOAD) {
+		/* From the File Browser, turning Autoload on asks first, as Swiss's
+		 * game screen did there. */
+		else if(action == UI_GAMEFLOW_DETAIL_ACTION_AUTOLOAD &&
+			(!gameflowFromFiles ||
+			autoloadToggleConfirmed(curFile.name, false))) {
 			if(!strcmp(swissSettings.autoload, curFile.name) ||
 				!fnmatch(swissSettings.autoload, curFile.name,
 					FNM_PATHNAME)) {
@@ -7046,6 +7217,7 @@ static int gameflow_info_game(ConfigEntry *config,
 		/* A modal's dismissal is not a new Detail action. Do not require
 		 * unrelated buttons or a held clean-boot modifier to be released. */
 		UIMenuAction_Init(&detailInput, padsButtonsHeld());
+		(void)padsButtonsTaken(detailButtons);
 		UIMenuInput_Init(&detailStick);
 	}
 }

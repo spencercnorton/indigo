@@ -1468,6 +1468,37 @@ static void test_uninitialized_api_is_inert(void) {
 	CHECK(liveAllocs == 0);
 }
 
+/* The pack's first open: no frame has drawn from the new arena, so the
+ * first Poll after a request reads at once (Detail polls once before it
+ * shows). A pack opened again over posters a frame may still sample keeps
+ * the quarantine. */
+static void test_fresh_arena_reads_at_once(void) {
+	size_t len;
+	u8 *pack = buildPack(BASIC, 3, &len, 0);
+	uiAssetsSource_t src = memSource(pack, len);
+	uiPosterHandle_t h;
+	int reads;
+
+	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
+	requestOne("GALE01");
+	reads = mem.readCalls;
+	UIAssets_Poll();
+	CHECK(mem.readCalls == reads + 1);
+	CHECK(UIAssets_Query("GALE01", 6, true, &h) == UI_POSTER_EXACT);
+	CHECK(UIAssets_Peek(h) != NULL);
+
+	UIAssets_CancelForDeviceChange();
+	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
+	requestOne("GALE01");
+	reads = mem.readCalls;
+	CHECK(UIAssets_Poll());
+	CHECK(mem.readCalls == reads); /* the old texels may still be drawn */
+	fakeNowValue += UI_ASSETS_EVICT_QUARANTINE_MS + 1;
+	UIAssets_Poll();
+	CHECK(mem.readCalls == reads + 1);
+	free(pack);
+}
+
 static void test_poll_lock_phase_split(void) {
 	size_t len;
 	u8 *pack = buildPack(BASIC, 3, &len, 0);
@@ -2185,6 +2216,7 @@ int main(int argc, char **argv) {
 	RUN(test_dispose_after_mutex_destroyed);
 	RUN(test_dispose_releases_everything);
 	RUN(test_quarantine_blocks_rewrite);
+	RUN(test_fresh_arena_reads_at_once);
 	RUN(test_scale_100_and_250);
 	RUN(test_memory_budget);
 	RUN(test_dominant_color);

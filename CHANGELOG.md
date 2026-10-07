@@ -73,6 +73,13 @@ tag on `beta`. The newest changes are at the top until their release is named.
   words and are drawn beside the row; Delete still needs L held with A. A
   on a file that doesn't start opens its Actions, as does a FlippyDrive
   update anywhere but on a FlippyDrive.
+- **A** on a game in the File Browser's left pane opens its **Game
+  details**, as in the Library: its cover, saves, settings, cheats and
+  Launch Game, which starts it as the Library does, with the second disc
+  Swiss would choose in that folder. The details take the File Browser's
+  place without flying in from a Library card, and **B** (**B Back**
+  there) goes back to the File Browser on the same row. A game started
+  from Recent, or an Autoload game, still shows Swiss's own game screen.
 - A copy that is stopped, or fails part way, deletes the unfinished file,
   in the File Browser and from Swiss's own copy alike, except on a memory
   card, which keeps what was written, as before. The File Browser's message
@@ -81,7 +88,7 @@ tag on `beta`. The newest changes are at the top until their release is named.
   gone. A Move whose original can't be deleted afterwards says the file was
   copied but is in both places.
 - The File Browser now asks before Move, before Hide, before turning
-  Autoload on (Z on `..`, or Z on Swiss's game screen), and before writing a
+  Autoload on (Z on `..`, or Z on a game's details), and before writing a
   `.fzn` file to a WiiKey Fusion or a `.fpkg` file to a FlippyDrive. Delete
   says when a folder's contents go with it.
 - Press **Y Folder** on Memory Cards' small folder or card-image cubes to
@@ -140,6 +147,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
   B to cancel a copy or a verify in the File Browser while a piece of the
   file is read or written. The File Browser, unlike Swiss's lists, keeps a
   press made while a folder or a banner is read.
+- A game's details opened before its cover was read, just after reaching
+  it in the Library or after the source changed, kept the disc banner
+  until you left them. The cover now fades in once it is read, and the
+  first details opened after Indigo starts have it straight away.
 
 ### For developers
 
@@ -158,6 +169,13 @@ tag on `beta`. The newest changes are at the top until their release is named.
   its four places, the Delete chord and the question texts, with mutants.
   `test_ui_files` checks the Actions box's choices against Swiss's own
   permissions for every device and file.
+- `test_files_detail.py` builds the one-game window a File Browser game's
+  details open from, out of `swiss.c` itself, and holds it to the Library's
+  own checks, with mutants; the contract audit pins how the details come in
+  and go back, and that a MemCard PRO is sent the game's ID before they
+  show. The `files` route ends by opening a game's details from the File
+  Browser, coming back to the same row, and launching it to the probe; the
+  first details it opens must show the game's poster from their first frame.
 
 - The emulator test holds each button for its full time from Dolphin's next
   clock report, so a press can no longer end within a frame of starting and

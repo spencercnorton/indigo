@@ -221,6 +221,9 @@ void DrawUpdateFileBrowserButton(uiDrawObj_t *evt, int mode);
 bool DrawUpdateGameflow(uiDrawObj_t *evt,
 	const uiGameflowRenderSnapshot_t *snapshot);
 bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode);
+/* The same, already there: no motion to it. For an event not yet on screen,
+ * so its first frame is the mode's (Detail opened from the File Browser). */
+bool DrawSetGameflowModeNow(uiDrawObj_t *evt, uiGameflowMode_t mode);
 /* The Detail row the D-pad rests on. */
 bool DrawSetGameflowDetailFocus(uiDrawObj_t *evt,
 	uiGameflowDetailFocus_t focus);
@@ -239,6 +242,8 @@ void DrawWithVideoLocked(void (*change)(void *context), void *context);
 uiDrawObj_t* DrawPublish(uiDrawObj_t *evt);
 uiDrawObj_t* DrawRepublish(uiDrawObj_t *old, uiDrawObj_t *new);
 void DrawDispose(uiDrawObj_t *evt);
+/* Frees an object that was never published. */
+void DrawDiscard(uiDrawObj_t *evt);
 /* Settings: one page event for the whole session, drawn from a snapshot in
  * the cheat browser's language. Each update copies the snapshot and keeps
  * the screen in the colors it was built with (colors: the Menu, Backdrop and
@@ -326,6 +331,9 @@ uiDrawObj_t* DrawSaveCubesPage(const uiSaveCubesPageSnapshot_t *snapshot);
 /* The File Browser's two panes (swiss.c's renderFileList). DrawUpdateFiles
  * and DrawUpdateFilesReading are false when page isn't one. */
 uiDrawObj_t* DrawFiles(const uiFilesSnapshot_t *snapshot);
+/* The page as it stands once opened: no hand-over, no fade (coming back
+ * from a game's Detail). */
+uiDrawObj_t* DrawFilesSettled(const uiFilesSnapshot_t *snapshot);
 bool DrawUpdateFiles(uiDrawObj_t *page, const uiFilesSnapshot_t *snapshot);
 bool DrawUpdateFilesReading(uiDrawObj_t *page, int pane);
 void DrawUpdateSaveCubesPage(uiDrawObj_t *page,

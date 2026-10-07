@@ -74,6 +74,8 @@ run_binaries() {
 	fixtures=
 	echo "== game folder navigation$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_gameflow_folder_navigation.py; else python3 ./test_gameflow_folder_navigation.py --sanitize; fi
+	echo "== a game's Detail from the File Browser: its window$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_files_detail.py; else python3 ./test_files_detail.py --sanitize; fi
 	if make_fixture; then
 		fixtures="$TMP/fixture.pak $TMP/fixture-stills.pak"
 	else

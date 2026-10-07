@@ -1,3 +1,125 @@
+## 2026-10-07 — A game's Game Detail from the File Browser
+
+Fifth step of the two-pane File Browser: A on a game in the left pane opens
+Indigo's Game Detail, through the Library's own image path, and B comes
+back to the same row.
+
+swiss.c: renderFileList decides `detail` under the entry's lock (loads and
+filesOpensDetail: IS_FILE, UIGameflowLibrary_IsGameImageName, the Source has
+FEAT_BOOT_GCM), disposes its loading wheel and calls filesOpenDetail, then
+returns to menu_loop, which calls it again on the same page (filePanel ==
+filesPage: no opening, filesScene requested). filesOpenDetail: meta thread
+stopped, filesOtherRelease, lock, gameflowFreshHandle, the disc header
+(gameflowReadResolverHeader) as the eligibility proof, then
+filesDetailSnapshot (a one-record Horizontal window: itemCount the listing's,
+selectedIndex and libraryIndex curSelection, slot 0, gameflowSnapshotRecord
+in IMAGE_FILES mode, gameId from the header), the Library's poster request
+and one poll, DrawGameflow (not published), and gameflowLoadImageWithContext
+with gameflowFromFiles set. In: gameflow_info_game's Detail mode and
+load_game_with_context's Launch mode (Boot without prompts) go through
+gameflowShowFromFiles, which, before the event was ever shown, sets the
+mode with DrawSetGameflowModeNow (UI_MOTION_OFF) and DrawRepublish(page,
+event); afterwards it is DrawSetGameflowMode as before. Out:
+gameflowBackToFiles publishes DrawFilesSettled(&filesSnapshot) on top before
+B's and the image loader's switch back to Library mode (once). The event is
+disposed after, or DrawDiscard'ed when it never showed (a header mismatch);
+then filesActivate (Swiss's load_file) when nothing was handled, and
+UIScene_Request(filesScene). gameID_early_set is untouched: it still runs in
+load_game_with_context before gameflow_info_game. gameflowPublishDetail adds
+UI_GAMEFLOW_DETAIL_BACK_FILES, which ui_gameflow_detail.c draws as "B  BACK".
+Recent and Autoload of a disc still go load_file → Swiss's info_game. WODE
+keeps the Library's rule (no B in Detail there).
+
+From the File Browser, Detail's Z goes through autoloadToggleConfirmed
+before turning Autoload on, as Swiss's info_game asked there.
+gameflowFindOppositeImage takes swissChoice (gameflowFromFiles): two
+possible other discs no longer give none; the first that
+UIGameflowResolver_NamedAsOppositeDisc names wins (meta_find_disc2's rule:
+as long as the primary's name, the first case-insensitive difference equal
+to the disc numbers'), else the last match, as Swiss chose. The info bar's
+hint is A Start (kind OTHER) on a disc where filesOpensDetail is false (no
+FEAT_BOOT_GCM, a `._` name). gameflowShowFromFiles keeps the page up, 60
+vsyncs at most, until UIScene_Frame()->libraryReveal is 1: the Library
+event draws nothing before the cube is behind it, and from a File Browser
+over Home the Home cube showed for about 6 frames between the page and
+Detail, which then faded in over it (a 60-a-second grab).
+
+FrameBufferMagic.c: DrawSetGameflowModeNow (_GameflowSetMode shared with
+DrawSetGameflowMode), DrawFilesSettled (seconds 60: past the opening),
+DrawDiscard (frees an object never published). ui_files.c: the storage
+menu's focus loop shifts an unsigned (gcc's -Wsign-conversion failed the
+sanitized lane on the last step's CI run).
+
+Tests: test_files_detail.py compiles filesDetailSnapshot and filesOpensDetail
+out of swiss.c with FrameBufferMagic.c's _GameflowSnapshotValid and
+gameflowSelectedRecord (first, middle, last of 2,000 rows; the header's ID
+over a stale meta one; disc names on and off a booting Source), both lanes,
+10 mutants; test_gameflow_detail testBackToFiles; audit_files_contract
+check_detail (the lock, the release, header before posters, the flag, no
+show from filesOpenDetail, in and out sites, the GameID before Detail, the
+scene, the FBM pieces, the wait for the reveal, Z's question, the disc 2
+choice, the hint), 28 more mutants (119). test_gameflow_resolver
+testOppositeDiscNamedAsSwissDoes (disc 2 beside disc 1 over its NKit copy,
+either way round, case aside; another first difference; no names).
+Emulator: card.listing takes a folder; Emulator.burst grabs the screen at
+60 frames a second from one ffmpeg (frame() starts a process each time,
+about 0.2 s apart, which missed both the Home cube and a flying card). The
+files route's second boot, while SD2SP2 still writes: files_detail (games/
+on the GC Loader, DOWN to the probe's game, Flatten directory dropping
+Racing.v1's row; A under an 8 s burst: DETAIL_CARD_BOX in each of the first
+18 frames without the File Browser within 8.0 of the burst's last; B → the
+same info-bar name and left rows, and the right pane's /backups rows), X
+back up to games/; the failing copy; then files_launch (games/, A, A → the
+probe with GPRE01).
+
+Lab (CI's image; run.py starts the card zip's ipl.dol, so each build's DOL
+goes into a copy of the zip): files route passes (both boots, the launch
+reaches the probe). The first version's DOL fails the burst check (the
+Home cube, cover 47 away), and so does the fly-in mutant
+(DrawSetGameflowMode in gameflowShowFromFiles: cover 48 away for all 18
+frames); an instrumented build waited 13 vsyncs for the reveal. DVD smoke
+and PAL game routes passed on the first version; captures in 4:3 (GC
+Loader, non-default settings) and widescreen.
+
+After review: the first Detail after boot showed the banner, not the
+poster, until it was opened again. filesOpenDetail's request opens the
+pack, and cacheInit's invalidateAll quarantined every slot for 40 ms
+(UI_ASSETS_EVICT_QUARANTINE_MS) although a new arena has never been drawn
+from, so its one poll read nothing; and nothing polled while Detail was up.
+The Library hid the first because its list polls every idle retrace before
+A, but its Detail had the second: A within 40 ms of a slot being let go (a
+quick scroll past 25 games, a source change) kept the banner too. Now
+cacheInit stamps a new arena's slots with no quarantine (a re-Init over
+drawn posters keeps it), and gameflow_info_game polls posters on its idle
+retraces, one read at most, as the Library's list does; a late poster fades
+in (_GameflowArrival). test_ui_assets test_fresh_arena_reads_at_once (2
+failures without the fix); audit_files_contract pins the Detail poll, with a
+mutant (135). Emulator: files_poster at the end of the files route's first
+boot (no Detail before it): Astral Circuit's Detail, under an 8 s burst,
+shows card.poster_light in DETAIL_CARD_BOX (POSTER_PIXELS 1000; the banner
+has about 14, the poster about 2,600) within POSTER_FRAMES (30) of its first
+frame. Lab: without the fix no frame of the 8 s has it; with only the
+Detail poll it fades in 26 frames after Detail's first; with both it is on
+the first. Files, DVD and GC Loader smoke and PAL game routes pass.
+
+Second review: the idle poll put reads on Detail's menu thread (a poster,
+43,648 B, and a still, 38,400 B, at most one each a retrace), and Detail
+saw only held buttons, so a tap made and let go during a read was lost.
+The Library's list and the File Browser already OR in padsButtonsTaken.
+gameflow_info_game now passes padsButtonsHeld() | padsButtonsTaken(
+detailButtons) to UIMenuAction_Update and drains the latched presses after
+each UIMenuAction_Init (entry and after a modal), so a B that left Settings
+isn't seen again; audit_game_detail_safety pins both, with 3 mutants. The
+poll finishes every job already queued for the window, not only Detail's
+poster: from the Library up to 8 neighbours and, in spotlight, 3 stills;
+from the File Browser, stills a spotlight visit left pending. Each is one
+bounded read on an idle retrace, Detail's own poster first unless its slot
+is quarantined. Kept: it is what the Library's list would read next anyway.
+files_poster now allows POSTER_FRAMES 2 (was 30, wall-clock frames of the
+60 fps grab): with both fixes the poster is on Detail's first frame (41/41),
+the poll-only build had it 26 frames on, which now fails, so the route
+holds the fresh-arena fix too.
+
 ## 2026-10-07 — The File Browser's operations to the other side
 
 Fourth step of the two-pane File Browser: Z opens Indigo's Actions box

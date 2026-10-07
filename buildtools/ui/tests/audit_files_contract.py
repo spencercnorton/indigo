@@ -181,6 +181,7 @@ def check(swiss: str, frame: str, files: str = FILES) -> None:
     assert "event->type == EV_FILES" in function(frame, "static bool _FrameCovered(")
     check_second_device(swiss, screen, menu, dispatch, refresh, manage)
     check_operations(swiss, screen, manage, actions, frame, files)
+    check_detail(swiss, screen, frame)
 
 
 def check_second_device(swiss: str, screen: str, menu: str, dispatch: str, refresh: str,
@@ -468,6 +469,112 @@ def check_operations(swiss: str, screen: str, manage: str, actions: str, frame: 
         assert "GetTextSizeInPixels" not in body and "alloc(" not in body, draw
 
 
+def check_detail(swiss: str, screen: str, frame: str) -> None:
+    """A on a game in the left pane opens Indigo's Game Detail through the
+    Library's own image path, so the MemCard PRO's GameID goes out where it
+    always did, before Detail shows. The File Browser's page stays up until
+    Detail is ready, the event then takes its place already in Detail (no
+    card flies in), and the page comes back settled over it before it turns
+    back to the Library; B comes back to the same row and the scene the File
+    Browser opened over. A poster still on its way when Detail shows lands
+    while it is up."""
+    opener = function(swiss, "static void filesOpenDetail(file_handle **directory, uiDrawObj_t **filePanel)\n{")
+    opens = function(swiss, "static bool filesOpensDetail(const file_handle *entry)\n{")
+    show = function(swiss, "static void gameflowShowFromFiles(")
+    back = function(swiss, "static void gameflowBackToFiles(")
+    image = function(swiss, "static bool gameflowLoadImageWithContext(")
+    detail = function(swiss[swiss.rindex("static int gameflow_info_game"):], "static int gameflow_info_game")
+    publish = function(swiss, "static bool gameflowPublishDetail(")
+    load = function(swiss, "static void load_game_with_context(gameflowLaunchContext_t *context) {")
+    # Which entries: a disc image on a Source that starts them, decided under
+    # the entry's lock; the right pane's games still start on the left.
+    assert "UIGameflowLibrary_IsGameImageName(entry->name)" in opens and "FEAT_BOOT_GCM" in opens
+    assert "entry->fileType == IS_FILE" in opens
+    press = function(screen, "if(buttons & BUTTON_A)")
+    before(press, "lockFile(directory[curSelection]);", "detail = loads && filesOpensDetail(directory[curSelection]);")
+    before(press, "detail = loads && filesOpensDetail(directory[curSelection]);", "unlockFile(directory[curSelection]);")
+    assert re.search(r"else if\(detail\) \{[^}]*filesOpenDetail\(directory, &filePanel\);\s*break;", press), \
+        "A on a game doesn't open its Detail"
+    assert swiss.count("filesOpenDetail(directory, &filePanel);") == 1, "Detail from somewhere else"
+    # Nothing else mounted, the meta thread stopped, before anything reads.
+    before(opener, "meta_thread_stop();", "filesOtherRelease();")
+    before(opener, "filesOtherRelease();", "gameflowFreshHandle(entry);")
+    # A valid disc header first, as the Library proves before its posters.
+    before(opener, "if(gameflowReadResolverHeader(entry, &header)) {", "memalign(")
+    before(opener, "filesDetailSnapshot(snapshot, entry, &header);", "DrawGameflowRequestPosters(")
+    before(opener, "DrawGameflowRequestPosters(", "event = DrawGameflow(snapshot);")
+    # A poster that one read can't land (a slot just let go, the pack only
+    # now opened) is read on Detail's idle retraces, as the Library's, and
+    # fades in: the banner standing in for it never stays.
+    assert re.search(r"if\(buttons == 0u\) \{\s*DrawGameflowPollPosters\(\);\s*\}\s*"
+                     r"\} while\(buttons == 0u\);", detail), "Detail's poster never lands"
+    # The Library's image path, flagged; it never shows the event itself.
+    before(opener, "gameflowFilesPage = *filePanel;", "gameflowLoadImageWithContext(")
+    before(opener, "gameflowFromFiles = true;", "gameflowLoadImageWithContext(")
+    before(opener, "gameflowLoadImageWithContext(", "gameflowFromFiles = false;")
+    for banned in ("DrawPublish(", "DrawRepublish(", "DrawSetGameflowMode", "gameID_", "load_game"):
+        assert banned not in opener, f"filesOpenDetail {banned}"
+    assert re.search(r"if\(gameflowFilesShown\) \{\s*DrawDispose\(event\);\s*\}\s*else \{\s*"
+                     r"DrawDiscard\(event\);", opener), "the event outlives Detail"
+    before(opener, "gameflowFromFiles = false;", "*filePanel = filesPage = gameflowFilesPage;")
+    assert re.search(r"if\(!handled\) \{\s*filesActivate\(directory, false\);", opener), "no way to Swiss's own"
+    assert opener.rstrip()[:-1].rstrip().endswith("UIScene_Request(filesScene);"), "the File Browser's scene"
+    # In: the mode is there already, then the event takes the page's place.
+    assert re.search(r"if\(!gameflowFromFiles \|\| gameflowFilesShown\) \{\s*"
+                     r"DrawSetGameflowMode\(event, mode\);\s*return;", show)
+    before(show, "DrawSetGameflowModeNow(event, mode);", "DrawRepublish(gameflowFilesPage, event);")
+    # ... once the cube is behind it: Detail draws nothing before, and the
+    # Home cube would show between the page and Detail.
+    assert re.search(r"vsync < 60 && UIScene_Frame\(\)->libraryReveal < 1\.0f;\s*vsync\+\+\) \{\s*"
+                     r"VIDEO_WaitVSync\(\);", show), "the Home cube between the page and Detail"
+    before(show, "UIScene_Frame()->libraryReveal", "DrawRepublish(gameflowFilesPage, event);")
+    assert "gameflowFilesShown = true;" in show
+    assert "gameflowShowFromFiles(context->event, UI_GAMEFLOW_MODE_DETAIL);" in detail
+    assert "UI_GAMEFLOW_MODE_DETAIL" not in detail.replace(
+        "gameflowShowFromFiles(context->event, UI_GAMEFLOW_MODE_DETAIL);", ""), "Detail shown another way"
+    assert re.search(r"if\(context != NULL\) \{\s*gameflowShowFromFiles\(context->event, "
+                     r"UI_GAMEFLOW_MODE_LAUNCH\);", load), "Boot without prompts' launch flies in"
+    assert swiss.count("gameflowShowFromFiles(") == 3
+    # The GameID: sent before Detail or the launch screen first shows, as
+    # from the Library.
+    before(load, "gameID_early_set(&GCMDisk);", "gameflow_info_game(config, context)")
+    before(load, "gameID_early_set(&GCMDisk);", "gameflowShowFromFiles(")
+    assert swiss.count("gameID_early_set(") == 1
+    # Out: the page, settled and on top, before each turn back to the
+    # Library while the event is on screen.
+    assert re.search(r"if\(gameflowFromFiles && gameflowFilesPage == NULL\) \{\s*"
+                     r"gameflowFilesPage = DrawFilesSettled\(&filesSnapshot\);", back), "no settled page"
+    assert "DrawPublish(gameflowFilesPage);" in back, "the page isn't put on top"
+    for body, mode in ((detail, "DrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LIBRARY);"),
+                       (image, "DrawSetGameflowMode(context.event, UI_GAMEFLOW_MODE_LIBRARY);")):
+        assert body.count("UI_GAMEFLOW_MODE_LIBRARY") == 1
+        assert body[:body.index(mode)].rstrip().endswith("gameflowBackToFiles();"), "the Library seen leaving"
+    # Detail says where B goes.
+    assert re.search(r"if\(gameflowFromFiles\) \{\s*flags \|= UI_GAMEFLOW_DETAIL_BACK_FILES;", publish)
+    # Z turns Autoload on only after Swiss's question, as on Swiss's game
+    # screen, which the File Browser opened before.
+    assert re.search(r"action == UI_GAMEFLOW_DETAIL_ACTION_AUTOLOAD &&\s*\(!gameflowFromFiles \|\|\s*"
+                     r"autoloadToggleConfirmed\(curFile\.name, false\)\)\) \{", detail), "Autoload asks nothing"
+    # A folder's second disc as Swiss chose it: the one named as disc 2.
+    opposite = function(swiss, "static file_handle *gameflowFindOppositeImage(")
+    assert "&oppositeHeader, gameflowFromFiles);" in image, "the Library's rule for the File Browser's disc 2"
+    assert re.search(r"if\(match != NULL && !swissChoice\) \{", opposite)
+    assert re.search(r"if\(swissChoice && UIGameflowResolver_NamedAsOppositeDisc\(image->name,\s*"
+                     r"primaryHeader->discNumber, candidate->name,\s*candidateHeader\.discNumber\)\) \{\s*"
+                     r"break;", opposite), "no name tie-break"
+    # The hint says Details only where A opens them.
+    info = function(swiss, "static bool filesInfoSnapshot(")
+    assert re.search(r"if\(kind == UI_FILES_KIND_DISC && pane == UI_FILES_LEFT &&\s*!filesOpensDetail\(entry\)\) \{"
+                     r"\s*kind = UI_FILES_KIND_OTHER;", info), "A  Details where A doesn't open them"
+    before(info, "kind = UI_FILES_KIND_OTHER;", "UIFiles_Hints(")
+    # The drawing side: a mode set with no motion, a page with no opening.
+    now = function(frame, "bool DrawSetGameflowModeNow(")
+    assert "_GameflowSetMode(evt, mode, UI_MOTION_OFF)" in now
+    settled = function(frame, "uiDrawObj_t* DrawFilesSettled(")
+    assert re.search(r"->seconds = 60\.0f;", settled), "the page opens again"
+    assert "clearNestedEvent(evt);" in function(frame, "void DrawDiscard(")
+
+
 check(SWISS, FRAME)
 
 MUTANTS = (
@@ -683,6 +790,73 @@ MUTANTS = (
      "filesFitsBoth = !avail.replaceOnly[action];", "filesFitsBoth = true;"),
     ("the page leaves the background drawn", FRAME,
      " || event->type == EV_FILES", ""),
+    # A game's Detail from the File Browser.
+    ("A on a game starts it", SWISS,
+     "\t\t\t\telse if(detail) {", "\t\t\t\telse if(false) {"),
+    ("Detail decided unlocked", SWISS,
+     "\t\t\t\tdetail = loads && filesOpensDetail(directory[curSelection]);\n\t\t\t\tunlockFile(",
+     "\t\t\t\tunlockFile(directory[curSelection]);\n\t\t\t\tdetail = loads && filesOpensDetail(directory[curSelection]);\n\t\t\t\t(void)("),
+    ("Detail on a Source that can't start a disc", SWISS,
+     "\t\t(devices[DEVICE_CUR]->features & FEAT_BOOT_GCM);", "\t\ttrue;"),
+    ("Detail with the right pane's storage held", SWISS,
+     "\tmeta_thread_stop();\n\tfilesOtherRelease();\n\tlockFile(entry);", "\tmeta_thread_stop();\n\tlockFile(entry);"),
+    ("posters before the header proves a disc", SWISS,
+     "\tif(gameflowReadResolverHeader(entry, &header)) {\n\t\tsnapshot = memalign(32, sizeof(*snapshot));\n\t}",
+     "\t(void)gameflowReadResolverHeader(entry, &header);\n\tsnapshot = memalign(32, sizeof(*snapshot));"),
+    ("Detail not flagged as the File Browser's", SWISS,
+     "\t\tgameflowFromFiles = true;\n", ""),
+    ("the flag outlives Detail", SWISS,
+     "\t\tgameflowFromFiles = false;\n", ""),
+    ("the event shown before Detail is ready", SWISS,
+     "\t\tgameflowFromFiles = true;\n", "\t\tgameflowFromFiles = true;\n\t\tDrawRepublish(*filePanel, event);\n"),
+    ("an event never shown is left behind", SWISS,
+     "\t\telse {\n\t\t\tDrawDiscard(event);\n\t\t}\n", ""),
+    ("no way to Swiss's own when Detail can't open", SWISS,
+     "\tif(!handled) {\n\t\tfilesActivate(directory, false);\n\t}\n", ""),
+    ("the scene stays Detail's", SWISS,
+     "\t/* Detail turned the cube to its own scene and the Library's. */\n\tUIScene_Request(filesScene);\n", ""),
+    ("Detail flies in", SWISS,
+     "\tDrawSetGameflowModeNow(event, mode);\n\tDrawRepublish(", "\tDrawSetGameflowMode(event, mode);\n\tDrawRepublish("),
+    ("the event published before its mode", SWISS,
+     "\tDrawSetGameflowModeNow(event, mode);\n\tDrawRepublish(gameflowFilesPage, event);\n",
+     "\tDrawRepublish(gameflowFilesPage, event);\n\tDrawSetGameflowModeNow(event, mode);\n"),
+    ("Detail shown the Library's way", SWISS,
+     "\tgameflowShowFromFiles(context->event, UI_GAMEFLOW_MODE_DETAIL);",
+     "\tDrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_DETAIL);"),
+    ("Boot without prompts' launch flies in", SWISS,
+     "\t\tgameflowShowFromFiles(context->event, UI_GAMEFLOW_MODE_LAUNCH);",
+     "\t\tDrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LAUNCH);"),
+    ("the GameID sent after Detail opens", SWISS,
+     "\tgameID_early_set(&GCMDisk);\n\tDrawDispose(msgBox);\n",
+     "\tDrawDispose(msgBox);\n"),
+    ("B shows the Library leaving", SWISS,
+     "\t\t\tgameflowBackToFiles();\n\t\t\tDrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LIBRARY);",
+     "\t\t\tDrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LIBRARY);"),
+    ("Detail's own exit shows the Library leaving", SWISS,
+     "\tgameflowBackToFiles();\n\tDrawSetGameflowMode(context.event, UI_GAMEFLOW_MODE_LIBRARY);",
+     "\tDrawSetGameflowMode(context.event, UI_GAMEFLOW_MODE_LIBRARY);"),
+    ("the page comes back opening again", SWISS,
+     "\t\tgameflowFilesPage = DrawFilesSettled(&filesSnapshot);", "\t\tgameflowFilesPage = DrawFiles(&filesSnapshot);"),
+    ("B in Detail says Library", SWISS,
+     "\tif(gameflowFromFiles) {\n\t\tflags |= UI_GAMEFLOW_DETAIL_BACK_FILES;\n\t}\n", ""),
+    ("Detail before the cube is behind it", SWISS,
+     "vsync < 60 && UIScene_Frame()->libraryReveal < 1.0f;", "vsync < 0;"),
+    ("Detail's Autoload asks nothing from the File Browser", SWISS,
+     "(!gameflowFromFiles ||\n\t\t\tautoloadToggleConfirmed(curFile.name, false))", "true"),
+    ("the File Browser's disc 2 by the Library's rule", SWISS,
+     "&oppositeHeader, gameflowFromFiles);", "&oppositeHeader, false);"),
+    ("two possible discs 2 give none", SWISS,
+     "\t\tif(match != NULL && !swissChoice) {", "\t\tif(match != NULL) {"),
+    ("disc 2 not chosen by its name", SWISS,
+     "\t\tif(swissChoice && UIGameflowResolver_NamedAsOppositeDisc(", "\t\tif(false && UIGameflowResolver_NamedAsOppositeDisc("),
+    ("Detail's poster never lands", SWISS,
+     "\t\t\t\tif(buttons == 0u) {\n\t\t\t\t\tDrawGameflowPollPosters();\n\t\t\t\t}\n", ""),
+    ("A  Details on storage that doesn't start games", SWISS,
+     "\t\t!filesOpensDetail(entry)) {", "\t\tfalse) {"),
+    ("a mode set now moves", FRAME,
+     "\treturn _GameflowSetMode(evt, mode, UI_MOTION_OFF);", "\treturn _GameflowSetMode(evt, mode, _CurrentMotionMode());"),
+    ("the settled page opens", FRAME,
+     "\t\t((drawFilesEvent_t*)page->data)->seconds = 60.0f;\n", ""),
     ("a draw reads banners", FRAME,
      "\tUIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);\n\t_SaveCubesBackdrop(",
      "\tUIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);\n\tpopulate_meta(NULL);\n\t_SaveCubesBackdrop("),
