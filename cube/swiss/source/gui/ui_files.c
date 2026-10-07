@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 
+static float stageClamp(float value);
+
 /* ------------------------------------------------------------------------
  * Small text helpers.
  * --------------------------------------------------------------------- */
@@ -679,6 +681,10 @@ void UIFiles_Hints(uiFilesHintMode_t mode, int pane, uiFilesKind_t kind,
 		copyText(left, UI_FILES_HINT_CAPACITY, "A  OK");
 		copyText(right, UI_FILES_HINT_CAPACITY, "");
 		return;
+	case UI_FILES_HINTS_STORAGE:
+		copyText(left, UI_FILES_HINT_CAPACITY, "A  Choose storage   " OTHER_SIDE);
+		copyText(right, UI_FILES_HINT_CAPACITY, "B  Home");
+		return;
 	default:
 		break;
 	}
@@ -739,6 +745,30 @@ bool UIFiles_FreeKnown(bool haveInfo, uint64_t totalSpace, bool network)
 bool UIFiles_CanSwap(uiFilesMount_t mount, bool readOk)
 {
 	return mount == UI_FILES_SHARED || (mount == UI_FILES_OWN && readOk);
+}
+
+bool UIFiles_RightOnConfig(bool fileManagement, bool haveConfig,
+	bool configDetected, bool configIsSource)
+{
+	return fileManagement && haveConfig && configDetected && !configIsSource;
+}
+
+void UIFiles_NotReady(char out[UI_FILES_MESSAGE_LINES][UI_FILES_MESSAGE_TEXT],
+	const char *name, const char *status, const char *folder)
+{
+	format(out[0], UI_FILES_MESSAGE_TEXT, "%s isn't ready.",
+		name != NULL && name[0] != '\0' ? name : "This storage");
+	if(folder != NULL) {
+		format(out[1], UI_FILES_MESSAGE_TEXT, "Couldn't read %s.",
+			folder[0] != '\0' ? folder : "its top folder");
+	}
+	else if(status != NULL && status[0] != '\0') {
+		format(out[1], UI_FILES_MESSAGE_TEXT, "(%s)", status);
+	}
+	else {
+		out[1][0] = '\0';
+	}
+	copyText(out[2], UI_FILES_MESSAGE_TEXT, "Press R to choose storage.");
 }
 
 /* ------------------------------------------------------------------------
@@ -884,6 +914,89 @@ void UIFiles_MenuBox(const uiFilesLayout_t *layout, const uiFilesRect_t *row,
 	}
 	out->titleY = top;
 	out->y = top + title;
+}
+
+#define MENU_OPEN 0.08f
+#define MENU_CLOSE 0.10f
+
+void UIFiles_MenuMotion(float since, bool open, int mode, float *alpha, float *scale)
+{
+	float a;
+
+	if(mode == UI_MOTION_OFF) {
+		a = open ? 1.0f : 0.0f;
+	}
+	else if(open) {
+		a = stageClamp(since / MENU_OPEN);
+	}
+	else {
+		a = 1.0f - stageClamp(since / MENU_CLOSE);
+	}
+	if(alpha != NULL) *alpha = a;
+	if(scale != NULL) {
+		*scale = !open || mode == UI_MOTION_OFF ? 1.0f :
+			(mode == UI_MOTION_REDUCED ? 0.97f : 0.92f) +
+			(mode == UI_MOTION_REDUCED ? 0.03f : 0.08f) * a;
+	}
+}
+
+static bool sameDevice(const uiFilesDevice_t *a, const uiFilesDevice_t *b)
+{
+	return a != NULL && b != NULL && a->handler != NULL && a->handler == b->handler;
+}
+
+void UIFiles_StorageMenu(int pane, const uiFilesDevice_t *devices, int count,
+	const uiFilesDevice_t *current, const uiFilesDevice_t *other,
+	const char *otherPath, uiFilesStorageMenu_t *out)
+{
+	const char *here = pane == UI_FILES_RIGHT ? "right" : "left";
+	const char *there = pane == UI_FILES_RIGHT ? "left" : "right";
+	int i, focus = -1;
+
+	if(out == NULL) return;
+	memset(out, 0, sizeof(*out));
+	copyText(out->box.title, sizeof(out->box.title),
+		pane == UI_FILES_RIGHT ? "Right storage" : "Left storage");
+	out->box.pane = (uint8_t)(pane == UI_FILES_RIGHT);
+	out->box.open = 1u;
+	if(devices == NULL || count < 0) count = 0;
+	if(count > UI_FILES_STORAGE_DEVICES) count = UI_FILES_STORAGE_DEVICES;
+	for(i = 0; i < count; i++) {
+		const uiFilesDevice_t *device = &devices[i];
+
+		copyText(out->box.item[i], sizeof(out->box.item[i]), nameOf(device));
+		if(sameDevice(device, current)) {
+			format(out->line[i], UI_FILES_TEXT_CAPACITY, pane == UI_FILES_RIGHT ?
+				"Shown on the right now." : "Shown on the left now. Games start from it.");
+			focus = i;
+		}
+		else if(sameDevice(device, other)) {
+			format(out->line[i], UI_FILES_TEXT_CAPACITY,
+				"Also open on the %s, in %s. Both sides can show it, each in its own folder.",
+				there, otherPath != NULL && otherPath[0] != '\0' ? otherPath : "/");
+		}
+		else if(UIFiles_StorageClash(device, other, out->reason[i], UI_FILES_TEXT_CAPACITY)) {
+			out->box.dim = (uint16_t)(out->box.dim | (1u << i));
+			format(out->line[i], UI_FILES_TEXT_CAPACITY,
+				"Can't open on the %s while %s is open on the %s.", here, nameOf(other),
+				there);
+		}
+		else {
+			copyText(out->line[i], UI_FILES_TEXT_CAPACITY, pane == UI_FILES_RIGHT ?
+				"Opens on the right." : "Becomes the Source: games start from it.");
+		}
+	}
+	out->devices = count;
+	copyText(out->box.item[count], sizeof(out->box.item[count]), "Other devices\205");
+	copyText(out->line[count], UI_FILES_TEXT_CAPACITY, pane == UI_FILES_RIGHT ?
+		"Every storage that can be written to." :
+		"Every storage, with each one's settings.");
+	out->box.count = (uint8_t)(count + 1);
+	if(focus < 0) {
+		for(focus = 0; focus < count && (((unsigned)out->box.dim >> (unsigned)focus) & 1u); focus++) {
+		}
+	}
+	out->box.focus = (uint8_t)focus;
 }
 
 /* fileComparator without the Game Disc's own first place (a disc is never

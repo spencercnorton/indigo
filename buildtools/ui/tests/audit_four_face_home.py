@@ -394,25 +394,24 @@ for destructive in ("freeFiles();", "DrawGameflowCancelPosters();", "deinit(",
         f"current source is destroyed before selector confirmation: {destructive}"
     )
 
+# A confirmed Source replaces the old one in sourceCommit (the File
+# Browser's L and Y use it too) and mounts in sourceMount.
 current_replace = extract_block(selector, "if(type == DEVICE_CUR) {")
+assert "sourceCommit(selectedDevice);" in current_replace
+commit = extract_function(SWISS, "static void sourceCommit(DEVICEHANDLER_INTERFACE *device)\n{")
 ordered(
-    current_replace,
-	"devices[type] != NULL",
+    commit,
+	"devices[DEVICE_CUR] != NULL",
     "freeFiles();",
     "DrawGameflowCancelPosters();",
-    "devices[type]->deinit(devices[type]->initial);",
-	"homeSourceRecord(devices[type], UI_HOME_SOURCE_MOUNT_UNMOUNTED);",
+    "devices[DEVICE_CUR]->deinit(devices[DEVICE_CUR]->initial);",
+	"homeSourceRecord(devices[DEVICE_CUR], UI_HOME_SOURCE_MOUNT_UNMOUNTED);",
+    "devices[DEVICE_CUR] = device;",
+	"homeSourceRecord(device, UI_HOME_SOURCE_MOUNT_UNMOUNTED);",
 )
-after_choice = selector[selector.index("DEVICEHANDLER_INTERFACE *selectedDevice") :]
-ordered(
-    after_choice,
-    "freeFiles();",
-    "devices[type]->deinit(devices[type]->initial);",
-    "devices[type] = selectedDevice;",
-	"homeSourceRecord(selectedDevice, UI_HOME_SOURCE_MOUNT_UNMOUNTED);",
-)
-assert "if(deviceConfirmed && devices[DEVICE_CUR] != NULL)" in device_change
-assert "ret = devices[DEVICE_CUR]->init(devices[DEVICE_CUR]->initial);" in device_change
+mount = extract_function(SWISS, "static bool sourceMount(void)\n{")
+assert "if(deviceConfirmed && devices[DEVICE_CUR] != NULL && !sourceMount())" in device_change
+assert "ret = devices[DEVICE_CUR]->init(devices[DEVICE_CUR]->initial);" in mount
 assert "devices[DEVICE_CUR] != previousDevice" not in device_change
 assert "else if(!deviceConfirmed)" in device_change
 assert "needsRefresh = refreshBeforeSelection;" in device_change
@@ -447,13 +446,13 @@ ordered(
 )
 assert menu.index("homeSourceObserveStartup();") < menu.index("homePublish(")
 ordered(
-	device_change,
+	mount,
 	"ret = devices[DEVICE_CUR]->init(devices[DEVICE_CUR]->initial);",
 	"UI_HOME_SOURCE_MOUNT_UNMOUNTED",
 	"devices[DEVICE_CUR] = NULL;",
 	"UI_HOME_SOURCE_MOUNT_ABSENT",
 )
-success_tail = device_change[device_change.index("DrawDispose(msgBox);") :]
+success_tail = mount[mount.rindex("DrawDispose(msgBox);") :]
 ordered(
 	success_tail,
 	"deviceHandler_setDeviceAvailable(devices[DEVICE_CUR], true);",

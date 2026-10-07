@@ -790,10 +790,13 @@ static void testHints(void)
 	checkHints(UI_FILES_HINTS_DELETE, 0, UI_FILES_KIND_DISC, true, true, false,
 		"L+A  Delete", "B  Cancel");
 	checkHints(UI_FILES_HINTS_MESSAGE, 0, UI_FILES_KIND_DISC, true, true, false, "A  OK", "");
+	/* A right pane with nothing to act on: no Z, A chooses its storage. */
+	checkHints(UI_FILES_HINTS_STORAGE, 1, UI_FILES_KIND_FOLDER, false, true, false,
+		"A  Choose storage   \213  \233  Other side", "B  Home");
 
 	/* Every context: at most five round buttons, and the D-pad drawn as
 	 * the glyph, not text. */
-	for(mode = UI_FILES_HINTS_LIST; mode <= UI_FILES_HINTS_MESSAGE; ++mode) {
+	for(mode = UI_FILES_HINTS_LIST; mode <= UI_FILES_HINTS_STORAGE; ++mode) {
 		for(pane = 0; pane < 2; ++pane) {
 			for(kind = 0; kind < UI_FILES_KINDS; ++kind) {
 				for(flags = 0; flags < 8; ++flags) {
@@ -955,6 +958,124 @@ static uiFilesEntry_t file(uint64_t size)
 	e.isFile = true;
 	e.needed = size;
 	return e;
+}
+
+/* The right pane's first storage, its "isn't ready" words, and the L and
+ * R menus. */
+static void testSecondDevice(void)
+{
+	const uiFilesDevice_t gcl = device(3, "GC Loader", DVD, false);
+	const uiFilesDevice_t sdA = device(0, "SD Card - Slot A", SLOT_A, false);
+	const uiFilesDevice_t sd2 = device(2, "SD Card - SD2SP2", SP2, false);
+	const uiFilesDevice_t flippy = device(5, "FlippyDrive", DVD, false);
+	const uiFilesDevice_t flash = device(6, "FlippyDrive Flash", DVD | SYSTEM, false);
+	const uiFilesDevice_t smb = device(7, "SMB 1.0/CIFS", SP1, true);
+	const uiFilesDevice_t ftp = device(8, "File Transfer Protocol", SP1, true);
+	const uiFilesDevice_t cardA = device(10, "Memory Card - Slot A", SLOT_A, false);
+	const uiFilesDevice_t many[] = {gcl, sdA, sd2, cardA, smb, ftp, flash};
+	char lines[UI_FILES_MESSAGE_LINES][UI_FILES_MESSAGE_TEXT];
+	uiFilesStorageMenu_t menu;
+	float alpha, scale;
+	int fm, have, detected, source, i;
+
+	/* The Configuration Device only with File Management, and only when it
+	 * is set, detected and not the Source. */
+	for(fm = 0; fm < 2; ++fm) for(have = 0; have < 2; ++have)
+	for(detected = 0; detected < 2; ++detected) for(source = 0; source < 2; ++source) {
+		CHECK(UIFiles_RightOnConfig(fm != 0, have != 0, detected != 0, source != 0) ==
+			(fm && have && detected && !source));
+	}
+
+	UIFiles_NotReady(lines, "SD Card - SD2SP2", "No card is inserted.", NULL);
+	CHECK_TEXT(lines[0], "SD Card - SD2SP2 isn't ready.");
+	CHECK_TEXT(lines[1], "(No card is inserted.)");
+	CHECK_TEXT(lines[2], "Press R to choose storage.");
+	UIFiles_NotReady(lines, "SD Card - SD2SP2", "No card is inserted.", "backups");
+	CHECK_TEXT(lines[1], "Couldn't read backups.");
+	UIFiles_NotReady(lines, "Game Disc", "", "");
+	CHECK_TEXT(lines[1], "Couldn't read its top folder.");
+	UIFiles_NotReady(lines, NULL, NULL, NULL);
+	CHECK_TEXT(lines[0], "This storage isn't ready.");
+	CHECK_TEXT(lines[1], "");
+
+	/* Boxes open from 0.92x (0.97x Reduced) over 0.08 s and fade out over
+	 * 0.10 s; Off is at once. */
+	UIFiles_MenuMotion(0.0f, true, UI_MOTION_FULL, &alpha, &scale);
+	CHECK(alpha == 0.0f && scale == 0.92f);
+	UIFiles_MenuMotion(0.04f, true, UI_MOTION_FULL, &alpha, &scale);
+	CHECK(alpha > 0.4f && alpha < 0.6f && scale > 0.95f && scale < 0.97f);
+	UIFiles_MenuMotion(0.08f, true, UI_MOTION_FULL, &alpha, &scale);
+	CHECK(alpha == 1.0f && scale == 1.0f);
+	UIFiles_MenuMotion(0.0f, true, UI_MOTION_REDUCED, &alpha, &scale);
+	CHECK(alpha == 0.0f && scale == 0.97f);
+	UIFiles_MenuMotion(0.05f, false, UI_MOTION_FULL, &alpha, &scale);
+	CHECK(alpha > 0.4f && alpha < 0.6f && scale == 1.0f);
+	UIFiles_MenuMotion(0.10f, false, UI_MOTION_REDUCED, &alpha, &scale);
+	CHECK(alpha == 0.0f);
+	UIFiles_MenuMotion(0.0f, true, UI_MOTION_OFF, &alpha, &scale);
+	CHECK(alpha == 1.0f && scale == 1.0f);
+	UIFiles_MenuMotion(0.0f, false, UI_MOTION_OFF, &alpha, &scale);
+	CHECK(alpha == 0.0f);
+
+	/* L, GC Loader the Source and SMB on the right: FTP greyed for the
+	 * network adapter, SMB itself offered, the Source focused. */
+	{
+		const uiFilesDevice_t listed[] = {gcl, sdA, sd2, smb, ftp};
+
+		UIFiles_StorageMenu(UI_FILES_LEFT, listed, 5, &gcl, &smb, "/share/backups", &menu);
+	}
+	CHECK_TEXT(menu.box.title, "Left storage");
+	CHECK(menu.box.count == 6 && menu.devices == 5 && menu.box.pane == 0 && menu.box.open);
+	CHECK_TEXT(menu.box.item[0], "GC Loader");
+	CHECK_TEXT(menu.box.item[5], "Other devices\205");
+	CHECK(menu.box.dim == (1u << 4) && menu.box.focus == 0);
+	CHECK_TEXT(menu.line[0], "Shown on the left now. Games start from it.");
+	CHECK_TEXT(menu.line[1], "Becomes the Source: games start from it.");
+	CHECK_TEXT(menu.line[3], "Also open on the right, in /share/backups. Both sides can show it, each in its own folder.");
+	CHECK_TEXT(menu.line[4], "Can't open on the left while SMB 1.0/CIFS is open on the right.");
+	CHECK_TEXT(menu.reason[4], "The network adapter is in use on the other side.");
+	CHECK_TEXT(menu.line[5], "Every storage, with each one's settings.");
+	for(i = 0; i < 4; ++i) CHECK(menu.reason[i][0] == '\0');
+	CHECK(menu.reason[5][0] == '\0');
+
+	/* R, the right pane on SD2SP2 beside FlippyDrive: the flash greyed,
+	 * the Source not; past six devices the rest are in Other devices. */
+	{
+		const uiFilesDevice_t listed[] = {flippy, flash, sd2, sdA, cardA, smb, ftp, gcl};
+
+		UIFiles_StorageMenu(UI_FILES_RIGHT, listed, 8, &sd2, &flippy, "/games", &menu);
+	}
+	CHECK_TEXT(menu.box.title, "Right storage");
+	CHECK(menu.box.pane == 1 && menu.devices == UI_FILES_STORAGE_DEVICES);
+	CHECK(menu.box.count == UI_FILES_STORAGE_DEVICES + 1 &&
+		menu.box.count <= UI_FILES_MENU_ITEMS(true));
+	CHECK(menu.box.dim == (1u << 1) && menu.box.focus == 2);
+	CHECK_TEXT(menu.line[0], "Also open on the left, in /games. Both sides can show it, each in its own folder.");
+	CHECK_TEXT(menu.reason[1], "FlippyDrive is open on the other side.");
+	CHECK_TEXT(menu.line[2], "Shown on the right now.");
+	CHECK_TEXT(menu.line[3], "Opens on the right.");
+	CHECK_TEXT(menu.box.item[6], "Other devices\205");
+	CHECK_TEXT(menu.line[6], "Every storage that can be written to.");
+
+	/* The current device not listed (chosen with every device shown): the
+	 * first one not greyed has the focus; nothing but the Source, the menu
+	 * is the Source and Other devices. */
+	UIFiles_StorageMenu(UI_FILES_RIGHT, many + 6, 1, &smb, &ftp, "/", &menu);
+	CHECK(menu.box.count == 2 && menu.box.dim == 0u && menu.box.focus == 0);
+	UIFiles_StorageMenu(UI_FILES_RIGHT, many, 7, &flippy, &smb, "/", &menu);
+	CHECK(menu.box.dim == (1u << 5) && menu.box.focus == 0);
+	{
+		const uiFilesDevice_t listed[] = {ftp, flash, gcl};
+
+		UIFiles_StorageMenu(UI_FILES_RIGHT, listed, 3, &sdA, &smb, "/", &menu);
+	}
+	CHECK(menu.box.dim == 1u && menu.box.focus == 1);
+	UIFiles_StorageMenu(UI_FILES_LEFT, &gcl, 1, &gcl, &gcl, "/backups", &menu);
+	CHECK(menu.box.count == 2 && menu.box.focus == 0);
+	CHECK_TEXT(menu.line[0], "Shown on the left now. Games start from it.");
+	UIFiles_StorageMenu(UI_FILES_LEFT, NULL, 0, &gcl, &sdA, "/", &menu);
+	CHECK(menu.box.count == 1 && menu.devices == 0 && menu.box.focus == 0);
+	CHECK_TEXT(menu.box.item[0], "Other devices\205");
 }
 
 static void testAvailability(void)
@@ -1548,6 +1669,7 @@ int main(void)
 	testFitDevice();
 	testHints();
 	testStorage();
+	testSecondDevice();
 	testAvailability();
 	testExistsChoices();
 	testMenuBox();

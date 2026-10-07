@@ -11,37 +11,59 @@
   "vertices": 5202
  },
  "files": {
-  "begins": 2067,
+  "begins": 2091,
   "copy_pixels": 0,
-  "hash": "4169c8dbe0816b82",
+  "hash": "16a4490edf4b4a51",
   "minmax": 0,
   "scene": "files",
   "sqrtf": 232,
   "state": 24,
   "trig": 0,
-  "vertices": 9604
+  "vertices": 9700
  },
  "files-right": {
-  "begins": 2073,
+  "begins": 2097,
   "copy_pixels": 0,
-  "hash": "8b7756c67f77283d",
+  "hash": "4b9f9eee2049c15a",
   "minmax": 0,
   "scene": "files-right",
   "sqrtf": 232,
   "state": 24,
   "trig": 0,
-  "vertices": 9628
+  "vertices": 9724
+ },
+ "files-storage": {
+  "begins": 2284,
+  "copy_pixels": 0,
+  "hash": "b02dd073db1fb3bc",
+  "minmax": 0,
+  "scene": "files-storage",
+  "sqrtf": 116,
+  "state": 24,
+  "trig": 0,
+  "vertices": 10184
+ },
+ "files-storage-right": {
+  "begins": 2217,
+  "copy_pixels": 0,
+  "hash": "b593a1be9ae80696",
+  "minmax": 0,
+  "scene": "files-storage-right",
+  "sqrtf": 116,
+  "state": 24,
+  "trig": 0,
+  "vertices": 9748
  },
  "files-wide": {
-  "begins": 2857,
+  "begins": 2881,
   "copy_pixels": 0,
-  "hash": "8ffe2bc39ee3afeb",
+  "hash": "d7c035bdf71724d7",
   "minmax": 0,
   "scene": "files-wide",
   "sqrtf": 232,
   "state": 24,
   "trig": 0,
-  "vertices": 12796
+  "vertices": 12892
  },
  "hint-round-rect": {
   "begins": 2,

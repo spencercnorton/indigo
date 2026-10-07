@@ -7427,6 +7427,10 @@ typedef struct {
 	float leave;			/* since B, or below 0 */
 	uiMotionSpring_t focus[UI_FILES_PANES];	/* each focus bar, in rows */
 	uiMotionSpring_t emphasis;	/* 0 the left pane focused, 1 the right */
+	uiMotionSpring_t menuBar;	/* the box's focus, in items */
+	float menuSince;		/* since the box opened or closed */
+	uint16_t menuSerial;
+	bool menuOpen;
 	uint16_t listing[UI_FILES_PANES];
 	bool started;
 	GXTexObj picture;
@@ -7818,8 +7822,10 @@ static void _FilesWords(const uiFilesSnapshot_t *s, const uiFilesLayout_t *layou
 		if(pane->message[0][0] != '\0') {
 			drawStringMedium(layout->mid[p], UI_FILES_MESSAGE_Y, pane->message[0], 0.56f,
 				ALIGN_CENTER, white);
-			drawStringMedium(layout->mid[p], UI_FILES_MESSAGE_Y + 24, pane->message[1],
-				0.46f, ALIGN_CENTER, quiet);
+			for(i = 1; i < UI_FILES_MESSAGE_LINES; i++) {
+				drawStringMedium(layout->mid[p], UI_FILES_MESSAGE_Y + 24 * i,
+					pane->message[i], 0.46f, ALIGN_CENTER, quiet);
+			}
 		}
 	}
 	drawStringMedium(layout->infoTextX, 381, s->title, s->titleScale, ALIGN_LEFT, white);
@@ -7842,6 +7848,53 @@ static void _FilesWords(const uiFilesSnapshot_t *s, const uiFilesLayout_t *layou
 		quiet);
 }
 
+/* A box beside its pane (a storage menu): Memory Cards' look, any number of
+ * items up to UI_FILES_MENU_MAX, greyed ones grey, the focus's bar at item
+ * (sprung). It opens from scale about its middle and fades. */
+static void _FilesMenu(const uiFilesMenu_t *menu, const uiFilesLayout_t *layout,
+	float alpha, float scale, float item)
+{
+	const GXColor fill = _SaveCubesFaded((GXColor) {18, 27, 91, 230}, alpha);
+	const GXColor edge = _SaveCubesFaded((GXColor) {196, 186, 255, 255}, alpha);
+	uiFilesRect_t row = UIFiles_RowRect(layout, menu->pane, 0);
+	uiFilesBox_t box;
+	float middleX, middleY, top;
+	bool titled = menu->title[0] != '\0';
+	int i;
+
+	if(!(alpha > 0.0f) || menu->count == 0) {
+		return;
+	}
+	UIFiles_MenuBox(layout, &row, menu->pane, menu->count, titled, menu->width, &box);
+	top = (float)(titled ? box.titleY : box.y);
+	middleX = (float)box.x + 0.5f * (float)box.width;
+	middleY = 0.5f * (top + (float)(box.y + box.height));
+#define MENU_X(x) (middleX + ((float)(x) - middleX) * scale)
+#define MENU_Y(y) (middleY + ((float)(y) - middleY) * scale)
+	if(titled) {
+		_SaveCubesBox(MENU_X(box.x), MENU_Y(box.titleY), (float)box.width * scale,
+			UI_FILES_MENU_TITLE * scale, fill, fill, edge, 2.0f);
+		drawStringMedium((int)MENU_X(box.x + 12), (int)MENU_Y(box.titleY +
+			UI_FILES_MENU_TITLE / 2), menu->title, 0.56f * scale, ALIGN_LEFT,
+			_SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha));
+	}
+	_SaveCubesBox(MENU_X(box.x), MENU_Y(box.y), (float)box.width * scale,
+		(float)box.height * scale, fill, fill, edge, 2.0f);
+	_SaveCubesBar(MENU_X(box.x + 4), MENU_Y((float)box.y + 8.0f + UI_FILES_MENU_PITCH * item),
+		(float)(box.width - 8) * scale, UI_FILES_MENU_PITCH * scale,
+		_SaveCubesFaded((GXColor) {70, 92, 200, 230}, alpha));
+	for(i = 0; i < menu->count && i < UI_FILES_MENU_MAX; i++) {
+		GXColor ink = (menu->dim >> i) & 1u ? (GXColor) {120, 120, 140, 255} :
+			i == menu->focus ? (GXColor) {255, 236, 170, 255} : (GXColor) {255, 255, 255, 255};
+
+		drawStringMedium((int)MENU_X(box.x + 16), (int)MENU_Y((float)box.y + 8.0f +
+			UI_FILES_MENU_PITCH * ((float)i + 0.5f)), menu->item[i], 0.56f * scale,
+			ALIGN_LEFT, _SaveCubesFaded(ink, alpha));
+	}
+#undef MENU_X
+#undef MENU_Y
+}
+
 static void _DrawFiles(uiDrawObj_t *evt)
 {
 	drawFilesEvent_t *data = (drawFilesEvent_t*)evt->data;
@@ -7859,11 +7912,26 @@ static void _DrawFiles(uiDrawObj_t *evt)
 			data->listing[p] = s->pane[p].listing;
 		}
 		UIMotion_SpringInit(&data->emphasis, (float)s->active, 25.0f);
+		UIMotion_SpringInit(&data->menuBar, (float)s->menu.focus, 25.0f);
+		data->menuOpen = s->menu.open != 0u;
+		data->menuSerial = s->menu.serial;
+		data->menuSince = data->menuOpen ? 0.0f : 1.0f;
 		data->leave = -1.0f;
 		data->started = true;
 	}
 	else {
 		data->seconds += UIAnim_Delta();
+		data->menuSince += UIAnim_Delta();
+	}
+	/* Another box, or this one closing: from now. */
+	if((s->menu.open != 0u) != data->menuOpen ||
+			(s->menu.open && s->menu.serial != data->menuSerial)) {
+		if(s->menu.open) {
+			UIMotion_SpringSnap(&data->menuBar, (float)s->menu.focus);
+		}
+		data->menuOpen = s->menu.open != 0u;
+		data->menuSerial = s->menu.serial;
+		data->menuSince = 0.0f;
 	}
 	if(s->leaving) {
 		data->leave = data->leave < 0.0f ? 0.0f : data->leave + UIAnim_Delta();
@@ -7894,6 +7962,15 @@ static void _DrawFiles(uiDrawObj_t *evt)
 				layout.picture.y0, 96);
 		}
 		_FilesWords(s, &layout, stage.chrome, emphasis);
+		if(s->menu.count > 0) {
+			float menuAlpha, menuScale;
+
+			UIMotion_SpringRetarget(&data->menuBar, (float)s->menu.focus, motion);
+			UIFiles_MenuMotion(data->menuSince, data->menuOpen, motion, &menuAlpha,
+				&menuScale);
+			_FilesMenu(&s->menu, &layout, menuAlpha * stage.chrome, menuScale,
+				UIMotion_SpringUpdate(&data->menuBar, UIAnim_Delta(), motion));
+		}
 	}
 	drawInit();
 }

@@ -95,8 +95,8 @@ typedef enum {
 	UI_FILES_INPUT_DOWN,
 	UI_FILES_INPUT_LEFT,
 	UI_FILES_INPUT_RIGHT,
-	UI_FILES_INPUT_PAGE_UP,		/* C-stick up (L until storage menus) */
-	UI_FILES_INPUT_PAGE_DOWN,	/* C-stick down (R) */
+	UI_FILES_INPUT_PAGE_UP,		/* C-stick up */
+	UI_FILES_INPUT_PAGE_DOWN,	/* C-stick down */
 	UI_FILES_INPUTS
 } uiFilesInput_t;
 
@@ -230,7 +230,8 @@ typedef enum {
 	UI_FILES_HINTS_BOX,		/* Actions or storage */
 	UI_FILES_HINTS_QUESTION,
 	UI_FILES_HINTS_DELETE,
-	UI_FILES_HINTS_MESSAGE
+	UI_FILES_HINTS_MESSAGE,
+	UI_FILES_HINTS_STORAGE		/* a pane with nothing to act on: A chooses its storage */
 } uiFilesHintMode_t;
 
 #define UI_FILES_HINT_CAPACITY 96
@@ -276,6 +277,22 @@ bool UIFiles_FreeKnown(bool haveInfo, uint64_t totalSpace, bool network);
 /* Y swaps the sides only onto a pane that is ready: the Source's own mount,
  * or its own with its last read good. */
 bool UIFiles_CanSwap(uiFilesMount_t mount, bool readOk);
+
+/* Where the right pane opens the first time: the Configuration Device when
+ * it is set, detected and not the Source, else the Source itself. Without
+ * File Management nothing can be done with a second device, so it browses
+ * the Source. */
+bool UIFiles_RightOnConfig(bool fileManagement, bool haveConfig,
+	bool configDetected, bool configIsSource);
+
+/* The right pane when its storage can't be used: what failed, the device's
+ * own words for it in brackets (status), or, when a read failed after it
+ * mounted, which folder (folder: its name, NULL for init), and how to
+ * choose another. */
+#define UI_FILES_MESSAGE_LINES 3
+#define UI_FILES_MESSAGE_TEXT 64
+void UIFiles_NotReady(char out[UI_FILES_MESSAGE_LINES][UI_FILES_MESSAGE_TEXT],
+	const char *name, const char *status, const char *folder);
 
 /* ------------------------------------------------------------------------
  * Actions (Z). Greyed items stay listed, with why.
@@ -362,6 +379,42 @@ typedef struct {
 void UIFiles_MenuBox(const uiFilesLayout_t *layout, const uiFilesRect_t *row,
 	int pane, int items, bool titled, int width, uiFilesBox_t *out);
 
+/* A box as the frame draws it: the items, which are greyed and which has
+ * the focus. serial changes for each box opened, so it opens again. */
+#define UI_FILES_MENU_MAX 9
+typedef struct {
+	char title[48];
+	char item[UI_FILES_MENU_MAX][40];
+	uint16_t dim;		/* a bit per greyed item */
+	uint16_t serial;
+	int16_t width;		/* measured on the menu thread */
+	uint8_t count, focus;
+	uint8_t pane;		/* the pane it sits in */
+	uint8_t open;		/* 0: closing, its items kept to fade */
+} uiFilesMenu_t;
+
+/* A box opening (open) or closing, since seconds ago: from 0.92x (0.97x on
+ * Reduced) over 0.08 s, out over 0.10 s, at once with UI Motion Off. mode
+ * is ui_motion.h's uiMotionMode_t. */
+void UIFiles_MenuMotion(float since, bool open, int mode, float *alpha, float *scale);
+
+/* L and R: the storage menu for pane, as Memory Cards' chooseStorage. Every
+ * detected device given (allDevices order) up to UI_FILES_STORAGE_DEVICES,
+ * then "Other devices...". A device that can't be open beside the other
+ * side's is greyed with why; the other side's own device isn't. Focus starts
+ * on current, else the first one not greyed. For each item, the info bar's
+ * two lines: what choosing it does, and (amber) why it is greyed. */
+typedef struct {
+	uiFilesMenu_t box;
+	int devices;		/* items before "Other devices..." */
+	char line[UI_FILES_MENU_MAX][UI_FILES_TEXT_CAPACITY];
+	char reason[UI_FILES_MENU_MAX][UI_FILES_TEXT_CAPACITY];
+} uiFilesStorageMenu_t;
+
+void UIFiles_StorageMenu(int pane, const uiFilesDevice_t *devices, int count,
+	const uiFilesDevice_t *current, const uiFilesDevice_t *other,
+	const char *otherPath, uiFilesStorageMenu_t *out);
+
 /* Where a new entry would sort in a listing sorted as Swiss's
  * fileComparator sorts: higher fileType first, then the name, ignoring
  * case. at gives entry i's name and fileType. */
@@ -427,7 +480,8 @@ typedef struct {
 	char free[24];		/* "8.57 GB", "read-only", or "" */
 	char path[UI_FILES_ROW_TEXT];
 	char counter[16];	/* "3 / 10" */
-	char message[2][64];	/* across the pane: "This folder is empty." */
+	/* across the pane: "This folder is empty.", or why it can't be read */
+	char message[UI_FILES_MESSAGE_LINES][UI_FILES_MESSAGE_TEXT];
 	/* Widths at their scales, measured on the menu thread, so the chips and
 	 * boxes after them sit without the draw measuring anything. */
 	int16_t deviceWidth, pathWidth, freeWidth;
@@ -455,6 +509,7 @@ typedef struct {
 	uint8_t warn;		/* line 2 in amber */
 	uint8_t leaving;	/* B: the page goes, the Home cube comes back */
 	uint8_t reserved[3];
+	uiFilesMenu_t menu;	/* a storage menu beside its button */
 } uiFilesSnapshot_t;
 
 /* The page coming and going, as Memory Cards' does: the Home cube going back

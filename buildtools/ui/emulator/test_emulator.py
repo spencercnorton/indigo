@@ -711,6 +711,27 @@ class Screen(unittest.TestCase):
         with self.assertRaises(run.Broken):
             run.files_screen(frame[:400])
 
+    def test_the_file_browser_storage_menus(self):
+        right, left = self.folder_frame("files-storage-right.png"), self.folder_frame("files-storage-left.png")
+        # Each menu over its own pane, the screen still found under it.
+        for frame, pane in ((right, 1), (left, 0)):
+            self.assertTrue(run.files_screen(frame))
+            self.assertTrue(run.files_menu(frame, pane))
+            self.assertFalse(run.files_menu(frame, 1 - pane))
+        # No menu: the panes' rows, a focus bar, Swiss's Z box, other screens.
+        for name in ("files-screen.png", "files-screen-right.png", "files-screen-themed.png",
+                     "files-screen-z.png", "folder-legacy-browser.png", "folder-home.png",
+                     "themed-save-browser.png"):
+            for pane in (0, 1):
+                self.assertFalse(run.files_menu(self.folder_frame(name), pane), (name, pane))
+        # The title box's top edge and the items box's both count.
+        for frame, pane in ((right, 1), (left, 0)):
+            x0, x1 = run.FILES_MENU_EDGES[pane]
+            for y0, y1 in ((110, 120), (145, 153)):
+                missing = frame.copy()
+                missing[y0:y1, x0:x1] = frame[130, x0 + 60]
+                self.assertFalse(run.files_menu(missing, pane), (pane, y0))
+
     def test_native_frame_reader_catches_one_legacy_frame_and_checks_each_index(self):
         from PIL import Image
         for inject in (None, 5, 10):

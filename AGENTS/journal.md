@@ -1,3 +1,105 @@
+## 2026-10-07 — The File Browser's second device
+
+Third step of the two-pane File Browser: the right pane can hold a storage
+of its own, and L and R choose each side's, as in Memory Cards.
+
+swiss.c: filesPane_t gains mount (uiFilesMount_t), readFailed, status and
+its own free text; its device is kept for the session and never stored in
+devices[] (Settings' Load at startup unmounts whatever DEVICE_DEST held).
+filesOtherFree drops the listing; filesOtherRelease drops it and deinits a
+mount of the pane's own; filesOtherMount is manage_file's mount block
+(deinit, stats off, init, stats on), SHARED when the device is the Source;
+filesOtherRead's failed read on its own mount mounts once more before it
+reports (the read is the mount check), then a gone folder falls back to
+the top. filesOtherAcquire picks the first device (UIFiles_RightOnConfig:
+the Configuration Device when set, detected and not the Source; the Source
+without File Management), drops a device that clashes with a new Source,
+and notices a Source change under a shared pane. Release points:
+menu_loop's Library branch and empty-folder branch (from the last step),
+starting a file (A on a loadable left file), both Autoload toggles (then
+acquire again), START when Recent is on, the left Other devices...,
+filesSourceChange, filesSwapSides, filesOtherPick, B, and the end of
+renderFileList on any exit or Source change. A constructor registers
+filesOtherResetInfo (priority 1, as deviceHandler.c's): on reset it deinits
+an OWN mount without QUIRK_NO_DEINIT. sourceCommit (select_device_internal's
+DEVICE_CUR tail; EXI_ProbeReset now runs after the slot is set, which reads
+nothing of it) and sourceMount (menu_loop's confirmed-source block) are
+pulled out unchanged and used for L's in-place Source change and Y.
+filesStorageMenu lists the detected readable devices (allDevices order, at
+most six) and Other devices...; Up/Down wrap, A chooses (greyed bumps), B,
+L or R close; the info bar shows the focused device (filesMenuInfo). R's
+Other devices... is filesOtherPick: release, DEVICE_DEST emptied, the A
+that chose it released (the picker reads held buttons; without the wait it
+took the A and chose its first device), select_device(DEVICE_DEST), the
+choice taken, the slot and filesScene restored. X or A on ".." at a pane's
+top (and A or X on an empty right pane that failed to mount) open that
+side's menu; with no entry there the hints are "A Choose storage" and B
+Home (UI_FILES_HINTS_STORAGE) and the info bar names the device. While a
+menu is open, an item's second sentence goes to the info bar's second line
+when it has no reason to show there. A memory card's or Qoob's free space
+is in blocks (filesBlockSize, shared with the rows). renderFileList now drops stale presses after acquiring the
+right pane, just before the page is published: a press made while a disc
+drive reset for the pane (Y onto the disc) was otherwise taken as the next
+action's. Y is
+filesSwapSides, gated by UIFiles_CanSwap with "<Device> isn't ready, so the
+sides can't swap." Z on a right entry on another device swaps DEVICE_CUR to
+the pane's device around manage_file (filesManageEntry) and sets manageKeep
+to the Source; manage_file's destination mount and its cancel unmount skip
+manageKeep, so choosing the Source as the destination neither remounts nor
+(on B in select_dest_dir) unmounts it. Every box in the screen goes through
+filesManageFile(keep): keep is the Source for a right entry on another
+device, else the right pane's own (OWN) mount, so a left Z or A on a file
+that can't start never deinits the pane's device (choosing it as the
+destination, B in the folder chooser, a failed init, or the picker's
+"deinit the old destination" on a DEVICE_DEST a finished copy left
+holding it). A DEVICE_DEST holding what is kept is emptied during the
+call. filesOtherPick checks the picker's choice against the Source
+(filesClash now gives the reason): a clash keeps the pane's device and the
+info bar says why, as the picker greys nothing. Paging is the C-stick's only. Hints keep Y Swap
+sides; the right pane's game note says "Y swaps the two sides."
+
+ui_files.c/.h: UIFiles_RightOnConfig, UIFiles_NotReady (three message
+lines: "<Device> isn't ready.", the status in brackets or "Couldn't read
+<folder>.", "Press R to choose storage."), UIFiles_MenuMotion (0.92x, 0.97x
+Reduced, 0.08 s in, 0.10 s out), uiFilesMenu_t and UIFiles_StorageMenu
+(titles, items, greyed clashes with their reasons, what choosing does,
+focus). The pane snapshot's message has three lines; the snapshot carries
+the menu. FrameBufferMagic.c: _FilesMenu (Memory Cards' box look, any
+count up to nine, placed by UIFiles_MenuBox below the pane's button),
+drawn after the words with its own spring and open/close clock;
+_SaveCubesMenu untouched.
+
+Tests: test_ui_files testSecondDevice and the storage hints;
+audit_files_contract (54 mutants: every release point, including choosing
+storage and a clash reset, the reset hook's registration, priority and OWN
+guard, the mount check, the picker's slot, A release, scene and clash
+note, the slot swap's restore, what filesManageFile keeps and the slot it
+empties, the first device without File Management, a greyed item, L's
+Source mounted, X at the top, L not paging); frame budget files-storage (4:3,
+left menu) and files-storage-right (wide, right menu, a pane not ready):
+10,184 and 9,748 vertices, 116 sqrtf; the button words moved files,
+files-right and files-wide by 96 vertices. Emulator: files_menu (title and
+items boxes' top edges, 4:3), files_storage on every route with cards (R
+and B; R, Memory Card - Slot A and A; RIGHT and DOWN browse, read by the
+info bar's name since Jet Black's focus bar isn't text-bright; Y swaps, read
+by the Source's name moving to the right pane, and Y swaps back; L and B),
+files_not_ready on the DVD route (UP twice to Other devices..., Z, RIGHT
+twice to KunaiGC: the pane says so, Y bumps, R puts the disc back); two
+Dolphin fixtures. Docs (system.md storage section and picture, controls.md) and
+CHANGELOG. No upstream file changed.
+
+Lab, beyond the routes: Z on a Slot A save in the right pane beside a GC
+Loader Source, X Copy, the GC Loader: CloudBakeryData.gci on the SD image
+with the save's blocks; Move of that file from the left to Slot B: the GCI
+folder gained it and the SD image lost it. With an SD2SP2 card beside the
+GC Loader Source on the right: a left Copy to it cancelled in the folder
+chooser, a Copy to it, then a Copy to the Source cancelled; after each the
+right pane's Delete removed a file from the SD2SP2 image (before the fix
+both cancels left it unmounted and Delete failed). Other devices... on the
+right, FlippyDrive Flash beside the GC Loader: the pane stays and the info
+bar says "GC Loader is open on the other side." Not measured: the free heap with
+two 2,000-entry folders (a console job).
+
 ## 2026-10-07 — The File Browser's two panes in place of Swiss's lists
 
 Second step of the two-pane File Browser: the screen, everywhere outside the

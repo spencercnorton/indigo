@@ -31,15 +31,30 @@ tag on `beta`. The newest changes are at the top until their release is named.
   there are no games to show, Recent and an Autoload folder. Two panes sit
   side by side over graph paper, as Memory Cards' two stacks do: the left
   one, marked SOURCE, is your source and starts games; the right one shows
-  another folder on it. Each row has a cube for what the file is, its real
+  another folder, on it or on another device. Each row has a cube for what the file is, its real
   name with its extension (a long one cut in the middle, keeping "(Disc 1)"
   and the extension) and its size; the info bar below shows the whole name,
-  and a game's banner and title. Left and Right move between the panes, L,
-  R and the C-stick go a page at a time, and Up and Down keep going while
-  held. A pane being read says Reading…, and a long storage name above a
+  and a game's banner and title. Left and Right move between the panes, the
+  C-stick goes a page at a time, and Up and Down keep going while held. A pane being read says Reading…, and a long storage name above a
   pane gets smaller, or is cut, to keep clear of its free space. Renaming
   or deleting the left pane's folder from the right pane moves the left
   pane to the folder that held it.
+- **L** and **R** in the File Browser choose each side's storage, as in
+  Memory Cards: a menu of the devices Indigo found, then Other devices… for
+  the full list. On the left the choice becomes your source; on the right
+  the pane opens it, so the two panes can show two devices, such as a GC
+  Loader and an SD card, or the same device in two folders. **Y** swaps the
+  two sides, your source with them. Devices that can't be open together
+  (two network shares, a FlippyDrive and its flash) are greyed with why,
+  and one picked from Other devices… leaves the pane where it was and says
+  why; a device that won't open says so in its pane, and Y won't swap onto
+  it. A memory card's free space is counted in blocks, as its saves are.
+  The right pane opens on your settings' device the first time and keeps
+  its device and folder until Indigo restarts; it lets the device go
+  whenever you leave the File Browser, start something, save Autoload or
+  open Recent. Z on a right-pane file now acts on the right pane's device,
+  and Z in either pane leaves the other pane's device mounted, even when it
+  is the copy's destination or the copy is cancelled.
 - The File Browser now asks before Move, before Hide, before turning
   Autoload on (Z on `..`, or Z on Swiss's game screen), and before writing a
   `.fzn` file to a WiiKey Fusion or a `.fpkg` file to a FlippyDrive. Delete

@@ -454,7 +454,7 @@ static void memoryCards(const char *name, bool wide, int what)
  * the hint line with five round buttons. The banner is one texture. */
 static int filesMeasure(const char *text) { return GetTextSizeInPixels(text); }
 
-static void files(const char *name, bool wide, int active)
+static void files(const char *name, bool wide, int active, int menu)
 {
 	static const u8 kinds[UI_FILES_ROWS] = {
 		UI_FILES_KIND_PARENT, UI_FILES_KIND_FOLDER, UI_FILES_KIND_DISC,
@@ -479,7 +479,7 @@ static void files(const char *name, bool wide, int active)
 		pane->focusRow = 2;
 		pane->count = 400;
 		pane->first = 3;
-		strcpy(pane->button, p == UI_FILES_LEFT ? "L  Page up" : "R  Page down");
+		strcpy(pane->button, p == UI_FILES_LEFT ? "L  Choose storage" : "R  Choose storage");
 		strcpy(pane->free, "8.57 GB");
 		pane->freeWidth = 72;
 		pane->source = p == UI_FILES_LEFT;
@@ -516,12 +516,51 @@ static void files(const char *name, bool wide, int active)
 	strcpy(snapshot.line[1], "GameCube disc  \267  GCOE01  \267  Copper Orchard Games");
 	UIFiles_Hints(UI_FILES_HINTS_LIST, active, UI_FILES_KIND_DISC, true, true, false,
 		snapshot.hint[0], snapshot.hint[1]);
+	/* A storage menu open: six devices (one greyed) and Other devices, over
+	 * the rows; the right pane, its storage not ready, says why. */
+	if(menu >= 0) {
+		static const char *const names[UI_FILES_STORAGE_DEVICES] = {
+			"GC Loader", "SD Card - Slot A", "SD Card - SD2SP2", "Memory Card - Slot A",
+			"SMB 1.0/CIFS", "File Transfer Protocol"
+		};
+		uiFilesDevice_t listed[UI_FILES_STORAGE_DEVICES];
+		static uiFilesStorageMenu_t storage;
+		int widest = 0;
+
+		for(i = 0; i < UI_FILES_STORAGE_DEVICES; i++) {
+			memset(&listed[i], 0, sizeof(listed[i]));
+			listed[i].handler = &listed[i];
+			listed[i].name = names[i];
+			listed[i].network = i >= 4;
+		}
+		UIFiles_StorageMenu(menu, listed, UI_FILES_STORAGE_DEVICES, &listed[menu ? 2 : 0],
+			&listed[menu ? 0 : 4], "/games", &storage);
+		for(i = 0; i < storage.box.count; i++) {
+			int width = (int)(GetTextSizeInPixels(storage.box.item[i]) * 0.56f) + 32;
+
+			widest = width > widest ? width : widest;
+		}
+		snapshot.menu = storage.box;
+		snapshot.menu.width = (s16)widest;
+		UIFiles_Hints(UI_FILES_HINTS_BOX, active, UI_FILES_KIND_FOLDER, false, false, false,
+			snapshot.hint[0], snapshot.hint[1]);
+		if(menu == UI_FILES_RIGHT) {
+			snapshot.pane[UI_FILES_RIGHT].rows = 0;
+			snapshot.pane[UI_FILES_RIGHT].focusRow = -1;
+			snapshot.pane[UI_FILES_RIGHT].count = 0;
+			UIFiles_NotReady(snapshot.pane[UI_FILES_RIGHT].message, "SD Card - SD2SP2",
+				"No card is inserted.", NULL);
+		}
+	}
 	memset(&cost, 0, sizeof(cost));
 	cost.hash = 1469598103934665603ULL;
 	stubStateCalls = 0;
 	IndigoBackground_DrawSavesBackdrop(1.0f, 0.0f, seconds, true, UIScene_Frame(), &clock, icons);
 	_FilesShapes(&snapshot, &layout, 1.0f, (float)active, focusY, 0.0f);
 	_FilesWords(&snapshot, &layout, 1.0f, (float)active);
+	if(menu >= 0) {
+		_FilesMenu(&snapshot.menu, &layout, 1.0f, 1.0f, (float)snapshot.menu.focus);
+	}
 	printf("{\"scene\": \"%s\", \"sqrtf\": %ld, \"trig\": %ld, \"minmax\": %ld, "
 		"\"vertices\": %ld, \"begins\": %ld, \"copy_pixels\": %.0f, \"state\": %ld, "
 		"\"hash\": \"%016llx\"}\n", name, cost.sqrtCalls, cost.trigCalls,
@@ -567,8 +606,10 @@ int main(void)
 	memoryCards("memory-cards-copy", true, CARDS_COPY);
 	memoryCards("memory-cards-erase", true, CARDS_ERASE);
 	memoryCards("memory-cards-opening", true, CARDS_OPENING);
-	files("files", false, UI_FILES_LEFT);
-	files("files-right", false, UI_FILES_RIGHT);
-	files("files-wide", true, UI_FILES_LEFT);
+	files("files", false, UI_FILES_LEFT, -1);
+	files("files-right", false, UI_FILES_RIGHT, -1);
+	files("files-wide", true, UI_FILES_LEFT, -1);
+	files("files-storage", false, UI_FILES_LEFT, UI_FILES_LEFT);
+	files("files-storage-right", true, UI_FILES_RIGHT, UI_FILES_RIGHT);
 	return 0;
 }

@@ -89,3 +89,11 @@ the legacy list, the Library layouts, Home and Memory Cards never pass.
 the rows (Z on a game), from the same run as `files-screen.png`: the route's
 Z step tells the box from the rows by the text in the band it covers, and
 `files_text` reads each pane's path line in both screen shapes.
+
+`files-storage-right.png` and `files-storage-left.png` are the File Browser
+with a storage menu open, from the demonstration disc (R: the right pane's
+menu, the Game Disc focused, both memory cards and System listed) and a GC
+Loader card (L: the left pane's, Game Disc greyed beside the GC Loader).
+`files_menu` finds a menu by its title box's top edge, below its pane's
+storage button and right-aligned to the pane; the tests check each menu is
+found over its own pane only, never over rows, a focus bar or Swiss's Z box.

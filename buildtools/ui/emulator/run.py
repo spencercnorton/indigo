@@ -26,7 +26,10 @@ while a crash, a hang, a black screen or a broken control does:
     gains the file, the same blocks), Move is dimmed for it then, Erase
     removes it from Slot A's folder, and B leaves; File Browser opens its
     two panes, RIGHT and LEFT move between them, A opens a folder in either
-    and X comes back, Z opens Swiss's box and B closes it, and B leaves;
+    and X comes back, Z opens Swiss's box and B closes it, R opens the right
+    pane's storage menu and a memory card chosen there shows its saves, Y
+    swaps the sides and back, L opens the left pane's menu, on the disc a
+    device that isn't there says so in its pane, and B leaves;
   - on the Settings face, Setup > Console > Down Face None takes Apps off the
     cube (System's next face is Library), File Browser puts a face of its
     own there (A opens the File Browser, B comes back to that face) and
@@ -130,6 +133,13 @@ FOOTER_BOX = (30, 442, 610, 464)
 FILES_PATH_BOX, FILES_WIDE_PATH_BOX = (40, 90, 220, 106), (-65, 90, 115, 106)
 FILES_RIGHT_PATH_BOX = (330, 90, 510, 106)
 FILES_RIGHT_ROWS_BOX = (366, 116, 560, 196)
+FILES_LEFT_ROWS_BOX = (78, 116, 272, 330)
+FILES_INFO_TITLE_BOX = (164, 371, 590, 392)  # the info bar's name
+# Each pane's storage name, its first 88 px: clear of the SOURCE chip after a
+# short name on the left, and 288 px apart, so a name moves between them. Only
+# the focused pane's is white; the other's is quiet, grey under Jet Black.
+FILES_NAME_BOXES = ((40, 62, 128, 88), (328, 62, 416, 88))
+FILES_RIGHT_MESSAGE_BOX = (340, 236, 588, 282)  # why the right pane is not ready
 FILES_BOX_BAND = (20, 160, 620, 310)
 SAVE_DETAILS_EYEBROW_BOX = (100, 108, 274, 132)
 SAVE_DETAILS_TITLE_BOX = (100, 132, 540, 168)
@@ -341,6 +351,22 @@ def files_text(rgb: np.ndarray, wide: bool = False, right: bool = False,
                                                     FILES_PATH_BOX, wide))
     return text_mask(detection_frame(rgb, wide).max(axis=2),
                      box if box is not None else FILES_RIGHT_PATH_BOX)
+
+
+# A storage menu (L or R) opens below its storage button, right-aligned 6 px
+# in from its pane's right edge: its title box's top edge at y 114 and its
+# items box's at y 148 run at least 124 px left from there (a row's focus
+# outline has edges at 114 and 139, never 148). Menu Widescreen moves the
+# right pane's right edge out of the stage detection_frame keeps, so only
+# 4:3 reads it.
+FILES_MENU_EDGES = ((186, 300), (474, 588))
+
+
+def files_menu(rgb: np.ndarray, pane: int, wide: bool = False) -> bool:
+    """A File Browser storage menu over pane's rows (0 left, 1 right)."""
+    x0, x1 = FILES_MENU_EDGES[pane]
+    rgb = detection_frame(rgb, wide)
+    return bool(_edge(rgb, x0, x1, 115) and _edge(rgb, x0, x1, 149))
 
 
 def active_pane(rgb: np.ndarray, wide: bool = False) -> int:
@@ -1890,11 +1916,129 @@ class Route:
         self.press("B")
         self.check("B closes Z's box on the File Browser",
                    self.files_band(False, rows) and self.files_list(True, pane=0))
+        if self.cards:
+            self.files_storage()
         self.press("B")
         gone = self.files_list(False)
         label, _ = self.settled_label(like=system) if system is not None else (None, 0.0)
         self.shot("file-browser-back", self.last_rgb)
         self.check("B leaves the File Browser for System's rows", gone and label is not None)
+
+    def files_storage_menu(self, pane: int, shown: bool) -> bool:
+        """Waits for pane's storage menu to be open (shown), or closed with
+        the File Browser still up."""
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        while not deadline.expired():
+            self.last_rgb = self.emulator.frame()
+            if files_menu(self.last_rgb, pane, self.menu_wide) == shown and \
+                    files_screen(self.last_rgb, self.menu_wide):
+                return True
+            time.sleep(0.3)
+        return False
+
+    def files_rows(self, right: bool, like: np.ndarray | None = None,
+                   unlike: np.ndarray | None = None) -> np.ndarray | None:
+        """A pane's rows once they read like (or unlike) a mask."""
+        return self.files_path(like=like, unlike=unlike, right=True,
+                               box=FILES_RIGHT_ROWS_BOX if right else FILES_LEFT_ROWS_BOX)
+
+    def files_storage(self) -> None:
+        """The second device, with a memory card in each slot. R opens the
+        right pane's storage menu beside its button and B closes it. R, DOWN
+        (from the Source to Memory Card - Slot A, next in Swiss's order) and A
+        show the card's saves in the right pane; RIGHT and DOWN browse them.
+        Y swaps the sides, the card becoming the Source on the left, and Y
+        again swaps back, the left pane as it was. L opens the left pane's
+        menu and B closes it."""
+        disc = self.files_rows(right=True)
+        self.press("R")
+        opened = self.files_storage_menu(1, True)
+        self.shot("file-browser-storage-right", self.last_rgb)
+        self.check("R opens the right pane's storage menu", opened)
+        self.press("B")
+        self.check("B closes the storage menu", self.files_storage_menu(1, False))
+        self.press("R")
+        self.files_storage_menu(1, True)
+        # The GC Loader route lists the drive's disc between them, greyed.
+        self.steps("DOWN" if self.storage == "dvd" else "DOWN DOWN")
+        self.press("A")
+        card = self.files_rows(right=True, unlike=disc) if disc is not None else None
+        source = self.files_path(right=True, box=FILES_NAME_BOXES[0])  # focused: white
+        self.shot("file-browser-second-device", self.last_rgb)
+        self.check("R and A on Memory Card - Slot A show its saves in the right pane",
+                   card is not None and not files_menu(self.last_rgb, 1, self.menu_wide))
+        self.press("RIGHT")
+        self.check("RIGHT focuses the second device's pane", self.files_list(True, pane=1))
+        other = self.files_path(right=True, box=FILES_NAME_BOXES[1])
+        # The info bar names the next save.
+        name = self.files_path(right=True, box=FILES_INFO_TITLE_BOX)
+        self.press("DOWN")
+        moved = self.files_path(unlike=name, right=True, box=FILES_INFO_TITLE_BOX) \
+            if name is not None else None
+        self.check("DOWN browses the second device", moved is not None)
+        left = self.files_rows(right=False)
+        right = self.files_rows(right=True)
+        self.press("Y")
+        # The Source's name moves to the focused right pane once both sides
+        # are mounted and read (a disc drive resets on the way).
+        moved = self.files_path(like=source, right=True, box=FILES_NAME_BOXES[1]) \
+            if source is not None else None
+        swapped = self.files_rows(right=False, unlike=left) if left is not None else None
+        changed = self.files_rows(right=True, unlike=right) if right is not None else None
+        self.shot("file-browser-swapped", self.last_rgb)
+        self.check("Y swaps the sides: the card is the Source, the disc on the right",
+                   moved is not None and swapped is not None and changed is not None and
+                   self.files_list(True, pane=1))
+        self.press("Y")
+        home = self.files_path(like=other, right=True, box=FILES_NAME_BOXES[1]) \
+            if other is not None else None
+        back = self.files_rows(right=False, like=left) if left is not None and home is not None \
+            else None
+        again = self.files_rows(right=True, like=right) if right is not None else None
+        self.check("Y again swaps them back", back is not None and again is not None)
+        self.press("L")
+        opened = self.files_storage_menu(0, True)
+        self.shot("file-browser-storage-left", self.last_rgb)
+        self.check("L opens the left pane's storage menu", opened)
+        self.press("B")
+        self.check("B closes the left storage menu", self.files_storage_menu(0, False))
+        if self.storage == "dvd":
+            self.files_not_ready()
+
+    def files_not_ready(self) -> None:
+        """A second device that isn't there. R, UP twice (from Memory Card -
+        Slot A, which the menu focuses, round to Other devices...) and A open
+        Swiss's destination picker; Z lists every
+        device and RIGHT twice goes from Memory Card - Slot A to KunaiGC,
+        which A chooses. The right pane says it isn't ready instead of rows,
+        Y leaves the sides as they are, and R and A put the disc back."""
+        left = self.files_rows(right=False)
+        self.press("R")
+        self.files_storage_menu(1, True)
+        self.steps("UP UP A")
+        self.pause(2.0)
+        self.steps("Z RIGHT RIGHT")
+        self.press("A")
+        message = self.files_path(right=True, box=FILES_RIGHT_MESSAGE_BOX)
+        rows = files_text(self.last_rgb, self.menu_wide, box=FILES_RIGHT_ROWS_BOX)
+        self.shot("file-browser-not-ready", self.last_rgb)
+        self.check("a device that isn't there: the right pane says so, with no rows",
+                   message is not None and not rows.any() and
+                   files_screen(self.last_rgb, self.menu_wide))
+        self.press("RIGHT")
+        self.press("Y")
+        self.pause(1.5)
+        same = self.files_rows(right=False, like=left) if left is not None else None
+        self.check("Y doesn't swap onto it",
+                   same is not None and self.files_list(True, pane=1) and
+                   self.files_path(like=message, right=True, box=FILES_RIGHT_MESSAGE_BOX) is not None)
+        self.press("R")
+        self.files_storage_menu(1, True)
+        self.press("A")
+        back = self.files_rows(right=True)
+        self.check("R and A on the disc put it back on the right",
+                   back is not None and not files_text(self.last_rgb, self.menu_wide,
+                                                       box=FILES_RIGHT_MESSAGE_BOX).any())
 
     def files_face(self, faces: list[np.ndarray]) -> None:
         """Down Face File Browser, from System: RIGHT turns to a face named

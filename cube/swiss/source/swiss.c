@@ -672,6 +672,8 @@ static void gameflowNavigateParent(bool useGameflow, const file_handle *parent)
 	filesUp(parent);
 }
 
+static bool filesManageFile(DEVICEHANDLER_INTERFACE *keep);
+
 /* A: open a folder, go up from "..", start a file, or with File Management
  * manage one that can't start. */
 static void filesActivate(file_handle **directory, bool useGameflow)
@@ -693,7 +695,7 @@ static void filesActivate(file_handle **directory, bool useGameflow)
 		}
 		else if(fileManagementAllowed()) {
 			meta_thread_stop();
-			needsRefresh = manage_file() ? 1:0;
+			needsRefresh = filesManageFile(NULL) ? 1:0;
 		}
 		memcpy(directory[curSelection], &curFile, sizeof(file_handle));
 	}
@@ -735,7 +737,7 @@ static bool filesManage(file_handle **directory, bool cardArt)
 		if(cardArt) {
 			CardArt_Pause();
 		}
-		needsRefresh = manage_file() ? 1:0;
+		needsRefresh = filesManageFile(NULL) ? 1:0;
 		memcpy(directory[curSelection], &curFile, sizeof(file_handle));
 		while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
 		if(needsRefresh) {
@@ -789,22 +791,27 @@ static void filesBarrelGame(uiDrawObj_t *loadingBox)
  * left pane is the Source and is the listing menu_loop scans: it starts
  * games, holds the second disc and the MP3 player's songs, and is the one
  * the meta thread reads banners for. The right pane reads a folder of its
- * own; until it can choose its own storage, on the Source too.
+ * own, on the Source or on a storage of its own that L and R choose.
  * --------------------------------------------------------------------- */
 
 /* The right pane's listing: readDir and sortFiles, as select_dest_dir reads
  * a folder. Never scanFiles, populate_meta, the meta thread,
  * current_view_*, curFile, curDir or curSelection, so the shared listing
- * and everything that reads it never see this one. */
+ * and everything that reads it never see this one. Its storage is kept out
+ * of devices[]: Settings' Load at startup picks a destination device and
+ * unmounts whatever DEVICE_DEST held. */
 typedef struct {
-	DEVICEHANDLER_INTERFACE *device;	/* the Source's, for now */
+	DEVICEHANDLER_INTERFACE *device;	/* its storage, for the session */
 	file_handle dir;			/* the open folder */
 	file_handle *entries;			/* readDir's array */
 	file_handle **sorted;			/* sortFiles' view of it */
 	int read, count;			/* entries read, and shown */
 	bool listed;				/* entries hold dir's listing */
-	bool failed;				/* readDir failed */
+	bool readFailed;			/* the last read failed */
+	u8 mount;				/* uiFilesMount_t */
 	u16 listing;
+	char status[64];			/* why init failed, the device's words */
+	char free[24];				/* its free space, "read-only" or "" */
 	char focusName[PATHNAME_MAX];		/* found again after a read */
 } filesPane_t;
 
@@ -817,11 +824,11 @@ static uiDrawObj_t *filesPage;
 static u16 filesLeftListing;
 /* The Source's free space, read once a listing. */
 static char filesFree[24];
-static bool filesReadOnly;
 /* A left folder change keeps the presses made while the folder is read. */
 static bool filesKeepPresses;
 /* Line 2 of the info bar until the next press: why a press did nothing. */
 static const char *filesNote;
+static char filesNoteText[UI_FILES_TEXT_CAPACITY];
 /* The visible left rows read without a meta thread, from filesMetaFirst. */
 static int filesMetaFirst = -1;
 static u16 filesMetaListing;
@@ -832,6 +839,36 @@ static uiSceneId_t filesScene = UI_SCENE_HOME;
 /* renderFileCarousel couldn't draw the Library here: the File Browser shows
  * this folder, read again, until the next listing. */
 static bool gameflowListFallback;
+/* A device the File Browser holds mounted while Swiss's box runs on the
+ * right pane's storage: manage_file neither mounts nor unmounts it as a
+ * destination. */
+static DEVICEHANDLER_INTERFACE *manageKeep;
+
+/* Swiss's box, keeping keep mounted: manage_file neither mounts nor
+ * unmounts it as a destination, and a destination slot holding it is
+ * empty meanwhile, so the picker can't unmount it. keep NULL: the right
+ * pane's own storage, when it holds one (outside the File Browser it has
+ * let it go). */
+static bool filesManageFile(DEVICEHANDLER_INTERFACE *keep)
+{
+	bool changed;
+
+	if(keep == NULL && filesOther.mount == UI_FILES_OWN) {
+		keep = filesOther.device;
+	}
+	if(keep != NULL && devices[DEVICE_DEST] == keep) {
+		devices[DEVICE_DEST] = NULL;
+	}
+	manageKeep = keep;
+	changed = manage_file();
+	manageKeep = NULL;
+	return changed;
+}
+static void sourceCommit(DEVICEHANDLER_INTERFACE *device);
+static bool sourceMount(void);
+/* The storage menu open (L or R): its words, and the devices it lists. */
+static uiFilesStorageMenu_t filesMenu;
+static DEVICEHANDLER_INTERFACE *filesMenuDevices[UI_FILES_STORAGE_DEVICES];
 
 static int filesMeasure(const char *text)
 {
@@ -844,9 +881,65 @@ static int filesWidth(const char *text, float scale)
 	return (int)ceilf((float)GetTextSizeInPixels(text) * scale);
 }
 
-/* The right pane's listing goes; its storage, folder and focus stay for the
- * next visit, when it is read again. */
-static void filesOtherRelease(void)
+/* A device as the File Browser's model sees it. */
+static void filesDevice(DEVICEHANDLER_INTERFACE *device, uiFilesDevice_t *out)
+{
+	memset(out, 0, sizeof(*out));
+	if(device == NULL) {
+		return;
+	}
+	out->handler = device;
+	out->name = DeviceDisplayName(device);
+	out->location = device->location;
+	out->network = device == &__device_smb || device == &__device_ftp ||
+		device == &__device_fsp;
+	out->metric = !(device->location & LOC_SYSTEM);
+	out->canWrite = (device->features & FEAT_WRITE) != 0;
+	out->canRename = device->renameFile != NULL;
+	out->canHide = device->hideFile != NULL;
+	out->canDelete = device->deleteFile != NULL;
+}
+
+/* a and b can't be open together: two storages on one connector, or two on
+ * the network adapter. reason, when given, says why. */
+static bool filesClash(DEVICEHANDLER_INTERFACE *a, DEVICEHANDLER_INTERFACE *b,
+	char *reason, size_t capacity)
+{
+	uiFilesDevice_t x, y;
+
+	filesDevice(a, &x);
+	filesDevice(b, &y);
+	return UIFiles_StorageClash(&x, &y, reason, capacity);
+}
+
+/* A memory card's and a Qoob's sizes are in their blocks, 0 elsewhere. */
+static u32 filesBlockSize(DEVICEHANDLER_INTERFACE *device)
+{
+	return device == &__device_card_a || device == &__device_card_b ? 8192u :
+		device == &__device_qoob ? 65536u : 0u;
+}
+
+/* A free-space box's words: never a guess (a network share's, or none). */
+static void filesFreeText(DEVICEHANDLER_INTERFACE *device, char *out, size_t capacity)
+{
+	device_info *info;
+
+	out[0] = '\0';
+	if(!(device->features & FEAT_WRITE)) {
+		strlcpy(out, "read-only", capacity);
+		return;
+	}
+	info = device->info != NULL ? device->info(device->initial) : NULL;
+	if(UIFiles_FreeKnown(info != NULL, info != NULL ? info->totalSpace : 0u,
+			device == &__device_smb || device == &__device_ftp ||
+			device == &__device_fsp)) {
+		UIFiles_SizeText(out, capacity, info->freeSpace, filesBlockSize(device),
+			info->metric);
+	}
+}
+
+/* The right pane's listing goes; its storage, folder and focus stay. */
+static void filesOtherFree(void)
 {
 	for(int i = 0; i < filesOther.read; i++) {
 		filesOther.device->closeFile(&filesOther.entries[i]);
@@ -857,6 +950,46 @@ static void filesOtherRelease(void)
 	filesOther.entries = NULL;
 	filesOther.read = filesOther.count = 0;
 	filesOther.listed = false;
+}
+
+/* The right pane lets its storage go: its listing, and the mount it made
+ * itself (the Source's stays). Its storage, folder and focus are kept for
+ * filesOtherAcquire to bring back. Called before control leaves the
+ * screen, before anything that mounts or unmounts storage on its own (a
+ * Source change, a settings save, Recent, starting a file) and on B. */
+static void filesOtherRelease(void)
+{
+	filesOtherFree();
+	if(filesOther.mount == UI_FILES_OWN) {
+		filesOther.device->deinit(filesOther.device->initial);
+	}
+	filesOther.mount = UI_FILES_UNMOUNTED;
+}
+
+/* Mounts the right pane's storage as manage_file mounts a destination,
+ * unless it is the Source, whose mount it shares. False when it won't. */
+static bool filesOtherMount(void)
+{
+	DEVICEHANDLER_INTERFACE *device = filesOther.device;
+	s32 ret;
+
+	if(device == devices[DEVICE_CUR]) {
+		filesOther.mount = UI_FILES_SHARED;
+		return true;
+	}
+	device->deinit(device->initial);
+	deviceHandler_setStatEnabled(0);
+	ret = device->init(device->initial);
+	deviceHandler_setStatEnabled(1);
+	filesOther.mount = ret ? UI_FILES_FAILED : UI_FILES_OWN;
+	filesOther.status[0] = '\0';
+	if(ret) {
+		char *status = device->status != NULL ? device->status(device->initial) : NULL;
+
+		strlcpy(filesOther.status, status != NULL ? status : strerror(ret),
+			sizeof(filesOther.status));
+	}
+	return !ret;
 }
 
 /* path is folder or inside it. */
@@ -875,38 +1008,35 @@ static bool filesAtRoot(const file_handle *dir)
 	return getParentPath(parent, parent);
 }
 
-/* Reads the right pane's folder, focusing focusName again. A Source that
- * changed, or a folder that is gone, starts it again at the Source's root. */
+/* Reads the right pane's folder, focusing focusName again. The read is the
+ * mount check: a storage of its own that someone else unmounted is mounted
+ * again once. A folder that is gone starts it again at its storage's top. */
 static void filesOtherRead(void)
 {
-	DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];
+	DEVICEHANDLER_INTERFACE *device = filesOther.device;
 	int focus = 0;
 
-	filesOtherRelease();
-	if(filesOther.device != source) {
-		filesOther.device = source;
-		memcpy(&filesOther.dir, source->initial, sizeof(file_handle));
-		filesOther.focusName[0] = '\0';
-	}
-	filesOther.read = source->readDir(&filesOther.dir, &filesOther.entries, -1);
-	if(filesOther.read <= 0 && strcmp(filesOther.dir.name, source->initial->name)) {
+	filesOtherFree();
+	filesOther.read = device->readDir(&filesOther.dir, &filesOther.entries, -1);
+	if(filesOther.read < 0 && filesOther.mount == UI_FILES_OWN) {
 		free(filesOther.entries);
 		filesOther.entries = NULL;
-		memcpy(&filesOther.dir, source->initial, sizeof(file_handle));
-		filesOther.read = source->readDir(&filesOther.dir, &filesOther.entries, -1);
+		if(filesOtherMount()) {
+			filesOther.read = device->readDir(&filesOther.dir, &filesOther.entries, -1);
+		}
 	}
-	filesOther.failed = filesOther.read < 0;
+	if(filesOther.read <= 0 && filesOther.mount != UI_FILES_FAILED &&
+			strcmp(filesOther.dir.name, device->initial->name)) {
+		free(filesOther.entries);
+		filesOther.entries = NULL;
+		memcpy(&filesOther.dir, device->initial, sizeof(file_handle));
+		filesOther.read = device->readDir(&filesOther.dir, &filesOther.entries, -1);
+	}
+	filesOther.readFailed = filesOther.read < 0;
 	if(filesOther.read < 0) {
 		filesOther.read = 0;
 	}
 	filesOther.count = sortFiles(filesOther.entries, filesOther.read, &filesOther.sorted);
-	/* No storage to choose on this side yet: no ".." at its top. */
-	if(filesOther.count > 0 && filesOther.sorted[0]->fileType == IS_SPECIAL &&
-			filesAtRoot(&filesOther.dir)) {
-		memmove(&filesOther.sorted[0], &filesOther.sorted[1],
-			(size_t)(filesOther.count - 1) * sizeof(file_handle *));
-		filesOther.count--;
-	}
 	for(int i = 0; i < filesOther.count; i++) {
 		if(!strcmp(filesOther.sorted[i]->name, filesOther.focusName)) {
 			focus = i;
@@ -916,16 +1046,99 @@ static void filesOtherRead(void)
 			filesOther.sorted[0]->fileType == IS_SPECIAL) {
 		focus = 1;
 	}
+	filesFreeText(device, filesOther.free, sizeof(filesOther.free));
 	filesOther.listed = true;
 	filesOther.listing++;
 	UIFiles_SetPane(&filesState, UI_FILES_RIGHT, filesOther.count, focus);
 }
 
-/* The right pane, read if it isn't, or if the Source changed under it. */
+/* Where the right pane opens the first time in a session. */
+static DEVICEHANDLER_INTERFACE *filesOtherDefault(void)
+{
+	DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR], *config = devices[DEVICE_CONFIG];
+
+	return UIFiles_RightOnConfig(fileManagementAllowed(), config != NULL,
+		config != NULL && deviceHandler_getDeviceAvailable(config), config == source) &&
+		!filesClash(config, source, NULL, 0) ? config : source;
+}
+
+/* The right pane, mounted and read if it isn't: every time the screen
+ * starts or comes back. A pane that failed to mount stays so until it is
+ * released or its storage chosen again. */
 static void filesOtherAcquire(void)
 {
-	if(!filesOther.listed || filesOther.device != devices[DEVICE_CUR]) {
+	DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];
+
+	if(filesOther.device == NULL || filesClash(filesOther.device, source, NULL, 0)) {
+		filesOtherRelease();
+		filesOther.device = filesOtherDefault();
+		memcpy(&filesOther.dir, filesOther.device->initial, sizeof(file_handle));
+		filesOther.focusName[0] = '\0';
+	}
+	/* The Source changed under a shared pane: the pane mounts its own. Or
+	 * its storage became the Source: the Source's mount is the one. */
+	if(filesOther.mount == UI_FILES_SHARED && filesOther.device != source) {
+		filesOtherFree();
+		filesOther.mount = UI_FILES_UNMOUNTED;
+	}
+	if(filesOther.mount == UI_FILES_OWN && filesOther.device == source) {
+		filesOther.mount = UI_FILES_SHARED;
+	}
+	if(filesOther.mount == UI_FILES_UNMOUNTED) {
+		filesOtherFree();
+		if(!filesOtherMount()) {
+			filesOther.listed = true;
+			filesOther.readFailed = false;
+			filesOther.free[0] = '\0';
+			filesOther.listing++;
+			UIFiles_SetPane(&filesState, UI_FILES_RIGHT, 0, 0);
+			return;
+		}
+	}
+	if(filesOther.mount != UI_FILES_FAILED && !filesOther.listed) {
 		filesOtherRead();
+	}
+}
+
+/* The right pane on device, at its top, mounted and read. */
+static void filesOtherChoose(DEVICEHANDLER_INTERFACE *device)
+{
+	filesOtherRelease();
+	filesOther.device = device;
+	memcpy(&filesOther.dir, device->initial, sizeof(file_handle));
+	filesOther.focusName[0] = '\0';
+	filesOtherAcquire();
+}
+
+/* R, Other devices...: Swiss's destination picker, kept from mounting or
+ * unmounting anything of the screen's. DEVICE_DEST is empty while it runs
+ * (so it lets nothing go), what it chose becomes the pane's storage, and
+ * the slot and the scene come back as they were. The picker greys nothing:
+ * a choice that can't be open beside the Source keeps the pane where it
+ * was, and the info bar says why. */
+static void filesOtherPick(void)
+{
+	DEVICEHANDLER_INTERFACE *dest = devices[DEVICE_DEST];
+	DEVICEHANDLER_INTERFACE *chosen;
+
+	filesOtherRelease();
+	devices[DEVICE_DEST] = NULL;
+	/* The picker reads held buttons: the A that chose it isn't its own. */
+	while(padsButtonsHeld() & PAD_BUTTON_A) VIDEO_WaitVSync();
+	select_device(DEVICE_DEST);
+	chosen = devices[DEVICE_DEST];
+	devices[DEVICE_DEST] = dest;
+	UIScene_Request(filesScene);
+	if(chosen != NULL && filesClash(chosen, devices[DEVICE_CUR], filesNoteText,
+			sizeof(filesNoteText))) {
+		filesNote = filesNoteText;
+		chosen = NULL;
+	}
+	if(chosen != NULL) {
+		filesOtherChoose(chosen);
+	}
+	else {
+		filesOtherAcquire();
 	}
 }
 
@@ -949,12 +1162,35 @@ static void filesOtherOpen(const file_handle *folder, const char *focus)
 		getParentPath(filesOther.dir.name, filesOther.dir.name);
 		filesOther.dir.fileType = IS_DIR;
 		if(filesAtRoot(&filesOther.dir)) {
-			memcpy(&filesOther.dir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
+			memcpy(&filesOther.dir, filesOther.device->initial, sizeof(file_handle));
 		}
 	}
 	strlcpy(filesOther.focusName, focus != NULL ? focus : from,
 		sizeof(filesOther.focusName));
 	filesOtherRead();
+}
+
+/* On reset or power-off, deviceHandler.c shuts down the devices[] slots,
+ * after the interface stops reading (priority 1). The right pane's storage
+ * is in none of them, so it is shut down here, at the same point. */
+static s32 filesOtherOnReset(s32 final)
+{
+	if(!final && filesOther.mount == UI_FILES_OWN && filesOther.device != NULL &&
+			!(filesOther.device->quirks & QUIRK_NO_DEINIT)) {
+		filesOther.device->deinit(filesOther.device->initial);
+		filesOther.mount = UI_FILES_UNMOUNTED;
+	}
+	return TRUE;
+}
+
+static sys_resetinfo filesOtherResetInfo = {
+	{NULL, NULL}, filesOtherOnReset, 1
+};
+
+__attribute__((constructor))
+static void filesOtherRegisterReset(void)
+{
+	SYS_RegisterResetFunc(&filesOtherResetInfo);
 }
 
 static bool filesFlattened(void)
@@ -1000,9 +1236,7 @@ static void filesSizeText(char *out, size_t capacity, const file_handle *entry)
 		UIFiles_PartitionText(out, capacity, iso->iso_partition, iso->iso_number);
 		return;
 	}
-	UIFiles_SizeText(out, capacity, entry->size,
-		device == &__device_card_a || device == &__device_card_b ? 8192u :
-		device == &__device_qoob ? 65536u : 0u,
+	UIFiles_SizeText(out, capacity, entry->size, filesBlockSize(device),
 		device != NULL && !(device->location & LOC_SYSTEM));
 }
 
@@ -1028,28 +1262,6 @@ static void filesLeftFocusName(file_handle **directory, char *out, size_t capaci
 	unlockFile(entry);
 }
 
-/* The Source's free space for both panes' boxes: once a listing, never
- * shown when it is only a guess. */
-static void filesReadFree(void)
-{
-	DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];
-	device_info *info;
-
-	filesFree[0] = '\0';
-	filesReadOnly = !(source->features & FEAT_WRITE);
-	if(filesReadOnly) {
-		strlcpy(filesFree, "read-only", sizeof(filesFree));
-		return;
-	}
-	info = source->info != NULL ? source->info(source->initial) : NULL;
-	if(UIFiles_FreeKnown(info != NULL, info != NULL ? info->totalSpace : 0u,
-			source == &__device_smb || source == &__device_ftp ||
-			source == &__device_fsp)) {
-		UIFiles_SizeText(filesFree, sizeof(filesFree), info->freeSpace, 0u,
-			info->metric);
-	}
-}
-
 /* One pane's header and rows, from its listing's window. wait: lock the
  * left rows the meta thread may be filling, else give up (false) when one
  * is busy. */
@@ -1058,7 +1270,10 @@ static bool filesPaneSnapshot(uiFilesPaneSnapshot_t *out, file_handle **entries,
 {
 	const uiFilesPaneState_t *state = &filesState.pane[pane];
 	const uiFilesRect_t *box = &layout->pane[pane];
-	const char *deviceName = DeviceDisplayName(devices[DEVICE_CUR]);
+	const char *deviceName = DeviceDisplayName(pane == UI_FILES_LEFT ? devices[DEVICE_CUR] :
+		filesOther.device);
+	const char *free = pane == UI_FILES_LEFT ? filesFree : filesOther.free;
+	bool readOnly = !strcmp(free, "read-only");
 	bool track = state->count > UI_FILES_ROWS;
 	char name[PATHNAME_MAX];
 	int i, room;
@@ -1103,15 +1318,15 @@ static bool filesPaneSnapshot(uiFilesPaneSnapshot_t *out, file_handle **entries,
 		out->rows++;
 	}
 	snprintf(out->button, sizeof(out->button), pane == UI_FILES_LEFT ?
-		"L  Page up" : "R  Page down");
+		"L  Choose storage" : "R  Choose storage");
 	out->source = pane == UI_FILES_LEFT;
-	strlcpy(out->free, filesFree, sizeof(out->free));
-	out->readOnly = filesReadOnly;
-	out->freeWidth = (s16)(filesFree[0] != '\0' ?
-		MAX(UI_FILES_FREE_MIN_WIDTH, filesWidth(filesFree, 0.50f) + 16) : 0);
+	strlcpy(out->free, free, sizeof(out->free));
+	out->readOnly = readOnly;
+	out->freeWidth = (s16)(free[0] != '\0' ?
+		MAX(UI_FILES_FREE_MIN_WIDTH, filesWidth(free, 0.50f) + 16) : 0);
 	out->deviceScale = UIFiles_FitDevice(out->device, sizeof(out->device), deviceName,
 		layout, pane, out->source, out->freeWidth,
-		out->freeWidth > 0 && !filesReadOnly ? filesWidth("free", 0.42f) : 0, filesMeasure);
+		out->freeWidth > 0 && !readOnly ? filesWidth("free", 0.42f) : 0, filesMeasure);
 	out->deviceWidth = (s16)filesWidth(out->device, out->deviceScale);
 	snprintf(out->counter, sizeof(out->counter), "%d / %d",
 		state->count > 0 ? state->focus + 1 : 0, state->count);
@@ -1122,9 +1337,12 @@ static bool filesPaneSnapshot(uiFilesPaneSnapshot_t *out, file_handle **entries,
 		room, 0.46f, filesMeasure);
 	out->pathWidth = (s16)filesWidth(out->path, 0.46f);
 	out->reading = 0;
-	out->message[0][0] = out->message[1][0] = '\0';
-	if(pane == UI_FILES_RIGHT && filesOther.failed) {
-		snprintf(out->message[0], sizeof(out->message[0]), "Couldn't read %s.",
+	memset(out->message, 0, sizeof(out->message));
+	/* The right pane's storage can't be used: why, and what to do. */
+	if(pane == UI_FILES_RIGHT && (filesOther.mount == UI_FILES_FAILED ||
+			filesOther.readFailed)) {
+		UIFiles_NotReady(out->message, deviceName, filesOther.status,
+			filesOther.mount == UI_FILES_FAILED ? NULL :
 			getRelativeName(filesOther.dir.name));
 	}
 	else if(state->count == 0 ||
@@ -1145,7 +1363,8 @@ static bool filesInfoSnapshot(uiFilesSnapshot_t *s, file_handle **entries,
 {
 	int pane = filesState.active;
 	const uiFilesPaneState_t *state = &filesState.pane[pane];
-	const char *deviceName = DeviceDisplayName(devices[DEVICE_CUR]);
+	const char *deviceName = DeviceDisplayName(pane == UI_FILES_LEFT ? devices[DEVICE_CUR] :
+		filesOther.device);
 	char name[PATHNAME_MAX], title[PATHNAME_MAX];
 	uiFilesKind_t kind = UI_FILES_KIND_FOLDER;
 	file_handle *entry = state->count > 0 ? entries[state->focus] : NULL;
@@ -1157,7 +1376,11 @@ static bool filesInfoSnapshot(uiFilesSnapshot_t *s, file_handle **entries,
 	s->warn = 0;
 	s->chip[0] = s->size[0] = '\0';
 	s->line[0][0] = s->line[1][0] = '\0';
+	/* No entry: the folder's name, or at a storage's top its own. */
 	strlcpy(title, getRelativeName((char *)dirName), sizeof(title));
+	if(title[0] == '\0') {
+		strlcpy(title, deviceName, sizeof(title));
+	}
 	if(entry != NULL) {
 		if(pane == UI_FILES_LEFT) {
 			if(!wait && !trylockFile(entry)) {
@@ -1220,7 +1443,8 @@ static bool filesInfoSnapshot(uiFilesSnapshot_t *s, file_handle **entries,
 			s->warn = 1;
 		}
 		else if(pane == UI_FILES_RIGHT && loads) {
-			strlcpy(s->line[1], "Games start on the left.", sizeof(s->line[1]));
+			strlcpy(s->line[1], "Games start on the left. Y swaps the two sides.",
+				sizeof(s->line[1]));
 		}
 	}
 	if(filesNote != NULL) {
@@ -1255,14 +1479,54 @@ static bool filesInfoSnapshot(uiFilesSnapshot_t *s, file_handle **entries,
 	if(entry != NULL && entry->fileType == IS_SPECIAL) {
 		autoload = filesAutoloadFolder(dirName);
 	}
-	UIFiles_Hints(UI_FILES_HINTS_LIST, pane, kind, loads, fileManagementAllowed(),
-		autoload, s->hint[0], s->hint[1]);
-	/* Y swaps the sides once the right pane can choose its own storage. */
-	char *swap = strstr(s->hint[0], "Y  Swap sides   ");
-	if(swap != NULL) {
-		memmove(swap, swap + 16, strlen(swap + 16) + 1);
-	}
+	/* A right pane with no entry, at its top or not ready: A, X and R
+	 * choose its storage, and Z has nothing to act on. */
+	UIFiles_Hints(entry == NULL && pane == UI_FILES_RIGHT &&
+		(filesOther.mount == UI_FILES_FAILED || filesAtRoot(&filesOther.dir)) ?
+		UI_FILES_HINTS_STORAGE : UI_FILES_HINTS_LIST, pane, kind, loads,
+		fileManagementAllowed(), autoload, s->hint[0], s->hint[1]);
 	return true;
+}
+
+/* While a storage menu is open, the info bar is the focused device's: its
+ * name, its free space when it is open on either side, what choosing it
+ * does, and (amber) why it can't be chosen. */
+static void filesMenuInfo(uiFilesSnapshot_t *s, const uiFilesLayout_t *layout)
+{
+	int item = filesMenu.box.focus;
+	DEVICEHANDLER_INTERFACE *device = item < filesMenu.devices ? filesMenuDevices[item] : NULL;
+	const char *free = device == NULL ? "" : device == devices[DEVICE_CUR] ? filesFree :
+		device == filesOther.device && filesOther.mount != UI_FILES_FAILED ? filesOther.free : "";
+	char line[UI_FILES_TEXT_CAPACITY], *second;
+	int room;
+
+	s->hasBanner = 0;
+	s->infoKind = UI_FILES_KIND_FOLDER;
+	s->chip[0] = '\0';
+	strlcpy(s->size, free, sizeof(s->size));
+	s->sizeWidth = (s16)(s->size[0] != '\0' ? MAX(48, filesWidth(s->size, 0.50f) + 16) : 0);
+	s->titleScale = UIFiles_FitName(s->title, sizeof(s->title), filesMenu.box.item[item],
+		layout->info.x1 - 16 - layout->infoTextX, filesMeasure);
+	s->titleWidth = (s16)filesWidth(s->title, s->titleScale);
+	room = layout->info.x1 - 112 - layout->infoTextX - (s->sizeWidth ? s->sizeWidth + 12 : 0);
+	/* Nothing greyed: line 2 is free, so the last sentence goes there (the
+	 * last: a folder's name in the first may hold a ". "). */
+	strlcpy(line, filesMenu.line[item], sizeof(line));
+	second = NULL;
+	for(char *at = line; filesMenu.reason[item][0] == '\0' &&
+			(at = strstr(at, ". ")) != NULL; at++) {
+		second = at;
+	}
+	if(second != NULL) {
+		second[1] = '\0';
+		second += 2;
+	}
+	(void)UIFiles_FitName(s->line[0], sizeof(s->line[0]), line, room, filesMeasure);
+	(void)UIFiles_FitName(s->line[1], sizeof(s->line[1]),
+		second != NULL ? second : filesMenu.reason[item], room, filesMeasure);
+	s->warn = filesMenu.reason[item][0] != '\0';
+	UIFiles_Hints(UI_FILES_HINTS_BOX, s->active, UI_FILES_KIND_FOLDER, false, false, false,
+		s->hint[0], s->hint[1]);
 }
 
 /* The page for this frame, published or updated. wait as filesPaneSnapshot:
@@ -1280,6 +1544,9 @@ static bool filesPublish(file_handle **directory, uiDrawObj_t **filePanel, bool 
 			UI_FILES_RIGHT, filesOther.dir.name, &layout, wait) ||
 		!filesInfoSnapshot(&filesSnapshot, entries, dirName, &layout, wait)) {
 		return false;
+	}
+	if(filesSnapshot.menu.open) {
+		filesMenuInfo(&filesSnapshot, &layout);
 	}
 	filesSnapshot.pane[UI_FILES_LEFT].listing = filesLeftListing;
 	filesSnapshot.pane[UI_FILES_RIGHT].listing = filesOther.listing;
@@ -1330,12 +1597,22 @@ static bool filesMetaStep(file_handle **directory)
  * the panes must be read again. */
 static bool filesManageEntry(file_handle *entry, const char *leftFocus)
 {
+	DEVICEHANDLER_INTERFACE *cur = devices[DEVICE_CUR];
+	bool other = leftFocus != NULL && filesOther.device != cur;
 	bool changed;
 
 	meta_thread_stop();
+	/* An entry on the right pane's own storage: Swiss's box acts on the
+	 * Source's slot, so the slot holds that storage until the box is done,
+	 * and the Source is the one kept mounted. Otherwise the pane's own
+	 * storage is. */
+	if(other) {
+		devices[DEVICE_CUR] = filesOther.device;
+	}
 	memcpy(&curFile, entry, sizeof(file_handle));
-	changed = manage_file();
+	changed = filesManageFile(other ? cur : NULL);
 	memcpy(entry, &curFile, sizeof(file_handle));
+	devices[DEVICE_CUR] = cur;
 	while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
 	if(leftFocus != NULL) {
 		strlcpy(curFile.name, leftFocus, sizeof(curFile.name));
@@ -1355,20 +1632,153 @@ static void filesWait(float seconds)
 	}
 }
 
+/* L or R: the storage menu beside that side's button, as Memory Cards'.
+ * Up and Down move and wrap, A chooses (a greyed device keeps its reason
+ * showing), B, L or R close it. The choice: an item, filesMenu.devices
+ * being Other devices..., or -1. */
+static int filesStorageMenu(int pane, file_handle **directory, uiDrawObj_t **filePanel)
+{
+	const u32 boxButtons = BUTTON_UP | BUTTON_DOWN | BUTTON_A | BUTTON_B | BUTTON_L |
+		BUTTON_R;
+	uiFilesDevice_t listed[UI_FILES_STORAGE_DEVICES], current, other;
+	DEVICEHANDLER_INTERFACE *mine = pane == UI_FILES_LEFT ? devices[DEVICE_CUR] : filesOther.device;
+	DEVICEHANDLER_INTERFACE *theirs = pane == UI_FILES_LEFT ? filesOther.device : devices[DEVICE_CUR];
+	uiMenuInputState_t stick;
+	u32 stickRetrace = VIDEO_GetRetraceCount();
+	int count = 0, widest, choice = -1;
+
+	/* Every detected storage that can be read, in Swiss's order. */
+	for(int i = 0; i < MAX_DEVICES && count < UI_FILES_STORAGE_DEVICES; i++) {
+		DEVICEHANDLER_INTERFACE *device = allDevices[i];
+
+		if(device != NULL && (device->features & FEAT_READ) &&
+				deviceHandler_getDeviceAvailable(device)) {
+			filesMenuDevices[count] = device;
+			filesDevice(device, &listed[count++]);
+		}
+	}
+	filesDevice(mine, &current);
+	filesDevice(theirs, &other);
+	UIFiles_StorageMenu(pane, listed, count, &current, &other,
+		getDevicePath(pane == UI_FILES_LEFT ? filesOther.dir.name : curDir.name), &filesMenu);
+	widest = filesWidth(filesMenu.box.title, 0.56f) + 24;
+	for(int i = 0; i < filesMenu.box.count; i++) {
+		widest = MAX(widest, filesWidth(filesMenu.box.item[i], 0.56f) + 32);
+	}
+	filesMenu.box.width = (s16)widest;
+	filesMenu.box.serial = (u16)(filesSnapshot.menu.serial + 1u);
+	filesSnapshot.menu = filesMenu.box;
+	UIMenuInput_Init(&stick);
+	(void)padsButtonsTaken(boxButtons);
+	while(1) {
+		uiMenuInputDirection_t analog;
+		u32 buttons;
+		int focus = filesSnapshot.menu.focus;
+
+		(void)filesPublish(directory, filePanel, true);
+		while(1) {
+			buttons = padsButtonsTaken(boxButtons);
+			analog = padsMenuInputPoll(&stick, menuInputElapsedMicroseconds(&stickRetrace),
+				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,
+				(padsButtonsHeld() & boxButtons) != 0u);
+			if(buttons != 0u || analog != UI_MENU_INPUT_NONE) {
+				break;
+			}
+			VIDEO_WaitVSync();
+		}
+		if((buttons & BUTTON_UP) || analog == UI_MENU_INPUT_UP) {
+			focus = (focus + filesSnapshot.menu.count - 1) % filesSnapshot.menu.count;
+		}
+		else if((buttons & BUTTON_DOWN) || analog == UI_MENU_INPUT_DOWN) {
+			focus = (focus + 1) % filesSnapshot.menu.count;
+		}
+		if(focus != filesSnapshot.menu.focus) {
+			filesSnapshot.menu.focus = filesMenu.box.focus = (u8)focus;
+			menuaudio_blip();
+			continue;
+		}
+		if(buttons & (BUTTON_B | BUTTON_L | BUTTON_R)) {
+			break;
+		}
+		if((buttons & BUTTON_A) && !((filesSnapshot.menu.dim >> focus) & 1u)) {
+			choice = focus;
+			menuaudio_select();
+			break;
+		}
+	}
+	filesSnapshot.menu.open = 0;
+	(void)filesPublish(directory, filePanel, true);
+	return choice;
+}
+
+/* L, a device: it becomes the Source in place, as the Source picker makes
+ * it. The right pane lets go first: the old Source may be its storage too.
+ * menu_loop reads the new Source's top folder next (the listing in hand is
+ * gone), or, when it won't mount, opens the Source picker. */
+static void filesSourceChange(DEVICEHANDLER_INTERFACE *device)
+{
+	filesOtherRelease();
+	meta_thread_stop();
+	sourceCommit(device);
+	(void)sourceMount();
+}
+
+/* Y: the right pane's storage and folder become the Source, and the
+ * Source's the right pane's, each side keeping its focus. Only onto a
+ * right pane that is ready, else (false) the info bar says why. */
+static bool filesSwapSides(file_handle **directory)
+{
+	static file_handle rightDir;
+	DEVICEHANDLER_INTERFACE *left = devices[DEVICE_CUR], *right = filesOther.device;
+	const uiFilesPaneState_t *pane = &filesState.pane[UI_FILES_RIGHT];
+	char leftFocus[PATHNAME_MAX], rightFocus[PATHNAME_MAX];
+
+	if(!UIFiles_CanSwap(filesOther.mount, !filesOther.readFailed)) {
+		snprintf(filesNoteText, sizeof(filesNoteText), "%s isn't ready, so the sides can't swap.",
+			DeviceDisplayName(right));
+		filesNote = filesNoteText;
+		return false;
+	}
+	filesLeftFocusName(directory, leftFocus, sizeof(leftFocus));
+	strlcpy(rightFocus, pane->count > 0 ? filesOther.sorted[pane->focus]->name : "",
+		sizeof(rightFocus));
+	memcpy(&rightDir, &filesOther.dir, sizeof(file_handle));
+	memcpy(&filesOther.dir, &curDir, sizeof(file_handle));
+	if(right == left) {
+		/* One storage on both sides: only the folders change places. */
+		filesOtherFree();
+		memcpy(&curDir, &rightDir, sizeof(file_handle));
+		needsRefresh = 1;
+	}
+	else {
+		filesOtherRelease();
+		meta_thread_stop();
+		filesOther.device = left;
+		sourceCommit(right);
+		if(sourceMount()) {
+			memcpy(&curDir, &rightDir, sizeof(file_handle));
+		}
+	}
+	strlcpy(filesOther.focusName, leftFocus, sizeof(filesOther.focusName));
+	strlcpy(curFile.name, rightFocus, sizeof(curFile.name));
+	return true;
+}
+
 /* The File Browser on the shared listing, as Swiss's lists were: it returns
  * to menu_loop for a left folder change, a Source change, B, START, a
  * launch, and anything that needs the listing read again. */
 static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
 {
 	const u32 waitButtons = BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT | BUTTON_RIGHT |
-		BUTTON_A | BUTTON_B | PAD_BUTTON_X | BUTTON_Z | BUTTON_L | BUTTON_R |
-		BUTTON_START | BUTTON_CLAP;
+		BUTTON_A | BUTTON_B | PAD_BUTTON_X | PAD_BUTTON_Y | BUTTON_Z | BUTTON_L |
+		BUTTON_R | BUTTON_START | BUTTON_CLAP;
 	const u32 vertical = BUTTON_UP | BUTTON_DOWN;
 	uiMenuInputState_t menuInput, pageInput;
 	u32 menuInputRetrace, pageInputRetrace, repeatHeld = 0u, repeatAt = 0u;
 	float rate = VIDEO_GetRetraceRate();
 	uiDrawObj_t *loadingBox;
 	char leftFocus[PATHNAME_MAX];
+	int storage = -1, choice;
 
 	gameflowListFallback = false;
 	if(num_files<=0) {
@@ -1384,6 +1794,7 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 		 * it (a game's info coming back to the list). */
 		filesState.active = UI_FILES_LEFT;
 		filesNote = NULL;
+		filesSnapshot.menu.open = 0;
 		filesScene = filePanel == NULL ? UI_SCENE_HOME : UI_SCENE_LIBRARY;
 	}
 	else {
@@ -1396,8 +1807,15 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 	curSelection = filesState.pane[UI_FILES_LEFT].focus;
 	UIFiles_LeftView(&filesState, &current_view_start, &current_view_end);
 	filesLeftListing++;
-	filesReadFree();
+	filesFreeText(devices[DEVICE_CUR], filesFree, sizeof(filesFree));
 	filesOtherAcquire();
+	/* Presses from before the page shows this (the A that opened it, a B in
+	 * a box, one made while a device was set up) aren't for here; those made
+	 * while a folder was read are. */
+	if(!filesKeepPresses) {
+		(void)padsButtonsTaken(waitButtons);
+	}
+	filesKeepPresses = false;
 	if(!filesPublish(directory, &filePanel, true)) {
 		/* No memory for the page: Home rather than a stale screen. */
 		filesOtherRelease();
@@ -1409,12 +1827,6 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 	UIMenuInput_Init(&menuInput);
 	UIMenuInput_Init(&pageInput);
 	menuInputRetrace = pageInputRetrace = VIDEO_GetRetraceCount();
-	/* Presses from before (the A that opened this, a B in a box) aren't for
-	 * here; those made while a folder was read are. */
-	if(!filesKeepPresses) {
-		(void)padsButtonsTaken(waitButtons);
-	}
-	filesKeepPresses = false;
 	while(1) {
 		uiFilesPaneState_t *active;
 		uiMenuInputDirection_t analog, page;
@@ -1464,11 +1876,10 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 		if((buttons & BUTTON_DOWN) || analog == UI_MENU_INPUT_DOWN) {
 			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_DOWN);
 		}
-		/* L and R page until they choose each side's storage. */
-		if((buttons & BUTTON_L) || page == UI_MENU_INPUT_UP) {
+		if(page == UI_MENU_INPUT_UP) {
 			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_PAGE_UP);
 		}
-		if((buttons & BUTTON_R) || page == UI_MENU_INPUT_DOWN) {
+		if(page == UI_MENU_INPUT_DOWN) {
 			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_PAGE_DOWN);
 		}
 		if(buttons & BUTTON_LEFT) {
@@ -1489,26 +1900,45 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 			menuaudio_blip();
 		}
 
-		if(filesState.active == UI_FILES_LEFT) {
+		/* L and R: each side's storage; X and ".." at a side's top open
+		 * its menu too. */
+		storage = (buttons & BUTTON_L) ? UI_FILES_LEFT : (buttons & BUTTON_R) ?
+			UI_FILES_RIGHT : -1;
+		if(filesState.active == UI_FILES_LEFT && storage < 0) {
 			if(buttons & BUTTON_A) {
 				int type;
+				bool loads;
 
 				/* What A does depends on the meta (a program folder, a
 				 * second disc): read it now if no one has yet. */
 				lockFile(directory[curSelection]);
 				populate_meta(directory[curSelection]);
 				type = directory[curSelection]->fileType;
+				loads = filesLoads(directory[curSelection]);
 				unlockFile(directory[curSelection]);
-				filesActivate(directory, false);
-				filesKeepPresses = type == IS_DIR || type == IS_SPECIAL;
-				/* Z's box on a file that can't start changed something:
-				 * the right pane is read again too. */
-				if(type == IS_FILE && needsRefresh) {
-					filesOther.listed = false;
+				if(type == IS_SPECIAL && filesAtRoot(&curDir)) {
+					storage = UI_FILES_LEFT;
 				}
-				break;
+				else {
+					/* Starting a file: nothing stays mounted that the game,
+					 * its details or the loader don't know about. */
+					if(type == IS_FILE && loads) {
+						filesOtherRelease();
+					}
+					filesActivate(directory, false);
+					filesKeepPresses = type == IS_DIR || type == IS_SPECIAL;
+					/* Z's box on a file that can't start changed something:
+					 * the right pane is read again too. */
+					if(type == IS_FILE && needsRefresh) {
+						filesOther.listed = false;
+					}
+					break;
+				}
 			}
-			if(buttons & PAD_BUTTON_X) {
+			else if((buttons & PAD_BUTTON_X) && filesAtRoot(&curDir)) {
+				storage = UI_FILES_LEFT;
+			}
+			else if(buttons & PAD_BUTTON_X) {
 				filesUp(directory[0]);
 				filesKeepPresses = true;
 				/* At the top the Source picker opens: it must not see X
@@ -1518,7 +1948,15 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 				}
 				break;
 			}
-			if((buttons & BUTTON_Z) && fileManagementAllowed()) {
+			else if((buttons & BUTTON_Z) && fileManagementAllowed() &&
+					directory[curSelection]->fileType == IS_SPECIAL) {
+				/* Autoload: a settings save mounts and unmounts the
+				 * Configuration Device, which may be the right pane's. */
+				filesOtherRelease();
+				filesToggleAutoload(&curDir.name[0]);
+				filesOtherAcquire();
+			}
+			else if((buttons & BUTTON_Z) && fileManagementAllowed()) {
 				file_handle folder;
 				bool program;
 
@@ -1552,14 +1990,14 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 				meta_thread_start(loadingBox);
 			}
 		}
-		else if(buttons & (BUTTON_A | PAD_BUTTON_X | BUTTON_Z)) {
+		else if(storage < 0 && (buttons & (BUTTON_A | PAD_BUTTON_X | BUTTON_Z))) {
 			file_handle *entry = active->count > 0 ? filesOther.sorted[active->focus] : NULL;
-			bool parent = (buttons & PAD_BUTTON_X) ||
-				(entry != NULL && entry->fileType == IS_SPECIAL && !(buttons & BUTTON_Z));
+			bool parent = (buttons & PAD_BUTTON_X) || (!(buttons & BUTTON_Z) &&
+				(entry == NULL || entry->fileType == IS_SPECIAL));
 
 			if(parent) {
-				if(filesAtRoot(&filesOther.dir)) {
-					filesNote = "This is the top of this storage.";
+				if(filesAtRoot(&filesOther.dir) || filesOther.mount == UI_FILES_FAILED) {
+					storage = UI_FILES_RIGHT;
 				}
 				else {
 					(void)DrawUpdateFilesReading(filePanel, UI_FILES_RIGHT);
@@ -1568,7 +2006,9 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 			}
 			else if(entry != NULL && entry->fileType == IS_SPECIAL) {
 				if(fileManagementAllowed()) {
+					filesOtherRelease();
 					filesToggleAutoload(filesOther.dir.name);
+					filesOtherAcquire();
 				}
 			}
 			else if(entry != NULL && (buttons & BUTTON_A) && entry->fileType == IS_DIR) {
@@ -1576,7 +2016,7 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 				filesOtherOpen(entry, "");
 			}
 			else if(entry != NULL && (buttons & BUTTON_A) && filesLoads(entry)) {
-				filesNote = "Games start on the left.";
+				filesNote = "Games start on the left. Y swaps the two sides.";
 			}
 			else if(entry != NULL && fileManagementAllowed()) {
 				char was[PATHNAME_MAX];
@@ -1593,7 +2033,8 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 					 * deleted: the left goes to the folder that held it,
 					 * focusing it by its new name, rather than reading a
 					 * folder that is gone. */
-					if(filesWithin(curDir.name, was)) {
+					if(filesOther.device == devices[DEVICE_CUR] &&
+							filesWithin(curDir.name, was)) {
 						memcpy(&curDir, &filesOther.dir, sizeof(file_handle));
 						strlcpy(curFile.name, entry->name, sizeof(curFile.name));
 					}
@@ -1603,7 +2044,46 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 				meta_thread_start(loadingBox);
 			}
 		}
-		if((buttons & BUTTON_START) && filesRecent(false)) {
+		if(storage >= 0) {
+			meta_thread_stop();
+			choice = filesStorageMenu(storage, directory, &filePanel);
+			if(choice >= 0 && storage == UI_FILES_LEFT) {
+				if(choice == filesMenu.devices) {
+					/* Other devices...: Swiss's Source picker, from
+					 * menu_loop, as X at the top always opened it. */
+					filesOtherRelease();
+					needsDeviceChange = 1;
+					break;
+				}
+				if(filesMenuDevices[choice] != devices[DEVICE_CUR]) {
+					filesSourceChange(filesMenuDevices[choice]);
+					break;
+				}
+			}
+			else if(choice >= 0) {
+				(void)DrawUpdateFilesReading(filePanel, UI_FILES_RIGHT);
+				if(choice == filesMenu.devices) {
+					filesOtherPick();
+				}
+				else if(filesMenuDevices[choice] != filesOther.device ||
+						filesOther.mount == UI_FILES_FAILED) {
+					filesOtherChoose(filesMenuDevices[choice]);
+				}
+			}
+			meta_thread_start(loadingBox);
+		}
+		/* Y: the sides swap, the Source with them. */
+		if((buttons & PAD_BUTTON_Y) && storage < 0) {
+			meta_thread_stop();
+			if(filesSwapSides(directory)) {
+				break;
+			}
+			meta_thread_start(loadingBox);
+		}
+		if((buttons & BUTTON_START) && swissSettings.recentListLevel > 0) {
+			/* Recent may change the Source and saves the list. */
+			filesOtherRelease();
+			(void)filesRecent(false);
 			break;
 		}
 		if(buttons & BUTTON_B) {
@@ -1613,12 +2093,14 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 			filesWait(UIFiles_LeaveSeconds(UIMotion_ModeFromFlags(
 				swissSettings.disableUIAnimations, swissSettings.reduceUIAnimations)));
 			filesSnapshot.leaving = 0;
+			filesOtherRelease();
 			/* No Swiss row to dim on the way out. */
 			filesHome(directory, true);
 			break;
 		}
-		/* A box (Z, Autoload) may have left presses of its own. */
-		if(buttons & (BUTTON_A | PAD_BUTTON_X | BUTTON_Z)) {
+		/* A box (Z, Autoload, a storage menu) may have left presses of its
+		 * own. */
+		if(buttons & (BUTTON_A | PAD_BUTTON_X | PAD_BUTTON_Y | BUTTON_Z | BUTTON_L | BUTTON_R)) {
 			(void)padsButtonsTaken(waitButtons);
 		}
 		(void)filesPublish(directory, &filePanel, true);
@@ -4394,7 +4876,7 @@ bool manage_file() {
 		if(devices[DEVICE_DEST] == NULL) return false;
 
 		// If the devices are not the same, init the destination, fail on non-existing device/etc
-		if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
+		if(devices[DEVICE_DEST] != devices[DEVICE_CUR] && devices[DEVICE_DEST] != manageKeep) {
 			devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );	
 			deviceHandler_setStatEnabled(0);
 			if(devices[DEVICE_DEST]->init( devices[DEVICE_DEST]->initial )) {
@@ -4414,7 +4896,7 @@ bool manage_file() {
 		// Show a directory only browser and get the destination file location
 		ret = select_dest_dir(devices[DEVICE_DEST]->initial, destFile->name);
 		if(ret) {
-			if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
+			if(devices[DEVICE_DEST] != devices[DEVICE_CUR] && devices[DEVICE_DEST] != manageKeep) {
 				devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );
 			}
 			devices[DEVICE_DEST] = NULL;
@@ -6141,28 +6623,19 @@ static bool select_device_internal(int type)
 	if(type == DEVICE_CUR) {
 		/* The live source survived the selector. Only now that A has confirmed
 		 * do we invalidate files and remount, including same-source EXI changes. */
-		if(devices[type] != NULL) {
-			freeFiles();
-			DrawGameflowCancelPosters();
-			devices[type]->deinit(devices[type]->initial);
-			homeSourceRecord(devices[type], UI_HOME_SOURCE_MOUNT_UNMOUNTED);
-		}
-		else {
-			homeSourceRecord(NULL, UI_HOME_SOURCE_MOUNT_ABSENT);
-		}
+		sourceCommit(selectedDevice);
 	}
-	else if(devices[type] != NULL) {
-		// Don't deinit our current device when selecting a destination device
-		if(!(type == DEVICE_DEST && devices[type] == devices[DEVICE_CUR])) {
-			devices[type]->deinit(devices[type]->initial);
+	else {
+		if(devices[type] != NULL) {
+			// Don't deinit our current device when selecting a destination device
+			if(!(type == DEVICE_DEST && devices[type] == devices[DEVICE_CUR])) {
+				devices[type]->deinit(devices[type]->initial);
+			}
 		}
+		devices[type] = selectedDevice;
 	}
 	if(showAllDevices && (selectedDevice->location & (LOC_MEMCARD_SLOT_A | LOC_MEMCARD_SLOT_B | LOC_SERIAL_PORT_2))) {
 		EXI_ProbeReset();
-	}
-	devices[type] = selectedDevice;
-	if(type == DEVICE_CUR) {
-		homeSourceRecord(selectedDevice, UI_HOME_SOURCE_MOUNT_UNMOUNTED);
 	}
 	DrawDispose(deviceSelectBox);
 	if(type == DEVICE_DEST) {
@@ -6174,6 +6647,60 @@ static bool select_device_internal(int type)
 void select_device(int type)
 {
 	(void)select_device_internal(type);
+}
+
+/* The Source becomes device, unmounted: the old one's listing and posters
+ * go, it is unmounted, and Home records both. sourceMount mounts the new
+ * one. The device picker and the File Browser's L and Y change it here. */
+static void sourceCommit(DEVICEHANDLER_INTERFACE *device)
+{
+	if(devices[DEVICE_CUR] != NULL) {
+		freeFiles();
+		DrawGameflowCancelPosters();
+		devices[DEVICE_CUR]->deinit(devices[DEVICE_CUR]->initial);
+		homeSourceRecord(devices[DEVICE_CUR], UI_HOME_SOURCE_MOUNT_UNMOUNTED);
+	}
+	else {
+		homeSourceRecord(NULL, UI_HOME_SOURCE_MOUNT_ABSENT);
+	}
+	devices[DEVICE_CUR] = device;
+	homeSourceRecord(device, UI_HOME_SOURCE_MOUNT_UNMOUNTED);
+}
+
+/* Mounts the Source just chosen and opens its top folder. A Source that
+ * won't mount says why, is let go and the Source picker opens next
+ * (needsDeviceChange): false then. */
+static bool sourceMount(void)
+{
+	uiDrawObj_t *msgBox;
+	s32 ret;
+
+	needsRefresh = 1;
+	memcpy(&curDir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
+	msgBox = DrawPublish(DrawProgressBar(true, 0, "Setting up device"));
+	ret = devices[DEVICE_CUR]->init(devices[DEVICE_CUR]->initial);
+	if(ret) {
+		homeSourceRecord(devices[DEVICE_CUR],
+			UI_HOME_SOURCE_MOUNT_UNMOUNTED);
+		needsDeviceChange = 1;
+		if(ret == ENODEV) {	// for completely removed devices vs something like the disc drive without a disc.
+			deviceHandler_setDeviceAvailable(devices[DEVICE_CUR], false);
+		}
+		char* statusMsg = devices[DEVICE_CUR]->status(devices[DEVICE_CUR]->initial);
+		msgBox = DrawRepublish(msgBox, DrawMessageBox(D_FAIL, statusMsg ? statusMsg : strerror(ret)));
+		sleep(2);
+		DrawDispose(msgBox);
+		/* The confirmed replacement never mounted, so it cannot be
+		 * treated as the preserved live source on the next selector. */
+		devices[DEVICE_CUR] = NULL;
+		homeSourceRecord(NULL, UI_HOME_SOURCE_MOUNT_ABSENT);
+		return false;
+	}
+	DrawDispose(msgBox);
+	deviceHandler_setDeviceAvailable(devices[DEVICE_CUR], true);
+	homeSourceRecord(devices[DEVICE_CUR],
+		UI_HOME_SOURCE_MOUNT_MOUNTED);
+	return true;
 }
 
 void menu_loop()
@@ -6217,37 +6744,10 @@ void menu_loop()
 		homePublish(curMenuLocation == ON_OPTIONS);
 		bool deviceConfirmed = select_device_internal(DEVICE_CUR);
 		UIScene_Request(UI_SCENE_HOME);
-		if(deviceConfirmed && devices[DEVICE_CUR] != NULL) {
-			uiDrawObj_t *msgBox;
-			s32 ret;
-
-			needsRefresh = 1;
-			memcpy(&curDir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
-			msgBox = DrawPublish(DrawProgressBar(true, 0, "Setting up device"));
-			/* A confirmed source is always remounted, including same-source
-			 * EXI changes. Cancellation never reaches this lifecycle. */
-			ret = devices[DEVICE_CUR]->init(devices[DEVICE_CUR]->initial);
-			if(ret) {
-				homeSourceRecord(devices[DEVICE_CUR],
-					UI_HOME_SOURCE_MOUNT_UNMOUNTED);
-				needsDeviceChange = 1;
-				if(ret == ENODEV) {	// for completely removed devices vs something like the disc drive without a disc.
-					deviceHandler_setDeviceAvailable(devices[DEVICE_CUR], false);
-				}
-				char* statusMsg = devices[DEVICE_CUR]->status(devices[DEVICE_CUR]->initial);
-				msgBox = DrawRepublish(msgBox, DrawMessageBox(D_FAIL, statusMsg ? statusMsg : strerror(ret)));
-				sleep(2);
-				DrawDispose(msgBox);
-				/* The confirmed replacement never mounted, so it cannot be
-				 * treated as the preserved live source on the next selector. */
-				devices[DEVICE_CUR] = NULL;
-				homeSourceRecord(NULL, UI_HOME_SOURCE_MOUNT_ABSENT);
-				return;
-			}
-			DrawDispose(msgBox);
-			deviceHandler_setDeviceAvailable(devices[DEVICE_CUR], true);
-			homeSourceRecord(devices[DEVICE_CUR],
-				UI_HOME_SOURCE_MOUNT_MOUNTED);
+		/* A confirmed source is always remounted, including same-source
+		 * EXI changes. Cancellation never reaches this lifecycle. */
+		if(deviceConfirmed && devices[DEVICE_CUR] != NULL && !sourceMount()) {
+			return;
 		}
 		else if(!deviceConfirmed) {
 			if(homeSourceLifecycleMounted()) {

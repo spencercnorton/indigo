@@ -156,9 +156,11 @@ See [File Browser](system.md#file-browser).
 | --- | --- |
 | Up, Down | Move a row. Hold to keep moving. |
 | Left, Right | Move to the other pane. |
-| L, R, C-stick | A page up or down. |
+| C-stick | A page up or down. |
 | A | Open a folder. In the left pane, start a file. |
-| X | Up a folder. |
+| X | Up a folder. At the top, choose that side's storage. |
+| L, R | Choose the left or the right side's storage. |
+| Y | Swap the two sides: the right pane becomes your source. |
 | Z | A file or folder: Copy, Move, Delete, Rename or Hide. `..`: Autoload this folder. |
 | START | Recently played games. |
 | B | Back to the face that opened it: System, or File Browser. |

@@ -93,6 +93,9 @@ static bool DrawUpdateFiles(uiDrawObj_t *page, const uiFilesSnapshot_t *snapshot
 static int UIMotion_ModeFromFlags(int off, int reduced) { return off ? 2 : reduced; }
 static float UIFiles_LeaveSeconds(int mode) { return mode == 2 ? 0.0f : 0.45f; }
 static void filesWait(float seconds) { CHECK(seconds > 0.0f); CHECK(curMenuLocation == ON_FILLIST); }
+/* The right pane lets its storage go once the page has left, before Home. */
+static int releases;
+static void filesOtherRelease(void) { CHECK(curMenuLocation == ON_FILLIST); ++releases; }
 '''
 
 SUFFIX = r'''
@@ -122,7 +125,11 @@ int main(void)
             uiDrawObj_t *before = filePanel;
             homePublishBrowserTransition(&filePanel);
             CHECK(filePanel == before && !before->disposed); /* Library stays live. */
-            if(browser == 0) { int left = leaves; back_list(directory, filePanel); CHECK(leaves == left + 1); }
+            if(browser == 0) {
+                int left = leaves, released = releases;
+                back_list(directory, filePanel);
+                CHECK(leaves == left + 1 && releases == released + 1);
+            }
             else if(browser == 1 || browser == 3) back_carousel(directory, browser == 3);
             else back_fullwidth(directory, false);
             CHECK(curMenuLocation == ON_OPTIONS);
