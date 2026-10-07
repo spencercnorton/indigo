@@ -636,6 +636,151 @@ bool upToParent(file_handle* entry)
 	return getParentPath(entry->name, entry->name);
 }
 
+/* The list's actions, one copy for Swiss's lists and the Library's. Each
+ * acts on directory[curSelection], the sorted listing's focused entry, as the
+ * loops always did. cardArt: the caller shows folder pictures (the
+ * carousel), which stop with the meta thread before a file operation. */
+
+/* X, and ".." outside the Library: up a folder. The folder left is the one
+ * scanFiles selects again (curFile); at the root the Source picker opens. */
+static void filesUp(const file_handle *parent)
+{
+	memcpy(&curFile, &curDir, sizeof(file_handle));
+	curDir.fileBase = parent->fileBase;
+	needsDeviceChange = upToParent(&curDir);
+	needsRefresh = 1;
+}
+
+/* The retained Library ends at /games. Its parent card and X return Home,
+ * keeping this listing ready for the next visit instead of opening Swiss's
+ * device-root browser. Within a folder, keep scanFiles' child selection. */
+static void gameflowNavigateParent(bool useGameflow, const file_handle *parent)
+{
+	char gamesRoot[PATHNAME_MAX];
+
+	if(useGameflow && devices[DEVICE_CUR] != NULL &&
+		devices[DEVICE_CUR]->initial != NULL) {
+		concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
+		if(UIGameflowLibrary_Locate(gamesRoot, curDir.name) ==
+			UI_GAMEFLOW_LIBRARY_LOCATION_ROOT) {
+			curMenuLocation = ON_OPTIONS;
+			return;
+		}
+	}
+	filesUp(parent);
+}
+
+/* A: open a folder, go up from "..", start a file, or with File Management
+ * manage one that can't start. */
+static void filesActivate(file_handle **directory, bool useGameflow)
+{
+	lockFile(directory[curSelection]);
+	//go into a folder or select a file
+	if(directory[curSelection]->fileType==IS_DIR) {
+		memcpy(&curDir, directory[curSelection], sizeof(file_handle));
+		needsRefresh=1;
+	}
+	else if(directory[curSelection]->fileType==IS_SPECIAL) {
+		gameflowNavigateParent(useGameflow, directory[curSelection]);
+	}
+	else if(directory[curSelection]->fileType==IS_FILE) {
+		memcpy(&curFile, directory[curSelection], sizeof(file_handle));
+		if(canLoadFileType(curFile.name, devices[DEVICE_CUR]->extraExtensions)) {
+			meta_thread_stop();
+			load_file();
+		}
+		else if(fileManagementAllowed()) {
+			meta_thread_stop();
+			needsRefresh = manage_file() ? 1:0;
+		}
+		memcpy(directory[curSelection], &curFile, sizeof(file_handle));
+	}
+	unlockFile(directory[curSelection]);
+}
+
+/* Z on "..": this folder opens at every start, or no longer does. Turning it
+ * on asks first. */
+static void filesToggleAutoload(void)
+{
+	if(!autoloadToggleConfirmed(&curDir.name[0], true)) {
+		return;
+	}
+	// Toggle autoload
+	if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
+	|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
+		memset(&swissSettings.autoload[0], 0, PATHNAME_MAX);
+	}
+	else {
+		strcpy(&swissSettings.autoload[0], &curDir.name[0]);
+	}
+	// Save config
+	uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving autoload\205"));
+	config_update_autoload(true);
+	DrawDispose(msgBox);
+}
+
+/* Z, with File Management: the Z menu on a file or a folder, Autoload on
+ * "..". True when the listing must be read again. */
+static bool filesManage(file_handle **directory, bool cardArt)
+{
+	if(!fileManagementAllowed()) {
+		return false;
+	}
+	lockFile(directory[curSelection]);
+	if(directory[curSelection]->fileType == IS_FILE || directory[curSelection]->fileType == IS_DIR) {
+		memcpy(&curFile, directory[curSelection], sizeof(file_handle));
+		meta_thread_stop();
+		if(cardArt) {
+			CardArt_Pause();
+		}
+		needsRefresh = manage_file() ? 1:0;
+		memcpy(directory[curSelection], &curFile, sizeof(file_handle));
+		while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
+		if(needsRefresh) {
+			// If we return from doing something with a file, refresh the device in the same dir we were at
+			unlockFile(directory[curSelection]);
+			return true;
+		}
+	}
+	else if(directory[curSelection]->fileType == IS_SPECIAL) {
+		filesToggleAutoload();
+	}
+	unlockFile(directory[curSelection]);
+	return false;
+}
+
+/* START, unless Recent List is Off: the Recent list. True when it opened. */
+static bool filesRecent(bool cardArt)
+{
+	if(swissSettings.recentListLevel > 0) {
+		meta_thread_stop();
+		if(cardArt) {
+			CardArt_Pause();
+		}
+		select_recent_entry();
+		return true;
+	}
+	return false;
+}
+
+/* B: back to Home. A Library list has no Swiss row to dim. */
+static void filesHome(file_handle **directory, bool useGameflow)
+{
+	curMenuLocation = ON_OPTIONS;
+	if(!useGameflow)
+		DrawUpdateFileBrowserButton(directory[curSelection]->uiObj, (curMenuLocation == ON_FILLIST) ? B_SELECTED:B_NOSELECT);
+}
+
+/* The DK Bongos' clap: on to the next Bongo game. */
+static void filesBarrelGame(uiDrawObj_t *loadingBox)
+{
+	if(padsButtonsHeld() & BUTTON_CLAP) {
+		DrawUpdateProgressLoading(loadingBox, +1);
+		curSelection = meta_find_barrel_game(curSelection);
+		DrawUpdateProgressLoading(loadingBox, -1);
+	}
+}
+
 uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
 {
 	memset(txtbuffer,0,sizeof(txtbuffer));
@@ -690,88 +835,26 @@ uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj
 				curSelection = (curSelection + FILES_PER_PAGE > num_files-1) ? num_files-1 : (curSelection + FILES_PER_PAGE) % num_files;
 			}
 		}
-		if(padsButtonsHeld() & BUTTON_CLAP) {
-			DrawUpdateProgressLoading(loadingBox, +1);
-			curSelection = meta_find_barrel_game(curSelection);
-			DrawUpdateProgressLoading(loadingBox, -1);
-		}
+		filesBarrelGame(loadingBox);
 		
 		if(browserButtons & BUTTON_A) {
-			lockFile(directory[curSelection]);
-			//go into a folder or select a file
-			if(directory[curSelection]->fileType==IS_DIR) {
-				memcpy(&curDir, directory[curSelection], sizeof(file_handle));
-				needsRefresh=1;
-			}
-			else if(directory[curSelection]->fileType==IS_SPECIAL) {
-				memcpy(&curFile, &curDir, sizeof(file_handle));
-				curDir.fileBase = directory[curSelection]->fileBase;
-				needsDeviceChange = upToParent(&curDir);
-				needsRefresh=1;
-			}
-			else if(directory[curSelection]->fileType==IS_FILE) {
-				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
-				if(canLoadFileType(curFile.name, devices[DEVICE_CUR]->extraExtensions)) {
-					meta_thread_stop();
-					load_file();
-				}
-				else if(fileManagementAllowed()) {
-					meta_thread_stop();
-					needsRefresh = manage_file() ? 1:0;
-				}
-				memcpy(directory[curSelection], &curFile, sizeof(file_handle));
-			}
-			unlockFile(directory[curSelection]);
+			filesActivate(directory, false);
 			break;
 		}
 		if(browserButtons & BUTTON_X) {
-			memcpy(&curFile, &curDir, sizeof(file_handle));
-			curDir.fileBase = directory[0]->fileBase;
-			needsDeviceChange = upToParent(&curDir);
-			needsRefresh=1;
+			filesUp(directory[0]);
 			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
 			break;
 		}
-		if((browserButtons & BUTTON_Z) && fileManagementAllowed()) {
-			lockFile(directory[curSelection]);
-			if(directory[curSelection]->fileType == IS_FILE || directory[curSelection]->fileType == IS_DIR) {
-				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
-				meta_thread_stop();
-				needsRefresh = manage_file() ? 1:0;
-				memcpy(directory[curSelection], &curFile, sizeof(file_handle));
-				while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
-				if(needsRefresh) {
-					// If we return from doing something with a file, refresh the device in the same dir we were at
-					unlockFile(directory[curSelection]);
-					break;
-				}
-			}
-			else if(directory[curSelection]->fileType == IS_SPECIAL &&
-				autoloadToggleConfirmed(&curDir.name[0], true)) {
-				// Toggle autoload
-				if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
-				|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
-					memset(&swissSettings.autoload[0], 0, PATHNAME_MAX);
-				}
-				else {
-					strcpy(&swissSettings.autoload[0], &curDir.name[0]);
-				}
-				// Save config
-				uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving autoload\205"));
-				config_update_autoload(true);
-				DrawDispose(msgBox);
-			}
-			unlockFile(directory[curSelection]);
+		if((browserButtons & BUTTON_Z) && filesManage(directory, false)) {
+			break;
 		}
 		
-		if((browserButtons & BUTTON_START) && swissSettings.recentListLevel > 0) {
-			meta_thread_stop();
-			select_recent_entry();
+		if((browserButtons & BUTTON_START) && filesRecent(false)) {
 			break;
 		}
 		if(browserButtons & BUTTON_B) {
-			curMenuLocation = ON_OPTIONS;
-			DrawUpdateFileBrowserButton(directory[curSelection]->uiObj, (curMenuLocation == ON_FILLIST) ? B_SELECTED:B_NOSELECT);
+			filesHome(directory, false);
 			break;
 		}
 		while (padsButtonsHeld() & waitButtons) {
@@ -969,28 +1052,6 @@ static bool gameflowInsideFolder(void)
 	concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
 	return UIGameflowLibrary_IsInsideFolder(
 		UIGameflowLibrary_LocateFolders(gamesRoot, curDir.name));
-}
-
-/* The retained Library ends at /games. Its parent card and X return Home,
- * keeping this listing ready for the next visit instead of opening Swiss's
- * device-root browser. Within a folder, keep scanFiles' child selection. */
-static void gameflowNavigateParent(bool useGameflow, const file_handle *parent)
-{
-	char gamesRoot[PATHNAME_MAX];
-
-	if(useGameflow && devices[DEVICE_CUR] != NULL &&
-		devices[DEVICE_CUR]->initial != NULL) {
-		concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
-		if(UIGameflowLibrary_Locate(gamesRoot, curDir.name) ==
-			UI_GAMEFLOW_LIBRARY_LOCATION_ROOT) {
-			curMenuLocation = ON_OPTIONS;
-			return;
-		}
-	}
-	memcpy(&curFile, &curDir, sizeof(file_handle));
-	curDir.fileBase = parent->fileBase;
-	needsDeviceChange = upToParent(&curDir);
-	needsRefresh = 1;
 }
 
 static bool gameflowEnterLibraryFromHome(void)
@@ -2429,11 +2490,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				gameflowSnapTransition = step.snap;
 			}
 		}
-		if(padsButtonsHeld() & BUTTON_CLAP) {
-			DrawUpdateProgressLoading(loadingBox, +1);
-			curSelection = meta_find_barrel_game(curSelection);
-			DrawUpdateProgressLoading(loadingBox, -1);
-		}
+		filesBarrelGame(loadingBox);
 		
 		if((browserButtons & BUTTON_A) || openSettings) {
 			/* What follows may start a game or read the listing again:
@@ -2487,28 +2544,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				while(padsButtonsHeld() & PAD_BUTTON_Y) VIDEO_WaitVSync();
 				break;
 			}
-			lockFile(directory[curSelection]);
-			//go into a folder or select a file
-			if(directory[curSelection]->fileType==IS_DIR) {
-				memcpy(&curDir, directory[curSelection], sizeof(file_handle));
-				needsRefresh=1;
-			}
-			else if(directory[curSelection]->fileType==IS_SPECIAL){
-				gameflowNavigateParent(useGameflow, directory[curSelection]);
-			}
-			else if(directory[curSelection]->fileType==IS_FILE){
-				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
-				if(canLoadFileType(curFile.name, devices[DEVICE_CUR]->extraExtensions)) {
-					meta_thread_stop();
-					load_file();
-				}
-				else if(fileManagementAllowed()) {
-					meta_thread_stop();
-					needsRefresh = manage_file() ? 1:0;
-				}
-				memcpy(directory[curSelection], &curFile, sizeof(file_handle));
-			}
-			unlockFile(directory[curSelection]);
+			filesActivate(directory, useGameflow);
 			break;
 		}
 		if(browserButtons & BUTTON_X) {
@@ -2516,37 +2552,8 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
 			break;
 		}
-		if((browserButtons & BUTTON_Z) && fileManagementAllowed()) {
-			lockFile(directory[curSelection]);
-			if(directory[curSelection]->fileType == IS_FILE || directory[curSelection]->fileType == IS_DIR) {
-				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
-				meta_thread_stop();
-				CardArt_Pause();
-				needsRefresh = manage_file() ? 1:0;
-				memcpy(directory[curSelection], &curFile, sizeof(file_handle));
-				while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
-				if(needsRefresh) {
-					// If we return from doing something with a file, refresh the device in the same dir we were at
-					unlockFile(directory[curSelection]);
-					break;
-				}
-			}
-			else if(directory[curSelection]->fileType == IS_SPECIAL &&
-				autoloadToggleConfirmed(&curDir.name[0], true)) {
-				// Toggle autoload
-				if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
-				|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
-					memset(&swissSettings.autoload[0], 0, PATHNAME_MAX);
-				}
-				else {
-					strcpy(&swissSettings.autoload[0], &curDir.name[0]);
-				}
-				// Save config
-				uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving autoload\205"));
-				config_update_autoload(true);
-				DrawDispose(msgBox);
-			}
-			unlockFile(directory[curSelection]);
+		if((browserButtons & BUTTON_Z) && filesManage(directory, true)) {
+			break;
 		}
 		
 		if((browserButtons & BUTTON_B) && useGameflow &&
@@ -2558,15 +2565,10 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			break;
 		}
 		if(browserButtons & BUTTON_B) {
-			curMenuLocation = ON_OPTIONS;
-			if(!useGameflow)
-				DrawUpdateFileBrowserButton(directory[curSelection]->uiObj, (curMenuLocation == ON_FILLIST) ? B_SELECTED:B_NOSELECT);
+			filesHome(directory, useGameflow);
 			break;
 		}
-		if((browserButtons & BUTTON_START) && swissSettings.recentListLevel > 0) {
-			meta_thread_stop();
-			CardArt_Pause();
-			select_recent_entry();
+		if((browserButtons & BUTTON_START) && filesRecent(true)) {
 			break;
 		}
 		while (padsButtonsHeld() & waitButtons) {
@@ -2678,88 +2680,26 @@ uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawO
 				curSelection = (curSelection + FILES_PER_PAGE_FULLWIDTH > num_files-1) ? num_files-1 : (curSelection + FILES_PER_PAGE_FULLWIDTH) % num_files;
 			}
 		}
-		if(padsButtonsHeld() & BUTTON_CLAP) {
-			DrawUpdateProgressLoading(loadingBox, +1);
-			curSelection = meta_find_barrel_game(curSelection);
-			DrawUpdateProgressLoading(loadingBox, -1);
-		}
+		filesBarrelGame(loadingBox);
 		
 		if(browserButtons & BUTTON_A) {
-			lockFile(directory[curSelection]);
-			//go into a folder or select a file
-			if(directory[curSelection]->fileType==IS_DIR) {
-				memcpy(&curDir, directory[curSelection], sizeof(file_handle));
-				needsRefresh=1;
-			}
-			else if(directory[curSelection]->fileType==IS_SPECIAL) {
-				memcpy(&curFile, &curDir, sizeof(file_handle));
-				curDir.fileBase = directory[curSelection]->fileBase;
-				needsDeviceChange = upToParent(&curDir);
-				needsRefresh=1;
-			}
-			else if(directory[curSelection]->fileType==IS_FILE) {
-				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
-				if(canLoadFileType(curFile.name, devices[DEVICE_CUR]->extraExtensions)) {
-					meta_thread_stop();
-					load_file();
-				}
-				else if(fileManagementAllowed()) {
-					meta_thread_stop();
-					needsRefresh = manage_file() ? 1:0;
-				}
-				memcpy(directory[curSelection], &curFile, sizeof(file_handle));
-			}
-			unlockFile(directory[curSelection]);
+			filesActivate(directory, false);
 			break;
 		}
 		if(browserButtons & BUTTON_X) {
-			memcpy(&curFile, &curDir, sizeof(file_handle));
-			curDir.fileBase = directory[0]->fileBase;
-			needsDeviceChange = upToParent(&curDir);
-			needsRefresh=1;
+			filesUp(directory[0]);
 			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
 			break;
 		}
-		if((browserButtons & BUTTON_Z) && fileManagementAllowed()) {
-			lockFile(directory[curSelection]);
-			if(directory[curSelection]->fileType == IS_FILE || directory[curSelection]->fileType == IS_DIR) {
-				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
-				meta_thread_stop();
-				needsRefresh = manage_file() ? 1:0;
-				memcpy(directory[curSelection], &curFile, sizeof(file_handle));
-				while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
-				if(needsRefresh) {
-					// If we return from doing something with a file, refresh the device in the same dir we were at
-					unlockFile(directory[curSelection]);
-					break;
-				}
-			}
-			else if(directory[curSelection]->fileType == IS_SPECIAL &&
-				autoloadToggleConfirmed(&curDir.name[0], true)) {
-				// Toggle autoload
-				if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
-				|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
-					memset(&swissSettings.autoload[0], 0, PATHNAME_MAX);
-				}
-				else {
-					strcpy(&swissSettings.autoload[0], &curDir.name[0]);
-				}
-				// Save config
-				uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving autoload\205"));
-				config_update_autoload(true);
-				DrawDispose(msgBox);
-			}
-			unlockFile(directory[curSelection]);
+		if((browserButtons & BUTTON_Z) && filesManage(directory, false)) {
+			break;
 		}
 		
-		if((browserButtons & BUTTON_START) && swissSettings.recentListLevel > 0) {
-			meta_thread_stop();
-			select_recent_entry();
+		if((browserButtons & BUTTON_START) && filesRecent(false)) {
 			break;
 		}
 		if(browserButtons & BUTTON_B) {
-			curMenuLocation = ON_OPTIONS;
-			DrawUpdateFileBrowserButton(directory[curSelection]->uiObj, (curMenuLocation == ON_FILLIST) ? B_SELECTED:B_NOSELECT);
+			filesHome(directory, false);
 			break;
 		}
 		while (padsButtonsHeld() & waitButtons) {

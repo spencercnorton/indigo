@@ -35,7 +35,12 @@ def build_source(read):
     # These are the actual activation and parent/back branches, not a policy
     # facsimile. The surrounding retained game-detail path is not entered by
     # a parent card. Its separate existing tests continue to cover game launch.
-    parent = function(carousel, "else if(directory[curSelection]->fileType==IS_SPECIAL)")
+    actions = carousel
+    if "static void filesActivate(" in swiss:
+        # The lists' one copy of A, which the carousel calls as its own.
+        assert "filesActivate(directory, useGameflow);" in carousel
+        actions = function(swiss, "static void filesActivate(")
+    parent = function(actions, "else if(directory[curSelection]->fileType==IS_SPECIAL)")
     parent = parent[parent.index("{") + 1:parent.rindex("}")]
     x = function(carousel, "if(browserButtons & BUTTON_X)")
     b = carousel[carousel.index("if((browserButtons & BUTTON_B) && useGameflow &&"):]
@@ -66,6 +71,9 @@ def build_source(read):
                    "static uiGameflowLibraryMode_t gameflowLibraryMode(",
                    "static int gameflowLibraryEntries(", "static bool gameflowInsideFolder("):
         parts.append(function(swiss, marker))
+    for marker in ("static void filesUp(", "static void filesHome("):
+        if marker in swiss:
+            parts.append(function(swiss, marker))
     parts += [helper, function(swiss, "static bool gameflowEnterLibraryFromHome("),
               function(swiss, "static void homePublishBrowserTransition("),
               function(swiss, "static file_handle *folderArtPicture("),

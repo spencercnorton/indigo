@@ -39,6 +39,10 @@ def extract_function(source: str, marker: str) -> str:
 
 menu = extract_function(SWISS, "void menu_loop()")
 carousel = extract_function(SWISS, "uiDrawObj_t* renderFileCarousel(")
+# A on an entry the Library doesn't open: the lists' one copy, which the
+# carousel calls with its own useGameflow.
+LEGACY_ACTIVATE = "filesActivate(directory, useGameflow);"
+activate_entry = extract_function(SWISS, "static void filesActivate(")
 requested = menu.index("int fileBrowserType = swissSettings.fileBrowserType")
 games_preference = menu.index(
     "fileBrowserType = swissSettings.gameBrowserType", requested
@@ -170,8 +174,9 @@ assert "needsRefresh = 0;" in autoload_lookup
 detail_policy = carousel.index("UIGameflowLibrary_UsesRetainedDetail(")
 folder_detail = carousel.index("gameflowResolveAndLoadFolder(", detail_policy)
 image_detail = carousel.index("gameflowLoadImageWithContext(", folder_detail)
-legacy_fallback = carousel.index("load_file();", image_detail)
+legacy_fallback = carousel.index(LEGACY_ACTIVATE, image_detail)
 assert detail_policy < folder_detail < image_detail < legacy_fallback
+assert "load_file();" in activate_entry[activate_entry.index("fileType==IS_FILE"):]
 
 image_loader = extract_function(SWISS, "static bool gameflowLoadImageWithContext(")
 assert "gameflowReadResolverHeader(" in image_loader
@@ -297,19 +302,20 @@ def check_layouts(swiss: str) -> None:
     # never opens Detail and a game beside it always does.
     assert "gameflowEntryMode(gameflowMode, directory[curSelection])" in entry
     activate = carousel[carousel.index("if((browserButtons & BUTTON_A) || openSettings) {"):]
-    activate = activate[:activate.index("//go into a folder or select a file")]
+    activate = activate[:activate.index(LEGACY_ACTIVATE)]
     assert "gameflowEntryMode(gameflowMode, directory[curSelection]);" in activate
     assert "if(entryMode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS) {" in activate
     # Inside a folder, B goes up it before it can reach Home.
     up = carousel.index("if((browserButtons & BUTTON_B) && useGameflow &&\n\t\t\tgameflowInsideFolder()) {")
-    home = carousel.index("curMenuLocation = ON_OPTIONS;", up)
+    home = carousel.index("filesHome(directory, useGameflow);", up)
+    assert "curMenuLocation = ON_OPTIONS;" in extract_function(swiss, "static void filesHome(")
     assert "gameflowNavigateParent(useGameflow, directory[0]);" in carousel[up:home]
     branch = carousel.index("if((browserButtons & BUTTON_A) || openSettings) {")
     loaders = carousel.index("gameflowSnapshot, openSettings);", branch)
     loaders = carousel.index("gameflowSnapshot, openSettings);", loaders + 1)
     stop = carousel.index("if(openSettings) {", loaders)
     stop_break = carousel.index("break;", stop)
-    legacy = carousel.index("//go into a folder or select a file", stop)
+    legacy = carousel.index(LEGACY_ACTIVATE, stop)
     assert branch < loaders < stop < stop_break < legacy
     for loader in (folder, image):
         assert "bool openSettings)" in loader
@@ -330,8 +336,29 @@ check_layouts(SWISS)
 parent_navigation = extract_function(SWISS, "static void gameflowNavigateParent(")
 assert parent_navigation.index("UI_GAMEFLOW_LIBRARY_LOCATION_ROOT") < \
     parent_navigation.index("curMenuLocation = ON_OPTIONS;") < \
-    parent_navigation.index("return;") < parent_navigation.index("upToParent(&curDir)")
-assert carousel.count("gameflowNavigateParent(useGameflow,") == 3
+    parent_navigation.index("return;") < parent_navigation.index("filesUp(parent);")
+assert "upToParent(&curDir)" in extract_function(SWISS, "static void filesUp(")
+# Its three: X, B inside a folder, and A on ".." through filesActivate.
+assert carousel.count("gameflowNavigateParent(useGameflow,") == 2
+assert carousel.count(LEGACY_ACTIVATE) == 1
+# The shared actions take the caller's place as flags: only the carousel is
+# the Library (".." and B) and shows folder pictures (stopped before Z/START).
+assert carousel.count("filesHome(directory, useGameflow);") == 1
+assert carousel.count("filesManage(directory, true)") == 1
+assert carousel.count("filesRecent(true)") == 1
+for name in ("uiDrawObj_t* renderFileBrowser(", "uiDrawObj_t* renderFileFullwidth("):
+    swiss_list = extract_function(SWISS, name)
+    for call in ("filesActivate(directory, false);", "filesManage(directory, false)",
+                 "filesRecent(false)", "filesHome(directory, false);"):
+        assert swiss_list.count(call) == 1, (name, call)
+    assert "useGameflow" not in swiss_list, name
+for name in ("static bool filesManage(", "static bool filesRecent("):
+    shared = extract_function(SWISS, name)
+    assert shared.index("meta_thread_stop();") < \
+        shared.index("if(cardArt) {\n\t\t\tCardArt_Pause();\n\t\t}"), name
+special = activate_entry.index("else if(directory[curSelection]->fileType==IS_SPECIAL) {")
+assert activate_entry.index("gameflowNavigateParent(useGameflow, directory[curSelection]);",
+                            special) < activate_entry.index("else if", special + 1)
 layout_mutants = (
     ("an unknown layout is kept", "swissSettings.libraryLayout < UI_GAMEFLOW_LAYOUT_COUNT ?",
      "swissSettings.libraryLayout < 99 ?"),

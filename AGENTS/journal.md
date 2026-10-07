@@ -1,3 +1,29 @@
+## 2026-10-07 — One copy of the file list's actions
+
+Behaviour-free groundwork for a new file list. renderFileBrowser,
+renderFileFullwidth and renderFileCarousel each had their own copy of A,
+X, Z (with Autoload on ".."), START, B and the Bongo clap. They now call
+filesActivate, filesUp, filesManage (and filesToggleAutoload), filesRecent,
+filesHome and filesBarrelGame in swiss.c, in the same order with the same
+conditions, locks and returns. The carousel's differences are parameters:
+useGameflow (".." through gameflowNavigateParent; no Swiss row to dim on
+B) and cardArt (CardArt_Pause after meta_thread_stop on Z and START).
+gameflowNavigateParent moved up beside them and ends in filesUp, which is
+the old tail. Each helper reads directory[curSelection] as the loops did.
+
+Tests that pinned the copies' text now pin the helpers:
+audit_gameflow_dispatch (the carousel's legacy A, its three parent routes,
+B inside a folder before Home), test_browser_home_lifecycle (B arms with
+filesHome compiled in), test_gameflow_folder_navigation (".." taken from
+filesActivate; filesUp and filesHome in the harness; older revisions still
+replay), test_settings_file (three config_update_autoload calls, each
+with its box). No upstream file changed.
+
+Validation: host plain and contracts lanes, source checks, the whitespace
+and upstream checks; a preview DOL through the Emulator smoke routes (DVD
+and GC Loader) and the folders route, built from this commit and its
+parent: the same 155, 158 and 299 checks pass on both, none fail.
+
 ## 2026-10-06 — Take latched presses around every device read; whole presses in the emulator test
 
 Follow-up to the Library and Apps lost-press fix. A survey of every

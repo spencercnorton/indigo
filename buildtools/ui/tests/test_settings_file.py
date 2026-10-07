@@ -801,7 +801,7 @@ class SettingsFileTest(unittest.TestCase):
         self.assertIn("!= (s32)configFile->size", extract_function(CONFIG_C, "char* config_file_read("))
         self.assertEqual(SWISS_C.count("config_update_autoload(true);"),
                          SWISS_C.count("Saving autoload\\205"))
-        self.assertEqual(SWISS_C.count("config_update_autoload(true);"), 5)
+        self.assertEqual(SWISS_C.count("config_update_autoload(true);"), 3)
         self.assertNotIn("config_update_global(", SWISS_C)
 
     def saved(self, existing: str, changes: str = "", game: bool = False) -> str:

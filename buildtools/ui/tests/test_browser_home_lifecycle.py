@@ -193,7 +193,8 @@ class BrowserHomeLifecycle(unittest.TestCase):
         cls.queue = '\n'.join(block(FRAME, marker) for marker in (
             'static uiDrawObj_t* addVideoEvent(', 'static void disposeEvent(',
             'uiDrawObj_t* DrawPublish(', 'uiDrawObj_t* DrawRepublish(', 'void DrawDispose('))
-        cls.arms = ''
+        # The arms' one copy of B (Home), then each renderer's arm.
+        cls.arms = block(SWISS, 'static void filesHome(') + '\n'
         for name, marker in (('list', 'uiDrawObj_t* renderFileBrowser('),
                              ('carousel', 'uiDrawObj_t* renderFileCarousel('),
                              ('fullwidth', 'uiDrawObj_t* renderFileFullwidth(')):
