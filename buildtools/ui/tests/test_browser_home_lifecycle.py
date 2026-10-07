@@ -83,6 +83,16 @@ static void folderArtClose(void)
 }
 static void DrawUpdateFileBrowserButton(uiDrawObj_t *event, int mode)
 { CHECK(event != NULL && !event->disposed); CHECK(mode == B_NOSELECT); }
+/* The File Browser's B: its page goes, waiting for that, before Home. */
+typedef struct { int leaving; } uiFilesSnapshot_t;
+static uiFilesSnapshot_t filesSnapshot;
+static struct { int disableUIAnimations, reduceUIAnimations; } swissSettings;
+static int leaves;
+static bool DrawUpdateFiles(uiDrawObj_t *page, const uiFilesSnapshot_t *snapshot)
+{ CHECK(page != NULL && !page->disposed && snapshot->leaving); ++leaves; return true; }
+static int UIMotion_ModeFromFlags(int off, int reduced) { return off ? 2 : reduced; }
+static float UIFiles_LeaveSeconds(int mode) { return mode == 2 ? 0.0f : 0.45f; }
+static void filesWait(float seconds) { CHECK(seconds > 0.0f); CHECK(curMenuLocation == ON_FILLIST); }
 '''
 
 SUFFIX = r'''
@@ -112,7 +122,7 @@ int main(void)
             uiDrawObj_t *before = filePanel;
             homePublishBrowserTransition(&filePanel);
             CHECK(filePanel == before && !before->disposed); /* Library stays live. */
-            if(browser == 0) back_list(directory, false);
+            if(browser == 0) { int left = leaves; back_list(directory, filePanel); CHECK(leaves == left + 1); }
             else if(browser == 1 || browser == 3) back_carousel(directory, browser == 3);
             else back_fullwidth(directory, false);
             CHECK(curMenuLocation == ON_OPTIONS);
@@ -166,8 +176,8 @@ int main(void)
 {
     page(EV_BACKGROUND);
     CHECK(!_FrameCovered(videoEventQueue));
-    const int pages[4] = {EV_SETTINGS, EV_CHEATS, EV_SAVES, EV_SAVE_CUBES};
-    for(int i = 0; i < 4; ++i) {
+    const int pages[5] = {EV_SETTINGS, EV_CHEATS, EV_SAVES, EV_SAVE_CUBES, EV_FILES};
+    for(int i = 0; i < 5; ++i) {
         uiDrawObj_t *covering = page(pages[i]);
         CHECK(_FrameCovered(videoEventQueue));
         DrawDispose(covering);
@@ -195,12 +205,15 @@ class BrowserHomeLifecycle(unittest.TestCase):
             'uiDrawObj_t* DrawPublish(', 'uiDrawObj_t* DrawRepublish(', 'void DrawDispose('))
         # The arms' one copy of B (Home), then each renderer's arm.
         cls.arms = block(SWISS, 'static void filesHome(') + '\n'
-        for name, marker in (('list', 'uiDrawObj_t* renderFileBrowser('),
-                             ('carousel', 'uiDrawObj_t* renderFileCarousel('),
+        for name, marker in (('carousel', 'uiDrawObj_t* renderFileCarousel('),
                              ('fullwidth', 'uiDrawObj_t* renderFileFullwidth(')):
             arm = block(block(SWISS, marker), 'if(browserButtons & BUTTON_B)')
             cls.arms += f'''static void back_{name}(file_handle **directory, bool useGameflow)
 {{ const unsigned browserButtons = BUTTON_B; (void)useGameflow; do {{ {arm} }} while(0); }}\n'''
+        # The File Browser (renderFileList): the page leaves, then Home.
+        arm = block(block(SWISS, 'static uiDrawObj_t* renderFileList('), 'if(buttons & BUTTON_B)')
+        cls.arms += f'''static void back_list(file_handle **directory, uiDrawObj_t *filePanel)
+{{ const unsigned buttons = BUTTON_B; do {{ {arm} }} while(0); }}\n'''
 
     def run_harness(self, helper, sanitized=False):
         with tempfile.TemporaryDirectory() as tmp:
@@ -239,12 +252,13 @@ class BrowserHomeLifecycle(unittest.TestCase):
         self.assertNotEqual(self.run_harness(reordered).returncode, 0)
 
     def test_a_full_screen_page_covers_the_frame(self):
-        # While Settings, the cheats or Memory Cards (its folder chooser's
-        # list, or its cube screen) are up, the background is not drawn:
+        # While Settings, the cheats, Memory Cards (its folder chooser's
+        # list, or its cube screen) or the File Browser are up, the
+        # background is not drawn:
         # _FrameCovered decides it from the live queue.
         covered = block(FRAME, 'static bool _FrameCovered(')
         types = ('enum { EV_BACKGROUND = 100, EV_SETTINGS, EV_CHEATS, EV_SETTINGSLIST, EV_SAVES, '
-                 'EV_SAVE_CUBES };\n')
+                 'EV_SAVE_CUBES, EV_FILES };\n')
         def run(rule):
             with tempfile.TemporaryDirectory() as tmp:
                 source = Path(tmp) / 'covered.c'; binary = Path(tmp) / 'covered'
@@ -260,8 +274,10 @@ class BrowserHomeLifecycle(unittest.TestCase):
         # A page already disposed must not keep the background hidden.
         self.assertIn('!event->disposed && ', covered)
         self.assertNotEqual(run(covered.replace('!event->disposed && ', '')).returncode, 0)
-        # Memory Cards' cube screen draws its own backdrop over the frame.
+        # Memory Cards' cube screen and the File Browser draw their own
+        # backdrop over the frame.
         self.assertNotEqual(run(covered.replace(' ||\n\t\t\tevent->type == EV_SAVE_CUBES', '')).returncode, 0)
+        self.assertNotEqual(run(covered.replace(' || event->type == EV_FILES', '')).returncode, 0)
 
     def test_actual_menu_wiring_and_mutants(self):
         require_wiring(SWISS)

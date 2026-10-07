@@ -10,6 +10,39 @@
   "trig": 541,
   "vertices": 5202
  },
+ "files": {
+  "begins": 2067,
+  "copy_pixels": 0,
+  "hash": "4169c8dbe0816b82",
+  "minmax": 0,
+  "scene": "files",
+  "sqrtf": 232,
+  "state": 24,
+  "trig": 0,
+  "vertices": 9604
+ },
+ "files-right": {
+  "begins": 2073,
+  "copy_pixels": 0,
+  "hash": "8b7756c67f77283d",
+  "minmax": 0,
+  "scene": "files-right",
+  "sqrtf": 232,
+  "state": 24,
+  "trig": 0,
+  "vertices": 9628
+ },
+ "files-wide": {
+  "begins": 2857,
+  "copy_pixels": 0,
+  "hash": "8ffe2bc39ee3afeb",
+  "minmax": 0,
+  "scene": "files-wide",
+  "sqrtf": 232,
+  "state": 24,
+  "trig": 0,
+  "vertices": 12796
+ },
  "hint-round-rect": {
   "begins": 2,
   "copy_pixels": 0,

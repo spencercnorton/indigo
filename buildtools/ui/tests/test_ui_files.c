@@ -19,6 +19,7 @@
 
 #include "ui_files.h"
 #include "ui_hint.h"
+#include "ui_motion.h"
 
 static unsigned int checks;
 
@@ -675,6 +676,48 @@ static void testFitPath(void)
 			CHECK((float)measure(out) * 0.46f <= (float)width);
 		}
 	}
+}
+
+/* The device's name over a pane keeps clear of the SOURCE chip and the
+ * free box, in both screen shapes, at about the IPL font's width. */
+static void testFitDevice(void)
+{
+	static const char *const names[] = {
+		"GC Loader", "SD Card - SD2SP2", "SD Card - Slot B", "Memory Card - Slot A",
+		"Wiikey / Wasp Fusion", "USB Gecko - Slot B only"
+	};
+	uiFilesLayout_t layouts[2];
+	char out[48];
+	int l, n, p, read;
+
+	UIFiles_Layout(0.0f, 640.0f, &layouts[0]);
+	UIFiles_Layout(-106.5f, 746.5f, &layouts[1]);
+	for(l = 0; l < 2; ++l) {
+		for(n = 0; n < (int)(sizeof(names) / sizeof(names[0])); ++n) {
+			for(p = 0; p < UI_FILES_PANES; ++p) {
+				for(read = 0; read < 2; ++read) {
+					const uiFilesRect_t *box = &layouts[l].pane[p];
+					int freeWidth = read ? 92 : 72, word = read ? 0 : 23;
+					float scale = UIFiles_FitDevice(out, sizeof(out), names[n], &layouts[l],
+						p, p == UI_FILES_LEFT, freeWidth, word, measure);
+					int right = box->x0 + 2 + (int)((float)measure(out) * scale + 0.5f) +
+						(p == UI_FILES_LEFT ? 10 + UI_FILES_CHIP_W : 0);
+
+					CHECK(out[0] != '\0');
+					CHECK(scale >= UI_FILES_DEVICE_MIN_SCALE && scale <= UI_FILES_DEVICE_SCALE);
+					CHECK(right + 8 <= box->x1 - freeWidth - (word ? word + 8 : 0));
+				}
+			}
+		}
+	}
+	/* Short: whole at 0.92 (this measure is wider than the font, so in
+	 * Menu Widescreen). Long in 4:3 beside the chip: cut at its end. */
+	CHECK(UIFiles_FitDevice(out, sizeof(out), "GC Loader", &layouts[1], 0, true, 72, 23,
+		measure) == UI_FILES_DEVICE_SCALE);
+	CHECK_TEXT(out, "GC Loader");
+	CHECK(UIFiles_FitDevice(out, sizeof(out), "Memory Card - Slot A", &layouts[0], 0, true,
+		92, 0, measure) == UI_FILES_DEVICE_MIN_SCALE);
+	CHECK(strncmp(out, "Memory", 6) == 0 && out[strlen(out) - 1] == '\205');
 }
 
 /* ------------------------------------------------------------------------
@@ -1453,6 +1496,45 @@ static void testQuestions(void)
 	CHECK(!UIFiles_ParseQuestion("x", NULL));
 }
 
+/* The page comes as Memory Cards' does and goes before Home shows: the Home
+ * cube going back, the paper, then the words; on B the words first, the
+ * paper, and the cube back by the time leaving ends. */
+static void testStage(void)
+{
+	const float leave[3] = {0.45f, 0.2f, 0.0f};
+	uiFilesStage_t stage;
+	int mode;
+
+	UIFiles_Stage(0.0f, -1.0f, UI_MOTION_FULL, &stage);
+	CHECK(stage.handover == 1.0f && stage.paper == 0.0f && stage.chrome == 0.0f);
+	UIFiles_Stage(0.2f, -1.0f, UI_MOTION_FULL, &stage);
+	CHECK(stage.handover > 0.0f && stage.handover < 1.0f);
+	CHECK(stage.paper > 0.0f && stage.chrome == 0.0f);
+	UIFiles_Stage(0.4f, -1.0f, UI_MOTION_FULL, &stage);
+	CHECK(stage.handover == 0.0f && stage.chrome > 0.0f && stage.chrome < 1.0f);
+	UIFiles_Stage(0.6f, -1.0f, UI_MOTION_FULL, &stage);
+	CHECK(stage.handover == 0.0f && stage.paper == 1.0f && stage.chrome == 1.0f);
+	UIFiles_Stage(0.1f, -1.0f, UI_MOTION_REDUCED, &stage);
+	CHECK(stage.handover == 0.0f && stage.paper == stage.chrome &&
+		stage.paper > 0.0f && stage.paper < 1.0f);
+	UIFiles_Stage(0.0f, -1.0f, UI_MOTION_OFF, &stage);
+	CHECK(stage.handover == 0.0f && stage.paper == 1.0f && stage.chrome == 1.0f);
+	for(mode = UI_MOTION_FULL; mode <= UI_MOTION_OFF; ++mode) {
+		CHECK(UIFiles_LeaveSeconds(mode) == leave[mode]);
+		/* Fully open, then all the way out: nothing of the page left. */
+		UIFiles_Stage(5.0f, UIFiles_LeaveSeconds(mode), mode, &stage);
+		CHECK(stage.paper == 0.0f && stage.chrome == 0.0f);
+		if(mode == UI_MOTION_FULL) {
+			CHECK(stage.handover == 1.0f);
+		}
+	}
+	/* Full: the words go first, the cube comes back only once they have. */
+	UIFiles_Stage(5.0f, 0.12f, UI_MOTION_FULL, &stage);
+	CHECK(stage.chrome == 0.0f && stage.paper > 0.0f && stage.handover == 0.0f);
+	UIFiles_Stage(5.0f, 0.35f, UI_MOTION_FULL, &stage);
+	CHECK(stage.handover > 0.0f && stage.handover < 1.0f);
+}
+
 int main(void)
 {
 	testLayout();
@@ -1463,6 +1545,7 @@ int main(void)
 	testSizes();
 	testFitName();
 	testFitPath();
+	testFitDevice();
 	testHints();
 	testStorage();
 	testAvailability();
@@ -1471,6 +1554,7 @@ int main(void)
 	testLanding();
 	testFocusAfter();
 	testQuestions();
+	testStage();
 	printf("test_ui_files: %u checks passed\n", checks);
 	return 0;
 }

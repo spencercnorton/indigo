@@ -1,3 +1,101 @@
+## 2026-10-07 — The File Browser's two panes in place of Swiss's lists
+
+Second step of the two-pane File Browser: the screen, everywhere outside the
+Library. menu_loop's dispatch is now the Library wherever
+gameflowLibraryMode says so, else renderFileList; File Browser Type is no
+longer read, and the scene requests moved into the Library's branch (the
+File Browser asks for none, so Memory Cards' backdrop hands the cube over
+where Home or the Library left it; it records which and asks for it again
+on a return, after Swiss's game screen turned it). The legacy renderers
+stay compiled and unreachable until they are deleted; renderFileCarousel's
+fallback (no memory for its snapshot) now sets gameflowListFallback, puts
+the focused name in curFile and asks for a fresh scan, since
+gameflowLibraryEntries has reordered the listing; the flag lasts one
+renderFileList call.
+
+FrameBufferMagic.c: EV_FILES (appended, so EV_SAVE_DETAILS keeps its
+number), DrawFiles / DrawUpdateFiles / DrawUpdateFilesReading, _FilesShapes
+(boxes, buttons, focus bars, cubes, tracks), _FilesWords, _FilesCube (flat
+quads only: no sqrtf, no trig, no texture), and _FrameCovered's EV_FILES.
+The page draws _SaveCubesBackdrop with UIFiles_Stage's paper and handover
+(Memory Cards' timings, new in ui_files.c with LeaveSeconds); B waits for
+the page to leave before Home is published. The loading wheel has a
+PROGRESS_BOX_FILES position in the info bar's corner (the word stays: the
+clock-corner test pins that line). Colours that keep their hue (teal,
+amber, pink, the bolt and the program folder's mark) are in test_ui_color's
+SEMANTIC; the text cube's paper is a neutral.
+
+swiss.c: renderFileList on the shared listing. Every string is fitted on
+the menu thread into a uiFilesSnapshot_t (widths measured there too, so
+the draw measures nothing). Left rows lock their entry; the idle refresh
+(four times a second, for the meta thread's banners) trylocks and gives up
+on a busy entry. The wait loop populates one visible left row a frame on
+every device (filesMetaStep, reset per window and per listing, skipping
+rows already read), as drawFiles read its visible rows: without
+FEAT_THREAD_SAFE it is the only reader, and with a meta thread it is the
+caller that lets meta_alloc evict rows out of view once the 512-entry pool
+is full (the meta thread only kills itself there). A populates the focused
+entry first, so a program folder or a second disc is known before it acts.
+current_view_start/end come only from UIFiles_LeftView. Input acts on
+press edges (padsButtonsTaken) plus its own Up/Down repeat (320/120 ms) and
+two UIMenuInput polls, the stick (rows) and the C-stick (pages,
+padsSubMenuInputPoll, new in input.c); presses are dropped on opening and
+after a box, kept across a left folder change (filesKeepPresses), and
+dropped by menu_loop's device-change block, since the Source picker reads
+held buttons and leaves its A or B in the latch. X at the top waits for
+its release before the picker, whose X toggles the EXI-speed mode. X is
+PAD_BUTTON_X alone: BUTTON_X includes C-stick Right/Down. The right pane
+(filesOther) is readDir + sortFiles on the Source, at its own folder, with
+".." left out at the device's top (no storage to choose there yet); it is
+read again when the Source changes, and released when the screen is left,
+when menu_loop goes to the Library and before the empty-folder branch
+deinits the Source. A, X, Z, START, B and the clap go through the shared
+list-action helpers; Z on a right entry or a program folder goes through
+filesManageEntry (today's Z menu), which writes the left focus name back
+into curFile; filesToggleAutoload takes its folder. A change made from
+either pane marks the right listing unread, so both are read again; a
+right-pane change to the left's folder or one above it (filesWithin) moves
+the left pane to the right pane's folder first, rather than letting
+scanFiles fail and unmount the Source. The right pane goes up a folder by
+the ".." entry's fileBase (a disc's readDir finds a folder by it), or the
+Source's initial at the top. L and R page. DrawUpdateFilesReading(page,
+pane) runs before menu_loop's scanFiles (left) and the right pane's folder
+reads; the band hides the row words under it as it does their cubes. The
+device name above each pane is fitted (UIFiles_FitDevice: 0.92 down to
+0.64, then cut at its end) into what the SOURCE chip and the free box
+leave, so "Memory Card - Slot A" no longer runs into the box.
+
+Settings: File Browser Type's three rows left libraryRows[] (ids,
+tooltips, cases, toggle arms and keys stay; UI_SETLAYOUT_ROWS_LIBRARY 11);
+UIGameflowLibrary_SelectBrowser deleted with its tests.
+
+Tests: audit_files_contract.py (new, 17 mutants); audit_gameflow_dispatch
+(new dispatch shape, renderFileList among the latched waits, filesMetaStep
+as I/O); audit_home_hardware_followup (renderFileList's two polls, the
+C-stick port reads); test_browser_home_lifecycle (renderFileList's B arm,
+EV_FILES covers the frame); test_gameflow_folder_navigation (renderFileList
+stub, the fallback, releases); test_settings_views, test_ui_settings_layout
+(rows), test_ui_files (UIFiles_Stage, UIFiles_FitDevice with Swiss's long
+device names in both shapes), frame budget scenes files, files-right,
+files-wide. The budget counts the words too, through a font stand-in (11 px
+a character, a quad a character a pass, two passes) with Redump-length
+names fitted into every row, and the hint line's buttons: 9,604 / 9,628 /
+12,796 vertices and 232 sqrtf. That is above the first 6,500 estimate,
+which assumed about 26 characters a row; drawing the inactive pane's
+words in a single pass waits for a console measurement. Emulator: files_screen and active_pane replace the legacy
+detector in the routes (it stays as the folder-transition guard);
+file_browser checks both panes' focus, DOWN and A on a right folder and X
+back to the same rows, a left folder change and X back, Z opening Swiss's
+box over the rows (by the text in its band) and B closing it, and B back to
+System's same label; files_text reads each pane's path line, the left one
+from the capture in Menu Widescreen; files_face and
+library_after_file_browser use the new detector; four Dolphin fixtures. Docs and CHANGELOG; docs/guide/images/files.png replaces
+library-file-list.png. No upstream file changed.
+
+Validation: host plain and contracts lanes; whitespace, source and
+upstream checks; a preview DOL through the Emulator DVD smoke route, the GC
+Loader smoke route and the folders route.
+
 ## 2026-10-07 — The two-pane File Browser's model
 
 First step of the two-pane File Browser: gui/ui_files.c and .h, pure C

@@ -29,7 +29,7 @@ GUI = ROOT / "cube/swiss/source/gui"
 BUDGET = HERE / "frame_budget.json"
 METRICS = ("sqrtf", "trig", "minmax", "vertices", "begins", "copy_pixels")
 SOURCES = ("ui_scene.c", "ui_motion.c", "ui_home.c", "ui_cube_motif.c",
-           "ui_color.c", "ui_stage.c", "ui_clock.c", "ui_saves.c")
+           "ui_color.c", "ui_stage.c", "ui_clock.c", "ui_saves.c", "ui_files.c", "ui_hint.c")
 
 
 def hint_source() -> str:
@@ -74,6 +74,24 @@ def save_cubes_source(source: str | None = None) -> str:
     return "\n\n".join(parts) + "\n"
 
 
+def files_source() -> str:
+    """The File Browser's frame (FrameBufferMagic.c): every box, bar, track
+    and cube, its words through frame_budget.c's font stand-in, and its hint
+    line's buttons; all but its one banner."""
+    fbm = (GUI / "FrameBufferMagic.c").read_text(encoding="utf-8")
+    octagon = fbm[fbm.index("static const float filesOctagon"):]
+    parts = ['#include "ui_files.h"', '#include "ui_hint.h"', octagon[:octagon.index("};") + 2]]
+    parts += re.findall(r"^#define FILES_CHIP_\w+ .*$", fbm, re.M)
+    parts += re.findall(r"^static const GXColor settings(?:Ink|Quiet|Accent) = .*$", fbm, re.M)
+    for name in ("_putFlatVertex", "_putFlatRect", "_SaveCubesFaded", "_SaveCubesBox",
+                 "_SaveCubesBar", "_FilesVertex", "_FilesQuad", "_FilesRect", "_FilesColor",
+                 "_FilesEmblemVertices", "_FilesCube", "_FilesOutline", "_FilesShapes",
+                 "_HintDisc", "_HintAlpha", "_HintOctagon", "_HintLetter", "_DrawHintGlyph",
+                 "_DrawHintText", "_FilesWords"):
+        parts.append(renderer_definition(fbm, name))
+    return "\n\n".join(parts) + "\n"
+
+
 def check_renderer_selection() -> None:
     """Forward declarations and unrelated pages must never enter the emitter."""
     current = (GUI / "FrameBufferMagic.c").read_text(encoding="utf-8")
@@ -98,6 +116,7 @@ def measure(renderer_source: str | None = None) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         Path(tmp, "hint_source.c").write_text(hint_source(), encoding="utf-8")
         Path(tmp, "save_cubes_source.c").write_text(save_cubes_source(renderer_source), encoding="utf-8")
+        Path(tmp, "files_source.c").write_text(files_source(), encoding="utf-8")
         binary = Path(tmp, "frame_budget")
         sources = [GUI / name for name in SOURCES]
         # Only the folder-color emitter depends on this newer helper. Keeping

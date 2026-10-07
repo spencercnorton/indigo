@@ -71,3 +71,21 @@ authored-coordinate detection pixels. The native captures showed that reading
 the whole header lets its unchanged large SD glyph hide the path change.
 `memory-folder-header-root.png` and `memory-folder-header-open.png` preserve
 those actual wider header crops to reproduce the previous rejection.
+
+`files-screen.png`, `files-screen-right.png`, `files-screen-wide.png` and
+`files-screen-themed.png` are untouched 640×480 Dolphin captures of the File
+Browser from the public demonstration disc and SD card: the left pane in
+`/games` with a game focused, the right pane focused after opening `/apps`,
+Menu Widescreen on a GC Loader card, and the GC Loader card's settings
+(`settings/non-default.ini`: Menu Color Jet Black, an Emerald backdrop), whose
+grey edges count as edges too. `files_screen` finds both pane boxes, both storage
+buttons, the gutter between the panes and the info bar by their edges, over
+the spans that stay put when Menu Widescreen widens the panes outward;
+`active_pane` compares the two panes' top edges, the focused one lit in full.
+The tests blank each part in an in-memory copy, bridge the gutter, and check
+the legacy list, the Library layouts, Home and Memory Cards never pass.
+
+`files-screen-z.png` is the same screen with Swiss's Manage File box open over
+the rows (Z on a game), from the same run as `files-screen.png`: the route's
+Z step tells the box from the rows by the text in the band it covers, and
+`files_text` reads each pane's path line in both screen shapes.

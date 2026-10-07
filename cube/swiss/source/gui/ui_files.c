@@ -1,4 +1,5 @@
 #include "ui_files.h"
+#include "ui_motion.h"
 
 #include <inttypes.h>
 #include <stdarg.h>
@@ -585,6 +586,35 @@ float UIFiles_FitName(char *out, size_t capacity, const char *name, int maxWidth
 	return UI_FILES_NAME_MIN_SCALE;
 }
 
+float UIFiles_FitDevice(char *out, size_t capacity, const char *name,
+	const uiFilesLayout_t *layout, int pane, bool source, int freeWidth,
+	int freeWord, uiFilesMeasureFn measure)
+{
+	const uiFilesRect_t *box;
+	int room, width;
+
+	if(out == NULL || capacity == 0u) return UI_FILES_DEVICE_SCALE;
+	out[0] = '\0';
+	if(name == NULL || layout == NULL || measure == NULL || pane < 0 ||
+		pane >= UI_FILES_PANES) return UI_FILES_DEVICE_SCALE;
+	box = &layout->pane[pane];
+	room = box->x1 - box->x0 - 2 - (source ? 10 + UI_FILES_CHIP_W : 0) -
+		(freeWidth > 0 ? freeWidth + 8 + (freeWord > 0 ? freeWord + 8 : 0) : 0);
+	copyText(out, capacity, name);
+	width = measure(out);
+	if(width <= 0 || (float)width * UI_FILES_DEVICE_SCALE <= (float)room) {
+		return UI_FILES_DEVICE_SCALE;
+	}
+	if((float)width * UI_FILES_DEVICE_MIN_SCALE <= (float)room) {
+		return (float)room / (float)width;
+	}
+	if(!cutMiddle(out, capacity, name, strlen(name), "", 0u, room,
+		UI_FILES_DEVICE_MIN_SCALE, measure)) {
+		out[0] = '\0';
+	}
+	return UI_FILES_DEVICE_MIN_SCALE;
+}
+
 void UIFiles_FitPath(char *out, size_t capacity, const char *path, int maxWidth,
 	float scale, uiFilesMeasureFn measure)
 {
@@ -967,4 +997,71 @@ bool UIFiles_ParseQuestion(const char *text, uiFilesQuestion_t *out)
 	itemCase(out->verb, sizeof(out->verb), verb, (size_t)(gap - verb));
 	itemCase(out->cancel, sizeof(out->cancel), cancel, cancelLength);
 	return true;
+}
+
+/* ------------------------------------------------------------------------
+ * The page coming and going: Memory Cards' timings.
+ * --------------------------------------------------------------------- */
+#define STAGE_HANDOVER 0.3f
+#define STAGE_PAPER_IN 0.12f
+#define STAGE_PAPER_TIME 0.33f
+#define STAGE_CHROME_IN 0.30f
+#define STAGE_CHROME_TIME 0.25f
+#define STAGE_FADE 0.25f
+#define STAGE_LEAVE 0.45f
+#define STAGE_LEAVE_REDUCED 0.2f
+#define STAGE_LEAVE_CHROME 0.12f
+#define STAGE_RETURN_START 0.25f
+
+static float stageClamp(float value)
+{
+	return value < 0.0f ? 0.0f : value > 1.0f ? 1.0f : value;
+}
+
+static float stageSmooth(float value)
+{
+	value = stageClamp(value);
+	return value * value * (3.0f - 2.0f * value);
+}
+
+void UIFiles_Stage(float seconds, float leave, int mode, uiFilesStage_t *out)
+{
+	if(out == NULL) return;
+	if(mode == UI_MOTION_OFF) {
+		out->paper = out->chrome = leave >= 0.0f ? 0.0f : 1.0f;
+		out->handover = leave >= 0.0f ? 1.0f : 0.0f;
+		return;
+	}
+	if(mode == UI_MOTION_REDUCED) {
+		out->paper = out->chrome = stageClamp(seconds / STAGE_FADE);
+		out->handover = 0.0f;
+		if(leave >= 0.0f) {
+			out->paper *= 1.0f - stageClamp(leave / STAGE_LEAVE_REDUCED);
+			out->chrome = out->paper;
+		}
+		return;
+	}
+	{
+		float gone = stageClamp(seconds / STAGE_HANDOVER);
+
+		out->handover = 1.0f - gone * gone * gone;
+	}
+	out->paper = stageClamp((seconds - STAGE_PAPER_IN) / STAGE_PAPER_TIME);
+	out->chrome = stageSmooth((seconds - STAGE_CHROME_IN) / STAGE_CHROME_TIME);
+	if(leave >= 0.0f) {
+		float back = stageClamp((leave - STAGE_RETURN_START) /
+			(STAGE_LEAVE - STAGE_RETURN_START));
+
+		out->chrome *= 1.0f - stageClamp(leave / STAGE_LEAVE_CHROME);
+		out->paper *= 1.0f - stageSmooth(leave / STAGE_LEAVE);
+		/* ease out, cubic */
+		back = 1.0f - (1.0f - back) * (1.0f - back) * (1.0f - back);
+		if(back > out->handover) out->handover = back;
+	}
+}
+
+float UIFiles_LeaveSeconds(int mode)
+{
+	return mode == UI_MOTION_OFF ? 0.0f : mode == UI_MOTION_REDUCED ?
+		STAGE_LEAVE_REDUCED : STAGE_LEAVE;
 }

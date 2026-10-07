@@ -62,7 +62,7 @@ Add posters and cheats after that first successful launch.
     </td>
     <td valign="top">
       <a href="system.md"><img alt="The System face with System Information, Memory Cards, File Browser and Restart Indigo below the cube." src="../screenshots/system.png" width="100%"></a><br>
-      <b><a href="system.md">System</a></b>: console information, Swiss's file list and restarting Indigo.
+      <b><a href="system.md">System</a></b>: console information, the File Browser and restarting Indigo.
     </td>
   </tr>
   <tr>
@@ -77,7 +77,7 @@ Add posters and cheats after that first successful launch.
   </tr>
   <tr>
     <td valign="top">
-      <a href="troubleshooting.md"><img alt="Swiss's plain file list, which the Library face opens when the games folder holds no disc images." src="images/library-file-list.png" width="100%"></a><br>
+      <a href="troubleshooting.md"><img alt="The File Browser's two panes of files, which the Library face opens when the games folder holds no disc images." src="images/files.png" width="100%"></a><br>
       <b><a href="troubleshooting.md">Troubleshooting</a></b>: fixes for the common surprises.
     </td>
     <td valign="top">

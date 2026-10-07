@@ -64,6 +64,9 @@ SEMANTIC = {
     (255, 184, 150), (90, 224, 246),                   # glass: dispersion fringes on the rim
     (255, 236, 170), (255, 190, 80),                   # Memory Cards: the box's focus, a reason,
     (120, 16, 36), (255, 210, 220),                    # and the IPL's maroon message
+    (46, 150, 160), (210, 250, 255),                   # File Browser: programs start,
+    (240, 176, 72), (80, 46, 0),                       # firmware writes,
+    (236, 120, 170),                                   # and music
 }
 # Pure blue can't turn without clipping, so its luma moves. It is the legacy
 # backdrop's tint, which the opaque Indigo wash covers.

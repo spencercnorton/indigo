@@ -154,7 +154,7 @@ static struct { bool libraryFolders, showHiddenFiles, hideUnknownFileTypes;
     int fileBrowserType, gameBrowserType, appsBrowserType; char flattenDir[1024];
 } swissSettings;
 static char *knownExtensions[] = {".iso", ".gcm", ".tgc", ".dol", NULL};
-static unsigned legacyPublishes, libraryPublishes, homePublishes, disposals;
+static unsigned listPublishes, libraryPublishes, homePublishes, disposals;
 static uiDrawObj_t panelObject;
 static uiDrawObj_t *filePanel = &panelObject;
 static bool homeLibraryEntryPending;
@@ -191,12 +191,21 @@ static void folderArtClose(void) {}
 static void UIScene_RequestLibraryLayout(int layout) { (void)layout; }
 static void UIScene_Request(int scene) { (void)scene; }
 static int gameflowSceneLayout(void) { return 0; }
-static uiDrawObj_t *renderFileBrowser(file_handle **d, int n, uiDrawObj_t *p) {
-    (void)d; (void)n; ++legacyPublishes; return p;
+/* The File Browser, and before it Swiss's lists (for --revision). */
+static __attribute__((unused)) uiDrawObj_t *renderFileList(file_handle **d, int n, uiDrawObj_t *p) {
+    (void)d; (void)n; ++listPublishes; return p;
 }
-static uiDrawObj_t *renderFileFullwidth(file_handle **d, int n, uiDrawObj_t *p) {
-    return renderFileBrowser(d, n, p);
+static __attribute__((unused)) uiDrawObj_t *renderFileBrowser(file_handle **d, int n, uiDrawObj_t *p) {
+    return renderFileList(d, n, p);
 }
+static __attribute__((unused)) uiDrawObj_t *renderFileFullwidth(file_handle **d, int n, uiDrawObj_t *p) {
+    return renderFileList(d, n, p);
+}
+static __attribute__((unused)) bool gameflowListFallback, filesKeepPresses;
+static unsigned otherReleases;
+static __attribute__((unused)) void filesOtherRelease(void) { ++otherReleases; }
+enum { UI_FILES_LEFT, UI_FILES_RIGHT };
+static __attribute__((unused)) bool DrawUpdateFilesReading(uiDrawObj_t *p, int pane) { (void)p; (void)pane; return false; }
 static uiDrawObj_t *renderFileCarousel(file_handle **directory, int num_files, uiDrawObj_t *p) {
     @CAROUSEL_FOCUS@
     (void)directory; assert(num_files > 0); ++libraryPublishes; return p;
@@ -255,7 +264,7 @@ static void reset(const char *path, bool folders, unsigned empty) {
     device.deinit=fakeDeinit;
     strcpy(curDir.name,path); curDir.fileType=IS_DIR; rootEmpty=empty;
     curSelection=0; curMenuLocation=ON_FILLIST; needsRefresh=needsDeviceChange=0;
-    legacyPublishes=libraryPublishes=homePublishes=disposals=0; filePanel=&panelObject;
+    listPublishes=libraryPublishes=homePublishes=disposals=0; filePanel=&panelObject;
     scanFiles();
 }
 static bool listed(const char *path) {
@@ -275,13 +284,13 @@ static void rootNavigation(void) {
         bool retained=gameflowLibraryMode(sortedDirEntries,sortedDirEntryCount)!=
             UI_GAMEFLOW_LIBRARY_NONE;
         navigate(buttons[k],retained); nextIteration();
-        assert(legacyPublishes==0); assert(homePublishes==1); assert(disposals==1);
+        assert(listPublishes==0); assert(homePublishes==1); assert(disposals==1);
         assert(curMenuLocation==ON_OPTIONS); assert(!strcmp(curDir.name,"sdc:/games"));
         assert(curSelection==selected);
         assert(!needsDeviceChange && !needsRefresh);
         assert(gameflowEnterLibraryFromHome()); assert(!needsRefresh);
         curMenuLocation=ON_FILLIST; nextIteration();
-        assert(libraryPublishes==1 && legacyPublishes==0);
+        assert(libraryPublishes==1 && listPublishes==0);
         if(k==0 && empty==0) {
             /* The real renderer starts past the parent when a card exists.
              * Keep this intentional first-card focus distinct from restoring
@@ -303,7 +312,7 @@ static void nestedNavigation(void) {
         navigate(buttons[b],true);
         assert(curMenuLocation==ON_FILLIST && needsRefresh && !needsDeviceChange);
         assert(!strcmp(curDir.name,parents[p])); assert(!strcmp(curFile.name,paths[p]));
-        nextIteration(); assert(legacyPublishes==0 && libraryPublishes==1);
+        nextIteration(); assert(listPublishes==0 && libraryPublishes==1);
         assert(homePublishes==0 && disposals==0);
         assert(!strcmp(sortedDirEntries[curSelection]->name,paths[p]));
     }
@@ -336,7 +345,7 @@ static void dottedFilter(void) {
      * dotted ancestry and deeper game path while omitting Old.Saves as a card. */
     assert(listed("sdc:/games/Racing.v1/Classics.Set/Old.Saves/nested.game.iso"));
     assert(!listed("sdc:/games/Racing.v1/Classics.Set/Old.Saves"));
-    dispatch(); assert(libraryPublishes==1 && !legacyPublishes);
+    dispatch(); assert(libraryPublishes==1 && !listPublishes);
     reset("sdc:/games",true,false); swissSettings.showHiddenFiles=true; scanFiles();
     assert(listed("sdc:/games/.Secret") && listed("sdc:/games/Flag.Hidden"));
     count=gameflowLibraryEntries(sortedDirEntries,sortedDirEntryCount);
@@ -344,30 +353,44 @@ static void dottedFilter(void) {
 }
 static void legacyAndEmptyPolicy(void) {
     reset("sdc:/games/Nintendo.GC",false,false);
-    dispatch(); assert(legacyPublishes==1 && libraryPublishes==0);
+    dispatch(); assert(listPublishes==1 && libraryPublishes==0);
     navigate(BUTTON_X,false); nextIteration(); assert(!strcmp(curDir.name,"sdc:/games"));
-    reset("sdc:/games",false,true); dispatch(); assert(legacyPublishes==1);
+    reset("sdc:/games",false,true); dispatch(); assert(listPublishes==1);
     reset("sdc:/games",false,false); dispatch(); assert(libraryPublishes==1);
-    /* System > File Browser: Swiss's own list where the Library would show,
+    /* System > File Browser: the File Browser where the Library would show,
      * and the Library again once it is over. */
     reset("sdc:/games",false,false); homeFileBrowser=true; dispatch();
-    assert(legacyPublishes==1 && !libraryPublishes);
+    assert(listPublishes==1 && !libraryPublishes);
     assert(gameflowLibraryMode(sortedDirEntries,sortedDirEntryCount)==UI_GAMEFLOW_LIBRARY_NONE);
-    homeFileBrowser=false; dispatch(); assert(legacyPublishes==1 && libraryPublishes==1);
+    homeFileBrowser=false; dispatch(); assert(listPublishes==1 && libraryPublishes==1);
     reset("sdc:/games",false,false); dispatch(); assert(libraryPublishes==1);
     curSelection=0; /* Explicitly select the parent before activating it. */
-    navigate(BUTTON_A,true); nextIteration(); assert(homePublishes==1 && !legacyPublishes);
-    reset("sdc:/other.v1",true,false); dispatch(); assert(legacyPublishes==1);
-    reset("sdc:/games",true,true); device.features=0; dispatch(); assert(legacyPublishes==1);
+    navigate(BUTTON_A,true); nextIteration(); assert(homePublishes==1 && !listPublishes);
+    reset("sdc:/other.v1",true,false); dispatch(); assert(listPublishes==1);
+    reset("sdc:/games",true,true); device.features=0; dispatch(); assert(listPublishes==1);
     assert(gameflowLibraryMode(NULL,0)==UI_GAMEFLOW_LIBRARY_NONE);
     assert(gameflowLibraryMode(sortedDirEntries,0)==UI_GAMEFLOW_LIBRARY_NONE);
-    reset("sdc:/games",true,true); failRead=true; needsRefresh=1; nextIteration();
+    reset("sdc:/games",true,true); failRead=true; needsRefresh=1; otherReleases=0;
+    nextIteration();
     assert(devices[DEVICE_CUR]==NULL && needsDeviceChange);
-    assert(!legacyPublishes && !libraryPublishes);
+    assert(!listPublishes && !libraryPublishes);
+    /* The right pane's listing goes before the Source does. */
+    assert(otherReleases==1);
+}
+static void listFallback(void) {
+    /* The Library couldn't draw here: the File Browser shows the folder,
+     * and the Library takes it again once the flag is cleared. */
+    reset("sdc:/games",false,false); gameflowListFallback=true; dispatch();
+    assert(listPublishes==1 && !libraryPublishes);
+    gameflowListFallback=false; otherReleases=0; dispatch();
+    assert(listPublishes==1 && libraryPublishes==1);
+    /* Going to the Library lets the right pane's listing go. */
+    assert(otherReleases==1);
 }
 int main(int argc, char **argv) {
     if(argc==2 && !strcmp(argv[1],"dots")) dottedFilter();
-    else { rootNavigation(); nestedNavigation(); dottedFilter(); legacyAndEmptyPolicy(); }
+    else { rootNavigation(); nestedNavigation(); dottedFilter(); legacyAndEmptyPolicy();
+        listFallback(); }
     freeFiles();
     puts("real folder filter/navigation/dispatch: PASS"); return 0;
 }

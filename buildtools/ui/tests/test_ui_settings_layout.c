@@ -50,7 +50,7 @@ static const struct {
 	{ 20,  2, 21 }, /* Console: the four sides, Cube, Backdrop and Wave Color, Wave Speed, Clock, Temperature too */
 	{  7,  2,  8 }, /* Storage: its Save Folder too */
 	{ 20,  2, 21 }, /* Network */
-	{ 14,  2, 15 }, /* Library: Load at startup, Library Folders and Saves on Details too */
+	{ 11,  2, 12 }, /* Library: Load at startup, Library Folders and Saves on Details too; no File Browser Types */
 	{  4,  2,  5 }, /* Developer */
 	{ 22, -1, 23 }, /* one game's own settings: no tabs */
 };
@@ -495,7 +495,7 @@ static void test_measured_copies_cover_real_extremes(void) {
 		{ "CPU Temperature Calibration:", "English (US)" },
 		{ "Disable MemCard PRO GameID:", "Slot A&B" },
 		{ "RetroTINK-4K Host IP:", "255.255.255.255" },
-		{ "File Browser Type for games:", "Fullwidth" },
+		{ "Hide unknown file types:", "*/games/*/*" },
 		{ "Simulated MRAM Size:", "Serial Port 2" },
 		{ "Emulate Broadband Adapter:", "English (US)" },
 	};

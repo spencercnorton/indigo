@@ -190,12 +190,13 @@ enum VideoEventType
 	EV_MEMORY_FOLDER,
 	EV_SAVES,
 	EV_SAVE_CUBES,
-	EV_SAVE_DETAILS
+	EV_SAVE_DETAILS,
+	EV_FILES
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Background", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "MemoryCardFolder", "Saves", "SaveCubes", "SaveDetails"};
-_Static_assert(sizeof(typeStrings) / sizeof(typeStrings[0]) == EV_SAVE_DETAILS + 1u,
+						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "MemoryCardFolder", "Saves", "SaveCubes", "SaveDetails", "Files"};
+_Static_assert(sizeof(typeStrings) / sizeof(typeStrings[0]) == EV_FILES + 1u,
 	"every video event needs a diagnostic name");
 
 typedef struct drawTexObjEvent {
@@ -1098,6 +1099,12 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 			corner = _FreeCorner(&inset);
 			x = (int)(corner > 0 ? UIStage_Right() - 44.0f - inset : UIStage_Left() + 44.0f + inset);
 			y = 43;
+		}
+		/* The File Browser's: in its info bar's corner, the word inside. */
+		else if(data->miniModePos == PROGRESS_BOX_FILES) {
+			corner = 1;
+			x = (int)UIStage_Right() - 56;
+			y = 418;
 		}
 		GXColor loadingColor = (GXColor) {255,255,255,(u8)data->miniModeAlpha};
 		/* In seconds, the same at 50 Hz and 60 Hz: a turn of the eight
@@ -7406,6 +7413,551 @@ void DrawUpdateSaveCubesPage(uiDrawObj_t *page,
 	LWP_MutexUnlock(_videomutex);
 }
 
+/* ------------------------------------------------------------------------
+ * The File Browser (swiss.c's renderFileList): two panes over Memory Cards'
+ * graph paper, each a folder's rows with a cube for what each entry is, the
+ * focused entry's banner and name in the info bar below. swiss.c writes a
+ * uiFilesSnapshot_t with every string fitted; this only draws it. The page
+ * covers the stage, so the Home cube shows only as Memory Cards' backdrop
+ * hands it over.
+ * --------------------------------------------------------------------- */
+typedef struct {
+	uiFilesSnapshot_t snapshot;	/* first: its banner stays aligned */
+	float seconds;			/* since it opened */
+	float leave;			/* since B, or below 0 */
+	uiMotionSpring_t focus[UI_FILES_PANES];	/* each focus bar, in rows */
+	uiMotionSpring_t emphasis;	/* 0 the left pane focused, 1 the right */
+	uint16_t listing[UI_FILES_PANES];
+	bool started;
+	GXTexObj picture;
+} drawFilesEvent_t;
+
+/* A flat vertex in exactly color: the cubes' colors that keep their hue
+ * under every Menu Color go through here, the others through
+ * _FilesColor first. */
+static void _FilesVertex(float x, float y, GXColor color)
+{
+	GX_Position3f32(x, y, 0.0f);
+	GX_Color4u8(color.r, color.g, color.b, color.a);
+	GX_TexCoord2f32(0.0f, 0.0f);
+}
+
+static void _FilesQuad(float x0, float y0, float x1, float y1, float x2,
+	float y2, float x3, float y3, GXColor color)
+{
+	_FilesVertex(x0, y0, color);
+	_FilesVertex(x1, y1, color);
+	_FilesVertex(x2, y2, color);
+	_FilesVertex(x3, y3, color);
+}
+
+static void _FilesRect(float x, float y, float width, float height, GXColor color)
+{
+	_FilesQuad(x, y, x + width, y, x + width, y + height, x, y + height, color);
+}
+
+/* color scaled toward black (k < 1) or white (k > 1), at alpha, through
+ * Menu Color when it follows it. */
+static GXColor _FilesColor(GXColor color, float k, float alpha, bool follows)
+{
+	float c[3] = {color.r, color.g, color.b};
+	int i;
+
+	for(i = 0; i < 3; i++) {
+		c[i] = k <= 1.0f ? c[i] * k : c[i] + (255.0f - c[i]) * (k - 1.0f);
+		c[i] = c[i] > 255.0f ? 255.0f : c[i];
+	}
+	color.r = (u8)c[0];
+	color.g = (u8)c[1];
+	color.b = (u8)c[2];
+	color.a = (u8)((float)color.a * alpha + 0.5f);
+	if(follows) {
+		UIColor_Apply(&color.r, &color.g, &color.b);
+	}
+	return color;
+}
+
+/* An eighth of a turn at a time, for the disc's ring. */
+static const float filesOctagon[8][2] = {
+	{1.0f, 0.0f}, {0.7071f, 0.7071f}, {0.0f, 1.0f}, {-0.7071f, 0.7071f},
+	{-1.0f, 0.0f}, {-0.7071f, -0.7071f}, {0.0f, -1.0f}, {0.7071f, -0.7071f}
+};
+
+/* How many vertices each kind's emblem takes: the cube's three faces are
+ * 12 more, a halo 4. */
+static int _FilesEmblemVertices(int kind)
+{
+	switch(kind) {
+		case UI_FILES_KIND_DISC:
+		case UI_FILES_KIND_DISC_COMPRESSED:
+			return 32;
+		case UI_FILES_KIND_MUSIC:
+		case UI_FILES_KIND_TEXT:
+			return 12;
+		case UI_FILES_KIND_FOLDER:
+		case UI_FILES_KIND_PROGRAM_FOLDER:
+		case UI_FILES_KIND_FIRMWARE:
+		case UI_FILES_KIND_PICTURE:
+			return 8;
+		default:
+			return 4;
+	}
+}
+
+/* A row's cube, size px across its front, centred at (cx, cy): front, top
+ * and side as three flat quads and the kind's emblem on the front, all
+ * flat, so no square roots and no texture. Folders and ".." turn with Menu
+ * Color; programs stay teal, firmware amber, discs silver with a ring that
+ * turns. */
+static void _FilesCube(int kind, float cx, float cy, float size, float alpha,
+	bool halo)
+{
+	static const GXColor base[UI_FILES_KINDS] = {
+		{150, 160, 210, 255},	/* .. */
+		{122, 104, 224, 255},	/* folder */
+		{46, 150, 160, 255},	/* program folder */
+		{226, 228, 240, 255},	/* disc */
+		{226, 228, 240, 150},	/* compressed disc */
+		{46, 150, 160, 255},	/* program */
+		{240, 176, 72, 255},	/* firmware */
+		{236, 120, 170, 255},	/* music */
+		{90, 150, 230, 255},	/* picture */
+		{232, 232, 238, 255},	/* text */
+		{150, 154, 170, 255}	/* other */
+	};
+	const GXColor light = {245, 242, 255, 255}, dark = {40, 36, 60, 255};
+	bool follows = kind == UI_FILES_KIND_PARENT || kind == UI_FILES_KIND_FOLDER ||
+		kind == UI_FILES_KIND_PICTURE || kind == UI_FILES_KIND_TEXT ||
+		kind == UI_FILES_KIND_OTHER;
+	float d = size * 0.3f, u = size / 13.0f;
+	float x = cx - 0.5f * (size + d), y = cy - 0.5f * (size - d);
+	GXColor front, top, side, mark;
+	int i;
+
+	if(kind < 0 || kind >= UI_FILES_KINDS || !(alpha > 0.0f)) {
+		return;
+	}
+	front = _FilesColor(base[kind], kind == UI_FILES_KIND_PARENT ? 0.45f : 1.0f,
+		alpha, follows);
+	top = _FilesColor(base[kind], 1.35f, alpha, follows);
+	side = _FilesColor(base[kind], 0.62f, alpha, follows);
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, (halo ? 4 : 0) + 12 + _FilesEmblemVertices(kind));
+	if(halo) {
+		_FilesRect(x - 3.0f, y - d - 3.0f, size + d + 6.0f, size + d + 6.0f,
+			_FilesColor((GXColor) {255, 255, 255, 46}, 1.0f, alpha, false));
+	}
+	_FilesRect(x, y, size, size, front);
+	_FilesQuad(x, y, x + d, y - d, x + size + d, y - d, x + size, y, top);
+	_FilesQuad(x + size, y, x + size + d, y - d, x + size + d, y + size - d,
+		x + size, y + size, side);
+	switch(kind) {
+		case UI_FILES_KIND_PARENT:
+			mark = _FilesColor(light, 1.0f, alpha, true);
+			_FilesQuad(x + 6.5f * u, y + 2.5f * u, x + 10.5f * u, y + 9.0f * u,
+				x + 2.5f * u, y + 9.0f * u, x + 6.5f * u, y + 2.5f * u, mark);
+			break;
+		case UI_FILES_KIND_FOLDER:
+		case UI_FILES_KIND_PROGRAM_FOLDER:
+			mark = kind == UI_FILES_KIND_FOLDER ? _FilesColor(light, 1.0f, alpha, false) :
+				_FilesColor((GXColor) {210, 250, 255, 255}, 1.0f, alpha, false);
+			_FilesRect(x + 2.5f * u, y + 3.0f * u, 3.5f * u, 1.8f * u, mark);
+			if(kind == UI_FILES_KIND_FOLDER) {
+				_FilesRect(x + 2.5f * u, y + 4.5f * u, 8.0f * u, 5.5f * u, mark);
+			}
+			else {
+				_FilesQuad(x + 4.5f * u, y + 5.0f * u, x + 10.0f * u, y + 7.5f * u,
+					x + 4.5f * u, y + 10.0f * u, x + 4.5f * u, y + 5.0f * u, mark);
+			}
+			break;
+		case UI_FILES_KIND_DISC:
+		case UI_FILES_KIND_DISC_COMPRESSED:
+			mark = _FilesColor((GXColor) {122, 104, 224, base[kind].a}, 1.0f, alpha, true);
+			for(i = 0; i < 8; i++) {
+				const float *a = filesOctagon[i], *b = filesOctagon[(i + 1) % 8];
+				float mx = x + 6.5f * u, my = y + 6.5f * u, ro = 4.6f * u, ri = 1.8f * u;
+
+				_FilesQuad(mx + a[0] * ro, my + a[1] * ro, mx + b[0] * ro, my + b[1] * ro,
+					mx + b[0] * ri, my + b[1] * ri, mx + a[0] * ri, my + a[1] * ri, mark);
+			}
+			break;
+		case UI_FILES_KIND_PROGRAM:
+			_FilesQuad(x + 4.0f * u, y + 3.0f * u, x + 10.0f * u, y + 6.5f * u,
+				x + 4.0f * u, y + 10.0f * u, x + 4.0f * u, y + 3.0f * u,
+				_FilesColor(light, 1.0f, alpha, false));
+			break;
+		case UI_FILES_KIND_FIRMWARE:
+			mark = _FilesColor((GXColor) {80, 46, 0, 255}, 1.0f, alpha, false);
+			_FilesQuad(x + 7.5f * u, y + 1.8f * u, x + 3.5f * u, y + 7.5f * u,
+				x + 6.8f * u, y + 7.5f * u, x + 7.5f * u, y + 1.8f * u, mark);
+			_FilesQuad(x + 6.2f * u, y + 5.5f * u, x + 9.5f * u, y + 5.5f * u,
+				x + 5.5f * u, y + 11.2f * u, x + 6.2f * u, y + 5.5f * u, mark);
+			break;
+		case UI_FILES_KIND_MUSIC:
+			mark = _FilesColor(light, 1.0f, alpha, false);
+			_FilesRect(x + 7.5f * u, y + 3.0f * u, 1.4f * u, 6.5f * u, mark);
+			_FilesRect(x + 4.5f * u, y + 8.0f * u, 4.4f * u, 3.0f * u, mark);
+			_FilesRect(x + 7.5f * u, y + 3.0f * u, 3.2f * u, 1.4f * u, mark);
+			break;
+		case UI_FILES_KIND_PICTURE:
+			mark = _FilesColor(light, 1.0f, alpha, false);
+			_FilesQuad(x + 2.5f * u, y + 10.5f * u, x + 6.0f * u, y + 5.0f * u,
+				x + 10.5f * u, y + 10.5f * u, x + 2.5f * u, y + 10.5f * u, mark);
+			_FilesRect(x + 8.5f * u, y + 2.5f * u, 2.0f * u, 2.0f * u, mark);
+			break;
+		case UI_FILES_KIND_TEXT:
+			mark = _FilesColor(dark, 1.0f, alpha, false);
+			for(i = 0; i < 3; i++) {
+				_FilesRect(x + 3.0f * u, y + (3.5f + 2.5f * i) * u, 7.0f * u, 1.2f * u, mark);
+			}
+			break;
+		default:
+			_FilesRect(x + 5.5f * u, y + 5.5f * u, 2.0f * u, 2.0f * u,
+				_FilesColor(dark, 1.0f, alpha, false));
+			break;
+	}
+	GX_End();
+}
+
+/* An outline px wide, as a box's edge without its fill. */
+static void _FilesOutline(float x, float y, float width, float height,
+	float line, GXColor color)
+{
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 16);
+		_putFlatRect(x, y, width, line, color);
+		_putFlatRect(x, y + height - line, width, line, color);
+		_putFlatRect(x, y + line, line, height - 2.0f * line, color);
+		_putFlatRect(x + width - line, y + line, line, height - 2.0f * line, color);
+	GX_End();
+}
+
+#define FILES_CHIP_W UI_FILES_CHIP_W
+#define FILES_CHIP_H 16
+
+/* Everything but the words and the banner: the buttons, the boxes, the
+ * focus bars, the cubes and the scroll tracks. alpha is the page's chrome;
+ * emphasis 0 when the left pane has the focus, 1 the right; focusY each
+ * focus bar's row, sprung. */
+static void _FilesShapes(const uiFilesSnapshot_t *s, const uiFilesLayout_t *layout,
+	float alpha, float emphasis, const float focusY[UI_FILES_PANES], float seconds)
+{
+	const GXColor white = _SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha);
+	const GXColor shadow = _SaveCubesFaded((GXColor) {0, 0, 0, 200}, alpha);
+	const GXColor quiet = _SaveCubesFaded((GXColor) {173, 187, 216, 255}, alpha);
+	const GXColor chip = _SaveCubesFaded((GXColor) {196, 177, 255, 56}, alpha);
+	int p, i;
+
+	for(p = 0; p < UI_FILES_PANES; p++) {
+		const uiFilesPaneSnapshot_t *pane = &s->pane[p];
+		const uiFilesRect_t *box = &layout->pane[p];
+		const uiFilesRect_t *button = &layout->button[p];
+		float active = p == UI_FILES_RIGHT ? emphasis : 1.0f - emphasis;
+		float fill = (200.0f + 36.0f * active) / 255.0f;
+		float edge = 0.45f + 0.55f * active;
+		bool track = pane->count > UI_FILES_ROWS;
+
+		_SaveCubesBox(button->x0, button->y0, button->x1 - button->x0,
+			button->y1 - button->y0,
+			_SaveCubesFaded((GXColor) {18, 27, 91, 180}, alpha), shadow, quiet, 1.0f);
+		if(pane->source) {
+			_SaveCubesBar(box->x0 + 2 + pane->deviceWidth + 10, UI_FILES_DEVICE_Y - FILES_CHIP_H / 2,
+				FILES_CHIP_W, FILES_CHIP_H, chip);
+		}
+		if(pane->free[0] != '\0') {
+			_SaveCubesBox(box->x1 - pane->freeWidth, UI_FILES_FREE_TOP, pane->freeWidth,
+				UI_FILES_FREE_BOTTOM - UI_FILES_FREE_TOP, shadow, shadow, white, 2.0f);
+		}
+		if(pane->autoload) {
+			_SaveCubesBar(box->x0 + 2 + pane->pathWidth + 8, UI_FILES_PATH_Y - 7,
+				66, 14, chip);
+		}
+		_SaveCubesBox(box->x0, box->y0, box->x1 - box->x0, box->y1 - box->y0,
+			_SaveCubesFaded((GXColor) {39, 53, 153, 255}, alpha * fill),
+			_SaveCubesFaded((GXColor) {58, 31, 127, 255}, alpha * fill),
+			_SaveCubesFaded((GXColor) {196, 186, 255, 255}, alpha * edge), 2.0f);
+		if(pane->focusRow >= 0 && pane->rows > 0) {
+			uiFilesRect_t row = UIFiles_RowRect(layout, p, 0);
+			float y = row.y0 + UI_FILES_ROW_PITCH * focusY[p];
+
+			if(active > 0.0f) {
+				_SaveCubesBar(row.x0, y, row.x1 - row.x0, UI_FILES_ROW_HEIGHT,
+					_SaveCubesFaded((GXColor) {70, 92, 200, 230}, alpha * active));
+			}
+			if(active < 1.0f) {
+				_FilesOutline(row.x0, y, row.x1 - row.x0, UI_FILES_ROW_HEIGHT, 1.0f,
+					_SaveCubesFaded((GXColor) {196, 186, 255, 170}, alpha * (1.0f - active)));
+			}
+		}
+		for(i = 0; i < pane->rows && i < UI_FILES_ROWS; i++) {
+			const uiFilesRowSnapshot_t *row = &pane->row[i];
+			bool focused = (row->flags & UI_FILES_ROW_FOCUS) != 0u;
+			float rowAlpha = alpha * ((row->flags & UI_FILES_ROW_HIDDEN) ? 0.5f : 1.0f) *
+				(pane->reading ? 0.6f : 1.0f);
+			uiFilesRect_t rect = UIFiles_RowRect(layout, p, i);
+
+			_FilesCube(row->kind, UIFiles_CubeX(layout, p),
+				0.5f * (rect.y0 + rect.y1), focused ? 16.0f : 13.0f, rowAlpha,
+				focused && active > 0.5f);
+		}
+		if(track) {
+			const uiFilesRect_t *t = &layout->track[p];
+			int height = t->y1 - t->y0;
+			int thumb = height * UI_FILES_ROWS / pane->count;
+			int travel;
+
+			if(thumb < 12) thumb = 12;
+			travel = (int)((int64_t)(height - thumb) * pane->first /
+				(pane->count - UI_FILES_ROWS));
+			_SaveCubesBar(t->x0, t->y0, t->x1 - t->x0, height,
+				_SaveCubesFaded((GXColor) {34, 42, 65, 255}, alpha));
+			_SaveCubesBar(t->x0, t->y0 + travel, t->x1 - t->x0, thumb,
+				_SaveCubesFaded((GXColor) {196, 177, 255, 255}, alpha));
+		}
+		if(pane->reading) {
+			/* Three cells lit one after another, five times a second, under
+			 * the words on a band of the box's own blue. */
+			_SaveCubesBar(box->x0 + 4, UI_FILES_MESSAGE_Y - 18, box->x1 - box->x0 - 8, 52,
+				_SaveCubesFaded((GXColor) {18, 27, 91, 230}, alpha));
+			int lit = (int)(seconds * 5.0f) % 3;
+
+			for(i = 0; i < 3; i++) {
+				_SaveCubesBar(layout->mid[p] - 17 + 12 * i, UI_FILES_MESSAGE_Y + 18, 10, 6,
+					_SaveCubesFaded((GXColor) {196, 177, 255, 255},
+					alpha * (i == lit ? 1.0f : 0.35f)));
+			}
+		}
+	}
+	_SaveCubesBox(layout->info.x0, layout->info.y0, layout->info.x1 - layout->info.x0,
+		layout->info.y1 - layout->info.y0,
+		_SaveCubesFaded((GXColor) {39, 53, 153, 220}, alpha),
+		_SaveCubesFaded((GXColor) {58, 31, 127, 220}, alpha),
+		_SaveCubesFaded((GXColor) {196, 186, 255, 255}, alpha), 2.0f);
+	if(!s->hasBanner) {
+		_FilesCube(s->infoKind, 0.5f * (layout->picture.x0 + layout->picture.x1),
+			0.5f * (layout->picture.y0 + layout->picture.y1), 26.0f, alpha, false);
+	}
+	if(s->chip[0] != '\0') {
+		_SaveCubesBar(layout->infoTextX + s->titleWidth + 10, 381 - FILES_CHIP_H / 2,
+			FILES_CHIP_W, FILES_CHIP_H, chip);
+	}
+	if(s->size[0] != '\0') {
+		_SaveCubesBox(layout->sizeBox.x0, layout->sizeBox.y0, s->sizeWidth,
+			layout->sizeBox.y1 - layout->sizeBox.y0, shadow, shadow, white, 2.0f);
+	}
+}
+
+/* The words: what the shapes leave for text. */
+static void _FilesWords(const uiFilesSnapshot_t *s, const uiFilesLayout_t *layout,
+	float alpha, float emphasis)
+{
+	const GXColor white = _SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha);
+	const GXColor quiet = _SaveCubesFaded(settingsQuiet, alpha);
+	const GXColor accent = _SaveCubesFaded(settingsAccent, alpha);
+	int p, i, x;
+
+	for(p = 0; p < UI_FILES_PANES; p++) {
+		const uiFilesPaneSnapshot_t *pane = &s->pane[p];
+		const uiFilesRect_t *box = &layout->pane[p];
+		float active = p == UI_FILES_RIGHT ? emphasis : 1.0f - emphasis;
+		GXColor name = active >= 0.5f ? white : quiet;
+		bool track = pane->count > UI_FILES_ROWS;
+
+		_DrawHintText(layout->mid[p], UI_FILES_BUTTON_Y + UI_FILES_BUTTON_HEIGHT / 2,
+			pane->button, 0.46f, ALIGN_CENTER, white);
+		drawStringMedium(box->x0 + 2, UI_FILES_DEVICE_Y, pane->device, pane->deviceScale,
+			ALIGN_LEFT, name);
+		if(pane->source) {
+			drawStringMedium(box->x0 + 2 + pane->deviceWidth + 10 + FILES_CHIP_W / 2,
+				UI_FILES_DEVICE_Y, "SOURCE", 0.34f, ALIGN_CENTER, accent);
+		}
+		if(pane->free[0] != '\0') {
+			int middle = (UI_FILES_FREE_TOP + UI_FILES_FREE_BOTTOM) / 2;
+
+			drawStringMedium(box->x1 - pane->freeWidth / 2, middle, pane->free, 0.50f,
+				ALIGN_CENTER, white);
+			if(!pane->readOnly) {
+				drawStringMedium(box->x1 - pane->freeWidth - 8, middle + 1, "free", 0.42f,
+					ALIGN_RIGHT, quiet);
+			}
+		}
+		drawStringMedium(box->x0 + 2, UI_FILES_PATH_Y, pane->path, 0.46f, ALIGN_LEFT,
+			accent);
+		if(pane->autoload) {
+			drawStringMedium(box->x0 + 2 + pane->pathWidth + 8 + 33, UI_FILES_PATH_Y,
+				"AUTOLOAD", 0.34f, ALIGN_CENTER, accent);
+		}
+		drawStringMedium(box->x1 - 2, UI_FILES_PATH_Y, pane->counter, 0.46f,
+			ALIGN_RIGHT, quiet);
+		for(i = 0; i < pane->rows && i < UI_FILES_ROWS; i++) {
+			const uiFilesRowSnapshot_t *row = &pane->row[i];
+			uiFilesRect_t rect = UIFiles_RowRect(layout, p, i);
+			int middle = (rect.y0 + rect.y1) / 2;
+			float rowAlpha;
+			GXColor ink;
+
+			/* Rows under "Reading..."'s band are hidden, as their cubes are. */
+			if(pane->reading && rect.y1 > UI_FILES_MESSAGE_Y - 18 &&
+					rect.y0 < UI_FILES_MESSAGE_Y + 34) {
+				continue;
+			}
+			rowAlpha = ((row->flags & UI_FILES_ROW_HIDDEN) ? 0.5f : 1.0f) *
+				(pane->reading ? 0.6f : 1.0f);
+			ink = (row->flags & UI_FILES_ROW_FOCUS) && active >= 0.5f ?
+				(GXColor) {255, 236, 170, 255} : (GXColor) {255, 255, 255, 255};
+
+			drawStringMedium(UIFiles_NameX(layout, p), middle, row->name, row->scale,
+				ALIGN_LEFT, _SaveCubesFaded(ink, alpha * rowAlpha));
+			if(row->meta[0] != '\0') {
+				drawStringMedium(UIFiles_MetaRight(layout, p, track), middle, row->meta,
+					0.44f, ALIGN_RIGHT, _SaveCubesFaded(settingsQuiet, alpha * rowAlpha));
+			}
+		}
+		if(pane->message[0][0] != '\0') {
+			drawStringMedium(layout->mid[p], UI_FILES_MESSAGE_Y, pane->message[0], 0.56f,
+				ALIGN_CENTER, white);
+			drawStringMedium(layout->mid[p], UI_FILES_MESSAGE_Y + 24, pane->message[1],
+				0.46f, ALIGN_CENTER, quiet);
+		}
+	}
+	drawStringMedium(layout->infoTextX, 381, s->title, s->titleScale, ALIGN_LEFT, white);
+	if(s->chip[0] != '\0') {
+		drawStringMedium(layout->infoTextX + s->titleWidth + 10 + FILES_CHIP_W / 2, 381,
+			s->chip, 0.34f, ALIGN_CENTER, accent);
+	}
+	x = layout->infoTextX;
+	if(s->size[0] != '\0') {
+		drawStringMedium(x + s->sizeWidth / 2, (layout->sizeBox.y0 + layout->sizeBox.y1) / 2,
+			s->size, 0.50f, ALIGN_CENTER, white);
+		x += s->sizeWidth + 12;
+	}
+	drawStringMedium(x, UI_FILES_LINE1_Y, s->line[0], 0.46f, ALIGN_LEFT, white);
+	drawStringMedium(x, UI_FILES_LINE2_Y, s->line[1], 0.46f, ALIGN_LEFT,
+		_SaveCubesFaded(s->warn ? (GXColor) {255, 190, 80, 255} : settingsQuiet, alpha));
+	_DrawHintText(layout->hintLeft, UI_FILES_HINT_Y, s->hint[0], 0.46f, ALIGN_LEFT,
+		_SaveCubesFaded(settingsInk, alpha));
+	_DrawHintText(layout->hintRight, UI_FILES_HINT_Y, s->hint[1], 0.46f, ALIGN_RIGHT,
+		quiet);
+}
+
+static void _DrawFiles(uiDrawObj_t *evt)
+{
+	drawFilesEvent_t *data = (drawFilesEvent_t*)evt->data;
+	const uiFilesSnapshot_t *s = &data->snapshot;
+	uiMotionMode_t motion = _CurrentMotionMode();
+	uiFilesLayout_t layout;
+	uiFilesStage_t stage;
+	float focusY[UI_FILES_PANES], emphasis;
+	int p;
+
+	if(!data->started) {
+		for(p = 0; p < UI_FILES_PANES; p++) {
+			UIMotion_SpringInit(&data->focus[p], s->pane[p].focusRow > 0 ?
+				(float)s->pane[p].focusRow : 0.0f, 25.0f);
+			data->listing[p] = s->pane[p].listing;
+		}
+		UIMotion_SpringInit(&data->emphasis, (float)s->active, 25.0f);
+		data->leave = -1.0f;
+		data->started = true;
+	}
+	else {
+		data->seconds += UIAnim_Delta();
+	}
+	if(s->leaving) {
+		data->leave = data->leave < 0.0f ? 0.0f : data->leave + UIAnim_Delta();
+	}
+	for(p = 0; p < UI_FILES_PANES; p++) {
+		float row = s->pane[p].focusRow > 0 ? (float)s->pane[p].focusRow : 0.0f;
+
+		/* Another folder: the bar starts on its row. */
+		if(data->listing[p] != s->pane[p].listing) {
+			data->listing[p] = s->pane[p].listing;
+			UIMotion_SpringSnap(&data->focus[p], row);
+		}
+		UIMotion_SpringRetarget(&data->focus[p], row, motion);
+		focusY[p] = UIMotion_SpringUpdate(&data->focus[p], UIAnim_Delta(), motion);
+	}
+	UIMotion_SpringRetarget(&data->emphasis, (float)s->active, motion);
+	emphasis = UIMotion_SpringUpdate(&data->emphasis, UIAnim_Delta(), motion);
+	emphasis = emphasis < 0.0f ? 0.0f : emphasis > 1.0f ? 1.0f : emphasis;
+	UIFiles_Stage(data->seconds, data->leave, motion, &stage);
+	UIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);
+	_SaveCubesBackdrop(stage.paper, stage.handover);
+	if(stage.chrome > 0.0f) {
+		_FilesShapes(s, &layout, stage.chrome, emphasis, focusY, data->seconds);
+		/* Pictures can't fade: the banner comes with the words' second
+		 * half, as Memory Cards' does. */
+		if(s->hasBanner && stage.chrome >= 0.5f) {
+			_SaveCubesPicture(&data->picture, s->banner, layout.picture.x0,
+				layout.picture.y0, 96);
+		}
+		_FilesWords(s, &layout, stage.chrome, emphasis);
+	}
+	drawInit();
+}
+
+uiDrawObj_t* DrawFiles(const uiFilesSnapshot_t *snapshot)
+{
+	drawFilesEvent_t *data = memalign(32, sizeof(*data));
+	uiDrawObj_t *event = calloc(1, sizeof(*event));
+
+	if(data == NULL || event == NULL) {
+		free(data);
+		free(event);
+		return NULL;
+	}
+	memset(data, 0, sizeof(*data));
+	data->snapshot = *snapshot;
+	DCFlushRange(data->snapshot.banner, sizeof(data->snapshot.banner));
+	event->type = EV_FILES;
+	event->data = data;
+	return event;
+}
+
+bool DrawUpdateFiles(uiDrawObj_t *page, const uiFilesSnapshot_t *snapshot)
+{
+	bool updated = false;
+
+	if(page == NULL) {
+		return false;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!page->disposed && page->type == EV_FILES && page->data != NULL) {
+		drawFilesEvent_t *data = (drawFilesEvent_t*)page->data;
+
+		data->snapshot = *snapshot;
+		DCFlushRange(data->snapshot.banner, sizeof(data->snapshot.banner));
+		updated = true;
+	}
+	LWP_MutexUnlock(_videomutex);
+	return updated;
+}
+
+/* Before a folder is read: "Reading..." over that pane's dimmed rows, the
+ * other pane as it was. False when page isn't the File Browser. */
+bool DrawUpdateFilesReading(uiDrawObj_t *page, int which)
+{
+	bool updated = false;
+
+	if(page == NULL) {
+		return false;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!page->disposed && page->type == EV_FILES && page->data != NULL) {
+		uiFilesPaneSnapshot_t *pane =
+			&((drawFilesEvent_t*)page->data)->snapshot.pane[which];
+
+		pane->reading = 1;
+		snprintf(pane->message[0], sizeof(pane->message[0]), "Reading\205");
+		pane->message[1][0] = '\0';
+		updated = true;
+	}
+	LWP_MutexUnlock(_videomutex);
+	return updated;
+}
+
 void DrawGetTextEntry(int mode, const char *label, void *src, int size) {
 	
 	print_debug("DrawGetTextEntry Modes: Alpha [%s] Numeric [%s] IP [%s] Masked [%s] File [%s]\n", mode & ENTRYMODE_ALPHA ? "Y":"N", mode & ENTRYMODE_NUMERIC ? "Y":"N",
@@ -7766,6 +8318,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 		case EV_SAVE_CUBES:
 			_DrawSaveCubes(videoEvent);
 			break;
+		case EV_FILES:
+			_DrawFiles(videoEvent);
+			break;
 		default:
 			break;
 	}
@@ -7827,7 +8382,7 @@ static bool _FrameCovered(uiDrawObjQueue_t *queue)
 		const uiDrawObj_t *event = queue->event;
 		if(!event->disposed && (event->type == EV_SETTINGS ||
 			event->type == EV_CHEATS || event->type == EV_SAVES ||
-			event->type == EV_SAVE_CUBES)) {
+			event->type == EV_SAVE_CUBES || event->type == EV_FILES)) {
 			return true;
 		}
 	}

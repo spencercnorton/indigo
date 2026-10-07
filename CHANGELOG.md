@@ -18,15 +18,29 @@ tag on `beta`. The newest changes are at the top until their release is named.
   row opens, and **Emulators**, an Apps screen for the programs in
   `/emulators`. Neither is on a side until you give it one.
 - **File Browser** can have a side of the cube too (Up Face, Left Face,
-  Right Face or Down Face › File Browser): A on it opens the same list as
-  System's row, and B comes back to it. It is on no side until you give it
-  one.
-- **File Browser**, on the System face below Memory Cards, opens Swiss's own
-  file list at the top of the source, even when the games are in the
-  Library. Z there always offers Swiss's copy, move, rename, hide and
-  delete, whatever File Management is set to. B goes back to the System
-  face, or to the File Browser face when that opened it.
-- Swiss's file list now asks before Move, before Hide, before turning
+  Right Face or Down Face › File Browser): A on it opens the same File
+  Browser as System's row, and B comes back to it. It is on no side until
+  you give it one.
+- **File Browser**, on the System face below Memory Cards, opens at the top
+  of the source, even when the games are in the Library. Z there always
+  offers Swiss's copy, move, rename, hide and delete, whatever File
+  Management is set to. B goes back to the System face, or to the File
+  Browser face when that opened it.
+- The **File Browser** takes the place of Swiss's file lists everywhere
+  outside the Library: System's row and its face, the Library face when
+  there are no games to show, Recent and an Autoload folder. Two panes sit
+  side by side over graph paper, as Memory Cards' two stacks do: the left
+  one, marked SOURCE, is your source and starts games; the right one shows
+  another folder on it. Each row has a cube for what the file is, its real
+  name with its extension (a long one cut in the middle, keeping "(Disc 1)"
+  and the extension) and its size; the info bar below shows the whole name,
+  and a game's banner and title. Left and Right move between the panes, L,
+  R and the C-stick go a page at a time, and Up and Down keep going while
+  held. A pane being read says Reading…, and a long storage name above a
+  pane gets smaller, or is cut, to keep clear of its free space. Renaming
+  or deleting the left pane's folder from the right pane moves the left
+  pane to the folder that held it.
+- The File Browser now asks before Move, before Hide, before turning
   Autoload on (Z on `..`, or Z on Swiss's game screen), and before writing a
   `.fzn` file to a WiiKey Fusion or a `.fpkg` file to a FlippyDrive. Delete
   says when a folder's contents go with it.
@@ -37,6 +51,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Removed
 
+- Settings › Setup › Library › **File Browser Type**, for apps and for
+  games: there is one File Browser now. The keys stay in `global.ini`,
+  read and written for Swiss.
 - Removed the Library folder path and color page. Game folders retain their
   existing navigation and artwork without folder identity colors.
 
@@ -80,10 +97,17 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 - A quick press made while Indigo reads from a device is no longer missed:
   B in the Library or Apps while a folder's picture loads from a disc, and
-  B to cancel a copy or a verify in Swiss's file list while a piece of the
-  file is read or written.
+  B to cancel a copy or a verify in the File Browser while a piece of the
+  file is read or written. The File Browser, unlike Swiss's lists, keeps a
+  press made while a folder or a banner is read.
 
 ### For developers
+
+- The emulator test finds the File Browser by its two pane boxes, storage
+  buttons and info bar in either screen shape, and checks which pane has
+  the focus; the frame budget counts its shapes (`files`, `files-right`,
+  `files-wide`), and `audit_files_contract.py` holds it to Swiss's list
+  contract, with mutants.
 
 - The emulator test holds each button for its full time from Dolphin's next
   clock report, so a press can no longer end within a frame of starting and

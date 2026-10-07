@@ -57,7 +57,7 @@ Settings › Setup › Console › **Up Face**, **Left Face**, **Right Face** an
 Source, Settings, System, Apps, Memory Cards, Emulators, File Browser, or
 **None** to leave that side empty. Memory Cards opens the same screen as
 System's Memory Cards row, and [File Browser](system.md#file-browser) the
-same list as System's File Browser row; B there comes back to its face.
+same File Browser as System's row; B there comes back to its face.
 [Emulators](apps.md#emulators) lists the programs in `/emulators` as Apps
 lists `/apps`, and shows while that folder has one. A
 Classic cube turns that way to it; the Infinite ring turns through the
@@ -70,7 +70,7 @@ Library opens the device list straight away.
 For example, Down Face **Settings**, Left Face **Apps**, Right Face
 **Emulators** and Up Face **Memory Cards** put Settings below Library, Apps
 on its left, Emulators on its right and Memory Cards above, with Source and
-System off the cube. Up Face **File Browser** puts Swiss's file list in
+System off the cube. Up Face **File Browser** puts the File Browser in
 place of Source: one press of Up away with a Classic cube, one press of
 Right with Infinite.
 

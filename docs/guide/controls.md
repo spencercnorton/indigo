@@ -148,14 +148,16 @@ See [Memory Cards](memory-cards.md).
 
 ### File Browser
 
-Swiss's own file list, from System › File Browser or the File Browser face.
+Two panes of files, from System › File Browser, the File Browser face, and
+wherever Indigo lists files outside the Library.
 See [File Browser](system.md#file-browser).
 
 | Button | Does |
 | --- | --- |
-| Up, Down | Move through the list. |
-| Left, Right, L, R | A page at a time. |
-| A | Open a folder or start a file. |
+| Up, Down | Move a row. Hold to keep moving. |
+| Left, Right | Move to the other pane. |
+| L, R, C-stick | A page up or down. |
+| A | Open a folder. In the left pane, start a file. |
 | X | Up a folder. |
 | Z | A file or folder: Copy, Move, Delete, Rename or Hide. `..`: Autoload this folder. |
 | START | Recently played games. |

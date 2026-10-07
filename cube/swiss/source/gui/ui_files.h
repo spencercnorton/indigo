@@ -205,6 +205,18 @@ typedef int (*uiFilesMeasureFn)(const char *text);
 float UIFiles_FitName(char *out, size_t capacity, const char *name, int maxWidth,
 	uiFilesMeasureFn measure);
 
+#define UI_FILES_DEVICE_SCALE 0.92f
+#define UI_FILES_DEVICE_MIN_SCALE 0.64f
+#define UI_FILES_CHIP_W 54		/* SOURCE, 10 px after the device's name */
+
+/* The device's name over pane, in what the SOURCE chip (when source) and the
+ * free box leave: freeWidth wide, with freeWord px of "free" 8 px before it
+ * (0 when read-only), 8 px clear of the name. At 0.92, smaller down to 0.64
+ * to fit, else cut at its end at 0.64. Returns the scale to draw at. */
+float UIFiles_FitDevice(char *out, size_t capacity, const char *name,
+	const uiFilesLayout_t *layout, int pane, bool source, int freeWidth,
+	int freeWord, uiFilesMeasureFn measure);
+
 /* A folder's path below its device's root ("/games/GameCube"), cut from the
  * left at a folder when it is too wide ("\205/Collection/GameCube"). */
 void UIFiles_FitPath(char *out, size_t capacity, const char *path, int maxWidth,
@@ -385,5 +397,77 @@ typedef struct {
 
 /* False, leaving out empty, when text doesn't end in "A  VERB    B  NAME". */
 bool UIFiles_ParseQuestion(const char *text, uiFilesQuestion_t *out);
+
+/* ------------------------------------------------------------------------
+ * A frame of the screen, as swiss.c writes it on the menu thread with every
+ * string already fitted; FrameBufferMagic.c only draws it.
+ * --------------------------------------------------------------------- */
+#define UI_FILES_ROW_TEXT 128
+#define UI_FILES_BANNER_BYTES 6144	/* a 96x32 RGB5A3 banner */
+
+#define UI_FILES_ROW_FOCUS 1u
+#define UI_FILES_ROW_HIDDEN 2u
+
+typedef struct {
+	char name[UI_FILES_ROW_TEXT];
+	char meta[24];
+	float scale;		/* the name's */
+	uint8_t kind;		/* uiFilesKind_t */
+	uint8_t flags;
+	uint8_t reserved[2];
+} uiFilesRowSnapshot_t;
+
+typedef struct {
+	uiFilesRowSnapshot_t row[UI_FILES_ROWS];
+	int16_t rows;		/* rows listed, 0 .. UI_FILES_ROWS */
+	int16_t focusRow;	/* the focused one among them, or -1 */
+	int16_t count, first;	/* entries, and the window's first: the track */
+	char button[32];	/* the storage button's words */
+	char device[48];
+	char free[24];		/* "8.57 GB", "read-only", or "" */
+	char path[UI_FILES_ROW_TEXT];
+	char counter[16];	/* "3 / 10" */
+	char message[2][64];	/* across the pane: "This folder is empty." */
+	/* Widths at their scales, measured on the menu thread, so the chips and
+	 * boxes after them sit without the draw measuring anything. */
+	int16_t deviceWidth, pathWidth, freeWidth;
+	float deviceScale;	/* the device's name: 0.92, less when long */
+	uint16_t listing;	/* another listing: the focus bar snaps */
+	uint8_t source;		/* the SOURCE chip after the device */
+	uint8_t autoload;	/* the AUTOLOAD chip after the path */
+	uint8_t reading;	/* "Reading..." over dimmed rows */
+	uint8_t readOnly;	/* the free box says so, without "free" */
+} uiFilesPaneSnapshot_t;
+
+typedef struct {
+	uint8_t banner[UI_FILES_BANNER_BYTES];	/* first, so 32-byte aligned */
+	uiFilesPaneSnapshot_t pane[UI_FILES_PANES];
+	char title[UI_FILES_ROW_TEXT];		/* the info bar's name */
+	float titleScale;
+	char chip[12];				/* HIDDEN or AUTOLOAD after it */
+	char size[24];				/* in its box; none when empty */
+	int16_t titleWidth, sizeWidth;		/* as the panes' widths */
+	char line[2][UI_FILES_TEXT_CAPACITY];
+	char hint[2][UI_FILES_HINT_CAPACITY];
+	uint8_t active;		/* the focused pane */
+	uint8_t hasBanner;
+	uint8_t infoKind;	/* uiFilesKind_t: the info bar's cube */
+	uint8_t warn;		/* line 2 in amber */
+	uint8_t leaving;	/* B: the page goes, the Home cube comes back */
+	uint8_t reserved[3];
+} uiFilesSnapshot_t;
+
+/* The page coming and going, as Memory Cards' does: the Home cube going back
+ * into the distance (handover 1 where it stood, 0 gone), the graph paper,
+ * then the words (chrome). seconds since it opened; leave seconds since B,
+ * or below 0. mode is ui_motion.h's uiMotionMode_t. */
+typedef struct {
+	float paper, chrome, handover;
+} uiFilesStage_t;
+
+void UIFiles_Stage(float seconds, float leave, int mode, uiFilesStage_t *out);
+
+/* How long leaving takes, so B can wait for it before Home shows. */
+float UIFiles_LeaveSeconds(int mode);
 
 #endif

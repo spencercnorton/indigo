@@ -255,9 +255,9 @@ Put each game in its own folder or put the disc images there directly:
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. The Library skips
 anything else there, such as a text file, a cover image or an empty folder.
 With **Library Folders** off, if `/games` holds no disc images at all, the
-Library face opens Swiss's plain file list instead. With it on, an empty
-`/games` stays in the Library. System › File Browser opens Swiss's list on
-purpose, with its copy, move, rename and delete. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn
+Library face opens the File Browser, two panes of files, instead. With it
+on, an empty `/games` stays in the Library. System › File Browser opens it on
+purpose, with Swiss's copy, move, rename and delete. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn
 the cube to Library and press A.
 
 To sort your games into folders, turn on Settings › Setup › Library ›

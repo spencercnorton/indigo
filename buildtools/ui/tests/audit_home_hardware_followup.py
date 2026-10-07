@@ -69,9 +69,22 @@ def check_consumers(home: str, recent: str, browser: str,
             "Home hold repeats can oscillate two-row/ring selections")
     require("padsStickX" not in home and "padsStickY" not in home,
             "Home still reads aggregate axes")
+    # The File Browser acts on presses (padsButtonsTaken), so it needs no
+    # release drain: one poll of the stick, which moves a row, and one of
+    # the C-stick, which pages; both vertical, repeating, and yielding to a
+    # held button.
+    require(browser.count("padsMenuInputPoll(&menuInput,") == 1 and
+            browser.count("padsSubMenuInputPoll(&pageInput,") == 1 and
+            browser.count("MenuInputPoll(") == 2,
+            "File Browser must poll the stick and the C-stick once each")
+    require(browser.count("UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,\n"
+                          "\t\t\t\t(held & waitButtons) != 0u);") == 2,
+            "File Browser has the wrong axis/repeat policy")
+    require("padsStickX" not in browser and "padsStickY" not in browser and
+            "padsSubStick" not in browser,
+            "File Browser still reads aggregate axes")
     for name, source, axis in (
         ("Recent", recent, "UI_MENU_INPUT_AXIS_VERTICAL"),
-        ("browser", browser, "UI_MENU_INPUT_AXIS_VERTICAL"),
         ("fullwidth", fullwidth, "UI_MENU_INPUT_AXIS_VERTICAL"),
     ):
         require(source.count("padsMenuInputPoll(") == 2,
@@ -134,7 +147,7 @@ elapsed = block(SWISS, "\nu32 menuInputElapsedMicroseconds(u32 *lastRetrace)\n{"
 menu_loop = block(SWISS, "void menu_loop()")
 home_input = block(menu_loop, "else if (curMenuLocation==ON_OPTIONS)")
 recent = block(SWISS, "void select_recent_entry()")
-browser = block(SWISS, "uiDrawObj_t* renderFileBrowser(")
+browser = block(SWISS, "static uiDrawObj_t* renderFileList(")
 carousel = (block(SWISS, "\nu32 gameflowMenuInputPolicy(") + "\n" +
             block(SWISS, "uiDrawObj_t* renderFileCarousel("))
 fullwidth = block(SWISS, "uiDrawObj_t* renderFileFullwidth(")
@@ -154,6 +167,13 @@ for channel in range(4):
     require(f"PAD_StickX(PAD_CHAN{channel})" in poll, f"port {channel} X omitted")
     require(f"PAD_StickY(PAD_CHAN{channel})" in poll, f"port {channel} Y omitted")
     require(f"1u << PAD_CHAN{channel}" in poll, f"port {channel} validity omitted")
+# The C-stick's poll, for the File Browser's pages, reads each port the same.
+sub_poll = block(INPUT_C, "uiMenuInputDirection_t padsSubMenuInputPoll(")
+ordered(sub_poll, "__atomic_load_n", "__ATOMIC_RELAXED")
+for channel in range(4):
+    require(f"PAD_SubStickX(PAD_CHAN{channel})" in sub_poll and
+            f"PAD_SubStickY(PAD_CHAN{channel})" in sub_poll and
+            f"1u << PAD_CHAN{channel}" in sub_poll, f"C-stick port {channel} omitted")
 for channel in range(4):
     require(f"int p{channel}a = abs((int)p{channel});" in choose,
             f"legacy magnitude for port {channel} can overflow s8")
@@ -216,6 +236,13 @@ consumer_mutants = (
     ("browser restores aggregate stick", (home_input, recent,
         changed(browser, "padsMenuInputPoll(&menuInput,",
                 "padsStickY(); padsMenuInputPoll(&menuInput,"),
+        carousel, fullwidth)),
+    ("File Browser pages without repeat", (home_input, recent,
+        changed(browser, "padsSubMenuInputPoll(&pageInput,\n\t\t\t\tmenuInputElapsedMicroseconds(&pageInputRetrace),\n\t\t\t\tUI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,",
+                "padsSubMenuInputPoll(&pageInput,\n\t\t\t\tmenuInputElapsedMicroseconds(&pageInputRetrace),\n\t\t\t\tUI_MENU_INPUT_AXIS_VERTICAL,"),
+        carousel, fullwidth)),
+    ("File Browser steps by the C-stick", (home_input, recent,
+        changed(browser, "padsSubMenuInputPoll(&pageInput,", "padsMenuInputPoll(&pageInput,"),
         carousel, fullwidth)),
     ("carousel uses vertical axis", (home_input, recent, browser,
         changed(carousel, "default:\n\t\t\treturn UI_MENU_INPUT_AXIS_HORIZONTAL | UI_MENU_INPUT_REPEAT;",

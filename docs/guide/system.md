@@ -3,7 +3,7 @@
 # System
 
 The System face tells you about your console, manages the saves on your
-memory cards, opens Swiss's own file list and restarts Indigo. On Home, turn
+memory cards, opens the File Browser and restarts Indigo. On Home, turn
 the cube to **System** and press A.
 
 <p align="center">
@@ -49,32 +49,49 @@ and erases them from one stack to the other. See
 
 ## File Browser
 
-**File Browser** opens Swiss's own file list at the top of your source, even
-when your games show in the Library. It is Swiss's list as Swiss has it, for
-the files the Library and Apps don't show: settings, cheats, saves, music and
-anything else on the card. It can have a side of the Home cube of its own
-too: Settings › Setup › Console › **Up Face** (or Left, Right or Down Face)
-› File Browser; see [Choose the sides](home.md#choose-the-sides).
+**File Browser** opens at the top of your source, even when your games show
+in the Library, for the files the Library and Apps don't show: settings,
+cheats, saves, music and anything else on the card. It can have a side of
+the Home cube of its own too: Settings › Setup › Console › **Up Face** (or
+Left, Right or Down Face) › File Browser; see
+[Choose the sides](home.md#choose-the-sides). The same screen shows wherever
+Indigo lists files outside the Library: from the Library face when there are
+no games to show, from Recent, and for an Autoload folder.
 
 <p align="center">
-  <img alt="Swiss's plain file list, one entry per row with its banner, name and region flag." src="images/library-file-list.png" width="640">
+  <img alt="The File Browser: two panes over graph paper. The left one, marked SOURCE, is open at the disc's games folder with a game focused; the right one shows the top of the disc. The info bar below names the focused game and its size." src="images/files.png" width="640">
 </p>
 
-- **A** opens a folder or starts a file, and **X** or `..` goes up a
-  folder. A on a disc image opens Swiss's own game screen rather than
-  Indigo's [Game details](game-details.md).
+It shows two panes side by side, as Memory Cards shows two stacks. The left
+pane, marked **SOURCE**, is your source: games, programs and music start
+from it. The right pane shows another folder on the same device. Above each
+pane are its device, the device's free space (or **read-only**), the open
+folder and where you are in it. Each row has a cube for what the entry is
+(folders violet, disc images silver, programs teal, firmware updates amber,
+music pink), the file's real name with its extension, and its size. A name
+too long for the row is cut in the middle, keeping its extension and a
+"(Disc 1)" before it; the info bar below shows the whole name, and for a
+game its banner and title.
+
+- **Left** and **Right** move between the panes; each keeps its place.
+- **Up** and **Down** move a row, and keep going while held. **L**, **R**
+  and the C-stick go a page up or down.
+- **A** opens a folder or starts a file in the left pane, and **X** or `..`
+  goes up a folder. A on a disc image opens Swiss's own game screen rather
+  than Indigo's [Game details](game-details.md). In the right pane, A opens
+  folders; games start from the left.
 - **B** goes back to the System face, or to the File Browser face when you
   opened it from there. The Library face opens the Library again as usual.
 - **START** shows recently played games; choosing one leaves the File
   Browser.
-- Settings › Setup › Library › **File Browser Type** changes how the list
-  looks.
 
-**Z** on a file or folder opens Swiss's actions for it: **X** Copy, **Y**
-Move, **Z** Delete, **R** Rename and **L** Hide, as far as the device
-allows. In File Browser they are always there; wherever else Swiss's list
-shows, they need **File Management** on (Settings › Setup › Library). File
-Browser leaves that setting as it is.
+**Z** on a file or folder, in either pane, opens Swiss's actions for it:
+**X** Copy, **Y** Move, **Z** Delete, **R** Rename and **L** Hide, as far as
+the device allows. Opened from System or its face, the File Browser always
+has them; opened any other way, they need **File Management** on (Settings ›
+Setup › Library). File Browser leaves that setting as it is. A program
+folder, which starts its program when you press A on it, is acted on as the
+folder.
 
 - **Copy** asks for a device, then a folder: **X** picks the folder you are
   in. If the file is already there, **A** keeps both by numbering the copy
@@ -85,7 +102,7 @@ Browser leaves that setting as it is.
 - **Hide** asks first. A hidden file or folder shows again with **Show hidden
   files** on (Settings › Setup › Library).
 
-Indigo also asks before the file list changes how your console starts:
+Indigo also asks before the File Browser changes how your console starts:
 
 - **Z** on `..` sets **Autoload**: that folder opens every time Indigo
   starts, instead of Home. Z there again turns it off. On Swiss's game
@@ -96,8 +113,9 @@ Indigo also asks before the file list changes how your console starts:
 What it can't do:
 
 - Copy or move a folder: only files.
-- Show `/games` folder by folder. Swiss lists the disc images in `/games`'s
-  folders as one list (**Flatten directory**, Settings › Setup › Library).
+- Show `/games` folder by folder in the left pane. Swiss lists the disc
+  images in `/games`'s folders as one list there (**Flatten directory**,
+  Settings › Setup › Library); the right pane shows the folders.
 - Show what **Hide unknown file types** and **Show hidden files** hide.
 
 ## Restart Indigo

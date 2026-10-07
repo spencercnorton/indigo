@@ -657,6 +657,60 @@ class Screen(unittest.TestCase):
             run.legacy_folder_browser(legacy[:400])
         self.assertEqual((run.TEXT_LEVEL, run.SAME, run.DIFFERENT), (160, 0.85, 0.5))
 
+    def test_the_file_browser_text_the_route_reads(self):
+        main, right = self.folder_frame("files-screen.png"), self.folder_frame("files-screen-right.png")
+        wide = self.folder_frame("files-screen-wide.png")
+        # Each pane's path line, in both shapes: the left pane's sits outside
+        # the stage detection_frame keeps when Menu Widescreen widens it.
+        for frame, shape in ((main, False), (right, False), (wide, True)):
+            self.assertTrue(run.files_text(frame, shape).any())
+            self.assertTrue(run.files_text(frame, shape, right=True).any())
+        self.assertFalse(run.text_mask(run.detection_frame(wide, True).max(axis=2),
+                                       run.FILES_PATH_BOX).any())
+        # "/" against "/apps", and the root's rows against /apps' rows.
+        self.assertLess(run.overlap(run.files_text(main, right=True),
+                                    run.files_text(right, right=True)), run.DIFFERENT)
+        self.assertLess(run.overlap(run.files_text(main, box=run.FILES_RIGHT_ROWS_BOX),
+                                    run.files_text(right, box=run.FILES_RIGHT_ROWS_BOX)),
+                        run.DIFFERENT)
+        # Swiss's Z box over the rows, which files_screen still finds.
+        boxed = self.folder_frame("files-screen-z.png")
+        self.assertTrue(run.files_screen(boxed))
+        band = [run.text_mask(frame.max(axis=2), run.FILES_BOX_BAND) for frame in (main, boxed)]
+        self.assertLess(run.overlap(*band), run.DIFFERENT)
+        self.assertTrue(run.same_text(band[0], band[0]))
+
+    def test_the_file_browser_and_its_focused_pane(self):
+        for name, wide, pane in (("files-screen.png", False, 0), ("files-screen-right.png", False, 1),
+                                 ("files-screen-wide.png", True, 0),
+                                 ("files-screen-themed.png", False, 0)):
+            frame = self.folder_frame(name)
+            self.assertTrue(run.files_screen(frame, wide), name)
+            self.assertEqual(run.active_pane(frame, wide), pane, name)
+            self.assertFalse(run.legacy_folder_browser(frame), name)
+        # Menu Widescreen's letterbox read as 4:3 isn't the screen.
+        self.assertFalse(run.files_screen(self.folder_frame("files-screen-wide.png")))
+        for name in ("folder-legacy-browser.png", "folder-horizontal.png", "folder-vertical.png",
+                     "folder-grid.png", "folder-spotlight.png", "folder-home.png",
+                     "themed-save-browser.png"):
+            self.assertFalse(run.files_screen(self.folder_frame(name)), name)
+        frame = self.folder_frame("files-screen.png")
+        for frame_ in (np.zeros_like(frame), np.full_like(frame, 255)):
+            self.assertFalse(run.files_screen(frame_))
+        # Each part counts: a pane's top or bottom, a storage button, the info
+        # bar, and the gutter between the panes.
+        for box in ((150, 100, 300, 116), (340, 332, 490, 348), (80, 22, 220, 60),
+                    (440, 22, 560, 60), (150, 355, 490, 368), (150, 425, 490, 438)):
+            missing = frame.copy()
+            x0, y0, x1, y1 = box
+            missing[y0:y1, x0:x1] = frame[104, 200]
+            self.assertFalse(run.files_screen(missing), box)
+        joined = frame.copy()
+        joined[107:110, 300:340] = frame[108, 200]
+        self.assertFalse(run.files_screen(joined))
+        with self.assertRaises(run.Broken):
+            run.files_screen(frame[:400])
+
     def test_native_frame_reader_catches_one_legacy_frame_and_checks_each_index(self):
         from PIL import Image
         for inject in (None, 5, 10):

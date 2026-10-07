@@ -37,12 +37,15 @@ exception screen as it would on a console. The route:
    face, A on Change Source opens the device picker, RIGHT shows another
    device and B leaves the picker. On the System face, Memory Cards opens
    with a memory card in each slot: see [Memory Cards](#memory-cards). Then
-   DOWN and A on File Browser open Swiss's own file list at the disc's root
-   (its device card beside the rows), though the disc has games, and B comes
-   back to System's rows. On the
+   DOWN and A on File Browser open the File Browser's two panes, the left one
+   focused, though the disc has games: RIGHT focuses the right pane, DOWN and
+   A there open a folder and X comes back to the same listing, and LEFT
+   focuses the left pane again; A on /games, where the left pane opens, reads
+   it into that pane and X comes back up; Z opens Swiss's box and B closes
+   it; B comes back to System's rows. On the
    Settings face, Setup › Console › Down Face None takes Apps off the cube,
-   File Browser puts its own face after System (A there opens Swiss's file
-   list and B comes back to that face) and Apps puts Apps back; Setup › Console › Cube
+   File Browser puts its own face after System (A there opens the File
+   Browser and B comes back to that face) and Apps puts Apps back; Setup › Console › Cube
    at Classic lays the faces out as the GameCube's menu does, and the route
    walks it (LEFT goes nowhere from Settings, RIGHT twice is Library then
    System, B is Library, UP Source, DOWN Library and DOWN Apps) before setting
@@ -52,7 +55,7 @@ exception screen as it would on a console. The route:
    which also lists the game a level further down, and B goes back up a
    folder at a time to the same card, then Home.
 4. **Library again.** From Apps, RIGHT comes round to Library, and A opens
-   the Library on a game, not Swiss's list: File Browser is over once Home
+   the Library on a game, not the File Browser: File Browser is over once Home
    is back. B and LEFT return to Apps.
 5. **Apps, last.** RIGHT and LEFT move between the disc's apps and back, and
    A on the probe brings up the launch screen and then the probe itself,

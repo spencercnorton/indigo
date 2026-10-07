@@ -45,7 +45,7 @@ The **Apps** face appears on [Home](home.md) as soon as the card has an app,
 one turn left of Library, or below it with a Classic cube. To keep it off
 Home, set Settings › Setup › Console › **Down Face** to None (or put Apps
 on another side with its own row); the programs stay where they are, and
-the file list still starts them.
+the File Browser still starts them.
 
 ## Emulators
 
@@ -79,7 +79,7 @@ Most GameCube programs drop straight in:
 
 ### Programs that take options
 
-Apps starts a program the way Swiss's file list does, so the files Swiss
+Apps starts a program the way the File Browser does, so the files Swiss
 reads beside it still work: a `.cli` file with the program's name
 (`gbi.cli` for `gbi.dol`) gives it its command line, one argument a line,
 and a `.dcp` file lists choices to pick from before it starts.

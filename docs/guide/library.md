@@ -110,15 +110,16 @@ Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`, in capitals or not.
 The Library skips anything else in `/games` or in a game's folder, such as a
 text file, a cover image or an empty folder.
 Mac metadata files whose names start with `._` are skipped too. Hidden files
-in a game's folder follow **Show hidden files**, as they do in the file list.
+in a game's folder follow **Show hidden files**, as they do in the
+[File Browser](system.md#file-browser).
 
 <p align="center">
-  <img alt="Swiss's plain file list of a games folder, one entry per row with its banner, name and region flag." src="images/library-file-list.png" width="640">
+  <img alt="The File Browser with the games folder open in its left pane: a cube, the file name and the size on each row." src="images/files.png" width="640">
 </p>
 
-If `/games` holds no disc images, the Library face opens the list above
-instead of posters. System › [File Browser](system.md#file-browser) opens
-it whenever you want it.
+If `/games` holds no disc images, the Library face opens the File Browser,
+above, instead of posters. System › [File Browser](system.md#file-browser)
+opens it whenever you want it.
 Compressed images (`.rvz`, `.gcz`) don't count: Swiss can't start them, and
 choosing one tells you to decompress it with NKit or Dolphin.
 

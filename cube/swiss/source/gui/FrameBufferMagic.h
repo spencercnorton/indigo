@@ -20,6 +20,7 @@
 #include "ui_save_cubes.h"
 #include "ui_saves_details.h"
 #include "ui_folder.h"
+#include "ui_files.h"
 
 #define D_WARN  0
 #define D_INFO  1
@@ -35,6 +36,7 @@
 #define PROGRESS_BOX_HEIGHT 125
 #define PROGRESS_BOX_BOTTOMLEFT 0
 #define PROGRESS_BOX_TOPLEFT 1
+#define PROGRESS_BOX_FILES 2
 
 #include "images_tpl.h"
 #include "images.h"
@@ -320,6 +322,11 @@ typedef struct {
 } uiSaveCubesPageSnapshot_t;
 
 uiDrawObj_t* DrawSaveCubesPage(const uiSaveCubesPageSnapshot_t *snapshot);
+/* The File Browser's two panes (swiss.c's renderFileList). DrawUpdateFiles
+ * and DrawUpdateFilesReading are false when page isn't one. */
+uiDrawObj_t* DrawFiles(const uiFilesSnapshot_t *snapshot);
+bool DrawUpdateFiles(uiDrawObj_t *page, const uiFilesSnapshot_t *snapshot);
+bool DrawUpdateFilesReading(uiDrawObj_t *page, int pane);
 void DrawUpdateSaveCubesPage(uiDrawObj_t *page,
 	const uiSaveCubesPageSnapshot_t *snapshot);
 uiDrawObj_t* DrawFileBrowserButton(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);

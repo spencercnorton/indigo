@@ -440,7 +440,7 @@ def validate(files: dict[str, str]) -> list[str]:
         "test_explicit_text_and_vertical_ownership",
         "test_measured_copies_cover_real_extremes",
         "CPU Temperature Calibration:",
-        "File Browser Type for games:",
+        "Hide unknown file types:",
         "Emulate Broadband Adapter:",
         "test_help_card_holds_sixteen_lines",
         "test_help_summary_reads_the_current_value",

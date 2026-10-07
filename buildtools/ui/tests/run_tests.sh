@@ -205,6 +205,9 @@ run_contracts() {
 	echo "== strict Game Library dispatch audit =="
 	python3 ./audit_gameflow_dispatch.py
 
+	echo "== File Browser list contract audit =="
+	python3 ./audit_files_contract.py
+
 	echo "== hardware Alpha V1 Home polish audit =="
 	python3 ./audit_home_polish.py
 

@@ -2,7 +2,7 @@
 
 # Troubleshooting
 
-- [I see Swiss's file list instead of the Library](#i-see-swisss-file-list-instead-of-the-library)
+- [I see the File Browser instead of the Library](#i-see-the-file-browser-instead-of-the-library)
 - [Home starts on Source, or Library says Select Source](#home-starts-on-source-or-library-says-select-source)
 - [Some games have no box art](#some-games-have-no-box-art)
 - [A message says the file is a bad dump](#a-message-says-the-file-is-a-bad-dump)
@@ -16,17 +16,19 @@
 - [There's no Apps face, or an app or its picture is missing](#theres-no-apps-face-or-an-app-or-its-picture-is-missing)
 - [Still stuck](#still-stuck)
 
-## I see Swiss's file list instead of the Library
+<a id="i-see-swisss-file-list-instead-of-the-library"></a>
+
+## I see the File Browser instead of the Library
 
 <p align="center">
-  <img alt="Swiss's plain file list, which the Library face opens when it has no games to show." src="images/library-file-list.png" width="640">
+  <img alt="The File Browser's two panes of files, which the Library face opens when it has no games to show." src="images/files.png" width="640">
 </p>
 
-Swiss's file list is part of Indigo: System › [File Browser](system.md#file-browser)
-opens it on purpose. The Library face shows the poster Library when `/games`
-holds at least one disc image (`.iso`, `.gcm`, `.tgc`, `.fdi`), directly or
-in a game's folder, and it skips anything else there. It opens the file list
-instead when:
+The File Browser, two panes of files, is part of Indigo: System ›
+[File Browser](system.md#file-browser) opens it on purpose. The Library face
+shows the poster Library when `/games` holds at least one disc image
+(`.iso`, `.gcm`, `.tgc`, `.fdi`), directly or in a game's folder, and it
+skips anything else there. It opens the File Browser instead when:
 
 - `/games` holds no disc images, for example only compressed `.rvz` or `.gcz`
   images, which must be decompressed with NKit or Dolphin first.

@@ -85,23 +85,6 @@ static void testStrictFolderEligibility(void)
 		1u, UI_GAMEFLOW_LIBRARY_ENTRY_DIRECTORY, "Random Folder"));
 }
 
-static void testBrowserDispatch(void)
-{
-	enum {
-		REQUESTED_BROWSER = 17,
-		RETAINED_BROWSER = 29
-	};
-
-	CHECK(UIGameflowLibrary_SelectBrowser(UI_GAMEFLOW_LIBRARY_NONE,
-		REQUESTED_BROWSER, RETAINED_BROWSER) == REQUESTED_BROWSER);
-	CHECK(UIGameflowLibrary_SelectBrowser(UI_GAMEFLOW_LIBRARY_IMAGE_FILES,
-		REQUESTED_BROWSER, RETAINED_BROWSER) == RETAINED_BROWSER);
-	CHECK(UIGameflowLibrary_SelectBrowser(UI_GAMEFLOW_LIBRARY_GAME_FOLDERS,
-		REQUESTED_BROWSER, RETAINED_BROWSER) == RETAINED_BROWSER);
-	CHECK(UIGameflowLibrary_SelectBrowser((uiGameflowLibraryMode_t)99,
-		REQUESTED_BROWSER, RETAINED_BROWSER) == REQUESTED_BROWSER);
-}
-
 static void testRetainedDetailDispatch(void)
 {
 	CHECK(UIGameflowLibrary_UsesRetainedDetail(
@@ -188,14 +171,10 @@ static void testArtworkFallbackPolicy(void)
 
 static void testProductionFlattenedUpgrade(void)
 {
-	/* The production migration fixture requests Fullwidth and retains Swiss's
-	 * default games-directory flattening. scanFiles consequently presents each
-	 * folder's game.iso as IMAGE_FILES; that must select both the retained
-	 * browser and the retained Detail/dashboard. */
-	enum {
-		LEGACY_FULLWIDTH = 1,
-		RETAINED_CAROUSEL = 2
-	};
+	/* The production migration fixture retains Swiss's default
+	 * games-directory flattening. scanFiles consequently presents each
+	 * folder's game.iso as IMAGE_FILES; that must select the Library
+	 * (menu_loop's dispatch) and the retained Detail/dashboard. */
 	uiGameflowLibraryClassifier_t classifier;
 	uiGameflowLibraryLocation_t location = UIGameflowLibrary_Locate(
 		"gcldr:/games", "gcldr:/games");
@@ -214,8 +193,6 @@ static void testProductionFlattenedUpgrade(void)
 	scannedMode = UIGameflowLibrary_ClassifierFinish(&classifier);
 
 	CHECK(scannedMode == UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
-	CHECK(UIGameflowLibrary_SelectBrowser(scannedMode, LEGACY_FULLWIDTH,
-		RETAINED_CAROUSEL) == RETAINED_CAROUSEL);
 	CHECK(UIGameflowLibrary_UsesRetainedDetail(scannedMode,
 		UI_GAMEFLOW_LIBRARY_ENTRY_FILE));
 }
@@ -1065,15 +1042,12 @@ static void testLibraryFoldersEntries(void)
 	CHECK(!UIGameflowLibrary_UsesRetainedDetail(UIGameflowLibrary_EntryMode(
 		folders, UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL, ".."),
 		UI_GAMEFLOW_LIBRARY_ENTRY_SPECIAL));
-
-	CHECK(UIGameflowLibrary_SelectBrowser(folders, 1, 2) == 2);
 }
 
 int main(void)
 {
 	testImageEligibility();
 	testStrictFolderEligibility();
-	testBrowserDispatch();
 	testRetainedDetailDispatch();
 	testArtworkFallbackPolicy();
 	testProductionFlattenedUpgrade();

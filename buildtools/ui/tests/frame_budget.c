@@ -1,7 +1,8 @@
 /*
  * Frame budget: the cube renderer (gui/indigo_background.c), the hint
- * icons and Memory Cards' save cubes (gui/FrameBufferMagic.c, with
- * gui/ui_save_cubes.c) run against counting GX stubs, one steady
+ * icons, Memory Cards' save cubes (gui/FrameBufferMagic.c, with
+ * gui/ui_save_cubes.c) and the File Browser (with gui/ui_files.c), its words
+ * through a font stand-in below, run against counting GX stubs, one steady
  * frame per scene, posed by the real scene module. It counts what a frame
  * costs the console: software maths on the CPU (Gekko has no square-root
  * instruction, so sqrtf is newlib's integer loop; sinf, cosf, fminf and
@@ -51,6 +52,43 @@ static float countFmaxf(float x, float y) { cost.minMaxCalls++; return fmaxf(x, 
 #include "indigo_background.c"
 #include "hint_source.c"	/* written by test_frame_budget.py */
 #include "save_cubes_source.c"	/* and this */
+/* The IPL font for the File Browser's words: 11 px a character at scale 1
+ * and 24 px tall, each character a quad a pass, two passes for the medium
+ * weight, as drawStringWeighted sends them. */
+#define ALIGN_LEFT 0
+#define ALIGN_CENTER 1
+#define ALIGN_RIGHT 2
+static int GetTextSizeInPixels(const char *text) { return 11 * (int)strlen(text); }
+static int GetFontHeight(float scale) { return (int)(24.0f * scale); }
+static void drawStringMediumUntinted(int x, int y, const char *text, float scale, int align,
+	GXColor color)
+{
+	float left = (float)x - (float)align * (float)GetTextSizeInPixels(text) * scale / 2.0f;
+	int pass, v;
+	const char *c;
+
+	for(pass = 0; pass < 2; pass++) {
+		for(c = text; *c != '\0' && *c != '\n'; c++) {
+			float x0 = left + (float)(c - text) * 11.0f * scale + (float)(1 - pass);
+
+			GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+			for(v = 0; v < 4; v++) {
+				GX_Position3f32(x0 + (((v & 1) ^ ((v & 2) >> 1)) ? 11.0f * scale : 0.0f),
+					(float)y + ((v & 2) ? 12.0f : -12.0f) * scale, 0.0f);
+				GX_Color4u8(color.r, color.g, color.b, pass == 0 ? color.a * 3 / 4 : color.a);
+				GX_TexCoord2f32(0.0f, 0.0f);
+			}
+			GX_End();
+		}
+	}
+}
+static void drawStringMedium(int x, int y, const char *text, float scale, int align,
+	GXColor color)
+{
+	UIColor_Apply(&color.r, &color.g, &color.b);
+	drawStringMediumUntinted(x, y, text, scale, align, color);
+}
+#include "files_source.c"	/* and this */
 #undef sqrtf
 #undef sinf
 #undef cosf
@@ -409,6 +447,89 @@ static void memoryCards(const char *name, bool wide, int what)
 	UIStage_SetWide(false);
 }
 
+/* The File Browser over Memory Cards' backdrop: both panes full of rows
+ * of every kind, each with its cube and the longest name its column holds
+ * (Redump names, cut in the middle), the focus bars, both scroll tracks,
+ * the chips and boxes, the info bar with its size box and two lines, and
+ * the hint line with five round buttons. The banner is one texture. */
+static int filesMeasure(const char *text) { return GetTextSizeInPixels(text); }
+
+static void files(const char *name, bool wide, int active)
+{
+	static const u8 kinds[UI_FILES_ROWS] = {
+		UI_FILES_KIND_PARENT, UI_FILES_KIND_FOLDER, UI_FILES_KIND_DISC,
+		UI_FILES_KIND_DISC, UI_FILES_KIND_DISC_COMPRESSED, UI_FILES_KIND_PROGRAM,
+		UI_FILES_KIND_FIRMWARE, UI_FILES_KIND_MUSIC
+	};
+	static const char *const long_name =
+		"Copper Orchard - The Long Way Round of the Seven Valleys (USA, Europe) "
+		"(En,Fr,De,Es,It) (Rev 1) (Disc 1).iso";
+	static uiFilesSnapshot_t snapshot;
+	const float focusY[UI_FILES_PANES] = {2.0f, 2.0f};
+	uiFilesLayout_t layout;
+	int p, i;
+
+	UIStage_SetWide(wide);
+	UIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);
+	memset(&snapshot, 0, sizeof(snapshot));
+	for(p = 0; p < UI_FILES_PANES; p++) {
+		uiFilesPaneSnapshot_t *pane = &snapshot.pane[p];
+
+		pane->rows = UI_FILES_ROWS;
+		pane->focusRow = 2;
+		pane->count = 400;
+		pane->first = 3;
+		strcpy(pane->button, p == UI_FILES_LEFT ? "L  Page up" : "R  Page down");
+		strcpy(pane->free, "8.57 GB");
+		pane->freeWidth = 72;
+		pane->source = p == UI_FILES_LEFT;
+		pane->autoload = p == UI_FILES_LEFT;
+		pane->deviceScale = UIFiles_FitDevice(pane->device, sizeof(pane->device),
+			"SD Card - SD2SP2", &layout, p, pane->source, pane->freeWidth, 23, filesMeasure);
+		pane->deviceWidth = (s16)(GetTextSizeInPixels(pane->device) * pane->deviceScale);
+		UIFiles_FitPath(pane->path, sizeof(pane->path),
+			"sd:/Backups/Old consoles/GameCube/Collection/Redump", 180, 0.46f, filesMeasure);
+		pane->pathWidth = (s16)(GetTextSizeInPixels(pane->path) * 0.46f);
+		strcpy(pane->counter, "123 / 400");
+		for(i = 0; i < UI_FILES_ROWS; i++) {
+			uiFilesRowSnapshot_t *row = &pane->row[i];
+
+			row->kind = kinds[i];
+			row->flags = i == 2 ? UI_FILES_ROW_FOCUS : 0u;
+			UIFiles_RowMeta(row->meta, sizeof(row->meta), row->kind, "1.35 GB");
+			row->scale = UIFiles_FitName(row->name, sizeof(row->name), long_name,
+				UIFiles_NameWidth(&layout, p, row->meta[0] != '\0' ?
+				(int)(GetTextSizeInPixels(row->meta) * 0.44f) : 0, true), filesMeasure);
+		}
+	}
+	snapshot.active = (u8)active;
+	snapshot.hasBanner = 1;
+	strcpy(snapshot.size, "1.35 GB");
+	snapshot.sizeWidth = 64;
+	strcpy(snapshot.chip, "HIDDEN");
+	snapshot.titleScale = UIFiles_FitName(snapshot.title, sizeof(snapshot.title),
+		"Copper Orchard: The Long Way Round of the Seven Valleys",
+		layout.info.x1 - 16 - layout.infoTextX - 64, filesMeasure);
+	snapshot.titleWidth = (s16)(GetTextSizeInPixels(snapshot.title) * snapshot.titleScale);
+	UIFiles_FitName(snapshot.line[0], sizeof(snapshot.line[0]), long_name,
+		layout.info.x1 - 112 - layout.infoTextX - 76, filesMeasure);
+	strcpy(snapshot.line[1], "GameCube disc  \267  GCOE01  \267  Copper Orchard Games");
+	UIFiles_Hints(UI_FILES_HINTS_LIST, active, UI_FILES_KIND_DISC, true, true, false,
+		snapshot.hint[0], snapshot.hint[1]);
+	memset(&cost, 0, sizeof(cost));
+	cost.hash = 1469598103934665603ULL;
+	stubStateCalls = 0;
+	IndigoBackground_DrawSavesBackdrop(1.0f, 0.0f, seconds, true, UIScene_Frame(), &clock, icons);
+	_FilesShapes(&snapshot, &layout, 1.0f, (float)active, focusY, 0.0f);
+	_FilesWords(&snapshot, &layout, 1.0f, (float)active);
+	printf("{\"scene\": \"%s\", \"sqrtf\": %ld, \"trig\": %ld, \"minmax\": %ld, "
+		"\"vertices\": %ld, \"begins\": %ld, \"copy_pixels\": %.0f, \"state\": %ld, "
+		"\"hash\": \"%016llx\"}\n", name, cost.sqrtCalls, cost.trigCalls,
+		cost.minMaxCalls, cost.vertices, cost.begins, cost.copyPixels,
+		stubStateCalls, cost.hash);
+	UIStage_SetWide(false);
+}
+
 int main(void)
 {
 	int colors[UI_COLOR_LAYERS] = {0};
@@ -446,5 +567,8 @@ int main(void)
 	memoryCards("memory-cards-copy", true, CARDS_COPY);
 	memoryCards("memory-cards-erase", true, CARDS_ERASE);
 	memoryCards("memory-cards-opening", true, CARDS_OPENING);
+	files("files", false, UI_FILES_LEFT);
+	files("files-right", false, UI_FILES_RIGHT);
+	files("files-wide", true, UI_FILES_LEFT);
 	return 0;
 }

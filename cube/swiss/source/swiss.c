@@ -66,6 +66,8 @@
 #include "gui/ui_home_safety.h"
 #include "gui/ui_presentation.h"
 #include "gui/ui_scene.h"
+#include "gui/ui_motion.h"
+#include "gui/ui_stage.h"
 #include "devices/deviceHandler.h"
 #include "devices/filelock.h"
 #include "devices/filemeta.h"
@@ -698,20 +700,20 @@ static void filesActivate(file_handle **directory, bool useGameflow)
 	unlockFile(directory[curSelection]);
 }
 
-/* Z on "..": this folder opens at every start, or no longer does. Turning it
+/* Z on "..": folder opens at every start, or no longer does. Turning it
  * on asks first. */
-static void filesToggleAutoload(void)
+static void filesToggleAutoload(const char *folder)
 {
-	if(!autoloadToggleConfirmed(&curDir.name[0], true)) {
+	if(!autoloadToggleConfirmed(folder, true)) {
 		return;
 	}
 	// Toggle autoload
-	if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
-	|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
+	if(!strcmp(&swissSettings.autoload[0], folder)
+	|| !fnmatch(&swissSettings.autoload[0], folder, FNM_PATHNAME)) {
 		memset(&swissSettings.autoload[0], 0, PATHNAME_MAX);
 	}
 	else {
-		strcpy(&swissSettings.autoload[0], &curDir.name[0]);
+		strcpy(&swissSettings.autoload[0], folder);
 	}
 	// Save config
 	uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving autoload\205"));
@@ -743,7 +745,7 @@ static bool filesManage(file_handle **directory, bool cardArt)
 		}
 	}
 	else if(directory[curSelection]->fileType == IS_SPECIAL) {
-		filesToggleAutoload();
+		filesToggleAutoload(&curDir.name[0]);
 	}
 	unlockFile(directory[curSelection]);
 	return false;
@@ -779,6 +781,855 @@ static void filesBarrelGame(uiDrawObj_t *loadingBox)
 		curSelection = meta_find_barrel_game(curSelection);
 		DrawUpdateProgressLoading(loadingBox, -1);
 	}
+}
+
+/* ------------------------------------------------------------------------
+ * The File Browser: two panes side by side, as Memory Cards shows two
+ * stacks, in place of Swiss's lists everywhere outside the Library. The
+ * left pane is the Source and is the listing menu_loop scans: it starts
+ * games, holds the second disc and the MP3 player's songs, and is the one
+ * the meta thread reads banners for. The right pane reads a folder of its
+ * own; until it can choose its own storage, on the Source too.
+ * --------------------------------------------------------------------- */
+
+/* The right pane's listing: readDir and sortFiles, as select_dest_dir reads
+ * a folder. Never scanFiles, populate_meta, the meta thread,
+ * current_view_*, curFile, curDir or curSelection, so the shared listing
+ * and everything that reads it never see this one. */
+typedef struct {
+	DEVICEHANDLER_INTERFACE *device;	/* the Source's, for now */
+	file_handle dir;			/* the open folder */
+	file_handle *entries;			/* readDir's array */
+	file_handle **sorted;			/* sortFiles' view of it */
+	int read, count;			/* entries read, and shown */
+	bool listed;				/* entries hold dir's listing */
+	bool failed;				/* readDir failed */
+	u16 listing;
+	char focusName[PATHNAME_MAX];		/* found again after a read */
+} filesPane_t;
+
+static filesPane_t filesOther;
+static uiFilesState_t filesState;
+static uiFilesSnapshot_t filesSnapshot __attribute__((aligned(32)));
+/* The page last published, so a return from a folder change updates it in
+ * place rather than opening it again. */
+static uiDrawObj_t *filesPage;
+static u16 filesLeftListing;
+/* The Source's free space, read once a listing. */
+static char filesFree[24];
+static bool filesReadOnly;
+/* A left folder change keeps the presses made while the folder is read. */
+static bool filesKeepPresses;
+/* Line 2 of the info bar until the next press: why a press did nothing. */
+static const char *filesNote;
+/* The visible left rows read without a meta thread, from filesMetaFirst. */
+static int filesMetaFirst = -1;
+static u16 filesMetaListing;
+static u32 filesMetaTried;
+/* The scene the File Browser opened over: Home's from a face, else the
+ * Library's. */
+static uiSceneId_t filesScene = UI_SCENE_HOME;
+/* renderFileCarousel couldn't draw the Library here: the File Browser shows
+ * this folder, read again, until the next listing. */
+static bool gameflowListFallback;
+
+static int filesMeasure(const char *text)
+{
+	return GetTextSizeInPixels(text);
+}
+
+/* text's width at scale, as the draw takes it. */
+static int filesWidth(const char *text, float scale)
+{
+	return (int)ceilf((float)GetTextSizeInPixels(text) * scale);
+}
+
+/* The right pane's listing goes; its storage, folder and focus stay for the
+ * next visit, when it is read again. */
+static void filesOtherRelease(void)
+{
+	for(int i = 0; i < filesOther.read; i++) {
+		filesOther.device->closeFile(&filesOther.entries[i]);
+	}
+	free(filesOther.sorted);
+	free(filesOther.entries);
+	filesOther.sorted = NULL;
+	filesOther.entries = NULL;
+	filesOther.read = filesOther.count = 0;
+	filesOther.listed = false;
+}
+
+/* path is folder or inside it. */
+static bool filesWithin(const char *path, const char *folder)
+{
+	size_t length = strlen(folder);
+
+	return !strncmp(path, folder, length) && (path[length] == '\0' || path[length] == '/');
+}
+
+static bool filesAtRoot(const file_handle *dir)
+{
+	char parent[PATHNAME_MAX];
+
+	strlcpy(parent, dir->name, sizeof(parent));
+	return getParentPath(parent, parent);
+}
+
+/* Reads the right pane's folder, focusing focusName again. A Source that
+ * changed, or a folder that is gone, starts it again at the Source's root. */
+static void filesOtherRead(void)
+{
+	DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];
+	int focus = 0;
+
+	filesOtherRelease();
+	if(filesOther.device != source) {
+		filesOther.device = source;
+		memcpy(&filesOther.dir, source->initial, sizeof(file_handle));
+		filesOther.focusName[0] = '\0';
+	}
+	filesOther.read = source->readDir(&filesOther.dir, &filesOther.entries, -1);
+	if(filesOther.read <= 0 && strcmp(filesOther.dir.name, source->initial->name)) {
+		free(filesOther.entries);
+		filesOther.entries = NULL;
+		memcpy(&filesOther.dir, source->initial, sizeof(file_handle));
+		filesOther.read = source->readDir(&filesOther.dir, &filesOther.entries, -1);
+	}
+	filesOther.failed = filesOther.read < 0;
+	if(filesOther.read < 0) {
+		filesOther.read = 0;
+	}
+	filesOther.count = sortFiles(filesOther.entries, filesOther.read, &filesOther.sorted);
+	/* No storage to choose on this side yet: no ".." at its top. */
+	if(filesOther.count > 0 && filesOther.sorted[0]->fileType == IS_SPECIAL &&
+			filesAtRoot(&filesOther.dir)) {
+		memmove(&filesOther.sorted[0], &filesOther.sorted[1],
+			(size_t)(filesOther.count - 1) * sizeof(file_handle *));
+		filesOther.count--;
+	}
+	for(int i = 0; i < filesOther.count; i++) {
+		if(!strcmp(filesOther.sorted[i]->name, filesOther.focusName)) {
+			focus = i;
+		}
+	}
+	if(focus == 0 && filesOther.count > 1 &&
+			filesOther.sorted[0]->fileType == IS_SPECIAL) {
+		focus = 1;
+	}
+	filesOther.listed = true;
+	filesOther.listing++;
+	UIFiles_SetPane(&filesState, UI_FILES_RIGHT, filesOther.count, focus);
+}
+
+/* The right pane, read if it isn't, or if the Source changed under it. */
+static void filesOtherAcquire(void)
+{
+	if(!filesOther.listed || filesOther.device != devices[DEVICE_CUR]) {
+		filesOtherRead();
+	}
+}
+
+/* The right pane opens folder (or, NULL, its parent), focusing focus (NULL:
+ * the folder it came from). A meta thread may be reading the Source
+ * meanwhile: it runs only on a device that is thread safe. */
+static void filesOtherOpen(const file_handle *folder, const char *focus)
+{
+	char from[PATHNAME_MAX];
+
+	strlcpy(from, filesOther.dir.name, sizeof(from));
+	if(folder != NULL) {
+		memcpy(&filesOther.dir, folder, sizeof(file_handle));
+	}
+	else {
+		/* A disc finds a folder by its fileBase: the ".." entry has the
+		 * parent's, as filesUp takes it. */
+		if(filesOther.count > 0 && filesOther.sorted[0]->fileType == IS_SPECIAL) {
+			filesOther.dir.fileBase = filesOther.sorted[0]->fileBase;
+		}
+		getParentPath(filesOther.dir.name, filesOther.dir.name);
+		filesOther.dir.fileType = IS_DIR;
+		if(filesAtRoot(&filesOther.dir)) {
+			memcpy(&filesOther.dir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
+		}
+	}
+	strlcpy(filesOther.focusName, focus != NULL ? focus : from,
+		sizeof(filesOther.focusName));
+	filesOtherRead();
+}
+
+static bool filesFlattened(void)
+{
+	return !fnmatch(swissSettings.flattenDir, curDir.name,
+		FNM_PATHNAME | FNM_CASEFOLD);
+}
+
+/* What an entry is. Swiss's meta reading may have made a left folder the
+ * program inside it: it shows, and is focused again, as that folder. */
+static uiFilesKind_t filesKind(const file_handle *entry, int pane,
+	const char *dirName)
+{
+	if(pane == UI_FILES_LEFT && UIFiles_IsProgramFolder(entry->name,
+			entry->fileType, dirName, filesFlattened())) {
+		return UI_FILES_KIND_PROGRAM_FOLDER;
+	}
+	return UIFiles_Kind(entry->name, entry->fileType);
+}
+
+static bool filesLoads(const file_handle *entry)
+{
+	return entry->fileType == IS_FILE &&
+		canLoadFileType((char *)entry->name, devices[DEVICE_CUR]->extraExtensions);
+}
+
+static bool filesAutoloadFolder(const char *folder)
+{
+	return swissSettings.autoload[0] != '\0' &&
+		(!strcmp(&swissSettings.autoload[0], folder) ||
+		!fnmatch(&swissSettings.autoload[0], folder, FNM_PATHNAME));
+}
+
+/* The size column's words for a file: blocks on a memory card or a Qoob,
+ * where it is on a WODE. */
+static void filesSizeText(char *out, size_t capacity, const file_handle *entry)
+{
+	DEVICEHANDLER_INTERFACE *device = entry->device;
+
+	if(device == &__device_wode) {
+		const ISOInfo_t *iso = (const ISOInfo_t *)&entry->other;
+
+		UIFiles_PartitionText(out, capacity, iso->iso_partition, iso->iso_number);
+		return;
+	}
+	UIFiles_SizeText(out, capacity, entry->size,
+		device == &__device_card_a || device == &__device_card_b ? 8192u :
+		device == &__device_qoob ? 65536u : 0u,
+		device != NULL && !(device->location & LOC_SYSTEM));
+}
+
+/* What each kind is, in the info bar. */
+static const char *const filesKindWords[UI_FILES_KINDS] = {
+	"", "Folder", "Program folder", "GameCube disc", "Compressed GameCube disc",
+	"Program", "Firmware update", "Music", "Picture", "Text", "File"
+};
+
+/* The name scanFiles finds the left pane's focus by: a program folder's own
+ * path, else the entry's. */
+static void filesLeftFocusName(file_handle **directory, char *out, size_t capacity)
+{
+	file_handle *entry = directory[curSelection];
+
+	lockFile(entry);
+	if(filesKind(entry, UI_FILES_LEFT, curDir.name) == UI_FILES_KIND_PROGRAM_FOLDER) {
+		UIFiles_ProgramFolderPath(out, capacity, entry->name, curDir.name);
+	}
+	else {
+		strlcpy(out, entry->name, capacity);
+	}
+	unlockFile(entry);
+}
+
+/* The Source's free space for both panes' boxes: once a listing, never
+ * shown when it is only a guess. */
+static void filesReadFree(void)
+{
+	DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];
+	device_info *info;
+
+	filesFree[0] = '\0';
+	filesReadOnly = !(source->features & FEAT_WRITE);
+	if(filesReadOnly) {
+		strlcpy(filesFree, "read-only", sizeof(filesFree));
+		return;
+	}
+	info = source->info != NULL ? source->info(source->initial) : NULL;
+	if(UIFiles_FreeKnown(info != NULL, info != NULL ? info->totalSpace : 0u,
+			source == &__device_smb || source == &__device_ftp ||
+			source == &__device_fsp)) {
+		UIFiles_SizeText(filesFree, sizeof(filesFree), info->freeSpace, 0u,
+			info->metric);
+	}
+}
+
+/* One pane's header and rows, from its listing's window. wait: lock the
+ * left rows the meta thread may be filling, else give up (false) when one
+ * is busy. */
+static bool filesPaneSnapshot(uiFilesPaneSnapshot_t *out, file_handle **entries,
+	int pane, const char *dirName, const uiFilesLayout_t *layout, bool wait)
+{
+	const uiFilesPaneState_t *state = &filesState.pane[pane];
+	const uiFilesRect_t *box = &layout->pane[pane];
+	const char *deviceName = DeviceDisplayName(devices[DEVICE_CUR]);
+	bool track = state->count > UI_FILES_ROWS;
+	char name[PATHNAME_MAX];
+	int i, room;
+
+	out->rows = 0;
+	out->focusRow = -1;
+	out->count = (s16)state->count;
+	out->first = (s16)state->first;
+	for(i = state->first; i < state->count && out->rows < UI_FILES_ROWS; i++) {
+		uiFilesRowSnapshot_t *row = &out->row[out->rows];
+		file_handle *entry = entries[i];
+		char size[24] = "";
+		int metaWidth;
+
+		if(pane == UI_FILES_LEFT) {
+			if(!wait && !trylockFile(entry)) {
+				return false;
+			}
+			if(wait) {
+				lockFile(entry);
+			}
+		}
+		row->kind = (u8)filesKind(entry, pane, dirName);
+		UIFiles_RowName(name, sizeof(name), entry->name, row->kind, dirName, deviceName);
+		if(entry->fileType == IS_FILE && row->kind != UI_FILES_KIND_PROGRAM_FOLDER) {
+			filesSizeText(size, sizeof(size), entry);
+		}
+		row->flags = entry->fileType != IS_SPECIAL &&
+			((entry->fileAttrib & ATTRIB_HIDDEN) || *getRelativeName(entry->name) == '.') ?
+			UI_FILES_ROW_HIDDEN : 0u;
+		if(pane == UI_FILES_LEFT) {
+			unlockFile(entry);
+		}
+		UIFiles_RowMeta(row->meta, sizeof(row->meta), row->kind, size);
+		metaWidth = row->meta[0] != '\0' ? filesWidth(row->meta, 0.44f) : 0;
+		row->scale = UIFiles_FitName(row->name, sizeof(row->name), name,
+			UIFiles_NameWidth(layout, pane, metaWidth, track), filesMeasure);
+		if(i == state->focus) {
+			row->flags |= UI_FILES_ROW_FOCUS;
+			out->focusRow = out->rows;
+		}
+		out->rows++;
+	}
+	snprintf(out->button, sizeof(out->button), pane == UI_FILES_LEFT ?
+		"L  Page up" : "R  Page down");
+	out->source = pane == UI_FILES_LEFT;
+	strlcpy(out->free, filesFree, sizeof(out->free));
+	out->readOnly = filesReadOnly;
+	out->freeWidth = (s16)(filesFree[0] != '\0' ?
+		MAX(UI_FILES_FREE_MIN_WIDTH, filesWidth(filesFree, 0.50f) + 16) : 0);
+	out->deviceScale = UIFiles_FitDevice(out->device, sizeof(out->device), deviceName,
+		layout, pane, out->source, out->freeWidth,
+		out->freeWidth > 0 && !filesReadOnly ? filesWidth("free", 0.42f) : 0, filesMeasure);
+	out->deviceWidth = (s16)filesWidth(out->device, out->deviceScale);
+	snprintf(out->counter, sizeof(out->counter), "%d / %d",
+		state->count > 0 ? state->focus + 1 : 0, state->count);
+	out->autoload = filesAutoloadFolder(dirName);
+	room = box->x1 - box->x0 - 4 - filesWidth(out->counter, 0.46f) - 12 -
+		(out->autoload ? 74 : 0);
+	UIFiles_FitPath(out->path, sizeof(out->path), getDevicePath((char *)dirName),
+		room, 0.46f, filesMeasure);
+	out->pathWidth = (s16)filesWidth(out->path, 0.46f);
+	out->reading = 0;
+	out->message[0][0] = out->message[1][0] = '\0';
+	if(pane == UI_FILES_RIGHT && filesOther.failed) {
+		snprintf(out->message[0], sizeof(out->message[0]), "Couldn't read %s.",
+			getRelativeName(filesOther.dir.name));
+	}
+	else if(state->count == 0 ||
+			(state->count == 1 && entries[0]->fileType == IS_SPECIAL)) {
+		strlcpy(out->message[0], "This folder is empty.", sizeof(out->message[0]));
+		if((pane == UI_FILES_LEFT ? getCurrentDirEntryCount() : filesOther.read) >
+				state->count) {
+			strlcpy(out->message[1], "What it holds isn't shown here.",
+				sizeof(out->message[1]));
+		}
+	}
+	return true;
+}
+
+/* The info bar and the hints, for the focused entry of the focused pane. */
+static bool filesInfoSnapshot(uiFilesSnapshot_t *s, file_handle **entries,
+	const char *dirName, const uiFilesLayout_t *layout, bool wait)
+{
+	int pane = filesState.active;
+	const uiFilesPaneState_t *state = &filesState.pane[pane];
+	const char *deviceName = DeviceDisplayName(devices[DEVICE_CUR]);
+	char name[PATHNAME_MAX], title[PATHNAME_MAX];
+	uiFilesKind_t kind = UI_FILES_KIND_FOLDER;
+	file_handle *entry = state->count > 0 ? entries[state->focus] : NULL;
+	bool loads = false, autoload = false;
+	int room, scaled;
+
+	s->active = (u8)pane;
+	s->hasBanner = 0;
+	s->warn = 0;
+	s->chip[0] = s->size[0] = '\0';
+	s->line[0][0] = s->line[1][0] = '\0';
+	strlcpy(title, getRelativeName((char *)dirName), sizeof(title));
+	if(entry != NULL) {
+		if(pane == UI_FILES_LEFT) {
+			if(!wait && !trylockFile(entry)) {
+				return false;
+			}
+			if(wait) {
+				lockFile(entry);
+			}
+		}
+		kind = filesKind(entry, pane, dirName);
+		loads = filesLoads(entry);
+		UIFiles_RowName(name, sizeof(name), entry->name, kind, dirName, deviceName);
+		strlcpy(title, name, sizeof(title));
+		if(entry->fileType == IS_FILE && kind != UI_FILES_KIND_PROGRAM_FOLDER) {
+			filesSizeText(s->size, sizeof(s->size), entry);
+		}
+		if(pane == UI_FILES_LEFT && entry->meta != NULL) {
+			file_meta *meta = entry->meta;
+
+			if(meta->banner != NULL && meta->bannerSize == BNR_PIXELDATA_LEN &&
+					meta->bannerSum != 0xFFFF) {
+				memcpy(s->banner, meta->banner, BNR_PIXELDATA_LEN);
+				s->hasBanner = 1;
+			}
+			if(s->hasBanner && meta->displayName != NULL && meta->displayName[0] != '\0') {
+				strlcpy(title, meta->displayName, sizeof(title));
+				strlcpy(s->line[0], name, sizeof(s->line[0]));
+			}
+			if(kind == UI_FILES_KIND_DISC && meta->diskId.gamename[0] != '\0') {
+				snprintf(s->line[1], sizeof(s->line[1]), "GameCube disc  \267  %.4s%.2s%s%s",
+					meta->diskId.gamename, meta->diskId.company,
+					meta->bannerDesc.company[0] != '\0' ? "  \267  " : "",
+					meta->bannerDesc.company);
+			}
+		}
+		if(pane == UI_FILES_LEFT && s->line[1][0] == '\0') {
+			strlcpy(s->line[1], filesKindWords[kind], sizeof(s->line[1]));
+		}
+		/* Without a banner's title above it, the file's facts go first. */
+		if(s->line[0][0] == '\0') {
+			strlcpy(s->line[0], s->line[1], sizeof(s->line[0]));
+			s->line[1][0] = '\0';
+		}
+		if((entry->fileAttrib & ATTRIB_HIDDEN) && entry->fileType != IS_SPECIAL) {
+			strlcpy(s->chip, "HIDDEN", sizeof(s->chip));
+		}
+		else if(pane == UI_FILES_LEFT && entry->fileType == IS_FILE &&
+				filesAutoloadFolder(entry->name)) {
+			strlcpy(s->chip, "AUTOLOAD", sizeof(s->chip));
+		}
+		if(pane == UI_FILES_LEFT) {
+			unlockFile(entry);
+		}
+		if(pane == UI_FILES_RIGHT && kind != UI_FILES_KIND_PARENT) {
+			snprintf(s->line[0], sizeof(s->line[0]), "On %s  \233  %s", deviceName,
+				getDevicePath(filesOther.dir.name));
+		}
+		if(kind == UI_FILES_KIND_DISC_COMPRESSED) {
+			strlcpy(s->line[1], "Swiss can't start a compressed disc.", sizeof(s->line[1]));
+			s->warn = 1;
+		}
+		else if(pane == UI_FILES_RIGHT && loads) {
+			strlcpy(s->line[1], "Games start on the left.", sizeof(s->line[1]));
+		}
+	}
+	if(filesNote != NULL) {
+		strlcpy(s->line[1], filesNote, sizeof(s->line[1]));
+		s->warn = 1;
+	}
+	s->infoKind = (u8)kind;
+	/* The name at 0.62, smaller to fit, cut in the middle past 0.46. */
+	room = layout->info.x1 - 16 - layout->infoTextX - (s->chip[0] != '\0' ? 64 : 0);
+	scaled = GetTextSizeInPixels(title);
+	if((float)scaled * 0.62f <= (float)room) {
+		strlcpy(s->title, title, sizeof(s->title));
+		s->titleScale = 0.62f;
+	}
+	else if(scaled > 0 && (float)room / (float)scaled >= UI_FILES_NAME_MIN_SCALE) {
+		strlcpy(s->title, title, sizeof(s->title));
+		s->titleScale = (float)room / (float)scaled;
+	}
+	else {
+		s->titleScale = UIFiles_FitName(s->title, sizeof(s->title), title, room,
+			filesMeasure);
+	}
+	s->titleWidth = (s16)filesWidth(s->title, s->titleScale);
+	s->sizeWidth = (s16)(s->size[0] != '\0' ? MAX(48, filesWidth(s->size, 0.50f) + 16) : 0);
+	/* The lines keep clear of the loading wheel's word in the corner. */
+	room = layout->info.x1 - 112 - layout->infoTextX - (s->sizeWidth ? s->sizeWidth + 12 : 0);
+	for(int line = 0; line < 2; line++) {
+		strlcpy(name, s->line[line], sizeof(name));
+		(void)UIFiles_FitName(s->line[line], sizeof(s->line[line]), name, room,
+			filesMeasure);
+	}
+	if(entry != NULL && entry->fileType == IS_SPECIAL) {
+		autoload = filesAutoloadFolder(dirName);
+	}
+	UIFiles_Hints(UI_FILES_HINTS_LIST, pane, kind, loads, fileManagementAllowed(),
+		autoload, s->hint[0], s->hint[1]);
+	/* Y swaps the sides once the right pane can choose its own storage. */
+	char *swap = strstr(s->hint[0], "Y  Swap sides   ");
+	if(swap != NULL) {
+		memmove(swap, swap + 16, strlen(swap + 16) + 1);
+	}
+	return true;
+}
+
+/* The page for this frame, published or updated. wait as filesPaneSnapshot:
+ * false (nothing changed) when a row was busy. */
+static bool filesPublish(file_handle **directory, uiDrawObj_t **filePanel, bool wait)
+{
+	uiFilesLayout_t layout;
+	file_handle **entries = filesState.active == UI_FILES_LEFT ? directory : filesOther.sorted;
+	const char *dirName = filesState.active == UI_FILES_LEFT ? curDir.name : filesOther.dir.name;
+
+	UIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);
+	if(!filesPaneSnapshot(&filesSnapshot.pane[UI_FILES_LEFT], directory, UI_FILES_LEFT,
+			curDir.name, &layout, wait) ||
+		!filesPaneSnapshot(&filesSnapshot.pane[UI_FILES_RIGHT], filesOther.sorted,
+			UI_FILES_RIGHT, filesOther.dir.name, &layout, wait) ||
+		!filesInfoSnapshot(&filesSnapshot, entries, dirName, &layout, wait)) {
+		return false;
+	}
+	filesSnapshot.pane[UI_FILES_LEFT].listing = filesLeftListing;
+	filesSnapshot.pane[UI_FILES_RIGHT].listing = filesOther.listing;
+	if(*filePanel == NULL || *filePanel != filesPage ||
+			!DrawUpdateFiles(*filePanel, &filesSnapshot)) {
+		uiDrawObj_t *page = DrawFiles(&filesSnapshot);
+
+		if(page == NULL) {
+			return false;
+		}
+		*filePanel = filesPage = DrawRepublish(*filePanel, page);
+	}
+	return true;
+}
+
+/* The menu thread reads one visible left row's banner a frame, never
+ * while drawing, as Swiss's list read its visible rows: without a meta
+ * thread (a disc, a memory card, WODE...) it is the only reader, and with
+ * one it reads the rows in view first and lets the meta cache drop rows
+ * out of view once it is full. True when it read one. */
+static bool filesMetaStep(file_handle **directory)
+{
+	if(filesMetaFirst != current_view_start || filesMetaListing != filesLeftListing) {
+		filesMetaFirst = current_view_start;
+		filesMetaListing = filesLeftListing;
+		filesMetaTried = 0u;
+	}
+	for(int i = current_view_start; i < current_view_end && i - current_view_start < 32; i++) {
+		u32 bit = 1u << (i - current_view_start);
+
+		if(!(filesMetaTried & bit)) {
+			filesMetaTried |= bit;
+			if(directory[i]->meta != NULL) {
+				continue;
+			}
+			lockFile(directory[i]);
+			populate_meta(directory[i]);
+			unlockFile(directory[i]);
+			return true;
+		}
+	}
+	return false;
+}
+
+/* Z on an entry the screen holds itself: a right-pane entry, or the folder a
+ * program folder stands for. Today's Z menu on it, then focus back in
+ * curFile: leftFocus, the left pane's, or (NULL) the entry's own. True when
+ * the panes must be read again. */
+static bool filesManageEntry(file_handle *entry, const char *leftFocus)
+{
+	bool changed;
+
+	meta_thread_stop();
+	memcpy(&curFile, entry, sizeof(file_handle));
+	changed = manage_file();
+	memcpy(entry, &curFile, sizeof(file_handle));
+	while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
+	if(leftFocus != NULL) {
+		strlcpy(curFile.name, leftFocus, sizeof(curFile.name));
+	}
+	return changed;
+}
+
+/* Waits until seconds of video have gone, at the screen's own rate. */
+static void filesWait(float seconds)
+{
+	u32 since = VIDEO_GetRetraceCount();
+	float rate = VIDEO_GetRetraceRate();
+
+	if(!isfinite(rate) || rate < 1.0f) rate = 60.0f;
+	while((float)(VIDEO_GetRetraceCount() - since) < seconds * rate) {
+		VIDEO_WaitVSync();
+	}
+}
+
+/* The File Browser on the shared listing, as Swiss's lists were: it returns
+ * to menu_loop for a left folder change, a Source change, B, START, a
+ * launch, and anything that needs the listing read again. */
+static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
+{
+	const u32 waitButtons = BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT | BUTTON_RIGHT |
+		BUTTON_A | BUTTON_B | PAD_BUTTON_X | BUTTON_Z | BUTTON_L | BUTTON_R |
+		BUTTON_START | BUTTON_CLAP;
+	const u32 vertical = BUTTON_UP | BUTTON_DOWN;
+	uiMenuInputState_t menuInput, pageInput;
+	u32 menuInputRetrace, pageInputRetrace, repeatHeld = 0u, repeatAt = 0u;
+	float rate = VIDEO_GetRetraceRate();
+	uiDrawObj_t *loadingBox;
+	char leftFocus[PATHNAME_MAX];
+
+	gameflowListFallback = false;
+	if(num_files<=0) {
+		memcpy(&curDir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
+		needsRefresh=1;
+		return filePanel;
+	}
+	if(!isfinite(rate) || rate < 1.0f) rate = 60.0f;
+	if(filePanel == NULL || filePanel != filesPage) {
+		/* Opening: the left pane has the focus, the right comes back where
+		 * it was. It asks for no scene, so the cube stays as Home or the
+		 * Library left it, and goes back there after anything that turns
+		 * it (a game's info coming back to the list). */
+		filesState.active = UI_FILES_LEFT;
+		filesNote = NULL;
+		filesScene = filePanel == NULL ? UI_SCENE_HOME : UI_SCENE_LIBRARY;
+	}
+	else {
+		UIScene_Request(filesScene);
+	}
+	if(curSelection == 0 && num_files > 1 && directory[0]->fileType == IS_SPECIAL) {
+		curSelection = 1; // skip the ".." by default
+	}
+	UIFiles_SetPane(&filesState, UI_FILES_LEFT, num_files, curSelection);
+	curSelection = filesState.pane[UI_FILES_LEFT].focus;
+	UIFiles_LeftView(&filesState, &current_view_start, &current_view_end);
+	filesLeftListing++;
+	filesReadFree();
+	filesOtherAcquire();
+	if(!filesPublish(directory, &filePanel, true)) {
+		/* No memory for the page: Home rather than a stale screen. */
+		filesOtherRelease();
+		curMenuLocation = ON_OPTIONS;
+		return filePanel;
+	}
+	loadingBox = DrawPublish(DrawProgressLoading(PROGRESS_BOX_FILES));
+	meta_thread_start(loadingBox);
+	UIMenuInput_Init(&menuInput);
+	UIMenuInput_Init(&pageInput);
+	menuInputRetrace = pageInputRetrace = VIDEO_GetRetraceCount();
+	/* Presses from before (the A that opened this, a B in a box) aren't for
+	 * here; those made while a folder was read are. */
+	if(!filesKeepPresses) {
+		(void)padsButtonsTaken(waitButtons);
+	}
+	filesKeepPresses = false;
+	while(1) {
+		uiFilesPaneState_t *active;
+		uiMenuInputDirection_t analog, page;
+		u32 buttons, held;
+		int frames = 0;
+		bool moved = false;
+
+		while(1) {
+			u32 now = VIDEO_GetRetraceCount();
+
+			held = padsButtonsHeld();
+			buttons = padsButtonsTaken(waitButtons);
+			/* Up and Down held: again after 320 ms, then every 120 ms. */
+			if((held & vertical) != repeatHeld) {
+				repeatHeld = held & vertical;
+				repeatAt = now + (u32)(0.32f * rate);
+			}
+			else if(repeatHeld != 0u && (s32)(now - repeatAt) >= 0) {
+				buttons |= repeatHeld;
+				repeatAt = now + (u32)(0.12f * rate);
+			}
+			analog = padsMenuInputPoll(&menuInput,
+				menuInputElapsedMicroseconds(&menuInputRetrace),
+				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,
+				(held & waitButtons) != 0u);
+			page = padsSubMenuInputPoll(&pageInput,
+				menuInputElapsedMicroseconds(&pageInputRetrace),
+				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,
+				(held & waitButtons) != 0u);
+			if(buttons != 0u || analog != UI_MENU_INPUT_NONE ||
+					page != UI_MENU_INPUT_NONE) {
+				break;
+			}
+			VIDEO_WaitVSync();
+			/* Banners arrive: from this thread a row a frame, else from the
+			 * meta thread, looked for four times a second. */
+			if(filesMetaStep(directory) || ++frames % 15 == 0) {
+				(void)filesPublish(directory, &filePanel, false);
+			}
+		}
+		filesNote = NULL;
+		active = &filesState.pane[filesState.active];
+		/* Moves first: a press of Down and A acts on the row moved to. */
+		if((buttons & BUTTON_UP) || analog == UI_MENU_INPUT_UP) {
+			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_UP);
+		}
+		if((buttons & BUTTON_DOWN) || analog == UI_MENU_INPUT_DOWN) {
+			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_DOWN);
+		}
+		/* L and R page until they choose each side's storage. */
+		if((buttons & BUTTON_L) || page == UI_MENU_INPUT_UP) {
+			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_PAGE_UP);
+		}
+		if((buttons & BUTTON_R) || page == UI_MENU_INPUT_DOWN) {
+			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_PAGE_DOWN);
+		}
+		if(buttons & BUTTON_LEFT) {
+			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_LEFT);
+		}
+		if(buttons & BUTTON_RIGHT) {
+			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_RIGHT);
+		}
+		if(buttons & BUTTON_CLAP) {
+			filesBarrelGame(loadingBox);
+			UIFiles_SetPane(&filesState, UI_FILES_LEFT, num_files, curSelection);
+			moved = true;
+		}
+		active = &filesState.pane[filesState.active];
+		curSelection = filesState.pane[UI_FILES_LEFT].focus;
+		UIFiles_LeftView(&filesState, &current_view_start, &current_view_end);
+		if(moved) {
+			menuaudio_blip();
+		}
+
+		if(filesState.active == UI_FILES_LEFT) {
+			if(buttons & BUTTON_A) {
+				int type;
+
+				/* What A does depends on the meta (a program folder, a
+				 * second disc): read it now if no one has yet. */
+				lockFile(directory[curSelection]);
+				populate_meta(directory[curSelection]);
+				type = directory[curSelection]->fileType;
+				unlockFile(directory[curSelection]);
+				filesActivate(directory, false);
+				filesKeepPresses = type == IS_DIR || type == IS_SPECIAL;
+				/* Z's box on a file that can't start changed something:
+				 * the right pane is read again too. */
+				if(type == IS_FILE && needsRefresh) {
+					filesOther.listed = false;
+				}
+				break;
+			}
+			if(buttons & PAD_BUTTON_X) {
+				filesUp(directory[0]);
+				filesKeepPresses = true;
+				/* At the top the Source picker opens: it must not see X
+				 * still held, which is its own button. */
+				if(needsDeviceChange) {
+					while(padsButtonsHeld() & PAD_BUTTON_X) VIDEO_WaitVSync();
+				}
+				break;
+			}
+			if((buttons & BUTTON_Z) && fileManagementAllowed()) {
+				file_handle folder;
+				bool program;
+
+				lockFile(directory[curSelection]);
+				program = filesKind(directory[curSelection], UI_FILES_LEFT, curDir.name) ==
+					UI_FILES_KIND_PROGRAM_FOLDER;
+				if(program) {
+					/* A program folder's Z acts on the folder, not the
+					 * program Swiss found in it. */
+					memcpy(&folder, directory[curSelection], sizeof(file_handle));
+					UIFiles_ProgramFolderPath(folder.name, sizeof(folder.name),
+						directory[curSelection]->name, curDir.name);
+					folder.fileType = IS_DIR;
+					folder.size = 0;
+					folder.meta = NULL;
+					folder.fp = NULL;
+					folder.ffsFp = NULL;
+					folder.uiObj = NULL;
+					folder.lockCount = 0;
+					folder.thread = LWP_THREAD_NULL;
+				}
+				unlockFile(directory[curSelection]);
+				if(program ? filesManageEntry(&folder, NULL) :
+						filesManage(directory, false)) {
+					filesOther.listed = false;
+					needsRefresh = 1;
+					break;
+				}
+				/* Nothing changed: the banners go on arriving. */
+				meta_thread_stop();
+				meta_thread_start(loadingBox);
+			}
+		}
+		else if(buttons & (BUTTON_A | PAD_BUTTON_X | BUTTON_Z)) {
+			file_handle *entry = active->count > 0 ? filesOther.sorted[active->focus] : NULL;
+			bool parent = (buttons & PAD_BUTTON_X) ||
+				(entry != NULL && entry->fileType == IS_SPECIAL && !(buttons & BUTTON_Z));
+
+			if(parent) {
+				if(filesAtRoot(&filesOther.dir)) {
+					filesNote = "This is the top of this storage.";
+				}
+				else {
+					(void)DrawUpdateFilesReading(filePanel, UI_FILES_RIGHT);
+					filesOtherOpen(NULL, NULL);
+				}
+			}
+			else if(entry != NULL && entry->fileType == IS_SPECIAL) {
+				if(fileManagementAllowed()) {
+					filesToggleAutoload(filesOther.dir.name);
+				}
+			}
+			else if(entry != NULL && (buttons & BUTTON_A) && entry->fileType == IS_DIR) {
+				(void)DrawUpdateFilesReading(filePanel, UI_FILES_RIGHT);
+				filesOtherOpen(entry, "");
+			}
+			else if(entry != NULL && (buttons & BUTTON_A) && filesLoads(entry)) {
+				filesNote = "Games start on the left.";
+			}
+			else if(entry != NULL && fileManagementAllowed()) {
+				char was[PATHNAME_MAX];
+
+				strlcpy(was, entry->name, sizeof(was));
+				filesLeftFocusName(directory, leftFocus, sizeof(leftFocus));
+				if(filesManageEntry(entry, leftFocus)) {
+					/* Both panes are read again, the right focusing the
+					 * entry by the name it has now. */
+					strlcpy(filesOther.focusName, entry->name, sizeof(filesOther.focusName));
+					filesOther.listed = false;
+					needsRefresh = 1;
+					/* The left pane's folder, or one above it, renamed or
+					 * deleted: the left goes to the folder that held it,
+					 * focusing it by its new name, rather than reading a
+					 * folder that is gone. */
+					if(filesWithin(curDir.name, was)) {
+						memcpy(&curDir, &filesOther.dir, sizeof(file_handle));
+						strlcpy(curFile.name, entry->name, sizeof(curFile.name));
+					}
+					break;
+				}
+				meta_thread_stop();
+				meta_thread_start(loadingBox);
+			}
+		}
+		if((buttons & BUTTON_START) && filesRecent(false)) {
+			break;
+		}
+		if(buttons & BUTTON_B) {
+			/* The page goes and the Home cube comes back before Home does. */
+			filesSnapshot.leaving = 1;
+			(void)DrawUpdateFiles(filePanel, &filesSnapshot);
+			filesWait(UIFiles_LeaveSeconds(UIMotion_ModeFromFlags(
+				swissSettings.disableUIAnimations, swissSettings.reduceUIAnimations)));
+			filesSnapshot.leaving = 0;
+			/* No Swiss row to dim on the way out. */
+			filesHome(directory, true);
+			break;
+		}
+		/* A box (Z, Autoload) may have left presses of its own. */
+		if(buttons & (BUTTON_A | PAD_BUTTON_X | BUTTON_Z)) {
+			(void)padsButtonsTaken(waitButtons);
+		}
+		(void)filesPublish(directory, &filePanel, true);
+	}
+	meta_thread_stop();
+	DrawDispose(loadingBox);
+	/* Leaving the screen, or its Source: the right listing goes. */
+	if(curMenuLocation != ON_FILLIST || needsDeviceChange) {
+		filesOtherRelease();
+	}
+	return filePanel;
 }
 
 uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
@@ -2381,12 +3232,18 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				}
 			}
 		}
-		if(!useGameflow) {
-			uiDrawObj_t *newPanel = DrawContainer();
-			drawFilesCarousel(directory, num_files, newPanel);
-			filePanel = DrawRepublish(filePanel, newPanel);
-		}
 		DrawUpdateProgressLoading(loadingBox, -1);
+		if(!useGameflow) {
+			/* No Library to draw here (no memory for it): the File Browser
+			 * shows this folder instead, read again, since
+			 * gameflowLibraryEntries has moved its games to the front. */
+			lockFile(directory[curSelection]);
+			memcpy(curFile.name, directory[curSelection]->name, sizeof(curFile.name));
+			unlockFile(directory[curSelection]);
+			gameflowListFallback = true;
+			needsRefresh = 1;
+			break;
+		}
 		
 		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP|
 			(useGameflow ? PAD_BUTTON_Y : 0u);
@@ -5355,6 +6212,8 @@ void menu_loop()
 			devices[DEVICE_PREV] = previousDevice;
 		}
 		needsDeviceChange = 0;
+		/* The picker reads held buttons: its A or B is not the list's. */
+		filesKeepPresses = false;
 		homePublish(curMenuLocation == ON_OPTIONS);
 		bool deviceConfirmed = select_device_internal(DEVICE_CUR);
 		UIScene_Request(UI_SCENE_HOME);
@@ -5427,9 +6286,13 @@ void menu_loop()
 
 			curMenuLocation=ON_OPTIONS;
 			curSelection=0;
+			/* The File Browser says its folder is being read (a disc
+			 * spinning up, a network share) while it is. */
+			(void)DrawUpdateFilesReading(filePanel, UI_FILES_LEFT);
 			scanFiles();
 			if(getCurrentDirEntryCount()<=0) {
 				homeLibraryEntryPending = false;
+				filesOtherRelease();
 				DrawGameflowCancelPosters();
 				devices[DEVICE_PREV] = devices[DEVICE_CUR];
 				devices[DEVICE_CUR]->deinit(devices[DEVICE_CUR]->initial);
@@ -5453,37 +6316,24 @@ void menu_loop()
 			}
 		}
 		if(devices[DEVICE_CUR] != NULL && curMenuLocation==ON_FILLIST) {
-			UIScene_RequestLibraryLayout(gameflowSceneLayout());
-			UIScene_Request(UI_SCENE_LIBRARY);
-			int fileBrowserType = swissSettings.fileBrowserType;
-			if(!fnmatch("*/apps", curDir.name, FNM_PATHNAME | FNM_CASEFOLD | FNM_LEADING_DIR)) {
-				fileBrowserType = swissSettings.appsBrowserType;
+			/* A Library location with a game in it is the Library's, whatever
+			 * File Browser Type says; every other folder is the File
+			 * Browser's. The File Browser asks for no scene: the Home cube
+			 * stays where the face or the Library left it, as Memory Cards
+			 * hands it over. */
+			if(!gameflowListFallback && gameflowLibraryMode(getSortedDirEntries(),
+					getSortedDirEntryCount()) != UI_GAMEFLOW_LIBRARY_NONE) {
+				filesOtherRelease();
+				filesKeepPresses = false;
+				UIScene_RequestLibraryLayout(gameflowSceneLayout());
+				UIScene_Request(UI_SCENE_LIBRARY);
+				filePanel = renderFileCarousel(getSortedDirEntries(),
+					gameflowLibraryEntries(getSortedDirEntries(),
+						getSortedDirEntryCount()), filePanel);
 			}
-			else if(!fnmatch("*/games", curDir.name, FNM_PATHNAME | FNM_CASEFOLD | FNM_LEADING_DIR)) {
-				fileBrowserType = swissSettings.gameBrowserType;
-			}
-			/* A games folder with a game in it owns the retained presentation.
-			 * Existing configurations default GameBrowserType to Fullwidth;
-			 * allowing that legacy preference to win would make the custom
-			 * Library unreachable on upgraded cards. Library Folders also owns
-			 * empty /games and its folder views. Outside those locations, the
-			 * requested legacy browser remains available. */
-			fileBrowserType = UIGameflowLibrary_SelectBrowser(
-				gameflowLibraryMode(getSortedDirEntries(),
-					getSortedDirEntryCount()),
-				fileBrowserType, BROWSER_CAROUSEL);
-			switch(fileBrowserType) {
-				default:
-					filePanel = renderFileBrowser(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);
-					break;
-				case BROWSER_CAROUSEL:
-					filePanel = renderFileCarousel(getSortedDirEntries(),
-						gameflowLibraryEntries(getSortedDirEntries(),
-							getSortedDirEntryCount()), filePanel);
-					break;
-				case BROWSER_FULLWIDTH:
-					filePanel = renderFileFullwidth(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);
-					break;
+			else {
+				filePanel = renderFileList(getSortedDirEntries(),
+					getSortedDirEntryCount(), filePanel);
 			}
 			while(padsButtonsHeld() & (BUTTON_B | BUTTON_A | BUTTON_RIGHT | BUTTON_LEFT | BUTTON_START)) {
 				VIDEO_WaitVSync (); 

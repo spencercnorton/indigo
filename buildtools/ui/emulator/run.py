@@ -24,10 +24,12 @@ while a crash, a hang, a black screen or a broken control does:
     stack, R and L choose a named storage place and back, A opens the box
     beside a save and B closes it, Copy puts the save on Slot B (its folder
     gains the file, the same blocks), Move is dimmed for it then, Erase
-    removes it from Slot A's folder, and B leaves;
+    removes it from Slot A's folder, and B leaves; File Browser opens its
+    two panes, RIGHT and LEFT move between them, A opens a folder in either
+    and X comes back, Z opens Swiss's box and B closes it, and B leaves;
   - on the Settings face, Setup > Console > Down Face None takes Apps off the
     cube (System's next face is Library), File Browser puts a face of its
-    own there (A opens Swiss's own file list, B comes back to that face) and
+    own there (A opens the File Browser, B comes back to that face) and
     Apps puts Apps back;
   - Setup > Console > Cube Classic lays the faces out as the GameCube's menu
     does, Library between them: from Settings, LEFT goes nowhere and RIGHT
@@ -121,6 +123,14 @@ INFO_BOX = (164, 377, 590, 396)
 LEFT_HEADER_BOX, RIGHT_HEADER_BOX = (66, 56, 222, 92), (354, 56, 510, 92)
 MEMORY_LEFT_PATH_BOX = (128, 66, 280, 92)
 FOOTER_BOX = (30, 442, 610, 464)
+# The File Browser's panes: their path lines ("/", "/apps"), each from the
+# pane's outer edge, which Menu Widescreen moves out to x -67 (stage_box
+# places it on the capture); the right pane's top rows; and the band Swiss's
+# Z box covers (DrawEmptyBox(10, 150, 630, 320)), over both panes' rows.
+FILES_PATH_BOX, FILES_WIDE_PATH_BOX = (40, 90, 220, 106), (-65, 90, 115, 106)
+FILES_RIGHT_PATH_BOX = (330, 90, 510, 106)
+FILES_RIGHT_ROWS_BOX = (366, 116, 560, 196)
+FILES_BOX_BAND = (20, 160, 620, 310)
 SAVE_DETAILS_EYEBROW_BOX = (100, 108, 274, 132)
 SAVE_DETAILS_TITLE_BOX = (100, 132, 540, 168)
 SAVE_DETAILS_SIZE_BOX = (350, 178, 528, 212)
@@ -284,6 +294,61 @@ def legacy_folder_browser(rgb: np.ndarray) -> bool:
     # The device card at (20,90)-(143,210) is separate from the file rows.
     device = edge(36, 125, 90) and edge(36, 125, 210)
     return device and rows >= 1
+
+
+def _edge(rgb: np.ndarray, x0: int, x1: int, y: int) -> int:
+    """How lit a box's edge is along x0..x1 within two rows of y: its
+    brightest row's mean, when nearly all of that row is bright (lilac, or
+    grey under Jet Black, dimmed or not) and brighter than four rows off it
+    on both sides; else 0."""
+    best = 0
+    for row in range(y - 2, y + 3):
+        line = rgb[row, x0:x1].astype(np.int16)
+        off = np.maximum(rgb[row - 4, x0:x1].max(axis=1), rgb[row + 4, x0:x1].max(axis=1))
+        lit = (line.max(axis=1) >= 100) & (line.max(axis=1) - off > 30)
+        if np.count_nonzero(lit) >= (x1 - x0) * 0.9:
+            best = max(best, int(line.max(axis=1).mean()))
+    return best
+
+
+# The File Browser's boxes, by the spans of their edges that hold in both
+# screen shapes (Menu Widescreen moves only the panes' outer edges): each
+# pane box's top and bottom, the storage button above each pane, the gutter
+# between the panes, and the info bar.
+FILES_PANES = ((150, 300), (340, 490))
+FILES_BUTTONS = ((80, 220), (440, 560))
+
+
+def files_screen(rgb: np.ndarray, wide: bool = False) -> bool:
+    """The File Browser's two panes side by side, with the info bar below."""
+    if rgb.shape != (HEIGHT, WIDTH, 3):
+        raise Broken(f"unexpected presented frame size: {rgb.shape}")
+    rgb = detection_frame(rgb, wide)
+    panes = all(_edge(rgb, x0, x1, y) for x0, x1 in FILES_PANES for y in (108, 340))
+    buttons = all(_edge(rgb, x0, x1, y) for x0, x1 in FILES_BUTTONS for y in (28, 54))
+    gutter = not _edge(rgb, 313, 327, 108)
+    info = all(_edge(rgb, 150, 490, y) for y in (362, 431))
+    return panes and buttons and gutter and info
+
+
+def files_text(rgb: np.ndarray, wide: bool = False, right: bool = False,
+               box: tuple[int, int, int, int] | None = None) -> np.ndarray:
+    """A File Browser pane's text in a box, its path line by default. The
+    left pane's outer edge moves with Menu Widescreen, outside the stage
+    detection_frame keeps, so its path is read from the capture itself."""
+    if box is None and not right:
+        return text_mask(rgb.max(axis=2), stage_box(FILES_WIDE_PATH_BOX if wide else
+                                                    FILES_PATH_BOX, wide))
+    return text_mask(detection_frame(rgb, wide).max(axis=2),
+                     box if box is not None else FILES_RIGHT_PATH_BOX)
+
+
+def active_pane(rgb: np.ndarray, wide: bool = False) -> int:
+    """Which of the File Browser's panes has the focus: 0 left, 1 right. Its
+    box's edge is lit in full, the other's dimmed."""
+    rgb = detection_frame(rgb, wide)
+    left, right = (_edge(rgb, x0, x1, 108) for x0, x1 in FILES_PANES)
+    return 0 if left > right else 1
 
 
 class PresentedFrames:
@@ -1727,35 +1792,114 @@ class Route:
             self.memory_cards()
         self.file_browser(1 if self.cards else 2)
 
-    def legacy_list(self, shown: bool) -> bool:
-        """Waits for Swiss's own file list to be on the screen, or gone."""
+    def files_list(self, shown: bool, pane: int | None = None) -> bool:
+        """Waits for the File Browser to be on the screen (with pane focused,
+        when one is given), or gone."""
         deadline = Deadline(self.emulator, SETTLE_SECONDS)
         while not deadline.expired():
-            self.gray()
-            if legacy_folder_browser(self.last_rgb) == shown:
+            self.last_rgb = self.emulator.frame()
+            up = files_screen(self.last_rgb, self.menu_wide)
+            if up == shown and (pane is None or not up or
+                                active_pane(self.last_rgb, self.menu_wide) == pane):
+                return True
+            time.sleep(0.3)
+        return False
+
+    def files_path(self, like: np.ndarray | None = None,
+                   unlike: np.ndarray | None = None, right: bool = False,
+                   box: tuple[int, int, int, int] | None = None) -> np.ndarray | None:
+        """A pane's path line (or box) once it reads like (or unlike) a mask."""
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        while not deadline.expired():
+            self.last_rgb = self.emulator.frame()
+            mask = files_text(self.last_rgb, self.menu_wide, right, box)
+            if mask.any() and (like is None or same_text(mask, like)) and \
+                    (unlike is None or not same_text(mask, unlike)):
+                return mask
+            time.sleep(0.3)
+        return None
+
+    def files_band(self, opened: bool, before: np.ndarray) -> bool:
+        """Waits for Swiss's box to be over the panes' rows (unlike before),
+        or gone with the File Browser as it was (like before)."""
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        while not deadline.expired():
+            self.last_rgb = self.emulator.frame()
+            mask = text_mask(detection_frame(self.last_rgb, self.menu_wide).max(axis=2),
+                             FILES_BOX_BAND)
+            if (overlap(mask, before) < DIFFERENT) if opened else \
+                    (same_text(mask, before) and files_screen(self.last_rgb, self.menu_wide)):
                 return True
             time.sleep(0.3)
         return False
 
     def file_browser(self, downs: int) -> None:
-        """DOWN to File Browser and A: Swiss's own file list at the disc's
-        root, its device card beside the rows, though the disc has games the
-        Library would show. B comes back to System's rows."""
+        """DOWN to File Browser and A: the File Browser's two panes, the left
+        one focused, though the disc has games the Library would show. RIGHT
+        focuses the right pane, at the Source's root: DOWN and A open a folder
+        and X comes back to the same rows, then LEFT focuses the left again.
+        A on /games, which the left pane focuses as the folder the Library
+        showed, reads it into the left pane and X comes back up; Z opens
+        Swiss's box over the rows and B closes it; B comes back to System's
+        rows."""
         self.steps(" ".join(["DOWN"] * downs))
+        system, _ = self.settled_label()
         self.press("A")
-        shown = self.legacy_list(True)
+        shown = self.files_list(True, pane=0)
         self.shot("file-browser", self.last_rgb)
-        self.check("File Browser opens Swiss's own file list", shown)
+        self.check("File Browser opens its two panes, the left one focused", shown)
+        self.press("RIGHT")
+        self.check("RIGHT focuses the right pane", self.files_list(True, pane=1))
+        self.shot("file-browser-right", self.last_rgb)
+        # The right pane opens at the root, where a disc lists itself first:
+        # DOWN is a folder on every route's Source (apps, or games).
+        self.press("DOWN")
+        self.pause(1.0)
+        top = self.files_path(right=True)
+        rows = self.files_path(right=True, box=FILES_RIGHT_ROWS_BOX)
+        self.press("A")
+        inside = self.files_path(unlike=top, right=True) if top is not None else None
+        self.shot("file-browser-right-folder", self.last_rgb)
+        self.check("A on a folder opens it in the right pane",
+                   inside is not None and active_pane(self.last_rgb, self.menu_wide) == 1)
+        self.press("X")
+        back = self.files_path(like=top, right=True) if top is not None else None
+        again = self.files_path(like=rows, right=True, box=FILES_RIGHT_ROWS_BOX) \
+            if rows is not None else None
+        self.check("X in the right pane comes back up to the same rows",
+                   back is not None and again is not None)
+        self.press("LEFT")
+        self.check("LEFT focuses the left pane again", self.files_list(True, pane=0))
+        # The left pane opens on the folder the Library last showed, /games:
+        # with File Browser it is a list of files like any other.
+        top = self.files_path()
+        self.press("A")
+        inside = self.files_path(unlike=top) if top is not None else None
+        self.shot("file-browser-folder", self.last_rgb)
+        self.check("A on a folder opens it in the left pane",
+                   inside is not None and files_screen(self.last_rgb, self.menu_wide))
+        self.press("X")
+        back = self.files_path(like=top) if top is not None else None
+        self.check("X comes back up a folder", back is not None)
+        rows = text_mask(detection_frame(self.emulator.frame(), self.menu_wide).max(axis=2),
+                         FILES_BOX_BAND)
+        self.press("Z")
+        opened = self.files_band(True, rows)
+        self.shot("file-browser-z", self.last_rgb)
+        self.check("Z opens Swiss's box over the File Browser", opened)
         self.press("B")
-        gone = self.legacy_list(False)
-        rows, _ = self.settled_label()
+        self.check("B closes Z's box on the File Browser",
+                   self.files_band(False, rows) and self.files_list(True, pane=0))
+        self.press("B")
+        gone = self.files_list(False)
+        label, _ = self.settled_label(like=system) if system is not None else (None, 0.0)
         self.shot("file-browser-back", self.last_rgb)
-        self.check("B leaves the file list for System's rows", gone and rows is not None)
+        self.check("B leaves the File Browser for System's rows", gone and label is not None)
 
     def files_face(self, faces: list[np.ndarray]) -> None:
         """Down Face File Browser, from System: RIGHT turns to a face named
-        unlike every other, A there opens Swiss's own file list, and B comes
-        back to that face, not System's."""
+        unlike every other, A there opens the File Browser, and B comes back
+        to that face, not System's."""
         mask, _ = self.press_until("RIGHT", unlike=faces[3])
         self.shot("after-system-apps-face-files", self.last_rgb)
         self.check("Down Face File Browser: after System comes a face of its own",
@@ -1763,26 +1907,27 @@ class Route:
                    overlaps=[round(overlap(mask, face), 3) for face in faces[:5]]
                    if mask is not None else None)
         self.press("A")
-        shown = self.legacy_list(True)
+        shown = self.files_list(True, pane=0)
         self.shot("files-face-list", self.last_rgb)
-        self.check("A on the File Browser face opens Swiss's own file list", shown)
+        self.check("A on the File Browser face opens the File Browser", shown)
         self.press("B")
-        gone = self.legacy_list(False)
+        gone = self.files_list(False)
         back, _ = self.settled_label(like=mask) if mask is not None else (None, 0.0)
         self.shot("files-face-back", self.last_rgb)
-        self.check("B from Swiss's list comes back to the File Browser face",
+        self.check("B from the File Browser comes back to the File Browser face",
                    gone and back is not None)
 
     def library_after_file_browser(self, faces: list[np.ndarray]) -> None:
         """From Apps, RIGHT to Library and A: after File Browser, the Library
-        opens on a game again, not Swiss's list. B and LEFT come back to Apps."""
+        opens on a game again, not the File Browser. B and LEFT come back to Apps."""
         mask, _ = self.press_until("RIGHT", like=faces[0])
         self.check("RIGHT from Apps comes round to Library", mask is not None)
         self.press("A")
         title, _ = self.settled_label(box=TITLE_BOX)
         self.shot("library-after-file-browser", self.last_rgb)
         self.check("after File Browser, A on Library opens the Library",
-                   title is not None and not legacy_folder_browser(self.last_rgb))
+                   title is not None and not files_screen(self.last_rgb, self.menu_wide) and
+                   not legacy_folder_browser(self.last_rgb))
         self.press("B")
         mask, _ = self.settled_label(like=faces[0])
         self.check("B comes back to Library", mask is not None)

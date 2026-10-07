@@ -43,32 +43,24 @@ carousel = extract_function(SWISS, "uiDrawObj_t* renderFileCarousel(")
 # carousel calls with its own useGameflow.
 LEGACY_ACTIVATE = "filesActivate(directory, useGameflow);"
 activate_entry = extract_function(SWISS, "static void filesActivate(")
-requested = menu.index("int fileBrowserType = swissSettings.fileBrowserType")
-games_preference = menu.index(
-    "fileBrowserType = swissSettings.gameBrowserType", requested
-)
-policy_call = menu.index(
-    "fileBrowserType = UIGameflowLibrary_SelectBrowser(", games_preference
-)
-strict_probe = menu.index("gameflowLibraryMode(", policy_call)
-requested_browser = menu.index("fileBrowserType, BROWSER_CAROUSEL", strict_probe)
-dispatch = menu.index("switch(fileBrowserType)", requested_browser)
-carousel_case = menu.index("case BROWSER_CAROUSEL:", dispatch)
-retained_renderer = menu.index("renderFileCarousel(", carousel_case)
-fullwidth = menu.index("case BROWSER_FULLWIDTH:", retained_renderer)
-
-assert (
-    requested
-    < games_preference
-    < policy_call
-    < strict_probe
-    < requested_browser
-    < dispatch
-    < carousel_case
-    < retained_renderer
-    < fullwidth
-)
-assert menu.count("UIGameflowLibrary_SelectBrowser(") == 1
+# The dispatch: the Library wherever it applies, the File Browser everywhere
+# else. File Browser Type is no longer read, so an old GameBrowserType can't
+# hide the Library; the scene requests belong to the Library's branch alone.
+dispatch = extract_function(menu, "if(devices[DEVICE_CUR] != NULL && curMenuLocation==ON_FILLIST)")
+strict_probe = dispatch.index("if(!gameflowListFallback && gameflowLibraryMode(")
+release = dispatch.index("filesOtherRelease();", strict_probe)
+layout_request = dispatch.index("UIScene_RequestLibraryLayout(gameflowSceneLayout());", release)
+scene_request = dispatch.index("UIScene_Request(UI_SCENE_LIBRARY);", layout_request)
+retained_renderer = dispatch.index("renderFileCarousel(", scene_request)
+file_list = dispatch.index("else {", retained_renderer)
+list_renderer = dispatch.index("renderFileList(", file_list)
+assert strict_probe < release < layout_request < scene_request < retained_renderer < \
+    file_list < list_renderer
+assert dispatch.count("UIScene_Request") == 2
+for gone in ("BrowserType", "UIGameflowLibrary_SelectBrowser(", "renderFileBrowser(",
+             "renderFileFullwidth(", "switch("):
+    assert gone not in menu, gone
+assert "UIGameflowLibrary_SelectBrowser" not in SWISS
 
 # Production-upgrade contract: the preserved profile omits GameBrowserType,
 # inherits Fullwidth, and keeps Swiss's default /games flattening. That scans
@@ -419,12 +411,14 @@ SOURCE = ROOT / "cube/swiss/source"
 WAITERS = {path: path.read_text() for path in sorted(SOURCE.rglob("*.c"))
            if OWN.match(path.relative_to(ROOT).as_posix())}
 IO = ("CardArt_Poll(", "artLoad(", "->readFile(", "->writeFile(", "->readDir(",
-      "populate_meta(")
+      "populate_meta(", "filesMetaStep(")
 # Memory Cards' inputNext takes its presses, and inputInit drops the old ones
-# at the start of each screen (audit_saves_safety.py checks both).
-CLEARED_BY_CALLER = {"inputNext"}
+# at the start of each screen (audit_saves_safety.py checks both). The File
+# Browser drops them on opening and after each box, but keeps those made
+# while a folder is read (audit_files_contract.py checks both).
+CLEARED_BY_CALLER = {"inputNext", "renderFileList"}
 LATCHED = {"showPrograms", "renderFileCarousel", "manage_file", "verify_game",
-           "inputNext"}
+           "inputNext", "renderFileList"}
 CLEAR = re.compile(r"\(void\)padsButtonsTaken\((\w+)\);")
 TAKE = re.compile(r"(?<!\(void\))padsButtonsTaken\((\w+)\)")
 

@@ -34,8 +34,13 @@ PAGE_ENUMS = {
 # Game Defaults doesn't show the vertical offset: every game starts at
 # global.ini's value (+0 unless set there), and each game's own settings
 # still show it.
+# File Browser Type's three rows went with Swiss's lists: their keys stay in
+# the settings file, read and written for Swiss, but no screen shows them.
 DROPPED = {("PAGE_GAME_GLOBAL", "SET_GLOBAL_DEFAULTS"),
-           ("PAGE_GAME_DEFAULTS", "SET_DEFAULT_VERT_OFFSET")}
+           ("PAGE_GAME_DEFAULTS", "SET_DEFAULT_VERT_OFFSET"),
+           ("PAGE_INTERFACE", "SET_FILEBROWSER_TYPE"),
+           ("PAGE_INTERFACE", "SET_APPSBROWSER_TYPE"),
+           ("PAGE_INTERFACE", "SET_GAMEBROWSER_TYPE")}
 QUICK = [
     ("PAGE_INTERFACE", "SET_MENU_MUSIC"),
     ("PAGE_INTERFACE", "SET_MENU_SFX"),
