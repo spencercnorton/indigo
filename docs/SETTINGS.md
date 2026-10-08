@@ -62,7 +62,7 @@ video mode and polling rate. Copy them to the paths above and edit them.
 ```ini
 IGRType=Reboot
 AutoCheats=Yes
-GameBrowserType=Carousel
+Library Layout=Grid
 Disable Menu Music=Yes
 ```
 

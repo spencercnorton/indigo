@@ -113,7 +113,7 @@ def check(swiss: str, frame: str, files: str = FILES) -> None:
     before(step, "lockFile(directory[i]);", "populate_meta(directory[i]);")
     # current_view_* is the left pane's window, whichever pane is focused.
     section = swiss[swiss.index(" * The File Browser: two panes side by side"):
-                    swiss.index("uiDrawObj_t* renderFileBrowser(")]
+                    swiss.index("static u32 gameflowSnapshotGeneration;")]
     assert not re.search(r"current_view_(?:start|end)\s*=", section), \
         "current_view_* set other than from UIFiles_LeftView"
     assert "&current_view_" not in section.replace(
@@ -158,7 +158,7 @@ def check(swiss: str, frame: str, files: str = FILES) -> None:
     # B: the page leaves before Home is published.
     back = function(screen, "if(buttons & BUTTON_B)")
     before(back, "filesSnapshot.leaving = 1;", "filesWait(")
-    before(back, "filesWait(", "filesHome(directory, true);")
+    before(back, "filesWait(", "filesHome();")
     # A folder being read says so, then the right listing goes before the
     # Source can.
     refresh = function(menu, "if(devices[DEVICE_CUR] != NULL && needsRefresh)")
@@ -170,12 +170,19 @@ def check(swiss: str, frame: str, files: str = FILES) -> None:
     assert "if(curMenuLocation != ON_FILLIST || needsDeviceChange) {\n\t\tfilesOtherRelease();" in screen
     # The Library that can't draw a folder leaves it to the File Browser,
     # read again in fileComparator's order; the flag lasts one listing.
-    fallback = carousel[carousel.index("if(!useGameflow) {\n\t\t\t/* No Library"):]
+    fallback = carousel[carousel.index("if(!drawn) {\n\t\t\t/* No Library"):]
     fallback = fallback[:fallback.index("break;")]
     for token in ("memcpy(curFile.name, directory[curSelection]->name",
                   "gameflowListFallback = true;", "needsRefresh = 1;"):
         assert token in fallback, token
-    assert "drawFilesCarousel(" not in carousel
+    # Swiss's lists are gone for good: no renderer, no row to draw them, and
+    # the Library has no list of its own to fall back to.
+    for gone in ("renderFileBrowser(", "renderFileFullwidth(", "drawFiles(", "drawFilesCarousel(",
+                 "drawFilesFullwidth(", "drawCurrentDevice(", "drawCurrentDeviceCarousel(",
+                 "FILES_PER_PAGE_FULLWIDTH", "DrawFileBrowserButton", "DrawFileCarouselEntry",
+                 "EV_FILEBROWSERBUTTON", "drawFileBrowserButtonEvent_t"):
+        assert gone not in swiss and gone not in frame, gone
+    assert "useGameflow" not in carousel, "the Library keeps a branch for Swiss's carousel"
     assert screen.index("gameflowListFallback = false;") < screen.index("if(num_files<=0)")
     # The page covers the frame, so nothing behind it is drawn.
     assert "event->type == EV_FILES" in function(frame, "static bool _FrameCovered(")
@@ -232,7 +239,7 @@ def check_second_device(swiss: str, screen: str, menu: str, dispatch: str, refre
     other = screen[screen.index("if(choice == filesMenu.devices) {"):]
     before(other, release, "needsDeviceChange = 1;")
     back = function(screen, "if(buttons & BUTTON_B)")
-    before(back, release, "filesHome(directory, true);")
+    before(back, release, "filesHome();")
     before(change, release, "sourceCommit(device);")
     before(swap, "UIFiles_CanSwap(", "sourceCommit(")
     before(swap, release, "sourceCommit(right);")
@@ -275,7 +282,7 @@ def check_second_device(swiss: str, screen: str, menu: str, dispatch: str, refre
     before(keeper, "manageKeep = keep;", "manage_file();")
     before(keeper, "manage_file();", "manageKeep = NULL;")
     assert len(re.findall(r"(?<![\w])manage_file\(\)", swiss[swiss.index(" * The File Browser: two panes side by side"):
-                                                     swiss.index("uiDrawObj_t* renderFileBrowser(")])) == 1
+                                                     swiss.index("static u32 gameflowSnapshotGeneration;")])) == 1
     # Choosing another storage lets the old one go, including a clash reset.
     choose = function(swiss, "static void filesOtherChoose(")
     before(choose, release, "filesOther.device = device;")
@@ -576,6 +583,16 @@ def check_detail(swiss: str, screen: str, frame: str) -> None:
 
 
 check(SWISS, FRAME)
+# Nor do their declarations, their one font helper or their pictures.
+for path, gone in (("cube/swiss/include/swiss.h", ("renderFileBrowser(", "drawFiles(", "FILES_PER_PAGE_FULLWIDTH")),
+                   ("cube/swiss/source/gui/FrameBufferMagic.h", ("DrawFileBrowserButton", "DrawFileCarouselEntry",
+                                                                 "TEX_STAR")),
+                   ("cube/swiss/source/gui/IPLFontWrite.c", ("drawStringEllipsis", "GetCharsThatFitInWidth")),
+                   ("cube/swiss/source/images/images.scf", ("banner_mask", "dirimg", "gcmimg")),
+                   ("cube/swiss/source/images/buttons/buttons.scf", ("star_16",))):
+    text = (ROOT / path).read_text()
+    for name in gone:
+        assert name not in text, f"{path}: {name}"
 
 MUTANTS = (
     ("the meta thread runs into manage_file", SWISS,
@@ -857,6 +874,15 @@ MUTANTS = (
      "\treturn _GameflowSetMode(evt, mode, UI_MOTION_OFF);", "\treturn _GameflowSetMode(evt, mode, _CurrentMotionMode());"),
     ("the settled page opens", FRAME,
      "\t\t((drawFilesEvent_t*)page->data)->seconds = 60.0f;\n", ""),
+    ("Swiss's list rows come back", FRAME,
+     "// Internal\nstatic void _DrawEmptyBox(uiDrawObj_t *evt) {",
+     "static void _DrawFileBrowserButton(uiDrawObj_t *evt) { (void)EV_FILEBROWSERBUTTON; }\n"
+     "// Internal\nstatic void _DrawEmptyBox(uiDrawObj_t *evt) {"),
+    ("the Library draws a list of its own", SWISS,
+     "\t\tif(!drawn) {\n\t\t\t/* No Library", "\t\tif(false) {\n\t\t\t/* No Library"),
+    ("the Library keeps a legacy input branch", SWISS,
+     "\t\tif((browserButtons & BUTTON_B) && gameflowInsideFolder()) {",
+     "\t\tif((browserButtons & BUTTON_B) && useGameflow && gameflowInsideFolder()) {"),
     ("a draw reads banners", FRAME,
      "\tUIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);\n\t_SaveCubesBackdrop(",
      "\tUIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);\n\tpopulate_meta(NULL);\n\t_SaveCubesBackdrop("),

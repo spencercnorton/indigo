@@ -139,9 +139,6 @@ static char *tooltips_global[PAGE_GLOBAL_MAX+1] = {
 };
 
 static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
-	[SET_FILEBROWSER_TYPE] = "File Browser Type:\n\nStandard - Displays files with minimal detail. (default)\n\nFullwidth - Displays files across the entire screen while hiding\nside information panels.\n\nCarousel - Suited towards Game/DOL only use, consider combining\nthis option with the \223File Management\224 setting turned off and\n\223Hide unknown file types\224 turned on for a better experience.",
-	[SET_APPSBROWSER_TYPE] = "File Browser Type for apps:\n\nApplicable to the /apps directory.",
-	[SET_GAMEBROWSER_TYPE] = "File Browser Type for games:\n\nApplicable to the /games directory.",
 	[SET_FILE_MGMT] = "File Management:\n\nWhen enabled, pressing Z on an entry in the file browser will\nallow it to be managed.",
 	[SET_RECENT_LIST] = "Recent List:\n\n(On) - Press Start while browsing to show a recent list.\n(Lazy) - Same as On but list updates only for new entries.\n(Off) - Recent list is completely disabled.\n\nThe lazy/off options exist to minimise SD card writes.",
 	[SET_HIDE_UNK] = "Hide unknown file types:\n\nDisabled - Show all files (default)\nEnabled - Hide unknown file types from being displayed\n\nKnown file types are:\n GameCube Executables (.bin/.dol/.elf)\n Disc images (.gcm/.iso/.nkit.iso/.tgc)\n MP3 Music (.mp3)\n WASP/WKF Flash files (.fzn)\n GameCube Memory Card files (.gci/.gcs/.sav)\n GameCube Executables with parameters appended (.dol+cli)",
@@ -1062,9 +1059,6 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 	}
 	else if(page == PAGE_INTERFACE) {
 		switch(option) {
-			case SET_FILEBROWSER_TYPE: rowCycle(row, "File Browser Type:", fileBrowserTypeStr[swissSettings.fileBrowserType], true); break;
-			case SET_APPSBROWSER_TYPE: rowCycle(row, "File Browser Type for apps:", fileBrowserTypeStr[swissSettings.appsBrowserType], true); break;
-			case SET_GAMEBROWSER_TYPE: rowCycle(row, "File Browser Type for games:", fileBrowserTypeStr[swissSettings.gameBrowserType], true); break;
 			case SET_FILE_MGMT: rowYesNo(row, "File Management:", swissSettings.enableFileManagement, true); break;
 			case SET_RECENT_LIST: rowCycle(row, "Recent List:", recentListLevelStr[swissSettings.recentListLevel], true); break;
 			case SET_SHOW_HIDDEN: rowYesNo(row, "Show hidden files:", swissSettings.showHiddenFiles, true); break;
@@ -1567,18 +1561,6 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 	}
 	else if(page == PAGE_INTERFACE) {
 		switch(option) {
-			case SET_FILEBROWSER_TYPE:
-				swissSettings.fileBrowserType += direction;
-				swissSettings.fileBrowserType = (swissSettings.fileBrowserType + BROWSER_MAX) % BROWSER_MAX;
-			break;
-			case SET_APPSBROWSER_TYPE:
-				swissSettings.appsBrowserType += direction;
-				swissSettings.appsBrowserType = (swissSettings.appsBrowserType + BROWSER_MAX) % BROWSER_MAX;
-			break;
-			case SET_GAMEBROWSER_TYPE:
-				swissSettings.gameBrowserType += direction;
-				swissSettings.gameBrowserType = (swissSettings.gameBrowserType + BROWSER_MAX) % BROWSER_MAX;
-			break;
 			case SET_FILE_MGMT:
 				swissSettings.enableFileManagement ^= 1;
 			break;

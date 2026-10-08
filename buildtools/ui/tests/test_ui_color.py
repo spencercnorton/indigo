@@ -168,7 +168,7 @@ class MenuColorTest(unittest.TestCase):
         self.assertNotIn("UIColor_Apply", untinted)
         # Every other string follows the Menu Color.
         for name in ("void drawString(", "void drawStringMedium(",
-                     "void drawStringWithCaret(", "void drawStringEllipsis("):
+                     "void drawStringWithCaret("):
             self.assertIn("UIColor_Apply(&fontColor.r", extract_function(FONT_C, name), name)
 
     def test_the_lists_preview_each_color(self):

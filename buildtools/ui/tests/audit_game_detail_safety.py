@@ -268,7 +268,7 @@ settings = carousel.index("bool openSettings", sample)
 assert sample < settings < activation
 assert "UIGameflowLibrary_UsesRetainedDetail(" in carousel[settings:activation]
 assert "(browserButtons & PAD_BUTTON_Y)" in carousel[settings:activation]
-assert "((browserButtons & BUTTON_A) || openSettings)" in carousel[activation:nav_guard]
+assert "= (browserButtons & BUTTON_A) || openSettings;" in carousel[activation:nav_guard]
 assert "(BUTTON_A | PAD_BUTTON_Y)" not in carousel[activation:nav_guard]
 
 cheats_renderer = extract_function(framebuffer_source, "static void _DrawCheats")

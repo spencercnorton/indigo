@@ -3,8 +3,9 @@
 
 Regression: /games -> X (device root fallback browser) -> B left the legacy
 browser published above Home. Retained Gameflow hid itself by scene; ordinary
-container children did not. These tests exercise all three browser Back arms,
-release/re-entry ownership, and a deliberately independent source selector.
+container children did not. These tests exercise the File Browser's and the
+Library's Back arms, release/re-entry ownership, and a deliberately
+independent source selector.
 """
 import os
 from pathlib import Path
@@ -81,8 +82,6 @@ static void folderArtClose(void)
     CHECK(homeShown && curMenuLocation == ON_OPTIONS);
     ++folderArtCloses;
 }
-static void DrawUpdateFileBrowserButton(uiDrawObj_t *event, int mode)
-{ CHECK(event != NULL && !event->disposed); CHECK(mode == B_NOSELECT); }
 /* The File Browser's B: its page goes, waiting for that, before Home. */
 typedef struct { int leaving; } uiFilesSnapshot_t;
 static uiFilesSnapshot_t filesSnapshot;
@@ -130,8 +129,7 @@ int main(void)
                 back_list(directory, filePanel);
                 CHECK(leaves == left + 1 && releases == released + 1);
             }
-            else if(browser == 1 || browser == 3) back_carousel(directory, browser == 3);
-            else back_fullwidth(directory, false);
+            else back_carousel(directory, browser == 3);
             CHECK(curMenuLocation == ON_OPTIONS);
             homePublishBrowserTransition(&filePanel);
             CHECK(filePanel == NULL && before->disposed);
@@ -159,7 +157,7 @@ int main(void)
     CHECK(folderArtCloses == 1205); /* every publication with Home visible */
     CHECK(videoEventQueue->next == NULL);
     free(videoEventQueue->event); free(videoEventQueue);
-    puts("browser/Home lifecycle: 400 legacy and retained returns passed");
+    puts("browser/Home lifecycle: 400 File Browser and Library returns passed");
     return 0;
 }
 '''
@@ -210,17 +208,15 @@ class BrowserHomeLifecycle(unittest.TestCase):
         cls.queue = '\n'.join(block(FRAME, marker) for marker in (
             'static uiDrawObj_t* addVideoEvent(', 'static void disposeEvent(',
             'uiDrawObj_t* DrawPublish(', 'uiDrawObj_t* DrawRepublish(', 'void DrawDispose('))
-        # The arms' one copy of B (Home), then each renderer's arm.
+        # The arms' one copy of B (Home), then the Library's arm.
         cls.arms = block(SWISS, 'static void filesHome(') + '\n'
-        for name, marker in (('carousel', 'uiDrawObj_t* renderFileCarousel('),
-                             ('fullwidth', 'uiDrawObj_t* renderFileFullwidth(')):
-            arm = block(block(SWISS, marker), 'if(browserButtons & BUTTON_B)')
-            cls.arms += f'''static void back_{name}(file_handle **directory, bool useGameflow)
-{{ const unsigned browserButtons = BUTTON_B; (void)useGameflow; do {{ {arm} }} while(0); }}\n'''
+        arm = block(block(SWISS, 'uiDrawObj_t* renderFileCarousel('), 'if(browserButtons & BUTTON_B)')
+        cls.arms += f'''static void back_carousel(file_handle **directory, bool retained)
+{{ const unsigned browserButtons = BUTTON_B; (void)directory; (void)retained; do {{ {arm} }} while(0); }}\n'''
         # The File Browser (renderFileList): the page leaves, then Home.
         arm = block(block(SWISS, 'static uiDrawObj_t* renderFileList('), 'if(buttons & BUTTON_B)')
         cls.arms += f'''static void back_list(file_handle **directory, uiDrawObj_t *filePanel)
-{{ const unsigned buttons = BUTTON_B; do {{ {arm} }} while(0); }}\n'''
+{{ const unsigned buttons = BUTTON_B; (void)directory; do {{ {arm} }} while(0); }}\n'''
 
     def run_harness(self, helper, sanitized=False):
         with tempfile.TemporaryDirectory() as tmp:

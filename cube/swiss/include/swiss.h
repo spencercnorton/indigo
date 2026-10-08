@@ -25,7 +25,6 @@
 
 #define RECENT_MAX 8
 #define FILES_PER_PAGE 8
-#define FILES_PER_PAGE_FULLWIDTH 7
 #define FILES_PER_PAGE_CAROUSEL 9
 extern int current_view_start;
 extern int current_view_end;
@@ -74,8 +73,6 @@ extern u32 __SYS_CheckSram(void);
 extern void __SYS_ReadROM(void *buf,u32 len,u32 offset);
 extern u8 __SYS_SetTAUCalibration(s8 calib);
 
-extern uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj_t* filePanel);
-
 extern void menu_loop();
 extern void boot_dol(file_handle* file, int argc, char *argv[]);
 extern bool manage_file();
@@ -90,7 +87,6 @@ extern void install_game();
 extern int info_game(ConfigEntry *config);
 extern void settings();
 extern void credits();
-extern void drawFiles(file_handle** directory, int num_files, uiDrawObj_t *containerPanel);
 
 extern void select_speed();
 extern int select_slot();

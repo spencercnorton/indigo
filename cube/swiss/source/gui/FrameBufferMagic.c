@@ -56,7 +56,6 @@
 
 TPLFile imagesTPL;
 TPLFile buttonsTPL;
-GXTexObj bannerMaskTexObj;
 GXTexObj gcdvdsmallTexObj;
 GXTexObj sdsmallTexObj;
 GXTlutObj sdsmallTlutObj;
@@ -82,7 +81,8 @@ GXTexObj palTexObj;
 GXTexObj checkedTexObj;
 GXTexObj uncheckedTexObj;
 GXTexObj loadingTexObj;
-GXTexObj starTexObj;
+/* The 96x32 file-type tags Swiss's lists drew. filemeta.c still points a
+ * file's meta at them, but nothing draws them, so they are never loaded. */
 GXTexObj dirimgTexObj;
 GXTexObj dolimgTexObj;
 GXTexObj dolcliimgTexObj;
@@ -173,7 +173,6 @@ enum VideoEventType
 	EV_SELECTABLEBUTTON,
 	EV_EMPTYBOX,
 	EV_TRANSPARENTBOX,
-	EV_FILEBROWSERBUTTON,
 	EV_VERTSCROLLBAR,
 	EV_STYLEDLABEL,
 	EV_CONTAINER,
@@ -195,7 +194,7 @@ enum VideoEventType
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Background", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "MemoryCardFolder", "Saves", "SaveCubes", "SaveDetails", "Files"};
+						"VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "MemoryCardFolder", "Saves", "SaveCubes", "SaveDetails", "Files"};
 _Static_assert(sizeof(typeStrings) / sizeof(typeStrings[0]) == EV_FILES + 1u,
 	"every video event needs a diagnostic name");
 
@@ -265,20 +264,6 @@ typedef struct drawBoxEvent {
 	int y2;
 	GXColor backfill;
 } drawBoxEvent_t;
-
-typedef struct drawFileBrowserButtonEvent {
-	int x1;
-	int y1;
-	int x2;
-	int y2;
-	char *displayName;
-	file_handle *file;
-	int mode;
-	int alpha;
-	bool isAutoLoadEntry;
-	bool isCarousel;	// Draw this as a full "card" style
-	int distFromMiddle;	// 0 = full, -1 spine only but large then gradually getting smaller as dist increases from 0
-} drawFileBrowserButtonEvent_t;
 
 typedef struct drawHomeEvent {
 	uiHomeState_t state;
@@ -577,21 +562,6 @@ static void clearNestedEvent(uiDrawObj_t *event) {
 				free(((drawStyledLabelEvent_t*)event->data)->string);
 			}
 		}
-		else if(event->type == EV_FILEBROWSERBUTTON) {
-			if(((drawFileBrowserButtonEvent_t*)event->data)->displayName) {
-				//print_debug("Clear Nested EV_FILEBROWSERBUTTON\n");
-				free(((drawFileBrowserButtonEvent_t*)event->data)->displayName);
-			}
-			if(((drawFileBrowserButtonEvent_t*)event->data)->file) {
-				if(((drawFileBrowserButtonEvent_t*)event->data)->file->meta) {
-					if(((drawFileBrowserButtonEvent_t*)event->data)->file->meta->banner) {
-						free(((drawFileBrowserButtonEvent_t*)event->data)->file->meta->banner);
-					}
-					free(((drawFileBrowserButtonEvent_t*)event->data)->file->meta);
-				}
-				free(((drawFileBrowserButtonEvent_t*)event->data)->file);
-			}
-		}
 		else if(event->type == EV_SELECTABLEBUTTON) {
 			if(((drawSelectableButtonEvent_t*)event->data)->msg) {
 				//print_debug("Clear Nested EV_SELECTABLEBUTTON\n");
@@ -642,7 +612,6 @@ static void init_textures()
 {
 	TPL_OpenTPLFromMemory(&imagesTPL, (void *)images_tpl, images_tpl_size);
 	TPL_OpenTPLFromMemory(&buttonsTPL, (void *)buttons_tpl, buttons_tpl_size);
-	TPL_GetTexture(&imagesTPL, banner_mask, &bannerMaskTexObj);
 	TPL_GetTexture(&imagesTPL, gcdvdsmall, &gcdvdsmallTexObj);
 	TPL_GetTextureCI(&imagesTPL, sdsmall, &sdsmallTexObj, &sdsmallTlutObj, GX_TLUT0);
 	GX_InitTexObjUserData(&sdsmallTexObj, &sdsmallTlutObj);
@@ -668,16 +637,6 @@ static void init_textures()
 	TPL_GetTexture(&buttonsTPL, checked_32, &checkedTexObj);
 	TPL_GetTexture(&buttonsTPL, unchecked_32, &uncheckedTexObj);
 	TPL_GetTexture(&buttonsTPL, loading_16, &loadingTexObj);
-	TPL_GetTexture(&buttonsTPL, star_16, &starTexObj);
-	TPL_GetTexture(&imagesTPL, dirimg, &dirimgTexObj);
-	TPL_GetTexture(&imagesTPL, dolimg, &dolimgTexObj);
-	TPL_GetTexture(&imagesTPL, dolcliimg, &dolcliimgTexObj);
-	TPL_GetTexture(&imagesTPL, elfimg, &elfimgTexObj);
-	TPL_GetTexture(&imagesTPL, fileimg, &fileimgTexObj);
-	TPL_GetTexture(&imagesTPL, fpkgimg, &fpkgimgTexObj);
-	TPL_GetTexture(&imagesTPL, gcmimg, &gcmimgTexObj);
-	TPL_GetTexture(&imagesTPL, mp3img, &mp3imgTexObj);
-	TPL_GetTexture(&imagesTPL, tgcimg, &tgcimgTexObj);
 	TPL_GetTexture(&imagesTPL, gcloaderimg, &gcloaderTexObj);
 	TPL_GetTexture(&imagesTPL, m2loaderimg, &m2loaderTexObj);
 	TPL_GetTexture(&imagesTPL, eth2gcimg, &eth2gcTexObj);
@@ -853,10 +812,6 @@ static void _DrawImageNow(int textureId, int x, int y, int width, int height, in
 		case TEX_UNCHECKED:
 			texObj = &uncheckedTexObj; color = (GXColor) {87,87,87,255};
 			ss = 32; ts = 32;
-			break;
-		case TEX_STAR:
-			texObj = &starTexObj; color = (GXColor) {255,255,0,255};
-			ss = 16;
 			break;
 		case TEX_GCLOADER:
 			texObj = &gcloaderTexObj; color = (GXColor) {216,216,216,255};
@@ -1762,324 +1717,6 @@ uiDrawObj_t* DrawContainer()
 {
 	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
 	event->type = EV_CONTAINER;
-	return event;
-}
-
-// Internal
-static void _DrawFileBrowserButton(uiDrawObj_t *evt) {
-	
-	drawFileBrowserButtonEvent_t *data = (drawFileBrowserButtonEvent_t*)evt->data;
-	int borderSize = 4;	
-	if(data->isCarousel) {	
-		// Not selected
-		GXColor noColor 	= (GXColor) {0,0,0,128};
-		GXColor borderColor = (GXColor) {200,200,200,GUI_MSGBOX_ALPHA}; //Silver
-		// Large middle entry currently being displayed, verbose info
-		if(data->distFromMiddle == 0) {
-
-			_DrawSimpleBox(data->x1, data->y1, data->x2-data->x1, data->y2-data->y1, 0, noColor, borderColor);
-			
-			int x_mid = data->x2-((data->x2-data->x1)/2);
-			int bnr_width = 96;
-			int bnr_height = 32;
-			file_handle *file = data->file;
-			// Draw banner if there is one
-			if(file->meta && (file->meta->banner || file->meta->fileTypeTexObj)) {
-				GXTexObj *texObj = (file->meta->banner ? &file->meta->bannerTexObj : file->meta->fileTypeTexObj);
-				bnr_width *= (file->meta->banner ? 2 : 1);
-				bnr_height *= (file->meta->banner ? 2 : 1);
-				if(file->meta->banner) {
-					GX_SetNumTevStages(1);
-					GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-				}
-				GX_InvalidateTexAll();
-				GXTlutObj *tlutObj = GX_GetTexObjUserData(texObj);
-				if(tlutObj) GX_LoadTlut(tlutObj, GX_GetTexObjTlut(texObj));
-				GX_LoadTexObj(texObj, GX_TEXMAP0);
-				int bnr_x = x_mid - (bnr_width/2);
-				GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-					GX_Position3f32((float) bnr_x,(float) data->y1+borderSize+40, 0.0f );
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(0.0f,0.0f);
-					GX_Position3f32((float) (bnr_x+bnr_width),(float) data->y1+borderSize+40,0.0f );
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(1.0f,0.0f);
-					GX_Position3f32((float) (bnr_x+bnr_width),(float) (data->y1+borderSize+40+bnr_height),0.0f );
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(1.0f,1.0f);
-					GX_Position3f32((float) bnr_x,(float) (data->y1+borderSize+40+bnr_height),0.0f );
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(0.0f,1.0f);
-				GX_End();
-				
-				if(data->isAutoLoadEntry) {
-					drawInit();
-					_DrawImageNow(TEX_STAR, bnr_x+bnr_width-16, data->y1+borderSize+40,
-						16, 16, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0, 255);
-				}
-				
-				// Company
-				sprintf(fbTextBuffer, "%.*s", BNR_FULL_TEXT_LEN, file->meta->bannerDesc.fullCompany);
-				float scale = GetTextScaleToFitInWidth(fbTextBuffer,(data->x2-data->x1)-(borderSize*2));
-				drawString(x_mid, data->y1+(borderSize*2)+40+bnr_height+20, fbTextBuffer, scale, ALIGN_CENTER, defaultColor);
-				
-				// Description
-				sprintf(fbTextBuffer, "%.*s", BNR_DESC_LEN, file->meta->bannerDesc.description);
-				char* rest = &fbTextBuffer[0];
-				char* tok;
-				int line = 0;
-				while ((tok = strtok_r (rest,"\r\n", &rest))) {
-					scale = GetTextScaleToFitInWidthWithMax(tok,(data->x2-data->x1)-(borderSize*2), !line ? 1.0f : scale);
-					drawString(x_mid, data->y1+(borderSize*2)+40+bnr_height+60+(line*scale*24), tok, scale, ALIGN_CENTER, defaultColor);
-					line++;
-				}
-			}
-			// Region
-			if(file->meta && file->meta->regionTexObj) {
-				drawString(data->x2 - 44, data->y2-(borderSize+41), "Region: ", 0.45f, ALIGN_RIGHT, defaultColor);
-				drawInit();
-				_DrawTexObjNow(file->meta->regionTexObj, data->x2 - 44, data->y2-(borderSize+50), 32, 20, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0);
-			}
-			
-			// fullGameName displays some titles with incorrect encoding, use displayName instead
-			float scale = GetTextScaleToFitInWidth(data->displayName, (data->x2-data->x1)-(borderSize*2));
-			drawString(x_mid, data->y1+(borderSize*2)+10, data->displayName, scale, ALIGN_CENTER, defaultColor);
-			
-			// Print specific stats
-			if(file->fileType==IS_FILE) {
-				if(file->device == &__device_wode) {
-					ISOInfo_t* isoInfo = (ISOInfo_t*)&file->other;
-					sprintf(fbTextBuffer,"Partition: %i, ISO: %i", isoInfo->iso_partition,isoInfo->iso_number);
-				}
-				else if(file->device == &__device_card_a || file->device == &__device_card_b) {
-					formatBytes(stpcpy(fbTextBuffer, "Size: "), file->size, 8192, false);
-				}
-				else if(file->device == &__device_qoob) {
-					formatBytes(stpcpy(fbTextBuffer, "Size: "), file->size, 65536, false);
-				}
-				else {
-					formatBytes(stpcpy(fbTextBuffer, "Size: "), file->size, 0, !(file->device->location & LOC_SYSTEM));
-				}
-				drawString(data->x2-(borderSize+8), data->y2-(borderSize+19), fbTextBuffer, 0.45f, ALIGN_RIGHT, defaultColor);
-			}
-		}
-		else {
-			// Vertical
-			_DrawSimpleBox(data->x1, data->y1, data->x2-data->x1, data->y2-data->y1, 0, noColor, borderColor);
-			int bnr_width = 72;
-			int bnr_height = 24;
-			int x_start = (data->x2-((data->x2-data->x1)/2)) - (bnr_height/2);
-			// Draw banner if there is one
-			file_handle *file = data->file;
-			if(file->meta && (file->meta->banner || file->meta->fileTypeTexObj)) {
-				GXTexObj *texObj = (file->meta->banner ? &file->meta->bannerTexObj : file->meta->fileTypeTexObj);
-				if(file->meta->banner) {
-					GX_SetTevOrder(GX_TEVSTAGE1, GX_TEXCOORD0, GX_TEXMAP1, GX_COLOR0A0);
-					GX_SetTevColorIn(GX_TEVSTAGE1, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_CPREV);
-					GX_SetTevAlphaIn(GX_TEVSTAGE1, GX_CA_ZERO, GX_CA_APREV, GX_CA_TEXA, GX_CA_ZERO);
-					GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-				}
-				GX_InvalidateTexAll();
-				GXTlutObj *tlutObj = GX_GetTexObjUserData(texObj);
-				if(tlutObj) GX_LoadTlut(tlutObj, GX_GetTexObjTlut(texObj));
-				GX_LoadTexObj(texObj, GX_TEXMAP0);
-				GX_LoadTexObj(&bannerMaskTexObj, GX_TEXMAP1);
-				GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-					GX_Position3f32((float)x_start,(float) data->y2-borderSize, 0.0f ); // bottom left
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(0.0f,0.0f);
-					GX_Position3f32((float)x_start,(float) data->y2-bnr_width-borderSize,0.0f );	// top left
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(1.0f,0.0f);
-					GX_Position3f32((float)x_start+bnr_height,(float) data->y2-bnr_width-borderSize,0.0f );	// top right
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(1.0f,1.0f);
-					GX_Position3f32((float)x_start+bnr_height,(float) data->y2 - borderSize,0.0f );	// bottom right
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(0.0f,1.0f);
-				GX_End();
-				
-				if(data->isAutoLoadEntry) {
-					drawInit();
-					_DrawImageNow(TEX_STAR, x_start, data->y2-bnr_width-borderSize,
-						12, 12, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0, 255);
-				}
-			}
-			// fullGameName displays some titles with incorrect encoding, use displayName instead
-			drawStringEllipsis(data->x1+(data->x2-data->x1)/2, data->y2-bnr_width-5-borderSize, data->displayName, 0.5f, ALIGN_LEFT, defaultColor, true, (data->y2-bnr_width-5-borderSize) - (data->y1 + (borderSize*2)));
-		}
-	}
-	else {
-		
-		// Not selected
-		GXColor noColor 	= (GXColor) {0,0,0,0};
-		GXColor selectColor = (GXColor) {46,57,104,GUI_MSGBOX_ALPHA}; 	//bluish
-		GXColor borderColor = (GXColor) {200,200,200,GUI_MSGBOX_ALPHA}; //Silver
-
-		_DrawSimpleBox(data->x1, data->y1, data->x2-data->x1, data->y2-data->y1, 
-					0, data->mode == B_SELECTED ? selectColor : noColor, borderColor);
-		
-		// Draw banner if there is one
-		file_handle *file = data->file;
-		if(file->meta && (file->meta->banner || file->meta->fileTypeTexObj)) {
-			GXTexObj *texObj = (file->meta->banner ? &file->meta->bannerTexObj : file->meta->fileTypeTexObj);
-			if(file->meta->banner) {
-				GX_SetTevOrder(GX_TEVSTAGE1, GX_TEXCOORD0, GX_TEXMAP1, GX_COLOR0A0);
-				GX_SetTevColorIn(GX_TEVSTAGE1, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_CPREV);
-				GX_SetTevAlphaIn(GX_TEVSTAGE1, GX_CA_ZERO, GX_CA_APREV, GX_CA_TEXA, GX_CA_ZERO);
-				GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-			}
-			GX_InvalidateTexAll();
-			GXTlutObj *tlutObj = GX_GetTexObjUserData(texObj);
-			if(tlutObj) GX_LoadTlut(tlutObj, GX_GetTexObjTlut(texObj));
-			GX_LoadTexObj(texObj, GX_TEXMAP0);
-			GX_LoadTexObj(&bannerMaskTexObj, GX_TEXMAP1);
-			GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-				GX_Position3f32((float) data->x1+7,(float) data->y1+4, 0.0f );
-				GX_Color4u8(255, 255, 255, data->alpha);
-				GX_TexCoord2f32(0.0f,0.0f);
-				GX_Position3f32((float) (data->x1+7+96),(float) data->y1+4,0.0f );
-				GX_Color4u8(255, 255, 255, data->alpha);
-				GX_TexCoord2f32(1.0f,0.0f);
-				GX_Position3f32((float) (data->x1+7+96),(float) (data->y1+4+32),0.0f );
-				GX_Color4u8(255, 255, 255, data->alpha);
-				GX_TexCoord2f32(1.0f,1.0f);
-				GX_Position3f32((float) data->x1+7,(float) (data->y1+4+32),0.0f );
-				GX_Color4u8(255, 255, 255, data->alpha);
-				GX_TexCoord2f32(0.0f,1.0f);
-			GX_End();
-			
-			if(data->isAutoLoadEntry) {
-				drawInit();
-				_DrawImageNow(TEX_STAR, data->x1+7+96-16, data->y1+4,
-					16, 16, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0, 255);
-			}
-		}
-		if(file->meta && file->meta->regionTexObj) {
-			drawInit();
-			_DrawTexObjNow(file->meta->regionTexObj, data->x2 - 39, data->y1+borderSize+1, 32, 20, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0);
-		}
-
-		// fullGameName displays some titles with incorrect encoding, use displayName instead
-		if(data->mode == B_SELECTED) {
-			float scale = GetTextScaleToFitInWidthWithMax(data->displayName, (data->x2-data->x1-8-96-39)-(borderSize*2), 0.6f);
-			drawString(data->x1+borderSize+8+96, data->y1+(data->y2-data->y1)/2, data->displayName, scale, ALIGN_LEFT, defaultColor);
-		} else {
-			drawStringEllipsis(data->x1+borderSize+8+96, data->y1+(data->y2-data->y1)/2, data->displayName, 0.6f, ALIGN_LEFT, defaultColor, false, (data->x2-data->x1-8-96-39)-(borderSize*2));
-		}
-		
-		// Print specific stats
-		if(file->fileType==IS_FILE) {
-			if(file->device == &__device_wode) {
-				ISOInfo_t* isoInfo = (ISOInfo_t*)&file->other;
-				sprintf(fbTextBuffer,"Partition: %i, ISO: %i", isoInfo->iso_partition,isoInfo->iso_number);
-			}
-			else if(file->device == &__device_card_a || file->device == &__device_card_b) {
-				formatBytes(fbTextBuffer, file->size, 8192, false);
-			}
-			else if(file->device == &__device_qoob) {
-				formatBytes(fbTextBuffer, file->size, 65536, false);
-			}
-			else {
-				formatBytes(fbTextBuffer, file->size, 0, !(file->device->location & LOC_SYSTEM));
-			}
-			drawString(data->x2-(borderSize+3), data->y1+borderSize+26, fbTextBuffer, 0.45f, ALIGN_RIGHT, defaultColor);
-		}
-	}
-}
-
-// External
-uiDrawObj_t* DrawFileBrowserButton(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode)
-{
-	drawFileBrowserButtonEvent_t *eventData = calloc(1, sizeof(drawFileBrowserButtonEvent_t));
-	eventData->x1 = x1;
-	eventData->y1 = y1;
-	eventData->x2 = x2;
-	eventData->y2 = y2;
-	eventData->displayName = strdup(message);
-	eventData->mode = mode;
-	eventData->file = calloc(1, sizeof(file_handle));
-	memcpy(eventData->file, file, sizeof(file_handle));
-	if(eventData->file->meta) {
-		eventData->file->meta = calloc(1, sizeof(file_meta));
-		memcpy(eventData->file->meta, file->meta, sizeof(file_meta));
-		if(eventData->file->meta->banner && eventData->file->meta->bannerSum != 0xFFFF) {
-			// Make a copy cause we want this one to be killed off when the display event is disposed
-			eventData->file->meta->banner = memalign(32, eventData->file->meta->bannerSize);
-			memcpy(eventData->file->meta->banner, file->meta->banner, eventData->file->meta->bannerSize);
-			DCFlushRange(eventData->file->meta->banner, eventData->file->meta->bannerSize);
-			GX_InitTexObjData(&eventData->file->meta->bannerTexObj, eventData->file->meta->banner);
-			if(GX_GetTexObjUserData(&eventData->file->meta->bannerTexObj) == &file->meta->bannerTlutObj) {
-				void *img_ptr;
-				u16 wd, ht;
-				u8 fmt, wrap_s, wrap_t, mipmap;
-				GX_GetTexObjAll(&eventData->file->meta->bannerTexObj, &img_ptr, &wd, &ht, &fmt, &wrap_s, &wrap_t, &mipmap);
-				GX_InitTlutObjData(&eventData->file->meta->bannerTlutObj, img_ptr + GX_GetTexBufferSize(wd, ht, fmt, mipmap, 0));
-				GX_InitTexObjUserData(&eventData->file->meta->bannerTexObj, &eventData->file->meta->bannerTlutObj);
-			}
-		}
-		else {
-			eventData->file->meta->banner = NULL;
-			eventData->file->meta->bannerSize = 0;
-		}
-		if(eventData->file->meta->displayName == file->meta->bannerDesc.gameName) {
-			eventData->file->meta->displayName = eventData->file->meta->bannerDesc.gameName;
-		}
-		else if(eventData->file->meta->displayName == file->meta->bannerDesc.fullGameName) {
-			eventData->file->meta->displayName = eventData->file->meta->bannerDesc.fullGameName;
-		}
-	}
-	// Hide extension when rendering certain files
-	if(eventData->file->fileType == IS_FILE) {
-		char *fileName = endsWith(eventData->file->name, eventData->displayName);
-		char *start = fileName ? eventData->displayName : getRelativeName(eventData->file->name);
-		char *end;
-		if((end = endsWith(start,".dol"))
-			|| (end = endsWith(start,".dol+cli"))
-			|| (end = endsWith(start,".elf"))
-			|| (end = endsWith(start,".fdi"))
-			|| (end = endsWith(start,".gci"))
-			|| (end = endsWith(start,".gcm.gcm"))
-			|| (end = endsWith(start,".gcm"))
-			|| (end = endsWith(start,".gcs"))
-			|| (end = endsWith(start,".nkit.iso.iso"))
-			|| (end = endsWith(start,".nkit.iso"))
-			|| (end = endsWith(start,".iso.iso"))
-			|| (end = endsWith(start,".iso"))
-			|| (end = endsWith(start,".mp3"))
-			|| (end = endsWith(start,".sav"))
-			|| (end = endsWith(start,".tgc"))) {
-			if(fileName) {
-				*end = '\0';
-			}
-			else if(memmem(eventData->displayName, strlen(eventData->displayName), start, end - start)) {
-				end = mempcpy(eventData->displayName, start, end - start);
-				*end = '\0';
-			}
-		}
-	}
-	eventData->alpha = (eventData->file->fileAttrib & ATTRIB_HIDDEN) || *getRelativeName(eventData->file->name) == '.' ? 128 : 255;
-	eventData->isAutoLoadEntry = !strcmp(swissSettings.autoload, file->name) || !fnmatch(swissSettings.autoload, file->name, FNM_PATHNAME | FNM_PREFIX_DIRS);
-	
-	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
-	event->type = EV_FILEBROWSERBUTTON;
-	event->data = eventData;
-	return event;
-}
-
-uiDrawObj_t* DrawFileBrowserButtonMeta(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode) {
-	if(file->meta && file->meta->displayName) {
-		message = file->meta->displayName;
-	}
-	return DrawFileBrowserButton(x1, y1, x2, y2, message, file, mode);
-}
-
-uiDrawObj_t* DrawFileCarouselEntry(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int distFromMiddle) {
-	uiDrawObj_t* event = DrawFileBrowserButtonMeta(x1, y1, x2, y2, message, file, B_SELECTED);
-	drawFileBrowserButtonEvent_t *data = (drawFileBrowserButtonEvent_t*)event->data;
-	data->isCarousel = true;
-	data->distFromMiddle = distFromMiddle;
-	//print_debug("message %s dist = %i x: (%i -> %i) y: (%i -> %i)\n", message, distFromMiddle, x1, x2, y1, y2);
 	return event;
 }
 
@@ -4962,7 +4599,7 @@ static void _DrawDeviceTile(const drawDeviceTile_t *tile, float place,
 	GX_End();
 	drawInit();
 	if(picture->width > 0 && picture->height > 0) {
-		/* drawCurrentDevice's sizing, in a box that shrinks with the tile. */
+		/* Swiss's device-picture sizing, in a box that shrinks with the tile. */
 		float fit = fminf(fminf(120.0f / picture->width,
 			84.0f / picture->height), 1.0f) * scale;
 		int w = (int)(picture->realWidth * fit);
@@ -5324,11 +4961,6 @@ void DrawUpdateHome(const uiHomeState_t *state,
 		}
 	}
 	LWP_MutexUnlock(_videomutex);
-}
-
-void DrawUpdateFileBrowserButton(uiDrawObj_t *evt, int mode) {
-	drawFileBrowserButtonEvent_t *data = (drawFileBrowserButtonEvent_t*)evt->data;
-	data->mode = mode;
 }
 
 static bool _GameflowSnapshotValid(const uiGameflowRenderSnapshot_t *snapshot)
@@ -8464,9 +8096,6 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 			break;
 		case EV_TRANSPARENTBOX:
 			_DrawTransparentBox(videoEvent);
-			break;
-		case EV_FILEBROWSERBUTTON:
-			_DrawFileBrowserButton(videoEvent);
 			break;
 		case EV_VERTSCROLLBAR:
 			_DrawVertScrollBar(videoEvent);

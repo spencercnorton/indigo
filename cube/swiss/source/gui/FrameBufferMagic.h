@@ -122,7 +122,6 @@ enum TextureId
 	TEX_BBA,
 	TEX_CHECKED,
 	TEX_UNCHECKED,
-	TEX_STAR,
 	TEX_GCLOADER,
 	TEX_M2LOADER,
 	TEX_ETH2GC,
@@ -217,7 +216,6 @@ bool DrawUpdatePresentation(uiDrawObj_t *evt,
 const char *DeviceDisplayName(const DEVICEHANDLER_INTERFACE *device);
 void DrawUpdateHome(const uiHomeState_t *state,
 	uiHomeCapabilities_t capabilities, const char *sourceName);
-void DrawUpdateFileBrowserButton(uiDrawObj_t *evt, int mode);
 bool DrawUpdateGameflow(uiDrawObj_t *evt,
 	const uiGameflowRenderSnapshot_t *snapshot);
 bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode);
@@ -338,9 +336,6 @@ bool DrawUpdateFiles(uiDrawObj_t *page, const uiFilesSnapshot_t *snapshot);
 bool DrawUpdateFilesReading(uiDrawObj_t *page, int pane);
 void DrawUpdateSaveCubesPage(uiDrawObj_t *page,
 	const uiSaveCubesPageSnapshot_t *snapshot);
-uiDrawObj_t* DrawFileBrowserButton(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
-uiDrawObj_t* DrawFileBrowserButtonMeta(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
-uiDrawObj_t* DrawFileCarouselEntry(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int distFromMiddle);
 uiDrawObj_t* DrawVertScrollBar(int x, int y, int width, int height, float scrollPercent, int scrollHeight);
 void DrawArgsSelector(const char *fileName);
 void DrawCheatsSelector(const char *fileName);

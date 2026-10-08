@@ -37,13 +37,13 @@ def build_source(read):
     # a parent card. Its separate existing tests continue to cover game launch.
     actions = carousel
     if "static void filesActivate(" in swiss:
-        # The lists' one copy of A, which the carousel calls as its own.
-        assert "filesActivate(directory, useGameflow);" in carousel
+        # The lists' one copy of A, which the Library calls as its own.
+        assert "filesActivate(directory, true);" in carousel
         actions = function(swiss, "static void filesActivate(")
     parent = function(actions, "else if(directory[curSelection]->fileType==IS_SPECIAL)")
     parent = parent[parent.index("{") + 1:parent.rindex("}")]
     x = function(carousel, "if(browserButtons & BUTTON_X)")
-    b = carousel[carousel.index("if((browserButtons & BUTTON_B) && useGameflow &&"):]
+    b = carousel[carousel.index("if((browserButtons & BUTTON_B) && gameflowInsideFolder()) {"):]
     b = b[:b.index("if((browserButtons & BUTTON_START)")]
     menu = function(swiss, "void menu_loop()")
     dispatch = function(menu, "if(devices[DEVICE_CUR] != NULL && curMenuLocation==ON_FILLIST)")
@@ -182,7 +182,7 @@ static void lockFile(file_handle *f) { (void)f; }
 static void unlockFile(file_handle *f) { (void)f; }
 static unsigned padsButtonsHeld(void) { return 0; }
 static void VIDEO_WaitVSync(void) {}
-static void DrawUpdateFileBrowserButton(void *f, int state) { (void)f; (void)state; }
+static __attribute__((unused)) void DrawUpdateFileBrowserButton(void *f, int state) { (void)f; (void)state; }
 static void DrawDispose(uiDrawObj_t *p) { assert(p == &panelObject); ++disposals; }
 static void homePublish(bool visible) {
     if(visible) { assert(filePanel == NULL); ++homePublishes; }
@@ -190,7 +190,8 @@ static void homePublish(bool visible) {
 static void folderArtClose(void) {}
 static void UIScene_RequestLibraryLayout(int layout) { (void)layout; }
 static void UIScene_Request(int scene) { (void)scene; }
-static int gameflowSceneLayout(void) { return 0; }
+static __attribute__((unused)) int gameflowLayout(void) { return 0; }
+static __attribute__((unused)) int gameflowSceneLayout(void) { return 0; }
 /* The File Browser, and before it Swiss's lists (for --revision). */
 static __attribute__((unused)) uiDrawObj_t *renderFileList(file_handle **d, int n, uiDrawObj_t *p) {
     (void)d; (void)n; ++listPublishes; return p;

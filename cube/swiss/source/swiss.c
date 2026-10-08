@@ -396,80 +396,6 @@ void ogc_video__reset()
 	}
 }
 
-void drawCurrentDevice(uiDrawObj_t *containerPanel) {
-	uiDrawObj_t *bgBox = DrawTransparentBox(30, 100, 135, 200);	// Device icon + slot box
-	DrawAddChild(containerPanel, bgBox);
-	// Draw the device image
-	float scale = 1.0f;
-	if (devices[DEVICE_CUR]->deviceTexture.width > devices[DEVICE_CUR]->deviceTexture.height) {
-		scale = MIN(1.0f, 104.0f / devices[DEVICE_CUR]->deviceTexture.width);
-	} else {
-		scale = MIN(1.0f, 84.0f / devices[DEVICE_CUR]->deviceTexture.height);
-	}
-	int scaledWidth = devices[DEVICE_CUR]->deviceTexture.realWidth*scale;
-	int scaledHeight = devices[DEVICE_CUR]->deviceTexture.realHeight*scale;
-	uiDrawObj_t *devImageLabel = DrawImage(devices[DEVICE_CUR]->deviceTexture.textureId
-				, 30 + ((135-30) / 2) - (scaledWidth/2), 92 + ((200-100) /2) - (scaledHeight/2)	// center x,y
-				, scaledWidth, scaledHeight, // scaled image
-				0, 0.0f, 1.0f, 0.0f, 1.0f, 0);
-	DrawAddChild(containerPanel, devImageLabel);
-	if(devices[DEVICE_CUR]->location & LOC_SYSTEM)
-		sprintf(txtbuffer, "%s", "System");
-	else if(devices[DEVICE_CUR]->location == LOC_MEMCARD_SLOT_A)
-		sprintf(txtbuffer, "%s", "Slot A");
-	else if(devices[DEVICE_CUR]->location == LOC_MEMCARD_SLOT_B)
-		sprintf(txtbuffer, "%s", "Slot B");
-	else if(devices[DEVICE_CUR]->location == LOC_DVD_CONNECTOR)
-		sprintf(txtbuffer, "%s", "DVD Device");
-	else if(devices[DEVICE_CUR]->location == LOC_SERIAL_PORT_1)
-		sprintf(txtbuffer, "%s", "Serial Port 1");
-	else if(devices[DEVICE_CUR]->location == LOC_SERIAL_PORT_2)
-		sprintf(txtbuffer, "%s", "Serial Port 2");
-	else if(devices[DEVICE_CUR]->location == LOC_HSP)
-		sprintf(txtbuffer, "%s", "Hi Speed Port");
-	else
-		sprintf(txtbuffer, "%s", "Unknown");
-	uiDrawObj_t *devLocationLabel = DrawStyledLabel(30 + ((135-30) / 2), 195, txtbuffer, 0.65f, ALIGN_CENTER, defaultColor);
-	DrawAddChild(containerPanel, devLocationLabel);
-	
-	device_info *info = devices[DEVICE_CUR]->info(devices[DEVICE_CUR]->initial);
-	if (info == NULL) {
-		uiDrawObj_t *devInfoBox = DrawTransparentBox(30, 225, 135, 260);	// Device size/extra info box
-		DrawAddChild(containerPanel, devInfoBox);
-		
-		// Used space
-		uiDrawObj_t *devUsedLabel = DrawStyledLabel(83, 233, "Used:", 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devUsedLabel);
-		formatBytes(txtbuffer, getCurrentDirSize(), 0, !(devices[DEVICE_CUR]->location & LOC_SYSTEM));
-		uiDrawObj_t *devUsedSizeLabel = DrawStyledLabel(83, 248, txtbuffer, 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devUsedSizeLabel);
-	} else {
-		uiDrawObj_t *devInfoBox = DrawTransparentBox(30, 225, 135, 330);	// Device size/extra info box
-		DrawAddChild(containerPanel, devInfoBox);
-		
-		// Total space
-		uiDrawObj_t *devTotalLabel = DrawStyledLabel(83, 233, "Total:", 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devTotalLabel);
-		formatBytes(txtbuffer, info->totalSpace, 0, info->metric);
-		uiDrawObj_t *devTotalSizeLabel = DrawStyledLabel(83, 248, txtbuffer, 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devTotalSizeLabel);
-		
-		// Free space
-		uiDrawObj_t *devFreeLabel = DrawStyledLabel(83, 268, "Free:", 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devFreeLabel);
-		formatBytes(txtbuffer, info->freeSpace, 0, info->metric);
-		uiDrawObj_t *devFreeSizeLabel = DrawStyledLabel(83, 283, txtbuffer, 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devFreeSizeLabel);
-		
-		// Used space
-		uiDrawObj_t *devUsedLabel = DrawStyledLabel(83, 303, "Used:", 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devUsedLabel);
-		formatBytes(txtbuffer, info->totalSpace - info->freeSpace, 0, info->metric);
-		uiDrawObj_t *devUsedSizeLabel = DrawStyledLabel(83, 318, txtbuffer, 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devUsedSizeLabel);
-	}
-}
-
 void select_recent_entry() {
 	if(swissSettings.recent[0][0] == 0) return;	// don't draw empty.
 	int i = 0, idx = 0, max = RECENT_MAX;
@@ -600,43 +526,6 @@ void select_recent_entry() {
 	}
 }
 
-// Draws all the files in the current dir.
-void drawFiles(file_handle** directory, int num_files, uiDrawObj_t *containerPanel) {
-	int i = 0, j = 0;
-	current_view_start = MIN(MAX(0,curSelection-FILES_PER_PAGE/2),MAX(0,num_files-FILES_PER_PAGE));
-	current_view_end = MIN(num_files, MAX(curSelection+(FILES_PER_PAGE+1)/2,FILES_PER_PAGE));
-	drawCurrentDevice(containerPanel);
-	int fileListBase = 105;
-	int scrollBarHeight = (FILES_PER_PAGE*40);
-	int scrollBarTabHeight = (int)((float)scrollBarHeight/(float)num_files);
-	if(num_files > 0) {
-		// Draw which directory we're in
-		sprintf(txtbuffer, "%s", getDevicePath(&curDir.name[0]));
-		float scale = GetTextScaleToFitInWidthWithMax(txtbuffer, ((getVideoMode()->fbWidth-150)-20), .85);
-		DrawAddChild(containerPanel, DrawStyledLabel(150, 90, txtbuffer, scale, ALIGN_LEFT, defaultColor));
-		if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
-		|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
-			DrawAddChild(containerPanel, DrawImage(TEX_STAR, ((getVideoMode()->fbWidth-30)-16), 80, 16, 16, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0));
-		}
-		if(num_files > FILES_PER_PAGE) {
-			uiDrawObj_t *scrollBar = DrawVertScrollBar(getVideoMode()->fbWidth-25, fileListBase, 16, scrollBarHeight, (float)((float)curSelection/(float)(num_files-1)),scrollBarTabHeight);
-			DrawAddChild(containerPanel, scrollBar);
-		}
-		for(i = current_view_start,j = 0; i<current_view_end; ++i,++j) {
-			lockFile(directory[i]);
-			populate_meta(directory[i]);
-			uiDrawObj_t *browserButton = DrawFileBrowserButton(150, fileListBase+(j*40),
-									getVideoMode()->fbWidth-30, fileListBase+(j*40)+40,
-									getRelativePath(directory[i]->name, curDir.name),
-									directory[i],
-									(i == curSelection) ? B_SELECTED:B_NOSELECT);
-			directory[i]->uiObj = browserButton;
-			unlockFile(directory[i]);
-			DrawAddChild(containerPanel, browserButton);
-		}
-	}
-}
-
 // Modify entry to go up a directory.
 bool upToParent(file_handle* entry)
 {
@@ -648,10 +537,10 @@ bool upToParent(file_handle* entry)
 	return getParentPath(entry->name, entry->name);
 }
 
-/* The list's actions, one copy for Swiss's lists and the Library's. Each
+/* The list's actions, one copy for the File Browser and the Library. Each
  * acts on directory[curSelection], the sorted listing's focused entry, as the
  * loops always did. cardArt: the caller shows folder pictures (the
- * carousel), which stop with the meta thread before a file operation. */
+ * Library), which stop with the meta thread before a file operation. */
 
 /* X, and ".." outside the Library: up a folder. The folder left is the one
  * scanFiles selects again (curFile); at the root the Source picker opens. */
@@ -733,9 +622,9 @@ static void filesToggleAutoload(const char *folder)
 	DrawDispose(msgBox);
 }
 
-/* Z, with File Management: the Z menu on a file or a folder, Autoload on
- * "..". True when the listing must be read again. */
-static bool filesManage(file_handle **directory, bool cardArt)
+/* Z in the Library, with File Management: the Z menu on a file or a
+ * folder, Autoload on "..". True when the listing must be read again. */
+static bool filesManage(file_handle **directory)
 {
 	if(!fileManagementAllowed()) {
 		return false;
@@ -744,9 +633,7 @@ static bool filesManage(file_handle **directory, bool cardArt)
 	if(directory[curSelection]->fileType == IS_FILE || directory[curSelection]->fileType == IS_DIR) {
 		memcpy(&curFile, directory[curSelection], sizeof(file_handle));
 		meta_thread_stop();
-		if(cardArt) {
-			CardArt_Pause();
-		}
+		CardArt_Pause();
 		needsRefresh = filesManageFile(NULL) ? 1:0;
 		memcpy(directory[curSelection], &curFile, sizeof(file_handle));
 		while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
@@ -777,12 +664,10 @@ static bool filesRecent(bool cardArt)
 	return false;
 }
 
-/* B: back to Home. A Library list has no Swiss row to dim. */
-static void filesHome(file_handle **directory, bool useGameflow)
+/* B: back to Home. */
+static void filesHome(void)
 {
 	curMenuLocation = ON_OPTIONS;
-	if(!useGameflow)
-		DrawUpdateFileBrowserButton(directory[curSelection]->uiObj, (curMenuLocation == ON_FILLIST) ? B_SELECTED:B_NOSELECT);
 }
 
 /* The DK Bongos' clap: on to the next Bongo game. */
@@ -2692,7 +2577,7 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 			filesSnapshot.leaving = 0;
 			filesOtherRelease();
 			/* No Swiss row to dim on the way out. */
-			filesHome(directory, true);
+			filesHome();
 			break;
 		}
 		/* A box (Z, Autoload, a storage menu) may have left presses of its
@@ -2709,121 +2594,6 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 		filesOtherRelease();
 	}
 	return filePanel;
-}
-
-uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
-{
-	memset(txtbuffer,0,sizeof(txtbuffer));
-	if(num_files<=0) {
-		memcpy(&curDir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
-		needsRefresh=1;
-		return filePanel;
-	}
-	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_BOTTOMLEFT);
-	DrawPublish(loadingBox);
-	meta_thread_start(loadingBox);
-	uiMenuInputState_t menuInput;
-	u32 menuInputRetrace = VIDEO_GetRetraceCount();
-	UIMenuInput_Init(&menuInput);
-	while(1) {
-		DrawUpdateProgressLoading(loadingBox, +1);
-		uiDrawObj_t *newPanel = DrawContainer();
-		drawFiles(directory, num_files, newPanel);
-		filePanel = DrawRepublish(filePanel, newPanel);
-		DrawUpdateProgressLoading(loadingBox, -1);
-		
-		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP;
-		u32 browserButtons;
-		uiMenuInputDirection_t analog;
-		while(1) {
-			browserButtons = padsButtonsHeld();
-			analog = padsMenuInputPoll(&menuInput,
-				menuInputElapsedMicroseconds(&menuInputRetrace),
-				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,
-				(browserButtons & waitButtons) != 0u);
-			if((browserButtons & waitButtons) != 0u ||
-					analog != UI_MENU_INPUT_NONE) {
-				break;
-			}
-			VIDEO_WaitVSync();
-		}
-		if((browserButtons & BUTTON_UP) || analog == UI_MENU_INPUT_UP){	curSelection = (--curSelection < 0) ? num_files-1 : curSelection;}
-		if((browserButtons & BUTTON_DOWN) || analog == UI_MENU_INPUT_DOWN) {curSelection = (curSelection + 1) % num_files;	}
-		if(browserButtons & (BUTTON_LEFT|BUTTON_L)) {
-			if(curSelection == 0) {
-				curSelection = num_files-1;
-			}
-			else {
-				curSelection = (curSelection - FILES_PER_PAGE < 0) ? 0 : curSelection - FILES_PER_PAGE;
-			}
-		}
-		if(browserButtons & (BUTTON_RIGHT|BUTTON_R)) {
-			if(curSelection == num_files-1) {
-				curSelection = 0;
-			}
-			else {
-				curSelection = (curSelection + FILES_PER_PAGE > num_files-1) ? num_files-1 : (curSelection + FILES_PER_PAGE) % num_files;
-			}
-		}
-		filesBarrelGame(loadingBox);
-		
-		if(browserButtons & BUTTON_A) {
-			filesActivate(directory, false);
-			break;
-		}
-		if(browserButtons & BUTTON_X) {
-			filesUp(directory[0]);
-			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
-			break;
-		}
-		if((browserButtons & BUTTON_Z) && filesManage(directory, false)) {
-			break;
-		}
-		
-		if((browserButtons & BUTTON_START) && filesRecent(false)) {
-			break;
-		}
-		if(browserButtons & BUTTON_B) {
-			filesHome(directory, false);
-			break;
-		}
-		while (padsButtonsHeld() & waitButtons) {
-			(void)padsMenuInputPoll(&menuInput,
-				menuInputElapsedMicroseconds(&menuInputRetrace),
-				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT, true);
-			VIDEO_WaitVSync();
-		}
-	}
-	meta_thread_stop();
-	DrawDispose(loadingBox);
-	return filePanel;
-}
-
-void drawCurrentDeviceCarousel(uiDrawObj_t *containerPanel) {
-	uiDrawObj_t *bgBox = DrawTransparentBox(30, 395, getVideoMode()->fbWidth-30, 420);
-	DrawAddChild(containerPanel, bgBox);
-	// Device name
-	uiDrawObj_t *devNameLabel = DrawStyledLabel(50, 406, DeviceDisplayName(devices[DEVICE_CUR]), 0.5f, ALIGN_LEFT, defaultColor);
-	DrawAddChild(containerPanel, devNameLabel);
-	
-	device_info *info = devices[DEVICE_CUR]->info(devices[DEVICE_CUR]->initial);
-	if (info == NULL) {
-		char *textPtr = txtbuffer;
-		textPtr = stpcpy(textPtr, "Used: ");
-		textPtr += formatBytes(textPtr, getCurrentDirSize(), 0, !(devices[DEVICE_CUR]->location & LOC_SYSTEM));
-	} else {
-		// Info labels
-		char *textPtr = txtbuffer;
-		textPtr = stpcpy(textPtr, "Total: ");
-		textPtr += formatBytes(textPtr, info->totalSpace, 0, info->metric);
-		textPtr = stpcpy(textPtr, " | Free: ");
-		textPtr += formatBytes(textPtr, info->freeSpace, 0, info->metric);
-		textPtr = stpcpy(textPtr, " | Used: ");
-		textPtr += formatBytes(textPtr, info->totalSpace - info->freeSpace, 0, info->metric);
-	}
-
-	uiDrawObj_t *devInfoLabel = DrawStyledLabel(getVideoMode()->fbWidth-50, 406, txtbuffer, 0.5f, ALIGN_RIGHT, defaultColor);
-	DrawAddChild(containerPanel, devInfoLabel);
 }
 
 static u32 gameflowSnapshotGeneration;
@@ -4125,76 +3895,6 @@ static void filesOpenDetail(file_handle **directory, uiDrawObj_t **filePanel)
 	UIScene_Request(filesScene);
 }
 
-// Draws all the files in the current dir.
-void drawFilesCarousel(file_handle** directory, int num_files, uiDrawObj_t *containerPanel) {
-	int i = 0;
-	current_view_start = MAX(0,curSelection-FILES_PER_PAGE_CAROUSEL/2);
-	current_view_end = MIN(num_files,curSelection+(FILES_PER_PAGE_CAROUSEL+1)/2);
-	drawCurrentDeviceCarousel(containerPanel);
-	if(num_files > 0) {
-		// Draw which directory we're in
-		sprintf(txtbuffer, "%s", getDevicePath(&curDir.name[0]));
-		float scale = GetTextScaleToFitInWidthWithMax(txtbuffer, (getVideoMode()->fbWidth-60), .85);
-		DrawAddChild(containerPanel, DrawStyledLabel(30, 90, txtbuffer, scale, ALIGN_LEFT, defaultColor));
-		if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
-		|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
-			DrawAddChild(containerPanel, DrawImage(TEX_STAR, ((getVideoMode()->fbWidth-30)-16), 80, 16, 16, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0));
-		}
-		//int left_num = curSelection - current_view_start; // Number of entries to the left
-		//int right_num = (current_view_end - curSelection)-1;
-		//print_debug("%i entries to the left, %i to the right in this view\n", left_num, right_num);
-		//print_debug("%i cur sel, %i start, %i end\n", curSelection, current_view_start, current_view_end);
-		
-		bool parentLink = (directory[curSelection]->fileType==IS_SPECIAL);
-		int y_base = 105; // top most point
-		int sub_entry_width = 40;
-		int sub_entry_height = 270;
-		int main_entry_width = 320;
-		int main_entry_height = parentLink ? 40 : 280;
-		int left_x_base = ((getVideoMode()->fbWidth / 2) - (main_entry_width / 2));  // left x entry
-		int right_x_base = ((getVideoMode()->fbWidth / 2) + (main_entry_width / 2));  // right x entry
-		
-		uiDrawObj_t *browserObject = NULL;
-		// TODO scale and position based on how far from the middle these are (banner and text too)
-		// Left spineart entries
-		for(i = current_view_start; i < curSelection; i++) {
-			lockFile(directory[i]);
-			populate_meta(directory[i]);
-			browserObject = DrawFileCarouselEntry(left_x_base + ((sub_entry_width*(i-curSelection))), y_base + 10,
-									left_x_base + ((sub_entry_width*(i-curSelection))+sub_entry_width), y_base + 10 + sub_entry_height,
-									getRelativePath(directory[i]->name, curDir.name),
-									directory[i], i - curSelection);
-			directory[i]->uiObj = browserObject;
-			unlockFile(directory[i]);
-			DrawAddChild(containerPanel, browserObject);
-		}
-		
-		// Main entry
-		lockFile(directory[curSelection]);
-		populate_meta(directory[curSelection]);
-		browserObject = DrawFileCarouselEntry(((getVideoMode()->fbWidth / 2) - (main_entry_width / 2)), y_base,
-								((getVideoMode()->fbWidth / 2) + (main_entry_width / 2)), y_base + main_entry_height,
-								getRelativePath(directory[curSelection]->name, curDir.name),
-								directory[curSelection], 0);
-		directory[curSelection]->uiObj = browserObject;
-		unlockFile(directory[curSelection]);
-		DrawAddChild(containerPanel, browserObject);
-		
-		// Right spineart entries
-		for(i = curSelection+1; i < current_view_end; i++) {
-			lockFile(directory[i]);
-			populate_meta(directory[i]);
-			browserObject = DrawFileCarouselEntry(right_x_base + ((sub_entry_width*(i-curSelection-1))), y_base + 10,
-									right_x_base + ((sub_entry_width*(i-curSelection-1))+sub_entry_width), y_base + 10 + sub_entry_height,
-									getRelativePath(directory[i]->name, curDir.name),
-									directory[i], i - curSelection);
-			directory[i]->uiObj = browserObject;
-			unlockFile(directory[i]);
-			DrawAddChild(containerPanel, browserObject);
-		}
-	}
-}
-
 /* The Library's layout from Setup; anything unknown is the carousel. */
 uiGameflowLayout_t gameflowLayout(void)
 {
@@ -4216,15 +3916,6 @@ u32 gameflowMenuInputPolicy(uiGameflowLayout_t layout)
 		default:
 			return UI_MENU_INPUT_AXIS_HORIZONTAL | UI_MENU_INPUT_REPEAT;
 	}
-}
-
-/* The layout the Library shows here, for the cube's pose: the retained
- * Library's own, or the carousel of the legacy browsers. */
-static uiGameflowLayout_t gameflowSceneLayout(void)
-{
-	return gameflowLibraryMode(getSortedDirEntries(),
-		getSortedDirEntryCount()) != UI_GAMEFLOW_LIBRARY_NONE ?
-		gameflowLayout() : UI_GAMEFLOW_LAYOUT_HORIZONTAL;
 }
 
 /* Library Folders: a folder's poster is its picture, the PNG beside it
@@ -4377,7 +4068,9 @@ static void folderArtClose(void)
 	folderArtOpen = false;
 }
 
-// Carousel (one main file in the middle, entries to either side)
+/* The Library: a Library location's games (and, with Library Folders, its
+ * folders), in the layout Setup chose. menu_loop calls it only where
+ * gameflowLibraryMode finds a Library. */
 uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
 {
 	memset(txtbuffer,0,sizeof(txtbuffer));
@@ -4390,21 +4083,16 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 		curSelection = 1; // skip the ".." by default
 	}
 	uiGameflowLibraryMode_t gameflowMode = gameflowLibraryMode(directory, num_files);
-	bool useGameflow = gameflowMode != UI_GAMEFLOW_LIBRARY_NONE;
 	/* Only Library Folders shows folders, and their posters. */
-	u64 folderListing = useGameflow && swissSettings.libraryFolders ?
+	u64 folderListing = swissSettings.libraryFolders ?
 		folderArtIdentity(directory, num_files) : 0u;
 	uiGameflowDirection_t gameflowDirection = UI_GAMEFLOW_DIRECTION_NONE;
 	/* The last move between grid rows: a two-row grid keeps its other row
 	 * on the side that move left it. */
 	uiGameflowDirection_t gameflowRowDirection = UI_GAMEFLOW_DIRECTION_NONE;
 	bool gameflowSnapTransition = false;
-	uiGameflowRenderSnapshot_t *gameflowSnapshot = useGameflow ?
-		memalign(32, sizeof(uiGameflowRenderSnapshot_t)) : NULL;
-	if(gameflowSnapshot == NULL) {
-		useGameflow = false;
-		UIScene_RequestLibraryLayout(UI_GAMEFLOW_LAYOUT_HORIZONTAL);
-	}
+	uiGameflowRenderSnapshot_t *gameflowSnapshot =
+		memalign(32, sizeof(uiGameflowRenderSnapshot_t));
 	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPLEFT);
 	DrawPublish(loadingBox);
 	meta_thread_start(loadingBox);
@@ -4412,42 +4100,39 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 	u32 menuInputRetrace = VIDEO_GetRetraceCount();
 	UIMenuInput_Init(&menuInput);
 	while(1) {
-		/* The legacy carousel keeps its own left-and-right navigation. */
-		uiGameflowLayout_t layout = useGameflow ? gameflowLayout() :
-			UI_GAMEFLOW_LAYOUT_HORIZONTAL;
+		uiGameflowLayout_t layout = gameflowLayout();
+		/* The Library is drawn: its snapshot was allocated and built and
+		 * the frame took it. */
+		bool drawn = gameflowSnapshot != NULL;
 		DrawUpdateProgressLoading(loadingBox, +1);
-		if(useGameflow) {
-			if(!gameflowBuildSnapshot(gameflowSnapshot, directory, num_files,
-				gameflowMode, layout, gameflowDirection, gameflowRowDirection,
-				gameflowSnapTransition)) {
-				useGameflow = false;
-				layout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
-				UIScene_RequestLibraryLayout(layout);
+		if(drawn && !gameflowBuildSnapshot(gameflowSnapshot, directory,
+			num_files, gameflowMode, layout, gameflowDirection,
+			gameflowRowDirection, gameflowSnapTransition)) {
+			drawn = false;
+		}
+		if(drawn) {
+			gameflowDirection = UI_GAMEFLOW_DIRECTION_NONE;
+			gameflowSnapTransition = false;
+			folderArtShow(gameflowSnapshot, folderListing);
+			if(!DrawUpdateGameflow(filePanel, gameflowSnapshot)) {
+				uiDrawObj_t *newPanel = DrawGameflow(gameflowSnapshot);
+				if(newPanel != NULL) {
+					filePanel = DrawRepublish(filePanel, newPanel);
+				}
+				else {
+					drawn = false;
+				}
 			}
-			else {
-				gameflowDirection = UI_GAMEFLOW_DIRECTION_NONE;
-				gameflowSnapTransition = false;
-				folderArtShow(gameflowSnapshot, folderListing);
-				if(!DrawUpdateGameflow(filePanel, gameflowSnapshot)) {
-					uiDrawObj_t *newPanel = DrawGameflow(gameflowSnapshot);
-					if(newPanel != NULL) {
-						filePanel = DrawRepublish(filePanel, newPanel);
-					}
-					else {
-						useGameflow = false;
-					}
-				}
-				if(useGameflow) {
-					/* Strict game-library eligibility and a retained snapshot are
-					 * both proven before the private poster pack is touched. */
-					DrawGameflowRequestPosters(devices[DEVICE_CUR],
-						gameflowSnapshot);
-					folderArtWant(gameflowSnapshot, folderListing);
-				}
+			if(drawn) {
+				/* Strict game-library eligibility and a retained snapshot are
+				 * both proven before the private poster pack is touched. */
+				DrawGameflowRequestPosters(devices[DEVICE_CUR],
+					gameflowSnapshot);
+				folderArtWant(gameflowSnapshot, folderListing);
 			}
 		}
 		DrawUpdateProgressLoading(loadingBox, -1);
-		if(!useGameflow) {
+		if(!drawn) {
 			/* No Library to draw here (no memory for it): the File Browser
 			 * shows this folder instead, read again, since
 			 * gameflowLibraryEntries has moved its games to the front. */
@@ -4459,8 +4144,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			break;
 		}
 		
-		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP|
-			(useGameflow ? PAD_BUTTON_Y : 0u);
+		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP|PAD_BUTTON_Y;
 		u32 menuInputPolicy = gameflowMenuInputPolicy(layout);
 		u32 browserButtons;
 		uiMenuInputDirection_t analog;
@@ -4479,24 +4163,21 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				break;
 			}
 			VIDEO_WaitVSync();
-			if(useGameflow) {
-				/* Poll performs at most one read, tied to an idle retrace to
-				 * keep input/navigation frames free of pack I/O. From a source
-				 * that is not thread safe it reads the whole picture here, up
-				 * to 2 MB: about a second from DVD. */
-				DrawGameflowPollPosters();
-				CardArt_Poll();
-			}
+			/* Poll performs at most one read, tied to an idle retrace to
+			 * keep input/navigation frames free of pack I/O. From a source
+			 * that is not thread safe it reads the whole picture here, up
+			 * to 2 MB: about a second from DVD. */
+			DrawGameflowPollPosters();
+			CardArt_Poll();
 		}
 		/* Y on a game opens its settings through its Detail: never on the
 		 * parent card, and A wins a press of both. */
-		bool openSettings = useGameflow && !(browserButtons & BUTTON_A) &&
+		bool openSettings = !(browserButtons & BUTTON_A) &&
 			(browserButtons & PAD_BUTTON_Y) &&
 			UIGameflowLibrary_UsesRetainedDetail(
 				gameflowEntryMode(gameflowMode, directory[curSelection]),
 				gameflowEntryType(directory[curSelection]));
-		bool retainedActivation = useGameflow &&
-			((browserButtons & BUTTON_A) || openSettings);
+		bool retainedActivation = (browserButtons & BUTTON_A) || openSettings;
 		/* A and Y own a retained-library input frame. Moving curSelection
 		 * first would pair the new directory entry with the previous
 		 * immutable snapshot and bypass the strict folder resolver/dashboard. */
@@ -4571,7 +4252,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			 * Swiss opens any folder. */
 			uiGameflowLibraryMode_t entryMode =
 				gameflowEntryMode(gameflowMode, directory[curSelection]);
-			if(useGameflow && UIGameflowLibrary_UsesRetainedDetail(
+			if(UIGameflowLibrary_UsesRetainedDetail(
 				entryMode,
 				gameflowEntryType(directory[curSelection]))) {
 				bool handled = false;
@@ -4613,28 +4294,27 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				while(padsButtonsHeld() & PAD_BUTTON_Y) VIDEO_WaitVSync();
 				break;
 			}
-			filesActivate(directory, useGameflow);
+			filesActivate(directory, true);
 			break;
 		}
 		if(browserButtons & BUTTON_X) {
-			gameflowNavigateParent(useGameflow, directory[0]);
+			gameflowNavigateParent(true, directory[0]);
 			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
 			break;
 		}
-		if((browserButtons & BUTTON_Z) && filesManage(directory, true)) {
+		if((browserButtons & BUTTON_Z) && filesManage(directory)) {
 			break;
 		}
 		
-		if((browserButtons & BUTTON_B) && useGameflow &&
-			gameflowInsideFolder()) {
+		if((browserButtons & BUTTON_B) && gameflowInsideFolder()) {
 			/* Library Folders: B goes up a folder, as X does; at /games
 			 * it goes Home. */
-			gameflowNavigateParent(useGameflow, directory[0]);
+			gameflowNavigateParent(true, directory[0]);
 			while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
 			break;
 		}
 		if(browserButtons & BUTTON_B) {
-			filesHome(directory, useGameflow);
+			filesHome();
 			break;
 		}
 		if((browserButtons & BUTTON_START) && filesRecent(true)) {
@@ -4652,134 +4332,6 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 	CardArt_Pause();
 	DrawDispose(loadingBox);
 	free(gameflowSnapshot);
-	return filePanel;
-}
-
-// Draws all the files in the current dir.
-void drawFilesFullwidth(file_handle** directory, int num_files, uiDrawObj_t *containerPanel) {
-	int i = 0, j = 0;
-	current_view_start = MIN(MAX(0,curSelection-FILES_PER_PAGE_FULLWIDTH/2),MAX(0,num_files-FILES_PER_PAGE_FULLWIDTH));
-	current_view_end = MIN(num_files, MAX(curSelection+(FILES_PER_PAGE_FULLWIDTH+1)/2,FILES_PER_PAGE_FULLWIDTH));
-	drawCurrentDeviceCarousel(containerPanel);
-	int fileListBase = 105;
-	int scrollBarHeight = (FILES_PER_PAGE_FULLWIDTH*40);
-	int scrollBarTabHeight = (int)((float)scrollBarHeight/(float)num_files);
-	if(num_files > 0) {
-		// Draw which directory we're in
-		sprintf(txtbuffer, "%s", getDevicePath(&curDir.name[0]));
-		float scale = GetTextScaleToFitInWidthWithMax(txtbuffer, (getVideoMode()->fbWidth-60), .85);
-		DrawAddChild(containerPanel, DrawStyledLabel(30, 90, txtbuffer, scale, ALIGN_LEFT, defaultColor));
-		if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
-		|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
-			DrawAddChild(containerPanel, DrawImage(TEX_STAR, ((getVideoMode()->fbWidth-30)-16), 80, 16, 16, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0));
-		}
-		if(num_files > FILES_PER_PAGE_FULLWIDTH) {
-			uiDrawObj_t *scrollBar = DrawVertScrollBar(getVideoMode()->fbWidth-25, fileListBase, 16, scrollBarHeight, (float)((float)curSelection/(float)(num_files-1)),scrollBarTabHeight);
-			DrawAddChild(containerPanel, scrollBar);
-		}
-		for(i = current_view_start,j = 0; i<current_view_end; ++i,++j) {
-			lockFile(directory[i]);
-			populate_meta(directory[i]);
-			uiDrawObj_t *browserButton = DrawFileBrowserButtonMeta(30, fileListBase+(j*40),
-									getVideoMode()->fbWidth-30, fileListBase+(j*40)+40,
-									getRelativePath(directory[i]->name, curDir.name),
-									directory[i],
-									(i == curSelection) ? B_SELECTED:B_NOSELECT);
-			directory[i]->uiObj = browserButton;
-			unlockFile(directory[i]);
-			DrawAddChild(containerPanel, browserButton);
-		}
-	}
-}
-
-uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
-{
-	memset(txtbuffer,0,sizeof(txtbuffer));
-	if(num_files<=0) {
-		memcpy(&curDir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
-		needsRefresh=1;
-		return filePanel;
-	}
-	if(curSelection == 0 && num_files > 1 && directory[0]->fileType==IS_SPECIAL) {
-		curSelection = 1; // skip the ".." by default
-	}
-	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPLEFT);
-	DrawPublish(loadingBox);
-	meta_thread_start(loadingBox);
-	uiMenuInputState_t menuInput;
-	u32 menuInputRetrace = VIDEO_GetRetraceCount();
-	UIMenuInput_Init(&menuInput);
-	while(1) {
-		DrawUpdateProgressLoading(loadingBox, +1);
-		uiDrawObj_t *newPanel = DrawContainer();
-		drawFilesFullwidth(directory, num_files, newPanel);
-		filePanel = DrawRepublish(filePanel, newPanel);
-		DrawUpdateProgressLoading(loadingBox, -1);
-		
-		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP;
-		u32 browserButtons;
-		uiMenuInputDirection_t analog;
-		while(1) {
-			browserButtons = padsButtonsHeld();
-			analog = padsMenuInputPoll(&menuInput,
-				menuInputElapsedMicroseconds(&menuInputRetrace),
-				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,
-				(browserButtons & waitButtons) != 0u);
-			if((browserButtons & waitButtons) != 0u ||
-					analog != UI_MENU_INPUT_NONE) {
-				break;
-			}
-			VIDEO_WaitVSync();
-		}
-		if((browserButtons & BUTTON_UP) || analog == UI_MENU_INPUT_UP){	curSelection = (--curSelection < 0) ? num_files-1 : curSelection;}
-		if((browserButtons & BUTTON_DOWN) || analog == UI_MENU_INPUT_DOWN) {curSelection = (curSelection + 1) % num_files;	}
-		if(browserButtons & (BUTTON_LEFT|BUTTON_L)) {
-			if(curSelection == 0) {
-				curSelection = num_files-1;
-			}
-			else {
-				curSelection = (curSelection - FILES_PER_PAGE_FULLWIDTH < 0) ? 0 : curSelection - FILES_PER_PAGE_FULLWIDTH;
-			}
-		}
-		if(browserButtons & (BUTTON_RIGHT|BUTTON_R)) {
-			if(curSelection == num_files-1) {
-				curSelection = 0;
-			}
-			else {
-				curSelection = (curSelection + FILES_PER_PAGE_FULLWIDTH > num_files-1) ? num_files-1 : (curSelection + FILES_PER_PAGE_FULLWIDTH) % num_files;
-			}
-		}
-		filesBarrelGame(loadingBox);
-		
-		if(browserButtons & BUTTON_A) {
-			filesActivate(directory, false);
-			break;
-		}
-		if(browserButtons & BUTTON_X) {
-			filesUp(directory[0]);
-			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
-			break;
-		}
-		if((browserButtons & BUTTON_Z) && filesManage(directory, false)) {
-			break;
-		}
-		
-		if((browserButtons & BUTTON_START) && filesRecent(false)) {
-			break;
-		}
-		if(browserButtons & BUTTON_B) {
-			filesHome(directory, false);
-			break;
-		}
-		while (padsButtonsHeld() & waitButtons) {
-			(void)padsMenuInputPoll(&menuInput,
-				menuInputElapsedMicroseconds(&menuInputRetrace),
-				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT, true);
-			VIDEO_WaitVSync();
-		}
-	}
-	meta_thread_stop();
-	DrawDispose(loadingBox);
 	return filePanel;
 }
 
@@ -7667,16 +7219,15 @@ void menu_loop()
 			}
 		}
 		if(devices[DEVICE_CUR] != NULL && curMenuLocation==ON_FILLIST) {
-			/* A Library location with a game in it is the Library's, whatever
-			 * File Browser Type says; every other folder is the File
-			 * Browser's. The File Browser asks for no scene: the Home cube
-			 * stays where the face or the Library left it, as Memory Cards
-			 * hands it over. */
+			/* A Library location with a game in it is the Library's; every
+			 * other folder is the File Browser's. The File Browser asks for
+			 * no scene: the Home cube stays where the face or the Library
+			 * left it, as Memory Cards hands it over. */
 			if(!gameflowListFallback && gameflowLibraryMode(getSortedDirEntries(),
 					getSortedDirEntryCount()) != UI_GAMEFLOW_LIBRARY_NONE) {
 				filesOtherRelease();
 				filesKeepPresses = false;
-				UIScene_RequestLibraryLayout(gameflowSceneLayout());
+				UIScene_RequestLibraryLayout(gameflowLayout());
 				UIScene_Request(UI_SCENE_LIBRARY);
 				filePanel = renderFileCarousel(getSortedDirEntries(),
 					gameflowLibraryEntries(getSortedDirEntries(),

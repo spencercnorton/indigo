@@ -1,3 +1,78 @@
+## 2026-10-07 — Swiss's old list styles removed
+
+Sixth step of the two-pane File Browser: Swiss's three list renderers,
+which nothing reached once the dispatch sent every folder outside the
+Library to renderFileList, are deleted rather than kept as a fallback.
+
+swiss.c: drawCurrentDevice, drawFiles, renderFileBrowser,
+drawCurrentDeviceCarousel, drawFilesCarousel (already uncalled),
+drawFilesFullwidth, renderFileFullwidth and gameflowSceneLayout (called
+only from the Library branch, so its HORIZONTAL arm was dead; the dispatch
+asks gameflowLayout()). renderFileCarousel is the Library alone: no
+useGameflow; one `drawn` flag per frame (snapshot allocated, built and
+taken) and `if(!drawn)` is the File Browser fallback with its re-scan, as
+before; Y is always in waitButtons, posters always polled, B inside a folder
+is gameflowInsideFolder() alone, filesActivate(directory, true) and
+gameflowNavigateParent(true, ...). The two UIScene_RequestLibraryLayout
+(HORIZONTAL) calls for the legacy carousel are gone. filesHome(void) is
+`curMenuLocation = ON_OPTIONS` (no Swiss row to dim); filesManage drops its
+cardArt flag (the Library is its only caller and always pauses CardArt).
+filesActivate keeps its flag (false from renderFileList and
+filesOpenDetail's fallback). swiss.h: renderFileBrowser and drawFiles
+prototypes, FILES_PER_PAGE_FULLWIDTH. FILES_PER_PAGE (select_dest_dir) and
+FILES_PER_PAGE_CAROUSEL (the Library's paging) stay; select_dest_dir,
+select_recent_entry and Swiss's info_game are untouched.
+
+FrameBufferMagic.c/.h: _DrawFileBrowserButton, DrawFileBrowserButton,
+DrawFileBrowserButtonMeta, DrawFileCarouselEntry,
+DrawUpdateFileBrowserButton, drawFileBrowserButtonEvent_t,
+EV_FILEBROWSERBUTTON (enum, typeStrings name, dispose and draw cases),
+bannerMaskTexObj, starTexObj and TEX_STAR. DrawVertScrollBar,
+DrawSelectableButton, DrawEmptyBox and DrawTransparentBox stay
+(select_dest_dir, the patch list, the args selector). IPLFontWrite.c/.h:
+drawStringEllipsis and GetCharsThatFitInWidth (only the button used them).
+images/: banner_mask, star_16 and the nine 96x32 type tags (dir, dol,
+dolcli, elf, file, fpkg, gcm, mp3, tgc) leave the .scf files and the tree;
+their GXTexObj globals stay, never loaded, because upstream filemeta.c still
+points a file's meta at them (nothing reads fileTypeTexObj any more). The
+region tags stay (info_game draws them).
+
+Reachability: every removed name has no reference left in cube/swiss
+(grep), and an ELF symbol diff against the previous head shows the
+renderers were already dropped by --gc-sections; what goes from the link is
+drawStringEllipsis, the two texture objects and the textures. DOL
+5,532,080 -> 5,412,560 bytes (-119,520; text -6,752, data -112,812).
+
+Settings: FileBrowserType, AppsBrowserType and GameBrowserType are still
+read and written (round trip in test_settings_file.py, fileBrowserTypeStr
+stays) and nothing reads them. Their rows left the pages earlier; now their
+help strings (the Standard, Fullwidth and Carousel text), rowCycle cases
+and toggle arms go too, with their three SET_*BROWSER_TYPE ids
+(test_settings_views no longer lists them as dropped rows; nothing stores
+an interface row's number), and audit_settings_semantics.sh drops the
+three arms from its recorded base.
+docs/examples/global.ini and SETTINGS.md's example set Library Layout=Grid
+instead of GameBrowserType=Carousel.
+
+Tests: audit_files_contract (the File Browser section now ends at
+gameflowSnapshotGeneration; Swiss's list names absent from swiss.c and
+FrameBufferMagic.c, their prototypes, font helper and images from the
+headers and .scf files; no useGameflow in the Library; 3 more mutants, 122),
+audit_gameflow_dispatch (gameflowLayout() in the dispatch; the Library's
+calls as the Library; no legacy renderers), audit_home_hardware_followup
+(no fullwidth consumer; the Library's stick follows gameflowLayout(), with a
+mutant in place of the legacy one), audit_game_detail_safety,
+test_browser_home_lifecycle (the File Browser's and the Library's B arms,
+the same 400 returns), test_gameflow_folder_navigation, test_ui_color.
+Host lanes plain, contracts, sanitized (clang here, gcc in the build image),
+whitespace, source checks and the upstream check pass. Lab (CI's emulator
+image and limits, two at a time, this DOL in a card zip of its own): all ten
+CI routes pass: files (both boots, Detail and the launch; the frame-span
+guard never saw Swiss's list), folders, smoke on DVD and on the GC Loader
+with non-default settings, game on DVD PAL (and the AESND stop test), SD2SP2
+and GC Loader in 40 pieces, virtual cards in 4:3 and wide, and the failing
+card's save.
+
 ## 2026-10-07 — A game's Game Detail from the File Browser
 
 Fifth step of the two-pane File Browser: A on a game in the left pane opens

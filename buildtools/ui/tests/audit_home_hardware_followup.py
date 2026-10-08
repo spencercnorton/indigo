@@ -45,7 +45,7 @@ def ordered(source: str, *tokens: str) -> None:
 
 
 def check_consumers(home: str, recent: str, browser: str,
-                    carousel: str, fullwidth: str) -> None:
+                    carousel: str) -> None:
     ordered(home,
             "homeState.surface == UI_HOME_SURFACE_RING",
             "allowedAxes = UI_MENU_INPUT_AXIS_BOTH;",
@@ -85,7 +85,6 @@ def check_consumers(home: str, recent: str, browser: str,
             "File Browser still reads aggregate axes")
     for name, source, axis in (
         ("Recent", recent, "UI_MENU_INPUT_AXIS_VERTICAL"),
-        ("fullwidth", fullwidth, "UI_MENU_INPUT_AXIS_VERTICAL"),
     ):
         require(source.count("padsMenuInputPoll(") == 2,
                 f"{name} must have one poll and one digital release drain")
@@ -94,16 +93,16 @@ def check_consumers(home: str, recent: str, browser: str,
                 f"{name} has the wrong axis/repeat policy")
         require("padsStickX" not in source and "padsStickY" not in source,
                 f"{name} still reads aggregate axes")
-    # The carousel's stick follows the Library layout: across the carousel
-    # (and the legacy carousel), up and down the column, both ways in the
-    # grid, always repeating. Its poll and its drain share that one policy.
+    # The Library's stick follows its layout: across the carousel, up and
+    # down the column, both ways in the grid, always repeating. Its poll and
+    # its drain share that one policy.
     require(carousel.count("padsMenuInputPoll(") == 2,
             "carousel must have one poll and one digital release drain")
     require("u32 menuInputPolicy = gameflowMenuInputPolicy(layout);" in carousel and
             carousel.count("\t\t\t\tmenuInputPolicy, ") == 2,
             "carousel poll and drain do not share the layout's policy")
-    require("useGameflow ? gameflowLayout() :\n\t\t\tUI_GAMEFLOW_LAYOUT_HORIZONTAL;" in carousel,
-            "the legacy carousel does not keep the horizontal stick")
+    require("uiGameflowLayout_t layout = gameflowLayout();" in carousel,
+            "the Library's stick does not follow its layout")
     for arm in ("case UI_GAMEFLOW_LAYOUT_VERTICAL:\n\t\t\treturn UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT;",
                 "case UI_GAMEFLOW_LAYOUT_GRID:\n\t\t\treturn UI_MENU_INPUT_AXIS_BOTH | UI_MENU_INPUT_REPEAT;",
                 "default:\n\t\t\treturn UI_MENU_INPUT_AXIS_HORIZONTAL | UI_MENU_INPUT_REPEAT;"):
@@ -150,7 +149,6 @@ recent = block(SWISS, "void select_recent_entry()")
 browser = block(SWISS, "static uiDrawObj_t* renderFileList(")
 carousel = (block(SWISS, "\nu32 gameflowMenuInputPolicy(") + "\n" +
             block(SWISS, "uiDrawObj_t* renderFileCarousel("))
-fullwidth = block(SWISS, "uiDrawObj_t* renderFileFullwidth(")
 
 # Controller scanning stays once per retrace; menu polls consume an atomic
 # low-bit validity snapshot and raw axes from each physical port independently.
@@ -202,71 +200,63 @@ require("value == INT_MIN" in MENU_C, "INT_MIN magnitude is not guarded")
 
 # Home is one-shot; list surfaces repeat at measured retrace cadence. Mutation
 # checks prove each intended consumer is mechanically bound to that contract.
-consumer_sources = (home_input, recent, browser, carousel, fullwidth)
+consumer_sources = (home_input, recent, browser, carousel)
 check_consumers(*consumer_sources)
 consumer_mutants = (
     ("Home Up aliases horizontal", (
         changed(home_input, "navigation = UI_HOME_INPUT_UP;", "navigation = UI_HOME_INPUT_LEFT;"),
-        recent, browser, carousel, fullwidth)),
+        recent, browser, carousel)),
     ("Home Down aliases horizontal", (
         changed(home_input, "navigation = UI_HOME_INPUT_DOWN;", "navigation = UI_HOME_INPUT_RIGHT;"),
-        recent, browser, carousel, fullwidth)),
+        recent, browser, carousel)),
     ("Home ring loses vertical navigation", (
         changed(home_input, "allowedAxes = UI_MENU_INPUT_AXIS_BOTH;",
                 "allowedAxes = UI_MENU_INPUT_AXIS_HORIZONTAL;"),
-        recent, browser, carousel, fullwidth)),
+        recent, browser, carousel)),
     ("Home restart loses both axes", (
         changed(home_input, "else if(homeState.surface == UI_HOME_SURFACE_RESTART_CONFIRM) {\n\t\t\t\tallowedAxes = UI_MENU_INPUT_AXIS_BOTH;",
                 "else if(homeState.surface == UI_HOME_SURFACE_RESTART_CONFIRM) {\n\t\t\t\tallowedAxes = UI_MENU_INPUT_AXIS_HORIZONTAL;"),
-        recent, browser, carousel, fullwidth)),
+        recent, browser, carousel)),
     ("Home ring ignores analog up", (
         changed(home_input, "analog == UI_MENU_INPUT_UP", "analog == UI_MENU_INPUT_NONE"),
-        recent, browser, carousel, fullwidth)),
+        recent, browser, carousel)),
     ("Home ring ignores digital down", (
         changed(home_input, "(btns & BUTTON_DOWN)", "false"),
-        recent, browser, carousel, fullwidth)),
+        recent, browser, carousel)),
     ("Home repeats held gestures", (
         changed(home_input, "allowedAxes, (btns & homeButtons)",
                 "allowedAxes | UI_MENU_INPUT_REPEAT, (btns & homeButtons)"),
-        recent, browser, carousel, fullwidth)),
+        recent, browser, carousel)),
     ("Recent uses horizontal axis", (home_input,
         changed(recent, "UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT",
                 "UI_MENU_INPUT_AXIS_HORIZONTAL | UI_MENU_INPUT_REPEAT"),
-        browser, carousel, fullwidth)),
+        browser, carousel)),
     ("browser restores aggregate stick", (home_input, recent,
         changed(browser, "padsMenuInputPoll(&menuInput,",
                 "padsStickY(); padsMenuInputPoll(&menuInput,"),
-        carousel, fullwidth)),
+        carousel)),
     ("File Browser pages without repeat", (home_input, recent,
         changed(browser, "padsSubMenuInputPoll(&pageInput,\n\t\t\t\tmenuInputElapsedMicroseconds(&pageInputRetrace),\n\t\t\t\tUI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,",
                 "padsSubMenuInputPoll(&pageInput,\n\t\t\t\tmenuInputElapsedMicroseconds(&pageInputRetrace),\n\t\t\t\tUI_MENU_INPUT_AXIS_VERTICAL,"),
-        carousel, fullwidth)),
+        carousel)),
     ("File Browser steps by the C-stick", (home_input, recent,
         changed(browser, "padsSubMenuInputPoll(&pageInput,", "padsMenuInputPoll(&pageInput,"),
-        carousel, fullwidth)),
+        carousel)),
     ("carousel uses vertical axis", (home_input, recent, browser,
         changed(carousel, "default:\n\t\t\treturn UI_MENU_INPUT_AXIS_HORIZONTAL | UI_MENU_INPUT_REPEAT;",
-                "default:\n\t\t\treturn UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT;"),
-        fullwidth)),
+                "default:\n\t\t\treturn UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT;"))),
     ("vertical Library keeps the horizontal stick", (home_input, recent, browser,
         changed(carousel, "return UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT;",
-                "return UI_MENU_INPUT_AXIS_HORIZONTAL | UI_MENU_INPUT_REPEAT;"),
-        fullwidth)),
+                "return UI_MENU_INPUT_AXIS_HORIZONTAL | UI_MENU_INPUT_REPEAT;"))),
     ("grid loses repeat", (home_input, recent, browser,
         changed(carousel, "return UI_MENU_INPUT_AXIS_BOTH | UI_MENU_INPUT_REPEAT;",
-                "return UI_MENU_INPUT_AXIS_BOTH;"),
-        fullwidth)),
+                "return UI_MENU_INPUT_AXIS_BOTH;"))),
     ("carousel drain ignores the layout", (home_input, recent, browser,
         changed(carousel, "\t\t\t\tmenuInputPolicy, true);",
-                "\t\t\t\tUI_MENU_INPUT_AXIS_HORIZONTAL | UI_MENU_INPUT_REPEAT, true);"),
-        fullwidth)),
-    ("legacy carousel follows the Library layout", (home_input, recent, browser,
-        changed(carousel, "useGameflow ? gameflowLayout() :\n\t\t\tUI_GAMEFLOW_LAYOUT_HORIZONTAL;",
-                "gameflowLayout();"),
-        fullwidth)),
-    ("fullwidth loses repeat", (home_input, recent, browser, carousel,
-        changed(fullwidth, "UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT",
-                "UI_MENU_INPUT_AXIS_VERTICAL"))),
+                "\t\t\t\tUI_MENU_INPUT_AXIS_HORIZONTAL | UI_MENU_INPUT_REPEAT, true);"))),
+    ("the Library's stick ignores its layout", (home_input, recent, browser,
+        changed(carousel, "uiGameflowLayout_t layout = gameflowLayout();",
+                "uiGameflowLayout_t layout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;"))),
 )
 for mutant_label, mutant_sources in consumer_mutants:
     expect_consumer_mutant_rejected(mutant_label, mutant_sources)

@@ -101,6 +101,14 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - Settings › Setup › Library › **File Browser Type**, for apps and for
   games: there is one File Browser now. The keys stay in `global.ini`,
   read and written for Swiss.
+- Swiss's own file lists (Standard, Fullwidth and its Carousel), which
+  nothing opened once the File Browser took their place, are gone, with
+  the file-type tags, star and banner mask only they drew: Indigo is about
+  120 KB smaller. The Library, the Recent list, Settings › Load at
+  startup's folder chooser and Swiss's game screen for Recent and Autoload
+  stay as they were.
+  The example `global.ini` sets Library Layout instead of
+  `GameBrowserType`.
 - Removed the Library folder path and color page. Game folders retain their
   existing navigation and artwork without folder identity colors.
 
@@ -176,6 +184,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
   show. The `files` route ends by opening a game's details from the File
   Browser, coming back to the same row, and launching it to the probe; the
   first details it opens must show the game's poster from their first frame.
+- The contract and dispatch audits fail if any of Swiss's list renderers,
+  their row drawing or their pictures come back, or if the Library keeps a
+  branch for a list of its own, with mutants; the Library's input audits
+  follow its layout alone.
 
 - The emulator test holds each button for its full time from Dolphin's next
   clock report, so a press can no longer end within a frame of starting and

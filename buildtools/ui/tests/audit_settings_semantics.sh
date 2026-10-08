@@ -24,7 +24,9 @@
 # Folders arm (SET_LIBRARY_FOLDERS) only turns Library Folders on or off
 # through config_set_library_folders, which swaps FlattenDir with it, and
 # the Saves on Details arm (SET_DETAIL_SAVES) only flips
-# swissSettings.hideDetailSaves.
+# swissSettings.hideDetailSaves. The three File Browser Type arms
+# (SET_*BROWSER_TYPE) went with Swiss's lists and their rows; the settings
+# file still reads and writes their keys.
 #
 # The Right/Left/Up/Down/L/R/B/A action block changed on purpose in the Settings redesign:
 # phase 1 made B leave (Save & Exit when something changed), A advance choice
@@ -177,6 +179,14 @@ normalized = re.sub(
     r"\t+swissSettings\.hideDetailSaves \^= 1;\n"
     r"\t+break;\n",
     "", normalized, count=1)
+# The File Browser Type arms are gone, with Swiss's lists.
+normalized, browsers = re.subn(
+    r"(?ms)^\t+case SET_(FILE|APPS|GAME)BROWSER_TYPE:\n"
+    r"\t+swissSettings\.(file|apps|game)BrowserType \+= direction;\n"
+    r"\t+swissSettings\.\2BrowserType = \(swissSettings\.\2BrowserType \+ BROWSER_MAX\) % BROWSER_MAX;\n"
+    r"\t+break;\n",
+    lambda arm: "" if arm.group(1).lower() == arm.group(2) else arm.group(0),
+    normalized)
 normalized = re.sub(r"[ \t]+(?=\n|$)", "", normalized)
 Path(sys.argv[2]).write_text(normalized)
 PY
@@ -194,9 +204,9 @@ for fn in settings_toggle; do
 			normalize_intended_changes "$TMP/base_$fn" "$TMP/base_${fn}_normalized"
 			normalize_intended_changes "$TMP/head_$fn" "$TMP/head_${fn}_normalized"
 			if cmp -s "$TMP/base_${fn}_normalized" "$TMP/head_${fn}_normalized"; then
-				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, temperature, icon, layout, library folders, save folder, widescreen, side, cube and saves on details arms and game reset\n' "$fn"
+				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, temperature, icon, layout, library folders, save folder, widescreen, side, cube and saves on details arms, the File Browser Type arms and game reset\n' "$fn"
 			else
-				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_TEMPERATURE_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_LIBRARY_FOLDERS, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_*_FACE, SET_CUBE, SET_DETAIL_SAVES and the game reset" >&2
+				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_TEMPERATURE_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_LIBRARY_FOLDERS, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_*_FACE, SET_CUBE, SET_DETAIL_SAVES, SET_*BROWSER_TYPE and the game reset" >&2
 				diff -u "$TMP/base_${fn}_normalized" \
 					"$TMP/head_${fn}_normalized" | head -40 >&2 || true
 				fail=1
