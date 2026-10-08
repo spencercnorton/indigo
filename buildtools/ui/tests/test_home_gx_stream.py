@@ -156,6 +156,12 @@ int main(void)
 			printf("A %d %d %d\n", (int)home.face, (int)home.surface, home.selection);
 			DrawUpdateHome(&home, caps, "SD Card");
 		}
+		else if(sscanf(line, "C %d %d", &a, &b) == 2) {
+			/* Setup > Console's Face Labels and On-screen Controls off. */
+			caps.hideFaceLabel = a != 0;
+			caps.hideCommands = b != 0;
+			DrawUpdateHome(&home, caps, "SD Card");
+		}
 		else if(line[0] == 'X') DrawUpdateHome(NULL, caps, NULL);
 		else if(line[0] == 'U') DrawUpdateHome(&home, caps, "SD Card");
 		else if(sscanf(line, "M %d", &a) == 1) motionMode = (uiMotionMode_t)a;
@@ -293,6 +299,26 @@ class HomeGXStreamTests(unittest.TestCase):
         frame = self.run_script("K 0.95\nN 1 0.0166667\n")[-1]
         self.assertEqual([s["alpha"] for s in frame["strings"] + frame["hints"]], [255, 184])
 
+
+    def test_face_labels_and_on_screen_controls_off(self):
+        # Setup > Console: Face Labels Off takes the face's name away and
+        # On-screen Controls Off the hint line, each on its own.
+        rest = self.run_script("C 1 0\nN 2 0.0166667\n")[-1]
+        self.assertEqual(rest["strings"], [])
+        self.assertEqual([h["alpha"] for h in rest["hints"]], [184])
+        rest = self.run_script("C 0 1\nN 2 0.0166667\n")[-1]
+        self.assertEqual([s["alpha"] for s in rest["strings"]], [255])
+        self.assertEqual(rest["hints"], [])
+        # A face's rows keep their heading and rows, without the hint line.
+        rows = self.run_script("C 0 1\n" + self.system_rows() + f"N 30 {DT}\n")[-1]
+        self.assertEqual(len(rows["strings"]), 5)
+        self.assertEqual(rows["hints"], [])
+        # Restart's question keeps its own, both off.
+        ask = self.run_script("C 1 1\n" + self.system_rows() + DOWN + DOWN + DOWN + OPEN + f"N 30 {DT}\n")[-1]
+        self.assertEqual(len(ask["hints"]), 1)
+        # Back on, both return.
+        rest = self.run_script("C 1 1\nN 2 0.0166667\nC 0 0\nN 2 0.0166667\n")[-1]
+        self.assertEqual([s["alpha"] for s in rest["strings"] + rest["hints"]], [255, 184])
 
     def system_rows(self, motion: int = 0) -> str:
         return f"M {motion}\n{SYSTEM}N 60 {DT}\n{OPEN}"

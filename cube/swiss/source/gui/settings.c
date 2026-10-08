@@ -161,6 +161,10 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\nSpotlight - A gameplay still over banners; Left and Right move\n\nThe selected game's title and details show beside its cover in\nVertical and its still in Spotlight, and above the controls in Grid.\nEvery layout wraps round from the last game to the first; L and R\njump a page. Y opens the focused game's settings.",
 	[SET_LIBRARY_FOLDERS] = "Library Folders:\n\nOff - The Library is one list of every game in /games, however\nthey sit in folders there (default)\nOn - The Library shows the folders in /games beside the games:\nA opens one, B goes back. A folder in a folder is the deepest;\nit lists every game below it.\n\nKeep a game's discs in the same folder.",
 	[SET_DETAIL_SAVES] = "Saves on Details:\n\nOn - A game's details show its saves on both memory cards and\nin the Save Folder when there are two or more copies, and Left\nand Right choose the one to start with (default)\nOff - A game's details leave the memory cards alone.",
+	[SET_IDLE_ANIMATION] = "Idle Animation:\n\nHow the cube moves while Home rests.\nCalm - A slight drift, turned a little to the right (default)\nSway - It turns slowly left and right, so the faces beside\nthe one in front peek round its edges\n\nUI Motion Reduced or Off keeps the cube still.",
+	[SET_WAVES] = "Waves:\n\nOn - Waves drift behind the cube (default)\nOff - No waves: the backdrop and its rings only\n\nWave Color and Wave Speed apply while they are on.",
+	[SET_HOME_CONTROLS] = "On-screen Controls:\n\nOn - Home shows its button hints under the cube (default)\nOff - Home shows none\n\nOther screens, and Restart's question, keep theirs.",
+	[SET_FACE_LABELS] = "Face Labels:\n\nOn - Home names the face in front under the cube (default)\nOff - The cube shows only its icons.",
 	[SET_WAVE_SPEED] = "Wave Speed:\n\nHow fast the waves behind the cube drift.\nSlow - Half as fast\nNormal - As they always have (default)\nFast - Three times as fast\n\nUI Motion Off or Reduced, or Animated Backdrop off (Setup >\nLibrary), still stops them.",
 	[SET_CLOCK_POSITION] = "Clock:\n\nRight - The time sits in the top right corner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nTemperature places the temperature dial on its own.",
 	[SET_TEMPERATURE_POSITION] = "Temperature:\n\nRight - The CPU temperature dial sits in the top right\ncorner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nIn the clock's corner, the dial sits nearer the edge.",
@@ -588,6 +592,7 @@ static const settingsRowRef_t displayRows[] = {
 static const settingsRowRef_t consoleRows[] = {
 	{PAGE_INTERFACE, SET_UI_COLOR},
 	{PAGE_INTERFACE, SET_UI_BACKDROP_COLOR},
+	{PAGE_INTERFACE, SET_WAVES},
 	{PAGE_INTERFACE, SET_UI_WAVE_COLOR},
 	{PAGE_INTERFACE, SET_WAVE_SPEED},
 	{PAGE_INTERFACE, SET_LIBRARY_ICON},
@@ -599,6 +604,9 @@ static const settingsRowRef_t consoleRows[] = {
 	{PAGE_INTERFACE, SET_RIGHT_FACE},
 	{PAGE_INTERFACE, SET_DOWN_FACE},
 	{PAGE_INTERFACE, SET_CUBE},
+	{PAGE_INTERFACE, SET_IDLE_ANIMATION},
+	{PAGE_INTERFACE, SET_FACE_LABELS},
+	{PAGE_INTERFACE, SET_HOME_CONTROLS},
 	{PAGE_INTERFACE, SET_CLOCK_POSITION},
 	{PAGE_INTERFACE, SET_TEMPERATURE_POSITION},
 	{PAGE_GLOBAL, SET_SYS_SOUND},
@@ -1079,6 +1087,10 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_RIGHT_FACE: rowCycle(row, "Right Face:", rightFaceStr[swissSettings.rightFace], true); break;
 			case SET_DOWN_FACE: rowCycle(row, "Down Face:", downFaceStr[swissSettings.downFace], true); break;
 			case SET_CUBE: rowCycle(row, "Cube:", swissSettings.cubeStyle ? "Classic" : "Infinite", true); break;
+			case SET_IDLE_ANIMATION: rowCycle(row, "Idle Animation:", swissSettings.idleAnimation ? "Sway" : "Calm", true); break;
+			case SET_WAVES: rowOnOff(row, "Waves:", !swissSettings.hideWaves, true); break;
+			case SET_HOME_CONTROLS: rowOnOff(row, "On-screen Controls:", !swissSettings.hideHomeControls, true); break;
+			case SET_FACE_LABELS: rowOnOff(row, "Face Labels:", !swissSettings.hideFaceLabels, true); break;
 			case SET_CLOCK_POSITION: rowCycle(row, "Clock:", clockPositionStr[swissSettings.clockPosition], true); break;
 			case SET_TEMPERATURE_POSITION: rowCycle(row, "Temperature:", clockPositionStr[swissSettings.temperaturePosition], true); break;
 			case SET_WAVE_SPEED: rowCycle(row, "Wave Speed:", waveSpeedStr[swissSettings.waveSpeed], true); break;
@@ -1647,6 +1659,18 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_DETAIL_SAVES:
 				swissSettings.hideDetailSaves ^= 1;
+			break;
+			case SET_IDLE_ANIMATION:
+				swissSettings.idleAnimation ^= 1;
+			break;
+			case SET_WAVES:
+				swissSettings.hideWaves ^= 1;
+			break;
+			case SET_HOME_CONTROLS:
+				swissSettings.hideHomeControls ^= 1;
+			break;
+			case SET_FACE_LABELS:
+				swissSettings.hideFaceLabels ^= 1;
 			break;
 			case SET_PANEL_TRANSPARENCY:
 				swissSettings.disablePanelTransparency ^= 1;

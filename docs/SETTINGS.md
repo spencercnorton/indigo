@@ -149,6 +149,7 @@ most use the same key there.
 | --- | --- | --- | --- |
 | `Menu Color` | `Indigo`, `Azure`, `Emerald`, `Gold`, `Spice`, `Crimson`, `Rose`, `Jet Black` | `Indigo` | Menu Color |
 | `Backdrop Color` | `Menu Color`, `Indigo`, `Azure`, `Emerald`, `Gold`, `Spice`, `Crimson`, `Rose`, `Jet Black`. The backdrop behind the cube and its rings; `Menu Color` follows Menu Color. | `Menu Color` | Backdrop Color |
+| `Hide Waves` | `Yes`, `No`. `Yes` shows as Waves › Off: no waves behind the cube, only the backdrop and its rings. | `No` | Waves |
 | `Wave Color` | `Menu Color`, `Indigo`, `Azure`, `Emerald`, `Gold`, `Spice`, `Crimson`, `Rose`, `Jet Black`. The waves behind the cube; `Menu Color` follows Menu Color. | `Menu Color` | Wave Color |
 | `Library Icon` | `Controller`, `Books`, `Covers`, `Play`. The picture on the cube's Library face, from its own four icons. A name from another face's list is ignored. | `Controller` | Library Icon |
 | `Source Icon` | `Hub`, `Disc`, `SD Card`, `Folder`. The picture on the Source face, from its own four icons. | `Hub` | Source Icon |
@@ -162,6 +163,9 @@ most use the same key there.
 | `Right Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu right of Library, the same way. | `System` | Right Face |
 | `Down Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu below Library, the same way. | `Apps` | Down Face |
 | `Cube` | `Infinite`, `Classic`. How Home's faces sit on the cube: `Infinite` turns round them in a ring; `Classic` gives each its own side, Library in front, as the GameCube's menu does. Any other value means `Infinite`. | `Infinite` | Cube |
+| `Idle Animation` | `Calm`, `Sway`. How the cube moves while Home rests: `Calm` drifts a little, turned to the right; `Sway` turns it slowly left and right, so the faces beside the one in front peek round its edges. Any other value means `Calm`. | `Calm` | Idle Animation |
+| `Hide Face Labels` | `Yes`, `No`. `Yes` shows as Face Labels › Off: Home shows no face name under the cube. | `No` | Face Labels |
+| `Hide On-screen Controls` | `Yes`, `No`. `Yes` shows as On-screen Controls › Off: Home shows no button hints under the cube. Other screens, and Restart's question, keep theirs. | `No` | On-screen Controls |
 | `System Boot Mode` | `Default`, `Production`. Any other value means `Default`. | the console's SRAM | System Boot Mode |
 | `System Sound` | `Mono`, `Stereo`. Any other value means `Mono`. | the console's SRAM | System Sound |
 | `System Language` | `English`, `German`, `French`, `Spanish`, `Italian`, `Dutch`, `Japanese`, `English (US)` | the console's SRAM | System Language |

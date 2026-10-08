@@ -17,6 +17,16 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - Two more menus for the cube's sides: **Memory Cards**, the screen System's
   row opens, and **Emulators**, an Apps screen for the programs in
   `/emulators`. Neither is on a side until you give it one.
+- Settings › Setup › Console › **Idle Animation**: **Sway** turns the Home
+  cube slowly left and right while Home rests, so the faces beside the one in
+  front peek round its edges; **Calm**, the default, is the drift it always
+  had. After a turn the sway starts again from where the cube rests. UI
+  Motion Reduced or Off keeps the cube still either way, and so does Change
+  Source's picker, where the cube used to drift.
+- **Waves** (Setup › Console) Off takes the waves from behind the cube.
+- **Face Labels** and **On-screen Controls** (Setup › Console) Off take the
+  face's name and the button hints from under the Home cube. Other screens
+  keep their hints, and so does Restart's question.
 - **File Browser** can have a side of the cube too (Up Face, Left Face,
   Right Face or Down Face › File Browser): A on it opens the same File
   Browser as System's row, and B comes back to it. It is on no side until

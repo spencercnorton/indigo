@@ -755,8 +755,9 @@ void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode)
 	state.frame.cubeYaw = UIMotion_SpringUpdate(&state.cubeYaw, deltaSeconds,
 		motionMode);
 	updateHomeFocus(motionMode);
+	/* Home's alone: the Source picker's smaller cube holds still. */
 	idleTarget = motionMode == UI_MOTION_FULL &&
-		isHomeYawScene(state.appliedScene) &&
+		state.appliedScene == UI_SCENE_HOME &&
 		UIMotion_SpringSettled(&state.cubeY, 0.0002f, 0.001f) &&
 		UIMotion_SpringSettled(&state.cubeScale, 0.0002f, 0.001f) &&
 		UIMotion_SpringSettled(&state.cubePitch, 0.0002f, 0.001f) &&

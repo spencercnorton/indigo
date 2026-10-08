@@ -49,7 +49,8 @@ exception screen as it would on a console. The route:
    at Classic lays the faces out as the GameCube's menu does, and the route
    walks it (LEFT goes nowhere from Settings, RIGHT twice is Library then
    System, B is Library, UP Source, DOWN Library and DOWN Apps) before setting
-   it back to Infinite; and Setup › Library
+   it back to Infinite; Setup › Console › Face Labels Off leaves no name under
+   the cube, and On puts the Settings face's name back; and Setup › Library
    › Library Folders On shows the disc's folders in the Library: an empty
    folder opens with only its way back, A opens a folder and a folder in it,
    which also lists the game a level further down, and B goes back up a
@@ -203,7 +204,9 @@ its own, and Save & Exit must write the file and go Home. With `--settings
 `global.ini` instead and Indigo goes straight Home; at the end every line of
 it must still be on the card, through Indigo's own saves. CI's GC Loader smoke
 job starts with [`non-default.ini`](settings/non-default.ini): colours, icons,
-the clock on the left, no menu music or sounds, reduced motion, In-Game Reset. At the end the
+the clock on the left, no menu music or sounds, reduced motion, In-Game Reset,
+no waves, the Sway idle animation and no button hints on Home, which the route
+checks as Home appears (with the default settings it checks they show). At the end the
 test reads the card back: the settings Indigo saved (with Down Face as the
 route left it, and Library Folders saved on with the card's own
 `FlattenDir=*/games` kept beside it), and after the game route the launched

@@ -208,10 +208,14 @@ Press Y on any row for the same explanations on the console.
 | --- | --- |
 | Menu Color | The color of the whole interface. See [Make it yours](personalize.md#menu-color). |
 | Backdrop Color, Wave Color | The backdrop behind the cube and the waves in front of it, each in Menu Color or a color of its own. See [Make it yours](personalize.md#backdrop-and-wave-color). |
+| Waves | **Off** takes the waves away, leaving the backdrop and its rings. Wave Color and Wave Speed apply while they're on. See [Make it yours](personalize.md#backdrop-and-wave-color). |
 | Wave Speed | How fast the waves drift: **Slow** (half as fast), **Normal** or **Fast** (three times as fast). See [Make it yours](personalize.md#backdrop-and-wave-color). |
 | Library Icon, Source Icon, Settings Icon, System Icon | The icon on each face of the Home cube. See [Make it yours](personalize.md#cube-icons). |
 | Up Face, Left Face, Right Face, Down Face | Which menu sits above, left of, right of and below Library on the [Home](home.md#choose-the-sides) cube: Source, Settings, System, Apps, Memory Cards, Emulators, File Browser, or **None** for an empty side. By default Source is up, Settings left, System right and Apps down. A menu on no side is off the cube; Y on Home still opens Settings. |
 | Cube | How the [Home](home.md#infinite-or-classic) cube turns. **Infinite** turns round every face in a ring. **Classic** puts each menu on its own side of the cube, as on the GameCube, and you turn back to Library to reach another. |
+| Idle Animation | How the cube moves while Home rests: **Calm**, a slight drift turned a little to the right, or **Sway**, which turns it slowly left and right so the faces beside the one in front peek round its edges. UI Motion Reduced or Off keeps it still. See [Make it yours](personalize.md#motion). |
+| Face Labels | **Off** takes the face's name from under the cube on Home. See [Make it yours](personalize.md#just-the-cube). |
+| On-screen Controls | **Off** takes Home's button hints from under the cube. Other screens keep theirs. See [Make it yours](personalize.md#just-the-cube). |
 | Clock | Where the time sits: **Right** (the top right corner), **Left**, or **Off** to hide it. |
 | Temperature | Where the temperature dial sits, the same way. In the clock's corner it sits nearer the edge, beside the time. |
 | System Sound | The audio output most games use: mono or stereo. |

@@ -130,6 +130,10 @@ typedef struct {
 	uint8_t sides[UI_HOME_SIDE_COUNT];
 	/* The source's /emulators folder holds a program. */
 	bool hasEmulators;
+	/* Setup > Console's Face Labels and On-screen Controls off: no face
+	 * name, or no button hints, under the cube. Zeroed, Home draws both. */
+	bool hideFaceLabel;
+	bool hideCommands;
 } uiHomeCapabilities_t;
 
 typedef enum {

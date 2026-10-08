@@ -283,6 +283,10 @@ class Card(unittest.TestCase):
         pairs = run.seeded(text)
         self.assertEqual(pairs["Clock"], "Left")
         self.assertNotIn("Menu Widescreen", pairs)
+        # The route tells the faces apart by their names, so Face Labels stays
+        # on; the smoke route checks Home without its hints.
+        self.assertNotIn("Hide Face Labels", pairs)
+        self.assertEqual(pairs["Hide On-screen Controls"], "Yes")
         self.assertTrue(all(not key.startswith("#") for key in pairs))
         self.assertEqual(run.seeded("# Clock=Right\nClock = Off\r\n"), {"Clock": "Off"})
 

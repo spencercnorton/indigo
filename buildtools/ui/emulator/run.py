@@ -114,6 +114,9 @@ WIDTH, HEIGHT = 640, 480
 # device's name in the Source picker sits there too), and its title on the
 # game's details.
 LABEL_BOX = (200, 372, 440, 396)
+# Home's button hints under the face's name ("TURN  A OPEN"), dimmer than it:
+# lit at HINT_LEVEL, where the backdrop and waves around them are not.
+HOME_HINT_BOX, HINT_LEVEL = (240, 422, 400, 446), 120
 TITLE_BOX = (200, 338, 440, 362)
 FOLDER_LAYOUTS = {
     "Horizontal": (TITLE_BOX, "LEFT", "RIGHT"),
@@ -1032,9 +1035,10 @@ class Route:
                  cable: str = "composite", region: str = "pal", fragments: int = 0,
                  cards: Path | None = None, storage: str = "dvd", menu_wide: bool = False,
                  sd_image: Path | None = None, detail_saves: bool = True,
-                 second_sd: Path | None = None) -> None:
+                 second_sd: Path | None = None, home_controls: bool = True) -> None:
         self.emulator = emulator
         self.detail_saves = detail_saves  # Saves on Details is on (the default)
+        self.home_controls = home_controls  # On-screen Controls is on (the default)
         self.cards = cards  # the memory cards' GCI folders, cards/A and cards/B
         self.storage = storage
         self.menu_wide = menu_wide
@@ -1230,6 +1234,14 @@ class Route:
     def smoke(self) -> None:
         home = self.boot()
         faces = [home]
+        # Setup > Console > On-screen Controls: the button hints under the
+        # face's name, unless the card's settings turn them off.
+        if self.home_controls:
+            hints, _ = self.settled_label(box=HOME_HINT_BOX, level=HINT_LEVEL)
+            self.check("Home shows its button hints", hints is not None)
+        else:
+            self.check("On-screen Controls Off: Home shows no button hints",
+                       self.quiet(HOME_HINT_BOX, HINT_LEVEL))
         # The disc has apps: Library, Source, Settings, System and Apps.
         for n in range(1, 5):
             faces.append(self.turn(faces, "RIGHT", f"right-{n}"))
@@ -1251,6 +1263,7 @@ class Route:
             if n == 2:
                 self.apps_face_off_and_on(faces)
                 self.classic_cube(faces)
+                self.face_labels_off_and_on(faces)
                 self.library_folders(faces)
             else:
                 inside = {0: self.browse_library, 1: self.change_source,
@@ -1397,19 +1410,20 @@ class Route:
                    memory=f"{report['memsize']:08X}")
 
     def flip_apps_face(self, settings: np.ndarray, tag: str) -> None:
-        """Down Face, eleven DOWNs into Console (flip_console): four RIGHTs
+        """Down Face, twelve DOWNs into Console (flip_console): four RIGHTs
         from Apps pass Memory Cards, Emulators and File Browser to None
         ("off"), one LEFT from None is File Browser ("files"), and three LEFTs
         more come back to Apps ("on")."""
         change, presses = {"off": ("RIGHT", 4), "files": ("LEFT", 1), "on": ("LEFT", 3)}[tag]
-        self.flip_console(settings, 11, "apps-face", tag, change=change, presses=presses)
+        self.flip_console(settings, 12, "apps-face", tag, change=change, presses=presses)
 
     def flip_console(self, settings: np.ndarray, downs: int, name: str, tag: str,
-                     change: str = "RIGHT", presses: int = 1) -> None:
+                     change: str = "RIGHT", presses: int = 1, named: bool = True) -> None:
         """From the Settings face: R and R to Setup, DOWN and A into Console,
         downs DOWNs to a row and change (a direction) to change it. B goes back to Setup and
         B again saves and exits (the demo disc can't keep the file; the
-        setting holds until Indigo restarts), back to the Settings face."""
+        setting holds until Indigo restarts), back to the Settings face, or,
+        not named (Face Labels off), to a Home without the face's name."""
         detail = {name.replace("-", "_"): tag}
         self.press("A")
         opened = self.covered(settings)
@@ -1429,6 +1443,13 @@ class Route:
         self.press("B")
         self.pause(1.0)
         self.press("B")
+        if not named:
+            # No name is no proof of Home: Setup's page has none there either,
+            # but it has the rows' counter, which Home never draws.
+            gone = self.quiet() and text_mask(self.gray(), COUNTER_BOX).sum() < COUNTER_PIXELS
+            self.shot(f"{name}-{tag}-home", self.last_rgb)
+            self.check("Save & Exit comes back to Home, with no name under the cube", gone, **detail)
+            return
         mask, _ = self.settled_label(like=settings)
         self.shot(f"{name}-{tag}-home", self.last_rgb)
         self.check("Save & Exit comes back to the Settings face", mask is not None, **detail)
@@ -1463,7 +1484,7 @@ class Route:
         self.check(name, moved == rows, moved=moved, **({"odd_steps": corrected} if corrected else {}), **detail)
 
     def classic_cube(self, faces: list[np.ndarray]) -> None:
-        """From the Settings face: Setup > Console > Cube (twelve DOWNs, just
+        """From the Settings face: Setup > Console > Cube (thirteen DOWNs, just
         after the four sides) to Classic. The faces then sit as on the GameCube's
         menu, Library in front and the way between them: Settings is its
         left side, so LEFT goes nowhere, and RIGHT twice is Library and then
@@ -1473,7 +1494,7 @@ class Route:
         A press that should go nowhere has had a second of the console's
         time to turn the cube when its face is checked."""
         library, source, settings, system, apps = faces[:5]
-        self.flip_console(settings, 12, "cube", "classic")
+        self.flip_console(settings, 13, "cube", "classic")
         walk = (("LEFT", "Settings", False), ("LEFT", "Settings", False), ("RIGHT", "Library", True),
                 ("RIGHT", "System", True), ("UP", "System", False), ("B", "Library", True),
                 ("UP", "Source", True), ("DOWN", "Library", True), ("DOWN", "Apps", True),
@@ -1490,7 +1511,15 @@ class Route:
             self.shot(f"classic-{n}-{button.lower()}", self.last_rgb)
             self.check(f"Cube Classic: {button} {'turns to' if turns else 'stays on'} {name}",
                        mask is not None, step=n)
-        self.flip_console(settings, 12, "cube", "infinite")
+        self.flip_console(settings, 13, "cube", "infinite")
+
+    def face_labels_off_and_on(self, faces: list[np.ndarray]) -> None:
+        """From the Settings face: Setup > Console > Face Labels (fifteen
+        DOWNs, after Cube and Idle Animation) Off takes the face's name from
+        under the cube; On puts the Settings face's name back."""
+        settings = faces[2]
+        self.flip_console(settings, 15, "face-labels", "off", named=False)
+        self.flip_console(settings, 15, "face-labels", "on")
 
     def apps_face_off_and_on(self, faces: list[np.ndarray]) -> None:
         """Setup > Console > Down Face: None takes Apps off the cube, so the
@@ -1807,6 +1836,23 @@ class Route:
                 self.pause(1.0)  # let the screen finish arriving before the picture
                 self.gray()
                 return True
+        return False
+
+    def quiet(self, box: tuple[int, int, int, int] = LABEL_BOX, level: int = TEXT_LEVEL,
+              seconds: float = SETTLE_SECONDS) -> bool:
+        """Wait for a box to hold no word for two seconds of the console's time
+        on end: longer than a screen takes to go, so a word drawn once it has
+        gone still shows."""
+        deadline = Deadline(self.emulator, seconds)
+        empty = None
+        while not deadline.expired():
+            if has_label(text_mask(self.gray(), box, level)):
+                empty = None
+            elif empty is None:
+                empty = Deadline(self.emulator, 2.0)
+            elif empty.expired():
+                return True
+            time.sleep(0.15)
         return False
 
     def open_and_close(self, face: np.ndarray, n: int, inside=None) -> None:
@@ -3210,7 +3256,8 @@ def main(argv: list[str] | None = None) -> int:
                           cable=args.cable, region=args.region, fragments=args.fragments, cards=cards,
                           storage=args.storage, menu_wide=bool(start and "Menu Widescreen=Yes" in start),
                           sd_image=sd, second_sd=second,
-                          detail_saves=not start or seeded(start).get("Hide Saves on Details") != "Yes")
+                          detail_saves=not start or seeded(start).get("Hide Saves on Details") != "Yes",
+                          home_controls=not start or seeded(start).get("Hide On-screen Controls") != "Yes")
             getattr(route, args.route.replace("-", "_"))()
             if args.route == "files":
                 # Again, with the SD card in SD2SP2 failing writes where a new

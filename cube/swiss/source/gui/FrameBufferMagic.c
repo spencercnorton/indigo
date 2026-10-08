@@ -914,6 +914,8 @@ static void _DrawBackground(uiDrawObj_t *evt)
 	IndigoBackground_SetFramebuffer(getVideoMode()->fbWidth,
 		getVideoMode()->efbHeight);
 	IndigoBackground_SetWaveSpeed(waveSpeeds[swissSettings.waveSpeed]);
+	IndigoBackground_SetWaves(!swissSettings.hideWaves);
+	IndigoBackground_SetIdleSway(swissSettings.idleAnimation != 0);
 	IndigoBackground_Draw(UIAnim_Seconds(),
 		decorativeAnimated && !swissSettings.disableAnimatedBackdrop,
 		decorativeAnimated,
@@ -4371,12 +4373,17 @@ static void _DrawHomeRoot(const drawHomeEvent_t *data,
 	incoming = primary;
 	incoming.a = (u8)((float)incoming.a * incomingAlpha);
 	scale = data->focusScale[(int)face];
-	_DrawHomeText(incomingX, incomingY,
-		UIHome_FaceLabel(face), scale,
-		ALIGN_CENTER, incoming);
-	_DrawHintText(layout->commandCenter.x, layout->commandCenter.y,
-		data->command, data->commandScale,
-		ALIGN_CENTER, muted);
+	/* Face Labels and On-screen Controls off leave the cube on its own. */
+	if(!data->capabilities.hideFaceLabel) {
+		_DrawHomeText(incomingX, incomingY,
+			UIHome_FaceLabel(face), scale,
+			ALIGN_CENTER, incoming);
+	}
+	if(!data->capabilities.hideCommands) {
+		_DrawHintText(layout->commandCenter.x, layout->commandCenter.y,
+			data->command, data->commandScale,
+			ALIGN_CENTER, muted);
+	}
 }
 
 static void _DrawHomeRows(const drawHomeEvent_t *data, float reveal)
@@ -4400,9 +4407,11 @@ static void _DrawHomeRows(const drawHomeEvent_t *data, float reveal)
 				data->rowIdleScale[row]) * weight,
 			ALIGN_CENTER, _GameflowMixColor(muted, primary, weight));
 	}
-	_DrawHintText(layout->commandCenter.x, layout->commandCenter.y,
-		homeContextCommand, data->contextCommandScale,
-		ALIGN_CENTER, muted);
+	if(!data->capabilities.hideCommands) {
+		_DrawHintText(layout->commandCenter.x, layout->commandCenter.y,
+			homeContextCommand, data->contextCommandScale,
+			ALIGN_CENTER, muted);
+	}
 }
 
 static void _DrawHomeContext(const drawHomeEvent_t *data, float reveal)

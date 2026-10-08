@@ -47,7 +47,7 @@ static const struct {
 	{ 21,  1, 22 }, /* Game Defaults: no Vertical Offset, which can't reach a game */
 	{  6,  2,  7 }, /* Setup: one row per section */
 	{ 10,  2, 11 }, /* Display */
-	{ 20,  2, 21 }, /* Console: the four sides, Cube, Backdrop and Wave Color, Wave Speed, Clock, Temperature too */
+	{ 24,  2, 25 }, /* Console: the four sides, Cube, Backdrop and Wave Color, Wave Speed, Clock, Temperature, Waves, Idle Animation, Face Labels, On-screen Controls too */
 	{  7,  2,  8 }, /* Storage: its Save Folder too */
 	{ 20,  2, 21 }, /* Network */
 	{ 11,  2, 12 }, /* Library: Load at startup, Library Folders and Saves on Details too; no File Browser Types */

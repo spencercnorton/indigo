@@ -142,7 +142,8 @@ never plays by itself. UI Motion is in Settings › Quick.
   average of the last few seconds' readings: it holds steady and moves a
   degree at a time. It has no factory calibration; adjust it in Settings ›
   Setup › Console › CPU Temperature Calibration.
-- **Bottom:** the buttons that work here.
+- **Bottom:** the face's name and the buttons that work here. Settings ›
+  Setup › Console › Face Labels and On-screen Controls each take theirs away.
 - **Music and sounds:** Indigo plays its own menu music and soft navigation
   sounds. Turn either off in Settings › Quick.
 - **START:** shows your recently played games, when Settings › Setup ›

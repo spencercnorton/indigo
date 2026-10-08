@@ -246,6 +246,8 @@ static uiHomeCapabilities_t homeCapabilities(void)
 			swissSettings.recent[0][0] != '\0',
 		.style = swissSettings.cubeStyle ?
 			UI_HOME_CUBE_CLASSIC : UI_HOME_CUBE_INFINITE,
+		.hideFaceLabel = swissSettings.hideFaceLabels != 0,
+		.hideCommands = swissSettings.hideHomeControls != 0,
 		.customSides = true,
 		.sides = {
 			UIHome_SideFace(UI_HOME_SIDE_UP, swissSettings.upFace),

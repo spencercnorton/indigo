@@ -275,9 +275,14 @@ static void testContextAndSceneReturns(void)
 	CHECK(UIScene_Frame()->cubeY > rowY + 0.5f);
 	CHECK(UIScene_Frame()->cubeScale < rowScale * 0.6f);
 	matrixNear(&UIScene_Frame()->homeOrientation[0][0], target, 0.0f);
+	/* Resting there is not Home's rest: no idle motion (Sway's included). */
+	advance(2.0f, 0.02f, UI_MOTION_FULL);
+	near(UIScene_Frame()->homeIdleBlend, 0.0f, 0.0001f);
 	UIScene_Request(UI_SCENE_HOME); settle(0.02f, UI_MOTION_FULL);
 	near(UIScene_Frame()->cubeY, rowY, 0.0001f);
 	near(UIScene_Frame()->cubeScale, rowScale, 0.0001f);
+	advance(2.0f, 0.02f, UI_MOTION_FULL);
+	near(UIScene_Frame()->homeIdleBlend, 1.0f, 0.0001f);
 	UIHome_Apply(&home, UI_HOME_INPUT_BACK, caps); UIScene_RequestHome(&home);
 	settle(0.02f, UI_MOTION_FULL);
 	CHECK(UIScene_Frame()->homeSurface == UI_HOME_SURFACE_RING);

@@ -30,6 +30,12 @@ void IndigoBackground_SetColors(const int colors[UI_COLOR_LAYERS]);
  * Set once a frame, before the draw below; a change speeds the waves up or
  * slows them down from where they are, without a jump. */
 void IndigoBackground_SetWaveSpeed(float speed);
+/* Waves: whether the waves drift behind the cube at all (the default). */
+void IndigoBackground_SetWaves(bool shown);
+/* Idle Animation: Sway turns the cube left and right while Home rests, so
+ * the faces beside the front one peek round its edges; otherwise it drifts
+ * a little, as it always has. Set once a frame, before the draw below. */
+void IndigoBackground_SetIdleSway(bool sway);
 /* Drawn after the configured backdrop and before every foreground widget.
  * pad may be NULL: the Controller icon then plays only its idle motion.
  * icons holds a uiHomeIcon_t for each uiHomeFace_t. */

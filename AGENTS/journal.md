@@ -1,3 +1,61 @@
+## 2026-10-08 — Home: Idle Animation, Waves, On-screen Controls, Face Labels
+
+Issue 116 asked for a livelier idle cube, a way to hide the waves, and a way
+to hide Home's button hints and face names. Four settings on Setup > Console,
+each off by default, so Home draws exactly what it did:
+
+- Idle Animation (`Idle Animation=Calm|Sway`, a flip like Cube): Sway turns
+  the cube from Home's pose (cubeYaw 0.28, ui_scene.c) to its mirror and back,
+  yaw offset -CUBE_SWAY_RADIANS * (1 - cos(rate * t)) * homeIdleBlend, so
+  every swing starts from the pose with no velocity and the outline is never
+  wider than Home's. Its clock (swayClock, indigo_background.c) waits while
+  homeIdleBlend falls and restarts below CUBE_SWAY_RESTART_BLEND (0.01): the
+  blend's spring only snaps to 0 within 1e-4, and a turn's blend bottoms out
+  at 0.0006-0.0023 as Home is already back at rest, so a restart at exactly 0
+  never came and the swing resumed mid-arc at up to 1.4 rad/s. Not restarted
+  on the blend's rising edge, which would drop up to 0.56 x blend of yaw at
+  once. It steps once per seconds value (setupCubePipeline runs twice a
+  frame) and caps a step at 0.1 s so a long frame holds the swing. Set per
+  frame through IndigoBackground_SetIdleSway from _DrawBackground, as Wave
+  Speed is. homeIdleBlend's target is UI_SCENE_HOME only (no longer the
+  Source picker, which isHomeYawScene also covers), so neither Sway nor Calm
+  moves the picker's cube.
+- Waves (`Hide Waves`): IndigoBackground_SetWaves gates drawSilkWaves.
+- On-screen Controls (`Hide On-screen Controls`) and Face Labels
+  (`Hide Face Labels`): Home's renderer never reads swissSettings
+  (audit_four_face_home's render scope), so they travel as
+  uiHomeCapabilities_t.hideFaceLabel/hideCommands, filled by swiss.c's
+  homeCapabilities as the cube's style is; _DrawHomeRoot gates the face name
+  and the hint line, _DrawHomeRows its hint line. Home only:
+  _DrawHintText also draws Detail's previews and other screens' essential
+  prompts, and Restart's question keeps its hints.
+
+Console has 24 rows: Waves sits before Wave Color and the other three after
+Cube, so the route's Down Face is 12 DOWNs and Cube 13 (run.py). The smoke
+route checks Home's hint line (HOME_HINT_BOX, level 120, measured on the
+guide's home.png) shows by default and is gone with non-default.ini, which
+now also has Hide Waves and Idle Animation=Sway (kept through Indigo's saves
+by card_checks); it turns Face Labels off and on (fifteen DOWNs) with
+flip_console(named=False), Route.quiet and an empty Settings row counter
+(COUNTER_BOX), since Setup's page also has no name under the cube. Face
+Labels can't go in the fixture: the route tells faces apart by name.
+
+Tests: test_cube_render_pose runs the real setupCubePipeline through half a
+swing (mirror reached, never passed, a long frame held, a restart after rest,
+Calm within its drift), then through a turn with ui_scene.c's own idle blend
+(restart from the pose, never faster than a swing) and a 0.3 s spring dip
+(the swing resumes where it was, no step), with five mutants; test_ui_scene
+holds the blend at 0 over the Source picker; test_background_gx_stream draws
+the backdrop with Waves off and on (wash and rings stay), with mutants of the
+gate and the setter; test_home_gx_stream draws Home with
+each flag (name gone, hint gone, rows' hint gone, Restart's kept, both back);
+the Home audit pins the gates,
+Sway's bounds against the Home pose and _DrawBackground's SetWaves and
+SetIdleSway calls; settings layout, semantics, views and
+file tests take the four rows and keys; SETTINGS.md and the guide list them.
+Not seen on a console yet. Settings pictures that show Console are now
+stale and need recording again.
+
 ## 2026-10-08 — Emulator test: a press shorter than Settings' repeat, Settings walks read back
 
 PR #114's smoke run failed "Down Face None: after System comes Library"
