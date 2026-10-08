@@ -49,7 +49,7 @@ details again shows it: **2 save copies | 4 blocks**, with the recorded
 update.
 
 <p align="center">
-  <img alt="Astral Circuit’s Saves inset after exporting one GCI: 2 save copies, 4 blocks and Updated 2024-02-29 12:34." src="images/game-details-saves-after-copy.png" width="640">
+  <img alt="Astral Circuit’s details after exporting one GCI: the Saves box, labelled « SAVES » since Left and Right choose a copy, reads 2 save copies | 4 blocks over Updated 2024-02-29 12:34." src="images/game-details-saves-after-copy.png" width="640">
 </p>
 
 ### Start with another copy of the save
@@ -58,6 +58,10 @@ With two or more copies, **Left** and **Right** step through them, and the
 label reads **« SAVES »**. The box shows one copy at a time, such as
 **Copy 2 of 3 | Save Folder**, with its date and either **In use**, for the
 copy on the memory card the game reads, or **Loads at launch**.
+
+<p align="center">
+  <img alt="Astral Circuit’s details after Right twice: « SAVES » shows one copy, Copy 2 of 2 | Save Folder, over Loads at launch | 2024-02-29 12:34." src="images/game-details-save-choice.png" width="640">
+</p>
 
 Launch the game with another copy shown and Indigo asks first. **A** puts
 that copy on the memory card in place of the card's own copy of the save:

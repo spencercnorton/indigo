@@ -31,6 +31,7 @@ own buttons.
 | Up, Down | Tip the cube over to the next face. |
 | A | Open the face you're on. |
 | B | With Setup › Console › Cube at Classic, turn back to Library. |
+| Y | Settings, wherever its face is. The hint shows Y Settings while Settings has no side. |
 | START | Recently played games (Setup › Library › Recent List). |
 
 The Source and System faces open a short list: move with the D-pad, A opens,

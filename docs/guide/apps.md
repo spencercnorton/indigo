@@ -135,10 +135,10 @@ Settings › Setup › Library › Recent List is on.
 
 ## When Apps doesn't look right
 
-- **No Apps face on Home.** Check that Settings › Setup › Console › Apps
-  Face is On. Otherwise the device has no app Indigo can show: check that
-  the folder is called `apps`, sits at the root, and holds a `.dol` that
-  isn't `boot.dol`. After adding apps to a device that stays connected, such
+- **No Apps face on Home.** Check that Settings › Setup › Console puts
+  Apps on a side (Down Face, by default). Otherwise the device has no app
+  Indigo can show: check that the folder is called `apps`, sits at the
+  root, and holds a `.dol` that isn't `boot.dol`. After adding apps to a device that stays connected, such
   as a network share, use Source › Refresh Library.
 - **An app is missing.** It is named `boot.dol` or `boot.elf`, it is hidden,
   its name starts with a dot, or it is two folders deep.

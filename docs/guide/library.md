@@ -26,7 +26,7 @@ through the four, A lists them, and the line above the buttons says how each
 one moves.
 
 <p align="center">
-  <img alt="Settings, Setup, Library: Library Layout is the first row. Right steps it from Horizontal to Vertical to Grid to Spotlight and back, and the line above the buttons reads A row of covers; Left and Right move (default), then A column of covers; Up and Down move, then Rows of five covers; every direction moves, then A gameplay still over banners; Left and Right move." src="images/library-layout-setting.png" width="640">
+  <img alt="Settings, Setup, Library: Library Layout, the first row, reads Horizontal, with Library Folders, Saves on Details, Recent List, Load at startup and Flatten directory below it; the line above the buttons reads A row of covers; Left and Right move (default)." src="images/library-layout-setting.png" width="640">
 </p>
 
 - **Horizontal**, the default: a row of covers, two either side of the

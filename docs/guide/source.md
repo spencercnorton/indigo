@@ -57,8 +57,8 @@ MP3s:
 
 - **A** opens a file or folder, and **X** goes up a folder.
 - With **File Management** on (Settings › Setup › Library), **Z** on a file
-  offers to copy, move, rename, hide or delete it. Copy and Move choose the
-  device to put it on in the same picker, headed Destination.
+  offers to copy, move, rename, hide or delete it. Copy and Move put it in
+  the folder open in the other pane (see [File Browser](system.md#file-browser)).
 
 While an MP3 plays, Left rewinds and Right goes forward. Rewinding near the
 start returns to the start of the same track. B stops playback.

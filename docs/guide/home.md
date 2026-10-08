@@ -21,7 +21,7 @@ press A.
 | **Library** | Your games, as posters. See [Library](library.md). |
 | **Source** | A short list: **Change Source** picks the device your games come from, and **Refresh Library** reads it again, for example after you swap the disc. See [Source](source.md). |
 | **Settings** | Settings. See [Settings](settings.md). |
-| **System** | A short list: **System Information**, **Memory Cards** and **Restart Indigo**. See [System](system.md) and [Memory Cards](memory-cards.md). |
+| **System** | A short list: **System Information**, **Memory Cards**, **File Browser** and **Restart Indigo**. See [System](system.md) and [Memory Cards](memory-cards.md). |
 | **Apps** | Your emulators and other programs, as posters. Only there when the card's `/apps` folder has a program; it comes one turn left of Library (below it with a Classic cube). Set Down Face to None to turn it off (see [Choose the sides](#choose-the-sides)). See [Apps](apps.md). |
 
 Left and Right turn the cube sideways; Up and Down tip it over. Either way you
@@ -67,12 +67,20 @@ no side the hint along the bottom says so. A menu named for two sides keeps
 the first. With no device to read games from and Source on no side, A on
 Library opens the device list straight away.
 
+<p align="center">
+  <img alt="Settings, Setup, Console: Up Face Source, Left Face Settings, Right Face System and Down Face Apps, with Down Face highlighted; the line above the buttons reads The menu below Library: Apps (default), another menu, or None." src="images/home-sides.png" width="640">
+</p>
+
 For example, Down Face **Settings**, Left Face **Apps**, Right Face
 **Emulators** and Up Face **Memory Cards** put Settings below Library, Apps
 on its left, Emulators on its right and Memory Cards above, with Source and
 System off the cube. Up Face **File Browser** puts the File Browser in
 place of Source: one press of Up away with a Classic cube, one press of
 Right with Infinite.
+
+<p align="center">
+  <img alt="Home on the File Browser face: the glass cube shows a folder, and FILE BROWSER is written underneath." src="images/home-files-face.png" width="480">
+</p>
 
 When Indigo starts, the cube flies in from the distance, spinning, and comes
 to rest on that face within a second. With UI Motion set to Reduced it fades

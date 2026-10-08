@@ -37,7 +37,7 @@ Add posters and cheats after that first successful launch.
   </tr>
   <tr>
     <td valign="top">
-      <a href="game-details.md"><img alt="The detail screen for 1080° Avalanche." src="images/game-details.png" width="100%"></a><br>
+      <a href="game-details.md"><img alt="Astral Circuit’s game details: Last played, Settings and Cheats, with Launch Game selected." src="images/game-details.png" width="100%"></a><br>
       <b><a href="game-details.md">Game details</a></b>: launch, settings and shortcuts for one game.
     </td>
     <td valign="top">
