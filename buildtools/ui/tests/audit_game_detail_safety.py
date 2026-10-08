@@ -173,6 +173,109 @@ for old, new in (
     else:
         raise AssertionError(f"save publication mutant escaped: {old}")
 
+def check_save_settle(source: str) -> None:
+    """A MemCard PRO changes card a moment after the GameID reaches it, so
+    while one in a slot took it Detail reads the slots again, on top of the
+    Save Folder part it kept, and shows a change."""
+    read = extract_function(source, "static bool gameflowSaveSlotsRead(")
+    settle = extract_function(source, "static bool gameflowSaveSlotsSettle(")
+    publication = extract_function(source, "static bool gameflowPublishDetail(")
+    detail = extract_function(source[source.rindex("static int gameflow_info_game("):],
+                              "static int gameflow_info_game(")
+    # The slots go on top of the folder part kept, never on the copies shown,
+    # which would count every copy again at each read.
+    assert "memcpy(&stats, &context->saveFolderStats, sizeof(stats));" in read
+    assert "memcpy(&copies, &gameflowSaveFolderCopies, sizeof(copies));" in read
+    assert "Saves_CollectSlotStats(context->gameId, &stats, &copies);" in read
+    assert "context->saveSlotsAt = gettime();" in read
+    # The same copies: nothing republished, and the choice kept.
+    assert ("if(context->savesScanned &&\n"
+            "\t\t!memcmp(&stats, &context->saveStats, sizeof(stats)) &&\n"
+            "\t\t!memcmp(&copies, &gameflowSaveCopies, sizeof(copies))) {\n"
+            "\t\treturn false;\n\t}") in read
+    # Other copies: shown, and the copy to start with chosen again.
+    assert "memcpy(&context->saveStats, &stats, sizeof(stats));" in read
+    assert "memcpy(&gameflowSaveCopies, &copies, sizeof(copies));" in read
+    assert "context->saveSlot = gameflowSaveSlot(&gameflowSaveCopies);" in read
+    assert ("context->saveChoice = gameflowSaveInUse(&gameflowSaveCopies,\n"
+            "\t\tcontext->saveSlot);\n\treturn true;") in read
+    # After the first read only, never with Saves on Details off, only while a
+    # MemCard PRO in a slot took the GameID, for 20 s, a second after a read.
+    assert "#define GAMEFLOW_SAVES_SETTLE_MS 20000u" in source
+    assert "#define GAMEFLOW_SAVES_REREAD_MS 1000u" in source
+    assert "#define GAMEFLOW_SAVES_SLOTS 3u" in source
+    assert ("if(!context->savesScanned || swissSettings.hideDetailSaves ||\n"
+            "\t\t!(gameID_early_cards() & GAMEFLOW_SAVES_SLOTS) ||\n"
+            "\t\tdiff_msec(context->saveSettleFrom, now) > GAMEFLOW_SAVES_SETTLE_MS ||\n"
+            "\t\tdiff_msec(context->saveSlotsAt, now) < GAMEFLOW_SAVES_REREAD_MS) {\n"
+            "\t\treturn false;\n\t}\n\treturn gameflowSaveSlotsRead(context);") in settle
+    # The window opens with the first read and again as Detail comes back.
+    assert ("(void)gameflowSaveSlotsRead(context);\n\t\t\tcontext->savesScanned = true;\n"
+            "\t\t\tcontext->saveSettleFrom = context->saveSlotsAt;") in publication
+    assert ("if(action != UI_GAMEFLOW_DETAIL_ACTION_NONE) {\n"
+            "\t\t\tcontext->saveSettleFrom = gettime();\n"
+            "\t\t\tcontext->saveSlotsAt = context->saveSettleFrom -\n"
+            "\t\t\t\tmillisecs_to_ticks(GAMEFLOW_SAVES_REREAD_MS);\n\t\t}") in detail
+    assert source.count("context->saveSettleFrom = ") == 2
+
+
+def check_gameid_cards(source: str) -> None:
+    """gameid.c names the channels whose MemCard PRO took the GameID: none
+    until one has taken both the disc's ID and its name."""
+    early = extract_function(source, "void gameID_early_set(")
+    assert "gameIDCards = 0;" in early
+    assert early.index("gameIDCards = 0;") < early.index("for (s32 chan")
+    assert ("ret = MMCE_SetDiskInfo(chan, header->GameName);\n"
+            "\t\tif (ret < 0) continue;\n\t\tgameIDCards |= 1 << chan;") in early
+    assert early.count("gameIDCards") == 2
+    assert "return gameIDCards;" in extract_function(source, "u8 gameID_early_cards(")
+
+
+check_save_settle(swiss_source)
+for old, new in (
+    ("\t\t\tcontext->saveSettleFrom = context->saveSlotsAt;\n", "\n"),
+    ("if(action != UI_GAMEFLOW_DETAIL_ACTION_NONE) {\n\t\t\tcontext->saveSettleFrom = gettime();",
+     "if(false) {\n\t\t\tcontext->saveSettleFrom = gettime();"),
+    ("memcpy(&stats, &context->saveFolderStats, sizeof(stats));",
+     "memcpy(&stats, &context->saveStats, sizeof(stats));"),
+    ("memcpy(&copies, &gameflowSaveFolderCopies, sizeof(copies));",
+     "memcpy(&copies, &gameflowSaveCopies, sizeof(copies));"),
+    ("if(context->savesScanned &&\n\t\t!memcmp(", "if(false && context->savesScanned &&\n\t\t!memcmp("),
+    ("!memcmp(&copies, &gameflowSaveCopies, sizeof(copies))", "true"),
+    ("\tcontext->saveChoice = gameflowSaveInUse(&gameflowSaveCopies,\n\t\tcontext->saveSlot);\n\treturn true;",
+     "\treturn true;"),
+    ("> GAMEFLOW_SAVES_SETTLE_MS ||", "> GAMEFLOW_SAVES_SETTLE_MS * 9u ||"),
+    ("#define GAMEFLOW_SAVES_SETTLE_MS 20000u", "#define GAMEFLOW_SAVES_SETTLE_MS 200000u"),
+    ("< GAMEFLOW_SAVES_REREAD_MS) {", "< 0u) {"),
+    ("\t\t!(gameID_early_cards() & GAMEFLOW_SAVES_SLOTS) ||\n", ""),
+):
+    mutant = swiss_source.replace(old, new, 1)
+    if mutant == swiss_source:
+        raise AssertionError(f"save settle mutant does not apply: {old}")
+    try:
+        check_save_settle(mutant)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError(f"save settle mutant escaped: {old}")
+
+gameid_source = (ROOT / "cube/swiss/source/gameid.c").read_text()
+check_gameid_cards(gameid_source)
+for old, new in (
+    ("\tgameIDCards = 0;\n", "\n"),
+    ("\t\tif (ret < 0) continue;\n\t\tgameIDCards |= 1 << chan;", "\t\tgameIDCards |= 1 << chan;\n\t\tif (ret < 0) continue;"),
+    ("return gameIDCards;", "return 3;"),
+):
+    mutant = gameid_source.replace(old, new, 1)
+    if mutant == gameid_source:
+        raise AssertionError(f"GameID cards mutant does not apply: {old}")
+    try:
+        check_gameid_cards(mutant)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError(f"GameID cards mutant escaped: {old}")
+
 def check_detail_input(controller: str, mapping: str) -> None:
     # Host policy tests exercise the edges. Bind the actual controller to that
     # policy, including the entry/modal quarantine and physical face buttons.

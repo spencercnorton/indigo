@@ -260,6 +260,7 @@ int main(int argc, char **argv)
 		memcpy(&againCopies, &folderCopies, sizeof(againCopies));
 		Saves_CollectSlotStats(id, &again, &againCopies);
 		assert(fileReads == reads && configCloses == 1u && probes[0] == 2u);
+		assert(probes[1] == 2u);  /* Slot B is read each time too */
 		reset(); Saves_CollectGameStats(id, &stats, &copies);
 		assert(!memcmp(&again, &stats, sizeof(stats)));
 		assert(!memcmp(&againCopies, &copies, sizeof(copies)));

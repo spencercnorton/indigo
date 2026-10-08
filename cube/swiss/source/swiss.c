@@ -6417,13 +6417,16 @@ static bool gameflowSaveSlotsRead(gameflowLaunchContext_t *context)
 }
 
 /* A MemCard PRO takes the GameID just before Detail opens and changes to the
- * game's own card some seconds later; nothing says when. So for a while after
- * Detail opens or comes back from another screen, it reads the slots again
- * each second on an idle retrace. A card swapped by hand then shows too.
- * Deliberately simple: a card that changes after the 20 seconds shows the
- * next time Detail opens or comes back. */
+ * game's own card some seconds later; nothing says when. So while one in a
+ * slot took it (gameID_early_cards), for 20 seconds after Detail opens or
+ * comes back from another screen, Detail reads the slots again on an idle
+ * retrace a second after the last read ended. Without one, no card changes
+ * by itself and nothing is read again. Deliberately simple: a card that
+ * changes after the 20 seconds shows the next time Detail opens or comes
+ * back. */
 #define GAMEFLOW_SAVES_SETTLE_MS 20000u
 #define GAMEFLOW_SAVES_REREAD_MS 1000u
+#define GAMEFLOW_SAVES_SLOTS 3u	/* gameID_early_cards' bits for Slot A and Slot B */
 
 static bool gameflowSaveSlotsSettle(gameflowLaunchContext_t *context)
 {
@@ -6431,6 +6434,7 @@ static bool gameflowSaveSlotsSettle(gameflowLaunchContext_t *context)
 
 	/* Saves on Details turned off in Settings meanwhile: hands off. */
 	if(!context->savesScanned || swissSettings.hideDetailSaves ||
+		!(gameID_early_cards() & GAMEFLOW_SAVES_SLOTS) ||
 		diff_msec(context->saveSettleFrom, now) > GAMEFLOW_SAVES_SETTLE_MS ||
 		diff_msec(context->saveSlotsAt, now) < GAMEFLOW_SAVES_REREAD_MS) {
 		return false;

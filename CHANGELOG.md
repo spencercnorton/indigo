@@ -172,10 +172,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
   first details opened after Indigo starts have it straight away.
 - With a MemCard PRO GC, a game's **Saves** box no longer shows the card
   as it was before the game's own card loaded. The card changes a few
-  seconds after a game's details open, so for 20 seconds after they open,
-  or come back from Settings or Cheats, the details read the two slots
-  again each second and show what changed. A card swapped by hand in that
-  time shows too.
+  seconds after a game's details open, so while a MemCard PRO in a slot
+  has taken the game's GameID, for 20 seconds after the details open or
+  come back from Settings or Cheats, they read the two slots again about
+  once a second and show what changed. A copy chosen with Left and Right in
+  those seconds goes back to the card's own when the cards change. Without
+  a MemCard PRO nothing is read again.
 
 ### For developers
 

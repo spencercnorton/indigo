@@ -27,6 +27,7 @@
 #include "swiss.h"
 
 static char gameID[1 + 10] = {0x1D};
+static u8 gameIDCards;
 
 static void callback(s32 chan, u32 type)
 {
@@ -73,6 +74,7 @@ static void gameID_deinit(void)
 
 void gameID_early_set(const DiskHeader *header)
 {
+	gameIDCards = 0;
 	for (s32 chan = EXI_CHANNEL_0; chan < EXI_CHANNEL_MAX; chan++) {
 		u32 id;
 		s32 ret;
@@ -88,10 +90,16 @@ void gameID_early_set(const DiskHeader *header)
 		if (ret < 0) continue;
 		ret = MMCE_SetDiskInfo(chan, header->GameName);
 		if (ret < 0) continue;
+		gameIDCards |= 1 << chan;
 
 		if (chan == EXI_CHANNEL_0)
 			swissSettings.emulateMemoryCard = 0;
 	}
+}
+
+u8 gameID_early_cards(void)
+{
+	return gameIDCards;
 }
 
 void gameID_set(const DiskHeader *header, u64 hash)

@@ -24,6 +24,9 @@
 #include "gcm.h"
 
 void gameID_early_set(const DiskHeader *header);
+/* The EXI channels whose MemCard PRO took the last gameID_early_set, a bit
+ * each: that card changes to the game's own a moment later. */
+u8 gameID_early_cards(void);
 void gameID_set(const DiskHeader *header, u64 hash);
 void gameID_unset(void);
 

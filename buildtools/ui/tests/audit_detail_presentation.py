@@ -191,7 +191,7 @@ require("if(detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) {\n" in renderer and
         "drawStringMedium(576, 214, (detail->flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) ?\n"
         "\t\t\t\"\\253 SAVES \\273\" : \"SAVES\"" in renderer,
         "the SAVES inset draws without two or more copies, or hides its choice")
-for forbidden in ("Saves_CollectGameStats(", "UISaves_FormatUpdated(", "->readFile(", "->readDir("):
+for forbidden in ("Saves_Collect", "UISaves_FormatUpdated(", "->readFile(", "->readDir("):
     require(forbidden not in renderer and forbidden not in planes,
             f"Detail draw performs menu-thread save work: {forbidden}")
 
