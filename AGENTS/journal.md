@@ -1,3 +1,41 @@
+## 2026-10-08 — Emulator test: a press shorter than Settings' repeat, Settings walks read back
+
+PR #114's smoke run failed "Down Face None: after System comes Library"
+(passed on the dispatch run of the same tree and in lab runs). Its picture
+`26-apps-face-off.png` shows Settings > Setup > Console on row 13 of 20,
+Cube, not Down Face: the eleven blind DOWNs moved twelve rows, so the four
+RIGHTs cycled Cube back to Infinite and Down Face stayed Apps. Not a lost
+press, not a wrong offset, not Settings failing to save.
+
+Cause, in the harness: `press()` holds a fresh wait of `PRESS_SECONDS`
+(0.1 s) on Dolphin's TICKS reports, ten a second. It starts at the first
+report after the hold and ends at the first report 0.1 s later, which with
+reports a hair under 0.1 s apart is often the second: the console saw holds
+of 0.2 to 0.3 s plus however late the harness let go. Settings (and every
+`UI_MENU_INPUT_INITIAL_REPEAT_US` screen) repeats a held direction after
+0.32 s. Lab, CI's emulator image and limits on the CI host: harness-measured
+holds were 0.3 s in 162 of 332 presses; 275 blind DOWNs on an idle and a
+loaded CI host all landed; holding each DOWN 30 ms longer than `press()`
+means moved two rows on the first press. The failing run's Dolphin ran at
+full speed through Settings (report gaps 0.08-0.11 s), so a late release
+was enough.
+
+Fix: `PRESS_SECONDS` 0.05, so a press is 0.1 to about 0.2 s of the
+console's time (163 of 163 measured at 0.2) and 50 ms late still lands
+(12 x 12 walks right, where 30 ms broke the old one). `flip_console` walks
+Setup and Console with `walk_rows()`, which reads the focus back after every
+press (`rows_moved`: focused slot plus list scroll, matched on the
+unfocused labels; the focused label is bolder) and takes a double step back
+with UP or presses a missed one again. With every DOWN held 150 ms too long
+it corrected 9 of 9 Down Face cycles. Two full lab smoke runs: 123 of 123.
+Settings itself reads held buttons each VSync and needs no latching; the
+product is unchanged. The RIGHTs that change a value are still blind (no
+value templates); the shorter press covers them and the route's face check
+still catches a wrong value. A shorter press also shortened the machine's-time
+fallback of a wait (`WALL_FACTOR` times its seconds, 0.25 s), which a slow
+Dolphin would reach before its next report; `WALL_FLOOR` keeps it at 0.5 s
+at least, as before.
+
 ## 2026-10-08 — Sanitized File Browser Detail test: no PIE, bounded runs
 
 The sanitized host lane was OOM-killed twice on `test_files_detail.py

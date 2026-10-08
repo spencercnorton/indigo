@@ -124,6 +124,11 @@ FOLDER_LAYOUTS = {
 # The page title Settings opens with on a new card ("Storage").
 SETTINGS_TITLE_BOX = (30, 46, 230, 80)
 COUNTER_BOX = (560, 120, 610, 142)  # Settings' "row / rows", shown while a row has the focus
+# Settings' six visible rows: the top of each, 40 lines apart, the box of a
+# row's label, and the box between label and value that the focus lights.
+SETTINGS_ROW_TOPS = tuple(148 + 40 * n for n in range(6))
+SETTINGS_ROW_LABEL = (45, 4, 300, 30)
+SETTINGS_ROW_FILL = (320, 2, 480, 30)
 DETAIL_TITLE_BOX = (264, 106, 600, 134)
 # The cover on the game's details from the File Browser, inside its frame, and
 # how far (mean, 0-255) a frame of it may differ from where it settles.
@@ -192,12 +197,19 @@ TEXT_LEVEL = 160          # label text is bright; the waves behind it are not
 SAME, DIFFERENT = 0.85, 0.5  # intersection over union of two label masks
 # Waits count the console's own seconds (Emulator.emulated) when Dolphin
 # reports them, so a busy machine slows a run instead of failing it; the
-# machine's seconds still end a wait at WALL_FACTOR times as many.
+# machine's seconds still end a wait at WALL_FACTOR times as many, and never
+# before WALL_FLOOR: a slow Dolphin must not cut a short press down to a frame.
 BOOT_SECONDS = 120
 SETTLE_SECONDS = 10
 WALL_FACTOR = 5
+WALL_FLOOR = 0.5
 TICKS_PER_SECOND = 486_000_000  # the GameCube's CPU clock, which Dolphin's ticks count
-PRESS_SECONDS = 0.1  # of the console's time a button stays down, and up after
+# Of the console's time a button stays down, and up after. A press waits
+# fresh (Route.press), so with Dolphin's reports a tenth of a second apart it
+# lasts from this to about two reports more: 0.05 is at most about 0.2 s, well
+# inside the 0.32 s a held direction takes to repeat (UI_MENU_INPUT_INITIAL_
+# REPEAT_US), and still several frames.
+PRESS_SECONDS = 0.05
 # Library Folders: how long the route holds a press that opens or leaves a
 # folder (library_folders), and how many pixels of a folder picture's colour
 # make it on screen: a card in front is tens of thousands.
@@ -690,6 +702,21 @@ def overlap(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.logical_and(a, b).sum() / union) if union else 1.0
 
 
+def rows_moved(before: tuple[int, list[np.ndarray]], after: tuple[int, list[np.ndarray]]) -> int | None:
+    """How many rows a Settings focus moved between two Route.settings_rows,
+    down positive: how far its slot moved plus how far the list scrolled. The
+    scroll is the shift that matches the rows' labels, leaving out the focused
+    row in either picture (its label is drawn on the lit fill, so a little
+    bolder). None when no shift matches at least two rows."""
+    (was, old), (now, new) = before, after
+    for shift in sorted(range(1 - len(old), len(old)), key=abs):
+        pairs = [(new[n], old[n + shift]) for n in range(len(new))
+                 if 0 <= n + shift < len(old) and now != n and was != n + shift]
+        if len(pairs) >= 2 and all(same_text(a, b) for a, b in pairs):
+            return now + shift - was
+    return None
+
+
 def same_text(a: np.ndarray, b: np.ndarray) -> bool:
     """The same words. A 480i picture can sit half a line higher after a slow
     frame (it is drawn for the other field), which moves an antialiased word's
@@ -868,7 +895,8 @@ class Deadline:
         return 0.0 if self.start is None else now - self.start
 
     def expired(self) -> bool:
-        return self.elapsed() >= self.seconds or time.monotonic() - self.wall >= self.seconds * WALL_FACTOR
+        wall = max(self.seconds * WALL_FACTOR, WALL_FLOOR)
+        return self.elapsed() >= self.seconds or time.monotonic() - self.wall >= wall
 
 
 class Emulator:
@@ -1387,12 +1415,13 @@ class Route:
         opened = self.covered(settings)
         self.shot(f"settings-{name}-{tag}", self.last_rgb)
         self.check("A opens Settings", opened, **detail)
-        for button, pause in (("R", 1.0), ("R", 1.0), ("DOWN", 0.6), ("A", 1.5)):
+        for button in ("R", "R"):
             self.press(button)
-            self.pause(pause)
-        for _ in range(downs):
-            self.press("DOWN")
-            self.pause(0.4)
+            self.pause(1.0)
+        self.walk_rows(1, "Setup's DOWN reaches Console", **detail)
+        self.press("A")
+        self.pause(1.5)
+        self.walk_rows(downs, f"{downs} DOWNs reach the row", **detail)
         for _ in range(presses):
             self.press(change)
             self.pause(1.0)
@@ -1403,6 +1432,35 @@ class Route:
         mask, _ = self.settled_label(like=settings)
         self.shot(f"{name}-{tag}-home", self.last_rgb)
         self.check("Save & Exit comes back to the Settings face", mask is not None, **detail)
+
+    def settings_rows(self) -> tuple[int, list[np.ndarray]]:
+        """Which of Settings' visible rows has the focus (the brightest fill),
+        and every visible row's label."""
+        gray = self.gray()
+        fill = [gray[top + SETTINGS_ROW_FILL[1]:top + SETTINGS_ROW_FILL[3],
+                     SETTINGS_ROW_FILL[0]:SETTINGS_ROW_FILL[2]].mean() for top in SETTINGS_ROW_TOPS]
+        x0, y0, x1, y1 = SETTINGS_ROW_LABEL
+        return int(np.argmax(fill)), [text_mask(gray, (x0, top + y0, x1, top + y1)) for top in SETTINGS_ROW_TOPS]
+
+    def walk_rows(self, rows: int, name: str, **detail: object) -> None:
+        """DOWN rows times in a Settings page, each step read back (rows_moved),
+        so a press held into Settings' repeat (two rows) is taken back with UP
+        and one the page missed is pressed again."""
+        moved, steps = 0, []
+        for _ in range(rows + PRESSES):
+            if moved == rows:
+                break
+            before = self.settings_rows()
+            button = "DOWN" if moved < rows else "UP"
+            self.press(button)
+            self.pause(0.4)
+            step = rows_moved(before, self.settings_rows())
+            if step is None:
+                break
+            steps.append(step)
+            moved += step
+        corrected = [step for step in steps if abs(step) != 1]
+        self.check(name, moved == rows, moved=moved, **({"odd_steps": corrected} if corrected else {}), **detail)
 
     def classic_cube(self, faces: list[np.ndarray]) -> None:
         """From the Settings face: Setup > Console > Cube (twelve DOWNs, just

@@ -209,6 +209,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - The emulator test holds each button for its full time from Dolphin's next
   clock report, so a press can no longer end within a frame of starting and
   never reach the console.
+- That press now lasts 0.1 to about 0.2 s of the console's time instead of
+  up to 0.3 s: a held direction repeats after 0.32 s, so a press let go a
+  few hundredths of a second late on a busy machine moved Settings two rows
+  and the route changed the wrong setting. The route's walks to a Settings
+  row read the focus back after every press, take a double step back with
+  UP and press a missed one again.
 - The dispatch audit finds every loop that reads held buttons around a
   device read or write and fails unless it also takes the presses the
   retrace scans latched, with mutants for each loop.

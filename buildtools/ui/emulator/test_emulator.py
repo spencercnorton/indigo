@@ -1272,6 +1272,19 @@ class Screen(unittest.TestCase):
             self.assertTrue(wait.expired())
             self.assertIsNone(emulator.where())
 
+    def test_a_slow_dolphin_does_not_cut_a_press_short(self):
+        """With reports slower than WALL_FACTOR times a press, the machine's
+        seconds end it no sooner than WALL_FLOOR."""
+        with tempfile.TemporaryDirectory() as directory:
+            emulator = run.Emulator.__new__(run.Emulator)
+            emulator.log = Path(directory) / "dolphin.log"
+            emulator.log.write_text("TICKS 486000000 PC 80003100 LR 00000000\n")
+            wait = run.Deadline(emulator, run.PRESS_SECONDS, fresh=True)
+            wait.wall -= run.PRESS_SECONDS * run.WALL_FACTOR + 0.01
+            self.assertFalse(wait.expired(), "no report yet, and less than WALL_FLOOR")
+            wait.wall -= run.WALL_FLOOR
+            self.assertTrue(wait.expired())
+
     def press_until(self, screens, answers):
         """press_until with the screen's text and settled_label's answers scripted."""
         route = run.Route.__new__(run.Route)
@@ -1296,6 +1309,40 @@ class Screen(unittest.TestCase):
         found, presses, again = self.press_until(iter([before, moved]), iter([(None, 0.0), (None, 1.0)]))
         self.assertIsNone(found)
         self.assertEqual((presses, again), (["RIGHT"], []))
+
+    def test_a_settings_walk_takes_back_a_repeat_and_presses_a_missed_step_again(self):
+        """A Settings page of 20 rows that keeps its focus in the fourth visible
+        row once it scrolls. The sixth DOWN is missed and the last is held into
+        the repeat (two rows): the walk still ends on the eleventh row below."""
+        focus, moves = [0], iter([1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 2, 1])
+        presses = []
+
+        def gray():
+            frame = np.zeros((480, 640), np.uint8)
+            first = max(0, focus[0] - 3)
+            for slot, top in enumerate(run.SETTINGS_ROW_TOPS):
+                x = 50 + 12 * (first + slot)
+                frame[top + 8:top + 24, x:x + 8] = 255  # each row's own label
+                if first + slot == focus[0]:  # lit, its label a little bolder
+                    frame[top + 2:top + 30, 320:480] = 60
+                    frame[top + 8:top + 24, x + 8:x + 10] = 255
+            return frame
+
+        def press(button, seconds=0):
+            presses.append(button)
+            focus[0] += next(moves) * (1 if button == "DOWN" else -1)
+
+        route = run.Route.__new__(run.Route)
+        route.checks, route.last_rgb, route.report = [], None, None
+        route.emulator = mock.Mock(where=lambda: None)
+        route.gray, route.press, route.pause = gray, press, lambda seconds: None
+        route.walk_rows(11, "DOWNs reach the row")
+        self.assertEqual(focus[0], 11)
+        self.assertEqual(presses, ["DOWN"] * 12 + ["UP"])
+        self.assertEqual(route.checks[-1]["odd_steps"], [0, 2])
+        focus[0], moves = 0, iter([1, 10])
+        with self.assertRaises(run.Failed):  # a row it can't find among the rows before
+            route.walk_rows(2, "DOWNs reach the row")
 
     def test_fatal_lines(self):
         with tempfile.TemporaryDirectory() as directory:
