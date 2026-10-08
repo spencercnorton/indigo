@@ -221,6 +221,29 @@ int main(int argc, char **argv)
 	assert(stats.updatedKnown && stats.latestUpdated == updated + 500u);
 	assert(fileReads == 2u && fileCloses == 2u && maximumRead == 40960u);
 	assert(configCloses == 1u && unmounts[0] == 1u && mounts[1] == 0u);
+	/* Detail's two parts: the Save Folder's kept, then the slots read again on
+	 * top of it until a MemCard PRO has changed card. They come to what one
+	 * whole scan does, and the slots never read the folder again. */
+	{
+		uiSavesGameStats_t folder, again;
+		unsigned reads;
+
+		reset(); probeResult[0] = CARD_ERROR_BUSY;
+		Saves_CollectFolderStats(id, &folder);
+		assert(folder.saves == 2u && !folder.partial);
+		assert(configCloses == 1u && probes[0] == 0u);
+		reads = fileReads;
+		memcpy(&again, &folder, sizeof(again));
+		Saves_CollectSlotStats(id, &again);
+		assert(again.saves == 2u && again.partial);
+		probeResult[0] = CARD_ERROR_READY;
+		memcpy(&again, &folder, sizeof(again));
+		Saves_CollectSlotStats(id, &again);
+		assert(fileReads == reads && configCloses == 1u && probes[0] == 2u);
+		reset(); Saves_CollectGameStats(id, &stats);
+		assert(!memcmp(&again, &stats, sizeof(stats)));
+		Saves_CollectSlotStats(wrong, NULL);
+	}
 	reset(); Saves_CollectGameStats(wrong, &stats);
 	assert(stats.saves == 0u && stats.blocks == 0u && !stats.updatedKnown);
 	reset(); statusError = true; Saves_CollectGameStats(id, &stats);

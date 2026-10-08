@@ -745,6 +745,15 @@ typedef struct {
 	/* Y in the Library: Detail opens this game's settings first, once. */
 	bool openSettings;
 	char gameId[UI_GAMEFLOW_DETAIL_ID_LENGTH + 1u];
+	/* Detail reads the save copies once while it is open, and keeps the
+	 * Save Folder's part so the slots alone can be read again:
+	 * saveSettleFrom is when Detail last came back, saveSlotsAt when the
+	 * slots were last read. */
+	bool savesScanned;
+	uiSavesGameStats_t saveStats;
+	uiSavesGameStats_t saveFolderStats;
+	u64 saveSettleFrom;
+	u64 saveSlotsAt;
 } gameflowLaunchContext_t;
 
 static void load_file_with_context(gameflowLaunchContext_t *context);
@@ -4480,12 +4489,49 @@ static u32 gameflowDetailInput(u32 buttons)
 	return input;
 }
 
+/* The slots read on top of the Save Folder part Detail kept. True when that
+ * changed what the Saves box shows. */
+static bool gameflowSaveSlotsRead(gameflowLaunchContext_t *context)
+{
+	uiSavesGameStats_t stats;
+
+	memcpy(&stats, &context->saveFolderStats, sizeof(stats));
+	Saves_CollectSlotStats(context->gameId, &stats);
+	context->saveSlotsAt = gettime();
+	if(context->savesScanned &&
+		!memcmp(&stats, &context->saveStats, sizeof(stats))) {
+		return false;
+	}
+	memcpy(&context->saveStats, &stats, sizeof(stats));
+	return true;
+}
+
+/* A MemCard PRO takes the GameID just before Detail opens and changes to the
+ * game's own card some seconds later; nothing says when. So for a while after
+ * Detail opens or comes back from another screen, it reads the slots again
+ * each second on an idle retrace. A card swapped by hand then shows too.
+ * Deliberately simple: a card that changes after the 20 seconds shows the
+ * next time Detail opens or comes back. */
+#define GAMEFLOW_SAVES_SETTLE_MS 20000u
+#define GAMEFLOW_SAVES_REREAD_MS 1000u
+
+static bool gameflowSaveSlotsSettle(gameflowLaunchContext_t *context)
+{
+	u64 now = gettime();
+
+	if(!context->savesScanned ||
+		diff_msec(context->saveSettleFrom, now) > GAMEFLOW_SAVES_SETTLE_MS ||
+		diff_msec(context->saveSlotsAt, now) < GAMEFLOW_SAVES_REREAD_MS) {
+		return false;
+	}
+	return gameflowSaveSlotsRead(context);
+}
+
 static bool gameflowPublishDetail(ConfigEntry *config,
 	gameflowLaunchContext_t *context)
 {
 	uiGameflowDetailSnapshot_t *snapshot;
 	uiGameflowDetailSource_t source;
-	uiSavesGameStats_t saveStats;
 	uiGameflowDetailCheatSource_t *cheatSources = NULL;
 	CheatEntries *cheats = getCheats();
 	file_meta *meta = curFile.meta;
@@ -4576,12 +4622,20 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 		&source.playHistoryAvailable);
 	source.saveStatus = UI_GAME_SAVE_NOT_CHECKED;
 	/* Only the verified disc launch context owns a save identity. Apps use
-	 * the same Library renderer but never take this snapshot path. */
+	 * the same Library renderer but never take this snapshot path. Read once
+	 * while Detail is open; the slots again while a MemCard PRO may still be
+	 * changing card. */
 	if(context->primary != NULL && context->primary->fileType == IS_FILE &&
 		valid_gcm_magic(&GCMDisk) &&
 		memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0) {
-		Saves_CollectGameStats(context->gameId, &saveStats);
-		source.saveStats = &saveStats;
+		if(!context->savesScanned) {
+			Saves_CollectFolderStats(context->gameId,
+				&context->saveFolderStats);
+			(void)gameflowSaveSlotsRead(context);
+			context->savesScanned = true;
+			context->saveSettleFrom = context->saveSlotsAt;
+		}
+		source.saveStats = &context->saveStats;
 	}
 	source.customSettings = (uint32_t)settings_game_custom_count(config);
 	source.firstCustomSetting = settings_game_custom_first(config);
@@ -4677,6 +4731,11 @@ static int gameflow_info_game(ConfigEntry *config,
 					(padsButtonsHeld() & detailButtons) != 0u);
 				if(analog == UI_MENU_INPUT_UP) buttons |= BUTTON_UP;
 				if(analog == UI_MENU_INPUT_DOWN) buttons |= BUTTON_DOWN;
+				/* On an idle retrace, the slots again while a MemCard PRO
+				 * may still be changing card, and Detail shows a change. */
+				if(buttons == 0u && gameflowSaveSlotsSettle(context)) {
+					gameflowPublishDetail(config, context);
+				}
 			} while(buttons == 0u);
 			memset(&actionSnapshot, 0, sizeof(actionSnapshot));
 			actionSnapshot.flags = UI_GAMEFLOW_DETAIL_VALID |
@@ -4763,6 +4822,13 @@ static int gameflow_info_game(ConfigEntry *config,
 			DrawCheatsSelector(curFile.name);
 			saveCheatsSelection();
 			gameflowPublishDetail(config, context);
+		}
+		/* Back from another screen or box: the cards may have changed
+		 * meanwhile, so the next idle retrace reads the slots again. */
+		if(action != UI_GAMEFLOW_DETAIL_ACTION_NONE) {
+			context->saveSettleFrom = gettime();
+			context->saveSlotsAt = context->saveSettleFrom -
+				millisecs_to_ticks(GAMEFLOW_SAVES_REREAD_MS);
 		}
 		/* A modal's dismissal is not a new Detail action. Do not require
 		 * unrelated buttons or a held clean-boot modifier to be released. */

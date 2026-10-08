@@ -8,4 +8,11 @@
  * available physical cards. A partial result is explicitly marked. */
 void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats);
 
+/* The same scan in its two parts. The folder part starts stats over; the
+ * slot part adds the cards in the two slots to them. A MemCard PRO changes
+ * its card a moment after the GameID reaches it, so Detail reads the slots
+ * again on top of the folder part it kept. */
+void Saves_CollectFolderStats(const char gameId[6], uiSavesGameStats_t *stats);
+void Saves_CollectSlotStats(const char gameId[6], uiSavesGameStats_t *stats);
+
 #endif
