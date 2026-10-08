@@ -215,7 +215,7 @@ Press Y on any row for the same explanations on the console.
 | Cube | How the [Home](home.md#infinite-or-classic) cube turns. **Infinite** turns round every face in a ring. **Classic** puts each menu on its own side of the cube, as on the GameCube, and you turn back to Library to reach another. |
 | Idle Animation | How the cube moves while Home rests: **Calm**, a slight drift turned a little to the right, or **Sway**, which turns it slowly left and right so the faces beside the one in front peek round its edges. UI Motion Reduced or Off keeps it still. See [Make it yours](personalize.md#motion). |
 | Face Labels | **Off** takes the face's name from under the cube on Home. See [Make it yours](personalize.md#just-the-cube). |
-| On-screen Controls | **Off** takes Home's button hints from under the cube. Other screens keep theirs. See [Make it yours](personalize.md#just-the-cube). |
+| On-screen Controls | **Off** takes Home's button hints from under the cube. Other screens, the Library and the File Browser among them, keep theirs. Y on Home always opens Settings. See [Make it yours](personalize.md#just-the-cube). |
 | Clock | Where the time sits: **Right** (the top right corner), **Left**, or **Off** to hide it. |
 | Temperature | Where the temperature dial sits, the same way. In the clock's corner it sits nearer the edge, beside the time. |
 | System Sound | The audio output most games use: mono or stereo. |

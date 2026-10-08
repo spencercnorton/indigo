@@ -104,8 +104,9 @@ solid instead of letting the backdrop show through.
 
 Settings › Setup › Console › **Face Labels** and **On-screen Controls** take
 the face's name and the button hints from under the cube, for a Home with
-nothing but the cube. Other screens keep their hints, and so does Restart's
-question.
+nothing but the cube. Other screens, the Library and the File Browser among
+them, keep their hints, and so does Restart's question. With the hints off,
+Y on Home still opens Settings.
 
 ## Music and sounds
 

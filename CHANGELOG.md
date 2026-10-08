@@ -25,8 +25,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   Source's picker, where the cube used to drift.
 - **Waves** (Setup › Console) Off takes the waves from behind the cube.
 - **Face Labels** and **On-screen Controls** (Setup › Console) Off take the
-  face's name and the button hints from under the Home cube. Other screens
-  keep their hints, and so does Restart's question.
+  face's name and the button hints from under the Home cube. Other screens,
+  the Library and the File Browser among them, keep their hints, and so does
+  Restart's question.
 - **File Browser** can have a side of the cube too (Up Face, Left Face,
   Right Face or Down Face › File Browser): A on it opens the same File
   Browser as System's row, and B comes back to it. It is on no side until

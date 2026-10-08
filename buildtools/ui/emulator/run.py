@@ -115,8 +115,12 @@ WIDTH, HEIGHT = 640, 480
 # game's details.
 LABEL_BOX = (200, 372, 440, 396)
 # Home's button hints under the face's name ("TURN  A OPEN"), dimmer than it:
-# lit at HINT_LEVEL, where the backdrop and waves around them are not.
-HOME_HINT_BOX, HINT_LEVEL = (240, 422, 400, 446), 120
+# lit at HINT_LEVEL, where the backdrop and waves around them are not. Jet
+# Black draws their words gray at the same luma, about 120 at the brightest,
+# so that they are gone is read at HINT_GONE_LEVEL, which only the backdrop
+# (56 at most, in any color) and nothing drawn stays under; non-default.ini,
+# where that is checked, has no waves.
+HOME_HINT_BOX, HINT_LEVEL, HINT_GONE_LEVEL = (240, 422, 400, 446), 120, 80
 TITLE_BOX = (200, 338, 440, 362)
 FOLDER_LAYOUTS = {
     "Horizontal": (TITLE_BOX, "LEFT", "RIGHT"),
@@ -1241,7 +1245,7 @@ class Route:
             self.check("Home shows its button hints", hints is not None)
         else:
             self.check("On-screen Controls Off: Home shows no button hints",
-                       self.quiet(HOME_HINT_BOX, HINT_LEVEL))
+                       self.quiet(HOME_HINT_BOX, HINT_GONE_LEVEL))
         # The disc has apps: Library, Source, Settings, System and Apps.
         for n in range(1, 5):
             faces.append(self.turn(faces, "RIGHT", f"right-{n}"))

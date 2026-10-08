@@ -165,7 +165,7 @@ most use the same key there.
 | `Cube` | `Infinite`, `Classic`. How Home's faces sit on the cube: `Infinite` turns round them in a ring; `Classic` gives each its own side, Library in front, as the GameCube's menu does. Any other value means `Infinite`. | `Infinite` | Cube |
 | `Idle Animation` | `Calm`, `Sway`. How the cube moves while Home rests: `Calm` drifts a little, turned to the right; `Sway` turns it slowly left and right, so the faces beside the one in front peek round its edges. Any other value means `Calm`. | `Calm` | Idle Animation |
 | `Hide Face Labels` | `Yes`, `No`. `Yes` shows as Face Labels › Off: Home shows no face name under the cube. | `No` | Face Labels |
-| `Hide On-screen Controls` | `Yes`, `No`. `Yes` shows as On-screen Controls › Off: Home shows no button hints under the cube. Other screens, and Restart's question, keep theirs. | `No` | On-screen Controls |
+| `Hide On-screen Controls` | `Yes`, `No`. `Yes` shows as On-screen Controls › Off: Home shows no button hints under the cube. Other screens, the Library and the File Browser among them, and Restart's question keep theirs. Y on Home always opens Settings. | `No` | On-screen Controls |
 | `System Boot Mode` | `Default`, `Production`. Any other value means `Default`. | the console's SRAM | System Boot Mode |
 | `System Sound` | `Mono`, `Stereo`. Any other value means `Mono`. | the console's SRAM | System Sound |
 | `System Language` | `English`, `German`, `French`, `Spanish`, `Italian`, `Dutch`, `Japanese`, `English (US)` | the console's SRAM | System Language |
