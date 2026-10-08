@@ -1,3 +1,47 @@
+## 2026-10-08 — Sanitized File Browser Detail test: no PIE, bounded runs
+
+The sanitized host lane was OOM-killed twice on `test_files_detail.py
+--sanitize` (PR runs of a tree that had passed on a dispatch run). Cause:
+the harness built its ASan/UBSan binary as PIE, the one sanitized harness
+that did not add `-fno-pie -no-pie` on Linux (the Makefile's SANFLAGS and
+every other harness do, for exactly this). On the CI host's kernel
+(`vm.mmap_rnd_bits=32`) with GCC 12's libasan, a PIE binary sometimes maps
+inside ASan's shadow, faults before `main`, and the fault handler faults
+again forever, printing `AddressSanitizer:DEADLYSIGNAL`; `capture_output`
+held all of it in Python until the 6 GB container died. Not a product bug,
+and not load: load only coincided.
+
+Measured in the CI build image on the CI host: PIE detail binary 62 of 240
+runs hung (4 loops in parallel); non-PIE 0 of 1200 (8 loops in parallel,
+host load about 15); a trivial `int main(void){return 0;}` built PIE hung
+19 of 100, non-PIE 0 of 100. The fixed harness passed 60 of 60 with GCC and
+once with Clang there. Docker Desktop's arm64 VM has `mmap_rnd_bits=18`, so
+this never shows on a Mac.
+
+Safety net: `test_files_detail.py` runs every build and run through
+`execute()` (120 s timeout, output to a file capped at 16 MiB by
+RLIMIT_FSIZE, first 3000 bytes reported), which also replaces the old
+plain-build rerun on failure. With PIE forced back in, a stuck run now fails
+in about two seconds with "wrote more than 16 MiB, stopped".
+`test_ui_png.py` (runs the Makefile's sanitized `test_ui_png_san`) gets the
+same bounds through its own `run()`.
+
+`buildtools/ci/source_checks.sh` now fails if a file in `buildtools` has
+fewer `-no-pie` than `-fsanitize=...address` (18 files today, the Makefile
+and `fuzz/run_fuzz.sh` among them); with `-no-pie` taken out of
+`test_files_detail.py` it names that file.
+
+Other harnesses that capture a subprocess without a timeout, not changed
+here (none runs a sanitized binary): `audit_cheat_safety.py`,
+`test_frame_budget.py`, `test_frame_copy_clear.py`, `test_save_art.py`,
+`test_cube_render_pose.py` (plain C binaries); the sanitized harnesses that
+run their binary uncaptured with no timeout (output goes to the job log, so
+a hang ends at the job timeout, not in memory):
+`test_gameflow_folder_navigation.py`, `test_gameflow_folder_visibility.py`,
+`test_history_persistence.py`, `test_mp3_player.py`, `test_saves_stats.py`,
+`test_saves_raw_controller.py`, `test_saves_raw_backend.py`,
+`test_saves_card_io.py`.
+
 ## 2026-10-07 — File Browser: finishing touches
 
 Seventh step of the two-pane File Browser, the part an emulator can check:

@@ -27,6 +27,21 @@ for path in sys.argv[1:]:
     ast.parse(open(path, encoding="utf-8").read(), path)
 print(len(sys.argv) - 1, "files parse")'
 
+echo "== sanitized host builds link without PIE =="
+# On a kernel with vm.mmap_rnd_bits=32, GCC's libasan can map a PIE inside
+# its shadow and loop on AddressSanitizer:DEADLYSIGNAL: every ASan build in
+# buildtools adds -no-pie (on Linux), one per -fsanitize=...address.
+pie=$(git grep -c -E -e '-fsanitize=[a-z,]*address' -- buildtools ':!*.c' ':!*.h' ':!*.md' |
+	while IFS=: read -r file count; do
+		[ "$(grep -c -e '-no-pie' "$file")" -ge "$count" ] || echo "$file"
+	done)
+if [ -n "$pie" ]; then
+	echo "an ASan build without -no-pie in:"
+	echo "$pie"
+	exit 1
+fi
+echo "every ASan build links without PIE"
+
 echo "== CI tools, the runner supervisor and the emulator test's parts =="
 python3 -m unittest discover -s buildtools/ci -p 'test_*.py'
 python3 -m unittest discover -s buildtools/ci/runner -p 'test_*.py'

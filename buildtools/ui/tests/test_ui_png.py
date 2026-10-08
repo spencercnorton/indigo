@@ -14,6 +14,7 @@ usage: test_ui_png.py [BINARY]   (default ./test_ui_png)
 from __future__ import annotations
 
 import os
+import resource
 import struct
 import subprocess
 import sys
@@ -31,6 +32,26 @@ POSTER_BYTES = sum(side * side // 2 for side in LEVELS)
 MARGIN, MAX_UPSCALE = 14.0, 4.0
 NIGHT = np.array([16.0, 12.0, 40.0])
 REFUSED = 3
+# A run of the binary is bounded in time and in what it writes, so a hang or
+# a sanitizer printing without end fails the test instead of the runner.
+TIMEOUT, OUTPUT_CAP = 120, 16 << 20
+
+
+def run(argv: list[str], text: bool = False, check: bool = False) -> subprocess.CompletedProcess:
+    def cap() -> None:
+        resource.setrlimit(resource.RLIMIT_FSIZE, (OUTPUT_CAP, OUTPUT_CAP))
+
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        code = subprocess.run(argv, stdout=out, stderr=err, timeout=TIMEOUT, preexec_fn=cap).returncode
+        out.seek(0)
+        err.seek(0)
+        stdout, stderr = out.read(), err.read()
+    if text:
+        stdout, stderr = stdout.decode(errors="replace"), stderr.decode(errors="replace")
+    result = subprocess.CompletedProcess(argv, code, stdout, stderr)
+    if check:
+        result.check_returncode()
+    return result
 
 
 # -- writing PNGs -------------------------------------------------------------
@@ -194,7 +215,7 @@ class PosterTests(unittest.TestCase):
         target = os.path.join(self.dir.name, name + ".bin")
         with open(source, "wb") as f:
             f.write(data)
-        result = subprocess.run([BINARY, "poster", source, target], capture_output=True)
+        result = run([BINARY, "poster", source, target])
         if result.returncode == REFUSED:
             return None
         self.assertEqual(result.returncode, 0, result.stderr.decode())
@@ -439,7 +460,7 @@ class PosterTests(unittest.TestCase):
         path = os.path.join(self.dir.name, "info.png")
         with open(path, "wb") as f:
             f.write(rgb_png(picture(123, 45)))
-        result = subprocess.run([BINARY, "info", path], capture_output=True, text=True)
+        result = run([BINARY, "info", path], text=True)
         self.assertEqual((result.returncode, result.stdout.split()), (0, ["123", "45"]))
 
     @staticmethod
@@ -480,7 +501,7 @@ class NameTests(unittest.TestCase):
 
     def name(self, text: str, font: str = "name") -> np.ndarray | None:
         out = os.path.join(self.dir.name, "name.bin")
-        result = subprocess.run([BINARY, font, text, out], capture_output=True)
+        result = run([BINARY, font, text, out])
         if result.returncode == REFUSED:
             return None
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -551,7 +572,7 @@ class NameTests(unittest.TestCase):
         out = os.path.join(self.dir.name, "stop.bin")
         for args in (["poster-stopped", path, out], ["name-stopped", "gbihf-ossc", out]):
             with self.subTest(args=args[0]):
-                result = subprocess.run([BINARY] + args, capture_output=True)
+                result = run([BINARY] + args)
                 self.assertEqual(result.returncode, REFUSED, result.stderr)
         # The same work unstopped makes its poster.
         self.assertIsNotNone(self.name("gbihf-ossc"))
@@ -570,7 +591,7 @@ class EncoderTests(unittest.TestCase):
             source, target = os.path.join(d, "in.rgb"), os.path.join(d, "out.bin")
             with open(source, "wb") as f:
                 f.write(rgb.astype(np.uint8).tobytes())
-            subprocess.run([BINARY, "cmpr", source, str(side), target], check=True)
+            subprocess.run([BINARY, "cmpr", source, str(side), target], check=True, timeout=TIMEOUT)
             with open(target, "rb") as f:
                 data = f.read()
         self.assertEqual(len(data), side * side // 2)
@@ -640,9 +661,9 @@ class MemoryTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        limits = subprocess.run([BINARY, "limits"], capture_output=True, text=True, check=True)
+        limits = run([BINARY, "limits"], text=True, check=True)
         cls.max_file, cls.max_side, cls.max_work = map(int, limits.stdout.split())
-        probe = subprocess.run([BINARY, "peak-name", "x"], capture_output=True, text=True)
+        probe = run([BINARY, "peak-name", "x"], text=True)
         if probe.returncode != 0:
             raise AssertionError(f"{BINARY} doesn't count allocations: {probe.stderr}")
         cls.dir = tempfile.TemporaryDirectory()
@@ -657,7 +678,7 @@ class MemoryTests(unittest.TestCase):
         path = os.path.join(self.dir.name, "peak.png")
         with open(path, "wb") as f:
             f.write(data)
-        result = subprocess.run([BINARY, mode, path], capture_output=True, text=True)
+        result = run([BINARY, mode, path], text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         made, peak, live, crc = map(int, result.stdout.split())
         self.assertLessEqual(crc, self.CRC_PIECE, "a CRC of a long run at once: the poster thread's stack")
@@ -735,8 +756,7 @@ class MemoryTests(unittest.TestCase):
                 self.assertEqual(live, 0)
 
     def test_a_name_poster_stays_within_the_bound(self):
-        result = subprocess.run([BINARY, "peak-name", "Old saves of every racing game I own"],
-                                capture_output=True, text=True)
+        result = run([BINARY, "peak-name", "Old saves of every racing game I own"], text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         made, peak, live, _ = map(int, result.stdout.split())
         self.assertEqual(made, 1)

@@ -195,6 +195,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
   show. The `files` route ends by opening a game's details from the File
   Browser, coming back to the same row, and launching it to the probe; the
   first details it opens must show the game's poster from their first frame.
+  Its sanitized build links without PIE, as the Makefile's do: on a host
+  with `vm.mmap_rnd_bits=32` about one PIE ASan run in four faulted before
+  `main` and printed `AddressSanitizer:DEADLYSIGNAL` without end. It and
+  `test_ui_png.py` now stop a binary after 120 s or 16 MiB of output and
+  fail with its first lines; the source checks fail if any ASan build in
+  `buildtools` lacks `-no-pie`.
 - The contract and dispatch audits fail if any of Swiss's list renderers,
   their row drawing or their pictures come back, or if the Library keeps a
   branch for a list of its own, with mutants; the Library's input audits

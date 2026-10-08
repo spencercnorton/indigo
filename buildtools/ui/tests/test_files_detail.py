@@ -15,6 +15,8 @@ import argparse
 import os
 from pathlib import Path
 import re
+import resource
+import signal
 import subprocess
 import sys
 import tempfile
@@ -172,18 +174,46 @@ def build_source(swiss: str, frame: str, model: str) -> str:
         TESTS])
 
 
-def run(source: str, work: Path, sanitize: bool, name: str) -> bool:
+# Every step is bounded: a build or a run that hangs, or a run that writes
+# without end (as a sanitizer stuck in its own fault handler does), stops at
+# the limit and fails with what it wrote, instead of growing until the
+# runner's memory is gone.
+TIMEOUT = 120
+OUTPUT_CAP = 16 << 20
+
+
+def execute(argv: list[str]) -> tuple[bool, str]:
+    def cap() -> None:
+        resource.setrlimit(resource.RLIMIT_FSIZE, (OUTPUT_CAP, OUTPUT_CAP))
+
+    with tempfile.TemporaryFile() as output:
+        try:
+            code = subprocess.run(argv, stdout=output, stderr=subprocess.STDOUT, timeout=TIMEOUT,
+                                  preexec_fn=cap).returncode
+            verdict = (f"wrote more than {OUTPUT_CAP >> 20} MiB, stopped" if code == -signal.SIGXFSZ
+                       else f"exit status {code}")
+        except subprocess.TimeoutExpired:
+            code, verdict = None, f"still running after {TIMEOUT} s, killed"
+        output.seek(0)
+        text = output.read(3000).decode(errors="replace")
+    return code == 0, f"{Path(argv[0]).name}: {verdict}\n{text}"
+
+
+def run(source: str, work: Path, sanitize: bool, name: str) -> tuple[bool, str]:
     path = work / f"{name}.c"
     binary = work / name
     path.write_text(source)
     flags = ["-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function", "-g"]
     if sanitize:
         flags += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"]
-    build = subprocess.run([os.environ.get("CC", "cc"), *flags, f"-I{GUI}", "-o", str(binary), str(path),
-                            str(GUI / "ui_gameflow_library.c")], capture_output=True, text=True)
-    if build.returncode:
-        return False
-    return subprocess.run([str(binary)], capture_output=True, text=True).returncode == 0
+        # As the Makefile's SANFLAGS: on a kernel with vm.mmap_rnd_bits=32 a
+        # PIE sanitizer executable can land inside ASan's shadow and fault
+        # before main, forever, printing AddressSanitizer:DEADLYSIGNAL.
+        if sys.platform.startswith("linux"):
+            flags += ["-fno-pie", "-no-pie"]
+    built, log = execute([os.environ.get("CC", "cc"), *flags, f"-I{GUI}", "-o", str(binary), str(path),
+                          str(GUI / "ui_gameflow_library.c")])
+    return execute([str(binary)]) if built else (False, log)
 
 
 WINDOW = "static void filesDetailSnapshot("
@@ -219,24 +249,16 @@ def main() -> int:
     model = (GUI / "FrameBufferMagic.h").read_text()
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
-        if not run(build_source(swiss, frame, model), work, args.sanitize, "detail"):
-            source = build_source(swiss, frame, model)
-            (work / "detail.c").write_text(source)
-            build = subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
-                                    "-Wno-unused-function", f"-I{GUI}", "-o", str(work / "detail"),
-                                    str(work / "detail.c"), str(GUI / "ui_gameflow_library.c")],
-                                   capture_output=True, text=True)
-            print(build.stderr[-3000:], file=sys.stderr)
-            if not build.returncode:
-                result = subprocess.run([str(work / "detail")], capture_output=True, text=True)
-                print(result.stdout + result.stderr, file=sys.stderr)
+        passed, log = run(build_source(swiss, frame, model), work, args.sanitize, "detail")
+        if not passed:
+            print(log, file=sys.stderr)
             return 1
         # Mutants run plain: a mutant only has to fail.
         for n, (label, old, new) in enumerate(MUTANTS):
             body = function(swiss, OPENS if "fileType" in old or "FEAT" in old else WINDOW)
             assert body.count(old) == 1, f"mutation anchor missing: {label}"
             mutated = swiss.replace(body, body.replace(old, new, 1), 1)
-            if run(build_source(mutated, frame, model), work, False, f"mutant{n}"):
+            if run(build_source(mutated, frame, model), work, False, f"mutant{n}")[0]:
                 raise AssertionError(f"mutant escaped the File Browser Detail window test: {label}")
     print(f"File Browser Detail window tests passed ({len(MUTANTS)} mutants rejected)")
     return 0
