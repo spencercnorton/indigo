@@ -231,25 +231,46 @@ static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats,
 	free(files);
 }
 
-void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats,
-	savesCopies_t *copies)
+/* Only six-byte disc game IDs can match a save; never a title/path. */
+static bool statsGameId(const char gameId[6])
 {
-	bool mounted;
 	unsigned i;
 
-	if(copies != NULL) memset(copies, 0, sizeof(*copies));
-	if(stats == NULL) return;
-	memset(stats, 0, sizeof(*stats));
-	if(gameId == NULL) return;
-	/* Only six-byte disc game IDs can match a save; never a title/path. */
+	if(gameId == NULL) return false;
 	for(i = 0u; i < 6u; i++) {
 		if(!((gameId[i] >= 'A' && gameId[i] <= 'Z') ||
 			(gameId[i] >= 'a' && gameId[i] <= 'z') ||
-			(gameId[i] >= '0' && gameId[i] <= '9'))) return;
+			(gameId[i] >= '0' && gameId[i] <= '9'))) return false;
 	}
-	mounted = config_set_device();
-	if(mounted) statsFolder(gameId, stats, copies);
+	return true;
+}
+
+void Saves_CollectFolderStats(const char gameId[6], uiSavesGameStats_t *stats,
+	savesCopies_t *copies)
+{
+	if(copies != NULL) memset(copies, 0, sizeof(*copies));
+	if(stats == NULL) return;
+	memset(stats, 0, sizeof(*stats));
+	if(!statsGameId(gameId)) return;
+	if(config_set_device()) {
+		statsFolder(gameId, stats, copies);
+		config_unset_device();
+	}
 	else stats->partial = true;
+}
+
+void Saves_CollectSlotStats(const char gameId[6], uiSavesGameStats_t *stats,
+	savesCopies_t *copies)
+{
+	unsigned i;
+
+	if(stats == NULL || !statsGameId(gameId)) return;
 	for(i = 0u; i < 2u; i++) statsSlot(gameId, stats, i, copies);
-	if(mounted) config_unset_device();
+}
+
+void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats,
+	savesCopies_t *copies)
+{
+	Saves_CollectFolderStats(gameId, stats, copies);
+	Saves_CollectSlotStats(gameId, stats, copies);
 }

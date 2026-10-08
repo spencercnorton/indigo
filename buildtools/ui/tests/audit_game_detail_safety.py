@@ -124,7 +124,7 @@ assert "loadCheatsSelection();" not in detail
 
 def check_save_publication(source: str) -> None:
     publication = extract_function(source, "static bool gameflowPublishDetail(")
-    assert publication.count("Saves_CollectGameStats(") == 1
+    assert publication.count("Saves_CollectFolderStats(") == 1
     collection = extract_function(publication, "context->primary != NULL")
     # Saves on Details gates the read: off, a game's details never touch the
     # memory cards.
@@ -135,10 +135,18 @@ def check_save_publication(source: str) -> None:
     assert "memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0" in collection
     # Read once while Detail is open; Left and Right only republish it.
     assert "if(!context->savesScanned) {" in collection
-    assert ("Saves_CollectGameStats(context->gameId, &context->saveStats,\n"
-            "\t\t\t\t&gameflowSaveCopies);") in collection
+    assert ("Saves_CollectFolderStats(context->gameId,\n"
+            "\t\t\t\t&context->saveFolderStats, &gameflowSaveFolderCopies);") in collection
+    assert "(void)gameflowSaveSlotsRead(context);" in collection
     assert "source.saveStats = &context->saveStats;" in collection
-    assert source.count("Saves_CollectGameStats(") == 1
+    assert "Saves_CollectGameStats(" not in source
+    assert source.count("Saves_CollectFolderStats(") == 1
+    assert source.count("Saves_CollectSlotStats(") == 1
+    # The slots are read again only after that read, and never with Saves on
+    # Details off.
+    settle = extract_function(source, "static bool gameflowSaveSlotsSettle(")
+    assert ("if(!context->savesScanned || swissSettings.hideDetailSaves ||"
+            in settle)
     assert "source.saveStats" not in publication[:publication.index(collection)]
     assert "UIGameflowDetail_Build(snapshot, &source)" in publication
 
@@ -150,10 +158,16 @@ for old, new in (
     ("memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0", "true"),
     ("source.saveStats = &context->saveStats;", "source.saveStats = NULL;"),
     ("if(!context->savesScanned) {", "if(true) {"),
+    ("if(!context->savesScanned || swissSettings.hideDetailSaves ||",
+     "if(!context->savesScanned ||"),
 ):
+    publication = extract_function(swiss_source, "static bool gameflowPublishDetail(")
+    mutant = (swiss_source.replace(publication, publication.replace(old, new, 1), 1)
+              if old in publication else swiss_source.replace(old, new, 1))
+    if mutant == swiss_source:
+        raise AssertionError(f"save publication mutant does not apply: {old}")
     try:
-        publication = extract_function(swiss_source, "static bool gameflowPublishDetail(")
-        check_save_publication(swiss_source.replace(publication, publication.replace(old, new, 1), 1))
+        check_save_publication(mutant)
     except AssertionError:
         pass
     else:

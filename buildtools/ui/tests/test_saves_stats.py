@@ -239,6 +239,32 @@ int main(int argc, char **argv)
 		!memcmp(copies.copy[2].entry, id, 6u) &&
 		!memcmp(copies.copy[2].entry + 8, physical.filename, 32u) &&
 		copies.copy[2].entry[0x39] == 2u && copies.copy[2].path[0] == '\0');
+	/* Detail's two parts: the Save Folder's kept, then the slots read again on
+	 * top of it until a MemCard PRO has changed card. They come to what one
+	 * whole scan does, and the slots never read the folder again. */
+	{
+		uiSavesGameStats_t folder, again; savesCopies_t folderCopies, againCopies;
+		unsigned reads;
+
+		reset(); probeResult[0] = CARD_ERROR_BUSY;
+		Saves_CollectFolderStats(id, &folder, &folderCopies);
+		assert(folder.saves == 2u && folderCopies.count == 2u && !folder.partial);
+		assert(configCloses == 1u && probes[0] == 0u);
+		reads = fileReads;
+		memcpy(&again, &folder, sizeof(again));
+		memcpy(&againCopies, &folderCopies, sizeof(againCopies));
+		Saves_CollectSlotStats(id, &again, &againCopies);
+		assert(again.saves == 2u && again.partial && !againCopies.cards[0]);
+		probeResult[0] = CARD_ERROR_READY;
+		memcpy(&again, &folder, sizeof(again));
+		memcpy(&againCopies, &folderCopies, sizeof(againCopies));
+		Saves_CollectSlotStats(id, &again, &againCopies);
+		assert(fileReads == reads && configCloses == 1u && probes[0] == 2u);
+		reset(); Saves_CollectGameStats(id, &stats, &copies);
+		assert(!memcmp(&again, &stats, sizeof(stats)));
+		assert(!memcmp(&againCopies, &copies, sizeof(copies)));
+		Saves_CollectSlotStats(wrong, NULL, NULL);
+	}
 	/* The list holds the first eight; the totals still count every one. */
 	reset(); listingMode = 1u; probeResult[0] = CARD_ERROR_NOCARD;
 	Saves_CollectGameStats(id, &stats, &copies);

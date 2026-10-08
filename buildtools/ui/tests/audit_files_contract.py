@@ -512,8 +512,11 @@ def check_detail(swiss: str, screen: str, frame: str) -> None:
     before(opener, "DrawGameflowRequestPosters(", "event = DrawGameflow(snapshot);")
     # A poster that one read can't land (a slot just let go, the pack only
     # now opened) is read on Detail's idle retraces, as the Library's, and
-    # fades in: the banner standing in for it never stays.
-    assert re.search(r"if\(buttons == 0u\) \{\s*DrawGameflowPollPosters\(\);\s*\}\s*"
+    # fades in: the banner standing in for it never stays. The same idle
+    # retraces read the slots again while a MemCard PRO changes card.
+    assert re.search(r"if\(buttons == 0u\) \{\s*DrawGameflowPollPosters\(\);\s*"
+                     r"if\(gameflowSaveSlotsSettle\(context\)\) \{\s*"
+                     r"gameflowPublishDetail\(config, context\);\s*\}\s*\}\s*"
                      r"\} while\(buttons == 0u\);", detail), "Detail's poster never lands"
     # The Library's image path, flagged; it never shows the event itself.
     before(opener, "gameflowFilesPage = *filePanel;", "gameflowLoadImageWithContext(")
@@ -907,7 +910,9 @@ MUTANTS = (
     ("disc 2 not chosen by its name", SWISS,
      "\t\tif(swissChoice && UIGameflowResolver_NamedAsOppositeDisc(", "\t\tif(false && UIGameflowResolver_NamedAsOppositeDisc("),
     ("Detail's poster never lands", SWISS,
-     "\t\t\t\tif(buttons == 0u) {\n\t\t\t\t\tDrawGameflowPollPosters();\n\t\t\t\t}\n", ""),
+     "\t\t\t\t\tDrawGameflowPollPosters();\n\t\t\t\t\tif(gameflowSaveSlotsSettle(", "\t\t\t\t\tif(gameflowSaveSlotsSettle("),
+    ("Detail never reads the slots again", SWISS,
+     "\t\t\t\t\tif(gameflowSaveSlotsSettle(context)) {\n\t\t\t\t\t\tgameflowPublishDetail(config, context);\n\t\t\t\t\t}\n", ""),
     ("A  Details on storage that doesn't start games", SWISS,
      "\t\t!filesOpensDetail(entry)) {", "\t\tfalse) {"),
     ("a mode set now moves", FRAME,

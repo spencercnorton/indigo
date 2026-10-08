@@ -170,6 +170,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
   it in the Library or after the source changed, kept the disc banner
   until you left them. The cover now fades in once it is read, and the
   first details opened after Indigo starts have it straight away.
+- With a MemCard PRO GC, a game's **Saves** box no longer shows the card
+  as it was before the game's own card loaded. The card changes a few
+  seconds after a game's details open, so for 20 seconds after they open,
+  or come back from Settings or Cheats, the details read the two slots
+  again each second and show what changed. A card swapped by hand in that
+  time shows too.
 
 ### For developers
 
