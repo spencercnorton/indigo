@@ -54,20 +54,20 @@ static float countFmaxf(float x, float y) { cost.minMaxCalls++; return fmaxf(x, 
 #include "save_cubes_source.c"	/* and this */
 /* The IPL font for the File Browser's words: 11 px a character at scale 1
  * and 24 px tall, each character a quad a pass, two passes for the medium
- * weight, as drawStringWeighted sends them. */
+ * weight and one for the light, as drawStringWeighted sends them. */
 #define ALIGN_LEFT 0
 #define ALIGN_CENTER 1
 #define ALIGN_RIGHT 2
 static int GetTextSizeInPixels(const char *text) { return 11 * (int)strlen(text); }
 static int GetFontHeight(float scale) { return (int)(24.0f * scale); }
-static void drawStringMediumUntinted(int x, int y, const char *text, float scale, int align,
-	GXColor color)
+static void fontQuads(int x, int y, const char *text, float scale, int align,
+	GXColor color, int passes)
 {
 	float left = (float)x - (float)align * (float)GetTextSizeInPixels(text) * scale / 2.0f;
 	int pass, v;
 	const char *c;
 
-	for(pass = 0; pass < 2; pass++) {
+	for(pass = 2 - passes; pass < 2; pass++) {
 		for(c = text; *c != '\0' && *c != '\n'; c++) {
 			float x0 = left + (float)(c - text) * 11.0f * scale + (float)(1 - pass);
 
@@ -82,11 +82,21 @@ static void drawStringMediumUntinted(int x, int y, const char *text, float scale
 		}
 	}
 }
+static void drawStringMediumUntinted(int x, int y, const char *text, float scale, int align,
+	GXColor color)
+{
+	fontQuads(x, y, text, scale, align, color, 2);
+}
 static void drawStringMedium(int x, int y, const char *text, float scale, int align,
 	GXColor color)
 {
 	UIColor_Apply(&color.r, &color.g, &color.b);
-	drawStringMediumUntinted(x, y, text, scale, align, color);
+	fontQuads(x, y, text, scale, align, color, 2);
+}
+static void drawString(int x, int y, const char *text, float scale, int align, GXColor color)
+{
+	UIColor_Apply(&color.r, &color.g, &color.b);
+	fontQuads(x, y, text, scale, align, color, 1);
 }
 #include "files_source.c"	/* and this */
 #undef sqrtf
@@ -620,9 +630,9 @@ static void files(const char *name, bool wide, int active, int menu, int extra)
 	cost.hash = 1469598103934665603ULL;
 	stubStateCalls = 0;
 	IndigoBackground_DrawSavesBackdrop(1.0f, 0.0f, seconds, true, UIScene_Frame(), &clock, icons);
-	_FilesShapes(&snapshot, &layout, 1.0f, (float)active, focusY, 0.0f, 0.84f,
+	_FilesShapes(&snapshot, &layout, 1.0f, 1.0f, (float)active, focusY, 0, 0.84f,
 		extra == FILES_MESSAGE ? 1.0f : 0.0f);
-	_FilesWords(&snapshot, &layout, 1.0f, (float)active, 0.84f);
+	_FilesWords(&snapshot, &layout, 1.0f, 1.0f, (float)active, 0.84f);
 	if(menu >= 0 || extra == FILES_ACTIONS || extra == FILES_COPY) {
 		_FilesMenu(&snapshot.menu, &layout, 1.0f, 1.0f, (float)snapshot.menu.focus);
 	}

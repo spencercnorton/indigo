@@ -580,6 +580,46 @@ def check_detail(swiss: str, screen: str, frame: str) -> None:
     settled = function(frame, "uiDrawObj_t* DrawFilesSettled(")
     assert re.search(r"->seconds = 60\.0f;", settled), "the page opens again"
     assert "clearNestedEvent(evt);" in function(frame, "void DrawDiscard(")
+    # A box or the message has the info bar only while it is up: the focused
+    # entry's lines come back when it goes, so none stays under the next
+    # question or the progress card.
+    box = function(swiss, "static int filesBox(")
+    before(box, "filesInfoKeep(&entry);", "box->open = 1;")
+    assert re.search(r"box->open = 0;\s*filesInfoPut\(&entry\);\s*filesMenuShow\(\);", box), \
+        "a box's lines stay after it closes"
+    say = function(swiss, "static void filesSay(")
+    before(say, "filesInfoKeep(&entry);", "filesSnapshot.line[0][0] = filesSnapshot.line[1][0] = '\\0';")
+    assert re.search(r"message\[1\]\[0\] = '\\0';\s*filesInfoPut\(&entry\);\s*"
+                     r"\(void\)DrawUpdateFiles\(filesPage, &filesSnapshot\);", say), "the message's lines stay"
+    # The message fades out too, unless UI Motion is Off.
+    assert re.search(r"!= UI_MOTION_OFF\) \{\s*filesSnapshot\.messageLeaving = 1;", say), "the message doesn't fade out"
+    # A copy that landed flashes under its message.
+    pending = function(swiss, "static void filesSayPending(")
+    before(pending, "|= UI_FILES_ROW_FLASH;", "filesSay(filesLater.title")
+    # Y: the panes' contents go once the swap is allowed, and come back with
+    # the screen's next page.
+    swap = function(swiss, "static bool filesSwapSides(")
+    before(swap, "if(!UIFiles_CanSwap(", "filesSnapshot.swapping = 1;")
+    before(swap, "filesSnapshot.swapping = 1;", "filesLeftFocusName(")
+    before(screen, "filesSnapshot.swapping = 0;", "if(!filesPublish(directory, &filePanel, true)) {")
+    draw = function(frame, "static void _DrawFiles(")
+    assert "UIFiles_SwapStep(data->content, s->swapping != 0u," in draw, "Y doesn't fade the panes"
+    # A read after Y (a disc spinning up, a share) says so while the
+    # swapped-out rows are gone: "Reading..." and its cells go with the
+    # chrome, not the contents.
+    shapes = function(frame, "static void _FilesShapes(")
+    reading = shapes[shapes.index("if(pane->reading) {"):]
+    assert "{18, 27, 91, 230}, alpha)" in reading and "alpha * (i == lit ? 1.0f : 0.35f)" in reading, \
+        "the loading cells fade out with a swap"
+    assert "float said = pane->reading ? alpha : inner;" in function(frame, "static void _FilesWords("), \
+        "Reading... fades out with a swap"
+    # The loading cells step as UI Motion says: 5 Hz, 2 Hz, still.
+    assert re.search(r"lit = motion == UI_MOTION_OFF \? 0 :\s*\(int\)\(data->seconds \* "
+                     r"\(motion == UI_MOTION_REDUCED \? 2\.0f : 5\.0f\)\) % 3;", draw), \
+        "the loading cells ignore UI Motion"
+    # The pane without the focus says its words in the light weight.
+    words = function(frame, "static void _FilesWords(")
+    assert "active >= 0.5f ? drawStringMedium : drawString;" in words
 
 
 check(SWISS, FRAME)
@@ -883,6 +923,33 @@ MUTANTS = (
     ("the Library keeps a legacy input branch", SWISS,
      "\t\tif((browserButtons & BUTTON_B) && gameflowInsideFolder()) {",
      "\t\tif((browserButtons & BUTTON_B) && useGameflow && gameflowInsideFolder()) {"),
+    # Finishing touches.
+    ("a box's lines stay under the next", SWISS,
+     "\tbox->open = 0;\n\tfilesInfoPut(&entry);\n", "\tbox->open = 0;\n"),
+    ("the message's lines stay", SWISS,
+     "\tfilesInfoPut(&entry);\n\t(void)DrawUpdateFiles(filesPage, &filesSnapshot);\n\twhile(padsButtonsHeld()",
+     "\t(void)DrawUpdateFiles(filesPage, &filesSnapshot);\n\twhile(padsButtonsHeld()"),
+    ("the message only fades in", SWISS,
+     "\t\tfilesSnapshot.messageLeaving = 1;\n\t\tfilesSnapshot.messageSerial++;\n", "\t\tfilesSnapshot.messageSerial++;\n"),
+    ("a landed copy doesn't flash", SWISS,
+     "\t\tpane->row[pane->focusRow].flags |= UI_FILES_ROW_FLASH;\n", ""),
+    ("Y swaps with the panes as they were", SWISS,
+     "\tfilesSnapshot.swapping = 1;\n", ""),
+    ("the panes stay gone after Y", SWISS,
+     "\tfilesSnapshot.swapping = 0;\n", ""),
+    ("the swap fade isn't drawn", FRAME,
+     "UIFiles_SwapStep(data->content, s->swapping != 0u,", "UIFiles_SwapStep(1.0f, false,"),
+    ("the loading cells go with a swap", FRAME,
+     "\t\t\t\t_SaveCubesFaded((GXColor) {18, 27, 91, 230}, alpha));",
+     "\t\t\t\t_SaveCubesFaded((GXColor) {18, 27, 91, 230}, inner));"),
+    ("Reading... goes with a swap", FRAME,
+     "float said = pane->reading ? alpha : inner;", "float said = inner;"),
+    ("the loading cells move with UI Motion Off", FRAME,
+     "lit = motion == UI_MOTION_OFF ? 0 :\n", "lit =\n"),
+    ("the loading cells at 5 Hz on Reduced", FRAME,
+     "(motion == UI_MOTION_REDUCED ? 2.0f : 5.0f)", "(5.0f)"),
+    ("both panes' words at full weight", FRAME,
+     "active >= 0.5f ? drawStringMedium : drawString;", "drawStringMedium;"),
     ("a draw reads banners", FRAME,
      "\tUIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);\n\t_SaveCubesBackdrop(",
      "\tUIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);\n\tpopulate_meta(NULL);\n\t_SaveCubesBackdrop("),

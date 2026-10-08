@@ -99,3 +99,13 @@ Loader card (L: the left pane's, Game Disc greyed beside the GC Loader).
 `files_menu` finds a menu by its title box's top edge, below its pane's
 storage button and right-aligned to the pane; the tests check each menu is
 found over its own pane only, never over rows, a focus bar or Swiss's Z box.
+
+`files-storage-wide-left.png` and `files-storage-wide-right.png` are the
+same menus with Menu Widescreen on, from a GC Loader card showing its own
+top folder on both sides: Dolphin letterboxes the 16:9 stage, and the right
+pane's outer edge, with the menu right-aligned to it, lies past where the
+4:3 stage ends. `files_menu` and `files_box` read each pane where
+`UIFiles_Layout` puts it (`files_pane_x`), on the whole stage
+(`files_stage`); the tests check each menu over its own pane only, none on
+the plain widescreen screen, and that blanking the right menu's items edge
+loses it.

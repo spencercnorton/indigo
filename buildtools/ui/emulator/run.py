@@ -375,30 +375,57 @@ def files_text(rgb: np.ndarray, wide: bool = False, right: bool = False,
 # in from its pane's right edge: its title box's top edge at y 114 and its
 # items box's at y 148 run at least 124 px left from there (a row's focus
 # outline has edges at 114 and 139, never 148). Menu Widescreen moves the
-# right pane's right edge out of the stage detection_frame keeps, so only
-# 4:3 reads it.
-FILES_MENU_EDGES = ((186, 300), (474, 588))
+# right pane's right edge out with the stage, so the edges are read on the
+# whole stage (files_stage) where UIFiles_Layout puts the pane.
+def files_pane_x(pane: int, wide: bool = False) -> tuple[int, int]:
+    """A File Browser pane's left and right edges in authored px, as
+    UIFiles_Layout puts them: the outer edge 40 px in from the stage's
+    (UIStage_Left/Right: 1/6 of 640 more each side in Menu Widescreen), the
+    inner edges at 312 and 328 in both shapes."""
+    margin = round(320 / 3) if wide else 0
+    return (40 - margin, 312) if pane == 0 else (328, 600 + margin)
+
+
+def files_menu_edges(pane: int, wide: bool = False) -> tuple[int, int]:
+    """Where a box beside a row of pane surely has its top and bottom edges."""
+    right = files_pane_x(pane, wide)[1]
+    return right - 126, right - 12
+
+
+FILES_MENU_EDGES = (files_menu_edges(0), files_menu_edges(1))
+
+
+def files_stage(rgb: np.ndarray, wide: bool = False) -> tuple[np.ndarray, int]:
+    """The capture in authored px over the whole stage, and the column of
+    authored x 0. Like detection_frame, but keeping Menu Widescreen's sides:
+    the letterbox's 640 columns span x -107 .. 747 there."""
+    if not wide:
+        return rgb, 0
+    margin = round(320 / 3)
+    return np.asarray(Image.fromarray(rgb[60:420]).resize(
+        (WIDTH + 2 * margin, HEIGHT), Image.Resampling.NEAREST)), margin
 
 
 def files_menu(rgb: np.ndarray, pane: int, wide: bool = False) -> bool:
     """A File Browser storage menu over pane's rows (0 left, 1 right)."""
-    x0, x1 = FILES_MENU_EDGES[pane]
-    rgb = detection_frame(rgb, wide)
-    return bool(_edge(rgb, x0, x1, 115) and _edge(rgb, x0, x1, 149))
+    frame, at = files_stage(rgb, wide)
+    x0, x1 = files_menu_edges(pane, wide)
+    return bool(_edge(frame, x0 + at, x1 + at, 115) and _edge(frame, x0 + at, x1 + at, 149))
 
 
 # A box beside a row ends short of its pane's left part, where a row's
-# outline (the other pane's focus, a ghost row) goes on.
-FILES_ROW_PROBES = ((60, 140), (348, 428))
+# outline (the other pane's focus, a ghost row) goes on: 20 to 100 px in.
+FILES_ROW_PROBES = tuple((files_pane_x(p)[0] + 20, files_pane_x(p)[0] + 100) for p in (0, 1))
 
 
 def files_box(rgb: np.ndarray, pane: int, wide: bool = False) -> bool:
     """A box beside a row of pane's (Actions, a question, a storage menu):
     its items box's top and bottom edges across the right of the pane, not
     running on across the pane as a row's outline does."""
-    (x0, x1), (p0, p1) = FILES_MENU_EDGES[pane], FILES_ROW_PROBES[pane]
-    rgb = detection_frame(rgb, wide)
-    edges = [y for y in range(116, 337) if _edge(rgb, x0, x1, y) and not _edge(rgb, p0, p1, y)]
+    frame, at = files_stage(rgb, wide)
+    x0, x1 = (x + at for x in files_menu_edges(pane, wide))
+    p0, p1 = (x + at for x in (files_pane_x(pane, wide)[0] + 20, files_pane_x(pane, wide)[0] + 100))
+    edges = [y for y in range(116, 337) if _edge(frame, x0, x1, y) and not _edge(frame, p0, p1, y)]
     return sum(1 for a, b in zip([-99] + edges, edges) if b - a > 8) >= 2
 
 

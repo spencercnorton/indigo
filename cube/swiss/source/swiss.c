@@ -1396,7 +1396,8 @@ static bool filesInfoSnapshot(uiFilesSnapshot_t *s, file_handle **entries,
 	/* A right pane with no entry, at its top or not ready: A, X and R
 	 * choose its storage, and Z has nothing to act on. */
 	UIFiles_Hints(entry == NULL && pane == UI_FILES_RIGHT &&
-		(filesOther.mount == UI_FILES_FAILED || filesAtRoot(&filesOther.dir)) ?
+		(filesOther.mount == UI_FILES_FAILED || filesOther.readFailed ||
+		filesAtRoot(&filesOther.dir)) ?
 		UI_FILES_HINTS_STORAGE : UI_FILES_HINTS_LIST, pane, kind, loads,
 		fileManagementAllowed(), autoload, s->hint[0], s->hint[1]);
 	return true;
@@ -1519,6 +1520,56 @@ static void filesWait(float seconds)
 	}
 }
 
+/* The info bar and the hints as the focused entry has them. A box or the
+ * message takes them over while it is up; when it goes they come back, so
+ * nothing it said stays under what comes next (a question, the progress
+ * card). */
+typedef struct {
+	char title[UI_FILES_ROW_TEXT], chip[12], size[24];
+	char line[2][UI_FILES_TEXT_CAPACITY], hint[2][UI_FILES_HINT_CAPACITY];
+	float titleScale;
+	s16 titleWidth, sizeWidth;
+	u8 hasBanner, infoKind, warn;
+} filesInfo_t;
+
+static void filesInfoKeep(filesInfo_t *out)
+{
+	const uiFilesSnapshot_t *s = &filesSnapshot;
+
+	memcpy(out->title, s->title, sizeof(out->title));
+	memcpy(out->chip, s->chip, sizeof(out->chip));
+	memcpy(out->size, s->size, sizeof(out->size));
+	memcpy(out->line, s->line, sizeof(out->line));
+	memcpy(out->hint, s->hint, sizeof(out->hint));
+	out->titleScale = s->titleScale;
+	out->titleWidth = s->titleWidth;
+	out->sizeWidth = s->sizeWidth;
+	out->hasBanner = s->hasBanner;
+	out->infoKind = s->infoKind;
+	out->warn = s->warn;
+}
+
+static void filesInfoPut(const filesInfo_t *in)
+{
+	uiFilesSnapshot_t *s = &filesSnapshot;
+
+	memcpy(s->title, in->title, sizeof(s->title));
+	memcpy(s->chip, in->chip, sizeof(s->chip));
+	memcpy(s->size, in->size, sizeof(s->size));
+	memcpy(s->line, in->line, sizeof(s->line));
+	memcpy(s->hint, in->hint, sizeof(s->hint));
+	s->titleScale = in->titleScale;
+	s->titleWidth = in->titleWidth;
+	s->sizeWidth = in->sizeWidth;
+	s->hasBanner = in->hasBanner;
+	s->infoKind = in->infoKind;
+	s->warn = in->warn;
+}
+
+/* Line 1 of the item a box chose, for a question that follows it on the
+ * same press (Swiss's Move question after Actions' Move); "" otherwise. */
+static char filesChosenLine[UI_FILES_TEXT_CAPACITY];
+
 /* The box in filesMenu as the frame shows it, with the focused item's two
  * lines in the info bar. */
 static void filesMenuShow(void)
@@ -1548,7 +1599,9 @@ static int filesBox(uiFilesHintMode_t hints, u32 close, bool chord)
 	uiMenuInputState_t stick;
 	u32 stickRetrace = VIDEO_GetRetraceCount();
 	int choice = -1;
+	filesInfo_t entry;
 
+	filesInfoKeep(&entry);
 	for(int i = 0; i < box->count; i++) {
 		const char *at = box->letter[i] != '\0' ? strchr(letters, box->letter[i]) : NULL;
 
@@ -1616,17 +1669,18 @@ static int filesBox(uiFilesHintMode_t hints, u32 close, bool chord)
 			box->focus = (u8)pick;
 		}
 		else if(pick >= 0) {
-			/* Its lines stay in the info bar under what comes next. */
 			box->focus = (u8)pick;
 			choice = pick;
 			menuaudio_select();
 		}
 	}
-	/* What was chosen says what it does under whatever comes next. */
+	/* A question that follows says where the chosen item goes; the info
+	 * bar is the focused entry's again. */
 	if(choice >= 0) {
-		filesMenuShow();
+		strlcpy(filesChosenLine, filesMenu.line[choice], sizeof(filesChosenLine));
 	}
 	box->open = 0;
+	filesInfoPut(&entry);
 	filesMenuShow();
 	do {VIDEO_WaitVSync();} while(padsButtonsHeld() & (buttons & ~(BUTTON_UP | BUTTON_DOWN)));
 	return choice;
@@ -1678,8 +1732,8 @@ static void filesQuestion(const char *title, const char *yes, const char *no,
 	strlcpy(filesMenu.box.item[0], yes, sizeof(filesMenu.box.item[0]));
 	strlcpy(filesMenu.box.item[1], no, sizeof(filesMenu.box.item[1]));
 	for(int i = 0; i < 2; i++) {
-		strlcpy(filesMenu.line[i], line != NULL ? line : filesSnapshot.line[0],
-			sizeof(filesMenu.line[i]));
+		strlcpy(filesMenu.line[i], line != NULL ? line : filesChosenLine[0] != '\0' ?
+			filesChosenLine : filesSnapshot.line[0], sizeof(filesMenu.line[i]));
 		strlcpy(filesMenu.reason[i], detail, sizeof(filesMenu.reason[i]));
 	}
 	filesMenu.warn = warn ? 3u : 0u;
@@ -1804,6 +1858,7 @@ static void filesSay(const char *title, const char *detail, bool failed)
 {
 	u32 shown = VIDEO_GetRetraceCount();
 	float rate = VIDEO_GetRetraceRate();
+	filesInfo_t entry;
 
 	if(!isfinite(rate) || rate < 1.0f) rate = 60.0f;
 	filesFitAt(filesSnapshot.message[0], sizeof(filesSnapshot.message[0]), title, 560, 0.56f);
@@ -1813,6 +1868,7 @@ static void filesSay(const char *title, const char *detail, bool failed)
 	filesSnapshot.messageLeaving = 0;
 	filesSnapshot.messageSerial++;
 	filesSnapshot.menu.open = 0;
+	filesInfoKeep(&entry);
 	filesSnapshot.line[0][0] = filesSnapshot.line[1][0] = '\0';
 	filesSnapshot.warn = 0;
 	UIFiles_Hints(UI_FILES_HINTS_MESSAGE, filesState.active, UI_FILES_KIND_FOLDER, false,
@@ -1837,6 +1893,7 @@ static void filesSay(const char *title, const char *detail, bool failed)
 	}
 	filesSnapshot.messageLeaving = 0;
 	filesSnapshot.message[0][0] = filesSnapshot.message[1][0] = '\0';
+	filesInfoPut(&entry);
 	(void)DrawUpdateFiles(filesPage, &filesSnapshot);
 	while(padsButtonsHeld() & (BUTTON_A | BUTTON_B)) VIDEO_WaitVSync();
 }
@@ -2230,6 +2287,12 @@ static bool filesSwapSides(file_handle **directory)
 		filesNote = filesNoteText;
 		return false;
 	}
+	/* What the panes hold goes before the sides change places, and comes
+	 * back with the next page (UI Motion Off: it stays). */
+	filesSnapshot.swapping = 1;
+	(void)DrawUpdateFiles(filesPage, &filesSnapshot);
+	filesWait(UIFiles_SwapHalfSeconds(UIMotion_ModeFromFlags(swissSettings.disableUIAnimations,
+		swissSettings.reduceUIAnimations)));
 	filesLeftFocusName(directory, leftFocus, sizeof(leftFocus));
 	strlcpy(rightFocus, pane->count > 0 ? filesOther.sorted[pane->focus]->name : "",
 		sizeof(rightFocus));
@@ -2308,6 +2371,7 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 		(void)padsButtonsTaken(waitButtons);
 	}
 	filesKeepPresses = false;
+	filesSnapshot.swapping = 0;
 	if(!filesPublish(directory, &filePanel, true)) {
 		/* No memory for the page: Home rather than a stale screen. */
 		filesOtherRelease();
@@ -2361,6 +2425,7 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 				(void)filesPublish(directory, &filePanel, false);
 			}
 		}
+		filesChosenLine[0] = '\0';
 		filesNote = NULL;
 		active = &filesState.pane[filesState.active];
 		/* Moves first: a press of Down and A acts on the row moved to. */

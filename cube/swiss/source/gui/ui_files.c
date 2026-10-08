@@ -1297,3 +1297,18 @@ float UIFiles_LeaveSeconds(int mode)
 	return mode == UI_MOTION_OFF ? 0.0f : mode == UI_MOTION_REDUCED ?
 		STAGE_LEAVE_REDUCED : STAGE_LEAVE;
 }
+
+float UIFiles_SwapHalfSeconds(int mode)
+{
+	return mode == UI_MOTION_OFF ? 0.0f : mode == UI_MOTION_REDUCED ? 0.05f : 0.075f;
+}
+
+float UIFiles_SwapStep(float content, bool swapping, float delta, int mode)
+{
+	float step;
+
+	if(mode == UI_MOTION_OFF) return 1.0f;
+	step = delta / UIFiles_SwapHalfSeconds(mode);
+	if(!(step >= 0.0f)) step = 0.0f;
+	return stageClamp(swapping ? content - step : content + step);
+}

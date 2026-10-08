@@ -1911,6 +1911,37 @@ static void testStage(void)
 	CHECK(stage.handover > 0.0f && stage.handover < 1.0f);
 }
 
+/* Y: the panes' contents cross-fade, out while the sides change places and
+ * in once they have, half of 0.15 s each way (0.10 s on Reduced), from
+ * wherever they were; with UI Motion Off they stay. */
+static void testSwapFade(void)
+{
+	float content = 1.0f;
+	int frames;
+
+	CHECK(UIFiles_SwapStep(1.0f, false, 1.0f / 60.0f, UI_MOTION_FULL) == 1.0f);
+	CHECK(UIFiles_SwapStep(1.0f, true, 0.0375f, UI_MOTION_FULL) == 0.5f);
+	CHECK(UIFiles_SwapStep(1.0f, true, 0.075f, UI_MOTION_FULL) == 0.0f);
+	CHECK(UIFiles_SwapStep(0.0f, true, 1.0f, UI_MOTION_FULL) == 0.0f);
+	CHECK(UIFiles_SwapStep(0.0f, false, 0.075f, UI_MOTION_FULL) == 1.0f);
+	CHECK(UIFiles_SwapStep(1.0f, true, 0.05f, UI_MOTION_REDUCED) == 0.0f);
+	CHECK(UIFiles_SwapStep(0.0f, false, 0.025f, UI_MOTION_REDUCED) == 0.5f);
+	CHECK(UIFiles_SwapStep(1.0f, true, 1.0f, UI_MOTION_OFF) == 1.0f);
+	CHECK(UIFiles_SwapStep(0.0f, false, 0.0f, UI_MOTION_OFF) == 1.0f);
+	/* A clock that stepped back moves nothing. */
+	CHECK(UIFiles_SwapStep(0.5f, true, -1.0f, UI_MOTION_FULL) == 0.5f);
+	/* The new sides came half way out: back in from there, no jump. */
+	content = UIFiles_SwapStep(content, true, 0.03f, UI_MOTION_FULL);
+	CHECK(content > 0.5f && content < 0.7f);
+	for(frames = 0; content < 1.0f && frames < 60; ++frames) {
+		float next = UIFiles_SwapStep(content, false, 1.0f / 60.0f, UI_MOTION_FULL);
+
+		CHECK(next > content && next - content < 0.25f);
+		content = next;
+	}
+	CHECK(content == 1.0f && frames == 2);
+}
+
 int main(void)
 {
 	testLayout();
@@ -1936,6 +1967,7 @@ int main(void)
 	testGhost();
 	testFlash();
 	testStage();
+	testSwapFade();
 	printf("test_ui_files: %u checks passed\n", checks);
 	return 0;
 }

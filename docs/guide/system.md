@@ -74,7 +74,9 @@ too long for the row is cut in the middle, keeping its extension and a
 "(Disc 1)" before it; the info bar below shows the whole name, and for a
 game its banner and title.
 
-- **Left** and **Right** move between the panes; each keeps its place.
+- **Left** and **Right** move between the panes; each keeps its place. The
+  pane you are in has a bright edge; the other one's edge is dimmer and its
+  words are lighter.
 - **Up** and **Down** move a row, and keep going while held. The C-stick
   goes a page up or down.
 - **A** opens a folder or starts a file in the left pane, and **X** or `..`
@@ -89,7 +91,8 @@ game its banner and title.
   the left pane's, **R** the right pane's. **X** or `..` at the top of a
   pane does the same.
 - **Y** swaps the two sides: the right pane's device and folder become your
-  source, and your source moves to the right. Y again swaps them back.
+  source, and your source moves to the right, the panes fading across as
+  they change places (at once with UI Motion Off). Y again swaps them back.
 - **B** goes back to the System face, or to the File Browser face when you
   opened it from there. The Library face opens the Library again as usual.
 - **START** shows recently played games; choosing one leaves the File

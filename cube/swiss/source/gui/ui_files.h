@@ -540,7 +540,8 @@ typedef struct {
 	uint8_t warn;		/* line 2 in amber */
 	uint8_t leaving;	/* B: the page goes, the Home cube comes back */
 	uint8_t messageLeaving;	/* the message fades out */
-	uint8_t reserved[2];
+	uint8_t swapping;	/* Y: the panes' contents fade out until the next */
+	uint8_t reserved;
 	uiFilesMenu_t menu;	/* a box: a storage menu, Actions, a question */
 	/* The maroon message over the page, and its second line; serial
 	 * changes for each one said, so it fades in again. */
@@ -572,5 +573,16 @@ void UIFiles_Stage(float seconds, float leave, int mode, uiFilesStage_t *out);
 
 /* How long leaving takes, so B can wait for it before Home shows. */
 float UIFiles_LeaveSeconds(int mode);
+
+/* Y swapping the sides: what the panes and the info bar hold (their words,
+ * rows and cubes) after delta seconds more, from content (0 .. 1): going
+ * while swapping, back once the new sides are shown, each way in half of
+ * a 0.15 s cross-fade (0.10 s on Reduced); always 1 with UI Motion Off.
+ * mode is ui_motion.h's uiMotionMode_t. */
+float UIFiles_SwapStep(float content, bool swapping, float delta, int mode);
+
+/* Half of that cross-fade: how long Y lets the old sides go before it
+ * changes them, so they do go however quickly the new ones are read. */
+float UIFiles_SwapHalfSeconds(int mode);
 
 #endif

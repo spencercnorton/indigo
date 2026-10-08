@@ -11,92 +11,92 @@
   "vertices": 5202
  },
  "files": {
-  "begins": 2091,
+  "begins": 1701,
   "copy_pixels": 0,
-  "hash": "16a4490edf4b4a51",
+  "hash": "c8bb2df726879961",
   "minmax": 0,
   "scene": "files",
   "sqrtf": 232,
   "state": 24,
   "trig": 0,
-  "vertices": 9700
+  "vertices": 8140
  },
  "files-actions": {
-  "begins": 2192,
+  "begins": 1802,
   "copy_pixels": 0,
-  "hash": "8c1d93429273ae80",
+  "hash": "b540face8775d7f0",
   "minmax": 0,
   "scene": "files-actions",
   "sqrtf": 116,
   "state": 24,
   "trig": 0,
-  "vertices": 9800
+  "vertices": 8240
  },
  "files-copy": {
-  "begins": 2763,
+  "begins": 2198,
   "copy_pixels": 0,
-  "hash": "1e4a99806cde0bcd",
+  "hash": "71ae2ea96fd18181",
   "minmax": 0,
   "scene": "files-copy",
   "sqrtf": 116,
   "state": 24,
   "trig": 0,
-  "vertices": 12168
+  "vertices": 9908
  },
  "files-message": {
-  "begins": 2169,
+  "begins": 1782,
   "copy_pixels": 0,
-  "hash": "95a6964f760dd170",
+  "hash": "084db6f62514c9c4",
   "minmax": 0,
   "scene": "files-message",
   "sqrtf": 87,
   "state": 24,
   "trig": 0,
-  "vertices": 9644
+  "vertices": 8096
  },
  "files-right": {
-  "begins": 2097,
+  "begins": 1710,
   "copy_pixels": 0,
-  "hash": "4b9f9eee2049c15a",
+  "hash": "a85a70b501cc2556",
   "minmax": 0,
   "scene": "files-right",
   "sqrtf": 232,
   "state": 24,
   "trig": 0,
-  "vertices": 9724
+  "vertices": 8176
  },
  "files-storage": {
-  "begins": 2284,
+  "begins": 1894,
   "copy_pixels": 0,
-  "hash": "9ad73d69f602c8ac",
+  "hash": "80b9a36cfdef921c",
   "minmax": 0,
   "scene": "files-storage",
   "sqrtf": 116,
   "state": 24,
   "trig": 0,
-  "vertices": 10184
+  "vertices": 8624
  },
  "files-storage-right": {
-  "begins": 2217,
+  "begins": 1652,
   "copy_pixels": 0,
-  "hash": "ff298302a399ec76",
+  "hash": "6db2d75807ed7dd6",
   "minmax": 0,
   "scene": "files-storage-right",
   "sqrtf": 116,
   "state": 24,
   "trig": 0,
-  "vertices": 9748
+  "vertices": 7488
  },
  "files-wide": {
-  "begins": 2881,
+  "begins": 2316,
   "copy_pixels": 0,
-  "hash": "d7c035bdf71724d7",
+  "hash": "92ac62a4b3dcc08f",
   "minmax": 0,
   "scene": "files-wide",
   "sqrtf": 232,
   "state": 24,
   "trig": 0,
-  "vertices": 12892
+  "vertices": 10632
  },
  "hint-round-rect": {
   "begins": 2,

@@ -761,6 +761,38 @@ class Screen(unittest.TestCase):
                 missing[y0:y1, x0:x1] = frame[130, x0 + 60]
                 self.assertFalse(run.files_menu(missing, pane), (pane, y0))
 
+    def test_the_file_browser_storage_menus_in_widescreen(self):
+        # Menu Widescreen moves the right pane's outer edge, and the boxes
+        # right-aligned to it, past the 4:3 stage: the detectors read the
+        # pane where UIFiles_Layout puts it, on the whole stage.
+        self.assertEqual(run.files_pane_x(0, True), (-67, 312))
+        self.assertEqual(run.files_pane_x(1, True), (328, 707))
+        self.assertEqual(run.files_pane_x(1), (328, 600))
+        self.assertEqual(run.FILES_MENU_EDGES, ((186, 300), (474, 588)))
+        left, right = (self.folder_frame(f"files-storage-wide-{side}.png") for side in ("left", "right"))
+        for frame, pane in ((left, 0), (right, 1)):
+            self.assertTrue(run.files_screen(frame, True))
+            self.assertTrue(run.files_menu(frame, pane, True), pane)
+            self.assertFalse(run.files_menu(frame, 1 - pane, True), pane)
+            self.assertTrue(run.files_box(frame, pane, True), pane)
+            self.assertFalse(run.files_box(frame, 1 - pane, True), pane)
+            # Read as 4:3, the letterbox holds no menu.
+            self.assertFalse(run.files_menu(frame, pane), pane)
+        plain = self.folder_frame("files-screen-wide.png")
+        for pane in (0, 1):
+            self.assertFalse(run.files_menu(plain, pane, True), pane)
+            self.assertFalse(run.files_box(plain, pane, True), pane)
+        # The right menu's own edges count: its items box's top edge, out
+        # past the 4:3 stage's right side.
+        frame, at = run.files_stage(right, True)
+        self.assertEqual(frame.shape[1], run.WIDTH + 2 * at)
+        x0, x1 = run.files_menu_edges(1, True)
+        self.assertGreater(x1, 640)
+        missing = right.copy()
+        c0, y0, c1, y1 = run.stage_box((x0, 145, x1, 153), True)
+        missing[y0:y1, c0:c1] = right[run.stage_box((0, 130, 0, 130), True)[1], c0 + 40]
+        self.assertFalse(run.files_menu(missing, 1, True))
+
     def test_native_frame_reader_catches_one_legacy_frame_and_checks_each_index(self):
         from PIL import Image
         for inject in (None, 5, 10):

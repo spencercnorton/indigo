@@ -1,3 +1,92 @@
+## 2026-10-07 — File Browser: finishing touches
+
+Seventh step of the two-pane File Browser, the part an emulator can check:
+motion, the info bar after a box, the swap, the frame's cost and the
+widescreen storage-menu detector. The hardware matrix is still to do.
+
+Already in place and now pinned (audit_files_contract): a Copy's landed row
+flashes under its message (filesSayPending sets UI_FILES_ROW_FLASH;
+UIFiles_Flash: two pulses Full, one Reduced, none Off) and the message
+fades out over 0.15 s (messageLeaving, skipped with UI Motion Off). Both
+were seen in lab bursts at 60 fps: the flash on the right pane's new row,
+in and out of the maroon box, per motion level.
+
+swiss.c: filesInfo_t with filesInfoKeep/filesInfoPut. filesBox keeps the
+focused entry's info bar and hints when a box opens and puts them back when
+it closes, so a box's lines no longer stay under the next question or the
+progress card's scrim; filesSay does the same around the message (before,
+the bar sat empty with "A OK" until the next publish). The Actions item a
+question follows (Swiss's Move and Delete questions) reaches it through
+filesChosenLine, cleared on every press, instead of the bar's own line 1.
+filesSwapSides, once the swap is allowed, sets filesSnapshot.swapping, and
+waits UIFiles_SwapHalfSeconds (0.075 s Full, 0.05 s Reduced, 0 Off) so the
+old sides do go even when the new ones are read within a frame;
+renderFileList clears it before its first publish. The right pane's
+storage hints (A Choose storage, no Z) also cover a read that failed
+(readFailed), as its "isn't ready" message does.
+
+ui_files.c/.h: UIFiles_SwapStep (the panes' contents ramp out while
+swapping and back in after, from wherever they were; 1 with Off) and
+UIFiles_SwapHalfSeconds; the snapshot's reserved byte is `swapping`.
+FrameBufferMagic.c: _FilesShapes and _FilesWords take a content alpha (the
+pane contents and the info bar's: rows, cubes, focus bars, tracks, chips,
+free boxes, words; the boxes, buttons, info box and hints stay), the
+banner shows only above half of it, and _DrawFiles steps it per frame. The
+pane without the focus draws its device name, free space, path, counter,
+row names and sizes in one pass (drawString, the light weight) instead of
+drawStringMedium's two; its chips and its "isn't ready" lines stay medium.
+
+After review: the swap's fade hid "Reading..." for the whole re-read
+after Y (the published snapshot keeps swapping until renderFileList's
+first publish, after scanFiles), so a slow device showed blank panes. The
+reading band, its cells and the pane's message now fade with the chrome
+(alpha), not the contents; the swapped-out rows stay gone under it. The
+loading cells took 5 Hz in every mode; _DrawFiles now works out the lit
+cell as the presentation card does (5 Hz Full, 2 Hz Reduced, the first
+cell still with Off) and passes it to _FilesShapes. Both pinned, with
+mutants.
+
+Frame budget (frame_budget.c gains the light weight; re-baselined):
+files 9,700 -> 8,140 vertices, files-right 9,724 -> 8,176, files-wide
+12,892 -> 10,632, files-storage 10,184 -> 8,624, files-storage-right
+9,748 -> 7,488, files-actions 9,800 -> 8,240, files-copy 12,168 -> 9,908,
+files-message 9,644 -> 8,096; sqrtf unchanged (232 / 116 / 87). Still above
+the 6,500 first estimate: the active pane's medium-weight words and the
+info bar are most of what is left. The perf build on a console should
+decide whether more is needed.
+
+Opening and leaving (UIFiles_Stage, Memory Cards' timings) were checked in
+bursts: Full hands the cube over and the chrome follows (about 0.5 s),
+Reduced fades in 0.25 s and out 0.2 s, Off cuts. The swap cross-fades in
+about 4 frames each way on Full and Reduced and cuts on Off.
+
+Emulator: files_menu and files_box read the panes where UIFiles_Layout puts
+them (files_pane_x, files_menu_edges) on the whole stage (files_stage):
+in Menu Widescreen the right pane's menu sits past the 4:3 stage, where the
+old FILES_MENU_EDGES and detection_frame never looked. FILES_MENU_EDGES and
+FILES_ROW_PROBES are derived from them for 4:3, unchanged. New fixtures
+files-storage-wide-left/right.png (this build, GC Loader card, Menu
+Widescreen) and test_the_file_browser_storage_menus_in_widescreen.
+
+Themes, by captures: Jet Black (grey structure, gold focus, typed cubes in
+colour) over an Emerald backdrop, and Rose over an Azure backdrop; the
+backdrop tints the paper, Wave Color shows nowhere (no waves).
+
+Tests: test_ui_files testSwapFade; audit_files_contract 134 mutants (the
+info bar kept and put back by boxes and the message, the fade-out, the
+flash, swapping set after the gate and cleared before the first publish,
+the draw stepping it, the light weight). Host lanes plain, contracts,
+sanitized, whitespace, source checks and the upstream check pass. Lab
+(CI's emulator image and limits, two at a time, this DOL in a card zip of
+its own): all ten CI routes pass with the lighter unfocused pane (files,
+folders, smoke on DVD and on the GC Loader with non-default settings, game
+on DVD PAL with the AESND stop test, SD2SP2 and GC Loader in 40 pieces,
+virtual cards in 4:3 and wide, the failing card's save).
+
+Docs: system.md (the dimmer pane, Y's fade), CHANGELOG. The four File
+Browser pictures in docs/guide/images show the unfocused pane's words at
+the old, heavier weight: stale in that detail only, not re-recorded.
+
 ## 2026-10-07 — Swiss's old list styles removed
 
 Sixth step of the two-pane File Browser: Swiss's three list renderers,

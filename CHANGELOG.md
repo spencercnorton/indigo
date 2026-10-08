@@ -87,6 +87,17 @@ tag on `beta`. The newest changes are at the top until their release is named.
   removed the file there. Replace now goes ahead only once that file is
   gone. A Move whose original can't be deleted afterwards says the file was
   copied but is in both places.
+- Finishing touches in the File Browser: **Y** fades the panes across as
+  the sides change places (0.15 s, quicker with UI Motion Reduced, at once
+  with Off); a closed box, question or message no longer leaves its lines
+  in the info bar, so the focused file's show again, under a copy's
+  progress card too; and the pane without the focus draws its words in a
+  lighter weight, which makes each File Browser frame about a sixth
+  cheaper to draw. A right pane that is empty at its top, or whose device
+  isn't ready, hints only A Choose storage. "Reading…" shows while the new
+  sides are read after **Y** (a disc spinning up, a network share), and its
+  loading cells step more slowly with UI Motion Reduced and stand still with
+  Off.
 - The File Browser now asks before Move, before Hide, before turning
   Autoload on (Z on `..`, or Z on a game's details), and before writing a
   `.fzn` file to a WiiKey Fusion or a `.fpkg` file to a FlippyDrive. Delete
