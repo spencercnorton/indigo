@@ -4632,6 +4632,12 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 			(CardSlots_ReadableFor(1, context->gameId) ? 2u : 0u);
 
 		Saves_CollectGameStats(context->gameId, &saveStats, slots);
+		/* A card given up on while changing to this game's card: its saves
+		 * are missing, so the scan is incomplete. */
+		if(CardSlots_FailedFor(0, context->gameId) ||
+			CardSlots_FailedFor(1, context->gameId)) {
+			saveStats.partial = true;
+		}
 		source.saveStats = &saveStats;
 		source.savesWaiting = CardSlots_WaitingFor(context->gameId);
 	}

@@ -59,6 +59,8 @@ void UICardSlot_Sent(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LENGTH],
 	slot->sentMs = nowMs;
 	slot->deadlineMs = nowMs + UI_CARD_SLOT_DEADLINE_MS;
 	slot->tries = 0u;
+	slot->sendTries = 0u;
+	slot->pendingAfterMs = 0u;
 }
 
 void UICardSlot_NotSent(uiCardSlot_t *slot)
@@ -66,6 +68,32 @@ void UICardSlot_NotSent(uiCardSlot_t *slot)
 	if(slot == NULL) return;
 	slot->phase = UI_CARD_SLOT_IDLE;
 	slot->hasPending = false;
+	slot->sendTries = 0u;
+}
+
+void UICardSlot_SendFailed(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LENGTH],
+	bool emulator, uint64_t nowMs)
+{
+	if(slot == NULL || id == NULL) return;
+	if(!emulator && !slot->mmce) {
+		UICardSlot_NotSent(slot);
+		return;
+	}
+	slot->mmce = true;
+	slot->sendTries++;
+	if(slot->sendTries >= UI_CARD_SLOT_SEND_TRIES) {
+		/* Given up: not this game's card for sure, and not read or written
+		 * as if it were a plain one. Opening the game again starts over. */
+		memcpy(slot->id, id, UI_CARD_SLOT_ID_LENGTH);
+		slot->hasPending = false;
+		slot->sendTries = 0u;
+		slot->phase = UI_CARD_SLOT_FAILED;
+		slot->broken = false;
+		return;
+	}
+	memcpy(slot->pending, id, UI_CARD_SLOT_ID_LENGTH);
+	slot->hasPending = true;
+	slot->pendingAfterMs = nowMs + retryMs(slot->sendTries);
 }
 
 /* Off the bus: a switch (ours, or one made on the card), or the card taken
@@ -175,9 +203,13 @@ bool UICardSlot_Read(uiCardSlot_t *slot, uiCardReadResult_t result,
 	return false;
 }
 
-bool UICardSlot_TakePending(uiCardSlot_t *slot, char id[UI_CARD_SLOT_ID_LENGTH])
+bool UICardSlot_TakePending(uiCardSlot_t *slot, char id[UI_CARD_SLOT_ID_LENGTH],
+	uint64_t nowMs)
 {
-	if(slot == NULL || id == NULL || !slot->hasPending || switching(slot)) return false;
+	if(slot == NULL || id == NULL || !slot->hasPending || switching(slot) ||
+		nowMs < slot->pendingAfterMs) {
+		return false;
+	}
 	memcpy(id, slot->pending, UI_CARD_SLOT_ID_LENGTH);
 	slot->hasPending = false;
 	return true;
@@ -202,6 +234,13 @@ bool UICardSlot_WaitingFor(const uiCardSlot_t *slot,
 	if(slot == NULL || id == NULL) return false;
 	if(slot->hasPending) return sameId(slot->pending, id);
 	return switching(slot) && sameId(slot->id, id);
+}
+
+bool UICardSlot_FailedFor(const uiCardSlot_t *slot,
+	const char id[UI_CARD_SLOT_ID_LENGTH])
+{
+	return slot != NULL && id != NULL && !slot->hasPending &&
+		slot->phase == UI_CARD_SLOT_FAILED && sameId(slot->id, id);
 }
 
 bool UICardSlot_WritableFor(const uiCardSlot_t *slot,

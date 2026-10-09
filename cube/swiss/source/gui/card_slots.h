@@ -29,6 +29,10 @@ bool CardSlots_ReadableFor(int slot, const char gameId[6]);
  * come later. */
 bool CardSlots_WaitingFor(const char gameId[6]);
 
+/* The card in slot was given up on while switching to game gameId (its
+ * saves are missing from a scan, which is then incomplete). */
+bool CardSlots_FailedFor(int slot, const char gameId[6]);
+
 /* A save for game gameId may be written to the card in slot now. */
 bool CardSlots_WritableFor(int slot, const char gameId[6]);
 

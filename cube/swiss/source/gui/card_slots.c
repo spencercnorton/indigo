@@ -85,11 +85,16 @@ static void traceId(char out[7], const void *id)
 	out[6] = '\0';
 }
 
+/* The channel's EXI status register (a host test supplies its own). */
+#ifndef CARD_SLOTS_EXI_CSR
+#define CARD_SLOTS_EXI_CSR(chan) (*(vu32 *)(0xCC006800 + (u32)(chan) * 0x14))
+#endif
+
 /* The slot's presence line: bit 12 of the channel's EXI status register.
  * Reading it puts nothing on the bus. */
 static bool slotPresent(s32 chan)
 {
-	return (*(vu32 *)(0xCC006800 + (u32)chan * 0x14) & 0x1000) != 0;
+	return (CARD_SLOTS_EXI_CSR(chan) & 0x1000) != 0;
 }
 
 /* The slot holds the game's or the settings' device (an SD adapter, or an
@@ -124,8 +129,16 @@ static s32 probeMmce(s32 chan)
 	return ret;
 }
 
-/* The game's ID to the MMCE card in chan, the commands gameID_early_set sends. */
-static bool sendId(s32 chan, const dvddiskid *disk, const char name[64])
+typedef enum {
+	SEND_NO_EMULATOR,	/* nothing there takes an ID: a plain card, or none */
+	SEND_FAILED,		/* an emulator answered, but the ID didn't go out */
+	SEND_OK			/* the card took the ID: it may be switching */
+} sendResult_t;
+
+/* The game's ID to the MMCE card in chan, the commands gameID_early_set sends.
+ * Set Disc ID is what switches the card: once it went out, it is SEND_OK
+ * whatever the name (Set Disc Info, for the card's screen) does after it. */
+static sendResult_t sendId(s32 chan, const dvddiskid *disk, const char name[64])
 {
 	u32 id;
 	s32 ret = probeMmce(chan);
@@ -137,11 +150,35 @@ static bool sendId(s32 chan, const dvddiskid *disk, const char name[64])
 		EXI_ProbeReset();
 		ret = probeMmce(chan);
 	}
-	if(ret < 0) return false;
+	/* Only an emulator that said so (Get Device ID) and then didn't take the
+	 * ID is SEND_FAILED; a slot known to hold one is tried again either way
+	 * (sendDone), and anything else is no emulator. */
+	if(ret < 0) return SEND_NO_EMULATOR;
 	if((ret = MMCE_GetDeviceID(chan, &id)) == MMCE_RESULT_VERSION) ret = MMCE_RESULT_READY;
-	return ret == MMCE_RESULT_READY &&
-		MMCE_SetDiskID(chan, disk) == MMCE_RESULT_READY &&
-		MMCE_SetDiskInfo(chan, name) == MMCE_RESULT_READY;
+	if(ret < 0) return SEND_NO_EMULATOR;
+	if(MMCE_SetDiskID(chan, disk) != MMCE_RESULT_READY) return SEND_FAILED;
+	if(MMCE_SetDiskInfo(chan, name) != MMCE_RESULT_READY) trace(chan, "name not sent");
+	return SEND_OK;
+}
+
+/* What a send means for the slot's state. */
+static void sendDone(cardSlot_t *slot, s32 chan, const char id[UI_CARD_SLOT_ID_LENGTH],
+	sendResult_t result, const char *name, const char *how)
+{
+	if(result == SEND_OK) {
+		UICardSlot_Sent(&slot->state, id, nowMs());
+		trace(chan, "%s sent%s: %s", name, how, phaseNames[slot->state.phase]);
+		if(chan == EXI_CHANNEL_0) swissSettings.emulateMemoryCard = 0;
+		return;
+	}
+	if(result == SEND_FAILED || slot->state.mmce) {
+		UICardSlot_SendFailed(&slot->state, id, result == SEND_FAILED, nowMs());
+		trace(chan, "%s not sent%s: %s", name, how,
+			slot->state.hasPending ? "tried again later" : phaseNames[slot->state.phase]);
+		if(chan == EXI_CHANNEL_0) swissSettings.emulateMemoryCard = 0;
+		return;
+	}
+	UICardSlot_NotSent(&slot->state);
 }
 
 /* The card's status byte (0x83): three bytes on the bus, no mount. */
@@ -206,7 +243,7 @@ void CardSlots_RequestGame(const DiskHeader *header)
 		/* Serial Port 2, or a slot used as a storage device: sent as before,
 		 * nothing there to read as a memory card. */
 		if(chan > EXI_CHANNEL_1 || slotInUse(chan)) {
-			if(sendId(chan, disk, header->GameName)) {
+			if(sendId(chan, disk, header->GameName) == SEND_OK) {
 				trace(chan, "%s sent (not followed)", name);
 				if(chan == EXI_CHANNEL_0) swissSettings.emulateMemoryCard = 0;
 			}
@@ -214,23 +251,16 @@ void CardSlots_RequestGame(const DiskHeader *header)
 		}
 		slot = &slots[chan];
 		(void)UICardSlot_Observe(&slot->state, slotPresent(chan), nowMs());
+		/* Kept for a send later: behind a switch, or after a failed one. */
+		memcpy(&slot->pendingDisk, disk, sizeof(slot->pendingDisk));
+		memcpy(slot->pendingName, header->GameName, sizeof(slot->pendingName));
 		if(!UICardSlot_Request(&slot->state, id)) {
 			trace(chan, "%s waits: the card is switching (%s)", name,
 				phaseNames[slot->state.phase]);
-			memcpy(&slot->pendingDisk, disk, sizeof(slot->pendingDisk));
-			memcpy(slot->pendingName, header->GameName, sizeof(slot->pendingName));
 			if(chan == EXI_CHANNEL_0) swissSettings.emulateMemoryCard = 0;
 			continue;
 		}
-		if(sendId(chan, disk, header->GameName)) {
-			UICardSlot_Sent(&slot->state, id, nowMs());
-			trace(chan, "%s sent: %s", name, phaseNames[slot->state.phase]);
-			if(chan == EXI_CHANNEL_0) swissSettings.emulateMemoryCard = 0;
-		}
-		else {
-			if(slot->state.mmce) trace(chan, "%s not sent", name);
-			UICardSlot_NotSent(&slot->state);
-		}
+		sendDone(slot, chan, id, sendId(chan, disk, header->GameName), name, "");
 	}
 }
 
@@ -283,24 +313,22 @@ bool CardSlots_Poll(void)
 				EXI_ProbeReset();
 			}
 		}
-		if(UICardSlot_TakePending(&slot->state, id)) {
+		if(UICardSlot_TakePending(&slot->state, id, nowMs())) {
 			char name[7];
 
 			traceId(name, id);
-			if(sendId(chan, &slot->pendingDisk, slot->pendingName)) {
-				UICardSlot_Sent(&slot->state, id, nowMs());
-				trace(chan, "%s sent after the wait: %s", name, phaseNames[slot->state.phase]);
-			}
-			else {
-				trace(chan, "%s not sent after the wait", name);
-				UICardSlot_NotSent(&slot->state);
-			}
+			sendDone(slot, chan, id, sendId(chan, &slot->pendingDisk, slot->pendingName),
+				name, " after the wait");
 		}
 		if(slot->state.phase != was) {
 			trace(chan, "%s -> %s", phaseNames[was], phaseNames[slot->state.phase]);
 		}
+		/* Read the saves again when a card is done switching (or given up on),
+		 * and when one that was settled leaves the bus: its saves go with it. */
 		if(slot->state.phase != was && (slot->state.phase == UI_CARD_SLOT_READY ||
-			slot->state.phase == UI_CARD_SLOT_FAILED)) {
+			slot->state.phase == UI_CARD_SLOT_FAILED ||
+			(slot->state.phase == UI_CARD_SLOT_AWAY && (was == UI_CARD_SLOT_READY ||
+			was == UI_CARD_SLOT_FAILED)))) {
 			settled = true;
 		}
 	}
@@ -322,6 +350,11 @@ bool CardSlots_WritableFor(int slot, const char gameId[6])
 {
 	return slot >= 0 && slot < 2 &&
 		UICardSlot_WritableFor(&slots[slot].state, gameId, nowMs());
+}
+
+bool CardSlots_FailedFor(int slot, const char gameId[6])
+{
+	return slot >= 0 && slot < 2 && UICardSlot_FailedFor(&slots[slot].state, gameId);
 }
 
 bool CardSlots_IdWaiting(void)

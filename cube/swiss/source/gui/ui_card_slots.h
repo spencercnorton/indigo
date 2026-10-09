@@ -35,6 +35,10 @@
 /* A card that never left the bus after the ID is only written this long
  * after it, so a write can't land on the card it is still switching from. */
 #define UI_CARD_SLOT_QUIET_MS 10000u
+/* An emulator that didn't take the ID is sent it again after 1 s, 2 s, ...
+ * this many times in all, then the slot is given up on (FAILED, never read
+ * as a plain card). */
+#define UI_CARD_SLOT_SEND_TRIES 5u
 
 typedef enum {
 	UI_CARD_SLOT_IDLE = 0,	/* no switch of ours: read it as it is */
@@ -65,6 +69,8 @@ typedef struct {
 	bool broken;	/* the last read was BROKEN (FAILED: an unformatted card) */
 	bool present;	/* the presence line when last seen */
 	bool seen;	/* present holds a reading */
+	uint64_t pendingAfterMs;	/* a failed send is tried again from then */
+	unsigned sendTries;	/* failed sends of the pending ID */
 	uint64_t sentMs;
 	uint64_t backMs;
 	uint64_t nextMs;
@@ -86,6 +92,13 @@ void UICardSlot_Sent(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LENGTH],
 /* It couldn't take it: no emulator in the slot (a plain card, or nothing). */
 void UICardSlot_NotSent(uiCardSlot_t *slot);
 
+/* The ID didn't go out to what is (emulator) or was (mmce) an emulator: it
+ * stays the pending ID and is sent again later, a few times, before the slot
+ * is given up on. Never a plain card's IDLE: the card may be switching. With
+ * no emulator ever seen there, it is NotSent. */
+void UICardSlot_SendFailed(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LENGTH],
+	bool emulator, uint64_t nowMs);
+
 /* The presence line at nowMs. True when the phase changed. */
 bool UICardSlot_Observe(uiCardSlot_t *slot, bool present, uint64_t nowMs);
 
@@ -103,8 +116,10 @@ void UICardSlot_Hint(uiCardSlot_t *slot, uint64_t nowMs);
 bool UICardSlot_Read(uiCardSlot_t *slot, uiCardReadResult_t result,
 	uint64_t nowMs, bool *resetProbe);
 
-/* The ID that waited, once the slot can take it. */
-bool UICardSlot_TakePending(uiCardSlot_t *slot, char id[UI_CARD_SLOT_ID_LENGTH]);
+/* The ID that waited, once the slot can take it (not switching, and past a
+ * failed send's wait). */
+bool UICardSlot_TakePending(uiCardSlot_t *slot, char id[UI_CARD_SLOT_ID_LENGTH],
+	uint64_t nowMs);
 
 /* A switch is under way, or an ID waits. */
 bool UICardSlot_Busy(const uiCardSlot_t *slot);
@@ -116,6 +131,10 @@ bool UICardSlot_ReadableFor(const uiCardSlot_t *slot,
 
 /* The slot is switching to game id, or id waits for it: its saves come later. */
 bool UICardSlot_WaitingFor(const uiCardSlot_t *slot,
+	const char id[UI_CARD_SLOT_ID_LENGTH]);
+
+/* The slot was given up on while switching to game id. */
+bool UICardSlot_FailedFor(const uiCardSlot_t *slot,
 	const char id[UI_CARD_SLOT_ID_LENGTH]);
 
 /* A save for game id may be written to this slot now. */

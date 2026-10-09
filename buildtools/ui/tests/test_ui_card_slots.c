@@ -298,7 +298,7 @@ static void checkLatestWins(void)
 	CHECK(!UICardSlot_Request(&slot, GAME_B));
 	CHECK(UICardSlot_WaitingFor(&slot, GAME_B));
 	CHECK(!UICardSlot_WaitingFor(&slot, GAME_A));
-	CHECK(!UICardSlot_TakePending(&slot, id));
+	CHECK(!UICardSlot_TakePending(&slot, id, 1000u));
 	CHECK(!UICardSlot_Request(&slot, GAME_C));
 	CHECK(UICardSlot_WaitingFor(&slot, GAME_C));
 	CHECK(!UICardSlot_WaitingFor(&slot, GAME_B));
@@ -306,9 +306,9 @@ static void checkLatestWins(void)
 	poll(&slot, &card, 1016u, 10000u, &run);
 	CHECK(slot.phase == UI_CARD_SLOT_READY);
 	CHECK(UICardSlot_Busy(&slot));
-	CHECK(UICardSlot_TakePending(&slot, id));
+	CHECK(UICardSlot_TakePending(&slot, id, 10000u));
 	CHECK(memcmp(id, GAME_C, 6) == 0);
-	CHECK(!UICardSlot_TakePending(&slot, id));
+	CHECK(!UICardSlot_TakePending(&slot, id, 10000u));
 	UICardSlot_Sent(&slot, id, 10000u);
 	CHECK(slot.phase == UI_CARD_SLOT_SENT);
 	CHECK(UICardSlot_WaitingFor(&slot, GAME_C));
@@ -377,6 +377,65 @@ static void checkHint(void)
 	CHECK(!UICardSlot_ReadDue(&slot, 0u));
 }
 
+/* An emulator that didn't take the ID: the ID stays pending, is sent again
+ * after 1 s, 2 s, ..., the slot is never read or written as a plain card
+ * meanwhile, and it is given up on (FAILED) after the last try. */
+static void checkSendFailed(void)
+{
+	uiCardSlot_t slot;
+	char id[6];
+	uint64_t now = 0u;
+	unsigned sends = 0u;
+
+	UICardSlot_Init(&slot);
+	CHECK(UICardSlot_Request(&slot, GAME_A));
+	UICardSlot_SendFailed(&slot, GAME_A, true, now);
+	CHECK(slot.mmce && slot.hasPending && slot.phase == UI_CARD_SLOT_IDLE);
+	CHECK(!UICardSlot_ReadableFor(&slot, GAME_A));
+	CHECK(!UICardSlot_WritableFor(&slot, GAME_A, now));
+	CHECK(UICardSlot_WaitingFor(&slot, GAME_A));
+	CHECK(UICardSlot_Busy(&slot));
+	CHECK(!UICardSlot_TakePending(&slot, id, now + UI_CARD_SLOT_RETRY_MS - 1u));
+	for(now = 0u; now < 60000u && UICardSlot_Busy(&slot); now += FRAME_MS) {
+		if(UICardSlot_TakePending(&slot, id, now)) {
+			sends++;
+			CHECK(memcmp(id, GAME_A, 6) == 0);
+			UICardSlot_SendFailed(&slot, id, true, now);
+		}
+	}
+	CHECK(sends == UI_CARD_SLOT_SEND_TRIES - 1u);
+	CHECK(slot.phase == UI_CARD_SLOT_FAILED);
+	CHECK(UICardSlot_FailedFor(&slot, GAME_A));
+	CHECK(!UICardSlot_FailedFor(&slot, GAME_B));
+	CHECK(!UICardSlot_ReadableFor(&slot, GAME_A));
+	CHECK(!UICardSlot_Busy(&slot));
+	/* Opening the game again asks again; a send that works starts over. */
+	CHECK(UICardSlot_Request(&slot, GAME_A));
+	UICardSlot_Sent(&slot, GAME_A, now);
+	CHECK(slot.phase == UI_CARD_SLOT_SENT && slot.sendTries == 0u);
+
+	/* A queued ID whose send fails after the switch ahead of it is not lost. */
+	UICardSlot_Init(&slot);
+	start(&slot, GAME_A, 0u);
+	CHECK(!UICardSlot_Request(&slot, GAME_B));
+	slot.phase = UI_CARD_SLOT_READY;
+	CHECK(UICardSlot_TakePending(&slot, id, 5000u));
+	UICardSlot_SendFailed(&slot, id, false, 5000u);
+	CHECK(slot.hasPending && UICardSlot_WaitingFor(&slot, GAME_B));
+	CHECK(!UICardSlot_ReadableFor(&slot, GAME_B));
+	CHECK(UICardSlot_TakePending(&slot, id, 5000u + UI_CARD_SLOT_RETRY_MS));
+	CHECK(memcmp(id, GAME_B, 6) == 0);
+	UICardSlot_Sent(&slot, id, 6000u);
+	CHECK(slot.phase == UI_CARD_SLOT_SENT && !slot.hasPending);
+
+	/* Nothing ever took an ID there: a failed send is a plain card's. */
+	UICardSlot_Init(&slot);
+	CHECK(UICardSlot_Request(&slot, GAME_A));
+	UICardSlot_SendFailed(&slot, GAME_A, false, 0u);
+	CHECK(slot.phase == UI_CARD_SLOT_IDLE && !slot.hasPending && !slot.mmce);
+	CHECK(UICardSlot_ReadableFor(&slot, GAME_A));
+}
+
 /* A plain memory card: the ID doesn't go out; read as it is, written as it is. */
 static void checkPlainCard(void)
 {
@@ -427,6 +486,7 @@ int main(void)
 	checkLatestWins();
 	checkLongHold();
 	checkHint();
+	checkSendFailed();
 	checkPlainCard();
 	checkManualChange();
 	printf("test_ui_card_slots: %lu checks passed\n", checks);
