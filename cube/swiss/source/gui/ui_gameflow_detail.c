@@ -269,7 +269,7 @@ static void buildSettingsPresentation(uiGameflowDetailSnapshot_t *snapshot,
 }
 
 static void buildSavesPresentation(uiGameflowDetailSnapshot_t *snapshot,
-	const uiSavesGameStats_t *stats)
+	const uiSavesGameStats_t *stats, bool waiting)
 {
 	char updated[17];
 	bool incomplete;
@@ -283,6 +283,23 @@ static void buildSavesPresentation(uiGameflowDetailSnapshot_t *snapshot,
 	}
 	snapshot->saveStats = *stats;
 	incomplete = stats->partial || stats->checkedSources == 0u;
+	/* A card still changing to this game's card: its saves come when it is
+	 * done; that is not a partial scan. */
+	if(waiting) {
+		if(stats->saves == 0u) {
+			copyText(snapshot->savesSummary, sizeof(snapshot->savesSummary),
+				"Memory card loading");
+		}
+		else {
+			(void)snprintf(snapshot->savesSummary, sizeof(snapshot->savesSummary),
+				"%lu save %s | %lu %s", (unsigned long)stats->saves,
+				stats->saves == 1u ? "copy" : "copies", (unsigned long)stats->blocks,
+				stats->blocks == 1u ? "block" : "blocks");
+		}
+		copyText(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
+			"Reading it when it's ready");
+		return;
+	}
 	if(stats->saves == 0u) {
 		copyText(snapshot->savesSummary, sizeof(snapshot->savesSummary),
 			incomplete ? "Unavailable" : "No save copies found");
@@ -376,7 +393,7 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 		UIGameHistory_SaveStatus(source->saveStatus));
 	buildPresentation(snapshot);
 	buildSettingsPresentation(snapshot, source->firstCustomSetting);
-	buildSavesPresentation(snapshot, source->saveStats);
+	buildSavesPresentation(snapshot, source->saveStats, source->savesWaiting);
 	return true;
 }
 

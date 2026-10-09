@@ -129,7 +129,12 @@ def check_save_publication(source: str) -> None:
     assert "context->primary->fileType == IS_FILE" in collection
     assert "valid_gcm_magic(&GCMDisk)" in collection
     assert "memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0" in collection
-    assert "Saves_CollectGameStats(context->gameId, &saveStats);" in collection
+    # Only the cards that hold this game's card now (card_slots.c): never one
+    # a memory card emulator is still changing (indigo#102).
+    assert "(CardSlots_ReadableFor(0, context->gameId) ? 1u : 0u) |" in collection
+    assert "(CardSlots_ReadableFor(1, context->gameId) ? 2u : 0u);" in collection
+    assert "Saves_CollectGameStats(context->gameId, &saveStats, slots);" in collection
+    assert "source.savesWaiting = CardSlots_WaitingFor(context->gameId);" in collection
     assert "source.saveStats = &saveStats;" in collection
     assert source.count("Saves_CollectGameStats(") == 1
     assert "source.saveStats" not in publication[:publication.index(collection)]
@@ -141,6 +146,8 @@ for old, new in (
     ("valid_gcm_magic(&GCMDisk)", "true"),
     ("memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0", "true"),
     ("source.saveStats = &saveStats;", "source.saveStats = NULL;"),
+    ("CardSlots_ReadableFor(0, context->gameId) ? 1u : 0u", "1u"),
+    ("CardSlots_ReadableFor(1, context->gameId) ? 2u : 0u", "2u"),
 ):
     try:
         publication = extract_function(swiss_source, "static bool gameflowPublishDetail(")

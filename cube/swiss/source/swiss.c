@@ -34,6 +34,8 @@
 #include "util.h"
 #include "info.h"
 #include "saves.h"
+#include "card_slots.h"
+#include "config.h"
 #include "httpd.h"
 #include "exi.h"
 #include "bba.h"
@@ -749,6 +751,8 @@ typedef struct {
 
 static void load_file_with_context(gameflowLaunchContext_t *context);
 static void load_game_with_context(gameflowLaunchContext_t *context);
+static void gameflowWaitForCardIds(void);
+static void gameflowWriteCardTrace(void);
 static int gameflow_info_game(ConfigEntry *config,
 	gameflowLaunchContext_t *context);
 static bool gameflowReadResolverHeader(file_handle *file,
@@ -3918,7 +3922,9 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 		msgBox = DrawRepublish(msgBox, DrawMessageBox(D_WARN, "Device is operating in a degraded state.\nThis may impact playability."));
 		sleep(5);
 	}
-	gameID_early_set(&GCMDisk);
+	/* The game's ID to the memory card emulators, which follow it to the
+	 * game's own card; card_slots.c knows when each is done. */
+	CardSlots_RequestGame(&GCMDisk);
 	DrawDispose(msgBox);
 	
 	// Find the config for this game, or default if we don't know about it
@@ -3933,8 +3939,11 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 	if(!(context != NULL ? gameflow_info_game(config, context) :
 		info_game(config))) {
 		free(config);
+		gameflowWriteCardTrace();
 		goto exit;
 	}
+	gameflowWaitForCardIds();
+	gameflowWriteCardTrace();
 	/* A Library launch shows the launch screen from here to the hand-off,
 	 * Boot without prompts included. */
 	if(context != NULL) {
@@ -4480,6 +4489,44 @@ static u32 gameflowDetailInput(u32 buttons)
 	return input;
 }
 
+/* Test build: what the memory card slots did (card_slots.c) goes to the
+ * settings device, swiss/settings/card-trace.txt, when details close or a
+ * game starts, for the issue it tests. Only when there is something new. */
+static void gameflowWriteCardTrace(void)
+{
+	static size_t written;
+	const char *text = CardSlots_Trace();
+	size_t length = strlen(text);
+
+	if(length == 0u || length == written || devices[DEVICE_CONFIG] == NULL ||
+		!config_set_device()) {
+		return;
+	}
+	if(config_file_write("swiss/settings/card-trace.txt", (char *)text)) {
+		written = length;
+	}
+	config_unset_device();
+}
+
+/* A launch with a game ID still waiting behind a memory card's switch sends
+ * it first, once that switch is done, so the game starts with its own card on
+ * the way. Bounded by the switch's own deadline; the box says why. */
+static void gameflowWaitForCardIds(void)
+{
+	uiDrawObj_t *box = NULL;
+	u64 start = gettime();
+
+	while(CardSlots_IdWaiting() && diff_msec(start, gettime()) < 65000u) {
+		if(box == NULL && diff_msec(start, gettime()) > 500u) {
+			box = DrawPublish(DrawProgressBar(true, 0,
+				"Waiting for the memory card\205"));
+		}
+		(void)CardSlots_Poll();
+		VIDEO_WaitVSync();
+	}
+	if(box != NULL) DrawDispose(box);
+}
+
 static bool gameflowPublishDetail(ConfigEntry *config,
 	gameflowLaunchContext_t *context)
 {
@@ -4580,8 +4627,13 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 	if(context->primary != NULL && context->primary->fileType == IS_FILE &&
 		valid_gcm_magic(&GCMDisk) &&
 		memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0) {
-		Saves_CollectGameStats(context->gameId, &saveStats);
+		unsigned slots =
+			(CardSlots_ReadableFor(0, context->gameId) ? 1u : 0u) |
+			(CardSlots_ReadableFor(1, context->gameId) ? 2u : 0u);
+
+		Saves_CollectGameStats(context->gameId, &saveStats, slots);
 		source.saveStats = &saveStats;
+		source.savesWaiting = CardSlots_WaitingFor(context->gameId);
 	}
 	source.customSettings = (uint32_t)settings_game_custom_count(config);
 	source.firstCustomSetting = settings_game_custom_first(config);
@@ -4677,6 +4729,11 @@ static int gameflow_info_game(ConfigEntry *config,
 					(padsButtonsHeld() & detailButtons) != 0u);
 				if(analog == UI_MENU_INPUT_UP) buttons |= BUTTON_UP;
 				if(analog == UI_MENU_INPUT_DOWN) buttons |= BUTTON_DOWN;
+				/* A card finished changing to this game's card (or gave
+				 * up): read the saves again. */
+				if(buttons == 0u && CardSlots_Poll()) {
+					gameflowPublishDetail(config, context);
+				}
 			} while(buttons == 0u);
 			memset(&actionSnapshot, 0, sizeof(actionSnapshot));
 			actionSnapshot.flags = UI_GAMEFLOW_DETAIL_VALID |
