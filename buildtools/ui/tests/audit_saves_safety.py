@@ -299,8 +299,13 @@ def check(source: str) -> None:
     if load.count("cardReplace(") != 1:
         raise AssertionError("Detail's load replaces a card's save outside its one guard")
     # And puts the card's own copy back when the chosen one doesn't go on.
+    # It deletes the card's own copy only once that copy reads back as the
+    # one just kept in the Save Folder: a card swapped since keeps its save.
     replace = function(source, "cardReplace")
-    ordered(replace, "gone = found != NULL && device->deleteFile(found) == 0;",
+    ordered(replace, "now = found != NULL ? saveRead(found, &nowLength) : NULL;",
+            "same = now != NULL && nowLength == ownLength",
+            "gone = same && device->deleteFile(found) == 0;",
+            "if(!same) {", "return false;",
             "if(!gone) {", "return false;",
             "if(cardWrite(slot, entry, blocks, blockBytes, failed, sizeof(failed))) {",
             "else if(cardWrite(slot, own, own + UI_SAVES_ENTRY_SIZE,")
@@ -311,6 +316,9 @@ def mutants(source: str) -> list[tuple[str, str]]:
         ("Detail's load replaces a card's save without keeping it",
          source.replace("if(own == NULL ||\n\t\t\t\tfolderWrite(folder, name, own, ownLength, why, whySize)) {",
                         "if(true) {")),
+        ("Detail's load deletes a card's save it didn't keep",
+         source.replace("gone = same && device->deleteFile(found) == 0;",
+                        "gone = found != NULL && device->deleteFile(found) == 0;")),
         ("Detail's load never puts the card's own copy back",
          source.replace("else if(cardWrite(slot, own, own + UI_SAVES_ENTRY_SIZE,",
                         "else if(false && cardWrite(slot, own, own + UI_SAVES_ENTRY_SIZE,")),

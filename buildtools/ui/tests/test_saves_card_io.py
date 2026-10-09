@@ -130,6 +130,14 @@ typedef struct {
 static record cards[2][8];
 static bool failWrite, failReadBack, wrongReadIdentity;
 static int failWritesLeft, failReadBacksLeft;
+/* Reads that read back true before failReadBacksLeft starts: cardReplace
+ * reads the card's own copy once more before it deletes it. */
+static int failReadBacksSkip;
+static bool readBackFails(void) {
+    if(failReadBack) return true;
+    if(failReadBacksLeft > 0 && failReadBacksSkip > 0) { failReadBacksSkip--; return false; }
+    return failReadBacksLeft > 0 && failReadBacksLeft--;
+}
 static int writes, deletes, mounts;
 static int lookup(int slot, const char *name) {
     for(int i = 0; i < 8; i++) {
@@ -170,7 +178,7 @@ static s32 CARD_Create(int slot, const char *name, u32 length, card_file *file) 
 static s32 CARD_Read(card_file *file, void *buffer, u32 length, u32 at) {
     assert(at == 0 && length == 8192);
     memcpy(buffer, cards[file->chn][file->filenum].bytes, length);
-    if(failReadBack || (failReadBacksLeft > 0 && failReadBacksLeft--)) ((u8 *)buffer)[0] ^= 1;
+    if(readBackFails()) ((u8 *)buffer)[0] ^= 1;
     return CARD_ERROR_READY;
 }
 static s32 CARD_ReadUnaligned(card_file *file, void *buffer, u32 length, u32 at, int slot) {
@@ -247,7 +255,7 @@ static void add(int slot, int i, const char *game, const char *maker, u8 byte) {
 static void reset(void) {
     memset(cards, 0, sizeof(cards)); writes = deletes = mounts = 0;
     failWrite = failReadBack = wrongReadIdentity = false;
-    failWritesLeft = failReadBacksLeft = 0;
+    failWritesLeft = failReadBacksLeft = failReadBacksSkip = 0;
     devices[0] = (DEVICEHANDLER_INTERFACE){ &initial_CARDA, mounted, info,
         readDir, deviceHandler_CARD_readFile, deviceHandler_CARD_writeFile,
         deviceHandler_CARD_deleteFile, closeFile, seekFile };
@@ -350,6 +358,7 @@ static void replaceCases(void) {
         if(none) assert(deviceHandler_CARD_deleteFile(&own) == 0);
         failWritesLeft = failure == 1 ? 1 : failure == 3 ? 2 : 0;
         failReadBacksLeft = failure == 2 ? 1 : 0;
+        failReadBacksSkip = none ? 0 : 1;
         int before = deletes;
         bool ok = cardReplace(1, entry, blocks, sizeof(blocks),
             none ? NULL : ownData, ownLength, why, sizeof(why));
@@ -370,6 +379,23 @@ static void replaceCases(void) {
         assert(deletes - before == (none ? 0 : 1) + (ok ? 0 : failure == 3 ? 2 : 1));
         free(ownData);
     }
+    /* The card was swapped after its own copy went to the Save Folder: the
+     * save there now isn't that copy, so nothing on the card is touched. */
+    reset(); add(1, 0, "GALE", "01", 'E'); add(1, 1, "GZLE", "01", 'O');
+    file_handle own; handle(&own, 1, 1);
+    u32 ownLength = 0; u8 *ownData = saveRead(&own, &ownLength);
+    assert(ownData != NULL && ownLength == 8256);
+    u8 entry[64], blocks[8192]; char why[256] = "";
+    memcpy(entry, ownData, 64); entry[0x38] = 0; entry[0x39] = 1;
+    memset(blocks, 'N', sizeof(blocks));
+    memset(cards[1][1].bytes, 'S', 8192);
+    int before = deletes, wrote = writes;
+    assert(!cardReplace(1, entry, blocks, sizeof(blocks), ownData, ownLength, why, sizeof(why)));
+    assert(strstr(why, "changed") != NULL && deletes == before && writes == wrote);
+    int at = saveOn(1, "GZLE");
+    assert(at >= 0 && cards[1][at].bytes[0] == 'S' && cards[1][at].bytes[8191] == 'S');
+    verifySurvivor(1, 'E');
+    free(ownData);
 }
 int main(void) {
     replaceCases();

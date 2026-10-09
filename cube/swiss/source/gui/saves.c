@@ -1307,7 +1307,8 @@ static void showFolderIdentity(file_handle *chosen)
 		uiFolderAction_t action = UIFolder_Input(snapshot, actions);
 		if(action == UI_FOLDER_ACTION_CANCEL) break;
 		if(action == UI_FOLDER_ACTION_SAVE) {
-			if(config_set_folder_color(chosen->name, snapshot->color)) break;
+			/* Memory Cards holds the settings device: keep it mounted. */
+			if(config_set_folder_color(chosen->name, snapshot->color, false)) break;
 			strcpy(snapshot->status, "Could not save. Check the Configuration Device or the 32-folder limit.");
 		}
 		DrawUpdateMemoryCardFolder(page, snapshot);
@@ -1763,12 +1764,30 @@ static bool cardReplace(int slot, const u8 *entry, const u8 *blocks,
 	file_handle *found;
 	char failed[128];
 	int count, used;
-	bool gone;
+	u8 *now;
+	u32 nowLength = 0;
+	bool readAgain, same, gone;
 
 	if(own != NULL) {
+		/* Only the copy just kept in the Save Folder goes: a card swapped
+		 * since then keeps its save. */
 		found = cardFind(slot, entry, &entries, &count, &used);
-		gone = found != NULL && device->deleteFile(found) == 0;
+		now = found != NULL ? saveRead(found, &nowLength) : NULL;
+		readAgain = found == NULL || now != NULL;
+		/* The same save: game, maker and name, and every byte of it. */
+		same = now != NULL && nowLength == ownLength && !memcmp(now, own, 6) &&
+			!strncmp((const char *)now + 8, (const char *)own + 8, CARD_FILENAMELEN) &&
+			!memcmp(now + UI_SAVES_ENTRY_SIZE, own + UI_SAVES_ENTRY_SIZE,
+				ownLength - UI_SAVES_ENTRY_SIZE);
+		free(now);
+		gone = same && device->deleteFile(found) == 0;
 		free(entries);
+		if(!same) {
+			snprintf(why, whySize, readAgain ?
+				"The card in %s changed, so nothing was replaced." :
+				"%s's own copy couldn't be read again.", slotName(slot));
+			return false;
+		}
 		if(!gone) {
 			snprintf(why, whySize, "%s's own copy couldn't be replaced.",
 				slotName(slot));

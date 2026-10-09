@@ -43,8 +43,9 @@ static void UICheats_Fit(char *out,size_t capacity,const char *text,int width,fl
  int (*measure)(const char*))
 {(void)width;(void)scale;(void)measure;snprintf(out,capacity,"%s",text);}
 static uint8_t config_folder_color(const char *path) {return UIFolder_GetColor(&colors,path);}
-static bool config_set_folder_color(const char *path,uint8_t color)
-{++writes;return !failSave && UIFolder_SetColor(&colors,path,color);}
+/* Memory Cards holds the settings device: it must not be let go. */
+static bool config_set_folder_color(const char *path,uint8_t color,bool checkConfigDevice)
+{assert(!checkConfigDevice);++writes;return !failSave && UIFolder_SetColor(&colors,path,color);}
 static void folderContents(uiFolderSnapshot_t *snapshot,file_handle *file)
 {(void)file;++reads;strcpy(snapshot->summary,"2 save files, 0 card images, 0 folders");}
 static uiDrawObj_t *DrawMemoryCardFolder(const uiFolderSnapshot_t *snapshot)

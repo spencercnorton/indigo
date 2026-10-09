@@ -6440,17 +6440,6 @@ static int gameflowSaveSlot(const savesCopies_t *copies)
 	return -1;
 }
 
-/* The first copy on that slot's card, the one the game will read. -1: none. */
-static int gameflowSaveInUse(const savesCopies_t *copies, int slot)
-{
-	unsigned i;
-
-	for(i = 0u; slot >= 0 && i < copies->count; i++) {
-		if(copies->copy[i].source == (savesCopySource_t)slot) return (int)i;
-	}
-	return -1;
-}
-
 static const char *gameflowSaveWhere(const savesCopy_t *copy)
 {
 	switch(copy->source) {
@@ -6461,19 +6450,31 @@ static const char *gameflowSaveWhere(const savesCopy_t *copy)
 	}
 }
 
-/* The copy Left and Right show, while there are two or more to choose from. */
+/* Left and Right choose a copy only where a launch can put it on the card the
+ * game reads: two or more copies, a card in a slot, and Emulate Memory Card
+ * off (the game would read its card image instead). */
+static bool gameflowSaveChoosable(const gameflowLaunchContext_t *context)
+{
+	return context->savesScanned && gameflowSaveCopies.count >= 2u &&
+		context->saveSlot >= 0 && !swissSettings.emulateMemoryCard;
+}
+
+/* The copy Left and Right show, while there is a choice. Without one the box
+ * shows the totals, with no « SAVES ». */
 static void gameflowSaveChoiceSource(const gameflowLaunchContext_t *context,
 	uiGameflowDetailSource_t *source)
 {
 	const savesCopy_t *copy;
 
-	if(gameflowSaveCopies.count < 2u || context->saveChoice < 0 ||
+	if(!gameflowSaveChoosable(context)) {
+		return;
+	}
+	source->saveCopies = gameflowSaveCopies.count;
+	if(context->saveChoice < 0 ||
 		(unsigned)context->saveChoice >= gameflowSaveCopies.count) {
-		source->saveCopies = gameflowSaveCopies.count;
 		return;
 	}
 	copy = &gameflowSaveCopies.copy[context->saveChoice];
-	source->saveCopies = gameflowSaveCopies.count;
 	source->saveChoice = (uint32_t)context->saveChoice + 1u;
 	source->saveChoiceEntry = copy->entry;
 	source->saveChoiceWhere = gameflowSaveWhere(copy);
@@ -6512,7 +6513,8 @@ static bool gameflowSaveAsk(const char *text)
 
 /* Before a launch: a copy chosen with Left and Right that isn't the one on
  * the card the game reads goes on that card first, once A says so. False:
- * Detail stays open (B, or it didn't go on). */
+ * Detail stays open (B, which goes back to the card's own copy, or it didn't
+ * go on). Without a choice (gameflowSaveChoosable) the card stays as it is. */
 static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
 {
 	const savesCopy_t *copy;
@@ -6521,30 +6523,20 @@ static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
 	uiDrawObj_t *box;
 	bool ok;
 
-	if(!context->savesScanned || context->saveChoice < 0 ||
+	if(!gameflowSaveChoosable(context) || context->saveChoice < 0 ||
 		(unsigned)context->saveChoice >= gameflowSaveCopies.count) {
 		return true;
 	}
 	copy = &gameflowSaveCopies.copy[context->saveChoice];
-	if(context->saveSlot >= 0 &&
-		copy->source == (savesCopySource_t)context->saveSlot) {
+	if(copy->source == (savesCopySource_t)context->saveSlot) {
 		return true;
-	}
-	if(context->saveSlot < 0) {
-		gameflowSaveAsk("There's no memory card for this save.\n"
-			"Insert one, or choose the save on a card.\nA  OK");
-		return false;
-	}
-	if(swissSettings.emulateMemoryCard) {
-		gameflowSaveAsk("Emulate Memory Card is on, so the game reads its\n"
-			"card image, not the card in the slot.\nA  OK");
-		return false;
 	}
 	snprintf(text, sizeof(text), "Start with the save from %s?\n"
 		"%s's own copy of it goes to the Save Folder first.\n"
 		"A  LOAD    B  KEEP", gameflowSaveWhere(copy),
 		context->saveSlot == 0 ? "Slot A" : "Slot B");
 	if(!gameflowSaveAsk(text)) {
+		context->saveChoice = -1;
 		return false;
 	}
 	box = DrawPublish(DrawProgressBar(true, 0, "Loading save\205"));
@@ -6670,8 +6662,8 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 				&gameflowSaveCopies);
 			context->savesScanned = true;
 			context->saveSlot = gameflowSaveSlot(&gameflowSaveCopies);
-			context->saveChoice = gameflowSaveInUse(&gameflowSaveCopies,
-				context->saveSlot);
+			/* The totals first: the card as it is. */
+			context->saveChoice = -1;
 		}
 		source.saveStats = &context->saveStats;
 		gameflowSaveChoiceSource(context, &source);
@@ -6785,17 +6777,16 @@ static int gameflow_info_game(ConfigEntry *config,
 					DrawGameflowPollPosters();
 				}
 			} while(buttons == 0u);
-			/* Left and Right choose the save copy to start with, while the
-			 * Saves box has two or more. */
+			/* Left and Right choose the save copy to start with, while there
+			 * is a choice: each copy, then the totals again (-1, the card as
+			 * it is), so a choice can always be undone. */
 			if(buttons & (BUTTON_LEFT | BUTTON_RIGHT)) {
-				int copies = (int)gameflowSaveCopies.count;
-
-				if(context->savesScanned && copies >= 2) {
+				if(gameflowSaveChoosable(context)) {
+					int span = (int)gameflowSaveCopies.count + 1;
 					int step = (buttons & BUTTON_RIGHT) ? 1 : -1;
 
-					context->saveChoice = context->saveChoice < 0 ?
-						(step > 0 ? 0 : copies - 1) :
-						(context->saveChoice + step + copies) % copies;
+					context->saveChoice = (context->saveChoice + 1 + step + span) %
+						span - 1;
 					gameflowPublishDetail(config, context);
 					menuaudio_blip();
 				}

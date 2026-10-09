@@ -45,21 +45,76 @@ static void statsWrite32(u8 *out, u32 value)
 	out[3] = (u8)value;
 }
 
-/* A copy the scan counted, while there's room in the list. */
+static bool statsOnCard(const savesCopy_t *copy)
+{
+	return copy->source == SAVES_COPY_SLOT_A || copy->source == SAVES_COPY_SLOT_B;
+}
+
+/* A copy the scan counted. Once the list is full, the oldest Save Folder
+ * copy makes room for a card's copy (the one a game reads always stays) or
+ * for a newer Save Folder copy, so the newest are the ones to choose. The
+ * ones after it move up and the new one goes last: the list stays in the
+ * order the scan found them, so two cards' copies keep Slot A's first. */
 static void statsCopy(savesCopies_t *copies, savesCopySource_t source,
 	const u8 entry[UI_SAVES_ENTRY_SIZE], const char *path, u32 size,
 	unsigned ordinal)
 {
-	savesCopy_t *copy;
+	bool card = source == SAVES_COPY_SLOT_A || source == SAVES_COPY_SLOT_B;
+	savesCopy_t *copy = NULL;
+	unsigned i;
 
-	if(copies == NULL || copies->count >= SAVES_COPIES_MAX) return;
-	copy = &copies->copy[copies->count++];
+	if(copies == NULL) return;
+	if(copies->count < SAVES_COPIES_MAX) {
+		copy = &copies->copy[copies->count++];
+	}
+	else {
+		for(i = 0u; i < copies->count; i++) {
+			if(!statsOnCard(&copies->copy[i]) && (copy == NULL ||
+				UISaves_UpdatedSeconds(copies->copy[i].entry) <
+				UISaves_UpdatedSeconds(copy->entry))) {
+				copy = &copies->copy[i];
+			}
+		}
+		if(copy == NULL || (!card &&
+			UISaves_UpdatedSeconds(entry) <= UISaves_UpdatedSeconds(copy->entry))) {
+			return;
+		}
+		memmove(copy, copy + 1,
+			(size_t)(&copies->copy[copies->count - 1u] - copy) * sizeof(*copy));
+		copy = &copies->copy[copies->count - 1u];
+	}
 	memset(copy, 0, sizeof(*copy));
 	copy->source = source;
 	if(path != NULL) snprintf(copy->path, sizeof(copy->path), "%s", path);
 	copy->size = size;
 	copy->ordinal = ordinal;
 	memcpy(copy->entry, entry, UI_SAVES_ENTRY_SIZE);
+}
+
+/* Whether a goes before b on the list: the cards' copies first, as the scan
+ * found them, then the Save Folder's newest first. */
+static bool statsBefore(const savesCopy_t *a, const savesCopy_t *b)
+{
+	if(statsOnCard(a) != statsOnCard(b)) return statsOnCard(a);
+	return !statsOnCard(a) &&
+		UISaves_UpdatedSeconds(a->entry) > UISaves_UpdatedSeconds(b->entry);
+}
+
+/* The list in that order (a stable insertion sort of at most eight): Right
+ * steps from the card's own copy to the latest one kept. */
+static void statsArrange(savesCopies_t *copies)
+{
+	savesCopy_t moving;
+	unsigned i, j;
+
+	if(copies == NULL) return;
+	for(i = 1u; i < copies->count; i++) {
+		moving = copies->copy[i];
+		for(j = i; j > 0u && statsBefore(&moving, &copies->copy[j - 1u]); j--) {
+			copies->copy[j] = copies->copy[j - 1u];
+		}
+		copies->copy[j] = moving;
+	}
 }
 
 static void statsSlot(const char gameId[6], uiSavesGameStats_t *stats,
@@ -252,4 +307,5 @@ void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats,
 	else stats->partial = true;
 	for(i = 0u; i < 2u; i++) statsSlot(gameId, stats, i, copies);
 	if(mounted) config_unset_device();
+	statsArrange(copies);
 }

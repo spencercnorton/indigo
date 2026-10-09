@@ -38,8 +38,9 @@ static bool globalFileLoaded;
 static void ensure_path(int slot, char *path, char *old, bool hidden)
 { (void)slot; (void)path; (void)old; (void)hidden; ++mkdirs; }
 static char stored[2048], written[8192];
-static int config_set_device(void) { return !mountFailure; }
-static void config_unset_device(void) {}
+static unsigned deviceSets, deviceUnsets;
+static int config_set_device(void) { ++deviceSets; return !mountFailure; }
+static void config_unset_device(void) { ++deviceUnsets; }
 static void concat_path(char *out, const char *base, const char *leaf)
 {
  assert(strlen(base) + strlen(leaf) + 2u < PATHNAME_MAX);
@@ -96,7 +97,7 @@ int main(void)
  (void)globalOldKeys; (void)gameFileKeys;
  uiFolderColors_t before;
  reset();
- assert(config_set_folder_color("sda:/swiss/saves/Spaces #;~%=\n", 4u));
+ assert(config_set_folder_color("sda:/swiss/saves/Spaces #;~%=\n", 4u, true));
  assert(strstr(written, "# Keep this note") != NULL);
  assert(strstr(written, "Menu Color=Gold") != NULL);
  assert(strstr(written, "Future Setting=on") != NULL);
@@ -110,21 +111,34 @@ int main(void)
   if(fault == 2) writeFailure = true;
   if(fault == 3) { readFailure = true; unknownStat = true; }
   if(fault == 4) { readFailure = true; liveExists = false; recoveryExists = true; }
-  assert(!config_set_folder_color("sda:/swiss/saves/second", 0u));
+  assert(!config_set_folder_color("sda:/swiss/saves/second", 0u, true));
   assert(memcmp(&folderColors, &before, sizeof(before)) == 0);
   assert(defaultWrites == 0u);
   if(fault != 2) assert(writes == 0u);
  }
  reset(); liveExists = recoveryExists = false;
- assert(config_set_folder_color("sda:/swiss/saves/new", 3u));
+ assert(config_set_folder_color("sda:/swiss/saves/new", 3u, true));
  assert(defaultWrites == 0u && writes == 1u && mkdirs == 2u);
  assert(globalFileLoaded);
  assert(strstr(written, "Menu Color") == NULL);
  assert(strstr(written, "Memory Card Folder Colors=") == written);
  reset(); liveExists = recoveryExists = false; writeFailure = true; before = folderColors;
- assert(!config_set_folder_color("sda:/swiss/saves/new", 3u));
+ assert(!config_set_folder_color("sda:/swiss/saves/new", 3u, true));
  assert(memcmp(&folderColors, &before, sizeof(before)) == 0);
- puts("production folder save, independent settings and fault rollback: PASS");
+ /* Memory Cards holds the settings device for its whole visit: a save from
+  * there neither mounts it again nor lets it go. */
+ reset(); deviceSets = deviceUnsets = 0;
+ assert(config_set_folder_color("sda:/swiss/saves/held", 2u, false));
+ assert(deviceSets == 0u && deviceUnsets == 0u && writes == 1u);
+ reset(); deviceSets = deviceUnsets = 0;
+ assert(config_set_folder_color("sda:/swiss/saves/own", 2u, true));
+ assert(deviceSets == 1u && deviceUnsets == 1u);
+ /* Without a settings device it saves nothing, mounted or not. */
+ reset(); devices[DEVICE_CONFIG] = NULL; before = folderColors;
+ assert(!config_set_folder_color("sda:/swiss/saves/held", 2u, false));
+ assert(memcmp(&folderColors, &before, sizeof(before)) == 0 && writes == 0u);
+ devices[DEVICE_CONFIG] = &device;
+ puts("production folder save, independent settings, fault rollback and a held device: PASS");
  return 0;
 }
 '''

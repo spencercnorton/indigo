@@ -71,6 +71,12 @@ static unsigned listingMode, fileReads, fileCloses, configCloses, probes[2];
 static unsigned mounts[2], unmounts[2], statusReads, maximumRead;
 static int probeResult[2];
 static card_dir physical;
+/* listingMode 3: this many .gci copies, each dated a second apart in an
+ * order that isn't the listing's (copy i is updated + dateOf(i)); 4: the
+ * same copies listed newest first (5 is its own inverse mod 12). */
+#define DATED_COPIES 12u
+static u8 *dated[DATED_COPIES];
+static u32 dateOf(unsigned i) { return (i * 5u) % DATED_COPIES; }
 static unsigned enumeration[2];
 static u32 updated;
 static void *host_memalign(size_t alignment, size_t bytes)
@@ -122,7 +128,7 @@ static s32 CARD_FindNext(card_dir *dir)
 }
 static s32 CARD_GetStatus(s32 slot, int file, card_stat *status)
 {
-	assert(slot == 0 && file == physical.fileno); ++statusReads;
+	assert(slot >= 0 && slot < 2 && file == physical.fileno); ++statusReads;
 	if(statusError) return CARD_ERROR_BUSY;
 	memcpy(status->gamecode, physical.gamecode, 4u);
 	memcpy(status->company, physical.company, 2u);
@@ -149,7 +155,8 @@ static s32 readFile(file_handle *f, void *out, u32 bytes)
 static s32 closeFile(file_handle *f) { (void)f; ++fileCloses; return 0; }
 static s32 readDir(file_handle *f, file_handle **files, u32 kind)
 {
-	unsigned count = listingMode == 1u ? 17u : listingMode == 2u ? 300u : 5u;
+	unsigned count = listingMode == 1u ? 17u : listingMode == 2u ? 300u :
+		listingMode >= 3u ? DATED_COPIES : 5u;
 	unsigned i;
 	assert(kind == UINT32_MAX && !strcmp(f->name, "sd:/swiss/saves"));
 	if(directoryError) return -1;
@@ -157,7 +164,9 @@ static s32 readDir(file_handle *f, file_handle **files, u32 kind)
 	for(i = 0u; i < count; i++) {
 		file_handle *entry = &(*files)[i];
 		entry->fileType = IS_FILE; entry->device = &sd;
-		entry->data = gci; entry->size = (u32)gciSize;
+		entry->data = listingMode == 3u ? dated[i] :
+			listingMode == 4u ? dated[(DATED_COPIES - 1u - i) * 5u % DATED_COPIES] : gci;
+		entry->size = (u32)gciSize;
 		snprintf(entry->name, sizeof(entry->name), "sd:/swiss/saves/save%u.gci", i);
 		if(listingMode == 1u || (listingMode == 0u && i == 1u)) {
 			snprintf(entry->name, sizeof(entry->name), "sd:/swiss/saves/card%u.raw", i);
@@ -215,6 +224,13 @@ int main(int argc, char **argv)
 	__device_card_a.deinit = __device_card_b.deinit = unmount;
 	sd.initial = &initial[2]; sd.readDir = readDir; sd.seekFile = seek;
 	sd.readFile = readFile; sd.closeFile = closeFile;
+	for(i = 0u; i < DATED_COPIES; i++) {
+		u32 when = updated + dateOf(i);
+		dated[i] = malloc(gciSize); assert(dated[i]);
+		memcpy(dated[i], gci, gciSize);
+		dated[i][0x28] = (u8)(when >> 24); dated[i][0x29] = (u8)(when >> 16);
+		dated[i][0x2a] = (u8)(when >> 8); dated[i][0x2b] = (u8)when;
+	}
 	reset(); Saves_CollectGameStats(id, &stats, NULL);
 	assert(stats.saves == 3u && stats.blocks == 6u);
 	assert(stats.sourceSaves[0] == 1u && stats.sourceSaves[1] == 0u && stats.sourceSaves[2] == 2u);
@@ -222,27 +238,60 @@ int main(int argc, char **argv)
 	assert(stats.updatedKnown && stats.latestUpdated == updated + 500u);
 	assert(fileReads == 2u && fileCloses == 2u && maximumRead == 40960u);
 	assert(configCloses == 1u && unmounts[0] == 1u && mounts[1] == 0u);
-	/* The same scan lists where each copy is, for Detail's choice: the Save
-	 * Folder's .gci and its card image's save, then the card in Slot A. */
+	/* The same scan lists where each copy is, for Detail's choice: the card
+	 * in Slot A first, then the Save Folder's .gci and its card image's save
+	 * (the same date: in the order the folder lists them). */
 	reset(); memset(&copies, 0xa5, sizeof(copies));
 	Saves_CollectGameStats(id, &stats, &copies);
 	assert(stats.saves == 3u && copies.count == 3u);
 	assert(copies.cards[0] && !copies.cards[1]);
-	assert(copies.copy[0].source == SAVES_COPY_FILE &&
-		!strcmp(copies.copy[0].path, "sd:/swiss/saves/save0.gci") &&
-		copies.copy[0].size == (u32)gciSize && !memcmp(copies.copy[0].entry, gci, 64u));
-	assert(copies.copy[1].source == SAVES_COPY_IMAGE &&
-		!strcmp(copies.copy[1].path, "sd:/swiss/saves/card1.raw") &&
-		copies.copy[1].size == (u32)imageSize && copies.copy[1].ordinal == 0u &&
-		!memcmp(copies.copy[1].entry, id, 6u));
-	assert(copies.copy[2].source == SAVES_COPY_SLOT_A &&
-		!memcmp(copies.copy[2].entry, id, 6u) &&
-		!memcmp(copies.copy[2].entry + 8, physical.filename, 32u) &&
-		copies.copy[2].entry[0x39] == 2u && copies.copy[2].path[0] == '\0');
-	/* The list holds the first eight; the totals still count every one. */
+	assert(copies.copy[0].source == SAVES_COPY_SLOT_A &&
+		!memcmp(copies.copy[0].entry, id, 6u) &&
+		!memcmp(copies.copy[0].entry + 8, physical.filename, 32u) &&
+		copies.copy[0].entry[0x39] == 2u && copies.copy[0].path[0] == '\0');
+	assert(copies.copy[1].source == SAVES_COPY_FILE &&
+		!strcmp(copies.copy[1].path, "sd:/swiss/saves/save0.gci") &&
+		copies.copy[1].size == (u32)gciSize && !memcmp(copies.copy[1].entry, gci, 64u));
+	assert(copies.copy[2].source == SAVES_COPY_IMAGE &&
+		!strcmp(copies.copy[2].path, "sd:/swiss/saves/card1.raw") &&
+		copies.copy[2].size == (u32)imageSize && copies.copy[2].ordinal == 0u &&
+		!memcmp(copies.copy[2].entry, id, 6u));
+	/* The list holds eight; the totals still count every one. */
 	reset(); listingMode = 1u; probeResult[0] = CARD_ERROR_NOCARD;
 	Saves_CollectGameStats(id, &stats, &copies);
 	assert(stats.saves == 16u && copies.count == SAVES_COPIES_MAX && !copies.cards[0]);
+	/* However many the Save Folder holds, the card's own copy, the one the
+	 * game reads, stays on the list, first. */
+	reset(); listingMode = 1u;
+	Saves_CollectGameStats(id, &stats, &copies);
+	assert(stats.saves == 17u && copies.count == SAVES_COPIES_MAX && copies.cards[0]);
+	assert(copies.copy[0].source == SAVES_COPY_SLOT_A);
+	for(i = 1u; i < copies.count; i++) assert(copies.copy[i].source == SAVES_COPY_IMAGE);
+	/* Of the Save Folder's copies the newest stay, newest first, whatever
+	 * order the folder lists them in. */
+	reset(); listingMode = 3u;
+	Saves_CollectGameStats(id, &stats, &copies);
+	assert(stats.saves == DATED_COPIES + 1u && copies.count == SAVES_COPIES_MAX);
+	assert(copies.copy[0].source == SAVES_COPY_SLOT_A);
+	for(i = 1u; i < copies.count; i++) {
+		assert(copies.copy[i].source == SAVES_COPY_FILE);
+		assert(UISaves_UpdatedSeconds(copies.copy[i].entry) ==
+			updated + DATED_COPIES - i);
+	}
+	/* Two cards' copies keep the order the slots were read in, Slot A's
+	 * first, whichever Save Folder copies they took the place of (here the
+	 * oldest is last on the list, the next oldest just before it). */
+	reset(); listingMode = 4u; probeResult[1] = CARD_ERROR_READY;
+	Saves_CollectGameStats(id, &stats, &copies);
+	assert(stats.saves == DATED_COPIES + 2u && copies.count == SAVES_COPIES_MAX);
+	assert(copies.cards[0] && copies.cards[1]);
+	assert(copies.copy[0].source == SAVES_COPY_SLOT_A &&
+		copies.copy[1].source == SAVES_COPY_SLOT_B);
+	for(i = 2u; i < copies.count; i++) {
+		assert(copies.copy[i].source == SAVES_COPY_FILE);
+		assert(UISaves_UpdatedSeconds(copies.copy[i].entry) ==
+			updated + DATED_COPIES + 1u - i);
+	}
 	/* No copy of another game's save, and an empty list without an ID. */
 	reset(); Saves_CollectGameStats(wrong, &stats, &copies);
 	assert(stats.saves == 0u && copies.count == 0u && copies.cards[0]);
@@ -289,8 +338,9 @@ int main(int argc, char **argv)
 	assert(stats.saves == 0u && stats.checkedSources == 0u && fileReads == 0u && probes[0] == 0u);
 	Saves_CollectGameStats(NULL, &stats, NULL); assert(stats.saves == 0u);
 	Saves_CollectGameStats(id, NULL, NULL);
+	for(i = 0u; i < DATED_COPIES; i++) free(dated[i]);
 	free(image); free(gci);
-	puts("save stats: exact IDs, real RAW metadata, bounded reads, partial failures, retained mounts and copy places PASS");
+	puts("save stats: exact IDs, real RAW metadata, bounded reads, partial failures, retained mounts, copy places, the cards first in slot order and the newest kept PASS");
 	return 0;
 }
 '''

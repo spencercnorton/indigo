@@ -23,8 +23,8 @@ typedef struct {
 	uint8_t entry[UI_SAVES_ENTRY_SIZE];	/* game, maker, name, blocks and date */
 } savesCopy_t;
 
-/* The first SAVES_COPIES_MAX copies the scan counted, and the slots that hold
- * a memory card it read. */
+/* Up to SAVES_COPIES_MAX copies the scan counted: the cards' first, then the
+ * Save Folder's newest first, and the slots that hold a memory card it read. */
 typedef struct {
 	unsigned count;
 	savesCopy_t copy[SAVES_COPIES_MAX];

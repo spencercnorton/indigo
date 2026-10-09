@@ -699,7 +699,9 @@ static bool config_folder_settings_absent(char *path) {
 	return status == FR_NO_FILE || status == FR_NO_PATH;
 }
 
-bool config_set_folder_color(const char *path, uint8_t color) {
+/* checkConfigDevice false: the caller holds the settings device mounted (Memory
+ * Cards does for its whole visit), so it is neither mounted nor let go here. */
+bool config_set_folder_color(const char *path, uint8_t color, bool checkConfigDevice) {
 	uiFolderColors_t *previous = malloc(sizeof(*previous));
 	char *line = NULL;
 	size_t length = 0u;
@@ -708,7 +710,7 @@ bool config_set_folder_color(const char *path, uint8_t color) {
 	if(previous == NULL) return false;
 	*previous = folderColors;
 	if(!UIFolder_SetColor(&folderColors, path, color)) { free(previous); return false; }
-	if(!config_set_device()) goto done;
+	if(checkConfigDevice ? !config_set_device() : devices[DEVICE_CONFIG] == NULL) goto done;
 	fp = open_memstream(&line, &length);
 	if(fp != NULL) {
 		char configPath[PATHNAME_MAX];
@@ -735,7 +737,7 @@ bool config_set_folder_color(const char *path, uint8_t color) {
 		}
 		free(line);
 	}
-	config_unset_device();
+	if(checkConfigDevice) config_unset_device();
 done:
 	if(!result) folderColors = *previous;
 	else globalFileLoaded = true;

@@ -226,28 +226,55 @@ for mutant_controller, mutant_mapping in detail_input_mutants:
     else:
         raise AssertionError("Detail input regression escaped wiring audit")
 
-def check_save_load(controller: str, load: str) -> None:
+B_KEEPS = "if(!gameflowSaveAsk(text)) {\n\t\tcontext->saveChoice = -1;\n\t\treturn false;\n\t}"
+STEPS = "\t\t\tif(buttons & (BUTTON_LEFT | BUTTON_RIGHT)) {\n\t\t\t\tif(gameflowSaveChoosable(context)) {"
+
+
+def check_save_load(controller: str, load: str, choosable: str, choice: str) -> None:
     # A save copy chosen with Left and Right goes on the card only after A in
     # its own box, and before the launch screen takes over: B, or a load that
-    # didn't go on, keeps Detail open with the card as it was.
+    # didn't go on, keeps Detail open, B with the card as it is again.
     boot = controller.index("if((action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||")
     load_at = controller.index("!gameflowLoadChosenSave(context)) {", boot)
     assert load_at < controller.index(
         "DrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LAUNCH);", boot)
-    ask = load.index("if(!gameflowSaveAsk(text)) {\n\t\treturn false;\n\t}")
+    ask = load.index(B_KEEPS)
     assert load.count("Saves_LoadCopy(") == 1 and ask < load.index("Saves_LoadCopy(")
-    assert "swissSettings.emulateMemoryCard" in load[:ask]
+    # There is a choice only where a launch can put it on the card the game
+    # reads: a card in a slot, Emulate Memory Card off. Without one, Left and
+    # Right choose nothing, the box shows no « SAVES », and Launch leaves the
+    # card as it is (it never asks, never refuses).
+    assert "context->saveSlot >= 0" in choosable and \
+        "!swissSettings.emulateMemoryCard" in choosable
+    assert "!gameflowSaveChoosable(context)" in load[:ask]
+    assert STEPS in controller
+    assert choice.index("if(!gameflowSaveChoosable(context)) {\n\t\treturn;") < \
+        choice.index("source->saveCopies = gameflowSaveCopies.count;")
 
 
 save_load = extract_function(swiss_source, "static bool gameflowLoadChosenSave(")
-check_save_load(detail, save_load)
-for mutant_controller, mutant_load in (
-    (detail.replace("!gameflowLoadChosenSave(context)) {", "false) {", 1), save_load),
-    (detail, save_load.replace("if(!gameflowSaveAsk(text)) {\n\t\treturn false;\n\t}", "", 1)),
-    (detail, save_load.replace("swissSettings.emulateMemoryCard", "false", 1)),
+save_choosable = extract_function(swiss_source, "static bool gameflowSaveChoosable(")
+save_choice = extract_function(swiss_source, "static void gameflowSaveChoiceSource(")
+check_save_load(detail, save_load, save_choosable, save_choice)
+for mutant_controller, mutant_load, mutant_choosable, mutant_choice in (
+    (detail.replace("!gameflowLoadChosenSave(context)) {", "false) {", 1), save_load,
+     save_choosable, save_choice),
+    (detail, save_load.replace(B_KEEPS, "", 1), save_choosable, save_choice),
+    (detail, save_load.replace("context->saveChoice = -1;\n\t\treturn false;", "return false;", 1),
+     save_choosable, save_choice),
+    (detail, save_load.replace("!gameflowSaveChoosable(context)", "!context->savesScanned", 1),
+     save_choosable, save_choice),
+    (detail, save_load, save_choosable.replace("!swissSettings.emulateMemoryCard", "true", 1),
+     save_choice),
+    (detail, save_load, save_choosable.replace("context->saveSlot >= 0", "true", 1), save_choice),
+    (detail.replace(STEPS, STEPS.replace("gameflowSaveChoosable(context)",
+                                         "context->savesScanned"), 1),
+     save_load, save_choosable, save_choice),
+    (detail, save_load, save_choosable,
+     save_choice.replace("if(!gameflowSaveChoosable(context)) {\n\t\treturn;\n\t}\n", "", 1)),
 ):
     try:
-        check_save_load(mutant_controller, mutant_load)
+        check_save_load(mutant_controller, mutant_load, mutant_choosable, mutant_choice)
     except (AssertionError, ValueError):
         pass
     else:
