@@ -35,8 +35,9 @@ typedef struct {
  * Reads the configured Save Folder's direct save files and RAW images plus
  * available physical cards. A partial result is explicitly marked. With
  * copies, it also lists where the copies are, for a choice of the one to
- * start the game with. */
+ * start the game with. slots: the cards it may read (bit 0 Slot A, bit 1
+ * Slot B); a card still switching to the game is left alone. */
 void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats,
-	savesCopies_t *copies);
+	savesCopies_t *copies, unsigned slots);
 
 #endif

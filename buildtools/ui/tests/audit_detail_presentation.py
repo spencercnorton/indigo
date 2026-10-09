@@ -174,10 +174,13 @@ for advanced in ('"Z  AUTOLOAD"', '"R  VERIFY"', '"L+A  CLEAN BOOT"'):
 saves_line = extract_function(detail_source, "static void buildSavesPresentation(")
 require("UISaves_FormatUpdated(" in saves_line and "snapshot->saveStats = *stats;" in saves_line,
         "save snapshot or shared date formatter missing")
-# SAVES shows only for two or more copies, and says when the scan was partial.
-require("if(stats == NULL || stats->saves < 2u) {\n\t\treturn;" in saves_line and
+# SAVES shows for two or more copies, or for fewer while a memory card changes
+# to the game's card or was given up on, and says when the scan was partial.
+require("if(stats == NULL || (stats->saves < 2u && !waiting && !cardFailed)) {\n\t\treturn;" in saves_line and
         "snapshot->flags |= UI_GAMEFLOW_DETAIL_HAS_SAVES;" in saves_line,
-        "SAVES shows for fewer than two save copies")
+        "SAVES shows for fewer than two save copies with no card news")
+require('waiting ? "Memory card loading" : "Memory card didn\'t load"' in saves_line,
+        "fewer than two copies hide a card that is loading or was given up on")
 require("stats->partial" in saves_line and "stats->checkedSources == 0u" in saves_line and
         '"Partial scan | "' in saves_line,
         "a partial save scan would look complete")

@@ -270,24 +270,39 @@ static void buildSettingsPresentation(uiGameflowDetailSnapshot_t *snapshot,
 	}
 }
 
-/* SAVES shows only for two or more save copies: with one, none, or a scan
- * that found fewer, the details leave it out. */
+/* SAVES shows for two or more save copies: with one, none, or a scan that
+ * found fewer, the details leave it out, unless a memory card is changing to
+ * this game's card or was given up on. Then it says just that. */
 static void buildSavesPresentation(uiGameflowDetailSnapshot_t *snapshot,
-	const uiSavesGameStats_t *stats)
+	const uiSavesGameStats_t *stats, bool waiting, bool cardFailed)
 {
 	char updated[17];
 	bool incomplete;
 
-	if(stats == NULL || stats->saves < 2u) {
+	if(stats == NULL || (stats->saves < 2u && !waiting && !cardFailed)) {
 		return;
 	}
 	snapshot->flags |= UI_GAMEFLOW_DETAIL_HAS_SAVES;
 	snapshot->saveStats = *stats;
+	if(stats->saves < 2u) {
+		copyText(snapshot->savesSummary, sizeof(snapshot->savesSummary),
+			waiting ? "Memory card loading" : "Memory card didn't load");
+		copyText(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
+			waiting ? "Reading it when it's ready" : "Its saves weren't read");
+		return;
+	}
 	incomplete = stats->partial || stats->checkedSources == 0u;
 	(void)snprintf(snapshot->savesSummary, sizeof(snapshot->savesSummary),
 		"%lu save copies | %lu %s", (unsigned long)stats->saves,
 		(unsigned long)stats->blocks,
 		stats->blocks == 1u ? "block" : "blocks");
+	/* A card still changing to this game's card: the count grows when it
+	 * is done; nothing about it is a partial scan. */
+	if(waiting) {
+		copyText(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
+			"Memory card loading");
+		return;
+	}
 	if(stats->updatedKnown &&
 		UISaves_FormatUpdated(stats->latestUpdated, updated, sizeof(updated))) {
 		(void)snprintf(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
@@ -309,7 +324,7 @@ static void buildSaveChoicePresentation(uiGameflowDetailSnapshot_t *snapshot,
 	const char *when;
 
 	if((snapshot->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) == 0u ||
-		source->saveCopies < 2u) {
+		source->saveCopies < 2u || source->savesWaiting) {
 		return;
 	}
 	snapshot->flags |= UI_GAMEFLOW_DETAIL_SAVE_CHOICE;
@@ -404,7 +419,8 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 		UIGameHistory_SaveStatus(source->saveStatus));
 	buildPresentation(snapshot);
 	buildSettingsPresentation(snapshot, source->firstCustomSetting);
-	buildSavesPresentation(snapshot, source->saveStats);
+	buildSavesPresentation(snapshot, source->saveStats, source->savesWaiting,
+		source->savesCardFailed);
 	buildSaveChoicePresentation(snapshot, source);
 	return true;
 }

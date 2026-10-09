@@ -554,6 +554,65 @@ static void testReadOnlySaveCopies(void)
 	CHECK(strcmp(snapshot.savesUpdated, "Update date unavailable") == 0);
 }
 
+/* A memory card changing to this game's card, or given up on: SAVES says
+ * so whatever the count, and offers no choice while it changes. */
+static void testSavesCardStates(void)
+{
+	uiSavesGameStats_t stats = {
+		.saves = 0u, .checkedSources = 4u
+	};
+	uiGameflowDetailSource_t source = {
+		.gameId = "GACZ01", .title = "Astral Circuit", .saveStats = &stats,
+		.flags = UI_GAMEFLOW_DETAIL_CAN_SETTINGS, .savesWaiting = true
+	};
+	uiGameflowDetailSnapshot_t snapshot;
+
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u);
+	CHECK(strcmp(snapshot.savesSummary, "Memory card loading") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "Reading it when it's ready") == 0);
+	stats.saves = 1u;
+	stats.blocks = 2u;
+	source.saveCopies = 1u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "Memory card loading") == 0);
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) == 0u);
+	/* Two or more: the totals over the loading line, still no choice. */
+	stats.saves = 2u;
+	stats.blocks = 4u;
+	source.saveCopies = 2u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "2 save copies | 4 blocks") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "Memory card loading") == 0);
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) == 0u);
+	/* Given up on: said with fewer than two; with more, a partial scan. */
+	source.savesWaiting = false;
+	source.savesCardFailed = true;
+	stats.partial = true;
+	stats.saves = 0u;
+	stats.blocks = 0u;
+	source.saveCopies = 0u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u);
+	CHECK(strcmp(snapshot.savesSummary, "Memory card didn't load") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "Its saves weren't read") == 0);
+	stats.saves = 2u;
+	stats.blocks = 4u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "2 save copies | 4 blocks") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "Partial scan | Update date unavailable") == 0);
+	/* Neither, with fewer than two (a partial Save Folder scan too): none. */
+	source.savesCardFailed = false;
+	stats.saves = 1u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) == 0u);
+	/* No scan at all (Saves on Details off): none, waiting or not. */
+	source.saveStats = NULL;
+	source.savesWaiting = true;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) == 0u);
+}
+
 static void testSaveCopyChoice(void)
 {
 	uiSavesGameStats_t stats = {
@@ -610,6 +669,7 @@ static void testSaveCopyChoice(void)
 int main(void)
 {
 	testReadOnlySaveCopies();
+	testSavesCardStates();
 	testSaveCopyChoice();
 	testPointerFreeCopyAndMatch();
 	testCustomSettingsLine();

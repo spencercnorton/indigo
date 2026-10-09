@@ -287,7 +287,7 @@ static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats,
 }
 
 void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats,
-	savesCopies_t *copies)
+	savesCopies_t *copies, unsigned slots)
 {
 	bool mounted;
 	unsigned i;
@@ -305,7 +305,9 @@ void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats,
 	mounted = config_set_device();
 	if(mounted) statsFolder(gameId, stats, copies);
 	else stats->partial = true;
-	for(i = 0u; i < 2u; i++) statsSlot(gameId, stats, i, copies);
+	for(i = 0u; i < 2u; i++) {
+		if(slots & (1u << i)) statsSlot(gameId, stats, i, copies);
+	}
 	if(mounted) config_unset_device();
 	statsArrange(copies);
 }

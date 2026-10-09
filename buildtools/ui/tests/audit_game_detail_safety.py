@@ -135,8 +135,18 @@ def check_save_publication(source: str) -> None:
     assert "memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0" in collection
     # Read once while Detail is open; Left and Right only republish it.
     assert "if(!context->savesScanned) {" in collection
+    # Only the cards that hold this game's card now (card_slots.c): never one
+    # a memory card emulator is still changing (indigo#102).
+    assert ("(CardSlots_ReadableFor(0, context->gameId) ? 1u : 0u) |") in collection
+    assert ("(CardSlots_ReadableFor(1, context->gameId) ? 2u : 0u);") in collection
     assert ("Saves_CollectGameStats(context->gameId, &context->saveStats,\n"
-            "\t\t\t\t&gameflowSaveCopies);") in collection
+            "\t\t\t\t&gameflowSaveCopies, slots);") in collection
+    assert "context->savesWaiting = CardSlots_WaitingFor(context->gameId);" in collection
+    assert "source.savesWaiting = context->savesWaiting;" in collection
+    assert ("context->savesCardFailed = CardSlots_FailedFor(0, context->gameId) ||\n"
+            "\t\t\t\tCardSlots_FailedFor(1, context->gameId);") in collection
+    assert "if(context->savesCardFailed) context->saveStats.partial = true;" in collection
+    assert "source.savesCardFailed = context->savesCardFailed;" in collection
     assert "source.saveStats = &context->saveStats;" in collection
     assert source.count("Saves_CollectGameStats(") == 1
     assert "source.saveStats" not in publication[:publication.index(collection)]
@@ -150,6 +160,11 @@ for old, new in (
     ("memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0", "true"),
     ("source.saveStats = &context->saveStats;", "source.saveStats = NULL;"),
     ("if(!context->savesScanned) {", "if(true) {"),
+    ("CardSlots_ReadableFor(0, context->gameId) ? 1u : 0u", "1u"),
+    ("CardSlots_ReadableFor(1, context->gameId) ? 2u : 0u", "2u"),
+    ("source.savesWaiting = context->savesWaiting;", "source.savesWaiting = false;"),
+    ("source.savesCardFailed = context->savesCardFailed;", "source.savesCardFailed = false;"),
+    ("if(context->savesCardFailed) context->saveStats.partial = true;", "(void)0;"),
 ):
     try:
         publication = extract_function(swiss_source, "static bool gameflowPublishDetail(")
@@ -227,7 +242,10 @@ for mutant_controller, mutant_mapping in detail_input_mutants:
         raise AssertionError("Detail input regression escaped wiring audit")
 
 B_KEEPS = "if(!gameflowSaveAsk(text)) {\n\t\tcontext->saveChoice = -1;\n\t\treturn false;\n\t}"
-STEPS = "\t\t\tif(buttons & (BUTTON_LEFT | BUTTON_RIGHT)) {\n\t\t\t\tif(gameflowSaveChoosable(context)) {"
+STEPS = ("\t\t\tif(buttons & (BUTTON_LEFT | BUTTON_RIGHT)) {\n"
+         "\t\t\t\t/* Not while a card changes to this game's card: its copy\n"
+         "\t\t\t\t * isn't on the list yet. */\n"
+         "\t\t\t\tif(gameflowSaveChoosable(context) && !context->savesWaiting) {")
 
 
 def check_save_load(controller: str, load: str, choosable: str, choice: str) -> None:
@@ -313,3 +331,67 @@ assert not re.search(r"/\s*\(?\s*s->count", cheats_renderer.replace(scroll_block
 assert "if(s->rowCount == 0)" in cheats_renderer
 
 print("game detail safety audit OK")
+
+
+def check_card_slots(source: str) -> None:
+    """indigo#102: the GameID goes through card_slots.c, Detail follows the
+    switch on idle retraces, no copy is chosen or written while a card is
+    still changing, and a launch sends an ID that waited."""
+    def definition(marker: str) -> str:
+        return extract_function(source[source.rindex(marker):], marker)
+
+    loader = definition("static void load_game_with_context(")
+    assert "gameID_early_set(" not in loader
+    assert loader.count("CardSlots_RequestGame(&GCMDisk);") == 1
+    assert loader.index("CardSlots_RequestGame(&GCMDisk);") < loader.index("config_find(config);")
+    shown = loader.index("info_game(config))) {")
+    assert loader.index("gameflowWaitForCardIds();", shown) < loader.index("config_load_current(config);")
+    detail = definition("static int gameflow_info_game(")
+    assert ("if(CardSlots_Poll() && context->savesScanned) {\n"
+            "\t\t\t\t\t\tcontext->savesScanned = false;\n"
+            "\t\t\t\t\t\tgameflowPublishDetail(config, context);") in detail
+    assert "if(gameflowSaveChoosable(context) && !context->savesWaiting) {" in detail
+    chosen = definition("static bool gameflowLoadChosenSave(")
+    gate = chosen.index("/* Never onto the card a memory card emulator is still changing from. */\n"
+                        "\tif(!CardSlots_WritableFor(context->saveSlot, context->gameId)) {")
+    assert gate < chosen.index("Saves_LoadCopy(")
+    assert "return false;" in chosen[gate:chosen.index("}", gate) + 1]
+    # Asked again after the question box: the card may change while it is up.
+    asked = chosen.index("if(!gameflowSaveAsk(text)) {")
+    assert gate < asked
+    again = chosen.index("if(!CardSlots_WritableFor(context->saveSlot, context->gameId)) {", asked)
+    assert asked < chosen.index("if(CardSlots_Poll()) context->savesScanned = false;", asked) < again
+    assert again < chosen.index("Saves_LoadCopy(")
+    # A card given up on while switching makes the scan incomplete.
+    publication = definition("static bool gameflowPublishDetail(")
+    assert ("context->savesCardFailed = CardSlots_FailedFor(0, context->gameId) ||\n"
+            "\t\t\t\tCardSlots_FailedFor(1, context->gameId);\n"
+            "\t\t\tif(context->savesCardFailed) context->saveStats.partial = true;") in publication
+    wait = definition("static void gameflowWaitForCardIds(")
+    assert "while(CardSlots_IdWaiting() && diff_msec(start, gettime()) < 65000u) {" in wait
+    assert "(void)CardSlots_Poll();" in wait
+
+
+check_card_slots(swiss_source)
+for old, new in (
+    ("CardSlots_RequestGame(&GCMDisk);", "gameID_early_set(&GCMDisk);"),
+    ("\tgameflowWaitForCardIds();\n", "\n"),
+    ("if(CardSlots_Poll() && context->savesScanned) {", "if(false && context->savesScanned) {"),
+    ("!context->savesWaiting) {", "true) {"),
+    ("/* Never onto the card a memory card emulator is still changing from. */\n"
+     "\tif(!CardSlots_WritableFor(context->saveSlot, context->gameId)) {",
+     "/* Never onto the card a memory card emulator is still changing from. */\n"
+     "\tif(false) {"),
+    ("diff_msec(start, gettime()) < 65000u", "true"),
+    ("\t/* Again after the question: the card may have changed while it was up. */\n"
+     "\tif(CardSlots_Poll()) context->savesScanned = false;\n"
+     "\tif(!CardSlots_WritableFor(context->saveSlot, context->gameId)) {",
+     "\tif(false) {"),
+    ("\t\t\tif(context->savesCardFailed) context->saveStats.partial = true;", "\t\t\t(void)0;"),
+):
+    try:
+        check_card_slots(swiss_source.replace(old, new, 1))
+    except (AssertionError, ValueError):
+        pass
+    else:
+        raise AssertionError(f"card slots mutant escaped: {old}")

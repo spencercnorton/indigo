@@ -198,6 +198,14 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - Z on `..` turns Autoload off in the folder Indigo starts in, with File
   Management off too; turning it on still needs File Management, or the File
   Browser from System.
+- With a MemCard PRO GC, or another memory card that changes to each game's
+  own card, a game's details no longer read the card before it has changed,
+  which showed the previous game's saves or "Save scan incomplete". The
+  Saves box says **Memory card loading** until the card is ready, even for a
+  game with fewer than two save copies, and **Memory card didn't load** if
+  it never is. A save is only loaded onto the card once it holds the game's
+  card, and opening games' details quickly one after another no longer
+  leaves the card without its GameID until it is taken out and put back.
 - A quick press made while Indigo reads from a device is no longer missed:
   B in the Library or Apps while a folder's picture loads from a disc, and
   B to cancel a copy or a verify in the File Browser while a piece of the

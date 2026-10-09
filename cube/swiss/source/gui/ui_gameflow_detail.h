@@ -64,6 +64,11 @@ typedef struct {
 	bool playHistoryAvailable;
 	uiGameSaveStatus_t saveStatus;
 	const uiSavesGameStats_t *saveStats;
+	/* A memory card is still changing to this game's card: its saves aren't
+	 * in saveStats yet, and no copy is chosen. */
+	bool savesWaiting;
+	/* One was given up on: its saves are missing from saveStats. */
+	bool savesCardFailed;
 	/* Left and Right's choice among saveCopies copies (1-based; 0: none, the
 	 * totals show): its entry, where it is, and whether it is on the card the
 	 * game reads. */
