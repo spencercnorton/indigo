@@ -155,8 +155,8 @@ uiFilesKind_t UIFiles_Kind(const char *name, int fileType);
 bool UIFiles_Loads(uiFilesKind_t kind);
 
 /* Swiss's meta reading can turn a folder entry into the program inside it
- * (Foo/default.dol or Foo/Foo.dol). Such an entry is a file whose parent
- * isn't the open folder; a flattened folder never has one. */
+ * (Foo/default.dol or Foo/Foo.dol): a file one folder below the open one,
+ * ending .dol. A flattened folder never has one. */
 bool UIFiles_IsProgramFolder(const char *entryName, int fileType,
 	const char *curDirName, bool flattened);
 

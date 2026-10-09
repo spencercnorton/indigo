@@ -157,6 +157,8 @@ static char *knownExtensions[] = {".iso", ".gcm", ".tgc", ".dol", NULL};
 static unsigned listPublishes, libraryPublishes, homePublishes, disposals;
 static uiDrawObj_t panelObject;
 static uiDrawObj_t *filePanel = &panelObject;
+/* The File Browser's page pointer, cleared when that page goes. */
+static uiDrawObj_t *filesPage;
 static bool homeLibraryEntryPending;
 static bool homeFileBrowser;
 static void DrawGameflowCancelPosters(void) {}

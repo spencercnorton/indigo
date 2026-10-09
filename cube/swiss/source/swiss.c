@@ -311,6 +311,11 @@ static void homePublish(bool visible)
 
 static void folderArtClose(void);
 
+/* The File Browser's page, while it is up (defined with the File Browser):
+ * every place that lets that page go clears it, or a later page at the same
+ * address would look like the File Browser's own and skip its opening. */
+static uiDrawObj_t *filesPage;
+
 /* A browser panel belongs to the file-list surface. Retaining only the file
  * selection keeps Library re-entry stable without leaving an unconditional
  * legacy browser container over Home and every child menu opened from it. */
@@ -318,6 +323,7 @@ static void homePublishBrowserTransition(uiDrawObj_t **filePanel)
 {
 	bool visible = curMenuLocation == ON_OPTIONS;
 	if(visible && filePanel != NULL && *filePanel != NULL) {
+		if(*filePanel == filesPage) filesPage = NULL;
 		DrawDispose(*filePanel);
 		*filePanel = NULL;
 	}
@@ -715,9 +721,8 @@ typedef struct {
 static filesPane_t filesOther;
 static uiFilesState_t filesState;
 static uiFilesSnapshot_t filesSnapshot __attribute__((aligned(32)));
-/* The page last published, so a return from a folder change updates it in
- * place rather than opening it again. */
-static uiDrawObj_t *filesPage;
+/* filesPage (declared above): the page last published, so a return from a
+ * folder change updates it in place rather than opening it again. */
 static u16 filesLeftListing;
 /* The Source's free space, read once a listing. */
 static char filesFree[24];
@@ -797,11 +802,12 @@ static void filesDevice(DEVICEHANDLER_INTERFACE *device, uiFilesDevice_t *out)
 	out->network = device == &__device_smb || device == &__device_ftp ||
 		device == &__device_fsp;
 	out->metric = !(device->location & LOC_SYSTEM);
+	out->card = device == &__device_card_a || device == &__device_card_b;
 	out->canWrite = (device->features & FEAT_WRITE) != 0;
-	out->canRename = device->renameFile != NULL;
+	/* A memory card's rename is a stub that changes nothing. */
+	out->canRename = device->renameFile != NULL && !out->card;
 	out->canHide = device->hideFile != NULL;
 	out->canDelete = device->deleteFile != NULL;
-	out->card = device == &__device_card_a || device == &__device_card_b;
 }
 
 /* a and b can't be open together: two storages on one connector, or two on
@@ -1108,7 +1114,14 @@ static bool filesFlattened(void)
 static uiFilesKind_t filesKind(const file_handle *entry, int pane,
 	const char *dirName)
 {
-	if(pane == UI_FILES_LEFT && UIFiles_IsProgramFolder(entry->name,
+	/* A memory card's and the Qoob's names are flat: a slash in one is part
+	 * of the name, never a folder Swiss made into its program (and acting
+	 * on that "folder" would list, and act on, every save there). */
+	bool flat = devices[DEVICE_CUR] == &__device_card_a ||
+		devices[DEVICE_CUR] == &__device_card_b ||
+		devices[DEVICE_CUR] == &__device_qoob;
+
+	if(pane == UI_FILES_LEFT && !flat && UIFiles_IsProgramFolder(entry->name,
 			entry->fileType, dirName, filesFlattened())) {
 		return UI_FILES_KIND_PROGRAM_FOLDER;
 	}
@@ -1320,10 +1333,11 @@ static bool filesInfoSnapshot(uiFilesSnapshot_t *s, file_handle **entries,
 				strlcpy(s->line[0], name, sizeof(s->line[0]));
 			}
 			if(kind == UI_FILES_KIND_DISC && meta->diskId.gamename[0] != '\0') {
-				snprintf(s->line[1], sizeof(s->line[1]), "GameCube disc  \267  %.4s%.2s%s%s",
+				/* A banner's short company fills its field without a terminator. */
+				snprintf(s->line[1], sizeof(s->line[1]), "GameCube disc  \267  %.4s%.2s%s%.*s",
 					meta->diskId.gamename, meta->diskId.company,
 					meta->bannerDesc.company[0] != '\0' ? "  \267  " : "",
-					meta->bannerDesc.company);
+					(int)sizeof(meta->bannerDesc.company), meta->bannerDesc.company);
 			}
 		}
 		if(pane == UI_FILES_LEFT && s->line[1][0] == '\0') {
@@ -1985,6 +1999,13 @@ static void filesProgramFolder(const file_handle *entry, const char *dirName, fi
 	out->uiObj = NULL;
 	out->lockCount = 0;
 	out->thread = LWP_THREAD_NULL;
+	/* The folder's own attributes, not its program's: Hide then says
+	 * Unhide on a hidden one. */
+	out->fileAttrib = 0;
+	if(devices[DEVICE_CUR] != NULL && devices[DEVICE_CUR]->statFile != NULL) {
+		devices[DEVICE_CUR]->statFile(out);
+		out->fileType = IS_DIR;
+	}
 }
 
 /* A side as UIFiles_Availability sees it, with its free space when it is
@@ -2038,6 +2059,20 @@ static void filesNameAt(int pane, file_handle **directory, int index, char *out,
  * the slots swapped (its storage as the Source, the Source as the
  * destination); both slots come back on the one way out. True when the
  * panes must be read again. */
+/* The left pane keeps open every game and DOL whose banner it read, and a
+ * file held open can't be replaced, deleted or renamed through another
+ * handle (FatFs locks it). Before an operation they are closed: the banners
+ * are kept, and a later read opens the file again. */
+static void filesCloseLeft(void)
+{
+	file_handle *entries = getCurrentDirEntries();
+	int i, count = getCurrentDirEntryCount();
+
+	for(i = 0; devices[DEVICE_CUR] != NULL && entries != NULL && i < count; i++) {
+		devices[DEVICE_CUR]->closeFile(&entries[i]);
+	}
+}
+
 static bool filesManageFrom(file_handle *entry, int pane, int option, const char *destDir)
 {
 	DEVICEHANDLER_INTERFACE *cur = devices[DEVICE_CUR], *dest = devices[DEVICE_DEST];
@@ -2045,6 +2080,7 @@ static bool filesManageFrom(file_handle *entry, int pane, int option, const char
 	bool changed;
 
 	meta_thread_stop();
+	filesCloseLeft();
 	devices[DEVICE_CUR] = fromRight ? filesOther.device : cur;
 	devices[DEVICE_DEST] = fromRight ? cur : filesOther.device;
 	memcpy(&curFile, entry, sizeof(file_handle));
@@ -2493,7 +2529,9 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 				}
 				else if(detail) {
 					/* A game: its Detail, as the Library's. The page under it
-					 * changes, and the wheel goes with the old one. */
+					 * changes, and the wheel goes with the old one, once the
+					 * banner thread that writes to it has stopped. */
+					meta_thread_stop();
 					DrawDispose(loadingBox);
 					loadingBox = NULL;
 					filesOpenDetail(directory, &filePanel);
@@ -2532,10 +2570,12 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 				}
 				break;
 			}
-			else if((buttons & BUTTON_Z) && fileManagementAllowed() &&
-					directory[curSelection]->fileType == IS_SPECIAL) {
-				/* Autoload: a settings save mounts and unmounts the
-				 * Configuration Device, which may be the right pane's. */
+			else if((buttons & BUTTON_Z) && directory[curSelection]->fileType == IS_SPECIAL &&
+					(fileManagementAllowed() || filesAutoloadFolder(curDir.name))) {
+				/* Autoload: on with File Management, off always (the folder
+				 * Indigo starts in is where you'd turn it off). A settings
+				 * save mounts and unmounts the Configuration Device, which
+				 * may be the right pane's. */
 				filesBoxes = true;
 				filesOtherRelease();
 				filesToggleAutoload(&curDir.name[0]);
@@ -2568,7 +2608,7 @@ static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDra
 				}
 			}
 			else if(entry != NULL && entry->fileType == IS_SPECIAL) {
-				if(fileManagementAllowed()) {
+				if(fileManagementAllowed() || filesAutoloadFolder(filesOther.dir.name)) {
 					filesBoxes = true;
 					filesOtherRelease();
 					filesToggleAutoload(filesOther.dir.name);
@@ -3785,6 +3825,7 @@ static void gameflowShowFromFiles(uiDrawObj_t *event, uiGameflowMode_t mode)
 		vsync++) {
 		VIDEO_WaitVSync();
 	}
+	if(gameflowFilesPage == filesPage) filesPage = NULL;
 	DrawSetGameflowModeNow(event, mode);
 	DrawRepublish(gameflowFilesPage, event);
 	gameflowFilesPage = NULL;
@@ -4184,6 +4225,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			if(!DrawUpdateGameflow(filePanel, gameflowSnapshot)) {
 				uiDrawObj_t *newPanel = DrawGameflow(gameflowSnapshot);
 				if(newPanel != NULL) {
+					if(filePanel == filesPage) filesPage = NULL;
 					filePanel = DrawRepublish(filePanel, newPanel);
 				}
 				else {
@@ -5094,6 +5136,23 @@ static void manageDestName(char *out, const char *dir, const char *src,
 	}
 }
 
+/* Whether a file of that name is on the destination: its statFile, or, for
+ * a device without one (FlippyDrive Flash), opening it, as the copy's own
+ * check does. */
+static bool manageDestExists(file_handle *file)
+{
+	DEVICEHANDLER_INTERFACE *dest = devices[DEVICE_DEST];
+
+	if(dest->statFile != NULL) {
+		return dest->statFile(file) == 0;
+	}
+	if(dest->readFile(file, NULL, 0) != 0) {
+		return false;
+	}
+	dest->closeFile(file);
+	return true;
+}
+
 /* A copy that stopped or failed leaves nothing half written behind: the
  * destination is closed (closing twice is harmless) and deleted. False when
  * it couldn't be, so the message says part of it is left. Two things are
@@ -5305,6 +5364,8 @@ bool manage_file_ex(int preset, const char *destDir) {
 	// If copy, ask which device is the destination device and copy
 	else if((option == COPY_OPTION) || (option == MOVE_OPTION)) {
 		u32 ret = 0;
+		/* One handle, kept: every way out (there are many) leaves nothing to free. */
+		static file_handle destStore;
 		file_handle *destFile = NULL;
 		bool replaced = false;	/* Replace it took the file there off */
 		if(destDir == NULL) {
@@ -5328,7 +5389,7 @@ bool manage_file_ex(int preset, const char *destDir) {
 				deviceHandler_setStatEnabled(1);
 			}
 			// Traverse this destination device and let the user select a directory to dump the file in
-			destFile = calloc(1, sizeof(file_handle));
+			destFile = memset(&destStore, 0, sizeof(destStore));
 
 			// Show a directory only browser and get the destination file location
 			ret = select_dest_dir(devices[DEVICE_DEST]->initial, destFile->name);
@@ -5341,7 +5402,7 @@ bool manage_file_ex(int preset, const char *destDir) {
 			}
 		}
 		else {
-			destFile = calloc(1, sizeof(file_handle));
+			destFile = memset(&destStore, 0, sizeof(destStore));
 			strlcpy(destFile->name, destDir, PATHNAME_MAX);
 		}
 		
@@ -5371,7 +5432,8 @@ bool manage_file_ex(int preset, const char *destDir) {
 			while(1) {
 				u32 buttons = chosen ? chosen : padsButtonsHeld();
 				if(buttons & BUTTON_Z) {
-					if(!strcmp(curFile.name, destFile->name)) {
+					/* FAT ignores case: one file may be spelled two ways. */
+					if(!strcasecmp(curFile.name, destFile->name)) {
 						DrawDispose(dupeBox);
 						manageTell(D_INFO, "Can't overwrite a file with itself!", "That's the same file.",
 							"", true);
@@ -5384,7 +5446,6 @@ bool manage_file_ex(int preset, const char *destDir) {
 							DrawDispose(dupeBox);
 							manageTell(D_FAIL, "Failed to delete the existing file!\nPress A to continue.",
 								"Couldn't replace it.", "The file there couldn't be removed.", true);
-							free(destFile);
 							return false;
 						}
 						replaced = true;
@@ -5433,7 +5494,7 @@ bool manage_file_ex(int preset, const char *destDir) {
 						strcpy(destFile->name + cursor, name_backup + extension_start);
 					}
 
-					while(!devices[DEVICE_DEST]->statFile(destFile)) {
+					while(manageDestExists(destFile)) {
 						copy_num++;
 						if(copy_num > 99) {
 							DrawDispose(dupeBox);
@@ -5468,8 +5529,11 @@ bool manage_file_ex(int preset, const char *destDir) {
 			&& canRename && option == MOVE_OPTION) {
 			ret = devices[DEVICE_CUR]->renameFile(&curFile, destFile->name);
 			needsRefresh=1;
+			/* Replace it took the file there off first: say so when the
+			 * move then fails. */
 			manageTell(D_INFO, ret ? "Move Failed! Press A to continue":"File moved! Press A to continue",
-				ret ? "Couldn't move it." : "Finished moving.", "", ret != 0);
+				ret ? "Couldn't move it." : "Finished moving.",
+				ret && replaced ? "The file that was there is gone already." : "", ret != 0);
 		}
 		else {
 			// If we're copying out from memory card, make a .GCI
@@ -5502,7 +5566,7 @@ bool manage_file_ex(int preset, const char *destDir) {
 			
 			// Read from one file and write to the new directory
 			u32 bulkWrite = isSrcCard || isDestCard || devices[DEVICE_DEST] == &__device_qoob;
-			u32 curOffset = curFile.offset, cancelled = 0, chunkSize = bulkWrite ? curFile.size - curOffset : (256*1024);
+			u32 curOffset = curFile.offset, cancelled = 0, written = 0, chunkSize = bulkWrite ? curFile.size - curOffset : (256*1024);
 			char *readBuffer = (char*)memalign(32,chunkSize);
 			sprintf(txtbuffer, "Copying to: %s",getRelativeName(destFile->name));
 			uiDrawObj_t* progBar = filesBoxes ? filesProgress(option, destFile->name) :
@@ -5545,7 +5609,8 @@ bool manage_file_ex(int preset, const char *destDir) {
 						free(readBuffer);
 						devices[DEVICE_CUR]->closeFile(&curFile);
 						devices[DEVICE_DEST]->closeFile(destFile);
-						bool removed = manageDropPartial(destFile);
+						/* Before its first write the copy made no file, so none is left. */
+						bool removed = !written || manageDropPartial(destFile);
 						sprintf(txtbuffer, "Failed to Read! (%d %d)\n%s",amountToCopy,ret, &curFile.name[0]);
 						manageCopied(UI_FILES_RESULT_READ_FAILED, option, destFile->name, ret, removed,
 							replaced, D_FAIL, txtbuffer);
@@ -5554,6 +5619,7 @@ bool manage_file_ex(int preset, const char *destDir) {
 						return true;
 					}
 				}
+				written = 1;
 				ret = devices[DEVICE_DEST]->writeFile(destFile, readBuffer, amountToCopy);
 				if(ret != amountToCopy) {
 					DrawDispose(progBar);
@@ -5612,7 +5678,6 @@ bool manage_file_ex(int preset, const char *destDir) {
 			/* A Move that couldn't take the original off says it copied. */
 			manageCopied(result, canDelete || cancelled ? option : COPY_OPTION, destFile->name, 0,
 				removed, replaced, D_INFO, message);
-			free(destFile);
 		}
 	}
 
@@ -7430,6 +7495,7 @@ void menu_loop()
 		 * the destructive updater only after those callers release snapshots. */
 		if(homeFlippyUpdatePending) {
 			if(filePanel != NULL) {
+				if(filePanel == filesPage) filesPage = NULL;
 				DrawDispose(filePanel);
 				filePanel = NULL;
 			}
@@ -7440,6 +7506,7 @@ void menu_loop()
 		}
 	}
 	if(filePanel != NULL) {
+		if(filePanel == filesPage) filesPage = NULL;
 		DrawDispose(filePanel);
 	}
 }

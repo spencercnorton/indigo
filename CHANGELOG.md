@@ -80,7 +80,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   flashes), the renamed file or the row that took a moved or deleted file's
   place, and the result shows over them as Memory Cards' maroon message.
   Copy and Move are greyed onto a memory card (Memory Cards copies saves)
-  and where a folder there has the file's name. Swiss's questions keep their
+  and where a folder there has the file's name; so are Move and Rename on a
+  card's saves, which Memory Cards moves, reading the copy back first and
+  keeping a game's no-move saves where they are. Swiss's questions keep their
   words and are drawn beside the row; Delete still needs L held with A. A
   on a file that doesn't start opens its Actions, as does a FlippyDrive
   update anywhere but on a FlippyDrive.
@@ -172,6 +174,16 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Keep both, copying or moving a file onto FlippyDrive Flash where one of
+  that name already is, no longer stops the console.
+- A copy or a move onto the same file, reached through a folder spelled in
+  another case (FAT ignores case), is no longer allowed to replace it: that
+  deleted the only copy.
+- A copy that fails before anything is written no longer says part of it
+  is left behind.
+- Z on `..` turns Autoload off in the folder Indigo starts in, with File
+  Management off too; turning it on still needs File Management, or the File
+  Browser from System.
 - A quick press made while Indigo reads from a device is no longer missed:
   B in the Library or Apps while a folder's picture loads from a disc, and
   B to cancel a copy or a verify in the File Browser while a piece of the

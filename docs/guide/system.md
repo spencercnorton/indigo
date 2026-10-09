@@ -153,7 +153,8 @@ The info bar says whether it fits there, from the other device's free space
 - **Copy** asks first, and a row in the other pane shows where the copy will
   go. A card shows its progress and **B** stops it; a stopped copy is
   removed, so nothing half copied is left behind. A copy that fails part way
-  is removed too.
+  is removed too. If the device won't let it go, the message says part of it
+  is left.
 - **Move** asks first, then copies the file and removes the original once
   the copy is whole. In another folder of the same device it just moves.
 - If the file is already there, choose **Keep both** (the copy gets a
@@ -161,7 +162,9 @@ The info bar says whether it fits there, from the other device's free space
   greyed. Replace it removes the old file first, so a replacing copy that
   is stopped or fails leaves neither; the message says so.
 - Copy and Move don't go onto a memory card: use **Memory Cards** to copy
-  saves. Copying a save off a card is fine.
+  saves. Copying a save off a card is fine. Moving one off a card is in
+  **Memory Cards** too, which reads the copy back first and keeps the saves a
+  game doesn't let move where they are; a card's saves can't be renamed.
 - **Rename** shows the keyboard with the file's name: change it and press
   START.
 - **Hide** asks first. A hidden file or folder shows again with **Show hidden

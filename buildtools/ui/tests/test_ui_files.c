@@ -339,8 +339,17 @@ static void testProgramFolders(void)
 	CHECK(!UIFiles_IsProgramFolder("sd:/apps/Foo/Foo.dol", 1, "sd:/apps", true));
 	CHECK(!UIFiles_IsProgramFolder("sd:/apps/Foo", UI_FILES_TYPE_DIR, "sd:/apps", false));
 	CHECK(!UIFiles_IsProgramFolder("sd:/apps/..", UI_FILES_TYPE_PARENT, "sd:/apps", false));
-	/* "sd:/applications" isn't inside "sd:/apps". */
-	CHECK(UIFiles_IsProgramFolder("sd:/applications/x.dol", 1, "sd:/apps", false));
+	/* Only what the rewrite makes: one folder below the open one, a .dol in
+	 * it. "sd:/applications" isn't inside "sd:/apps"; a memory card save's
+	 * name may hold a slash ("ABC/DEF" lists as carda:/ABC/DEF), and acting
+	 * on it as a folder would list every save on the card. */
+	CHECK(!UIFiles_IsProgramFolder("sd:/applications/x.dol", 1, "sd:/apps", false));
+	CHECK(!UIFiles_IsProgramFolder("carda:/ABC/DEF", 1, "carda:/", false));
+	CHECK(!UIFiles_IsProgramFolder("sd:/apps/Foo/Bar/Bar.dol", 1, "sd:/apps", false));
+	CHECK(!UIFiles_IsProgramFolder("sd:/apps//x.dol", 1, "sd:/apps", false));
+	CHECK(!UIFiles_IsProgramFolder("sd:/apps/Foo/.dol", 1, "sd:/apps", false));
+	CHECK(!UIFiles_IsProgramFolder("sd:/apps/Foo/Foo.elf", 1, "sd:/apps", false));
+	CHECK(UIFiles_IsProgramFolder("sd:/apps/Foo/FOO.DOL", 1, "sd:/apps", false));
 
 	UIFiles_ProgramFolderPath(text, sizeof(text), "sd:/apps/Foo/default.dol", "sd:/apps");
 	CHECK_TEXT(text, "sd:/apps/Foo");
@@ -774,11 +783,14 @@ static void testHints(void)
 	/* A FlippyDrive update on the FlippyDrive opens Actions. */
 	checkHints(UI_FILES_HINTS_LIST, 0, UI_FILES_KIND_FIRMWARE, false, true, false,
 		"A  Actions   \213  \233  Other side", "X  Up   B  Home");
-	/* Without File Management, no Z. */
+	/* Without File Management, no Z, except to turn Autoload off in the
+	 * folder Indigo starts in. */
 	checkHints(UI_FILES_HINTS_LIST, 0, UI_FILES_KIND_DISC, true, false, false,
 		"A  Details   \213  \233  Other side", "X  Up   B  Home");
-	checkHints(UI_FILES_HINTS_LIST, 0, UI_FILES_KIND_PARENT, false, false, true,
+	checkHints(UI_FILES_HINTS_LIST, 0, UI_FILES_KIND_PARENT, false, false, false,
 		"A  Open   \213  \233  Other side", "X  Up   B  Home");
+	checkHints(UI_FILES_HINTS_LIST, 0, UI_FILES_KIND_PARENT, false, false, true,
+		"A  Open   Z  Autoload off   \213  \233  Other side", "X  Up   B  Home");
 	checkHints(UI_FILES_HINTS_LIST, 1, UI_FILES_KIND_PROGRAM, true, false, false,
 		"Y  Swap sides   \213  \233  Other side", "X  Up   B  Home");
 	checkHints(UI_FILES_HINTS_LIST, 1, UI_FILES_KIND_TEXT, false, false, false,
@@ -807,8 +819,12 @@ static void testHints(void)
 					UIFiles_Hints((uiFilesHintMode_t)mode, pane, (uiFilesKind_t)kind,
 						(flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0, left, right);
 					CHECK(roundGlyphs(left) + roundGlyphs(right) <= 5);
+					/* Without File Management, no Z: only Autoload's off on
+					 * "..", in the folder Indigo starts in. */
 					CHECK(((flags & 2) != 0 || mode != UI_FILES_HINTS_LIST) ||
-						strstr(left, "Z  ") == NULL);
+						strstr(left, "Z  ") == NULL ||
+						((flags & 4) != 0 && kind == UI_FILES_KIND_PARENT &&
+						strstr(left, "Z  Autoload off") != NULL));
 					count = UIHint_Parse(left, items, UI_HINT_MAX_ITEMS);
 					for(i = 0; i < count; ++i) CHECK(items[i].glyphCount > 0);
 					count = UIHint_Parse(right, items, UI_HINT_MAX_ITEMS);
@@ -1184,14 +1200,17 @@ static void testAvailability(void)
 		UIFiles_Availability(&gcl, &same, &e, &a);
 		CHECK_TEXT(a.line[UI_FILES_ACTION_COPY], "GC Loader isn't ready. Choose storage with R.");
 	}
-	/* Onto a memory card: Memory Cards copies saves; off one is fine. */
+	/* Onto a memory card: Memory Cards copies saves. Off one, Copy exports
+	 * the save as a file, but Move goes through Memory Cards, which reads
+	 * the copy back and keeps a game's no-move saves where they are. */
 	sd.device.card = true;
 	UIFiles_Availability(&gcl, &sd, &e, &a);
 	CHECK(!a.enabled[0] && !a.enabled[1] && a.enabled[2] && a.warn[0]);
 	CHECK_TEXT(a.line[UI_FILES_ACTION_COPY], "Use Memory Cards to copy saves.");
 	CHECK_TEXT(a.line[UI_FILES_ACTION_MOVE], "Use Memory Cards to copy saves.");
 	UIFiles_Availability(&sd, &gcl, &e, &a);
-	CHECK(a.enabled[0] && a.enabled[1]);
+	CHECK(a.enabled[0] && !a.enabled[1] && a.warn[1]);
+	CHECK_TEXT(a.line[UI_FILES_ACTION_MOVE], "Use Memory Cards to move saves.");
 	sd.device.card = false;
 	/* A folder there with the file's name: neither, room or not. */
 	e.exists = true;

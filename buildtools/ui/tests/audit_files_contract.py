@@ -50,7 +50,9 @@ TEST = (ROOT / "buildtools/ui/tests/test_ui_files.c").read_text()
 # blanks: its Z box (option = 0 where it declared it) and its destination
 # picker, mount and folder chooser (destFile assigned where it declared it).
 SWISS_BOX_SHA256 = "63ca2ad0f785996016ffce191f798465a1b00e7bc9cb3b7931fd935b00212783"
-SWISS_DESTINATION_SHA256 = "6ea7ed015c852e7ce3d0ef2fd84569c7c5eeba0144b1336da202a77741ba00a4"
+# Swiss's picker but for one line: its handle is the static destStore, so none
+# of manage_file_ex's many ways out leaks it (2.4 vetting, M2).
+SWISS_DESTINATION_SHA256 = "cd1125c5f3606832f516a8ef58a7b5f66c0056f990db6068d2726651113e91a0"
 
 
 def function(source: str, marker: str) -> str:
@@ -90,6 +92,32 @@ def check(swiss: str, frame: str, files: str = FILES) -> None:
     assert screen.rstrip().endswith("return filePanel;\n}") and \
         "meta_thread_stop();\n\tDrawDispose(loadingBox);" in screen, "the meta thread outlives the screen"
     before(manage, "meta_thread_stop();", "manage_file_ex(")
+    # Before an operation the left pane's open files are closed: FatFs won't
+    # replace, delete or rename a file another handle holds.
+    before(manage, "meta_thread_stop();", "filesCloseLeft();")
+    before(manage, "filesCloseLeft();", "manage_file_ex(")
+    # Every place that lets a page go clears filesPage first, or a later page
+    # at the same address would pass for the File Browser's own.
+    for let_go in re.finditer(r"(?:DrawRepublish|DrawDispose)\(\*?filePanel\b", swiss):
+        start = swiss.rindex("\n", 0, let_go.start()) + 1
+        line = swiss[start:swiss.index("\n", let_go.start())]
+        above = swiss[swiss.rindex("\n", 0, start - 1) + 1:start - 1].strip()
+        assert "filesPage = DrawRepublish(" in line or re.fullmatch(
+            r"if\(\*?filePanel == filesPage\) filesPage = NULL;", above), \
+            f"a page goes with filesPage still on it: {line.strip()}"
+    # Z on "..": Autoload goes on with File Management and off always, from
+    # either pane, as both panes' hints say.
+    assert "(fileManagementAllowed() || filesAutoloadFolder(curDir.name))" in screen
+    assert "if(fileManagementAllowed() || filesAutoloadFolder(filesOther.dir.name)) {" in screen
+    # A memory card's rename is a stub: the File Browser never offers it.
+    device_fn = function(swiss, "static void filesDevice(")
+    assert "out->canRename = device->renameFile != NULL && !out->card;" in device_fn, \
+        "a memory card offers a Rename that does nothing"
+    # The meta thread's last step writes to the wheel: every way the screen
+    # lets the wheel go (Detail from a game included) stops the thread first.
+    for found in re.finditer(r"DrawDispose\(loadingBox\);", screen):
+        assert re.search(r"meta_thread_stop\(\);\s*$", screen[:found.start()]), \
+            "the wheel goes while the meta thread may still write to it"
     for action in ("static void filesActivate(", "static bool filesManage("):
         body = function(swiss, action)
         assert "manage_file()" not in body, f"{action} runs Swiss's box past filesManageFile"
@@ -342,14 +370,17 @@ def check_operations(swiss: str, screen: str, manage: str, actions: str, frame: 
     # never run; without one they are Swiss's, unchanged.
     opening = "\t\tif(destDir == NULL) {\n"
     picker = ex[ex.index(opening) + len(opening):]
-    picker = picker[:picker.index("\n\t\t}\n\t\telse {\n\t\t\tdestFile = calloc")]
+    picker = picker[:picker.index("\n\t\t}\n\t\telse {\n\t\t\tdestFile = memset(&destStore")]
     assert hashlib.sha256(kept(picker).encode()).hexdigest() == SWISS_DESTINATION_SHA256, \
         "Swiss's destination picker, mount or folder chooser changed"
     rest = ex.replace(picker, "")
     for step in ("select_device(", "->init(", "select_dest_dir("):
         assert step in picker and step not in rest, f"{step} runs with a preset destination"
-    assert re.search(r"else \{\s*destFile = calloc\(1, sizeof\(file_handle\)\);\s*"
+    assert re.search(r"else \{\s*destFile = memset\(&destStore, 0, sizeof\(destStore\)\);\s*"
                      r"strlcpy\(destFile->name, destDir, PATHNAME_MAX\);", ex), "the preset folder isn't used"
+    # One handle, never allocated: no way out of manage_file_ex leaks it.
+    assert "static file_handle destStore;" in ex and "destFile = calloc" not in ex and "free(destFile)" not in ex, \
+        "manage_file_ex allocates its destination handle again"
     # The landing name is built in one place, which the screen predicts with.
     assert swiss.count("stripInvalidChars(getRelativeName(") == 1
     namer = function(swiss, "DEVICEHANDLER_INTERFACE *srcDev, DEVICEHANDLER_INTERFACE *destDev)\n{")
@@ -375,13 +406,22 @@ def check_operations(swiss: str, screen: str, manage: str, actions: str, frame: 
     for message in ('"Failed to Read! (%d %d)', '"Failed to Write! (%d %d)', '"Failed to Write! (%d)\\n'):
         at = ex.index(message)
         site = ex[:ex.rfind("\n", 0, at)].rstrip().rsplit("\n", 1)[1].strip()
-        assert site == "bool removed = manageDropPartial(destFile);", f"{message}: the partial file stays"
+        # A read that fails before the first write made no file: nothing
+        # to delete. A failed check is never proof that nothing is there.
+        drops = "bool removed = !written || manageDropPartial(destFile);" \
+            if message.startswith('"Failed to Read!') else "bool removed = manageDropPartial(destFile);"
+        assert site == drops, f"{message}: the partial file stays"
         assert "return true;" in ex[at:at + 400]
-    before(ex, "devices[DEVICE_DEST]->closeFile(destFile);\n\t\t\t\t\t\tbool removed", '"Failed to Read!')
+    assert "cancelled = 0, written = 0, chunkSize" in ex and ex.count("written = 1;") == 1
+    assert "\t\t\t\twritten = 1;\n\t\t\t\tret = devices[DEVICE_DEST]->writeFile(destFile, readBuffer, amountToCopy);" \
+        in ex, "a write goes out unrecorded"
+    assert re.search(r"devices\[DEVICE_DEST\]->closeFile\(destFile\);\n(\t+/\*[^\n]*\*/\n)?"
+                     r"\t+bool removed = !written \|\| manageDropPartial\(destFile\);\n"
+                     r"\t+sprintf\(txtbuffer, \"Failed to Read!", ex), "a failed read leaves its file open"
     stop = "bool removed = cancelled && manageDropPartial(destFile);"
     assert stop in ex, "a stopped copy keeps its partial file, or a finished one loses its file"
     before(ex, "ret = devices[DEVICE_DEST]->writeFile(destFile, NULL, 0);", stop)
-    before(ex, stop, "free(destFile);")
+    before(ex, stop, "manageCopied(result, canDelete || cancelled ? option : COPY_OPTION,")
     # A stopped Move keeps its original: it is deleted only past a copy
     # that wasn't stopped.
     assert re.search(r"if\(!cancelled\) \{\s*// If cut, delete from source device\s*"
@@ -391,7 +431,7 @@ def check_operations(swiss: str, screen: str, manage: str, actions: str, frame: 
     assert ex.count("devices[DEVICE_CUR]->deleteFile(") == 1
     # Replace it: the copy goes on only once the file there is gone.
     assert re.search(r"if\(devices\[DEVICE_DEST\]->deleteFile\(destFile\) != 0\) \{\s*"
-                     r"DrawDispose\(dupeBox\);\s*manageTell\(D_FAIL,[^;]*;\s*free\(destFile\);\s*"
+                     r"DrawDispose\(dupeBox\);\s*manageTell\(D_FAIL,[^;]*;\s*"
                      r"return false;\s*\}\s*replaced = true;", ex), "Replace copies over a file it couldn't remove"
     assert ex.count("devices[DEVICE_DEST]->deleteFile(") == 1
     assert ex.count(", removed,\n") == 3 and ex.count("replaced, D_FAIL, txtbuffer);") == 3
@@ -635,9 +675,17 @@ for path, gone in (("cube/swiss/include/swiss.h", ("renderFileBrowser(", "drawFi
         assert name not in text, f"{path}: {name}"
 
 MUTANTS = (
+    ("left files stay open for an operation", SWISS,
+     "\tmeta_thread_stop();\n\tfilesCloseLeft();\n", "\tmeta_thread_stop();\n"),
+    ("a memory card offers Rename", SWISS,
+     "out->canRename = device->renameFile != NULL && !out->card;",
+     "out->canRename = device->renameFile != NULL;"),
+    ("the wheel goes before the meta thread stops", SWISS,
+     "\t\t\t\t\tmeta_thread_stop();\n\t\t\t\t\tDrawDispose(loadingBox);\n\t\t\t\t\tloadingBox = NULL;",
+     "\t\t\t\t\tDrawDispose(loadingBox);\n\t\t\t\t\tloadingBox = NULL;"),
     ("the meta thread runs into manage_file", SWISS,
-     "\tmeta_thread_stop();\n\tdevices[DEVICE_CUR] = fromRight ? filesOther.device : cur;",
-     "\tdevices[DEVICE_CUR] = fromRight ? filesOther.device : cur;"),
+     "\tmeta_thread_stop();\n\tfilesCloseLeft();\n\tdevices[DEVICE_CUR] = fromRight ? filesOther.device : cur;",
+     "\tfilesCloseLeft();\n\tdevices[DEVICE_CUR] = fromRight ? filesOther.device : cur;"),
     ("the left focus is not put back", SWISS,
      "\t\tfilesLeftFocusName(directory, curFile.name, sizeof(curFile.name));\n", ""),
     ("rows read unlocked", SWISS, "\t\t\tif(wait) {\n\t\t\t\tlockFile(entry);\n\t\t\t}\n\t\t}\n\t\trow->kind",
@@ -774,8 +822,20 @@ MUTANTS = (
      "\tmanageDestName(landing, thereDir, entry->name, here, there);",
      "\tconcat_path(landing, thereDir, stripInvalidChars(getRelativeName(entry->name)));"),
     ("a failed read keeps its partial file", SWISS,
-     "\t\t\t\t\t\tbool removed = manageDropPartial(destFile);\n\t\t\t\t\t\tsprintf(txtbuffer, \"Failed to Read!",
+     "\t\t\t\t\t\tbool removed = !written || manageDropPartial(destFile);\n\t\t\t\t\t\tsprintf(txtbuffer, \"Failed to Read!",
      "\t\t\t\t\t\tbool removed = false;\n\t\t\t\t\t\tsprintf(txtbuffer, \"Failed to Read!"),
+    ("a failed read says nothing is left after a write", SWISS,
+     "\t\t\t\twritten = 1;\n", ""),
+    ("a failed read never deletes", SWISS,
+     "bool removed = !written || manageDropPartial(destFile);", "bool removed = true;"),
+    ("the Library takes the File Browser's page without clearing filesPage", SWISS,
+     "\t\t\t\t\tif(filePanel == filesPage) filesPage = NULL;\n\t\t\t\t\tfilePanel = DrawRepublish(filePanel, newPanel);",
+     "\t\t\t\t\tfilePanel = DrawRepublish(filePanel, newPanel);"),
+    ("the right pane's Autoload off needs File Management", SWISS,
+     "if(fileManagementAllowed() || filesAutoloadFolder(filesOther.dir.name)) {",
+     "if(fileManagementAllowed()) {"),
+    ("the left pane's Autoload off needs File Management", SWISS,
+     "(fileManagementAllowed() || filesAutoloadFolder(curDir.name))", "fileManagementAllowed()"),
     ("a failed write keeps its partial file", SWISS,
      "\t\t\t\t\tbool removed = manageDropPartial(destFile);\n\t\t\t\t\tsprintf(txtbuffer, \"Failed to Write! (%d %d)",
      "\t\t\t\t\tbool removed = false;\n\t\t\t\t\tsprintf(txtbuffer, \"Failed to Write! (%d %d)"),

@@ -57,6 +57,8 @@ static const char *curDir = "dvd:/";
 /* DrawDispose lets go of a Settings page's colors; no route here pins them. */
 #define UI_COLOR_LAYERS 3
 uiDrawObj_t *menuColorPage; int menuColorPinned[UI_COLOR_LAYERS], menuColorPreview[UI_COLOR_LAYERS];
+/* The File Browser's page pointer, cleared when that page goes. */
+static uiDrawObj_t *filesPage;
 #define LWP_MutexLock(unused) ((void)0)
 #define LWP_MutexUnlock(unused) ((void)0)
 static void clearNestedEvent(uiDrawObj_t *event) { free(event); }

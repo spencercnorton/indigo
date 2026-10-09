@@ -315,11 +315,17 @@ bool UIFiles_IsProgramFolder(const char *entryName, int fileType,
 	if(flattened || fileType != UI_FILES_TYPE_FILE || entryName == NULL || curDirName == NULL) {
 		return false;
 	}
-	slash = strrchr(entryName, '/');
-	if(slash == NULL) return false;
+	/* Exactly what the rewrite makes: one folder below the open one, and
+	 * the .dol inside it. Anything else with a slash (a memory card save's
+	 * name may hold one) is a plain file. */
 	dirLength = folderLength(curDirName);
-	return !((size_t)(slash - entryName) == dirLength &&
-		strncmp(entryName, curDirName, dirLength) == 0);
+	if(strncmp(entryName, curDirName, dirLength) != 0 || entryName[dirLength] != '/') {
+		return false;
+	}
+	slash = strchr(entryName + dirLength + 1u, '/');
+	return slash != NULL && slash > entryName + dirLength + 1u &&
+		strchr(slash + 1, '/') == NULL && strlen(slash + 1) > 4u &&
+		endsWithNoCase(slash + 1, ".dol");
 }
 
 void UIFiles_ProgramFolderPath(char *out, size_t capacity, const char *entryName,
@@ -690,8 +696,9 @@ void UIFiles_Hints(uiFilesHintMode_t mode, int pane, uiFilesKind_t kind,
 	}
 	copyText(right, UI_FILES_HINT_CAPACITY, "X  Up   B  Home");
 	if(kind == UI_FILES_KIND_PARENT) {
+		/* Autoload comes on with File Management, and goes off always. */
 		format(left, UI_FILES_HINT_CAPACITY, "A  Open   %s" OTHER_SIDE,
-			!fileManagement ? "" : autoloadOn ? "Z  Autoload off   " : "Z  Autoload   ");
+			autoloadOn ? "Z  Autoload off   " : fileManagement ? "Z  Autoload   " : "");
 	}
 	else if(folder) {
 		format(left, UI_FILES_HINT_CAPACITY, "A  Open   %s" OTHER_SIDE, z);
@@ -805,6 +812,20 @@ static bool fit(const uiFilesSide_t *other, const uiFilesEntry_t *entry,
 	return false;
 }
 
+/* One folder however its path is spelled: FAT ignores case, and a trailing
+ * slash changes nothing. Two that differ only by case on a share that
+ * doesn't ignore it are taken as one, which only refuses a copy there. */
+static bool sameFolderPath(const char *a, const char *b)
+{
+	size_t length = folderLength(a), i;
+
+	if(length != folderLength(b)) return false;
+	for(i = 0u; i < length; i++) {
+		if(lowerAscii((unsigned char)a[i]) != lowerAscii((unsigned char)b[i])) return false;
+	}
+	return true;
+}
+
 void UIFiles_Availability(const uiFilesSide_t *source, const uiFilesSide_t *other,
 	const uiFilesEntry_t *entry, uiFilesAvailability_t *out)
 {
@@ -814,7 +835,7 @@ void UIFiles_Availability(const uiFilesSide_t *source, const uiFilesSide_t *othe
 	bool file = entry->isFile && !entry->programFolder;
 	bool sameDevice = from->handler == to->handler;
 	bool sameFolder = sameDevice && source->folder != NULL && other->folder != NULL &&
-		strcmp(source->folder, other->folder) == 0;
+		sameFolderPath(source->folder, other->folder);
 	bool ready = (other->mount == UI_FILES_SHARED || other->mount == UI_FILES_OWN) && other->readOk;
 	bool renames = sameDevice && from->canWrite && from->canRename;
 	char letter = entry->pane == UI_FILES_LEFT ? 'R' : 'L';
@@ -847,6 +868,11 @@ void UIFiles_Availability(const uiFilesSide_t *source, const uiFilesSide_t *othe
 			/* A card's own write goes by the save inside the file, not
 			 * its name: saves go card to card in Memory Cards. */
 			copyText(line, UI_FILES_TEXT_CAPACITY, "Use Memory Cards to copy saves.");
+		}
+		else if(move && from->card) {
+			/* Memory Cards moves a save: it reads the copy back and keeps
+			 * a game's no-move saves where they are. */
+			copyText(line, UI_FILES_TEXT_CAPACITY, "Use Memory Cards to move saves.");
 		}
 		else if(entry->existsFolder) {
 			copyText(line, UI_FILES_TEXT_CAPACITY, "A folder there has the same name.");
