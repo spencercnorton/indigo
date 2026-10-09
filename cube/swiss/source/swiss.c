@@ -5413,8 +5413,10 @@ bool manage_file_ex(int preset, const char *destDir) {
 			devices[DEVICE_DEST]);
 
 		// If the destination file already exists, ask the user what to do
-		if(devices[DEVICE_DEST]->readFile(destFile, NULL, 0) == 0) {
-			devices[DEVICE_DEST]->closeFile(destFile);
+		/* One there that can't be read is there all the same: without the
+		 * question the copy would write over it, or delete it on a failed
+		 * write. */
+		if(manageDestExists(destFile)) {
 			/* The File Browser asks with its own box: Keep both is A, Replace it
 			 * Z and Cancel B, as if pressed in Swiss's. */
 			u32 chosen = filesBoxes ? filesAskExists(destFile->name) : 0;
@@ -5654,6 +5656,11 @@ bool manage_file_ex(int preset, const char *destDir) {
 			}
 			setGCIInfo(NULL);
 			setCopyGCIMode(FALSE);
+			/* B tapped while the last piece was read or written, or the file
+			 * closed: the loop ended before it could see it. */
+			if((padsButtonsHeld() | padsButtonsTaken(BUTTON_B)) & BUTTON_B) {
+				cancelled = 1;
+			}
 			bool removed = cancelled && manageDropPartial(destFile);
 			bool kept = false;
 			uiFilesResult_t result = UI_FILES_RESULT_DONE;

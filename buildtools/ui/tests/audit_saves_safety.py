@@ -96,6 +96,12 @@ def check(source: str) -> None:
             "saveRead(copy, &backLength)",
             "!memcmp(back + UI_SAVES_ENTRY_SIZE, blocks, blockBytes)",
             "if(!same)", "device->deleteFile(copy)", "return same;")
+    # Both clean-ups delete only on the card this write mounted: one taken
+    # out or changed since is mounted again (card_mount_count).
+    ordered(card, "mount = card_mount_count(slot);", "device->writeFile(",
+            "card_mount_count(slot) == mount) {\n\t\t\tdevice->deleteFile(copy);",
+            "saveRead(copy, &backLength)", "if(card_mount_count(slot) != mount) {",
+            "if(!same)")
 
     # A folder copy looks for a free name before it creates the file.
     ordered(folder, "device->statFile(&dest) != 0", "break;",
@@ -443,8 +449,13 @@ def mutants(source: str) -> list[tuple[str, str]]:
         ("a save goes to the stack it is in",
          source.replace("int toTab = screenStacks[!screenFocus];", "int toTab = screenStacks[screenFocus];")),
         ("a half-written card copy is left on the card",
-         source.replace("!= NULL) {\n\t\t\tdevice->deleteFile(copy);\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"",
-                        "!= NULL) {\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"")),
+         source.replace("== mount) {\n\t\t\tdevice->deleteFile(copy);\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"",
+                        "== mount) {\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"")),
+        ("a failed write's clean-up deletes on a card changed since",
+         source.replace(" &&\n\t\t\tcard_mount_count(slot) == mount) {", ") {")),
+        ("a read-back from a card changed since is deleted",
+         source.replace("\tif(card_mount_count(slot) != mount) {\n\t\tfree(entries);",
+                        "\tif(false) {\n\t\tfree(entries);")),
     ]
     if "static bool readSaveAt(" in source:
         updates = {

@@ -183,13 +183,21 @@ tag on `beta`. The newest changes are at the top until their release is named.
   deleted the only copy.
 - A copy that fails before anything is written no longer says part of it
   is left behind.
+- A file already at the destination that can't be read, as on a network
+  share that lists it but won't open it, is asked about (Keep both,
+  Replace, Cancel) like any other. The copy used to write over it without
+  asking, and a write that failed then deleted it.
+- A save copied onto a memory card that fails, or reads back wrong, after
+  the card was taken out or changed (a MemCard PRO switching cards, say),
+  no longer deletes the save of the same name on the card now in the slot.
 - Z on `..` turns Autoload off in the folder Indigo starts in, with File
   Management off too; turning it on still needs File Management, or the File
   Browser from System.
 - A quick press made while Indigo reads from a device is no longer missed:
   B in the Library or Apps while a folder's picture loads from a disc, and
   B to cancel a copy or a verify in the File Browser while a piece of the
-  file is read or written. The File Browser, unlike Swiss's lists, keeps a
+  file is read or written, the last one included: a Move stopped there keeps
+  its original. The File Browser, unlike Swiss's lists, keeps a
   press made while a folder or a banner is read.
 - A game's details opened before its cover was read, just after reaching
   it in the Library or after the source changed, kept the disc banner
@@ -208,8 +216,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
   thread has stopped, closes the left pane's files before an operation,
   offers no Rename on a memory card, keeps `manage_file_ex`'s destination in
   one static handle, forgets its page wherever the page goes, and deletes a
-  failed copy's file unless nothing was written, and that a card's own copy
-  is deleted only once it reads back as the one kept, each with mutants. A memory card save's name can hold a slash: only a `.dol` one
+  failed copy's file unless nothing was written, asks about any file there
+  its existence check finds, sees a B from the last piece, and that a card's
+  own copy is deleted only once it reads back as the one kept, each with
+  mutants. `test_saves_card_io.py` changes the card during a failed write
+  and during the read-back: the save there of the same name stays. A memory card save's name can hold a slash: only a `.dol` one
   folder below the open one is a program folder.
 - The emulator test finds the File Browser by its two pane boxes, storage
   buttons and info bar in either screen shape, and checks which pane has

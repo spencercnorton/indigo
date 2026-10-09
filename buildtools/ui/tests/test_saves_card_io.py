@@ -129,6 +129,15 @@ typedef struct {
 } record;
 static record cards[2][8];
 static bool failWrite, failReadBack, wrongReadIdentity;
+/* A memory card emulator switching under the copy: from that write or read
+ * on, Slot B holds another card whose save has the same game, maker and
+ * name ('S'), mounted afresh. */
+static bool changeOnWrite, changeOnRead;
+static u32 mountCount[2];
+static u32 card_mount_count(int slot) { return mountCount[slot]; }
+static void changeCard(int slot, int i) {
+    memset(cards[slot][i].bytes, 'S', 8192); mountCount[slot]++;
+}
 static int failWritesLeft, failReadBacksLeft;
 /* Reads that read back true before failReadBacksLeft starts: cardReplace
  * reads the card's own copy once more before it deletes it. */
@@ -177,6 +186,7 @@ static s32 CARD_Create(int slot, const char *name, u32 length, card_file *file) 
 }
 static s32 CARD_Read(card_file *file, void *buffer, u32 length, u32 at) {
     assert(at == 0 && length == 8192);
+    if(changeOnRead) { changeOnRead = false; changeCard(file->chn, file->filenum); }
     memcpy(buffer, cards[file->chn][file->filenum].bytes, length);
     if(readBackFails()) ((u8 *)buffer)[0] ^= 1;
     return CARD_ERROR_READY;
@@ -187,6 +197,7 @@ static s32 CARD_ReadUnaligned(card_file *file, void *buffer, u32 length, u32 at,
 static s32 CARD_Write(card_file *file, const void *buffer, u32 length, u32 at) {
     writes++; assert(at == 0 && length == 8192);
     memcpy(cards[file->chn][file->filenum].bytes, buffer, length);
+    if(changeOnWrite) { changeOnWrite = false; changeCard(file->chn, file->filenum); }
     return failWrite || (failWritesLeft > 0 && failWritesLeft--) ?
         CARD_ERROR_FATAL_ERROR : CARD_ERROR_READY;
 }
@@ -255,6 +266,7 @@ static void add(int slot, int i, const char *game, const char *maker, u8 byte) {
 static void reset(void) {
     memset(cards, 0, sizeof(cards)); writes = deletes = mounts = 0;
     failWrite = failReadBack = wrongReadIdentity = false;
+    changeOnWrite = changeOnRead = false; mountCount[0] = mountCount[1] = 0;
     failWritesLeft = failReadBacksLeft = failReadBacksSkip = 0;
     devices[0] = (DEVICEHANDLER_INTERFACE){ &initial_CARDA, mounted, info,
         readDir, deviceHandler_CARD_readFile, deviceHandler_CARD_writeFile,
@@ -312,6 +324,27 @@ static void copyCases(const char *game, const char *maker) {
             assert(!cardWrite(1, data, data + 64, length - 64, why, sizeof(why)));
             assert(writes == beforeWrites && deletes == beforeDeletes);
         }
+        free(data);
+    }
+}
+/* The card changed during a failed write or during the read-back: the
+ * same-named save on the card there now isn't this write's, so it stays
+ * (review finding: cardWrite deleted it). */
+static int saveOn(int slot, const char *game);
+static void changedCardCases(void) {
+    for(int when = 0; when < 2; when++) {
+        reset(); add(0, 0, "GALP", "01", 'P');
+        file_handle source; handle(&source, 0, 0);
+        u32 length = 0; u8 *data = saveRead(&source, &length);
+        assert(data != NULL);
+        data[0x38] = 0; data[0x39] = 1;
+        failWrite = when == 0; changeOnWrite = when == 0; changeOnRead = when == 1;
+        char why[160];
+        assert(!cardWrite(1, data, data + 64, length - 64, why, sizeof(why)));
+        assert(writes == 1 && deletes == 0 && strstr(why, "changed") != NULL);
+        int at = saveOn(1, "GALP");
+        assert(at >= 0);
+        for(int i = 0; i < 8192; i++) assert(cards[1][at].bytes[i] == 'S');
         free(data);
     }
 }
@@ -402,8 +435,8 @@ int main(void) {
     readErase("GALP", "01"); readErase("GALE", "02");
     readErase("\0ABC", "\0D");
     copyCases("GALP", "01"); copyCases("GALE", "02");
-    copyCases("\0ABC", "\0D"); wildcardCases();
-    puts("card identity: reads, Erase, Copy, Move, both rollback paths, wildcards and Detail's load PASS");
+    copyCases("\0ABC", "\0D"); wildcardCases(); changedCardCases();
+    puts("card identity: reads, Erase, Copy, Move, both rollback paths, a card changed under them, wildcards and Detail's load PASS");
     return 0;
 }
 """

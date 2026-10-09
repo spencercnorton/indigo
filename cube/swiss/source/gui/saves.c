@@ -1616,6 +1616,7 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 	int count, used, total;
 	u8 *back;
 	u32 backLength = 0;
+	u32 mount;
 	s32 written;
 	bool has, same;
 
@@ -1631,6 +1632,10 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 		return false;
 	}
 	places[slot].mounted = true;
+	/* The clean-up below deletes only on the card this mounted: one taken
+	 * out or changed since (a memory card emulator switching) is mounted
+	 * again, and its save of the same name isn't this write's. */
+	mount = card_mount_count(slot);
 	/* The driver would write over a save of the same name in place, whatever
 	 * its size, so one already there stops the copy. */
 	has = cardFind(slot, entry, &entries, &count, &used) != NULL;
@@ -1665,11 +1670,13 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 	setGCIInfo(NULL);
 	if(written != (s32)blockBytes) {
 		/* The save wasn't there before, so what the driver left is ours. */
-		if((copy = cardFind(slot, entry, &entries, &count, &used)) != NULL) {
+		if((copy = cardFind(slot, entry, &entries, &count, &used)) != NULL &&
+			card_mount_count(slot) == mount) {
 			device->deleteFile(copy);
 		}
 		free(entries);
 		snprintf(why, whySize, "%s: %s.", slotName(slot),
+			card_mount_count(slot) != mount ? "the card changed meanwhile" :
 			cardWhy(written < 0 ? written : CARD_ERROR_FATAL_ERROR));
 		return false;
 	}
@@ -1681,6 +1688,13 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 		!strncmp((const char *)back + 8, (const char *)entry + 8, CARD_FILENAMELEN) &&
 		!memcmp(back + UI_SAVES_ENTRY_SIZE, blocks, blockBytes);
 	free(back);
+	/* Read back from another card: neither proof nor this write's to delete. */
+	if(card_mount_count(slot) != mount) {
+		free(entries);
+		snprintf(why, whySize, "The card in %s changed while the save was "
+			"written.", slotName(slot));
+		return false;
+	}
 	if(!same) {
 		if(copy != NULL) {
 			device->deleteFile(copy);

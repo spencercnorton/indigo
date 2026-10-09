@@ -1,3 +1,33 @@
+## 2026-10-09 — Three data-safety fixes from an independent review
+
+An independent review of PR 119 (87039d9) found three paths that delete or
+overwrite data; each was reproduced against the code first.
+
+- File Browser: the copy's existence check was Swiss's readFile(destFile,
+  NULL, 0), so a file there that couldn't be opened for reading (a network
+  share that lists it but won't open it) counted as absent. No Keep both,
+  Replace or Cancel: FAT's write opens with FA_CREATE_ALWAYS and wrote over
+  it, and a failed write's manageDropPartial deleted it. The check is now
+  manageDestExists (statFile, else open), as Keep both's loop already was.
+  The File Browser greys Copy and Move over a folder of that name, so a
+  folder never reaches the question.
+- File Browser: B was looked at only at the top of the copy loop, so a B
+  latched during the last piece's read or write, or the file's close, was
+  never seen and a Move deleted its original. It is looked at once more
+  before the partial file and the original are decided.
+- Memory Cards: cardWrite's clean-up (after a failed write, or a read-back
+  that differs) found the save by game, maker and name and deleted it, on
+  whatever card was in the slot by then. A card taken out, or changed by a
+  MemCard PRO switching, is mounted again (card_removed_cb clears card_init,
+  readDir remounts), so deviceHandler-CARD.c now counts mounts
+  (card_mount_count) and cardWrite deletes only while the count is the one
+  it wrote under; otherwise it keeps the file and says the card changed.
+  A card that switches without leaving the bus can't be told apart.
+- Tests: test_saves_card_io.py changes the card during a failed write and
+  during the read-back (the other card's save stays; both unbound clean-ups
+  fail it); audit_files_contract pins the existence check and the late B
+  before the partial file and the Move, with a mutant each.
+
 ## 2026-10-09 — Fixes from the 2.4 review
 
 Before 2.4's release candidate, six independent reviews read everything 2.4

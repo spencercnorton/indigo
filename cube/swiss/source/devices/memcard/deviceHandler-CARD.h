@@ -32,6 +32,9 @@ extern DEVICEHANDLER_INTERFACE __device_card_a;
 extern DEVICEHANDLER_INTERFACE __device_card_b;
 
 int initialize_card(int slot);
+/* Changes when the slot's card is mounted again: one that is still the
+ * same number is the card that was mounted then. */
+u32 card_mount_count(int slot);
 void setCopyGCIMode(bool _isCopyGCIMode);
 void setGCIInfo(const void *buffer);
 char getGCIRegion(const char *gameID);

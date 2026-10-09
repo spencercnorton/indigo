@@ -421,6 +421,19 @@ def check_operations(swiss: str, screen: str, manage: str, actions: str, frame: 
     stop = "bool removed = cancelled && manageDropPartial(destFile);"
     assert stop in ex, "a stopped copy keeps its partial file, or a finished one loses its file"
     before(ex, "ret = devices[DEVICE_DEST]->writeFile(destFile, NULL, 0);", stop)
+    # B tapped while the last piece was read or written, or the file closed,
+    # still stops it: looked at again before the partial file and the Move's
+    # original are decided.
+    late = ("\t\t\tif((padsButtonsHeld() | padsButtonsTaken(BUTTON_B)) & BUTTON_B) {\n"
+            "\t\t\t\tcancelled = 1;\n\t\t\t}\n")
+    assert late in ex, "B in the last piece of a copy is missed"
+    before(ex, "ret = devices[DEVICE_DEST]->writeFile(destFile, NULL, 0);", late)
+    before(ex, late, stop)
+    # A file there that can't be read is there all the same: the question
+    # comes from the existence check Keep both uses (statFile, else open).
+    assert "\t\tif(manageDestExists(destFile)) {\n" in ex and "readFile(destFile, NULL, 0)" not in ex, \
+        "a file there that can't be read is written over without the question"
+    before(ex, "if(manageDestExists(destFile)) {", "filesAskExists(destFile->name)")
     before(ex, stop, "manageCopied(result, canDelete || cancelled ? option : COPY_OPTION,")
     # A stopped Move keeps its original: it is deleted only past a copy
     # that wasn't stopped.
@@ -842,6 +855,11 @@ MUTANTS = (
     ("a failed last write keeps its partial file", SWISS,
      "\t\t\t\tbool removed = manageDropPartial(destFile);\n\t\t\t\tsprintf(txtbuffer, \"Failed to Write! (%d)\\n",
      "\t\t\t\tbool removed = false;\n\t\t\t\tsprintf(txtbuffer, \"Failed to Write! (%d)\\n"),
+    ("B in the last piece of a copy is missed", SWISS,
+     "\t\t\tif((padsButtonsHeld() | padsButtonsTaken(BUTTON_B)) & BUTTON_B) {\n\t\t\t\tcancelled = 1;\n\t\t\t}\n", ""),
+    ("a file there that can't be read is written over without the question", SWISS,
+     "\t\tif(manageDestExists(destFile)) {\n\t\t\t/* The File Browser asks",
+     "\t\tif(devices[DEVICE_DEST]->readFile(destFile, NULL, 0) == 0) {\n\t\t\t/* The File Browser asks"),
     ("a stopped copy keeps its partial file", SWISS,
      "bool removed = cancelled && manageDropPartial(destFile);", "bool removed = false;"),
     ("a finished copy is deleted", SWISS,
