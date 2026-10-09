@@ -127,14 +127,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
   read and written for Swiss.
 - Swiss's own file lists (Standard, Fullwidth and its Carousel), which
   nothing opened once the File Browser took their place, are gone, with
-  the file-type tags, star and banner mask only they drew: Indigo is about
-  120 KB smaller. The Library, the Recent list, Settings › Load at
+  the file-type tags, star and banner mask only they drew, which saves about
+  120 KB. The Library, the Recent list, Settings › Load at
   startup's folder chooser and Swiss's game screen for Recent and Autoload
   stay as they were.
   The example `global.ini` sets Library Layout instead of
   `GameBrowserType`.
-- Removed the Library folder path and color page. Game folders retain their
-  existing navigation and artwork without folder identity colors.
 
 ### Improved
 
@@ -200,6 +198,19 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- `test_save_choice.py` runs Game Detail's save choice from `swiss.c` itself:
+  no choice without a card or with Emulate Memory Card on, each copy then
+  the totals, and B keeping the card's copy. `test_saves_stats.py` holds the
+  card's own copy first however many the Save Folder has, two cards' copies
+  in slot order, and the folder's newest, newest first;
+  `test_saves_card_io.py` swaps the card before the replace. The audits pin
+  that the File Browser lets its loading wheel go only once the banner
+  thread has stopped, closes the left pane's files before an operation,
+  offers no Rename on a memory card, keeps `manage_file_ex`'s destination in
+  one static handle, forgets its page wherever the page goes, and deletes a
+  failed copy's file unless nothing was written, and that a card's own copy
+  is deleted only once it reads back as the one kept, each with mutants. A memory card save's name can hold a slash: only a `.dol` one
+  folder below the open one is a program folder.
 - The emulator test finds the File Browser by its two pane boxes, storage
   buttons and info bar in either screen shape, and checks which pane has
   the focus; the frame budget counts its shapes (`files`, `files-right`,

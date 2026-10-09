@@ -85,7 +85,7 @@ static const uiSetLayoutPage_t PAGES[UI_SETLAYOUT_PAGE_COUNT] = {
 	  "Adapter, file servers, and RetroTINK-4K.",
 	  UI_SETLAYOUT_ROWS_NETWORK, UI_SETLAYOUT_TAB_SETUP, 0 },
 	{ "Setup", "Library",
-	  "Browser views, the recent list, and the look.",
+	  "Layout and folders, the recent list, and files.",
 	  UI_SETLAYOUT_ROWS_LIBRARY, UI_SETLAYOUT_TAB_SETUP, 0 },
 	{ "Setup", "Developer",
 	  "USB Gecko, memory, and debugging.",

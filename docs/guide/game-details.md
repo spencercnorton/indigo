@@ -139,9 +139,9 @@ Game Defaults value, and **B** leaves. The rest works like the main
 
 ## Autoload
 
-**Z** marks the game to open every time Indigo starts, so its details are
-the first thing you see. With **Boot without prompts** on, the game starts
-straight away instead. The shortcut then reads **Z Autoload On**; press Z
+**Z** marks the game to open every time Indigo starts, so it is the first
+thing you see, on Swiss's own game screen. With **Boot without prompts** on,
+the game starts straight away instead. The shortcut then reads **Z Autoload On**; press Z
 again to turn it off.
 
 Autoload is saved in your settings file, so it appears only when Indigo has

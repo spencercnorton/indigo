@@ -4881,9 +4881,9 @@ static void _PrepareHomeText(drawHomeEvent_t *data)
 			focusWidth, 0.78f, GetTextSizeInPixels);
 	}
 	/* Y opens Settings anywhere on Home; it says so while Settings has no
-	 * side to turn to. */
+	 * side to turn to. TURN only while there is a face to turn to. */
 	snprintf(data->command, sizeof(data->command),
-		"STICK / D-PAD  TURN    %s%s%s",
+		"%s%s%s%s", data->state.faceCount > 1 ? "STICK / D-PAD  TURN    " : "",
 		UIHome_PrimaryHint(data->state.face, data->capabilities),
 		data->capabilities.hasRecent ? "    START  RECENT" : "",
 		UIHome_RingIndex(&data->state, UI_HOME_FACE_SETTINGS) < 0 ?

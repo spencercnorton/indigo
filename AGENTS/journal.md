@@ -1,3 +1,69 @@
+## 2026-10-09 — Fixes from the 2.4 review
+
+Before 2.4's release candidate, six independent reviews read everything 2.4
+ships (v2.3.0..update/2.4, the unreleased 2.3.1 commits included), each from
+one angle: File Browser data safety, memory safety and threads, Home and
+settings, Game Detail and saves, rendering, and the changelog and guide
+against the code. Every finding was checked against the code before a fix;
+three were blockers, all fixed here:
+
+- A on a game in the File Browser while banners load disposed the loading
+  wheel before meta_thread_stop(), and the banner thread's last
+  DrawUpdateProgressLoading(loadingBox, -1) wrote into freed memory. The
+  Library already stopped the thread first. audit_files_contract now holds
+  every DrawDispose(loadingBox) in renderFileList to a meta_thread_stop()
+  right before it.
+- UIFiles_IsProgramFolder took any path deeper than the open folder for a
+  folder populate_meta rewrote into its DOL. A memory card's save name is 32
+  free bytes and the CARD handler pastes it under the folder, so a save named
+  "ABC/DEF" was a program folder "ABC", and Delete ran deleteFileOrDir on it:
+  CARD's readDir ignores the path and lists every save. The rule is now what
+  the rewrite makes (one folder below, a .dol leaf), and filesKind never
+  finds one on a card or the Qoob.
+- Keep both looped on devices[DEVICE_DEST]->statFile, which FlippyDrive
+  Flash doesn't have (a call through NULL, in 2.3.0 too). manageDestExists
+  opens the file instead, as the existence check before it does.
+
+The majors: the save choice (offered with no card or with Emulate Memory
+Card on, then Launch refused until Detail was left: now gameflowSaveChoosable
+gates the offer, the cycle runs through the totals, B goes back to them); the
+copy list filled from the Save Folder first (now the cards first, the folder's
+newest kept, newest first); Rename on a card (the driver's rename is a stub)
+and Move off a card (no read-back, NOMOVE ignored), both now Memory Cards'
+job; config_set_folder_color unmounting the device Memory Cards holds
+(checkConfigDevice); and FatFs refusing to unlink or rename a file the left
+pane still holds open from its banner read (filesCloseLeft before an
+operation; every device's closeFile is a no-op on a handle that isn't open).
+The minors are in the commit messages; three wait for after 2.4 (the
+Library's place after the File Browser from Home, info bar names of 128+
+bytes, card writes keeping permissions).
+
+The scan keeps its order, the Save Folder and then the slots. Once the list
+is full a card's copy takes the oldest folder copy's place, the rest moving
+up so the list stays in scan order, and statsArrange puts the cards first.
+The "Partial scan" on Detail in CI's virtual-cards route is the route's own:
+its Save Folder holds two subfolders, which the scan never reads (5805ea2
+shows it too), and both slots are empty, so 2.4 offers no copy there.
+
+A second review read only these fixes and found four smaller misses, fixed
+here too. The Library's carousel let the File Browser's page go without
+clearing filesPage. A failed copy took a failed stat for "no file there"
+(a dropped SMB link would leave a truncated file the message called
+removed): only a read that fails before the first write now skips the
+delete. Z on ".." in the right pane still needed File Management to turn
+Autoload off. And two cards' copies could swap places on a full list.
+
+A soak harness drove the build in the emulator with seeded random presses for
+an hour at a time (lab only, not in CI). One seed crashed the same way on
+every build: a DSI in dlfree under setVideoMode, after Settings had switched
+the menu to 240p (TVNtsc240DsVf: EFB 480, XFB 240, GX_COPY_INTLC_EVEN). It is
+Dolphin's: its XFB copy ignores the frame-to-field mode, so it writes 480
+lines into each 240-line framebuffer, over the heap chunk after it. A write
+watch on that chunk saw no store from the CPU, and with the copy halved as
+libogc2 counts it the same seed ran on. Upstream Swiss has the same copy code;
+nothing changes in Indigo, but the CI emulator needs that Dolphin fix before a
+route can use a 240p menu mode.
+
 ## 2026-10-08 — Home: Idle Animation, Waves, On-screen Controls, Face Labels
 
 Issue 116 asked for a livelier idle cube, a way to hide the waves, and a way
