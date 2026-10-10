@@ -34,6 +34,7 @@
 #include "util.h"
 #include "info.h"
 #include "saves.h"
+#include "card_slots.h"
 #include "httpd.h"
 #include "exi.h"
 #include "bba.h"
@@ -2728,6 +2729,11 @@ typedef struct {
 	uiSavesGameStats_t saveStats;
 	int saveSlot;
 	int saveChoice;
+	/* A memory card is still changing to this game's card (card_slots.c):
+	 * its saves are read when it is done, and no copy is chosen till then.
+	 * One given up on at the last read: its saves are missing. */
+	bool savesWaiting;
+	bool savesCardFailed;
 } gameflowLaunchContext_t;
 
 /* The copies of the open Detail's save, one Detail at a time. */
@@ -2735,6 +2741,7 @@ static savesCopies_t gameflowSaveCopies;
 
 static void load_file_with_context(gameflowLaunchContext_t *context);
 static void load_game_with_context(gameflowLaunchContext_t *context);
+static void gameflowWaitForCardIds(void);
 static int gameflow_info_game(ConfigEntry *config,
 	gameflowLaunchContext_t *context);
 static bool gameflowReadResolverHeader(file_handle *file,
@@ -5863,7 +5870,9 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 		msgBox = DrawRepublish(msgBox, DrawMessageBox(D_WARN, "Device is operating in a degraded state.\nThis may impact playability."));
 		sleep(5);
 	}
-	gameID_early_set(&GCMDisk);
+	/* The game's ID to the memory card emulators, which follow it to the
+	 * game's own card; card_slots.c knows when each is done. */
+	CardSlots_RequestGame(&GCMDisk);
 	DrawDispose(msgBox);
 	
 	// Find the config for this game, or default if we don't know about it
@@ -5880,6 +5889,7 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 		free(config);
 		goto exit;
 	}
+	gameflowWaitForCardIds();
 	/* A Library launch shows the launch screen from here to the hand-off,
 	 * Boot without prompts included. */
 	if(context != NULL) {
@@ -6489,7 +6499,12 @@ static void gameflowSaveChoiceSource(const gameflowLaunchContext_t *context,
 		copy->source == (savesCopySource_t)context->saveSlot;
 }
 
-/* A box until A or B, once the press that opened it is let go. */
+/* Set when a memory card slot changed (card_slots.c) while a box of
+ * gameflowSaveAsk was up: the copies Detail showed may not be the cards'. */
+static bool gameflowSlotsChanged;
+
+/* A box until A or B, once the press that opened it is let go. The memory
+ * card slots are followed meanwhile. */
 static bool gameflowSaveAsk(const char *text)
 {
 	uiDrawObj_t *box = DrawPublish(DrawMessageBox(D_INFO, text));
@@ -6499,6 +6514,7 @@ static bool gameflowSaveAsk(const char *text)
 	while(1) {
 		u32 held = padsButtonsHeld();
 
+		if(CardSlots_Poll()) gameflowSlotsChanged = true;
 		if(!released) {
 			released = (held & (BUTTON_A | BUTTON_B)) == 0u;
 		}
@@ -6518,6 +6534,25 @@ static bool gameflowSaveAsk(const char *text)
 	return yes;
 }
 
+/* A launch with a game ID still waiting behind a memory card's switch sends
+ * it first, once that switch is done, so the game starts with its own card on
+ * the way. Bounded by the switch's own deadline; the box says why. */
+static void gameflowWaitForCardIds(void)
+{
+	uiDrawObj_t *box = NULL;
+	u64 start = gettime();
+
+	while(CardSlots_IdWaiting() && diff_msec(start, gettime()) < 65000u) {
+		if(box == NULL && diff_msec(start, gettime()) > 500u) {
+			box = DrawPublish(DrawProgressBar(true, 0,
+				"Waiting for the memory card\205"));
+		}
+		(void)CardSlots_Poll();
+		VIDEO_WaitVSync();
+	}
+	if(box != NULL) DrawDispose(box);
+}
+
 /* Before a launch: a copy chosen with Left and Right that isn't the one on
  * the card the game reads goes on that card first, once A says so. False:
  * Detail stays open (B, which goes back to the card's own copy, or it didn't
@@ -6531,6 +6566,7 @@ static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
 	bool ok, own = false;
 	unsigned i;
 
+	gameflowSlotsChanged = false;
 	if(!gameflowSaveChoosable(context) || context->saveChoice < 0 ||
 		(unsigned)context->saveChoice >= gameflowSaveCopies.count) {
 		return true;
@@ -6544,6 +6580,12 @@ static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
 	for(i = 0u; i < gameflowSaveCopies.count; i++) {
 		own |= gameflowSaveCopies.copy[i].source == (savesCopySource_t)context->saveSlot;
 	}
+	/* Never onto the card a memory card emulator is still changing from. */
+	if(!CardSlots_WritableFor(context->saveSlot, context->gameId)) {
+		gameflowSaveAsk("The memory card is still changing to this game's\n"
+			"card. Try again in a moment.\nA  OK");
+		return false;
+	}
 	snprintf(text, sizeof(text), own ? "Start with the save from %s?\n"
 		"%s's own copy of it goes to the Save Folder first.\nA  LOAD    B  KEEP" :
 		"Start with the save from %s?\n"
@@ -6551,6 +6593,19 @@ static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
 		context->saveSlot == 0 ? "Slot A" : "Slot B");
 	if(!gameflowSaveAsk(text)) {
 		context->saveChoice = -1;
+		return false;
+	}
+	/* Again after the question, which followed the cards while it was up: a
+	 * card that changed meanwhile may not hold the copies Detail showed. */
+	if(CardSlots_Poll() || gameflowSlotsChanged) {
+		context->savesScanned = false;
+		gameflowSaveAsk("A memory card changed while the question was up.\n"
+			"Look at the saves again, then launch.\nA  OK");
+		return false;
+	}
+	if(!CardSlots_WritableFor(context->saveSlot, context->gameId)) {
+		gameflowSaveAsk("The memory card is still changing to this game's\n"
+			"card. Try again in a moment.\nA  OK");
 		return false;
 	}
 	box = DrawPublish(DrawProgressBar(true, 0, "Loading save\205"));
@@ -6672,14 +6727,26 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 		valid_gcm_magic(&GCMDisk) &&
 		memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0) {
 		if(!context->savesScanned) {
+			unsigned slots =
+				(CardSlots_ReadableFor(0, context->gameId) ? 1u : 0u) |
+				(CardSlots_ReadableFor(1, context->gameId) ? 2u : 0u);
+
 			Saves_CollectGameStats(context->gameId, &context->saveStats,
-				&gameflowSaveCopies);
+				&gameflowSaveCopies, slots);
+			/* A card given up on while changing to this game's card: its
+			 * saves are missing, so the scan is incomplete. */
+			context->savesCardFailed = CardSlots_FailedFor(0, context->gameId) ||
+				CardSlots_FailedFor(1, context->gameId);
+			if(context->savesCardFailed) context->saveStats.partial = true;
 			context->savesScanned = true;
 			context->saveSlot = gameflowSaveSlot(&gameflowSaveCopies);
 			/* The totals first: the card as it is. */
 			context->saveChoice = -1;
 		}
+		context->savesWaiting = CardSlots_WaitingFor(context->gameId);
 		source.saveStats = &context->saveStats;
+		source.savesWaiting = context->savesWaiting;
+		source.savesCardFailed = context->savesCardFailed;
 		gameflowSaveChoiceSource(context, &source);
 	}
 	source.customSettings = (uint32_t)settings_game_custom_count(config);
@@ -6789,13 +6856,21 @@ static int gameflow_info_game(ConfigEntry *config,
 				 * at most, as the Library does, and fades in when it lands. */
 				if(buttons == 0u) {
 					DrawGameflowPollPosters();
+					/* A card finished changing to this game's card, gave
+					 * up, or left the bus: read the saves again. */
+					if(CardSlots_Poll() && context->savesScanned) {
+						context->savesScanned = false;
+						gameflowPublishDetail(config, context);
+					}
 				}
 			} while(buttons == 0u);
 			/* Left and Right choose the save copy to start with, while there
 			 * is a choice: each copy, then the totals again (-1, the card as
 			 * it is), so a choice can always be undone. */
 			if(buttons & (BUTTON_LEFT | BUTTON_RIGHT)) {
-				if(gameflowSaveChoosable(context)) {
+				/* Not while a card changes to this game's card: its copy
+				 * isn't on the list yet. */
+				if(gameflowSaveChoosable(context) && !context->savesWaiting) {
 					int span = (int)gameflowSaveCopies.count + 1;
 					int step = (buttons & BUTTON_RIGHT) ? 1 : -1;
 
@@ -6841,7 +6916,9 @@ static int gameflow_info_game(ConfigEntry *config,
 		if((action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||
 			action == UI_GAMEFLOW_DETAIL_ACTION_CLEAN_BOOT) &&
 			!gameflowLoadChosenSave(context)) {
-			/* Not now: the save stays as it was, and so does Detail. */
+			/* Not now: the save stays as it was, and so does Detail, but for
+			 * a card that changed while one of its boxes was up. */
+			if(gameflowSlotsChanged) context->savesScanned = false;
 			gameflowPublishDetail(config, context);
 		}
 		else if(action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||

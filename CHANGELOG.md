@@ -198,6 +198,14 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - Z on `..` turns Autoload off in the folder Indigo starts in, with File
   Management off too; turning it on still needs File Management, or the File
   Browser from System.
+- With a MemCard PRO GC, or another memory card that changes to each game's
+  own card, a game's details no longer read the card before it has changed,
+  which showed the previous game's saves or "Save scan incomplete". The
+  Saves box says **Memory card loading** until the card is ready, even for a
+  game with fewer than two save copies, and **Memory card didn't load** if
+  it never is. A save is only loaded onto the card once it holds the game's
+  card, and opening games' details quickly one after another no longer
+  leaves the card without its GameID until it is taken out and put back.
 - A quick press made while Indigo reads from a device is no longer missed:
   B in the Library or Apps while a folder's picture loads from a disc, and
   B to cancel a copy or a verify in the File Browser while a piece of the
@@ -216,6 +224,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
   `get_fst_details`, `adjust_tgc_fst` and `calc_fst_entries_size`. The game
   route launches the disc with a runaway file table on its way to the
   probe: it fails like any launch there and comes back to the Library.
+- `test_card_slots.py` runs the real `card_slots.c` against stubbed MMCE, CARD and
+  EXI calls with a fake clock and presence line, one request after another as
+  well as one at a time, and `test_ui_card_slots` scripts the slot's states;
+  `test_save_choice.py` holds the save choice to a card that changes, during its
+  question too. The Game Detail audit pins the wiring, with mutants.
 - `test_save_choice.py` runs Game Detail's save choice from `swiss.c` itself:
   no choice without a card or with Emulate Memory Card on, each copy then
   the totals, and B keeping the card's copy. `test_saves_stats.py` holds the

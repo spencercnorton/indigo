@@ -231,7 +231,7 @@ int main(int argc, char **argv)
 		dated[i][0x28] = (u8)(when >> 24); dated[i][0x29] = (u8)(when >> 16);
 		dated[i][0x2a] = (u8)(when >> 8); dated[i][0x2b] = (u8)when;
 	}
-	reset(); Saves_CollectGameStats(id, &stats, NULL);
+	reset(); Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 3u && stats.blocks == 6u);
 	assert(stats.sourceSaves[0] == 1u && stats.sourceSaves[1] == 0u && stats.sourceSaves[2] == 2u);
 	assert(!stats.partial && stats.checkedSources == 5u);
@@ -242,7 +242,7 @@ int main(int argc, char **argv)
 	 * in Slot A first, then the Save Folder's .gci and its card image's save
 	 * (the same date: in the order the folder lists them). */
 	reset(); memset(&copies, 0xa5, sizeof(copies));
-	Saves_CollectGameStats(id, &stats, &copies);
+	Saves_CollectGameStats(id, &stats, &copies, 3u);
 	assert(stats.saves == 3u && copies.count == 3u);
 	assert(copies.cards[0] && !copies.cards[1]);
 	assert(copies.copy[0].source == SAVES_COPY_SLOT_A &&
@@ -258,19 +258,19 @@ int main(int argc, char **argv)
 		!memcmp(copies.copy[2].entry, id, 6u));
 	/* The list holds eight; the totals still count every one. */
 	reset(); listingMode = 1u; probeResult[0] = CARD_ERROR_NOCARD;
-	Saves_CollectGameStats(id, &stats, &copies);
+	Saves_CollectGameStats(id, &stats, &copies, 3u);
 	assert(stats.saves == 16u && copies.count == SAVES_COPIES_MAX && !copies.cards[0]);
 	/* However many the Save Folder holds, the card's own copy, the one the
 	 * game reads, stays on the list, first. */
 	reset(); listingMode = 1u;
-	Saves_CollectGameStats(id, &stats, &copies);
+	Saves_CollectGameStats(id, &stats, &copies, 3u);
 	assert(stats.saves == 17u && copies.count == SAVES_COPIES_MAX && copies.cards[0]);
 	assert(copies.copy[0].source == SAVES_COPY_SLOT_A);
 	for(i = 1u; i < copies.count; i++) assert(copies.copy[i].source == SAVES_COPY_IMAGE);
 	/* Of the Save Folder's copies the newest stay, newest first, whatever
 	 * order the folder lists them in. */
 	reset(); listingMode = 3u;
-	Saves_CollectGameStats(id, &stats, &copies);
+	Saves_CollectGameStats(id, &stats, &copies, 3u);
 	assert(stats.saves == DATED_COPIES + 1u && copies.count == SAVES_COPIES_MAX);
 	assert(copies.copy[0].source == SAVES_COPY_SLOT_A);
 	for(i = 1u; i < copies.count; i++) {
@@ -282,7 +282,7 @@ int main(int argc, char **argv)
 	 * first, whichever Save Folder copies they took the place of (here the
 	 * oldest is last on the list, the next oldest just before it). */
 	reset(); listingMode = 4u; probeResult[1] = CARD_ERROR_READY;
-	Saves_CollectGameStats(id, &stats, &copies);
+	Saves_CollectGameStats(id, &stats, &copies, 3u);
 	assert(stats.saves == DATED_COPIES + 2u && copies.count == SAVES_COPIES_MAX);
 	assert(copies.cards[0] && copies.cards[1]);
 	assert(copies.copy[0].source == SAVES_COPY_SLOT_A &&
@@ -293,51 +293,58 @@ int main(int argc, char **argv)
 			updated + DATED_COPIES + 1u - i);
 	}
 	/* No copy of another game's save, and an empty list without an ID. */
-	reset(); Saves_CollectGameStats(wrong, &stats, &copies);
+	reset(); Saves_CollectGameStats(wrong, &stats, &copies, 3u);
 	assert(stats.saves == 0u && copies.count == 0u && copies.cards[0]);
 	memset(&copies, 0xa5, sizeof(copies));
-	Saves_CollectGameStats(NULL, &stats, &copies);
+	Saves_CollectGameStats(NULL, &stats, &copies, 3u);
 	assert(copies.count == 0u && !copies.cards[0]);
-	reset(); Saves_CollectGameStats(wrong, &stats, NULL);
+	reset(); Saves_CollectGameStats(wrong, &stats, NULL, 3u);
 	assert(stats.saves == 0u && stats.blocks == 0u && !stats.updatedKnown);
-	reset(); statusError = true; Saves_CollectGameStats(id, &stats, NULL);
+	reset(); statusError = true; Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 3u && stats.partial && stats.latestUpdated == updated);
-	reset(); statusMismatch = true; Saves_CollectGameStats(id, &stats, NULL);
+	reset(); statusMismatch = true; Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 3u && stats.partial && stats.latestUpdated == updated);
-	reset(); invalidSave = true; Saves_CollectGameStats(id, &stats, NULL);
+	reset(); invalidSave = true; Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 2u && stats.blocks == 4u && stats.partial && fileReads == 1u);
-	reset(); hugeSave = true; Saves_CollectGameStats(id, &stats, NULL);
+	reset(); hugeSave = true; Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 2u && stats.blocks == 4u && stats.partial && fileReads == 1u);
-	reset(); shortRead = true; Saves_CollectGameStats(id, &stats, NULL);
+	reset(); shortRead = true; Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 1u && stats.partial && fileCloses == 2u);
-	reset(); seekError = true; Saves_CollectGameStats(id, &stats, NULL);
+	reset(); seekError = true; Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 1u && stats.partial && fileReads == 0u && fileCloses == 2u);
-	reset(); configOk = false; Saves_CollectGameStats(id, &stats, NULL);
+	reset(); configOk = false; Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 1u && stats.partial && fileReads == 0u && configCloses == 0u);
-	reset(); directoryError = true; Saves_CollectGameStats(id, &stats, NULL);
+	reset(); directoryError = true; Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 1u && stats.partial && stats.checkedSources == 1u);
-	reset(); enumError = true; Saves_CollectGameStats(id, &stats, NULL);
+	reset(); enumError = true; Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 2u && stats.partial && unmounts[0] == 1u);
 	reset(); devices[0] = &occupied; occupied.location = LOC_MEMCARD_SLOT_A;
-	Saves_CollectGameStats(id, &stats, NULL);
+	Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 2u && probes[0] == 0u && mounts[0] == 0u);
-	reset(); devices[0] = &__device_card_a; Saves_CollectGameStats(id, &stats, NULL);
+	reset(); devices[0] = &__device_card_a; Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 3u && unmounts[0] == 0u);
-	reset(); probeResult[0] = CARD_ERROR_BUSY; Saves_CollectGameStats(id, &stats, NULL);
+	reset(); probeResult[0] = CARD_ERROR_BUSY; Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 2u && stats.partial && probes[0] == 1u && mounts[0] == 0u);
 	reset(); listingMode = 1u; probeResult[0] = CARD_ERROR_NOCARD;
-	Saves_CollectGameStats(id, &stats, NULL);
+	Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 16u && stats.blocks == 32u && stats.partial && fileReads == 16u);
 	reset(); listingMode = 2u; probeResult[0] = CARD_ERROR_NOCARD;
-	Saves_CollectGameStats(id, &stats, NULL);
+	Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 256u && stats.partial && fileReads == 256u);
-	reset(); nestedFolder = true; Saves_CollectGameStats(id, &stats, NULL);
+	/* A card still switching to the game is left out of the mask: never
+	 * probed or mounted, and the rest still counted. */
+	reset(); Saves_CollectGameStats(id, &stats, NULL, 2u);
+	assert(stats.saves == 2u && probes[0] == 0u && mounts[0] == 0u && probes[1] == 1u);
+	assert((stats.checkedSources & 1u) == 0u);
+	reset(); Saves_CollectGameStats(id, &stats, NULL, 0u);
+	assert(stats.saves == 2u && probes[0] == 0u && probes[1] == 0u);
+	reset(); nestedFolder = true; Saves_CollectGameStats(id, &stats, NULL, 3u);
 	assert(stats.saves == 3u && stats.blocks == 6u && stats.partial);
 	reset(); for(i = 0u; i < 6u; i++) wrong[i] = '\0';
-	Saves_CollectGameStats(wrong, &stats, NULL);
+	Saves_CollectGameStats(wrong, &stats, NULL, 3u);
 	assert(stats.saves == 0u && stats.checkedSources == 0u && fileReads == 0u && probes[0] == 0u);
-	Saves_CollectGameStats(NULL, &stats, NULL); assert(stats.saves == 0u);
-	Saves_CollectGameStats(id, NULL, NULL);
+	Saves_CollectGameStats(NULL, &stats, NULL, 3u); assert(stats.saves == 0u);
+	Saves_CollectGameStats(id, NULL, NULL, 3u);
 	for(i = 0u; i < DATED_COPIES; i++) free(dated[i]);
 	free(image); free(gci);
 	puts("save stats: exact IDs, real RAW metadata, bounded reads, partial failures, retained mounts, copy places, the cards first in slot order and the newest kept PASS");

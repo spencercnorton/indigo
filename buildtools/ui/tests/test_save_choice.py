@@ -35,12 +35,21 @@ typedef int uiDrawObj_t;
 static struct { int emulateMemoryCard; } swissSettings;
 typedef struct {
 	bool savesScanned; uiSavesGameStats_t saveStats; int saveSlot; int saveChoice;
+	bool savesWaiting; char gameId[7];
 } gameflowLaunchContext_t;
 static savesCopies_t gameflowSaveCopies;
 static bool answer = true;
 static int asks, loads;
 static char asked[512];
-static bool gameflowSaveAsk(const char *text) { snprintf(asked, sizeof(asked), "%s", text); ++asks; return answer; }
+/* gameflowSaveAsk follows the memory card slots while its box is up and
+ * sets this when one changed; changeDuringAsk plays that for the question. */
+static bool gameflowSlotsChanged, changeDuringAsk;
+static bool gameflowSaveAsk(const char *text)
+{
+	snprintf(asked, sizeof(asked), "%s", text); ++asks;
+	if(changeDuringAsk && strstr(text, "Start with")) gameflowSlotsChanged = true;
+	return answer;
+}
 static uiDrawObj_t *DrawProgressBar(bool a, int b, const char *c) { (void)a; (void)b; (void)c; return NULL; }
 static uiDrawObj_t *DrawPublish(uiDrawObj_t *o) { return o; }
 static void DrawDispose(uiDrawObj_t *o) { (void)o; }
@@ -49,6 +58,15 @@ static bool Saves_LoadCopy(int slot, const savesCopy_t *copy, char *why, size_t 
 {
 	(void)slot; (void)copy; (void)why; (void)n; ++loads; return true;
 }
+/* A memory card emulator's switch (card_slots.c): whether the slot may be
+ * written, before the question and once it has been answered. */
+static bool writable, writableAfter;
+static bool CardSlots_WritableFor(int slot, const char *id)
+{
+	(void)slot; (void)id; return asks == 0 ? writable : writableAfter;
+}
+static bool pollChanged;
+static bool CardSlots_Poll(void) { return pollChanged; }
 '''
 
 MAIN = r'''
@@ -75,6 +93,8 @@ static void detail(gameflowLaunchContext_t *context, int emulate, bool card, int
 	context->saveChoice = -1;	/* the totals first, as gameflowPublishDetail opens */
 	asks = loads = 0;
 	answer = true;
+	writable = writableAfter = true;
+	changeDuringAsk = pollChanged = false;
 }
 int main(void)
 {
@@ -130,13 +150,39 @@ int main(void)
 	assert(gameflowLoadChosenSave(&c) && asks == 1 && loads == 1);
 	assert(!strstr(asked, "own copy") && strstr(asked, "It goes on the memory card in Slot A."));
 
+	/* A MemCard PRO still changing to this game's card: Left and Right wait,
+	 * and nothing goes on the card it is changing from, before the question
+	 * or after it. */
+	detail(&c, 0, true, SAVES_COPY_SLOT_A);
+	c.savesWaiting = true;
+	press(&c, true); assert(c.saveChoice == -1);
+	c.savesWaiting = false;
+	c.saveChoice = 1; writable = false;
+	assert(!gameflowLoadChosenSave(&c) && asks == 1 && loads == 0);
+	assert(strstr(asked, "still changing"));
+	detail(&c, 0, true, SAVES_COPY_SLOT_A);
+	c.saveChoice = 1; writableAfter = false;
+	assert(!gameflowLoadChosenSave(&c) && asks == 2 && loads == 0);
+	assert(strstr(asked, "still changing"));
+
+	/* A card that changed while the question was up, seen then or by the
+	 * poll right after it: nothing goes on, and Detail reads the cards again
+	 * before another launch. */
+	detail(&c, 0, true, SAVES_COPY_SLOT_A);
+	c.saveChoice = 1; changeDuringAsk = true;
+	assert(!gameflowLoadChosenSave(&c) && loads == 0 && !c.savesScanned);
+	assert(strstr(asked, "changed while the question was up"));
+	detail(&c, 0, true, SAVES_COPY_SLOT_A);
+	c.saveChoice = 1; pollChanged = true;
+	assert(!gameflowLoadChosenSave(&c) && loads == 0 && !c.savesScanned);
+
 	/* Fewer than two copies: no choice. */
 	detail(&c, 0, true, SAVES_COPY_SLOT_A);
 	gameflowSaveCopies.count = 1u;
 	assert(!gameflowSaveChoosable(&c));
 	press(&c, true); assert(c.saveChoice == -1);
 
-	puts("save choice: none without a card or with Emulate Memory Card on, each copy then the totals, B keeps the card's, the question as the card is PASS");
+	puts("save choice: none without a card or with Emulate Memory Card on, each copy then the totals, B keeps the card's, the question as the card is, nothing while a card changes or after one changed during the question PASS");
 	return 0;
 }
 '''
@@ -147,7 +193,7 @@ def main() -> None:
     parser.add_argument("--sanitize", action="store_true")
     args = parser.parse_args()
     controller = SWISS[SWISS.index("\t\t\t/* Left and Right choose the save copy to start with, while there\n"):]
-    step = controller[controller.index("\t\t\t\tif(gameflowSaveChoosable(context)) {"):]
+    step = controller[controller.index("\t\t\t\tif(gameflowSaveChoosable(context) && !context->savesWaiting) {"):]
     step = step[:step.index("\t\t\t\t\tgameflowPublishDetail(config, context);")]
     step += "\t\t\t\t}\n"
     # The controller's own lines, with the redraw and blip left out.

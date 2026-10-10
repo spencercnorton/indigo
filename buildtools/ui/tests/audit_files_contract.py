@@ -566,7 +566,9 @@ def check_detail(swiss: str, screen: str, frame: str) -> None:
     # A poster that one read can't land (a slot just let go, the pack only
     # now opened) is read on Detail's idle retraces, as the Library's, and
     # fades in: the banner standing in for it never stays.
-    assert re.search(r"if\(buttons == 0u\) \{\s*DrawGameflowPollPosters\(\);\s*\}\s*"
+    # (The memory card slots are followed in the same idle branch, after it.)
+    assert re.search(r"if\(buttons == 0u\) \{\s*DrawGameflowPollPosters\(\);"
+                     r"(?:[^{}]|\{[^{}]*\})*\}\s*"
                      r"\} while\(buttons == 0u\);", detail), "Detail's poster never lands"
     # The Library's image path, flagged; it never shows the event itself.
     before(opener, "gameflowFilesPage = *filePanel;", "gameflowLoadImageWithContext(")
@@ -596,10 +598,11 @@ def check_detail(swiss: str, screen: str, frame: str) -> None:
                      r"UI_GAMEFLOW_MODE_LAUNCH\);", load), "Boot without prompts' launch flies in"
     assert swiss.count("gameflowShowFromFiles(") == 3
     # The GameID: sent before Detail or the launch screen first shows, as
-    # from the Library.
-    before(load, "gameID_early_set(&GCMDisk);", "gameflow_info_game(config, context)")
-    before(load, "gameID_early_set(&GCMDisk);", "gameflowShowFromFiles(")
-    assert swiss.count("gameID_early_set(") == 1
+    # from the Library, through card_slots.c (indigo#102).
+    before(load, "CardSlots_RequestGame(&GCMDisk);", "gameflow_info_game(config, context)")
+    before(load, "CardSlots_RequestGame(&GCMDisk);", "gameflowShowFromFiles(")
+    assert swiss.count("CardSlots_RequestGame(") == 1
+    assert "gameID_early_set(" not in swiss
     # Out: the page, settled and on top, before each turn back to the
     # Library while the event is on screen.
     assert re.search(r"if\(gameflowFromFiles && gameflowFilesPage == NULL\) \{\s*"
@@ -962,7 +965,7 @@ MUTANTS = (
      "\t\tgameflowShowFromFiles(context->event, UI_GAMEFLOW_MODE_LAUNCH);",
      "\t\tDrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LAUNCH);"),
     ("the GameID sent after Detail opens", SWISS,
-     "\tgameID_early_set(&GCMDisk);\n\tDrawDispose(msgBox);\n",
+     "\tCardSlots_RequestGame(&GCMDisk);\n\tDrawDispose(msgBox);\n",
      "\tDrawDispose(msgBox);\n"),
     ("B shows the Library leaving", SWISS,
      "\t\t\tgameflowBackToFiles();\n\t\t\tDrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LIBRARY);",
@@ -985,7 +988,8 @@ MUTANTS = (
     ("disc 2 not chosen by its name", SWISS,
      "\t\tif(swissChoice && UIGameflowResolver_NamedAsOppositeDisc(", "\t\tif(false && UIGameflowResolver_NamedAsOppositeDisc("),
     ("Detail's poster never lands", SWISS,
-     "\t\t\t\tif(buttons == 0u) {\n\t\t\t\t\tDrawGameflowPollPosters();\n\t\t\t\t}\n", ""),
+     "\t\t\t\tif(buttons == 0u) {\n\t\t\t\t\tDrawGameflowPollPosters();\n\t\t\t\t\t/* A card",
+     "\t\t\t\tif(buttons == 0u) {\n\t\t\t\t\t/* A card"),
     ("A  Details on storage that doesn't start games", SWISS,
      "\t\t!filesOpensDetail(entry)) {", "\t\tfalse) {"),
     ("a mode set now moves", FRAME,

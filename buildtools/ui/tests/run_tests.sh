@@ -99,6 +99,8 @@ run_binaries() {
 	if [ -z "$suffix" ]; then python3 ./test_saves_stats.py; else python3 ./test_saves_stats.py --sanitize; fi
 	echo "== Game Detail's save choice$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_save_choice.py; else python3 ./test_save_choice.py --sanitize; fi
+	echo "== memory card slots$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_card_slots.py; else python3 ./test_card_slots.py --sanitize; fi
 	echo "== manual MP3 player$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_mp3_player.py; else python3 ./test_mp3_player.py --sanitize; fi
 	# card_art builds its own binaries: posters of apps and folders, their guards.

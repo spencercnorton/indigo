@@ -43,6 +43,12 @@ screen, and **B** there goes back to the File Browser, on the same row.
 - **Launch Game**, where the screen opens (below).
 - **Shortcuts**: the extra ways to start or check the game (below).
 
+With a memory card that changes to each game's own card, such as a MemCard
+PRO GC, the box also shows while that card loads, however many copies there
+are: **Memory card loading**, then the saves once it is ready. A card that
+never finishes says **Memory card didn't load**, or **Partial scan** under
+two or more copies.
+
 A game with one save copy shows no Saves box. Copying a save from a RAW
 image into the Save Folder makes a second copy, and opening the game's
 details again shows it: **2 save copies | 4 blocks**, with the recorded
@@ -78,7 +84,10 @@ empty.
 
 It isn't offered with no memory card in a slot, or while **Emulate Memory
 Card** is on, since the game then reads a card image on the SD card rather
-than the card in the slot.
+than the card in the slot. A memory card that changes to each game's own
+card, such as a MemCard PRO GC, has to finish loading this game's card
+first: until then **Left** and **Right** wait, and a copy never goes on the
+card it is changing from.
 
 ## Start the game
 

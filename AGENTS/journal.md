@@ -1,3 +1,152 @@
+## 2026-10-10 — Card slots: a request starts its own round of sends
+
+Final review of #121: a request made during another game's round of failed
+sends inherited its sendTries and answered, so a plain card put in after a
+MemCard PRO answered A's send gave B "didn't load" for one round. A request
+that sends at once (UICardSlot_Request true) now clears both. test_card_slots
+adds the case (it failed on 1ad9aa9); test_ui_card_slots has 309 checks.
+
+## 2026-10-10 — Card slots: the re-review of #121
+
+The re-review confirmed the four fixes and found that one of them overreached:
+the plain-card reset looked only at the fifth send. An emulator that answered
+on tries 1-4 and was out of the slot at the fifth, or one that took the ID,
+left at once and then answered Get Device ID with garbage while it made a new
+card for over 11 s, became a plain card: never sent the ID again when put
+back, or read mid-switch. The slot now remembers whether any send of the
+round reached an emulator (answered, cleared with sendTries) and becomes plain
+only when none did; otherwise it is given up on (FAILED) as before. A plain
+card swapped in never answers, so that case stays fixed.
+
+Two nits with it: Detail reads the cards again when a launch is refused (B,
+or "still changing") after a card changed while one of its boxes was up
+(gameflowSlotsChanged, now cleared at the top of gameflowLoadChosenSave),
+and a slot that becomes a storage device is reset like a GameID-off one, so
+nothing polls it any more. test_card_slots.py adds the three cases, each
+failing on 4e9abad; test_ui_card_slots has 305 checks.
+
+## 2026-10-10 — Card slots: fixes from the review of #121
+
+An independent review of #121 (0421b74) found two majors and two minors, each
+reproduced in a probe built from the glue test's stubs; the glue test reset
+between scenarios, which hid the state they live in:
+
+- A waiting ID and the slot's state got out of step. UICardSlot_Sent kept an
+  older pending ID, and SendFailed left the slot READY or FAILED for the
+  previous game while the new ID waited. A card that took B and left at once,
+  with A reopened while it was away, had its absence credited to A; Request(A)
+  matched slot->id and dropped B, and the slot ended READY for A on B's card.
+  Sent now clears the pending ID (the latest went out), and a failed send waits
+  in IDLE, so presence changes aren't the previous game's.
+- mmce was never cleared: a PRO swapped for a plain card, or taken out, made
+  every other game's Detail say "Memory card loading" for 11 s, then "didn't
+  load", until a restart. Five sends with nothing answering as an emulator now
+  make the slot plain (IDLE, read as it is). CardSlots_Poll reports a slot that
+  stops waiting (busy -> not busy), since IDLE -> IDLE is no phase change.
+- The launch question only looked at the slots once, after it closed.
+  gameflowSaveAsk now polls them every frame (gameflowSlotsChanged), and a
+  change during or right after the question cancels the load, says so and
+  reads the cards again.
+- GameID turned off for a slot left its followed state: the slot dropped out
+  of other games' scans. It is reset to IDLE (a plain card) instead.
+- CardSlots_Trace's 8 KB buffer had no reader in 2.4: print_debug only.
+  Not changed (nits): reopening the same game keeps a READY card without a
+  new switch (nothing polls the Library, so a card swapped there is seen when
+  it next leaves the bus), and EXI_ProbeReset resets both slots (two
+  emulators only).
+- Tests: test_card_slots.py runs five scenarios one request after another
+  (each failed on 0421b74), with an accounted() check that a slot is read,
+  waited for or said to have failed; test_ui_card_slots (297 checks) and
+  test_save_choice.py (a change during or right after the question) pin the
+  rest, and audit_game_detail_safety the box's polling, with mutants.
+
+## 2026-10-09 — Memory card emulators: follow the GameID switch (indigo#102)
+
+The reporter's MemCard PRO test build (7bd3853: a full re-mount once a second
+for 20 s) stalled the card, never read a new card, and twice left the GameID
+unsent until the card was re-inserted. A lab Dolphin model of the card, whose
+switch behaviour is a parameter, reproduced every report and found three
+mechanisms. Detail mounted the card about 0.2 ms after Set Disc ID, so it read
+the previous game's card. libogc2 answers the first probe after any presence
+edge with BUSY for 300 ms (exi.c __exi_probe), shown as "Save scan
+incomplete". libogc2 also caches the EXI ID until the next presence edge, so
+one garbage ID read while the card switched made both MMCE_ProbeEx
+(gameID_early_set) and CARD_ProbeEx (the Saves scan) say WRONGDEVICE until a
+re-insertion. GameCube MMCE has no busy, done or current-card command; the
+presence line and the EXI interrupt are the only signals.
+
+- gui/ui_card_slots.c (pure, host-tested) is one slot through a switch: idle,
+  sent, away, back, loading, ready, failed. A switch shows on the presence
+  line within 2.5 s or none is coming; the first read is 1 s after the card
+  returns; retries at 1, 2, then 4 s; given up 60 s after the ID. An ID asked
+  for during a switch waits (the latest only). A presence edge after ready or
+  failed starts over: a card given up on because the ID never went out is
+  sent it again when put back, never read (it holds another game's card).
+  A write needs a presence cycle, or 10 s, since the ID.
+- gui/card_slots.c sends the ID with gameID_early_set's commands, the probe
+  waited on 600 ms at most, and resets libogc2's probe (EXI_ProbeReset) when a
+  card that took our ID answers as another device. Set Disc ID going out is
+  what counts: the name (Set Disc Info) failing after it still leaves the
+  card switching. libogc2 also calls Set Disc ID failed when the card leaves
+  the bus the instant it takes it (the deselect probes it again). An emulator
+  that didn't take the ID keeps it pending and is
+  sent it again after 1, 2, 4 s, five sends in all, then the slot is FAILED
+  (never IDLE, so never read or written as a plain card); a queued ID whose
+  send fails stays queued the same way. Presence comes from
+  the EXI status register (no bus traffic). While a card loads its status
+  byte (0x83, three bytes) is read every 250 ms: 0xFF or an error bit skips
+  the scheduled mount for three tries (0x00 counts as an answer: a card not
+  yet unlocked may say just that), and turning sane reads at once.
+  A read is CARD_ProbeEx, mount, unmount. Slots used as storage (an MMCE
+  card's own SD, SD adapters) get the ID as before and are never read. Each
+  event goes to print_debug and an 8 KB trace (CardSlots_Trace). Detail is
+  told when a card is done (READY or FAILED) and when one that was done or
+  given up on changes. Our own waits are bounded; libogc2's mount has its own, entered only
+  after CARD_ProbeEx said READY.
+- swiss.c: CardSlots_RequestGame replaces gameID_early_set; Detail's scan
+  reads only CardSlots_ReadableFor slots (Saves_CollectGameStats takes a
+  slot mask), polls on idle retraces and reads again when a card finishes;
+  Left/Right wait; gameflowLoadChosenSave writes only when
+  CardSlots_WritableFor, asked again after its question box (polling first:
+  the card may have changed while it was up); a launch first sends an ID that
+  waited (65 s at most, a box after 0.5 s). The Saves box says Memory card
+  loading meanwhile, and Memory card didn't load for a card given up on,
+  with any number of copies (2.4 shows the box from two copies otherwise:
+  a new card on a MemCard PRO gave no sign it was loading); from two copies
+  a card given up on makes the scan partial instead of dropping out of it.
+- Lab, 2.4 plus this, under each card behaviour: the reporter's (a short
+  detach, back while loading, a valid ID) sends 11 card commands during an
+  existing card's 5 s load (7bd3853: 251) and shows its save about 0.1 s
+  after it is ready; a garbage ID for 1.5-2 s after the card returns is never
+  read; rapid opening sends 7 of 7 GameIDs (7bd3853: 1); detached for the
+  whole switch, never detached, a blank new card and a plain card are right;
+  a card that leaves the bus the instant it takes the ID is sent it again
+  once back and shows its save about 6 s after the open (a75efd4, which
+  counted that send as no emulator, read it as a plain card: "No save
+  copies found" for good and an empty trace). Evidence: ~/Kleos/_reports/indigo-102-memcard-pro-investigation-20261009.
+- Tests: test_ui_card_slots (thirteen scripted cards, 284 checks),
+  test_card_slots.py (the real card_slots.c with stubbed MMCE/CARD/EXI calls,
+  a fake clock and presence register: partial sends, failed and queued sends,
+  a send given up on and the card put back, a card that leaves at once,
+  refresh on leaving the bus, bounded probe, status-held mounts, stale ID;
+  nine mutants of these all caught), test_gameflow_detail's loading and
+  given-up boxes under two copies, test_saves_stats' slot mask,
+  audit_game_detail_safety and audit_files_contract (the new wiring and its
+  mutants). An independent review (2026-10-09) found the partial-send,
+  dropped-queue and no-refresh defects in the first version; fixed here.
+
+Not done: Memory Cards still mounts a card that is switching; the CI emulator
+has no MemCard PRO yet (the lab model wants to become a 0008 patch, routes and
+trace checks); the timings are the lab model's until a real card's trace.
+
+Into 2.4 on 2026-10-10 at Spencer's word, without waiting for the reporter:
+rebased onto update/2.4 after PR 119. Left and Right step through copies
+while gameflowSaveChoosable(context) && !context->savesWaiting (folding the
+wait into gameflowSaveChoosable would also hide « SAVES »); the launch
+question keeps PR 119's wording, with the WritableFor gate before it and
+again after it; the scan keeps PR 119's order, the Save Folder then only the
+slots CardSlots_ReadableFor allows.
+
 ## 2026-10-10 — A damaged disc image can no longer crash a launch
 
 An hour-long soak of 2.4 (seeded random presses in the emulator) started CI's
