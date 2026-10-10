@@ -483,6 +483,15 @@ static void checkSendFailed(void)
 	CHECK(slot.phase == UI_CARD_SLOT_FAILED && slot.mmce && UICardSlot_FailedFor(&slot, GAME_A));
 	CHECK(!UICardSlot_ReadableFor(&slot, GAME_A) && !slot.answered);
 
+	/* A new request starts a round of its own: an earlier one's sends (and
+	 * whether they reached an emulator) don't count against it. */
+	UICardSlot_Init(&slot);
+	CHECK(UICardSlot_Request(&slot, GAME_A));
+	UICardSlot_SendFailed(&slot, GAME_A, true, 0u);
+	CHECK(slot.sendTries == 1u && slot.answered);
+	CHECK(UICardSlot_Request(&slot, GAME_B));
+	CHECK(slot.sendTries == 0u && !slot.answered);
+
 	/* Nothing ever took an ID there: a failed send is a plain card's. */
 	UICardSlot_Init(&slot);
 	CHECK(UICardSlot_Request(&slot, GAME_A));

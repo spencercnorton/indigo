@@ -437,7 +437,20 @@ int main(void)
 		devices[DEVICE_CUR] = NULL;
 	}
 
-	puts("card slots glue: partial sends, kept and retried IDs, given up as FAILED and sent again when put back, a card that leaves at once, refresh on leaving the bus, plain cards, bounded probe, status-held mounts, stale ID reset; one request after another: a failed send then the previous game, a PRO swapped for a plain card, GameID turned off, a new ID after giving up, out at the last try, a garbage ID while loading, a slot turned storage PASS");
+	/* A new game's request starts its own round. A's send fails with the
+	 * PRO answering, a plain card goes in, and B's Detail opens within A's
+	 * round: after B's own five sends the plain card is read, not "didn't
+	 * load" because of A's answer. */
+	reset(); setIdResult[0] = MMCE_RESULT_NOCARD;
+	CardSlots_RequestGame(&gameA);
+	emulator[0] = false;
+	present(0, false); run(200u); present(0, true);
+	CardSlots_RequestGame(&gameB);
+	accounted(B);
+	run(15000u);
+	assert(!slots[0].state.mmce && CardSlots_ReadableFor(0, B) && !CardSlots_FailedFor(0, B));
+
+	puts("card slots glue: partial sends, kept and retried IDs, given up as FAILED and sent again when put back, a card that leaves at once, refresh on leaving the bus, plain cards, bounded probe, status-held mounts, stale ID reset; one request after another: a failed send then the previous game, a PRO swapped for a plain card, GameID turned off, a new ID after giving up, out at the last try, a garbage ID while loading, a slot turned storage, a new request's own round PASS");
 	return 0;
 }
 '''

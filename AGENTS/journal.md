@@ -1,3 +1,11 @@
+## 2026-10-10 — Card slots: a request starts its own round of sends
+
+Final review of #121: a request made during another game's round of failed
+sends inherited its sendTries and answered, so a plain card put in after a
+MemCard PRO answered A's send gave B "didn't load" for one round. A request
+that sends at once (UICardSlot_Request true) now clears both. test_card_slots
+adds the case (it failed on 1ad9aa9); test_ui_card_slots has 309 checks.
+
 ## 2026-10-10 — Card slots: the re-review of #121
 
 The re-review confirmed the four fixes and found that one of them overreached:

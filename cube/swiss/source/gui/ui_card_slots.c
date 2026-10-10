@@ -33,7 +33,12 @@ void UICardSlot_Init(uiCardSlot_t *slot)
 bool UICardSlot_Request(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LENGTH])
 {
 	if(slot == NULL || id == NULL) return false;
-	if(!switching(slot)) return true;
+	/* Sent now: a round of its own, whatever an earlier one's sends met. */
+	if(!switching(slot)) {
+		slot->sendTries = 0u;
+		slot->answered = false;
+		return true;
+	}
 	/* Its own switch is under way already: nothing waits behind it. */
 	if(sameId(slot->id, id)) {
 		slot->hasPending = false;
