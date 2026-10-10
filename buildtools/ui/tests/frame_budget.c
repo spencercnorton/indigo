@@ -1,7 +1,8 @@
 /*
  * Frame budget: the cube renderer (gui/indigo_background.c), the hint
- * icons and Memory Cards' save cubes (gui/FrameBufferMagic.c, with
- * gui/ui_save_cubes.c) run against counting GX stubs, one steady
+ * icons, Memory Cards' save cubes (gui/FrameBufferMagic.c, with
+ * gui/ui_save_cubes.c) and the File Browser (with gui/ui_files.c), its words
+ * through a font stand-in below, run against counting GX stubs, one steady
  * frame per scene, posed by the real scene module. It counts what a frame
  * costs the console: software maths on the CPU (Gekko has no square-root
  * instruction, so sqrtf is newlib's integer loop; sinf, cosf, fminf and
@@ -51,6 +52,53 @@ static float countFmaxf(float x, float y) { cost.minMaxCalls++; return fmaxf(x, 
 #include "indigo_background.c"
 #include "hint_source.c"	/* written by test_frame_budget.py */
 #include "save_cubes_source.c"	/* and this */
+/* The IPL font for the File Browser's words: 11 px a character at scale 1
+ * and 24 px tall, each character a quad a pass, two passes for the medium
+ * weight and one for the light, as drawStringWeighted sends them. */
+#define ALIGN_LEFT 0
+#define ALIGN_CENTER 1
+#define ALIGN_RIGHT 2
+static int GetTextSizeInPixels(const char *text) { return 11 * (int)strlen(text); }
+static int GetFontHeight(float scale) { return (int)(24.0f * scale); }
+static void fontQuads(int x, int y, const char *text, float scale, int align,
+	GXColor color, int passes)
+{
+	float left = (float)x - (float)align * (float)GetTextSizeInPixels(text) * scale / 2.0f;
+	int pass, v;
+	const char *c;
+
+	for(pass = 2 - passes; pass < 2; pass++) {
+		for(c = text; *c != '\0' && *c != '\n'; c++) {
+			float x0 = left + (float)(c - text) * 11.0f * scale + (float)(1 - pass);
+
+			GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+			for(v = 0; v < 4; v++) {
+				GX_Position3f32(x0 + (((v & 1) ^ ((v & 2) >> 1)) ? 11.0f * scale : 0.0f),
+					(float)y + ((v & 2) ? 12.0f : -12.0f) * scale, 0.0f);
+				GX_Color4u8(color.r, color.g, color.b, pass == 0 ? color.a * 3 / 4 : color.a);
+				GX_TexCoord2f32(0.0f, 0.0f);
+			}
+			GX_End();
+		}
+	}
+}
+static void drawStringMediumUntinted(int x, int y, const char *text, float scale, int align,
+	GXColor color)
+{
+	fontQuads(x, y, text, scale, align, color, 2);
+}
+static void drawStringMedium(int x, int y, const char *text, float scale, int align,
+	GXColor color)
+{
+	UIColor_Apply(&color.r, &color.g, &color.b);
+	fontQuads(x, y, text, scale, align, color, 2);
+}
+static void drawString(int x, int y, const char *text, float scale, int align, GXColor color)
+{
+	UIColor_Apply(&color.r, &color.g, &color.b);
+	fontQuads(x, y, text, scale, align, color, 1);
+}
+#include "files_source.c"	/* and this */
 #undef sqrtf
 #undef sinf
 #undef cosf
@@ -227,7 +275,7 @@ void guOrtho(Mtx44 p, float t, float b, float l, float r, float n, float f)
 static float seconds;
 static uiClockFrame_t clock;
 static const indigoPadFrame_t pad = {true, 0, 0, 0, 0, 0};
-static int icons[UI_HOME_FACE_COUNT] = {0, 0, 0, 0, -1};
+static int icons[UI_HOME_FACE_COUNT] = {0, 0, 0, 0, -1, -1, -1, -1};
 
 static void settle(int frames)
 {
@@ -409,6 +457,196 @@ static void memoryCards(const char *name, bool wide, int what)
 	UIStage_SetWide(false);
 }
 
+/* The File Browser over Memory Cards' backdrop: both panes full of rows
+ * of every kind, each with its cube and the longest name its column holds
+ * (Redump names, cut in the middle), the focus bars, both scroll tracks,
+ * the chips and boxes, the info bar with its size box and two lines, and
+ * the hint line with five round buttons. The banner is one texture. */
+static int filesMeasure(const char *text) { return GetTextSizeInPixels(text); }
+
+/* What else is open over the panes. */
+enum { FILES_PLAIN = 0, FILES_ACTIONS, FILES_COPY, FILES_MESSAGE };
+
+static void files(const char *name, bool wide, int active, int menu, int extra)
+{
+	static const u8 kinds[UI_FILES_ROWS] = {
+		UI_FILES_KIND_PARENT, UI_FILES_KIND_FOLDER, UI_FILES_KIND_DISC,
+		UI_FILES_KIND_DISC, UI_FILES_KIND_DISC_COMPRESSED, UI_FILES_KIND_PROGRAM,
+		UI_FILES_KIND_FIRMWARE, UI_FILES_KIND_MUSIC
+	};
+	static const char *const long_name =
+		"Copper Orchard - The Long Way Round of the Seven Valleys (USA, Europe) "
+		"(En,Fr,De,Es,It) (Rev 1) (Disc 1).iso";
+	static uiFilesSnapshot_t snapshot;
+	const float focusY[UI_FILES_PANES] = {2.0f, 2.0f};
+	uiFilesLayout_t layout;
+	int p, i;
+
+	UIStage_SetWide(wide);
+	UIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);
+	memset(&snapshot, 0, sizeof(snapshot));
+	for(p = 0; p < UI_FILES_PANES; p++) {
+		uiFilesPaneSnapshot_t *pane = &snapshot.pane[p];
+
+		pane->rows = UI_FILES_ROWS;
+		pane->focusRow = 2;
+		pane->count = 400;
+		pane->first = 3;
+		strcpy(pane->button, p == UI_FILES_LEFT ? "L  Choose storage" : "R  Choose storage");
+		strcpy(pane->free, "8.57 GB");
+		pane->freeWidth = 72;
+		pane->source = p == UI_FILES_LEFT;
+		pane->autoload = p == UI_FILES_LEFT;
+		pane->deviceScale = UIFiles_FitDevice(pane->device, sizeof(pane->device),
+			"SD Card - SD2SP2", &layout, p, pane->source, pane->freeWidth, 23, filesMeasure);
+		pane->deviceWidth = (s16)(GetTextSizeInPixels(pane->device) * pane->deviceScale);
+		UIFiles_FitPath(pane->path, sizeof(pane->path),
+			"sd:/Backups/Old consoles/GameCube/Collection/Redump", 180, 0.46f, filesMeasure);
+		pane->pathWidth = (s16)(GetTextSizeInPixels(pane->path) * 0.46f);
+		strcpy(pane->counter, "123 / 400");
+		for(i = 0; i < UI_FILES_ROWS; i++) {
+			uiFilesRowSnapshot_t *row = &pane->row[i];
+
+			row->kind = kinds[i];
+			row->flags = i == 2 ? UI_FILES_ROW_FOCUS : 0u;
+			UIFiles_RowMeta(row->meta, sizeof(row->meta), row->kind, "1.35 GB");
+			row->scale = UIFiles_FitName(row->name, sizeof(row->name), long_name,
+				UIFiles_NameWidth(&layout, p, row->meta[0] != '\0' ?
+				(int)(GetTextSizeInPixels(row->meta) * 0.44f) : 0, true), filesMeasure);
+		}
+	}
+	snapshot.active = (u8)active;
+	snapshot.hasBanner = 1;
+	strcpy(snapshot.size, "1.35 GB");
+	snapshot.sizeWidth = 64;
+	strcpy(snapshot.chip, "HIDDEN");
+	snapshot.titleScale = UIFiles_FitName(snapshot.title, sizeof(snapshot.title),
+		"Copper Orchard: The Long Way Round of the Seven Valleys",
+		layout.info.x1 - 16 - layout.infoTextX - 64, filesMeasure);
+	snapshot.titleWidth = (s16)(GetTextSizeInPixels(snapshot.title) * snapshot.titleScale);
+	UIFiles_FitName(snapshot.line[0], sizeof(snapshot.line[0]), long_name,
+		layout.info.x1 - 112 - layout.infoTextX - 76, filesMeasure);
+	strcpy(snapshot.line[1], "GameCube disc  \267  GCOE01  \267  Copper Orchard Games");
+	UIFiles_Hints(UI_FILES_HINTS_LIST, active, UI_FILES_KIND_DISC, true, true, false,
+		snapshot.hint[0], snapshot.hint[1]);
+	/* A storage menu open: six devices (one greyed) and Other devices, over
+	 * the rows; the right pane, its storage not ready, says why. */
+	if(menu >= 0) {
+		static const char *const names[UI_FILES_STORAGE_DEVICES] = {
+			"GC Loader", "SD Card - Slot A", "SD Card - SD2SP2", "Memory Card - Slot A",
+			"SMB 1.0/CIFS", "File Transfer Protocol"
+		};
+		uiFilesDevice_t listed[UI_FILES_STORAGE_DEVICES];
+		static uiFilesStorageMenu_t storage;
+		int widest = 0;
+
+		for(i = 0; i < UI_FILES_STORAGE_DEVICES; i++) {
+			memset(&listed[i], 0, sizeof(listed[i]));
+			listed[i].handler = &listed[i];
+			listed[i].name = names[i];
+			listed[i].network = i >= 4;
+		}
+		UIFiles_StorageMenu(menu, listed, UI_FILES_STORAGE_DEVICES, &listed[menu ? 2 : 0],
+			&listed[menu ? 0 : 4], "/games", &storage);
+		for(i = 0; i < storage.box.count; i++) {
+			int width = (int)(GetTextSizeInPixels(storage.box.item[i]) * 0.56f) + 32;
+
+			widest = width > widest ? width : widest;
+		}
+		snapshot.menu = storage.box;
+		snapshot.menu.width = (s16)widest;
+		UIFiles_Hints(UI_FILES_HINTS_BOX, active, UI_FILES_KIND_FOLDER, false, false, false,
+			snapshot.hint[0], snapshot.hint[1]);
+		if(menu == UI_FILES_RIGHT) {
+			snapshot.pane[UI_FILES_RIGHT].rows = 0;
+			snapshot.pane[UI_FILES_RIGHT].focusRow = -1;
+			snapshot.pane[UI_FILES_RIGHT].count = 0;
+			UIFiles_NotReady(snapshot.pane[UI_FILES_RIGHT].message, "SD Card - SD2SP2",
+				"No card is inserted.", NULL);
+		}
+	}
+	/* Z: the Actions box beside the focused row, its letters, Copy and Move
+	 * greyed with the reason on line 2. */
+	if(extra == FILES_ACTIONS) {
+		static const char *const labels[UI_FILES_ACTIONS] = {"Copy", "Move", "Rename", "Hide",
+			"Delete"};
+		int widest = 0;
+
+		memset(&snapshot.menu, 0, sizeof(snapshot.menu));
+		for(i = 0; i < UI_FILES_ACTIONS; i++) {
+			int width = (int)(GetTextSizeInPixels(labels[i]) * 0.56f) + 60;
+
+			strcpy(snapshot.menu.item[i], labels[i]);
+			snapshot.menu.letter[i] = "XYRLZ"[i];
+			widest = width > widest ? width : widest;
+		}
+		snapshot.menu.count = UI_FILES_ACTIONS;
+		snapshot.menu.dim = 3u;
+		snapshot.menu.focus = 2;
+		snapshot.menu.row = 2;
+		snapshot.menu.pane = (u8)active;
+		snapshot.menu.open = 1;
+		snapshot.menu.width = (s16)widest;
+		UIFiles_ActionLine(UI_FILES_ACTION_COPY, false, "GC Loader", "SD Card - SD2SP2",
+			"/Backups/Old consoles/GameCube", snapshot.line[0], sizeof(snapshot.line[0]));
+		strcpy(snapshot.line[1], "SD Card - SD2SP2 has 0.80 GB free; this needs 1.35 GB.");
+		snapshot.warn = 1;
+		UIFiles_Hints(UI_FILES_HINTS_BOX, active, UI_FILES_KIND_FOLDER, false, false, false,
+			snapshot.hint[0], snapshot.hint[1]);
+	}
+	/* The Copy question beside the row, and the ghost row in the other pane
+	 * where the copy will land. */
+	if(extra == FILES_COPY) {
+		uiFilesRowSnapshot_t ghost = snapshot.pane[active].row[2];
+
+		memset(&snapshot.menu, 0, sizeof(snapshot.menu));
+		strcpy(snapshot.menu.title, "Copy to SD Card - SD2SP2?");
+		strcpy(snapshot.menu.item[0], "Yes");
+		strcpy(snapshot.menu.item[1], "No");
+		snapshot.menu.count = 2;
+		snapshot.menu.row = 2;
+		snapshot.menu.pane = (u8)active;
+		snapshot.menu.open = 1;
+		snapshot.menu.width = (s16)(GetTextSizeInPixels(snapshot.menu.title) * 0.56f) + 24;
+		UIFiles_InsertGhost(&snapshot.pane[!active], 4, &ghost);
+		strcpy(snapshot.line[0], "To SD Card - SD2SP2  \233  /Backups  \267  29.1 GB free");
+		strcpy(snapshot.line[1], "Needs 1.35 GB. It fits.");
+		UIFiles_Hints(UI_FILES_HINTS_QUESTION, active, UI_FILES_KIND_FOLDER, false, false, false,
+			snapshot.hint[0], snapshot.hint[1]);
+	}
+	/* A copy stopped: the maroon message, two lines. */
+	if(extra == FILES_MESSAGE) {
+		UIFiles_Result(UI_FILES_RESULT_STOPPED, false, "Copper Orchard", "GC Loader",
+			"SD Card - SD2SP2", "Backups", 0, true, false, snapshot.message);
+		/* Under it, the copy that landed flashes. */
+		if(snapshot.pane[!active].rows > 0) {
+			snapshot.pane[!active].row[0].flags |= UI_FILES_ROW_FLASH;
+		}
+		snapshot.messageWidth = (s16)(GetTextSizeInPixels(snapshot.message[1]) * 0.46f) + 48;
+		UIFiles_Hints(UI_FILES_HINTS_MESSAGE, active, UI_FILES_KIND_FOLDER, false, false, false,
+			snapshot.hint[0], snapshot.hint[1]);
+	}
+	memset(&cost, 0, sizeof(cost));
+	cost.hash = 1469598103934665603ULL;
+	stubStateCalls = 0;
+	IndigoBackground_DrawSavesBackdrop(1.0f, 0.0f, seconds, true, UIScene_Frame(), &clock, icons);
+	_FilesShapes(&snapshot, &layout, 1.0f, 1.0f, (float)active, focusY, 0, 0.84f,
+		extra == FILES_MESSAGE ? 1.0f : 0.0f);
+	_FilesWords(&snapshot, &layout, 1.0f, 1.0f, (float)active, 0.84f);
+	if(menu >= 0 || extra == FILES_ACTIONS || extra == FILES_COPY) {
+		_FilesMenu(&snapshot.menu, &layout, 1.0f, 1.0f, (float)snapshot.menu.focus);
+	}
+	if(extra == FILES_MESSAGE) {
+		_FilesMessage(snapshot.message, snapshot.messageWidth, 1.0f);
+	}
+	printf("{\"scene\": \"%s\", \"sqrtf\": %ld, \"trig\": %ld, \"minmax\": %ld, "
+		"\"vertices\": %ld, \"begins\": %ld, \"copy_pixels\": %.0f, \"state\": %ld, "
+		"\"hash\": \"%016llx\"}\n", name, cost.sqrtCalls, cost.trigCalls,
+		cost.minMaxCalls, cost.vertices, cost.begins, cost.copyPixels,
+		stubStateCalls, cost.hash);
+	UIStage_SetWide(false);
+}
+
 int main(void)
 {
 	int colors[UI_COLOR_LAYERS] = {0};
@@ -446,5 +684,13 @@ int main(void)
 	memoryCards("memory-cards-copy", true, CARDS_COPY);
 	memoryCards("memory-cards-erase", true, CARDS_ERASE);
 	memoryCards("memory-cards-opening", true, CARDS_OPENING);
+	files("files", false, UI_FILES_LEFT, -1, FILES_PLAIN);
+	files("files-right", false, UI_FILES_RIGHT, -1, FILES_PLAIN);
+	files("files-wide", true, UI_FILES_LEFT, -1, FILES_PLAIN);
+	files("files-storage", false, UI_FILES_LEFT, UI_FILES_LEFT, FILES_PLAIN);
+	files("files-storage-right", true, UI_FILES_RIGHT, UI_FILES_RIGHT, FILES_PLAIN);
+	files("files-actions", false, UI_FILES_LEFT, -1, FILES_ACTIONS);
+	files("files-copy", true, UI_FILES_LEFT, -1, FILES_COPY);
+	files("files-message", false, UI_FILES_RIGHT, -1, FILES_MESSAGE);
 	return 0;
 }

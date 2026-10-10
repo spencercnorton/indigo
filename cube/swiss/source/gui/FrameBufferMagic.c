@@ -56,7 +56,6 @@
 
 TPLFile imagesTPL;
 TPLFile buttonsTPL;
-GXTexObj bannerMaskTexObj;
 GXTexObj gcdvdsmallTexObj;
 GXTexObj sdsmallTexObj;
 GXTlutObj sdsmallTlutObj;
@@ -82,7 +81,8 @@ GXTexObj palTexObj;
 GXTexObj checkedTexObj;
 GXTexObj uncheckedTexObj;
 GXTexObj loadingTexObj;
-GXTexObj starTexObj;
+/* The 96x32 file-type tags Swiss's lists drew. filemeta.c still points a
+ * file's meta at them, but nothing draws them, so they are never loaded. */
 GXTexObj dirimgTexObj;
 GXTexObj dolimgTexObj;
 GXTexObj dolcliimgTexObj;
@@ -173,7 +173,6 @@ enum VideoEventType
 	EV_SELECTABLEBUTTON,
 	EV_EMPTYBOX,
 	EV_TRANSPARENTBOX,
-	EV_FILEBROWSERBUTTON,
 	EV_VERTSCROLLBAR,
 	EV_STYLEDLABEL,
 	EV_CONTAINER,
@@ -190,12 +189,13 @@ enum VideoEventType
 	EV_MEMORY_FOLDER,
 	EV_SAVES,
 	EV_SAVE_CUBES,
-	EV_SAVE_DETAILS
+	EV_SAVE_DETAILS,
+	EV_FILES
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Background", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "MemoryCardFolder", "Saves", "SaveCubes", "SaveDetails"};
-_Static_assert(sizeof(typeStrings) / sizeof(typeStrings[0]) == EV_SAVE_DETAILS + 1u,
+						"VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "MemoryCardFolder", "Saves", "SaveCubes", "SaveDetails", "Files"};
+_Static_assert(sizeof(typeStrings) / sizeof(typeStrings[0]) == EV_FILES + 1u,
 	"every video event needs a diagnostic name");
 
 typedef struct drawTexObjEvent {
@@ -264,20 +264,6 @@ typedef struct drawBoxEvent {
 	int y2;
 	GXColor backfill;
 } drawBoxEvent_t;
-
-typedef struct drawFileBrowserButtonEvent {
-	int x1;
-	int y1;
-	int x2;
-	int y2;
-	char *displayName;
-	file_handle *file;
-	int mode;
-	int alpha;
-	bool isAutoLoadEntry;
-	bool isCarousel;	// Draw this as a full "card" style
-	int distFromMiddle;	// 0 = full, -1 spine only but large then gradually getting smaller as dist increases from 0
-} drawFileBrowserButtonEvent_t;
 
 typedef struct drawHomeEvent {
 	uiHomeState_t state;
@@ -440,6 +426,7 @@ typedef struct drawProgressEvent {
 	int speed;	// in bytes
 	int timestart;
 	int timeremain;
+	bool files;	/* the File Browser's copy: a scrim under it, and B Stop */
 } drawProgressEvent_t;
 
 typedef struct uiDrawObjQueue {
@@ -457,6 +444,8 @@ static void _DrawSimpleBox(int x, int y, int width, int height, int depth,
 	GXColor fillColor, GXColor borderColor);
 static void _DrawDialogCard(int x, int y, int width, int height, int type);
 static void _DrawDialogBar(int x, int y, int width, int start, int length);
+static void _SaveCubesBar(float x, float y, float width, float height,
+	GXColor color);
 
 #if UI_PERF_CAPTURE
 /* The GPU's own counters, summed between two refreshes of the overlay: the
@@ -573,21 +562,6 @@ static void clearNestedEvent(uiDrawObj_t *event) {
 				free(((drawStyledLabelEvent_t*)event->data)->string);
 			}
 		}
-		else if(event->type == EV_FILEBROWSERBUTTON) {
-			if(((drawFileBrowserButtonEvent_t*)event->data)->displayName) {
-				//print_debug("Clear Nested EV_FILEBROWSERBUTTON\n");
-				free(((drawFileBrowserButtonEvent_t*)event->data)->displayName);
-			}
-			if(((drawFileBrowserButtonEvent_t*)event->data)->file) {
-				if(((drawFileBrowserButtonEvent_t*)event->data)->file->meta) {
-					if(((drawFileBrowserButtonEvent_t*)event->data)->file->meta->banner) {
-						free(((drawFileBrowserButtonEvent_t*)event->data)->file->meta->banner);
-					}
-					free(((drawFileBrowserButtonEvent_t*)event->data)->file->meta);
-				}
-				free(((drawFileBrowserButtonEvent_t*)event->data)->file);
-			}
-		}
 		else if(event->type == EV_SELECTABLEBUTTON) {
 			if(((drawSelectableButtonEvent_t*)event->data)->msg) {
 				//print_debug("Clear Nested EV_SELECTABLEBUTTON\n");
@@ -638,7 +612,6 @@ static void init_textures()
 {
 	TPL_OpenTPLFromMemory(&imagesTPL, (void *)images_tpl, images_tpl_size);
 	TPL_OpenTPLFromMemory(&buttonsTPL, (void *)buttons_tpl, buttons_tpl_size);
-	TPL_GetTexture(&imagesTPL, banner_mask, &bannerMaskTexObj);
 	TPL_GetTexture(&imagesTPL, gcdvdsmall, &gcdvdsmallTexObj);
 	TPL_GetTextureCI(&imagesTPL, sdsmall, &sdsmallTexObj, &sdsmallTlutObj, GX_TLUT0);
 	GX_InitTexObjUserData(&sdsmallTexObj, &sdsmallTlutObj);
@@ -664,16 +637,6 @@ static void init_textures()
 	TPL_GetTexture(&buttonsTPL, checked_32, &checkedTexObj);
 	TPL_GetTexture(&buttonsTPL, unchecked_32, &uncheckedTexObj);
 	TPL_GetTexture(&buttonsTPL, loading_16, &loadingTexObj);
-	TPL_GetTexture(&buttonsTPL, star_16, &starTexObj);
-	TPL_GetTexture(&imagesTPL, dirimg, &dirimgTexObj);
-	TPL_GetTexture(&imagesTPL, dolimg, &dolimgTexObj);
-	TPL_GetTexture(&imagesTPL, dolcliimg, &dolcliimgTexObj);
-	TPL_GetTexture(&imagesTPL, elfimg, &elfimgTexObj);
-	TPL_GetTexture(&imagesTPL, fileimg, &fileimgTexObj);
-	TPL_GetTexture(&imagesTPL, fpkgimg, &fpkgimgTexObj);
-	TPL_GetTexture(&imagesTPL, gcmimg, &gcmimgTexObj);
-	TPL_GetTexture(&imagesTPL, mp3img, &mp3imgTexObj);
-	TPL_GetTexture(&imagesTPL, tgcimg, &tgcimgTexObj);
 	TPL_GetTexture(&imagesTPL, gcloaderimg, &gcloaderTexObj);
 	TPL_GetTexture(&imagesTPL, m2loaderimg, &m2loaderTexObj);
 	TPL_GetTexture(&imagesTPL, eth2gcimg, &eth2gcTexObj);
@@ -850,10 +813,6 @@ static void _DrawImageNow(int textureId, int x, int y, int width, int height, in
 			texObj = &uncheckedTexObj; color = (GXColor) {87,87,87,255};
 			ss = 32; ts = 32;
 			break;
-		case TEX_STAR:
-			texObj = &starTexObj; color = (GXColor) {255,255,0,255};
-			ss = 16;
-			break;
 		case TEX_GCLOADER:
 			texObj = &gcloaderTexObj; color = (GXColor) {216,216,216,255};
 			ts = 76;
@@ -920,16 +879,18 @@ static void _DrawImage(uiDrawObj_t *evt) {
 }
 
 /* The icon Settings chose for each Home face, a choice of that face's own
- * four, in uiHomeFace_t order. Apps has its one icon, drawn while it shows
- * at all: without apps the cube draws exactly what it did. */
+ * four, in uiHomeFace_t order. Apps, Memory Cards, Emulators and File
+ * Browser have their one icon each, drawn while the face shows at all: without them the cube
+ * draws exactly what it did. */
 static void _HomeFaceIcons(int icons[UI_HOME_FACE_COUNT])
 {
 	icons[UI_HOME_FACE_LIBRARY] = swissSettings.libraryIcon;
 	icons[UI_HOME_FACE_SOURCE] = swissSettings.sourceIcon;
 	icons[UI_HOME_FACE_SETTINGS] = swissSettings.settingsIcon;
 	icons[UI_HOME_FACE_SYSTEM] = swissSettings.systemIcon;
-	icons[UI_HOME_FACE_APPS] =
-		UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_APPS] > 0.0f ? 0 : -1;
+	for(int face = UI_HOME_FACE_APPS; face < UI_HOME_FACE_COUNT; face++) {
+		icons[face] = UIScene_Frame()->homeMotifAlpha[face] > 0.0f ? 0 : -1;
+	}
 }
 
 static void _DrawBackground(uiDrawObj_t *evt)
@@ -953,6 +914,8 @@ static void _DrawBackground(uiDrawObj_t *evt)
 	IndigoBackground_SetFramebuffer(getVideoMode()->fbWidth,
 		getVideoMode()->efbHeight);
 	IndigoBackground_SetWaveSpeed(waveSpeeds[swissSettings.waveSpeed]);
+	IndigoBackground_SetWaves(!swissSettings.hideWaves);
+	IndigoBackground_SetIdleSway(swissSettings.idleAnimation != 0);
 	IndigoBackground_Draw(UIAnim_Seconds(),
 		decorativeAnimated && !swissSettings.disableAnimatedBackdrop,
 		decorativeAnimated,
@@ -1097,6 +1060,12 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 			x = (int)(corner > 0 ? UIStage_Right() - 44.0f - inset : UIStage_Left() + 44.0f + inset);
 			y = 43;
 		}
+		/* The File Browser's: in its info bar's corner, the word inside. */
+		else if(data->miniModePos == PROGRESS_BOX_FILES) {
+			corner = 1;
+			x = (int)UIStage_Right() - 56;
+			y = 418;
+		}
 		GXColor loadingColor = (GXColor) {255,255,255,(u8)data->miniModeAlpha};
 		/* In seconds, the same at 50 Hz and 60 Hz: a turn of the eight
 		 * segments every 5/6 s, a fade in or out over 1.4 s. */
@@ -1114,7 +1083,14 @@ static void _DrawProgressBar(uiDrawObj_t *evt) {
 			corner > 0 ? ALIGN_RIGHT : ALIGN_LEFT, loadingColor);
 		return;
 	}
+	if(data->files) {
+		_SaveCubesBar(UIStage_Left(), 0.0f, UIStage_Right() - UIStage_Left(), 480.0f,
+			(GXColor) {8, 12, 27, 200});
+	}
 	_DrawDialogCard(x1, y1, x2-x1, y2-y1, -1);
+	if(data->files) {
+		_DrawHintText(x1 + 16, y2 - 12, "B  Stop", 0.46f, ALIGN_LEFT, defaultColor);
+	}
 
 	int middleY = (y2+y1)/2;
 	if(data->indeterminate) {
@@ -1743,324 +1719,6 @@ uiDrawObj_t* DrawContainer()
 {
 	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
 	event->type = EV_CONTAINER;
-	return event;
-}
-
-// Internal
-static void _DrawFileBrowserButton(uiDrawObj_t *evt) {
-	
-	drawFileBrowserButtonEvent_t *data = (drawFileBrowserButtonEvent_t*)evt->data;
-	int borderSize = 4;	
-	if(data->isCarousel) {	
-		// Not selected
-		GXColor noColor 	= (GXColor) {0,0,0,128};
-		GXColor borderColor = (GXColor) {200,200,200,GUI_MSGBOX_ALPHA}; //Silver
-		// Large middle entry currently being displayed, verbose info
-		if(data->distFromMiddle == 0) {
-
-			_DrawSimpleBox(data->x1, data->y1, data->x2-data->x1, data->y2-data->y1, 0, noColor, borderColor);
-			
-			int x_mid = data->x2-((data->x2-data->x1)/2);
-			int bnr_width = 96;
-			int bnr_height = 32;
-			file_handle *file = data->file;
-			// Draw banner if there is one
-			if(file->meta && (file->meta->banner || file->meta->fileTypeTexObj)) {
-				GXTexObj *texObj = (file->meta->banner ? &file->meta->bannerTexObj : file->meta->fileTypeTexObj);
-				bnr_width *= (file->meta->banner ? 2 : 1);
-				bnr_height *= (file->meta->banner ? 2 : 1);
-				if(file->meta->banner) {
-					GX_SetNumTevStages(1);
-					GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-				}
-				GX_InvalidateTexAll();
-				GXTlutObj *tlutObj = GX_GetTexObjUserData(texObj);
-				if(tlutObj) GX_LoadTlut(tlutObj, GX_GetTexObjTlut(texObj));
-				GX_LoadTexObj(texObj, GX_TEXMAP0);
-				int bnr_x = x_mid - (bnr_width/2);
-				GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-					GX_Position3f32((float) bnr_x,(float) data->y1+borderSize+40, 0.0f );
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(0.0f,0.0f);
-					GX_Position3f32((float) (bnr_x+bnr_width),(float) data->y1+borderSize+40,0.0f );
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(1.0f,0.0f);
-					GX_Position3f32((float) (bnr_x+bnr_width),(float) (data->y1+borderSize+40+bnr_height),0.0f );
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(1.0f,1.0f);
-					GX_Position3f32((float) bnr_x,(float) (data->y1+borderSize+40+bnr_height),0.0f );
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(0.0f,1.0f);
-				GX_End();
-				
-				if(data->isAutoLoadEntry) {
-					drawInit();
-					_DrawImageNow(TEX_STAR, bnr_x+bnr_width-16, data->y1+borderSize+40,
-						16, 16, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0, 255);
-				}
-				
-				// Company
-				sprintf(fbTextBuffer, "%.*s", BNR_FULL_TEXT_LEN, file->meta->bannerDesc.fullCompany);
-				float scale = GetTextScaleToFitInWidth(fbTextBuffer,(data->x2-data->x1)-(borderSize*2));
-				drawString(x_mid, data->y1+(borderSize*2)+40+bnr_height+20, fbTextBuffer, scale, ALIGN_CENTER, defaultColor);
-				
-				// Description
-				sprintf(fbTextBuffer, "%.*s", BNR_DESC_LEN, file->meta->bannerDesc.description);
-				char* rest = &fbTextBuffer[0];
-				char* tok;
-				int line = 0;
-				while ((tok = strtok_r (rest,"\r\n", &rest))) {
-					scale = GetTextScaleToFitInWidthWithMax(tok,(data->x2-data->x1)-(borderSize*2), !line ? 1.0f : scale);
-					drawString(x_mid, data->y1+(borderSize*2)+40+bnr_height+60+(line*scale*24), tok, scale, ALIGN_CENTER, defaultColor);
-					line++;
-				}
-			}
-			// Region
-			if(file->meta && file->meta->regionTexObj) {
-				drawString(data->x2 - 44, data->y2-(borderSize+41), "Region: ", 0.45f, ALIGN_RIGHT, defaultColor);
-				drawInit();
-				_DrawTexObjNow(file->meta->regionTexObj, data->x2 - 44, data->y2-(borderSize+50), 32, 20, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0);
-			}
-			
-			// fullGameName displays some titles with incorrect encoding, use displayName instead
-			float scale = GetTextScaleToFitInWidth(data->displayName, (data->x2-data->x1)-(borderSize*2));
-			drawString(x_mid, data->y1+(borderSize*2)+10, data->displayName, scale, ALIGN_CENTER, defaultColor);
-			
-			// Print specific stats
-			if(file->fileType==IS_FILE) {
-				if(file->device == &__device_wode) {
-					ISOInfo_t* isoInfo = (ISOInfo_t*)&file->other;
-					sprintf(fbTextBuffer,"Partition: %i, ISO: %i", isoInfo->iso_partition,isoInfo->iso_number);
-				}
-				else if(file->device == &__device_card_a || file->device == &__device_card_b) {
-					formatBytes(stpcpy(fbTextBuffer, "Size: "), file->size, 8192, false);
-				}
-				else if(file->device == &__device_qoob) {
-					formatBytes(stpcpy(fbTextBuffer, "Size: "), file->size, 65536, false);
-				}
-				else {
-					formatBytes(stpcpy(fbTextBuffer, "Size: "), file->size, 0, !(file->device->location & LOC_SYSTEM));
-				}
-				drawString(data->x2-(borderSize+8), data->y2-(borderSize+19), fbTextBuffer, 0.45f, ALIGN_RIGHT, defaultColor);
-			}
-		}
-		else {
-			// Vertical
-			_DrawSimpleBox(data->x1, data->y1, data->x2-data->x1, data->y2-data->y1, 0, noColor, borderColor);
-			int bnr_width = 72;
-			int bnr_height = 24;
-			int x_start = (data->x2-((data->x2-data->x1)/2)) - (bnr_height/2);
-			// Draw banner if there is one
-			file_handle *file = data->file;
-			if(file->meta && (file->meta->banner || file->meta->fileTypeTexObj)) {
-				GXTexObj *texObj = (file->meta->banner ? &file->meta->bannerTexObj : file->meta->fileTypeTexObj);
-				if(file->meta->banner) {
-					GX_SetTevOrder(GX_TEVSTAGE1, GX_TEXCOORD0, GX_TEXMAP1, GX_COLOR0A0);
-					GX_SetTevColorIn(GX_TEVSTAGE1, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_CPREV);
-					GX_SetTevAlphaIn(GX_TEVSTAGE1, GX_CA_ZERO, GX_CA_APREV, GX_CA_TEXA, GX_CA_ZERO);
-					GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-				}
-				GX_InvalidateTexAll();
-				GXTlutObj *tlutObj = GX_GetTexObjUserData(texObj);
-				if(tlutObj) GX_LoadTlut(tlutObj, GX_GetTexObjTlut(texObj));
-				GX_LoadTexObj(texObj, GX_TEXMAP0);
-				GX_LoadTexObj(&bannerMaskTexObj, GX_TEXMAP1);
-				GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-					GX_Position3f32((float)x_start,(float) data->y2-borderSize, 0.0f ); // bottom left
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(0.0f,0.0f);
-					GX_Position3f32((float)x_start,(float) data->y2-bnr_width-borderSize,0.0f );	// top left
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(1.0f,0.0f);
-					GX_Position3f32((float)x_start+bnr_height,(float) data->y2-bnr_width-borderSize,0.0f );	// top right
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(1.0f,1.0f);
-					GX_Position3f32((float)x_start+bnr_height,(float) data->y2 - borderSize,0.0f );	// bottom right
-					GX_Color4u8(255, 255, 255, data->alpha);
-					GX_TexCoord2f32(0.0f,1.0f);
-				GX_End();
-				
-				if(data->isAutoLoadEntry) {
-					drawInit();
-					_DrawImageNow(TEX_STAR, x_start, data->y2-bnr_width-borderSize,
-						12, 12, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0, 255);
-				}
-			}
-			// fullGameName displays some titles with incorrect encoding, use displayName instead
-			drawStringEllipsis(data->x1+(data->x2-data->x1)/2, data->y2-bnr_width-5-borderSize, data->displayName, 0.5f, ALIGN_LEFT, defaultColor, true, (data->y2-bnr_width-5-borderSize) - (data->y1 + (borderSize*2)));
-		}
-	}
-	else {
-		
-		// Not selected
-		GXColor noColor 	= (GXColor) {0,0,0,0};
-		GXColor selectColor = (GXColor) {46,57,104,GUI_MSGBOX_ALPHA}; 	//bluish
-		GXColor borderColor = (GXColor) {200,200,200,GUI_MSGBOX_ALPHA}; //Silver
-
-		_DrawSimpleBox(data->x1, data->y1, data->x2-data->x1, data->y2-data->y1, 
-					0, data->mode == B_SELECTED ? selectColor : noColor, borderColor);
-		
-		// Draw banner if there is one
-		file_handle *file = data->file;
-		if(file->meta && (file->meta->banner || file->meta->fileTypeTexObj)) {
-			GXTexObj *texObj = (file->meta->banner ? &file->meta->bannerTexObj : file->meta->fileTypeTexObj);
-			if(file->meta->banner) {
-				GX_SetTevOrder(GX_TEVSTAGE1, GX_TEXCOORD0, GX_TEXMAP1, GX_COLOR0A0);
-				GX_SetTevColorIn(GX_TEVSTAGE1, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_CPREV);
-				GX_SetTevAlphaIn(GX_TEVSTAGE1, GX_CA_ZERO, GX_CA_APREV, GX_CA_TEXA, GX_CA_ZERO);
-				GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-			}
-			GX_InvalidateTexAll();
-			GXTlutObj *tlutObj = GX_GetTexObjUserData(texObj);
-			if(tlutObj) GX_LoadTlut(tlutObj, GX_GetTexObjTlut(texObj));
-			GX_LoadTexObj(texObj, GX_TEXMAP0);
-			GX_LoadTexObj(&bannerMaskTexObj, GX_TEXMAP1);
-			GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-				GX_Position3f32((float) data->x1+7,(float) data->y1+4, 0.0f );
-				GX_Color4u8(255, 255, 255, data->alpha);
-				GX_TexCoord2f32(0.0f,0.0f);
-				GX_Position3f32((float) (data->x1+7+96),(float) data->y1+4,0.0f );
-				GX_Color4u8(255, 255, 255, data->alpha);
-				GX_TexCoord2f32(1.0f,0.0f);
-				GX_Position3f32((float) (data->x1+7+96),(float) (data->y1+4+32),0.0f );
-				GX_Color4u8(255, 255, 255, data->alpha);
-				GX_TexCoord2f32(1.0f,1.0f);
-				GX_Position3f32((float) data->x1+7,(float) (data->y1+4+32),0.0f );
-				GX_Color4u8(255, 255, 255, data->alpha);
-				GX_TexCoord2f32(0.0f,1.0f);
-			GX_End();
-			
-			if(data->isAutoLoadEntry) {
-				drawInit();
-				_DrawImageNow(TEX_STAR, data->x1+7+96-16, data->y1+4,
-					16, 16, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0, 255);
-			}
-		}
-		if(file->meta && file->meta->regionTexObj) {
-			drawInit();
-			_DrawTexObjNow(file->meta->regionTexObj, data->x2 - 39, data->y1+borderSize+1, 32, 20, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0);
-		}
-
-		// fullGameName displays some titles with incorrect encoding, use displayName instead
-		if(data->mode == B_SELECTED) {
-			float scale = GetTextScaleToFitInWidthWithMax(data->displayName, (data->x2-data->x1-8-96-39)-(borderSize*2), 0.6f);
-			drawString(data->x1+borderSize+8+96, data->y1+(data->y2-data->y1)/2, data->displayName, scale, ALIGN_LEFT, defaultColor);
-		} else {
-			drawStringEllipsis(data->x1+borderSize+8+96, data->y1+(data->y2-data->y1)/2, data->displayName, 0.6f, ALIGN_LEFT, defaultColor, false, (data->x2-data->x1-8-96-39)-(borderSize*2));
-		}
-		
-		// Print specific stats
-		if(file->fileType==IS_FILE) {
-			if(file->device == &__device_wode) {
-				ISOInfo_t* isoInfo = (ISOInfo_t*)&file->other;
-				sprintf(fbTextBuffer,"Partition: %i, ISO: %i", isoInfo->iso_partition,isoInfo->iso_number);
-			}
-			else if(file->device == &__device_card_a || file->device == &__device_card_b) {
-				formatBytes(fbTextBuffer, file->size, 8192, false);
-			}
-			else if(file->device == &__device_qoob) {
-				formatBytes(fbTextBuffer, file->size, 65536, false);
-			}
-			else {
-				formatBytes(fbTextBuffer, file->size, 0, !(file->device->location & LOC_SYSTEM));
-			}
-			drawString(data->x2-(borderSize+3), data->y1+borderSize+26, fbTextBuffer, 0.45f, ALIGN_RIGHT, defaultColor);
-		}
-	}
-}
-
-// External
-uiDrawObj_t* DrawFileBrowserButton(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode)
-{
-	drawFileBrowserButtonEvent_t *eventData = calloc(1, sizeof(drawFileBrowserButtonEvent_t));
-	eventData->x1 = x1;
-	eventData->y1 = y1;
-	eventData->x2 = x2;
-	eventData->y2 = y2;
-	eventData->displayName = strdup(message);
-	eventData->mode = mode;
-	eventData->file = calloc(1, sizeof(file_handle));
-	memcpy(eventData->file, file, sizeof(file_handle));
-	if(eventData->file->meta) {
-		eventData->file->meta = calloc(1, sizeof(file_meta));
-		memcpy(eventData->file->meta, file->meta, sizeof(file_meta));
-		if(eventData->file->meta->banner && eventData->file->meta->bannerSum != 0xFFFF) {
-			// Make a copy cause we want this one to be killed off when the display event is disposed
-			eventData->file->meta->banner = memalign(32, eventData->file->meta->bannerSize);
-			memcpy(eventData->file->meta->banner, file->meta->banner, eventData->file->meta->bannerSize);
-			DCFlushRange(eventData->file->meta->banner, eventData->file->meta->bannerSize);
-			GX_InitTexObjData(&eventData->file->meta->bannerTexObj, eventData->file->meta->banner);
-			if(GX_GetTexObjUserData(&eventData->file->meta->bannerTexObj) == &file->meta->bannerTlutObj) {
-				void *img_ptr;
-				u16 wd, ht;
-				u8 fmt, wrap_s, wrap_t, mipmap;
-				GX_GetTexObjAll(&eventData->file->meta->bannerTexObj, &img_ptr, &wd, &ht, &fmt, &wrap_s, &wrap_t, &mipmap);
-				GX_InitTlutObjData(&eventData->file->meta->bannerTlutObj, img_ptr + GX_GetTexBufferSize(wd, ht, fmt, mipmap, 0));
-				GX_InitTexObjUserData(&eventData->file->meta->bannerTexObj, &eventData->file->meta->bannerTlutObj);
-			}
-		}
-		else {
-			eventData->file->meta->banner = NULL;
-			eventData->file->meta->bannerSize = 0;
-		}
-		if(eventData->file->meta->displayName == file->meta->bannerDesc.gameName) {
-			eventData->file->meta->displayName = eventData->file->meta->bannerDesc.gameName;
-		}
-		else if(eventData->file->meta->displayName == file->meta->bannerDesc.fullGameName) {
-			eventData->file->meta->displayName = eventData->file->meta->bannerDesc.fullGameName;
-		}
-	}
-	// Hide extension when rendering certain files
-	if(eventData->file->fileType == IS_FILE) {
-		char *fileName = endsWith(eventData->file->name, eventData->displayName);
-		char *start = fileName ? eventData->displayName : getRelativeName(eventData->file->name);
-		char *end;
-		if((end = endsWith(start,".dol"))
-			|| (end = endsWith(start,".dol+cli"))
-			|| (end = endsWith(start,".elf"))
-			|| (end = endsWith(start,".fdi"))
-			|| (end = endsWith(start,".gci"))
-			|| (end = endsWith(start,".gcm.gcm"))
-			|| (end = endsWith(start,".gcm"))
-			|| (end = endsWith(start,".gcs"))
-			|| (end = endsWith(start,".nkit.iso.iso"))
-			|| (end = endsWith(start,".nkit.iso"))
-			|| (end = endsWith(start,".iso.iso"))
-			|| (end = endsWith(start,".iso"))
-			|| (end = endsWith(start,".mp3"))
-			|| (end = endsWith(start,".sav"))
-			|| (end = endsWith(start,".tgc"))) {
-			if(fileName) {
-				*end = '\0';
-			}
-			else if(memmem(eventData->displayName, strlen(eventData->displayName), start, end - start)) {
-				end = mempcpy(eventData->displayName, start, end - start);
-				*end = '\0';
-			}
-		}
-	}
-	eventData->alpha = (eventData->file->fileAttrib & ATTRIB_HIDDEN) || *getRelativeName(eventData->file->name) == '.' ? 128 : 255;
-	eventData->isAutoLoadEntry = !strcmp(swissSettings.autoload, file->name) || !fnmatch(swissSettings.autoload, file->name, FNM_PATHNAME | FNM_PREFIX_DIRS);
-	
-	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
-	event->type = EV_FILEBROWSERBUTTON;
-	event->data = eventData;
-	return event;
-}
-
-uiDrawObj_t* DrawFileBrowserButtonMeta(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode) {
-	if(file->meta && file->meta->displayName) {
-		message = file->meta->displayName;
-	}
-	return DrawFileBrowserButton(x1, y1, x2, y2, message, file, mode);
-}
-
-uiDrawObj_t* DrawFileCarouselEntry(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int distFromMiddle) {
-	uiDrawObj_t* event = DrawFileBrowserButtonMeta(x1, y1, x2, y2, message, file, B_SELECTED);
-	drawFileBrowserButtonEvent_t *data = (drawFileBrowserButtonEvent_t*)event->data;
-	data->isCarousel = true;
-	data->distFromMiddle = distFromMiddle;
-	//print_debug("message %s dist = %i x: (%i -> %i) y: (%i -> %i)\n", message, distFromMiddle, x1, x2, y1, y2);
 	return event;
 }
 
@@ -3714,6 +3372,27 @@ static void _GameflowPutDetailPanel(int x, int y, int width, int height,
 
 static gameflowQuad_t _GameflowGrowQuad(const gameflowQuad_t *quad, float by);
 
+/* Where Detail's lines and rows sit. The SAVES inset takes its room from the
+ * title block above it and moves the rows down; without it, Detail keeps the
+ * places it had before the inset. */
+typedef struct {
+	int company, status, lastPlayed, lastPlayedValue;
+	int settings, cheats, launch, panelHeight;
+	int rowTop[3];	/* the rows the focus moves between, bottom up */
+} gameflowDetailLayout_t;
+
+static const gameflowDetailLayout_t gameflowDetailLayouts[2] = {
+	{148, 177, 202, 219, 244, 293, 369, 328, {348, 281, 232}},
+	{140, 159, 176, 191, 264, 313, 388, 344, {367, 301, 252}},
+};
+
+static const gameflowDetailLayout_t *_GameflowDetailLayout(
+	const uiGameflowDetailSnapshot_t *detail)
+{
+	return &gameflowDetailLayouts[
+		(detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u];
+}
+
 static void _GameflowDrawDetailPlanes(
 	const uiGameflowDetailSnapshot_t *detail,
 	const drawGameflowDetailPresentation_t *presentation,
@@ -3721,8 +3400,10 @@ static void _GameflowDrawDetailPlanes(
 	uiGameflowDetailFocus_t focusRow, uiMotionSpring_t lit[2])
 {
 	/* The rows the focus moves between, bottom up: Launch, Cheats, Settings. */
-	static const int rowTop[] = {367, 301, 252};
+	const gameflowDetailLayout_t *layout = _GameflowDetailLayout(detail);
+	const int *rowTop = layout->rowTop;
 	static const int rowHeight[] = {43, 59, 42};
+	bool hasSaves = (detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u;
 	uiMotionMode_t motion = _CurrentMotionMode();
 	float litTop;
 	float litBottom;
@@ -3757,8 +3438,8 @@ static void _GameflowDrawDetailPlanes(
 	GXColor litHaloColor = {117, 88, 244,
 		_GameflowAlpha(78.0f * alpha * focus)};
 	bool hasSettings = detail->settingsSummary[0] != '\0';
-	u16 panelCount = (u16)(4u + (hasAdvanced ? 1u : 0u) +
-		(hasSettings ? 1u : 0u));
+	u16 panelCount = (u16)(3u + (hasSaves ? 1u : 0u) +
+		(hasAdvanced ? 1u : 0u) + (hasSettings ? 1u : 0u));
 
 	/* The bright frame slides from row to row, as the cheat list's focus
 	 * does; Detail opening places it on its row at once. */
@@ -3785,10 +3466,12 @@ static void _GameflowDrawDetailPlanes(
 	drawInit();
 	_SetupRasterColor();
 	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(panelCount * 12u + 48u));
-		_GameflowPutDetailPanel(246, 76, 358, 344, 2,
+		_GameflowPutDetailPanel(246, 76, 358, layout->panelHeight, 2,
 			panelGlow, panelFill, panelEdge);
-		_GameflowPutDetailPanel(260, 202, 330, 43, 2,
-			insetGlow, insetFill, insetEdge);
+		if(hasSaves) {
+			_GameflowPutDetailPanel(260, 202, 330, 43, 2,
+				insetGlow, insetFill, insetEdge);
+		}
 		/* The focused row takes the bright edge and the glow, and the
 		 * grid's frame round it; Launch keeps its button fill. */
 		for(row = UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH;
@@ -3821,6 +3504,7 @@ static void _GameflowDrawDetailDashboard(
 	const uiCommandRailFrame_t *commandRail, uiGameflowDetailFocus_t focusRow,
 	uiMotionSpring_t lit[2])
 {
+	const gameflowDetailLayout_t *layout;
 	const char *launchText;
 	float launchScale;
 	float alpha;
@@ -3834,6 +3518,7 @@ static void _GameflowDrawDetailDashboard(
 		lit[0].response = 0.0f;
 		return;
 	}
+	layout = _GameflowDetailLayout(detail);
 	alpha = _GameflowClamp(frame->detailProgress * reveal, 0.0f, 1.0f);
 	primary = (GXColor) {246, 243, 255, _GameflowAlpha(255.0f * alpha)};
 	secondary = (GXColor) {202, 192, 244, _GameflowAlpha(235.0f * alpha)};
@@ -3847,55 +3532,65 @@ static void _GameflowDrawDetailDashboard(
 	drawStringMedium(264, 122, detail->title, presentation->titleScale,
 		ALIGN_LEFT, primary);
 	if(detail->company[0] != '\0') {
-		drawStringMedium(264, 140, detail->company,
+		drawStringMedium(264, layout->company, detail->company,
 			presentation->companyScale, ALIGN_LEFT, secondary);
 	}
 	if(detail->statusText[0] != '\0') {
-		drawStringMedium(264, 159, detail->statusText,
+		drawStringMedium(264, layout->status, detail->statusText,
 			presentation->statusScale, ALIGN_LEFT, muted);
 	}
 
-	drawStringMedium(264, 176, "LAST PLAYED", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(264, 191, detail->lastPlayedText,
+	drawStringMedium(264, layout->lastPlayed, "LAST PLAYED", 0.42f,
+		ALIGN_LEFT, secondary);
+	drawStringMedium(264, layout->lastPlayedValue, detail->lastPlayedText,
 		presentation->lastPlayedScale, ALIGN_LEFT, primary);
 	/* The count is the headline. A small trailing label leaves the two-line
 	 * inset readable without competing with the actions below it. */
-	drawStringMedium(576, 214, "SAVES", 0.38f, ALIGN_RIGHT, secondary);
-	drawStringMedium(274, 214, detail->savesSummary,
-		presentation->savesSummaryScale, ALIGN_LEFT, primary);
-	drawStringMedium(274, 232, detail->savesUpdated,
-		presentation->savesUpdatedScale, ALIGN_LEFT, secondary);
+	if(detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) {
+		/* With a choice, the label says Left and Right change it. */
+		drawStringMedium(576, 214, (detail->flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) ?
+			"\253 SAVES \273" : "SAVES", 0.38f, ALIGN_RIGHT, secondary);
+		drawStringMedium(274, 214, detail->savesSummary,
+			presentation->savesSummaryScale, ALIGN_LEFT, primary);
+		drawStringMedium(274, 232, detail->savesUpdated,
+			presentation->savesUpdatedScale, ALIGN_LEFT, secondary);
+	}
 
 	/* SETTINGS, like CHEATS below it: this game's own rows, or how to set
 	 * some (X opens them). */
 	if(detail->settingsSummary[0] != '\0') {
-		drawStringMedium(274, 264, "SETTINGS", 0.42f, ALIGN_LEFT, secondary);
-		drawStringMedium(576, 264, detail->settingsSummary,
+		drawStringMedium(274, layout->settings, "SETTINGS", 0.42f,
+			ALIGN_LEFT, secondary);
+		drawStringMedium(576, layout->settings, detail->settingsSummary,
 			presentation->settingsSummaryScale, ALIGN_RIGHT, muted);
 		if(detail->customSettings != 0u) {
-			drawStringMedium(274, 282, "\267", 0.50f, ALIGN_LEFT, focus);
-			drawStringMedium(288, 282, detail->settingsPreview,
-				presentation->settingsPreviewScale, ALIGN_LEFT, primary);
+			drawStringMedium(274, layout->settings + 18, "\267", 0.50f,
+				ALIGN_LEFT, focus);
+			drawStringMedium(288, layout->settings + 18,
+				detail->settingsPreview, presentation->settingsPreviewScale,
+				ALIGN_LEFT, primary);
 		}
 		else {
-			_DrawHintText(274, 282, detail->settingsPreview,
+			_DrawHintText(274, layout->settings + 18, detail->settingsPreview,
 				presentation->settingsPreviewScale, ALIGN_LEFT, muted);
 		}
 	}
 
-	drawStringMedium(274, 313, "CHEATS", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(274, 331, detail->cheatSummary,
+	drawStringMedium(274, layout->cheats, "CHEATS", 0.42f, ALIGN_LEFT,
+		secondary);
+	drawStringMedium(274, layout->cheats + 18, detail->cheatSummary,
 		presentation->cheatSummaryScale, ALIGN_LEFT, muted);
 	if(detail->cheatPreview[0] != '\0') {
 		if(detail->enabledCheatCount != 0u) {
-			drawStringMedium(274, 349, "\267", 0.50f, ALIGN_LEFT, focus);
-			drawStringMedium(288, 349, detail->cheatPreview,
+			drawStringMedium(274, layout->cheats + 36, "\267", 0.50f,
+				ALIGN_LEFT, focus);
+			drawStringMedium(288, layout->cheats + 36, detail->cheatPreview,
 				presentation->cheatPreviewScale, ALIGN_LEFT, primary);
 		}
 		else {
 			/* "Y  Choose cheats": a hint only while nothing is on, since
 			 * cheat names are free text. */
-			_DrawHintText(274, 349, detail->cheatPreview,
+			_DrawHintText(274, layout->cheats + 36, detail->cheatPreview,
 				presentation->cheatPreviewScale, ALIGN_LEFT, muted);
 		}
 	}
@@ -3905,9 +3600,11 @@ static void _GameflowDrawDetailDashboard(
 	launchScale = frame->launchProgress > 0.02f ?
 		0.56f : presentation->launchScale;
 	if(focusRow == UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH) {
-		drawStringMedium(278, 388, "\267", 0.58f, ALIGN_LEFT, focus);
+		drawStringMedium(278, layout->launch, "\267", 0.58f, ALIGN_LEFT,
+			focus);
 	}
-	_DrawHintText(425, 388, launchText, launchScale, ALIGN_CENTER, focus);
+	_DrawHintText(425, layout->launch, launchText, launchScale, ALIGN_CENTER,
+		focus);
 
 	if(detail->advancedLineOne[0] != '\0' ||
 		detail->advancedLineTwo[0] != '\0') {
@@ -4511,9 +4208,8 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		bool apps = (data->snapshot.records[0].flags &
 			UI_GAMEFLOW_CARD_APP) != 0u;
 		/* Inside a Library Folders folder the heading names it. */
-		const char *heading = apps ? "APPS" :
-			data->snapshot.folder[0] ? data->snapshot.folder :
-			"GAME LIBRARY";
+		const char *heading = data->snapshot.folder[0] ?
+			data->snapshot.folder : apps ? "APPS" : "GAME LIBRARY";
 
 		if(layout == UI_GAMEFLOW_LAYOUT_VERTICAL) {
 			drawStringMedium(262, 177, heading, 0.42f, ALIGN_LEFT,
@@ -4677,12 +4373,17 @@ static void _DrawHomeRoot(const drawHomeEvent_t *data,
 	incoming = primary;
 	incoming.a = (u8)((float)incoming.a * incomingAlpha);
 	scale = data->focusScale[(int)face];
-	_DrawHomeText(incomingX, incomingY,
-		UIHome_FaceLabel(face), scale,
-		ALIGN_CENTER, incoming);
-	_DrawHintText(layout->commandCenter.x, layout->commandCenter.y,
-		data->command, data->commandScale,
-		ALIGN_CENTER, muted);
+	/* Face Labels and On-screen Controls off leave the cube on its own. */
+	if(!data->capabilities.hideFaceLabel) {
+		_DrawHomeText(incomingX, incomingY,
+			UIHome_FaceLabel(face), scale,
+			ALIGN_CENTER, incoming);
+	}
+	if(!data->capabilities.hideCommands) {
+		_DrawHintText(layout->commandCenter.x, layout->commandCenter.y,
+			data->command, data->commandScale,
+			ALIGN_CENTER, muted);
+	}
 }
 
 static void _DrawHomeRows(const drawHomeEvent_t *data, float reveal)
@@ -4706,9 +4407,11 @@ static void _DrawHomeRows(const drawHomeEvent_t *data, float reveal)
 				data->rowIdleScale[row]) * weight,
 			ALIGN_CENTER, _GameflowMixColor(muted, primary, weight));
 	}
-	_DrawHintText(layout->commandCenter.x, layout->commandCenter.y,
-		homeContextCommand, data->contextCommandScale,
-		ALIGN_CENTER, muted);
+	if(!data->capabilities.hideCommands) {
+		_DrawHintText(layout->commandCenter.x, layout->commandCenter.y,
+			homeContextCommand, data->contextCommandScale,
+			ALIGN_CENTER, muted);
+	}
 }
 
 static void _DrawHomeContext(const drawHomeEvent_t *data, float reveal)
@@ -4905,7 +4608,7 @@ static void _DrawDeviceTile(const drawDeviceTile_t *tile, float place,
 	GX_End();
 	drawInit();
 	if(picture->width > 0 && picture->height > 0) {
-		/* drawCurrentDevice's sizing, in a box that shrinks with the tile. */
+		/* Swiss's device-picture sizing, in a box that shrinks with the tile. */
 		float fit = fminf(fminf(120.0f / picture->width,
 			84.0f / picture->height), 1.0f) * scale;
 		int w = (int)(picture->realWidth * fit);
@@ -5125,6 +4828,23 @@ void DrawUpdateDeviceSelector(uiDrawObj_t *selector,
 	LWP_MutexUnlock(_videomutex);
 }
 
+/* A copy in the File Browser: the same card over a scrim, titled with what
+ * goes where, the destination's path under it, and B Stop. */
+uiDrawObj_t* DrawProgressBarFiles(const char *title, const char *path)
+{
+	uiDrawObj_t *event = DrawProgressBar(false, 0, NULL);
+	int middleY = ((480/2) - (PROGRESS_BOX_HEIGHT/2) + (480/2) + (PROGRESS_BOX_HEIGHT/2)) / 2;
+
+	((drawProgressEvent_t*)event->data)->files = true;
+	DrawAddChild(event, DrawStyledLabel(640/2, middleY - 6, title,
+		GetTextScaleToFitInWidthWithMax(title, PROGRESS_BOX_WIDTH - 40, 0.8f), ALIGN_CENTER,
+		defaultColor));
+	DrawAddChild(event, DrawStyledLabel(640/2, middleY + 12, path,
+		GetTextScaleToFitInWidthWithMax(path, PROGRESS_BOX_WIDTH - 40, 0.46f), ALIGN_CENTER,
+		defaultColor));
+	return event;
+}
+
 void DrawUpdateProgressBar(uiDrawObj_t *evt, int percent) {
 	drawProgressEvent_t *data = (drawProgressEvent_t*)evt->data;
 	data->percent = percent;
@@ -5160,16 +4880,14 @@ static void _PrepareHomeText(drawHomeEvent_t *data)
 			UIHome_FaceLabel((uiHomeFace_t)face),
 			focusWidth, 0.78f, GetTextSizeInPixels);
 	}
-	if(data->capabilities.hasRecent) {
-		snprintf(data->command, sizeof(data->command),
-			"STICK / D-PAD  TURN    %s    START  RECENT",
-			UIHome_PrimaryHint(data->state.face, data->capabilities));
-	}
-	else {
-		snprintf(data->command, sizeof(data->command),
-			"STICK / D-PAD  TURN    %s",
-			UIHome_PrimaryHint(data->state.face, data->capabilities));
-	}
+	/* Y opens Settings anywhere on Home; it says so while Settings has no
+	 * side to turn to. TURN only while there is a face to turn to. */
+	snprintf(data->command, sizeof(data->command),
+		"%s%s%s%s", data->state.faceCount > 1 ? "STICK / D-PAD  TURN    " : "",
+		UIHome_PrimaryHint(data->state.face, data->capabilities),
+		data->capabilities.hasRecent ? "    START  RECENT" : "",
+		UIHome_RingIndex(&data->state, UI_HOME_FACE_SETTINGS) < 0 ?
+			"    Y  SETTINGS" : "");
 	data->commandScale = UIHomeText_FitScale(data->command,
 		commandWidth, 0.46f, GetHintSizeInPixels);
 	if(data->state.surface == UI_HOME_SURFACE_SOURCE) {
@@ -5252,11 +4970,6 @@ void DrawUpdateHome(const uiHomeState_t *state,
 		}
 	}
 	LWP_MutexUnlock(_videomutex);
-}
-
-void DrawUpdateFileBrowserButton(uiDrawObj_t *evt, int mode) {
-	drawFileBrowserButtonEvent_t *data = (drawFileBrowserButtonEvent_t*)evt->data;
-	data->mode = mode;
 }
 
 static bool _GameflowSnapshotValid(const uiGameflowRenderSnapshot_t *snapshot)
@@ -5616,7 +5329,8 @@ bool DrawUpdateGameflow(uiDrawObj_t *evt,
 	return updated;
 }
 
-bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode)
+static bool _GameflowSetMode(uiDrawObj_t *evt, uiGameflowMode_t mode,
+	uiMotionMode_t motion)
 {
 	bool updated = false;
 
@@ -5626,13 +5340,23 @@ bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode)
 	LWP_MutexLock(_videomutex);
 	if(!evt->disposed && evt->type == EV_GAMEFLOW && evt->data != NULL) {
 		drawGameflowEvent_t *data = (drawGameflowEvent_t*)evt->data;
-		UIGameflow_SetMode(&data->state, mode, _CurrentMotionMode());
+		UIGameflow_SetMode(&data->state, mode, motion);
 		_GameflowSetLaunch(data, UIGameflow_Frame(&data->state)->mode ==
 			UI_GAMEFLOW_MODE_LAUNCH);
 		updated = true;
 	}
 	LWP_MutexUnlock(_videomutex);
 	return updated;
+}
+
+bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode)
+{
+	return _GameflowSetMode(evt, mode, _CurrentMotionMode());
+}
+
+bool DrawSetGameflowModeNow(uiDrawObj_t *evt, uiGameflowMode_t mode)
+{
+	return _GameflowSetMode(evt, mode, UI_MOTION_OFF);
 }
 
 bool DrawSetGameflowDetailFocus(uiDrawObj_t *evt,
@@ -7368,6 +7092,732 @@ void DrawUpdateSaveCubesPage(uiDrawObj_t *page,
 	LWP_MutexUnlock(_videomutex);
 }
 
+/* ------------------------------------------------------------------------
+ * The File Browser (swiss.c's renderFileList): two panes over Memory Cards'
+ * graph paper, each a folder's rows with a cube for what each entry is, the
+ * focused entry's banner and name in the info bar below. swiss.c writes a
+ * uiFilesSnapshot_t with every string fitted; this only draws it. The page
+ * covers the stage, so the Home cube shows only as Memory Cards' backdrop
+ * hands it over.
+ * --------------------------------------------------------------------- */
+typedef struct {
+	uiFilesSnapshot_t snapshot;	/* first: its banner stays aligned */
+	float seconds;			/* since it opened */
+	float leave;			/* since B, or below 0 */
+	uiMotionSpring_t focus[UI_FILES_PANES];	/* each focus bar, in rows */
+	uiMotionSpring_t emphasis;	/* 0 the left pane focused, 1 the right */
+	uiMotionSpring_t menuBar;	/* the box's focus, in items */
+	float menuSince;		/* since the box opened or closed */
+	uint16_t menuSerial;
+	bool menuOpen;
+	float content;			/* what the panes hold: Y fades it out and in */
+	float messageSince;		/* since the message came */
+	uint16_t messageSerial;
+	uint16_t listing[UI_FILES_PANES];
+	bool started;
+	GXTexObj picture;
+} drawFilesEvent_t;
+
+/* A flat vertex in exactly color: the cubes' colors that keep their hue
+ * under every Menu Color go through here, the others through
+ * _FilesColor first. */
+static void _FilesVertex(float x, float y, GXColor color)
+{
+	GX_Position3f32(x, y, 0.0f);
+	GX_Color4u8(color.r, color.g, color.b, color.a);
+	GX_TexCoord2f32(0.0f, 0.0f);
+}
+
+static void _FilesQuad(float x0, float y0, float x1, float y1, float x2,
+	float y2, float x3, float y3, GXColor color)
+{
+	_FilesVertex(x0, y0, color);
+	_FilesVertex(x1, y1, color);
+	_FilesVertex(x2, y2, color);
+	_FilesVertex(x3, y3, color);
+}
+
+static void _FilesRect(float x, float y, float width, float height, GXColor color)
+{
+	_FilesQuad(x, y, x + width, y, x + width, y + height, x, y + height, color);
+}
+
+/* color scaled toward black (k < 1) or white (k > 1), at alpha, through
+ * Menu Color when it follows it. */
+static GXColor _FilesColor(GXColor color, float k, float alpha, bool follows)
+{
+	float c[3] = {color.r, color.g, color.b};
+	int i;
+
+	for(i = 0; i < 3; i++) {
+		c[i] = k <= 1.0f ? c[i] * k : c[i] + (255.0f - c[i]) * (k - 1.0f);
+		c[i] = c[i] > 255.0f ? 255.0f : c[i];
+	}
+	color.r = (u8)c[0];
+	color.g = (u8)c[1];
+	color.b = (u8)c[2];
+	color.a = (u8)((float)color.a * alpha + 0.5f);
+	if(follows) {
+		UIColor_Apply(&color.r, &color.g, &color.b);
+	}
+	return color;
+}
+
+/* An eighth of a turn at a time, for the disc's ring. */
+static const float filesOctagon[8][2] = {
+	{1.0f, 0.0f}, {0.7071f, 0.7071f}, {0.0f, 1.0f}, {-0.7071f, 0.7071f},
+	{-1.0f, 0.0f}, {-0.7071f, -0.7071f}, {0.0f, -1.0f}, {0.7071f, -0.7071f}
+};
+
+/* How many vertices each kind's emblem takes: the cube's three faces are
+ * 12 more, a halo 4. */
+static int _FilesEmblemVertices(int kind)
+{
+	switch(kind) {
+		case UI_FILES_KIND_DISC:
+		case UI_FILES_KIND_DISC_COMPRESSED:
+			return 32;
+		case UI_FILES_KIND_MUSIC:
+		case UI_FILES_KIND_TEXT:
+			return 12;
+		case UI_FILES_KIND_FOLDER:
+		case UI_FILES_KIND_PROGRAM_FOLDER:
+		case UI_FILES_KIND_FIRMWARE:
+		case UI_FILES_KIND_PICTURE:
+			return 8;
+		default:
+			return 4;
+	}
+}
+
+/* A row's cube, size px across its front, centred at (cx, cy): front, top
+ * and side as three flat quads and the kind's emblem on the front, all
+ * flat, so no square roots and no texture. Folders and ".." turn with Menu
+ * Color; programs stay teal, firmware amber, discs silver with a ring that
+ * turns. */
+static void _FilesCube(int kind, float cx, float cy, float size, float alpha,
+	bool halo)
+{
+	static const GXColor base[UI_FILES_KINDS] = {
+		{150, 160, 210, 255},	/* .. */
+		{122, 104, 224, 255},	/* folder */
+		{46, 150, 160, 255},	/* program folder */
+		{226, 228, 240, 255},	/* disc */
+		{226, 228, 240, 150},	/* compressed disc */
+		{46, 150, 160, 255},	/* program */
+		{240, 176, 72, 255},	/* firmware */
+		{236, 120, 170, 255},	/* music */
+		{90, 150, 230, 255},	/* picture */
+		{232, 232, 238, 255},	/* text */
+		{150, 154, 170, 255}	/* other */
+	};
+	const GXColor light = {245, 242, 255, 255}, dark = {40, 36, 60, 255};
+	bool follows = kind == UI_FILES_KIND_PARENT || kind == UI_FILES_KIND_FOLDER ||
+		kind == UI_FILES_KIND_PICTURE || kind == UI_FILES_KIND_TEXT ||
+		kind == UI_FILES_KIND_OTHER;
+	float d = size * 0.3f, u = size / 13.0f;
+	float x = cx - 0.5f * (size + d), y = cy - 0.5f * (size - d);
+	GXColor front, top, side, mark;
+	int i;
+
+	if(kind < 0 || kind >= UI_FILES_KINDS || !(alpha > 0.0f)) {
+		return;
+	}
+	front = _FilesColor(base[kind], kind == UI_FILES_KIND_PARENT ? 0.45f : 1.0f,
+		alpha, follows);
+	top = _FilesColor(base[kind], 1.35f, alpha, follows);
+	side = _FilesColor(base[kind], 0.62f, alpha, follows);
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, (halo ? 4 : 0) + 12 + _FilesEmblemVertices(kind));
+	if(halo) {
+		_FilesRect(x - 3.0f, y - d - 3.0f, size + d + 6.0f, size + d + 6.0f,
+			_FilesColor((GXColor) {255, 255, 255, 46}, 1.0f, alpha, false));
+	}
+	_FilesRect(x, y, size, size, front);
+	_FilesQuad(x, y, x + d, y - d, x + size + d, y - d, x + size, y, top);
+	_FilesQuad(x + size, y, x + size + d, y - d, x + size + d, y + size - d,
+		x + size, y + size, side);
+	switch(kind) {
+		case UI_FILES_KIND_PARENT:
+			mark = _FilesColor(light, 1.0f, alpha, true);
+			_FilesQuad(x + 6.5f * u, y + 2.5f * u, x + 10.5f * u, y + 9.0f * u,
+				x + 2.5f * u, y + 9.0f * u, x + 6.5f * u, y + 2.5f * u, mark);
+			break;
+		case UI_FILES_KIND_FOLDER:
+		case UI_FILES_KIND_PROGRAM_FOLDER:
+			mark = kind == UI_FILES_KIND_FOLDER ? _FilesColor(light, 1.0f, alpha, false) :
+				_FilesColor((GXColor) {210, 250, 255, 255}, 1.0f, alpha, false);
+			_FilesRect(x + 2.5f * u, y + 3.0f * u, 3.5f * u, 1.8f * u, mark);
+			if(kind == UI_FILES_KIND_FOLDER) {
+				_FilesRect(x + 2.5f * u, y + 4.5f * u, 8.0f * u, 5.5f * u, mark);
+			}
+			else {
+				_FilesQuad(x + 4.5f * u, y + 5.0f * u, x + 10.0f * u, y + 7.5f * u,
+					x + 4.5f * u, y + 10.0f * u, x + 4.5f * u, y + 5.0f * u, mark);
+			}
+			break;
+		case UI_FILES_KIND_DISC:
+		case UI_FILES_KIND_DISC_COMPRESSED:
+			mark = _FilesColor((GXColor) {122, 104, 224, base[kind].a}, 1.0f, alpha, true);
+			for(i = 0; i < 8; i++) {
+				const float *a = filesOctagon[i], *b = filesOctagon[(i + 1) % 8];
+				float mx = x + 6.5f * u, my = y + 6.5f * u, ro = 4.6f * u, ri = 1.8f * u;
+
+				_FilesQuad(mx + a[0] * ro, my + a[1] * ro, mx + b[0] * ro, my + b[1] * ro,
+					mx + b[0] * ri, my + b[1] * ri, mx + a[0] * ri, my + a[1] * ri, mark);
+			}
+			break;
+		case UI_FILES_KIND_PROGRAM:
+			_FilesQuad(x + 4.0f * u, y + 3.0f * u, x + 10.0f * u, y + 6.5f * u,
+				x + 4.0f * u, y + 10.0f * u, x + 4.0f * u, y + 3.0f * u,
+				_FilesColor(light, 1.0f, alpha, false));
+			break;
+		case UI_FILES_KIND_FIRMWARE:
+			mark = _FilesColor((GXColor) {80, 46, 0, 255}, 1.0f, alpha, false);
+			_FilesQuad(x + 7.5f * u, y + 1.8f * u, x + 3.5f * u, y + 7.5f * u,
+				x + 6.8f * u, y + 7.5f * u, x + 7.5f * u, y + 1.8f * u, mark);
+			_FilesQuad(x + 6.2f * u, y + 5.5f * u, x + 9.5f * u, y + 5.5f * u,
+				x + 5.5f * u, y + 11.2f * u, x + 6.2f * u, y + 5.5f * u, mark);
+			break;
+		case UI_FILES_KIND_MUSIC:
+			mark = _FilesColor(light, 1.0f, alpha, false);
+			_FilesRect(x + 7.5f * u, y + 3.0f * u, 1.4f * u, 6.5f * u, mark);
+			_FilesRect(x + 4.5f * u, y + 8.0f * u, 4.4f * u, 3.0f * u, mark);
+			_FilesRect(x + 7.5f * u, y + 3.0f * u, 3.2f * u, 1.4f * u, mark);
+			break;
+		case UI_FILES_KIND_PICTURE:
+			mark = _FilesColor(light, 1.0f, alpha, false);
+			_FilesQuad(x + 2.5f * u, y + 10.5f * u, x + 6.0f * u, y + 5.0f * u,
+				x + 10.5f * u, y + 10.5f * u, x + 2.5f * u, y + 10.5f * u, mark);
+			_FilesRect(x + 8.5f * u, y + 2.5f * u, 2.0f * u, 2.0f * u, mark);
+			break;
+		case UI_FILES_KIND_TEXT:
+			mark = _FilesColor(dark, 1.0f, alpha, false);
+			for(i = 0; i < 3; i++) {
+				_FilesRect(x + 3.0f * u, y + (3.5f + 2.5f * i) * u, 7.0f * u, 1.2f * u, mark);
+			}
+			break;
+		default:
+			_FilesRect(x + 5.5f * u, y + 5.5f * u, 2.0f * u, 2.0f * u,
+				_FilesColor(dark, 1.0f, alpha, false));
+			break;
+	}
+	GX_End();
+}
+
+/* An outline px wide, as a box's edge without its fill. */
+static void _FilesOutline(float x, float y, float width, float height,
+	float line, GXColor color)
+{
+	drawInit();
+	_SetupRasterColor();
+	GX_Begin(GX_QUADS, GX_VTXFMT0, 16);
+		_putFlatRect(x, y, width, line, color);
+		_putFlatRect(x, y + height - line, width, line, color);
+		_putFlatRect(x, y + line, line, height - 2.0f * line, color);
+		_putFlatRect(x + width - line, y + line, line, height - 2.0f * line, color);
+	GX_End();
+}
+
+#define FILES_CHIP_W UI_FILES_CHIP_W
+#define FILES_CHIP_H 16
+
+/* Everything but the words and the banner: the buttons, the boxes, the
+ * focus bars, the cubes and the scroll tracks. alpha is the page's chrome;
+ * content what of it the panes and the info bar hold (Y fades it out and
+ * in); emphasis 0 when the left pane has the focus, 1 the right; focusY
+ * each focus bar's row, sprung; lit the loading cell that is lit. */
+static void _FilesShapes(const uiFilesSnapshot_t *s, const uiFilesLayout_t *layout,
+	float alpha, float content, float emphasis, const float focusY[UI_FILES_PANES],
+	int lit, float ghost, float flash)
+{
+	const float inner = alpha * content;
+	const GXColor white = _SaveCubesFaded((GXColor) {255, 255, 255, 255}, inner);
+	const GXColor shadow = _SaveCubesFaded((GXColor) {0, 0, 0, 200}, inner);
+	const GXColor quiet = _SaveCubesFaded((GXColor) {173, 187, 216, 255}, alpha);
+	const GXColor chip = _SaveCubesFaded((GXColor) {196, 177, 255, 56}, inner);
+	int p, i;
+
+	for(p = 0; p < UI_FILES_PANES; p++) {
+		const uiFilesPaneSnapshot_t *pane = &s->pane[p];
+		const uiFilesRect_t *box = &layout->pane[p];
+		const uiFilesRect_t *button = &layout->button[p];
+		float active = p == UI_FILES_RIGHT ? emphasis : 1.0f - emphasis;
+		float fill = (200.0f + 36.0f * active) / 255.0f;
+		float edge = 0.45f + 0.55f * active;
+		bool track = pane->count > UI_FILES_ROWS;
+
+		_SaveCubesBox(button->x0, button->y0, button->x1 - button->x0,
+			button->y1 - button->y0,
+			_SaveCubesFaded((GXColor) {18, 27, 91, 180}, alpha),
+			_SaveCubesFaded((GXColor) {0, 0, 0, 200}, alpha), quiet, 1.0f);
+		if(pane->source) {
+			_SaveCubesBar(box->x0 + 2 + pane->deviceWidth + 10, UI_FILES_DEVICE_Y - FILES_CHIP_H / 2,
+				FILES_CHIP_W, FILES_CHIP_H, chip);
+		}
+		if(pane->free[0] != '\0') {
+			_SaveCubesBox(box->x1 - pane->freeWidth, UI_FILES_FREE_TOP, pane->freeWidth,
+				UI_FILES_FREE_BOTTOM - UI_FILES_FREE_TOP, shadow, shadow, white, 2.0f);
+		}
+		if(pane->autoload) {
+			_SaveCubesBar(box->x0 + 2 + pane->pathWidth + 8, UI_FILES_PATH_Y - 7,
+				66, 14, chip);
+		}
+		_SaveCubesBox(box->x0, box->y0, box->x1 - box->x0, box->y1 - box->y0,
+			_SaveCubesFaded((GXColor) {39, 53, 153, 255}, alpha * fill),
+			_SaveCubesFaded((GXColor) {58, 31, 127, 255}, alpha * fill),
+			_SaveCubesFaded((GXColor) {196, 186, 255, 255}, alpha * edge), 2.0f);
+		if(pane->focusRow >= 0 && pane->rows > 0) {
+			uiFilesRect_t row = UIFiles_RowRect(layout, p, 0);
+			float y = row.y0 + UI_FILES_ROW_PITCH * focusY[p];
+
+			if(active > 0.0f) {
+				_SaveCubesBar(row.x0, y, row.x1 - row.x0, UI_FILES_ROW_HEIGHT,
+					_SaveCubesFaded((GXColor) {70, 92, 200, 230}, inner * active));
+			}
+			if(active < 1.0f) {
+				_FilesOutline(row.x0, y, row.x1 - row.x0, UI_FILES_ROW_HEIGHT, 1.0f,
+					_SaveCubesFaded((GXColor) {196, 186, 255, 170}, inner * (1.0f - active)));
+			}
+		}
+		for(i = 0; i < pane->rows && i < UI_FILES_ROWS; i++) {
+			const uiFilesRowSnapshot_t *row = &pane->row[i];
+			bool focused = (row->flags & UI_FILES_ROW_FOCUS) != 0u;
+			float rowAlpha = inner * ((row->flags & UI_FILES_ROW_HIDDEN) ? 0.5f : 1.0f) *
+				(pane->reading ? 0.6f : 1.0f);
+			uiFilesRect_t rect = UIFiles_RowRect(layout, p, i);
+
+			/* Where a copy will land, pulsing, and a copy that just
+			 * landed, flashing: a light fill with a white edge, unlike
+			 * the focus's outline. */
+			if(row->flags & (UI_FILES_ROW_GHOST | UI_FILES_ROW_FLASH)) {
+				float lit = (row->flags & UI_FILES_ROW_GHOST) ? ghost : flash;
+
+				if(row->flags & UI_FILES_ROW_GHOST) {
+					rowAlpha *= ghost;
+				}
+				if(lit > 0.0f) {
+					_SaveCubesBox(rect.x0, rect.y0, rect.x1 - rect.x0, UI_FILES_ROW_HEIGHT,
+						_SaveCubesFaded((GXColor) {196, 186, 255, 108}, inner * lit),
+						_SaveCubesFaded((GXColor) {196, 186, 255, 108}, inner * lit),
+						_SaveCubesFaded((GXColor) {255, 255, 255, 215}, inner * lit), 2.0f);
+				}
+			}
+			_FilesCube(row->kind, UIFiles_CubeX(layout, p),
+				0.5f * (rect.y0 + rect.y1), focused ? 16.0f : 13.0f, rowAlpha,
+				focused && active > 0.5f);
+		}
+		if(track) {
+			const uiFilesRect_t *t = &layout->track[p];
+			int height = t->y1 - t->y0;
+			int thumb = height * UI_FILES_ROWS / pane->count;
+			int travel;
+
+			if(thumb < 12) thumb = 12;
+			travel = (int)((int64_t)(height - thumb) * pane->first /
+				(pane->count - UI_FILES_ROWS));
+			_SaveCubesBar(t->x0, t->y0, t->x1 - t->x0, height,
+				_SaveCubesFaded((GXColor) {34, 42, 65, 255}, inner));
+			_SaveCubesBar(t->x0, t->y0 + travel, t->x1 - t->x0, thumb,
+				_SaveCubesFaded((GXColor) {196, 177, 255, 255}, inner));
+		}
+		if(pane->reading) {
+			/* Three cells lit one after another under the words, on a band
+			 * of the box's own blue. With the chrome, not the contents: a
+			 * read after Y shows while the swapped-out rows are gone. */
+			_SaveCubesBar(box->x0 + 4, UI_FILES_MESSAGE_Y - 18, box->x1 - box->x0 - 8, 52,
+				_SaveCubesFaded((GXColor) {18, 27, 91, 230}, alpha));
+			for(i = 0; i < 3; i++) {
+				_SaveCubesBar(layout->mid[p] - 17 + 12 * i, UI_FILES_MESSAGE_Y + 18, 10, 6,
+					_SaveCubesFaded((GXColor) {196, 177, 255, 255},
+					alpha * (i == lit ? 1.0f : 0.35f)));
+			}
+		}
+	}
+	_SaveCubesBox(layout->info.x0, layout->info.y0, layout->info.x1 - layout->info.x0,
+		layout->info.y1 - layout->info.y0,
+		_SaveCubesFaded((GXColor) {39, 53, 153, 220}, alpha),
+		_SaveCubesFaded((GXColor) {58, 31, 127, 220}, alpha),
+		_SaveCubesFaded((GXColor) {196, 186, 255, 255}, alpha), 2.0f);
+	if(!s->hasBanner) {
+		_FilesCube(s->infoKind, 0.5f * (layout->picture.x0 + layout->picture.x1),
+			0.5f * (layout->picture.y0 + layout->picture.y1), 26.0f, inner, false);
+	}
+	if(s->chip[0] != '\0') {
+		_SaveCubesBar(layout->infoTextX + s->titleWidth + 10, 381 - FILES_CHIP_H / 2,
+			FILES_CHIP_W, FILES_CHIP_H, chip);
+	}
+	if(s->size[0] != '\0') {
+		_SaveCubesBox(layout->sizeBox.x0, layout->sizeBox.y0, s->sizeWidth,
+			layout->sizeBox.y1 - layout->sizeBox.y0, shadow, shadow, white, 2.0f);
+	}
+}
+
+/* The words: what the shapes leave for text. alpha and content as the
+ * shapes'. The pane without the focus says its words in one pass, the
+ * light weight, which halves what they cost. */
+static void _FilesWords(const uiFilesSnapshot_t *s, const uiFilesLayout_t *layout,
+	float alpha, float content, float emphasis, float ghost)
+{
+	const float inner = alpha * content;
+	const GXColor white = _SaveCubesFaded((GXColor) {255, 255, 255, 255}, inner);
+	const GXColor quiet = _SaveCubesFaded(settingsQuiet, inner);
+	const GXColor accent = _SaveCubesFaded(settingsAccent, inner);
+	int p, i, x;
+
+	for(p = 0; p < UI_FILES_PANES; p++) {
+		const uiFilesPaneSnapshot_t *pane = &s->pane[p];
+		const uiFilesRect_t *box = &layout->pane[p];
+		float active = p == UI_FILES_RIGHT ? emphasis : 1.0f - emphasis;
+		GXColor name = active >= 0.5f ? white : quiet;
+		bool track = pane->count > UI_FILES_ROWS;
+		void (*text)(int, int, const char *, float, int, GXColor) =
+			active >= 0.5f ? drawStringMedium : drawString;
+
+		_DrawHintText(layout->mid[p], UI_FILES_BUTTON_Y + UI_FILES_BUTTON_HEIGHT / 2,
+			pane->button, 0.46f, ALIGN_CENTER, _SaveCubesFaded((GXColor) {255, 255, 255, 255},
+			alpha));
+		text(box->x0 + 2, UI_FILES_DEVICE_Y, pane->device, pane->deviceScale,
+			ALIGN_LEFT, name);
+		if(pane->source) {
+			drawStringMedium(box->x0 + 2 + pane->deviceWidth + 10 + FILES_CHIP_W / 2,
+				UI_FILES_DEVICE_Y, "SOURCE", 0.34f, ALIGN_CENTER, accent);
+		}
+		if(pane->free[0] != '\0') {
+			int middle = (UI_FILES_FREE_TOP + UI_FILES_FREE_BOTTOM) / 2;
+
+			text(box->x1 - pane->freeWidth / 2, middle, pane->free, 0.50f,
+				ALIGN_CENTER, white);
+			if(!pane->readOnly) {
+				text(box->x1 - pane->freeWidth - 8, middle + 1, "free", 0.42f,
+					ALIGN_RIGHT, quiet);
+			}
+		}
+		text(box->x0 + 2, UI_FILES_PATH_Y, pane->path, 0.46f, ALIGN_LEFT,
+			accent);
+		if(pane->autoload) {
+			drawStringMedium(box->x0 + 2 + pane->pathWidth + 8 + 33, UI_FILES_PATH_Y,
+				"AUTOLOAD", 0.34f, ALIGN_CENTER, accent);
+		}
+		text(box->x1 - 2, UI_FILES_PATH_Y, pane->counter, 0.46f,
+			ALIGN_RIGHT, quiet);
+		for(i = 0; i < pane->rows && i < UI_FILES_ROWS; i++) {
+			const uiFilesRowSnapshot_t *row = &pane->row[i];
+			uiFilesRect_t rect = UIFiles_RowRect(layout, p, i);
+			int middle = (rect.y0 + rect.y1) / 2;
+			float rowAlpha;
+			GXColor ink;
+
+			/* Rows under "Reading..."'s band are hidden, as their cubes are. */
+			if(pane->reading && rect.y1 > UI_FILES_MESSAGE_Y - 18 &&
+					rect.y0 < UI_FILES_MESSAGE_Y + 34) {
+				continue;
+			}
+			rowAlpha = ((row->flags & UI_FILES_ROW_HIDDEN) ? 0.5f : 1.0f) *
+				(pane->reading ? 0.6f : 1.0f) * ((row->flags & UI_FILES_ROW_GHOST) ? ghost : 1.0f);
+			ink = (row->flags & UI_FILES_ROW_FOCUS) && active >= 0.5f ?
+				(GXColor) {255, 236, 170, 255} : (GXColor) {255, 255, 255, 255};
+
+			text(UIFiles_NameX(layout, p), middle, row->name, row->scale,
+				ALIGN_LEFT, _SaveCubesFaded(ink, inner * rowAlpha));
+			if(row->meta[0] != '\0') {
+				text(UIFiles_MetaRight(layout, p, track), middle, row->meta,
+					0.44f, ALIGN_RIGHT, _SaveCubesFaded(settingsQuiet, inner * rowAlpha));
+			}
+		}
+		if(pane->message[0][0] != '\0') {
+			/* "Reading..." with its band, through a swap's fade. */
+			float said = pane->reading ? alpha : inner;
+
+			drawStringMedium(layout->mid[p], UI_FILES_MESSAGE_Y, pane->message[0], 0.56f,
+				ALIGN_CENTER, _SaveCubesFaded((GXColor) {255, 255, 255, 255}, said));
+			for(i = 1; i < UI_FILES_MESSAGE_LINES; i++) {
+				drawStringMedium(layout->mid[p], UI_FILES_MESSAGE_Y + 24 * i,
+					pane->message[i], 0.46f, ALIGN_CENTER, _SaveCubesFaded(settingsQuiet, said));
+			}
+		}
+	}
+	drawStringMedium(layout->infoTextX, 381, s->title, s->titleScale, ALIGN_LEFT, white);
+	if(s->chip[0] != '\0') {
+		drawStringMedium(layout->infoTextX + s->titleWidth + 10 + FILES_CHIP_W / 2, 381,
+			s->chip, 0.34f, ALIGN_CENTER, accent);
+	}
+	x = layout->infoTextX;
+	if(s->size[0] != '\0') {
+		drawStringMedium(x + s->sizeWidth / 2, (layout->sizeBox.y0 + layout->sizeBox.y1) / 2,
+			s->size, 0.50f, ALIGN_CENTER, white);
+		x += s->sizeWidth + 12;
+	}
+	drawStringMedium(x, UI_FILES_LINE1_Y, s->line[0], 0.46f, ALIGN_LEFT, white);
+	drawStringMedium(x, UI_FILES_LINE2_Y, s->line[1], 0.46f, ALIGN_LEFT,
+		_SaveCubesFaded(s->warn ? (GXColor) {255, 190, 80, 255} : settingsQuiet, inner));
+	_DrawHintText(layout->hintLeft, UI_FILES_HINT_Y, s->hint[0], 0.46f, ALIGN_LEFT,
+		_SaveCubesFaded(settingsInk, alpha));
+	_DrawHintText(layout->hintRight, UI_FILES_HINT_Y, s->hint[1], 0.46f, ALIGN_RIGHT,
+		_SaveCubesFaded(settingsQuiet, alpha));
+}
+
+/* A box beside a row of its pane (a storage menu, Actions, a question):
+ * Memory Cards' look, any number of items up to UI_FILES_MENU_MAX, greyed
+ * ones grey, each item's letter in a chip at its right, the focus's bar at
+ * item (sprung); Delete's edge is rose. It opens from scale about its
+ * middle and fades. */
+static void _FilesMenu(const uiFilesMenu_t *menu, const uiFilesLayout_t *layout,
+	float alpha, float scale, float item)
+{
+	/* Opaque: it sits over rows of text. */
+	const GXColor fill = _SaveCubesFaded((GXColor) {18, 27, 91, 255}, alpha);
+	const GXColor edge = _SaveCubesFaded(menu->rose ? (GXColor) {255, 170, 186, 255} :
+		(GXColor) {196, 186, 255, 255}, alpha);
+	uiFilesRect_t row = UIFiles_RowRect(layout, menu->pane, menu->row);
+	uiFilesBox_t box;
+	float middleX, middleY, top;
+	bool titled = menu->title[0] != '\0';
+	int i;
+
+	if(!(alpha > 0.0f) || menu->count == 0) {
+		return;
+	}
+	UIFiles_MenuBox(layout, &row, menu->pane, menu->count, titled, menu->width, &box);
+	top = (float)(titled ? box.titleY : box.y);
+	middleX = (float)box.x + 0.5f * (float)box.width;
+	middleY = 0.5f * (top + (float)(box.y + box.height));
+#define MENU_X(x) (middleX + ((float)(x) - middleX) * scale)
+#define MENU_Y(y) (middleY + ((float)(y) - middleY) * scale)
+	if(titled) {
+		_SaveCubesBox(MENU_X(box.x), MENU_Y(box.titleY), (float)box.width * scale,
+			UI_FILES_MENU_TITLE * scale, fill, fill, edge, 2.0f);
+		drawStringMedium((int)MENU_X(box.x + 12), (int)MENU_Y(box.titleY +
+			UI_FILES_MENU_TITLE / 2), menu->title, 0.56f * scale, ALIGN_LEFT,
+			_SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha));
+	}
+	_SaveCubesBox(MENU_X(box.x), MENU_Y(box.y), (float)box.width * scale,
+		(float)box.height * scale, fill, fill, edge, 2.0f);
+	_SaveCubesBar(MENU_X(box.x + 4), MENU_Y((float)box.y + 8.0f + UI_FILES_MENU_PITCH * item),
+		(float)(box.width - 8) * scale, UI_FILES_MENU_PITCH * scale,
+		_SaveCubesFaded((GXColor) {70, 92, 200, 230}, alpha));
+	for(i = 0; i < menu->count && i < UI_FILES_MENU_MAX; i++) {
+		GXColor ink = (menu->dim >> i) & 1u ? (GXColor) {120, 120, 140, 255} :
+			i == menu->focus ? (GXColor) {255, 236, 170, 255} : (GXColor) {255, 255, 255, 255};
+
+		drawStringMedium((int)MENU_X(box.x + 16), (int)MENU_Y((float)box.y + 8.0f +
+			UI_FILES_MENU_PITCH * ((float)i + 0.5f)), menu->item[i], 0.56f * scale,
+			ALIGN_LEFT, _SaveCubesFaded(ink, alpha));
+		if(menu->letter[i] != '\0') {
+			char letter[2] = {menu->letter[i], '\0'};
+			float x = (float)(box.x + box.width - 30), y = (float)box.y + 12.0f +
+				UI_FILES_MENU_PITCH * (float)i;
+
+			_SaveCubesBar(MENU_X(x), MENU_Y(y), 18.0f * scale, 16.0f * scale,
+				_SaveCubesFaded((GXColor) {70, 80, 130, 255}, alpha));
+			drawStringMedium((int)MENU_X(x + 9.0f), (int)MENU_Y(y + 8.0f), letter,
+				0.40f * scale, ALIGN_CENTER, _SaveCubesFaded(ink, alpha));
+		}
+	}
+#undef MENU_X
+#undef MENU_Y
+}
+
+/* The result of an operation: Memory Cards' maroon box over the middle of
+ * the stage, as wide as measured (at least 320), with a second, smaller
+ * line when there is one. */
+static void _FilesMessage(const char message[2][UI_FILES_TEXT_CAPACITY], int measured,
+	float alpha)
+{
+	float width = measured > 320 ? (float)measured : 320.0f;
+	bool two = message[1][0] != '\0';
+
+	_SaveCubesBox(320.0f - 0.5f * width, two ? 194.0f : 200.0f, width, two ? 62.0f : 50.0f,
+		_SaveCubesFaded((GXColor) {120, 16, 36, 255}, alpha),
+		_SaveCubesFaded((GXColor) {120, 16, 36, 255}, alpha),
+		_SaveCubesFaded((GXColor) {255, 210, 220, 255}, alpha), 2.0f);
+	drawStringMedium(320, two ? 215 : 225, message[0], 0.56f, ALIGN_CENTER,
+		_SaveCubesFaded((GXColor) {255, 255, 255, 255}, alpha));
+	if(two) {
+		drawStringMedium(320, 238, message[1], 0.46f, ALIGN_CENTER,
+			_SaveCubesFaded((GXColor) {255, 220, 228, 255}, alpha));
+	}
+}
+
+static void _DrawFiles(uiDrawObj_t *evt)
+{
+	drawFilesEvent_t *data = (drawFilesEvent_t*)evt->data;
+	const uiFilesSnapshot_t *s = &data->snapshot;
+	uiMotionMode_t motion = _CurrentMotionMode();
+	uiFilesLayout_t layout;
+	uiFilesStage_t stage;
+	float focusY[UI_FILES_PANES], emphasis, ghost, flash, content;
+	int p, lit;
+
+	if(!data->started) {
+		for(p = 0; p < UI_FILES_PANES; p++) {
+			UIMotion_SpringInit(&data->focus[p], s->pane[p].focusRow > 0 ?
+				(float)s->pane[p].focusRow : 0.0f, 25.0f);
+			data->listing[p] = s->pane[p].listing;
+		}
+		UIMotion_SpringInit(&data->emphasis, (float)s->active, 25.0f);
+		UIMotion_SpringInit(&data->menuBar, (float)s->menu.focus, 25.0f);
+		data->menuOpen = s->menu.open != 0u;
+		data->menuSerial = s->menu.serial;
+		data->menuSince = data->menuOpen ? 0.0f : 1.0f;
+		data->messageSerial = s->messageSerial;
+		data->messageSince = 1.0f;
+		data->content = 1.0f;
+		data->leave = -1.0f;
+		data->started = true;
+	}
+	else {
+		data->seconds += UIAnim_Delta();
+		data->menuSince += UIAnim_Delta();
+		data->messageSince += UIAnim_Delta();
+	}
+	if(s->messageSerial != data->messageSerial) {
+		data->messageSerial = s->messageSerial;
+		data->messageSince = 0.0f;
+	}
+	/* Y: the panes' contents go, and come back with the new sides. */
+	data->content = content = UIFiles_SwapStep(data->content, s->swapping != 0u,
+		UIAnim_Delta(), motion);
+	/* The ghost row pulses (steady with less motion). */
+	ghost = motion == UI_MOTION_FULL ? 0.84f + 0.16f * sinf(3.0f * data->seconds) :
+		motion == UI_MOTION_REDUCED ? 0.9f : 1.0f;
+	/* The loading cells: five steps a second, two with UI Motion Reduced,
+	 * still with it Off, as the presentation card's. */
+	lit = motion == UI_MOTION_OFF ? 0 :
+		(int)(data->seconds * (motion == UI_MOTION_REDUCED ? 2.0f : 5.0f)) % 3;
+	/* A copy that just landed flashes as its message comes. */
+	flash = s->messageLeaving ? 0.0f : UIFiles_Flash(data->messageSince, motion);
+	/* Another box, or this one closing: from now. */
+	if((s->menu.open != 0u) != data->menuOpen ||
+			(s->menu.open && s->menu.serial != data->menuSerial)) {
+		if(s->menu.open) {
+			UIMotion_SpringSnap(&data->menuBar, (float)s->menu.focus);
+		}
+		data->menuOpen = s->menu.open != 0u;
+		data->menuSerial = s->menu.serial;
+		data->menuSince = 0.0f;
+	}
+	if(s->leaving) {
+		data->leave = data->leave < 0.0f ? 0.0f : data->leave + UIAnim_Delta();
+	}
+	for(p = 0; p < UI_FILES_PANES; p++) {
+		float row = s->pane[p].focusRow > 0 ? (float)s->pane[p].focusRow : 0.0f;
+
+		/* Another folder: the bar starts on its row. */
+		if(data->listing[p] != s->pane[p].listing) {
+			data->listing[p] = s->pane[p].listing;
+			UIMotion_SpringSnap(&data->focus[p], row);
+		}
+		UIMotion_SpringRetarget(&data->focus[p], row, motion);
+		focusY[p] = UIMotion_SpringUpdate(&data->focus[p], UIAnim_Delta(), motion);
+	}
+	UIMotion_SpringRetarget(&data->emphasis, (float)s->active, motion);
+	emphasis = UIMotion_SpringUpdate(&data->emphasis, UIAnim_Delta(), motion);
+	emphasis = emphasis < 0.0f ? 0.0f : emphasis > 1.0f ? 1.0f : emphasis;
+	UIFiles_Stage(data->seconds, data->leave, motion, &stage);
+	UIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);
+	_SaveCubesBackdrop(stage.paper, stage.handover);
+	if(stage.chrome > 0.0f) {
+		_FilesShapes(s, &layout, stage.chrome, content, emphasis, focusY, lit,
+			ghost, flash);
+		/* Pictures can't fade: the banner comes with the words' second
+		 * half, as Memory Cards' does. */
+		if(s->hasBanner && stage.chrome * content >= 0.5f) {
+			_SaveCubesPicture(&data->picture, s->banner, layout.picture.x0,
+				layout.picture.y0, 96);
+		}
+		_FilesWords(s, &layout, stage.chrome, content, emphasis, ghost);
+		if(s->menu.count > 0) {
+			float menuAlpha, menuScale;
+
+			UIMotion_SpringRetarget(&data->menuBar, (float)s->menu.focus, motion);
+			UIFiles_MenuMotion(data->menuSince, data->menuOpen, motion, &menuAlpha,
+				&menuScale);
+			_FilesMenu(&s->menu, &layout, menuAlpha * stage.chrome, menuScale,
+				UIMotion_SpringUpdate(&data->menuBar, UIAnim_Delta(), motion));
+		}
+		if(s->message[0][0] != '\0') {
+			/* In over 0.10 s, out over 0.15 s, at once with UI Motion Off. */
+			_FilesMessage(s->message, s->messageWidth, stage.chrome * (motion == UI_MOTION_OFF ? 1.0f :
+				s->messageLeaving ? fmaxf(0.0f, 1.0f - data->messageSince / 0.15f) :
+				fminf(1.0f, data->messageSince / 0.10f)));
+		}
+	}
+	drawInit();
+}
+
+uiDrawObj_t* DrawFiles(const uiFilesSnapshot_t *snapshot)
+{
+	drawFilesEvent_t *data = memalign(32, sizeof(*data));
+	uiDrawObj_t *event = calloc(1, sizeof(*event));
+
+	if(data == NULL || event == NULL) {
+		free(data);
+		free(event);
+		return NULL;
+	}
+	memset(data, 0, sizeof(*data));
+	data->snapshot = *snapshot;
+	DCFlushRange(data->snapshot.banner, sizeof(data->snapshot.banner));
+	event->type = EV_FILES;
+	event->data = data;
+	return event;
+}
+
+uiDrawObj_t* DrawFilesSettled(const uiFilesSnapshot_t *snapshot)
+{
+	uiDrawObj_t *page = DrawFiles(snapshot);
+
+	if(page != NULL) {
+		/* Past every step of the opening. */
+		((drawFilesEvent_t*)page->data)->seconds = 60.0f;
+	}
+	return page;
+}
+
+bool DrawUpdateFiles(uiDrawObj_t *page, const uiFilesSnapshot_t *snapshot)
+{
+	bool updated = false;
+
+	if(page == NULL) {
+		return false;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!page->disposed && page->type == EV_FILES && page->data != NULL) {
+		drawFilesEvent_t *data = (drawFilesEvent_t*)page->data;
+
+		data->snapshot = *snapshot;
+		DCFlushRange(data->snapshot.banner, sizeof(data->snapshot.banner));
+		updated = true;
+	}
+	LWP_MutexUnlock(_videomutex);
+	return updated;
+}
+
+/* Before a folder is read: "Reading..." over that pane's dimmed rows, the
+ * other pane as it was. False when page isn't the File Browser. */
+bool DrawUpdateFilesReading(uiDrawObj_t *page, int which)
+{
+	bool updated = false;
+
+	if(page == NULL) {
+		return false;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!page->disposed && page->type == EV_FILES && page->data != NULL) {
+		uiFilesPaneSnapshot_t *pane =
+			&((drawFilesEvent_t*)page->data)->snapshot.pane[which];
+
+		pane->reading = 1;
+		snprintf(pane->message[0], sizeof(pane->message[0]), "Reading\205");
+		pane->message[1][0] = '\0';
+		updated = true;
+	}
+	LWP_MutexUnlock(_videomutex);
+	return updated;
+}
+
 void DrawGetTextEntry(int mode, const char *label, void *src, int size) {
 	
 	print_debug("DrawGetTextEntry Modes: Alpha [%s] Numeric [%s] IP [%s] Masked [%s] File [%s]\n", mode & ENTRYMODE_ALPHA ? "Y":"N", mode & ENTRYMODE_NUMERIC ? "Y":"N",
@@ -7677,9 +8127,6 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 		case EV_TRANSPARENTBOX:
 			_DrawTransparentBox(videoEvent);
 			break;
-		case EV_FILEBROWSERBUTTON:
-			_DrawFileBrowserButton(videoEvent);
-			break;
 		case EV_VERTSCROLLBAR:
 			_DrawVertScrollBar(videoEvent);
 			break;
@@ -7727,6 +8174,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 			break;
 		case EV_SAVE_CUBES:
 			_DrawSaveCubes(videoEvent);
+			break;
+		case EV_FILES:
+			_DrawFiles(videoEvent);
 			break;
 		default:
 			break;
@@ -7789,7 +8239,7 @@ static bool _FrameCovered(uiDrawObjQueue_t *queue)
 		const uiDrawObj_t *event = queue->event;
 		if(!event->disposed && (event->type == EV_SETTINGS ||
 			event->type == EV_CHEATS || event->type == EV_SAVES ||
-			event->type == EV_SAVE_CUBES)) {
+			event->type == EV_SAVE_CUBES || event->type == EV_FILES)) {
 			return true;
 		}
 	}
@@ -7943,6 +8393,14 @@ uiDrawObj_t* DrawRepublish(uiDrawObj_t *old, uiDrawObj_t *new)
 	uiDrawObj_t* event = addVideoEvent(new);
 	LWP_MutexUnlock(_videomutex);
 	return event;
+}
+
+void DrawDiscard(uiDrawObj_t *evt)
+{
+	if(evt != NULL) {
+		evt->disposed = true;
+		clearNestedEvent(evt);
+	}
 }
 
 void DrawDispose(uiDrawObj_t *evt)

@@ -62,7 +62,7 @@ video mode and polling rate. Copy them to the paths above and edit them.
 ```ini
 IGRType=Reboot
 AutoCheats=Yes
-GameBrowserType=Carousel
+Library Layout=Grid
 Disable Menu Music=Yes
 ```
 
@@ -149,6 +149,7 @@ most use the same key there.
 | --- | --- | --- | --- |
 | `Menu Color` | `Indigo`, `Azure`, `Emerald`, `Gold`, `Spice`, `Crimson`, `Rose`, `Jet Black` | `Indigo` | Menu Color |
 | `Backdrop Color` | `Menu Color`, `Indigo`, `Azure`, `Emerald`, `Gold`, `Spice`, `Crimson`, `Rose`, `Jet Black`. The backdrop behind the cube and its rings; `Menu Color` follows Menu Color. | `Menu Color` | Backdrop Color |
+| `Hide Waves` | `Yes`, `No`. `Yes` shows as Waves › Off: no waves behind the cube, only the backdrop and its rings. | `No` | Waves |
 | `Wave Color` | `Menu Color`, `Indigo`, `Azure`, `Emerald`, `Gold`, `Spice`, `Crimson`, `Rose`, `Jet Black`. The waves behind the cube; `Menu Color` follows Menu Color. | `Menu Color` | Wave Color |
 | `Library Icon` | `Controller`, `Books`, `Covers`, `Play`. The picture on the cube's Library face, from its own four icons. A name from another face's list is ignored. | `Controller` | Library Icon |
 | `Source Icon` | `Hub`, `Disc`, `SD Card`, `Folder`. The picture on the Source face, from its own four icons. | `Hub` | Source Icon |
@@ -157,8 +158,14 @@ most use the same key there.
 | `Wave Speed` | `Normal`, `Fast`, `Slow`. How fast the waves drift: `Fast` three times as fast, `Slow` half as fast. | `Normal` | Wave Speed |
 | `Clock` | `Right`, `Left`, `Off`. Where the time sits: the top right or top left corner, or neither. | `Right` | Clock |
 | `Temperature` | `Right`, `Left`, `Off`. Where the temperature dial sits, the same way. Without this line, the dial follows `Clock`. | `Right` | Temperature |
-| `Hide Apps Face` | `Yes`, `No`. `Yes` shows as Apps Face › Off: Home never shows Apps, even with programs in `/apps`. | `No` | Apps Face |
+| `Up Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu above Library on the Home cube; `None` leaves that side empty. A face named for two sides keeps the first, in the order Up, Left, Right, Down. Apps shows only while `/apps` has a program, and Emulators while `/emulators` has one. | `Source` | Up Face |
+| `Left Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu left of Library, the same way. | `Settings` | Left Face |
+| `Right Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu right of Library, the same way. | `System` | Right Face |
+| `Down Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu below Library, the same way. | `Apps` | Down Face |
 | `Cube` | `Infinite`, `Classic`. How Home's faces sit on the cube: `Infinite` turns round them in a ring; `Classic` gives each its own side, Library in front, as the GameCube's menu does. Any other value means `Infinite`. | `Infinite` | Cube |
+| `Idle Animation` | `Calm`, `Sway`. How the cube moves while Home rests: `Calm` drifts a little, turned to the right; `Sway` turns it slowly left and right, so the faces beside the one in front peek round its edges. Any other value means `Calm`. | `Calm` | Idle Animation |
+| `Hide Face Labels` | `Yes`, `No`. `Yes` shows as Face Labels › Off: Home shows no face name under the cube. | `No` | Face Labels |
+| `Hide On-screen Controls` | `Yes`, `No`. `Yes` shows as On-screen Controls › Off: Home shows no button hints under the cube. Other screens, the Library and the File Browser among them, and Restart's question keep theirs. Y on Home always opens Settings. | `No` | On-screen Controls |
 | `System Boot Mode` | `Default`, `Production`. Any other value means `Default`. | the console's SRAM | System Boot Mode |
 | `System Sound` | `Mono`, `Stereo`. Any other value means `Mono`. | the console's SRAM | System Sound |
 | `System Language` | `English`, `German`, `French`, `Spanish`, `Italian`, `Dutch`, `Japanese`, `English (US)` | the console's SRAM | System Language |
@@ -205,11 +212,12 @@ most use the same key there.
 | Key | Values | Default | On screen |
 | --- | --- | --- | --- |
 | `Library Folders` | `Yes`, `No`. `Yes` shows as Library Folders › On: the Library shows the folders in `/games`, two levels deep. While it is `Yes`, Indigo flattens by `*/games/*/*` and `FlattenDir` keeps the value it replaced. | `No` | Library Folders |
+| `Hide Saves on Details` | `Yes`, `No`. `Yes` shows as Saves on Details › Off: a game's details leave the memory cards alone. With `No`, they read the memory cards and the Save Folder for the game's saves, and show them when there are two or more copies. | `No` | Saves on Details |
 | `Memory Card Folder Colors` | Saved colors for the small folder and RAW card-image cubes on Memory Cards, set with Y Folder. Up to 32 device-prefixed full paths, separated by `;`, each followed by `~1` through `~8` for Indigo, Azure, Emerald, Gold, Spice, Crimson, Rose and Jet Black. Reserved characters and spaces in paths use `%HH` hexadecimal escapes. For example `sda:/swiss/saves/Backups~3`. An empty value clears the colors; invalid entries are ignored. Resetting to Default removes that path. | empty | Memory Cards › Y Folder |
 | `Library Layout` | `Horizontal`, `Vertical`, `Grid`, `Spotlight`. How the Library shows your games: a row, a column, rows of five, or a gameplay still over a row of banners. | `Horizontal` | Library Layout |
-| `FileBrowserType` | `Standard`, `Fullwidth`, `Carousel` | `Standard` | File Browser Type |
-| `AppsBrowserType` | `Standard`, `Fullwidth`, `Carousel` | `Fullwidth` | File Browser Type for apps |
-| `GameBrowserType` | `Standard`, `Fullwidth`, `Carousel` | `Fullwidth` | File Browser Type for games |
+| `FileBrowserType` | `Standard`, `Fullwidth`, `Carousel`. Read and written for Swiss; Indigo ignores it. | `Standard` | — |
+| `AppsBrowserType` | `Standard`, `Fullwidth`, `Carousel`. Read and written for Swiss; Indigo ignores it. | `Fullwidth` | — |
+| `GameBrowserType` | `Standard`, `Fullwidth`, `Carousel`. Read and written for Swiss; Indigo ignores it. | `Fullwidth` | — |
 | `Enable File Management` | `Yes`, `No` | `No` | File Management |
 | `RecentListLevel` | `Off`, `Lazy`, `On` | `On` | Recent List |
 | `ShowHiddenFiles` | `Yes`, `No` | `No` | Show hidden files |
@@ -235,6 +243,7 @@ most use the same key there.
 | `Enable Debug` | Old name, still read: `Yes` means `Enable USB Gecko=Slot B`. |  |  |
 | `USB Gecko debug output` | Old name for `Enable USB Gecko`, still read. |  |  |
 | `Stop DVD Motor on startup` | Old name for `Stop DVD Drive motor`, still read. |  |  |
+| `Hide Apps Face` | Old setting, still read: `Yes` empties the side Apps is on, unless the file names the sides. |  |  |
 
 ### Written by Swiss, not shown in Settings
 

@@ -1,13 +1,13 @@
 {
  "detail-empty-native": {
   "geometry_begins": 5,
-  "geometry_vertices": 136,
-  "medium_glyphs": 179
+  "geometry_vertices": 124,
+  "medium_glyphs": 134
  },
  "detail-empty-wide": {
   "geometry_begins": 5,
-  "geometry_vertices": 136,
-  "medium_glyphs": 179
+  "geometry_vertices": 124,
+  "medium_glyphs": 134
  },
  "detail-max-count-native": {
   "geometry_begins": 5,
@@ -22,31 +22,31 @@
  "detail-partial-native": {
   "geometry_begins": 5,
   "geometry_vertices": 136,
-  "medium_glyphs": 200
+  "medium_glyphs": 202
  },
  "detail-partial-wide": {
   "geometry_begins": 5,
   "geometry_vertices": 136,
-  "medium_glyphs": 200
+  "medium_glyphs": 202
  },
  "detail-recorded-native": {
   "geometry_begins": 5,
   "geometry_vertices": 136,
-  "medium_glyphs": 185
+  "medium_glyphs": 187
  },
  "detail-recorded-wide": {
   "geometry_begins": 5,
   "geometry_vertices": 136,
-  "medium_glyphs": 185
+  "medium_glyphs": 187
  },
  "detail-unavailable-native": {
   "geometry_begins": 5,
-  "geometry_vertices": 136,
-  "medium_glyphs": 174
+  "geometry_vertices": 124,
+  "medium_glyphs": 134
  },
  "detail-unavailable-wide": {
   "geometry_begins": 5,
-  "geometry_vertices": 136,
-  "medium_glyphs": 174
+  "geometry_vertices": 124,
+  "medium_glyphs": 134
  }
 }

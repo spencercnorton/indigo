@@ -26,7 +26,7 @@ TESTS := test_ui_cheats test_ui_saves test_ui_saves_raw test_ui_saves_metadata t
 	test_ui_scene test_ui_command_rail test_ui_presentation \
 	test_gameflow_state test_gameflow_library test_ui_folder test_gameflow_resolver \
 	test_gameflow_detail test_ui_game_history test_ui_about \
-	test_gameflow_ownership test_cheat_policy test_ui_launch
+	test_gameflow_ownership test_cheat_policy test_ui_launch test_ui_files
 
 test_ui_cheats.src := $(GUI)/ui_cheats.c
 test_ui_saves.src := $(GUI)/ui_saves.c
@@ -94,6 +94,8 @@ test_cheat_policy.src := $(CHEATS)/cheat_policy.c
 test_cheat_policy.flags = $(GAMEFLOW_CFLAGS) -I$(CHEATS)
 # The launch screen's steps; it reads the Swiss sources it pins.
 test_ui_launch.src := $(GUI)/ui_launch.c
+# The File Browser's two panes; ui_hint counts the hint lines' buttons.
+test_ui_files.src := $(GUI)/ui_files.c $(GUI)/ui_hint.c
 
 # A header change rebuilds every test; run_tests.sh builds from clean anyway.
 HEADERS := $(wildcard $(GUI)/*.h $(CHEATS)/*.h)

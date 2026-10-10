@@ -18,11 +18,17 @@
 # three layouts, the Save Folder arm (SET_SAVE_FOLDER) only sets
 # swissSettings.saveFolder to the folder Memory Cards' chooser returns, the
 # Menu Widescreen arm (SET_MENU_WIDESCREEN) only flips
-# swissSettings.menuWidescreen, the Apps Face arm (SET_APPS_FACE) only
-# flips swissSettings.hideAppsFace, the Cube arm (SET_CUBE) only flips
-# swissSettings.cubeStyle between Infinite and Classic, and the Library
+# swissSettings.menuWidescreen, the four side arms (SET_*_FACE) each only
+# step their own side round the faces and none, the Cube arm (SET_CUBE) only flips
+# swissSettings.cubeStyle between Infinite and Classic, the Library
 # Folders arm (SET_LIBRARY_FOLDERS) only turns Library Folders on or off
-# through config_set_library_folders, which swaps FlattenDir with it.
+# through config_set_library_folders, which swaps FlattenDir with it, and
+# the Saves on Details arm (SET_DETAIL_SAVES) only flips
+# swissSettings.hideDetailSaves, and the Idle Animation, Waves, On-screen
+# Controls and Face Labels arms (SET_IDLE_ANIMATION, SET_WAVES,
+# SET_HOME_CONTROLS, SET_FACE_LABELS) each only flip their own setting. The three File Browser Type arms
+# (SET_*BROWSER_TYPE) went with Swiss's lists and their rows; the settings
+# file still reads and writes their keys.
 #
 # The Right/Left/Up/Down/L/R/B/A action block changed on purpose in the Settings redesign:
 # phase 1 made B leave (Save & Exit when something changed), A advance choice
@@ -155,18 +161,43 @@ normalized = re.sub(
     r"\t+swissSettings\.menuWidescreen \^= 1;\n"
     r"\t+break;\n",
     "", normalized, count=1)
-# And the Apps Face arm, a flip.
-normalized = re.sub(
-    r"(?ms)^\t+case SET_APPS_FACE:\n"
-    r"\t+swissSettings\.hideAppsFace \^= 1;\n"
+# And the four side arms, each round the faces and none.
+normalized, sides = re.subn(
+    r"(?ms)^\t+case SET_(UP|LEFT|RIGHT|DOWN)_FACE:\n"
+    r"\t+swissSettings\.(up|left|right|down)Face \+= direction;\n"
+    r"\t+swissSettings\.\2Face = \(swissSettings\.\2Face \+ UI_HOME_FACE_COUNT\) % UI_HOME_FACE_COUNT;\n"
     r"\t+break;\n",
-    "", normalized, count=1)
+    lambda arm: "" if arm.group(1).lower() == arm.group(2) else arm.group(0),
+    normalized)
 # And the Cube arm, a flip between Infinite and Classic.
 normalized = re.sub(
     r"(?ms)^\t+case SET_CUBE:\n"
     r"\t+swissSettings\.cubeStyle \^= 1;\n"
     r"\t+break;\n",
     "", normalized, count=1)
+# And the Saves on Details arm, a flip.
+normalized = re.sub(
+    r"(?ms)^\t+case SET_DETAIL_SAVES:\n"
+    r"\t+swissSettings\.hideDetailSaves \^= 1;\n"
+    r"\t+break;\n",
+    "", normalized, count=1)
+# And Home's look: the Idle Animation, Waves, On-screen Controls and Face
+# Labels arms, each a flip of its own setting.
+for option, field in (("IDLE_ANIMATION", "idleAnimation"), ("WAVES", "hideWaves"),
+                      ("HOME_CONTROLS", "hideHomeControls"), ("FACE_LABELS", "hideFaceLabels")):
+    normalized = re.sub(
+        r"(?ms)^\t+case SET_" + option + r":\n"
+        r"\t+swissSettings\." + field + r" \^= 1;\n"
+        r"\t+break;\n",
+        "", normalized, count=1)
+# The File Browser Type arms are gone, with Swiss's lists.
+normalized, browsers = re.subn(
+    r"(?ms)^\t+case SET_(FILE|APPS|GAME)BROWSER_TYPE:\n"
+    r"\t+swissSettings\.(file|apps|game)BrowserType \+= direction;\n"
+    r"\t+swissSettings\.\2BrowserType = \(swissSettings\.\2BrowserType \+ BROWSER_MAX\) % BROWSER_MAX;\n"
+    r"\t+break;\n",
+    lambda arm: "" if arm.group(1).lower() == arm.group(2) else arm.group(0),
+    normalized)
 normalized = re.sub(r"[ \t]+(?=\n|$)", "", normalized)
 Path(sys.argv[2]).write_text(normalized)
 PY
@@ -184,9 +215,9 @@ for fn in settings_toggle; do
 			normalize_intended_changes "$TMP/base_$fn" "$TMP/base_${fn}_normalized"
 			normalize_intended_changes "$TMP/head_$fn" "$TMP/head_${fn}_normalized"
 			if cmp -s "$TMP/base_${fn}_normalized" "$TMP/head_${fn}_normalized"; then
-				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, temperature, icon, layout, library folders, save folder, widescreen, apps face and cube arms and game reset\n' "$fn"
+				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, temperature, icon, layout, library folders, save folder, widescreen, side, cube, saves on details, idle animation, waves, on-screen controls and face labels arms, the File Browser Type arms and game reset\n' "$fn"
 			else
-				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_TEMPERATURE_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_LIBRARY_FOLDERS, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_APPS_FACE, SET_CUBE and the game reset" >&2
+				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_TEMPERATURE_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_LIBRARY_FOLDERS, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_*_FACE, SET_CUBE, SET_DETAIL_SAVES, SET_IDLE_ANIMATION, SET_WAVES, SET_HOME_CONTROLS, SET_FACE_LABELS, SET_*BROWSER_TYPE and the game reset" >&2
 				diff -u "$TMP/base_${fn}_normalized" \
 					"$TMP/head_${fn}_normalized" | head -40 >&2 || true
 				fail=1

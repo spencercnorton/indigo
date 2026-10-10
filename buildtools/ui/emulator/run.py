@@ -24,9 +24,16 @@ while a crash, a hang, a black screen or a broken control does:
     stack, R and L choose a named storage place and back, A opens the box
     beside a save and B closes it, Copy puts the save on Slot B (its folder
     gains the file, the same blocks), Move is dimmed for it then, Erase
-    removes it from Slot A's folder, and B leaves;
-  - on the Settings face, Setup > Console > Apps Face Off takes Apps off the
-    cube (System's next face is Library) and On puts it back;
+    removes it from Slot A's folder, and B leaves; File Browser opens its
+    two panes, RIGHT and LEFT move between them, A opens a folder in either
+    and X comes back, Z opens the Actions box and B closes it, R opens the right
+    pane's storage menu and a memory card chosen there shows its saves, Y
+    swaps the sides and back, L opens the left pane's menu, on the disc a
+    device that isn't there says so in its pane, and B leaves;
+  - on the Settings face, Setup > Console > Down Face None takes Apps off the
+    cube (System's next face is Library), File Browser puts a face of its
+    own there (A opens the File Browser, B comes back to that face) and
+    Apps puts Apps back;
   - Setup > Console > Cube Classic lays the faces out as the GameCube's menu
     does, Library between them: from Settings, LEFT goes nowhere and RIGHT
     twice is Library, then System; there UP goes nowhere and B is Library;
@@ -54,11 +61,20 @@ zip's own ipl.dol. A new card has no settings yet, so Indigo starts in
 Settings and the route saves them first; afterwards it reads back from the
 card what Indigo wrote there.
 
+The files route boots from a GC Loader with a second SD card in SD2SP2 and
+copies, keeps both, moves, renames, deletes, stops a copy and a move, and
+copies into a folder between them, checking each on the card images, and
+a game's Detail from there shows its poster; then it boots again with that
+SD card failing its writes, and a copy fails. Last, A on the probe's game in
+the File Browser opens its Game Detail, B comes back to the same row, and
+Detail's Launch Game starts the probe as that game.
+
 The virtual-cards route leaves both physical slots empty, browses a public
 synthetic RAW image on SD and exports a GCI into the other SD column. The
 actual exported payload and unchanged RAW bytes are checked on the FAT image.
 
-usage: run.py DOL --out DIR [--route smoke|tour|game|save|virtual-cards|folders] [--probe DOL] [--region pal|pal60|ntsc]
+usage: run.py DOL --out DIR [--route smoke|tour|game|save|virtual-cards|folders|files] [--probe DOL]
+              [--region pal|pal60|ntsc]
               [--cable composite|component]
               [--storage dvd|sd2sp2|sdgecko-b|gcloader --card-zip ZIP] [--disc ISO]
 Writes DIR/report.json, DIR/summary.md, DIR/sheet.png (every checkpoint),
@@ -98,6 +114,13 @@ WIDTH, HEIGHT = 640, 480
 # device's name in the Source picker sits there too), and its title on the
 # game's details.
 LABEL_BOX = (200, 372, 440, 396)
+# Home's button hints under the face's name ("TURN  A OPEN"), dimmer than it:
+# lit at HINT_LEVEL, where the backdrop and waves around them are not. Jet
+# Black draws their words gray at the same luma, about 120 at the brightest,
+# so that they are gone is read at HINT_GONE_LEVEL, which only the backdrop
+# (56 at most, in any color) and nothing drawn stays under; non-default.ini,
+# where that is checked, has no waves.
+HOME_HINT_BOX, HINT_LEVEL, HINT_GONE_LEVEL = (240, 422, 400, 446), 120, 80
 TITLE_BOX = (200, 338, 440, 362)
 FOLDER_LAYOUTS = {
     "Horizontal": (TITLE_BOX, "LEFT", "RIGHT"),
@@ -108,7 +131,23 @@ FOLDER_LAYOUTS = {
 # The page title Settings opens with on a new card ("Storage").
 SETTINGS_TITLE_BOX = (30, 46, 230, 80)
 COUNTER_BOX = (560, 120, 610, 142)  # Settings' "row / rows", shown while a row has the focus
+# Settings' six visible rows: the top of each, 40 lines apart, the box of a
+# row's label, and the box between label and value that the focus lights.
+SETTINGS_ROW_TOPS = tuple(148 + 40 * n for n in range(6))
+SETTINGS_ROW_LABEL = (45, 4, 300, 30)
+SETTINGS_ROW_FILL = (320, 2, 480, 30)
 DETAIL_TITLE_BOX = (264, 106, 600, 134)
+# The cover on the game's details from the File Browser, inside its frame, and
+# how far (mean, 0-255) a frame of it may differ from where it settles.
+DETAIL_CARD_BOX = (56, 104, 210, 300)
+DETAIL_CARD_MOVED = 8.0
+# A poster on Detail's card: this many pixels of its shapes' colour
+# (card.poster_light) in DETAIL_CARD_BOX, which its banner never has, within
+# this many captured frames of Detail's first. The first details after boot
+# read their poster before they show, so it is there at once; a poster that
+# came late would fade in about half a second on, and fail.
+POSTER_PIXELS = 1000
+POSTER_FRAMES = 2
 # Memory Cards: the focused save's name in the info bar, each stack's header
 # ("A  Open" and its free blocks), the buttons along the bottom, where the
 # arrow above the left stack shows once it scrolls, and the maroon box that
@@ -119,6 +158,19 @@ INFO_BOX = (164, 377, 590, 396)
 LEFT_HEADER_BOX, RIGHT_HEADER_BOX = (66, 56, 222, 92), (354, 56, 510, 92)
 MEMORY_LEFT_PATH_BOX = (128, 66, 280, 92)
 FOOTER_BOX = (30, 442, 610, 464)
+# The File Browser's panes: their path lines ("/", "/apps"), each from the
+# pane's outer edge, which Menu Widescreen moves out to x -67 (stage_box
+# places it on the capture); and the right pane's top rows.
+FILES_PATH_BOX, FILES_WIDE_PATH_BOX = (40, 90, 220, 106), (-65, 90, 115, 106)
+FILES_RIGHT_PATH_BOX = (330, 90, 510, 106)
+FILES_RIGHT_ROWS_BOX = (366, 116, 560, 196)
+FILES_LEFT_ROWS_BOX = (78, 116, 272, 330)
+FILES_INFO_TITLE_BOX = (164, 371, 590, 392)  # the info bar's name
+# Each pane's storage name, its first 88 px: clear of the SOURCE chip after a
+# short name on the left, and 288 px apart, so a name moves between them. Only
+# the focused pane's is white; the other's is quiet, grey under Jet Black.
+FILES_NAME_BOXES = ((40, 62, 128, 88), (328, 62, 416, 88))
+FILES_RIGHT_MESSAGE_BOX = (340, 236, 588, 282)  # why the right pane is not ready
 SAVE_DETAILS_EYEBROW_BOX = (100, 108, 274, 132)
 SAVE_DETAILS_TITLE_BOX = (100, 132, 540, 168)
 SAVE_DETAILS_SIZE_BOX = (350, 178, 528, 212)
@@ -126,6 +178,7 @@ SAVE_DETAILS_BLOCKS_BOX = (122, 178, 302, 212)
 SAVE_DETAILS_SOURCE_BOX = (246, 244, 540, 270)
 LIBRARY_SAVES_SUMMARY_BOX = (266, 204, 538, 224)
 LIBRARY_SAVES_UPDATED_BOX = (308, 224, 586, 241)
+LIBRARY_SAVES_TAG_BOX = (540, 204, 586, 224)  # SAVES, right of the count
 SAVE_DETAILS_ICON_BOX = (246, 304, 540, 330)
 SAVE_DETAILS_UPDATED_BOX = (246, 274, 540, 300)
 SAVE_DETAILS_ACTIONS_BOX = (104, 360, 536, 387)
@@ -151,12 +204,19 @@ TEXT_LEVEL = 160          # label text is bright; the waves behind it are not
 SAME, DIFFERENT = 0.85, 0.5  # intersection over union of two label masks
 # Waits count the console's own seconds (Emulator.emulated) when Dolphin
 # reports them, so a busy machine slows a run instead of failing it; the
-# machine's seconds still end a wait at WALL_FACTOR times as many.
+# machine's seconds still end a wait at WALL_FACTOR times as many, and never
+# before WALL_FLOOR: a slow Dolphin must not cut a short press down to a frame.
 BOOT_SECONDS = 120
 SETTLE_SECONDS = 10
 WALL_FACTOR = 5
+WALL_FLOOR = 0.5
 TICKS_PER_SECOND = 486_000_000  # the GameCube's CPU clock, which Dolphin's ticks count
-PRESS_SECONDS = 0.1  # of the console's time a button stays down, and up after
+# Of the console's time a button stays down, and up after. A press waits
+# fresh (Route.press), so with Dolphin's reports a tenth of a second apart it
+# lasts from this to about two reports more: 0.05 is at most about 0.2 s, well
+# inside the 0.32 s a held direction takes to repeat (UI_MENU_INPUT_INITIAL_
+# REPEAT_US), and still several frames.
+PRESS_SECONDS = 0.05
 # Library Folders: how long the route holds a press that opens or leaves a
 # folder (library_folders), and how many pixels of a folder picture's colour
 # make it on screen: a card in front is tens of thousands.
@@ -283,6 +343,119 @@ def legacy_folder_browser(rgb: np.ndarray) -> bool:
     return device and rows >= 1
 
 
+def _edge(rgb: np.ndarray, x0: int, x1: int, y: int) -> int:
+    """How lit a box's edge is along x0..x1 within two rows of y: its
+    brightest row's mean, when nearly all of that row is bright (lilac, or
+    grey under Jet Black, dimmed or not) and brighter than four rows off it
+    on both sides; else 0."""
+    best = 0
+    for row in range(y - 2, y + 3):
+        line = rgb[row, x0:x1].astype(np.int16)
+        off = np.maximum(rgb[row - 4, x0:x1].max(axis=1), rgb[row + 4, x0:x1].max(axis=1))
+        lit = (line.max(axis=1) >= 100) & (line.max(axis=1) - off > 30)
+        if np.count_nonzero(lit) >= (x1 - x0) * 0.9:
+            best = max(best, int(line.max(axis=1).mean()))
+    return best
+
+
+# The File Browser's boxes, by the spans of their edges that hold in both
+# screen shapes (Menu Widescreen moves only the panes' outer edges): each
+# pane box's top and bottom, the storage button above each pane, the gutter
+# between the panes, and the info bar.
+FILES_PANES = ((150, 300), (340, 490))
+FILES_BUTTONS = ((80, 220), (440, 560))
+
+
+def files_screen(rgb: np.ndarray, wide: bool = False) -> bool:
+    """The File Browser's two panes side by side, with the info bar below."""
+    if rgb.shape != (HEIGHT, WIDTH, 3):
+        raise Broken(f"unexpected presented frame size: {rgb.shape}")
+    rgb = detection_frame(rgb, wide)
+    panes = all(_edge(rgb, x0, x1, y) for x0, x1 in FILES_PANES for y in (108, 340))
+    buttons = all(_edge(rgb, x0, x1, y) for x0, x1 in FILES_BUTTONS for y in (28, 54))
+    gutter = not _edge(rgb, 313, 327, 108)
+    info = all(_edge(rgb, 150, 490, y) for y in (362, 431))
+    return panes and buttons and gutter and info
+
+
+def files_text(rgb: np.ndarray, wide: bool = False, right: bool = False,
+               box: tuple[int, int, int, int] | None = None) -> np.ndarray:
+    """A File Browser pane's text in a box, its path line by default. The
+    left pane's outer edge moves with Menu Widescreen, outside the stage
+    detection_frame keeps, so its path is read from the capture itself."""
+    if box is None and not right:
+        return text_mask(rgb.max(axis=2), stage_box(FILES_WIDE_PATH_BOX if wide else
+                                                    FILES_PATH_BOX, wide))
+    return text_mask(detection_frame(rgb, wide).max(axis=2),
+                     box if box is not None else FILES_RIGHT_PATH_BOX)
+
+
+# A storage menu (L or R) opens below its storage button, right-aligned 6 px
+# in from its pane's right edge: its title box's top edge at y 114 and its
+# items box's at y 148 run at least 124 px left from there (a row's focus
+# outline has edges at 114 and 139, never 148). Menu Widescreen moves the
+# right pane's right edge out with the stage, so the edges are read on the
+# whole stage (files_stage) where UIFiles_Layout puts the pane.
+def files_pane_x(pane: int, wide: bool = False) -> tuple[int, int]:
+    """A File Browser pane's left and right edges in authored px, as
+    UIFiles_Layout puts them: the outer edge 40 px in from the stage's
+    (UIStage_Left/Right: 1/6 of 640 more each side in Menu Widescreen), the
+    inner edges at 312 and 328 in both shapes."""
+    margin = round(320 / 3) if wide else 0
+    return (40 - margin, 312) if pane == 0 else (328, 600 + margin)
+
+
+def files_menu_edges(pane: int, wide: bool = False) -> tuple[int, int]:
+    """Where a box beside a row of pane surely has its top and bottom edges."""
+    right = files_pane_x(pane, wide)[1]
+    return right - 126, right - 12
+
+
+FILES_MENU_EDGES = (files_menu_edges(0), files_menu_edges(1))
+
+
+def files_stage(rgb: np.ndarray, wide: bool = False) -> tuple[np.ndarray, int]:
+    """The capture in authored px over the whole stage, and the column of
+    authored x 0. Like detection_frame, but keeping Menu Widescreen's sides:
+    the letterbox's 640 columns span x -107 .. 747 there."""
+    if not wide:
+        return rgb, 0
+    margin = round(320 / 3)
+    return np.asarray(Image.fromarray(rgb[60:420]).resize(
+        (WIDTH + 2 * margin, HEIGHT), Image.Resampling.NEAREST)), margin
+
+
+def files_menu(rgb: np.ndarray, pane: int, wide: bool = False) -> bool:
+    """A File Browser storage menu over pane's rows (0 left, 1 right)."""
+    frame, at = files_stage(rgb, wide)
+    x0, x1 = files_menu_edges(pane, wide)
+    return bool(_edge(frame, x0 + at, x1 + at, 115) and _edge(frame, x0 + at, x1 + at, 149))
+
+
+# A box beside a row ends short of its pane's left part, where a row's
+# outline (the other pane's focus, a ghost row) goes on: 20 to 100 px in.
+FILES_ROW_PROBES = tuple((files_pane_x(p)[0] + 20, files_pane_x(p)[0] + 100) for p in (0, 1))
+
+
+def files_box(rgb: np.ndarray, pane: int, wide: bool = False) -> bool:
+    """A box beside a row of pane's (Actions, a question, a storage menu):
+    its items box's top and bottom edges across the right of the pane, not
+    running on across the pane as a row's outline does."""
+    frame, at = files_stage(rgb, wide)
+    x0, x1 = (x + at for x in files_menu_edges(pane, wide))
+    p0, p1 = (x + at for x in (files_pane_x(pane, wide)[0] + 20, files_pane_x(pane, wide)[0] + 100))
+    edges = [y for y in range(116, 337) if _edge(frame, x0, x1, y) and not _edge(frame, p0, p1, y)]
+    return sum(1 for a, b in zip([-99] + edges, edges) if b - a > 8) >= 2
+
+
+def active_pane(rgb: np.ndarray, wide: bool = False) -> int:
+    """Which of the File Browser's panes has the focus: 0 left, 1 right. Its
+    box's edge is lit in full, the other's dimmed."""
+    rgb = detection_frame(rgb, wide)
+    left, right = (_edge(rgb, x0, x1, 108) for x0, x1 in FILES_PANES)
+    return 0 if left > right else 1
+
+
 class PresentedFrames:
     """Consume Dolphin's sequential PNG dumps, keeping bounded evidence.
 
@@ -399,12 +572,15 @@ class PresentedFrames:
 
 
 def dolphin_ini(storage: str = "dvd", card: Path | None = None, cards: Path | None = None,
-                empty_slots: bool = False) -> str:
-    """Dolphin.ini: the SD card where the storage puts it, and with cards a
-    GCI folder memory card in each slot, cards/A and cards/B."""
+                empty_slots: bool = False, second: Path | None = None) -> str:
+    """Dolphin.ini: the SD card where the storage puts it, with cards a GCI
+    folder memory card in each slot, cards/A and cards/B, and with second
+    another SD card in SD2SP2 (beside a GC Loader's)."""
     core = ""
     if STORAGES[storage]:
         core += f"{STORAGES[storage]} = {SD_CARD_DEVICE}\nSP2SDCardImage = {card}\n"
+    elif second:
+        core += f"SerialPort2 = {SD_CARD_DEVICE}\nSP2SDCardImage = {second}\n"
     if cards:
         core += (f"SlotA = {GCI_FOLDER_DEVICE}\nSlotB = {GCI_FOLDER_DEVICE}\n"
                  f"GCIFolderAPathOverride = {cards / 'A'}\nGCIFolderBPathOverride = {cards / 'B'}\n")
@@ -424,6 +600,20 @@ def same_save(original: bytes, copy: bytes) -> bool:
     start on the card, when it was written) is the card's own."""
     return (len(copy) == len(original) > 64 and copy[0:6] == original[0:6] and
             copy[8:40] == original[8:40] and copy[64:] == original[64:])
+
+
+# A copy's progress card in the File Browser: its "B Stop" glyph, red, at
+# the card's left (nothing else on the page is red there), and the words of
+# the File Browser's maroon message.
+FILES_PROGRESS_STOP_BOX = (28, 278, 52, 300)
+FILES_MESSAGE_TEXT_BOX = (170, 204, 470, 248)
+
+
+def files_progress(rgb: np.ndarray, wide: bool = False) -> bool:
+    """A copy's progress card over the File Browser."""
+    x0, y0, x1, y1 = FILES_PROGRESS_STOP_BOX
+    patch = detection_frame(rgb, wide)[y0:y1, x0:x1].astype(int)
+    return int(((patch[..., 0] > 170) & (patch[..., 1] < 90) & (patch[..., 2] < 110)).sum()) >= 30
 
 
 def message_up(rgb: np.ndarray, wide: bool = False) -> bool:
@@ -517,6 +707,21 @@ def coloured(frame: np.ndarray, colour: tuple[int, int, int]) -> int:
 def overlap(a: np.ndarray, b: np.ndarray) -> float:
     union = np.logical_or(a, b).sum()
     return float(np.logical_and(a, b).sum() / union) if union else 1.0
+
+
+def rows_moved(before: tuple[int, list[np.ndarray]], after: tuple[int, list[np.ndarray]]) -> int | None:
+    """How many rows a Settings focus moved between two Route.settings_rows,
+    down positive: how far its slot moved plus how far the list scrolled. The
+    scroll is the shift that matches the rows' labels, leaving out the focused
+    row in either picture (its label is drawn on the lit fill, so a little
+    bolder). None when no shift matches at least two rows."""
+    (was, old), (now, new) = before, after
+    for shift in sorted(range(1 - len(old), len(old)), key=abs):
+        pairs = [(new[n], old[n + shift]) for n in range(len(new))
+                 if 0 <= n + shift < len(old) and now != n and was != n + shift]
+        if len(pairs) >= 2 and all(same_text(a, b) for a, b in pairs):
+            return now + shift - was
+    return None
 
 
 def same_text(a: np.ndarray, b: np.ndarray) -> bool:
@@ -676,34 +881,41 @@ def printable(data: bytes) -> str:
 
 class Deadline:
     """A wait of some seconds of the console's own time when Dolphin reports
-    it (patch 0005, DOLPHIN_TICKS), else of the machine's."""
+    it (patch 0005, DOLPHIN_TICKS), else of the machine's.
 
-    def __init__(self, emulator: "Emulator", seconds: float) -> None:
+    Dolphin reports ten times a second, so its last report can be most of a
+    tenth of a second old when a wait begins. A fresh wait counts from the
+    first report after it began instead: never less than its seconds."""
+
+    def __init__(self, emulator: "Emulator", seconds: float, fresh: bool = False) -> None:
         self.emulator, self.seconds = emulator, seconds
         self.wall = time.monotonic()
-        self.start = emulator.emulated()
+        self.last = emulator.emulated()
+        self.start = None if fresh else self.last
 
     def elapsed(self) -> float:
         now = self.emulator.emulated()
-        if now is not None and self.start is None:
-            self.start = now  # Dolphin began reporting after the wait began
-        if now is not None:
-            return now - self.start
-        return time.monotonic() - self.wall
+        if now is None:
+            return time.monotonic() - self.wall
+        if self.start is None and now != self.last:
+            self.start = now  # a report after the wait began
+        return 0.0 if self.start is None else now - self.start
 
     def expired(self) -> bool:
-        return self.elapsed() >= self.seconds or time.monotonic() - self.wall >= self.seconds * WALL_FACTOR
+        wall = max(self.seconds * WALL_FACTOR, WALL_FLOOR)
+        return self.elapsed() >= self.seconds or time.monotonic() - self.wall >= wall
 
 
 class Emulator:
     def __init__(self, dol: Path, disc: Path | None, work: Path, out: Path, region: str = "pal",
                  storage: str = "dvd", card: Path | None = None, cable: str = "composite",
                  faults: str | None = None, cards: Path | None = None,
-                 empty_slots: bool = False, folder_frames: bool = False) -> None:
+                 empty_slots: bool = False, folder_frames: bool = False,
+                 second: Path | None = None) -> None:
         self.out = out
         self.user = work / "dolphin"
         (self.user / "Config").mkdir(parents=True)
-        config = dolphin_ini(storage, card, cards, empty_slots)
+        config = dolphin_ini(storage, card, cards, empty_slots, second)
         if folder_frames:
             config += "[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n"
         (self.user / "Config/Dolphin.ini").write_text(config)
@@ -764,6 +976,27 @@ class Emulator:
             raise Broken(f"cannot read the screen: {raw.stderr.decode(errors='replace')[-200:]}")
         return np.frombuffer(raw.stdout, np.uint8).reshape(HEIGHT, WIDTH, 3)
 
+    def burst(self, seconds: float, start) -> np.memmap:
+        """The screen at 60 frames a second for a while, from one ffmpeg, so
+        the frames come a vsync apart (frame() starts a process for each).
+        start() runs once the first frame is in: a press seen from before it."""
+        path = self.user.parent / "burst.rgb"
+        grab = subprocess.Popen(
+            ["ffmpeg", "-loglevel", "error", "-f", "x11grab", "-framerate", "60",
+             "-video_size", f"{WIDTH}x{HEIGHT}", "-draw_mouse", "0", "-i", f"{self.display}+0,0",
+             "-t", f"{seconds}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-y", str(path)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        size, until = WIDTH * HEIGHT * 3, time.monotonic() + 20
+        while (not path.exists() or path.stat().st_size < size) and grab.poll() is None \
+                and time.monotonic() < until:
+            time.sleep(0.01)
+        start()
+        _, error = grab.communicate(timeout=seconds + 30)
+        frames = path.stat().st_size // size if path.exists() else 0
+        if grab.returncode or frames == 0:
+            raise Broken(f"cannot read the screen: {error.decode(errors='replace')[-200:]}")
+        return np.memmap(path, np.uint8, "r", shape=(frames, HEIGHT, WIDTH, 3))
+
     def _ticks(self) -> tuple[float, str] | None:
         """The last TICKS line in Dolphin's output: the console's seconds, and its PC and LR."""
         try:
@@ -805,12 +1038,16 @@ class Route:
     def __init__(self, emulator: Emulator, out: Path, probe: bool = False, fresh_card: bool = False,
                  cable: str = "composite", region: str = "pal", fragments: int = 0,
                  cards: Path | None = None, storage: str = "dvd", menu_wide: bool = False,
-                 sd_image: Path | None = None) -> None:
+                 sd_image: Path | None = None, detail_saves: bool = True,
+                 second_sd: Path | None = None, home_controls: bool = True) -> None:
         self.emulator = emulator
+        self.detail_saves = detail_saves  # Saves on Details is on (the default)
+        self.home_controls = home_controls  # On-screen Controls is on (the default)
         self.cards = cards  # the memory cards' GCI folders, cards/A and cards/B
         self.storage = storage
         self.menu_wide = menu_wide
         self.sd_image = sd_image
+        self.second_sd = second_sd  # the files route's SD2SP2 card
         self.fragments = fragments  # the pieces the probe's game is in on the card
         self.cable = cable
         self.region = region
@@ -895,16 +1132,18 @@ class Route:
 
     def press(self, button: str, seconds: float = PRESS_SECONDS) -> None:
         """Hold a button for some of the console's time, then leave it up for
-        a little: a busy machine must not shorten a press below a frame."""
+        a little: a busy machine must not shorten a press below a frame. Both
+        are fresh waits: from a stale report, a press begun just before the
+        next one could end within a frame and never reach the console."""
         self.pad.hold(button)
-        self.pause(seconds)
+        self.pause(seconds, fresh=True)
         self.pad.hold()
-        self.pause(PRESS_SECONDS)
+        self.pause(PRESS_SECONDS, fresh=True)
 
-    def pause(self, seconds: float) -> None:
+    def pause(self, seconds: float, fresh: bool = False) -> None:
         """Let some of the console's time pass: a menu's animation takes as
         much of it however busy the machine is."""
-        wait = Deadline(self.emulator, seconds)
+        wait = Deadline(self.emulator, seconds, fresh=fresh)
         while not wait.expired():
             time.sleep(0.02)
 
@@ -969,7 +1208,7 @@ class Route:
         settings_check = ("the configured settings remain on the card" if start else
                           "the settings Indigo saved are on the card")
         self.check(settings_check,
-                   "Swiss Video Mode=" in settings and "Hide Apps Face=No" in settings, bytes=len(settings))
+                   "Swiss Video Mode=" in settings and "Down Face=" in settings, bytes=len(settings))
         if start:
             kept = seeded(settings)
             lost = {key: value for key, value in start.items() if kept.get(key) != value}
@@ -999,6 +1238,14 @@ class Route:
     def smoke(self) -> None:
         home = self.boot()
         faces = [home]
+        # Setup > Console > On-screen Controls: the button hints under the
+        # face's name, unless the card's settings turn them off.
+        if self.home_controls:
+            hints, _ = self.settled_label(box=HOME_HINT_BOX, level=HINT_LEVEL)
+            self.check("Home shows its button hints", hints is not None)
+        else:
+            self.check("On-screen Controls Off: Home shows no button hints",
+                       self.quiet(HOME_HINT_BOX, HINT_GONE_LEVEL))
         # The disc has apps: Library, Source, Settings, System and Apps.
         for n in range(1, 5):
             faces.append(self.turn(faces, "RIGHT", f"right-{n}"))
@@ -1015,18 +1262,20 @@ class Route:
         self.check("RIGHT undoes LEFT", mask is not None)
         for n, face in enumerate(faces[:4]):
             # Home starts on the Library face: browse it while it is open,
-            # change the source on the Source face, and turn Apps Face off
-            # and on again in Settings, then walk a Classic cube.
+            # change the source on the Source face, and take Apps off Down
+            # Face and put it back in Settings, then walk a Classic cube.
             if n == 2:
                 self.apps_face_off_and_on(faces)
                 self.classic_cube(faces)
+                self.face_labels_off_and_on(faces)
                 self.library_folders(faces)
             else:
                 inside = {0: self.browse_library, 1: self.change_source,
-                          3: self.memory_cards if self.cards else None}.get(n)
+                          3: self.system_rows}.get(n)
                 self.open_and_close(face, n, inside)
             mask, _ = self.press_until("RIGHT", like=faces[n + 1])
             self.check("the cube turns on to the next face", mask is not None, face=n + 1)
+        self.library_after_file_browser(faces)
         # Apps last: a launch never comes back.
         self.start_an_app(faces[4])
 
@@ -1112,8 +1361,8 @@ class Route:
         return report
 
     def save(self) -> None:
-        """Change one setting and save it: Settings > Setup > Console > Apps
-        Face Off, then Save & Exit. Run on a card that fails (--sd-faults), the
+        """Change one setting and save it: Settings > Setup > Console > Down
+        Face None, then Save & Exit. Run on a card that fails (--sd-faults), the
         next boot of the same card (main) shows whether the settings survived."""
         home = self.boot()
         self.home_label, self.home_backdrop = home, backdrop(self.last_rgb)
@@ -1138,7 +1387,9 @@ class Route:
     def game(self) -> None:
         """Boot, open the Library, move to the probe's game, open its details
         and launch it. The probe must see the game's own disc ID and the
-        24 MB a game is promised."""
+        24 MB a game is promised. On the way, the image whose file table runs
+        away is launched too: it fails like any other launch here and comes
+        back to the Library (starting it used to crash Indigo)."""
         home = self.boot()
         self.press("A")
         opened = self.covered(home)
@@ -1146,9 +1397,13 @@ class Route:
         self.check("A opens the Library", opened)
         title, _ = self.settled_label(box=TITLE_BOX)
         self.check("the Library shows a game's title", title is not None)
-        for n in range(card.library_order(True).index(card.PROBE_GAME[1])):
+        order = card.library_order(True)
+        runaway = next(name for _, name, image in card.DAMAGED if image is card.runaway_table)
+        for n in range(order.index(card.PROBE_GAME[1])):
             title, _ = self.press_until("RIGHT", unlike=title, box=TITLE_BOX)
             self.check("RIGHT moves to the next game", title is not None, step=n + 1)
+            if order[n + 1] == runaway:
+                self.launch_fails_cleanly(title)
         self.shot("library-probe", self.last_rgb)
         self.press("A")
         self.check("A opens the game's details", self.covered(title, TITLE_BOX))
@@ -1165,38 +1420,82 @@ class Route:
                    memory=f"{report['memsize']:08X}")
 
     def flip_apps_face(self, settings: np.ndarray, tag: str) -> None:
-        """Apps Face, eight DOWNs into Console (flip_console)."""
-        self.flip_console(settings, 8, "apps-face", tag)
+        """Down Face, twelve DOWNs into Console (flip_console): four RIGHTs
+        from Apps pass Memory Cards, Emulators and File Browser to None
+        ("off"), one LEFT from None is File Browser ("files"), and three LEFTs
+        more come back to Apps ("on")."""
+        change, presses = {"off": ("RIGHT", 4), "files": ("LEFT", 1), "on": ("LEFT", 3)}[tag]
+        self.flip_console(settings, 12, "apps-face", tag, change=change, presses=presses)
 
-    def flip_console(self, settings: np.ndarray, downs: int, name: str, tag: str) -> None:
+    def flip_console(self, settings: np.ndarray, downs: int, name: str, tag: str,
+                     change: str = "RIGHT", presses: int = 1, named: bool = True) -> None:
         """From the Settings face: R and R to Setup, DOWN and A into Console,
-        downs DOWNs to a row and RIGHT to flip it. B goes back to Setup and
+        downs DOWNs to a row and change (a direction) to change it. B goes back to Setup and
         B again saves and exits (the demo disc can't keep the file; the
-        setting holds until Indigo restarts), back to the Settings face."""
+        setting holds until Indigo restarts), back to the Settings face, or,
+        not named (Face Labels off), to a Home without the face's name."""
         detail = {name.replace("-", "_"): tag}
         self.press("A")
         opened = self.covered(settings)
         self.shot(f"settings-{name}-{tag}", self.last_rgb)
         self.check("A opens Settings", opened, **detail)
-        for button, pause in (("R", 1.0), ("R", 1.0), ("DOWN", 0.6), ("A", 1.5)):
+        for button in ("R", "R"):
             self.press(button)
-            self.pause(pause)
-        for _ in range(downs):
-            self.press("DOWN")
-            self.pause(0.4)
-        self.press("RIGHT")
-        self.pause(1.0)
+            self.pause(1.0)
+        self.walk_rows(1, "Setup's DOWN reaches Console", **detail)
+        self.press("A")
+        self.pause(1.5)
+        self.walk_rows(downs, f"{downs} DOWNs reach the row", **detail)
+        for _ in range(presses):
+            self.press(change)
+            self.pause(1.0)
         self.shot(f"{name}-{tag}", self.emulator.frame())
         self.press("B")
         self.pause(1.0)
         self.press("B")
+        if not named:
+            # No name is no proof of Home: Setup's page has none there either,
+            # but it has the rows' counter, which Home never draws.
+            gone = self.quiet() and text_mask(self.gray(), COUNTER_BOX).sum() < COUNTER_PIXELS
+            self.shot(f"{name}-{tag}-home", self.last_rgb)
+            self.check("Save & Exit comes back to Home, with no name under the cube", gone, **detail)
+            return
         mask, _ = self.settled_label(like=settings)
         self.shot(f"{name}-{tag}-home", self.last_rgb)
         self.check("Save & Exit comes back to the Settings face", mask is not None, **detail)
 
+    def settings_rows(self) -> tuple[int, list[np.ndarray]]:
+        """Which of Settings' visible rows has the focus (the brightest fill),
+        and every visible row's label."""
+        gray = self.gray()
+        fill = [gray[top + SETTINGS_ROW_FILL[1]:top + SETTINGS_ROW_FILL[3],
+                     SETTINGS_ROW_FILL[0]:SETTINGS_ROW_FILL[2]].mean() for top in SETTINGS_ROW_TOPS]
+        x0, y0, x1, y1 = SETTINGS_ROW_LABEL
+        return int(np.argmax(fill)), [text_mask(gray, (x0, top + y0, x1, top + y1)) for top in SETTINGS_ROW_TOPS]
+
+    def walk_rows(self, rows: int, name: str, **detail: object) -> None:
+        """DOWN rows times in a Settings page, each step read back (rows_moved),
+        so a press held into Settings' repeat (two rows) is taken back with UP
+        and one the page missed is pressed again."""
+        moved, steps = 0, []
+        for _ in range(rows + PRESSES):
+            if moved == rows:
+                break
+            before = self.settings_rows()
+            button = "DOWN" if moved < rows else "UP"
+            self.press(button)
+            self.pause(0.4)
+            step = rows_moved(before, self.settings_rows())
+            if step is None:
+                break
+            steps.append(step)
+            moved += step
+        corrected = [step for step in steps if abs(step) != 1]
+        self.check(name, moved == rows, moved=moved, **({"odd_steps": corrected} if corrected else {}), **detail)
+
     def classic_cube(self, faces: list[np.ndarray]) -> None:
-        """From the Settings face: Setup > Console > Cube (nine DOWNs, just
-        after Apps Face) to Classic. The faces then sit as on the GameCube's
+        """From the Settings face: Setup > Console > Cube (thirteen DOWNs, just
+        after the four sides) to Classic. The faces then sit as on the GameCube's
         menu, Library in front and the way between them: Settings is its
         left side, so LEFT goes nowhere, and RIGHT twice is Library and then
         System, not round. From System UP goes nowhere and B is Library; UP
@@ -1205,7 +1504,7 @@ class Route:
         A press that should go nowhere has had a second of the console's
         time to turn the cube when its face is checked."""
         library, source, settings, system, apps = faces[:5]
-        self.flip_console(settings, 9, "cube", "classic")
+        self.flip_console(settings, 13, "cube", "classic")
         walk = (("LEFT", "Settings", False), ("LEFT", "Settings", False), ("RIGHT", "Library", True),
                 ("RIGHT", "System", True), ("UP", "System", False), ("B", "Library", True),
                 ("UP", "Source", True), ("DOWN", "Library", True), ("DOWN", "Apps", True),
@@ -1222,19 +1521,34 @@ class Route:
             self.shot(f"classic-{n}-{button.lower()}", self.last_rgb)
             self.check(f"Cube Classic: {button} {'turns to' if turns else 'stays on'} {name}",
                        mask is not None, step=n)
-        self.flip_console(settings, 9, "cube", "infinite")
+        self.flip_console(settings, 13, "cube", "infinite")
+
+    def face_labels_off_and_on(self, faces: list[np.ndarray]) -> None:
+        """From the Settings face: Setup > Console > Face Labels (fifteen
+        DOWNs, after Cube and Idle Animation) Off takes the face's name from
+        under the cube; On puts the Settings face's name back."""
+        settings = faces[2]
+        self.flip_console(settings, 15, "face-labels", "off", named=False)
+        self.flip_console(settings, 15, "face-labels", "on")
 
     def apps_face_off_and_on(self, faces: list[np.ndarray]) -> None:
-        """Setup > Console > Apps Face: Off takes Apps off the cube, so the
-        face after System is Library; On puts it back after System."""
+        """Setup > Console > Down Face: None takes Apps off the cube, so the
+        face after System is Library; File Browser puts its own face there
+        (files_face); Apps puts Apps back after System."""
         library, settings, system, apps = faces[0], faces[2], faces[3], faces[4]
-        for tag, after_system in (("off", library), ("on", apps)):
+        for tag, after_system in (("off", library), ("files", None), ("on", apps)):
             self.flip_apps_face(settings, tag)
             self.check("RIGHT turns to System", self.press_until("RIGHT", like=system)[0] is not None,
                        apps_face=tag)
+            if after_system is None:
+                self.files_face(faces)
+                for back in (system, settings):
+                    self.check("LEFT turns back a face",
+                               self.press_until("LEFT", like=back)[0] is not None, apps_face=tag)
+                continue
             mask, _ = self.press_until("RIGHT", unlike=system)
             self.shot(f"after-system-apps-face-{tag}", self.last_rgb)
-            self.check(f"Apps Face {tag.title()}: after System comes "
+            self.check(f"Down Face {'None' if tag == 'off' else 'Apps'}: after System comes "
                        f"{'Library' if tag == 'off' else 'Apps'}",
                        mask is not None and same_text(mask, after_system),
                        overlap=round(overlap(mask, after_system), 3) if mask is not None else None)
@@ -1534,6 +1848,23 @@ class Route:
                 return True
         return False
 
+    def quiet(self, box: tuple[int, int, int, int] = LABEL_BOX, level: int = TEXT_LEVEL,
+              seconds: float = SETTLE_SECONDS) -> bool:
+        """Wait for a box to hold no word for two seconds of the console's time
+        on end: longer than a screen takes to go, so a word drawn once it has
+        gone still shows."""
+        deadline = Deadline(self.emulator, seconds)
+        empty = None
+        while not deadline.expired():
+            if has_label(text_mask(self.gray(), box, level)):
+                empty = None
+            elif empty is None:
+                empty = Deadline(self.emulator, 2.0)
+            elif empty.expired():
+                return True
+            time.sleep(0.15)
+        return False
+
     def open_and_close(self, face: np.ndarray, n: int, inside=None) -> None:
         self.press("A")
         opened = self.covered(face)
@@ -1694,6 +2025,595 @@ class Route:
         for button in buttons.split():
             self.press(button)
             self.pause(seconds)
+
+    def system_rows(self) -> None:
+        """Memory Cards (row one) when the route has cards, then File Browser
+        (row two)."""
+        if self.cards:
+            self.memory_cards()
+        self.file_browser(1 if self.cards else 2)
+
+    def files_list(self, shown: bool, pane: int | None = None) -> bool:
+        """Waits for the File Browser to be on the screen (with pane focused,
+        when one is given), or gone."""
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        while not deadline.expired():
+            self.last_rgb = self.emulator.frame()
+            up = files_screen(self.last_rgb, self.menu_wide)
+            if up == shown and (pane is None or not up or
+                                active_pane(self.last_rgb, self.menu_wide) == pane):
+                return True
+            time.sleep(0.3)
+        return False
+
+    def files_path(self, like: np.ndarray | None = None,
+                   unlike: np.ndarray | None = None, right: bool = False,
+                   box: tuple[int, int, int, int] | None = None) -> np.ndarray | None:
+        """A pane's path line (or box) once it reads like (or unlike) a mask."""
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        while not deadline.expired():
+            self.last_rgb = self.emulator.frame()
+            mask = files_text(self.last_rgb, self.menu_wide, right, box)
+            if mask.any() and (like is None or same_text(mask, like)) and \
+                    (unlike is None or not same_text(mask, unlike)):
+                return mask
+            time.sleep(0.3)
+        return None
+
+    def files_boxed(self, opened: bool, pane: int = 0) -> bool:
+        """Waits for a box beside a row of pane (opened), or for none with
+        the File Browser still up."""
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        while not deadline.expired():
+            self.last_rgb = self.emulator.frame()
+            if files_box(self.last_rgb, pane, self.menu_wide) == opened and \
+                    files_screen(self.last_rgb, self.menu_wide):
+                return True
+            time.sleep(0.3)
+        return False
+
+    def file_browser(self, downs: int) -> None:
+        """DOWN to File Browser and A: the File Browser's two panes, the left
+        one focused, though the disc has games the Library would show. RIGHT
+        focuses the right pane, at the Source's root: DOWN and A open a folder
+        and X comes back to the same rows, then LEFT focuses the left again.
+        A on /games, which the left pane focuses as the folder the Library
+        showed, reads it into the left pane and X comes back up; Z opens the
+        Actions box beside its row and B closes it; B comes back to System's
+        rows."""
+        self.steps(" ".join(["DOWN"] * downs))
+        system, _ = self.settled_label()
+        self.press("A")
+        shown = self.files_list(True, pane=0)
+        self.shot("file-browser", self.last_rgb)
+        self.check("File Browser opens its two panes, the left one focused", shown)
+        self.press("RIGHT")
+        self.check("RIGHT focuses the right pane", self.files_list(True, pane=1))
+        self.shot("file-browser-right", self.last_rgb)
+        # The right pane opens at the root, where a disc lists itself first:
+        # DOWN is a folder on every route's Source (apps, or games).
+        self.press("DOWN")
+        self.pause(1.0)
+        top = self.files_path(right=True)
+        rows = self.files_path(right=True, box=FILES_RIGHT_ROWS_BOX)
+        self.press("A")
+        inside = self.files_path(unlike=top, right=True) if top is not None else None
+        self.shot("file-browser-right-folder", self.last_rgb)
+        self.check("A on a folder opens it in the right pane",
+                   inside is not None and active_pane(self.last_rgb, self.menu_wide) == 1)
+        self.press("X")
+        back = self.files_path(like=top, right=True) if top is not None else None
+        again = self.files_path(like=rows, right=True, box=FILES_RIGHT_ROWS_BOX) \
+            if rows is not None else None
+        self.check("X in the right pane comes back up to the same rows",
+                   back is not None and again is not None)
+        self.press("LEFT")
+        self.check("LEFT focuses the left pane again", self.files_list(True, pane=0))
+        # The left pane opens on the folder the Library last showed, /games:
+        # with File Browser it is a list of files like any other.
+        top = self.files_path()
+        self.press("A")
+        inside = self.files_path(unlike=top) if top is not None else None
+        self.shot("file-browser-folder", self.last_rgb)
+        self.check("A on a folder opens it in the left pane",
+                   inside is not None and files_screen(self.last_rgb, self.menu_wide))
+        self.press("X")
+        back = self.files_path(like=top) if top is not None else None
+        self.check("X comes back up a folder", back is not None)
+        self.press("Z")
+        opened = self.files_boxed(True)
+        self.shot("file-browser-z", self.last_rgb)
+        self.check("Z opens the Actions box beside the row", opened)
+        self.press("B")
+        self.check("B closes the Actions box",
+                   self.files_boxed(False) and self.files_list(True, pane=0))
+        if self.cards:
+            self.files_storage()
+        self.press("B")
+        gone = self.files_list(False)
+        label, _ = self.settled_label(like=system) if system is not None else (None, 0.0)
+        self.shot("file-browser-back", self.last_rgb)
+        self.check("B leaves the File Browser for System's rows", gone and label is not None)
+
+    def files_storage_menu(self, pane: int, shown: bool) -> bool:
+        """Waits for pane's storage menu to be open (shown), or closed with
+        the File Browser still up."""
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        while not deadline.expired():
+            self.last_rgb = self.emulator.frame()
+            if files_menu(self.last_rgb, pane, self.menu_wide) == shown and \
+                    files_screen(self.last_rgb, self.menu_wide):
+                return True
+            time.sleep(0.3)
+        return False
+
+    def files_rows(self, right: bool, like: np.ndarray | None = None,
+                   unlike: np.ndarray | None = None) -> np.ndarray | None:
+        """A pane's rows once they read like (or unlike) a mask."""
+        return self.files_path(like=like, unlike=unlike, right=True,
+                               box=FILES_RIGHT_ROWS_BOX if right else FILES_LEFT_ROWS_BOX)
+
+    def files_storage(self) -> None:
+        """The second device, with a memory card in each slot. R opens the
+        right pane's storage menu beside its button and B closes it. R, DOWN
+        (from the Source to Memory Card - Slot A, next in Swiss's order) and A
+        show the card's saves in the right pane; RIGHT and DOWN browse them.
+        Y swaps the sides, the card becoming the Source on the left, and Y
+        again swaps back, the left pane as it was. L opens the left pane's
+        menu and B closes it."""
+        disc = self.files_rows(right=True)
+        self.press("R")
+        opened = self.files_storage_menu(1, True)
+        self.shot("file-browser-storage-right", self.last_rgb)
+        self.check("R opens the right pane's storage menu", opened)
+        self.press("B")
+        self.check("B closes the storage menu", self.files_storage_menu(1, False))
+        self.press("R")
+        self.files_storage_menu(1, True)
+        # The GC Loader route lists the drive's disc between them, greyed.
+        self.steps("DOWN" if self.storage == "dvd" else "DOWN DOWN")
+        self.press("A")
+        card = self.files_rows(right=True, unlike=disc) if disc is not None else None
+        source = self.files_path(right=True, box=FILES_NAME_BOXES[0])  # focused: white
+        self.shot("file-browser-second-device", self.last_rgb)
+        self.check("R and A on Memory Card - Slot A show its saves in the right pane",
+                   card is not None and not files_menu(self.last_rgb, 1, self.menu_wide))
+        self.press("RIGHT")
+        self.check("RIGHT focuses the second device's pane", self.files_list(True, pane=1))
+        other = self.files_path(right=True, box=FILES_NAME_BOXES[1])
+        # The info bar names the next save.
+        name = self.files_path(right=True, box=FILES_INFO_TITLE_BOX)
+        self.press("DOWN")
+        moved = self.files_path(unlike=name, right=True, box=FILES_INFO_TITLE_BOX) \
+            if name is not None else None
+        self.check("DOWN browses the second device", moved is not None)
+        left = self.files_rows(right=False)
+        right = self.files_rows(right=True)
+        self.press("Y")
+        # The Source's name moves to the focused right pane once both sides
+        # are mounted and read (a disc drive resets on the way).
+        moved = self.files_path(like=source, right=True, box=FILES_NAME_BOXES[1]) \
+            if source is not None else None
+        swapped = self.files_rows(right=False, unlike=left) if left is not None else None
+        changed = self.files_rows(right=True, unlike=right) if right is not None else None
+        self.shot("file-browser-swapped", self.last_rgb)
+        self.check("Y swaps the sides: the card is the Source, the disc on the right",
+                   moved is not None and swapped is not None and changed is not None and
+                   self.files_list(True, pane=1))
+        self.press("Y")
+        home = self.files_path(like=other, right=True, box=FILES_NAME_BOXES[1]) \
+            if other is not None else None
+        back = self.files_rows(right=False, like=left) if left is not None and home is not None \
+            else None
+        again = self.files_rows(right=True, like=right) if right is not None else None
+        self.check("Y again swaps them back", back is not None and again is not None)
+        self.press("L")
+        opened = self.files_storage_menu(0, True)
+        self.shot("file-browser-storage-left", self.last_rgb)
+        self.check("L opens the left pane's storage menu", opened)
+        self.press("B")
+        self.check("B closes the left storage menu", self.files_storage_menu(0, False))
+        if self.storage == "dvd":
+            self.files_not_ready()
+
+    def files_not_ready(self) -> None:
+        """A second device that isn't there. R, UP twice (from Memory Card -
+        Slot A, which the menu focuses, round to Other devices...) and A open
+        Swiss's destination picker; Z lists every
+        device and RIGHT twice goes from Memory Card - Slot A to KunaiGC,
+        which A chooses. The right pane says it isn't ready instead of rows,
+        Y leaves the sides as they are, and R and A put the disc back."""
+        left = self.files_rows(right=False)
+        self.press("R")
+        self.files_storage_menu(1, True)
+        self.steps("UP UP A")
+        self.pause(2.0)
+        self.steps("Z RIGHT RIGHT")
+        self.press("A")
+        message = self.files_path(right=True, box=FILES_RIGHT_MESSAGE_BOX)
+        rows = files_text(self.last_rgb, self.menu_wide, box=FILES_RIGHT_ROWS_BOX)
+        self.shot("file-browser-not-ready", self.last_rgb)
+        self.check("a device that isn't there: the right pane says so, with no rows",
+                   message is not None and not rows.any() and
+                   files_screen(self.last_rgb, self.menu_wide))
+        self.press("RIGHT")
+        self.press("Y")
+        self.pause(1.5)
+        same = self.files_rows(right=False, like=left) if left is not None else None
+        self.check("Y doesn't swap onto it",
+                   same is not None and self.files_list(True, pane=1) and
+                   self.files_path(like=message, right=True, box=FILES_RIGHT_MESSAGE_BOX) is not None)
+        self.press("R")
+        self.files_storage_menu(1, True)
+        self.press("A")
+        back = self.files_rows(right=True)
+        self.check("R and A on the disc put it back on the right",
+                   back is not None and not files_text(self.last_rgb, self.menu_wide,
+                                                       box=FILES_RIGHT_MESSAGE_BOX).any())
+
+    def files_goto(self, image: Path, focus: str, target: str, folder: str = "") -> None:
+        """Moves the focused pane's focus from one entry to another, by their
+        rows in the card's folder (its top by default) as the File Browser
+        sorts it."""
+        names = card.listing(image, folder)
+        rows = names.index(target) - names.index(focus)
+        self.steps(" ".join(["DOWN" if rows > 0 else "UP"] * abs(rows)), 0.4)
+
+    def files_said(self, what: str, failed: bool = False) -> np.ndarray | None:
+        """The maroon message comes, says an operation ended, and goes by
+        itself (2 s); a failure's stays until A. Its words, as a mask."""
+        said = self.message(SETTLE_SECONDS)
+        self.pause(0.3)  # in whole, not fading in
+        words = text_mask(detection_frame(self.emulator.frame(), self.menu_wide).max(axis=2),
+                          FILES_MESSAGE_TEXT_BOX) if said else None
+        self.shot(what.replace(" ", "-"), self.last_rgb)
+        self.check(f"{what}: the message says so", said)
+        if failed:
+            self.pause(3.0)
+            self.check(f"{what}: the failure's message waits for A",
+                       message_up(self.emulator.frame(), self.menu_wide))
+            self.press("A")
+        self.check(f"{what}: the message goes", self.message_closes())
+        self.pause(1.0)  # both panes read again
+        return words
+
+    def files_stop(self, what: str, finished: np.ndarray | None) -> None:
+        """B on a copy's progress card: the card is up when B is pressed, and
+        the message that comes isn't the one a finished copy has."""
+        deadline = Deadline(self.emulator, SETTLE_SECONDS)
+        up = False
+        while not deadline.expired() and not up:
+            self.last_rgb = self.emulator.frame()
+            up = files_progress(self.last_rgb, self.menu_wide)
+        self.shot(f"files-{what.replace(' ', '-')}-progress", self.last_rgb)
+        self.check(f"{what}: the progress card is up when B is pressed", up)
+        self.press("B")
+        words = self.files_said(what)
+        self.check(f"{what}: the message isn't a finished copy's",
+                   words is not None and finished is not None and not same_text(words, finished))
+
+    def files(self) -> None:
+        """Operations to the other side, with a GC Loader as the Source and an
+        SD card in SD2SP2 (card.second_card) beside it. System, File Browser,
+        then R, DOWN and A put the SD card on the right. Every operation is
+        checked on the card images themselves:
+          - Z on Indigo-README.txt opens the Actions box beside it; X asks
+            "Copy to" the SD card, with a ghost row where the copy lands, and
+            A copies it: the SD card gains the same bytes;
+          - the same again finds it there: Keep both writes a second copy;
+          - RIGHT, then Z and Y on b-two.txt and A on Swiss's Move question,
+            move it onto the GC Loader: gone from the SD card, there whole;
+          - Z and R on a-one.txt, L four times, A and START name it a-one1.txt;
+          - Z and Z on c-three.txt ask Delete's question: A alone deletes
+            nothing, L held with A deletes it;
+          - Z, X and A on big.bin start a copy that B stops: the message
+            says so and nothing of it is left on the GC Loader;
+          - Z, Y and A start a Move of it that B stops: it stays on the SD
+            card whole and nothing of it is left on the GC Loader;
+          - A on backups opens it on the right; LEFT, Z, X and A on b-two.txt
+            copy it into that folder, not the SD card's top;
+          - a game's Detail, the first since boot, shows its poster
+            (files_poster);
+        and B leaves. files_write_fails runs on the next boot."""
+        gcl, sd2 = self.sd_image, self.second_sd
+        faces = [self.boot()]
+        for n in range(1, 4):
+            faces.append(self.turn(faces, "RIGHT", f"files-right-{n}"))
+        self.press("A")
+        self.check("A opens System", self.covered(faces[3]))
+        self.steps("DOWN DOWN")
+        self.press("A")
+        self.check("File Browser opens on the GC Loader", self.files_list(True, pane=0))
+        before = self.files_path(right=True, box=FILES_NAME_BOXES[1])
+        self.press("R")
+        self.files_storage_menu(1, True)
+        self.steps("DOWN A")
+        name = self.files_path(right=True, box=FILES_NAME_BOXES[1], unlike=before) \
+            if before is not None else None
+        self.shot("files-two-devices", self.last_rgb)
+        self.check("R, DOWN and A put the SD card in SD2SP2 on the right", name is not None)
+
+        readme, kept = "Indigo-README.txt", "Indigo-README_00.txt"
+        original = card.read_card(gcl, readme)
+        self.files_goto(gcl, "apps/", readme)
+        self.press("Z")
+        opened = self.files_boxed(True)
+        self.pause(0.5)
+        self.shot("files-actions", self.emulator.frame())
+        self.check("Z opens the Actions box beside the file", opened)
+        self.press("X")
+        self.pause(0.8)
+        self.shot("files-copy-question", self.emulator.frame())
+        self.check("X asks Copy to the other side", self.files_boxed(True))
+        self.press("A")
+        finished = self.files_said("copy")
+        self.check("the copy on the SD card is the file, byte for byte",
+                   original is not None and card.read_card(sd2, readme) == original)
+        self.steps("Z X A", 0.8)
+        self.shot("files-exists", self.emulator.frame())
+        self.press("A")
+        self.files_said("keep both")
+        self.check("Keep both writes a second copy beside the first",
+                   card.read_card(sd2, kept) == original and card.read_card(sd2, readme) == original)
+
+        self.press("RIGHT")
+        self.check("RIGHT focuses the SD card's pane", self.files_list(True, pane=1))
+        self.files_goto(sd2, kept, "b-two.txt")
+        self.steps("Z Y", 0.8)
+        self.shot("files-move-question", self.emulator.frame())
+        self.press("A")
+        self.files_said("move")
+        self.check("Move takes it off the SD card and puts it on the GC Loader whole",
+                   card.read_card(sd2, "b-two.txt") is None and
+                   card.read_card(gcl, "b-two.txt") == card.SECOND_FILES["b-two.txt"])
+
+        # Move focuses the row that took its place, big.bin.
+        self.files_goto(sd2, "big.bin", "a-one.txt")
+        self.steps("Z R", 0.8)
+        self.steps("L L L L A", 0.3)
+        self.shot("files-rename", self.emulator.frame())
+        self.press("START")
+        self.files_said("rename")
+        self.check("Rename gives the file its new name",
+                   card.read_card(sd2, "a-one.txt") is None and
+                   card.read_card(sd2, "a-one1.txt") == card.SECOND_FILES["a-one.txt"])
+
+        # Rename focuses the new name.
+        self.files_goto(sd2, "a-one1.txt", "c-three.txt")
+        self.steps("Z Z", 0.8)
+        self.shot("files-delete-question", self.emulator.frame())
+        self.press("A")
+        self.pause(1.0)
+        self.check("Delete's question: A alone deletes nothing",
+                   card.read_card(sd2, "c-three.txt") is not None and
+                   not message_up(self.emulator.frame(), self.menu_wide))
+        self.pad.hold("L", "A")
+        self.pause(0.3, fresh=True)
+        self.pad.hold()
+        self.files_said("delete")
+        self.check("L held with A deletes it", card.read_card(sd2, "c-three.txt") is None)
+
+        # Delete focuses the next row, Indigo-README.txt.
+        big = card.SECOND_BIG[0]
+        self.files_goto(sd2, readme, big)
+        self.steps("Z X", 0.8)
+        self.press("A")
+        self.files_stop("stop", finished)
+        self.check("a stopped copy leaves nothing of itself on the GC Loader",
+                   card.read_card(gcl, big) is None)
+        self.check("and the original stays on the SD card",
+                   len(card.read_card(sd2, big) or b"") == card.SECOND_BIG[1])
+
+        # A stopped Move: Swiss deletes the original only after a whole copy.
+        self.steps("Z Y", 0.8)
+        self.press("A")
+        self.files_stop("stopped move", finished)
+        self.check("a stopped Move leaves nothing of itself on the GC Loader",
+                   card.read_card(gcl, big) is None)
+        self.check("and keeps the original on the SD card, whole",
+                   len(card.read_card(sd2, big) or b"") == card.SECOND_BIG[1])
+
+        # The folder open on the other side is where a copy goes. The left
+        # pane focuses b-two.txt, which the Move put there.
+        self.files_goto(sd2, big, "backups/")
+        self.press("A")
+        self.pause(1.0)
+        self.press("LEFT")
+        self.check("LEFT focuses the GC Loader's pane", self.files_list(True, pane=0))
+        self.steps("Z X", 0.8)
+        self.press("A")
+        self.files_said("copy into a folder")
+        self.check("the copy lands in the folder open on the right, not the SD card's top",
+                   card.read_card(sd2, "backups/b-two.txt") == card.SECOND_FILES["b-two.txt"] and
+                   card.read_card(sd2, "b-two.txt") is None)
+        self.files_poster(gcl, "b-two.txt")
+        self.press("B")
+        self.check("B leaves the File Browser", self.files_list(False))
+
+    def files_write_fails(self) -> None:
+        """The next boot, with the SD card in SD2SP2 failing every write to
+        a cluster it had free (card.free_sectors): R, DOWN and A put it on
+        the right, A on backups opens it, and LEFT focuses the GC Loader. A
+        game's Detail from the File Browser (files_detail), while the card
+        still works, and X back up. Then Z, X and A copy Indigo-README.txt
+        into backups. The write fails: the message says so and waits for A,
+        and no whole copy is on the card. Once a write has failed, this card
+        refuses every write after it (deleting another file fails too), so
+        the unfinished file stays and the message says part of it is left;
+        that the File Browser deletes it where the card allows is pinned by
+        audit_files_contract.py. Last, the game's launch (files_launch)."""
+        gcl, sd2 = self.sd_image, self.second_sd
+        readme = "Indigo-README.txt"
+        original = card.read_card(gcl, readme)
+        faces = [self.boot()]
+        for n in range(1, 4):
+            faces.append(self.turn(faces, "RIGHT", f"files-fails-right-{n}"))
+        self.press("A")
+        self.steps("DOWN DOWN")
+        self.press("A")
+        self.check("File Browser opens on the GC Loader again", self.files_list(True, pane=0))
+        self.press("R")
+        self.files_storage_menu(1, True)
+        self.steps("DOWN A")
+        self.pause(1.0)
+        self.press("RIGHT")  # on its first row past "..": backups
+        self.press("A")
+        self.pause(1.0)
+        self.press("LEFT")
+        self.check("LEFT focuses the GC Loader's pane", self.files_list(True, pane=0))
+        top = self.files_detail(gcl, "apps/")
+        self.press("X")
+        self.check("X goes back up, to games/", self.files_path(like=top) is not None)
+        self.files_goto(gcl, "games/", readme)
+        self.steps("Z X", 0.8)
+        self.press("A")
+        self.files_said("failed write", failed=True)
+        self.check("a copy whose write failed isn't on the SD card whole",
+                   original is not None and card.read_card(sd2, f"backups/{readme}") != original)
+        self.files_launch(gcl, readme)
+
+    def files_game(self, image: Path, focus: str,
+                   game: tuple[str, str] = card.PROBE_GAME) -> np.ndarray | None:
+        """A on games/ opens it in the left pane, and DOWN goes to a game,
+        the probe's by default. The path line at the top, as a mask."""
+        self.files_goto(image, focus, "games/")
+        top = self.files_path()
+        self.press("A")
+        inside = self.files_path(unlike=top) if top is not None else None
+        self.check("A on games/ opens it in the left pane", inside is not None)
+        # Flatten directory (on for /games) lists a folder's files in its
+        # place: such a folder has no row, and they sort after the probe.
+        names = [name for name in card.listing(image, "games")
+                 if not (name.endswith("/") and len(card.listing(image, f"games/{name}")) > 1)]
+        rows = names.index(card.game_file(*game)) - 1
+        self.steps(" ".join(["DOWN"] * rows), 0.4)
+        self.pause(1.0)
+        return top
+
+    def files_poster(self, image: Path, focus: str) -> None:
+        """The first Detail since boot, opened from the File Browser on a
+        game the poster pack has (files_game), so the pack opens only then:
+        from Detail's first frame (POSTER_FRAMES) its card shows the game's
+        poster, not the banner standing in for it. B comes back and
+        X goes up again."""
+        index = 0
+        top = self.files_game(image, focus, card.GAMES[index])
+        frames = self.emulator.burst(8.0, lambda: self.press("A"))
+        shown = next((n for n, rgb in enumerate(frames) if not files_screen(rgb, self.menu_wide)), None)
+        x0, y0, x1, y1 = DETAIL_CARD_BOX
+        light = card.poster_light(index)
+        poster = None
+        for n in range(shown if shown is not None else len(frames), len(frames)):
+            rgb = np.array(frames[n])
+            if coloured(detection_frame(rgb, self.menu_wide)[y0:y1, x0:x1], light) >= POSTER_PIXELS:
+                poster = n
+                self.shot("files-detail-poster", rgb)
+                break
+        last = np.array(frames[len(frames) - 1])
+        del frames
+        if poster is None:
+            self.shot("files-detail-no-poster", last)
+        self.check("Detail from the File Browser shows the game's poster, not its banner",
+                   poster is not None and poster - shown <= POSTER_FRAMES, first=shown, poster=poster)
+        self.press("B")
+        self.check("B comes back to the File Browser", self.files_list(True, pane=0))
+        self.press("X")
+        self.check("X goes back up", top is not None and self.files_path(like=top) is not None)
+
+    def files_detail(self, image: Path, focus: str) -> np.ndarray | None:
+        """The probe's game (files_game) and A open its Game Detail over the
+        File Browser, already in place: every frame of its first 0.3 s, at 60
+        a second, has the title Detail settles on (no card flies in). B comes
+        back to the File Browser, the left pane on the same row and the right
+        pane's storage, let go meanwhile, showing the same rows. Returns the
+        top's path line."""
+        top = self.files_game(image, focus)
+        row = self.files_path(box=FILES_INFO_TITLE_BOX)
+        rows = self.files_rows(right=False)
+        right = self.files_rows(right=True)
+        self.shot("files-game", self.last_rgb)
+        frames = self.emulator.burst(8.0, lambda: self.press("A"))
+        title, _ = self.settled_label(box=DETAIL_TITLE_BOX)
+        self.shot("files-detail", self.last_rgb)
+        self.check("A on a game in the File Browser opens its Game Detail",
+                   title is not None and not files_screen(self.last_rgb, self.menu_wide))
+        # The card where Detail settles it, in each of the first 0.3 s of
+        # frames without the File Browser against the burst's last: a card
+        # flying in, or nothing drawn yet (the Home cube), differs.
+        x0, y0, x1, y1 = DETAIL_CARD_BOX
+        card_at = lambda n: detection_frame(np.array(frames[n]), self.menu_wide)[y0:y1, x0:x1].astype(int)
+        shown = next((n for n, rgb in enumerate(frames) if not files_screen(rgb, self.menu_wide)), None)
+        moving = None
+        if shown is not None:
+            settled = card_at(len(frames) - 1)
+            away = [round(float(np.abs(card_at(n) - settled).mean()), 1)
+                    for n in range(shown, min(shown + 18, len(frames)))]
+            moving = [shown + n for n, d in enumerate(away) if d > DETAIL_CARD_MOVED]
+            self.shot("files-detail-first", np.array(frames[shown]))
+        self.check("... already in place: its card doesn't move in its first frames",
+                   moving is not None and len(moving) <= 1, first=shown, frames=len(frames), moving=moving,
+                   away=away if shown is not None else None)
+        del frames
+        self.press("B")
+        back = self.files_list(True, pane=0)
+        same = self.files_path(like=row, box=FILES_INFO_TITLE_BOX) if row is not None else None
+        again = self.files_rows(right=False, like=rows) if rows is not None else None
+        other = self.files_rows(right=True, like=right) if right is not None else None
+        self.shot("files-detail-back", self.last_rgb)
+        self.check("B comes back to the File Browser, on the same row",
+                   back and same is not None and again is not None)
+        self.check("... with the right pane's storage back as it was", other is not None)
+        return top
+
+    def files_launch(self, image: Path, focus: str) -> None:
+        """The probe's game (files_game), A and A again: Launch Game from its
+        Detail must reach the probe as that game."""
+        self.files_game(image, focus)
+        self.press("A")
+        detail, _ = self.settled_label(box=DETAIL_TITLE_BOX)
+        self.check("A opens the game's Detail again", detail is not None)
+        self.press("A")
+        report = self.handoff("files-game")
+        self.check("Launch Game from the File Browser starts the game with its own disc ID",
+                   report["disc_id"] == card.PROBE_GAME[0], disc_id=report["disc_id"])
+
+    def files_face(self, faces: list[np.ndarray]) -> None:
+        """Down Face File Browser, from System: RIGHT turns to a face named
+        unlike every other, A there opens the File Browser, and B comes back
+        to that face, not System's."""
+        mask, _ = self.press_until("RIGHT", unlike=faces[3])
+        self.shot("after-system-apps-face-files", self.last_rgb)
+        self.check("Down Face File Browser: after System comes a face of its own",
+                   mask is not None and all(overlap(mask, face) < DIFFERENT for face in faces[:5]),
+                   overlaps=[round(overlap(mask, face), 3) for face in faces[:5]]
+                   if mask is not None else None)
+        self.press("A")
+        shown = self.files_list(True, pane=0)
+        self.shot("files-face-list", self.last_rgb)
+        self.check("A on the File Browser face opens the File Browser", shown)
+        self.press("B")
+        gone = self.files_list(False)
+        back, _ = self.settled_label(like=mask) if mask is not None else (None, 0.0)
+        self.shot("files-face-back", self.last_rgb)
+        self.check("B from the File Browser comes back to the File Browser face",
+                   gone and back is not None)
+
+    def library_after_file_browser(self, faces: list[np.ndarray]) -> None:
+        """From Apps, RIGHT to Library and A: after File Browser, the Library
+        opens on a game again, not the File Browser. B and LEFT come back to Apps."""
+        mask, _ = self.press_until("RIGHT", like=faces[0])
+        self.check("RIGHT from Apps comes round to Library", mask is not None)
+        self.press("A")
+        title, _ = self.settled_label(box=TITLE_BOX)
+        self.shot("library-after-file-browser", self.last_rgb)
+        self.check("after File Browser, A on Library opens the Library",
+                   title is not None and not files_screen(self.last_rgb, self.menu_wide) and
+                   not legacy_folder_browser(self.last_rgb))
+        self.press("B")
+        mask, _ = self.settled_label(like=faces[0])
+        self.check("B comes back to Library", mask is not None)
+        mask, _ = self.press_until("LEFT", like=faces[4])
+        self.check("LEFT turns back to Apps", mask is not None)
 
     def memory_cards(self) -> None:
         """On the System face, DOWN and A open Memory Cards, with a GCI folder
@@ -2063,19 +2983,24 @@ class Route:
         self.check("RAW icon plays both distinct texture frames on its selected cube",
                    seen == {0, 1}, frames=sorted(seen))
 
-    def library_save_stats(self, name: str) -> tuple[dict[str, np.ndarray], np.ndarray]:
-        """From Home's Library face, inspect the synthetic game's saves inset."""
+    def library_save_stats(self, name: str, shown: bool) -> np.ndarray:
+        """From Home's Library face, open the synthetic game's details: SAVES
+        shows there only with Saves on Details on and two or more copies."""
         self.press("A")
         title, _ = self.settled_label(box=TITLE_BOX)
         self.check("Library opens the demonstration game", title is not None)
         self.press("A")
         self.check("A opens Library game details", self.covered(title, TITLE_BOX))
-        fields = {}
-        for field, box in (("summary", LIBRARY_SAVES_SUMMARY_BOX),
-                           ("updated", LIBRARY_SAVES_UPDATED_BOX)):
-            mask, _ = self.settled_label(box=box)
-            self.check(f"Library SAVES displays its {field}", mask is not None)
-            fields[field] = mask
+        if shown:
+            for field, box in (("summary", LIBRARY_SAVES_SUMMARY_BOX),
+                               ("updated", LIBRARY_SAVES_UPDATED_BOX)):
+                mask, _ = self.settled_label(box=box)
+                self.check(f"Library SAVES displays its {field}", mask is not None)
+        else:
+            detail, _ = self.settled_label(box=DETAIL_TITLE_BOX)
+            self.check("Library game details settle", detail is not None)
+            self.check("Library game details leave SAVES out",
+                       not text_mask(self.gray(), LIBRARY_SAVES_TAG_BOX).any())
         self.shot(name, self.last_rgb)
         self.press("B")
         self.check("B returns from details to the same Library game",
@@ -2083,13 +3008,14 @@ class Route:
         self.press("B")
         home, _ = self.settled_label()
         self.check("B returns to Home Library", home is not None)
-        return fields, home
+        return home
 
     def virtual_cards(self) -> None:
         """No physical cards: both columns start on SD, one opens a RAW image
         and exports a save through Copy into the other's SD folder."""
         home = self.boot()
-        stats_before, home = self.library_save_stats("virtual-cards-library-before-export")
+        # One save copy: no SAVES on its details, whether Saves on Details is on or off.
+        home = self.library_save_stats("virtual-cards-library-before-export", shown=False)
         faces = [home]
         for n in range(1, 4):
             faces.append(self.turn(faces, "RIGHT", f"virtual-cards-home-right-{n}"))
@@ -2193,11 +3119,8 @@ class Route:
         for n in (2, 1, 0):
             mask, _ = self.press_until("LEFT", like=faces[n])
             self.check("LEFT returns toward Home Library", mask is not None, to=n)
-        stats_after, _ = self.library_save_stats("virtual-cards-library-after-export")
-        self.check("Library counts change after one GCI export",
-                   not same_text(stats_before["summary"], stats_after["summary"]))
-        self.check("Library retains the save's recorded latest date after export",
-                   same_text(stats_before["updated"], stats_after["updated"]))
+        # Two copies after the export: SAVES shows, unless Saves on Details is off.
+        self.library_save_stats("virtual-cards-library-after-export", shown=self.detail_saves)
 
     def virtual_popup_checks(self) -> None:
         """The private emulator image after dialogs, before authorizing Copy."""
@@ -2265,7 +3188,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dol", type=Path)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--route", choices=("smoke", "tour", "game", "save", "virtual-cards", "folders"), default="smoke")
+    parser.add_argument("--route", choices=("smoke", "tour", "game", "save", "virtual-cards", "folders", "files"),
+                        default="smoke")
     parser.add_argument("--probe", type=Path, help="the probe DOL (probe/), launched as an app and a game")
     parser.add_argument("--region", choices=tuple(REGIONS), default="pal")
     parser.add_argument("--storage", choices=tuple(STORAGES), default="dvd")
@@ -2290,6 +3214,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--fragments splits the probe's game on the SD card for the game route")
     if args.route == "virtual-cards" and args.storage not in ("gcloader", "sd2sp2"):
         parser.error("virtual-cards needs an SD card in GC Loader or SD2SP2, with both slots empty")
+    if args.route == "files" and (args.storage != "gcloader" or args.settings):
+        parser.error("files needs a fresh card in a GC Loader (the route puts a second SD card in SD2SP2)")
     if args.route == "folders" and (args.storage != "sd2sp2" or args.region != "ntsc" or
                                      args.cable != "component" or args.settings):
         parser.error("folders needs a fresh SD2SP2 card, NTSC and component video")
@@ -2328,14 +3254,33 @@ def main(argv: list[str] | None = None) -> int:
             if args.route in ("smoke", "tour") and args.storage != "sdgecko-b":
                 cards = work / "cards"
                 make_test_saves.write(str(cards))
+            second = None
+            if args.route == "files":
+                second = work / "second.img"
+                report["second_card"] = card.second_card(second)
             emulator = Emulator(dol, disc.resolve() if disc else None, work, args.out, args.region,
                                 args.storage, sd, args.cable, args.sd_faults, cards,
-                                empty_slots=args.route == "virtual-cards", folder_frames=args.route == "folders")
+                                empty_slots=args.route == "virtual-cards", folder_frames=args.route == "folders",
+                                second=second)
             route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd) and start is None,
                           cable=args.cable, region=args.region, fragments=args.fragments, cards=cards,
                           storage=args.storage, menu_wide=bool(start and "Menu Widescreen=Yes" in start),
-                          sd_image=sd)
+                          sd_image=sd, second_sd=second,
+                          detail_saves=not start or seeded(start).get("Hide Saves on Details") != "Yes",
+                          home_controls=not start or seeded(start).get("Hide On-screen Controls") != "Yes")
             getattr(route, args.route.replace("-", "_"))()
+            if args.route == "files":
+                # Again, with the SD card in SD2SP2 failing writes where a new
+                # file's data would go: a copy that fails partway.
+                emulator.close()
+                (work / "again").mkdir()
+                (args.out / "next-boot").mkdir(exist_ok=True)
+                faults = ",".join(f"write-error={a}-{b}" for a, b in card.free_sectors(second))
+                emulator = Emulator(dol, disc.resolve() if disc else None, work / "again",
+                                    args.out / "next-boot", args.region, args.storage, sd,
+                                    args.cable, faults, second=second)
+                route.emulator, route.pad, route.fresh_card = emulator, emulator.pad, False
+                route.files_write_fails()
             if args.route == "save":
                 # Power off and on again, with a card that works.
                 emulator.close()

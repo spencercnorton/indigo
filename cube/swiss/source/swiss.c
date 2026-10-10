@@ -66,6 +66,8 @@
 #include "gui/ui_home_safety.h"
 #include "gui/ui_presentation.h"
 #include "gui/ui_scene.h"
+#include "gui/ui_motion.h"
+#include "gui/ui_stage.h"
 #include "devices/deviceHandler.h"
 #include "devices/filelock.h"
 #include "devices/filemeta.h"
@@ -103,15 +105,82 @@ static u32 homeMenuInputRetrace;
  * therefore starts unmounted and can never inherit a predecessor's state. */
 static uiHomeSourceLifecycle_t homeSourceLifecycle;
 
-/* Whether the source has apps, looked for once per mount and refresh. */
+/* Whether the source has apps, and emulators, looked for once per mount
+ * and refresh. */
 static bool homeAppsKnown;
 static bool homeAppsFound;
+static bool homeEmulatorsKnown;
+static bool homeEmulatorsFound;
+
+/* System > File Browser: Swiss's own file list, even where the Library
+ * would show, until Home or a Recent entry takes over again. */
+static bool homeFileBrowser;
+
+/* Setup > Library > File Management, which File Browser always has. Only
+ * read here: the setting itself is never changed, so never saved changed. */
+static bool fileManagementAllowed(void)
+{
+	return swissSettings.enableFileManagement || homeFileBrowser;
+}
+
+/* While the File Browser runs one of Swiss's file operations, Swiss's
+ * questions and results are drawn as its own boxes beside the row (the
+ * question's words unchanged); everywhere else they are Swiss's. */
+static bool filesBoxes;
+static int filesAsk(const char *text);
+
+/* Asks before an action that is hard to undo. text ends with its hint line
+ * ("A  MOVE    B  CANCEL"); true on A. */
+static bool confirmAction(const char *text)
+{
+	int asked = filesBoxes ? filesAsk(text) : -1;
+	if(asked >= 0) {
+		return asked;
+	}
+	bool released = false;
+	bool confirmed = false;
+	uiDrawObj_t *box = DrawPublish(DrawMessageBox(D_WARN, text));
+
+	while(1) {
+		u32 held = padsButtonsHeld();
+
+		/* The press that chose the action must be let go first. */
+		if(!released) {
+			released = held == 0u;
+		}
+		else if(held & BUTTON_A) {
+			confirmed = true;
+			break;
+		}
+		else if(held & BUTTON_B) {
+			break;
+		}
+		VIDEO_WaitVSync();
+	}
+	do {VIDEO_WaitVSync();} while(padsButtonsHeld() & (BUTTON_A | BUTTON_B));
+	DrawDispose(box);
+	return confirmed;
+}
+
+/* Autoload skips Home at every start, so turning it on asks first; turning
+ * it off doesn't. */
+static bool autoloadToggleConfirmed(const char *path, bool folder)
+{
+	if(!strcmp(&swissSettings.autoload[0], path) ||
+		!fnmatch(&swissSettings.autoload[0], path, FNM_PATHNAME)) {
+		return true;
+	}
+	return confirmAction(folder ?
+		"Open this folder at every start?\nHome is skipped until you turn it off.\nA  AUTOLOAD    B  CANCEL" :
+		"Open this game at every start?\nHome is skipped until you turn it off.\nA  AUTOLOAD    B  CANCEL");
+}
 
 static void homeSourceRecord(DEVICEHANDLER_INTERFACE *handler,
 	uiHomeSourceMountState_t state)
 {
 	UIHomeSafety_RecordSource(&homeSourceLifecycle, handler, state);
 	homeAppsKnown = false;
+	homeEmulatorsKnown = false;
 }
 
 static bool homeSourceLifecycleMounted(void)
@@ -176,16 +245,40 @@ static uiHomeCapabilities_t homeCapabilities(void)
 		.hasRecent = swissSettings.recentListLevel > 0 &&
 			swissSettings.recent[0][0] != '\0',
 		.style = swissSettings.cubeStyle ?
-			UI_HOME_CUBE_CLASSIC : UI_HOME_CUBE_INFINITE
+			UI_HOME_CUBE_CLASSIC : UI_HOME_CUBE_INFINITE,
+		.hideFaceLabel = swissSettings.hideFaceLabels != 0,
+		.hideCommands = swissSettings.hideHomeControls != 0,
+		.customSides = true,
+		.sides = {
+			UIHome_SideFace(UI_HOME_SIDE_UP, swissSettings.upFace),
+			UIHome_SideFace(UI_HOME_SIDE_LEFT, swissSettings.leftFace),
+			UIHome_SideFace(UI_HOME_SIDE_RIGHT, swissSettings.rightFace),
+			UIHome_SideFace(UI_HOME_SIDE_DOWN, swissSettings.downFace)
+		}
 	};
-	/* The Apps face shows while the mounted source has an app, unless
-	 * Setup > Console > Apps Face is Off; then the card isn't read for it. */
-	if(capabilities.hasSource && !swissSettings.hideAppsFace && !homeAppsKnown) {
+	bool appsPlaced = false;
+	bool emulatorsPlaced = false;
+
+	for(int side = 0; side < UI_HOME_SIDE_COUNT; side++) {
+		appsPlaced = appsPlaced || capabilities.sides[side] == UI_HOME_FACE_APPS;
+		emulatorsPlaced = emulatorsPlaced ||
+			capabilities.sides[side] == UI_HOME_FACE_EMULATORS;
+	}
+	/* The Apps face shows while the mounted source has an app, when Setup >
+	 * Console puts it on a side; otherwise the card isn't read for it. */
+	if(capabilities.hasSource && appsPlaced && !homeAppsKnown) {
 		homeAppsFound = apps_available(devices[DEVICE_CUR]);
 		homeAppsKnown = true;
 	}
-	capabilities.hasApps = capabilities.hasSource && !swissSettings.hideAppsFace &&
+	capabilities.hasApps = capabilities.hasSource && appsPlaced &&
 		homeAppsFound;
+	/* Emulators the same way, for /emulators. */
+	if(capabilities.hasSource && emulatorsPlaced && !homeEmulatorsKnown) {
+		homeEmulatorsFound = emulators_available(devices[DEVICE_CUR]);
+		homeEmulatorsKnown = true;
+	}
+	capabilities.hasEmulators = capabilities.hasSource && emulatorsPlaced &&
+		homeEmulatorsFound;
 	return capabilities;
 }
 
@@ -218,6 +311,11 @@ static void homePublish(bool visible)
 
 static void folderArtClose(void);
 
+/* The File Browser's page, while it is up (defined with the File Browser):
+ * every place that lets that page go clears it, or a later page at the same
+ * address would look like the File Browser's own and skip its opening. */
+static uiDrawObj_t *filesPage;
+
 /* A browser panel belongs to the file-list surface. Retaining only the file
  * selection keeps Library re-entry stable without leaving an unconditional
  * legacy browser container over Home and every child menu opened from it. */
@@ -225,6 +323,7 @@ static void homePublishBrowserTransition(uiDrawObj_t **filePanel)
 {
 	bool visible = curMenuLocation == ON_OPTIONS;
 	if(visible && filePanel != NULL && *filePanel != NULL) {
+		if(*filePanel == filesPage) filesPage = NULL;
 		DrawDispose(*filePanel);
 		*filePanel = NULL;
 	}
@@ -302,80 +401,6 @@ void ogc_video__reset()
 			sleep(2);
 			DrawDispose(msgBox);
 		}
-	}
-}
-
-void drawCurrentDevice(uiDrawObj_t *containerPanel) {
-	uiDrawObj_t *bgBox = DrawTransparentBox(30, 100, 135, 200);	// Device icon + slot box
-	DrawAddChild(containerPanel, bgBox);
-	// Draw the device image
-	float scale = 1.0f;
-	if (devices[DEVICE_CUR]->deviceTexture.width > devices[DEVICE_CUR]->deviceTexture.height) {
-		scale = MIN(1.0f, 104.0f / devices[DEVICE_CUR]->deviceTexture.width);
-	} else {
-		scale = MIN(1.0f, 84.0f / devices[DEVICE_CUR]->deviceTexture.height);
-	}
-	int scaledWidth = devices[DEVICE_CUR]->deviceTexture.realWidth*scale;
-	int scaledHeight = devices[DEVICE_CUR]->deviceTexture.realHeight*scale;
-	uiDrawObj_t *devImageLabel = DrawImage(devices[DEVICE_CUR]->deviceTexture.textureId
-				, 30 + ((135-30) / 2) - (scaledWidth/2), 92 + ((200-100) /2) - (scaledHeight/2)	// center x,y
-				, scaledWidth, scaledHeight, // scaled image
-				0, 0.0f, 1.0f, 0.0f, 1.0f, 0);
-	DrawAddChild(containerPanel, devImageLabel);
-	if(devices[DEVICE_CUR]->location & LOC_SYSTEM)
-		sprintf(txtbuffer, "%s", "System");
-	else if(devices[DEVICE_CUR]->location == LOC_MEMCARD_SLOT_A)
-		sprintf(txtbuffer, "%s", "Slot A");
-	else if(devices[DEVICE_CUR]->location == LOC_MEMCARD_SLOT_B)
-		sprintf(txtbuffer, "%s", "Slot B");
-	else if(devices[DEVICE_CUR]->location == LOC_DVD_CONNECTOR)
-		sprintf(txtbuffer, "%s", "DVD Device");
-	else if(devices[DEVICE_CUR]->location == LOC_SERIAL_PORT_1)
-		sprintf(txtbuffer, "%s", "Serial Port 1");
-	else if(devices[DEVICE_CUR]->location == LOC_SERIAL_PORT_2)
-		sprintf(txtbuffer, "%s", "Serial Port 2");
-	else if(devices[DEVICE_CUR]->location == LOC_HSP)
-		sprintf(txtbuffer, "%s", "Hi Speed Port");
-	else
-		sprintf(txtbuffer, "%s", "Unknown");
-	uiDrawObj_t *devLocationLabel = DrawStyledLabel(30 + ((135-30) / 2), 195, txtbuffer, 0.65f, ALIGN_CENTER, defaultColor);
-	DrawAddChild(containerPanel, devLocationLabel);
-	
-	device_info *info = devices[DEVICE_CUR]->info(devices[DEVICE_CUR]->initial);
-	if (info == NULL) {
-		uiDrawObj_t *devInfoBox = DrawTransparentBox(30, 225, 135, 260);	// Device size/extra info box
-		DrawAddChild(containerPanel, devInfoBox);
-		
-		// Used space
-		uiDrawObj_t *devUsedLabel = DrawStyledLabel(83, 233, "Used:", 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devUsedLabel);
-		formatBytes(txtbuffer, getCurrentDirSize(), 0, !(devices[DEVICE_CUR]->location & LOC_SYSTEM));
-		uiDrawObj_t *devUsedSizeLabel = DrawStyledLabel(83, 248, txtbuffer, 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devUsedSizeLabel);
-	} else {
-		uiDrawObj_t *devInfoBox = DrawTransparentBox(30, 225, 135, 330);	// Device size/extra info box
-		DrawAddChild(containerPanel, devInfoBox);
-		
-		// Total space
-		uiDrawObj_t *devTotalLabel = DrawStyledLabel(83, 233, "Total:", 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devTotalLabel);
-		formatBytes(txtbuffer, info->totalSpace, 0, info->metric);
-		uiDrawObj_t *devTotalSizeLabel = DrawStyledLabel(83, 248, txtbuffer, 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devTotalSizeLabel);
-		
-		// Free space
-		uiDrawObj_t *devFreeLabel = DrawStyledLabel(83, 268, "Free:", 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devFreeLabel);
-		formatBytes(txtbuffer, info->freeSpace, 0, info->metric);
-		uiDrawObj_t *devFreeSizeLabel = DrawStyledLabel(83, 283, txtbuffer, 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devFreeSizeLabel);
-		
-		// Used space
-		uiDrawObj_t *devUsedLabel = DrawStyledLabel(83, 303, "Used:", 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devUsedLabel);
-		formatBytes(txtbuffer, info->totalSpace - info->freeSpace, 0, info->metric);
-		uiDrawObj_t *devUsedSizeLabel = DrawStyledLabel(83, 318, txtbuffer, 0.6f, ALIGN_CENTER, defaultColor);
-		DrawAddChild(containerPanel, devUsedSizeLabel);
 	}
 }
 
@@ -474,6 +499,11 @@ void select_recent_entry() {
 			DrawGameflowCancelPosters();
 		}
 		int res = find_existing_entry(&swissSettings.recent[idx][0], true);
+		if(res != RECENT_ERR_DEV_MISSING) {
+			/* An entry opens as it does from Home: in the Library where
+			 * that would show. */
+			homeFileBrowser = false;
+		}
 		if(res == RECENT_ERR_DEV_MISSING && targetSource != NULL &&
 				!targetWasAvailable) {
 			deviceHandler_setDeviceAvailable(targetSource, false);
@@ -495,48 +525,11 @@ void select_recent_entry() {
 			homeSourceRecord(NULL, UI_HOME_SOURCE_MOUNT_ABSENT);
 		}
 		if(res) {
-			uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,res == RECENT_ERR_ENT_MISSING ? "Recent entry not found.\nPress A to continue." 
+			uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,res == RECENT_ERR_ENT_MISSING ? "Recent entry not found.\nPress A to continue."
 																					:	"Recent device not found.\nPress A to continue.");
 			DrawPublish(msgBox);
 			wait_press_A();
 			DrawDispose(msgBox);
-		}
-	}
-}
-
-// Draws all the files in the current dir.
-void drawFiles(file_handle** directory, int num_files, uiDrawObj_t *containerPanel) {
-	int i = 0, j = 0;
-	current_view_start = MIN(MAX(0,curSelection-FILES_PER_PAGE/2),MAX(0,num_files-FILES_PER_PAGE));
-	current_view_end = MIN(num_files, MAX(curSelection+(FILES_PER_PAGE+1)/2,FILES_PER_PAGE));
-	drawCurrentDevice(containerPanel);
-	int fileListBase = 105;
-	int scrollBarHeight = (FILES_PER_PAGE*40);
-	int scrollBarTabHeight = (int)((float)scrollBarHeight/(float)num_files);
-	if(num_files > 0) {
-		// Draw which directory we're in
-		sprintf(txtbuffer, "%s", getDevicePath(&curDir.name[0]));
-		float scale = GetTextScaleToFitInWidthWithMax(txtbuffer, ((getVideoMode()->fbWidth-150)-20), .85);
-		DrawAddChild(containerPanel, DrawStyledLabel(150, 90, txtbuffer, scale, ALIGN_LEFT, defaultColor));
-		if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
-		|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
-			DrawAddChild(containerPanel, DrawImage(TEX_STAR, ((getVideoMode()->fbWidth-30)-16), 80, 16, 16, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0));
-		}
-		if(num_files > FILES_PER_PAGE) {
-			uiDrawObj_t *scrollBar = DrawVertScrollBar(getVideoMode()->fbWidth-25, fileListBase, 16, scrollBarHeight, (float)((float)curSelection/(float)(num_files-1)),scrollBarTabHeight);
-			DrawAddChild(containerPanel, scrollBar);
-		}
-		for(i = current_view_start,j = 0; i<current_view_end; ++i,++j) {
-			lockFile(directory[i]);
-			populate_meta(directory[i]);
-			uiDrawObj_t *browserButton = DrawFileBrowserButton(150, fileListBase+(j*40),
-									getVideoMode()->fbWidth-30, fileListBase+(j*40)+40,
-									getRelativePath(directory[i]->name, curDir.name),
-									directory[i],
-									(i == curSelection) ? B_SELECTED:B_NOSELECT);
-			directory[i]->uiObj = browserButton;
-			unlockFile(directory[i]);
-			DrawAddChild(containerPanel, browserButton);
 		}
 	}
 }
@@ -547,185 +540,2167 @@ bool upToParent(file_handle* entry)
 	// If we're a file, go up to the parent of the file
 	if(entry->fileType == IS_FILE)
 		getParentPath(entry->name, entry->name);
-	
+
 	// Go up a folder
 	return getParentPath(entry->name, entry->name);
 }
 
-uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
+/* The list's actions, one copy for the File Browser and the Library. Each
+ * acts on directory[curSelection], the sorted listing's focused entry, as the
+ * loops always did. cardArt: the caller shows folder pictures (the
+ * Library), which stop with the meta thread before a file operation. */
+
+/* X, and ".." outside the Library: up a folder. The folder left is the one
+ * scanFiles selects again (curFile); at the root the Source picker opens. */
+static void filesUp(const file_handle *parent)
 {
-	memset(txtbuffer,0,sizeof(txtbuffer));
+	memcpy(&curFile, &curDir, sizeof(file_handle));
+	curDir.fileBase = parent->fileBase;
+	needsDeviceChange = upToParent(&curDir);
+	needsRefresh = 1;
+}
+
+/* The retained Library ends at /games. Its parent card and X return Home,
+ * keeping this listing ready for the next visit instead of opening Swiss's
+ * device-root browser. Within a folder, keep scanFiles' child selection. */
+static void gameflowNavigateParent(bool useGameflow, const file_handle *parent)
+{
+	char gamesRoot[PATHNAME_MAX];
+
+	if(useGameflow && devices[DEVICE_CUR] != NULL &&
+		devices[DEVICE_CUR]->initial != NULL) {
+		concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
+		if(UIGameflowLibrary_Locate(gamesRoot, curDir.name) ==
+			UI_GAMEFLOW_LIBRARY_LOCATION_ROOT) {
+			curMenuLocation = ON_OPTIONS;
+			return;
+		}
+	}
+	filesUp(parent);
+}
+
+static bool filesManageFile(DEVICEHANDLER_INTERFACE *keep);
+
+/* A: open a folder, go up from "..", start a file, or with File Management
+ * manage one that can't start. */
+static void filesActivate(file_handle **directory, bool useGameflow)
+{
+	lockFile(directory[curSelection]);
+	//go into a folder or select a file
+	if(directory[curSelection]->fileType==IS_DIR) {
+		memcpy(&curDir, directory[curSelection], sizeof(file_handle));
+		needsRefresh=1;
+	}
+	else if(directory[curSelection]->fileType==IS_SPECIAL) {
+		gameflowNavigateParent(useGameflow, directory[curSelection]);
+	}
+	else if(directory[curSelection]->fileType==IS_FILE) {
+		memcpy(&curFile, directory[curSelection], sizeof(file_handle));
+		if(canLoadFileType(curFile.name, devices[DEVICE_CUR]->extraExtensions)) {
+			meta_thread_stop();
+			load_file();
+		}
+		else if(fileManagementAllowed()) {
+			meta_thread_stop();
+			needsRefresh = filesManageFile(NULL) ? 1:0;
+		}
+		memcpy(directory[curSelection], &curFile, sizeof(file_handle));
+	}
+	unlockFile(directory[curSelection]);
+}
+
+/* Z on "..": folder opens at every start, or no longer does. Turning it
+ * on asks first. */
+static void filesToggleAutoload(const char *folder)
+{
+	if(!autoloadToggleConfirmed(folder, true)) {
+		return;
+	}
+	// Toggle autoload
+	if(!strcmp(&swissSettings.autoload[0], folder)
+	|| !fnmatch(&swissSettings.autoload[0], folder, FNM_PATHNAME)) {
+		memset(&swissSettings.autoload[0], 0, PATHNAME_MAX);
+	}
+	else {
+		strcpy(&swissSettings.autoload[0], folder);
+	}
+	// Save config
+	uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving autoload\205"));
+	config_update_autoload(true);
+	DrawDispose(msgBox);
+}
+
+/* Z in the Library, with File Management: the Z menu on a file or a
+ * folder, Autoload on "..". True when the listing must be read again. */
+static bool filesManage(file_handle **directory)
+{
+	if(!fileManagementAllowed()) {
+		return false;
+	}
+	lockFile(directory[curSelection]);
+	if(directory[curSelection]->fileType == IS_FILE || directory[curSelection]->fileType == IS_DIR) {
+		memcpy(&curFile, directory[curSelection], sizeof(file_handle));
+		meta_thread_stop();
+		CardArt_Pause();
+		needsRefresh = filesManageFile(NULL) ? 1:0;
+		memcpy(directory[curSelection], &curFile, sizeof(file_handle));
+		while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
+		if(needsRefresh) {
+			// If we return from doing something with a file, refresh the device in the same dir we were at
+			unlockFile(directory[curSelection]);
+			return true;
+		}
+	}
+	else if(directory[curSelection]->fileType == IS_SPECIAL) {
+		filesToggleAutoload(&curDir.name[0]);
+	}
+	unlockFile(directory[curSelection]);
+	return false;
+}
+
+/* START, unless Recent List is Off: the Recent list. True when it opened. */
+static bool filesRecent(bool cardArt)
+{
+	if(swissSettings.recentListLevel > 0) {
+		meta_thread_stop();
+		if(cardArt) {
+			CardArt_Pause();
+		}
+		select_recent_entry();
+		return true;
+	}
+	return false;
+}
+
+/* B: back to Home. */
+static void filesHome(void)
+{
+	curMenuLocation = ON_OPTIONS;
+}
+
+/* The DK Bongos' clap: on to the next Bongo game. */
+static void filesBarrelGame(uiDrawObj_t *loadingBox)
+{
+	if(padsButtonsHeld() & BUTTON_CLAP) {
+		DrawUpdateProgressLoading(loadingBox, +1);
+		curSelection = meta_find_barrel_game(curSelection);
+		DrawUpdateProgressLoading(loadingBox, -1);
+	}
+}
+
+/* ------------------------------------------------------------------------
+ * The File Browser: two panes side by side, as Memory Cards shows two
+ * stacks, in place of Swiss's lists everywhere outside the Library. The
+ * left pane is the Source and is the listing menu_loop scans: it starts
+ * games, holds the second disc and the MP3 player's songs, and is the one
+ * the meta thread reads banners for. The right pane reads a folder of its
+ * own, on the Source or on a storage of its own that L and R choose.
+ * --------------------------------------------------------------------- */
+
+/* The right pane's listing: readDir and sortFiles, as select_dest_dir reads
+ * a folder. Never scanFiles, populate_meta, the meta thread,
+ * current_view_*, curFile, curDir or curSelection, so the shared listing
+ * and everything that reads it never see this one. Its storage is kept out
+ * of devices[]: Settings' Load at startup picks a destination device and
+ * unmounts whatever DEVICE_DEST held. */
+typedef struct {
+	DEVICEHANDLER_INTERFACE *device;	/* its storage, for the session */
+	file_handle dir;			/* the open folder */
+	file_handle *entries;			/* readDir's array */
+	file_handle **sorted;			/* sortFiles' view of it */
+	int read, count;			/* entries read, and shown */
+	bool listed;				/* entries hold dir's listing */
+	bool readFailed;			/* the last read failed */
+	u8 mount;				/* uiFilesMount_t */
+	u16 listing;
+	char status[64];			/* why init failed, the device's words */
+	char free[24];				/* its free space, "read-only" or "" */
+	char focusName[PATHNAME_MAX];		/* found again after a read */
+} filesPane_t;
+
+static filesPane_t filesOther;
+static uiFilesState_t filesState;
+static uiFilesSnapshot_t filesSnapshot __attribute__((aligned(32)));
+/* filesPage (declared above): the page last published, so a return from a
+ * folder change updates it in place rather than opening it again. */
+static u16 filesLeftListing;
+/* The Source's free space, read once a listing. */
+static char filesFree[24];
+/* A left folder change keeps the presses made while the folder is read. */
+static bool filesKeepPresses;
+/* Line 2 of the info bar until the next press: why a press did nothing. */
+static const char *filesNote;
+static char filesNoteText[UI_FILES_TEXT_CAPACITY];
+/* The visible left rows read without a meta thread, from filesMetaFirst. */
+static int filesMetaFirst = -1;
+static u16 filesMetaListing;
+static u32 filesMetaTried;
+/* The scene the File Browser opened over: Home's from a face, else the
+ * Library's. */
+static uiSceneId_t filesScene = UI_SCENE_HOME;
+/* renderFileCarousel couldn't draw the Library here: the File Browser shows
+ * this folder, read again, until the next listing. */
+static bool gameflowListFallback;
+/* A device the File Browser holds mounted while Swiss's box runs on the
+ * right pane's storage: manage_file neither mounts nor unmounts it as a
+ * destination. */
+static DEVICEHANDLER_INTERFACE *manageKeep;
+
+/* Swiss's box, keeping keep mounted: manage_file neither mounts nor
+ * unmounts it as a destination, and a destination slot holding it is
+ * empty meanwhile, so the picker can't unmount it. keep NULL: the right
+ * pane's own storage, when it holds one (outside the File Browser it has
+ * let it go). */
+static bool filesManageFile(DEVICEHANDLER_INTERFACE *keep)
+{
+	bool changed;
+
+	if(keep == NULL && filesOther.mount == UI_FILES_OWN) {
+		keep = filesOther.device;
+	}
+	if(keep != NULL && devices[DEVICE_DEST] == keep) {
+		devices[DEVICE_DEST] = NULL;
+	}
+	manageKeep = keep;
+	changed = manage_file();
+	manageKeep = NULL;
+	return changed;
+}
+static void sourceCommit(DEVICEHANDLER_INTERFACE *device);
+static bool sourceMount(void);
+/* The box open (a storage menu, Actions, a question): its words, the
+ * devices a storage menu lists, and the hints under it. */
+static uiFilesStorageMenu_t filesMenu;
+static DEVICEHANDLER_INTERFACE *filesMenuDevices[UI_FILES_STORAGE_DEVICES];
+static uiFilesHintMode_t filesMenuHints = UI_FILES_HINTS_BOX;
+static void manageDestName(char *out, const char *dir, const char *src,
+	DEVICEHANDLER_INTERFACE *srcDev, DEVICEHANDLER_INTERFACE *destDev);
+/* Where the last copy or move landed, after Keep both chose its number. */
+static char manageLanded[PATHNAME_MAX];
+
+static int filesMeasure(const char *text)
+{
+	return GetTextSizeInPixels(text);
+}
+
+/* text's width at scale, as the draw takes it. */
+static int filesWidth(const char *text, float scale)
+{
+	return (int)ceilf((float)GetTextSizeInPixels(text) * scale);
+}
+
+/* A device as the File Browser's model sees it. */
+static void filesDevice(DEVICEHANDLER_INTERFACE *device, uiFilesDevice_t *out)
+{
+	memset(out, 0, sizeof(*out));
+	if(device == NULL) {
+		return;
+	}
+	out->handler = device;
+	out->name = DeviceDisplayName(device);
+	out->location = device->location;
+	out->network = device == &__device_smb || device == &__device_ftp ||
+		device == &__device_fsp;
+	out->metric = !(device->location & LOC_SYSTEM);
+	out->card = device == &__device_card_a || device == &__device_card_b;
+	out->canWrite = (device->features & FEAT_WRITE) != 0;
+	/* A memory card's rename is a stub that changes nothing. */
+	out->canRename = device->renameFile != NULL && !out->card;
+	out->canHide = device->hideFile != NULL;
+	out->canDelete = device->deleteFile != NULL;
+}
+
+/* a and b can't be open together: two storages on one connector, or two on
+ * the network adapter. reason, when given, says why. */
+static bool filesClash(DEVICEHANDLER_INTERFACE *a, DEVICEHANDLER_INTERFACE *b,
+	char *reason, size_t capacity)
+{
+	uiFilesDevice_t x, y;
+
+	filesDevice(a, &x);
+	filesDevice(b, &y);
+	return UIFiles_StorageClash(&x, &y, reason, capacity);
+}
+
+/* A memory card's and a Qoob's sizes are in their blocks, 0 elsewhere. */
+static u32 filesBlockSize(DEVICEHANDLER_INTERFACE *device)
+{
+	return device == &__device_card_a || device == &__device_card_b ? 8192u :
+		device == &__device_qoob ? 65536u : 0u;
+}
+
+/* A free-space box's words: never a guess (a network share's, or none). */
+static void filesFreeText(DEVICEHANDLER_INTERFACE *device, char *out, size_t capacity)
+{
+	device_info *info;
+
+	out[0] = '\0';
+	if(!(device->features & FEAT_WRITE)) {
+		strlcpy(out, "read-only", capacity);
+		return;
+	}
+	info = device->info != NULL ? device->info(device->initial) : NULL;
+	if(UIFiles_FreeKnown(info != NULL, info != NULL ? info->totalSpace : 0u,
+			device == &__device_smb || device == &__device_ftp ||
+			device == &__device_fsp)) {
+		UIFiles_SizeText(out, capacity, info->freeSpace, filesBlockSize(device),
+			info->metric);
+	}
+}
+
+/* The right pane's listing goes; its storage, folder and focus stay. */
+static void filesOtherFree(void)
+{
+	for(int i = 0; i < filesOther.read; i++) {
+		filesOther.device->closeFile(&filesOther.entries[i]);
+	}
+	free(filesOther.sorted);
+	free(filesOther.entries);
+	filesOther.sorted = NULL;
+	filesOther.entries = NULL;
+	filesOther.read = filesOther.count = 0;
+	filesOther.listed = false;
+}
+
+/* The right pane lets its storage go: its listing, and the mount it made
+ * itself (the Source's stays). Its storage, folder and focus are kept for
+ * filesOtherAcquire to bring back. Called before control leaves the
+ * screen, before anything that mounts or unmounts storage on its own (a
+ * Source change, a settings save, Recent, starting a file) and on B. */
+static void filesOtherRelease(void)
+{
+	filesOtherFree();
+	if(filesOther.mount == UI_FILES_OWN) {
+		filesOther.device->deinit(filesOther.device->initial);
+	}
+	filesOther.mount = UI_FILES_UNMOUNTED;
+}
+
+/* Mounts the right pane's storage as manage_file mounts a destination,
+ * unless it is the Source, whose mount it shares. False when it won't. */
+static bool filesOtherMount(void)
+{
+	DEVICEHANDLER_INTERFACE *device = filesOther.device;
+	s32 ret;
+
+	if(device == devices[DEVICE_CUR]) {
+		filesOther.mount = UI_FILES_SHARED;
+		return true;
+	}
+	device->deinit(device->initial);
+	deviceHandler_setStatEnabled(0);
+	ret = device->init(device->initial);
+	deviceHandler_setStatEnabled(1);
+	filesOther.mount = ret ? UI_FILES_FAILED : UI_FILES_OWN;
+	filesOther.status[0] = '\0';
+	if(ret) {
+		char *status = device->status != NULL ? device->status(device->initial) : NULL;
+
+		strlcpy(filesOther.status, status != NULL ? status : strerror(ret),
+			sizeof(filesOther.status));
+	}
+	return !ret;
+}
+
+/* path is folder or inside it. */
+static bool filesWithin(const char *path, const char *folder)
+{
+	size_t length = strlen(folder);
+
+	return !strncmp(path, folder, length) && (path[length] == '\0' || path[length] == '/');
+}
+
+static bool filesAtRoot(const file_handle *dir)
+{
+	char parent[PATHNAME_MAX];
+
+	strlcpy(parent, dir->name, sizeof(parent));
+	return getParentPath(parent, parent);
+}
+
+/* Reads the right pane's folder, focusing focusName again. The read is the
+ * mount check: a storage of its own that someone else unmounted is mounted
+ * again once. A folder that is gone starts it again at its storage's top. */
+static void filesOtherRead(void)
+{
+	DEVICEHANDLER_INTERFACE *device = filesOther.device;
+	int focus = 0;
+
+	filesOtherFree();
+	filesOther.read = device->readDir(&filesOther.dir, &filesOther.entries, -1);
+	if(filesOther.read < 0 && filesOther.mount == UI_FILES_OWN) {
+		free(filesOther.entries);
+		filesOther.entries = NULL;
+		if(filesOtherMount()) {
+			filesOther.read = device->readDir(&filesOther.dir, &filesOther.entries, -1);
+		}
+	}
+	if(filesOther.read <= 0 && filesOther.mount != UI_FILES_FAILED &&
+			strcmp(filesOther.dir.name, device->initial->name)) {
+		free(filesOther.entries);
+		filesOther.entries = NULL;
+		memcpy(&filesOther.dir, device->initial, sizeof(file_handle));
+		filesOther.read = device->readDir(&filesOther.dir, &filesOther.entries, -1);
+	}
+	filesOther.readFailed = filesOther.read < 0;
+	if(filesOther.read < 0) {
+		filesOther.read = 0;
+	}
+	filesOther.count = sortFiles(filesOther.entries, filesOther.read, &filesOther.sorted);
+	for(int i = 0; i < filesOther.count; i++) {
+		if(!strcmp(filesOther.sorted[i]->name, filesOther.focusName)) {
+			focus = i;
+		}
+	}
+	if(focus == 0 && filesOther.count > 1 &&
+			filesOther.sorted[0]->fileType == IS_SPECIAL) {
+		focus = 1;
+	}
+	filesFreeText(device, filesOther.free, sizeof(filesOther.free));
+	filesOther.listed = true;
+	filesOther.listing++;
+	UIFiles_SetPane(&filesState, UI_FILES_RIGHT, filesOther.count, focus);
+}
+
+/* Where the right pane opens the first time in a session. */
+static DEVICEHANDLER_INTERFACE *filesOtherDefault(void)
+{
+	DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR], *config = devices[DEVICE_CONFIG];
+
+	return UIFiles_RightOnConfig(fileManagementAllowed(), config != NULL,
+		config != NULL && deviceHandler_getDeviceAvailable(config), config == source) &&
+		!filesClash(config, source, NULL, 0) ? config : source;
+}
+
+/* The right pane, mounted and read if it isn't: every time the screen
+ * starts or comes back. A pane that failed to mount stays so until it is
+ * released or its storage chosen again. */
+static void filesOtherAcquire(void)
+{
+	DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];
+
+	if(filesOther.device == NULL || filesClash(filesOther.device, source, NULL, 0)) {
+		filesOtherRelease();
+		filesOther.device = filesOtherDefault();
+		memcpy(&filesOther.dir, filesOther.device->initial, sizeof(file_handle));
+		filesOther.focusName[0] = '\0';
+	}
+	/* The Source changed under a shared pane: the pane mounts its own. Or
+	 * its storage became the Source: the Source's mount is the one. */
+	if(filesOther.mount == UI_FILES_SHARED && filesOther.device != source) {
+		filesOtherFree();
+		filesOther.mount = UI_FILES_UNMOUNTED;
+	}
+	if(filesOther.mount == UI_FILES_OWN && filesOther.device == source) {
+		filesOther.mount = UI_FILES_SHARED;
+	}
+	if(filesOther.mount == UI_FILES_UNMOUNTED) {
+		filesOtherFree();
+		if(!filesOtherMount()) {
+			filesOther.listed = true;
+			filesOther.readFailed = false;
+			filesOther.free[0] = '\0';
+			filesOther.listing++;
+			UIFiles_SetPane(&filesState, UI_FILES_RIGHT, 0, 0);
+			return;
+		}
+	}
+	if(filesOther.mount != UI_FILES_FAILED && !filesOther.listed) {
+		filesOtherRead();
+	}
+}
+
+/* The right pane on device, at its top, mounted and read. */
+static void filesOtherChoose(DEVICEHANDLER_INTERFACE *device)
+{
+	filesOtherRelease();
+	filesOther.device = device;
+	memcpy(&filesOther.dir, device->initial, sizeof(file_handle));
+	filesOther.focusName[0] = '\0';
+	filesOtherAcquire();
+}
+
+/* R, Other devices...: Swiss's destination picker, kept from mounting or
+ * unmounting anything of the screen's. DEVICE_DEST is empty while it runs
+ * (so it lets nothing go), what it chose becomes the pane's storage, and
+ * the slot and the scene come back as they were. The picker greys nothing:
+ * a choice that can't be open beside the Source keeps the pane where it
+ * was, and the info bar says why. */
+static void filesOtherPick(void)
+{
+	DEVICEHANDLER_INTERFACE *dest = devices[DEVICE_DEST];
+	DEVICEHANDLER_INTERFACE *chosen;
+
+	filesOtherRelease();
+	devices[DEVICE_DEST] = NULL;
+	/* The picker reads held buttons: the A that chose it isn't its own. */
+	while(padsButtonsHeld() & PAD_BUTTON_A) VIDEO_WaitVSync();
+	select_device(DEVICE_DEST);
+	chosen = devices[DEVICE_DEST];
+	devices[DEVICE_DEST] = dest;
+	UIScene_Request(filesScene);
+	if(chosen != NULL && filesClash(chosen, devices[DEVICE_CUR], filesNoteText,
+			sizeof(filesNoteText))) {
+		filesNote = filesNoteText;
+		chosen = NULL;
+	}
+	if(chosen != NULL) {
+		filesOtherChoose(chosen);
+	}
+	else {
+		filesOtherAcquire();
+	}
+}
+
+/* The right pane opens folder (or, NULL, its parent), focusing focus (NULL:
+ * the folder it came from). A meta thread may be reading the Source
+ * meanwhile: it runs only on a device that is thread safe. */
+static void filesOtherOpen(const file_handle *folder, const char *focus)
+{
+	char from[PATHNAME_MAX];
+
+	strlcpy(from, filesOther.dir.name, sizeof(from));
+	if(folder != NULL) {
+		memcpy(&filesOther.dir, folder, sizeof(file_handle));
+	}
+	else {
+		/* A disc finds a folder by its fileBase: the ".." entry has the
+		 * parent's, as filesUp takes it. */
+		if(filesOther.count > 0 && filesOther.sorted[0]->fileType == IS_SPECIAL) {
+			filesOther.dir.fileBase = filesOther.sorted[0]->fileBase;
+		}
+		getParentPath(filesOther.dir.name, filesOther.dir.name);
+		filesOther.dir.fileType = IS_DIR;
+		if(filesAtRoot(&filesOther.dir)) {
+			memcpy(&filesOther.dir, filesOther.device->initial, sizeof(file_handle));
+		}
+	}
+	strlcpy(filesOther.focusName, focus != NULL ? focus : from,
+		sizeof(filesOther.focusName));
+	filesOtherRead();
+}
+
+/* On reset or power-off, deviceHandler.c shuts down the devices[] slots,
+ * after the interface stops reading (priority 1). The right pane's storage
+ * is in none of them, so it is shut down here, at the same point. */
+static s32 filesOtherOnReset(s32 final)
+{
+	if(!final && filesOther.mount == UI_FILES_OWN && filesOther.device != NULL &&
+			!(filesOther.device->quirks & QUIRK_NO_DEINIT)) {
+		filesOther.device->deinit(filesOther.device->initial);
+		filesOther.mount = UI_FILES_UNMOUNTED;
+	}
+	return TRUE;
+}
+
+static sys_resetinfo filesOtherResetInfo = {
+	{NULL, NULL}, filesOtherOnReset, 1
+};
+
+__attribute__((constructor))
+static void filesOtherRegisterReset(void)
+{
+	SYS_RegisterResetFunc(&filesOtherResetInfo);
+}
+
+static bool filesFlattened(void)
+{
+	return !fnmatch(swissSettings.flattenDir, curDir.name,
+		FNM_PATHNAME | FNM_CASEFOLD);
+}
+
+/* What an entry is. Swiss's meta reading may have made a left folder the
+ * program inside it: it shows, and is focused again, as that folder. */
+static uiFilesKind_t filesKind(const file_handle *entry, int pane,
+	const char *dirName)
+{
+	/* A memory card's and the Qoob's names are flat: a slash in one is part
+	 * of the name, never a folder Swiss made into its program (and acting
+	 * on that "folder" would list, and act on, every save there). */
+	bool flat = devices[DEVICE_CUR] == &__device_card_a ||
+		devices[DEVICE_CUR] == &__device_card_b ||
+		devices[DEVICE_CUR] == &__device_qoob;
+
+	if(pane == UI_FILES_LEFT && !flat && UIFiles_IsProgramFolder(entry->name,
+			entry->fileType, dirName, filesFlattened())) {
+		return UI_FILES_KIND_PROGRAM_FOLDER;
+	}
+	return UIFiles_Kind(entry->name, entry->fileType);
+}
+
+/* A starts it: a file Swiss loads, but a FlippyDrive update only on the
+ * FlippyDrive (elsewhere it is a file to copy, and A opens its Actions). */
+static bool filesLoads(const file_handle *entry)
+{
+	return entry->fileType == IS_FILE &&
+		canLoadFileType((char *)entry->name, devices[DEVICE_CUR]->extraExtensions) &&
+		(!endsWith((char *)entry->name, ".fpkg") || devices[DEVICE_CUR] == &__device_flippy ||
+		devices[DEVICE_CUR] == &__device_flippyflash);
+}
+
+static bool filesAutoloadFolder(const char *folder)
+{
+	return swissSettings.autoload[0] != '\0' &&
+		(!strcmp(&swissSettings.autoload[0], folder) ||
+		!fnmatch(&swissSettings.autoload[0], folder, FNM_PATHNAME));
+}
+
+/* The size column's words for a file: blocks on a memory card or a Qoob,
+ * where it is on a WODE. */
+static void filesSizeText(char *out, size_t capacity, const file_handle *entry)
+{
+	DEVICEHANDLER_INTERFACE *device = entry->device;
+
+	if(device == &__device_wode) {
+		const ISOInfo_t *iso = (const ISOInfo_t *)&entry->other;
+
+		UIFiles_PartitionText(out, capacity, iso->iso_partition, iso->iso_number);
+		return;
+	}
+	UIFiles_SizeText(out, capacity, entry->size, filesBlockSize(device),
+		device != NULL && !(device->location & LOC_SYSTEM));
+}
+
+/* What each kind is, in the info bar. */
+static const char *const filesKindWords[UI_FILES_KINDS] = {
+	"", "Folder", "Program folder", "GameCube disc", "Compressed GameCube disc",
+	"Program", "Firmware update", "Music", "Picture", "Text", "File"
+};
+
+/* The name scanFiles finds the left pane's focus by: a program folder's own
+ * path, else the entry's. */
+static void filesLeftFocusName(file_handle **directory, char *out, size_t capacity)
+{
+	file_handle *entry = directory[curSelection];
+
+	lockFile(entry);
+	if(filesKind(entry, UI_FILES_LEFT, curDir.name) == UI_FILES_KIND_PROGRAM_FOLDER) {
+		UIFiles_ProgramFolderPath(out, capacity, entry->name, curDir.name);
+	}
+	else {
+		strlcpy(out, entry->name, capacity);
+	}
+	unlockFile(entry);
+}
+
+/* One pane's header and rows, from its listing's window. wait: lock the
+ * left rows the meta thread may be filling, else give up (false) when one
+ * is busy. */
+static bool filesPaneSnapshot(uiFilesPaneSnapshot_t *out, file_handle **entries,
+	int pane, const char *dirName, const uiFilesLayout_t *layout, bool wait)
+{
+	const uiFilesPaneState_t *state = &filesState.pane[pane];
+	const uiFilesRect_t *box = &layout->pane[pane];
+	const char *deviceName = DeviceDisplayName(pane == UI_FILES_LEFT ? devices[DEVICE_CUR] :
+		filesOther.device);
+	const char *free = pane == UI_FILES_LEFT ? filesFree : filesOther.free;
+	bool readOnly = !strcmp(free, "read-only");
+	bool track = state->count > UI_FILES_ROWS;
+	char name[PATHNAME_MAX];
+	int i, room;
+
+	out->rows = 0;
+	out->focusRow = -1;
+	out->count = (s16)state->count;
+	out->first = (s16)state->first;
+	for(i = state->first; i < state->count && out->rows < UI_FILES_ROWS; i++) {
+		uiFilesRowSnapshot_t *row = &out->row[out->rows];
+		file_handle *entry = entries[i];
+		char size[24] = "";
+		int metaWidth;
+
+		if(pane == UI_FILES_LEFT) {
+			if(!wait && !trylockFile(entry)) {
+				return false;
+			}
+			if(wait) {
+				lockFile(entry);
+			}
+		}
+		row->kind = (u8)filesKind(entry, pane, dirName);
+		UIFiles_RowName(name, sizeof(name), entry->name, row->kind, dirName, deviceName);
+		if(entry->fileType == IS_FILE && row->kind != UI_FILES_KIND_PROGRAM_FOLDER) {
+			filesSizeText(size, sizeof(size), entry);
+		}
+		row->flags = entry->fileType != IS_SPECIAL &&
+			((entry->fileAttrib & ATTRIB_HIDDEN) || *getRelativeName(entry->name) == '.') ?
+			UI_FILES_ROW_HIDDEN : 0u;
+		if(pane == UI_FILES_LEFT) {
+			unlockFile(entry);
+		}
+		UIFiles_RowMeta(row->meta, sizeof(row->meta), row->kind, size);
+		metaWidth = row->meta[0] != '\0' ? filesWidth(row->meta, 0.44f) : 0;
+		row->scale = UIFiles_FitName(row->name, sizeof(row->name), name,
+			UIFiles_NameWidth(layout, pane, metaWidth, track), filesMeasure);
+		if(i == state->focus) {
+			row->flags |= UI_FILES_ROW_FOCUS;
+			out->focusRow = out->rows;
+		}
+		out->rows++;
+	}
+	snprintf(out->button, sizeof(out->button), pane == UI_FILES_LEFT ?
+		"L  Choose storage" : "R  Choose storage");
+	out->source = pane == UI_FILES_LEFT;
+	strlcpy(out->free, free, sizeof(out->free));
+	out->readOnly = readOnly;
+	out->freeWidth = (s16)(free[0] != '\0' ?
+		MAX(UI_FILES_FREE_MIN_WIDTH, filesWidth(free, 0.50f) + 16) : 0);
+	out->deviceScale = UIFiles_FitDevice(out->device, sizeof(out->device), deviceName,
+		layout, pane, out->source, out->freeWidth,
+		out->freeWidth > 0 && !readOnly ? filesWidth("free", 0.42f) : 0, filesMeasure);
+	out->deviceWidth = (s16)filesWidth(out->device, out->deviceScale);
+	snprintf(out->counter, sizeof(out->counter), "%d / %d",
+		state->count > 0 ? state->focus + 1 : 0, state->count);
+	out->autoload = filesAutoloadFolder(dirName);
+	room = box->x1 - box->x0 - 4 - filesWidth(out->counter, 0.46f) - 12 -
+		(out->autoload ? 74 : 0);
+	UIFiles_FitPath(out->path, sizeof(out->path), getDevicePath((char *)dirName),
+		room, 0.46f, filesMeasure);
+	out->pathWidth = (s16)filesWidth(out->path, 0.46f);
+	out->reading = 0;
+	memset(out->message, 0, sizeof(out->message));
+	/* The right pane's storage can't be used: why, and what to do. */
+	if(pane == UI_FILES_RIGHT && (filesOther.mount == UI_FILES_FAILED ||
+			filesOther.readFailed)) {
+		UIFiles_NotReady(out->message, deviceName, filesOther.status,
+			filesOther.mount == UI_FILES_FAILED ? NULL :
+			getRelativeName(filesOther.dir.name));
+	}
+	else if(state->count == 0 ||
+			(state->count == 1 && entries[0]->fileType == IS_SPECIAL)) {
+		strlcpy(out->message[0], "This folder is empty.", sizeof(out->message[0]));
+		if((pane == UI_FILES_LEFT ? getCurrentDirEntryCount() : filesOther.read) >
+				state->count) {
+			strlcpy(out->message[1], "What it holds isn't shown here.",
+				sizeof(out->message[1]));
+		}
+	}
+	return true;
+}
+
+static bool filesOpensDetail(const file_handle *entry);
+
+/* The info bar and the hints, for the focused entry of the focused pane. */
+static bool filesInfoSnapshot(uiFilesSnapshot_t *s, file_handle **entries,
+	const char *dirName, const uiFilesLayout_t *layout, bool wait)
+{
+	int pane = filesState.active;
+	const uiFilesPaneState_t *state = &filesState.pane[pane];
+	const char *deviceName = DeviceDisplayName(pane == UI_FILES_LEFT ? devices[DEVICE_CUR] :
+		filesOther.device);
+	char name[PATHNAME_MAX], title[PATHNAME_MAX];
+	uiFilesKind_t kind = UI_FILES_KIND_FOLDER;
+	file_handle *entry = state->count > 0 ? entries[state->focus] : NULL;
+	bool loads = false, autoload = false;
+	int room, scaled;
+
+	s->active = (u8)pane;
+	s->hasBanner = 0;
+	s->warn = 0;
+	s->chip[0] = s->size[0] = '\0';
+	s->line[0][0] = s->line[1][0] = '\0';
+	/* No entry: the folder's name, or at a storage's top its own. */
+	strlcpy(title, getRelativeName((char *)dirName), sizeof(title));
+	if(title[0] == '\0') {
+		strlcpy(title, deviceName, sizeof(title));
+	}
+	if(entry != NULL) {
+		if(pane == UI_FILES_LEFT) {
+			if(!wait && !trylockFile(entry)) {
+				return false;
+			}
+			if(wait) {
+				lockFile(entry);
+			}
+		}
+		kind = filesKind(entry, pane, dirName);
+		loads = filesLoads(entry);
+		UIFiles_RowName(name, sizeof(name), entry->name, kind, dirName, deviceName);
+		strlcpy(title, name, sizeof(title));
+		if(entry->fileType == IS_FILE && kind != UI_FILES_KIND_PROGRAM_FOLDER) {
+			filesSizeText(s->size, sizeof(s->size), entry);
+		}
+		if(pane == UI_FILES_LEFT && entry->meta != NULL) {
+			file_meta *meta = entry->meta;
+
+			if(meta->banner != NULL && meta->bannerSize == BNR_PIXELDATA_LEN &&
+					meta->bannerSum != 0xFFFF) {
+				memcpy(s->banner, meta->banner, BNR_PIXELDATA_LEN);
+				s->hasBanner = 1;
+			}
+			if(s->hasBanner && meta->displayName != NULL && meta->displayName[0] != '\0') {
+				strlcpy(title, meta->displayName, sizeof(title));
+				strlcpy(s->line[0], name, sizeof(s->line[0]));
+			}
+			if(kind == UI_FILES_KIND_DISC && meta->diskId.gamename[0] != '\0') {
+				/* A banner's short company fills its field without a terminator. */
+				snprintf(s->line[1], sizeof(s->line[1]), "GameCube disc  \267  %.4s%.2s%s%.*s",
+					meta->diskId.gamename, meta->diskId.company,
+					meta->bannerDesc.company[0] != '\0' ? "  \267  " : "",
+					(int)sizeof(meta->bannerDesc.company), meta->bannerDesc.company);
+			}
+		}
+		if(pane == UI_FILES_LEFT && s->line[1][0] == '\0') {
+			strlcpy(s->line[1], filesKindWords[kind], sizeof(s->line[1]));
+		}
+		/* Without a banner's title above it, the file's facts go first. */
+		if(s->line[0][0] == '\0') {
+			strlcpy(s->line[0], s->line[1], sizeof(s->line[0]));
+			s->line[1][0] = '\0';
+		}
+		if((entry->fileAttrib & ATTRIB_HIDDEN) && entry->fileType != IS_SPECIAL) {
+			strlcpy(s->chip, "HIDDEN", sizeof(s->chip));
+		}
+		else if(pane == UI_FILES_LEFT && entry->fileType == IS_FILE &&
+				filesAutoloadFolder(entry->name)) {
+			strlcpy(s->chip, "AUTOLOAD", sizeof(s->chip));
+		}
+		if(pane == UI_FILES_LEFT) {
+			unlockFile(entry);
+		}
+		if(pane == UI_FILES_RIGHT && kind != UI_FILES_KIND_PARENT) {
+			snprintf(s->line[0], sizeof(s->line[0]), "On %s  \233  %s", deviceName,
+				getDevicePath(filesOther.dir.name));
+		}
+		if(kind == UI_FILES_KIND_DISC_COMPRESSED) {
+			strlcpy(s->line[1], "Swiss can't start a compressed disc.", sizeof(s->line[1]));
+			s->warn = 1;
+		}
+		else if(pane == UI_FILES_RIGHT && loads) {
+			strlcpy(s->line[1], "Games start on the left. Y swaps the two sides.",
+				sizeof(s->line[1]));
+		}
+	}
+	if(filesNote != NULL) {
+		strlcpy(s->line[1], filesNote, sizeof(s->line[1]));
+		s->warn = 1;
+	}
+	s->infoKind = (u8)kind;
+	/* The name at 0.62, smaller to fit, cut in the middle past 0.46. */
+	room = layout->info.x1 - 16 - layout->infoTextX - (s->chip[0] != '\0' ? 64 : 0);
+	scaled = GetTextSizeInPixels(title);
+	if((float)scaled * 0.62f <= (float)room) {
+		strlcpy(s->title, title, sizeof(s->title));
+		s->titleScale = 0.62f;
+	}
+	else if(scaled > 0 && (float)room / (float)scaled >= UI_FILES_NAME_MIN_SCALE) {
+		strlcpy(s->title, title, sizeof(s->title));
+		s->titleScale = (float)room / (float)scaled;
+	}
+	else {
+		s->titleScale = UIFiles_FitName(s->title, sizeof(s->title), title, room,
+			filesMeasure);
+	}
+	s->titleWidth = (s16)filesWidth(s->title, s->titleScale);
+	s->sizeWidth = (s16)(s->size[0] != '\0' ? MAX(48, filesWidth(s->size, 0.50f) + 16) : 0);
+	/* The lines keep clear of the loading wheel's word in the corner. */
+	room = layout->info.x1 - 112 - layout->infoTextX - (s->sizeWidth ? s->sizeWidth + 12 : 0);
+	for(int line = 0; line < 2; line++) {
+		strlcpy(name, s->line[line], sizeof(name));
+		(void)UIFiles_FitName(s->line[line], sizeof(s->line[line]), name, room,
+			filesMeasure);
+	}
+	if(entry != NULL && entry->fileType == IS_SPECIAL) {
+		autoload = filesAutoloadFolder(dirName);
+	}
+	/* A on a disc opens its Detail only where filesOpensDetail says so;
+	 * elsewhere it is Swiss's load_file, as for any file that starts. */
+	if(kind == UI_FILES_KIND_DISC && pane == UI_FILES_LEFT &&
+		!filesOpensDetail(entry)) {
+		kind = UI_FILES_KIND_OTHER;
+	}
+	/* A right pane with no entry, at its top or not ready: A, X and R
+	 * choose its storage, and Z has nothing to act on. */
+	UIFiles_Hints(entry == NULL && pane == UI_FILES_RIGHT &&
+		(filesOther.mount == UI_FILES_FAILED || filesOther.readFailed ||
+		filesAtRoot(&filesOther.dir)) ?
+		UI_FILES_HINTS_STORAGE : UI_FILES_HINTS_LIST, pane, kind, loads,
+		fileManagementAllowed(), autoload, s->hint[0], s->hint[1]);
+	return true;
+}
+
+/* While a storage menu is open, the info bar is the focused device's: its
+ * name, its free space when it is open on either side, what choosing it
+ * does, and (amber) why it can't be chosen. */
+static void filesMenuInfo(uiFilesSnapshot_t *s, const uiFilesLayout_t *layout)
+{
+	int item = filesMenu.box.focus;
+	DEVICEHANDLER_INTERFACE *device = item < filesMenu.devices ? filesMenuDevices[item] : NULL;
+	const char *free = device == NULL ? "" : device == devices[DEVICE_CUR] ? filesFree :
+		device == filesOther.device && filesOther.mount != UI_FILES_FAILED ? filesOther.free : "";
+	char line[UI_FILES_TEXT_CAPACITY], *second;
+	int room;
+
+	if(filesMenu.devices >= 0) {
+		s->hasBanner = 0;
+		s->infoKind = UI_FILES_KIND_FOLDER;
+		s->chip[0] = '\0';
+		strlcpy(s->size, free, sizeof(s->size));
+		s->sizeWidth = (s16)(s->size[0] != '\0' ? MAX(48, filesWidth(s->size, 0.50f) + 16) : 0);
+		s->titleScale = UIFiles_FitName(s->title, sizeof(s->title), filesMenu.box.item[item],
+			layout->info.x1 - 16 - layout->infoTextX, filesMeasure);
+		s->titleWidth = (s16)filesWidth(s->title, s->titleScale);
+	}
+	room = layout->info.x1 - 112 - layout->infoTextX - (s->sizeWidth ? s->sizeWidth + 12 : 0);
+	/* Nothing greyed: line 2 is free, so the last sentence goes there (the
+	 * last: a folder's name in the first may hold a ". "). */
+	strlcpy(line, filesMenu.line[item], sizeof(line));
+	second = NULL;
+	for(char *at = line; filesMenu.devices >= 0 && filesMenu.reason[item][0] == '\0' &&
+			(at = strstr(at, ". ")) != NULL; at++) {
+		second = at;
+	}
+	if(second != NULL) {
+		second[1] = '\0';
+		second += 2;
+	}
+	(void)UIFiles_FitName(s->line[0], sizeof(s->line[0]), line, room, filesMeasure);
+	(void)UIFiles_FitName(s->line[1], sizeof(s->line[1]),
+		second != NULL ? second : filesMenu.reason[item], room, filesMeasure);
+	s->warn = (filesMenu.warn >> item) & 1u;
+	UIFiles_Hints(filesMenuHints, s->active, UI_FILES_KIND_FOLDER, false, false, false,
+		s->hint[0], s->hint[1]);
+}
+
+/* The page for this frame, published or updated. wait as filesPaneSnapshot:
+ * false (nothing changed) when a row was busy. */
+static bool filesPublish(file_handle **directory, uiDrawObj_t **filePanel, bool wait)
+{
+	uiFilesLayout_t layout;
+	file_handle **entries = filesState.active == UI_FILES_LEFT ? directory : filesOther.sorted;
+	const char *dirName = filesState.active == UI_FILES_LEFT ? curDir.name : filesOther.dir.name;
+
+	UIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);
+	if(!filesPaneSnapshot(&filesSnapshot.pane[UI_FILES_LEFT], directory, UI_FILES_LEFT,
+			curDir.name, &layout, wait) ||
+		!filesPaneSnapshot(&filesSnapshot.pane[UI_FILES_RIGHT], filesOther.sorted,
+			UI_FILES_RIGHT, filesOther.dir.name, &layout, wait) ||
+		!filesInfoSnapshot(&filesSnapshot, entries, dirName, &layout, wait)) {
+		return false;
+	}
+	if(filesSnapshot.menu.open) {
+		filesMenuInfo(&filesSnapshot, &layout);
+	}
+	filesSnapshot.pane[UI_FILES_LEFT].listing = filesLeftListing;
+	filesSnapshot.pane[UI_FILES_RIGHT].listing = filesOther.listing;
+	if(*filePanel == NULL || *filePanel != filesPage ||
+			!DrawUpdateFiles(*filePanel, &filesSnapshot)) {
+		uiDrawObj_t *page = DrawFiles(&filesSnapshot);
+
+		if(page == NULL) {
+			return false;
+		}
+		*filePanel = filesPage = DrawRepublish(*filePanel, page);
+	}
+	return true;
+}
+
+/* The menu thread reads one visible left row's banner a frame, never
+ * while drawing, as Swiss's list read its visible rows: without a meta
+ * thread (a disc, a memory card, WODE...) it is the only reader, and with
+ * one it reads the rows in view first and lets the meta cache drop rows
+ * out of view once it is full. True when it read one. */
+static bool filesMetaStep(file_handle **directory)
+{
+	if(filesMetaFirst != current_view_start || filesMetaListing != filesLeftListing) {
+		filesMetaFirst = current_view_start;
+		filesMetaListing = filesLeftListing;
+		filesMetaTried = 0u;
+	}
+	for(int i = current_view_start; i < current_view_end && i - current_view_start < 32; i++) {
+		u32 bit = 1u << (i - current_view_start);
+
+		if(!(filesMetaTried & bit)) {
+			filesMetaTried |= bit;
+			if(directory[i]->meta != NULL) {
+				continue;
+			}
+			lockFile(directory[i]);
+			populate_meta(directory[i]);
+			unlockFile(directory[i]);
+			return true;
+		}
+	}
+	return false;
+}
+
+/* Waits until seconds of video have gone, at the screen's own rate. */
+static void filesWait(float seconds)
+{
+	u32 since = VIDEO_GetRetraceCount();
+	float rate = VIDEO_GetRetraceRate();
+
+	if(!isfinite(rate) || rate < 1.0f) rate = 60.0f;
+	while((float)(VIDEO_GetRetraceCount() - since) < seconds * rate) {
+		VIDEO_WaitVSync();
+	}
+}
+
+/* The info bar and the hints as the focused entry has them. A box or the
+ * message takes them over while it is up; when it goes they come back, so
+ * nothing it said stays under what comes next (a question, the progress
+ * card). */
+typedef struct {
+	char title[UI_FILES_ROW_TEXT], chip[12], size[24];
+	char line[2][UI_FILES_TEXT_CAPACITY], hint[2][UI_FILES_HINT_CAPACITY];
+	float titleScale;
+	s16 titleWidth, sizeWidth;
+	u8 hasBanner, infoKind, warn;
+} filesInfo_t;
+
+static void filesInfoKeep(filesInfo_t *out)
+{
+	const uiFilesSnapshot_t *s = &filesSnapshot;
+
+	memcpy(out->title, s->title, sizeof(out->title));
+	memcpy(out->chip, s->chip, sizeof(out->chip));
+	memcpy(out->size, s->size, sizeof(out->size));
+	memcpy(out->line, s->line, sizeof(out->line));
+	memcpy(out->hint, s->hint, sizeof(out->hint));
+	out->titleScale = s->titleScale;
+	out->titleWidth = s->titleWidth;
+	out->sizeWidth = s->sizeWidth;
+	out->hasBanner = s->hasBanner;
+	out->infoKind = s->infoKind;
+	out->warn = s->warn;
+}
+
+static void filesInfoPut(const filesInfo_t *in)
+{
+	uiFilesSnapshot_t *s = &filesSnapshot;
+
+	memcpy(s->title, in->title, sizeof(s->title));
+	memcpy(s->chip, in->chip, sizeof(s->chip));
+	memcpy(s->size, in->size, sizeof(s->size));
+	memcpy(s->line, in->line, sizeof(s->line));
+	memcpy(s->hint, in->hint, sizeof(s->hint));
+	s->titleScale = in->titleScale;
+	s->titleWidth = in->titleWidth;
+	s->sizeWidth = in->sizeWidth;
+	s->hasBanner = in->hasBanner;
+	s->infoKind = in->infoKind;
+	s->warn = in->warn;
+}
+
+/* Line 1 of the item a box chose, for a question that follows it on the
+ * same press (Swiss's Move question after Actions' Move); "" otherwise. */
+static char filesChosenLine[UI_FILES_TEXT_CAPACITY];
+
+/* The box in filesMenu as the frame shows it, with the focused item's two
+ * lines in the info bar. */
+static void filesMenuShow(void)
+{
+	uiFilesLayout_t layout;
+
+	filesSnapshot.menu = filesMenu.box;
+	UIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);
+	if(filesSnapshot.menu.open) {
+		filesMenuInfo(&filesSnapshot, &layout);
+	}
+	(void)DrawUpdateFiles(filesPage, &filesSnapshot);
+}
+
+/* The box in filesMenu, open beside its row until a choice: Up and Down
+ * move and wrap, A chooses an item that isn't greyed (a greyed one keeps
+ * its reason showing), a letter chip's button does the same for its item,
+ * and B or a close button shuts it (-1). chord: Delete's question, which
+ * only L held with A answers, as Swiss's does; A alone on Delete does
+ * nothing. Once it is shut the buttons that answered are let go. */
+static int filesBox(uiFilesHintMode_t hints, u32 close, bool chord)
+{
+	static const char letters[] = "XYRLZ";
+	static const u32 letterButtons[] = {PAD_BUTTON_X, PAD_BUTTON_Y, BUTTON_R, BUTTON_L, BUTTON_Z};
+	uiFilesMenu_t *box = &filesMenu.box;
+	u32 buttons = BUTTON_UP | BUTTON_DOWN | BUTTON_A | BUTTON_B | close;
+	uiMenuInputState_t stick;
+	u32 stickRetrace = VIDEO_GetRetraceCount();
+	int choice = -1;
+	filesInfo_t entry;
+
+	filesInfoKeep(&entry);
+	for(int i = 0; i < box->count; i++) {
+		const char *at = box->letter[i] != '\0' ? strchr(letters, box->letter[i]) : NULL;
+
+		if(at != NULL) {
+			buttons |= letterButtons[at - letters];
+		}
+	}
+	/* L+A: L is let go too before Swiss goes on, as its own prompt waits. */
+	if(chord) {
+		buttons |= BUTTON_L;
+	}
+	filesMenuHints = hints;
+	box->open = 1;
+	box->serial = (u16)(filesSnapshot.menu.serial + 1u);
+	UIMenuInput_Init(&stick);
+	(void)padsButtonsTaken(buttons);
+	while(choice < 0) {
+		uiMenuInputDirection_t analog;
+		u32 pressed;
+		int focus = box->focus, pick = -1;
+		bool chorded = false;
+
+		filesMenuShow();
+		while(1) {
+			pressed = padsButtonsTaken(buttons);
+			analog = padsMenuInputPoll(&stick, menuInputElapsedMicroseconds(&stickRetrace),
+				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,
+				(padsButtonsHeld() & buttons) != 0u);
+			chorded = chord && (padsButtonsHeld() & (BUTTON_A | BUTTON_L)) == (BUTTON_A | BUTTON_L);
+			if(chorded || pressed != 0u || analog != UI_MENU_INPUT_NONE) {
+				break;
+			}
+			VIDEO_WaitVSync();
+		}
+		if(chorded) {
+			choice = 0;
+			menuaudio_select();
+			break;
+		}
+		if((pressed & BUTTON_UP) || analog == UI_MENU_INPUT_UP) {
+			focus = (focus + box->count - 1) % box->count;
+		}
+		else if((pressed & BUTTON_DOWN) || analog == UI_MENU_INPUT_DOWN) {
+			focus = (focus + 1) % box->count;
+		}
+		if(focus != box->focus) {
+			box->focus = (u8)focus;
+			menuaudio_blip();
+			continue;
+		}
+		if(pressed & (BUTTON_B | close)) {
+			break;
+		}
+		for(int i = 0; i < box->count; i++) {
+			const char *at = box->letter[i] != '\0' ? strchr(letters, box->letter[i]) : NULL;
+
+			if(at != NULL && (pressed & letterButtons[at - letters])) {
+				pick = i;
+			}
+		}
+		if(pick < 0 && (pressed & BUTTON_A) && !(chord && focus == 0)) {
+			pick = focus;
+		}
+		if(pick >= 0 && ((box->dim >> pick) & 1u)) {
+			box->focus = (u8)pick;
+		}
+		else if(pick >= 0) {
+			box->focus = (u8)pick;
+			choice = pick;
+			menuaudio_select();
+		}
+	}
+	/* A question that follows says where the chosen item goes; the info
+	 * bar is the focused entry's again. */
+	if(choice >= 0) {
+		strlcpy(filesChosenLine, filesMenu.line[choice], sizeof(filesChosenLine));
+	}
+	box->open = 0;
+	filesInfoPut(&entry);
+	filesMenuShow();
+	do {VIDEO_WaitVSync();} while(padsButtonsHeld() & (buttons & ~(BUTTON_UP | BUTTON_DOWN)));
+	return choice;
+}
+
+/* text into out, cut in the middle as rows are, so that drawn at scale it
+ * is no wider than room. */
+static void filesFitAt(char *out, size_t capacity, const char *text, int room, float scale)
+{
+	/* What fits at the least scale in room * least / scale fits at scale. */
+	(void)UIFiles_FitName(out, capacity, text, (int)((float)room * UI_FILES_NAME_MIN_SCALE / scale),
+		filesMeasure);
+}
+
+/* filesMenu as a box beside the focused row of the focused pane: the title
+ * (none for Actions), its items, and the width they need. */
+static void filesMenuPlace(const char *title, int count)
+{
+	const uiFilesPaneSnapshot_t *pane = &filesSnapshot.pane[filesState.active];
+	uiFilesMenu_t *box = &filesMenu.box;
+	uiFilesLayout_t layout;
+	const uiFilesRect_t *side;
+	int widest;
+
+	/* A title's measure, with room to spare: the box must hold it, and the
+	 * box no more than its pane (UIFiles_MenuBox), so a long one is cut. */
+	UIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);
+	side = &layout.pane[filesState.active == UI_FILES_RIGHT];
+	filesFitAt(box->title, sizeof(box->title), title, (side->x1 - side->x0 - 12 - 24) * 10 / 11,
+		0.56f);
+	widest = box->title[0] != '\0' ? filesWidth(box->title, 0.56f) * 11 / 10 + 24 : 0;
+	box->count = (u8)count;
+	box->pane = (u8)filesState.active;
+	box->row = (u8)(pane->focusRow > 0 ? pane->focusRow : 0);
+	for(int i = 0; i < count; i++) {
+		widest = MAX(widest, filesWidth(box->item[i], 0.56f) + 32 + (box->letter[i] ? 28 : 0));
+	}
+	box->width = (s16)widest;
+}
+
+/* A question beside the row, Yes first: its title, its two answers, and the
+ * info bar's lines under it (line NULL keeps line 1 as it is; detail is
+ * amber when warn). */
+static void filesQuestion(const char *title, const char *yes, const char *no,
+	const char *line, const char *detail, bool warn)
+{
+	memset(&filesMenu, 0, sizeof(filesMenu));
+	filesMenu.devices = -1;
+	strlcpy(filesMenu.box.item[0], yes, sizeof(filesMenu.box.item[0]));
+	strlcpy(filesMenu.box.item[1], no, sizeof(filesMenu.box.item[1]));
+	for(int i = 0; i < 2; i++) {
+		strlcpy(filesMenu.line[i], line != NULL ? line : filesChosenLine[0] != '\0' ?
+			filesChosenLine : filesSnapshot.line[0], sizeof(filesMenu.line[i]));
+		strlcpy(filesMenu.reason[i], detail, sizeof(filesMenu.reason[i]));
+	}
+	filesMenu.warn = warn ? 3u : 0u;
+	filesMenuPlace(title, 2);
+}
+
+/* entries[index]'s name and type, for UIFiles_LandingIndex. */
+static void filesEntryAt(const void *context, int index, const char **name, int *fileType)
+{
+	file_handle *const *entries = context;
+
+	*name = entries[index]->name;
+	*fileType = entries[index]->fileType;
+}
+
+/* The Copy question's ghost row: the other pane shows where the copy will
+ * land until the question is answered. */
+static int filesGhostPane = -1;
+static uiFilesPaneSnapshot_t filesGhostSaved;
+
+static void filesGhostOn(int pane, int landing, const char *name, const char *size)
+{
+	uiFilesLayout_t layout;
+	uiFilesRowSnapshot_t row;
+	uiFilesPaneSnapshot_t *shown = &filesSnapshot.pane[pane];
+
+	UIFiles_Layout(UIStage_Left(), UIStage_Right(), &layout);
+	memset(&row, 0, sizeof(row));
+	row.kind = (u8)UIFiles_Kind(name, IS_FILE);
+	UIFiles_RowMeta(row.meta, sizeof(row.meta), row.kind, size);
+	row.scale = UIFiles_FitName(row.name, sizeof(row.name), getRelativeName((char *)name),
+		UIFiles_NameWidth(&layout, pane, row.meta[0] != '\0' ? filesWidth(row.meta, 0.44f) : 0,
+		shown->count + 1 > UI_FILES_ROWS), filesMeasure);
+	filesGhostSaved = *shown;
+	filesGhostPane = pane;
+	UIFiles_InsertGhost(shown, landing, &row);
+}
+
+static void filesGhostOff(void)
+{
+	if(filesGhostPane >= 0) {
+		filesSnapshot.pane[filesGhostPane] = filesGhostSaved;
+		filesGhostPane = -1;
+	}
+}
+
+/* confirmAction's question as a box beside the row: its title, its verb
+ * focused and Cancel, its second line in the info bar's amber line; only
+ * the verb says yes. -1 when text isn't such a question. */
+static int filesAsk(const char *text)
+{
+	uiFilesQuestion_t question;
+	int choice;
+
+	if(!UIFiles_ParseQuestion(text, &question)) {
+		return -1;
+	}
+	filesQuestion(question.title, question.verb, question.cancel, NULL, question.detail,
+		question.detail[0] != '\0');
+	choice = filesBox(UI_FILES_HINTS_QUESTION, 0u, false);
+	filesGhostOff();
+	return choice == 0;
+}
+
+/* Delete's question, with Swiss's words (text's first line) and Swiss's
+ * chord: L held and A deletes; B, or A on Cancel, doesn't. */
+static bool filesAskDelete(const char *text)
+{
+	char title[UI_FILES_TEXT_CAPACITY];
+	size_t length = strcspn(text, "\n");
+
+	strlcpy(title, text, MIN(sizeof(title), length + 1));
+	filesQuestion(title, "Delete", "Cancel", NULL, "Hold L and press A to delete.", true);
+	filesMenu.box.rose = 1;
+	return filesBox(UI_FILES_HINTS_DELETE, 0u, true) == 0;
+}
+
+/* A copy's target is there already: Keep both (Swiss's Rename, the next
+ * free _NN), Replace it or Cancel, as the buttons Swiss's box reads (A, Z,
+ * B). Keep both is greyed when only replacing makes room. */
+static bool filesFitsBoth = true;
+
+static u32 filesAskExists(const char *destName)
+{
+	uiFilesChoices_t choices;
+	char title[UI_FILES_TEXT_CAPACITY], folder[PATHNAME_MAX];
+	int choice;
+
+	UIFiles_ExistsChoices(filesFitsBoth, &choices);
+	strlcpy(folder, destName, sizeof(folder));
+	getParentPath(folder, folder);
+	/* The file's name, however long, is the info bar's line 1. */
+	snprintf(title, sizeof(title), "It's already in %s.", *getRelativeName(folder) != '\0' ?
+		getRelativeName(folder) : DeviceDisplayName(devices[DEVICE_DEST]));
+	memset(&filesMenu, 0, sizeof(filesMenu));
+	filesMenu.devices = -1;
+	for(int i = 0; i < 3; i++) {
+		strlcpy(filesMenu.box.item[i], choices.item[i], sizeof(filesMenu.box.item[i]));
+		strlcpy(filesMenu.line[i], getRelativeName((char *)destName), sizeof(filesMenu.line[i]));
+	}
+	strlcpy(filesMenu.reason[0], choices.reason, sizeof(filesMenu.reason[0]));
+	filesMenu.warn = choices.dim;
+	filesMenu.box.dim = (u16)choices.dim;
+	filesMenu.box.focus = (u8)choices.focus;
+	filesMenuPlace(title, 3);
+	choice = filesBox(UI_FILES_HINTS_QUESTION, 0u, false);
+	return choice == 0 ? BUTTON_A : choice == 1 ? BUTTON_Z : BUTTON_B;
+}
+
+/* How an operation the File Browser ran ended: said done, failed, stopped,
+ * or (nothing said) not run. */
+enum { FILES_SAID_NOTHING = 0, FILES_SAID_DONE, FILES_SAID_STOPPED, FILES_SAID_FAILED };
+static int filesOutcome;
+/* What is copied, as the info bar named it: its banner's title, else its
+ * file name. */
+static char filesCopyName[UI_FILES_ROW_TEXT];
+
+/* A result as the File Browser says it: the maroon message over the page,
+ * each line cut to the stage, gone after 2 s or on A or B; a failure stays
+ * until A. It fades out over 0.15 s unless UI Motion is Off. */
+static void filesSay(const char *title, const char *detail, bool failed)
+{
+	u32 shown = VIDEO_GetRetraceCount();
+	float rate = VIDEO_GetRetraceRate();
+	filesInfo_t entry;
+
+	if(!isfinite(rate) || rate < 1.0f) rate = 60.0f;
+	filesFitAt(filesSnapshot.message[0], sizeof(filesSnapshot.message[0]), title, 560, 0.56f);
+	filesFitAt(filesSnapshot.message[1], sizeof(filesSnapshot.message[1]), detail, 560, 0.46f);
+	filesSnapshot.messageWidth = (s16)MAX(filesWidth(filesSnapshot.message[0], 0.56f),
+		filesWidth(filesSnapshot.message[1], 0.46f)) + 48;
+	filesSnapshot.messageLeaving = 0;
+	filesSnapshot.messageSerial++;
+	filesSnapshot.menu.open = 0;
+	filesInfoKeep(&entry);
+	filesSnapshot.line[0][0] = filesSnapshot.line[1][0] = '\0';
+	filesSnapshot.warn = 0;
+	UIFiles_Hints(UI_FILES_HINTS_MESSAGE, filesState.active, UI_FILES_KIND_FOLDER, false,
+		false, false, filesSnapshot.hint[0], filesSnapshot.hint[1]);
+	(void)DrawUpdateFiles(filesPage, &filesSnapshot);
+	(void)padsButtonsTaken(BUTTON_A | BUTTON_B);
+	while(1) {
+		u32 pressed = padsButtonsTaken(BUTTON_A | BUTTON_B);
+
+		if((pressed & BUTTON_A) || (!failed && ((pressed & BUTTON_B) ||
+				(float)(VIDEO_GetRetraceCount() - shown) >= 2.0f * rate))) {
+			break;
+		}
+		VIDEO_WaitVSync();
+	}
+	if(UIMotion_ModeFromFlags(swissSettings.disableUIAnimations,
+			swissSettings.reduceUIAnimations) != UI_MOTION_OFF) {
+		filesSnapshot.messageLeaving = 1;
+		filesSnapshot.messageSerial++;
+		(void)DrawUpdateFiles(filesPage, &filesSnapshot);
+		filesWait(0.15f);
+	}
+	filesSnapshot.messageLeaving = 0;
+	filesSnapshot.message[0][0] = filesSnapshot.message[1][0] = '\0';
+	filesInfoPut(&entry);
+	(void)DrawUpdateFiles(filesPage, &filesSnapshot);
+	while(padsButtonsHeld() & (BUTTON_A | BUTTON_B)) VIDEO_WaitVSync();
+}
+
+/* A result said while Swiss's operation runs is kept until both panes have
+ * been read again, so the message sits over what the operation left:
+ * filesSayLater keeps it, filesSayPending says it. flashPane: the pane
+ * whose focused row is a copy that just landed, which flashes under it. */
+static struct {
+	char title[UI_FILES_TEXT_CAPACITY], detail[UI_FILES_TEXT_CAPACITY];
+	bool failed, pending;
+	int flashPane;
+} filesLater = {.flashPane = -1};
+
+static void filesSayLater(const char *title, const char *detail, bool failed)
+{
+	strlcpy(filesLater.title, title, sizeof(filesLater.title));
+	strlcpy(filesLater.detail, detail, sizeof(filesLater.detail));
+	filesLater.failed = failed;
+	filesLater.pending = true;
+	filesOutcome = failed ? FILES_SAID_FAILED : FILES_SAID_DONE;
+}
+
+static void filesSayPending(void)
+{
+	uiFilesPaneSnapshot_t *pane = filesLater.flashPane >= 0 ?
+		&filesSnapshot.pane[filesLater.flashPane] : NULL;
+	bool flash = pane != NULL && pane->focusRow >= 0 && pane->focusRow < pane->rows;
+
+	filesLater.flashPane = -1;
+	if(!filesLater.pending) {
+		return;
+	}
+	filesLater.pending = false;
+	if(flash) {
+		pane->row[pane->focusRow].flags |= UI_FILES_ROW_FLASH;
+	}
+	filesSay(filesLater.title, filesLater.detail, filesLater.failed);
+	if(flash) {
+		pane->row[pane->focusRow].flags &= (u8)~UI_FILES_ROW_FLASH;
+	}
+}
+
+/* How a copy or a move ended, as the File Browser says it once the panes
+ * are read again. dest is where it was going. */
+static void filesSayCopy(uiFilesResult_t result, bool move, const char *dest, int code,
+	bool removed, bool replaced)
+{
+	char lines[2][UI_FILES_TEXT_CAPACITY], folder[PATHNAME_MAX];
+
+	strlcpy(folder, dest, sizeof(folder));
+	getParentPath(folder, folder);
+	UIFiles_Result(result, move, filesCopyName, DeviceDisplayName(devices[DEVICE_CUR]),
+		DeviceDisplayName(devices[DEVICE_DEST]), getRelativeName(folder), code, removed,
+		replaced, lines);
+	filesSayLater(lines[0], lines[1], result == UI_FILES_RESULT_WRITE_FAILED ||
+		result == UI_FILES_RESULT_READ_FAILED || result == UI_FILES_RESULT_KEPT);
+	filesOutcome = result == UI_FILES_RESULT_STOPPED ? FILES_SAID_STOPPED :
+		result == UI_FILES_RESULT_DONE || result == UI_FILES_RESULT_KEPT ? FILES_SAID_DONE :
+		FILES_SAID_FAILED;
+}
+
+/* A copy's progress card in the File Browser: "Copying <it> to <storage>",
+ * the destination's path, and B Stop. */
+static uiDrawObj_t *filesProgress(int option, const char *destName)
+{
+	char title[UI_FILES_TEXT_CAPACITY + 64], path[PATHNAME_MAX + 64];
+	const char *there = DeviceDisplayName(devices[DEVICE_DEST]);
+
+	snprintf(title, sizeof(title), "%s %s to %s", option == MOVE_OPTION ? "Moving" : "Copying",
+		filesCopyName, there);
+	snprintf(path, sizeof(path), "%s  \233  %s", there, getDevicePath((char *)destName));
+	return DrawProgressBarFiles(title, path);
+}
+
+/* The folder a program folder stands for: its path, as a folder, on the
+ * entry's storage. */
+static void filesProgramFolder(const file_handle *entry, const char *dirName, file_handle *out)
+{
+	memcpy(out, entry, sizeof(file_handle));
+	UIFiles_ProgramFolderPath(out->name, sizeof(out->name), entry->name, dirName);
+	out->fileType = IS_DIR;
+	out->size = 0;
+	out->meta = NULL;
+	out->fp = NULL;
+	out->ffsFp = NULL;
+	out->uiObj = NULL;
+	out->lockCount = 0;
+	out->thread = LWP_THREAD_NULL;
+	/* The folder's own attributes, not its program's: Hide then says
+	 * Unhide on a hidden one. */
+	out->fileAttrib = 0;
+	if(devices[DEVICE_CUR] != NULL && devices[DEVICE_CUR]->statFile != NULL) {
+		devices[DEVICE_CUR]->statFile(out);
+		out->fileType = IS_DIR;
+	}
+}
+
+/* A side as UIFiles_Availability sees it, with its free space when it is
+ * mounted and gives a real figure. */
+static void filesSide(uiFilesSide_t *out, DEVICEHANDLER_INTERFACE *device, const char *folder,
+	int mount, bool readOk)
+{
+	device_info *info = NULL;
+
+	memset(out, 0, sizeof(*out));
+	filesDevice(device, &out->device);
+	out->folder = folder;
+	out->mount = (u8)mount;
+	out->readOk = readOk;
+	if((mount == UI_FILES_SHARED || mount == UI_FILES_OWN) && device->info != NULL) {
+		info = device->info(device->initial);
+	}
+	out->freeKnown = UIFiles_FreeKnown(info != NULL, info != NULL ? info->totalSpace : 0u,
+		out->device.network);
+	out->freeBytes = out->freeKnown ? info->freeSpace : 0u;
+}
+
+/* The name pane's row index is focused again by after a re-read: a left
+ * program folder's own path, else the entry's; "" for no row. */
+static void filesNameAt(int pane, file_handle **directory, int index, char *out, size_t capacity)
+{
+	file_handle **entries = pane == UI_FILES_LEFT ? directory : filesOther.sorted;
+	int count = pane == UI_FILES_LEFT ? getSortedDirEntryCount() : filesOther.count;
+
+	out[0] = '\0';
+	if(index < 0 || index >= count) {
+		return;
+	}
+	if(pane == UI_FILES_LEFT) {
+		lockFile(entries[index]);
+	}
+	if(pane == UI_FILES_LEFT && filesKind(entries[index], pane, curDir.name) ==
+			UI_FILES_KIND_PROGRAM_FOLDER) {
+		UIFiles_ProgramFolderPath(out, capacity, entries[index]->name, curDir.name);
+	}
+	else {
+		strlcpy(out, entries[index]->name, capacity);
+	}
+	if(pane == UI_FILES_LEFT) {
+		unlockFile(entries[index]);
+	}
+}
+
+/* filesManageFrom: one action on a pane's entry, to the other pane's
+ * folder, through Swiss's own manage_file_ex. A right-pane entry runs with
+ * the slots swapped (its storage as the Source, the Source as the
+ * destination); both slots come back on the one way out. True when the
+ * panes must be read again. */
+/* The left pane keeps open every game and DOL whose banner it read, and a
+ * file held open can't be replaced, deleted or renamed through another
+ * handle (FatFs locks it). Before an operation they are closed: the banners
+ * are kept, and a later read opens the file again. */
+static void filesCloseLeft(void)
+{
+	file_handle *entries = getCurrentDirEntries();
+	int i, count = getCurrentDirEntryCount();
+
+	for(i = 0; devices[DEVICE_CUR] != NULL && entries != NULL && i < count; i++) {
+		devices[DEVICE_CUR]->closeFile(&entries[i]);
+	}
+}
+
+static bool filesManageFrom(file_handle *entry, int pane, int option, const char *destDir)
+{
+	DEVICEHANDLER_INTERFACE *cur = devices[DEVICE_CUR], *dest = devices[DEVICE_DEST];
+	bool fromRight = pane == UI_FILES_RIGHT;
+	bool changed;
+
+	meta_thread_stop();
+	filesCloseLeft();
+	devices[DEVICE_CUR] = fromRight ? filesOther.device : cur;
+	devices[DEVICE_DEST] = fromRight ? cur : filesOther.device;
+	memcpy(&curFile, entry, sizeof(file_handle));
+	filesBoxes = true;
+	changed = manage_file_ex(option, destDir);
+	filesBoxes = false;
+	memcpy(entry, &curFile, sizeof(file_handle));
+	devices[DEVICE_CUR] = cur;
+	devices[DEVICE_DEST] = dest;
+	return changed;
+}
+
+/* Z, or A on a file that doesn't start here: the Actions box beside the
+ * focused row of pane, then what it chose on that entry, Copy and Move to
+ * the other pane's folder. Copy asks first, with a ghost row where the copy
+ * will land; Move, Hide and Delete ask Swiss's questions as boxes. Focus
+ * afterwards goes by name: the left pane's into curFile, the right's into
+ * its focusName. True when both panes must be read again. */
+static bool filesActions(file_handle **directory, int pane)
+{
+	static const int options[UI_FILES_ACTIONS] = {
+		COPY_OPTION, MOVE_OPTION, RENAME_OPTION, HIDE_OPTION, DELETE_OPTION
+	};
+	static file_handle folder;
+	bool left = pane == UI_FILES_LEFT;
+	DEVICEHANDLER_INTERFACE *here = left ? devices[DEVICE_CUR] : filesOther.device;
+	DEVICEHANDLER_INTERFACE *there = left ? filesOther.device : devices[DEVICE_CUR];
+	const char *hereDir = left ? curDir.name : filesOther.dir.name;
+	const char *thereDir = left ? filesOther.dir.name : curDir.name;
+	file_handle **thereList = left ? filesOther.sorted : directory;
+	int thereCount = left ? filesOther.count : getSortedDirEntryCount();
+	const uiFilesPaneState_t *state = &filesState.pane[pane];
+	file_handle *entry = (left ? directory : filesOther.sorted)[state->focus];
+	bool card = here == &__device_card_a || here == &__device_card_b;
+	bool toCard = there == &__device_card_a || there == &__device_card_b;
+	uiFilesSide_t from, to;
+	uiFilesEntry_t what;
+	uiFilesAvailability_t avail;
+	uiFilesFocusAfter_t after;
+	char landing[PATHNAME_MAX], was[PATHNAME_MAX], name[PATHNAME_MAX];
+	int action;
+	bool changed, done;
+
+	meta_thread_stop();
+	memset(&what, 0, sizeof(what));
+	if(left) {
+		lockFile(entry);
+	}
+	/* A program folder acts as the folder, never the program in it. */
+	what.programFolder = filesKind(entry, pane, hereDir) == UI_FILES_KIND_PROGRAM_FOLDER;
+	if(what.programFolder) {
+		filesProgramFolder(entry, hereDir, &folder);
+	}
+	strlcpy(filesCopyName, left && entry->meta != NULL && entry->meta->displayName != NULL &&
+		entry->meta->displayName[0] != '\0' ? entry->meta->displayName :
+		getRelativeName(entry->name), sizeof(filesCopyName));
+	if(left) {
+		unlockFile(entry);
+	}
+	if(what.programFolder) {
+		entry = &folder;
+	}
+	filesSide(&from, here, hereDir, left ? UI_FILES_SHARED : filesOther.mount, true);
+	filesSide(&to, there, thereDir, left ? filesOther.mount : UI_FILES_SHARED,
+		left ? !filesOther.readFailed : true);
+	what.pane = pane;
+	what.isFile = entry->fileType == IS_FILE;
+	what.hidden = (entry->fileAttrib & ATTRIB_HIDDEN) != 0;
+	what.needed = entry->size + (card && !toCard ? sizeof(GCI) : 0u);
+	manageDestName(landing, thereDir, entry->name, here, there);
+	for(int i = 0; i < thereCount; i++) {
+		if(!strcasecmp(thereList[i]->name, landing)) {
+			what.exists = true;
+			what.existsFolder = thereList[i]->fileType == IS_DIR;
+			what.existingSize = thereList[i]->size;
+		}
+	}
+	UIFiles_Availability(&from, &to, &what, &avail);
+
+	memset(&filesMenu, 0, sizeof(filesMenu));
+	filesMenu.devices = -1;
+	for(int i = 0; i < UI_FILES_ACTIONS; i++) {
+		strlcpy(filesMenu.box.item[i], avail.label[i], sizeof(filesMenu.box.item[i]));
+		filesMenu.box.letter[i] = avail.letter[i];
+		filesMenu.box.dim |= (u16)(!avail.enabled[i] << i);
+		filesMenu.warn |= (u16)(avail.warn[i] << i);
+		UIFiles_ActionLine((uiFilesAction_t)i, what.hidden, DeviceDisplayName(here),
+			DeviceDisplayName(there), getDevicePath((char *)thereDir), filesMenu.line[i],
+			sizeof(filesMenu.line[i]));
+		strlcpy(filesMenu.reason[i], avail.line[i], sizeof(filesMenu.reason[i]));
+	}
+	filesMenu.box.focus = (u8)UIFiles_FirstEnabled(avail.enabled, UI_FILES_ACTIONS);
+	filesMenuPlace("", UI_FILES_ACTIONS);
+	action = filesBox(UI_FILES_HINTS_BOX, 0u, false);
+	/* Only what the box allowed: a Move it greys never runs as a copy. */
+	if(action < 0 || !avail.enabled[action]) {
+		return false;
+	}
+	if(action == UI_FILES_ACTION_COPY) {
+		char title[64], line[UI_FILES_TEXT_CAPACITY], size[24], free[24] = "";
+		file_handle **list = left ? filesOther.sorted : directory;
+
+		snprintf(title, sizeof(title), "Copy to %s?", DeviceDisplayName(there));
+		if(to.freeKnown) {
+			UIFiles_SizeText(free, sizeof(free), to.freeBytes, filesBlockSize(there),
+				to.device.metric);
+		}
+		snprintf(line, sizeof(line), free[0] != '\0' ? "To %s  \233  %s  \267  %s free" :
+			"To %s  \233  %s", DeviceDisplayName(there), getDevicePath((char *)thereDir), free);
+		filesSizeText(size, sizeof(size), entry);
+		filesQuestion(title, "Yes", "No", line, avail.line[action], avail.warn[action]);
+		filesGhostOn(left ? UI_FILES_RIGHT : UI_FILES_LEFT,
+			UIFiles_LandingIndex(list, thereCount, filesEntryAt, landing, IS_FILE), landing, size);
+		if(filesBox(UI_FILES_HINTS_QUESTION, 0u, false) != 0) {
+			filesGhostOff();
+			return false;
+		}
+		filesGhostOff();
+	}
+	else if(action == UI_FILES_ACTION_MOVE) {
+		/* Swiss's Move question shows the ghost row too. */
+		char size[24];
+
+		filesSizeText(size, sizeof(size), entry);
+		filesGhostOn(left ? UI_FILES_RIGHT : UI_FILES_LEFT,
+			UIFiles_LandingIndex(left ? filesOther.sorted : directory, thereCount, filesEntryAt,
+			landing, IS_FILE), landing, size);
+	}
+
+	filesFitsBoth = !avail.replaceOnly[action];
+	filesOutcome = FILES_SAID_NOTHING;
+	strlcpy(was, entry->name, sizeof(was));
+	if(left && !what.programFolder) {
+		lockFile(entry);
+	}
+	changed = filesManageFrom(entry, pane, options[action], thereDir);
+	if(left && !what.programFolder) {
+		unlockFile(entry);
+	}
+	filesGhostOff();
+	done = action == UI_FILES_ACTION_HIDE ? changed : filesOutcome == FILES_SAID_DONE;
+
+	/* Focus, by name, before the panes are read again: this pane's per
+	 * UIFiles_FocusAfter, the other's on what landed there. */
+	UIFiles_FocusAfter((uiFilesAction_t)action, done, state->focus, state->count,
+		swissSettings.showHiddenFiles, what.hidden, &after);
+	/* The message waits for the panes to be read again; with nothing
+	 * changed they stay as they are, so it comes now. */
+	filesLater.flashPane = after.flash ? (left ? UI_FILES_RIGHT : UI_FILES_LEFT) : -1;
+	if(!changed) {
+		filesSayPending();
+	}
+	if(after.sourceIndex == UI_FILES_FOCUS_NEW_NAME) {
+		strlcpy(name, entry->name, sizeof(name));
+	}
+	else {
+		filesNameAt(pane, directory, after.sourceIndex, name, sizeof(name));
+	}
+	if(left) {
+		strlcpy(curFile.name, name, sizeof(curFile.name));
+		if(after.otherToNew) {
+			strlcpy(filesOther.focusName, manageLanded, sizeof(filesOther.focusName));
+		}
+	}
+	else {
+		strlcpy(filesOther.focusName, name, sizeof(filesOther.focusName));
+		filesLeftFocusName(directory, curFile.name, sizeof(curFile.name));
+		if(after.otherToNew) {
+			strlcpy(curFile.name, manageLanded, sizeof(curFile.name));
+		}
+		/* The left pane's folder, or one above it, renamed or deleted on
+		 * the right: the left goes to the folder that held it, focusing it
+		 * by its new name, rather than reading a folder that is gone. */
+		if(changed && filesOther.device == devices[DEVICE_CUR] && filesWithin(curDir.name, was)) {
+			memcpy(&curDir, &filesOther.dir, sizeof(file_handle));
+			strlcpy(curFile.name, entry->name, sizeof(curFile.name));
+		}
+	}
+	return changed;
+}
+
+/* L or R: the storage menu beside that side's button, as Memory Cards'.
+ * Up and Down move and wrap, A chooses (a greyed device keeps its reason
+ * showing), B, L or R close it. The choice: an item, filesMenu.devices
+ * being Other devices..., or -1. */
+static int filesStorageMenu(int pane, file_handle **directory, uiDrawObj_t **filePanel)
+{
+	uiFilesDevice_t listed[UI_FILES_STORAGE_DEVICES], current, other;
+	DEVICEHANDLER_INTERFACE *mine = pane == UI_FILES_LEFT ? devices[DEVICE_CUR] : filesOther.device;
+	DEVICEHANDLER_INTERFACE *theirs = pane == UI_FILES_LEFT ? filesOther.device : devices[DEVICE_CUR];
+	int count = 0, widest, choice;
+
+	/* Every detected storage that can be read, in Swiss's order. */
+	for(int i = 0; i < MAX_DEVICES && count < UI_FILES_STORAGE_DEVICES; i++) {
+		DEVICEHANDLER_INTERFACE *device = allDevices[i];
+
+		if(device != NULL && (device->features & FEAT_READ) &&
+				deviceHandler_getDeviceAvailable(device)) {
+			filesMenuDevices[count] = device;
+			filesDevice(device, &listed[count++]);
+		}
+	}
+	filesDevice(mine, &current);
+	filesDevice(theirs, &other);
+	UIFiles_StorageMenu(pane, listed, count, &current, &other,
+		getDevicePath(pane == UI_FILES_LEFT ? filesOther.dir.name : curDir.name), &filesMenu);
+	widest = filesWidth(filesMenu.box.title, 0.56f) + 24;
+	for(int i = 0; i < filesMenu.box.count; i++) {
+		widest = MAX(widest, filesWidth(filesMenu.box.item[i], 0.56f) + 32);
+	}
+	filesMenu.box.width = (s16)widest;
+	choice = filesBox(UI_FILES_HINTS_BOX, BUTTON_L | BUTTON_R, false);
+	(void)filesPublish(directory, filePanel, true);
+	return choice;
+}
+
+/* L, a device: it becomes the Source in place, as the Source picker makes
+ * it. The right pane lets go first: the old Source may be its storage too.
+ * menu_loop reads the new Source's top folder next (the listing in hand is
+ * gone), or, when it won't mount, opens the Source picker. */
+static void filesSourceChange(DEVICEHANDLER_INTERFACE *device)
+{
+	filesOtherRelease();
+	meta_thread_stop();
+	sourceCommit(device);
+	(void)sourceMount();
+}
+
+/* Y: the right pane's storage and folder become the Source, and the
+ * Source's the right pane's, each side keeping its focus. Only onto a
+ * right pane that is ready, else (false) the info bar says why. */
+static bool filesSwapSides(file_handle **directory)
+{
+	static file_handle rightDir;
+	DEVICEHANDLER_INTERFACE *left = devices[DEVICE_CUR], *right = filesOther.device;
+	const uiFilesPaneState_t *pane = &filesState.pane[UI_FILES_RIGHT];
+	char leftFocus[PATHNAME_MAX], rightFocus[PATHNAME_MAX];
+
+	if(!UIFiles_CanSwap(filesOther.mount, !filesOther.readFailed)) {
+		snprintf(filesNoteText, sizeof(filesNoteText), "%s isn't ready, so the sides can't swap.",
+			DeviceDisplayName(right));
+		filesNote = filesNoteText;
+		return false;
+	}
+	/* What the panes hold goes before the sides change places, and comes
+	 * back with the next page (UI Motion Off: it stays). */
+	filesSnapshot.swapping = 1;
+	(void)DrawUpdateFiles(filesPage, &filesSnapshot);
+	filesWait(UIFiles_SwapHalfSeconds(UIMotion_ModeFromFlags(swissSettings.disableUIAnimations,
+		swissSettings.reduceUIAnimations)));
+	filesLeftFocusName(directory, leftFocus, sizeof(leftFocus));
+	strlcpy(rightFocus, pane->count > 0 ? filesOther.sorted[pane->focus]->name : "",
+		sizeof(rightFocus));
+	memcpy(&rightDir, &filesOther.dir, sizeof(file_handle));
+	memcpy(&filesOther.dir, &curDir, sizeof(file_handle));
+	if(right == left) {
+		/* One storage on both sides: only the folders change places. */
+		filesOtherFree();
+		memcpy(&curDir, &rightDir, sizeof(file_handle));
+		needsRefresh = 1;
+	}
+	else {
+		filesOtherRelease();
+		meta_thread_stop();
+		filesOther.device = left;
+		sourceCommit(right);
+		if(sourceMount()) {
+			memcpy(&curDir, &rightDir, sizeof(file_handle));
+		}
+	}
+	strlcpy(filesOther.focusName, leftFocus, sizeof(filesOther.focusName));
+	strlcpy(curFile.name, rightFocus, sizeof(curFile.name));
+	return true;
+}
+
+/* The File Browser on the shared listing, as Swiss's lists were: it returns
+ * to menu_loop for a left folder change, a Source change, B, START, a
+ * launch, and anything that needs the listing read again. */
+static void filesOpenDetail(file_handle **directory, uiDrawObj_t **filePanel);
+
+static uiDrawObj_t* renderFileList(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
+{
+	const u32 waitButtons = BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT | BUTTON_RIGHT |
+		BUTTON_A | BUTTON_B | PAD_BUTTON_X | PAD_BUTTON_Y | BUTTON_Z | BUTTON_L |
+		BUTTON_R | BUTTON_START | BUTTON_CLAP;
+	const u32 vertical = BUTTON_UP | BUTTON_DOWN;
+	uiMenuInputState_t menuInput, pageInput;
+	u32 menuInputRetrace, pageInputRetrace, repeatHeld = 0u, repeatAt = 0u;
+	float rate = VIDEO_GetRetraceRate();
+	uiDrawObj_t *loadingBox;
+	int storage = -1, choice;
+
+	gameflowListFallback = false;
 	if(num_files<=0) {
 		memcpy(&curDir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
 		needsRefresh=1;
 		return filePanel;
 	}
-	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_BOTTOMLEFT);
-	DrawPublish(loadingBox);
+	if(!isfinite(rate) || rate < 1.0f) rate = 60.0f;
+	if(filePanel == NULL || filePanel != filesPage) {
+		/* Opening: the left pane has the focus, the right comes back where
+		 * it was. It asks for no scene, so the cube stays as Home or the
+		 * Library left it, and goes back there after anything that turns
+		 * it (a game's info coming back to the list). */
+		filesState.active = UI_FILES_LEFT;
+		filesNote = NULL;
+		filesSnapshot.menu.open = 0;
+		filesScene = filePanel == NULL ? UI_SCENE_HOME : UI_SCENE_LIBRARY;
+	}
+	else {
+		UIScene_Request(filesScene);
+	}
+	if(curSelection == 0 && num_files > 1 && directory[0]->fileType == IS_SPECIAL) {
+		curSelection = 1; // skip the ".." by default
+	}
+	UIFiles_SetPane(&filesState, UI_FILES_LEFT, num_files, curSelection);
+	curSelection = filesState.pane[UI_FILES_LEFT].focus;
+	UIFiles_LeftView(&filesState, &current_view_start, &current_view_end);
+	filesLeftListing++;
+	filesFreeText(devices[DEVICE_CUR], filesFree, sizeof(filesFree));
+	filesOtherAcquire();
+	/* Presses from before the page shows this (the A that opened it, a B in
+	 * a box, one made while a device was set up) aren't for here; those made
+	 * while a folder was read are. */
+	if(!filesKeepPresses) {
+		(void)padsButtonsTaken(waitButtons);
+	}
+	filesKeepPresses = false;
+	filesSnapshot.swapping = 0;
+	if(!filesPublish(directory, &filePanel, true)) {
+		/* No memory for the page: Home rather than a stale screen. */
+		filesOtherRelease();
+		curMenuLocation = ON_OPTIONS;
+		return filePanel;
+	}
+	/* What an operation said, over both panes as it left them. */
+	filesSayPending();
+	loadingBox = DrawPublish(DrawProgressLoading(PROGRESS_BOX_FILES));
 	meta_thread_start(loadingBox);
-	uiMenuInputState_t menuInput;
-	u32 menuInputRetrace = VIDEO_GetRetraceCount();
 	UIMenuInput_Init(&menuInput);
+	UIMenuInput_Init(&pageInput);
+	menuInputRetrace = pageInputRetrace = VIDEO_GetRetraceCount();
 	while(1) {
-		DrawUpdateProgressLoading(loadingBox, +1);
-		uiDrawObj_t *newPanel = DrawContainer();
-		drawFiles(directory, num_files, newPanel);
-		filePanel = DrawRepublish(filePanel, newPanel);
-		DrawUpdateProgressLoading(loadingBox, -1);
-		
-		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP;
-		u32 browserButtons;
-		uiMenuInputDirection_t analog;
+		uiFilesPaneState_t *active;
+		uiMenuInputDirection_t analog, page;
+		u32 buttons, held;
+		int frames = 0;
+		bool moved = false;
+
 		while(1) {
-			browserButtons = padsButtonsHeld();
+			u32 now = VIDEO_GetRetraceCount();
+
+			held = padsButtonsHeld();
+			buttons = padsButtonsTaken(waitButtons);
+			/* Up and Down held: again after 320 ms, then every 120 ms. */
+			if((held & vertical) != repeatHeld) {
+				repeatHeld = held & vertical;
+				repeatAt = now + (u32)(0.32f * rate);
+			}
+			else if(repeatHeld != 0u && (s32)(now - repeatAt) >= 0) {
+				buttons |= repeatHeld;
+				repeatAt = now + (u32)(0.12f * rate);
+			}
 			analog = padsMenuInputPoll(&menuInput,
 				menuInputElapsedMicroseconds(&menuInputRetrace),
 				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,
-				(browserButtons & waitButtons) != 0u);
-			if((browserButtons & waitButtons) != 0u ||
-					analog != UI_MENU_INPUT_NONE) {
+				(held & waitButtons) != 0u);
+			page = padsSubMenuInputPoll(&pageInput,
+				menuInputElapsedMicroseconds(&pageInputRetrace),
+				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,
+				(held & waitButtons) != 0u);
+			if(buttons != 0u || analog != UI_MENU_INPUT_NONE ||
+					page != UI_MENU_INPUT_NONE) {
 				break;
 			}
 			VIDEO_WaitVSync();
-		}
-		if((browserButtons & BUTTON_UP) || analog == UI_MENU_INPUT_UP){	curSelection = (--curSelection < 0) ? num_files-1 : curSelection;}
-		if((browserButtons & BUTTON_DOWN) || analog == UI_MENU_INPUT_DOWN) {curSelection = (curSelection + 1) % num_files;	}
-		if(browserButtons & (BUTTON_LEFT|BUTTON_L)) {
-			if(curSelection == 0) {
-				curSelection = num_files-1;
-			}
-			else {
-				curSelection = (curSelection - FILES_PER_PAGE < 0) ? 0 : curSelection - FILES_PER_PAGE;
+			/* Banners arrive: from this thread a row a frame, else from the
+			 * meta thread, looked for four times a second. */
+			if(filesMetaStep(directory) || ++frames % 15 == 0) {
+				(void)filesPublish(directory, &filePanel, false);
 			}
 		}
-		if(browserButtons & (BUTTON_RIGHT|BUTTON_R)) {
-			if(curSelection == num_files-1) {
-				curSelection = 0;
-			}
-			else {
-				curSelection = (curSelection + FILES_PER_PAGE > num_files-1) ? num_files-1 : (curSelection + FILES_PER_PAGE) % num_files;
-			}
+		filesChosenLine[0] = '\0';
+		filesNote = NULL;
+		active = &filesState.pane[filesState.active];
+		/* Moves first: a press of Down and A acts on the row moved to. */
+		if((buttons & BUTTON_UP) || analog == UI_MENU_INPUT_UP) {
+			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_UP);
 		}
-		if(padsButtonsHeld() & BUTTON_CLAP) {
-			DrawUpdateProgressLoading(loadingBox, +1);
-			curSelection = meta_find_barrel_game(curSelection);
-			DrawUpdateProgressLoading(loadingBox, -1);
+		if((buttons & BUTTON_DOWN) || analog == UI_MENU_INPUT_DOWN) {
+			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_DOWN);
 		}
-		
-		if(browserButtons & BUTTON_A) {
-			lockFile(directory[curSelection]);
-			//go into a folder or select a file
-			if(directory[curSelection]->fileType==IS_DIR) {
-				memcpy(&curDir, directory[curSelection], sizeof(file_handle));
-				needsRefresh=1;
-			}
-			else if(directory[curSelection]->fileType==IS_SPECIAL) {
-				memcpy(&curFile, &curDir, sizeof(file_handle));
-				curDir.fileBase = directory[curSelection]->fileBase;
-				needsDeviceChange = upToParent(&curDir);
-				needsRefresh=1;
-			}
-			else if(directory[curSelection]->fileType==IS_FILE) {
-				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
-				if(canLoadFileType(curFile.name, devices[DEVICE_CUR]->extraExtensions)) {
-					meta_thread_stop();
-					load_file();
+		if(page == UI_MENU_INPUT_UP) {
+			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_PAGE_UP);
+		}
+		if(page == UI_MENU_INPUT_DOWN) {
+			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_PAGE_DOWN);
+		}
+		if(buttons & BUTTON_LEFT) {
+			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_LEFT);
+		}
+		if(buttons & BUTTON_RIGHT) {
+			moved |= UIFiles_Input(&filesState, UI_FILES_INPUT_RIGHT);
+		}
+		if(buttons & BUTTON_CLAP) {
+			filesBarrelGame(loadingBox);
+			UIFiles_SetPane(&filesState, UI_FILES_LEFT, num_files, curSelection);
+			moved = true;
+		}
+		active = &filesState.pane[filesState.active];
+		curSelection = filesState.pane[UI_FILES_LEFT].focus;
+		UIFiles_LeftView(&filesState, &current_view_start, &current_view_end);
+		if(moved) {
+			menuaudio_blip();
+		}
+
+		/* L and R: each side's storage; X and ".." at a side's top open
+		 * its menu too. */
+		storage = (buttons & BUTTON_L) ? UI_FILES_LEFT : (buttons & BUTTON_R) ?
+			UI_FILES_RIGHT : -1;
+		if(filesState.active == UI_FILES_LEFT && storage < 0) {
+			if(buttons & BUTTON_A) {
+				int type;
+				bool loads, detail;
+
+				/* What A does depends on the meta (a program folder, a
+				 * second disc): read it now if no one has yet. */
+				lockFile(directory[curSelection]);
+				populate_meta(directory[curSelection]);
+				type = directory[curSelection]->fileType;
+				loads = filesLoads(directory[curSelection]);
+				detail = loads && filesOpensDetail(directory[curSelection]);
+				unlockFile(directory[curSelection]);
+				if(type == IS_SPECIAL && filesAtRoot(&curDir)) {
+					storage = UI_FILES_LEFT;
 				}
-				else if(swissSettings.enableFileManagement) {
+				else if(type == IS_FILE && !loads) {
+					/* A file that doesn't start here: its Actions. */
+					if(fileManagementAllowed() && filesActions(directory, UI_FILES_LEFT)) {
+						filesOther.listed = false;
+						needsRefresh = 1;
+						break;
+					}
 					meta_thread_stop();
-					needsRefresh = manage_file() ? 1:0;
+					meta_thread_start(loadingBox);
 				}
-				memcpy(directory[curSelection], &curFile, sizeof(file_handle));
-			}
-			unlockFile(directory[curSelection]);
-			break;
-		}
-		if(browserButtons & BUTTON_X) {
-			memcpy(&curFile, &curDir, sizeof(file_handle));
-			curDir.fileBase = directory[0]->fileBase;
-			needsDeviceChange = upToParent(&curDir);
-			needsRefresh=1;
-			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
-			break;
-		}
-		if((browserButtons & BUTTON_Z) && swissSettings.enableFileManagement) {
-			lockFile(directory[curSelection]);
-			if(directory[curSelection]->fileType == IS_FILE || directory[curSelection]->fileType == IS_DIR) {
-				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
-				meta_thread_stop();
-				needsRefresh = manage_file() ? 1:0;
-				memcpy(directory[curSelection], &curFile, sizeof(file_handle));
-				while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
-				if(needsRefresh) {
-					// If we return from doing something with a file, refresh the device in the same dir we were at
-					unlockFile(directory[curSelection]);
+				else if(detail) {
+					/* A game: its Detail, as the Library's. The page under it
+					 * changes, and the wheel goes with the old one, once the
+					 * banner thread that writes to it has stopped. */
+					meta_thread_stop();
+					DrawDispose(loadingBox);
+					loadingBox = NULL;
+					filesOpenDetail(directory, &filePanel);
+					break;
+				}
+				else {
+					/* Starting a file: nothing stays mounted that the game,
+					 * its details or the loader don't know about. */
+					if(type == IS_FILE && loads) {
+						filesOtherRelease();
+					}
+					/* A firmware file asks first, as a box beside its row. */
+					filesBoxes = type == IS_FILE && UIFiles_Kind(directory[curSelection]->name,
+						type) == UI_FILES_KIND_FIRMWARE;
+					filesActivate(directory, false);
+					filesBoxes = false;
+					filesKeepPresses = type == IS_DIR || type == IS_SPECIAL;
+					/* Z's box on a file that can't start changed something:
+					 * the right pane is read again too. */
+					if(type == IS_FILE && needsRefresh) {
+						filesOther.listed = false;
+					}
 					break;
 				}
 			}
-			else if(directory[curSelection]->fileType == IS_SPECIAL) {
-				// Toggle autoload
-				if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
-				|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
-					memset(&swissSettings.autoload[0], 0, PATHNAME_MAX);
+			else if((buttons & PAD_BUTTON_X) && filesAtRoot(&curDir)) {
+				storage = UI_FILES_LEFT;
+			}
+			else if(buttons & PAD_BUTTON_X) {
+				filesUp(directory[0]);
+				filesKeepPresses = true;
+				/* At the top the Source picker opens: it must not see X
+				 * still held, which is its own button. */
+				if(needsDeviceChange) {
+					while(padsButtonsHeld() & PAD_BUTTON_X) VIDEO_WaitVSync();
+				}
+				break;
+			}
+			else if((buttons & BUTTON_Z) && directory[curSelection]->fileType == IS_SPECIAL &&
+					(fileManagementAllowed() || filesAutoloadFolder(curDir.name))) {
+				/* Autoload: on with File Management, off always (the folder
+				 * Indigo starts in is where you'd turn it off). A settings
+				 * save mounts and unmounts the Configuration Device, which
+				 * may be the right pane's. */
+				filesBoxes = true;
+				filesOtherRelease();
+				filesToggleAutoload(&curDir.name[0]);
+				filesOtherAcquire();
+				filesBoxes = false;
+			}
+			else if((buttons & BUTTON_Z) && fileManagementAllowed()) {
+				if(filesActions(directory, UI_FILES_LEFT)) {
+					filesOther.listed = false;
+					needsRefresh = 1;
+					break;
+				}
+				/* Nothing changed: the banners go on arriving. */
+				meta_thread_stop();
+				meta_thread_start(loadingBox);
+			}
+		}
+		else if(storage < 0 && (buttons & (BUTTON_A | PAD_BUTTON_X | BUTTON_Z))) {
+			file_handle *entry = active->count > 0 ? filesOther.sorted[active->focus] : NULL;
+			bool parent = (buttons & PAD_BUTTON_X) || (!(buttons & BUTTON_Z) &&
+				(entry == NULL || entry->fileType == IS_SPECIAL));
+
+			if(parent) {
+				if(filesAtRoot(&filesOther.dir) || filesOther.mount == UI_FILES_FAILED) {
+					storage = UI_FILES_RIGHT;
 				}
 				else {
-					strcpy(&swissSettings.autoload[0], &curDir.name[0]);
+					(void)DrawUpdateFilesReading(filePanel, UI_FILES_RIGHT);
+					filesOtherOpen(NULL, NULL);
 				}
-				// Save config
-				uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving autoload\205"));
-				config_update_autoload(true);
-				DrawDispose(msgBox);
 			}
-			unlockFile(directory[curSelection]);
+			else if(entry != NULL && entry->fileType == IS_SPECIAL) {
+				if(fileManagementAllowed() || filesAutoloadFolder(filesOther.dir.name)) {
+					filesBoxes = true;
+					filesOtherRelease();
+					filesToggleAutoload(filesOther.dir.name);
+					filesOtherAcquire();
+					filesBoxes = false;
+				}
+			}
+			else if(entry != NULL && (buttons & BUTTON_A) && entry->fileType == IS_DIR) {
+				(void)DrawUpdateFilesReading(filePanel, UI_FILES_RIGHT);
+				filesOtherOpen(entry, "");
+			}
+			else if(entry != NULL && (buttons & BUTTON_A) && filesLoads(entry)) {
+				filesNote = "Games start on the left. Y swaps the two sides.";
+			}
+			else if(entry != NULL && fileManagementAllowed()) {
+				if(filesActions(directory, UI_FILES_RIGHT)) {
+					filesOther.listed = false;
+					needsRefresh = 1;
+					break;
+				}
+				meta_thread_stop();
+				meta_thread_start(loadingBox);
+			}
 		}
-		
-		if((browserButtons & BUTTON_START) && swissSettings.recentListLevel > 0) {
+		if(storage >= 0) {
 			meta_thread_stop();
-			select_recent_entry();
+			choice = filesStorageMenu(storage, directory, &filePanel);
+			if(choice >= 0 && storage == UI_FILES_LEFT) {
+				if(choice == filesMenu.devices) {
+					/* Other devices...: Swiss's Source picker, from
+					 * menu_loop, as X at the top always opened it. */
+					filesOtherRelease();
+					needsDeviceChange = 1;
+					break;
+				}
+				if(filesMenuDevices[choice] != devices[DEVICE_CUR]) {
+					filesSourceChange(filesMenuDevices[choice]);
+					break;
+				}
+			}
+			else if(choice >= 0) {
+				(void)DrawUpdateFilesReading(filePanel, UI_FILES_RIGHT);
+				if(choice == filesMenu.devices) {
+					filesOtherPick();
+				}
+				else if(filesMenuDevices[choice] != filesOther.device ||
+						filesOther.mount == UI_FILES_FAILED) {
+					filesOtherChoose(filesMenuDevices[choice]);
+				}
+			}
+			meta_thread_start(loadingBox);
+		}
+		/* Y: the sides swap, the Source with them. */
+		if((buttons & PAD_BUTTON_Y) && storage < 0) {
+			meta_thread_stop();
+			if(filesSwapSides(directory)) {
+				break;
+			}
+			meta_thread_start(loadingBox);
+		}
+		if((buttons & BUTTON_START) && swissSettings.recentListLevel > 0) {
+			/* Recent may change the Source and saves the list. */
+			filesOtherRelease();
+			(void)filesRecent(false);
 			break;
 		}
-		if(browserButtons & BUTTON_B) {
-			curMenuLocation = ON_OPTIONS;
-			DrawUpdateFileBrowserButton(directory[curSelection]->uiObj, (curMenuLocation == ON_FILLIST) ? B_SELECTED:B_NOSELECT);
+		if(buttons & BUTTON_B) {
+			/* The page goes and the Home cube comes back before Home does. */
+			filesSnapshot.leaving = 1;
+			(void)DrawUpdateFiles(filePanel, &filesSnapshot);
+			filesWait(UIFiles_LeaveSeconds(UIMotion_ModeFromFlags(
+				swissSettings.disableUIAnimations, swissSettings.reduceUIAnimations)));
+			filesSnapshot.leaving = 0;
+			filesOtherRelease();
+			/* No Swiss row to dim on the way out. */
+			filesHome();
 			break;
 		}
-		while (padsButtonsHeld() & waitButtons) {
-			(void)padsMenuInputPoll(&menuInput,
-				menuInputElapsedMicroseconds(&menuInputRetrace),
-				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT, true);
-			VIDEO_WaitVSync();
+		/* A box (Z, Autoload, a storage menu) may have left presses of its
+		 * own. */
+		if(buttons & (BUTTON_A | PAD_BUTTON_X | PAD_BUTTON_Y | BUTTON_Z | BUTTON_L | BUTTON_R)) {
+			(void)padsButtonsTaken(waitButtons);
 		}
+		(void)filesPublish(directory, &filePanel, true);
 	}
 	meta_thread_stop();
 	DrawDispose(loadingBox);
-	return filePanel;
-}
-
-void drawCurrentDeviceCarousel(uiDrawObj_t *containerPanel) {
-	uiDrawObj_t *bgBox = DrawTransparentBox(30, 395, getVideoMode()->fbWidth-30, 420);
-	DrawAddChild(containerPanel, bgBox);
-	// Device name
-	uiDrawObj_t *devNameLabel = DrawStyledLabel(50, 406, DeviceDisplayName(devices[DEVICE_CUR]), 0.5f, ALIGN_LEFT, defaultColor);
-	DrawAddChild(containerPanel, devNameLabel);
-	
-	device_info *info = devices[DEVICE_CUR]->info(devices[DEVICE_CUR]->initial);
-	if (info == NULL) {
-		char *textPtr = txtbuffer;
-		textPtr = stpcpy(textPtr, "Used: ");
-		textPtr += formatBytes(textPtr, getCurrentDirSize(), 0, !(devices[DEVICE_CUR]->location & LOC_SYSTEM));
-	} else {
-		// Info labels
-		char *textPtr = txtbuffer;
-		textPtr = stpcpy(textPtr, "Total: ");
-		textPtr += formatBytes(textPtr, info->totalSpace, 0, info->metric);
-		textPtr = stpcpy(textPtr, " | Free: ");
-		textPtr += formatBytes(textPtr, info->freeSpace, 0, info->metric);
-		textPtr = stpcpy(textPtr, " | Used: ");
-		textPtr += formatBytes(textPtr, info->totalSpace - info->freeSpace, 0, info->metric);
+	/* Leaving the screen, or its Source: the right listing goes. */
+	if(curMenuLocation != ON_FILLIST || needsDeviceChange) {
+		filesOtherRelease();
 	}
-
-	uiDrawObj_t *devInfoLabel = DrawStyledLabel(getVideoMode()->fbWidth-50, 406, txtbuffer, 0.5f, ALIGN_RIGHT, defaultColor);
-	DrawAddChild(containerPanel, devInfoLabel);
+	return filePanel;
 }
 
 static u32 gameflowSnapshotGeneration;
@@ -746,7 +2721,17 @@ typedef struct {
 	/* Y in the Library: Detail opens this game's settings first, once. */
 	bool openSettings;
 	char gameId[UI_GAMEFLOW_DETAIL_ID_LENGTH + 1u];
+	/* Detail reads the save copies once while it is open: their totals, the
+	 * slot the game reads its save from (-1: no card), and the copy Left and
+	 * Right chose (-1: none). Where the copies are: gameflowSaveCopies. */
+	bool savesScanned;
+	uiSavesGameStats_t saveStats;
+	int saveSlot;
+	int saveChoice;
 } gameflowLaunchContext_t;
+
+/* The copies of the open Detail's save, one Detail at a time. */
+static savesCopies_t gameflowSaveCopies;
 
 static void load_file_with_context(gameflowLaunchContext_t *context);
 static void load_game_with_context(gameflowLaunchContext_t *context);
@@ -781,8 +2766,8 @@ static uiGameflowLibraryMode_t gameflowLibraryMode(file_handle **directory,
 	bool flattened;
 	int i;
 
-	if(directory == NULL || numFiles <= 0 || devices[DEVICE_CUR] == NULL ||
-		devices[DEVICE_CUR]->initial == NULL ||
+	if(homeFileBrowser || directory == NULL || numFiles <= 0 ||
+		devices[DEVICE_CUR] == NULL || devices[DEVICE_CUR]->initial == NULL ||
 		!(devices[DEVICE_CUR]->features & FEAT_BOOT_GCM)) {
 		return UI_GAMEFLOW_LIBRARY_NONE;
 	}
@@ -876,28 +2861,6 @@ static bool gameflowInsideFolder(void)
 		UIGameflowLibrary_LocateFolders(gamesRoot, curDir.name));
 }
 
-/* The retained Library ends at /games. Its parent card and X return Home,
- * keeping this listing ready for the next visit instead of opening Swiss's
- * device-root browser. Within a folder, keep scanFiles' child selection. */
-static void gameflowNavigateParent(bool useGameflow, const file_handle *parent)
-{
-	char gamesRoot[PATHNAME_MAX];
-
-	if(useGameflow && devices[DEVICE_CUR] != NULL &&
-		devices[DEVICE_CUR]->initial != NULL) {
-		concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
-		if(UIGameflowLibrary_Locate(gamesRoot, curDir.name) ==
-			UI_GAMEFLOW_LIBRARY_LOCATION_ROOT) {
-			curMenuLocation = ON_OPTIONS;
-			return;
-		}
-	}
-	memcpy(&curFile, &curDir, sizeof(file_handle));
-	curDir.fileBase = parent->fileBase;
-	needsDeviceChange = upToParent(&curDir);
-	needsRefresh = 1;
-}
-
 static bool gameflowEnterLibraryFromHome(void)
 {
 	char gamesRoot[PATHNAME_MAX];
@@ -939,8 +2902,9 @@ static bool gameflowEnterLibraryFromHome(void)
 static void homeRefreshLibrary(void)
 {
 	DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];
-	/* Refresh reads the card again, /apps included. */
+	/* Refresh reads the card again, /apps and /emulators included. */
 	homeAppsKnown = false;
+	homeEmulatorsKnown = false;
 	if(source == NULL) {
 		needsRefresh = 0;
 		return;
@@ -1153,6 +3117,21 @@ static void homeDispatchEffect(uiHomeEffect_t effect)
 		case UI_HOME_EFFECT_OPEN_APPS:
 			show_apps();
 			UIScene_Request(UI_SCENE_HOME);
+			break;
+		case UI_HOME_EFFECT_OPEN_EMULATORS:
+			show_emulators();
+			UIScene_Request(UI_SCENE_HOME);
+			break;
+		case UI_HOME_EFFECT_OPEN_FILES:
+			if(devices[DEVICE_CUR] != NULL &&
+					devices[DEVICE_CUR]->initial != NULL) {
+				homeFileBrowser = true;
+				memcpy(&curDir, devices[DEVICE_CUR]->initial,
+					sizeof(file_handle));
+				curSelection = 0;
+				needsRefresh = 1;
+				curMenuLocation = ON_FILLIST;
+			}
 			break;
 		case UI_HOME_EFFECT_RESTART:
 			homeConfirmRestartEffect();
@@ -1507,9 +3486,12 @@ static bool gameflowPopulateResolvedMeta(file_handle *file,
 	return true;
 }
 
+/* The Library gives up on two possible other discs. From the File Browser,
+ * whose folders aren't laid out for the Library, Swiss's choice stands
+ * (meta_find_disc2): the one named as the other disc, else the last. */
 static file_handle *gameflowFindOppositeImage(file_handle *image,
 	const uiGameflowResolverEntry_t *primaryHeader,
-	uiGameflowResolverEntry_t *oppositeHeader)
+	uiGameflowResolverEntry_t *oppositeHeader, bool swissChoice)
 {
 	file_handle *entries;
 	file_handle *match = NULL;
@@ -1558,7 +3540,7 @@ static file_handle *gameflowFindOppositeImage(file_handle *image,
 			primaryHeader, &candidateHeader)) {
 			continue;
 		}
-		if(match != NULL) {
+		if(match != NULL && !swissChoice) {
 			if(oppositeHeader != NULL) {
 				memset(oppositeHeader, 0, sizeof(*oppositeHeader));
 			}
@@ -1568,6 +3550,11 @@ static file_handle *gameflowFindOppositeImage(file_handle *image,
 		if(oppositeHeader != NULL) {
 			memcpy(oppositeHeader, &candidateHeader,
 				sizeof(*oppositeHeader));
+		}
+		if(swissChoice && UIGameflowResolver_NamedAsOppositeDisc(image->name,
+			primaryHeader->discNumber, candidate->name,
+			candidateHeader.discNumber)) {
+			break;
 		}
 	}
 	return match;
@@ -1815,6 +3802,49 @@ static bool gameflowResolveAndLoadFolder(file_handle *folder,
 	return true;
 }
 
+/* Detail opened from the File Browser (filesOpenDetail): the event isn't on
+ * screen until Detail is ready, and the File Browser's page comes back over
+ * it before it turns back to the Library. gameflowFilesPage is that page
+ * while it is up; gameflowFilesShown, once the event has been. */
+static bool gameflowFromFiles;
+static bool gameflowFilesShown;
+static uiDrawObj_t *gameflowFilesPage;
+
+/* Detail or the launch screen first shows: from the File Browser, the event
+ * takes the page's place already in that mode, so no card flies in from a
+ * Library slot and no Library frame is drawn. */
+static void gameflowShowFromFiles(uiDrawObj_t *event, uiGameflowMode_t mode)
+{
+	if(!gameflowFromFiles || gameflowFilesShown) {
+		DrawSetGameflowMode(event, mode);
+		return;
+	}
+	/* Detail draws nothing until the cube is back behind it (libraryReveal):
+	 * from a File Browser over Home, the page hides the cube going back. */
+	for(int vsync = 0; vsync < 60 && UIScene_Frame()->libraryReveal < 1.0f;
+		vsync++) {
+		VIDEO_WaitVSync();
+	}
+	if(gameflowFilesPage == filesPage) filesPage = NULL;
+	DrawSetGameflowModeNow(event, mode);
+	DrawRepublish(gameflowFilesPage, event);
+	gameflowFilesPage = NULL;
+	gameflowFilesShown = true;
+}
+
+/* Before the event goes back to Library mode: from the File Browser, its
+ * page again, settled, on top, so the slide back to a Library slot happens
+ * under it. Once is enough. */
+static void gameflowBackToFiles(void)
+{
+	if(gameflowFromFiles && gameflowFilesPage == NULL) {
+		gameflowFilesPage = DrawFilesSettled(&filesSnapshot);
+		if(gameflowFilesPage != NULL) {
+			DrawPublish(gameflowFilesPage);
+		}
+	}
+}
+
 /* A launch starts from a fresh handle. A Library entry keeps the file
  * its banner was read through, and a read error on a slow SD card over EXI
  * leaves that file failing every later read. A launch that failed after setup
@@ -1866,7 +3896,7 @@ static bool gameflowLoadImageWithContext(file_handle *image,
 	gameflowPopulateResolvedMeta(image, &headerEntry);
 	memcpy(&curFile, image, sizeof(curFile));
 	context.oppositeDisc = gameflowFindOppositeImage(image, &headerEntry,
-		&oppositeHeader);
+		&oppositeHeader, gameflowFromFiles);
 	if(context.oppositeDisc != NULL) {
 		gameflowFreshHandle(context.oppositeDisc);
 	}
@@ -1883,79 +3913,94 @@ static bool gameflowLoadImageWithContext(file_handle *image,
 	devices[DEVICE_CUR]->closeFile(&curFile);
 	devices[DEVICE_CUR]->closeFile(context.oppositeDisc);
 	memcpy(image, &curFile, sizeof(*image));
+	gameflowBackToFiles();
 	DrawSetGameflowMode(context.event, UI_GAMEFLOW_MODE_LIBRARY);
 	DrawClearGameflowDetail(context.event);
 	return true;
 }
 
-// Draws all the files in the current dir.
-void drawFilesCarousel(file_handle** directory, int num_files, uiDrawObj_t *containerPanel) {
-	int i = 0;
-	current_view_start = MAX(0,curSelection-FILES_PER_PAGE_CAROUSEL/2);
-	current_view_end = MIN(num_files,curSelection+(FILES_PER_PAGE_CAROUSEL+1)/2);
-	drawCurrentDeviceCarousel(containerPanel);
-	if(num_files > 0) {
-		// Draw which directory we're in
-		sprintf(txtbuffer, "%s", getDevicePath(&curDir.name[0]));
-		float scale = GetTextScaleToFitInWidthWithMax(txtbuffer, (getVideoMode()->fbWidth-60), .85);
-		DrawAddChild(containerPanel, DrawStyledLabel(30, 90, txtbuffer, scale, ALIGN_LEFT, defaultColor));
-		if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
-		|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
-			DrawAddChild(containerPanel, DrawImage(TEX_STAR, ((getVideoMode()->fbWidth-30)-16), 80, 16, 16, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0));
-		}
-		//int left_num = curSelection - current_view_start; // Number of entries to the left
-		//int right_num = (current_view_end - curSelection)-1;
-		//print_debug("%i entries to the left, %i to the right in this view\n", left_num, right_num);
-		//print_debug("%i cur sel, %i start, %i end\n", curSelection, current_view_start, current_view_end);
-		
-		bool parentLink = (directory[curSelection]->fileType==IS_SPECIAL);
-		int y_base = 105; // top most point
-		int sub_entry_width = 40;
-		int sub_entry_height = 270;
-		int main_entry_width = 320;
-		int main_entry_height = parentLink ? 40 : 280;
-		int left_x_base = ((getVideoMode()->fbWidth / 2) - (main_entry_width / 2));  // left x entry
-		int right_x_base = ((getVideoMode()->fbWidth / 2) + (main_entry_width / 2));  // right x entry
-		
-		uiDrawObj_t *browserObject = NULL;
-		// TODO scale and position based on how far from the middle these are (banner and text too)
-		// Left spineart entries
-		for(i = current_view_start; i < curSelection; i++) {
-			lockFile(directory[i]);
-			populate_meta(directory[i]);
-			browserObject = DrawFileCarouselEntry(left_x_base + ((sub_entry_width*(i-curSelection))), y_base + 10,
-									left_x_base + ((sub_entry_width*(i-curSelection))+sub_entry_width), y_base + 10 + sub_entry_height,
-									getRelativePath(directory[i]->name, curDir.name),
-									directory[i], i - curSelection);
-			directory[i]->uiObj = browserObject;
-			unlockFile(directory[i]);
-			DrawAddChild(containerPanel, browserObject);
-		}
-		
-		// Main entry
-		lockFile(directory[curSelection]);
-		populate_meta(directory[curSelection]);
-		browserObject = DrawFileCarouselEntry(((getVideoMode()->fbWidth / 2) - (main_entry_width / 2)), y_base,
-								((getVideoMode()->fbWidth / 2) + (main_entry_width / 2)), y_base + main_entry_height,
-								getRelativePath(directory[curSelection]->name, curDir.name),
-								directory[curSelection], 0);
-		directory[curSelection]->uiObj = browserObject;
-		unlockFile(directory[curSelection]);
-		DrawAddChild(containerPanel, browserObject);
-		
-		// Right spineart entries
-		for(i = curSelection+1; i < current_view_end; i++) {
-			lockFile(directory[i]);
-			populate_meta(directory[i]);
-			browserObject = DrawFileCarouselEntry(right_x_base + ((sub_entry_width*(i-curSelection-1))), y_base + 10,
-									right_x_base + ((sub_entry_width*(i-curSelection-1))+sub_entry_width), y_base + 10 + sub_entry_height,
-									getRelativePath(directory[i]->name, curDir.name),
-									directory[i], i - curSelection);
-			directory[i]->uiObj = browserObject;
-			unlockFile(directory[i]);
-			DrawAddChild(containerPanel, browserObject);
-		}
+/* A one-game Library window for Detail: the File Browser's focused entry,
+ * selected, with the ID its disc header gave (the Library's identity check
+ * and the posters go by it). */
+static void filesDetailSnapshot(uiGameflowRenderSnapshot_t *snapshot,
+	file_handle *entry, const uiGameflowResolverEntry_t *header)
+{
+	uiGameflowCardSnapshot_t *record = &snapshot->records[0];
+
+	memset(snapshot, 0, offsetof(uiGameflowRenderSnapshot_t, records) +
+		sizeof(snapshot->records[0]));
+	snapshot->selection.generation = ++gameflowSnapshotGeneration;
+	snapshot->selection.itemCount = (u32)getSortedDirEntryCount();
+	snapshot->selection.selectedIndex = (u32)curSelection;
+	snapshot->recordCount = 1u;
+	snapshot->layout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
+	gameflowCopyText(snapshot->deviceName, sizeof(snapshot->deviceName),
+		DeviceDisplayName(devices[DEVICE_CUR]), sizeof(snapshot->deviceName));
+	record->libraryIndex = (u32)curSelection;
+	record->relativeSlot = 0;
+	gameflowSnapshotRecord(record, entry, UI_GAMEFLOW_LIBRARY_IMAGE_FILES);
+	gameflowCopyText(record->gameId, sizeof(record->gameId), header->gameId,
+		sizeof(header->gameId));
+}
+
+/* A on a game in the File Browser's left pane opens Indigo's Game Detail,
+ * as the Library does: its posters, its Saves box, settings and cheats,
+ * Launch Game. Nothing else is mounted meanwhile. The page stays up until
+ * Detail is ready and is back before Detail goes, so neither is seen
+ * leaving; B comes back to the same row. A disc whose header won't read,
+ * or a Detail that can't be built, goes to Swiss's own load_file. */
+static bool filesOpensDetail(const file_handle *entry)
+{
+	return entry->fileType == IS_FILE &&
+		UIGameflowLibrary_IsGameImageName(entry->name) &&
+		(devices[DEVICE_CUR]->features & FEAT_BOOT_GCM);
+}
+
+static void filesOpenDetail(file_handle **directory, uiDrawObj_t **filePanel)
+{
+	file_handle *entry = directory[curSelection];
+	uiGameflowRenderSnapshot_t *snapshot = NULL;
+	uiGameflowResolverEntry_t header;
+	uiDrawObj_t *event = NULL;
+	bool handled = false;
+
+	meta_thread_stop();
+	filesOtherRelease();
+	lockFile(entry);
+	memset(&header, 0, sizeof(header));
+	gameflowFreshHandle(entry);
+	if(gameflowReadResolverHeader(entry, &header)) {
+		snapshot = memalign(32, sizeof(*snapshot));
 	}
+	if(snapshot != NULL) {
+		filesDetailSnapshot(snapshot, entry, &header);
+		/* The Library's one bounded poster read before Detail. */
+		DrawGameflowRequestPosters(devices[DEVICE_CUR], snapshot);
+		DrawGameflowPollPosters();
+		event = DrawGameflow(snapshot);
+	}
+	if(event != NULL) {
+		gameflowFilesPage = *filePanel;
+		gameflowFilesShown = false;
+		gameflowFromFiles = true;
+		handled = gameflowLoadImageWithContext(entry, event, snapshot, false);
+		gameflowFromFiles = false;
+		if(gameflowFilesShown) {
+			DrawDispose(event);
+		}
+		else {
+			DrawDiscard(event);
+		}
+		*filePanel = filesPage = gameflowFilesPage;
+		gameflowFilesPage = NULL;
+	}
+	free(snapshot);
+	unlockFile(entry);
+	if(!handled) {
+		filesActivate(directory, false);
+	}
+	/* Detail turned the cube to its own scene and the Library's. */
+	UIScene_Request(filesScene);
 }
 
 /* The Library's layout from Setup; anything unknown is the carousel. */
@@ -1979,15 +4024,6 @@ u32 gameflowMenuInputPolicy(uiGameflowLayout_t layout)
 		default:
 			return UI_MENU_INPUT_AXIS_HORIZONTAL | UI_MENU_INPUT_REPEAT;
 	}
-}
-
-/* The layout the Library shows here, for the cube's pose: the retained
- * Library's own, or the carousel of the legacy browsers. */
-static uiGameflowLayout_t gameflowSceneLayout(void)
-{
-	return gameflowLibraryMode(getSortedDirEntries(),
-		getSortedDirEntryCount()) != UI_GAMEFLOW_LIBRARY_NONE ?
-		gameflowLayout() : UI_GAMEFLOW_LAYOUT_HORIZONTAL;
 }
 
 /* Library Folders: a folder's poster is its picture, the PNG beside it
@@ -2140,7 +4176,9 @@ static void folderArtClose(void)
 	folderArtOpen = false;
 }
 
-// Carousel (one main file in the middle, entries to either side)
+/* The Library: a Library location's games (and, with Library Folders, its
+ * folders), in the layout Setup chose. menu_loop calls it only where
+ * gameflowLibraryMode finds a Library. */
 uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
 {
 	memset(txtbuffer,0,sizeof(txtbuffer));
@@ -2153,21 +4191,16 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 		curSelection = 1; // skip the ".." by default
 	}
 	uiGameflowLibraryMode_t gameflowMode = gameflowLibraryMode(directory, num_files);
-	bool useGameflow = gameflowMode != UI_GAMEFLOW_LIBRARY_NONE;
 	/* Only Library Folders shows folders, and their posters. */
-	u64 folderListing = useGameflow && swissSettings.libraryFolders ?
+	u64 folderListing = swissSettings.libraryFolders ?
 		folderArtIdentity(directory, num_files) : 0u;
 	uiGameflowDirection_t gameflowDirection = UI_GAMEFLOW_DIRECTION_NONE;
 	/* The last move between grid rows: a two-row grid keeps its other row
 	 * on the side that move left it. */
 	uiGameflowDirection_t gameflowRowDirection = UI_GAMEFLOW_DIRECTION_NONE;
 	bool gameflowSnapTransition = false;
-	uiGameflowRenderSnapshot_t *gameflowSnapshot = useGameflow ?
-		memalign(32, sizeof(uiGameflowRenderSnapshot_t)) : NULL;
-	if(gameflowSnapshot == NULL) {
-		useGameflow = false;
-		UIScene_RequestLibraryLayout(UI_GAMEFLOW_LAYOUT_HORIZONTAL);
-	}
+	uiGameflowRenderSnapshot_t *gameflowSnapshot =
+		memalign(32, sizeof(uiGameflowRenderSnapshot_t));
 	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPLEFT);
 	DrawPublish(loadingBox);
 	meta_thread_start(loadingBox);
@@ -2175,54 +4208,62 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 	u32 menuInputRetrace = VIDEO_GetRetraceCount();
 	UIMenuInput_Init(&menuInput);
 	while(1) {
-		/* The legacy carousel keeps its own left-and-right navigation. */
-		uiGameflowLayout_t layout = useGameflow ? gameflowLayout() :
-			UI_GAMEFLOW_LAYOUT_HORIZONTAL;
+		uiGameflowLayout_t layout = gameflowLayout();
+		/* The Library is drawn: its snapshot was allocated and built and
+		 * the frame took it. */
+		bool drawn = gameflowSnapshot != NULL;
 		DrawUpdateProgressLoading(loadingBox, +1);
-		if(useGameflow) {
-			if(!gameflowBuildSnapshot(gameflowSnapshot, directory, num_files,
-				gameflowMode, layout, gameflowDirection, gameflowRowDirection,
-				gameflowSnapTransition)) {
-				useGameflow = false;
-				layout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
-				UIScene_RequestLibraryLayout(layout);
-			}
-			else {
-				gameflowDirection = UI_GAMEFLOW_DIRECTION_NONE;
-				gameflowSnapTransition = false;
-				folderArtShow(gameflowSnapshot, folderListing);
-				if(!DrawUpdateGameflow(filePanel, gameflowSnapshot)) {
-					uiDrawObj_t *newPanel = DrawGameflow(gameflowSnapshot);
-					if(newPanel != NULL) {
-						filePanel = DrawRepublish(filePanel, newPanel);
-					}
-					else {
-						useGameflow = false;
-					}
-				}
-				if(useGameflow) {
-					/* Strict game-library eligibility and a retained snapshot are
-					 * both proven before the private poster pack is touched. */
-					DrawGameflowRequestPosters(devices[DEVICE_CUR],
-						gameflowSnapshot);
-					folderArtWant(gameflowSnapshot, folderListing);
-				}
-			}
+		if(drawn && !gameflowBuildSnapshot(gameflowSnapshot, directory,
+			num_files, gameflowMode, layout, gameflowDirection,
+			gameflowRowDirection, gameflowSnapTransition)) {
+			drawn = false;
 		}
-		if(!useGameflow) {
-			uiDrawObj_t *newPanel = DrawContainer();
-			drawFilesCarousel(directory, num_files, newPanel);
-			filePanel = DrawRepublish(filePanel, newPanel);
+		if(drawn) {
+			gameflowDirection = UI_GAMEFLOW_DIRECTION_NONE;
+			gameflowSnapTransition = false;
+			folderArtShow(gameflowSnapshot, folderListing);
+			if(!DrawUpdateGameflow(filePanel, gameflowSnapshot)) {
+				uiDrawObj_t *newPanel = DrawGameflow(gameflowSnapshot);
+				if(newPanel != NULL) {
+					if(filePanel == filesPage) filesPage = NULL;
+					filePanel = DrawRepublish(filePanel, newPanel);
+				}
+				else {
+					drawn = false;
+				}
+			}
+			if(drawn) {
+				/* Strict game-library eligibility and a retained snapshot are
+				 * both proven before the private poster pack is touched. */
+				DrawGameflowRequestPosters(devices[DEVICE_CUR],
+					gameflowSnapshot);
+				folderArtWant(gameflowSnapshot, folderListing);
+			}
 		}
 		DrawUpdateProgressLoading(loadingBox, -1);
+		if(!drawn) {
+			/* No Library to draw here (no memory for it): the File Browser
+			 * shows this folder instead, read again, since
+			 * gameflowLibraryEntries has moved its games to the front. */
+			lockFile(directory[curSelection]);
+			memcpy(curFile.name, directory[curSelection]->name, sizeof(curFile.name));
+			unlockFile(directory[curSelection]);
+			gameflowListFallback = true;
+			needsRefresh = 1;
+			break;
+		}
 		
-		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP|
-			(useGameflow ? PAD_BUTTON_Y : 0u);
+		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP|PAD_BUTTON_Y;
 		u32 menuInputPolicy = gameflowMenuInputPolicy(layout);
 		u32 browserButtons;
 		uiMenuInputDirection_t analog;
+		/* Presses from before (the A that opened this, a B that left a
+		 * Detail) aren't for here. */
+		(void)padsButtonsTaken(waitButtons);
 		while(1) {
-			browserButtons = padsButtonsHeld();
+			/* Taken from the scans as well as held: a press made and let go
+			 * while a folder picture was read is still seen. */
+			browserButtons = padsButtonsHeld() | padsButtonsTaken(waitButtons);
 			analog = padsMenuInputPoll(&menuInput,
 				menuInputElapsedMicroseconds(&menuInputRetrace),
 				menuInputPolicy, (browserButtons & waitButtons) != 0u);
@@ -2231,22 +4272,21 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				break;
 			}
 			VIDEO_WaitVSync();
-			if(useGameflow) {
-				/* Poll performs at most one bounded read; tying it to an idle
-				 * retrace keeps input/navigation frames free of pack I/O. */
-				DrawGameflowPollPosters();
-				CardArt_Poll();
-			}
+			/* Poll performs at most one read, tied to an idle retrace to
+			 * keep input/navigation frames free of pack I/O. From a source
+			 * that is not thread safe it reads the whole picture here, up
+			 * to 2 MB: about a second from DVD. */
+			DrawGameflowPollPosters();
+			CardArt_Poll();
 		}
 		/* Y on a game opens its settings through its Detail: never on the
 		 * parent card, and A wins a press of both. */
-		bool openSettings = useGameflow && !(browserButtons & BUTTON_A) &&
+		bool openSettings = !(browserButtons & BUTTON_A) &&
 			(browserButtons & PAD_BUTTON_Y) &&
 			UIGameflowLibrary_UsesRetainedDetail(
 				gameflowEntryMode(gameflowMode, directory[curSelection]),
 				gameflowEntryType(directory[curSelection]));
-		bool retainedActivation = useGameflow &&
-			((browserButtons & BUTTON_A) || openSettings);
+		bool retainedActivation = (browserButtons & BUTTON_A) || openSettings;
 		/* A and Y own a retained-library input frame. Moving curSelection
 		 * first would pair the new directory entry with the previous
 		 * immutable snapshot and bypass the strict folder resolver/dashboard. */
@@ -2311,11 +4351,7 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				gameflowSnapTransition = step.snap;
 			}
 		}
-		if(padsButtonsHeld() & BUTTON_CLAP) {
-			DrawUpdateProgressLoading(loadingBox, +1);
-			curSelection = meta_find_barrel_game(curSelection);
-			DrawUpdateProgressLoading(loadingBox, -1);
-		}
+		filesBarrelGame(loadingBox);
 		
 		if((browserButtons & BUTTON_A) || openSettings) {
 			/* What follows may start a game or read the listing again:
@@ -2325,17 +4361,15 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			 * Swiss opens any folder. */
 			uiGameflowLibraryMode_t entryMode =
 				gameflowEntryMode(gameflowMode, directory[curSelection]);
-			if(useGameflow && UIGameflowLibrary_UsesRetainedDetail(
+			if(UIGameflowLibrary_UsesRetainedDetail(
 				entryMode,
 				gameflowEntryType(directory[curSelection]))) {
 				bool handled = false;
 
 				meta_thread_stop();
 				/* Complete at most the already-requested center-cover job
-				 * before Detail freezes the request window. Acquire/Release
-				 * remain menu mutators with no proven non-recursive ordering,
-				 * so Detail uses per-frame Query/Peek and its copied BNR when
-				 * this one bounded poll cannot produce a cover. */
+				 * before Detail freezes the request window. Detail draws its
+				 * BNR until the cover lands: its idle retraces poll for it. */
 				DrawGameflowPollPosters();
 				if(entryMode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS) {
 					file_handle folderSnapshot;
@@ -2369,85 +4403,30 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				while(padsButtonsHeld() & PAD_BUTTON_Y) VIDEO_WaitVSync();
 				break;
 			}
-			lockFile(directory[curSelection]);
-			//go into a folder or select a file
-			if(directory[curSelection]->fileType==IS_DIR) {
-				memcpy(&curDir, directory[curSelection], sizeof(file_handle));
-				needsRefresh=1;
-			}
-			else if(directory[curSelection]->fileType==IS_SPECIAL){
-				gameflowNavigateParent(useGameflow, directory[curSelection]);
-			}
-			else if(directory[curSelection]->fileType==IS_FILE){
-				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
-				if(canLoadFileType(curFile.name, devices[DEVICE_CUR]->extraExtensions)) {
-					meta_thread_stop();
-					load_file();
-				}
-				else if(swissSettings.enableFileManagement) {
-					meta_thread_stop();
-					needsRefresh = manage_file() ? 1:0;
-				}
-				memcpy(directory[curSelection], &curFile, sizeof(file_handle));
-			}
-			unlockFile(directory[curSelection]);
+			filesActivate(directory, true);
 			break;
 		}
 		if(browserButtons & BUTTON_X) {
-			gameflowNavigateParent(useGameflow, directory[0]);
+			gameflowNavigateParent(true, directory[0]);
 			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
 			break;
 		}
-		if((browserButtons & BUTTON_Z) && swissSettings.enableFileManagement) {
-			lockFile(directory[curSelection]);
-			if(directory[curSelection]->fileType == IS_FILE || directory[curSelection]->fileType == IS_DIR) {
-				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
-				meta_thread_stop();
-				CardArt_Pause();
-				needsRefresh = manage_file() ? 1:0;
-				memcpy(directory[curSelection], &curFile, sizeof(file_handle));
-				while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
-				if(needsRefresh) {
-					// If we return from doing something with a file, refresh the device in the same dir we were at
-					unlockFile(directory[curSelection]);
-					break;
-				}
-			}
-			else if(directory[curSelection]->fileType == IS_SPECIAL) {
-				// Toggle autoload
-				if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
-				|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
-					memset(&swissSettings.autoload[0], 0, PATHNAME_MAX);
-				}
-				else {
-					strcpy(&swissSettings.autoload[0], &curDir.name[0]);
-				}
-				// Save config
-				uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving autoload\205"));
-				config_update_autoload(true);
-				DrawDispose(msgBox);
-			}
-			unlockFile(directory[curSelection]);
+		if((browserButtons & BUTTON_Z) && filesManage(directory)) {
+			break;
 		}
 		
-		if((browserButtons & BUTTON_B) && useGameflow &&
-			gameflowInsideFolder()) {
+		if((browserButtons & BUTTON_B) && gameflowInsideFolder()) {
 			/* Library Folders: B goes up a folder, as X does; at /games
 			 * it goes Home. */
-			gameflowNavigateParent(useGameflow, directory[0]);
+			gameflowNavigateParent(true, directory[0]);
 			while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
 			break;
 		}
 		if(browserButtons & BUTTON_B) {
-			curMenuLocation = ON_OPTIONS;
-			if(!useGameflow)
-				DrawUpdateFileBrowserButton(directory[curSelection]->uiObj, (curMenuLocation == ON_FILLIST) ? B_SELECTED:B_NOSELECT);
+			filesHome();
 			break;
 		}
-		if((browserButtons & BUTTON_START) && swissSettings.recentListLevel > 0) {
-			meta_thread_stop();
-			CardArt_Pause();
-			select_recent_entry();
+		if((browserButtons & BUTTON_START) && filesRecent(true)) {
 			break;
 		}
 		while (padsButtonsHeld() & waitButtons) {
@@ -2462,195 +4441,6 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 	CardArt_Pause();
 	DrawDispose(loadingBox);
 	free(gameflowSnapshot);
-	return filePanel;
-}
-
-// Draws all the files in the current dir.
-void drawFilesFullwidth(file_handle** directory, int num_files, uiDrawObj_t *containerPanel) {
-	int i = 0, j = 0;
-	current_view_start = MIN(MAX(0,curSelection-FILES_PER_PAGE_FULLWIDTH/2),MAX(0,num_files-FILES_PER_PAGE_FULLWIDTH));
-	current_view_end = MIN(num_files, MAX(curSelection+(FILES_PER_PAGE_FULLWIDTH+1)/2,FILES_PER_PAGE_FULLWIDTH));
-	drawCurrentDeviceCarousel(containerPanel);
-	int fileListBase = 105;
-	int scrollBarHeight = (FILES_PER_PAGE_FULLWIDTH*40);
-	int scrollBarTabHeight = (int)((float)scrollBarHeight/(float)num_files);
-	if(num_files > 0) {
-		// Draw which directory we're in
-		sprintf(txtbuffer, "%s", getDevicePath(&curDir.name[0]));
-		float scale = GetTextScaleToFitInWidthWithMax(txtbuffer, (getVideoMode()->fbWidth-60), .85);
-		DrawAddChild(containerPanel, DrawStyledLabel(30, 90, txtbuffer, scale, ALIGN_LEFT, defaultColor));
-		if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
-		|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
-			DrawAddChild(containerPanel, DrawImage(TEX_STAR, ((getVideoMode()->fbWidth-30)-16), 80, 16, 16, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0));
-		}
-		if(num_files > FILES_PER_PAGE_FULLWIDTH) {
-			uiDrawObj_t *scrollBar = DrawVertScrollBar(getVideoMode()->fbWidth-25, fileListBase, 16, scrollBarHeight, (float)((float)curSelection/(float)(num_files-1)),scrollBarTabHeight);
-			DrawAddChild(containerPanel, scrollBar);
-		}
-		for(i = current_view_start,j = 0; i<current_view_end; ++i,++j) {
-			lockFile(directory[i]);
-			populate_meta(directory[i]);
-			uiDrawObj_t *browserButton = DrawFileBrowserButtonMeta(30, fileListBase+(j*40),
-									getVideoMode()->fbWidth-30, fileListBase+(j*40)+40,
-									getRelativePath(directory[i]->name, curDir.name),
-									directory[i],
-									(i == curSelection) ? B_SELECTED:B_NOSELECT);
-			directory[i]->uiObj = browserButton;
-			unlockFile(directory[i]);
-			DrawAddChild(containerPanel, browserButton);
-		}
-	}
-}
-
-uiDrawObj_t* renderFileFullwidth(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
-{
-	memset(txtbuffer,0,sizeof(txtbuffer));
-	if(num_files<=0) {
-		memcpy(&curDir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
-		needsRefresh=1;
-		return filePanel;
-	}
-	if(curSelection == 0 && num_files > 1 && directory[0]->fileType==IS_SPECIAL) {
-		curSelection = 1; // skip the ".." by default
-	}
-	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPLEFT);
-	DrawPublish(loadingBox);
-	meta_thread_start(loadingBox);
-	uiMenuInputState_t menuInput;
-	u32 menuInputRetrace = VIDEO_GetRetraceCount();
-	UIMenuInput_Init(&menuInput);
-	while(1) {
-		DrawUpdateProgressLoading(loadingBox, +1);
-		uiDrawObj_t *newPanel = DrawContainer();
-		drawFilesFullwidth(directory, num_files, newPanel);
-		filePanel = DrawRepublish(filePanel, newPanel);
-		DrawUpdateProgressLoading(loadingBox, -1);
-		
-		u32 waitButtons = BUTTON_X|BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R|BUTTON_Z|BUTTON_CLAP;
-		u32 browserButtons;
-		uiMenuInputDirection_t analog;
-		while(1) {
-			browserButtons = padsButtonsHeld();
-			analog = padsMenuInputPoll(&menuInput,
-				menuInputElapsedMicroseconds(&menuInputRetrace),
-				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT,
-				(browserButtons & waitButtons) != 0u);
-			if((browserButtons & waitButtons) != 0u ||
-					analog != UI_MENU_INPUT_NONE) {
-				break;
-			}
-			VIDEO_WaitVSync();
-		}
-		if((browserButtons & BUTTON_UP) || analog == UI_MENU_INPUT_UP){	curSelection = (--curSelection < 0) ? num_files-1 : curSelection;}
-		if((browserButtons & BUTTON_DOWN) || analog == UI_MENU_INPUT_DOWN) {curSelection = (curSelection + 1) % num_files;	}
-		if(browserButtons & (BUTTON_LEFT|BUTTON_L)) {
-			if(curSelection == 0) {
-				curSelection = num_files-1;
-			}
-			else {
-				curSelection = (curSelection - FILES_PER_PAGE_FULLWIDTH < 0) ? 0 : curSelection - FILES_PER_PAGE_FULLWIDTH;
-			}
-		}
-		if(browserButtons & (BUTTON_RIGHT|BUTTON_R)) {
-			if(curSelection == num_files-1) {
-				curSelection = 0;
-			}
-			else {
-				curSelection = (curSelection + FILES_PER_PAGE_FULLWIDTH > num_files-1) ? num_files-1 : (curSelection + FILES_PER_PAGE_FULLWIDTH) % num_files;
-			}
-		}
-		if(padsButtonsHeld() & BUTTON_CLAP) {
-			DrawUpdateProgressLoading(loadingBox, +1);
-			curSelection = meta_find_barrel_game(curSelection);
-			DrawUpdateProgressLoading(loadingBox, -1);
-		}
-		
-		if(browserButtons & BUTTON_A) {
-			lockFile(directory[curSelection]);
-			//go into a folder or select a file
-			if(directory[curSelection]->fileType==IS_DIR) {
-				memcpy(&curDir, directory[curSelection], sizeof(file_handle));
-				needsRefresh=1;
-			}
-			else if(directory[curSelection]->fileType==IS_SPECIAL) {
-				memcpy(&curFile, &curDir, sizeof(file_handle));
-				curDir.fileBase = directory[curSelection]->fileBase;
-				needsDeviceChange = upToParent(&curDir);
-				needsRefresh=1;
-			}
-			else if(directory[curSelection]->fileType==IS_FILE) {
-				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
-				if(canLoadFileType(curFile.name, devices[DEVICE_CUR]->extraExtensions)) {
-					meta_thread_stop();
-					load_file();
-				}
-				else if(swissSettings.enableFileManagement) {
-					meta_thread_stop();
-					needsRefresh = manage_file() ? 1:0;
-				}
-				memcpy(directory[curSelection], &curFile, sizeof(file_handle));
-			}
-			unlockFile(directory[curSelection]);
-			break;
-		}
-		if(browserButtons & BUTTON_X) {
-			memcpy(&curFile, &curDir, sizeof(file_handle));
-			curDir.fileBase = directory[0]->fileBase;
-			needsDeviceChange = upToParent(&curDir);
-			needsRefresh=1;
-			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
-			break;
-		}
-		if((browserButtons & BUTTON_Z) && swissSettings.enableFileManagement) {
-			lockFile(directory[curSelection]);
-			if(directory[curSelection]->fileType == IS_FILE || directory[curSelection]->fileType == IS_DIR) {
-				memcpy(&curFile, directory[curSelection], sizeof(file_handle));
-				meta_thread_stop();
-				needsRefresh = manage_file() ? 1:0;
-				memcpy(directory[curSelection], &curFile, sizeof(file_handle));
-				while(padsButtonsHeld() & BUTTON_B) VIDEO_WaitVSync();
-				if(needsRefresh) {
-					// If we return from doing something with a file, refresh the device in the same dir we were at
-					unlockFile(directory[curSelection]);
-					break;
-				}
-			}
-			else if(directory[curSelection]->fileType == IS_SPECIAL) {
-				// Toggle autoload
-				if(!strcmp(&swissSettings.autoload[0], &curDir.name[0])
-				|| !fnmatch(&swissSettings.autoload[0], &curDir.name[0], FNM_PATHNAME)) {
-					memset(&swissSettings.autoload[0], 0, PATHNAME_MAX);
-				}
-				else {
-					strcpy(&swissSettings.autoload[0], &curDir.name[0]);
-				}
-				// Save config
-				uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving autoload\205"));
-				config_update_autoload(true);
-				DrawDispose(msgBox);
-			}
-			unlockFile(directory[curSelection]);
-		}
-		
-		if((browserButtons & BUTTON_START) && swissSettings.recentListLevel > 0) {
-			meta_thread_stop();
-			select_recent_entry();
-			break;
-		}
-		if(browserButtons & BUTTON_B) {
-			curMenuLocation = ON_OPTIONS;
-			DrawUpdateFileBrowserButton(directory[curSelection]->uiObj, (curMenuLocation == ON_FILLIST) ? B_SELECTED:B_NOSELECT);
-			break;
-		}
-		while (padsButtonsHeld() & waitButtons) {
-			(void)padsMenuInputPoll(&menuInput,
-				menuInputElapsedMicroseconds(&menuInputRetrace),
-				UI_MENU_INPUT_AXIS_VERTICAL | UI_MENU_INPUT_REPEAT, true);
-			VIDEO_WaitVSync();
-		}
-	}
-	meta_thread_stop();
-	DrawDispose(loadingBox);
 	return filePanel;
 }
 
@@ -2905,11 +4695,11 @@ void load_app(ExecutableFile *fileToPatch)
 				goto fail_early;
 			}
 			if(fileToPatch->file->device == &__device_dvd) {
-				adjust_tgc_fst((void*)fstAddr, fileToPatch->file->fileBase + fileToPatch->tgcBase, fileToPatch->tgcFileStartArea, fileToPatch->tgcFakeOffset);
+				adjust_tgc_fst((void*)fstAddr, fileToPatch->fstSize, fileToPatch->file->fileBase + fileToPatch->tgcBase, fileToPatch->tgcFileStartArea, fileToPatch->tgcFakeOffset);
 				*(vu32*)VAR_TGC_OFFSET = fileToPatch->file->fileBase + fileToPatch->tgcBase;
 			}
 			else {
-				adjust_tgc_fst((void*)fstAddr, fileToPatch->tgcBase, fileToPatch->tgcFileStartArea, fileToPatch->tgcFakeOffset);
+				adjust_tgc_fst((void*)fstAddr, fileToPatch->fstSize, fileToPatch->tgcBase, fileToPatch->tgcFileStartArea, fileToPatch->tgcFakeOffset);
 				*(vu32*)VAR_TGC_OFFSET = fileToPatch->tgcBase;
 			}
 			
@@ -3329,8 +5119,105 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	if(restartMenuAudio) menuaudio_init();
 }
 
+/* The name a copy of src lands under in dir on destDev: its own name less
+ * what FAT can't hold, and a memory card's save as a .gci anywhere else.
+ * The File Browser predicts the landing with it, so the name it shows is
+ * the name the copy writes. */
+static void manageDestName(char *out, const char *dir, const char *src,
+	DEVICEHANDLER_INTERFACE *srcDev, DEVICEHANDLER_INTERFACE *destDev)
+{
+	bool isSrcCard = srcDev == &__device_card_a || srcDev == &__device_card_b;
+	bool isDestCard = destDev == &__device_card_a || destDev == &__device_card_b;
+
+	concat_path(out, dir, stripInvalidChars(getRelativeName((char *)src)));
+	// Create a GCI if something is coming out from CARD to another device
+	if(isSrcCard && !isDestCard) {
+		strlcat(out, ".gci", PATHNAME_MAX);
+	}
+}
+
+/* Whether a file of that name is on the destination: its statFile, or, for
+ * a device without one (FlippyDrive Flash), opening it, as the copy's own
+ * check does. */
+static bool manageDestExists(file_handle *file)
+{
+	DEVICEHANDLER_INTERFACE *dest = devices[DEVICE_DEST];
+
+	if(dest->statFile != NULL) {
+		return dest->statFile(file) == 0;
+	}
+	if(dest->readFile(file, NULL, 0) != 0) {
+		return false;
+	}
+	dest->closeFile(file);
+	return true;
+}
+
+/* A copy that stopped or failed leaves nothing half written behind: the
+ * destination is closed (closing twice is harmless) and deleted. False when
+ * it couldn't be, so the message says part of it is left. Two things are
+ * never deleted: a folder of that name, which the copy couldn't open, and
+ * anything on a memory card, whose delete goes by the save's own name and
+ * whose writes can report a short count for a save that is complete; a
+ * card keeps what it has, as Swiss's copy did. */
+static bool manageDropPartial(file_handle *destFile)
+{
+	static file_handle there;
+	DEVICEHANDLER_INTERFACE *dest = devices[DEVICE_DEST];
+
+	dest->closeFile(destFile);
+	if(dest == &__device_card_a || dest == &__device_card_b) {
+		return false;
+	}
+	memset(&there, 0, sizeof(there));
+	strlcpy(there.name, destFile->name, sizeof(there.name));
+	there.fileType = IS_FILE;
+	if(dest->statFile != NULL && dest->statFile(&there) == 0 && there.fileType == IS_DIR) {
+		return true;
+	}
+	return dest->deleteFile != NULL && dest->deleteFile(destFile) == 0;
+}
+
+/* One of manage_file's results: Swiss's box (type and text, then A), or
+ * in the File Browser its message (title and detail; failed waits for A),
+ * said once the panes are read again. */
+static void manageTell(int type, const char *text, const char *title, const char *detail,
+	bool failed)
+{
+	if(filesBoxes) {
+		filesSayLater(title, detail, failed);
+		return;
+	}
+	uiDrawObj_t *msgBox = DrawPublish(DrawMessageBox(type, text));
+	wait_press_A();
+	DrawDispose(msgBox);
+}
+
+/* How a copy or a move ended: Swiss's box (type and text, then A), or in
+ * the File Browser its message, from result. */
+static void manageCopied(uiFilesResult_t result, int option, const char *dest, int code,
+	bool removed, bool replaced, int type, const char *text)
+{
+	if(filesBoxes) {
+		filesSayCopy(result, option == MOVE_OPTION, dest, code, removed, replaced);
+		return;
+	}
+	uiDrawObj_t *msgBox = DrawPublish(DrawMessageBox(type, text));
+	wait_press_A();
+	DrawDispose(msgBox);
+}
+
 /* Manage file  - The user will be asked what they want to do with the currently selected file - copy/move/delete*/
 bool manage_file() {
+	return manage_file_ex(MANAGE_ASK, NULL);
+}
+
+/* manage_file with the File Browser's choice already made: option is one of
+ * enum fileOptions, or MANAGE_ASK for Swiss's box. For Copy and Move,
+ * destDir is a folder on devices[DEVICE_DEST], which the caller has set and
+ * mounted, so Swiss's destination picker, its mount and its folder chooser
+ * are skipped. Everything after them is Swiss's. */
+bool manage_file_ex(int preset, const char *destDir) {
 	bool isFile = curFile.fileType == IS_FILE;
 	bool isHidden = curFile.fileAttrib & ATTRIB_HIDDEN;
 	bool canWrite = devices[DEVICE_CUR]->features & FEAT_WRITE;
@@ -3339,63 +5226,86 @@ bool manage_file() {
 	bool canDelete = canWrite && devices[DEVICE_CUR]->deleteFile;
 	bool canRename = canWrite && devices[DEVICE_CUR]->renameFile;
 	bool canHide = canWrite && devices[DEVICE_CUR]->hideFile;
+	/* The Apps and Emulators faces look in /apps and /emulators again
+	 * after any change here. */
+	homeAppsKnown = false;
+	homeEmulatorsKnown = false;
 	
-	// Ask the user what they want to do with the selected entry
-	uiDrawObj_t* manageFileBox = DrawEmptyBox(10,150, getVideoMode()->fbWidth-10, 320);
-	sprintf(txtbuffer, "Manage %s:", isFile ? "File" : "Directory");
-	DrawAddChild(manageFileBox, DrawStyledLabel(640/2, 160, txtbuffer, 1.0f, ALIGN_CENTER, defaultColor));
-	float scale = GetTextScaleToFitInWidth(getRelativeName(curFile.name), getVideoMode()->fbWidth-10-10);
-	DrawAddChild(manageFileBox, DrawStyledLabel(640/2, 190, getRelativeName(curFile.name), scale, ALIGN_CENTER, defaultColor));
-	sprintf(txtbuffer, "%s%s%s%s%s",
-					canCopy ? "X  Copy    " : "",
-					canMove ? "Y  Move    " : "",
-					canDelete ? "Z  Delete    " : "",
-					canRename ? "R  Rename    " : "",
-					canHide ? isHidden ? "L  Unhide" : "L  Hide" : "");
-	DrawAddChild(manageFileBox, DrawHintLabel(640/2, 250, txtbuffer, GetHintScaleToFitInWidthWithMax(txtbuffer, getVideoMode()->fbWidth-10-10, 1.0f), ALIGN_CENTER, defaultColor));
-	DrawAddChild(manageFileBox, DrawHintLabel(640/2, 310, "B  Return", 1.0f, ALIGN_CENTER, defaultColor));
-	DrawPublish(manageFileBox);
-	u32 waitButtons = BUTTON_X|BUTTON_Y|BUTTON_B|BUTTON_Z|BUTTON_R|BUTTON_L;
-	do {VIDEO_WaitVSync();} while (padsButtonsHeld() & waitButtons);
-	int option = 0;
-	while(1) {
-		u32 buttons = padsButtonsHeld();
-		if(canCopy && (buttons & BUTTON_X)) {
-			option = COPY_OPTION;
-			while(padsButtonsHeld() & BUTTON_X){ VIDEO_WaitVSync (); }
-			break;
+	int option = preset;
+	if(preset == MANAGE_ASK) {
+		// Ask the user what they want to do with the selected entry
+		uiDrawObj_t* manageFileBox = DrawEmptyBox(10,150, getVideoMode()->fbWidth-10, 320);
+		sprintf(txtbuffer, "Manage %s:", isFile ? "File" : "Directory");
+		DrawAddChild(manageFileBox, DrawStyledLabel(640/2, 160, txtbuffer, 1.0f, ALIGN_CENTER, defaultColor));
+		float scale = GetTextScaleToFitInWidth(getRelativeName(curFile.name), getVideoMode()->fbWidth-10-10);
+		DrawAddChild(manageFileBox, DrawStyledLabel(640/2, 190, getRelativeName(curFile.name), scale, ALIGN_CENTER, defaultColor));
+		sprintf(txtbuffer, "%s%s%s%s%s",
+						canCopy ? "X  Copy    " : "",
+						canMove ? "Y  Move    " : "",
+						canDelete ? "Z  Delete    " : "",
+						canRename ? "R  Rename    " : "",
+						canHide ? isHidden ? "L  Unhide" : "L  Hide" : "");
+		DrawAddChild(manageFileBox, DrawHintLabel(640/2, 250, txtbuffer, GetHintScaleToFitInWidthWithMax(txtbuffer, getVideoMode()->fbWidth-10-10, 1.0f), ALIGN_CENTER, defaultColor));
+		DrawAddChild(manageFileBox, DrawHintLabel(640/2, 310, "B  Return", 1.0f, ALIGN_CENTER, defaultColor));
+		DrawPublish(manageFileBox);
+		u32 waitButtons = BUTTON_X|BUTTON_Y|BUTTON_B|BUTTON_Z|BUTTON_R|BUTTON_L;
+		do {VIDEO_WaitVSync();} while (padsButtonsHeld() & waitButtons);
+		option = 0;
+		while(1) {
+			u32 buttons = padsButtonsHeld();
+			if(canCopy && (buttons & BUTTON_X)) {
+				option = COPY_OPTION;
+				while(padsButtonsHeld() & BUTTON_X){ VIDEO_WaitVSync (); }
+				break;
+			}
+			if(canMove && (buttons & BUTTON_Y)) {
+				option = MOVE_OPTION;
+				while(padsButtonsHeld() & BUTTON_Y){ VIDEO_WaitVSync (); }
+				break;
+			}
+			if(canDelete && (buttons & BUTTON_Z)) {
+				option = DELETE_OPTION;
+				while(padsButtonsHeld() & BUTTON_Z){ VIDEO_WaitVSync (); }
+				break;
+			}
+			if(canRename && (buttons & BUTTON_R)) {
+				option = RENAME_OPTION;
+				while(padsButtonsHeld() & BUTTON_R){ VIDEO_WaitVSync (); }
+				break;
+			}
+			if(canRename && (buttons & BUTTON_L)) {
+				option = HIDE_OPTION;
+				while(padsButtonsHeld() & BUTTON_L){ VIDEO_WaitVSync (); }
+				break;
+			}
+			if(buttons & BUTTON_B) {
+				DrawDispose(manageFileBox);
+				return false;
+			}
 		}
-		if(canMove && (buttons & BUTTON_Y)) {
-			option = MOVE_OPTION;
-			while(padsButtonsHeld() & BUTTON_Y){ VIDEO_WaitVSync (); }
-			break;
-		}
-		if(canDelete && (buttons & BUTTON_Z)) {
-			option = DELETE_OPTION;
-			while(padsButtonsHeld() & BUTTON_Z){ VIDEO_WaitVSync (); }
-			break;
-		}
-		if(canRename && (buttons & BUTTON_R)) {
-			option = RENAME_OPTION;
-			while(padsButtonsHeld() & BUTTON_R){ VIDEO_WaitVSync (); }
-			break;
-		}
-		if(canRename && (buttons & BUTTON_L)) {
-			option = HIDE_OPTION;
-			while(padsButtonsHeld() & BUTTON_L){ VIDEO_WaitVSync (); }
-			break;
-		}
-		if(buttons & BUTTON_B) {
-			DrawDispose(manageFileBox);
-			return false;
-		}
+		do {VIDEO_WaitVSync();} while (padsButtonsHeld() & waitButtons);
+		DrawDispose(manageFileBox);
 	}
-	do {VIDEO_WaitVSync();} while (padsButtonsHeld() & waitButtons);
-	DrawDispose(manageFileBox);
 	
+	if(option == MOVE_OPTION && !confirmAction(
+		"Move this file?\nIt is removed from here once copied.\nA  MOVE    B  CANCEL")) {
+		return false;
+	}
+	if(option == HIDE_OPTION && canHide && !isHidden && !confirmAction(isFile ?
+		"Hide this file?\nIt shows only with Show hidden files on.\nA  HIDE    B  CANCEL" :
+		"Hide this folder?\nIt shows only with Show hidden files on.\nA  HIDE    B  CANCEL")) {
+		return false;
+	}
+	if(option == DELETE_OPTION && filesBoxes && !filesAskDelete(isFile ?
+			"Delete this file?\n \nPress L + A to continue, or B to cancel." :
+			"Delete this folder and all it holds?\n \nPress L + A to continue, or B to cancel.")) {
+		return false;
+	}
 	// "Are you sure option" for deletes.
-	if(option == DELETE_OPTION) {
-		uiDrawObj_t *msgBox = DrawMessageBox(D_WARN, "Delete confirmation required.\n \nPress L + A to continue, or B to cancel.");
+	if(option == DELETE_OPTION && !filesBoxes) {
+		uiDrawObj_t *msgBox = DrawMessageBox(D_WARN, isFile ?
+			"Delete this file?\n \nPress L + A to continue, or B to cancel." :
+			"Delete this folder and all it holds?\n \nPress L + A to continue, or B to cancel.");
 		DrawPublish(msgBox);
 		bool cancel = false;
 		while(1) {
@@ -3433,10 +5343,8 @@ bool manage_file() {
 			print_debug("Renaming %s to %s\n", &curFile.name[0], txtbuffer);
 			u32 ret = devices[DEVICE_CUR]->renameFile(&curFile, txtbuffer);
 			sprintf(txtbuffer, "%s renamed!\nPress A to continue.", isFile ? "File" : "Directory");
-			uiDrawObj_t *msgBox = DrawMessageBox(D_INFO, ret ? "Move Failed! Press A to continue" : txtbuffer);
-			DrawPublish(msgBox);
-			wait_press_A();
-			DrawDispose(msgBox);
+			manageTell(D_INFO, ret ? "Move Failed! Press A to continue" : txtbuffer,
+				ret ? "Couldn't rename it." : "Renamed.", "", ret != 0);
 		}
 		free(nameBuffer);
 		free(parentPath);
@@ -3449,79 +5357,100 @@ bool manage_file() {
 		bool deleted = deleteFileOrDir(&curFile);
 		DrawDispose(progBar);
 		sprintf(txtbuffer, "%s %s\nPress A to continue.", isFile ? "File" : "Directory", deleted ? "deleted successfully" : "failed to delete!");
-		uiDrawObj_t *msgBox = DrawPublish(DrawMessageBox(deleted ? D_INFO : D_FAIL, txtbuffer));
-		wait_press_A();
-		DrawDispose(msgBox);
+		manageTell(deleted ? D_INFO : D_FAIL, txtbuffer, !deleted ? "Couldn't delete it." :
+			isFile ? "The file was deleted." : "The folder was deleted.", "", !deleted);
 		return deleted;
 	}
 	// If copy, ask which device is the destination device and copy
 	else if((option == COPY_OPTION) || (option == MOVE_OPTION)) {
 		u32 ret = 0;
-		// Show a list of destination devices (the same device is also a possibility)
-		select_device(DEVICE_DEST);
-		if(devices[DEVICE_DEST] == NULL) return false;
+		/* One handle, kept: every way out (there are many) leaves nothing to free. */
+		static file_handle destStore;
+		file_handle *destFile = NULL;
+		bool replaced = false;	/* Replace it took the file there off */
+		if(destDir == NULL) {
+			// Show a list of destination devices (the same device is also a possibility)
+			select_device(DEVICE_DEST);
+			if(devices[DEVICE_DEST] == NULL) return false;
 
-		// If the devices are not the same, init the destination, fail on non-existing device/etc
-		if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
-			devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );	
-			deviceHandler_setStatEnabled(0);
-			if(devices[DEVICE_DEST]->init( devices[DEVICE_DEST]->initial )) {
+			// If the devices are not the same, init the destination, fail on non-existing device/etc
+			if(devices[DEVICE_DEST] != devices[DEVICE_CUR] && devices[DEVICE_DEST] != manageKeep) {
+				devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );
+				deviceHandler_setStatEnabled(0);
+				if(devices[DEVICE_DEST]->init( devices[DEVICE_DEST]->initial )) {
+					deviceHandler_setStatEnabled(1);
+					sprintf(txtbuffer, "Failed to init destination device! (%u)\nPress A to continue.",ret);
+					uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,txtbuffer);
+					DrawPublish(msgBox);
+					wait_press_A();
+					DrawDispose(msgBox);
+					return false;
+				}
 				deviceHandler_setStatEnabled(1);
-				sprintf(txtbuffer, "Failed to init destination device! (%u)\nPress A to continue.",ret);
-				uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,txtbuffer);
-				DrawPublish(msgBox);
-				wait_press_A();
-				DrawDispose(msgBox);
+			}
+			// Traverse this destination device and let the user select a directory to dump the file in
+			destFile = memset(&destStore, 0, sizeof(destStore));
+
+			// Show a directory only browser and get the destination file location
+			ret = select_dest_dir(devices[DEVICE_DEST]->initial, destFile->name);
+			if(ret) {
+				if(devices[DEVICE_DEST] != devices[DEVICE_CUR] && devices[DEVICE_DEST] != manageKeep) {
+					devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );
+				}
+				devices[DEVICE_DEST] = NULL;
 				return false;
 			}
-			deviceHandler_setStatEnabled(1);
 		}
-		// Traverse this destination device and let the user select a directory to dump the file in
-		file_handle *destFile = calloc(1, sizeof(file_handle));
-		
-		// Show a directory only browser and get the destination file location
-		ret = select_dest_dir(devices[DEVICE_DEST]->initial, destFile->name);
-		if(ret) {
-			if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
-				devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );
-			}
-			devices[DEVICE_DEST] = NULL;
-			return false;
+		else {
+			destFile = memset(&destStore, 0, sizeof(destStore));
+			strlcpy(destFile->name, destDir, PATHNAME_MAX);
 		}
 		
 		u32 isDestCard = devices[DEVICE_DEST] == &__device_card_a || devices[DEVICE_DEST] == &__device_card_b;
 		u32 isSrcCard = devices[DEVICE_CUR] == &__device_card_a || devices[DEVICE_CUR] == &__device_card_b;
 		
-		concat_path(destFile->name, destFile->name, stripInvalidChars(getRelativeName(curFile.name)));
-		// Create a GCI if something is coming out from CARD to another device
-		if(isSrcCard && !isDestCard) {
-			strlcat(destFile->name, ".gci", PATHNAME_MAX);
-		}
+		manageDestName(destFile->name, destFile->name, curFile.name, devices[DEVICE_CUR],
+			devices[DEVICE_DEST]);
 
 		// If the destination file already exists, ask the user what to do
-		if(devices[DEVICE_DEST]->readFile(destFile, NULL, 0) == 0) {
-			devices[DEVICE_DEST]->closeFile(destFile);
-			uiDrawObj_t* dupeBox = DrawEmptyBox(10,150, getVideoMode()->fbWidth-10, 350);
-			DrawAddChild(dupeBox, DrawStyledLabel(640/2, 160, "File exists:", 1.0f, ALIGN_CENTER, defaultColor));
-			float scale = GetTextScaleToFitInWidth(getRelativeName(curFile.name), getVideoMode()->fbWidth-10-10);
-			DrawAddChild(dupeBox, DrawStyledLabel(640/2, 200, getRelativeName(curFile.name), scale, ALIGN_CENTER, defaultColor));
-			DrawAddChild(dupeBox, DrawHintLabel(640/2, 230, "A  Rename    Z  Overwrite", 1.0f, ALIGN_CENTER, defaultColor));
-			DrawAddChild(dupeBox, DrawHintLabel(640/2, 300, "B  Return", 1.0f, ALIGN_CENTER, defaultColor));
-			DrawPublish(dupeBox);
+		/* One there that can't be read is there all the same: without the
+		 * question the copy would write over it, or delete it on a failed
+		 * write. */
+		if(manageDestExists(destFile)) {
+			/* The File Browser asks with its own box: Keep both is A, Replace it
+			 * Z and Cancel B, as if pressed in Swiss's. */
+			u32 chosen = filesBoxes ? filesAskExists(destFile->name) : 0;
+			uiDrawObj_t* dupeBox = NULL;
+			if(!chosen) {
+				dupeBox = DrawEmptyBox(10,150, getVideoMode()->fbWidth-10, 350);
+				DrawAddChild(dupeBox, DrawStyledLabel(640/2, 160, "File exists:", 1.0f, ALIGN_CENTER, defaultColor));
+				float scale = GetTextScaleToFitInWidth(getRelativeName(curFile.name), getVideoMode()->fbWidth-10-10);
+				DrawAddChild(dupeBox, DrawStyledLabel(640/2, 200, getRelativeName(curFile.name), scale, ALIGN_CENTER, defaultColor));
+				DrawAddChild(dupeBox, DrawHintLabel(640/2, 230, "A  Rename    Z  Overwrite", 1.0f, ALIGN_CENTER, defaultColor));
+				DrawAddChild(dupeBox, DrawHintLabel(640/2, 300, "B  Return", 1.0f, ALIGN_CENTER, defaultColor));
+				DrawPublish(dupeBox);
+			}
 			while(padsButtonsHeld() & (BUTTON_A | BUTTON_Z)) { VIDEO_WaitVSync (); }
 			while(1) {
-				u32 buttons = padsButtonsHeld();
+				u32 buttons = chosen ? chosen : padsButtonsHeld();
 				if(buttons & BUTTON_Z) {
-					if(!strcmp(curFile.name, destFile->name)) {
+					/* FAT ignores case: one file may be spelled two ways. */
+					if(!strcasecmp(curFile.name, destFile->name)) {
 						DrawDispose(dupeBox);
-						uiDrawObj_t *msgBox = DrawMessageBox(D_INFO, "Can't overwrite a file with itself!");
-						DrawPublish(msgBox);
-						wait_press_A();
-						DrawDispose(msgBox);
+						manageTell(D_INFO, "Can't overwrite a file with itself!", "That's the same file.",
+							"", true);
 						return false; 
 					}
+					/* Replacing: the file there goes first. One that
+					 * won't go is kept, and nothing is copied. */
 					else if(devices[DEVICE_DEST]->deleteFile) {
-						devices[DEVICE_DEST]->deleteFile(destFile);
+						if(devices[DEVICE_DEST]->deleteFile(destFile) != 0) {
+							DrawDispose(dupeBox);
+							manageTell(D_FAIL, "Failed to delete the existing file!\nPress A to continue.",
+								"Couldn't replace it.", "The file there couldn't be removed.", true);
+							return false;
+						}
+						replaced = true;
 					}
 
 					while(padsButtonsHeld() & BUTTON_Z){ VIDEO_WaitVSync (); }
@@ -3555,10 +5484,8 @@ bool manage_file() {
 						cursor += 3;
 						if((strlen(name_backup) + 4) >= 1024) {
 							DrawDispose(dupeBox);
-							uiDrawObj_t *msgBox = DrawMessageBox(D_INFO, "File name too long!");
-							DrawPublish(msgBox);
-							wait_press_A();
-							DrawDispose(msgBox);
+							manageTell(D_INFO, "File name too long!", "Its name is too long for another copy.",
+								"", true);
 							return false;
 						}
 						destFile->name[cursor - 3] = '_';
@@ -3569,14 +5496,12 @@ bool manage_file() {
 						strcpy(destFile->name + cursor, name_backup + extension_start);
 					}
 
-					while(!devices[DEVICE_DEST]->statFile(destFile)) {
+					while(manageDestExists(destFile)) {
 						copy_num++;
 						if(copy_num > 99) {
 							DrawDispose(dupeBox);
-							uiDrawObj_t *msgBox = DrawMessageBox(D_INFO, "Too many copies!");
-							DrawPublish(msgBox);
-							wait_press_A();
-							DrawDispose(msgBox);
+							manageTell(D_INFO, "Too many copies!", "There are 99 copies of it there already.",
+								"", true);
 							return false;
 						}
 						sprintf(destFile->name + cursor - 2, "%02i", copy_num);
@@ -3596,6 +5521,7 @@ bool manage_file() {
 			DrawDispose(dupeBox);
 		}
 
+		strlcpy(manageLanded, destFile->name, sizeof(manageLanded));
 		// Seek back to 0 after all these reads
 		devices[DEVICE_CUR]->seekFile(&curFile, 0, DEVICE_HANDLER_SEEK_SET);
 		devices[DEVICE_DEST]->seekFile(destFile, 0, DEVICE_HANDLER_SEEK_SET);
@@ -3605,10 +5531,11 @@ bool manage_file() {
 			&& canRename && option == MOVE_OPTION) {
 			ret = devices[DEVICE_CUR]->renameFile(&curFile, destFile->name);
 			needsRefresh=1;
-			uiDrawObj_t *msgBox = DrawMessageBox(D_INFO,ret ? "Move Failed! Press A to continue":"File moved! Press A to continue");
-			DrawPublish(msgBox);
-			wait_press_A();
-			DrawDispose(msgBox);
+			/* Replace it took the file there off first: say so when the
+			 * move then fails. */
+			manageTell(D_INFO, ret ? "Move Failed! Press A to continue":"File moved! Press A to continue",
+				ret ? "Couldn't move it." : "Finished moving.",
+				ret && replaced ? "The file that was there is gone already." : "", ret != 0);
 		}
 		else {
 			// If we're copying out from memory card, make a .GCI
@@ -3641,10 +5568,11 @@ bool manage_file() {
 			
 			// Read from one file and write to the new directory
 			u32 bulkWrite = isSrcCard || isDestCard || devices[DEVICE_DEST] == &__device_qoob;
-			u32 curOffset = curFile.offset, cancelled = 0, chunkSize = bulkWrite ? curFile.size - curOffset : (256*1024);
+			u32 curOffset = curFile.offset, cancelled = 0, written = 0, chunkSize = bulkWrite ? curFile.size - curOffset : (256*1024);
 			char *readBuffer = (char*)memalign(32,chunkSize);
 			sprintf(txtbuffer, "Copying to: %s",getRelativeName(destFile->name));
-			uiDrawObj_t* progBar = DrawProgressBar(false, 0, txtbuffer);
+			uiDrawObj_t* progBar = filesBoxes ? filesProgress(option, destFile->name) :
+				DrawProgressBar(false, 0, txtbuffer);
 			DrawPublish(progBar);
 			
 			u64 startTime = gettime();
@@ -3653,8 +5581,12 @@ bool manage_file() {
 			int speed = 0;
 			int timeremain = 0;
 			print_debug("Copying %i byte file from %s to %s\n", curFile.size, &curFile.name[0], destFile->name);
+			/* A B pressed before this (to leave another screen) isn't a cancel. */
+			(void)padsButtonsTaken(BUTTON_B);
 			while(curOffset < curFile.size) {
-				u32 buttons = padsButtonsHeld();
+				/* Taken from the scans as well as held: a B tapped while a
+				 * chunk was read or written still cancels. */
+				u32 buttons = padsButtonsHeld() | padsButtonsTaken(BUTTON_B);
 				if(buttons & BUTTON_B) {
 					cancelled = 1;
 					break;
@@ -3679,27 +5611,27 @@ bool manage_file() {
 						free(readBuffer);
 						devices[DEVICE_CUR]->closeFile(&curFile);
 						devices[DEVICE_DEST]->closeFile(destFile);
+						/* Before its first write the copy made no file, so none is left. */
+						bool removed = !written || manageDropPartial(destFile);
 						sprintf(txtbuffer, "Failed to Read! (%d %d)\n%s",amountToCopy,ret, &curFile.name[0]);
-						uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,txtbuffer);
-						DrawPublish(msgBox);
-						wait_press_A();
-						DrawDispose(msgBox);
+						manageCopied(UI_FILES_RESULT_READ_FAILED, option, destFile->name, ret, removed,
+							replaced, D_FAIL, txtbuffer);
 						setGCIInfo(NULL);
 						setCopyGCIMode(FALSE);
 						return true;
 					}
 				}
+				written = 1;
 				ret = devices[DEVICE_DEST]->writeFile(destFile, readBuffer, amountToCopy);
 				if(ret != amountToCopy) {
 					DrawDispose(progBar);
 					free(readBuffer);
 					devices[DEVICE_CUR]->closeFile(&curFile);
 					devices[DEVICE_DEST]->closeFile(destFile);
+					bool removed = manageDropPartial(destFile);
 					sprintf(txtbuffer, "Failed to Write! (%d %d)\n%s",amountToCopy,ret,destFile->name);
-					uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,txtbuffer);
-					DrawPublish(msgBox);
-					wait_press_A();
-					DrawDispose(msgBox);
+					manageCopied(UI_FILES_RESULT_WRITE_FAILED, option, destFile->name, ret, removed,
+						replaced, D_FAIL, txtbuffer);
 					setGCIInfo(NULL);
 					setCopyGCIMode(FALSE);
 					return true;
@@ -3714,37 +5646,45 @@ bool manage_file() {
 			if(ret == 0)
 				ret = devices[DEVICE_DEST]->closeFile(destFile);
 			if(ret != 0) {
+				bool removed = manageDropPartial(destFile);
 				sprintf(txtbuffer, "Failed to Write! (%d)\n%s",ret,destFile->name);
-				uiDrawObj_t *msgBox = DrawMessageBox(D_FAIL,txtbuffer);
-				DrawPublish(msgBox);
-				wait_press_A();
-				DrawDispose(msgBox);
+				manageCopied(UI_FILES_RESULT_WRITE_FAILED, option, destFile->name, ret, removed,
+					replaced, D_FAIL, txtbuffer);
 				setGCIInfo(NULL);
 				setCopyGCIMode(FALSE);
 				return true;
 			}
 			setGCIInfo(NULL);
 			setCopyGCIMode(FALSE);
-			free(destFile);
-			uiDrawObj_t *msgBox = NULL;
+			/* B tapped while the last piece was read or written, or the file
+			 * closed: the loop ended before it could see it. */
+			if((padsButtonsHeld() | padsButtonsTaken(BUTTON_B)) & BUTTON_B) {
+				cancelled = 1;
+			}
+			bool removed = cancelled && manageDropPartial(destFile);
+			bool kept = false;
+			uiFilesResult_t result = UI_FILES_RESULT_DONE;
+			const char *message;
 			if(!cancelled) {
 				// If cut, delete from source device
 				if(canDelete && option == MOVE_OPTION) {
-					devices[DEVICE_CUR]->deleteFile(&curFile);
+					kept = devices[DEVICE_CUR]->deleteFile(&curFile) != 0;
 					needsRefresh=1;
-					msgBox = DrawMessageBox(D_INFO,"Move Complete!");
+					message = "Move Complete!";
+					result = kept ? UI_FILES_RESULT_KEPT : UI_FILES_RESULT_DONE;
 				}
 				else {
-					msgBox = DrawMessageBox(D_INFO,"Copy Complete.\nPress A to continue");
+					message = "Copy Complete.\nPress A to continue";
 				}
 			} 
 			else {
 				sprintf(txtbuffer, "%s cancelled.\nPress A to continue", (option == MOVE_OPTION) ? "Move" : "Copy");
-				msgBox = DrawMessageBox(D_INFO,txtbuffer);
+				message = txtbuffer;
+				result = UI_FILES_RESULT_STOPPED;
 			}
-			DrawPublish(msgBox);
-			wait_press_A();
-			DrawDispose(msgBox);
+			/* A Move that couldn't take the original off says it copied. */
+			manageCopied(result, canDelete || cancelled ? option : COPY_OPTION, destFile->name, 0,
+				removed, replaced, D_INFO, message);
 		}
 	}
 
@@ -3776,8 +5716,12 @@ void verify_game()
 	u32 lastOffset = 0;
 	int speed = 0;
 	int timeremain = 0;
+	/* A B pressed before this (to leave another screen) isn't a cancel. */
+	(void)padsButtonsTaken(BUTTON_B);
 	while(curOffset < curFile.size) {
-		u32 buttons = padsButtonsHeld();
+		/* Taken from the scans as well as held: a B tapped while a chunk
+		 * was read still cancels. */
+		u32 buttons = padsButtonsHeld() | padsButtonsTaken(BUTTON_B);
 		if(buttons & BUTTON_B) {
 			cancelled = 1;
 			break;
@@ -3939,7 +5883,7 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 	/* A Library launch shows the launch screen from here to the hand-off,
 	 * Boot without prompts included. */
 	if(context != NULL) {
-		DrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LAUNCH);
+		gameflowShowFromFiles(context->event, UI_GAMEFLOW_MODE_LAUNCH);
 	}
 	
 	if(devices[DEVICE_CONFIG] != NULL) {
@@ -4185,7 +6129,9 @@ static void load_file_with_context(gameflowLaunchContext_t *context)
 		}
 		else if(endsWith(fileName,".fpkg")) {
 			if(devices[DEVICE_CUR] == &__device_flippy || devices[DEVICE_CUR] == &__device_flippyflash) {
-				homeFlippyUpdatePending = true;
+				if(confirmAction("Update the FlippyDrive with this file?\nA  UPDATE    B  CANCEL")) {
+					homeFlippyUpdatePending = true;
+				}
 				needsRefresh = 0;
 				return;
 			}
@@ -4197,6 +6143,9 @@ static void load_file_with_context(gameflowLaunchContext_t *context)
 				uiDrawObj_t *msgBox = DrawPublish(DrawMessageBox(D_WARN, "File Size must be 0x1D0000 bytes!"));
 				sleep(2);
 				DrawDispose(msgBox);
+				return;
+			}
+			if(!confirmAction("Write this file to the WiiKey's flash?\nA  FLASH    B  CANCEL")) {
 				return;
 			}
 			uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Reading Flash File\205"));
@@ -4481,12 +6430,147 @@ static u32 gameflowDetailInput(u32 buttons)
 	return input;
 }
 
+/* The slot whose card the game reads its save from: the first holding a copy
+ * of it, else the first with a card in it. -1: no card. */
+static int gameflowSaveSlot(const savesCopies_t *copies)
+{
+	unsigned slot, i;
+
+	for(slot = 0u; slot < 2u; slot++) {
+		for(i = 0u; i < copies->count; i++) {
+			if(copies->copy[i].source == (savesCopySource_t)slot) return (int)slot;
+		}
+	}
+	for(slot = 0u; slot < 2u; slot++) {
+		if(copies->cards[slot]) return (int)slot;
+	}
+	return -1;
+}
+
+static const char *gameflowSaveWhere(const savesCopy_t *copy)
+{
+	switch(copy->source) {
+		case SAVES_COPY_SLOT_A: return "Slot A";
+		case SAVES_COPY_SLOT_B: return "Slot B";
+		case SAVES_COPY_FILE: return "Save Folder";
+		default: return getRelativeName((char *)copy->path);
+	}
+}
+
+/* Left and Right choose a copy only where a launch can put it on the card the
+ * game reads: two or more copies, a card in a slot, and Emulate Memory Card
+ * off (the game would read its card image instead). */
+static bool gameflowSaveChoosable(const gameflowLaunchContext_t *context)
+{
+	return context->savesScanned && gameflowSaveCopies.count >= 2u &&
+		context->saveSlot >= 0 && !swissSettings.emulateMemoryCard;
+}
+
+/* The copy Left and Right show, while there is a choice. Without one the box
+ * shows the totals, with no « SAVES ». */
+static void gameflowSaveChoiceSource(const gameflowLaunchContext_t *context,
+	uiGameflowDetailSource_t *source)
+{
+	const savesCopy_t *copy;
+
+	if(!gameflowSaveChoosable(context)) {
+		return;
+	}
+	source->saveCopies = gameflowSaveCopies.count;
+	if(context->saveChoice < 0 ||
+		(unsigned)context->saveChoice >= gameflowSaveCopies.count) {
+		return;
+	}
+	copy = &gameflowSaveCopies.copy[context->saveChoice];
+	source->saveChoice = (uint32_t)context->saveChoice + 1u;
+	source->saveChoiceEntry = copy->entry;
+	source->saveChoiceWhere = gameflowSaveWhere(copy);
+	source->saveChoiceInUse = context->saveSlot >= 0 &&
+		copy->source == (savesCopySource_t)context->saveSlot;
+}
+
+/* A box until A or B, once the press that opened it is let go. */
+static bool gameflowSaveAsk(const char *text)
+{
+	uiDrawObj_t *box = DrawPublish(DrawMessageBox(D_INFO, text));
+	bool released = false;
+	bool yes = false;
+
+	while(1) {
+		u32 held = padsButtonsHeld();
+
+		if(!released) {
+			released = (held & (BUTTON_A | BUTTON_B)) == 0u;
+		}
+		else if(held & BUTTON_A) {
+			yes = true;
+			break;
+		}
+		else if(held & BUTTON_B) {
+			break;
+		}
+		VIDEO_WaitVSync();
+	}
+	DrawDispose(box);
+	while(padsButtonsHeld() & (BUTTON_A | BUTTON_B)) {
+		VIDEO_WaitVSync();
+	}
+	return yes;
+}
+
+/* Before a launch: a copy chosen with Left and Right that isn't the one on
+ * the card the game reads goes on that card first, once A says so. False:
+ * Detail stays open (B, which goes back to the card's own copy, or it didn't
+ * go on). Without a choice (gameflowSaveChoosable) the card stays as it is. */
+static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
+{
+	const savesCopy_t *copy;
+	char why[256];
+	char text[512];
+	uiDrawObj_t *box;
+	bool ok, own = false;
+	unsigned i;
+
+	if(!gameflowSaveChoosable(context) || context->saveChoice < 0 ||
+		(unsigned)context->saveChoice >= gameflowSaveCopies.count) {
+		return true;
+	}
+	copy = &gameflowSaveCopies.copy[context->saveChoice];
+	if(copy->source == (savesCopySource_t)context->saveSlot) {
+		return true;
+	}
+	/* The card's own copies are never dropped from the list, so none there
+	 * means the card has none to keep. */
+	for(i = 0u; i < gameflowSaveCopies.count; i++) {
+		own |= gameflowSaveCopies.copy[i].source == (savesCopySource_t)context->saveSlot;
+	}
+	snprintf(text, sizeof(text), own ? "Start with the save from %s?\n"
+		"%s's own copy of it goes to the Save Folder first.\nA  LOAD    B  KEEP" :
+		"Start with the save from %s?\n"
+		"It goes on the memory card in %s.\nA  LOAD    B  KEEP", gameflowSaveWhere(copy),
+		context->saveSlot == 0 ? "Slot A" : "Slot B");
+	if(!gameflowSaveAsk(text)) {
+		context->saveChoice = -1;
+		return false;
+	}
+	box = DrawPublish(DrawProgressBar(true, 0, "Loading save\205"));
+	ok = Saves_LoadCopy(context->saveSlot, copy, why, sizeof(why));
+	DrawDispose(box);
+	if(!ok) {
+		snprintf(text, sizeof(text), "The save didn't go on the card.\n%s\nA  OK",
+			why);
+		gameflowSaveAsk(text);
+		/* The cards may have changed: read them again. */
+		context->savesScanned = false;
+	}
+	return ok;
+}
+
 static bool gameflowPublishDetail(ConfigEntry *config,
 	gameflowLaunchContext_t *context)
 {
 	uiGameflowDetailSnapshot_t *snapshot;
 	uiGameflowDetailSource_t source;
-	uiSavesGameStats_t saveStats;
 	uiGameflowDetailCheatSource_t *cheatSources = NULL;
 	CheatEntries *cheats = getCheats();
 	file_meta *meta = curFile.meta;
@@ -4538,6 +6622,9 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 	if(devices[DEVICE_CUR] != &__device_wode) {
 		flags |= UI_GAMEFLOW_DETAIL_CAN_LIBRARY;
 	}
+	if(gameflowFromFiles) {
+		flags |= UI_GAMEFLOW_DETAIL_BACK_FILES;
+	}
 	if(devices[DEVICE_CONFIG] != NULL) {
 		flags |= UI_GAMEFLOW_DETAIL_CAN_AUTOLOAD;
 		if(!strcmp(swissSettings.autoload, curFile.name) ||
@@ -4576,13 +6663,24 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 	source.lastPlayedUnixSeconds = config_last_played(context->gameId, 6u,
 		&source.playHistoryAvailable);
 	source.saveStatus = UI_GAME_SAVE_NOT_CHECKED;
-	/* Only the verified disc launch context owns a save identity. Apps use
-	 * the same Library renderer but never take this snapshot path. */
-	if(context->primary != NULL && context->primary->fileType == IS_FILE &&
+	/* Only the verified disc launch context owns a save identity, and only
+	 * Saves on Details (on by default) reads the memory cards for it: off, a
+	 * game's details leave them alone. Apps use the same Library renderer
+	 * but never take this snapshot path. Read once while Detail is open. */
+	if(!swissSettings.hideDetailSaves &&
+		context->primary != NULL && context->primary->fileType == IS_FILE &&
 		valid_gcm_magic(&GCMDisk) &&
 		memcmp(context->gameId, &GCMDisk, UI_GAMEFLOW_DETAIL_ID_LENGTH) == 0) {
-		Saves_CollectGameStats(context->gameId, &saveStats);
-		source.saveStats = &saveStats;
+		if(!context->savesScanned) {
+			Saves_CollectGameStats(context->gameId, &context->saveStats,
+				&gameflowSaveCopies);
+			context->savesScanned = true;
+			context->saveSlot = gameflowSaveSlot(&gameflowSaveCopies);
+			/* The totals first: the card as it is. */
+			context->saveChoice = -1;
+		}
+		source.saveStats = &context->saveStats;
+		gameflowSaveChoiceSource(context, &source);
 	}
 	source.customSettings = (uint32_t)settings_game_custom_count(config);
 	source.firstCustomSetting = settings_game_custom_first(config);
@@ -4612,7 +6710,8 @@ static int gameflow_info_game(ConfigEntry *config,
 	gameflowLaunchContext_t *context)
 {
 	const u32 detailButtons = PAD_BUTTON_X | BUTTON_B | BUTTON_A |
-		PAD_BUTTON_Y | BUTTON_Z | BUTTON_R | BUTTON_UP | BUTTON_DOWN;
+		PAD_BUTTON_Y | BUTTON_Z | BUTTON_R | BUTTON_UP | BUTTON_DOWN |
+		BUTTON_LEFT | BUTTON_RIGHT;
 	uiMenuActionState_t detailInput;
 	uiMenuInputState_t detailStick;
 	uiGameflowDetailFocus_t focus = UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH;
@@ -4646,10 +6745,12 @@ static int gameflow_info_game(ConfigEntry *config,
 		return openSettings ? 0 : info_game(config);
 	}
 	DrawSetGameflowDetailFocus(context->event, focus);
-	DrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_DETAIL);
+	gameflowShowFromFiles(context->event, UI_GAMEFLOW_MODE_DETAIL);
 	/* The entry A press is consumed, but held L and the C-stick cannot
-	 * block the detail screen. Only physical X/Y invoke those shortcuts. */
+	 * block the detail screen. Only physical X/Y invoke those shortcuts.
+	 * Presses made and let go before now aren't for here either. */
 	UIMenuAction_Init(&detailInput, padsButtonsHeld());
+	(void)padsButtonsTaken(detailButtons);
 	UIMenuInput_Init(&detailStick);
 
 	while(1) {
@@ -4668,17 +6769,43 @@ static int gameflow_info_game(ConfigEntry *config,
 		else {
 			do {
 				VIDEO_WaitVSync();
-				buttons = UIMenuAction_Update(&detailInput, padsButtonsHeld(),
+				/* Taken from the scans as well as held: a press made and
+				 * let go while a poster was read is still seen. */
+				buttons = UIMenuAction_Update(&detailInput,
+					padsButtonsHeld() | padsButtonsTaken(detailButtons),
 					detailButtons, BUTTON_L, BUTTON_B);
 				/* The stick steps like the D-pad: once a push, back to
 				 * centre first, never while a button is down. With no
 				 * repeat it needs no clock. */
 				analog = padsMenuInputPoll(&detailStick, 0u,
-					UI_MENU_INPUT_AXIS_VERTICAL,
+					UI_MENU_INPUT_AXIS_BOTH,
 					(padsButtonsHeld() & detailButtons) != 0u);
 				if(analog == UI_MENU_INPUT_UP) buttons |= BUTTON_UP;
 				if(analog == UI_MENU_INPUT_DOWN) buttons |= BUTTON_DOWN;
+				if(analog == UI_MENU_INPUT_LEFT) buttons |= BUTTON_LEFT;
+				if(analog == UI_MENU_INPUT_RIGHT) buttons |= BUTTON_RIGHT;
+				/* A poster still on its way (its slot was just let go, or
+				 * the pack only now opened) is read on an idle retrace, one
+				 * at most, as the Library does, and fades in when it lands. */
+				if(buttons == 0u) {
+					DrawGameflowPollPosters();
+				}
 			} while(buttons == 0u);
+			/* Left and Right choose the save copy to start with, while there
+			 * is a choice: each copy, then the totals again (-1, the card as
+			 * it is), so a choice can always be undone. */
+			if(buttons & (BUTTON_LEFT | BUTTON_RIGHT)) {
+				if(gameflowSaveChoosable(context)) {
+					int span = (int)gameflowSaveCopies.count + 1;
+					int step = (buttons & BUTTON_RIGHT) ? 1 : -1;
+
+					context->saveChoice = (context->saveChoice + 1 + step + span) %
+						span - 1;
+					gameflowPublishDetail(config, context);
+					menuaudio_blip();
+				}
+				continue;
+			}
 			memset(&actionSnapshot, 0, sizeof(actionSnapshot));
 			actionSnapshot.flags = UI_GAMEFLOW_DETAIL_VALID |
 				UI_GAMEFLOW_DETAIL_CAN_SETTINGS |
@@ -4711,7 +6838,13 @@ static int gameflow_info_game(ConfigEntry *config,
 			}
 		}
 
-		if(action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||
+		if((action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||
+			action == UI_GAMEFLOW_DETAIL_ACTION_CLEAN_BOOT) &&
+			!gameflowLoadChosenSave(context)) {
+			/* Not now: the save stays as it was, and so does Detail. */
+			gameflowPublishDetail(config, context);
+		}
+		else if(action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||
 			action == UI_GAMEFLOW_DETAIL_ACTION_CLEAN_BOOT) {
 			if(action == UI_GAMEFLOW_DETAIL_ACTION_CLEAN_BOOT) {
 				config->forceCleanBoot = 1;
@@ -4726,6 +6859,7 @@ static int gameflow_info_game(ConfigEntry *config,
 			return 1;
 		}
 		if(action == UI_GAMEFLOW_DETAIL_ACTION_LIBRARY) {
+			gameflowBackToFiles();
 			DrawSetGameflowMode(context->event, UI_GAMEFLOW_MODE_LIBRARY);
 			/* The browser owns its B release drain after restoring Library. */
 			return 0;
@@ -4741,7 +6875,11 @@ static int gameflow_info_game(ConfigEntry *config,
 			UIScene_Request(UI_SCENE_GAME_DETAIL);
 			gameflowPublishDetail(config, context);
 		}
-		else if(action == UI_GAMEFLOW_DETAIL_ACTION_AUTOLOAD) {
+		/* From the File Browser, turning Autoload on asks first, as Swiss's
+		 * game screen did there. */
+		else if(action == UI_GAMEFLOW_DETAIL_ACTION_AUTOLOAD &&
+			(!gameflowFromFiles ||
+			autoloadToggleConfirmed(curFile.name, false))) {
 			if(!strcmp(swissSettings.autoload, curFile.name) ||
 				!fnmatch(swissSettings.autoload, curFile.name,
 					FNM_PATHNAME)) {
@@ -4768,6 +6906,7 @@ static int gameflow_info_game(ConfigEntry *config,
 		/* A modal's dismissal is not a new Detail action. Do not require
 		 * unrelated buttons or a held clean-boot modifier to be released. */
 		UIMenuAction_Init(&detailInput, padsButtonsHeld());
+		(void)padsButtonsTaken(detailButtons);
 		UIMenuInput_Init(&detailStick);
 	}
 }
@@ -4818,7 +6957,8 @@ int info_game(ConfigEntry *config)
 			needsRefresh = show_settings_view(VIEW_GAME, 0, config);
 			infoPanel = DrawRepublish(infoPanel, draw_game_info(config));
 		}
-		if((buttons & BUTTON_Z) && devices[DEVICE_CONFIG] != NULL) {
+		if((buttons & BUTTON_Z) && devices[DEVICE_CONFIG] != NULL &&
+			autoloadToggleConfirmed(&curFile.name[0], false)) {
 			// Toggle autoload
 			if(!strcmp(&swissSettings.autoload[0], &curFile.name[0])
 			|| !fnmatch(&swissSettings.autoload[0], &curFile.name[0], FNM_PATHNAME)) {
@@ -5023,28 +7163,19 @@ static bool select_device_internal(int type)
 	if(type == DEVICE_CUR) {
 		/* The live source survived the selector. Only now that A has confirmed
 		 * do we invalidate files and remount, including same-source EXI changes. */
-		if(devices[type] != NULL) {
-			freeFiles();
-			DrawGameflowCancelPosters();
-			devices[type]->deinit(devices[type]->initial);
-			homeSourceRecord(devices[type], UI_HOME_SOURCE_MOUNT_UNMOUNTED);
-		}
-		else {
-			homeSourceRecord(NULL, UI_HOME_SOURCE_MOUNT_ABSENT);
-		}
+		sourceCommit(selectedDevice);
 	}
-	else if(devices[type] != NULL) {
-		// Don't deinit our current device when selecting a destination device
-		if(!(type == DEVICE_DEST && devices[type] == devices[DEVICE_CUR])) {
-			devices[type]->deinit(devices[type]->initial);
+	else {
+		if(devices[type] != NULL) {
+			// Don't deinit our current device when selecting a destination device
+			if(!(type == DEVICE_DEST && devices[type] == devices[DEVICE_CUR])) {
+				devices[type]->deinit(devices[type]->initial);
+			}
 		}
+		devices[type] = selectedDevice;
 	}
 	if(showAllDevices && (selectedDevice->location & (LOC_MEMCARD_SLOT_A | LOC_MEMCARD_SLOT_B | LOC_SERIAL_PORT_2))) {
 		EXI_ProbeReset();
-	}
-	devices[type] = selectedDevice;
-	if(type == DEVICE_CUR) {
-		homeSourceRecord(selectedDevice, UI_HOME_SOURCE_MOUNT_UNMOUNTED);
 	}
 	DrawDispose(deviceSelectBox);
 	if(type == DEVICE_DEST) {
@@ -5056,6 +7187,60 @@ static bool select_device_internal(int type)
 void select_device(int type)
 {
 	(void)select_device_internal(type);
+}
+
+/* The Source becomes device, unmounted: the old one's listing and posters
+ * go, it is unmounted, and Home records both. sourceMount mounts the new
+ * one. The device picker and the File Browser's L and Y change it here. */
+static void sourceCommit(DEVICEHANDLER_INTERFACE *device)
+{
+	if(devices[DEVICE_CUR] != NULL) {
+		freeFiles();
+		DrawGameflowCancelPosters();
+		devices[DEVICE_CUR]->deinit(devices[DEVICE_CUR]->initial);
+		homeSourceRecord(devices[DEVICE_CUR], UI_HOME_SOURCE_MOUNT_UNMOUNTED);
+	}
+	else {
+		homeSourceRecord(NULL, UI_HOME_SOURCE_MOUNT_ABSENT);
+	}
+	devices[DEVICE_CUR] = device;
+	homeSourceRecord(device, UI_HOME_SOURCE_MOUNT_UNMOUNTED);
+}
+
+/* Mounts the Source just chosen and opens its top folder. A Source that
+ * won't mount says why, is let go and the Source picker opens next
+ * (needsDeviceChange): false then. */
+static bool sourceMount(void)
+{
+	uiDrawObj_t *msgBox;
+	s32 ret;
+
+	needsRefresh = 1;
+	memcpy(&curDir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
+	msgBox = DrawPublish(DrawProgressBar(true, 0, "Setting up device"));
+	ret = devices[DEVICE_CUR]->init(devices[DEVICE_CUR]->initial);
+	if(ret) {
+		homeSourceRecord(devices[DEVICE_CUR],
+			UI_HOME_SOURCE_MOUNT_UNMOUNTED);
+		needsDeviceChange = 1;
+		if(ret == ENODEV) {	// for completely removed devices vs something like the disc drive without a disc.
+			deviceHandler_setDeviceAvailable(devices[DEVICE_CUR], false);
+		}
+		char* statusMsg = devices[DEVICE_CUR]->status(devices[DEVICE_CUR]->initial);
+		msgBox = DrawRepublish(msgBox, DrawMessageBox(D_FAIL, statusMsg ? statusMsg : strerror(ret)));
+		sleep(2);
+		DrawDispose(msgBox);
+		/* The confirmed replacement never mounted, so it cannot be
+		 * treated as the preserved live source on the next selector. */
+		devices[DEVICE_CUR] = NULL;
+		homeSourceRecord(NULL, UI_HOME_SOURCE_MOUNT_ABSENT);
+		return false;
+	}
+	DrawDispose(msgBox);
+	deviceHandler_setDeviceAvailable(devices[DEVICE_CUR], true);
+	homeSourceRecord(devices[DEVICE_CUR],
+		UI_HOME_SOURCE_MOUNT_MOUNTED);
+	return true;
 }
 
 void menu_loop()
@@ -5094,40 +7279,15 @@ void menu_loop()
 			devices[DEVICE_PREV] = previousDevice;
 		}
 		needsDeviceChange = 0;
+		/* The picker reads held buttons: its A or B is not the list's. */
+		filesKeepPresses = false;
 		homePublish(curMenuLocation == ON_OPTIONS);
 		bool deviceConfirmed = select_device_internal(DEVICE_CUR);
 		UIScene_Request(UI_SCENE_HOME);
-		if(deviceConfirmed && devices[DEVICE_CUR] != NULL) {
-			uiDrawObj_t *msgBox;
-			s32 ret;
-
-			needsRefresh = 1;
-			memcpy(&curDir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
-			msgBox = DrawPublish(DrawProgressBar(true, 0, "Setting up device"));
-			/* A confirmed source is always remounted, including same-source
-			 * EXI changes. Cancellation never reaches this lifecycle. */
-			ret = devices[DEVICE_CUR]->init(devices[DEVICE_CUR]->initial);
-			if(ret) {
-				homeSourceRecord(devices[DEVICE_CUR],
-					UI_HOME_SOURCE_MOUNT_UNMOUNTED);
-				needsDeviceChange = 1;
-				if(ret == ENODEV) {	// for completely removed devices vs something like the disc drive without a disc.
-					deviceHandler_setDeviceAvailable(devices[DEVICE_CUR], false);
-				}
-				char* statusMsg = devices[DEVICE_CUR]->status(devices[DEVICE_CUR]->initial);
-				msgBox = DrawRepublish(msgBox, DrawMessageBox(D_FAIL, statusMsg ? statusMsg : strerror(ret)));
-				sleep(2);
-				DrawDispose(msgBox);
-				/* The confirmed replacement never mounted, so it cannot be
-				 * treated as the preserved live source on the next selector. */
-				devices[DEVICE_CUR] = NULL;
-				homeSourceRecord(NULL, UI_HOME_SOURCE_MOUNT_ABSENT);
-				return;
-			}
-			DrawDispose(msgBox);
-			deviceHandler_setDeviceAvailable(devices[DEVICE_CUR], true);
-			homeSourceRecord(devices[DEVICE_CUR],
-				UI_HOME_SOURCE_MOUNT_MOUNTED);
+		/* A confirmed source is always remounted, including same-source
+		 * EXI changes. Cancellation never reaches this lifecycle. */
+		if(deviceConfirmed && devices[DEVICE_CUR] != NULL && !sourceMount()) {
+			return;
 		}
 		else if(!deviceConfirmed) {
 			if(homeSourceLifecycleMounted()) {
@@ -5166,9 +7326,13 @@ void menu_loop()
 
 			curMenuLocation=ON_OPTIONS;
 			curSelection=0;
+			/* The File Browser says its folder is being read (a disc
+			 * spinning up, a network share) while it is. */
+			(void)DrawUpdateFilesReading(filePanel, UI_FILES_LEFT);
 			scanFiles();
 			if(getCurrentDirEntryCount()<=0) {
 				homeLibraryEntryPending = false;
+				filesOtherRelease();
 				DrawGameflowCancelPosters();
 				devices[DEVICE_PREV] = devices[DEVICE_CUR];
 				devices[DEVICE_CUR]->deinit(devices[DEVICE_CUR]->initial);
@@ -5192,44 +7356,30 @@ void menu_loop()
 			}
 		}
 		if(devices[DEVICE_CUR] != NULL && curMenuLocation==ON_FILLIST) {
-			UIScene_RequestLibraryLayout(gameflowSceneLayout());
-			UIScene_Request(UI_SCENE_LIBRARY);
-			int fileBrowserType = swissSettings.fileBrowserType;
-			if(!fnmatch("*/apps", curDir.name, FNM_PATHNAME | FNM_CASEFOLD | FNM_LEADING_DIR)) {
-				fileBrowserType = swissSettings.appsBrowserType;
+			/* A Library location with a game in it is the Library's; every
+			 * other folder is the File Browser's. The File Browser asks for
+			 * no scene: the Home cube stays where the face or the Library
+			 * left it, as Memory Cards hands it over. */
+			if(!gameflowListFallback && gameflowLibraryMode(getSortedDirEntries(),
+					getSortedDirEntryCount()) != UI_GAMEFLOW_LIBRARY_NONE) {
+				filesOtherRelease();
+				filesKeepPresses = false;
+				UIScene_RequestLibraryLayout(gameflowLayout());
+				UIScene_Request(UI_SCENE_LIBRARY);
+				filePanel = renderFileCarousel(getSortedDirEntries(),
+					gameflowLibraryEntries(getSortedDirEntries(),
+						getSortedDirEntryCount()), filePanel);
 			}
-			else if(!fnmatch("*/games", curDir.name, FNM_PATHNAME | FNM_CASEFOLD | FNM_LEADING_DIR)) {
-				fileBrowserType = swissSettings.gameBrowserType;
-			}
-			/* A games folder with a game in it owns the retained presentation.
-			 * Existing configurations default GameBrowserType to Fullwidth;
-			 * allowing that legacy preference to win would make the custom
-			 * Library unreachable on upgraded cards. Library Folders also owns
-			 * empty /games and its folder views. Outside those locations, the
-			 * requested legacy browser remains available. */
-			fileBrowserType = UIGameflowLibrary_SelectBrowser(
-				gameflowLibraryMode(getSortedDirEntries(),
-					getSortedDirEntryCount()),
-				fileBrowserType, BROWSER_CAROUSEL);
-			switch(fileBrowserType) {
-				default:
-					filePanel = renderFileBrowser(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);
-					break;
-				case BROWSER_CAROUSEL:
-					filePanel = renderFileCarousel(getSortedDirEntries(),
-						gameflowLibraryEntries(getSortedDirEntries(),
-							getSortedDirEntryCount()), filePanel);
-					break;
-				case BROWSER_FULLWIDTH:
-					filePanel = renderFileFullwidth(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);
-					break;
+			else {
+				filePanel = renderFileList(getSortedDirEntries(),
+					getSortedDirEntryCount(), filePanel);
 			}
 			while(padsButtonsHeld() & (BUTTON_B | BUTTON_A | BUTTON_RIGHT | BUTTON_LEFT | BUTTON_START)) {
 				VIDEO_WaitVSync (); 
 			}
 		}
 		else if (curMenuLocation==ON_OPTIONS) {
-			const u32 homeButtons = HOME_CONFIRMATION_BUTTONS;
+			const u32 homeButtons = HOME_CONFIRMATION_BUTTONS | BUTTON_Y;
 			uiHomeCapabilities_t capabilities;
 			uiHomeInput_t navigation = UI_HOME_INPUT_NONE;
 			uiHomeInput_t command = UI_HOME_INPUT_NONE;
@@ -5240,6 +7390,7 @@ void menu_loop()
 			uint32_t revision;
 			bool navigated = false;
 
+			homeFileBrowser = false;
 			UIScene_Request(UI_SCENE_HOME);
 			homePublish(true);
 			if(homeState.surface == UI_HOME_SURFACE_RING) {
@@ -5322,6 +7473,9 @@ void menu_loop()
 			else if(btns & BUTTON_START) {
 				command = UI_HOME_INPUT_RECENT;
 			}
+			else if(btns & BUTTON_Y) {
+				command = UI_HOME_INPUT_SETTINGS;
+			}
 			if(command != UI_HOME_INPUT_NONE && !navigated) {
 				revision = homeState.revision;
 				effect = UIHome_Apply(&homeState, command, capabilities);
@@ -5346,6 +7500,7 @@ void menu_loop()
 		 * the destructive updater only after those callers release snapshots. */
 		if(homeFlippyUpdatePending) {
 			if(filePanel != NULL) {
+				if(filePanel == filesPage) filesPage = NULL;
 				DrawDispose(filePanel);
 				filePanel = NULL;
 			}
@@ -5356,6 +7511,7 @@ void menu_loop()
 		}
 	}
 	if(filePanel != NULL) {
+		if(filePanel == filesPage) filesPage = NULL;
 		DrawDispose(filePanel);
 	}
 }

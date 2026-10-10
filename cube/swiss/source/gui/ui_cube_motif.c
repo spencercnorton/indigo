@@ -23,57 +23,72 @@ void UICubeMotif_Build(const uiHomeState_t *home, uiCubeMotifBasis_t *out)
 		{{1,0,0}, {0,-1,0}, {0,0,-1}},
 		{{1,0,0}, {0,0,1}, {0,-1,0}}
 	};
-	/* Classic: each face's side of the cube for good, from Library's turn
-	 * to it: Library front, Source on top, Settings left, System right
-	 * and Apps underneath. Each reads upright once turned to the front. */
-	static const int classicSide[UI_HOME_FACE_COUNT] = {0, 3, 3, 1, 1};
-	static const bool classicPitch[UI_HOME_FACE_COUNT] = {
-		false, true, false, false, true
+	/* Classic: each side's place on the band for good, from Library's turn
+	 * to it: Up and Left the previous side, Right and Down the next; Up and
+	 * Down turn vertically. Each glyph reads upright once turned to the
+	 * front. */
+	static const int classicSide[UI_HOME_SIDE_COUNT] = {3, 3, 1, 1};
+	static const bool classicPitch[UI_HOME_SIDE_COUNT] = {
+		true, false, false, true
 	};
+	uiHomeState_t authored;
 	bool classic;
 	int count;
+	int front;
 
 	if(out == NULL) return;
 	if(home != NULL && (!UIHome_IsFace((int)home->face) ||
-		(home->faceCount != UI_HOME_FACE_APPS &&
-			home->faceCount != UI_HOME_FACE_COUNT) ||
-		(int)home->face >= home->faceCount ||
+		!UIHome_LayoutValid(home) || UIHome_RingIndex(home, home->face) < 0 ||
 		home->turnAxis < UI_HOME_TURN_NONE || home->turnAxis > UI_HOME_TURN_VERTICAL ||
 		(home->style != UI_HOME_CUBE_INFINITE && home->style != UI_HOME_CUBE_CLASSIC) ||
 		!UIHome_OrientationValid(&home->orientation))) home = NULL;
-	count = home != NULL ? home->faceCount : UI_HOME_FACE_APPS;
-	classic = home != NULL && home->style == UI_HOME_CUBE_CLASSIC;
+	/* The authored background: Library in front of the default four, no
+	 * Apps, the cube unturned. */
+	if(home == NULL) {
+		UIHome_Init(&authored, (uiHomeCapabilities_t){.hasSource = true});
+		home = &authored;
+	}
+	count = home->faceCount;
+	front = UIHome_RingIndex(home, home->face);
+	classic = home->style == UI_HOME_CUBE_CLASSIC;
 	out->faceCount = count;
 	for(int face = 0; face < UI_HOME_FACE_COUNT; face++) {
 		/* The side of the band: 0 front, 1 next, 2 back and 3 previous. */
 		int side = 2;
-		bool shown = face < count;
+		int place = UIHome_RingIndex(home, (uiHomeFace_t)face);
+		bool shown = place >= 0;
 		const uiHomeState_t *placed = home;
-		bool pitch;
+		bool pitch = false;
 
 		/* Placed in the cube's own frame, Classic's glyphs never move as it
 		 * turns; Apps keeps its side while it is not shown, so it only fades
 		 * when it comes and goes. */
 		if(classic) {
-			side = classicSide[face];
+			int onSide = UIHome_FaceSide(home, (uiHomeFace_t)face);
+
+			if(face == (int)UI_HOME_FACE_LIBRARY) side = 0;
+			else if(onSide >= 0) {
+				side = classicSide[onSide];
+				pitch = classicPitch[onSide];
+			}
 			placed = NULL;
 		}
 		else if(shown) {
-			int relative = home != NULL ?
-				(face - (int)home->face + count) % count : face;
+			int relative = (place - front + count) % count;
 
 			if(relative == 0) side = 0;
 			else if(relative == 1) side = 1;
 			else if(relative == count - 1) side = 3;
 			/* Five faces: the one two ahead has no side; the one two
 			 * behind is at the back. */
-			else if(count == UI_HOME_FACE_COUNT && relative == 2) shown = false;
+			else if(count == UI_HOME_RING_MAX && relative == 2) shown = false;
 		}
 		/* A face with no side keeps one place, behind the authored front,
 		 * however the cube turns: it never moves, and never draws. */
 		if(!shown) placed = NULL;
-		pitch = classic ? classicPitch[face] :
-			placed != NULL && placed->turnAxis == UI_HOME_TURN_VERTICAL;
+		if(!classic) {
+			pitch = placed != NULL && placed->turnAxis == UI_HOME_TURN_VERTICAL;
+		}
 		out->shown[face] = shown;
 		for(int row = 0; row < 3; row++) {
 			for(int column = 0; column < 3; column++) {

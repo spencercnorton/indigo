@@ -71,3 +71,41 @@ authored-coordinate detection pixels. The native captures showed that reading
 the whole header lets its unchanged large SD glyph hide the path change.
 `memory-folder-header-root.png` and `memory-folder-header-open.png` preserve
 those actual wider header crops to reproduce the previous rejection.
+
+`files-screen.png`, `files-screen-right.png`, `files-screen-wide.png` and
+`files-screen-themed.png` are untouched 640×480 Dolphin captures of the File
+Browser from the public demonstration disc and SD card: the left pane in
+`/games` with a game focused, the right pane focused after opening `/apps`,
+Menu Widescreen on a GC Loader card, and the GC Loader card's settings
+(`settings/non-default.ini`: Menu Color Jet Black, an Emerald backdrop), whose
+grey edges count as edges too. `files_screen` finds both pane boxes, both storage
+buttons, the gutter between the panes and the info bar by their edges, over
+the spans that stay put when Menu Widescreen widens the panes outward;
+`active_pane` compares the two panes' top edges, the focused one lit in full.
+The tests blank each part in an in-memory copy, bridge the gutter, and check
+the legacy list, the Library layouts, Home and Memory Cards never pass.
+
+`files-screen-z.png` is the File Browser on the demonstration disc with the
+Actions box open beside the left pane's games folder (Z), every action greyed
+on a read-only disc: `files_box` finds the box by its top and bottom edges
+across the right of the left pane, which the right pane's focus outline,
+running on across its pane, never passes for. `files_text` reads each pane's
+path line in both screen shapes.
+
+`files-storage-right.png` and `files-storage-left.png` are the File Browser
+with a storage menu open, from the demonstration disc (R: the right pane's
+menu, the Game Disc focused, both memory cards and System listed) and a GC
+Loader card (L: the left pane's, Game Disc greyed beside the GC Loader).
+`files_menu` finds a menu by its title box's top edge, below its pane's
+storage button and right-aligned to the pane; the tests check each menu is
+found over its own pane only, never over rows, a focus bar or Swiss's Z box.
+
+`files-storage-wide-left.png` and `files-storage-wide-right.png` are the
+same menus with Menu Widescreen on, from a GC Loader card showing its own
+top folder on both sides: Dolphin letterboxes the 16:9 stage, and the right
+pane's outer edge, with the menu right-aligned to it, lies past where the
+4:3 stage ends. `files_menu` and `files_box` read each pane where
+`UIFiles_Layout` puts it (`files_pane_x`), on the whole stage
+(`files_stage`); the tests check each menu over its own pane only, none on
+the plain widescreen screen, and that blanking the right menu's items edge
+loses it.

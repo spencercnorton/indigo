@@ -20,6 +20,7 @@
 #include "ui_save_cubes.h"
 #include "ui_saves_details.h"
 #include "ui_folder.h"
+#include "ui_files.h"
 
 #define D_WARN  0
 #define D_INFO  1
@@ -35,6 +36,7 @@
 #define PROGRESS_BOX_HEIGHT 125
 #define PROGRESS_BOX_BOTTOMLEFT 0
 #define PROGRESS_BOX_TOPLEFT 1
+#define PROGRESS_BOX_FILES 2
 
 #include "images_tpl.h"
 #include "images.h"
@@ -120,7 +122,6 @@ enum TextureId
 	TEX_BBA,
 	TEX_CHECKED,
 	TEX_UNCHECKED,
-	TEX_STAR,
 	TEX_GCLOADER,
 	TEX_M2LOADER,
 	TEX_ETH2GC,
@@ -157,6 +158,7 @@ typedef struct kbBtn_ {
 uiDrawObj_t* DrawImage(int textureId, int x, int y, int width, int height, int depth, float s1, float s2, float t1, float t2, int centered);
 uiDrawObj_t* DrawTexObj(GXTexObj *texObj, int x, int y, int width, int height, int depth, float s1, float s2, float t1, float t2, int centered);
 uiDrawObj_t* DrawProgressBar(bool indeterminate, int percent, const char *message);
+uiDrawObj_t* DrawProgressBarFiles(const char *title, const char *path);
 uiDrawObj_t* DrawProgressLoading(int miniModePos);
 uiDrawObj_t* DrawContainer();
 uiDrawObj_t* DrawMessageBox(int type, const char *message);
@@ -214,10 +216,12 @@ bool DrawUpdatePresentation(uiDrawObj_t *evt,
 const char *DeviceDisplayName(const DEVICEHANDLER_INTERFACE *device);
 void DrawUpdateHome(const uiHomeState_t *state,
 	uiHomeCapabilities_t capabilities, const char *sourceName);
-void DrawUpdateFileBrowserButton(uiDrawObj_t *evt, int mode);
 bool DrawUpdateGameflow(uiDrawObj_t *evt,
 	const uiGameflowRenderSnapshot_t *snapshot);
 bool DrawSetGameflowMode(uiDrawObj_t *evt, uiGameflowMode_t mode);
+/* The same, already there: no motion to it. For an event not yet on screen,
+ * so its first frame is the mode's (Detail opened from the File Browser). */
+bool DrawSetGameflowModeNow(uiDrawObj_t *evt, uiGameflowMode_t mode);
 /* The Detail row the D-pad rests on. */
 bool DrawSetGameflowDetailFocus(uiDrawObj_t *evt,
 	uiGameflowDetailFocus_t focus);
@@ -236,6 +240,8 @@ void DrawWithVideoLocked(void (*change)(void *context), void *context);
 uiDrawObj_t* DrawPublish(uiDrawObj_t *evt);
 uiDrawObj_t* DrawRepublish(uiDrawObj_t *old, uiDrawObj_t *new);
 void DrawDispose(uiDrawObj_t *evt);
+/* Frees an object that was never published. */
+void DrawDiscard(uiDrawObj_t *evt);
 /* Settings: one page event for the whole session, drawn from a snapshot in
  * the cheat browser's language. Each update copies the snapshot and keeps
  * the screen in the colors it was built with (colors: the Menu, Backdrop and
@@ -320,11 +326,16 @@ typedef struct {
 } uiSaveCubesPageSnapshot_t;
 
 uiDrawObj_t* DrawSaveCubesPage(const uiSaveCubesPageSnapshot_t *snapshot);
+/* The File Browser's two panes (swiss.c's renderFileList). DrawUpdateFiles
+ * and DrawUpdateFilesReading are false when page isn't one. */
+uiDrawObj_t* DrawFiles(const uiFilesSnapshot_t *snapshot);
+/* The page as it stands once opened: no hand-over, no fade (coming back
+ * from a game's Detail). */
+uiDrawObj_t* DrawFilesSettled(const uiFilesSnapshot_t *snapshot);
+bool DrawUpdateFiles(uiDrawObj_t *page, const uiFilesSnapshot_t *snapshot);
+bool DrawUpdateFilesReading(uiDrawObj_t *page, int pane);
 void DrawUpdateSaveCubesPage(uiDrawObj_t *page,
 	const uiSaveCubesPageSnapshot_t *snapshot);
-uiDrawObj_t* DrawFileBrowserButton(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
-uiDrawObj_t* DrawFileBrowserButtonMeta(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
-uiDrawObj_t* DrawFileCarouselEntry(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int distFromMiddle);
 uiDrawObj_t* DrawVertScrollBar(int x, int y, int width, int height, float scrollPercent, int scrollHeight);
 void DrawArgsSelector(const char *fileName);
 void DrawCheatsSelector(const char *fileName);

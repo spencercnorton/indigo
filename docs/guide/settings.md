@@ -208,10 +208,14 @@ Press Y on any row for the same explanations on the console.
 | --- | --- |
 | Menu Color | The color of the whole interface. See [Make it yours](personalize.md#menu-color). |
 | Backdrop Color, Wave Color | The backdrop behind the cube and the waves in front of it, each in Menu Color or a color of its own. See [Make it yours](personalize.md#backdrop-and-wave-color). |
+| Waves | **Off** takes the waves away, leaving the backdrop and its rings. Wave Color and Wave Speed apply while they're on. See [Make it yours](personalize.md#backdrop-and-wave-color). |
 | Wave Speed | How fast the waves drift: **Slow** (half as fast), **Normal** or **Fast** (three times as fast). See [Make it yours](personalize.md#backdrop-and-wave-color). |
 | Library Icon, Source Icon, Settings Icon, System Icon | The icon on each face of the Home cube. See [Make it yours](personalize.md#cube-icons). |
-| Apps Face | **On** shows [Apps](apps.md) on Home while the card has a program in `/apps`; **Off** never shows it. |
-| Cube | How the [Home](home.md#infinite-or-classic) cube turns. **Infinite** turns round every face in a ring. **Classic** puts each menu on its own side of the cube, as on the GameCube: Settings left of Library, System right, Source above and Apps below, and you turn back to Library to reach another. |
+| Up Face, Left Face, Right Face, Down Face | Which menu sits above, left of, right of and below Library on the [Home](home.md#choose-the-sides) cube: Source, Settings, System, Apps, Memory Cards, Emulators, File Browser, or **None** for an empty side. By default Source is up, Settings left, System right and Apps down. A menu on no side is off the cube; Y on Home still opens Settings. |
+| Cube | How the [Home](home.md#infinite-or-classic) cube turns. **Infinite** turns round every face in a ring. **Classic** puts each menu on its own side of the cube, as on the GameCube, and you turn back to Library to reach another. |
+| Idle Animation | How the cube moves while Home rests: **Calm**, a slight drift turned a little to the right, or **Sway**, which turns it slowly left and right so the faces beside the one in front peek round its edges. UI Motion Reduced or Off keeps it still. See [Make it yours](personalize.md#motion). |
+| Face Labels | **Off** takes the face's name from under the cube on Home. See [Make it yours](personalize.md#just-the-cube). |
+| On-screen Controls | **Off** takes Home's button hints from under the cube. Other screens, the Library and the File Browser among them, keep theirs. Y on Home always opens Settings. See [Make it yours](personalize.md#just-the-cube). |
 | Clock | Where the time sits: **Right** (the top right corner), **Left**, or **Off** to hide it. |
 | Temperature | Where the temperature dial sits, the same way. In the clock's corner it sits nearer the edge, beside the time. |
 | System Sound | The audio output most games use: mono or stereo. |
@@ -260,13 +264,13 @@ Passwords are saved as plain text in `global.ini`.
 | --- | --- |
 | Library Layout | How the poster Library lays out your games: **Horizontal**, a row (the default); **Vertical**, a column with the title beside the cover; **Grid**, rows of five; or **Spotlight**, the selected game's gameplay still and details over a row of disc banners. See [Library](library.md#choose-a-layout). |
 | Library Folders | **On** shows the folders in `/games` as cards beside the games, two levels deep; **Off** (the default) shows every game in one Library. See [Library](library.md#folders-of-games). |
-| File Browser Type for games, for apps, and for everything else | How Swiss's file lists look: Standard, Fullwidth or Carousel. The poster Library isn't affected. |
+| Saves on Details | **On** (the default) reads both memory card slots and the Save Folder when a game's details open, and shows a **Saves** box for a game with two or more save copies; **Off** leaves the memory cards alone. See [Game details](game-details.md#whats-on-the-screen). |
 | Recent List | START shows recently played games. **Lazy** updates it only for new games; **Off** saves SD card writes. |
-| Load at startup | What Indigo opens when it starts. A chooses a device, then a folder on it: X picks the folder you are in. The row shows the device. Z on a game's details sets a game instead ([Autoload](game-details.md#autoload)); Z on that game again, or on `..` in the folder's file list, turns it off. |
+| Load at startup | What Indigo opens when it starts. A chooses a device, then a folder on it: X picks the folder you are in. The row shows the device. Z on a game's details sets a game instead ([Autoload](game-details.md#autoload)); Z on that game again, or on `..` in the folder's [File Browser](system.md#file-browser), turns it off. |
 | Flatten directory | A folder pattern whose game folders are listed as if their disc images sat directly in it. The default is `*/games`. While Library Folders is on, it sets this itself and the row can't be changed. |
 | Show hidden files | Lists hidden files and folders, such as `/swiss`. |
-| Hide unknown file types | Hides files that aren't games, programs, music or memory card saves from Swiss's file lists. The Library skips them either way. |
-| File Management | Z in a file list opens actions to copy, move, rename or delete. |
+| Hide unknown file types | Hides files that aren't games, programs, music or memory card saves from the File Browser. The Library skips them either way. |
+| File Management | Z in the File Browser opens actions to copy, move, rename or delete. Opened from System or its face, the File Browser has them either way. |
 | Panel Transparency | Translucent panels, like the GameCube menu, or solid ones. |
 | Animated Backdrop | Whether the backdrop behind the cube drifts. |
 

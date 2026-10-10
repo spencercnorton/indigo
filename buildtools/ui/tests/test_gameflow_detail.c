@@ -436,6 +436,40 @@ static void testCustomSettingsLine(void)
 	CHECK(snapshot.settingsPreview[0] == '\0');
 }
 
+/* Opened from the File Browser, B says it goes back there; nothing else
+ * on the screen changes, and B still does what it did. */
+static void testBackToFiles(void)
+{
+	uiGameflowDetailSource_t source = {
+		.gameId = "GALE01",
+		.title = "Super Smash Bros. Melee",
+		.facts = "GALE01",
+		.description = "",
+		.saveStatus = UI_GAME_SAVE_NOT_CHECKED,
+		.flags = UI_GAMEFLOW_DETAIL_CHEATS_KNOWN |
+			UI_GAMEFLOW_DETAIL_CAN_SETTINGS | UI_GAMEFLOW_DETAIL_CAN_LIBRARY
+	};
+	uiGameflowDetailSnapshot_t library, files;
+
+	CHECK(UIGameflowDetail_Build(&library, &source));
+	source.flags |= UI_GAMEFLOW_DETAIL_BACK_FILES;
+	CHECK(UIGameflowDetail_Build(&files, &source));
+	CHECK(strcmp(library.primaryActions,
+		"D-PAD  MOVE   A  SELECT   B  LIBRARY   X  SETTINGS") == 0);
+	CHECK(strcmp(files.primaryActions,
+		"D-PAD  MOVE   A  SELECT   B  BACK   X  SETTINGS") == 0);
+	CHECK(UIGameflowDetail_ResolveAction(&files, UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
+		UI_GAMEFLOW_DETAIL_INPUT_B) == UI_GAMEFLOW_DETAIL_ACTION_LIBRARY);
+	/* Every other byte is the Library's. */
+	memcpy(files.primaryActions, library.primaryActions, sizeof(files.primaryActions));
+	files.flags &= ~(uint32_t)UI_GAMEFLOW_DETAIL_BACK_FILES;
+	CHECK(memcmp(&files, &library, sizeof(files)) == 0);
+	/* Without a way back, no B either way. */
+	source.flags &= ~(uint32_t)UI_GAMEFLOW_DETAIL_CAN_LIBRARY;
+	CHECK(UIGameflowDetail_Build(&files, &source));
+	CHECK(strstr(files.primaryActions, "B  ") == NULL);
+}
+
 static void testReadOnlySaveCopies(void)
 {
 	uiSavesGameStats_t stats = {
@@ -445,21 +479,32 @@ static void testReadOnlySaveCopies(void)
 	};
 	uiGameflowDetailSource_t source = {
 		.gameId = "GACZ01", .title = "Astral Circuit", .saveStats = &stats,
-		.flags = UI_GAMEFLOW_DETAIL_CAN_SETTINGS
+		.flags = UI_GAMEFLOW_DETAIL_CAN_SETTINGS | UI_GAMEFLOW_DETAIL_HAS_SAVES
 	};
 	uiGameflowDetailSnapshot_t snapshot;
 
+	/* One copy shows no SAVES inset, whatever the caller's flags say. */
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
-	CHECK(strcmp(snapshot.savesSummary, "1 save copy | 2 blocks") == 0);
-	CHECK(strcmp(snapshot.savesUpdated, "Updated 2024-02-29 12:34") == 0);
-	CHECK(snapshot.saveStats.sourceSaves[2] == 1u);
-	/* Retained statistics and labels survive mutation of the menu source. */
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) == 0u);
+	CHECK(snapshot.savesSummary[0] == '\0');
+	CHECK(snapshot.savesUpdated[0] == '\0');
+	CHECK(snapshot.saveStats.saves == 0u);
+	/* Two copies do. */
 	stats.saves = 2u;
 	stats.blocks = 4u;
 	stats.sourceSaves[2] = 2u;
-	CHECK(snapshot.saveStats.saves == 1u);
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u);
 	CHECK(strcmp(snapshot.savesSummary, "2 save copies | 4 blocks") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "Updated 2024-02-29 12:34") == 0);
+	CHECK(snapshot.saveStats.sourceSaves[2] == 2u);
+	/* Retained statistics and labels survive mutation of the menu source. */
+	stats.saves = 3u;
+	stats.blocks = 6u;
+	stats.sourceSaves[2] = 3u;
+	CHECK(snapshot.saveStats.saves == 2u);
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "3 save copies | 6 blocks") == 0);
 	CHECK(strcmp(snapshot.savesUpdated, "Updated 2024-02-29 12:34") == 0);
 	CHECK(UIGameflowDetail_MoveFocus(&snapshot,
 		UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS, UI_GAMEFLOW_DETAIL_INPUT_UP) ==
@@ -474,28 +519,30 @@ static void testReadOnlySaveCopies(void)
 	stats.updatedKnown = false;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
 	CHECK(strcmp(snapshot.savesUpdated, "Partial scan | Update date unavailable") == 0);
-	stats.saves = 0u;
-	stats.blocks = 0u;
-	CHECK(UIGameflowDetail_Build(&snapshot, &source));
-	CHECK(strcmp(snapshot.savesSummary, "Unavailable") == 0);
-	CHECK(strcmp(snapshot.savesUpdated, "Save scan incomplete") == 0);
 	stats.partial = false;
-	CHECK(UIGameflowDetail_Build(&snapshot, &source));
-	CHECK(strcmp(snapshot.savesSummary, "No save copies found") == 0);
 	stats.checkedSources = 0u;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
-	CHECK(strcmp(snapshot.savesSummary, "Unavailable") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "Partial scan | Update date unavailable") == 0);
+	/* No copies, partial or complete, and no scan at all: no inset. */
+	stats.saves = 0u;
+	stats.blocks = 0u;
+	stats.partial = true;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) == 0u);
+	stats.partial = false;
+	stats.checkedSources = 7u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) == 0u);
 	source.saveStats = NULL;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
-	CHECK(strcmp(snapshot.savesSummary, "Unavailable") == 0);
-	CHECK(strcmp(snapshot.savesUpdated, "Save sources not checked") == 0);
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) == 0u);
+	CHECK(snapshot.savesSummary[0] == '\0');
 	CHECK(snapshot.saveStats.saves == 0u);
 	CHECK(snapshot.saveStats.checkedSources == 0u);
 
 	source.saveStats = &stats;
 	stats.saves = UINT32_MAX;
 	stats.blocks = UINT32_MAX;
-	stats.checkedSources = 7u;
 	stats.updatedKnown = true;
 	stats.latestUpdated = UINT32_MAX;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
@@ -507,9 +554,63 @@ static void testReadOnlySaveCopies(void)
 	CHECK(strcmp(snapshot.savesUpdated, "Update date unavailable") == 0);
 }
 
+static void testSaveCopyChoice(void)
+{
+	uiSavesGameStats_t stats = {
+		.saves = 3u, .blocks = 6u, .latestUpdated = 762525240u,
+		.sourceSaves = {1u, 0u, 2u}, .checkedSources = 5u,
+		.updatedKnown = true
+	};
+	uint8_t entry[UI_SAVES_ENTRY_SIZE] = {0};
+	uiGameflowDetailSource_t source = {
+		.gameId = "GACZ01", .title = "Astral Circuit", .saveStats = &stats,
+		.saveCopies = 3u, .flags = UI_GAMEFLOW_DETAIL_SAVE_CHOICE
+	};
+	uiGameflowDetailSnapshot_t snapshot;
+
+	/* 2024-02-29 12:34 in the entry's clock (seconds since 2000). */
+	entry[0x28] = 0x2d; entry[0x29] = 0x73; entry[0x2a] = 0x36; entry[0x2b] = 0x38;
+	/* Nothing chosen: the totals, and Left and Right can choose. */
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) != 0u);
+	CHECK(strcmp(snapshot.savesSummary, "3 save copies | 6 blocks") == 0);
+	/* A copy chosen elsewhere goes on at launch; the card's own is in use. */
+	source.saveChoice = 2u;
+	source.saveChoiceEntry = entry;
+	source.saveChoiceWhere = "Save Folder";
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "Copy 2 of 3 | Save Folder") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "Loads at launch | 2024-02-29 12:34") == 0);
+	source.saveChoice = 1u;
+	source.saveChoiceWhere = "Slot A";
+	source.saveChoiceInUse = true;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "Copy 1 of 3 | Slot A") == 0);
+	CHECK(strcmp(snapshot.savesUpdated, "In use | 2024-02-29 12:34") == 0);
+	memset(entry + 0x28, 0, 4u);
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesUpdated, "In use | Date unavailable") == 0);
+	/* A choice out of range shows the totals. */
+	source.saveChoice = 4u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "3 save copies | 6 blocks") == 0);
+	/* One copy, or no SAVES box: no choice, whatever the caller's flags. */
+	source.saveCopies = 1u;
+	source.saveChoice = 1u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) == 0u);
+	CHECK(strcmp(snapshot.savesSummary, "3 save copies | 6 blocks") == 0);
+	source.saveCopies = 3u;
+	stats.saves = 1u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & (UI_GAMEFLOW_DETAIL_SAVE_CHOICE |
+		UI_GAMEFLOW_DETAIL_HAS_SAVES)) == 0u);
+}
+
 int main(void)
 {
 	testReadOnlySaveCopies();
+	testSaveCopyChoice();
 	testPointerFreeCopyAndMatch();
 	testCustomSettingsLine();
 	testNoCheatsClearsCapability();
@@ -519,6 +620,7 @@ int main(void)
 	testControllerPrecedence();
 	testFocus();
 	testInvalidInputResetsSnapshot();
+	testBackToFiles();
 	puts("gameflow detail tests passed");
 	return EXIT_SUCCESS;
 }

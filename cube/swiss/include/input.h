@@ -29,5 +29,7 @@ s8 padsSubStickX();
 s8 padsSubStickY();
 uiMenuInputDirection_t padsMenuInputPoll(uiMenuInputState_t *state,
 	u32 elapsedMicroseconds, u32 policy, bool inhibited);
+uiMenuInputDirection_t padsSubMenuInputPoll(uiMenuInputState_t *state,
+	u32 elapsedMicroseconds, u32 policy, bool inhibited);
 
 #endif

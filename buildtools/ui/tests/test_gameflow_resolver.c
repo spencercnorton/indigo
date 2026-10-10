@@ -269,6 +269,26 @@ static void testOppositeDiscNeedsNoReadOfAnotherGame(void)
 	CHECK(!UIGameflowResolver_MayBeOppositeDisc(NULL, "G4BE08"));
 }
 
+/* Two possible other discs, as a File Browser folder may hold: Swiss takes
+ * the one named as disc 2 beside disc 1, not the NKit copy. */
+static void testOppositeDiscNamedAsSwissDoes(void)
+{
+	CHECK(UIGameflowResolver_NamedAsOppositeDisc("sd:/g/Game (Disc 1).iso",
+		0u, "sd:/g/Game (Disc 2).iso", 1u));
+	CHECK(UIGameflowResolver_NamedAsOppositeDisc("sd:/g/Game (Disc 2).iso",
+		1u, "sd:/g/game (disc 1).ISO", 0u));
+	CHECK(!UIGameflowResolver_NamedAsOppositeDisc("sd:/g/Game (Disc 1).iso",
+		0u, "sd:/g/Game (Disc 2).nkit.iso", 1u));
+	/* As long, but differing first somewhere else, or the wrong way. */
+	CHECK(!UIGameflowResolver_NamedAsOppositeDisc("sd:/g/Game (Disc 1).iso",
+		0u, "sd:/g/Game (Disk 2).iso", 1u));
+	CHECK(!UIGameflowResolver_NamedAsOppositeDisc("sd:/g/Game (Disc 2).iso",
+		0u, "sd:/g/Game (Disc 1).iso", 1u));
+	CHECK(!UIGameflowResolver_NamedAsOppositeDisc("sd:/g/game.iso", 0u,
+		"sd:/g/game.iso", 1u));
+	CHECK(!UIGameflowResolver_NamedAsOppositeDisc(NULL, 0u, "x", 1u));
+}
+
 static void testParentAndDirectoriesIgnored(void)
 {
 	uiGameflowResolverFolder_t folder = makeFolder("GMSE01");
@@ -378,6 +398,7 @@ int main(void)
 	testDiscPair();
 	testOppositeDiscPredicate();
 	testOppositeDiscNeedsNoReadOfAnotherGame();
+	testOppositeDiscNamedAsSwissDoes();
 	testParentAndDirectoriesIgnored();
 	testDeterministicOrder();
 	testMetadataAndVersionRejection();

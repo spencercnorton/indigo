@@ -10,11 +10,13 @@ choose. On Home, turn the cube to **Library** and press A.
   <img alt="The Library: moving right through the James Bond games to 1080° Avalanche, each cover raised in turn between two covers either side, with its title and publisher below; A opens its details, B returns to the Library, and 1080° Avalanche is still selected." src="images/library-browse.png" width="640">
 </p>
 
-The [game details](game-details.md) screen also shows **Saves** above
-Settings and Cheats: save copies, total blocks and the latest recorded
-update date from memory cards and the Save Folder, including RAW images.
-Incomplete scans are marked. Open System › [Memory Cards](memory-cards.md)
-for an individual save’s size, date and actions.
+For a game with two or more save copies, the [game details](game-details.md)
+screen also shows **Saves** above Settings and Cheats: copies, total blocks
+and the latest recorded update date from memory cards and the Save Folder,
+including RAW images. Incomplete scans are marked. Settings › Setup ›
+Library › **Saves on Details** turns it off. Open System ›
+[Memory Cards](memory-cards.md) for an individual save’s size, date and
+actions.
 
 ## Choose a layout
 
@@ -24,7 +26,7 @@ through the four, A lists them, and the line above the buttons says how each
 one moves.
 
 <p align="center">
-  <img alt="Settings, Setup, Library: Library Layout is the first row. Right steps it from Horizontal to Vertical to Grid to Spotlight and back, and the line above the buttons reads A row of covers; Left and Right move (default), then A column of covers; Up and Down move, then Rows of five covers; every direction moves, then A gameplay still over banners; Left and Right move." src="images/library-layout-setting.png" width="640">
+  <img alt="Settings, Setup, Library: Library Layout, the first row, reads Horizontal, with Library Folders, Saves on Details, Recent List, Load at startup and Flatten directory below it; the line above the buttons reads A row of covers; Left and Right move (default)." src="images/library-layout-setting.png" width="640">
 </p>
 
 - **Horizontal**, the default: a row of covers, two either side of the
@@ -108,13 +110,16 @@ Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`, in capitals or not.
 The Library skips anything else in `/games` or in a game's folder, such as a
 text file, a cover image or an empty folder.
 Mac metadata files whose names start with `._` are skipped too. Hidden files
-in a game's folder follow **Show hidden files**, as they do in the file list.
+in a game's folder follow **Show hidden files**, as they do in the
+[File Browser](system.md#file-browser).
 
 <p align="center">
-  <img alt="Swiss's plain file list of a games folder, one entry per row with its banner, name and region flag." src="images/library-file-list.png" width="640">
+  <img alt="The File Browser with the games folder open in its left pane: a cube, the file name and the size on each row." src="images/files.png" width="640">
 </p>
 
-If `/games` holds no disc images, you get the list above instead of posters.
+If `/games` holds no disc images, the Library face opens the File Browser,
+above, instead of posters. System › [File Browser](system.md#file-browser)
+opens it whenever you want it.
 Compressed images (`.rvz`, `.gcz`) don't count: Swiss can't start them, and
 choosing one tells you to decompress it with NKit or Dolphin.
 

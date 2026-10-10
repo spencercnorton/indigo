@@ -31,6 +31,7 @@ own buttons.
 | Up, Down | Tip the cube over to the next face. |
 | A | Open the face you're on. |
 | B | With Setup › Console › Cube at Classic, turn back to Library. |
+| Y | Settings, wherever its face is. The hint shows Y Settings while Settings has no side. |
 | START | Recently played games (Setup › Library › Recent List). |
 
 The Source and System faces open a short list: move with the D-pad, A opens,
@@ -86,9 +87,10 @@ See [Apps](apps.md).
 | Button | Does |
 | --- | --- |
 | Up, Down | Move between Launch Game, Cheats and Settings. |
+| Left, Right | Choose the copy of the game's save to start with, when the Saves box shows two or more. |
 | A | Open the one you're on: launch the game, or its cheats or settings. |
 | L + A | Clean boot: start the disc with no changes applied (disc drive only). |
-| B | Back to the Library. |
+| B | Back to the Library, or to the File Browser when it opened them. |
 | X | This game's own settings. |
 | Y | Cheats. |
 | Z | Autoload: open this game every time Indigo starts. Press again to turn it off. |
@@ -144,6 +146,29 @@ See [System](system.md).
 | X | When choosing a folder: choose the one that's open. |
 
 See [Memory Cards](memory-cards.md).
+
+### File Browser
+
+Two panes of files, from System › File Browser, the File Browser face, and
+wherever Indigo lists files outside the Library.
+See [File Browser](system.md#file-browser).
+
+| Button | Does |
+| --- | --- |
+| Up, Down | Move a row. Hold to keep moving. |
+| Left, Right | Move to the other pane. |
+| C-stick | A page up or down. |
+| A | Open a folder. In the left pane, a game's details, or start a file. A file that doesn't start: its actions. |
+| X | Up a folder. At the top, choose that side's storage. |
+| L, R | Choose the left or the right side's storage. |
+| Y | Swap the two sides: the right pane becomes your source. |
+| Z | A file or folder: its actions, to Copy or Move it to the other pane's folder, Rename, Hide or Delete it. `..`: Autoload this folder. |
+| START | Recently played games. |
+| B | Back to the face that opened it: System, or File Browser. |
+
+In the actions box, Up and Down move, A chooses, B closes, and each action's
+letter chooses it at once: X Copy, Y Move, R Rename, L Hide, Z Delete.
+Delete asks for L held with A. While a file copies, B stops it.
 
 ### During a game
 

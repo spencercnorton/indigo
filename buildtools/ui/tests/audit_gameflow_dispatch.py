@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Mechanical contract for strict /games retained-Library dispatch."""
 
+import re
+import sys
 from pathlib import Path
 
 
@@ -37,32 +39,28 @@ def extract_function(source: str, marker: str) -> str:
 
 menu = extract_function(SWISS, "void menu_loop()")
 carousel = extract_function(SWISS, "uiDrawObj_t* renderFileCarousel(")
-requested = menu.index("int fileBrowserType = swissSettings.fileBrowserType")
-games_preference = menu.index(
-    "fileBrowserType = swissSettings.gameBrowserType", requested
-)
-policy_call = menu.index(
-    "fileBrowserType = UIGameflowLibrary_SelectBrowser(", games_preference
-)
-strict_probe = menu.index("gameflowLibraryMode(", policy_call)
-requested_browser = menu.index("fileBrowserType, BROWSER_CAROUSEL", strict_probe)
-dispatch = menu.index("switch(fileBrowserType)", requested_browser)
-carousel_case = menu.index("case BROWSER_CAROUSEL:", dispatch)
-retained_renderer = menu.index("renderFileCarousel(", carousel_case)
-fullwidth = menu.index("case BROWSER_FULLWIDTH:", retained_renderer)
-
-assert (
-    requested
-    < games_preference
-    < policy_call
-    < strict_probe
-    < requested_browser
-    < dispatch
-    < carousel_case
-    < retained_renderer
-    < fullwidth
-)
-assert menu.count("UIGameflowLibrary_SelectBrowser(") == 1
+# A on an entry the Library doesn't open: the lists' one copy, which the
+# Library calls as the Library.
+LEGACY_ACTIVATE = "filesActivate(directory, true);"
+activate_entry = extract_function(SWISS, "static void filesActivate(")
+# The dispatch: the Library wherever it applies, the File Browser everywhere
+# else. File Browser Type is no longer read, so an old GameBrowserType can't
+# hide the Library; the scene requests belong to the Library's branch alone.
+dispatch = extract_function(menu, "if(devices[DEVICE_CUR] != NULL && curMenuLocation==ON_FILLIST)")
+strict_probe = dispatch.index("if(!gameflowListFallback && gameflowLibraryMode(")
+release = dispatch.index("filesOtherRelease();", strict_probe)
+layout_request = dispatch.index("UIScene_RequestLibraryLayout(gameflowLayout());", release)
+scene_request = dispatch.index("UIScene_Request(UI_SCENE_LIBRARY);", layout_request)
+retained_renderer = dispatch.index("renderFileCarousel(", scene_request)
+file_list = dispatch.index("else {", retained_renderer)
+list_renderer = dispatch.index("renderFileList(", file_list)
+assert strict_probe < release < layout_request < scene_request < retained_renderer < \
+    file_list < list_renderer
+assert dispatch.count("UIScene_Request") == 2
+for gone in ("BrowserType", "UIGameflowLibrary_SelectBrowser(", "renderFileBrowser(",
+             "renderFileFullwidth(", "switch("):
+    assert gone not in menu, gone
+assert "UIGameflowLibrary_SelectBrowser" not in SWISS
 
 # Production-upgrade contract: the preserved profile omits GameBrowserType,
 # inherits Fullwidth, and keeps Swiss's default /games flattening. That scans
@@ -168,8 +166,9 @@ assert "needsRefresh = 0;" in autoload_lookup
 detail_policy = carousel.index("UIGameflowLibrary_UsesRetainedDetail(")
 folder_detail = carousel.index("gameflowResolveAndLoadFolder(", detail_policy)
 image_detail = carousel.index("gameflowLoadImageWithContext(", folder_detail)
-legacy_fallback = carousel.index("load_file();", image_detail)
+legacy_fallback = carousel.index(LEGACY_ACTIVATE, image_detail)
 assert detail_policy < folder_detail < image_detail < legacy_fallback
+assert "load_file();" in activate_entry[activate_entry.index("fileType==IS_FILE"):]
 
 image_loader = extract_function(SWISS, "static bool gameflowLoadImageWithContext(")
 assert "gameflowReadResolverHeader(" in image_loader
@@ -295,19 +294,20 @@ def check_layouts(swiss: str) -> None:
     # never opens Detail and a game beside it always does.
     assert "gameflowEntryMode(gameflowMode, directory[curSelection])" in entry
     activate = carousel[carousel.index("if((browserButtons & BUTTON_A) || openSettings) {"):]
-    activate = activate[:activate.index("//go into a folder or select a file")]
+    activate = activate[:activate.index(LEGACY_ACTIVATE)]
     assert "gameflowEntryMode(gameflowMode, directory[curSelection]);" in activate
     assert "if(entryMode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS) {" in activate
     # Inside a folder, B goes up it before it can reach Home.
-    up = carousel.index("if((browserButtons & BUTTON_B) && useGameflow &&\n\t\t\tgameflowInsideFolder()) {")
-    home = carousel.index("curMenuLocation = ON_OPTIONS;", up)
-    assert "gameflowNavigateParent(useGameflow, directory[0]);" in carousel[up:home]
+    up = carousel.index("if((browserButtons & BUTTON_B) && gameflowInsideFolder()) {")
+    home = carousel.index("filesHome();", up)
+    assert "curMenuLocation = ON_OPTIONS;" in extract_function(swiss, "static void filesHome(")
+    assert "gameflowNavigateParent(true, directory[0]);" in carousel[up:home]
     branch = carousel.index("if((browserButtons & BUTTON_A) || openSettings) {")
     loaders = carousel.index("gameflowSnapshot, openSettings);", branch)
     loaders = carousel.index("gameflowSnapshot, openSettings);", loaders + 1)
     stop = carousel.index("if(openSettings) {", loaders)
     stop_break = carousel.index("break;", stop)
-    legacy = carousel.index("//go into a folder or select a file", stop)
+    legacy = carousel.index(LEGACY_ACTIVATE, stop)
     assert branch < loaders < stop < stop_break < legacy
     for loader in (folder, image):
         assert "bool openSettings)" in loader
@@ -328,8 +328,28 @@ check_layouts(SWISS)
 parent_navigation = extract_function(SWISS, "static void gameflowNavigateParent(")
 assert parent_navigation.index("UI_GAMEFLOW_LIBRARY_LOCATION_ROOT") < \
     parent_navigation.index("curMenuLocation = ON_OPTIONS;") < \
-    parent_navigation.index("return;") < parent_navigation.index("upToParent(&curDir)")
-assert carousel.count("gameflowNavigateParent(useGameflow,") == 3
+    parent_navigation.index("return;") < parent_navigation.index("filesUp(parent);")
+assert "upToParent(&curDir)" in extract_function(SWISS, "static void filesUp(")
+# Its three: X, B inside a folder, and A on ".." through filesActivate.
+assert carousel.count("gameflowNavigateParent(true,") == 2
+assert carousel.count(LEGACY_ACTIVATE) == 1
+# The shared actions take the caller's place as flags: only the Library is
+# the Library (".." and B) and shows folder pictures (stopped before Z/START).
+# Swiss's lists, which called them as lists, are gone.
+assert carousel.count("filesHome();") == 1
+assert carousel.count("filesManage(directory)") == 1
+assert carousel.count("filesRecent(true)") == 1
+assert "useGameflow" not in carousel
+for gone in ("uiDrawObj_t* renderFileBrowser(", "uiDrawObj_t* renderFileFullwidth("):
+    assert gone not in SWISS, gone
+manage_shared = extract_function(SWISS, "static bool filesManage(")
+assert manage_shared.index("meta_thread_stop();") < manage_shared.index("CardArt_Pause();")
+recent_shared = extract_function(SWISS, "static bool filesRecent(")
+assert recent_shared.index("meta_thread_stop();") < \
+    recent_shared.index("if(cardArt) {\n\t\t\tCardArt_Pause();\n\t\t}")
+special = activate_entry.index("else if(directory[curSelection]->fileType==IS_SPECIAL) {")
+assert activate_entry.index("gameflowNavigateParent(useGameflow, directory[curSelection]);",
+                            special) < activate_entry.index("else if", special + 1)
 layout_mutants = (
     ("an unknown layout is kept", "swissSettings.libraryLayout < UI_GAMEFLOW_LAYOUT_COUNT ?",
      "swissSettings.libraryLayout < 99 ?"),
@@ -351,8 +371,8 @@ layout_mutants = (
      "UIGameflowLibrary_UsesRetainedDetail(\n\t\t\t\tgameflowMode,"),
     ("A on a folder of games opens Detail", "uiGameflowLibraryMode_t entryMode =\n\t\t\t\tgameflowEntryMode(gameflowMode, directory[curSelection]);",
      "uiGameflowLibraryMode_t entryMode =\n\t\t\t\tgameflowMode;"),
-    ("B inside a folder goes Home", "if((browserButtons & BUTTON_B) && useGameflow &&\n\t\t\tgameflowInsideFolder()) {",
-     "if((browserButtons & BUTTON_B) && useGameflow &&\n\t\t\tfalse) {"),
+    ("B inside a folder goes Home", "if((browserButtons & BUTTON_B) && gameflowInsideFolder()) {",
+     "if((browserButtons & BUTTON_B) && false) {"),
     ("Y falls into the legacy file path", "\t\t\tif(openSettings) {\n\t\t\t\t/* Y has no legacy meaning: it never opens or boots a file. */\n\t\t\t\twhile(padsButtonsHeld() & PAD_BUTTON_Y) VIDEO_WaitVSync();\n\t\t\t\tbreak;\n\t\t\t}\n",
      ""),
     ("a loader drops Y", "\tcontext.openSettings = openSettings;\n\tmemcpy(context.gameId, headerEntry.gameId",
@@ -372,4 +392,127 @@ for label, old_text, new_text in layout_mutants:
         continue
     raise AssertionError(f"layout mutant escaped the dispatch audit: {label}")
 
-print(f"gameflow dispatch audit OK ({len(layout_mutants)} layout mutants rejected)")
+
+
+# A loop that reads the pad as held buttons and does I/O between those reads
+# (card art from a source that is not thread safe, about a second from DVD; a
+# file copied or verified a chunk at a time) also takes the presses the
+# retrace scans latched (padsButtonsTaken), or a quick tap made during the I/O
+# is lost. Just ahead of the loop it drops the presses from before, so the A
+# or B that led there is not acted on twice, and it never drops them inside
+# the loop. Loops are found, not listed: a new one that reads held buttons
+# around I/O fails here. Indigo's own sources only; upstream's keep upstream's
+# code (UPSTREAM).
+sys.path.insert(0, str(ROOT / "buildtools/ci"))
+from check_upstream import OWN  # noqa: E402
+
+SOURCE = ROOT / "cube/swiss/source"
+WAITERS = {path: path.read_text() for path in sorted(SOURCE.rglob("*.c"))
+           if OWN.match(path.relative_to(ROOT).as_posix())}
+IO = ("CardArt_Poll(", "artLoad(", "->readFile(", "->writeFile(", "->readDir(",
+      "populate_meta(", "filesMetaStep(")
+# Memory Cards' inputNext takes its presses, and inputInit drops the old ones
+# at the start of each screen (audit_saves_safety.py checks both). The File
+# Browser drops them on opening and after each box, but keeps those made
+# while a folder is read (audit_files_contract.py checks both).
+CLEARED_BY_CALLER = {"inputNext", "renderFileList"}
+LATCHED = {"showPrograms", "renderFileCarousel", "manage_file_ex", "verify_game",
+           "inputNext", "renderFileList"}
+CLEAR = re.compile(r"\(void\)padsButtonsTaken\((\w+)\);")
+TAKE = re.compile(r"(?<!\(void\))padsButtonsTaken\((\w+)\)")
+
+
+def blank(text: str) -> str:
+    """Comments and literals as spaces, so offsets stay the source's."""
+    return re.sub(r"/\*.*?\*/|//[^\n]*|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'",
+                  lambda m: re.sub(r"[^\n]", " ", m.group()), text, flags=re.S)
+
+
+def closing(text: str, at: int) -> int:
+    pair = {"(": ")", "{": "}"}[text[at]]
+    depth = 0
+    for index in range(at, len(text)):
+        depth += (text[index] == text[at]) - (text[index] == pair)
+        if depth == 0:
+            return index
+    raise AssertionError("unbalanced source")
+
+
+def loops(code: str) -> list:
+    """(start, condition span, body span) of every while, for and do loop."""
+    found = []
+    for match in re.finditer(r"\b(?:while|for)\s*\(|\bdo\s*\{", code):
+        if match.group().startswith("do"):
+            body = (match.end() - 1, closing(code, match.end() - 1) + 1)
+            tail = code.index(";", body[1])
+            found.append((match.start(), (body[1], tail), body))
+            continue
+        condition = (match.end() - 1, closing(code, match.end() - 1) + 1)
+        rest = condition[1] + len(code[condition[1]:]) - len(code[condition[1]:].lstrip())
+        end = closing(code, rest) + 1 if code[rest] == "{" else code.index(";", rest) + 1
+        found.append((match.start(), condition, (condition[1], end)))
+    return found
+
+
+def wait_sites(sources: dict) -> list:
+    sites = []
+    for path, text in sources.items():
+        code = blank(text)
+        every = loops(code)
+        for start, condition, (body, end) in every:
+            direct = list(code[body:end])
+            for inner, _, (_, inner_end) in every:
+                if body <= inner < end:
+                    direct[inner - body:inner_end - body] = " " * (inner_end - inner)
+            direct = "".join(direct)
+            reads = code[slice(*condition)] + direct
+            if "padsButtonsHeld()" not in reads or not any(io in direct for io in IO):
+                continue
+            function = re.findall(r"^\w[^\n;]*?\b(\w+)\([^;{}]*\)\s*\{", code[:start], re.M)
+            sites.append((path, function[-1], start, body, direct, code))
+    return sites
+
+
+def check_waits(sources: dict) -> None:
+    found = set()
+    for path, function, start, body, direct, code in wait_sites(sources):
+        where = f"{path.name} {function}"
+        taken = TAKE.findall(direct)
+        assert taken, f"{where}: a press made during the loop's I/O is lost"
+        assert not CLEAR.search(direct), f"{where}: the loop drops a press made during it"
+        if function not in CLEARED_BY_CALLER:
+            cleared = re.search(CLEAR.pattern + "$", code[:start].rstrip())
+            assert cleared, f"{where}: the loop takes a press made before it"
+            assert cleared.group(1) == taken[0], f"{where}: it drops other buttons than it takes"
+        found.add(function)
+    assert LATCHED <= found, f"loops not found: {sorted(LATCHED - found)}"
+
+
+check_waits(WAITERS)
+wait_mutants = []
+for path, function, start, body, direct, code in wait_sites(WAITERS):
+    text = WAITERS[path]
+    take = TAKE.search(code, body)
+    wait_mutants.append((f"{path.name} {function} reads only held buttons", path,
+                         text[:take.start()] + "0u" + text[take.end():]))
+    wait_mutants.append((f"{path.name} {function} drops presses made during it", path,
+                         text[:body + 1] + f"(void)padsButtonsTaken({take.group(1)});" +
+                         text[body + 1:]))
+    if function not in CLEARED_BY_CALLER:
+        clear = list(CLEAR.finditer(code, 0, start))[-1]
+        wait_mutants.append((f"{path.name} {function} keeps the presses from before", path,
+                             text[:clear.start()] + text[clear.end():]))
+settings = SOURCE / "gui/settings.c"
+anchor = "SETTINGS_MENU_INPUT_POLICY, buttons != 0u);\n"
+assert WAITERS[settings].count(anchor) == 1, "mutation anchor missing: settings wait"
+wait_mutants.append(("a Settings wait starts reading card art", settings,
+                     WAITERS[settings].replace(anchor, anchor + "\t\tCardArt_Poll();\n", 1)))
+for label, path, mutated in wait_mutants:
+    try:
+        check_waits({**WAITERS, path: mutated})
+    except AssertionError:
+        continue
+    raise AssertionError(f"wait mutant escaped the dispatch audit: {label}")
+
+print(f"gameflow dispatch audit OK ({len(layout_mutants)} layout mutants, "
+      f"{len(wait_mutants)} wait input mutants rejected)")

@@ -8,6 +8,113 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### New
 
+- Choose the menu on each side of the Home cube: Settings › Setup › Console
+  › **Up Face**, **Left Face**, **Right Face** and **Down Face**, each
+  Source, Settings, System, Apps or None. Classic turns that way to it; the
+  Infinite ring goes up, left, right and down after Library. They replace
+  Apps Face: Down Face None turns Apps off, and an older Apps Face › Off
+  carries over. Y on Home opens Settings wherever its face is.
+- Two more menus for the cube's sides: **Memory Cards**, the screen System's
+  row opens, and **Emulators**, an Apps screen for the programs in
+  `/emulators`. Neither is on a side until you give it one.
+- Settings › Setup › Console › **Idle Animation**: **Sway** turns the Home
+  cube slowly left and right while Home rests, so the faces beside the one in
+  front peek round its edges; **Calm**, the default, is the drift it always
+  had. After a turn the sway starts again from where the cube rests. UI
+  Motion Reduced or Off keeps the cube still either way, and so does Change
+  Source's picker, where the cube used to drift.
+- **Waves** (Setup › Console) Off takes the waves from behind the cube.
+- **Face Labels** and **On-screen Controls** (Setup › Console) Off take the
+  face's name and the button hints from under the Home cube. Other screens,
+  the Library and the File Browser among them, keep their hints, and so does
+  Restart's question.
+- **File Browser** can have a side of the cube too (Up Face, Left Face,
+  Right Face or Down Face › File Browser): A on it opens the same File
+  Browser as System's row, and B comes back to it. It is on no side until
+  you give it one.
+- **File Browser**, on the System face below Memory Cards, opens at the top
+  of the source, even when the games are in the Library. Z there always
+  offers Swiss's copy, move, rename, hide and delete, whatever File
+  Management is set to. B goes back to the System face, or to the File
+  Browser face when that opened it.
+- The **File Browser** takes the place of Swiss's file lists everywhere
+  outside the Library: System's row and its face, the Library face when
+  there are no games to show, Recent and an Autoload folder. Two panes sit
+  side by side over graph paper, as Memory Cards' two stacks do: the left
+  one, marked SOURCE, is your source and starts games; the right one shows
+  another folder, on it or on another device. Each row has a cube for what the file is, its real
+  name with its extension (a long one cut in the middle, keeping "(Disc 1)"
+  and the extension) and its size; the info bar below shows the whole name,
+  and a game's banner and title. Left and Right move between the panes, the
+  C-stick goes a page at a time, and Up and Down keep going while held. A pane being read says Reading…, and a long storage name above a
+  pane gets smaller, or is cut, to keep clear of its free space. Renaming
+  or deleting the left pane's folder from the right pane moves the left
+  pane to the folder that held it.
+- **L** and **R** in the File Browser choose each side's storage, as in
+  Memory Cards: a menu of the devices Indigo found, then Other devices… for
+  the full list. On the left the choice becomes your source; on the right
+  the pane opens it, so the two panes can show two devices, such as a GC
+  Loader and an SD card, or the same device in two folders. **Y** swaps the
+  two sides, your source with them. Devices that can't be open together
+  (two network shares, a FlippyDrive and its flash) are greyed with why,
+  and one picked from Other devices… leaves the pane where it was and says
+  why; a device that won't open says so in its pane, and Y won't swap onto
+  it. A memory card's free space is counted in blocks, as its saves are.
+  The right pane opens on your settings' device the first time and keeps
+  its device and folder until Indigo restarts; it lets the device go
+  whenever you leave the File Browser, start something, save Autoload or
+  open Recent. Z on a right-pane file now acts on the right pane's device,
+  and Z in either pane leaves the other pane's device mounted, even when it
+  is the copy's destination or the copy is cancelled.
+- **Z** in the File Browser opens the file's **Actions** beside its row:
+  Copy, Move, Rename, Hide and Delete, each with its button's letter (X, Y,
+  R, L, Z), which chooses it at once. An action the file or its device
+  doesn't allow stays listed, greyed, with why in the info bar. **Copy** and
+  **Move** go to the folder open in the other pane, with no device or folder
+  to pick: the info bar says whether the file fits there (never greying it
+  for a network share, whose free space isn't known), and Copy asks first
+  while a row in the other pane shows where the copy will go. A file that is
+  already there offers Keep both, Replace it or Cancel; Keep both is greyed
+  when there is room only for one. The copy's card names what goes where and
+  shows **B Stop**; both panes are read again, focused on the copy (which
+  flashes), the renamed file or the row that took a moved or deleted file's
+  place, and the result shows over them as Memory Cards' maroon message.
+  Copy and Move are greyed onto a memory card (Memory Cards copies saves)
+  and where a folder there has the file's name; so are Move and Rename on a
+  card's saves, which Memory Cards moves, reading the copy back first and
+  keeping a game's no-move saves where they are. Swiss's questions keep their
+  words and are drawn beside the row; Delete still needs L held with A. A
+  on a file that doesn't start opens its Actions, as does a FlippyDrive
+  update anywhere but on a FlippyDrive.
+- **A** on a game in the File Browser's left pane opens its **Game
+  details**, as in the Library: its cover, saves, settings, cheats and
+  Launch Game, which starts it as the Library does, with the second disc
+  Swiss would choose in that folder. The details take the File Browser's
+  place without flying in from a Library card, and **B** (**B Back**
+  there) goes back to the File Browser on the same row. A game started
+  from Recent, or an Autoload game, still shows Swiss's own game screen.
+- A copy that is stopped, or fails part way, deletes the unfinished file,
+  in the File Browser and from Swiss's own copy alike, except on a memory
+  card, which keeps what was written, as before. The File Browser's message
+  says when part of it could not be removed, and when Replace it had already
+  removed the file there. Replace now goes ahead only once that file is
+  gone. A Move whose original can't be deleted afterwards says the file was
+  copied but is in both places.
+- Finishing touches in the File Browser: **Y** fades the panes across as
+  the sides change places (0.15 s, quicker with UI Motion Reduced, at once
+  with Off); a closed box, question or message no longer leaves its lines
+  in the info bar, so the focused file's show again, under a copy's
+  progress card too; and the pane without the focus draws its words in a
+  lighter weight, which makes each File Browser frame about a sixth
+  cheaper to draw. A right pane that is empty at its top, or whose device
+  isn't ready, hints only A Choose storage. "Reading…" shows while the new
+  sides are read after **Y** (a disc spinning up, a network share), and its
+  loading cells step more slowly with UI Motion Reduced and stand still with
+  Off.
+- The File Browser now asks before Move, before Hide, before turning
+  Autoload on (Z on `..`, or Z on a game's details), and before writing a
+  `.fzn` file to a WiiKey Fusion or a `.fpkg` file to a FlippyDrive. Delete
+  says when a folder's contents go with it.
 - Press **Y Folder** on Memory Cards' small folder or card-image cubes to
   see the full device-prefixed path, direct contents and up to two save names.
   Choose a persistent color for that cube's rim and folder symbol, or restore
@@ -15,11 +122,34 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Removed
 
-- Removed the Library folder path and color page. Game folders retain their
-  existing navigation and artwork without folder identity colors.
+- Settings › Setup › Library › **File Browser Type**, for apps and for
+  games: there is one File Browser now. The keys stay in `global.ini`,
+  read and written for Swiss.
+- Swiss's own file lists (Standard, Fullwidth and its Carousel), which
+  nothing opened once the File Browser took their place, are gone, with
+  the file-type tags, star and banner mask only they drew, which saves about
+  120 KB. The Library, the Recent list, Settings › Load at
+  startup's folder chooser and Swiss's game screen for Recent and Autoload
+  stay as they were.
+  The example `global.ini` sets Library Layout instead of
+  `GameBrowserType`.
 
 ### Improved
 
+- The **Saves** box on a game's details shows only for a game with two or
+  more save copies; with one or none, the details screen moves its rows back
+  up. Settings › Setup › Library › **Saves on Details** turns it off, and
+  then a game's details don't read your memory cards at all. In `global.ini`
+  it is `Hide Saves on Details`.
+- **Left** and **Right** on a game's details choose which copy of its save to
+  start with, when a memory card is in a slot and Emulate Memory Card is off:
+  each copy (the card's first, then the Save Folder's, newest first), then
+  the totals again, which leave the card as it is. Launching with another
+  copy chosen asks first, keeps the memory card's own copy in the Save
+  Folder, puts the chosen one on the card and reads it back; if anything
+  fails, the card's own copy goes back and the game doesn't start. B in the
+  question keeps the card's copy. A card swapped while the save goes on
+  keeps its own save.
 - Save captions use readable comment text and verified game identities when
   games omit display metadata, including Need for Speed: Underground 2.
   Static and missing icons remain distinct from stored animations.
@@ -43,6 +173,110 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - The guides say how to show Swiss's hidden `swiss` folder on a computer, and
   the poster and cheat packs are copied file by file into `swiss/ui` and
   `swiss/cheats`, never as a whole `swiss` folder.
+
+### Fixes
+
+- Starting a damaged disc image no longer crashes Indigo. One whose file
+  table counts more entries than it holds, or names a file outside it, sent
+  the launch reading far past the table; the Library already listed such
+  images safely. The launch now reads no further than the table reaches,
+  and so does a disc in the drive opened as a folder.
+- Keep both, copying or moving a file onto FlippyDrive Flash where one of
+  that name already is, no longer stops the console.
+- A copy or a move onto the same file, reached through a folder spelled in
+  another case (FAT ignores case), is no longer allowed to replace it: that
+  deleted the only copy.
+- A copy that fails before anything is written no longer says part of it
+  is left behind.
+- A file already at the destination that can't be read, as on a network
+  share that lists it but won't open it, is asked about (Keep both,
+  Replace, Cancel) like any other. The copy used to write over it without
+  asking, and a write that failed then deleted it.
+- A save copied onto a memory card that fails, or reads back wrong, after
+  the card was taken out or changed (a MemCard PRO switching cards, say),
+  no longer deletes the save of the same name on the card now in the slot.
+- Z on `..` turns Autoload off in the folder Indigo starts in, with File
+  Management off too; turning it on still needs File Management, or the File
+  Browser from System.
+- A quick press made while Indigo reads from a device is no longer missed:
+  B in the Library or Apps while a folder's picture loads from a disc, and
+  B to cancel a copy or a verify in the File Browser while a piece of the
+  file is read or written, the last one included: a Move stopped there keeps
+  its original. The File Browser, unlike Swiss's lists, keeps a
+  press made while a folder or a banner is read.
+- A game's details opened before its cover was read, just after reaching
+  it in the Library or after the source changed, kept the disc banner
+  until you left them. The cover now fades in once it is read, and the
+  first details opened after Indigo starts have it straight away.
+
+### For developers
+
+- Every walk of a disc's file table in `gcm.c` goes through two checks,
+  `fst_entries` and `fst_name`; the `fst` fuzzer runs them with
+  `get_fst_details`, `adjust_tgc_fst` and `calc_fst_entries_size`. The game
+  route launches the disc with a runaway file table on its way to the
+  probe: it fails like any launch there and comes back to the Library.
+- `test_save_choice.py` runs Game Detail's save choice from `swiss.c` itself:
+  no choice without a card or with Emulate Memory Card on, each copy then
+  the totals, and B keeping the card's copy. `test_saves_stats.py` holds the
+  card's own copy first however many the Save Folder has, two cards' copies
+  in slot order, and the folder's newest, newest first;
+  `test_saves_card_io.py` swaps the card before the replace. The audits pin
+  that the File Browser lets its loading wheel go only once the banner
+  thread has stopped, closes the left pane's files before an operation,
+  offers no Rename on a memory card, keeps `manage_file_ex`'s destination in
+  one static handle, forgets its page wherever the page goes, and deletes a
+  failed copy's file unless nothing was written, asks about any file there
+  its existence check finds, sees a B from the last piece, and that a card's
+  own copy is deleted only once it reads back as the one kept, each with
+  mutants. `test_saves_card_io.py` changes the card during a failed write
+  and during the read-back: the save there of the same name stays. A memory card save's name can hold a slash: only a `.dol` one
+  folder below the open one is a program folder.
+- The emulator test finds the File Browser by its two pane boxes, storage
+  buttons and info bar in either screen shape, and checks which pane has
+  the focus; the frame budget counts its shapes (`files`, `files-right`,
+  `files-wide`), and `audit_files_contract.py` holds it to Swiss's list
+  contract, with mutants.
+- A new emulator route, `files`, boots from a GC Loader with a second SD
+  card in SD2SP2 and copies, keeps both, moves, renames, deletes and stops a
+  copy between them, checking every result on the card images. The frame
+  budget adds `files-actions`, `files-copy` and `files-message`;
+  `manage_file_ex` runs Swiss's file operations with the choice and the
+  destination folder given, and the contract audit pins Swiss's own box,
+  picker and folder chooser under it, the partial-file deletion at each of
+  its four places, the Delete chord and the question texts, with mutants.
+  `test_ui_files` checks the Actions box's choices against Swiss's own
+  permissions for every device and file.
+- `test_files_detail.py` builds the one-game window a File Browser game's
+  details open from, out of `swiss.c` itself, and holds it to the Library's
+  own checks, with mutants; the contract audit pins how the details come in
+  and go back, and that a MemCard PRO is sent the game's ID before they
+  show. The `files` route ends by opening a game's details from the File
+  Browser, coming back to the same row, and launching it to the probe; the
+  first details it opens must show the game's poster from their first frame.
+  Its sanitized build links without PIE, as the Makefile's do: on a host
+  with `vm.mmap_rnd_bits=32` about one PIE ASan run in four faulted before
+  `main` and printed `AddressSanitizer:DEADLYSIGNAL` without end. It and
+  `test_ui_png.py` now stop a binary after 120 s or 16 MiB of output and
+  fail with its first lines; the source checks fail if any ASan build in
+  `buildtools` lacks `-no-pie`.
+- The contract and dispatch audits fail if any of Swiss's list renderers,
+  their row drawing or their pictures come back, or if the Library keeps a
+  branch for a list of its own, with mutants; the Library's input audits
+  follow its layout alone.
+
+- The emulator test holds each button for its full time from Dolphin's next
+  clock report, so a press can no longer end within a frame of starting and
+  never reach the console.
+- That press now lasts 0.1 to about 0.2 s of the console's time instead of
+  up to 0.3 s: a held direction repeats after 0.32 s, so a press let go a
+  few hundredths of a second late on a busy machine moved Settings two rows
+  and the route changed the wrong setting. The route's walks to a Settings
+  row read the focus back after every press, take a double step back with
+  UP and press a missed one again.
+- The dispatch audit finds every loop that reads held buttons around a
+  device read or write and fails unless it also takes the presses the
+  retrace scans latched, with mutants for each loop.
 
 ## v2.3.0 — Memory Cards, game folders and smoother motion
 

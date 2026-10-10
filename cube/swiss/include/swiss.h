@@ -25,7 +25,6 @@
 
 #define RECENT_MAX 8
 #define FILES_PER_PAGE 8
-#define FILES_PER_PAGE_FULLWIDTH 7
 #define FILES_PER_PAGE_CAROUSEL 9
 extern int current_view_start;
 extern int current_view_end;
@@ -74,11 +73,13 @@ extern u32 __SYS_CheckSram(void);
 extern void __SYS_ReadROM(void *buf,u32 len,u32 offset);
 extern u8 __SYS_SetTAUCalibration(s8 calib);
 
-extern uiDrawObj_t* renderFileBrowser(file_handle** directory, int num_files, uiDrawObj_t* filePanel);
-
 extern void menu_loop();
 extern void boot_dol(file_handle* file, int argc, char *argv[]);
 extern bool manage_file();
+/* manage_file with its box's choice made (MANAGE_ASK: ask) and, for Copy
+ * and Move, the destination folder (NULL: ask). */
+#define MANAGE_ASK (-1)
+extern bool manage_file_ex(int option, const char *destDir);
 extern void load_file();
 extern int check_game(file_handle *file, file_handle *file2, ExecutableFile *filesToPatch);
 extern int cheats_game();
@@ -86,7 +87,6 @@ extern void install_game();
 extern int info_game(ConfigEntry *config);
 extern void settings();
 extern void credits();
-extern void drawFiles(file_handle** directory, int num_files, uiDrawObj_t *containerPanel);
 
 extern void select_speed();
 extern int select_slot();
@@ -138,7 +138,10 @@ typedef struct {
 	int sourceIcon;
 	int settingsIcon;
 	int systemIcon;
-	int hideAppsFace;	// 0 = Home shows Apps while /apps has a program (default); 1 = never
+	int upFace;	// the Home face on each of Library's sides: a choice of upFaceStr and the others
+	int leftFace;	// (gui/settings.c, UIHome_SideFace); 0 = the side's default: Source up, Settings left, System right, Apps down
+	int rightFace;
+	int downFace;
 	int cubeStyle;	// uiHomeCubeStyle_t (gui/ui_home.h): 0 = Infinite, a ring of faces (default); 1 = Classic, a face on each side
 	int clockPosition;	// CLOCK_RIGHT (default), CLOCK_LEFT or CLOCK_OFF: the time
 	int temperaturePosition;	// the same three for the temperature dial
@@ -146,6 +149,11 @@ typedef struct {
 	int libraryLayout;	// uiGameflowLayout_t (gui/ui_gameflow.h): Horizontal (default), Vertical, Grid or Spotlight
 	int libraryFolders;	// 1 = the Library shows folders in /games, two deep; 0 = one list of games (default)
 	char libraryFoldersFlattenDir[PATHNAME_MAX];	// FlattenDir as saved, while Library Folders sets its own
+	int hideDetailSaves;	// 1 = a game's details never read the memory cards; 0 = they show two or more save copies (default)
+	int idleAnimation;	// how the cube moves while Home rests: 0 = Calm, a slight drift (default); 1 = Sway, left and right
+	int hideWaves;	// 1 = no waves behind the cube; 0 = the waves (default)
+	int hideHomeControls;	// 1 = Home shows no button hints under the cube; 0 = it shows them (default)
+	int hideFaceLabels;	// 1 = Home shows no face name under the cube; 0 = it shows it (default)
 	int sram60Hz;
 	int sramProgressive;
 	int sramStereo;

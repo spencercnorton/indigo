@@ -254,11 +254,39 @@ class Card(unittest.TestCase):
             with self.assertRaises(ValueError):
                 card.fragment(image, "ipl.dol", 2)  # one cluster can't be two pieces
 
+    @unittest.skipUnless(shutil.which("mkfs.fat") and shutil.which("mdir"), "needs dosfstools and mtools")
+    def test_the_files_routes_second_card(self):
+        """The second SD card holds its files, and its listing reads as the
+        File Browser sorts it: "..", folders, then names ignoring case."""
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "second.img"
+            card.second_card(image)
+            for name, data in card.SECOND_FILES.items():
+                self.assertEqual(card.read_card(image, name), data)
+            self.assertEqual(card.listing(image), ["..", "backups/", "a-one.txt", "b-two.txt",
+                                                  "big.bin", "c-three.txt"])
+            # A folder below the top reads the same way.
+            self.assertEqual(card.listing(image, "backups"), [".."])
+            note = Path(directory) / "Zed.txt"
+            note.write_bytes(b"z")
+            subprocess.run(["mcopy", "-i", str(image), str(note), "::/backups/"], check=True,
+                           env=card.MTOOLS, capture_output=True)
+            subprocess.run(["mmd", "-i", str(image), "::/backups/old"], check=True, env=card.MTOOLS,
+                           capture_output=True)
+            self.assertEqual(card.listing(image, "backups/"), ["..", "old/", "Zed.txt"])
+        ini = run.dolphin_ini("gcloader", Path("/work/card.img"), second=Path("/work/second.img"))
+        self.assertIn("SerialPort2 = 15\nSP2SDCardImage = /work/second.img\n", ini)
+        self.assertNotIn("/work/card.img", ini)  # the GC Loader's card is the drive's
+
     def test_settings_to_start_with(self):
         text = (run.SETTINGS / "non-default.ini").read_text()
         pairs = run.seeded(text)
         self.assertEqual(pairs["Clock"], "Left")
         self.assertNotIn("Menu Widescreen", pairs)
+        # The route tells the faces apart by their names, so Face Labels stays
+        # on; the smoke route checks Home without its hints.
+        self.assertNotIn("Hide Face Labels", pairs)
+        self.assertEqual(pairs["Hide On-screen Controls"], "Yes")
         self.assertTrue(all(not key.startswith("#") for key in pairs))
         self.assertEqual(run.seeded("# Clock=Right\nClock = Off\r\n"), {"Clock": "Off"})
 
@@ -266,7 +294,7 @@ class Card(unittest.TestCase):
         text = (run.SETTINGS / "save-details-wide.ini").read_text()
         start = run.seeded(text)
         self.assertEqual(start, {"Menu Widescreen": "Yes", "Swiss Video Mode": "Auto",
-                                 "Hide Apps Face": "No"})
+                                 "Down Face": "Apps"})
         route = run.Route.__new__(run.Route)
         route.checks, route.report, route.last_rgb = [], None, None
         route.folders_on = False
@@ -656,6 +684,118 @@ class Screen(unittest.TestCase):
         with self.assertRaises(run.Broken):
             run.legacy_folder_browser(legacy[:400])
         self.assertEqual((run.TEXT_LEVEL, run.SAME, run.DIFFERENT), (160, 0.85, 0.5))
+
+    def test_the_file_browser_text_the_route_reads(self):
+        main, right = self.folder_frame("files-screen.png"), self.folder_frame("files-screen-right.png")
+        wide = self.folder_frame("files-screen-wide.png")
+        # Each pane's path line, in both shapes: the left pane's sits outside
+        # the stage detection_frame keeps when Menu Widescreen widens it.
+        for frame, shape in ((main, False), (right, False), (wide, True)):
+            self.assertTrue(run.files_text(frame, shape).any())
+            self.assertTrue(run.files_text(frame, shape, right=True).any())
+        self.assertFalse(run.text_mask(run.detection_frame(wide, True).max(axis=2),
+                                       run.FILES_PATH_BOX).any())
+        # "/" against "/apps", and the root's rows against /apps' rows.
+        self.assertLess(run.overlap(run.files_text(main, right=True),
+                                    run.files_text(right, right=True)), run.DIFFERENT)
+        self.assertLess(run.overlap(run.files_text(main, box=run.FILES_RIGHT_ROWS_BOX),
+                                    run.files_text(right, box=run.FILES_RIGHT_ROWS_BOX)),
+                        run.DIFFERENT)
+        # The Actions box beside the left pane's row, which files_screen still
+        # finds; not on the plain screens, nor beside the right pane.
+        boxed = self.folder_frame("files-screen-z.png")
+        self.assertTrue(run.files_screen(boxed))
+        self.assertTrue(run.files_box(boxed, 0))
+        self.assertFalse(run.files_box(boxed, 1))
+        for frame in (main, right):
+            self.assertFalse(run.files_box(frame, 0))
+            self.assertFalse(run.files_box(frame, 1))
+        # A storage menu is a box beside the pane too.
+        self.assertTrue(run.files_box(self.folder_frame("files-storage-right.png"), 1))
+
+    def test_the_file_browser_and_its_focused_pane(self):
+        for name, wide, pane in (("files-screen.png", False, 0), ("files-screen-right.png", False, 1),
+                                 ("files-screen-wide.png", True, 0),
+                                 ("files-screen-themed.png", False, 0)):
+            frame = self.folder_frame(name)
+            self.assertTrue(run.files_screen(frame, wide), name)
+            self.assertEqual(run.active_pane(frame, wide), pane, name)
+            self.assertFalse(run.legacy_folder_browser(frame), name)
+        # Menu Widescreen's letterbox read as 4:3 isn't the screen.
+        self.assertFalse(run.files_screen(self.folder_frame("files-screen-wide.png")))
+        for name in ("folder-legacy-browser.png", "folder-horizontal.png", "folder-vertical.png",
+                     "folder-grid.png", "folder-spotlight.png", "folder-home.png",
+                     "themed-save-browser.png"):
+            self.assertFalse(run.files_screen(self.folder_frame(name)), name)
+        frame = self.folder_frame("files-screen.png")
+        for frame_ in (np.zeros_like(frame), np.full_like(frame, 255)):
+            self.assertFalse(run.files_screen(frame_))
+        # Each part counts: a pane's top or bottom, a storage button, the info
+        # bar, and the gutter between the panes.
+        for box in ((150, 100, 300, 116), (340, 332, 490, 348), (80, 22, 220, 60),
+                    (440, 22, 560, 60), (150, 355, 490, 368), (150, 425, 490, 438)):
+            missing = frame.copy()
+            x0, y0, x1, y1 = box
+            missing[y0:y1, x0:x1] = frame[104, 200]
+            self.assertFalse(run.files_screen(missing), box)
+        joined = frame.copy()
+        joined[107:110, 300:340] = frame[108, 200]
+        self.assertFalse(run.files_screen(joined))
+        with self.assertRaises(run.Broken):
+            run.files_screen(frame[:400])
+
+    def test_the_file_browser_storage_menus(self):
+        right, left = self.folder_frame("files-storage-right.png"), self.folder_frame("files-storage-left.png")
+        # Each menu over its own pane, the screen still found under it.
+        for frame, pane in ((right, 1), (left, 0)):
+            self.assertTrue(run.files_screen(frame))
+            self.assertTrue(run.files_menu(frame, pane))
+            self.assertFalse(run.files_menu(frame, 1 - pane))
+        # No menu: the panes' rows, a focus bar, Swiss's Z box, other screens.
+        for name in ("files-screen.png", "files-screen-right.png", "files-screen-themed.png",
+                     "files-screen-z.png", "folder-legacy-browser.png", "folder-home.png",
+                     "themed-save-browser.png"):
+            for pane in (0, 1):
+                self.assertFalse(run.files_menu(self.folder_frame(name), pane), (name, pane))
+        # The title box's top edge and the items box's both count.
+        for frame, pane in ((right, 1), (left, 0)):
+            x0, x1 = run.FILES_MENU_EDGES[pane]
+            for y0, y1 in ((110, 120), (145, 153)):
+                missing = frame.copy()
+                missing[y0:y1, x0:x1] = frame[130, x0 + 60]
+                self.assertFalse(run.files_menu(missing, pane), (pane, y0))
+
+    def test_the_file_browser_storage_menus_in_widescreen(self):
+        # Menu Widescreen moves the right pane's outer edge, and the boxes
+        # right-aligned to it, past the 4:3 stage: the detectors read the
+        # pane where UIFiles_Layout puts it, on the whole stage.
+        self.assertEqual(run.files_pane_x(0, True), (-67, 312))
+        self.assertEqual(run.files_pane_x(1, True), (328, 707))
+        self.assertEqual(run.files_pane_x(1), (328, 600))
+        self.assertEqual(run.FILES_MENU_EDGES, ((186, 300), (474, 588)))
+        left, right = (self.folder_frame(f"files-storage-wide-{side}.png") for side in ("left", "right"))
+        for frame, pane in ((left, 0), (right, 1)):
+            self.assertTrue(run.files_screen(frame, True))
+            self.assertTrue(run.files_menu(frame, pane, True), pane)
+            self.assertFalse(run.files_menu(frame, 1 - pane, True), pane)
+            self.assertTrue(run.files_box(frame, pane, True), pane)
+            self.assertFalse(run.files_box(frame, 1 - pane, True), pane)
+            # Read as 4:3, the letterbox holds no menu.
+            self.assertFalse(run.files_menu(frame, pane), pane)
+        plain = self.folder_frame("files-screen-wide.png")
+        for pane in (0, 1):
+            self.assertFalse(run.files_menu(plain, pane, True), pane)
+            self.assertFalse(run.files_box(plain, pane, True), pane)
+        # The right menu's own edges count: its items box's top edge, out
+        # past the 4:3 stage's right side.
+        frame, at = run.files_stage(right, True)
+        self.assertEqual(frame.shape[1], run.WIDTH + 2 * at)
+        x0, x1 = run.files_menu_edges(1, True)
+        self.assertGreater(x1, 640)
+        missing = right.copy()
+        c0, y0, c1, y1 = run.stage_box((x0, 145, x1, 153), True)
+        missing[y0:y1, c0:c1] = right[run.stage_box((0, 130, 0, 130), True)[1], c0 + 40]
+        self.assertFalse(run.files_menu(missing, 1, True))
 
     def test_native_frame_reader_catches_one_legacy_frame_and_checks_each_index(self):
         from PIL import Image
@@ -1108,6 +1248,23 @@ class Screen(unittest.TestCase):
             self.assertTrue(wait.expired())
             self.assertEqual(emulator.where(), "PC 801179a0 LR 8011774c at 3.5 s")
 
+    def test_a_fresh_wait_counts_from_a_report_after_it_began(self):
+        """A press must not end at the next report when the last one is old."""
+        with tempfile.TemporaryDirectory() as directory:
+            emulator = run.Emulator.__new__(run.Emulator)
+            emulator.log = Path(directory) / "dolphin.log"
+            emulator.log.write_text("TICKS 486000000 PC 80003100 LR 00000000\n")
+            stale, fresh = run.Deadline(emulator, 0.25), run.Deadline(emulator, 0.25, fresh=True)
+            self.assertEqual(fresh.elapsed(), 0.0, "nothing reported since it began")
+            with emulator.log.open("a") as log:
+                log.write("TICKS 607500000 PC 80003100 LR 00000000\n")
+            self.assertTrue(stale.expired(), "a stale start can end a press at once")
+            self.assertFalse(fresh.expired())
+            with emulator.log.open("a") as log:
+                log.write("TICKS 729000000 PC 80003100 LR 00000000\n")
+            self.assertEqual(fresh.elapsed(), 0.25)
+            self.assertTrue(fresh.expired())
+
     def test_without_the_consoles_clock_a_wait_counts_the_machines(self):
         with tempfile.TemporaryDirectory() as directory:
             emulator = run.Emulator.__new__(run.Emulator)
@@ -1118,6 +1275,19 @@ class Screen(unittest.TestCase):
             time.sleep(0.06)
             self.assertTrue(wait.expired())
             self.assertIsNone(emulator.where())
+
+    def test_a_slow_dolphin_does_not_cut_a_press_short(self):
+        """With reports slower than WALL_FACTOR times a press, the machine's
+        seconds end it no sooner than WALL_FLOOR."""
+        with tempfile.TemporaryDirectory() as directory:
+            emulator = run.Emulator.__new__(run.Emulator)
+            emulator.log = Path(directory) / "dolphin.log"
+            emulator.log.write_text("TICKS 486000000 PC 80003100 LR 00000000\n")
+            wait = run.Deadline(emulator, run.PRESS_SECONDS, fresh=True)
+            wait.wall -= run.PRESS_SECONDS * run.WALL_FACTOR + 0.01
+            self.assertFalse(wait.expired(), "no report yet, and less than WALL_FLOOR")
+            wait.wall -= run.WALL_FLOOR
+            self.assertTrue(wait.expired())
 
     def press_until(self, screens, answers):
         """press_until with the screen's text and settled_label's answers scripted."""
@@ -1143,6 +1313,40 @@ class Screen(unittest.TestCase):
         found, presses, again = self.press_until(iter([before, moved]), iter([(None, 0.0), (None, 1.0)]))
         self.assertIsNone(found)
         self.assertEqual((presses, again), (["RIGHT"], []))
+
+    def test_a_settings_walk_takes_back_a_repeat_and_presses_a_missed_step_again(self):
+        """A Settings page of 20 rows that keeps its focus in the fourth visible
+        row once it scrolls. The sixth DOWN is missed and the last is held into
+        the repeat (two rows): the walk still ends on the eleventh row below."""
+        focus, moves = [0], iter([1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 2, 1])
+        presses = []
+
+        def gray():
+            frame = np.zeros((480, 640), np.uint8)
+            first = max(0, focus[0] - 3)
+            for slot, top in enumerate(run.SETTINGS_ROW_TOPS):
+                x = 50 + 12 * (first + slot)
+                frame[top + 8:top + 24, x:x + 8] = 255  # each row's own label
+                if first + slot == focus[0]:  # lit, its label a little bolder
+                    frame[top + 2:top + 30, 320:480] = 60
+                    frame[top + 8:top + 24, x + 8:x + 10] = 255
+            return frame
+
+        def press(button, seconds=0):
+            presses.append(button)
+            focus[0] += next(moves) * (1 if button == "DOWN" else -1)
+
+        route = run.Route.__new__(run.Route)
+        route.checks, route.last_rgb, route.report = [], None, None
+        route.emulator = mock.Mock(where=lambda: None)
+        route.gray, route.press, route.pause = gray, press, lambda seconds: None
+        route.walk_rows(11, "DOWNs reach the row")
+        self.assertEqual(focus[0], 11)
+        self.assertEqual(presses, ["DOWN"] * 12 + ["UP"])
+        self.assertEqual(route.checks[-1]["odd_steps"], [0, 2])
+        focus[0], moves = 0, iter([1, 10])
+        with self.assertRaises(run.Failed):  # a row it can't find among the rows before
+            route.walk_rows(2, "DOWNs reach the row")
 
     def test_fatal_lines(self):
         with tempfile.TemporaryDirectory() as directory:

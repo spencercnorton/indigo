@@ -129,6 +129,24 @@ typedef struct {
 } record;
 static record cards[2][8];
 static bool failWrite, failReadBack, wrongReadIdentity;
+/* A memory card emulator switching under the copy: from that write or read
+ * on, Slot B holds another card whose save has the same game, maker and
+ * name ('S'), mounted afresh. */
+static bool changeOnWrite, changeOnRead;
+static u32 mountCount[2];
+static u32 card_mount_count(int slot) { return mountCount[slot]; }
+static void changeCard(int slot, int i) {
+    memset(cards[slot][i].bytes, 'S', 8192); mountCount[slot]++;
+}
+static int failWritesLeft, failReadBacksLeft;
+/* Reads that read back true before failReadBacksLeft starts: cardReplace
+ * reads the card's own copy once more before it deletes it. */
+static int failReadBacksSkip;
+static bool readBackFails(void) {
+    if(failReadBack) return true;
+    if(failReadBacksLeft > 0 && failReadBacksSkip > 0) { failReadBacksSkip--; return false; }
+    return failReadBacksLeft > 0 && failReadBacksLeft--;
+}
 static int writes, deletes, mounts;
 static int lookup(int slot, const char *name) {
     for(int i = 0; i < 8; i++) {
@@ -168,8 +186,9 @@ static s32 CARD_Create(int slot, const char *name, u32 length, card_file *file) 
 }
 static s32 CARD_Read(card_file *file, void *buffer, u32 length, u32 at) {
     assert(at == 0 && length == 8192);
+    if(changeOnRead) { changeOnRead = false; changeCard(file->chn, file->filenum); }
     memcpy(buffer, cards[file->chn][file->filenum].bytes, length);
-    if(failReadBack) ((u8 *)buffer)[0] ^= 1;
+    if(readBackFails()) ((u8 *)buffer)[0] ^= 1;
     return CARD_ERROR_READY;
 }
 static s32 CARD_ReadUnaligned(card_file *file, void *buffer, u32 length, u32 at, int slot) {
@@ -178,7 +197,9 @@ static s32 CARD_ReadUnaligned(card_file *file, void *buffer, u32 length, u32 at,
 static s32 CARD_Write(card_file *file, const void *buffer, u32 length, u32 at) {
     writes++; assert(at == 0 && length == 8192);
     memcpy(cards[file->chn][file->filenum].bytes, buffer, length);
-    return failWrite ? CARD_ERROR_FATAL_ERROR : CARD_ERROR_READY;
+    if(changeOnWrite) { changeOnWrite = false; changeCard(file->chn, file->filenum); }
+    return failWrite || (failWritesLeft > 0 && failWritesLeft--) ?
+        CARD_ERROR_FATAL_ERROR : CARD_ERROR_READY;
 }
 static s32 CARD_GetStatus(int slot, int i, card_stat *stat) {
     *stat = cards[slot][i].stat;
@@ -245,6 +266,8 @@ static void add(int slot, int i, const char *game, const char *maker, u8 byte) {
 static void reset(void) {
     memset(cards, 0, sizeof(cards)); writes = deletes = mounts = 0;
     failWrite = failReadBack = wrongReadIdentity = false;
+    changeOnWrite = changeOnRead = false; mountCount[0] = mountCount[1] = 0;
+    failWritesLeft = failReadBacksLeft = failReadBacksSkip = 0;
     devices[0] = (DEVICEHANDLER_INTERFACE){ &initial_CARDA, mounted, info,
         readDir, deviceHandler_CARD_readFile, deviceHandler_CARD_writeFile,
         deviceHandler_CARD_deleteFile, closeFile, seekFile };
@@ -304,6 +327,27 @@ static void copyCases(const char *game, const char *maker) {
         free(data);
     }
 }
+/* The card changed during a failed write or during the read-back: the
+ * same-named save on the card there now isn't this write's, so it stays
+ * (review finding: cardWrite deleted it). */
+static int saveOn(int slot, const char *game);
+static void changedCardCases(void) {
+    for(int when = 0; when < 2; when++) {
+        reset(); add(0, 0, "GALP", "01", 'P');
+        file_handle source; handle(&source, 0, 0);
+        u32 length = 0; u8 *data = saveRead(&source, &length);
+        assert(data != NULL);
+        data[0x38] = 0; data[0x39] = 1;
+        failWrite = when == 0; changeOnWrite = when == 0; changeOnRead = when == 1;
+        char why[160];
+        assert(!cardWrite(1, data, data + 64, length - 64, why, sizeof(why)));
+        assert(writes == 1 && deletes == 0 && strstr(why, "changed") != NULL);
+        int at = saveOn(1, "GALP");
+        assert(at >= 0);
+        for(int i = 0; i < 8192; i++) assert(cards[1][at].bytes[i] == 'S');
+        free(data);
+    }
+}
 static void wildcardCases(void) {
     for(int position = 0; position <= 4; position += 4) {
         reset(); add(1, 0, "GALE", "01", 'E');
@@ -327,12 +371,72 @@ static void wildcardCases(void) {
         assert(writes == 0 && deletes == 0); verifySurvivor(1, 'E');
     }
 }
+/* Detail's load before a launch: the card's own copy of the game's save
+ * ('O') gives way to the chosen one ('N'), and comes back if that fails. */
+static int saveOn(int slot, const char *game) {
+    for(int i = 0; i < 8; i++)
+        if(cards[slot][i].live && !memcmp(cards[slot][i].dir.gamecode, game, 4)) return i;
+    return -1;
+}
+static void replaceCases(void) {
+    for(int failure = 0; failure < 5; failure++) {
+        reset(); add(1, 0, "GALE", "01", 'E'); add(1, 1, "GZLE", "01", 'O');
+        file_handle own; handle(&own, 1, 1);
+        u32 ownLength = 0; u8 *ownData = saveRead(&own, &ownLength);
+        assert(ownData != NULL && ownLength == 8256);
+        ownData[0x38] = 0; ownData[0x39] = 1;
+        u8 entry[64], blocks[8192]; char why[256] = "";
+        memcpy(entry, ownData, 64); memset(blocks, 'N', sizeof(blocks));
+        bool none = failure == 4;  /* the card had no copy of its own */
+        if(none) assert(deviceHandler_CARD_deleteFile(&own) == 0);
+        failWritesLeft = failure == 1 ? 1 : failure == 3 ? 2 : 0;
+        failReadBacksLeft = failure == 2 ? 1 : 0;
+        failReadBacksSkip = none ? 0 : 1;
+        int before = deletes;
+        bool ok = cardReplace(1, entry, blocks, sizeof(blocks),
+            none ? NULL : ownData, ownLength, why, sizeof(why));
+        assert(ok == (failure == 0 || failure == 4));
+        verifySurvivor(1, 'E');
+        int at = saveOn(1, "GZLE");
+        u8 expect = ok ? 'N' : 'O';
+        if(failure == 3) {
+            /* Neither went on: the card's own copy is in the Save Folder. */
+            assert(at < 0 && strstr(why, "Save Folder") != NULL);
+        } else {
+            assert(at >= 0);
+            for(int i = 0; i < 8192; i++) assert(cards[1][at].bytes[i] == expect);
+            assert(!memcmp(cards[1][at].dir.company, "01", 2));
+            if(!ok) assert(strstr(why, "went back") != NULL);
+        }
+        /* The own copy is removed once, and a failed new one once more. */
+        assert(deletes - before == (none ? 0 : 1) + (ok ? 0 : failure == 3 ? 2 : 1));
+        free(ownData);
+    }
+    /* The card was swapped after its own copy went to the Save Folder: the
+     * save there now isn't that copy, so nothing on the card is touched. */
+    reset(); add(1, 0, "GALE", "01", 'E'); add(1, 1, "GZLE", "01", 'O');
+    file_handle own; handle(&own, 1, 1);
+    u32 ownLength = 0; u8 *ownData = saveRead(&own, &ownLength);
+    assert(ownData != NULL && ownLength == 8256);
+    u8 entry[64], blocks[8192]; char why[256] = "";
+    memcpy(entry, ownData, 64); entry[0x38] = 0; entry[0x39] = 1;
+    memset(blocks, 'N', sizeof(blocks));
+    memset(cards[1][1].bytes, 'S', 8192);
+    int before = deletes, wrote = writes;
+    assert(!cardReplace(1, entry, blocks, sizeof(blocks), ownData, ownLength, why, sizeof(why)));
+    assert(strstr(why, "changed") != NULL && deletes == before && writes == wrote);
+    int at = saveOn(1, "GZLE");
+    assert(at >= 0 && cards[1][at].bytes[0] == 'S' && cards[1][at].bytes[8191] == 'S');
+    verifySurvivor(1, 'E');
+    free(ownData);
+}
 int main(void) {
+    replaceCases();
     readErase("GALP", "01"); readErase("GALE", "02");
     readErase("\0ABC", "\0D");
     copyCases("GALP", "01"); copyCases("GALE", "02");
-    copyCases("\0ABC", "\0D"); wildcardCases();
-    puts("card identity: reads, Erase, Copy, Move, both rollback paths and wildcards PASS");
+    copyCases("\0ABC", "\0D"); wildcardCases(); changedCardCases();
+    puts("card identity: reads, Erase, Copy, Move, both rollback paths, a card changed under them, wildcards and Detail's load PASS");
     return 0;
 }
 """
@@ -375,7 +479,8 @@ static bool SavesRaw_ReadGci(file_handle *image, const uiSavesRawCard_t *card,
         for marker in ("static savesPlace_t *rawSource(", "static bool readSaveAt("):
             pieces.append(extract_function(saves, marker))
     for marker in ("static u8 *saveRead(", "static file_handle *cardFind(",
-                   "static const char *cardWhy(", "static bool cardWrite("):
+                   "static const char *cardWhy(", "static bool cardWrite(",
+                   "static bool cardReplace("):
         pieces.append(extract_function(saves, marker))
     return "\n".join(pieces + [MAIN])
 

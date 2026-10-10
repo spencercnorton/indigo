@@ -359,7 +359,8 @@ void config_file_delete(char* filename) {
  * but never written, so a save drops them instead of keeping a stale copy
  * that could override the current key. */
 static const char *const globalOldKeys[] = {
-	"Enable Debug", "USB Gecko debug output", "Stop DVD Motor on startup", "Library Folder Colors", NULL
+	"Enable Debug", "USB Gecko debug output", "Stop DVD Motor on startup", "Library Folder Colors",
+	"Hide Apps Face", NULL
 };
 
 /* Every key a game's file can hold. A save drops the ones it no longer
@@ -566,13 +567,21 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Source Icon=%s\r\n", sourceIconStr[swissSettings.sourceIcon]);
 	fprintf(fp, "Settings Icon=%s\r\n", settingsIconStr[swissSettings.settingsIcon]);
 	fprintf(fp, "System Icon=%s\r\n", systemIconStr[swissSettings.systemIcon]);
-	fprintf(fp, "Hide Apps Face=%s\r\n", swissSettings.hideAppsFace ? "Yes":"No");
+	fprintf(fp, "Up Face=%s\r\n", upFaceStr[swissSettings.upFace]);
+	fprintf(fp, "Left Face=%s\r\n", leftFaceStr[swissSettings.leftFace]);
+	fprintf(fp, "Right Face=%s\r\n", rightFaceStr[swissSettings.rightFace]);
+	fprintf(fp, "Down Face=%s\r\n", downFaceStr[swissSettings.downFace]);
 	fprintf(fp, "Cube=%s\r\n", swissSettings.cubeStyle ? "Classic":"Infinite");
 	fprintf(fp, "Clock=%s\r\n", clockPositionStr[swissSettings.clockPosition]);
 	fprintf(fp, "Temperature=%s\r\n", clockPositionStr[swissSettings.temperaturePosition]);
 	fprintf(fp, "Wave Speed=%s\r\n", waveSpeedStr[swissSettings.waveSpeed]);
 	fprintf(fp, "Library Layout=%s\r\n", libraryLayoutStr[swissSettings.libraryLayout]);
 	fprintf(fp, "Library Folders=%s\r\n", swissSettings.libraryFolders ? "Yes":"No");
+	fprintf(fp, "Hide Saves on Details=%s\r\n", swissSettings.hideDetailSaves ? "Yes":"No");
+	fprintf(fp, "Idle Animation=%s\r\n", swissSettings.idleAnimation ? "Sway":"Calm");
+	fprintf(fp, "Hide Waves=%s\r\n", swissSettings.hideWaves ? "Yes":"No");
+	fprintf(fp, "Hide On-screen Controls=%s\r\n", swissSettings.hideHomeControls ? "Yes":"No");
+	fprintf(fp, "Hide Face Labels=%s\r\n", swissSettings.hideFaceLabels ? "Yes":"No");
 	fputs("Memory Card Folder Colors=", fp);
 	UIFolder_WriteColors(&folderColors, fp);
 	fputs("\r\n", fp);
@@ -690,7 +699,9 @@ static bool config_folder_settings_absent(char *path) {
 	return status == FR_NO_FILE || status == FR_NO_PATH;
 }
 
-bool config_set_folder_color(const char *path, uint8_t color) {
+/* checkConfigDevice false: the caller holds the settings device mounted (Memory
+ * Cards does for its whole visit), so it is neither mounted nor let go here. */
+bool config_set_folder_color(const char *path, uint8_t color, bool checkConfigDevice) {
 	uiFolderColors_t *previous = malloc(sizeof(*previous));
 	char *line = NULL;
 	size_t length = 0u;
@@ -699,7 +710,7 @@ bool config_set_folder_color(const char *path, uint8_t color) {
 	if(previous == NULL) return false;
 	*previous = folderColors;
 	if(!UIFolder_SetColor(&folderColors, path, color)) { free(previous); return false; }
-	if(!config_set_device()) goto done;
+	if(checkConfigDevice ? !config_set_device() : devices[DEVICE_CONFIG] == NULL) goto done;
 	fp = open_memstream(&line, &length);
 	if(fp != NULL) {
 		char configPath[PATHNAME_MAX];
@@ -726,7 +737,7 @@ bool config_set_folder_color(const char *path, uint8_t color) {
 		}
 		free(line);
 	}
-	config_unset_device();
+	if(checkConfigDevice) config_unset_device();
 done:
 	if(!result) folderColors = *previous;
 	else globalFileLoaded = true;
@@ -1241,6 +1252,9 @@ void config_parse_global(char *configData, bool settingsFile) {
 	int clockRead = -1;
 	bool temperatureRead = false;
 	int libraryFolders = -1;	/* -1: not named */
+	/* Before the sides were named, Hide Apps Face took Apps off the cube. */
+	bool hideAppsRead = false;
+	bool sidesRead = false;
 	line = strtok_r( configData, "\r\n", &linectx );
 	while( line != NULL ) {
 		//print_debug("Line [%s]\n", line);
@@ -1532,8 +1546,23 @@ void config_parse_global(char *configData, bool settingsFile) {
 						}
 					}
 				}
+				else if(!strcmp("Up Face", name) || !strcmp("Left Face", name) ||
+						!strcmp("Right Face", name) || !strcmp("Down Face", name)) {
+					int *side = name[0] == 'U' ? &swissSettings.upFace :
+						name[0] == 'L' ? &swissSettings.leftFace :
+						name[0] == 'R' ? &swissSettings.rightFace : &swissSettings.downFace;
+					char **names = name[0] == 'U' ? upFaceStr : name[0] == 'L' ? leftFaceStr :
+						name[0] == 'R' ? rightFaceStr : downFaceStr;
+					for(int i = 0; i < UI_HOME_FACE_COUNT; i++) {
+						if(!strcmp(names[i], value)) {
+							*side = i;
+							sidesRead = true;
+							break;
+						}
+					}
+				}
 				else if(!strcmp("Hide Apps Face", name)) {
-					swissSettings.hideAppsFace = !strcmp("Yes", value);
+					hideAppsRead = !strcmp("Yes", value);
 				}
 				else if(!strcmp("Cube", name)) {
 					swissSettings.cubeStyle = !strcmp("Classic", value);
@@ -1565,6 +1594,21 @@ void config_parse_global(char *configData, bool settingsFile) {
 				}
 				else if(!strcmp("Library Folders", name)) {
 					libraryFolders = !strcmp("Yes", value);
+				}
+				else if(!strcmp("Hide Saves on Details", name)) {
+					swissSettings.hideDetailSaves = !strcmp("Yes", value);
+				}
+				else if(!strcmp("Idle Animation", name)) {
+					swissSettings.idleAnimation = !strcmp("Sway", value);
+				}
+				else if(!strcmp("Hide Waves", name)) {
+					swissSettings.hideWaves = !strcmp("Yes", value);
+				}
+				else if(!strcmp("Hide On-screen Controls", name)) {
+					swissSettings.hideHomeControls = !strcmp("Yes", value);
+				}
+				else if(!strcmp("Hide Face Labels", name)) {
+					swissSettings.hideFaceLabels = !strcmp("Yes", value);
 				}
 				else if(!strcmp("Library Layout", name)) {
 					for(int i = 0; i < UI_GAMEFLOW_LAYOUT_COUNT; i++) {
@@ -1777,6 +1821,17 @@ void config_parse_global(char *configData, bool settingsFile) {
 	}
 	if(settingsFile && clockRead >= 0 && !temperatureRead) {
 		swissSettings.temperaturePosition = clockRead;
+	}
+	if(hideAppsRead && !sidesRead) {
+		int *sides[] = {&swissSettings.upFace, &swissSettings.leftFace,
+			&swissSettings.rightFace, &swissSettings.downFace};
+		char **names[] = {upFaceStr, leftFaceStr, rightFaceStr, downFaceStr};
+		for(int i = 0; i < 4; i++) {
+			if(strcmp(names[i][*sides[i]], "Apps")) continue;
+			for(int choice = 0; choice < UI_HOME_FACE_COUNT; choice++) {
+				if(!strcmp(names[i][choice], "None")) *sides[i] = choice;
+			}
+		}
 	}
 	if(settingsFile) {
 		// FlattenDir was just read as saved: Library Folders takes it from there

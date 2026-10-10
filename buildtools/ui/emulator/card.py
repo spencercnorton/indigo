@@ -40,6 +40,7 @@ and are left out, with a notice, when it is missing.
 from __future__ import annotations
 
 import argparse
+import array
 import hashlib
 import json
 import os
@@ -271,7 +272,7 @@ def poster(index: int):
     for y in range(height):
         t = y / (height - 1)
         draw.line([(0, y), (width, y)], fill=tuple(round(a + (b - a) * t) for a, b in zip(top, bottom)))
-    light = _rgb((hue + 180) % 360, 0.35, 0.92)
+    light = poster_light(index)
     cx, cy, r = width // 2, 200, 70 + index * 6
     if index % 3 == 0:
         draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=light, width=14)
@@ -283,6 +284,11 @@ def poster(index: int):
         y = 360 + n * 26
         draw.rectangle([48 + n * 22, y, width - 48 - n * 22, y + 10], fill=light)
     return image
+
+
+def poster_light(index: int) -> tuple[int, int, int]:
+    """The colour of a poster's shapes, which its game's banner doesn't have."""
+    return _rgb((index * 67 + 180) % 360, 0.35, 0.92)
 
 
 def still(index: int):
@@ -593,6 +599,74 @@ def fragment(image: Path, path: str, pieces: int) -> int:
         disk.seek(where + 26)
         disk.write(struct.pack("<H", new[0] & 0xFFFF))
     return 1 + sum(b != a + 1 for a, b in zip(new, new[1:]))
+
+
+# A second SD card for the File Browser's right pane (SD2SP2 beside a GC
+# Loader): three small text files, a folder, and a file big enough that a copy
+# of it is still running when the route stops it.
+SECOND_BYTES = 256 << 20
+SECOND_FILES = {"a-one.txt": b"one\r\n" * 300, "b-two.txt": b"two\r\n" * 700,
+                "c-three.txt": b"three\r\n" * 50}
+SECOND_BIG = ("big.bin", 160 << 20)
+
+
+def second_card(out: Path) -> dict[str, object]:
+    """A FAT32 card holding SECOND_FILES, an empty folder (backups) and
+    SECOND_BIG, a repeating pattern."""
+    with open(out, "wb") as image:
+        image.truncate(SECOND_BYTES)
+    subprocess.run(["mkfs.fat", "-F", "32", "-n", "SECOND", str(out)], check=True, capture_output=True)
+    with tempfile.TemporaryDirectory() as directory:
+        folder = Path(directory)
+        for name, data in SECOND_FILES.items():
+            (folder / name).write_bytes(data)
+        with open(folder / SECOND_BIG[0], "wb") as big:
+            block = bytes(range(256)) * 4096
+            for _ in range(SECOND_BIG[1] // len(block)):
+                big.write(block)
+        for entry in sorted(folder.iterdir()):
+            subprocess.run(["mcopy", "-i", str(out), str(entry), "::/"], check=True, env=MTOOLS,
+                           capture_output=True)
+    subprocess.run(["mmd", "-i", str(out), "::/backups"], check=True, env=MTOOLS, capture_output=True)
+    return {"files": sorted(SECOND_FILES) + [SECOND_BIG[0], "backups/"], "bytes": SECOND_BYTES}
+
+
+def free_sectors(card: Path) -> list[tuple[int, int]]:
+    """A FAT32 card's free clusters, as sector ranges (first, last): where a
+    new file's data would go, and nothing that is there already."""
+    with open(card, "rb") as image:
+        boot = image.read(512)
+        sector, per_cluster = struct.unpack_from("<HB", boot, 11)
+        reserved, fats = struct.unpack_from("<HB", boot, 14)
+        total, fat_sectors = struct.unpack_from("<II", boot, 32)
+        image.seek(reserved * sector)
+        fat = array.array("I", image.read(fat_sectors * sector))
+    if sys.byteorder != "little":
+        fat.byteswap()
+    first_data = reserved + fats * fat_sectors
+    clusters = min((total - first_data) // per_cluster, len(fat) - 2)
+    ranges: list[tuple[int, int]] = []
+    for cluster in range(2, clusters + 2):
+        if fat[cluster] & 0x0FFFFFFF:
+            continue
+        start = first_data + (cluster - 2) * per_cluster
+        if ranges and ranges[-1][1] + 1 == start:
+            ranges[-1] = (ranges[-1][0], start + per_cluster - 1)
+        else:
+            ranges.append((start, start + per_cluster - 1))
+    return ranges
+
+
+def listing(card: Path, folder: str = "") -> list[str]:
+    """A card's folder (its top by default) as the File Browser sorts it:
+    folders first, then by name ignoring case (fileComparator), after its
+    ".." row."""
+    where = "::/" + (folder.strip("/") + "/" if folder.strip("/") else "")
+    result = subprocess.run(["mdir", "-b", "-i", str(card), where], capture_output=True, text=True,
+                            env=MTOOLS, check=True)
+    names = [line.strip()[len(where):] for line in result.stdout.splitlines()
+             if line.strip().startswith(where)]
+    return [".."] + sorted(names, key=lambda name: (not name.endswith("/"), name.rstrip("/").lower()))
 
 
 def read_card(card: Path, path: str) -> bytes | None:

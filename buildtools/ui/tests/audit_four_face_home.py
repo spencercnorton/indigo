@@ -110,9 +110,9 @@ show_info = extract_function(INFO, "void show_info()")
 
 # --- Canonical semantic model: four clockwise faces, and Apps. ---
 # Apps is the fifth face only while the source has an app (hasApps) and
-# Setup > Console > Apps Face is On: the ring is otherwise exactly the four,
-# and it comes last so their order and numbers never change (2026-09-29, the
-# maintainer's choice).
+# Setup > Console puts it on a side: by default the ring is otherwise exactly
+# the four, and Apps comes last so their order and numbers never change
+# (2026-09-29, the maintainer's choice).
 face_enum = re.search(
     r"typedef\s+enum\s*\{\s*"
     r"UI_HOME_FACE_LIBRARY\s*=\s*0\s*,\s*"
@@ -120,32 +120,49 @@ face_enum = re.search(
     r"UI_HOME_FACE_SETTINGS\s*,\s*"
     r"UI_HOME_FACE_SYSTEM\s*,\s*"
     r"(?:/\*.*?\*/\s*)?UI_HOME_FACE_APPS\s*,\s*"
+    r"(?:/\*.*?\*/\s*)?UI_HOME_FACE_SAVES\s*,\s*"
+    r"UI_HOME_FACE_EMULATORS\s*,\s*"
+    r"(?:/\*.*?\*/\s*)?UI_HOME_FACE_FILES\s*,\s*"
     r"UI_HOME_FACE_COUNT\s*\}\s*uiHomeFace_t\s*;",
     HOME_H,
     re.S,
 )
-assert face_enum, "Home faces are not Library/Source/Settings/System, then Apps"
+assert face_enum, ("Home faces are not Library/Source/Settings/System, then Apps, "
+                   "Memory Cards, Emulators and File Browser")
 assert re.search(
     r"faceLabels\s*\[UI_HOME_FACE_COUNT\]\s*=\s*\{\s*"
-    r'"LIBRARY"\s*,\s*"SOURCE"\s*,\s*"SETTINGS"\s*,\s*"SYSTEM"\s*,\s*"APPS"\s*\}',
+    r'"LIBRARY"\s*,\s*"SOURCE"\s*,\s*"SETTINGS"\s*,\s*"SYSTEM"\s*,\s*"APPS"\s*,\s*'
+    r'"MEMORY CARDS"\s*,\s*"EMULATORS"\s*,\s*"FILE BROWSER"\s*\}',
     HOME_C,
     re.S,
 ), "visible Home labels no longer match the semantic enum order"
-count_of = extract_function(HOME_C, "int UIHome_FaceCount(")
-assert "capabilities.hasApps ? UI_HOME_FACE_COUNT : UI_HOME_FACE_APPS" in count_of, (
-    "the ring is no longer four faces without apps and five with them"
+# The faces sit on Library's four sides; unless Settings names others they
+# are Source, Settings, System and Apps up, left, right and down, and Apps
+# keeps its side but leaves the ring while the source has no app.
+assert re.search(
+    r"defaultSides\[UI_HOME_SIDE_COUNT\]\s*=\s*\{\s*"
+    r"UI_HOME_FACE_SOURCE\s*,\s*UI_HOME_FACE_SETTINGS\s*,\s*"
+    r"UI_HOME_FACE_SYSTEM\s*,\s*UI_HOME_FACE_APPS\s*\}",
+    HOME_C,
+), "the default cube is no longer Source, Settings, System and Apps"
+resolve_layout = extract_function(HOME_C, "static void resolveLayout(")
+assert "face == (int)UI_HOME_FACE_APPS && !capabilities.hasApps" in resolve_layout, (
+    "the ring is no longer without Apps while the source has no app"
 )
 assert "reconcileFaces(state, capabilities);" in HOME_C
 assert "case UI_HOME_FACE_APPS:\n\t\t\t\treturn UI_HOME_EFFECT_OPEN_APPS;" in apply_ring
 assert re.search(
-    r"capabilities\.hasApps = capabilities\.hasSource && !swissSettings\.hideAppsFace &&\s*homeAppsFound;",
+    r"capabilities\.hasApps = capabilities\.hasSource && appsPlaced &&\s*homeAppsFound;",
     capabilities,
-), "Apps Face > Off no longer keeps the Apps face off Home"
+), "Apps on no side no longer keeps the Apps face off Home"
 assert re.search(
-    r"if\(capabilities\.hasSource && !swissSettings\.hideAppsFace && !homeAppsKnown\)",
+    r"if\(capabilities\.hasSource && appsPlaced && !homeAppsKnown\)",
     capabilities,
-), "Apps Face > Off no longer keeps Home from reading /apps"
+), "Apps on no side no longer keeps Home from reading /apps"
+assert ".customSides = true," in capabilities, "Home no longer takes its sides from Settings"
 ordered(dispatch, "case UI_HOME_EFFECT_OPEN_APPS:", "show_apps();",
+        "UIScene_Request(UI_SCENE_HOME);")
+ordered(dispatch, "case UI_HOME_EFFECT_OPEN_EMULATORS:", "show_emulators();",
         "UIScene_Request(UI_SCENE_HOME);")
 assert "#define UI_HOME_QUARTER_TURN_RADIANS 1.57079632679f" in HOME_H
 
@@ -263,17 +280,40 @@ assert "SYS_ResetSystem(" not in home_input + dispatch
 assert "SYS_ResetSystem(SYS_HOTRESET, 0, !swissSettings.hasFlippyDrive);" in restart_helper
 assert "SYS_POWEROFF" not in restart_helper + dispatch + home_input
 
-# System's rows: Information, Memory Cards (row one, its own screen) and
-# Restart, last. Confirmation opens on Cancel (row zero), only Restart's row
-# opens it, and only its row one can emit Restart.
+# System's rows: Information, Memory Cards (row one, its own screen), File
+# Browser (row two, Swiss's list at the source's root) and Restart, last.
+# Confirmation opens on Cancel (row zero), only Restart's row opens it, and
+# only its row one can emit Restart.
 ordered(
     apply_system,
     "state->selection == 1",
     "return UI_HOME_EFFECT_OPEN_SAVES;",
     "state->selection == 2",
+    "return openFiles(capabilities);",
+    "state->selection == 3",
     "enterSurface(state, UI_HOME_SURFACE_RESTART_CONFIRM, 0);",
 )
+# The File Browser face opens it the same way, through the same helper:
+# Swiss's list with a source, the source picker without one.
+ordered(apply_ring, "case UI_HOME_FACE_FILES:", "return openFiles(capabilities);")
+open_files_helper = extract_function(HOME_C, "static uiHomeEffect_t openFiles(")
+assert re.search(r"return capabilities\.hasSource \? UI_HOME_EFFECT_OPEN_FILES :\s*"
+                 r"UI_HOME_EFFECT_CHANGE_SOURCE;", open_files_helper)
+assert HOME_C.count("UI_HOME_EFFECT_OPEN_FILES") == 1
+assert HOME_C.count("openFiles(capabilities)") == 2
 ordered(dispatch, "case UI_HOME_EFFECT_OPEN_SAVES:", "show_saves();")
+# File Browser lists the source's root in Swiss's own list: the flag that
+# keeps the Library away is set only there and dropped by Home.
+open_files = dispatch[dispatch.index("case UI_HOME_EFFECT_OPEN_FILES:"):]
+open_files = open_files[: open_files.index("break;")]
+ordered(open_files, "homeFileBrowser = true;", "devices[DEVICE_CUR]->initial",
+    "curMenuLocation = ON_FILLIST;")
+assert SWISS.count("homeFileBrowser = true;") == 1
+# B from Swiss's list comes back to the face that opened it, System's rows
+# or File Browser's own face: opening it leaves Home's state alone.
+assert "homeState" not in open_files
+assert "homeFileBrowser = false;" in home_input
+assert "swissSettings.enableFileManagement =" not in SWISS
 assert SWISS.count("show_saves();") == 1
 # Memory Cards hands the Home cube over where it stands, System side to the
 # front: any scene but Home's would turn it while it goes and comes back.
@@ -286,7 +326,7 @@ assert 'return row == 0 ? "CANCEL" : "RESTART";' in row_labels
 ordered(
     apply_confirm,
     "state->selection == 0",
-    "enterSurface(state, UI_HOME_SURFACE_SYSTEM, 2);",
+    "enterSurface(state, UI_HOME_SURFACE_SYSTEM, 3);",
     "state->selection == 1",
     "return UI_HOME_EFFECT_RESTART;",
 )
@@ -321,7 +361,7 @@ ordered(
 assert "homeState.surface" not in restart_confirm, (
 	"Restart confirmation bypasses the reducer when a late B cancels"
 )
-assert "const u32 homeButtons = HOME_CONFIRMATION_BUTTONS;" in home_input
+assert "const u32 homeButtons = HOME_CONFIRMATION_BUTTONS | BUTTON_Y;" in home_input
 
 
 # --- Source cancellation is lossless; teardown begins only after confirmed A. ---
@@ -354,25 +394,24 @@ for destructive in ("freeFiles();", "DrawGameflowCancelPosters();", "deinit(",
         f"current source is destroyed before selector confirmation: {destructive}"
     )
 
+# A confirmed Source replaces the old one in sourceCommit (the File
+# Browser's L and Y use it too) and mounts in sourceMount.
 current_replace = extract_block(selector, "if(type == DEVICE_CUR) {")
+assert "sourceCommit(selectedDevice);" in current_replace
+commit = extract_function(SWISS, "static void sourceCommit(DEVICEHANDLER_INTERFACE *device)\n{")
 ordered(
-    current_replace,
-	"devices[type] != NULL",
+    commit,
+	"devices[DEVICE_CUR] != NULL",
     "freeFiles();",
     "DrawGameflowCancelPosters();",
-    "devices[type]->deinit(devices[type]->initial);",
-	"homeSourceRecord(devices[type], UI_HOME_SOURCE_MOUNT_UNMOUNTED);",
+    "devices[DEVICE_CUR]->deinit(devices[DEVICE_CUR]->initial);",
+	"homeSourceRecord(devices[DEVICE_CUR], UI_HOME_SOURCE_MOUNT_UNMOUNTED);",
+    "devices[DEVICE_CUR] = device;",
+	"homeSourceRecord(device, UI_HOME_SOURCE_MOUNT_UNMOUNTED);",
 )
-after_choice = selector[selector.index("DEVICEHANDLER_INTERFACE *selectedDevice") :]
-ordered(
-    after_choice,
-    "freeFiles();",
-    "devices[type]->deinit(devices[type]->initial);",
-    "devices[type] = selectedDevice;",
-	"homeSourceRecord(selectedDevice, UI_HOME_SOURCE_MOUNT_UNMOUNTED);",
-)
-assert "if(deviceConfirmed && devices[DEVICE_CUR] != NULL)" in device_change
-assert "ret = devices[DEVICE_CUR]->init(devices[DEVICE_CUR]->initial);" in device_change
+mount = extract_function(SWISS, "static bool sourceMount(void)\n{")
+assert "if(deviceConfirmed && devices[DEVICE_CUR] != NULL && !sourceMount())" in device_change
+assert "ret = devices[DEVICE_CUR]->init(devices[DEVICE_CUR]->initial);" in mount
 assert "devices[DEVICE_CUR] != previousDevice" not in device_change
 assert "else if(!deviceConfirmed)" in device_change
 assert "needsRefresh = refreshBeforeSelection;" in device_change
@@ -407,13 +446,13 @@ ordered(
 )
 assert menu.index("homeSourceObserveStartup();") < menu.index("homePublish(")
 ordered(
-	device_change,
+	mount,
 	"ret = devices[DEVICE_CUR]->init(devices[DEVICE_CUR]->initial);",
 	"UI_HOME_SOURCE_MOUNT_UNMOUNTED",
 	"devices[DEVICE_CUR] = NULL;",
 	"UI_HOME_SOURCE_MOUNT_ABSENT",
 )
-success_tail = device_change[device_change.index("DrawDispose(msgBox);") :]
+success_tail = mount[mount.rindex("DrawDispose(msgBox);") :]
 ordered(
 	success_tail,
 	"deviceHandler_setDeviceAvailable(devices[DEVICE_CUR], true);",
@@ -508,6 +547,21 @@ assert "eyebrow" not in FRAME_C
 assert draw_root.count("_DrawHomeText(") == 1
 assert draw_root.count("_DrawHintText(") == 1
 assert "UIHome_FaceLabel(face)" in draw_root
+# Setup > Console's Face Labels and On-screen Controls take away only the
+# face's name and the hint line under the cube; the rows' hint line follows
+# On-screen Controls, and Restart's question always keeps its own.
+# The renderer reads them from the published capabilities, which swiss.c's
+# homeCapabilities fills from the settings, as it does the cube's style.
+assert ("if(!data->capabilities.hideFaceLabel) {\n\t\t_DrawHomeText(incomingX, incomingY,\n"
+        "\t\t\tUIHome_FaceLabel(face)") in draw_root
+assert ("if(!data->capabilities.hideCommands) {\n\t\t_DrawHintText(layout->commandCenter.x, "
+        "layout->commandCenter.y,\n\t\t\tdata->command,") in draw_root
+assert ("if(!data->capabilities.hideCommands) {\n\t\t_DrawHintText(layout->commandCenter.x, "
+        "layout->commandCenter.y,\n\t\t\thomeContextCommand,") in draw_rows
+assert "hideCommands" not in draw_confirm and "hideFaceLabel" not in draw_confirm
+home_capabilities = extract_function(SWISS, "static uiHomeCapabilities_t homeCapabilities(")
+assert ".hideFaceLabel = swissSettings.hideFaceLabels != 0," in home_capabilities
+assert ".hideCommands = swissSettings.hideHomeControls != 0," in home_capabilities
 assert prepare_text.count("UIHomeText_CopyFitted(") == 1
 assert "GetTextSizeInPixels" in prepare_text
 assert "GetTextScaleToFitInWidth" not in prepare_text
@@ -539,7 +593,11 @@ for field in ("modalBounds", "consequenceCenter", "consequenceBounds"):
 assert "modalBounds" in draw_modal
 assert "consequenceCenter" in draw_confirm
 assert "consequenceBounds" in prepare_text
-assert "item->glowBounds.top > UI_HOME_LAYOUT_CUBE_RAIL_BOTTOM" in LAYOUT_C
+assert "item->glowBounds.top > rail" in LAYOUT_C
+# Rows clear the cube's rail; only System's four, under its raised cube,
+# clear the higher one.
+assert re.search(r"int rail = count == 4 \? UI_HOME_LAYOUT_SYSTEM_RAIL_BOTTOM :\s*UI_HOME_LAYOUT_CUBE_RAIL_BOTTOM;", LAYOUT_C)
+assert "#define UI_HOME_LAYOUT_SYSTEM_RAIL_BOTTOM 349" in LAYOUT_H
 assert "UIHomeLayout_RectsDisjoint(items[first].glowBounds, command)" in LAYOUT_C
 assert "UIHomeLayout_RectIsSafe(selectedTravelBounds)" in LAYOUT_C
 assert "UIHomeLayout_RectsDisjoint(selectedTravelBounds, cubeKeepOut)" in LAYOUT_C
@@ -549,6 +607,36 @@ assert "UIMotion_Amplitude((float)UI_HOME_LAYOUT_SELECTED_TRAVEL," in draw_root
 # --- Ambient cube motion is bounded sway, never semantic continuous yaw. ---
 sway = re.search(r"#define CUBE_IDLE_SWAY_RADIANS\s+([0-9.]+)f", INDIGO)
 assert sway and 0.0 < float(sway.group(1)) <= 0.08
+# Idle Animation > Sway turns from Home's pose to its mirror image and back:
+# its reach is Home's own turn and no more, so the front face stays in front
+# and the outline is never wider than Home's. Only while Home itself rests
+# (not the Source picker), with motion on, from a clock that waits while the
+# cube leaves its rest and starts over once the idle blend is all but gone.
+# test_cube_render_pose.py runs it through a turn and a shallow dip.
+home_pose = re.search(r"\[UI_SCENE_HOME\] = \{([^}]*)\}", SCENE_C)
+home_yaw = float(home_pose.group(1).split(",")[4].strip().rstrip("f"))
+sway_reach = re.search(r"#define CUBE_SWAY_RADIANS\s+([0-9.]+)f", INDIGO)
+assert sway_reach and 0.0 < float(sway_reach.group(1)) <= home_yaw
+assert "if(idleSway) {" in setup_cube
+assert "float sway = swayClock(seconds, animated ? idleBlend : 0.0f);" in setup_cube
+assert ("idleYaw = animated ? -CUBE_SWAY_RADIANS *\n"
+        "\t\t\t(1.0f - cosf(sway * CUBE_SWAY_RATE)) * idleBlend : 0.0f;") in setup_cube
+sway_clock = extract_function(INDIGO, "static float swayClock(")
+assert "#define CUBE_SWAY_RESTART_BLEND 0.01f" in INDIGO
+assert "if(idleBlend < CUBE_SWAY_RESTART_BLEND) {\n\t\tswaySeconds = 0.0f;" in sway_clock
+assert "else if(idleBlend >= swayLastBlend) {" in sway_clock
+assert "swayLastBlend = idleBlend;" in sway_clock
+assert ("idleTarget = motionMode == UI_MOTION_FULL &&\n"
+        "\t\tstate.appliedScene == UI_SCENE_HOME &&") in scene_update
+# The frame sets Waves and Idle Animation from Setup > Console before it
+# draws the backdrop; test_background_gx_stream.py runs the waves' gate.
+draw_background = extract_function(FRAME_C, "static void _DrawBackground(")
+ordered(draw_background, "IndigoBackground_SetWaves(!swissSettings.hideWaves);",
+        "IndigoBackground_SetIdleSway(swissSettings.idleAnimation != 0);",
+        "IndigoBackground_Draw(")
+assert draw_background.count("IndigoBackground_SetWaves(") == 1
+assert draw_background.count("IndigoBackground_SetIdleSway(") == 1
+assert "fminf(step, 0.1f)" in sway_clock
 assert "CUBE_IDLE_TURN_RATE" not in INDIGO
 assert "fmodf(seconds *" not in setup_cube
 assert "sinf(seconds * CUBE_IDLE_SWAY_RATE)" in setup_cube
@@ -582,7 +670,8 @@ for icon, name in (("CONTROLLER", "Controller"), ("BOOKS", "Books"), ("COVERS", 
 		("PLAY", "Play"), ("HUB", "Hub"), ("DISC", "Disc"), ("SD_CARD", "SdCard"),
 		("FOLDER", "Folder"), ("SLIDERS", "Sliders"), ("GEAR", "Gear"), ("TOGGLES", "Toggles"),
 		("DIAL", "Dial"), ("CLOCK", "Clock"), ("INFO", "Info"), ("POWER", "Power"),
-		("CHIP", "Chip")):
+		("CHIP", "Chip"), ("APPS", "Apps"), ("SAVES", "Saves"), ("EMULATORS", "Emulators"),
+		("FILES", "Folder")):
 	assert f"case UI_HOME_ICON_{icon}:" in dispatch
 	helper = extract_function(INDIGO, f"static void draw{name}Icon(")
 	assert "int face" in helper and "UI_HOME_FACE_" not in helper

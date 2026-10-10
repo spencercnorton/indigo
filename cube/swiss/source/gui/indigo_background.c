@@ -23,6 +23,14 @@
 #define BOOT_VEIL_LIFT 0.15f
 #define CUBE_IDLE_SWAY_RATE 0.31f
 #define CUBE_IDLE_SWAY_RADIANS 0.035f
+/* Idle Animation › Sway: while Home rests, the cube turns from Home's own
+ * pose (turned 0.28 rad, ui_scene.c) to its mirror image and back, once in
+ * 2 pi / CUBE_SWAY_RATE seconds (14): at the far end it shows its left side
+ * as much as Home shows its right, and never more, so the face in front
+ * stays in front and the cube's outline is never wider than Home's. */
+#define CUBE_SWAY_RADIANS 0.28f
+#define CUBE_SWAY_RATE 0.45f
+#define CUBE_SWAY_RESTART_BLEND 0.01f
 /* While Home rests the studio the glass mirrors turns this far (radians)
  * about the view axis and back, at this rate, so its highlights drift. */
 #define GLASS_STUDIO_DRIFT 0.20f
@@ -444,10 +452,53 @@ static void drawSilkWaves(float seconds, bool animated, float strength)
  * at its wrap unless the speed kept every rate a multiple. */
 #define WAVE_CLOCK_WRAP 6283.18530718f
 static float waveSpeedSetting = 1.0f, waveLastSeconds = -1.0f, waveSeconds;
+static bool wavesShown = true;
 
 void IndigoBackground_SetWaveSpeed(float speed)
 {
 	waveSpeedSetting = speed;
+}
+
+void IndigoBackground_SetWaves(bool shown)
+{
+	wavesShown = shown;
+}
+
+/* Sway's clock: how long Home has rested. While the cube leaves its rest
+ * (the idle blend falling) it waits, so a shallow dip (one that keeps the
+ * blend above CUBE_SWAY_RESTART_BLEND) picks the same swing up where it was.
+ * A press that takes Home off its rest takes the blend under that, and the
+ * clock starts over from 0, so the next swing starts from Home's own pose;
+ * a turn's blend never quite reaches 0 before Home rests again, and what the
+ * restart drops is under 2 * CUBE_SWAY_RADIANS * CUBE_SWAY_RESTART_BLEND
+ * (0.006).
+ * A frame's two cube passes read it at the same seconds and step it once; a
+ * frame that took long holds the swing rather than jumping it. */
+static bool idleSway;
+static float swayLastSeconds = -1.0f, swayLastBlend, swaySeconds;
+
+void IndigoBackground_SetIdleSway(bool sway)
+{
+	idleSway = sway;
+}
+
+static float swayClock(float seconds, float idleBlend)
+{
+	float step = swayLastSeconds < 0.0f ? 0.0f : seconds - swayLastSeconds;
+
+	if(step < 0.0f) {
+		step += UI_ANIM_TIME_WRAP_SECONDS;  /* the menu clock wrapped */
+	}
+	swayLastSeconds = seconds;
+	if(idleBlend < CUBE_SWAY_RESTART_BLEND) {
+		swaySeconds = 0.0f;
+	}
+	else if(idleBlend >= swayLastBlend) {
+		swaySeconds = fmodf(swaySeconds + fminf(step, 0.1f),
+			6.28318531f / CUBE_SWAY_RATE);
+	}
+	swayLastBlend = idleBlend;
+	return swaySeconds;
 }
 
 static float waveClock(float seconds)
@@ -562,10 +613,19 @@ static void setupCubePipeline(const uiSceneFrame_t *scene, float seconds, bool a
 	float idleBlend = scene->homeIdleBlend;
 	float idleYaw = animated ? sinf(seconds * CUBE_IDLE_SWAY_RATE) *
 		CUBE_IDLE_SWAY_RADIANS * idleBlend : 0.0f;
-	float yaw = scene->cubeYaw + idleYaw;
+	float yaw;
 	float pitch = 0.09f + scene->cubePitch +
 		(animated ? sinf(seconds * 0.17f) * 0.030f : 0.0f);
 	float bob = animated ? sinf(seconds * 0.62f) * 0.035f : 0.0f;
+
+	/* Sway turns to the mirror of Home's pose and back instead. */
+	if(idleSway) {
+		float sway = swayClock(seconds, animated ? idleBlend : 0.0f);
+
+		idleYaw = animated ? -CUBE_SWAY_RADIANS *
+			(1.0f - cosf(sway * CUBE_SWAY_RATE)) * idleBlend : 0.0f;
+	}
+	yaw = scene->cubeYaw + idleYaw;
 
 	loadCubeProjection();
 
@@ -2029,6 +2089,32 @@ static void drawAppsIcon(const cubeRasterTransform_t *raster, int face, GXColor 
 	}
 }
 
+/* Memory Cards: a GameCube memory card, the edge it plugs in by along its
+ * top and its label below. */
+static void drawSavesIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = FACE_ICON_PLANE;
+
+	drawRoundedRect(raster, face, -0.26f, -0.38f, 0.26f, 0.38f, 0.05f, 0.018f,
+		plane, glow);
+	drawFaceBar(raster, face, -0.16f, 0.22f, 0.16f, 0.28f, plane, glow);
+	drawRoundedRect(raster, face, -0.15f, -0.26f, 0.15f, 0.06f, 0.03f, 0.018f,
+		plane, glow);
+}
+
+/* Emulators: a game pad, its cross on the left and two buttons on the right. */
+static void drawEmulatorsIcon(const cubeRasterTransform_t *raster, int face, GXColor glow)
+{
+	const float plane = FACE_ICON_PLANE;
+
+	drawRoundedRect(raster, face, -0.42f, -0.22f, 0.42f, 0.22f, 0.12f, 0.018f,
+		plane, glow);
+	drawFaceBar(raster, face, -0.31f, -0.03f, -0.11f, 0.03f, plane, glow);
+	drawFaceBar(raster, face, -0.24f, -0.10f, -0.18f, 0.10f, plane, glow);
+	drawFaceCircle(raster, face, 0.14f, -0.05f, 0.045f, 12, plane, glow);
+	drawFaceCircle(raster, face, 0.28f, 0.06f, 0.045f, 12, plane, glow);
+}
+
 /* Every face shows the icon chosen for it in Settings: choices[face] picks
  * one of that face's own four (uiHomeIcon_t face * UI_HOME_ICON_CHOICES +
  * choice). One additive pass without depth writes, every icon in the same
@@ -2114,6 +2200,9 @@ static void drawOneFaceIcon(const cubeRasterTransform_t *raster, int face,
 		case UI_HOME_ICON_POWER: drawPowerIcon(raster, face, glow); break;
 		case UI_HOME_ICON_CHIP: drawChipIcon(raster, face, glow); break;
 		case UI_HOME_ICON_APPS: drawAppsIcon(raster, face, glow); break;
+		case UI_HOME_ICON_SAVES: drawSavesIcon(raster, face, glow); break;
+		case UI_HOME_ICON_EMULATORS: drawEmulatorsIcon(raster, face, glow); break;
+		case UI_HOME_ICON_FILES: drawFolderIcon(raster, face, glow); break;
 		default: break;
 	}
 }
@@ -3569,7 +3658,8 @@ void IndigoBackground_Draw(float seconds, bool backdropAnimated,
 	UIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);
 	drawIndigoWash(255, UIColor_BackdropShade(layerColors[UI_COLOR_LAYER_BACKDROP]));
 	drawGlobeGrid(320.0f, 212.0f, drift * 0.18f);
-	if(scene->visible) {
+	/* Waves off: none. On again, they are where they would have drifted to. */
+	if(scene->visible && wavesShown) {
 		UIColor_Select(layerColors[UI_COLOR_LAYER_WAVES]);
 		drawSilkWaves(waveClock(seconds), backdropMotionActive, decorativeStrength);
 	}

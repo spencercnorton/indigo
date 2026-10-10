@@ -14,9 +14,13 @@
 /* Whether device has an app: Home shows the Apps face while it does.
  * Reads /apps and, up to the first app, its folders. Menu thread. */
 bool apps_available(DEVICEHANDLER_INTERFACE *device);
+/* The same for /emulators and the Emulators face. */
+bool emulators_available(DEVICEHANDLER_INTERFACE *device);
 
 /* The Apps screen, until B; an app it starts never returns. Menu thread. */
 void show_apps(void);
+/* The same screen over /emulators, headed EMULATORS. */
+void show_emulators(void);
 
 /* swiss.c's, so Apps browses as the Library does. */
 uiGameflowLayout_t gameflowLayout(void);

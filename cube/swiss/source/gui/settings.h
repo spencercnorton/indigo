@@ -64,9 +64,6 @@ enum SETTINGS_GLOBAL {
 #define PAGE_GLOBAL_MAX (SET_PAGE_1_CANCEL)
 
 enum SETTINGS_INTERFACE {
-	SET_FILEBROWSER_TYPE,
-	SET_APPSBROWSER_TYPE,
-	SET_GAMEBROWSER_TYPE,
 	SET_FILE_MGMT,
 	SET_RECENT_LIST,
 	SET_SHOW_HIDDEN,
@@ -86,7 +83,10 @@ enum SETTINGS_INTERFACE {
 	SET_FLATTEN_DIR,
 	SET_LIBRARY_LAYOUT,
 	SET_MENU_WIDESCREEN,
-	SET_APPS_FACE,
+	SET_UP_FACE,
+	SET_LEFT_FACE,
+	SET_RIGHT_FACE,
+	SET_DOWN_FACE,
 	SET_UI_BACKDROP_COLOR,
 	SET_UI_WAVE_COLOR,
 	SET_CLOCK_POSITION,
@@ -94,6 +94,11 @@ enum SETTINGS_INTERFACE {
 	SET_TEMPERATURE_POSITION,
 	SET_LIBRARY_FOLDERS,
 	SET_CUBE,
+	SET_DETAIL_SAVES,
+	SET_IDLE_ANIMATION,
+	SET_WAVES,
+	SET_HOME_CONTROLS,
+	SET_FACE_LABELS,
 	SET_PAGE_2_BACK,
 	SET_PAGE_2_NEXT,
 	SET_PAGE_2_SAVE,
@@ -242,6 +247,10 @@ extern char *libraryIconStr[];
 extern char *sourceIconStr[];
 extern char *settingsIconStr[];
 extern char *systemIconStr[];
+extern char *upFaceStr[];
+extern char *leftFaceStr[];
+extern char *rightFaceStr[];
+extern char *downFaceStr[];
 extern char *libraryLayoutStr[];
 
 int show_settings(int page, int option, ConfigEntry *config);
