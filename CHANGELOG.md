@@ -224,6 +224,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
   `get_fst_details`, `adjust_tgc_fst` and `calc_fst_entries_size`. The game
   route launches the disc with a runaway file table on its way to the
   probe: it fails like any launch there and comes back to the Library.
+- `test_card_slots.py` runs the real `card_slots.c` against stubbed MMCE, CARD and
+  EXI calls with a fake clock and presence line, one request after another as
+  well as one at a time, and `test_ui_card_slots` scripts the slot's states;
+  `test_save_choice.py` holds the save choice to a card that changes, during its
+  question too. The Game Detail audit pins the wiring, with mutants.
 - `test_save_choice.py` runs Game Detail's save choice from `swiss.c` itself:
   no choice without a card or with Emulate Memory Card on, each copy then
   the totals, and B keeping the card's copy. `test_saves_stats.py` holds the

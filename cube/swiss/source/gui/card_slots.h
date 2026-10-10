@@ -39,8 +39,4 @@ bool CardSlots_WritableFor(int slot, const char gameId[6]);
 /* An ID still waits to go out (a launch waits for it, polling). */
 bool CardSlots_IdWaiting(void);
 
-/* What the slots did since Indigo started, a line an event (the first 8 KB):
- * the times, the IDs, the presence changes, the status bytes and the reads. */
-const char *CardSlots_Trace(void);
-
 #endif

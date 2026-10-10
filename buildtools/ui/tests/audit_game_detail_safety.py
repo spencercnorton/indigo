@@ -360,7 +360,13 @@ def check_card_slots(source: str) -> None:
     asked = chosen.index("if(!gameflowSaveAsk(text)) {")
     assert gate < asked
     again = chosen.index("if(!CardSlots_WritableFor(context->saveSlot, context->gameId)) {", asked)
-    assert asked < chosen.index("if(CardSlots_Poll()) context->savesScanned = false;", asked) < again
+    changed = chosen.index("if(CardSlots_Poll() || gameflowSlotsChanged) {", asked)
+    assert asked < changed < again
+    assert "return false;" in chosen[changed:chosen.index("}", changed) + 1]
+    # The question box follows the slots while it is up, from a clean start.
+    assert chosen.index("gameflowSlotsChanged = false;") < asked
+    box = definition("static bool gameflowSaveAsk(")
+    assert box.index("if(CardSlots_Poll()) gameflowSlotsChanged = true;") < box.index("VIDEO_WaitVSync();")
     assert again < chosen.index("Saves_LoadCopy(")
     # A card given up on while switching makes the scan incomplete.
     publication = definition("static bool gameflowPublishDetail(")
@@ -383,10 +389,10 @@ for old, new in (
      "/* Never onto the card a memory card emulator is still changing from. */\n"
      "\tif(false) {"),
     ("diff_msec(start, gettime()) < 65000u", "true"),
-    ("\t/* Again after the question: the card may have changed while it was up. */\n"
-     "\tif(CardSlots_Poll()) context->savesScanned = false;\n"
-     "\tif(!CardSlots_WritableFor(context->saveSlot, context->gameId)) {",
-     "\tif(false) {"),
+    ("\tif(CardSlots_Poll() || gameflowSlotsChanged) {", "\tif(false) {"),
+    ("\tif(CardSlots_Poll() || gameflowSlotsChanged) {", "\tif(CardSlots_Poll()) {"),
+    ("\t\tif(CardSlots_Poll()) gameflowSlotsChanged = true;\n", ""),
+    ("\tgameflowSlotsChanged = false;\n\tif(!gameflowSaveAsk(text)) {", "\tif(!gameflowSaveAsk(text)) {"),
     ("\t\t\tif(context->savesCardFailed) context->saveStats.partial = true;", "\t\t\t(void)0;"),
 ):
     try:

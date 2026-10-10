@@ -41,7 +41,15 @@ static savesCopies_t gameflowSaveCopies;
 static bool answer = true;
 static int asks, loads;
 static char asked[512];
-static bool gameflowSaveAsk(const char *text) { snprintf(asked, sizeof(asked), "%s", text); ++asks; return answer; }
+/* gameflowSaveAsk follows the memory card slots while its box is up and
+ * sets this when one changed; changeDuringAsk plays that for the question. */
+static bool gameflowSlotsChanged, changeDuringAsk;
+static bool gameflowSaveAsk(const char *text)
+{
+	snprintf(asked, sizeof(asked), "%s", text); ++asks;
+	if(changeDuringAsk && strstr(text, "Start with")) gameflowSlotsChanged = true;
+	return answer;
+}
 static uiDrawObj_t *DrawProgressBar(bool a, int b, const char *c) { (void)a; (void)b; (void)c; return NULL; }
 static uiDrawObj_t *DrawPublish(uiDrawObj_t *o) { return o; }
 static void DrawDispose(uiDrawObj_t *o) { (void)o; }
@@ -57,7 +65,8 @@ static bool CardSlots_WritableFor(int slot, const char *id)
 {
 	(void)slot; (void)id; return asks == 0 ? writable : writableAfter;
 }
-static bool CardSlots_Poll(void) { return false; }
+static bool pollChanged;
+static bool CardSlots_Poll(void) { return pollChanged; }
 '''
 
 MAIN = r'''
@@ -85,6 +94,7 @@ static void detail(gameflowLaunchContext_t *context, int emulate, bool card, int
 	asks = loads = 0;
 	answer = true;
 	writable = writableAfter = true;
+	changeDuringAsk = pollChanged = false;
 }
 int main(void)
 {
@@ -155,13 +165,24 @@ int main(void)
 	assert(!gameflowLoadChosenSave(&c) && asks == 2 && loads == 0);
 	assert(strstr(asked, "still changing"));
 
+	/* A card that changed while the question was up, seen then or by the
+	 * poll right after it: nothing goes on, and Detail reads the cards again
+	 * before another launch. */
+	detail(&c, 0, true, SAVES_COPY_SLOT_A);
+	c.saveChoice = 1; changeDuringAsk = true;
+	assert(!gameflowLoadChosenSave(&c) && loads == 0 && !c.savesScanned);
+	assert(strstr(asked, "changed while the question was up"));
+	detail(&c, 0, true, SAVES_COPY_SLOT_A);
+	c.saveChoice = 1; pollChanged = true;
+	assert(!gameflowLoadChosenSave(&c) && loads == 0 && !c.savesScanned);
+
 	/* Fewer than two copies: no choice. */
 	detail(&c, 0, true, SAVES_COPY_SLOT_A);
 	gameflowSaveCopies.count = 1u;
 	assert(!gameflowSaveChoosable(&c));
 	press(&c, true); assert(c.saveChoice == -1);
 
-	puts("save choice: none without a card or with Emulate Memory Card on, each copy then the totals, B keeps the card's, the question as the card is, nothing while a card changes PASS");
+	puts("save choice: none without a card or with Emulate Memory Card on, each copy then the totals, B keeps the card's, the question as the card is, nothing while a card changes or after one changed during the question PASS");
 	return 0;
 }
 '''

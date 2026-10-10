@@ -6499,7 +6499,12 @@ static void gameflowSaveChoiceSource(const gameflowLaunchContext_t *context,
 		copy->source == (savesCopySource_t)context->saveSlot;
 }
 
-/* A box until A or B, once the press that opened it is let go. */
+/* Set when a memory card slot changed (card_slots.c) while a box of
+ * gameflowSaveAsk was up: the copies Detail showed may not be the cards'. */
+static bool gameflowSlotsChanged;
+
+/* A box until A or B, once the press that opened it is let go. The memory
+ * card slots are followed meanwhile. */
 static bool gameflowSaveAsk(const char *text)
 {
 	uiDrawObj_t *box = DrawPublish(DrawMessageBox(D_INFO, text));
@@ -6509,6 +6514,7 @@ static bool gameflowSaveAsk(const char *text)
 	while(1) {
 		u32 held = padsButtonsHeld();
 
+		if(CardSlots_Poll()) gameflowSlotsChanged = true;
 		if(!released) {
 			released = (held & (BUTTON_A | BUTTON_B)) == 0u;
 		}
@@ -6584,12 +6590,19 @@ static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
 		"Start with the save from %s?\n"
 		"It goes on the memory card in %s.\nA  LOAD    B  KEEP", gameflowSaveWhere(copy),
 		context->saveSlot == 0 ? "Slot A" : "Slot B");
+	gameflowSlotsChanged = false;
 	if(!gameflowSaveAsk(text)) {
 		context->saveChoice = -1;
 		return false;
 	}
-	/* Again after the question: the card may have changed while it was up. */
-	if(CardSlots_Poll()) context->savesScanned = false;
+	/* Again after the question, which followed the cards while it was up: a
+	 * card that changed meanwhile may not hold the copies Detail showed. */
+	if(CardSlots_Poll() || gameflowSlotsChanged) {
+		context->savesScanned = false;
+		gameflowSaveAsk("A memory card changed while the question was up.\n"
+			"Look at the saves again, then launch.\nA  OK");
+		return false;
+	}
 	if(!CardSlots_WritableFor(context->saveSlot, context->gameId)) {
 		gameflowSaveAsk("The memory card is still changing to this game's\n"
 			"card. Try again in a moment.\nA  OK");

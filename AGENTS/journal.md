@@ -1,3 +1,38 @@
+## 2026-10-10 — Card slots: fixes from the review of #121
+
+An independent review of #121 (0421b74) found two majors and two minors, each
+reproduced in a probe built from the glue test's stubs; the glue test reset
+between scenarios, which hid the state they live in:
+
+- A waiting ID and the slot's state got out of step. UICardSlot_Sent kept an
+  older pending ID, and SendFailed left the slot READY or FAILED for the
+  previous game while the new ID waited. A card that took B and left at once,
+  with A reopened while it was away, had its absence credited to A; Request(A)
+  matched slot->id and dropped B, and the slot ended READY for A on B's card.
+  Sent now clears the pending ID (the latest went out), and a failed send waits
+  in IDLE, so presence changes aren't the previous game's.
+- mmce was never cleared: a PRO swapped for a plain card, or taken out, made
+  every other game's Detail say "Memory card loading" for 11 s, then "didn't
+  load", until a restart. Five sends with nothing answering as an emulator now
+  make the slot plain (IDLE, read as it is). CardSlots_Poll reports a slot that
+  stops waiting (busy -> not busy), since IDLE -> IDLE is no phase change.
+- The launch question only looked at the slots once, after it closed.
+  gameflowSaveAsk now polls them every frame (gameflowSlotsChanged), and a
+  change during or right after the question cancels the load, says so and
+  reads the cards again.
+- GameID turned off for a slot left its followed state: the slot dropped out
+  of other games' scans. It is reset to IDLE (a plain card) instead.
+- CardSlots_Trace's 8 KB buffer had no reader in 2.4: print_debug only.
+  Not changed (nits): reopening the same game keeps a READY card without a
+  new switch (nothing polls the Library, so a card swapped there is seen when
+  it next leaves the bus), and EXI_ProbeReset resets both slots (two
+  emulators only).
+- Tests: test_card_slots.py runs five scenarios one request after another
+  (each failed on 0421b74), with an accounted() check that a slot is read,
+  waited for or said to have failed; test_ui_card_slots (297 checks) and
+  test_save_choice.py (a change during or right after the question) pin the
+  rest, and audit_game_detail_safety the box's polling, with mutants.
+
 ## 2026-10-09 — Memory card emulators: follow the GameID switch (indigo#102)
 
 The reporter's MemCard PRO test build (7bd3853: a full re-mount once a second
