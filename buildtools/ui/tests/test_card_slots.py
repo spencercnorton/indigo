@@ -393,7 +393,51 @@ int main(void)
 	run(6000);
 	assert(!memcmp(lastDisk[0], B, 6) && !memcmp(slots[0].state.id, B, 6));
 
-	puts("card slots glue: partial sends, kept and retried IDs, given up as FAILED and sent again when put back, a card that leaves at once, refresh on leaving the bus, plain cards, bounded probe, status-held mounts, stale ID reset; one request after another: a failed send then the previous game, a PRO swapped for a plain card, GameID turned off, a new ID after giving up PASS");
+	/* Re-review of #121. The emulator takes none of five sends and is out of
+	 * the slot at the last: given up on, not made plain. Put back, it is sent
+	 * the ID again and read once it holds the game's card. */
+	reset(); setIdResult[0] = MMCE_RESULT_NOCARD;
+	CardSlots_RequestGame(&gameA);
+	while(setIdCalls[0] < UI_CARD_SLOT_SEND_TRIES - 1u) run(16u);
+	present(0, false);
+	run(8000u);
+	assert(CardSlots_FailedFor(0, A) && slots[0].state.mmce && inits[0] == 0u);
+	setIdResult[0] = MMCE_RESULT_READY;
+	present(0, true);
+	assert(run(100u));
+	run(6000u);
+	assert(!memcmp(lastDisk[0], A, 6) && slots[0].state.phase == UI_CARD_SLOT_READY);
+
+	/* A card that takes the ID and leaves at once (libogc2: failed), then
+	 * answers Get Device ID with garbage while it makes a new card for over
+	 * 11 s: still the emulator, never read as a plain card mid-switch. */
+	reset(); setIdResult[0] = MMCE_RESULT_NOCARD;
+	CardSlots_RequestGame(&gameA);
+	present(0, false); run(800u); present(0, true);
+	emulator[0] = false;
+	run(15000u);
+	assert(inits[0] == 0u && slots[0].state.mmce && !CardSlots_ReadableFor(0, A));
+	assert(CardSlots_FailedFor(0, A));
+
+	/* A slot followed mid-switch that becomes a storage device (an SD adapter
+	 * mounted there): no longer followed, no more status reads or probes. */
+	reset(); status[0] = 0xFFu; cardInit[0] = CARD_ERROR_BROKEN;
+	CardSlots_RequestGame(&gameA);
+	run(300u); present(0, false); run(800u); present(0, true); run(1500u);
+	assert(slots[0].state.phase == UI_CARD_SLOT_LOADING);
+	{
+		static DEVICEHANDLER_INTERFACE adapter = { .location = LOC_MEMCARD_SLOT_A };
+		unsigned reads;
+
+		devices[DEVICE_CUR] = &adapter;
+		CardSlots_RequestGame(&gameB);
+		reads = statusReads[0] + inits[0];
+		run(5000u);
+		assert(statusReads[0] + inits[0] == reads && slots[0].state.phase == UI_CARD_SLOT_IDLE);
+		devices[DEVICE_CUR] = NULL;
+	}
+
+	puts("card slots glue: partial sends, kept and retried IDs, given up as FAILED and sent again when put back, a card that leaves at once, refresh on leaving the bus, plain cards, bounded probe, status-held mounts, stale ID reset; one request after another: a failed send then the previous game, a PRO swapped for a plain card, GameID turned off, a new ID after giving up, out at the last try, a garbage ID while loading, a slot turned storage PASS");
 	return 0;
 }
 '''

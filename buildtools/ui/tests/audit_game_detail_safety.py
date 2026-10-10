@@ -365,6 +365,12 @@ def check_card_slots(source: str) -> None:
     assert "return false;" in chosen[changed:chosen.index("}", changed) + 1]
     # The question box follows the slots while it is up, from a clean start.
     assert chosen.index("gameflowSlotsChanged = false;") < asked
+    # Not now after a box that saw a card change: Detail reads the cards again.
+    assert ("!gameflowLoadChosenSave(context)) {\n"
+            "\t\t\t/* Not now: the save stays as it was, and so does Detail, but for\n"
+            "\t\t\t * a card that changed while one of its boxes was up. */\n"
+            "\t\t\tif(gameflowSlotsChanged) context->savesScanned = false;\n"
+            "\t\t\tgameflowPublishDetail(config, context);") in detail
     box = definition("static bool gameflowSaveAsk(")
     assert box.index("if(CardSlots_Poll()) gameflowSlotsChanged = true;") < box.index("VIDEO_WaitVSync();")
     assert again < chosen.index("Saves_LoadCopy(")
@@ -392,7 +398,9 @@ for old, new in (
     ("\tif(CardSlots_Poll() || gameflowSlotsChanged) {", "\tif(false) {"),
     ("\tif(CardSlots_Poll() || gameflowSlotsChanged) {", "\tif(CardSlots_Poll()) {"),
     ("\t\tif(CardSlots_Poll()) gameflowSlotsChanged = true;\n", ""),
-    ("\tgameflowSlotsChanged = false;\n\tif(!gameflowSaveAsk(text)) {", "\tif(!gameflowSaveAsk(text)) {"),
+    ("\tgameflowSlotsChanged = false;\n\tif(!gameflowSaveChoosable(context) ||", "\tif(!gameflowSaveChoosable(context) ||"),
+    ("\t\t\tif(gameflowSlotsChanged) context->savesScanned = false;\n\t\t\tgameflowPublishDetail(config, context);",
+     "\t\t\tgameflowPublishDetail(config, context);"),
     ("\t\t\tif(context->savesCardFailed) context->saveStats.partial = true;", "\t\t\t(void)0;"),
 ):
     try:

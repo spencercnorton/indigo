@@ -1,3 +1,22 @@
+## 2026-10-10 — Card slots: the re-review of #121
+
+The re-review confirmed the four fixes and found that one of them overreached:
+the plain-card reset looked only at the fifth send. An emulator that answered
+on tries 1-4 and was out of the slot at the fifth, or one that took the ID,
+left at once and then answered Get Device ID with garbage while it made a new
+card for over 11 s, became a plain card: never sent the ID again when put
+back, or read mid-switch. The slot now remembers whether any send of the
+round reached an emulator (answered, cleared with sendTries) and becomes plain
+only when none did; otherwise it is given up on (FAILED) as before. A plain
+card swapped in never answers, so that case stays fixed.
+
+Two nits with it: Detail reads the cards again when a launch is refused (B,
+or "still changing") after a card changed while one of its boxes was up
+(gameflowSlotsChanged, now cleared at the top of gameflowLoadChosenSave),
+and a slot that becomes a storage device is reset like a GameID-off one, so
+nothing polls it any more. test_card_slots.py adds the three cases, each
+failing on 4e9abad; test_ui_card_slots has 305 checks.
+
 ## 2026-10-10 — Card slots: fixes from the review of #121
 
 An independent review of #121 (0421b74) found two majors and two minors, each

@@ -72,6 +72,7 @@ typedef struct {
 	bool seen;	/* present holds a reading */
 	uint64_t pendingAfterMs;	/* a failed send is tried again from then */
 	unsigned sendTries;	/* failed sends of the pending ID */
+	bool answered;	/* one of them reached an emulator (it said so) */
 	uint64_t sentMs;
 	uint64_t backMs;
 	uint64_t nextMs;

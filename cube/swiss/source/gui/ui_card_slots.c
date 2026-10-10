@@ -62,6 +62,7 @@ void UICardSlot_Sent(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LENGTH],
 	slot->deadlineMs = nowMs + UI_CARD_SLOT_DEADLINE_MS;
 	slot->tries = 0u;
 	slot->sendTries = 0u;
+	slot->answered = false;
 	slot->pendingAfterMs = 0u;
 	slot->unsent = false;
 }
@@ -72,6 +73,7 @@ void UICardSlot_NotSent(uiCardSlot_t *slot)
 	slot->phase = UI_CARD_SLOT_IDLE;
 	slot->hasPending = false;
 	slot->sendTries = 0u;
+	slot->answered = false;
 }
 
 void UICardSlot_SendFailed(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LENGTH],
@@ -83,10 +85,13 @@ void UICardSlot_SendFailed(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LEN
 		return;
 	}
 	slot->mmce = true;
+	slot->answered |= emulator;
 	slot->sendTries++;
 	/* Nothing in the slot answered as an emulator, five times over: what is
-	 * there now (a plain card put in its place, or none) is read as it is. */
-	if(slot->sendTries >= UI_CARD_SLOT_SEND_TRIES && !emulator) {
+	 * there now (a plain card put in its place, or none) is read as it is.
+	 * One that answered in between (out of the slot at the last try, or
+	 * loading with a garbage ID) is still the emulator: given up on below. */
+	if(slot->sendTries >= UI_CARD_SLOT_SEND_TRIES && !slot->answered) {
 		slot->mmce = false;
 		UICardSlot_NotSent(slot);
 		return;
@@ -97,6 +102,7 @@ void UICardSlot_SendFailed(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LEN
 		memcpy(slot->id, id, UI_CARD_SLOT_ID_LENGTH);
 		slot->hasPending = false;
 		slot->sendTries = 0u;
+		slot->answered = false;
 		slot->phase = UI_CARD_SLOT_FAILED;
 		slot->broken = false;
 		slot->unsent = true;

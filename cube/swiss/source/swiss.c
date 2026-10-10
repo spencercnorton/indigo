@@ -6566,6 +6566,7 @@ static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
 	bool ok, own = false;
 	unsigned i;
 
+	gameflowSlotsChanged = false;
 	if(!gameflowSaveChoosable(context) || context->saveChoice < 0 ||
 		(unsigned)context->saveChoice >= gameflowSaveCopies.count) {
 		return true;
@@ -6590,7 +6591,6 @@ static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
 		"Start with the save from %s?\n"
 		"It goes on the memory card in %s.\nA  LOAD    B  KEEP", gameflowSaveWhere(copy),
 		context->saveSlot == 0 ? "Slot A" : "Slot B");
-	gameflowSlotsChanged = false;
 	if(!gameflowSaveAsk(text)) {
 		context->saveChoice = -1;
 		return false;
@@ -6916,7 +6916,9 @@ static int gameflow_info_game(ConfigEntry *config,
 		if((action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||
 			action == UI_GAMEFLOW_DETAIL_ACTION_CLEAN_BOOT) &&
 			!gameflowLoadChosenSave(context)) {
-			/* Not now: the save stays as it was, and so does Detail. */
+			/* Not now: the save stays as it was, and so does Detail, but for
+			 * a card that changed while one of its boxes was up. */
+			if(gameflowSlotsChanged) context->savesScanned = false;
 			gameflowPublishDetail(config, context);
 		}
 		else if(action == UI_GAMEFLOW_DETAIL_ACTION_BOOT ||

@@ -237,6 +237,7 @@ void CardSlots_RequestGame(const DiskHeader *header)
 		/* Serial Port 2, or a slot used as a storage device: sent as before,
 		 * nothing there to read as a memory card. */
 		if(chan > EXI_CHANNEL_1 || slotInUse(chan)) {
+			if(chan <= EXI_CHANNEL_1) UICardSlot_Init(&slots[chan].state);
 			if(sendId(chan, disk, header->GameName) == SEND_OK) {
 				trace(chan, "%s sent (not followed)", name);
 				if(chan == EXI_CHANNEL_0) swissSettings.emulateMemoryCard = 0;

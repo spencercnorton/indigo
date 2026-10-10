@@ -459,16 +459,29 @@ static void checkSendFailed(void)
 	CHECK(!slot.hasPending && slot.phase == UI_CARD_SLOT_SENT && memcmp(slot.id, GAME_A, 6) == 0);
 	CHECK(!UICardSlot_WaitingFor(&slot, GAME_B));
 
-	/* An emulator once, then nothing that answers as one, five times over:
-	 * a plain card (or none) now, read as it is. */
+	/* A slot that held an emulator, then nothing that answers as one, five
+	 * times over (a plain card put in its place, or none): read as it is. */
+	UICardSlot_Init(&slot);
+	start(&slot, GAME_A, 0u);
+	slot.phase = UI_CARD_SLOT_READY;
+	CHECK(UICardSlot_Request(&slot, GAME_B));
+	UICardSlot_SendFailed(&slot, GAME_B, false, 5000u);
+	for(now = 6000u; slot.hasPending; now += 1000u) {
+		if(UICardSlot_TakePending(&slot, id, now)) UICardSlot_SendFailed(&slot, id, false, now);
+	}
+	CHECK(slot.phase == UI_CARD_SLOT_IDLE && !slot.mmce && UICardSlot_ReadableFor(&slot, GAME_B));
+	CHECK(!UICardSlot_FailedFor(&slot, GAME_B));
+	/* One that answered as an emulator in the round, then didn't (out of the
+	 * slot at the last try, or a garbage ID while it loads): still the
+	 * emulator, given up on, never read as a plain card mid-switch. */
 	UICardSlot_Init(&slot);
 	CHECK(UICardSlot_Request(&slot, GAME_A));
 	UICardSlot_SendFailed(&slot, GAME_A, true, 0u);
 	for(now = 1000u; slot.hasPending; now += 1000u) {
 		if(UICardSlot_TakePending(&slot, id, now)) UICardSlot_SendFailed(&slot, id, false, now);
 	}
-	CHECK(slot.phase == UI_CARD_SLOT_IDLE && !slot.mmce && UICardSlot_ReadableFor(&slot, GAME_A));
-	CHECK(!UICardSlot_FailedFor(&slot, GAME_A));
+	CHECK(slot.phase == UI_CARD_SLOT_FAILED && slot.mmce && UICardSlot_FailedFor(&slot, GAME_A));
+	CHECK(!UICardSlot_ReadableFor(&slot, GAME_A) && !slot.answered);
 
 	/* Nothing ever took an ID there: a failed send is a plain card's. */
 	UICardSlot_Init(&slot);
