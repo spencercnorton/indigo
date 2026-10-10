@@ -68,10 +68,10 @@ offered.
 </p>
 
 Launch the game with another copy shown and Indigo asks first. **A** puts
-that copy on the memory card in place of the card's own copy of the save:
-the card's own copy goes to the Save Folder first, the new one is read back
-from the card, and if anything goes wrong the card's own copy goes back and
-the game doesn't start. **B** leaves the card as it is and shows the totals
+that copy on the memory card: the card's own copy of the save, if it has
+one, goes to the Save Folder first, the new one is read back from the card,
+and if anything goes wrong the card's own copy goes back and the game
+doesn't start. **B** leaves the card as it is and shows the totals
 again. The copy goes on the card that holds the game's save, Slot A first;
 with no copy on a card, on the card in Slot A, or in Slot B when Slot A is
 empty.

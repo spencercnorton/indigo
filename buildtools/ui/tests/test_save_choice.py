@@ -39,7 +39,8 @@ typedef struct {
 static savesCopies_t gameflowSaveCopies;
 static bool answer = true;
 static int asks, loads;
-static bool gameflowSaveAsk(const char *text) { (void)text; ++asks; return answer; }
+static char asked[512];
+static bool gameflowSaveAsk(const char *text) { snprintf(asked, sizeof(asked), "%s", text); ++asks; return answer; }
 static uiDrawObj_t *DrawProgressBar(bool a, int b, const char *c) { (void)a; (void)b; (void)c; return NULL; }
 static uiDrawObj_t *DrawPublish(uiDrawObj_t *o) { return o; }
 static void DrawDispose(uiDrawObj_t *o) { (void)o; }
@@ -112,9 +113,10 @@ int main(void)
 	c.saveChoice = 1; answer = false;
 	assert(!gameflowLoadChosenSave(&c) && asks == 1 && loads == 0 && c.saveChoice == -1);
 	assert(gameflowLoadChosenSave(&c) && asks == 1 && loads == 0);
-	/* A puts it on the card. */
+	/* A puts it on the card, its own copy kept first, as the question says. */
 	c.saveChoice = 2; answer = true;
 	assert(gameflowLoadChosenSave(&c) && asks == 2 && loads == 1);
+	assert(strstr(asked, "Slot A's own copy of it goes to the Save Folder first."));
 
 	/* A card without the game's save: a copy goes onto it, and a choice can
 	 * always be undone (the totals are one of the steps). */
@@ -123,6 +125,10 @@ int main(void)
 	for(i = 0; i < 3; i++) press(&c, true);
 	assert(c.saveChoice == -1);
 	assert(gameflowLoadChosenSave(&c) && asks == 0 && loads == 0);
+	/* A copy chosen there: the question promises no own copy to keep. */
+	c.saveChoice = 0;
+	assert(gameflowLoadChosenSave(&c) && asks == 1 && loads == 1);
+	assert(!strstr(asked, "own copy") && strstr(asked, "It goes on the memory card in Slot A."));
 
 	/* Fewer than two copies: no choice. */
 	detail(&c, 0, true, SAVES_COPY_SLOT_A);
@@ -130,7 +136,7 @@ int main(void)
 	assert(!gameflowSaveChoosable(&c));
 	press(&c, true); assert(c.saveChoice == -1);
 
-	puts("save choice: none without a card or with Emulate Memory Card on, each copy then the totals, B keeps the card's PASS");
+	puts("save choice: none without a card or with Emulate Memory Card on, each copy then the totals, B keeps the card's, the question as the card is PASS");
 	return 0;
 }
 '''

@@ -6528,7 +6528,8 @@ static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
 	char why[256];
 	char text[512];
 	uiDrawObj_t *box;
-	bool ok;
+	bool ok, own = false;
+	unsigned i;
 
 	if(!gameflowSaveChoosable(context) || context->saveChoice < 0 ||
 		(unsigned)context->saveChoice >= gameflowSaveCopies.count) {
@@ -6538,9 +6539,15 @@ static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
 	if(copy->source == (savesCopySource_t)context->saveSlot) {
 		return true;
 	}
-	snprintf(text, sizeof(text), "Start with the save from %s?\n"
-		"%s's own copy of it goes to the Save Folder first.\n"
-		"A  LOAD    B  KEEP", gameflowSaveWhere(copy),
+	/* The card's own copies are never dropped from the list, so none there
+	 * means the card has none to keep. */
+	for(i = 0u; i < gameflowSaveCopies.count; i++) {
+		own |= gameflowSaveCopies.copy[i].source == (savesCopySource_t)context->saveSlot;
+	}
+	snprintf(text, sizeof(text), own ? "Start with the save from %s?\n"
+		"%s's own copy of it goes to the Save Folder first.\nA  LOAD    B  KEEP" :
+		"Start with the save from %s?\n"
+		"It goes on the memory card in %s.\nA  LOAD    B  KEEP", gameflowSaveWhere(copy),
 		context->saveSlot == 0 ? "Slot A" : "Slot B");
 	if(!gameflowSaveAsk(text)) {
 		context->saveChoice = -1;
