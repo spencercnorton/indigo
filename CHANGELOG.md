@@ -176,6 +176,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Starting a damaged disc image no longer crashes Indigo. One whose file
+  table counts more entries than it holds, or names a file outside it, sent
+  the launch reading far past the table; the Library already listed such
+  images safely. The launch now reads no further than the table reaches,
+  and so does a disc in the drive opened as a folder.
 - Keep both, copying or moving a file onto FlippyDrive Flash where one of
   that name already is, no longer stops the console.
 - A copy or a move onto the same file, reached through a folder spelled in
@@ -206,6 +211,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- Every walk of a disc's file table in `gcm.c` goes through two checks,
+  `fst_entries` and `fst_name`; the `fst` fuzzer runs them with
+  `get_fst_details`, `adjust_tgc_fst` and `calc_fst_entries_size`. The game
+  route launches the disc with a runaway file table on its way to the
+  probe: it fails like any launch there and comes back to the Library.
 - `test_save_choice.py` runs Game Detail's save choice from `swiss.c` itself:
   no choice without a card or with Emulate Memory Card on, each copy then
   the totals, and B keeping the card's copy. `test_saves_stats.py` holds the

@@ -71,16 +71,32 @@ char *get_fst(file_handle *file, u32 file_offset, u32 file_size) {
 	return FST;
 }
 
+// The FST's entry count, or 0 when its entries don't fit in it: a damaged or
+// header-only image can declare any count, for an FST of any size. Every walk
+// of an FST goes no further than this.
+static u32 fst_entries(const char *FST, u32 fst_size) {
+	u32 entries;
+	if(!FST || fst_size < FST_ENTRY_SIZE) return 0;
+	entries = *(const u32*)&FST[8];
+	return entries <= fst_size / FST_ENTRY_SIZE ? entries : 0;
+}
+
+// Entry i's name, or NULL when it doesn't start and end inside the string table
+static const char *fst_name(const char *FST, u32 fst_size, u32 entries, u32 i) {
+	u32 string_table_offset = FST_ENTRY_SIZE*entries;
+	u32 filename_offset = (u32)(u8)FST[i*FST_ENTRY_SIZE+1] << 16 |
+		(u32)(u8)FST[i*FST_ENTRY_SIZE+2] << 8 | (u8)FST[i*FST_ENTRY_SIZE+3];
+	if(filename_offset >= fst_size - string_table_offset ||
+	   !memchr(&FST[string_table_offset+filename_offset], 0, fst_size - string_table_offset - filename_offset))
+		return NULL;
+	return &FST[string_table_offset+filename_offset];
+}
+
 // Populate the file_offset and file_size for searchFileName from the GCM FST
 void get_fst_details(char *FST, u32 fst_size, char *searchFileName, u32 *file_offset, u32 *file_size) {
-	u32 filename_offset, entries, string_table_offset, offset, i;
+	u32 entries = fst_entries(FST, fst_size), offset, i;
+	const char *name;
 	*file_offset = -1;
-	// number of entries and string table location, both inside the FST: a
-	// damaged or header-only image can declare an FST of any size
-	if(fst_size < 12) return;
-	entries = *(unsigned int*)&FST[8];
-	if(entries > fst_size / 12) return;
-	string_table_offset=12*entries; 
     
 	// go through every entry
 	for (i=1;i<entries;i++) 
@@ -88,12 +104,7 @@ void get_fst_details(char *FST, u32 fst_size, char *searchFileName, u32 *file_of
 		offset=i*0x0c; 
 		if(FST[offset]==0) //skip directories
 		{ 
-			filename_offset=(unsigned int)FST[offset+1]*256*256+(unsigned int)FST[offset+2]*256+(unsigned int)FST[offset+3]; 
-			// the name must start and end inside the string table
-			if(filename_offset >= fst_size - string_table_offset ||
-			   !memchr(&FST[string_table_offset+filename_offset], 0, fst_size - string_table_offset - filename_offset))
-				continue;
-			if(!strcasecmp(&FST[string_table_offset+filename_offset],searchFileName))
+			if((name = fst_name(FST, fst_size, entries, i)) && !strcasecmp(name,searchFileName))
 			{
 				memcpy(file_offset,&FST[offset+4],4);
 				memcpy(file_size,&FST[offset+8],4);
@@ -302,20 +313,20 @@ int parse_gcm(file_handle *file, file_handle *file2, ExecutableFile *filesToPatc
 	char *FST = get_fst(file, diskHeader->FSTOffset, diskHeader->FSTSize);
 	if(!FST) return 0;
 
-	u32 entries=*(unsigned int*)&FST[8];
-	u32 string_table_offset=FST_ENTRY_SIZE*entries;
+	u32 fst_size=diskHeader->FSTSize;
+	u32 entries=fst_entries(FST, fst_size);
+	const char *name;
 		
 	int i;
 	// go through every entry
 	for (i=1;i<entries;i++) 
 	{ 
 		u32 offset=i*0x0c; 
-		if(FST[offset]==0) //skip directories
-		{ 
+		if(FST[offset]==0 && (name = fst_name(FST, fst_size, entries, i))) //skip directories, and names outside the FST
+		{
 			u32 file_offset,size = 0;
-			u32 filename_offset=((*(unsigned int*)&FST[offset]) & 0x00FFFFFF); 
 			memset(&filename[0],0,256);
-			memcpy(&filename[0],&FST[string_table_offset+filename_offset],255); 
+			strlcpy(filename, name, sizeof(filename));
 			memcpy(&file_offset,&FST[offset+4],4);
 			memcpy(&size,&FST[offset+8],4);
 			if(endsWith(filename,".dol")) {
@@ -399,8 +410,8 @@ int parse_gcm(file_handle *file, file_handle *file2, ExecutableFile *filesToPatc
 }
 
 // Adjust TGC FST entries in case we load a DOL from one directly
-void adjust_tgc_fst(char* FST, u32 tgc_base, u32 fileAreaStart, u32 fakeAmount) {
-	u32 entries=*(unsigned int*)&FST[8];
+void adjust_tgc_fst(char* FST, u32 fst_size, u32 tgc_base, u32 fileAreaStart, u32 fakeAmount) {
+	u32 entries=fst_entries(FST, fst_size);
 		
 	int i;
 	// go through every entry
@@ -457,23 +468,25 @@ int parse_tgc(file_handle *file, ExecutableFile *filesToPatch, u32 tgc_base, cha
 	// Alloc and read FST
 	char *FST = get_fst(file, tgc_base + tgcHeader.fstStart, tgcHeader.fstLength);
 
+	if(!FST) return numFiles;
+	u32 fst_size=tgcHeader.fstLength;
+
 	// Adjust TGC FST offsets
-	adjust_tgc_fst(FST, tgc_base, tgcHeader.userStart, tgcHeader.gcmUserStart);
-	
-	u32 entries=*(unsigned int*)&FST[8];
-	u32 string_table_offset=FST_ENTRY_SIZE*entries;
+	adjust_tgc_fst(FST, fst_size, tgc_base, tgcHeader.userStart, tgcHeader.gcmUserStart);
+
+	u32 entries=fst_entries(FST, fst_size);
+	const char *name;
 		
 	int i;
 	// go through every entry
 	for (i=1;i<entries;i++) 
 	{ 
 		u32 offset=i*0x0c; 
-		if(FST[offset]==0) //skip directories
-		{ 
+		if(FST[offset]==0 && (name = fst_name(FST, fst_size, entries, i))) //skip directories, and names outside the FST
+		{
 			u32 file_offset,size = 0;
-			u32 filename_offset=((*(unsigned int*)&FST[offset]) & 0x00FFFFFF); 
 			memset(&filename[0],0,256);
-			memcpy(&filename[0],&FST[string_table_offset+filename_offset],255); 
+			strlcpy(filename, name, sizeof(filename));
 			memcpy(&file_offset,&FST[offset+4],4);
 			memcpy(&size,&FST[offset+8],4);
 			if(endsWith(filename,".dol")) {
@@ -745,10 +758,10 @@ fail:
 	return num_patched;
 }
 
-u64 calc_fst_entries_size(char *FST) {
+u64 calc_fst_entries_size(char *FST, u32 fst_size) {
 	
 	u64 totalSize = 0LL;
-	u32 entries=*(unsigned int*)&FST[8];
+	u32 entries=fst_entries(FST, fst_size);
 	int i;
 	for (i=1;i<entries;i++)	// go through every entry
 	{ 
@@ -774,7 +787,7 @@ int read_fst(file_handle *file, file_handle** dir, u64 *usedSpace) {
 	if(!FST) return -1;
 	
 	// Get the space taken up by this disc
-	if(usedSpace) *usedSpace = calc_fst_entries_size(FST);
+	if(usedSpace) *usedSpace = calc_fst_entries_size(FST, diskHeader->FSTSize);
 	
 	if(isRoot) {
 		// Add the disc itself as a "file"
@@ -789,17 +802,17 @@ int read_fst(file_handle *file, file_handle** dir, u64 *usedSpace) {
 		idx++;
 	}
 	
-	u32 entries=*(unsigned int*)&FST[8];
-	u32 string_table_offset=FST_ENTRY_SIZE*entries;
-		
+	u32 entries=fst_entries(FST, diskHeader->FSTSize);
+	const char *name;
+
 	int i;
-	// Go through the FST and find our DIR (or ROOT)
+	// Go through the FST and find our DIR (or ROOT), no further than the FST reaches
 	int parent_dir_offset = (u32)file->fileBase;
-	int dir_end_offset = isRoot ? *(u32*)&FST[8] : 0;
-	
-	u32 filename_offset=((*(u32*)&FST[parent_dir_offset*0x0C]) & 0x00FFFFFF); 
-	concat_path(filename, file->name, &FST[string_table_offset+filename_offset]);
-	dir_end_offset = *(u32*)&FST[(parent_dir_offset*0x0C) + 8];
+	int dir_end_offset = 0;
+	if((u32)parent_dir_offset < entries) {
+		u32 dir_end = *(u32*)&FST[(parent_dir_offset*0x0C) + 8];
+		dir_end_offset = dir_end < entries ? dir_end : entries;
+	}
 	
 	if(!isRoot) {
 		// Add a special ".." dir which will take us back up a dir
@@ -821,8 +834,10 @@ int read_fst(file_handle *file, file_handle** dir, u64 *usedSpace) {
 		
 		u32 offset=i*0x0c;
 		u32 file_offset,size = 0;
-		u32 filename_offset=((*(unsigned int*)&FST[offset]) & 0x00FFFFFF); 
-		concat_path(filename, file->name, &FST[string_table_offset+filename_offset]);
+		// A name outside the FST, or below a folder that ends before it starts: the
+		// rest of the FST can't be trusted
+		if(!(name = fst_name(FST, diskHeader->FSTSize, entries, i))) break;
+		concat_path(filename, file->name, name);
 		memcpy(&file_offset,&FST[offset+4],4);
 		memcpy(&size,&FST[offset+8],4);
 		
@@ -844,6 +859,7 @@ int read_fst(file_handle *file, file_handle** dir, u64 *usedSpace) {
 				(*dir)[idx].device = file->device;
 				idx++;
 				// Skip the entries that sit in this dir
+				if(size <= (u32)i) break;
 				i = size-1;
 			}
 		}

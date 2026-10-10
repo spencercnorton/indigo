@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Write fuzz_fst.c: get_fst_details from gcm.c, the file-table lookup the
-Library runs for every disc image it lists (to find the game's banner),
+"""Write fuzz_fst.c: from gcm.c, the two checks every file-table walk goes
+through (fst_entries, fst_name), get_fst_details (the lookup the Library runs
+for every disc image it lists, to find the game's banner), adjust_tgc_fst and
+calc_fst_entries_size (a launch from a TGC, a disc opened as a folder),
 compiled for the host with a libFuzzer entry point, so the fuzzer runs
 exactly the code the console does.
 
@@ -23,7 +25,10 @@ PRELUDE = r"""
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+typedef uint8_t u8;
 typedef uint32_t u32;
+typedef uint64_t u64;
+#define FST_ENTRY_SIZE 12
 """
 
 ENTRY = r"""
@@ -40,9 +45,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	memcpy(fst, data, size);
 	get_fst_details(fst, (u32)size, "opening.bnr", &offset, &length);
 	get_fst_details(fst, (u32)size, "claire.rel", &offset, &length);
+	(void)calc_fst_entries_size(fst, (u32)size);
+	adjust_tgc_fst(fst, (u32)size, 0x10000u, 0x8000u, 0x2000u);
 	free(fst);
 	return 0;
 }
 """
 
-Path(sys.argv[1]).write_text(PRELUDE + extract_function(GCM_C, "void get_fst_details(") + "\n" + ENTRY)
+FUNCTIONS = ("static u32 fst_entries(", "static const char *fst_name(", "void get_fst_details(",
+             "u64 calc_fst_entries_size(", "void adjust_tgc_fst(")
+Path(sys.argv[1]).write_text(PRELUDE + "\n".join(extract_function(GCM_C, f) for f in FUNCTIONS) + "\n" + ENTRY)

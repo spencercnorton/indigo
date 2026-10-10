@@ -1,3 +1,38 @@
+## 2026-10-10 — A damaged disc image can no longer crash a launch
+
+An hour-long soak of 2.4 (seeded random presses in the emulator) started CI's
+"Corrupt Table" disc, whose file table counts 0x0AAAAAAA entries, and Indigo
+stopped on the exception screen: memcpy in parse_gcm, which took the count and
+each name's offset from the table as they came, so the string table landed
+0x80000004 bytes past it (DAR 0x00A48098). #14 had bounded get_fst_details for
+the Library and left the launch path as upstream wrote it; upstream r2119 and
+2.3.0 crash the same way.
+
+Every walk of a file table now goes through two checks in gcm.c: fst_entries
+(the count, or 0 when its entries don't fit in the table) and fst_name (a name
+that starts and ends inside the string table, or NULL). get_fst_details,
+parse_gcm, parse_tgc (which also used a table it couldn't read), adjust_tgc_fst
+(it takes the table's size now, gcm.h and its two callers in swiss.c too) and
+the DVD drive's read_fst and calc_fst_entries_size use them; read_fst also
+stops at a folder that ends before it starts, which looped. A damaged table is
+walked no further than it reaches, so the launch goes on with the apploader and
+main DOL, as for any image.
+
+Tests: the fst fuzzer runs fst_entries, fst_name, get_fst_details,
+adjust_tgc_fst and calc_fst_entries_size; the game route launches Corrupt
+Table on its way to the probe, which fails like any launch in the emulator (no
+BS2) and comes back to the Library. The same step against update/2.4 at
+ee8c596 ends on the exception screen. Broken Header, the header-only dump,
+doesn't open its details at all (A does nothing, as before), so the route
+leaves it alone.
+
+The rest of the soak, on the 2.4 review's fixes: five seeds of an hour each
+(two with non-default settings) ran without a fault; every console reset
+followed a Restart, an app or a game launch. The harness had to learn the
+probe's report, Restart's question and the IPv4 keypad, each of which its
+first crash test took for the exception screen: a real one is white text on
+black and nothing else.
+
 ## 2026-10-09 — Three data-safety fixes from an independent review
 
 An independent review of PR 119 (87039d9) found three paths that delete or

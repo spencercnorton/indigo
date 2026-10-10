@@ -1387,7 +1387,9 @@ class Route:
     def game(self) -> None:
         """Boot, open the Library, move to the probe's game, open its details
         and launch it. The probe must see the game's own disc ID and the
-        24 MB a game is promised."""
+        24 MB a game is promised. On the way, the image whose file table runs
+        away is launched too: it fails like any other launch here and comes
+        back to the Library (starting it used to crash Indigo)."""
         home = self.boot()
         self.press("A")
         opened = self.covered(home)
@@ -1395,9 +1397,13 @@ class Route:
         self.check("A opens the Library", opened)
         title, _ = self.settled_label(box=TITLE_BOX)
         self.check("the Library shows a game's title", title is not None)
-        for n in range(card.library_order(True).index(card.PROBE_GAME[1])):
+        order = card.library_order(True)
+        runaway = next(name for _, name, image in card.DAMAGED if image is card.runaway_table)
+        for n in range(order.index(card.PROBE_GAME[1])):
             title, _ = self.press_until("RIGHT", unlike=title, box=TITLE_BOX)
             self.check("RIGHT moves to the next game", title is not None, step=n + 1)
+            if order[n + 1] == runaway:
+                self.launch_fails_cleanly(title)
         self.shot("library-probe", self.last_rgb)
         self.press("A")
         self.check("A opens the game's details", self.covered(title, TITLE_BOX))

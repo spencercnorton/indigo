@@ -4695,11 +4695,11 @@ void load_app(ExecutableFile *fileToPatch)
 				goto fail_early;
 			}
 			if(fileToPatch->file->device == &__device_dvd) {
-				adjust_tgc_fst((void*)fstAddr, fileToPatch->file->fileBase + fileToPatch->tgcBase, fileToPatch->tgcFileStartArea, fileToPatch->tgcFakeOffset);
+				adjust_tgc_fst((void*)fstAddr, fileToPatch->fstSize, fileToPatch->file->fileBase + fileToPatch->tgcBase, fileToPatch->tgcFileStartArea, fileToPatch->tgcFakeOffset);
 				*(vu32*)VAR_TGC_OFFSET = fileToPatch->file->fileBase + fileToPatch->tgcBase;
 			}
 			else {
-				adjust_tgc_fst((void*)fstAddr, fileToPatch->tgcBase, fileToPatch->tgcFileStartArea, fileToPatch->tgcFakeOffset);
+				adjust_tgc_fst((void*)fstAddr, fileToPatch->fstSize, fileToPatch->tgcBase, fileToPatch->tgcFileStartArea, fileToPatch->tgcFakeOffset);
 				*(vu32*)VAR_TGC_OFFSET = fileToPatch->tgcBase;
 			}
 			
