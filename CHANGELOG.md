@@ -219,6 +219,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
+- Stable publication of the MemCard PRO switching/save changes requires a
+  recorded real-card pass for the current source and pinned library image.
+  Lab checks allow candidate testing; they cannot clear the hardware hold.
+- The launch-test probe fits its full barcode inside a 240-line framebuffer.
+  Its old fixed-height grid ran past that buffer and could make a successful
+  launch appear frozen in a long test.
 - Every walk of a disc's file table in `gcm.c` goes through two checks,
   `fst_entries` and `fst_name`; the `fst` fuzzer runs them with
   `get_fst_details`, `adjust_tgc_fst` and `calc_fst_entries_size`. The game

@@ -1189,13 +1189,13 @@ class Screen(unittest.TestCase):
         self.assertEqual(run.diagnose(indigo), "")
 
     @staticmethod
-    def probe_screen(words) -> np.ndarray:
-        """The probe's screen as probe.c draws it into a 640x480 framebuffer."""
-        rgb = np.zeros((480, 640, 3), np.uint8)
+    def probe_screen(words, height=480, cell_height=16) -> np.ndarray:
+        """The probe's bit words in the actual XFB, before capture scaling."""
+        rgb = np.zeros((height, 640, 3), np.uint8)
         rgb[88:] = (0, 128, 255)
         for row, word in enumerate(words):
             for bit in range(32):
-                rgb[112 + row * 16:128 + row * 16, 64 + bit * 16:80 + bit * 16] = \
+                rgb[112 + row * cell_height:112 + (row + 1) * cell_height, 64 + bit * 16:80 + bit * 16] = \
                     235 if word >> (31 - bit) & 1 else 16
         return rgb
 
@@ -1219,6 +1219,14 @@ class Screen(unittest.TestCase):
         squashed = np.zeros_like(screen)
         squashed[40:440, 29:611] = np.asarray(Image.fromarray(screen).resize((582, 400), Image.NEAREST))
         self.assertEqual(run.probe_report(squashed)["disc_id"], "GPRE01")
+        # A 240p game patched the probe into a 240-line XFB. Its previous
+        # fixed-height drawing clipped the report (and overran that XFB).
+        low = self.probe_screen(words, height=240, cell_height=5)
+        for image in [low, np.asarray(Image.fromarray(low).resize((640, 480), Image.NEAREST))]:
+            self.assertTrue(run.probe_report(image)["valid"])
+            self.assertEqual(run.probe_report(image)["disc_id"], "GPRE01")
+        clipped = run.probe_report(self.probe_screen(words, height=240))
+        self.assertFalse(clipped and clipped["valid"], "a cropped report cannot stand in for a valid CRC")
         words[4] ^= 1
         self.assertFalse(run.probe_report(self.probe_screen(words))["valid"], "a misread fails its CRC")
         self.assertIsNone(run.probe_report(np.full((480, 640, 3), (35, 25, 60), np.uint8)))

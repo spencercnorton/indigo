@@ -1,3 +1,19 @@
+## 2026-10-11 — Real-card release qualification and the 240p probe
+
+The MemCard PRO changes remain in the test candidate, with their real-card
+qualification pending. Stable publication now requires the recorded physical
+card/firmware/setup, evidence and five switching/save checks, tied to both
+the tested revision and the current switching source. Beta/RC testing is
+allowed. Lab and ordinary-card console passes cannot clear that hold.
+
+The final soak's seed501 reached its probe game, but reported a frozen screen:
+the probe's fixed 16-line barcode rows extended beyond a 240-line framebuffer.
+The captured picture showed the running probe with its report cropped, and
+the probe ELF mapped the sampled PC to its normal idle thread. Its grid now
+fits the actual framebuffer height and width, preserving the full480-line
+layout. Guarded host draws cover 15 framebuffer sizes including 240 lines.
+The failed run stays as evidence; it must be rerun with the corrected probe.
+
 ## 2026-10-11 — The combined 2.4 candidate for the final console check
 
 The maintainer validated build 182, 5805ea2. The 2.4 branch now also includes

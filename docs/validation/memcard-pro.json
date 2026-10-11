@@ -1,0 +1,16 @@
+{
+  "status": "pending",
+  "environment": null,
+  "source_fingerprint": null,
+  "tested_revision": null,
+  "hardware": null,
+  "evidence": null,
+  "results": {
+    "existing_card_updates": false,
+    "new_card_finishes": false,
+    "rapid_gameid_switches": false,
+    "save_choice_waits": false,
+    "card_change_cancels_choice": false
+  },
+  "note": "The final switching implementation has lab and host-test coverage, but no confirmed real MemCard PRO GC pass. It may be tested in a candidate; stable publication remains held."
+}

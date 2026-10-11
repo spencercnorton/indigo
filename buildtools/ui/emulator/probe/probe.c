@@ -117,9 +117,7 @@ static u32 stray_writes(void)
 #define AZURE 0x69CB693F
 #define WHITE 0xEB80EB80
 #define BLACK 0x10801080
-#define CELL 16
-#define STRIP_X 64
-#define STRIP_Y 112
+#include "probe_grid.h"
 
 static void fill(u32 *xfb, int stride, int x, int y, int w, int h, u32 colour)
 {
@@ -170,9 +168,15 @@ int main(int argc, char **argv)
 	       word[W_STRAY], word[W_ARENA_LO], word[W_ARENA_HI], word[W_TOP]);
 	printf(" VI %04X %08X  argc %u %.16s\n", word[W_VI_DCR], word[W_VI_CLK_DTV], word[W_ARGC], path);
 	fill(xfb, stride, 0, 88, mode->fbWidth, mode->xfbHeight - 88, AZURE);
+	probeGrid_t grid;
+	if(!ProbeGrid_Layout(mode->fbWidth, mode->xfbHeight, W_COUNT, &grid)) {
+		uart("probe: framebuffer too small for report\r");
+		return 1;
+	}
 	for (int w = 0; w < W_COUNT; w++)
 		for (int b = 0; b < 32; b++)
-			fill(xfb, stride, STRIP_X + b * CELL, STRIP_Y + w * CELL, CELL, CELL,
+			fill(xfb, stride, grid.x + b * grid.cell_width, grid.y + w * grid.cell_height,
+			     grid.cell_width, grid.cell_height,
 			     word[w] >> (31 - b) & 1 ? WHITE : BLACK);
 	uart("probe: reported\r");
 

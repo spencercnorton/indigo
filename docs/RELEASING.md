@@ -45,6 +45,19 @@ to the code needs another candidate.
 
 ## A release
 
+The new MemCard PRO switching/save implementation remains a test-candidate
+feature until it has a confirmed real-card pass. Ordinary-card console tests
+and emulator runs do not qualify it. Before promoting a version containing
+it to `main`, review the hardware report and update
+`docs/validation/memcard-pro.json`: actual tested revision, card firmware and
+console/loader setup, evidence link, and all five switching/save checks.
+`buildtools/ci/check_memcard_qualification.py --fingerprint` records the
+covered source. The stable release workflow checks both that fingerprint and
+the tested revision's source against the release's implementation. Missing,
+pending, emulator-only or stale qualification holds stable publication;
+betas and release candidates remain available for testing. If hardware
+confirmation is unavailable, leave this change out of the stable version.
+
 1. On `beta`, by pull request: rename `## Unreleased` to
    `## vX.Y.Z — <what this release is about>`, and make sure the README and
    the guide describe what ships.
