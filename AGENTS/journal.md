@@ -1,3 +1,24 @@
+## 2026-10-11 — The combined 2.4 candidate for the final console check
+
+The maintainer validated build 182, 5805ea2. The 2.4 branch now also includes
+the fixes from the full review, the damaged-disc launch fix and #121's
+memory-card switching work (8e4da9a). The card-slot change passed its twenty
+CI checks and its final independent review before it was integrated.
+
+For a MemCard PRO, Detail waits for the game's virtual card to settle before
+reading its saves. The latest GameID waits through a switch, a failed send
+is retried, and loading or failure stays visible even with fewer than two
+copies. Choosing a save cannot write while the card is changing; a card
+change during the launch question cancels that choice and refreshes the list.
+The earlier save-write cleanup is bound to the card mount that received it.
+
+Final validation is a CI build of the exact candidate and five hour-long
+soaks: default and non-default ordinary-card runs, then MemCard PRO runs
+with a normal switch, a temporarily invalid device ID and an immediate
+detach. The resulting production zip still needs a console regression
+check. Confirmation from a real MemCard PRO remains pending; the lab model
+has exercised those switching behaviours.
+
 ## 2026-10-10 — Card slots: a request starts its own round of sends
 
 Final review of #121: a request made during another game's round of failed
