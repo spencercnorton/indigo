@@ -10,6 +10,12 @@ no Swiss screen. The guide gains "GC Loader, at power-on" as its default for
 GC Loader; "from Swiss" stays. No Indigo `boot.iso` is shipped: GC Loader can't
 boot one in more than 40 pieces, and new copies on macOS 27 often are.
 
+## 2026-10-12 — Carry released guide clarifications into beta
+
+Backport the reviewed wording for app images, reserved cheat space, folder
+depth and supported Library layouts. Keep the beta’s product code, media and
+release process unchanged.
+
 ## 2026-10-05 — Install in four steps, copying two files
 
 The install guide now asks what starts the GameCube and gives four steps per
