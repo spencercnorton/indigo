@@ -48,8 +48,9 @@ The disc drive is called **Game Disc**.
 
 ## What the Library face opens
 
-If the device has a `/games` folder holding only games, the Library face
-opens the poster [Library](library.md). Otherwise it opens Swiss's file list
+Use a `/games` layout described in the [Library guide](library.md) to open
+the poster Library. Indigo skips unrelated files in that folder. For other layouts, Indigo
+opens Swiss's file list
 of the device, where you can browse folders and open games, homebrew
 programs (`.dol`, `.elf`) and MP3s:
 
