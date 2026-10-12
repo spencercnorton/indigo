@@ -1605,9 +1605,10 @@ static const char *cardWhy(s32 error)
 
 /* Writes a save to the card in slot and reads it back. The driver creates
  * it from entry (game, maker, name, banner and icon places) and writes
- * blocks, the save's data. */
-static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
-	u32 blockBytes, char *why, size_t whySize)
+ * blocks, the save's data. When boundMount is non-NULL, the write is bound
+ * to that mount generation. */
+static bool cardWriteBound(int slot, const u8 *entry, const u8 *blocks,
+	u32 blockBytes, const u32 *boundMount, char *why, size_t whySize)
 {
 	DEVICEHANDLER_INTERFACE *device = slotDevice(slot);
 	file_handle dest;
@@ -1636,6 +1637,11 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 	 * out or changed since (a memory card emulator switching) is mounted
 	 * again, and its save of the same name isn't this write's. */
 	mount = card_mount_count(slot);
+	if(boundMount != NULL && mount != *boundMount) {
+		snprintf(why, whySize, "The card in %s changed, so nothing was written.",
+			slotName(slot));
+		return false;
+	}
 	/* The driver would write over a save of the same name in place, whatever
 	 * its size, so one already there stops the copy. */
 	has = cardFind(slot, entry, &entries, &count, &used) != NULL;
@@ -1660,6 +1666,12 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 		snprintf(why, whySize, "%s has %d free block%s; this needs %u.",
 			slotName(slot), total > used ? total - used : 0,
 			total - used == 1 ? "" : "s", UISaves_Blocks(entry));
+		return false;
+	}
+	if((boundMount != NULL && card_mount_count(slot) != *boundMount) ||
+		card_mount_count(slot) != mount) {
+		snprintf(why, whySize, "The card in %s changed, so nothing was written.",
+			slotName(slot));
 		return false;
 	}
 	concatf_path(dest.name, device->initial->name, "%.*s", CARD_FILENAMELEN,
@@ -1704,6 +1716,12 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 	}
 	free(entries);
 	return same;
+}
+
+static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
+	u32 blockBytes, char *why, size_t whySize)
+{
+	return cardWriteBound(slot, entry, blocks, blockBytes, NULL, why, whySize);
 }
 
 /* Writes data to a new file named name in folder (on the settings device),
@@ -1780,7 +1798,15 @@ static bool cardReplace(int slot, const u8 *entry, const u8 *blocks,
 	int count, used;
 	u8 *now;
 	u32 nowLength = 0;
+	u32 mount;
 	bool readAgain, same, gone;
+
+	if(device->init(device->initial) != 0) {
+		snprintf(why, whySize, "%s has no memory card.", slotName(slot));
+		return false;
+	}
+	places[slot].mounted = true;
+	mount = card_mount_count(slot);
 
 	if(own != NULL) {
 		/* Only the copy just kept in the Save Folder goes: a card swapped
@@ -1794,9 +1820,9 @@ static bool cardReplace(int slot, const u8 *entry, const u8 *blocks,
 			!memcmp(now + UI_SAVES_ENTRY_SIZE, own + UI_SAVES_ENTRY_SIZE,
 				ownLength - UI_SAVES_ENTRY_SIZE);
 		free(now);
-		gone = same && device->deleteFile(found) == 0;
+		gone = same && card_mount_count(slot) == mount && device->deleteFile(found) == 0;
 		free(entries);
-		if(!same) {
+		if(!same || card_mount_count(slot) != mount) {
 			snprintf(why, whySize, readAgain ?
 				"The card in %s changed, so nothing was replaced." :
 				"%s's own copy couldn't be read again.", slotName(slot));
@@ -1808,14 +1834,15 @@ static bool cardReplace(int slot, const u8 *entry, const u8 *blocks,
 			return false;
 		}
 	}
-	if(cardWrite(slot, entry, blocks, blockBytes, failed, sizeof(failed))) {
+	if(cardWriteBound(slot, entry, blocks, blockBytes, &mount, failed, sizeof(failed))) {
 		return true;
 	}
 	if(own == NULL) {
 		snprintf(why, whySize, "%s", failed);
 	}
-	else if(cardWrite(slot, own, own + UI_SAVES_ENTRY_SIZE,
-		ownLength - UI_SAVES_ENTRY_SIZE, why, whySize)) {
+	else if(card_mount_count(slot) == mount && cardWriteBound(slot, own,
+		own + UI_SAVES_ENTRY_SIZE, ownLength - UI_SAVES_ENTRY_SIZE, &mount,
+		why, whySize)) {
 		snprintf(why, whySize, "%s\n%s's own copy went back.", failed,
 			slotName(slot));
 	}

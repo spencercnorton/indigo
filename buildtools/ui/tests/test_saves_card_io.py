@@ -133,10 +133,20 @@ static bool failWrite, failReadBack, wrongReadIdentity;
  * on, Slot B holds another card whose save has the same game, maker and
  * name ('S'), mounted afresh. */
 static bool changeOnWrite, changeOnRead;
+static bool changeToEmptyOnWrite, changeToEmptyOnRead, changeToEmptyOnInit, armChangeOnDelete;
+static int changeToEmptyReadsSkip;
 static u32 mountCount[2];
 static u32 card_mount_count(int slot) { return mountCount[slot]; }
 static void changeCard(int slot, int i) {
     memset(cards[slot][i].bytes, 'S', 8192); mountCount[slot]++;
+}
+static void changeToEmptyCard(int slot) {
+    memset(cards[slot], 0, sizeof(cards[slot])); mountCount[slot]++;
+}
+static int saveOn(int slot, const char *game) {
+    for(int i = 0; i < 8; i++)
+        if(cards[slot][i].live && !memcmp(cards[slot][i].dir.gamecode, game, 4)) return i;
+    return -1;
 }
 static int failWritesLeft, failReadBacksLeft;
 /* Reads that read back true before failReadBacksLeft starts: cardReplace
@@ -187,6 +197,10 @@ static s32 CARD_Create(int slot, const char *name, u32 length, card_file *file) 
 static s32 CARD_Read(card_file *file, void *buffer, u32 length, u32 at) {
     assert(at == 0 && length == 8192);
     if(changeOnRead) { changeOnRead = false; changeCard(file->chn, file->filenum); }
+    if(changeToEmptyOnRead) {
+        if(changeToEmptyReadsSkip > 0) { changeToEmptyReadsSkip--; }
+        else { changeToEmptyOnRead = false; changeToEmptyCard(file->chn); }
+    }
     memcpy(buffer, cards[file->chn][file->filenum].bytes, length);
     if(readBackFails()) ((u8 *)buffer)[0] ^= 1;
     return CARD_ERROR_READY;
@@ -198,6 +212,7 @@ static s32 CARD_Write(card_file *file, const void *buffer, u32 length, u32 at) {
     writes++; assert(at == 0 && length == 8192);
     memcpy(cards[file->chn][file->filenum].bytes, buffer, length);
     if(changeOnWrite) { changeOnWrite = false; changeCard(file->chn, file->filenum); }
+    if(changeToEmptyOnWrite) { changeToEmptyOnWrite = false; changeToEmptyCard(file->chn); }
     return failWrite || (failWritesLeft > 0 && failWritesLeft--) ?
         CARD_ERROR_FATAL_ERROR : CARD_ERROR_READY;
 }
@@ -217,10 +232,23 @@ static s32 CARD_Close(card_file *file) { (void)file; return 0; }
 static s32 CARD_Delete(int slot, const char *name) {
     int i = lookup(slot, name);
     if(i < 0) return CARD_ERROR_NOFILE;
+    if(armChangeOnDelete && !strncmp(name, "same-name", 32) &&
+       !memcmp(cards[slot][i].dir.gamecode, "GZLE", 4)) {
+        changeToEmptyOnInit = true;
+        armChangeOnDelete = false;
+    }
     cards[slot][i].live = false; deletes++; return 0;
 }
 static bool findFile(file_handle *file) { (void)file; assert(false); return false; }
-static s32 mounted(file_handle *file) { (void)file; mounts++; return 0; }
+static s32 mounted(file_handle *file) {
+    mounts++;
+    if(changeToEmptyOnInit) {
+        changeToEmptyOnInit = false;
+        int slot = file == &initial_CARDB;
+        changeToEmptyCard(slot);
+    }
+    return 0;
+}
 static device_info *info(file_handle *file) {
     static device_info room = { 64u * 8192u }; (void)file; return &room;
 }
@@ -266,7 +294,10 @@ static void add(int slot, int i, const char *game, const char *maker, u8 byte) {
 static void reset(void) {
     memset(cards, 0, sizeof(cards)); writes = deletes = mounts = 0;
     failWrite = failReadBack = wrongReadIdentity = false;
-    changeOnWrite = changeOnRead = false; mountCount[0] = mountCount[1] = 0;
+    changeOnWrite = changeOnRead = false;
+    changeToEmptyOnWrite = changeToEmptyOnRead = changeToEmptyOnInit = armChangeOnDelete = false;
+    changeToEmptyReadsSkip = 0;
+    mountCount[0] = mountCount[1] = 0;
     failWritesLeft = failReadBacksLeft = failReadBacksSkip = 0;
     devices[0] = (DEVICEHANDLER_INTERFACE){ &initial_CARDA, mounted, info,
         readDir, deviceHandler_CARD_readFile, deviceHandler_CARD_writeFile,
@@ -330,7 +361,6 @@ static void copyCases(const char *game, const char *maker) {
 /* The card changed during a failed write or during the read-back: the
  * same-named save on the card there now isn't this write's, so it stays
  * (review finding: cardWrite deleted it). */
-static int saveOn(int slot, const char *game);
 static void changedCardCases(void) {
     for(int when = 0; when < 2; when++) {
         reset(); add(0, 0, "GALP", "01", 'P');
@@ -373,11 +403,6 @@ static void wildcardCases(void) {
 }
 /* Detail's load before a launch: the card's own copy of the game's save
  * ('O') gives way to the chosen one ('N'), and comes back if that fails. */
-static int saveOn(int slot, const char *game) {
-    for(int i = 0; i < 8; i++)
-        if(cards[slot][i].live && !memcmp(cards[slot][i].dir.gamecode, game, 4)) return i;
-    return -1;
-}
 static void replaceCases(void) {
     for(int failure = 0; failure < 5; failure++) {
         reset(); add(1, 0, "GALE", "01", 'E'); add(1, 1, "GZLE", "01", 'O');
@@ -430,7 +455,84 @@ static void replaceCases(void) {
     verifySurvivor(1, 'E');
     free(ownData);
 }
+static void replaceEmptyCases(void) {
+    /* 1. Boundary injection on first write: card swapped to EMPTY card */
+    reset(); add(1, 0, "GALE", "01", 'E'); add(1, 1, "GZLE", "01", 'O');
+    file_handle own; handle(&own, 1, 1);
+    u32 ownLength = 0; u8 *ownData = saveRead(&own, &ownLength);
+    assert(ownData != NULL && ownLength == 8256);
+    ownData[0x38] = 0; ownData[0x39] = 1;
+    u8 entry[64], blocks[8192]; char why[256] = "";
+    memcpy(entry, ownData, 64); memset(blocks, 'N', sizeof(blocks));
+    changeToEmptyOnWrite = true; failWritesLeft = 1;
+    int writesBefore = writes;
+    assert(!cardReplace(1, entry, blocks, sizeof(blocks), ownData, ownLength, why, sizeof(why)));
+    assert(writes - writesBefore == 1);
+    assert(saveOn(1, "GZLE") < 0);
+    assert(strstr(why, "Save Folder") != NULL);
+    assert(strstr(why, "went back") == NULL);
+    free(ownData);
+
+    /* 2. Boundary injection on readback: card swapped to EMPTY card */
+    reset(); add(1, 0, "GALE", "01", 'E'); add(1, 1, "GZLE", "01", 'O');
+    handle(&own, 1, 1);
+    ownLength = 0; ownData = saveRead(&own, &ownLength);
+    assert(ownData != NULL && ownLength == 8256);
+    ownData[0x38] = 0; ownData[0x39] = 1;
+    memcpy(entry, ownData, 64); memset(blocks, 'N', sizeof(blocks));
+    changeToEmptyOnRead = true; changeToEmptyReadsSkip = 1; failWritesLeft = 0;
+    writesBefore = writes;
+    assert(!cardReplace(1, entry, blocks, sizeof(blocks), ownData, ownLength, why, sizeof(why)));
+    assert(writes - writesBefore == 1);
+    assert(saveOn(1, "GZLE") < 0);
+    assert(strstr(why, "Save Folder") != NULL);
+    assert(strstr(why, "went back") == NULL);
+    free(ownData);
+
+    /* 3. Card remounted to EMPTY during device init before first write */
+    reset(); add(1, 0, "GALE", "01", 'E'); add(1, 1, "GZLE", "01", 'O');
+    handle(&own, 1, 1);
+    ownLength = 0; ownData = saveRead(&own, &ownLength);
+    assert(ownData != NULL && ownLength == 8256);
+    ownData[0x38] = 0; ownData[0x39] = 1;
+    memcpy(entry, ownData, 64); memset(blocks, 'N', sizeof(blocks));
+    armChangeOnDelete = true;
+    writesBefore = writes;
+    assert(!cardReplace(1, entry, blocks, sizeof(blocks), ownData, ownLength, why, sizeof(why)));
+    assert(writes == writesBefore);
+    assert(saveOn(1, "GZLE") < 0);
+    assert(strstr(why, "Save Folder") != NULL);
+    assert(strstr(why, "went back") == NULL);
+    free(ownData);
+
+    /* 4. Card remounted to EMPTY on initial device init before own deletion */
+    reset(); add(1, 0, "GALE", "01", 'E'); add(1, 1, "GZLE", "01", 'O');
+    handle(&own, 1, 1);
+    ownLength = 0; ownData = saveRead(&own, &ownLength);
+    assert(ownData != NULL && ownLength == 8256);
+    ownData[0x38] = 0; ownData[0x39] = 1;
+    memcpy(entry, ownData, 64); memset(blocks, 'N', sizeof(blocks));
+    changeToEmptyOnInit = true;
+    writesBefore = writes;
+    assert(!cardReplace(1, entry, blocks, sizeof(blocks), ownData, ownLength, why, sizeof(why)));
+    assert(writes == writesBefore);
+    assert(saveOn(1, "GZLE") < 0);
+    assert(strstr(why, "changed") != NULL);
+    assert(strstr(why, "nothing was replaced") != NULL);
+    assert(strstr(why, "went back") == NULL);
+    free(ownData);
+
+    /* 5. cardWriteBound directly rejects mismatched expected generation */
+    reset();
+    u32 expected = 0;
+    mountCount[1] = 1;
+    writesBefore = writes;
+    assert(!cardWriteBound(1, entry, blocks, sizeof(blocks), &expected, why, sizeof(why)));
+    assert(writes == writesBefore);
+    assert(strstr(why, "changed") != NULL);
+}
 int main(void) {
+    replaceEmptyCases();
     replaceCases();
     readErase("GALP", "01"); readErase("GALE", "02");
     readErase("\0ABC", "\0D");
@@ -479,7 +581,8 @@ static bool SavesRaw_ReadGci(file_handle *image, const uiSavesRawCard_t *card,
         for marker in ("static savesPlace_t *rawSource(", "static bool readSaveAt("):
             pieces.append(extract_function(saves, marker))
     for marker in ("static u8 *saveRead(", "static file_handle *cardFind(",
-                   "static const char *cardWhy(", "static bool cardWrite(",
+                   "static const char *cardWhy(", "static bool cardWriteBound(",
+                   "static bool cardWrite(",
                    "static bool cardReplace("):
         pieces.append(extract_function(saves, marker))
     return "\n".join(pieces + [MAIN])

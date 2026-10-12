@@ -1,3 +1,32 @@
+## 2026-10-12 — Save replacement bound to card mount generation
+
+A falsifiable host probe reproduced a vulnerability in Game Details' save
+replacement (`cardReplace` in `cube/swiss/source/gui/saves.c`): when writing
+or reading back a chosen save fails after a card swap to an empty replacement
+card, the fallback restoration called `cardWrite` without binding the write
+to the original observed mount generation. `cardWrite` treated the replacement
+card's generation as fresh, wrote the original save onto the replacement
+card, and claimed the original went back. Existing tests missed this by
+populating replacement cards with a same-name survivor ('S'), which masked the
+bug via filename collision.
+
+`cardReplace` now captures the target card's mount generation at operation
+start, validates it across the initial `saveRead`, deletion, the chosen save's
+write, and any fallback restoration. If the mount generation changes at any
+boundary, the replacement operation aborts without writing or deleting on the
+substituted card, leaving the original copy safely in the Save Folder and
+truthfully reporting that status. `cardWriteBound` enforces this generation
+binding after implicit driver initialization and immediately before file
+creation, while preserving unbound ordinary copies (`cardWrite`), collision
+checks, and generation 0 handling.
+
+Host tests in `test_saves_card_io.py` now include permanent empty-replacement
+regression cases across first-write, readback, and pre-write remount boundaries,
+alongside the same-card restoration controls and same-name survivor tests. The
+structural audit (`audit_saves_safety.py`) audits `cardWriteBound` and adds
+mutant coverage verifying that unbound restoration or unverified deletion is
+rejected.
+
 ## 2026-10-12 — General console acceptance, doc reconciliation and the stable hold
 
 Spencer tested the installed 2.4 final candidate (commit 80921f9, product head

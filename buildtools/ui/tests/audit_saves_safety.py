@@ -74,7 +74,7 @@ def ordered(text: str, *needles: str) -> None:
 
 def check(source: str) -> None:
     transfer = function(source, "saveTransfer")
-    card = function(source, "cardWrite")
+    card = function(source, "cardWriteBound")
     folder = function(source, "folderWrite")
     read = function(source, "saveRead")
 
@@ -98,7 +98,9 @@ def check(source: str) -> None:
             "if(!same)", "device->deleteFile(copy)", "return same;")
     # Both clean-ups delete only on the card this write mounted: one taken
     # out or changed since is mounted again (card_mount_count).
-    ordered(card, "mount = card_mount_count(slot);", "device->writeFile(",
+    ordered(card, "mount = card_mount_count(slot);",
+            "if(boundMount != NULL && mount != *boundMount) {", "return false;",
+            "device->writeFile(",
             "card_mount_count(slot) == mount) {\n\t\t\tdevice->deleteFile(copy);",
             "saveRead(copy, &backLength)", "if(card_mount_count(slot) != mount) {",
             "if(!same)")
@@ -310,11 +312,11 @@ def check(source: str) -> None:
     replace = function(source, "cardReplace")
     ordered(replace, "now = found != NULL ? saveRead(found, &nowLength) : NULL;",
             "same = now != NULL && nowLength == ownLength",
-            "gone = same && device->deleteFile(found) == 0;",
-            "if(!same) {", "return false;",
+            "gone = same && card_mount_count(slot) == mount && device->deleteFile(found) == 0;",
+            "if(!same || card_mount_count(slot) != mount) {", "return false;",
             "if(!gone) {", "return false;",
-            "if(cardWrite(slot, entry, blocks, blockBytes, failed, sizeof(failed))) {",
-            "else if(cardWrite(slot, own, own + UI_SAVES_ENTRY_SIZE,")
+            "if(cardWriteBound(slot, entry, blocks, blockBytes, &mount, failed, sizeof(failed))) {",
+            "else if(card_mount_count(slot) == mount && cardWriteBound(slot, own,\n\t\town + UI_SAVES_ENTRY_SIZE,")
 
 
 def mutants(source: str) -> list[tuple[str, str]]:
@@ -323,11 +325,17 @@ def mutants(source: str) -> list[tuple[str, str]]:
          source.replace("if(own == NULL ||\n\t\t\t\tfolderWrite(folder, name, own, ownLength, why, whySize)) {",
                         "if(true) {")),
         ("Detail's load deletes a card's save it didn't keep",
-         source.replace("gone = same && device->deleteFile(found) == 0;",
+         source.replace("gone = same && card_mount_count(slot) == mount && device->deleteFile(found) == 0;",
                         "gone = found != NULL && device->deleteFile(found) == 0;")),
         ("Detail's load never puts the card's own copy back",
-         source.replace("else if(cardWrite(slot, own, own + UI_SAVES_ENTRY_SIZE,",
-                        "else if(false && cardWrite(slot, own, own + UI_SAVES_ENTRY_SIZE,")),
+         source.replace("else if(card_mount_count(slot) == mount && cardWriteBound(slot, own,\n\t\town + UI_SAVES_ENTRY_SIZE,",
+                        "else if(false && cardWriteBound(slot, own,\n\t\town + UI_SAVES_ENTRY_SIZE,")),
+        ("Detail's load puts the card's own copy back on a card changed since",
+         source.replace("else if(card_mount_count(slot) == mount && cardWriteBound(slot, own,\n\t\town + UI_SAVES_ENTRY_SIZE,",
+                        "else if(cardWriteBound(slot, own,\n\t\town + UI_SAVES_ENTRY_SIZE,")),
+        ("a bound card write ignores generation mismatch",
+         source.replace("if(boundMount != NULL && mount != *boundMount) {",
+                        "if(false) {")),
         ("a Move deletes without a good copy",
          source.replace("if(ok && move && !saveDelete(save))",
                         "if(move && !saveDelete(save))")),

@@ -6,6 +6,7 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ## Unreleased
 
+- Game details: bind save replacement to the card's mount generation, so a write or read-back failure after a card swap never writes the original save to a replacement card.
 - Clarify image filename matching, cheat memory limits and Library folder/source instructions.
 
 ### New
