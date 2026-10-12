@@ -48,17 +48,13 @@ The disc drive is called **Game Disc**.
 
 ## What the Library face opens
 
-If the device has a `/games` folder holding only games, the Library face
-opens the poster [Library](library.md). Otherwise it opens the
-[File Browser](system.md#file-browser) at `/games`, or at the top of the
-device when there is no `/games`, where you
-can browse folders and open games, homebrew programs (`.dol`, `.elf`) and
-MP3s:
-
-- **A** opens a file or folder, and **X** goes up a folder.
-- With **File Management** on (Settings › Setup › Library), **Z** on a file
-  offers to copy, move, rename, hide or delete it. Copy and Move put it in
-  the folder open in the other pane (see [File Browser](system.md#file-browser)).
+Use a `/games` layout described in the [Library guide](library.md) to open
+the poster Library. Indigo skips unrelated files in that folder. For other
+layouts, Indigo opens the [File Browser](system.md#file-browser) at `/games`,
+or at the top of the device when there is no `/games`, where you can browse
+folders and open games, homebrew programs (`.dol`, `.elf`) and MP3s (see
+[File Browser](system.md#file-browser) for controls, pane navigation and file
+actions).
 
 While an MP3 plays, Left rewinds and Right goes forward. Rewinding near the
 start returns to the start of the same track. B stops playback.

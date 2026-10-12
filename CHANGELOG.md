@@ -6,6 +6,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ## Unreleased
 
+- Clarify image filename matching, cheat memory limits and Library folder/source instructions.
+
 ### New
 
 - Choose the menu on each side of the Home cube: Settings › Setup › Console

@@ -1,3 +1,27 @@
+## 2026-10-12 — General console acceptance, doc reconciliation and the stable hold
+
+Spencer tested the installed 2.4 final candidate (commit 80921f9, product head
+8e4da9a) on a physical GameCube: "worked really well. nothing broke or has issues."
+General maintainer physical-console acceptance is recorded. MemCard PRO GC switching
+was not tested.
+
+Automated candidate verification is complete: CI passed, twenty CI jobs run twice
+(40 check instances), reproducible build confirmed, five 60-minute soak runs (seeds
+501, 502, 601, 602, 603) passed with modeled card reads settled and zero early payload
+reads, eleven trace regression cases, and three boot harness regressions passed. In
+docs/validation/memcard-pro.json, status remains pending, tested_revision remains null,
+and all five result checks remain false. In local coordination tracking state,
+stable_release_allowed remains false and hardware_qualification_required remains true.
+Stable release publication stays blocked until matching-source real-card evidence is
+verified.
+
+Starting from 54ea1b6, a documentation-only merge of beta PR #124 (commit da3f1f9)
+reconciles docs/guide/source.md by pointing to the centralized File Browser controls
+link (linking system.md#file-browser) rather than duplicating control bullets, while
+retaining beta's clarified /games layout guidance. Native code under cube/swiss is
+byte-identical across 80921f9 and the 54ea baseline, sharing qualification
+fingerprint 0f09e5436b64c641fbb86b5260dba12fa7db971becde99027a7a15d7618e06e3.
+
 ## 2026-10-11 — Real-card release qualification and the 240p probe
 
 The MemCard PRO changes remain in the test candidate, with their real-card
@@ -1273,6 +1297,12 @@ and the v2.3.1-rc.2 `ipl.dol` as `/boot.dol` started straight into Indigo with
 no Swiss screen. The guide gains "GC Loader, at power-on" as its default for
 GC Loader; "from Swiss" stays. No Indigo `boot.iso` is shipped: GC Loader can't
 boot one in more than 40 pieces, and new copies on macOS 27 often are.
+
+## 2026-10-12 — Carry released guide clarifications into beta
+
+Backport the reviewed wording for app images, reserved cheat space, folder
+depth and supported Library layouts. Keep the beta’s product code, media and
+release process unchanged.
 
 ## 2026-10-05 — Install in four steps, copying two files
 

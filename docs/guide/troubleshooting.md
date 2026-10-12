@@ -116,9 +116,9 @@ Leaving with **Discard & Exit** throws away the changes you made.
 - **The cheats don't apply:** cheats apply when you open the cheat browser
   before starting the game. To have them apply every time, turn on
   **Auto-load cheats** in Settings › Quick.
-- **"Not enough room. Turn off another cheat first.":** the cheats that are on
-  have filled the space for cheats. Switch some off; Z in the browser shows
-  how much is used.
+- **"Not enough room. Turn off another cheat first.":** the active cheats have
+  filled the reserved cheat space. Turn some off; press Z in the cheat browser
+  to see how much is used.
 
 ## Indigo starts, then stock Swiss appears
 

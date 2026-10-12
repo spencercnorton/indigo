@@ -142,9 +142,10 @@ Settings › Setup › Library › Recent List is on.
   as a network share, use Source › Refresh Library.
 - **An app is missing.** It is named `boot.dol` or `boot.elf`, it is hidden,
   its name starts with a dot, or it is two folders deep.
-- **An app has no picture.** The PNG must have the program's name (`gbi.png`
-  for `gbi.dol`, in any case) or be its folder's `icon.png`, be no larger than
-  2048 pixels a side and 2 MB, and not be interlaced.
+- **An app has no picture.** The PNG must match the program’s name (for
+  example, `gbi.png` for `gbi.dol`; capitalization does not matter) or be
+  named `icon.png` in the program’s folder. It must be no larger than 2048
+  pixels per side and 2 MB, and must not be interlaced.
 
 ---
 
