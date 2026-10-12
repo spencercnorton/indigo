@@ -4,6 +4,13 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## Unreleased
+
+### Documentation
+
+- Clarify app image filenames, reserved cheat space, folder display and
+  supported Library source layouts.
+
 ## v2.3.0 — Memory Cards, game folders and smoother motion
 
 ### New
