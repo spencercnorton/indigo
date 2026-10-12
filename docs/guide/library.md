@@ -143,9 +143,9 @@ Mario Sunshine and a **Zelda** folder.
   `/games`, each returns directly to Home; opening Library again keeps
   the current game or folder. Returning from the parent card starts at
   the first game or folder on your next visit.
-- Folders go two levels deep. A folder in a folder is the last level: it
-  shows every game below it, in folders of its own or not, so Zelda above
-  shows both The Wind Waker and Ocarina of Time.
+- Folders can be nested two levels deep. At the second level, Indigo shows all
+  games below that folder together, including games in deeper subfolders. In
+  the example above, Zelda shows both The Wind Waker and Ocarina of Time.
 - A folder named like a game, `Title [GAMEID]`, is a game, not a folder of
   games: it shows as that game, as it does in `/games`.
 - Keep a game's discs in the same folder. Indigo looks for the other disc
