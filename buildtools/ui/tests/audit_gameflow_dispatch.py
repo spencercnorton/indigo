@@ -237,6 +237,7 @@ assert "file->device->closeFile(file);" in snapshot_record
 assert "memcpy(record->gameId, headerEntry.gameId" in snapshot_record
 assert "sizeof(headerEntry.gameId)" in snapshot_record
 assert "record->gameId[sizeof(record->gameId) - 1u] = '\\0';" in snapshot_record
+assert "memcpy(file->meta->diskId.gamename, headerEntry.gameId, 4u);" in snapshot_record
 
 
 # Library Layout: each layout's window, presses and stick; Y opens a game's

@@ -32,6 +32,31 @@ and this tree have the same fingerprint (81e082a4…), recorded with the
 reporter's evidence in `docs/validation/memcard-pro.json`. Keep the
 `test/mcp-card-slots` branch: the stable release check reads its source.
 
+## 2026-10-13 — Soak warm-boot VI reset and metadata pool fixes
+
+Five-way 60-minute soak runs (`final936-e1/e2/m1/m2/m3`) and a code audit of the
+2.4 candidate surfaced a warm-boot hang and four metadata path inefficiencies:
+
+- Warm-booting `ipl.dol` via `boot_dol()` after running in 480p or 576p left the
+  active progressive VI timing (`vireg[1]` format/non-interlace bits and
+  `vireg[54]` progressive clock) in hardware registers across `DOLtoARAM()`. On
+  the next startup (`vmode == NULL && !swissSettings.cubebootInvoked`),
+  `libogc2`'s `VIDEO_Init()` observed stale progressive/PAL timing bits,
+  preventing `VIDEO_Configure()` from arming the display interrupt and hanging
+  in `VIDEO_WaitForFlush()` (`s006` in `final936-m1`). `getVideoMode()` and
+  `updateVideoMode()` now clear `vireg[1]` and `vireg[54]` before `VIDEO_Init()`
+  when `vmode == NULL && !swissSettings.cubebootInvoked`, and `setVideoMode()`
+  skips `GX_AbortFrame()` before `GX_Init()`, while keeping `unsetVideoMode()`
+  untouched so `probe.dol` handoff telemetry still observes the menu's VI mode.
+- `filemeta.c` now frees evicted `file_meta` blocks back to `meta_mspace` via
+  `mspace_free(meta_mspace, meta)`, breaks out of `meta_alloc()`'s eviction
+  loop if an entire pass over `dirEntryCount` cannot evict any off-screen entry,
+  caches resolved `.tgc` inner `dvddiskid` headers on `file->meta->diskId`, and
+  fast-paths 7-bit ASCII banner descriptions in `iconvBannerDesc()`.
+
+A launch while a MemCard PRO is switching stays as the real-card test build ran
+it (2026-10-15).
+
 ## 2026-10-12 — Emulated card mounts gated on known sane status
 
 Modeled MemCard PRO traces revealed that during 30-second virtual card creation,

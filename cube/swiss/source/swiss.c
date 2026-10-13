@@ -3291,6 +3291,12 @@ static void gameflowSnapshotRecord(uiGameflowCardSnapshot_t *record,
 			memcpy(record->gameId, headerEntry.gameId,
 				sizeof(headerEntry.gameId));
 			record->gameId[sizeof(record->gameId) - 1u] = '\0';
+			if(file->meta != NULL) {
+				memcpy(file->meta->diskId.gamename, headerEntry.gameId, 4u);
+				memcpy(file->meta->diskId.company, &headerEntry.gameId[4], 2u);
+				file->meta->diskId.disknum = headerEntry.discNumber;
+				file->meta->diskId.gamever = headerEntry.version;
+			}
 		}
 	}
 	if(!record->title[0]) {
