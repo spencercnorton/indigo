@@ -1,3 +1,23 @@
+## 2026-10-12 — Emulated card mounts gated on known sane status
+
+Modeled MemCard PRO traces revealed that during 30-second virtual card creation,
+the memory card returns busy status byte 0xFF. An obsolete retry fallback in
+`cube/swiss/source/gui/card_slots.c` previously stopped treating 0xFF as loading
+after several deferred reads and initiated card mounting,
+emitting premature EXI bus payload commands (`0x89`, `0x81`, `0x52`) while the
+card was still creating the target image.
+
+Card mounting for identified emulators (`slot->state.mmce`) is now strictly gated
+on known sane status (`!slot->statusKnown || !slot->statusSane` holds back the mount).
+Known sane status (including 0x00 and 0x41) permits a mount attempt; successful
+mounting establishes READY. Persistent busy or unsupported status yields a bounded
+failure at the existing 60-second FSM deadline (`UI_CARD_SLOT_FAILED`) without
+blind mounting, and retries if the card is reinserted with sane
+status. Host glue tests in `test_card_slots.py` verify 30-second creation
+holds, sane status 0x00 and 0x41 mounting, failed status read recovery, and 60-second
+bounded failure with reinsertion recovery. Physical MemCard PRO hardware
+qualification remains pending (`docs/validation/memcard-pro.json` status pending).
+
 ## 2026-10-12 — Save replacement bound to card mount generation
 
 A falsifiable host probe reproduced a vulnerability in Game Details' save

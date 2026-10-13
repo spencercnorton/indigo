@@ -76,7 +76,7 @@ static void print_debug(const char *format, ...) { (void)format; }
 /* The slot: its presence line, and how it answers. */
 static u32 fakeCsr[3];
 #define CARD_SLOTS_EXI_CSR(chan) (fakeCsr[chan])
-static bool emulator[2], busyForever[2];
+static bool emulator[2], busyForever[2], statusFail[2];
 static s32 setIdResult[2], setInfoResult[2], cardProbe[2], cardInit[2];
 static u8 status[2];
 static unsigned setIdCalls[2], inits[2], resets, statusReads[2];
@@ -99,7 +99,7 @@ static s32 cardDeinitStub(file_handle *f) { (void)f; return 0; }
 static int locked;
 static s32 EXI_Lock(s32 chan, s32 dev, void *cb) { (void)chan; (void)dev; (void)cb; if(locked) return 0; locked = 1; return 1; }
 static s32 EXI_Select(s32 chan, s32 dev, s32 speed) { (void)dev; (void)speed; return (fakeCsr[chan] & 0x1000u) != 0; }
-static s32 EXI_ImmEx(s32 chan, void *data, u32 length, u32 mode) { if(mode == EXI_READ && length == 1u) { *(u8 *)data = status[chan]; statusReads[chan]++; } return 1; }
+static s32 EXI_ImmEx(s32 chan, void *data, u32 length, u32 mode) { if(statusFail[chan]) return 0; if(mode == EXI_READ && length == 1u) { *(u8 *)data = status[chan]; statusReads[chan]++; } return 1; }
 static s32 EXI_Deselect(s32 chan) { (void)chan; return 1; }
 static s32 EXI_Unlock(s32 chan) { (void)chan; locked = 0; return 1; }
 static void EXI_ProbeReset(void) { resets++; }
@@ -120,7 +120,7 @@ static void reset(void)
 	swissSettings.disableMCPGameID = 0;
 	resets = 0u;
 	for(int i = 0; i < 2; i++) {
-		emulator[i] = false; busyForever[i] = false;
+		emulator[i] = false; busyForever[i] = false; statusFail[i] = false;
 		setIdResult[i] = setInfoResult[i] = MMCE_RESULT_READY;
 		cardProbe[i] = CARD_ERROR_READY; cardInit[i] = CARD_ERROR_READY;
 		status[i] = 0x41u; present(i, i == 0);
@@ -272,16 +272,55 @@ int main(void)
 	}
 	assert(slots[0].state.phase == UI_CARD_SLOT_IDLE && !slots[0].state.mmce);
 
-	/* Status 0xFF while loading holds the mount back; turning sane mounts at
-	 * once. */
+	/* Status 0xFF during 30s virtual card creation holds the mount back;
+	 * turning sane mounts at once without premature bus traffic. */
 	reset(); status[0] = 0xFFu;
 	CardSlots_RequestGame(&gameA);
 	run(300u); present(0, false); run(800u); present(0, true);
-	run(2500u);
+	run(30000u);
 	assert(inits[0] == 0u && statusReads[0] > 0u);
 	status[0] = 0x41u;
 	run(300u);
 	assert(inits[0] == 1u && slots[0].state.phase == UI_CARD_SLOT_READY);
+
+	/* Status read failure (EXI error or unknown status) while loading holds
+	 * the mount back; once valid status is read, it recovers and mounts. */
+	reset(); statusFail[0] = true;
+	CardSlots_RequestGame(&gameA);
+	run(300u); present(0, false); run(800u); present(0, true);
+	run(5000u);
+	assert(inits[0] == 0u);
+	statusFail[0] = false; status[0] = 0xFFu;
+	run(5000u);
+	assert(inits[0] == 0u && statusReads[0] > 0u);
+	status[0] = 0x41u;
+	run(300u);
+	assert(inits[0] == 1u && slots[0].state.phase == UI_CARD_SLOT_READY);
+
+	/* Sane unlocked status 0x00: recognized as sane, mounts immediately
+	 * without delay or false busy hold. */
+	reset(); status[0] = 0x00u;
+	CardSlots_RequestGame(&gameA);
+	run(300u); present(0, false); run(800u); present(0, true);
+	run(1500u);
+	assert(inits[0] == 1u && slots[0].state.phase == UI_CARD_SLOT_READY);
+
+	/* Unsupported status (0xFF forever) never mounts blindly; it times out
+	 * boundedly at the 60s FSM deadline into FAILED. Taken out and put back
+	 * with sane status, it recovers and mounts. */
+	reset(); status[0] = 0xFFu;
+	CardSlots_RequestGame(&gameA);
+	run(300u); present(0, false); run(800u); present(0, true);
+	run(65000u);
+	assert(inits[0] == 0u && slots[0].state.phase == UI_CARD_SLOT_FAILED);
+	assert(CardSlots_FailedFor(0, A));
+	present(0, false);
+	run(500u);
+	status[0] = 0x41u;
+	present(0, true);
+	run(2000u);
+	assert(inits[0] == 1u && slots[0].state.phase == UI_CARD_SLOT_READY);
+	assert(CardSlots_ReadableFor(0, A));
 
 	/* A stale card ID (CARD says another device) is reset, then read. */
 	reset(); cardProbe[0] = CARD_ERROR_WRONGDEVICE;
@@ -450,7 +489,7 @@ int main(void)
 	run(15000u);
 	assert(!slots[0].state.mmce && CardSlots_ReadableFor(0, B) && !CardSlots_FailedFor(0, B));
 
-	puts("card slots glue: partial sends, kept and retried IDs, given up as FAILED and sent again when put back, a card that leaves at once, refresh on leaving the bus, plain cards, bounded probe, status-held mounts, stale ID reset; one request after another: a failed send then the previous game, a PRO swapped for a plain card, GameID turned off, a new ID after giving up, out at the last try, a garbage ID while loading, a slot turned storage, a new request's own round PASS");
+	puts("card slots glue: partial sends, kept and retried IDs, given up as FAILED and sent again when put back, a card that leaves at once, refresh on leaving the bus, plain cards, bounded probe, status-held mounts, sane 0x00 and recovery, stale ID reset; one request after another: a failed send then the previous game, a PRO swapped for a plain card, GameID turned off, a new ID after giving up, out at the last try, a garbage ID while loading, a slot turned storage, a new request's own round PASS");
 	return 0;
 }
 '''

@@ -19,10 +19,6 @@
 #define CARD_SLOTS_PROBE_MS 600u
 /* While a card loads, its status byte is looked at this often. */
 #define CARD_SLOTS_STATUS_MS 250u
-/* A card whose status says it is still loading isn't mounted on the retries
- * (a mount is 80 reads); from this many tries (about 4 s after it came back)
- * it is, in case its status byte says nothing useful. */
-#define CARD_SLOTS_STATUS_TRIES 3u
 
 typedef struct {
 	uiCardSlot_t state;
@@ -294,8 +290,8 @@ bool CardSlots_Poll(void)
 		}
 		if(UICardSlot_ReadDue(&slot->state, now)) {
 			bool reset = false;
-			bool loading = slot->statusKnown && !slot->statusSane &&
-				slot->state.tries < CARD_SLOTS_STATUS_TRIES;
+			bool loading = slot->state.mmce &&
+				(!slot->statusKnown || !slot->statusSane);
 
 			if(loading) (void)UICardSlot_Read(&slot->state, UI_CARD_READ_BUSY, now, &reset);
 			else {

@@ -7,6 +7,7 @@ tag on `beta`. The newest changes are at the top until their release is named.
 ## Unreleased
 
 - Game details: bind save replacement to the card's mount generation, so a write or read-back failure after a card swap never writes the original save to a replacement card.
+- Memory cards: keep waiting while an emulated card is creating its virtual card, and report a failure if its status remains unconfirmed for 60 seconds. Real MemCard PRO testing remains pending.
 - Clarify image filename matching, cheat memory limits and Library folder/source instructions.
 
 ### New

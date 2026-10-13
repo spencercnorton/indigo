@@ -47,7 +47,8 @@ With a memory card that changes to each game's own card, such as a MemCard
 PRO GC, the box also shows while that card loads, however many copies there
 are: **Memory card loading**, then the saves once it is ready. A card that
 never finishes says **Memory card didn't load**, or **Partial scan** under
-two or more copies.
+two or more copies. If the card's status remains unconfirmed for a minute,
+Indigo stops waiting. Remove and reinsert the card to try again.
 
 A game with one save copy shows no Saves box. Copying a save from a RAW
 image into the Save Folder makes a second copy, and opening the game's
