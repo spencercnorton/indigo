@@ -60,6 +60,7 @@
 #include "gui/ui_gameflow_detail.h"
 #include "gui/saves_stats.h"
 #include "gui/ui_gameflow_library.h"
+#include "gui/ui_cheats.h"
 #include "gui/ui_folder.h"
 #include "gui/ui_gameflow_ownership.h"
 #include "gui/ui_gameflow_resolver.h"
@@ -561,6 +562,43 @@ static void filesUp(const file_handle *parent)
 	needsRefresh = 1;
 }
 
+static char homeSessionLibraryRoot[PATHNAME_MAX];
+
+static bool gameflowCustomRootForDevice(const DEVICEHANDLER_INTERFACE *device,
+	const char *customPath, char *gamesRoot)
+{
+	size_t prefixLength;
+
+	if(device == NULL || device->initial == NULL ||
+		customPath == NULL || customPath[0] == '\0') {
+		return false;
+	}
+	prefixLength = strlen(device->initial->name);
+	if(prefixLength == 0u ||
+		strncasecmp(device->initial->name, customPath, prefixLength) != 0 ||
+		customPath[prefixLength] == '\0') {
+		return false;
+	}
+	strlcpy(gamesRoot, customPath, PATHNAME_MAX);
+	return true;
+}
+
+static void gameflowGamesRoot(const DEVICEHANDLER_INTERFACE *device,
+	char *gamesRoot)
+{
+	if(device == NULL || device->initial == NULL) {
+		gamesRoot[0] = '\0';
+		return;
+	}
+	if(gameflowCustomRootForDevice(device, homeSessionLibraryRoot,
+			gamesRoot) ||
+		gameflowCustomRootForDevice(device, swissSettings.defaultSource,
+			gamesRoot)) {
+		return;
+	}
+	concat_path(gamesRoot, device->initial->name, "games");
+}
+
 /* The retained Library ends at /games. Its parent card and X return Home,
  * keeping this listing ready for the next visit instead of opening Swiss's
  * device-root browser. Within a folder, keep scanFiles' child selection. */
@@ -570,7 +608,7 @@ static void gameflowNavigateParent(bool useGameflow, const file_handle *parent)
 
 	if(useGameflow && devices[DEVICE_CUR] != NULL &&
 		devices[DEVICE_CUR]->initial != NULL) {
-		concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
+		gameflowGamesRoot(devices[DEVICE_CUR], gamesRoot);
 		if(UIGameflowLibrary_Locate(gamesRoot, curDir.name) ==
 			UI_GAMEFLOW_LIBRARY_LOCATION_ROOT) {
 			curMenuLocation = ON_OPTIONS;
@@ -2778,7 +2816,7 @@ static uiGameflowLibraryMode_t gameflowLibraryMode(file_handle **directory,
 		!(devices[DEVICE_CUR]->features & FEAT_BOOT_GCM)) {
 		return UI_GAMEFLOW_LIBRARY_NONE;
 	}
-	concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
+	gameflowGamesRoot(devices[DEVICE_CUR], gamesRoot);
 	location = swissSettings.libraryFolders ?
 		UIGameflowLibrary_LocateFolders(gamesRoot, curDir.name) :
 		UIGameflowLibrary_Locate(gamesRoot, curDir.name);
@@ -2863,9 +2901,889 @@ static bool gameflowInsideFolder(void)
 		devices[DEVICE_CUR]->initial == NULL) {
 		return false;
 	}
-	concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
+	gameflowGamesRoot(devices[DEVICE_CUR], gamesRoot);
 	return UIGameflowLibrary_IsInsideFolder(
 		UIGameflowLibrary_LocateFolders(gamesRoot, curDir.name));
+}
+
+static void homeDrainSelectorInput(void);
+
+#define DEFAULT_SOURCE_MODAL_BUTTONS (BUTTON_A | BUTTON_B | BUTTON_X | \
+	BUTTON_Y | BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT | BUTTON_RIGHT)
+
+static bool gameflowPathPrefixMatches(const char *entryPath,
+	const char *targetPath, bool *exactMatch)
+{
+	size_t entryLen;
+	size_t targetLen;
+
+	if(entryPath == NULL || targetPath == NULL) {
+		return false;
+	}
+	entryLen = strlen(entryPath);
+	while(entryLen > 0u && entryPath[entryLen - 1u] == '/') {
+		entryLen--;
+	}
+	targetLen = strlen(targetPath);
+	while(targetLen > 0u && targetPath[targetLen - 1u] == '/') {
+		targetLen--;
+	}
+	if(entryLen == 0u || targetLen < entryLen ||
+		strncasecmp(entryPath, targetPath, entryLen) != 0) {
+		return false;
+	}
+	if(targetLen == entryLen) {
+		*exactMatch = true;
+		return true;
+	}
+	if(targetPath[entryLen] == '/') {
+		*exactMatch = false;
+		return true;
+	}
+	return false;
+}
+
+static bool gameflowResolveDirOnDevice(DEVICEHANDLER_INTERFACE *device,
+	const char *targetPath, file_handle *outDir)
+{
+	file_handle current;
+	bool exact = false;
+	int depth;
+
+	if(device == NULL || device->initial == NULL ||
+		device->readDir == NULL || targetPath == NULL ||
+		targetPath[0] == '\0' || outDir == NULL) {
+		return false;
+	}
+	if(!gameflowPathPrefixMatches(device->initial->name, targetPath,
+		&exact)) {
+		return false;
+	}
+	memcpy(&current, device->initial, sizeof(file_handle));
+	if(exact) {
+		memcpy(outDir, &current, sizeof(file_handle));
+		return true;
+	}
+	for(depth = 0; depth < 8; ++depth) {
+		file_handle *entries = NULL;
+		int count = device->readDir(&current, &entries, -1);
+		bool stepped = false;
+		int i;
+
+		for(i = 0; entries != NULL && i < count; ++i) {
+			if(entries[i].fileType != IS_DIR) {
+				continue;
+			}
+			if(gameflowPathPrefixMatches(entries[i].name, targetPath,
+				&exact)) {
+				memcpy(&current, &entries[i], sizeof(file_handle));
+				stepped = true;
+				break;
+			}
+		}
+		for(i = 0; entries != NULL && i < count; ++i) {
+			if(device->closeFile != NULL) {
+				device->closeFile(&entries[i]);
+			}
+		}
+		free(entries);
+		if(!stepped) {
+			return false;
+		}
+		if(exact) {
+			memcpy(outDir, &current, sizeof(file_handle));
+			return true;
+		}
+	}
+	return false;
+}
+
+static void homeResolveDefaultTargetDir(file_handle *targetDir)
+{
+	char gamesRoot[PATHNAME_MAX];
+
+	memcpy(targetDir, &curDir, sizeof(file_handle));
+	if(devices[DEVICE_CUR] == NULL || devices[DEVICE_CUR]->initial == NULL) {
+		return;
+	}
+	if(strcmp(curDir.name, devices[DEVICE_CUR]->initial->name) != 0) {
+		return;
+	}
+	gameflowGamesRoot(devices[DEVICE_CUR], gamesRoot);
+	(void)gameflowResolveDirOnDevice(devices[DEVICE_CUR], gamesRoot,
+		targetDir);
+}
+
+static void homeSourceModalDrainButtons(uiMenuInputState_t *menuInput,
+	u32 *lastRetrace)
+{
+	while((padsButtonsHeld() & DEFAULT_SOURCE_MODAL_BUTTONS) != 0u) {
+		(void)padsMenuInputPoll(menuInput,
+			menuInputElapsedMicroseconds(lastRetrace),
+			UI_MENU_INPUT_AXIS_BOTH | UI_MENU_INPUT_REPEAT, true);
+		VIDEO_WaitVSync();
+	}
+}
+
+static u32 homeSourceModalWaitInput(uiMenuInputState_t *menuInput,
+	u32 *lastRetrace)
+{
+	while(1) {
+		u32 held = padsButtonsHeld() & DEFAULT_SOURCE_MODAL_BUTTONS;
+		uiMenuInputDirection_t analog = padsMenuInputPoll(menuInput,
+			menuInputElapsedMicroseconds(lastRetrace),
+			UI_MENU_INPUT_AXIS_BOTH | UI_MENU_INPUT_REPEAT,
+			held != 0u);
+
+		if(held != 0u) {
+			return held;
+		}
+		if(analog == UI_MENU_INPUT_UP) return BUTTON_UP;
+		if(analog == UI_MENU_INPUT_DOWN) return BUTTON_DOWN;
+		if(analog == UI_MENU_INPUT_LEFT) return BUTTON_LEFT;
+		if(analog == UI_MENU_INPUT_RIGHT) return BUTTON_RIGHT;
+		VIDEO_WaitVSync();
+	}
+}
+
+static int homeFolderEntryOrder(const void *left, const void *right)
+{
+	const file_handle *a = *(file_handle *const *)left;
+	const file_handle *b = *(file_handle *const *)right;
+
+	return strcasecmp(getRelativeName((char *)a->name),
+		getRelativeName((char *)b->name));
+}
+
+static void homeCloseDirListing(DEVICEHANDLER_INTERFACE *device,
+	file_handle **rawEntries, int *rawCount, file_handle ***subDirs,
+	int *subCount)
+{
+	int i;
+
+	if(*rawEntries != NULL) {
+		for(i = 0; i < *rawCount; ++i) {
+			if(device != NULL && device->closeFile != NULL) {
+				device->closeFile(&(*rawEntries)[i]);
+			}
+		}
+		free(*rawEntries);
+		*rawEntries = NULL;
+	}
+	*rawCount = 0;
+	free(*subDirs);
+	*subDirs = NULL;
+	*subCount = 0;
+}
+
+static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
+	size_t outSize, bool allowClear, bool mountSelectedDevice)
+{
+	DEVICEHANDLER_INTERFACE *activeDevice = NULL;
+	DEVICEHANDLER_INTERFACE *candidates[MAX_DEVICES];
+	file_handle openDir;
+	file_handle selectedDir;
+	file_handle *rawEntries = NULL;
+	file_handle **subDirs = NULL;
+	uiSavesPageSnapshot_t shown;
+	uiDrawObj_t *page = NULL;
+	uiMenuInputState_t menuInput;
+	u32 lastRetrace = VIDEO_GetRetraceCount();
+	u32 listGen = 1u;
+	int rawCount = 0;
+	int subCount = 0;
+	int candidateCount = 0;
+	int selection = 0;
+	int deviceSelection = 0;
+	bool choosingDevice = false;
+	bool needReload = true;
+	bool chosen = false;
+	bool cleared = false;
+	int pass;
+	int i;
+
+	memset(&openDir, 0, sizeof(openDir));
+	memset(&selectedDir, 0, sizeof(selectedDir));
+	UIMenuInput_Init(&menuInput);
+
+	for(pass = 0; pass < 2; ++pass) {
+		for(i = 0; i < MAX_DEVICES; ++i) {
+			DEVICEHANDLER_INTERFACE *dev = allDevices[i];
+			bool ready;
+
+			if(dev == NULL || dev == &__device_dvd ||
+				!(dev->features & FEAT_BOOT_GCM) ||
+				dev->initial == NULL || dev->init == NULL ||
+				dev->deinit == NULL || dev->readDir == NULL) {
+				continue;
+			}
+			ready = deviceHandler_getDeviceAvailable(dev) ||
+				dev == devices[DEVICE_CUR] ||
+				dev == devices[DEVICE_CONFIG];
+			if((pass == 0) == ready) {
+				candidates[candidateCount++] = dev;
+			}
+		}
+	}
+
+	if(ioDir != NULL && ioDir->name[0] != '\0') {
+		activeDevice = homeSourceFromPathIncludingUnavailable(ioDir->name);
+		memcpy(&openDir, ioDir, sizeof(file_handle));
+	}
+	else if(outPath != NULL && outPath[0] != '\0') {
+		activeDevice = homeSourceFromPathIncludingUnavailable(outPath);
+		if(activeDevice != NULL && activeDevice != devices[DEVICE_CUR] &&
+			activeDevice != devices[DEVICE_CONFIG]) {
+			activeDevice->deinit(activeDevice->initial);
+			deviceHandler_setStatEnabled(0);
+			if(activeDevice->init(activeDevice->initial) != 0) {
+				activeDevice = NULL;
+			}
+			deviceHandler_setStatEnabled(1);
+		}
+		if(activeDevice != NULL &&
+			!gameflowResolveDirOnDevice(activeDevice, outPath, &openDir)) {
+			memcpy(&openDir, activeDevice->initial, sizeof(file_handle));
+		}
+	}
+	if(activeDevice == NULL && devices[DEVICE_CUR] != NULL &&
+		devices[DEVICE_CUR]->initial != NULL &&
+		devices[DEVICE_CUR] != &__device_dvd &&
+		(devices[DEVICE_CUR]->features & FEAT_BOOT_GCM)) {
+		char gamesRoot[PATHNAME_MAX];
+
+		activeDevice = devices[DEVICE_CUR];
+		gameflowGamesRoot(activeDevice, gamesRoot);
+		if(!gameflowResolveDirOnDevice(activeDevice, gamesRoot, &openDir)) {
+			memcpy(&openDir, activeDevice->initial, sizeof(file_handle));
+		}
+	}
+	if(activeDevice == NULL) {
+		choosingDevice = true;
+	}
+
+	homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+	while(1) {
+		u32 pressed;
+
+		if(choosingDevice) {
+			int totalDevices = candidateCount + (allowClear ? 1 : 0);
+			int first;
+
+			if(totalDevices <= 0) {
+				break;
+			}
+			if(deviceSelection >= totalDevices) {
+				deviceSelection = totalDevices - 1;
+			}
+			first = UICheats_WindowStart(deviceSelection, totalDevices);
+			memset(&shown, 0, sizeof(shown));
+			snprintf(shown.title, sizeof(shown.title), "Choose a Device");
+			snprintf(shown.status, sizeof(shown.status), "Storage Devices");
+			snprintf(shown.section, sizeof(shown.section),
+				"Select a storage device to browse its folders");
+			snprintf(shown.position, sizeof(shown.position), "%d / %d",
+				deviceSelection + 1, totalDevices);
+			for(i = 0; i < UI_SAVES_PAGE_ROWS &&
+				first + i < totalDevices; ++i) {
+				int idx = first + i;
+				uiSavesPageRow_t *row = &shown.rows[i];
+
+				if(idx < candidateCount) {
+					UICheats_Fit(row->title, sizeof(row->title),
+						DeviceDisplayName(candidates[idx]), 330, 0.62f,
+						GetTextSizeInPixels);
+					snprintf(row->blocks, sizeof(row->blocks), "%s",
+						candidates[idx]->initial->name);
+				}
+				else {
+					snprintf(row->title, sizeof(row->title),
+						"None (Clear Default Source)");
+					snprintf(row->blocks, sizeof(row->blocks), "Clear");
+				}
+				shown.rowCount++;
+			}
+			shown.first = first;
+			shown.count = totalDevices;
+			shown.list = listGen;
+			shown.focusRow = (s8)(deviceSelection - first);
+			snprintf(shown.hint[0], sizeof(shown.hint[0]),
+				"A  Select Device");
+			snprintf(shown.hint[1], sizeof(shown.hint[1]), "B  Back");
+			if(page == NULL) {
+				if((page = DrawSavesPage(&shown)) != NULL) {
+					DrawPublish(page);
+				}
+			}
+			else {
+				DrawUpdateSavesPage(page, &shown);
+			}
+			pressed = homeSourceModalWaitInput(&menuInput, &lastRetrace);
+			if(pressed & BUTTON_B) {
+				homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+				if(activeDevice != NULL) {
+					choosingDevice = false;
+					listGen++;
+					continue;
+				}
+				break;
+			}
+			if(pressed & (BUTTON_UP | BUTTON_LEFT)) {
+				deviceSelection = UICheats_Move(deviceSelection,
+					totalDevices, -1, (pressed & BUTTON_LEFT) != 0u);
+			}
+			else if(pressed & (BUTTON_DOWN | BUTTON_RIGHT)) {
+				deviceSelection = UICheats_Move(deviceSelection,
+					totalDevices, 1, (pressed & BUTTON_RIGHT) != 0u);
+			}
+			else if(pressed & BUTTON_A) {
+				DEVICEHANDLER_INTERFACE *nextDev;
+				char gamesRoot[PATHNAME_MAX];
+
+				homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+				if(deviceSelection >= candidateCount) {
+					cleared = true;
+					chosen = true;
+					break;
+				}
+				nextDev = candidates[deviceSelection];
+				if(nextDev != activeDevice) {
+					homeCloseDirListing(activeDevice, &rawEntries,
+						&rawCount, &subDirs, &subCount);
+					if(!mountSelectedDevice && activeDevice != NULL &&
+						activeDevice != devices[DEVICE_CUR] &&
+						activeDevice != devices[DEVICE_CONFIG]) {
+						activeDevice->deinit(activeDevice->initial);
+					}
+					if(nextDev != devices[DEVICE_CUR] &&
+						nextDev != devices[DEVICE_CONFIG]) {
+						nextDev->deinit(nextDev->initial);
+						deviceHandler_setStatEnabled(0);
+						if(nextDev->init(nextDev->initial) != 0) {
+							uiDrawObj_t *box;
+
+							deviceHandler_setStatEnabled(1);
+							box = DrawPublish(DrawMessageBox(D_WARN,
+								"This device could not be read.\nA  OK"));
+							wait_press_A();
+							DrawDispose(box);
+							homeSourceModalDrainButtons(&menuInput,
+								&lastRetrace);
+							continue;
+						}
+						deviceHandler_setStatEnabled(1);
+						deviceHandler_setDeviceAvailable(nextDev, true);
+					}
+					activeDevice = nextDev;
+				}
+				concat_path(gamesRoot, activeDevice->initial->name, "games");
+				if(!gameflowResolveDirOnDevice(activeDevice, gamesRoot,
+					&openDir)) {
+					memcpy(&openDir, activeDevice->initial,
+						sizeof(file_handle));
+				}
+				choosingDevice = false;
+				needReload = true;
+				selection = 0;
+				listGen++;
+			}
+			homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+			continue;
+		}
+
+		if(needReload) {
+			homeCloseDirListing(activeDevice, &rawEntries, &rawCount,
+				&subDirs, &subCount);
+			rawCount = activeDevice->readDir(&openDir, &rawEntries, -1);
+			if(rawCount > 0 && rawEntries != NULL) {
+				subDirs = calloc((size_t)rawCount, sizeof(*subDirs));
+				for(i = 0; subDirs != NULL && i < rawCount; ++i) {
+					const char *leaf = getRelativeName(rawEntries[i].name);
+
+					if(rawEntries[i].fileType == IS_DIR && leaf != NULL &&
+						leaf[0] != '.' && strcmp(leaf, "..") != 0) {
+						subDirs[subCount++] = &rawEntries[i];
+					}
+				}
+				if(subCount > 1) {
+					qsort(subDirs, (size_t)subCount, sizeof(subDirs[0]),
+						homeFolderEntryOrder);
+				}
+			}
+			else {
+				rawCount = 0;
+			}
+			needReload = false;
+		}
+
+		{
+			bool hasParent = strcmp(openDir.name,
+				activeDevice->initial->name) != 0;
+			int parentRow = hasParent ? 1 : -1;
+			int firstSubRow = hasParent ? 2 : 1;
+			int switchDeviceRow = firstSubRow + subCount;
+			int clearRow = allowClear ? switchDeviceRow + 1 : -1;
+			int totalRows = allowClear ? clearRow + 1 : switchDeviceRow + 1;
+			int first;
+
+			if(selection >= totalRows) {
+				selection = totalRows - 1;
+			}
+			first = UICheats_WindowStart(selection, totalRows);
+			memset(&shown, 0, sizeof(shown));
+			snprintf(shown.title, sizeof(shown.title), "Choose a Folder");
+			snprintf(shown.status, sizeof(shown.status), "%s",
+				DeviceDisplayName(activeDevice));
+			UICheats_Fit(shown.section, sizeof(shown.section),
+				openDir.name, 420, 0.42f, GetTextSizeInPixels);
+			snprintf(shown.position, sizeof(shown.position), "%d / %d",
+				selection + 1, totalRows);
+			for(i = 0; i < UI_SAVES_PAGE_ROWS &&
+				first + i < totalRows; ++i) {
+				int idx = first + i;
+				uiSavesPageRow_t *row = &shown.rows[i];
+				char label[PATHNAME_MAX + 16];
+
+				if(idx == 0) {
+					snprintf(label, sizeof(label), "Use %s", openDir.name);
+					UICheats_Fit(row->title, sizeof(row->title), label,
+						330, 0.62f, GetTextSizeInPixels);
+					snprintf(row->blocks, sizeof(row->blocks), "Current");
+				}
+				else if(idx == parentRow) {
+					char parent[PATHNAME_MAX];
+
+					getParentPath(openDir.name, parent);
+					snprintf(label, sizeof(label), "Up to %s", parent);
+					UICheats_Fit(row->title, sizeof(row->title), label,
+						330, 0.62f, GetTextSizeInPixels);
+					snprintf(row->blocks, sizeof(row->blocks), "Parent");
+				}
+				else if(idx >= firstSubRow && idx < firstSubRow + subCount) {
+					file_handle *sub = subDirs[idx - firstSubRow];
+
+					UICheats_Fit(row->title, sizeof(row->title),
+						getRelativeName(sub->name), 330, 0.62f,
+						GetTextSizeInPixels);
+					snprintf(row->blocks, sizeof(row->blocks), "Folder");
+				}
+				else if(idx == switchDeviceRow) {
+					snprintf(row->title, sizeof(row->title),
+						"Switch Device...");
+					snprintf(row->blocks, sizeof(row->blocks), "Device");
+				}
+				else if(idx == clearRow) {
+					snprintf(row->title, sizeof(row->title),
+						"None (Clear Default Source)");
+					snprintf(row->blocks, sizeof(row->blocks), "Clear");
+				}
+				shown.rowCount++;
+			}
+			shown.first = first;
+			shown.count = totalRows;
+			shown.list = listGen;
+			shown.focusRow = (s8)(selection - first);
+			snprintf(shown.hint[0], sizeof(shown.hint[0]),
+				"A  Open / Select   X  Use Folder   Y  Device");
+			snprintf(shown.hint[1], sizeof(shown.hint[1]), "B  Back");
+			if(page == NULL) {
+				if((page = DrawSavesPage(&shown)) != NULL) {
+					DrawPublish(page);
+				}
+			}
+			else {
+				DrawUpdateSavesPage(page, &shown);
+			}
+			pressed = homeSourceModalWaitInput(&menuInput, &lastRetrace);
+			if(pressed & BUTTON_B) {
+				homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+				break;
+			}
+			if(pressed & BUTTON_Y) {
+				homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+				choosingDevice = true;
+				deviceSelection = 0;
+				for(i = 0; i < candidateCount; ++i) {
+					if(candidates[i] == activeDevice) {
+						deviceSelection = i;
+						break;
+					}
+				}
+				listGen++;
+				continue;
+			}
+			if(pressed & BUTTON_X) {
+				homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+				if(selection >= firstSubRow &&
+					selection < firstSubRow + subCount) {
+					memcpy(&selectedDir, subDirs[selection - firstSubRow],
+						sizeof(file_handle));
+				}
+				else {
+					memcpy(&selectedDir, &openDir, sizeof(file_handle));
+				}
+				chosen = true;
+				break;
+			}
+			if(pressed & (BUTTON_UP | BUTTON_LEFT)) {
+				selection = UICheats_Move(selection, totalRows, -1,
+					(pressed & BUTTON_LEFT) != 0u);
+			}
+			else if(pressed & (BUTTON_DOWN | BUTTON_RIGHT)) {
+				selection = UICheats_Move(selection, totalRows, 1,
+					(pressed & BUTTON_RIGHT) != 0u);
+			}
+			else if(pressed & BUTTON_A) {
+				homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+				if(selection == 0) {
+					memcpy(&selectedDir, &openDir, sizeof(file_handle));
+					chosen = true;
+					break;
+				}
+				else if(selection == parentRow) {
+					char parent[PATHNAME_MAX];
+
+					if(!getParentPath(openDir.name, parent) &&
+						gameflowResolveDirOnDevice(activeDevice, parent,
+							&openDir)) {
+						needReload = true;
+						selection = 0;
+						listGen++;
+					}
+				}
+				else if(selection >= firstSubRow &&
+					selection < firstSubRow + subCount) {
+					memcpy(&openDir, subDirs[selection - firstSubRow],
+						sizeof(file_handle));
+					needReload = true;
+					selection = 0;
+					listGen++;
+				}
+				else if(selection == switchDeviceRow) {
+					choosingDevice = true;
+					deviceSelection = 0;
+					for(i = 0; i < candidateCount; ++i) {
+						if(candidates[i] == activeDevice) {
+							deviceSelection = i;
+							break;
+						}
+					}
+					listGen++;
+				}
+				else if(selection == clearRow) {
+					cleared = true;
+					chosen = true;
+					break;
+				}
+			}
+			homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+		}
+	}
+
+	homeCloseDirListing(activeDevice, &rawEntries, &rawCount, &subDirs,
+		&subCount);
+	if(chosen) {
+		if(cleared) {
+			if(outPath != NULL && outSize > 0u) {
+				outPath[0] = '\0';
+			}
+		}
+		else {
+			if(mountSelectedDevice && activeDevice != NULL &&
+				activeDevice != devices[DEVICE_CUR]) {
+				DEVICEHANDLER_INTERFACE *previous = devices[DEVICE_CUR];
+
+				filesOtherRelease();
+				DrawGameflowCancelPosters();
+				freeFiles();
+				if(previous != NULL) {
+					devices[DEVICE_PREV] = previous;
+					previous->deinit(previous->initial);
+					homeSourceRecord(previous,
+						UI_HOME_SOURCE_MOUNT_UNMOUNTED);
+				}
+				devices[DEVICE_CUR] = activeDevice;
+				deviceHandler_setDeviceAvailable(activeDevice, true);
+				homeSourceRecord(activeDevice,
+					UI_HOME_SOURCE_MOUNT_MOUNTED);
+			}
+			if(ioDir != NULL) {
+				memcpy(ioDir, &selectedDir, sizeof(file_handle));
+			}
+			if(outPath != NULL && outSize > 0u) {
+				strlcpy(outPath, selectedDir.name, outSize);
+			}
+		}
+	}
+	if(!mountSelectedDevice && activeDevice != NULL &&
+		activeDevice != devices[DEVICE_CUR] &&
+		activeDevice != devices[DEVICE_CONFIG]) {
+		activeDevice->deinit(activeDevice->initial);
+	}
+	if(page != NULL) {
+		DrawDispose(page);
+	}
+	return chosen;
+}
+
+bool choose_default_source_dir(char *selection, size_t size)
+{
+	return homeChooseSourceFolder(NULL, selection, size, true, false);
+}
+
+static bool homePromptDefaultSource(file_handle *targetDir)
+{
+	uiSavesPageSnapshot_t shown;
+	uiDrawObj_t *page = NULL;
+	uiMenuInputState_t menuInput;
+	u32 lastRetrace = VIDEO_GetRetraceCount();
+	u32 listGen = 1u;
+	int selection = 0;
+	bool saveDefault = false;
+
+	UIMenuInput_Init(&menuInput);
+	homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+	while(1) {
+		char sectionText[PATHNAME_MAX + 32];
+		char row0Text[PATHNAME_MAX + 32];
+		u32 pressed;
+
+		memset(&shown, 0, sizeof(shown));
+		snprintf(shown.title, sizeof(shown.title), "Default Source");
+		if(devices[DEVICE_CUR] != NULL) {
+			snprintf(shown.status, sizeof(shown.status), "%s",
+				DeviceDisplayName(devices[DEVICE_CUR]));
+		}
+		snprintf(sectionText, sizeof(sectionText),
+			"Startup Library Path: %s", targetDir->name);
+		UICheats_Fit(shown.section, sizeof(shown.section), sectionText,
+			420, 0.42f, GetTextSizeInPixels);
+		snprintf(shown.position, sizeof(shown.position), "%d / 3",
+			selection + 1);
+
+		snprintf(row0Text, sizeof(row0Text), "Set as Default (%s)",
+			targetDir->name);
+		UICheats_Fit(shown.rows[0].title, sizeof(shown.rows[0].title),
+			row0Text, 330, 0.62f, GetTextSizeInPixels);
+		snprintf(shown.rows[0].blocks, sizeof(shown.rows[0].blocks),
+			"Always");
+
+		snprintf(shown.rows[1].title, sizeof(shown.rows[1].title),
+			"Use for This Session Only");
+		snprintf(shown.rows[1].blocks, sizeof(shown.rows[1].blocks),
+			"Once");
+
+		snprintf(shown.rows[2].title, sizeof(shown.rows[2].title),
+			"Choose a Different Path...");
+		snprintf(shown.rows[2].blocks, sizeof(shown.rows[2].blocks),
+			"Browse");
+
+		shown.rowCount = 3;
+		shown.count = 3;
+		shown.first = 0;
+		shown.list = listGen;
+		shown.focusRow = (s8)selection;
+		snprintf(shown.hint[0], sizeof(shown.hint[0]),
+			"A  Select   X  Choose Path");
+		snprintf(shown.hint[1], sizeof(shown.hint[1]), "B  This Session");
+		if(page == NULL) {
+			if((page = DrawSavesPage(&shown)) != NULL) {
+				DrawPublish(page);
+			}
+		}
+		else {
+			DrawUpdateSavesPage(page, &shown);
+		}
+		pressed = homeSourceModalWaitInput(&menuInput, &lastRetrace);
+		if(pressed & (BUTTON_UP | BUTTON_LEFT)) {
+			selection = UICheats_Move(selection, 3, -1, false);
+			homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+		}
+		else if(pressed & (BUTTON_DOWN | BUTTON_RIGHT)) {
+			selection = UICheats_Move(selection, 3, 1, false);
+			homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+		}
+		else if((pressed & BUTTON_X) ||
+			((pressed & BUTTON_A) && selection == 2)) {
+			homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+			if(page != NULL) {
+				DrawDispose(page);
+				page = NULL;
+			}
+			if(homeChooseSourceFolder(targetDir, NULL, 0u, false, true)) {
+				selection = 0;
+				listGen++;
+			}
+			UIMenuInput_Init(&menuInput);
+			lastRetrace = VIDEO_GetRetraceCount();
+			homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+		}
+		else if((pressed & BUTTON_B) ||
+			((pressed & BUTTON_A) && selection == 1)) {
+			saveDefault = false;
+			break;
+		}
+		else if((pressed & BUTTON_A) && selection == 0) {
+			saveDefault = true;
+			break;
+		}
+	}
+	homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+	if(page != NULL) {
+		DrawDispose(page);
+	}
+	homeDrainSelectorInput();
+	strlcpy(homeSessionLibraryRoot, targetDir->name,
+		sizeof(homeSessionLibraryRoot));
+	if(strcmp(curDir.name, targetDir->name) != 0) {
+		memcpy(&curDir, targetDir, sizeof(file_handle));
+		curSelection = 0;
+		needsRefresh = 1;
+	}
+	return saveDefault;
+}
+
+static void homeOfferDefaultSource(DEVICEHANDLER_INTERFACE *previousDevice)
+{
+	file_handle targetDir;
+
+	if(devices[DEVICE_CUR] == NULL || devices[DEVICE_CUR] == previousDevice ||
+		devices[DEVICE_CUR] == &__device_dvd ||
+		devices[DEVICE_CUR] == &__device_smb ||
+		devices[DEVICE_CUR] == &__device_ftp ||
+		devices[DEVICE_CUR] == &__device_fsp ||
+		!(devices[DEVICE_CUR]->features & FEAT_BOOT_GCM) ||
+		devices[DEVICE_CUR]->initial == NULL ||
+		devices[DEVICE_CONFIG] == NULL) {
+		return;
+	}
+	homeResolveDefaultTargetDir(&targetDir);
+	if(!strcmp(swissSettings.defaultSource, targetDir.name) ||
+		!strcmp(swissSettings.defaultSource,
+			devices[DEVICE_CUR]->initial->name) ||
+		(homeSessionLibraryRoot[0] != '\0' &&
+			!strcmp(homeSessionLibraryRoot, targetDir.name))) {
+		return;
+	}
+	if(!homePromptDefaultSource(&targetDir)) {
+		return;
+	}
+	strlcpy(swissSettings.defaultSource, targetDir.name,
+		sizeof(swissSettings.defaultSource));
+	uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0,
+		"Saving default source\205"));
+	config_update_default_source(true);
+	DrawDispose(msgBox);
+}
+
+static void homeApplyStartupSource(void)
+{
+	DEVICEHANDLER_INTERFACE *target;
+	DEVICEHANDLER_INTERFACE *previous;
+
+	if(swissSettings.defaultSource[0] == '\0') {
+		return;
+	}
+	target = homeSourceFromPathIncludingUnavailable(
+		swissSettings.defaultSource);
+	if(target == NULL || target == devices[DEVICE_CUR] ||
+		target == &__device_dvd ||
+		!(target->features & FEAT_BOOT_GCM) ||
+		target->initial == NULL) {
+		return;
+	}
+	target->deinit(target->initial);
+	deviceHandler_setStatEnabled(0);
+	if(target->init(target->initial) != 0) {
+		deviceHandler_setStatEnabled(1);
+		return;
+	}
+	deviceHandler_setStatEnabled(1);
+	previous = devices[DEVICE_CUR];
+	if(previous != NULL) {
+		DrawGameflowCancelPosters();
+		freeFiles();
+		devices[DEVICE_PREV] = previous;
+		previous->deinit(previous->initial);
+		homeSourceRecord(previous, UI_HOME_SOURCE_MOUNT_UNMOUNTED);
+	}
+	devices[DEVICE_CUR] = target;
+	deviceHandler_setDeviceAvailable(target, true);
+	homeSourceRecord(target, UI_HOME_SOURCE_MOUNT_MOUNTED);
+}
+
+static bool gameflowTryOtherDevicesForLibrary(void)
+{
+	DEVICEHANDLER_INTERFACE *previous = devices[DEVICE_CUR];
+	int i;
+
+	if(previous == NULL || previous->initial == NULL || needsRefresh ||
+		strcmp(curDir.name, previous->initial->name)) {
+		return false;
+	}
+	for(i = 0; i < MAX_DEVICES; ++i) {
+		DEVICEHANDLER_INTERFACE *candidate = allDevices[i];
+		file_handle *entries = NULL;
+		char gamesRoot[PATHNAME_MAX];
+		int count;
+		int j;
+
+		if(candidate == NULL || candidate == previous ||
+			candidate == &__device_dvd ||
+			!(candidate->features & FEAT_BOOT_GCM) ||
+			candidate->initial == NULL ||
+			candidate->init == NULL ||
+			candidate->deinit == NULL ||
+			candidate->readDir == NULL ||
+			!deviceHandler_getDeviceAvailable(candidate)) {
+			continue;
+		}
+		candidate->deinit(candidate->initial);
+		deviceHandler_setStatEnabled(0);
+		if(candidate->init(candidate->initial) != 0) {
+			deviceHandler_setStatEnabled(1);
+			continue;
+		}
+		deviceHandler_setStatEnabled(1);
+		count = candidate->readDir(candidate->initial, &entries, -1);
+		gameflowGamesRoot(candidate, gamesRoot);
+		for(j = 0; entries != NULL && j < count; ++j) {
+			if(!UIGameflowLibrary_IsGamesRootEntry(gamesRoot,
+				gameflowEntryType(&entries[j]), entries[j].name)) {
+				continue;
+			}
+			filesOtherRelease();
+			DrawGameflowCancelPosters();
+			freeFiles();
+			devices[DEVICE_PREV] = previous;
+			previous->deinit(previous->initial);
+			homeSourceRecord(previous,
+				UI_HOME_SOURCE_MOUNT_UNMOUNTED);
+			devices[DEVICE_CUR] = candidate;
+			deviceHandler_setDeviceAvailable(candidate, true);
+			homeSourceRecord(candidate,
+				UI_HOME_SOURCE_MOUNT_MOUNTED);
+			memcpy(&curDir, &entries[j], sizeof(file_handle));
+			for(int k = 0; k < count; ++k) {
+				if(candidate->closeFile != NULL) {
+					candidate->closeFile(&entries[k]);
+				}
+			}
+			free(entries);
+			curSelection = 0;
+			needsRefresh = 1;
+			homeOfferDefaultSource(previous);
+			return true;
+		}
+		for(j = 0; entries != NULL && j < count; ++j) {
+			if(candidate->closeFile != NULL) {
+				candidate->closeFile(&entries[j]);
+			}
+		}
+		free(entries);
+		candidate->deinit(candidate->initial);
+	}
+	return false;
 }
 
 static bool gameflowEnterLibraryFromHome(void)
@@ -2879,7 +3797,7 @@ static bool gameflowEnterLibraryFromHome(void)
 		devices[DEVICE_CUR]->initial == NULL) {
 		return false;
 	}
-	concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
+	gameflowGamesRoot(devices[DEVICE_CUR], gamesRoot);
 	/* Returning Home must not destroy the retained /games selection. */
 	if(UIGameflowLibrary_Locate(gamesRoot, curDir.name) ==
 			UI_GAMEFLOW_LIBRARY_LOCATION_ROOT || gameflowInsideFolder()) {
@@ -2903,7 +3821,13 @@ static bool gameflowEnterLibraryFromHome(void)
 		needsRefresh = 1;
 		return true;
 	}
-	return false;
+	if(strcmp(curDir.name, devices[DEVICE_CUR]->initial->name) == 0 &&
+		gameflowResolveDirOnDevice(devices[DEVICE_CUR], gamesRoot, &curDir)) {
+		curSelection = 0;
+		needsRefresh = 1;
+		return true;
+	}
+	return gameflowTryOtherDevicesForLibrary();
 }
 
 static void homeRefreshLibrary(void)
@@ -3366,7 +4290,7 @@ static bool gameflowBuildSnapshot(uiGameflowRenderSnapshot_t *snapshot,
 	if(gameflowInsideFolder()) {
 		char gamesRoot[PATHNAME_MAX];
 
-		concat_path(gamesRoot, devices[DEVICE_CUR]->initial->name, "games");
+		gameflowGamesRoot(devices[DEVICE_CUR], gamesRoot);
 		UIGameflowLibrary_FolderHeading(gamesRoot, curDir.name,
 			snapshot->folder, sizeof(snapshot->folder));
 	}
@@ -7351,6 +8275,7 @@ void menu_loop()
 			swissSettings.autoload[0] != '\0',
 			swissSettings.recent[0][0] != '\0',
 			swissSettings.recentListLevel > 1)) {
+			homeApplyStartupSource();
 			/* Normal and Lazy boots reveal Home, independent of any earlier
 			 * autoboot/firmware probe. Keep explicit Autoload and Recent=On
 			 * requests on Swiss's established direct-entry path. */
@@ -7394,6 +8319,9 @@ void menu_loop()
 				homeSourceRecord(NULL, UI_HOME_SOURCE_MOUNT_ABSENT);
 				needsRefresh = 0;
 			}
+		}
+		if(deviceConfirmed && devices[DEVICE_CUR] != NULL) {
+			homeOfferDefaultSource(previousDevice);
 		}
 		if(devices[DEVICE_CUR] == NULL) {
 			curMenuLocation=ON_OPTIONS;

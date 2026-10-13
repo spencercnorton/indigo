@@ -175,6 +175,7 @@ most use the same key there.
 
 | Key | Values | Default | On screen |
 | --- | --- | --- | --- |
+| `Default Source` | A device and Library folder path such as `sdc:/games`, `sda:/games`, or `gcldr:/games` (or a device root such as `sdc:/`). The storage device Indigo mounts as its Source when it starts on Home, and the folder Library opens on that device; empty keeps the device Indigo started from. | empty | Default Source |
 | `Save Folder` | A folder on the Configuration Device, such as `swiss/saves`, or `/` for its root. The folder Memory Cards opens on the SD card, where saves copied off a memory card go unless another is opened or picked there. Empty means `swiss/saves`. | empty | Save Folder |
 | `Init DVD Drive at startup` | `Yes`, `No` | `No` | Init DVD Drive at startup |
 | `Stop DVD Drive motor` | `Yes`, `No` | `No` | Stop DVD Drive motor |

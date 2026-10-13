@@ -92,6 +92,7 @@ extern void select_speed();
 extern int select_slot();
 extern void select_device(int type);
 extern bool select_dest_dir(file_handle* initial, char* selection);
+extern bool choose_default_source_dir(char *selection, size_t size);
 
 typedef struct {
 	int cubebootInvoked;
@@ -217,6 +218,7 @@ typedef struct {
 	char autoload[PATHNAME_MAX];
 	char flattenDir[PATHNAME_MAX];
 	char saveFolder[PATHNAME_MAX];	// Memory Cards' folder on the settings device; empty is swiss/saves
+	char defaultSource[PATHNAME_MAX];
 	char recent[RECENT_MAX][PATHNAME_MAX];
 } SwissSettings;
 extern SwissSettings swissSettings;

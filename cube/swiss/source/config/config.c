@@ -633,6 +633,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "FlattenDir=%s\r\n", swissSettings.libraryFolders ?
 		swissSettings.libraryFoldersFlattenDir : swissSettings.flattenDir);
 	fprintf(fp, "Save Folder=%s\r\n", swissSettings.saveFolder);
+	fprintf(fp, "Default Source=%s\r\n", swissSettings.defaultSource);
 
 	// Write out the default game config portion too
 	fprintf(fp, "Force NTSC Video Mode=%s\r\n", gameVModeStr[swissSettings.gameVModeNtsc]);
@@ -764,6 +765,28 @@ int config_update_autoload(bool checkConfigDevice) {
 	char *existing = config_file_read(path);
 	char *merged = config_merge_autoload(existing);
 	/* No readable file to keep: save every setting, as before. */
+	int res = merged != NULL ? config_file_write(path, merged) : config_update_global(false);
+	free(merged);
+	free(existing);
+	if(checkConfigDevice) {
+		config_unset_device();
+	}
+	return res;
+}
+
+static char *config_merge_default_source(const char *existing) {
+	char line[sizeof(swissSettings.defaultSource) + sizeof("Default Source=\r\n")];
+	snprintf(line, sizeof(line), "Default Source=%s\r\n", swissSettings.defaultSource);
+	return config_merge_file(existing, line, NULL);
+}
+
+int config_update_default_source(bool checkConfigDevice) {
+	if(checkConfigDevice && !config_set_device()) return 0;
+
+	char path[PATHNAME_MAX];
+	concat_path(path, SWISS_SETTINGS_DIR, SWISS_SETTINGS_FILENAME);
+	char *existing = config_file_read(path);
+	char *merged = config_merge_default_source(existing);
 	int res = merged != NULL ? config_file_write(path, merged) : config_update_global(false);
 	free(merged);
 	free(existing);
@@ -1813,6 +1836,9 @@ void config_parse_global(char *configData, bool settingsFile) {
 				}
 				else if(!strcmp("Save Folder", name)) {
 					strlcpy(swissSettings.saveFolder, value, sizeof(swissSettings.saveFolder));
+				}
+				else if(!strcmp("Default Source", name)) {
+					strlcpy(swissSettings.defaultSource, value, sizeof(swissSettings.defaultSource));
 				}
 			}
 		}

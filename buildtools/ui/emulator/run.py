@@ -289,8 +289,8 @@ SD_CARD_DEVICE = 15
 # Dolphin's memory card that is a folder of .gci files, one per save.
 GCI_FOLDER_DEVICE = 8
 # Rows on Settings' Storage page: DOWN past them reaches Save & Exit.
-STORAGE_ROWS = 7
-# Lit pixels in COUNTER_BOX that are its digits rather than nothing (19 for "1 / 7").
+STORAGE_ROWS = 8
+# Lit pixels in COUNTER_BOX that are its digits rather than nothing (19 for "1 / 8").
 COUNTER_PIXELS = 6
 # Settings to start with, put on the card as swiss/settings/global.ini (--settings).
 SETTINGS = Path(__file__).resolve().parent / "settings"

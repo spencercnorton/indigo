@@ -185,6 +185,7 @@ static bool getRawDTVStatus(void) { return false; }
     + extract_function(CONFIG_C, "void config_parse_legacy(").replace("calloc(", "harness_calloc("),
     between(CONFIG_C, "/* Keys a global.ini may still carry", "int config_update_global("),
     extract_function(CONFIG_C, "static char *config_merge_autoload("),
+    extract_function(CONFIG_C, "static char *config_merge_default_source("),
     "static void write_global(FILE *fp)\n{\n"
     + between(GLOBAL_WRITER, "// Write out Swiss settings", "fclose(fp);") + "}",
     "static void write_game(FILE *fp, ConfigEntry *entry, ConfigEntry *defaults)\n{\n"
@@ -319,6 +320,16 @@ int main(int argc, char **argv)
 		strncpy(swissSettings.autoload, input, sizeof(swissSettings.autoload) - 1);
 		/* config_file_read gives NULL for a missing or empty file. */
 		merged = config_merge_autoload(existing[0] ? existing : NULL);
+		fputs(merged != NULL ? merged : "NULL\n", stdout);
+		free(merged);
+		free(existing);
+	}
+	else if(argc >= 3 && !strcmp(argv[1], "default-source-merge")) {
+		char *existing = read_path(argv[2]);
+		char *merged;
+		input[strcspn(input, "\r\n")] = '\0';
+		strncpy(swissSettings.defaultSource, input, sizeof(swissSettings.defaultSource) - 1);
+		merged = config_merge_default_source(existing[0] ? existing : NULL);
 		fputs(merged != NULL ? merged : "NULL\n", stdout);
 		free(merged);
 		free(existing);
@@ -803,6 +814,18 @@ class SettingsFileTest(unittest.TestCase):
                          SWISS_C.count("Saving autoload\\205"))
         self.assertEqual(SWISS_C.count("config_update_autoload(true);"), 3)
         self.assertNotIn("config_update_global(", SWISS_C)
+        self.assertEqual(self.run_harness("default-source-merge", str(path), stdin="sdc:/\n"), "NULL\n")
+        path.write_text(without)
+        with_default_source = without.replace("#!!Swiss Settings End!!",
+                                              "Default Source=sdc:/\r\n#!!Swiss Settings End!!")
+        self.assertEqual(self.run_harness("default-source-merge", str(path), stdin="sdc:/\n"),
+                         with_default_source)
+        path.write_text(with_default_source)
+        self.assertEqual(self.run_harness("default-source-merge", str(path), stdin="gcldr:/\n"),
+                         with_default_source.replace("Default Source=sdc:/", "Default Source=gcldr:/"))
+        self.assertEqual(SWISS_C.count("config_update_default_source(true);"),
+                         SWISS_C.count("Saving default source\\205"))
+        self.assertEqual(SWISS_C.count("config_update_default_source(true);"), 1)
 
     def saved(self, existing: str, changes: str = "", game: bool = False) -> str:
         path = Path(self.tmp.name) / ("existing-game.ini" if game else "existing.ini")

@@ -121,6 +121,7 @@ static char *tooltips_global[PAGE_GLOBAL_MAX+1] = {
 	[SET_SCREEN_POS] = "Screen Position:\n\nAdjusts the horizontal screen position in games",
 	[SET_SYS_LANG] = "System Language:\n\nSystem language used in games, primarily multi-5 PAL games",
 	[SET_CONFIG_DEV] = "Configuration Device:\n\nThe device Indigo loads settings from and saves them to, in\nswiss/settings/global.ini. The choice is stored in SRAM, and it\nchanges only once Save & Exit has written the settings there.\nThe line under the Storage title says whether that file loaded.",
+	[SET_DEFAULT_SOURCE] = "Default Source:\n\nThe storage device and Library folder Indigo mounts when it\nstarts on Home, such as sdc:/games. None keeps the boot device.\nLeft and Right step through devices; A opens the folder chooser\nwhere X selects a folder and Y switches devices.",
 	[SET_SAVE_FOLDER] = "Save Folder:\n\nThe folder Memory Cards (Home > System) opens on the SD\ncard: saves copied off a memory card go there, unless you\nopen or pick another. It's a folder on the Configuration\nDevice; swiss/saves until you choose another.\n\nA opens its folders: A goes into one, X chooses the one open.",
 	[SET_INIT_DRIVE] = "Init DVD Drive at startup:\n\nDisabled - Leave it as-is (default)\nEnabled - Deassert reset signal when Swiss starts\n\nThis is necessary for the eject button to function on the\nPanasonic Q when Swiss is used as IPL replacement.",
 	[SET_STOP_MOTOR] = "Stop DVD Drive motor:\n\nDisabled - Leave it as-is (default)\nEnabled - Stop the disc from spinning when Swiss starts\n\nThis option is mostly for users booting from game save exploits\nwhere the disc will already be spinning.",
@@ -246,6 +247,23 @@ char* getConfigDeviceName(SwissSettings *settings) {
 char* getAutoLoadDeviceName(SwissSettings *settings) {
 	DEVICEHANDLER_INTERFACE *entryDevice = getDeviceFromPath(settings->autoload);
 	return entryDevice != NULL ? (char*)(entryDevice->deviceName) : "None";
+}
+
+char* getDefaultSourceDeviceName(SwissSettings *settings) {
+	static char formatted[UI_SETLAYOUT_VALUE_TEXT_MAX + 1];
+	DEVICEHANDLER_INTERFACE *sourceDevice = getDeviceFromPath(settings->defaultSource);
+	size_t length;
+
+	if(sourceDevice == NULL || settings->defaultSource[0] == '\0') {
+		return "None";
+	}
+	length = strlen(settings->defaultSource);
+	snprintf(formatted, sizeof(formatted), "%s%s",
+		length > UI_SETLAYOUT_VALUE_TEXT_MAX ? "\205" : "",
+		length > UI_SETLAYOUT_VALUE_TEXT_MAX ?
+			settings->defaultSource + length - (UI_SETLAYOUT_VALUE_TEXT_MAX - 1) :
+			settings->defaultSource);
+	return formatted;
 }
 
 char* getGameVideoModeString(int gameVMode) {
@@ -618,6 +636,7 @@ static const settingsRowRef_t consoleRows[] = {
 
 static const settingsRowRef_t storageRows[] = {
 	{PAGE_GLOBAL, SET_CONFIG_DEV},
+	{PAGE_GLOBAL, SET_DEFAULT_SOURCE},
 	{PAGE_GLOBAL, SET_SAVE_FOLDER},
 	{PAGE_GLOBAL, SET_EXI_SPEED},
 	{PAGE_GLOBAL, SET_INIT_DRIVE},
@@ -1032,6 +1051,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_SCREEN_POS: rowNumber(row, "Screen Position:", "%+i", swissSettings.sramHOffset, true); break;
 			case SET_SYS_LANG: rowCycle(row, "System Language:", sramLanguageStr[swissSettings.sramLanguage], true); break;
 			case SET_CONFIG_DEV: rowCycle(row, "Configuration Device:", getConfigDeviceName(&swissSettings), true); break;
+			case SET_DEFAULT_SOURCE: rowCycle(row, "Default Source:", getDefaultSourceDeviceName(&swissSettings), true); break;
 			case SET_SAVE_FOLDER: {
 				/* The value holds 24 bytes; a longer path shows its end. */
 				static char folder[UI_SETLAYOUT_VALUE_TEXT_MAX + 1];
@@ -1279,13 +1299,25 @@ static void settingsDescribeFocus(uiSetPageSnapshot_t *page, int view,
 			}
 		}
 		else if(row.enabled) {
-			hints[count++] = settingsRowHasList(ref->page, ref->option) ?
+			hints[count++] = (settingsRowHasList(ref->page, ref->option) ||
+				(ref->page == PAGE_GLOBAL && ref->option == SET_DEFAULT_SOURCE)) ?
 				"A  Choose" : "A  Change";
 		}
 		if(help != NULL) {
 			hints[count++] = "Y  Help";
 			if(UISetLayout_HelpSummary(help, row.value, summary,
 				sizeof(summary)) > 0) {
+				about = summary;
+			}
+		}
+		if(ref->page == PAGE_GLOBAL && ref->option == SET_DEFAULT_SOURCE) {
+			DEVICEHANDLER_INTERFACE *sourceDevice =
+				getDeviceFromPath(swissSettings.defaultSource);
+			if(sourceDevice != NULL) {
+				snprintf(summary, sizeof(summary),
+					"%s (%s) - A chooses a folder; Left/Right changes device.",
+					DeviceDisplayName(sourceDevice),
+					swissSettings.defaultSource);
 				about = summary;
 			}
 		}
@@ -1479,6 +1511,38 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 					if(allDevices[curDevicePos] != NULL) {
 						swissSettings.configDeviceId = allDevices[curDevicePos]->deviceUniqueId;
 					}
+				}
+			}
+			break;
+			case SET_DEFAULT_SOURCE:
+			{
+				if(direction == 0) {
+					choose_default_source_dir(swissSettings.defaultSource,
+						sizeof(swissSettings.defaultSource));
+					break;
+				}
+				int curDevicePos = MAX_DEVICES;
+				DEVICEHANDLER_INTERFACE *currentSource = getDeviceFromPath(swissSettings.defaultSource);
+				if(currentSource != NULL) {
+					for(int i = 0; i < MAX_DEVICES; i++) {
+						if(allDevices[i] == currentSource) {
+							curDevicePos = i;
+							break;
+						}
+					}
+				}
+				do {
+					curDevicePos = (curDevicePos + direction + (MAX_DEVICES + 1)) % (MAX_DEVICES + 1);
+				} while(curDevicePos < MAX_DEVICES && (allDevices[curDevicePos] == NULL ||
+					!(allDevices[curDevicePos]->features & FEAT_BOOT_GCM) ||
+					allDevices[curDevicePos]->initial == NULL ||
+					allDevices[curDevicePos] == &__device_dvd));
+				if(curDevicePos < MAX_DEVICES) {
+					concat_path(swissSettings.defaultSource,
+						allDevices[curDevicePos]->initial->name, "games");
+				}
+				else {
+					swissSettings.defaultSource[0] = '\0';
 				}
 			}
 			break;
@@ -2262,7 +2326,7 @@ static bool settingsRowIsAction(int page, int option)
 {
 	switch(page) {
 		case PAGE_GLOBAL:
-			return option == SET_SAVE_FOLDER;
+			return option == SET_SAVE_FOLDER || option == SET_DEFAULT_SOURCE;
 		case PAGE_INTERFACE:
 			return in_range(option, SET_AUTOLOAD, SET_FLATTEN_DIR);
 		case PAGE_NETWORK:
@@ -2718,6 +2782,7 @@ static bool settingsInputMayBlock(int page, int option, u32 buttons)
 	if(page == PAGE_GLOBAL) {
 		return ((horizontal || activate) && (option == SET_RT4K_OPTIM ||
 			option == SET_SAVE_FOLDER)) ||
+			(activate && option == SET_DEFAULT_SOURCE) ||
 			(activate && settingsIsLiveVideoRow(page, option));
 	}
 	if(page == PAGE_INTERFACE) {
