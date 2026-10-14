@@ -79,13 +79,13 @@ jobs:
           cp buildtools/ui/emulator/probe/probe.dol dist/probe.dol
           make -C buildtools/ui/emulator/aesnd
           cp buildtools/ui/emulator/aesnd/aesnd.dol dist/aesnd.dol
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: indigo-sd-card-${{ github.sha }}
           path: dist/*.zip
           if-no-files-found: error
           retention-days: 14
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dol-${{ github.sha }}
           path: |
@@ -110,7 +110,7 @@ jobs:
       - name: Toolchain
         working-directory: elsewhere
         run: buildtools/ci/toolchain.sh "$TOOLCHAIN"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dol-${{ github.sha }}
           path: first
@@ -133,7 +133,7 @@ jobs:
         # the Emulator job, so it adds nothing to the time CI takes.
         working-directory: elsewhere
         run: make -C cube/swiss -j8 BUILD=build-perf TARGET=swiss-perf UI_PERF=1
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dol-perf-${{ github.sha }}
           path: elsewhere/cube/swiss/swiss-perf.dol
@@ -191,11 +191,11 @@ jobs:
               artifact: emulator-game-ntsc-component-gcloader }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dol-${{ github.sha }}
           path: build
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: matrix.storage != 'dvd'
         with:
           name: indigo-sd-card-${{ github.sha }}
@@ -230,7 +230,7 @@ jobs:
       - name: Summary
         if: always()
         run: cat emulator/summary.md >> "$GITHUB_STEP_SUMMARY" || true
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: ${{ matrix.artifact }}-${{ github.sha }}
@@ -280,7 +280,7 @@ jobs:
           # The weekly run shares 55 of its 60 minutes between the targets.
           SECONDS_EACH: ${{ github.event_name == 'schedule' && 'total:3300' || '30' }}
         run: buildtools/ui/tests/fuzz/run_fuzz.sh "$SECONDS_EACH" fuzz-out
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: fuzz-crashes-${{ github.sha }}
