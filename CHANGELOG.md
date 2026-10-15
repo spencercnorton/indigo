@@ -7,7 +7,6 @@ tag on `beta`. The newest changes are at the top until their release is named.
 ## Unreleased
 
 - Game details: bind save replacement to the card's mount generation, so a write or read-back failure after a card swap never writes the original save to a replacement card.
-- Memory cards: keep waiting while an emulated card is creating its virtual card, and report a failure if its status remains unconfirmed for 60 seconds. Real MemCard PRO testing remains pending.
 - Clarify image filename matching, cheat memory limits and Library folder/source instructions.
 
 ### New
@@ -207,9 +206,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
   which showed the previous game's saves or "Save scan incomplete". The
   Saves box says **Memory card loading** until the card is ready, even for a
   game with fewer than two save copies, and **Memory card didn't load** if
-  it never is. A save is only loaded onto the card once it holds the game's
-  card, and opening games' details quickly one after another no longer
+  it never is. Opening games' details quickly one after another no longer
   leaves the card without its GameID until it is taken out and put back.
+  Indigo only reads such a card: Left and Right don't offer it another save
+  copy. This is the code a real MemCard PRO GC was tested with (#102).
 - A quick press made while Indigo reads from a device is no longer missed:
   B in the Library or Apps while a folder's picture loads from a disc, and
   B to cancel a copy or a verify in the File Browser while a piece of the
@@ -223,9 +223,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### For developers
 
-- Stable publication of the MemCard PRO switching/save changes requires a
-  recorded real-card pass for the current source and pinned library image.
-  Lab checks allow candidate testing; they cannot clear the hardware hold.
+- Stable publication of the MemCard PRO switching requires a recorded
+  real-card pass whose tested build has the same card-slot code, the same
+  launch around a switch and the same pinned library image
+  (`check_memcard_qualification.py`). Lab checks allow candidate testing;
+  they cannot clear the hardware hold. 2.4's record is the #102 test build.
 - The launch-test probe fits its full barcode inside a 240-line framebuffer.
   Its old fixed-height grid ran past that buffer and could make a successful
   launch appear frozen in a long test.
@@ -234,16 +236,17 @@ tag on `beta`. The newest changes are at the top until their release is named.
   `get_fst_details`, `adjust_tgc_fst` and `calc_fst_entries_size`. The game
   route launches the disc with a runaway file table on its way to the
   probe: it fails like any launch there and comes back to the Library.
-- `test_card_slots.py` runs the real `card_slots.c` against stubbed MMCE, CARD and
-  EXI calls with a fake clock and presence line, one request after another as
-  well as one at a time, and `test_ui_card_slots` scripts the slot's states;
-  `test_save_choice.py` holds the save choice to a card that changes, during its
-  question too. The Game Detail audit pins the wiring, with mutants.
+- `test_card_slots.py` runs the real `card_slots.c` against stubbed MMCE, CARD
+  and EXI calls with a fake clock and presence line, and `test_ui_card_slots`
+  scripts the slot's states; `test_save_choice.py` holds the save choice to a
+  card that changes, during its question too. The Game Detail audit pins the
+  wiring, with mutants.
 - `test_save_choice.py` runs Game Detail's save choice from `swiss.c` itself:
-  no choice without a card or with Emulate Memory Card on, each copy then
-  the totals, and B keeping the card's copy. `test_saves_stats.py` holds the
-  card's own copy first however many the Save Folder has, two cards' copies
-  in slot order, and the folder's newest, newest first;
+  no choice without a card, with Emulate Memory Card on or on a memory card
+  emulator, each copy then the totals, and B keeping the card's copy.
+  `test_saves_stats.py` holds the card's own copy first however many the
+  Save Folder has, two cards' copies in slot order, and the folder's newest,
+  newest first;
   `test_saves_card_io.py` swaps the card before the replace. The audits pin
   that the File Browser lets its loading wheel go only once the banner
   thread has stopped, closes the left pane's files before an operation,

@@ -76,11 +76,10 @@ static void print_debug(const char *format, ...) { (void)format; }
 /* The slot: its presence line, and how it answers. */
 static u32 fakeCsr[3];
 #define CARD_SLOTS_EXI_CSR(chan) (fakeCsr[chan])
-static bool emulator[2], busyForever[2], statusFail[2];
+static bool emulator[2], busyForever[2];
 static s32 setIdResult[2], setInfoResult[2], cardProbe[2], cardInit[2];
 static u8 status[2];
 static unsigned setIdCalls[2], inits[2], resets, statusReads[2];
-static char lastDisk[2][6];	/* the game the last Set Disc ID named */
 static void present(int slot, bool on) { fakeCsr[slot] = on ? 0x1000u : 0u; }
 static s32 MMCE_ProbeEx(s32 chan)
 {
@@ -90,7 +89,7 @@ static s32 MMCE_ProbeEx(s32 chan)
 	return MMCE_RESULT_READY;
 }
 static s32 MMCE_GetDeviceID(s32 chan, u32 *id) { *id = 0x38420101u; return emulator[chan] ? MMCE_RESULT_READY : MMCE_RESULT_WRONGDEVICE; }
-static s32 MMCE_SetDiskID(s32 chan, const dvddiskid *disk) { memcpy(lastDisk[chan], disk, 6); setIdCalls[chan]++; return setIdResult[chan]; }
+static s32 MMCE_SetDiskID(s32 chan, const dvddiskid *disk) { (void)disk; setIdCalls[chan]++; return setIdResult[chan]; }
 static s32 MMCE_SetDiskInfo(s32 chan, const char *name) { (void)name; return setInfoResult[chan]; }
 static bool MMCE_IsAttached(s32 chan) { (void)chan; return false; }
 static s32 CARD_ProbeEx(s32 chan, void *a, void *b) { (void)a; (void)b; return (fakeCsr[chan] & 0x1000u) ? cardProbe[chan] : CARD_ERROR_NOCARD; }
@@ -99,7 +98,7 @@ static s32 cardDeinitStub(file_handle *f) { (void)f; return 0; }
 static int locked;
 static s32 EXI_Lock(s32 chan, s32 dev, void *cb) { (void)chan; (void)dev; (void)cb; if(locked) return 0; locked = 1; return 1; }
 static s32 EXI_Select(s32 chan, s32 dev, s32 speed) { (void)dev; (void)speed; return (fakeCsr[chan] & 0x1000u) != 0; }
-static s32 EXI_ImmEx(s32 chan, void *data, u32 length, u32 mode) { if(statusFail[chan]) return 0; if(mode == EXI_READ && length == 1u) { *(u8 *)data = status[chan]; statusReads[chan]++; } return 1; }
+static s32 EXI_ImmEx(s32 chan, void *data, u32 length, u32 mode) { if(mode == EXI_READ && length == 1u) { *(u8 *)data = status[chan]; statusReads[chan]++; } return 1; }
 static s32 EXI_Deselect(s32 chan) { (void)chan; return 1; }
 static s32 EXI_Unlock(s32 chan) { (void)chan; locked = 0; return 1; }
 static void EXI_ProbeReset(void) { resets++; }
@@ -116,11 +115,9 @@ static void reset(void)
 	memset(setIdCalls, 0, sizeof(setIdCalls));
 	memset(inits, 0, sizeof(inits));
 	memset(statusReads, 0, sizeof(statusReads));
-	memset(lastDisk, 0, sizeof(lastDisk));
-	swissSettings.disableMCPGameID = 0;
 	resets = 0u;
 	for(int i = 0; i < 2; i++) {
-		emulator[i] = false; busyForever[i] = false; statusFail[i] = false;
+		emulator[i] = false; busyForever[i] = false;
 		setIdResult[i] = setInfoResult[i] = MMCE_RESULT_READY;
 		cardProbe[i] = CARD_ERROR_READY; cardInit[i] = CARD_ERROR_READY;
 		status[i] = 0x41u; present(i, i == 0);
@@ -139,13 +136,6 @@ static bool run(u64 ms)
 		told |= CardSlots_Poll();
 	}
 	return told;
-}
-
-/* Detail for a game never loses a slot without a word: its card is read,
- * waited for, or said to have failed. */
-static void accounted(const char id[6])
-{
-	assert(CardSlots_ReadableFor(0, id) || CardSlots_WaitingFor(id) || CardSlots_FailedFor(0, id));
 }
 
 /* The ID out, the card off the bus 0.3 s later for 0.8 s, then loaded. */
@@ -190,36 +180,13 @@ int main(void)
 	assert(!CardSlots_IdWaiting());
 
 	/* One that never takes it: five sends, then given up (FAILED, not IDLE);
-	 * the launch's wait ends. Taken out and put back, Detail is told and the
-	 * ID goes out again; the card is never read as this game's meanwhile. */
+	 * the launch's wait ends. */
 	reset(); setIdResult[0] = MMCE_RESULT_NOCARD;
 	CardSlots_RequestGame(&gameA);
 	run(20000u);
 	assert(setIdCalls[0] == UI_CARD_SLOT_SEND_TRIES);
 	assert(!CardSlots_IdWaiting() && CardSlots_FailedFor(0, A));
 	assert(!CardSlots_ReadableFor(0, A) && !CardSlots_WritableFor(0, A));
-	present(0, false);
-	run(500u);
-	assert(CardSlots_FailedFor(0, A));
-	setIdResult[0] = MMCE_RESULT_READY;
-	present(0, true);
-	assert(run(100u));
-	assert(CardSlots_WaitingFor(A) && !CardSlots_ReadableFor(0, A));
-	run(1500u);
-	assert(setIdCalls[0] == UI_CARD_SLOT_SEND_TRIES + 1u && inits[0] == 0u);
-	assert(slots[0].state.phase == UI_CARD_SLOT_SENT);
-
-	/* The card takes the ID and leaves the bus at once: libogc2 calls that
-	 * send failed. Sent again once it is back, then read (lab x2). */
-	reset(); setIdResult[0] = MMCE_RESULT_NOCARD;
-	CardSlots_RequestGame(&gameA);
-	present(0, false);
-	run(800u);
-	assert(inits[0] == 0u && CardSlots_WaitingFor(A) && !CardSlots_ReadableFor(0, A));
-	setIdResult[0] = MMCE_RESULT_READY;
-	present(0, true);
-	run(5000u);
-	assert(setIdCalls[0] == 2u && slots[0].state.phase == UI_CARD_SLOT_READY);
 
 	/* B asked for while A switches; B's send fails once after A is done: B
 	 * stays queued and goes out on the retry (review finding: it was lost). */
@@ -272,55 +239,16 @@ int main(void)
 	}
 	assert(slots[0].state.phase == UI_CARD_SLOT_IDLE && !slots[0].state.mmce);
 
-	/* Status 0xFF during 30s virtual card creation holds the mount back;
-	 * turning sane mounts at once without premature bus traffic. */
+	/* Status 0xFF while loading holds the mount back; turning sane mounts at
+	 * once. */
 	reset(); status[0] = 0xFFu;
 	CardSlots_RequestGame(&gameA);
 	run(300u); present(0, false); run(800u); present(0, true);
-	run(30000u);
+	run(2500u);
 	assert(inits[0] == 0u && statusReads[0] > 0u);
 	status[0] = 0x41u;
 	run(300u);
 	assert(inits[0] == 1u && slots[0].state.phase == UI_CARD_SLOT_READY);
-
-	/* Status read failure (EXI error or unknown status) while loading holds
-	 * the mount back; once valid status is read, it recovers and mounts. */
-	reset(); statusFail[0] = true;
-	CardSlots_RequestGame(&gameA);
-	run(300u); present(0, false); run(800u); present(0, true);
-	run(5000u);
-	assert(inits[0] == 0u);
-	statusFail[0] = false; status[0] = 0xFFu;
-	run(5000u);
-	assert(inits[0] == 0u && statusReads[0] > 0u);
-	status[0] = 0x41u;
-	run(300u);
-	assert(inits[0] == 1u && slots[0].state.phase == UI_CARD_SLOT_READY);
-
-	/* Sane unlocked status 0x00: recognized as sane, mounts immediately
-	 * without delay or false busy hold. */
-	reset(); status[0] = 0x00u;
-	CardSlots_RequestGame(&gameA);
-	run(300u); present(0, false); run(800u); present(0, true);
-	run(1500u);
-	assert(inits[0] == 1u && slots[0].state.phase == UI_CARD_SLOT_READY);
-
-	/* Unsupported status (0xFF forever) never mounts blindly; it times out
-	 * boundedly at the 60s FSM deadline into FAILED. Taken out and put back
-	 * with sane status, it recovers and mounts. */
-	reset(); status[0] = 0xFFu;
-	CardSlots_RequestGame(&gameA);
-	run(300u); present(0, false); run(800u); present(0, true);
-	run(65000u);
-	assert(inits[0] == 0u && slots[0].state.phase == UI_CARD_SLOT_FAILED);
-	assert(CardSlots_FailedFor(0, A));
-	present(0, false);
-	run(500u);
-	status[0] = 0x41u;
-	present(0, true);
-	run(2000u);
-	assert(inits[0] == 1u && slots[0].state.phase == UI_CARD_SLOT_READY);
-	assert(CardSlots_ReadableFor(0, A));
 
 	/* A stale card ID (CARD says another device) is reset, then read. */
 	reset(); cardProbe[0] = CARD_ERROR_WRONGDEVICE;
@@ -341,155 +269,7 @@ int main(void)
 	run(5000u);
 	assert(slots[0].state.phase == UI_CARD_SLOT_READY);
 
-	/* Review of #121, one request after another without a reset between:
-	 * B's send fails (a card that took B and left at once), and A is opened
-	 * again while the card is away. The card comes back holding B's card, so
-	 * A goes out again before A's Detail reads it (it read B's card as A's). */
-	reset();
-	CardSlots_RequestGame(&gameA);
-	switchCard();
-	assert(slots[0].state.phase == UI_CARD_SLOT_READY);
-	setIdResult[0] = MMCE_RESULT_NOCARD;
-	CardSlots_RequestGame(&gameB);
-	present(0, false);
-	accounted(B);
-	run(200);
-	setIdResult[0] = MMCE_RESULT_READY;
-	CardSlots_RequestGame(&gameA);
-	accounted(A);
-	run(600);
-	present(0, true);
-	run(100);
-	assert(!CardSlots_ReadableFor(0, A) && CardSlots_WaitingFor(A));
-	run(6000);
-	assert(!memcmp(lastDisk[0], A, 6) && !memcmp(slots[0].state.id, A, 6));
-	assert(slots[0].state.phase == UI_CARD_SLOT_READY && CardSlots_ReadableFor(0, A));
-
-	/* B's send really fails, A is opened again at once with the card in:
-	 * A goes out and B no longer waits (it was then sent as A's disc under
-	 * B's name, and the slot was left out of A's Detail meanwhile). */
-	reset();
-	CardSlots_RequestGame(&gameA);
-	switchCard();
-	setIdResult[0] = MMCE_RESULT_NOCARD;
-	CardSlots_RequestGame(&gameB);
-	setIdResult[0] = MMCE_RESULT_READY;
-	CardSlots_RequestGame(&gameA);
-	accounted(A);
-	assert(!slots[0].state.hasPending && !memcmp(lastDisk[0], A, 6));
-	run(10000);
-	assert(slots[0].state.phase == UI_CARD_SLOT_READY && !memcmp(slots[0].state.id, A, 6));
-	assert(!memcmp(lastDisk[0], A, 6));
-	CardSlots_RequestGame(&gameB);
-	assert(!CardSlots_ReadableFor(0, B) && CardSlots_WaitingFor(B));
-
-	/* A MemCard PRO swapped for a plain card without a restart: after the
-	 * five sends Detail is told, and the card is read as it is from then on,
-	 * put back or not (it said "loading" then "didn't load" for good). */
-	reset();
-	CardSlots_RequestGame(&gameA);
-	switchCard();
-	emulator[0] = false;
-	present(0, false); run(500); present(0, true); run(3000);
-	CardSlots_RequestGame(&gameB);
-	accounted(B);
-	{
-		u64 start = fakeMs;
-		bool told = false;
-
-		while(CardSlots_IdWaiting() && fakeMs - start < 65000u) told |= run(16u);
-		assert(fakeMs - start < 12000u && told);
-	}
-	assert(!slots[0].state.mmce && CardSlots_ReadableFor(0, B) && !CardSlots_FailedFor(0, B));
-	{
-		unsigned sends = setIdCalls[0];
-
-		present(0, false); run(500); present(0, true); run(5000);
-		assert(setIdCalls[0] == sends && CardSlots_ReadableFor(0, B));
-	}
-
-	/* GameID turned off for Slot A after it was followed: its card is read
-	 * as it is for the next game, not left out of the scan. */
-	reset();
-	CardSlots_RequestGame(&gameA);
-	switchCard();
-	swissSettings.disableMCPGameID = 1;
-	CardSlots_RequestGame(&gameB);
-	run(3000);
-	assert(CardSlots_ReadableFor(0, B) && !slots[0].state.mmce);
-
-	/* Given up on A (the ID never went out), B asked for with the card out,
-	 * the card put back: B goes out, not A again over it. */
-	reset(); setIdResult[0] = MMCE_RESULT_NOCARD;
-	CardSlots_RequestGame(&gameA);
-	run(20000);
-	assert(CardSlots_FailedFor(0, A));
-	present(0, false); run(100);
-	CardSlots_RequestGame(&gameB);
-	accounted(B);
-	setIdResult[0] = MMCE_RESULT_READY;
-	present(0, true);
-	run(6000);
-	assert(!memcmp(lastDisk[0], B, 6) && !memcmp(slots[0].state.id, B, 6));
-
-	/* Re-review of #121. The emulator takes none of five sends and is out of
-	 * the slot at the last: given up on, not made plain. Put back, it is sent
-	 * the ID again and read once it holds the game's card. */
-	reset(); setIdResult[0] = MMCE_RESULT_NOCARD;
-	CardSlots_RequestGame(&gameA);
-	while(setIdCalls[0] < UI_CARD_SLOT_SEND_TRIES - 1u) run(16u);
-	present(0, false);
-	run(8000u);
-	assert(CardSlots_FailedFor(0, A) && slots[0].state.mmce && inits[0] == 0u);
-	setIdResult[0] = MMCE_RESULT_READY;
-	present(0, true);
-	assert(run(100u));
-	run(6000u);
-	assert(!memcmp(lastDisk[0], A, 6) && slots[0].state.phase == UI_CARD_SLOT_READY);
-
-	/* A card that takes the ID and leaves at once (libogc2: failed), then
-	 * answers Get Device ID with garbage while it makes a new card for over
-	 * 11 s: still the emulator, never read as a plain card mid-switch. */
-	reset(); setIdResult[0] = MMCE_RESULT_NOCARD;
-	CardSlots_RequestGame(&gameA);
-	present(0, false); run(800u); present(0, true);
-	emulator[0] = false;
-	run(15000u);
-	assert(inits[0] == 0u && slots[0].state.mmce && !CardSlots_ReadableFor(0, A));
-	assert(CardSlots_FailedFor(0, A));
-
-	/* A slot followed mid-switch that becomes a storage device (an SD adapter
-	 * mounted there): no longer followed, no more status reads or probes. */
-	reset(); status[0] = 0xFFu; cardInit[0] = CARD_ERROR_BROKEN;
-	CardSlots_RequestGame(&gameA);
-	run(300u); present(0, false); run(800u); present(0, true); run(1500u);
-	assert(slots[0].state.phase == UI_CARD_SLOT_LOADING);
-	{
-		static DEVICEHANDLER_INTERFACE adapter = { .location = LOC_MEMCARD_SLOT_A };
-		unsigned reads;
-
-		devices[DEVICE_CUR] = &adapter;
-		CardSlots_RequestGame(&gameB);
-		reads = statusReads[0] + inits[0];
-		run(5000u);
-		assert(statusReads[0] + inits[0] == reads && slots[0].state.phase == UI_CARD_SLOT_IDLE);
-		devices[DEVICE_CUR] = NULL;
-	}
-
-	/* A new game's request starts its own round. A's send fails with the
-	 * PRO answering, a plain card goes in, and B's Detail opens within A's
-	 * round: after B's own five sends the plain card is read, not "didn't
-	 * load" because of A's answer. */
-	reset(); setIdResult[0] = MMCE_RESULT_NOCARD;
-	CardSlots_RequestGame(&gameA);
-	emulator[0] = false;
-	present(0, false); run(200u); present(0, true);
-	CardSlots_RequestGame(&gameB);
-	accounted(B);
-	run(15000u);
-	assert(!slots[0].state.mmce && CardSlots_ReadableFor(0, B) && !CardSlots_FailedFor(0, B));
-
-	puts("card slots glue: partial sends, kept and retried IDs, given up as FAILED and sent again when put back, a card that leaves at once, refresh on leaving the bus, plain cards, bounded probe, status-held mounts, sane 0x00 and recovery, stale ID reset; one request after another: a failed send then the previous game, a PRO swapped for a plain card, GameID turned off, a new ID after giving up, out at the last try, a garbage ID while loading, a slot turned storage, a new request's own round PASS");
+	puts("card slots glue: partial sends, kept and retried IDs, given up as FAILED, refresh on leaving the bus, plain cards, bounded probe, status-held mounts, stale ID reset PASS");
 	return 0;
 }
 '''

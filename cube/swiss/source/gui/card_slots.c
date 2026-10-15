@@ -19,6 +19,10 @@
 #define CARD_SLOTS_PROBE_MS 600u
 /* While a card loads, its status byte is looked at this often. */
 #define CARD_SLOTS_STATUS_MS 250u
+/* A card whose status says it is still loading isn't mounted on the retries
+ * (a mount is 80 reads); from this many tries (about 4 s after it came back)
+ * it is, in case its status byte says nothing useful. */
+#define CARD_SLOTS_STATUS_TRIES 3u
 
 typedef struct {
 	uiCardSlot_t state;
@@ -32,8 +36,10 @@ typedef struct {
 
 static cardSlot_t slots[2];
 
-/* What the slots did, a line an event, goes to the debug output (a
- * development console's, and Dolphin's log). */
+/* What the slots did, a line an event: to the debug output (a development
+ * console's, and Dolphin's log) and, while there is room, into traceText. */
+static char traceText[8192];
+static size_t traceLength;
 static const char *const phaseNames[] = {
 	"idle", "sent", "away", "back", "loading", "ready", "failed"
 };
@@ -53,6 +59,7 @@ static void trace(s32 chan, const char *format, ...)
 	unsigned long ms;
 	int head;
 	va_list args;
+	size_t length;
 
 	/* Seconds from the first event. */
 	if(base == 0u) base = nowMs();
@@ -63,6 +70,13 @@ static void trace(s32 chan, const char *format, ...)
 	vsnprintf(line + head, sizeof(line) - (size_t)head, format, args);
 	va_end(args);
 	print_debug("cards: %s\n", line);
+	length = strlen(line);
+	if(traceLength + length + 2u < sizeof(traceText)) {
+		memcpy(traceText + traceLength, line, length);
+		traceLength += length;
+		traceText[traceLength++] = '\n';
+		traceText[traceLength] = '\0';
+	}
 }
 
 static void traceId(char out[7], const void *id)
@@ -225,15 +239,10 @@ void CardSlots_RequestGame(const DiskHeader *header)
 	for(chan = EXI_CHANNEL_0; chan < EXI_CHANNEL_MAX; chan++) {
 		cardSlot_t *slot;
 
-		/* GameID off for this slot: not followed, its card read as it is. */
-		if(swissSettings.disableMCPGameID & (1 << chan)) {
-			if(chan <= EXI_CHANNEL_1) UICardSlot_Init(&slots[chan].state);
-			continue;
-		}
+		if(swissSettings.disableMCPGameID & (1 << chan)) continue;
 		/* Serial Port 2, or a slot used as a storage device: sent as before,
 		 * nothing there to read as a memory card. */
 		if(chan > EXI_CHANNEL_1 || slotInUse(chan)) {
-			if(chan <= EXI_CHANNEL_1) UICardSlot_Init(&slots[chan].state);
 			if(sendId(chan, disk, header->GameName) == SEND_OK) {
 				trace(chan, "%s sent (not followed)", name);
 				if(chan == EXI_CHANNEL_0) swissSettings.emulateMemoryCard = 0;
@@ -263,7 +272,6 @@ bool CardSlots_Poll(void)
 	for(chan = EXI_CHANNEL_0; chan <= EXI_CHANNEL_1; chan++) {
 		cardSlot_t *slot = &slots[chan];
 		uiCardSlotPhase_t was = slot->state.phase;
-		bool busy = UICardSlot_Busy(&slot->state);
 		char id[UI_CARD_SLOT_ID_LENGTH];
 		u64 now = nowMs();
 
@@ -290,8 +298,8 @@ bool CardSlots_Poll(void)
 		}
 		if(UICardSlot_ReadDue(&slot->state, now)) {
 			bool reset = false;
-			bool loading = slot->state.mmce &&
-				(!slot->statusKnown || !slot->statusSane);
+			bool loading = slot->statusKnown && !slot->statusSane &&
+				slot->state.tries < CARD_SLOTS_STATUS_TRIES;
 
 			if(loading) (void)UICardSlot_Read(&slot->state, UI_CARD_READ_BUSY, now, &reset);
 			else {
@@ -315,12 +323,12 @@ bool CardSlots_Poll(void)
 		if(slot->state.phase != was) {
 			trace(chan, "%s -> %s", phaseNames[was], phaseNames[slot->state.phase]);
 		}
-		/* Read the saves again when a slot stops waiting (its card done
-		 * switching, given up on, or read as a plain card again), and when
-		 * one that was done or given up on changes: a settled card's saves go
-		 * with it when it leaves the bus. */
-		if((busy && !UICardSlot_Busy(&slot->state)) || (slot->state.phase != was &&
-			(was == UI_CARD_SLOT_READY || was == UI_CARD_SLOT_FAILED))) {
+		/* Read the saves again when a card is done switching (or given up on),
+		 * and when one that was settled leaves the bus: its saves go with it. */
+		if(slot->state.phase != was && (slot->state.phase == UI_CARD_SLOT_READY ||
+			slot->state.phase == UI_CARD_SLOT_FAILED ||
+			(slot->state.phase == UI_CARD_SLOT_AWAY && (was == UI_CARD_SLOT_READY ||
+			was == UI_CARD_SLOT_FAILED)))) {
 			settled = true;
 		}
 	}
@@ -352,4 +360,9 @@ bool CardSlots_FailedFor(int slot, const char gameId[6])
 bool CardSlots_IdWaiting(void)
 {
 	return slots[0].state.hasPending || slots[1].state.hasPending;
+}
+
+const char *CardSlots_Trace(void)
+{
+	return traceText;
 }

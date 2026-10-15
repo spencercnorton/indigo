@@ -7,6 +7,11 @@ import unittest
 
 import check_memcard_qualification as qualification
 
+LAUNCH = ("static void gameflowWaitForCardIds(void);\n\n"
+          "static void gameflowWaitForCardIds(void)\n{\n\twhile(waiting()) poll();\n}\n\n"
+          "static void load_app(void)\n{\n\tif(emulate) {\n\t}\n\telse {\n"
+          "\t\tinitialize_card(CARD_SLOTA);\n\t\tinitialize_card(CARD_SLOTB);\n\t}\n}\n")
+
 
 class Qualification(unittest.TestCase):
     def setUp(self):
@@ -17,6 +22,9 @@ class Qualification(unittest.TestCase):
             path = self.root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("demonstration source\n")
+        launch = self.root / qualification.LAUNCH
+        launch.parent.mkdir(parents=True, exist_ok=True)
+        launch.write_text(LAUNCH)
         for name in ["ci.yml","release.yml"]:
             path=self.root/".github/workflows"/name
             path.parent.mkdir(parents=True,exist_ok=True)
@@ -74,6 +82,21 @@ class Qualification(unittest.TestCase):
         self.write(changed)
         self.assertTrue(qualification.problems(self.root,"v2.4.0"),
                         "updating the fingerprint cannot qualify an older tested build")
+
+    def test_changed_launch_around_a_switch_requires_requalification(self):
+        self.write(self.good)
+        launch = self.root / qualification.LAUNCH
+        for old,new in [("\t\tinitialize_card(CARD_SLOTA);\n",
+                         "\t\tif(readable(0))\n\t\t\tinitialize_card(CARD_SLOTA);\n"),
+                        ("while(waiting())","while(waiting() || switching())")]:
+            with self.subTest(old=old):
+                launch.write_text(LAUNCH.replace(old,new,1))
+                self.assertTrue(qualification.problems(self.root,"v2.4.0"))
+
+    def test_the_rest_of_swiss_c_is_the_releases_own(self):
+        self.write(self.good)
+        (self.root/qualification.LAUNCH).write_text("static int detail;\n" + LAUNCH)
+        self.assertEqual(qualification.problems(self.root,"v2.4.0"),[])
 
     def test_missing_malformed_and_nonobject_records_fail_closed(self):
         self.assertTrue(qualification.problems(self.root,"v2.4.0"))

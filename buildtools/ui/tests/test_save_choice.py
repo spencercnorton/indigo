@@ -33,6 +33,7 @@ typedef uint8_t u8;
 typedef uint32_t u32;
 typedef int uiDrawObj_t;
 static struct { int emulateMemoryCard; } swissSettings;
+static unsigned gameflowSaveEmulators;
 typedef struct {
 	bool savesScanned; uiSavesGameStats_t saveStats; int saveSlot; int saveChoice;
 	bool savesWaiting; char gameId[7];
@@ -87,6 +88,7 @@ static void detail(gameflowLaunchContext_t *context, int emulate, bool card, int
 	strcpy(gameflowSaveCopies.copy[gameflowSaveCopies.count++].path, "sd:/swiss/saves/b.raw");
 	gameflowSaveCopies.cards[0] = card;
 	swissSettings.emulateMemoryCard = emulate;
+	gameflowSaveEmulators = 0u;
 	memset(context, 0, sizeof(*context));
 	context->savesScanned = true;
 	context->saveSlot = gameflowSaveSlot(&gameflowSaveCopies);
@@ -115,6 +117,19 @@ int main(void)
 	assert(c.saveSlot == 0 && !gameflowSaveChoosable(&c));
 	press(&c, true);
 	assert(c.saveChoice == -1 && gameflowLoadChosenSave(&c) && asks == 0);
+
+	/* A memory card emulator in Slot A (its details found it changing cards):
+	 * only read, as the MemCard PRO build tested on a real card did. No
+	 * choice, and Launch leaves its card as it is. One in Slot B leaves Slot
+	 * A's card its choice. */
+	detail(&c, 0, true, SAVES_COPY_SLOT_A);
+	gameflowSaveEmulators = 1u;
+	assert(c.saveSlot == 0 && !gameflowSaveChoosable(&c));
+	press(&c, true); assert(c.saveChoice == -1);
+	c.saveChoice = 1;
+	assert(gameflowLoadChosenSave(&c) && asks == 0 && loads == 0);
+	gameflowSaveEmulators = 2u;
+	assert(gameflowSaveChoosable(&c));
 
 	/* A card in Slot A holding a copy: each copy, then the totals again. */
 	detail(&c, 0, true, SAVES_COPY_SLOT_A);
@@ -182,7 +197,7 @@ int main(void)
 	assert(!gameflowSaveChoosable(&c));
 	press(&c, true); assert(c.saveChoice == -1);
 
-	puts("save choice: none without a card or with Emulate Memory Card on, each copy then the totals, B keeps the card's, the question as the card is, nothing while a card changes or after one changed during the question PASS");
+	puts("save choice: none without a card, with Emulate Memory Card on or on a memory card emulator, each copy then the totals, B keeps the card's, the question as the card is, nothing while a card changes or after one changed during the question PASS");
 	return 0;
 }
 '''

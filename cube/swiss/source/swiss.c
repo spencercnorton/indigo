@@ -6467,13 +6467,21 @@ static const char *gameflowSaveWhere(const savesCopy_t *copy)
 	}
 }
 
+/* Slots (bit 0 A, bit 1 B) a game's details found changing cards since Indigo
+ * started: a memory card emulator that took the game's ID (card_slots.c).
+ * Indigo only reads those: the MemCard PRO build tested on a real card
+ * (indigo#102) never wrote to one. */
+static unsigned gameflowSaveEmulators;
+
 /* Left and Right choose a copy only where a launch can put it on the card the
- * game reads: two or more copies, a card in a slot, and Emulate Memory Card
- * off (the game would read its card image instead). */
+ * game reads: two or more copies, a card in a slot that isn't a memory card
+ * emulator, and Emulate Memory Card off (the game would read its card image
+ * instead). */
 static bool gameflowSaveChoosable(const gameflowLaunchContext_t *context)
 {
 	return context->savesScanned && gameflowSaveCopies.count >= 2u &&
-		context->saveSlot >= 0 && !swissSettings.emulateMemoryCard;
+		context->saveSlot >= 0 && !swissSettings.emulateMemoryCard &&
+		!(gameflowSaveEmulators & (1u << context->saveSlot));
 }
 
 /* The copy Left and Right show, while there is a choice. Without one the box
@@ -6731,6 +6739,8 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 				(CardSlots_ReadableFor(0, context->gameId) ? 1u : 0u) |
 				(CardSlots_ReadableFor(1, context->gameId) ? 2u : 0u);
 
+			/* A slot this game can't read yet is an emulator changing cards. */
+			gameflowSaveEmulators |= ~slots & 3u;
 			Saves_CollectGameStats(context->gameId, &context->saveStats,
 				&gameflowSaveCopies, slots);
 			/* A card given up on while changing to this game's card: its

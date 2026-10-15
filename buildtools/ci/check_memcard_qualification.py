@@ -10,19 +10,22 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 RECORD = "docs/validation/memcard-pro.json"
+# What a real card ran: the slot code whole, and swiss.c's launch around a
+# switch (the wait for an ID that waited, then the cards' set-up before the
+# game starts). The rest of swiss.c is the release's own: Game Detail only
+# reads a memory card emulator, as the tested build did (gameflowSaveChoosable,
+# held by audit_game_detail_safety.py).
 SOURCES = (
     "cube/swiss/source/gui/card_slots.c", "cube/swiss/source/gui/card_slots.h",
     "cube/swiss/source/gui/ui_card_slots.c", "cube/swiss/source/gui/ui_card_slots.h",
-    "cube/swiss/source/gui/saves.c", "cube/swiss/source/gui/saves.h",
-    "cube/swiss/source/gui/saves_stats.c", "cube/swiss/source/gui/saves_stats.h",
-    "cube/swiss/source/gui/ui_gameflow_detail.c", "cube/swiss/source/gui/ui_gameflow_detail.h",
-    "cube/swiss/source/swiss.c", "cube/swiss/source/config/config.c",
-    "cube/swiss/source/config/config.h", "cube/swiss/source/devices/memcard/deviceHandler-CARD.c",
-    "cube/swiss/source/devices/memcard/deviceHandler-CARD.h", "cube/swiss/Makefile",
-    "buildtools/ci/toolchain.sh", "UPSTREAM",
 )
-CHECKS = ("existing_card_updates", "new_card_finishes", "rapid_gameid_switches",
-          "save_choice_waits", "card_change_cancels_choice")
+LAUNCH = "cube/swiss/source/swiss.c"
+LAUNCH_PARTS = (
+    re.compile(r"(?ms)^static void gameflowWaitForCardIds\(void\)\n\{\n.*?^\}\n"),
+    re.compile(r"(?m)^\telse \{\n\t\tinitialize_card\(CARD_SLOTA\);\n"
+               r"\t\tinitialize_card\(CARD_SLOTB\);\n"),
+)
+CHECKS = ("existing_card_updates", "new_card_finishes", "rapid_gameid_switches")
 
 
 def fingerprint(root: Path, revision: str | None = None) -> str:
@@ -34,6 +37,12 @@ def fingerprint(root: Path, revision: str | None = None) -> str:
                               check=True, capture_output=True).stdout
     for relative in SOURCES:
         digest.update(relative.encode() + b"\0" + content(relative) + b"\0")
+    launch = content(LAUNCH).decode()
+    for part in LAUNCH_PARTS:
+        found = part.findall(launch)
+        if len(found) != 1:
+            raise ValueError(f"the launch around a card switch changed in {LAUNCH}")
+        digest.update(found[0].encode() + b"\0")
     # libogc2 supplies the actual MMCE/CARD/EXI implementation. Bind the
     # pinned build image too, without binding unrelated workflow comments.
     for relative in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
@@ -82,7 +91,7 @@ def problems(root: Path, tag: str) -> list[str]:
         found.append("a reviewed hardware-test evidence link is required")
     results = record.get("results")
     if not isinstance(results, dict) or any(results.get(check) is not True for check in CHECKS):
-        found.append("all five real-card switching/save checks must pass")
+        found.append("every real-card switching check must pass")
     return found
 
 

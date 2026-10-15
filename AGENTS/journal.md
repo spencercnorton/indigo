@@ -1,3 +1,37 @@
+## 2026-10-15 — MemCard PRO handled as the real-card test ran it
+
+The #102 reporter tested `test/mcp-card-slots` 92b4ed8 (2.3.0 with the
+card-slot code) on a MemCard PRO GC (NTSC-J, FlippyDrive, Slot A): an
+existing card read in about 3 s, a new card in about 6 s, rapid switches
+then a launch mid-switch loaded the right card. Its card-trace.txt, the
+first real timings: the card leaves the bus at most 0.66 s after the ID, is
+off it 0.57 s (existing card) to 2.17 s, and answers status 0x01 once
+back. Every failed status read in the trace is libogc2's 300 ms window
+after a presence edge (exi.c `__exi_probe`), not the card; 0xFF never
+appeared.
+
+At the maintainer's word, 2.4 now handles the card exactly as that build
+did. `card_slots.c`, `card_slots.h`, `ui_card_slots.c`, `ui_card_slots.h`
+and their two tests are the tested build's files, which reverts the
+2026-10-12 status gate above (its premise, 30 s of 0xFF while a card is
+made, came from the lab model and the real card never showed it) and the
+#121 review fixes, which only touch paths the real run never took (failed
+sends, a plain card in a slot an emulator was in, GameID turned off
+mid-session). The launch around a switch was already the tested build's.
+Game Detail only reads a memory card emulator: a slot its scan found
+changing cards is remembered (`gameflowSaveEmulators`) and gets no save
+choice, since the tested build never wrote to one; test_save_choice and the
+Game Detail audit hold it. With GameID off for a slot, Indigo doesn't
+switch that card and can't tell it from a plain one.
+
+`check_memcard_qualification.py` now binds the card-slot files, the launch
+around a switch in swiss.c (`gameflowWaitForCardIds`, load_app's
+`initialize_card` pair) and the toolchain pin, not whole swiss.c, saves.c
+and config.c, which no hardware test of an older base could match. 92b4ed8
+and this tree have the same fingerprint (81e082a4…), recorded with the
+reporter's evidence in `docs/validation/memcard-pro.json`. Keep the
+`test/mcp-card-slots` branch: the stable release check reads its source.
+
 ## 2026-10-12 — Emulated card mounts gated on known sane status
 
 Modeled MemCard PRO traces revealed that during 30-second virtual card creation,

@@ -33,12 +33,7 @@ void UICardSlot_Init(uiCardSlot_t *slot)
 bool UICardSlot_Request(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LENGTH])
 {
 	if(slot == NULL || id == NULL) return false;
-	/* Sent now: a round of its own, whatever an earlier one's sends met. */
-	if(!switching(slot)) {
-		slot->sendTries = 0u;
-		slot->answered = false;
-		return true;
-	}
+	if(!switching(slot)) return true;
 	/* Its own switch is under way already: nothing waits behind it. */
 	if(sameId(slot->id, id)) {
 		slot->hasPending = false;
@@ -53,8 +48,6 @@ void UICardSlot_Sent(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LENGTH],
 	uint64_t nowMs)
 {
 	if(slot == NULL || id == NULL) return;
-	/* The latest ID went out: none waits behind it any more. */
-	slot->hasPending = false;
 	slot->mmce = true;
 	/* The card has this game settled already: no switch comes. If it does
 	 * (someone changed the card on it meanwhile), the presence line says so. */
@@ -67,9 +60,7 @@ void UICardSlot_Sent(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LENGTH],
 	slot->deadlineMs = nowMs + UI_CARD_SLOT_DEADLINE_MS;
 	slot->tries = 0u;
 	slot->sendTries = 0u;
-	slot->answered = false;
 	slot->pendingAfterMs = 0u;
-	slot->unsent = false;
 }
 
 void UICardSlot_NotSent(uiCardSlot_t *slot)
@@ -78,7 +69,6 @@ void UICardSlot_NotSent(uiCardSlot_t *slot)
 	slot->phase = UI_CARD_SLOT_IDLE;
 	slot->hasPending = false;
 	slot->sendTries = 0u;
-	slot->answered = false;
 }
 
 void UICardSlot_SendFailed(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LENGTH],
@@ -90,33 +80,17 @@ void UICardSlot_SendFailed(uiCardSlot_t *slot, const char id[UI_CARD_SLOT_ID_LEN
 		return;
 	}
 	slot->mmce = true;
-	slot->answered |= emulator;
 	slot->sendTries++;
-	/* Nothing in the slot answered as an emulator, five times over: what is
-	 * there now (a plain card put in its place, or none) is read as it is.
-	 * One that answered in between (out of the slot at the last try, or
-	 * loading with a garbage ID) is still the emulator: given up on below. */
-	if(slot->sendTries >= UI_CARD_SLOT_SEND_TRIES && !slot->answered) {
-		slot->mmce = false;
-		UICardSlot_NotSent(slot);
-		return;
-	}
 	if(slot->sendTries >= UI_CARD_SLOT_SEND_TRIES) {
 		/* Given up: not this game's card for sure, and not read or written
 		 * as if it were a plain one. Opening the game again starts over. */
 		memcpy(slot->id, id, UI_CARD_SLOT_ID_LENGTH);
 		slot->hasPending = false;
 		slot->sendTries = 0u;
-		slot->answered = false;
 		slot->phase = UI_CARD_SLOT_FAILED;
 		slot->broken = false;
-		slot->unsent = true;
 		return;
 	}
-	/* Not followed while the ID waits: a card that took it and left the bus
-	 * at once (libogc2 calls that a failed send) is switching to this ID,
-	 * not leaving the game the slot had before. */
-	slot->phase = UI_CARD_SLOT_IDLE;
 	memcpy(slot->pending, id, UI_CARD_SLOT_ID_LENGTH);
 	slot->hasPending = true;
 	slot->pendingAfterMs = nowMs + retryMs(slot->sendTries);
@@ -180,20 +154,9 @@ bool UICardSlot_Observe(uiCardSlot_t *slot, bool present, uint64_t nowMs)
 		if(fell && slot->mmce) leave(slot, nowMs);
 		break;
 	case UI_CARD_SLOT_FAILED:
-		/* Never sent: put back, it is sent the ID again once settled (read,
-		 * it would be another game's card). Never loaded: gone for good
-		 * stays given up; back again, or changed, is tried again from the
-		 * start. */
-		if(slot->unsent) {
-			if(rose) {
-				slot->phase = UI_CARD_SLOT_IDLE;
-				slot->unsent = false;
-				memcpy(slot->pending, slot->id, UI_CARD_SLOT_ID_LENGTH);
-				slot->hasPending = true;
-				slot->pendingAfterMs = nowMs + UI_CARD_SLOT_SETTLE_MS;
-			}
-		}
-		else if(fell && slot->mmce) leave(slot, nowMs);
+		/* Gone for good stays given up; back again, or changed, is tried
+		 * again from the start. */
+		if(fell && slot->mmce) leave(slot, nowMs);
 		else if(rose && slot->mmce) {
 			leave(slot, nowMs);
 			slot->phase = UI_CARD_SLOT_BACK;

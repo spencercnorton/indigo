@@ -1,16 +1,18 @@
 {
-  "status": "pending",
-  "environment": null,
-  "source_fingerprint": null,
-  "tested_revision": null,
-  "hardware": null,
-  "evidence": null,
-  "results": {
-    "existing_card_updates": false,
-    "new_card_finishes": false,
-    "rapid_gameid_switches": false,
-    "save_choice_waits": false,
-    "card_change_cancels_choice": false
+  "status": "passed",
+  "environment": "real-hardware",
+  "source_fingerprint": "81e082a41d2bb478e33d379942a85cff1f1c35990d600f9f403189e47d5002a6",
+  "tested_revision": "92b4ed8eb8b7eaca0726a5b300834bca82289778",
+  "hardware": {
+    "device": "MemCard PRO GC",
+    "firmware": "Updated from 2.0.2 to the latest release after 2026-10-07 (3.0.3 then); the report doesn't restate the version",
+    "setup": "NTSC-J DOL-001 with a FlippyDrive, the MemCard PRO GC in Slot A; card about 2.5 years old, hardware revision unknown, default settings (no card templates)"
   },
-  "note": "The final switching implementation has lab and host-test coverage, but no confirmed real MemCard PRO GC pass. It may be tested in a candidate; stable publication remains held."
+  "evidence": "https://github.com/spencercnorton/indigo/issues/102#issuecomment-6181841745",
+  "results": {
+    "existing_card_updates": true,
+    "new_card_finishes": true,
+    "rapid_gameid_switches": true
+  },
+  "note": "Tested on test/mcp-card-slots (2.3.0 with the card-slot code); the report's card-trace.txt records each switch. This release carries the same card-slot files and the same launch around a switch on the same libogc2 image (the same fingerprint). Game Detail offers no save-copy choice on a memory card emulator, so it only reads one, as the tested build did."
 }

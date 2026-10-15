@@ -85,10 +85,10 @@ empty.
 
 It isn't offered with no memory card in a slot, or while **Emulate Memory
 Card** is on, since the game then reads a card image on the SD card rather
-than the card in the slot. A memory card that changes to each game's own
-card, such as a MemCard PRO GC, has to finish loading this game's card
-first: until then **Left** and **Right** wait, and a copy never goes on the
-card it is changing from.
+than the card in the slot. Nor is it offered for a memory card that changes
+to each game's own card, such as a MemCard PRO GC: Indigo only reads that
+card, once it has loaded this game's card, and the game starts with the
+card's own copy.
 
 ## Start the game
 

@@ -264,6 +264,9 @@ def check_save_load(controller: str, load: str, choosable: str, choice: str) -> 
     # card as it is (it never asks, never refuses).
     assert "context->saveSlot >= 0" in choosable and \
         "!swissSettings.emulateMemoryCard" in choosable
+    # Nor on a memory card emulator: the MemCard PRO build tested on a real
+    # card (indigo#102) only read one.
+    assert "!(gameflowSaveEmulators & (1u << context->saveSlot))" in choosable
     assert "!gameflowSaveChoosable(context)" in load[:ask]
     assert STEPS in controller
     assert choice.index("if(!gameflowSaveChoosable(context)) {\n\t\treturn;") < \
@@ -285,6 +288,7 @@ for mutant_controller, mutant_load, mutant_choosable, mutant_choice in (
     (detail, save_load, save_choosable.replace("!swissSettings.emulateMemoryCard", "true", 1),
      save_choice),
     (detail, save_load, save_choosable.replace("context->saveSlot >= 0", "true", 1), save_choice),
+    (detail, save_load, save_choosable.replace("!(gameflowSaveEmulators & (1u << context->saveSlot))", "true", 1), save_choice),
     (detail.replace(STEPS, STEPS.replace("gameflowSaveChoosable(context)",
                                          "context->savesScanned"), 1),
      save_load, save_choosable, save_choice),
@@ -376,6 +380,10 @@ def check_card_slots(source: str) -> None:
     assert again < chosen.index("Saves_LoadCopy(")
     # A card given up on while switching makes the scan incomplete.
     publication = definition("static bool gameflowPublishDetail(")
+    # A slot the game can't read at a scan is an emulator changing cards:
+    # marked before the cards are read, so it never gets a save choice.
+    assert publication.index("gameflowSaveEmulators |= ~slots & 3u;") < \
+        publication.index("Saves_CollectGameStats(")
     assert ("context->savesCardFailed = CardSlots_FailedFor(0, context->gameId) ||\n"
             "\t\t\t\tCardSlots_FailedFor(1, context->gameId);\n"
             "\t\t\tif(context->savesCardFailed) context->saveStats.partial = true;") in publication
@@ -402,6 +410,7 @@ for old, new in (
     ("\t\t\tif(gameflowSlotsChanged) context->savesScanned = false;\n\t\t\tgameflowPublishDetail(config, context);",
      "\t\t\tgameflowPublishDetail(config, context);"),
     ("\t\t\tif(context->savesCardFailed) context->saveStats.partial = true;", "\t\t\t(void)0;"),
+    ("\t\t\tgameflowSaveEmulators |= ~slots & 3u;\n", ""),
 ):
     try:
         check_card_slots(swiss_source.replace(old, new, 1))
