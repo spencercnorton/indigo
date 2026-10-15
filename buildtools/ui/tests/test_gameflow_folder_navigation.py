@@ -159,8 +159,11 @@ typedef struct device { file_handle *initial; unsigned features; char **extraExt
     int (*closeFile)(file_handle *);
     void (*deinit)(file_handle *); } DEVICEHANDLER_INTERFACE;
 #define DEVICE_CONFIG 2
-static DEVICEHANDLER_INTERFACE device, bootDevice, __device_dvd, __device_smb, __device_ftp, __device_fsp;
-static DEVICEHANDLER_INTERFACE *allDevices[MAX_DEVICES] = {&bootDevice, &device};
+static DEVICEHANDLER_INTERFACE device, bootDevice, __device_dvd, __device_smb, __device_ftp, __device_fsp, __device_wode, __device_usbgecko;
+static file_handle fspInitial = {.name = "fsp:/", .fileType = IS_DIR};
+static file_handle wodeInitial = {.name = "wode:/", .fileType = IS_DIR};
+static file_handle usbInitial = {.name = "usb:/", .fileType = IS_DIR};
+static DEVICEHANDLER_INTERFACE *allDevices[MAX_DEVICES] = {&bootDevice, &__device_fsp, &__device_wode, &__device_usbgecko, &device};
 static DEVICEHANDLER_INTERFACE *devices[] = {&device, NULL, &bootDevice};
 static file_handle initial = {.name = "sdc:/", .fileType = IS_DIR};
 static file_handle bootInitial = {.name = "gcldr:/", .fileType = IS_DIR};
@@ -168,7 +171,8 @@ static bool deviceAvailable, confirmResult;
 static unsigned defaultSourcePrompts, defaultSourceSaves;
 static int initFailDevice;
 static bool deviceHandler_getDeviceAvailable(DEVICEHANDLER_INTERFACE *d) {
-    return d == &bootDevice || (d == &device && deviceAvailable);
+    return d == &bootDevice || (d == &device && deviceAvailable) ||
+        d == &__device_fsp || d == &__device_wode || d == &__device_usbgecko;
 }
 static void deviceHandler_setDeviceAvailable(DEVICEHANDLER_INTERFACE *d, bool a) {
     if(d == &device) deviceAvailable = a;
@@ -345,6 +349,12 @@ static void reset(const char *path, bool folders, unsigned empty) {
     device.readDir=fakeReadDir; device.deinit=fakeDeinit;
     bootDevice.initial=&bootInitial; bootDevice.features=FEAT_BOOT_GCM;
     bootDevice.init=fakeInit; bootDevice.readDir=fakeReadDir; bootDevice.deinit=fakeDeinit;
+    __device_fsp.initial=&fspInitial; __device_fsp.features=FEAT_BOOT_GCM;
+    __device_fsp.init=fakeInit; __device_fsp.readDir=fakeReadDir; __device_fsp.deinit=fakeDeinit;
+    __device_wode.initial=&wodeInitial; __device_wode.features=FEAT_BOOT_GCM;
+    __device_wode.init=fakeInit; __device_wode.readDir=fakeReadDir; __device_wode.deinit=fakeDeinit;
+    __device_usbgecko.initial=&usbInitial; __device_usbgecko.features=FEAT_BOOT_GCM;
+    __device_usbgecko.init=fakeInit; __device_usbgecko.readDir=fakeReadDir; __device_usbgecko.deinit=fakeDeinit;
     deviceAvailable=false; confirmResult=false; defaultSourcePrompts=defaultSourceSaves=0; initFailDevice=0; devices[DEVICE_CONFIG]=&bootDevice;
     homeSessionLibraryRoot[0]='\0'; promptOverridePath=NULL;
     strcpy(curDir.name,path); curDir.fileType=IS_DIR; rootEmpty=empty;
@@ -515,6 +525,7 @@ static void crossDeviceLibraryFallback(void) {
     /* Subsequent startup + Library entry resolves directly to the custom path. */
     reset("gcldr:/",true,false);
     devices[DEVICE_CUR]=&bootDevice;
+    deviceAvailable=true;
     strcpy(swissSettings.defaultSource,"sdc:/games/Racing.v1");
     homeApplyStartupSource();
     assert(devices[DEVICE_CUR]==&device);
@@ -527,20 +538,33 @@ static void crossDeviceLibraryFallback(void) {
      *    switches from gcldr:/ to sdc:/ before scanning root. */
     reset("gcldr:/",true,false);
     devices[DEVICE_CUR]=&bootDevice;
+    deviceAvailable=true;
+    needsDeviceChange=1;
     strcpy(swissSettings.defaultSource,"sdc:/");
     homeApplyStartupSource();
     assert(devices[DEVICE_CUR]==&device && devices[DEVICE_PREV]==&bootDevice);
     assert(deviceAvailable);
+    assert(needsDeviceChange==0);
 
     /* 4. Startup mount failure safety: if sdc:/ fails to init at startup
      *    (e.g. SD2SP2 removed), gcldr:/ remains the mounted Source. */
     reset("gcldr:/",true,false);
     devices[DEVICE_CUR]=&bootDevice;
+    deviceAvailable=true;
     strcpy(swissSettings.defaultSource,"sdc:/");
     initFailDevice=1;
     homeApplyStartupSource();
     assert(devices[DEVICE_CUR]==&bootDevice);
     assert(!gameflowEnterLibraryFromHome());
+    assert(devices[DEVICE_CUR]==&bootDevice);
+
+    /* 4b. Startup mount undetected target safety: if sdc:/ is not detected,
+     *     gcldr:/ remains the mounted Source and init is not called. */
+    reset("gcldr:/",true,false);
+    devices[DEVICE_CUR]=&bootDevice;
+    deviceAvailable=false;
+    strcpy(swissSettings.defaultSource,"sdc:/");
+    homeApplyStartupSource();
     assert(devices[DEVICE_CUR]==&bootDevice);
 
     /* 5. Subfolder on boot device (e.g. gcldr:/apps after visiting Apps):

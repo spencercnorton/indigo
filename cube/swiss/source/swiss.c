@@ -3099,31 +3099,26 @@ static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
 	bool needReload = true;
 	bool chosen = false;
 	bool cleared = false;
-	int pass;
 	int i;
 
 	memset(&openDir, 0, sizeof(openDir));
 	memset(&selectedDir, 0, sizeof(selectedDir));
 	UIMenuInput_Init(&menuInput);
 
-	for(pass = 0; pass < 2; ++pass) {
-		for(i = 0; i < MAX_DEVICES; ++i) {
-			DEVICEHANDLER_INTERFACE *dev = allDevices[i];
-			bool ready;
+	for(i = 0; i < MAX_DEVICES; ++i) {
+		DEVICEHANDLER_INTERFACE *dev = allDevices[i];
 
-			if(dev == NULL || dev == &__device_dvd ||
-				!(dev->features & FEAT_BOOT_GCM) ||
-				dev->initial == NULL || dev->init == NULL ||
-				dev->deinit == NULL || dev->readDir == NULL) {
-				continue;
-			}
-			ready = deviceHandler_getDeviceAvailable(dev) ||
-				dev == devices[DEVICE_CUR] ||
-				dev == devices[DEVICE_CONFIG];
-			if((pass == 0) == ready) {
-				candidates[candidateCount++] = dev;
-			}
+		if(dev == NULL || dev == &__device_dvd ||
+			!(dev->features & FEAT_BOOT_GCM) ||
+			dev->initial == NULL || dev->init == NULL ||
+			dev->deinit == NULL || dev->readDir == NULL) {
+			continue;
 		}
+		if(!deviceHandler_getDeviceAvailable(dev) ||
+			filesClash(dev, devices[DEVICE_CUR], NULL, 0)) {
+			continue;
+		}
+		candidates[candidateCount++] = dev;
 	}
 
 	if(ioDir != NULL && ioDir->name[0] != '\0') {
@@ -3132,8 +3127,7 @@ static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
 	}
 	else if(outPath != NULL && outPath[0] != '\0') {
 		activeDevice = homeSourceFromPathIncludingUnavailable(outPath);
-		if(activeDevice != NULL && activeDevice != devices[DEVICE_CUR] &&
-			activeDevice != devices[DEVICE_CONFIG]) {
+		if(activeDevice != NULL && activeDevice != devices[DEVICE_CUR]) {
 			activeDevice->deinit(activeDevice->initial);
 			deviceHandler_setStatEnabled(0);
 			if(activeDevice->init(activeDevice->initial) != 0) {
@@ -3248,15 +3242,7 @@ static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
 				}
 				nextDev = candidates[deviceSelection];
 				if(nextDev != activeDevice) {
-					homeCloseDirListing(activeDevice, &rawEntries,
-						&rawCount, &subDirs, &subCount);
-					if(!mountSelectedDevice && activeDevice != NULL &&
-						activeDevice != devices[DEVICE_CUR] &&
-						activeDevice != devices[DEVICE_CONFIG]) {
-						activeDevice->deinit(activeDevice->initial);
-					}
-					if(nextDev != devices[DEVICE_CUR] &&
-						nextDev != devices[DEVICE_CONFIG]) {
+					if(nextDev != devices[DEVICE_CUR]) {
 						nextDev->deinit(nextDev->initial);
 						deviceHandler_setStatEnabled(0);
 						if(nextDev->init(nextDev->initial) != 0) {
@@ -3273,6 +3259,12 @@ static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
 						}
 						deviceHandler_setStatEnabled(1);
 						deviceHandler_setDeviceAvailable(nextDev, true);
+					}
+					homeCloseDirListing(activeDevice, &rawEntries,
+						&rawCount, &subDirs, &subCount);
+					if(activeDevice != NULL &&
+						activeDevice != devices[DEVICE_CUR]) {
+						activeDevice->deinit(activeDevice->initial);
 					}
 					activeDevice = nextDev;
 				}
@@ -3515,9 +3507,7 @@ static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
 			}
 		}
 	}
-	if(!mountSelectedDevice && activeDevice != NULL &&
-		activeDevice != devices[DEVICE_CUR] &&
-		activeDevice != devices[DEVICE_CONFIG]) {
+	if(activeDevice != NULL && activeDevice != devices[DEVICE_CUR]) {
 		activeDevice->deinit(activeDevice->initial);
 	}
 	if(page != NULL) {
@@ -3627,6 +3617,9 @@ static bool homePromptDefaultSource(file_handle *targetDir)
 			saveDefault = true;
 			break;
 		}
+		else {
+			homeSourceModalDrainButtons(&menuInput, &lastRetrace);
+		}
 	}
 	homeSourceModalDrainButtons(&menuInput, &lastRetrace);
 	if(page != NULL) {
@@ -3689,7 +3682,8 @@ static void homeApplyStartupSource(void)
 	if(target == NULL || target == devices[DEVICE_CUR] ||
 		target == &__device_dvd ||
 		!(target->features & FEAT_BOOT_GCM) ||
-		target->initial == NULL) {
+		target->initial == NULL ||
+		!deviceHandler_getDeviceAvailable(target)) {
 		return;
 	}
 	target->deinit(target->initial);
@@ -3710,6 +3704,7 @@ static void homeApplyStartupSource(void)
 	devices[DEVICE_CUR] = target;
 	deviceHandler_setDeviceAvailable(target, true);
 	homeSourceRecord(target, UI_HOME_SOURCE_MOUNT_MOUNTED);
+	needsDeviceChange = 0;
 }
 
 static bool gameflowTryOtherDevicesForLibrary(void)
@@ -3730,6 +3725,9 @@ static bool gameflowTryOtherDevicesForLibrary(void)
 
 		if(candidate == NULL || candidate == previous ||
 			candidate == &__device_dvd ||
+			candidate == &__device_fsp ||
+			candidate == &__device_wode ||
+			candidate == &__device_usbgecko ||
 			!(candidate->features & FEAT_BOOT_GCM) ||
 			candidate->initial == NULL ||
 			candidate->init == NULL ||
