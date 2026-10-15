@@ -154,7 +154,7 @@ def check_runtime(swiss: str, main: str) -> None:
     refresh = extract_block(swiss, "static void homeRefreshLibrary(")
     flippy_update = extract_block(swiss, "static void homeRunFlippyUpdate(")
     restart_drain = extract_block(swiss, "static bool homeDrainRestartInput(")
-    selector_drain = extract_block(swiss, "static void homeDrainSelectorInput(")
+    selector_drain = extract_block(swiss, "static void homeDrainSelectorInput(void)\n{")
     restart_confirm = extract_block(swiss, "static void homeConfirmRestartEffect(")
     selector = extract_block(swiss, "static bool select_device_internal(")
     load_file = extract_block(
