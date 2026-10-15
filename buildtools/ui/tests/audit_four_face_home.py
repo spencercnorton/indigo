@@ -123,16 +123,17 @@ face_enum = re.search(
     r"(?:/\*.*?\*/\s*)?UI_HOME_FACE_SAVES\s*,\s*"
     r"UI_HOME_FACE_EMULATORS\s*,\s*"
     r"(?:/\*.*?\*/\s*)?UI_HOME_FACE_FILES\s*,\s*"
+    r"(?:/\*.*?\*/\s*)?UI_HOME_FACE_WEB\s*,\s*"
     r"UI_HOME_FACE_COUNT\s*\}\s*uiHomeFace_t\s*;",
     HOME_H,
     re.S,
 )
 assert face_enum, ("Home faces are not Library/Source/Settings/System, then Apps, "
-                   "Memory Cards, Emulators and File Browser")
+                   "Memory Cards, Emulators, File Browser and Web")
 assert re.search(
     r"faceLabels\s*\[UI_HOME_FACE_COUNT\]\s*=\s*\{\s*"
     r'"LIBRARY"\s*,\s*"SOURCE"\s*,\s*"SETTINGS"\s*,\s*"SYSTEM"\s*,\s*"APPS"\s*,\s*'
-    r'"MEMORY CARDS"\s*,\s*"EMULATORS"\s*,\s*"FILE BROWSER"\s*\}',
+    r'"MEMORY CARDS"\s*,\s*"EMULATORS"\s*,\s*"FILE BROWSER"\s*,\s*"WEB"\s*\}',
     HOME_C,
     re.S,
 ), "visible Home labels no longer match the semantic enum order"
@@ -671,7 +672,7 @@ for icon, name in (("CONTROLLER", "Controller"), ("BOOKS", "Books"), ("COVERS", 
 		("FOLDER", "Folder"), ("SLIDERS", "Sliders"), ("GEAR", "Gear"), ("TOGGLES", "Toggles"),
 		("DIAL", "Dial"), ("CLOCK", "Clock"), ("INFO", "Info"), ("POWER", "Power"),
 		("CHIP", "Chip"), ("APPS", "Apps"), ("SAVES", "Saves"), ("EMULATORS", "Emulators"),
-		("FILES", "Folder")):
+		("FILES", "Folder"), ("WEB", "Web")):
 	assert f"case UI_HOME_ICON_{icon}:" in dispatch
 	helper = extract_function(INDIGO, f"static void draw{name}Icon(")
 	assert "int face" in helper and "UI_HOME_FACE_" not in helper

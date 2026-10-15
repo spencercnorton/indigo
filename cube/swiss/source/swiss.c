@@ -3814,6 +3814,60 @@ static void homeConfirmRestartEffect(void)
 	homeRestartSwiss();
 }
 
+/* The bundled web browser DOL, under Indigo's own folder on the config device.
+ * (The exact bundled path is settled with the packaging step.) */
+#define WEB_BROWSER_DIR "swiss/indigo"
+#define WEB_BROWSER_DOL "cubebrowser.dol"
+
+/* Launch the bundled web browser the way the Apps face launches a program:
+ * find its DOL on the config device and hand it to boot_dol, which shuts the
+ * menu down and jumps. boot_dol returns only when the DOL won't start. */
+static void launchWebBrowser(void)
+{
+	DEVICEHANDLER_INTERFACE *device = devices[DEVICE_CONFIG];
+	file_handle dir;
+	file_handle *entries = NULL;
+	int count = 0, found = -1;
+	uiDrawObj_t *box;
+
+	if(device != NULL && device->initial != NULL && device->readDir != NULL) {
+		memset(&dir, 0, sizeof(dir));
+		concat_path(dir.name, device->initial->name, WEB_BROWSER_DIR);
+		dir.device = device;
+		dir.fileType = IS_DIR;
+		count = device->readDir(&dir, &entries, -1);
+		for(int i = 0; i < count; i++) {
+			if(entries[i].fileType != IS_DIR && strcasecmp(
+				getRelativeName(entries[i].name), WEB_BROWSER_DOL) == 0) {
+				found = i;
+				break;
+			}
+		}
+	}
+	if(found < 0) {
+		free(entries);
+		box = DrawPublish(DrawMessageBox(D_FAIL,
+			"The web browser isn't installed. Press A."));
+		wait_press_A();
+		DrawDispose(box);
+		return;
+	}
+	memcpy(&curFile, &entries[found], sizeof(file_handle));
+	curFile.offset = 0;
+	curFile.fp = NULL;
+	curFile.ffsFp = NULL;
+	curFile.meta = NULL;
+	curFile.uiObj = NULL;
+	curFile.lockCount = 0;
+	curFile.thread = LWP_THREAD_NULL;
+	free(entries);
+	/* TODO: pass the current theme as argv once the browser reads it. */
+	boot_dol(&curFile, 0, NULL);
+	box = DrawPublish(DrawMessageBox(D_WARN, "The web browser couldn't start"));
+	sleep(2);
+	DrawDispose(box);
+}
+
 static void homeDispatchEffect(uiHomeEffect_t effect)
 {
 	if(effect != UI_HOME_EFFECT_NONE) {
@@ -3880,6 +3934,10 @@ static void homeDispatchEffect(uiHomeEffect_t effect)
 				needsRefresh = 1;
 				curMenuLocation = ON_FILLIST;
 			}
+			break;
+		case UI_HOME_EFFECT_OPEN_WEB:
+			launchWebBrowser();
+			UIScene_Request(UI_SCENE_HOME);
 			break;
 		case UI_HOME_EFFECT_RESTART:
 			homeConfirmRestartEffect();
