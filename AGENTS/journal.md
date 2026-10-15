@@ -255,6 +255,36 @@ Five-way 60-minute soak runs (`final936-e1/e2/m1/m2/m3`) and a code audit of the
 
 A launch while a MemCard PRO is switching stays as the real-card test build ran
 it (2026-10-15).
+## 2026-10-15 — Web browser cube face (Stage 1)
+
+Added a ninth Home face, Web, that launches a bundled GameCube web browser
+(cubebrowser.dol, a hardened fork of Arial-Bold/Cubebrowser) the way the Apps
+and Emulators faces launch a program. Chosen shape: launch a separate DOL, not
+compile the browser into ipl.dol — it keeps Indigo under the 6 MiB DOL tripwire
+(the in-process version would add ~1.18 MB against ~0.86 MB of headroom) and
+isolates a browser crash from the menu. Design note: docs/dev/web-browser.md.
+
+Changes: UI_HOME_FACE_WEB (always available, a side face like File Browser),
+its OPEN_WEB effect and a globe icon; the absent-face mask widened from 8 to 16
+bits for the ninth face; homeDispatchEffect -> launchWebBrowser(), which finds
+the DOL on the config device and hands it to boot_dol (which shuts the menu
+down and jumps); the four Settings face-choice lists, their help and
+docs/SETTINGS.md gain Web. Config still persists faces by name, so older files
+load unchanged (the choice indices shift, the names do not).
+
+Validation: the full Indigo DOL builds at 5,428,016 B (5.18 MB, under the
+tripwire) on the indigo-ci/build image, and the whole host suite — plain,
+sanitized and contracts, every audit and the home/gameflow/launch/stroke
+GX-stream goldens — passes; the default cube renders identically. Pinned tests
+updated: the motif-state size bound (640 -> 720), the stroke extraction list,
+frame_budget's icons[], audit_four_face_home's enum/label/icon checks and
+test_settings_file's face cycle.
+
+Not done: packaging the browser DOL and its gcbrowser/ CA folder into the zip
+(held pending the fork's license/publish path), passing the theme to the
+browser through argv, and a console test of the launch and the return to
+Indigo. Lands after 2.4 (this touches swiss.c, which resets the MemCard PRO
+qualification 2.4 is finishing).
 
 ## 2026-10-12 — Emulated card mounts gated on known sane status
 
