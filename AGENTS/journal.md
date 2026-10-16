@@ -1,3 +1,43 @@
+## 2026-10-16 — Memory Cards reaches the games' card
+
+With settings on a GC Loader and games on an SD2SP2, a game's card images
+are on the SD2SP2: Swiss's Emulate Memory Card keeps
+`swiss/saves/MemoryCard{A,B}.<region>.raw` on the device the game starts
+from (`deviceHandler_FAT_setupFile`). Memory Cards' SD columns listed only
+the Configuration Device, so those images were out of reach, writable or
+not.
+
+The SD columns now choose between the Configuration Device and the Source
+when the Source is another FatFs device that takes writes: `writeFile ==
+deviceHandler_FAT_writeFile` with `FEAT_WRITE`, the device test
+`SavesRaw_Writable` makes before writing an image. Both are mounted while
+the page is open (`config_set_device` mounts the settings device, and the
+Source is mounted already), so the page mounts and lets go of nothing new.
+The storage menu names them with `DeviceDisplayName` (four items; still
+"SD card" while there is one), and `UISaves_StorageTab` takes the number of
+SD devices. A column's device is its place's `device`: `folderSet` takes
+one, `loadFolder` lists it, `folderOpenHome` opens a device the column
+wasn't on at its Save Folder or its root and moves `folderHome` there, and
+`saveTransfer`, `folderWrite`, `destinationFolder` and the folder chooser
+use the other column's device. With two devices the header shows the
+device-prefixed path. Game Details' own copy and Settings' Save Folder stay
+on the settings device; only the card slots' guard, those two and the
+page's start name `devices[DEVICE_CONFIG]`, which the audit counts.
+
+Tests: `UISaves_StorageTab` for one and two devices; the controller harness
+has a second FatFs device (`sdc:`) with the same handlers and asserts that
+every handler call names a path on its own device (it declares no
+`devices[]`, so code reaching for the settings device doesn't build), and
+its scripted menu presses give up instead of looping when an item is
+missing; 13 audit mutants; the files emulator route, now with empty slots,
+makes the SD2SP2 the Source, picks it by name in Memory Cards, erases and
+moves saves on `swiss/saves/MemoryCardA.USA.raw` there and reads both cards
+back.
+
+Known gap: Game Details' SAVES (`statsFolder` in `saves_stats.c`) still
+counts only the settings device's Save Folder, so a game's emulated card on
+the Source isn't among its copies.
+
 ## 2026-10-16 — Card images become writable in Memory Cards
 
 A console test found Memory Cards pointless with Swiss's Emulate Memory

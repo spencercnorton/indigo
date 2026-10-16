@@ -1,9 +1,10 @@
 /* saves.c - Memory Cards (Home > System > Memory Cards)
 
    The saves on the memory cards in Slot A and Slot B and in folders on the
-   device Indigo keeps its settings on, as the IPL's Memory Card screen shows
-   two cards: two stacks of save cubes, either of them Slot A, Slot B or the
-   SD card, with Move, Copy and Erase from one to the other. The card and FAT
+   device Indigo keeps its settings on (and on the Source, when that is
+   another FatFs device), as the IPL's Memory Card screen shows two cards:
+   two stacks of save cubes, either of them Slot A, Slot B or the SD card,
+   with Move, Copy and Erase from one to the other. The card and FAT
    drivers do the reading and writing, as they do for the file browser's
    Copy; a card image on the SD card changes in place (saves_raw.c). This
    file decides what to call, reads every copy back before calling it done,
@@ -18,6 +19,7 @@
 #include <gccore.h>
 #include <ogc/card.h>
 #include "deviceHandler.h"
+#include "deviceHandler-FAT.h"
 #include "FrameBufferMagic.h"
 #include "IPLFontWrite.h"
 #include "swiss.h"
@@ -96,6 +98,14 @@ static uiSaveCubesPageSnapshot_t screen;
 static char folderHome[2][PATHNAME_MAX];
 /* The settings device is mounted, so the SD card's place can be listed. */
 static bool foldersReady;
+/* The devices the SD card's stacks can show: the settings device, then the
+ * Source when it is another FatFs device that takes writes. Swiss's Emulate
+ * Memory Card keeps a game's card images on the device the game starts
+ * from, so with settings on one card and games on another, they are on the
+ * Source. The page mounts the settings device; the Source is mounted
+ * already. */
+static DEVICEHANDLER_INTERFACE *sdDevice[2];
+static int sdDevices;
 /* What the screen last showed, so a box, an operation or a message can show
  * it again. */
 static int screenStacks[UI_SAVE_CUBES_STACKS];
@@ -686,7 +696,7 @@ static void loadCard(savesPlace_t *place, int slot)
 				snprintf(place->note[0], sizeof(place->note[0]),
 					"Nothing is inserted in %s.", slotName(slot));
 				snprintf(place->note[1], sizeof(place->note[1]),
-					"Choose SD card above to browse virtual cards.");
+					"Choose storage above to browse virtual cards.");
 				break;
 			case CARD_ERROR_WRONGDEVICE:
 				snprintf(place->note[0], sizeof(place->note[0]),
@@ -754,13 +764,12 @@ static bool folderIsRoot(const savesPlace_t *place)
 	return !strcmp(place->dir.name, place->device->initial->name);
 }
 
-/* place->dir names the folder; lists it. */
+/* place->dir names the folder, on place->device; lists it. */
 static void loadFolder(savesPlace_t *place, bool foldersOnly)
 {
 	int i;
 
 	placeClear(place);
-	place->device = devices[DEVICE_CONFIG];
 	if(place->device == NULL) {
 		snprintf(place->note[0], sizeof(place->note[0]),
 			"No device for settings and saves");
@@ -865,18 +874,35 @@ static void loadTab(int tab)
 	}
 }
 
-/* The folder under the settings device's root: "swiss/saves", "/" for the
- * root. */
-static void folderSet(savesPlace_t *place, const char *path)
+/* The folder under device's root: "swiss/saves", "/" for the root. */
+static void folderSet(savesPlace_t *place, DEVICEHANDLER_INTERFACE *device,
+	const char *path)
 {
 	memset(&place->dir, 0, sizeof(place->dir));
-	place->device = devices[DEVICE_CONFIG];
+	place->device = device;
 	if(place->device != NULL) {
 		concat_path(place->dir.name, place->device->initial->name, path);
 	}
 	place->dir.fileType = IS_DIR;
 	place->dir.device = place->device;
 	place->selection = 0;
+}
+
+/* The SD card's stack tab on device: its Save Folder there, or its root
+ * when that can't be read. B goes back up as far as this, no further. */
+static void folderOpenHome(int tab, DEVICEHANDLER_INTERFACE *device)
+{
+	savesPlace_t *place = &places[tab];
+
+	placeClear(place);
+	folderSet(place, device, saves_folder());
+	loadFolder(place, false);
+	if(!place->ready) {
+		folderSet(place, device, "/");
+		loadFolder(place, false);
+	}
+	snprintf(folderHome[tab - SAVES_TAB_FOLDER], sizeof(folderHome[0]), "%s",
+		place->dir.name);
 }
 
 /* The path under the device's root that folderSet takes back. */
@@ -1119,10 +1145,13 @@ static void screenBuild(const int stacks[UI_SAVE_CUBES_STACKS], int focus)
 			}
 		}
 		else {
+			/* With two SD devices, a folder shows its device's prefix
+			 * ("sdc:/swiss/saves"), as Y's page does. */
 			snprintf(text->name, sizeof(text->name), "SD");
 			UICheats_Fit(text->path, sizeof(text->path),
 				place->rawOpen ? getRelativeName(place->rawImage.name) :
-				getDevicePath(place->dir.name), 150, 0.42f, GetTextSizeInPixels);
+				sdDevices > 1 ? place->dir.name : getDevicePath(place->dir.name),
+				150, 0.42f, GetTextSizeInPixels);
 		}
 		for(k = 0; k < UI_SAVE_CUBES_DRAWN; k++) {
 			file_handle *entry = placeAt(place, (place->top - 1) *
@@ -1726,12 +1755,11 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 	return cardWriteBound(slot, entry, blocks, blockBytes, NULL, why, whySize);
 }
 
-/* Writes data to a new file named name in folder (on the settings device),
- * as name_2 and so on while a name is taken, and reads it back. */
-static bool folderWrite(const char *folder, const char *name, const u8 *data,
-	u32 length, char *why, size_t whySize)
+/* Writes data to a new file named name in folder on device, as name_2 and
+ * so on while a name is taken, and reads it back. */
+static bool folderWrite(DEVICEHANDLER_INTERFACE *device, const char *folder,
+	const char *name, const u8 *data, u32 length, char *why, size_t whySize)
 {
-	DEVICEHANDLER_INTERFACE *device = devices[DEVICE_CONFIG];
 	file_handle dest;
 	char leaf[PATHNAME_MAX];
 	u8 *back;
@@ -1987,7 +2015,7 @@ bool Saves_LoadCopy(int slot, const savesCopy_t *copy, char *why,
 				UISaves_FileName(name, sizeof(name), own);
 			}
 			if(own == NULL ||
-				folderWrite(folder, name, own, ownLength, why, whySize)) {
+				folderWrite(config, folder, name, own, ownLength, why, whySize)) {
 				ok = cardReplace(slot, entry, data + at, length - (u32)at, own,
 					ownLength, why, whySize);
 			}
@@ -2008,11 +2036,11 @@ bool Saves_LoadCopy(int slot, const savesCopy_t *copy, char *why,
 	return ok;
 }
 
-/* The folder a Copy or Move goes to, as a path on the settings device. */
+/* The folder a Copy or Move goes to, as a path on the other stack's device. */
 static bool destinationFolder(uiSavesPlace_t to, char *path, size_t size);
 
-/* Copy or Move save to a card, to a folder on the settings device, or to
- * the card image the other stack has open. */
+/* Copy or Move save to a card, to a folder on the other stack's device, or
+ * to the card image the other stack has open. */
 static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 {
 	char why[128] = "";
@@ -2081,6 +2109,8 @@ static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 		snprintf(done, sizeof(done), "Finished %s.", move ? "moving" : "copying");
 	}
 	else {
+		DEVICEHANDLER_INTERFACE *device = places[screenStacks[!screenFocus]].device;
+
 		/* A card's save becomes a .gci; a file keeps its name and form. */
 		if(isCard(save->device) || rawSource(save, NULL) != NULL) {
 			UISaves_FileName(name, sizeof(name), entry);
@@ -2088,8 +2118,8 @@ static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 		else {
 			snprintf(name, sizeof(name), "%s", getRelativeName(save->name));
 		}
-		folderEnsure(devices[DEVICE_CONFIG], getDevicePath(folder) + 1);
-		ok = folderWrite(folder, name, data, length, why, sizeof(why));
+		folderEnsure(device, getDevicePath(folder) + 1);
+		ok = folderWrite(device, folder, name, data, length, why, sizeof(why));
 		snprintf(done, sizeof(done), "Finished %s to %s.", move ? "moving" : "copying",
 			getDevicePath(folder));
 	}
@@ -2113,7 +2143,8 @@ static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 
 /* ------------------------------------------------------------------------
  * The folder chooser, for Another folder and for Settings > Storage > Save
- * Folder: a list page of the settings device's folders.
+ * Folder: a list page of a device's folders, the other stack's or the
+ * settings device's.
  * --------------------------------------------------------------------- */
 
 /* The folder chooser lists folders, and first the way back up. */
@@ -2187,19 +2218,20 @@ static void pageShow(uiDrawObj_t **page)
 	}
 }
 
-/* Browses the settings device's folders from start; X chooses the one open.
- * The device must be mounted. */
-static bool chooseFolder(const char *start, char *path, size_t size)
+/* Browses device's folders from start; X chooses the one open. The device
+ * must be mounted. */
+static bool chooseFolder(DEVICEHANDLER_INTERFACE *device, const char *start,
+	char *path, size_t size)
 {
 	uiDrawObj_t *page = NULL;
 	savesInput_t input;
 	bool chosen = false;
 
-	folderSet(&chooser, start);
+	folderSet(&chooser, device, start);
 	loadFolder(&chooser, true);
 	if(!chooser.ready) {
 		/* The folder is gone: start at the root. */
-		folderSet(&chooser, "/");
+		folderSet(&chooser, device, "/");
 		loadFolder(&chooser, true);
 	}
 	inputInit(&input);
@@ -2259,10 +2291,10 @@ static bool destinationFolder(uiSavesPlace_t to, char *path, size_t size)
 		return true;
 	}
 	folderPath(&dest->dir, open, sizeof(open));
-	if(!chooseFolder(open, chosen, sizeof(chosen))) {
+	if(!chooseFolder(dest->device, open, chosen, sizeof(chosen))) {
 		return false;
 	}
-	concat_path(path, devices[DEVICE_CONFIG]->initial->name, chosen);
+	concat_path(path, dest->device->initial->name, chosen);
 	return true;
 }
 
@@ -2275,7 +2307,7 @@ bool saves_choose_folder(char *folder, size_t size)
 			"Press A to continue.");
 		return false;
 	}
-	chosen = chooseFolder(saves_folder(), folder, size);
+	chosen = chooseFolder(devices[DEVICE_CONFIG], saves_folder(), folder, size);
 	config_unset_device();
 	return chosen;
 }
@@ -2575,14 +2607,23 @@ static void saveOptions(int tab)
 }
 
 /* The button above each column opens named choices. SD has its own folder
- * position in each column, so an image on one side can export to the other. */
+ * position in each column, so an image on one side can export to the other.
+ * With two SD devices, each is a choice by its name; one the column isn't
+ * on opens at its Save Folder. */
 static void chooseStorage(int stacks[UI_SAVE_CUBES_STACKS], int stack)
 {
-	static const char *const names[3] = {"Slot A", "Slot B", "SD card"};
-	const char *reasons[3] = {NULL, NULL, NULL};
+	const char *names[4] = {"Slot A", "Slot B", "SD card", NULL};
+	const char *reasons[4] = {NULL, NULL, NULL, NULL};
 	unsigned dim = 0u;
-	int other = stacks[!stack], choice, tab;
+	int other = stacks[!stack], count = 3, on = 0, choice, tab, i;
 
+	if(sdDevices > 1) {
+		for(i = 0; i < sdDevices; i++) {
+			names[2 + i] = DeviceDisplayName(sdDevice[i]);
+			if(places[SAVES_TAB_FOLDER + stack].device == sdDevice[i]) on = i;
+		}
+		count = 2 + sdDevices;
+	}
 	if(other < SAVES_TAB_FOLDER) {
 		dim |= 1u << other;
 		reasons[other] = "This slot is displayed in the other column.";
@@ -2592,11 +2633,15 @@ static void chooseStorage(int stacks[UI_SAVE_CUBES_STACKS], int stack)
 		reasons[2] = "Choose a device for settings and saves in Settings, Storage.";
 	}
 	over.storageStack = (s8)stack;
-	choice = savesMenu(stack ? "Right storage" : "Left storage", names, 3,
-		stacks[stack] < SAVES_TAB_FOLDER ? stacks[stack] : 2, dim, reasons, 0u);
+	choice = savesMenu(stack ? "Right storage" : "Left storage", names, count,
+		stacks[stack] < SAVES_TAB_FOLDER ? stacks[stack] : 2 + on, dim, reasons, 0u);
 	over.storageStack = -1;
-	tab = UISaves_StorageTab(stack, choice, other);
-	if(tab >= 0) {
+	tab = UISaves_StorageTab(stack, choice, other, count - 2);
+	if(tab >= SAVES_TAB_FOLDER && sdDevice[choice - 2] != places[tab].device) {
+		stacks[stack] = tab;
+		folderOpenHome(tab, sdDevice[choice - 2]);
+	}
+	else if(tab >= 0) {
 		stacks[stack] = tab;
 		loadTab(tab);
 	}
@@ -2619,22 +2664,32 @@ void show_saves(void)
 	foldersReady = folderMounted;
 	pool = memalign(32, (SAVES_SLOTS + 1) * SAVES_SLOT_BYTES);
 	scratch = memalign(32, SAVES_SCRATCH_BYTES);
+	sdDevices = 0;
 	if(folderMounted) {
-		for(i = SAVES_TAB_FOLDER; i < SAVES_TABS; i++) {
-			folderSet(&places[i], saves_folder());
+		sdDevice[sdDevices++] = devices[DEVICE_CONFIG];
+		/* The Source, as saves_raw.c can change its images: FatFs, written. */
+		if(devices[DEVICE_CUR] != NULL && devices[DEVICE_CUR] != devices[DEVICE_CONFIG] &&
+			(devices[DEVICE_CUR]->features & FEAT_WRITE) &&
+			devices[DEVICE_CUR]->writeFile == deviceHandler_FAT_writeFile) {
+			sdDevice[sdDevices++] = devices[DEVICE_CUR];
 		}
 		folderEnsure(devices[DEVICE_CONFIG], saves_folder());
 	}
 	/* The screen goes up at once and opens while the cards are read, each
-	 * stack's cubes coming in as its place is listed. */
+	 * stack's cubes coming in as its place is listed. Both SD stacks start
+	 * on the settings device. */
 	screenBuild(stacks, -1);
 	screenShow(&page);
 	for(i = 0; i < SAVES_TABS; i++) {
-		if(i < SAVES_TAB_FOLDER || folderMounted) {
+		if(i < SAVES_TAB_FOLDER) {
 			loadTab(i);
+		}
+		else if(folderMounted) {
+			folderOpenHome(i, sdDevice[0]);
 		}
 		else {
 			places[i].device = NULL;
+			folderHome[i - SAVES_TAB_FOLDER][0] = '\0';
 			snprintf(places[i].note[0], sizeof(places[i].note[0]),
 				"No device for settings and saves");
 			snprintf(places[i].note[1], sizeof(places[i].note[1]),
@@ -2642,15 +2697,6 @@ void show_saves(void)
 		}
 		screenBuild(stacks, stackFocus(stacks, 0));
 		screenShow(&page);
-	}
-	for(i = SAVES_TAB_FOLDER; i < SAVES_TABS; i++) {
-		if(folderMounted && !places[i].ready) {
-			/* An unreadable Save Folder: start at the device's root. */
-			folderSet(&places[i], "/");
-			loadTab(i);
-		}
-		snprintf(folderHome[i - SAVES_TAB_FOLDER], sizeof(folderHome[0]), "%s",
-			places[i].dir.name);
 	}
 	UISaves_InitialStorage(places[0].ready, places[1].ready,
 		places[SAVES_TAB_FOLDER].ready, stacks);

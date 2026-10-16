@@ -263,8 +263,13 @@ class Card(unittest.TestCase):
             card.second_card(image)
             for name, data in card.SECOND_FILES.items():
                 self.assertEqual(card.read_card(image, name), data)
-            self.assertEqual(card.listing(image), ["..", "backups/", "a-one.txt", "b-two.txt",
+            self.assertEqual(card.listing(image), ["..", "backups/", "swiss/", "a-one.txt", "b-two.txt",
                                                   "big.bin", "c-three.txt"])
+            # Memory Cards finds a card image where Swiss's Emulate Memory
+            # Card keeps a game's: on the device the game starts from.
+            self.assertEqual(card.read_card(image, card.SECOND_IMAGE),
+                             run.make_test_saves.virtual_card()[0])
+            self.assertEqual(card.listing(image, "swiss/saves"), ["..", "MemoryCardA.USA.raw"])
             # A folder below the top reads the same way.
             self.assertEqual(card.listing(image, "backups"), [".."])
             note = Path(directory) / "Zed.txt"

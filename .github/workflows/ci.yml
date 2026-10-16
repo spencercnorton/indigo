@@ -182,7 +182,8 @@ jobs:
               artifact: emulator-virtual-cards-ntsc-gcloader-wide }
           # The File Browser with a second SD card in SD2SP2 beside the GC
           # Loader: copy, keep both, move, rename, delete and a stopped copy,
-          # each checked on the card images.
+          # each checked on the card images; then, the SD2SP2 the Source,
+          # Memory Cards changes the card image Swiss keeps on it.
           - { name: "Emulator (files, NTSC, GC Loader and SD2SP2)", route: files, region: ntsc,
               cable: component, storage: gcloader, artifact: emulator-files-ntsc-gcloader }
           # A save on a card whose writes fail after 13, then the same card

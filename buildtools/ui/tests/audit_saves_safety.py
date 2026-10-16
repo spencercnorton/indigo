@@ -23,6 +23,14 @@ place a save is in, and Move, Copy and Erase take the save whose cube the
 cursor is on, never a folder's "..". A card's listing reads each save's permissions, which
 libogc2's listing leaves out, so the Move guard has them to read.
 
+The SD card's stacks show the settings device, or the Source when it is
+another FatFs device that takes writes (Swiss keeps a game's card images on
+the device the game starts from): never one the page would have to mount
+or let go. A stack lists, writes and chooses folders only on the device it
+shows, a device chosen anew opens at its Save Folder (its root when that
+can't be read) and B goes no higher, and Detail's own copy and Settings'
+Save Folder stay on the settings device.
+
 A card image (.raw) on the SD card is a card too: its saves move, copy and
 erase only through its own writer (saves_raw.c), as they were listed, a
 Move's original going only after the copy was checked, and a save marked
@@ -206,8 +214,45 @@ def check(source: str) -> None:
                 "getParentPath(place->dir.name, place->dir.name);", "loadFolder(place, false);")
         choose = function(source, "chooseStorage")
         ordered(choose, "if(other < SAVES_TAB_FOLDER)", "dim |= 1u << other;",
-                "choice = savesMenu(", "UISaves_StorageTab(stack, choice, other)", "loadTab(tab);")
+                "choice = savesMenu(", "UISaves_StorageTab(stack, choice, other, count - 2)",
+                "if(tab >= SAVES_TAB_FOLDER && sdDevice[choice - 2] != places[tab].device) {",
+                "folderOpenHome(tab, sdDevice[choice - 2]);", "else if(tab >= 0) {", "loadTab(tab);")
         ordered(show, "chooseStorage(stacks, stack);", "focus = stackFocus(stacks, focus);")
+        # The SD card's stacks show the settings device, and the Source only
+        # when it is another FatFs device that takes writes; the page never
+        # mounts the Source or lets it go.
+        ordered(show, "sdDevices = 0;", "if(folderMounted) {",
+                "sdDevice[sdDevices++] = devices[DEVICE_CONFIG];",
+                "devices[DEVICE_CUR] != NULL && devices[DEVICE_CUR] != devices[DEVICE_CONFIG] &&",
+                "(devices[DEVICE_CUR]->features & FEAT_WRITE) &&",
+                "devices[DEVICE_CUR]->writeFile == deviceHandler_FAT_writeFile) {",
+                "sdDevice[sdDevices++] = devices[DEVICE_CUR];", "folderOpenHome(i, sdDevice[0]);")
+        if re.search(r"(?:DEVICE_CUR\]|sdDevice\[[^\]]*\])->(?:de)?init\(", source):
+            raise AssertionError("Memory Cards mounts the Source or lets it go")
+        # A stack lists, writes and chooses folders only on the device it
+        # shows: the settings device is named only by the card slots' guard,
+        # Detail's own copy, Settings' Save Folder and the page's start.
+        allowed = ("slotTakenBy", "copyRead", "Saves_LoadCopy", "saves_choose_folder", "show_saves")
+        if source.count("devices[DEVICE_CONFIG]") != sum(
+                function(source, name).count("devices[DEVICE_CONFIG]") for name in allowed):
+            raise AssertionError("an SD stack reaches for the settings device")
+        ordered(function(source, "folderSet"), "place->device = device;",
+                "concat_path(place->dir.name, place->device->initial->name, path);",
+                "place->dir.device = place->device;")
+        # A device chosen anew opens at its Save Folder, or its root, and B
+        # goes no higher than that.
+        ordered(function(source, "folderOpenHome"), "placeClear(place);",
+                "folderSet(place, device, saves_folder());", "loadFolder(place, false);",
+                "if(!place->ready) {", 'folderSet(place, device, "/");', "loadFolder(place, false);",
+                "snprintf(folderHome[tab - SAVES_TAB_FOLDER],", "place->dir.name);")
+        ordered(transfer, "DEVICEHANDLER_INTERFACE *device = places[screenStacks[!screenFocus]].device;",
+                "folderEnsure(device, getDevicePath(folder) + 1);",
+                "ok = folderWrite(device, folder, name, data, length, why, sizeof(why));")
+        ordered(function(source, "destinationFolder"),
+                "if(!chooseFolder(dest->device, open, chosen, sizeof(chosen))) {",
+                "concat_path(path, dest->device->initial->name, chosen);")
+        ordered(function(source, "saves_choose_folder"),
+                "chooseFolder(devices[DEVICE_CONFIG], saves_folder(), folder, size);")
     else:
         ordered(below, "tab == SAVES_TAB_FOLDER", "strcmp(places[tab].dir.name, folderHome) != 0",
                 "!folderIsRoot(&places[tab])")
@@ -336,7 +381,7 @@ def check(source: str) -> None:
     load = function(source, "Saves_LoadCopy")
     ordered(load, "if(!config_set_device())", "return false;",
             "own = found != NULL ? saveRead(found, &ownLength) : NULL;",
-            "if(own == NULL ||\n\t\t\t\tfolderWrite(folder, name, own, ownLength, why, whySize)) {",
+            "if(own == NULL ||\n\t\t\t\tfolderWrite(config, folder, name, own, ownLength, why, whySize)) {",
             "ok = cardReplace(")
     if load.count("cardReplace(") != 1:
         raise AssertionError("Detail's load replaces a card's save outside its one guard")
@@ -356,7 +401,7 @@ def check(source: str) -> None:
 def mutants(source: str) -> list[tuple[str, str]]:
     cases = [
         ("Detail's load replaces a card's save without keeping it",
-         source.replace("if(own == NULL ||\n\t\t\t\tfolderWrite(folder, name, own, ownLength, why, whySize)) {",
+         source.replace("if(own == NULL ||\n\t\t\t\tfolderWrite(config, folder, name, own, ownLength, why, whySize)) {",
                         "if(true) {")),
         ("Detail's load deletes a card's save it didn't keep",
          source.replace("gone = same && card_mount_count(slot) == mount && device->deleteFile(found) == 0;",
@@ -537,6 +582,43 @@ def mutants(source: str) -> list[tuple[str, str]]:
             ("an invalid RAW image loses its folder return position", source.replace("\t\t\t\t\tplace->selection = place->rawReturn;\n", "")),
             ("a RAW source reaches a physical handler", source.replace("return SavesRaw_ReadGci(", "return directReadGci(")),
             ("the checked reader leaves its physical handle open", source.replace("\tsave->device->closeFile(save);\n\treturn ok;", "\treturn ok;")),
+            ("a folder is listed on the settings device, whatever the stack shows",
+             source.replace("\tplaceClear(place);\n\tif(place->device == NULL) {",
+                            "\tplaceClear(place);\n\tplace->device = devices[DEVICE_CONFIG];\n\tif(place->device == NULL) {")),
+            ("a folder copy goes to the settings device",
+             source.replace("DEVICEHANDLER_INTERFACE *device = places[screenStacks[!screenFocus]].device;",
+                            "DEVICEHANDLER_INTERFACE *device = devices[DEVICE_CONFIG];")),
+            ("Another folder browses the settings device",
+             source.replace("if(!chooseFolder(dest->device, open, chosen, sizeof(chosen))) {",
+                            "if(!chooseFolder(devices[DEVICE_CONFIG], open, chosen, sizeof(chosen))) {")),
+            ("a chosen folder is named on the settings device",
+             source.replace("concat_path(path, dest->device->initial->name, chosen);",
+                            "concat_path(path, devices[DEVICE_CONFIG]->initial->name, chosen);")),
+            ("the Source is offered when it is the settings device",
+             source.replace("devices[DEVICE_CUR] != NULL && devices[DEVICE_CUR] != devices[DEVICE_CONFIG] &&",
+                            "devices[DEVICE_CUR] != NULL &&")),
+            ("a Source that isn't FatFs is offered",
+             source.replace(" &&\n\t\t\tdevices[DEVICE_CUR]->writeFile == deviceHandler_FAT_writeFile) {", ") {")),
+            ("a read-only Source is offered",
+             source.replace("\t\t\t(devices[DEVICE_CUR]->features & FEAT_WRITE) &&\n", "")),
+            ("the page lets the Source go",
+             source.replace("\tif(folderMounted) {\n\t\tconfig_unset_device();\n\t}\n",
+                            "\tif(folderMounted) {\n\t\tconfig_unset_device();\n\t}\n"
+                            "\tif(sdDevices > 1) sdDevice[1]->deinit(sdDevice[1]->initial);\n")),
+            ("another device opens where the stack was",
+             source.replace("\t\tfolderOpenHome(tab, sdDevice[choice - 2]);\n", "\t\tloadTab(tab);\n")),
+            ("another device's Save Folder isn't where B stops",
+             source.replace("\tsnprintf(folderHome[tab - SAVES_TAB_FOLDER], sizeof(folderHome[0]), \"%s\",\n"
+                            "\t\tplace->dir.name);\n", "")),
+            ("an unreadable Save Folder leaves the device's stack empty",
+             source.replace('\tif(!place->ready) {\n\t\tfolderSet(place, device, "/");',
+                            '\tif(false) {\n\t\tfolderSet(place, device, "/");')),
+            ("Settings' Save Folder lists a stack's device",
+             source.replace("chooseFolder(devices[DEVICE_CONFIG], saves_folder(), folder, size);",
+                            "chooseFolder(places[SAVES_TAB_FOLDER].device, saves_folder(), folder, size);")),
+            ("Detail keeps a card's own copy on the Source",
+             source.replace("folderWrite(config, folder, name, own, ownLength, why, whySize)",
+                            "folderWrite(sdDevice[sdDevices - 1], folder, name, own, ownLength, why, whySize)")),
         ]
     return cases
 

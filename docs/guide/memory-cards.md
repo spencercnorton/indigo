@@ -68,6 +68,24 @@ back up, as far as the folder it opened on.
   <img alt="Both columns open on SD. The Backups folder cube has its saved Azure rim and folder symbol in both columns; Y Folder is visible beside the navigation controls." src="images/memory-cards-sd.png" width="640">
 </p>
 
+### Settings on one card, games on another
+
+When your games come from a different card than your settings, say
+settings on a GC Loader and games on an SD card in an SD2SP2, the storage
+menu names both cards in place of **SD card**: **Slot A**, **Slot B**,
+the Configuration Device (such as **GC Loader**), then the Source (such as
+**SD Card - SD2SP2**). Each column chooses either. A card the column
+wasn't showing opens on its own Save Folder, or at its top folder when it
+has none, and B goes back up no further than that. With two cards the
+header shows the folder with its card's prefix, such as `sdc:/swiss/saves`
+for the SD2SP2 and `gcldr:/swiss/saves` for the GC Loader, the way **Y
+Folder** shows a path. Both columns start on the Configuration Device.
+
+The Source is offered when it is another SD card, GC Loader, M.2 Loader,
+IDE-EXI or MMCE device that Indigo can write to. A Source Indigo can only
+read, or one that isn't a card, such as a disc, a network share or a
+FlippyDrive, is not.
+
 ### Identify and color a folder
 
 Highlight a small **folder cube** or **card-image cube** and press **Y Folder**.
@@ -95,10 +113,13 @@ color remains in place. Card images keep their read-only status throughout.
 ### Virtual memory cards
 
 Swiss's **Emulate Memory Card** keeps saves in `.raw` images such as
-`swiss/saves/MemoryCardA.USA.raw`. These appear as folder cubes. Press **A**
-to open an image and browse its saves and animated icons; **B** returns to
-the containing folder. An unformatted or damaged image gets a clear message
-and is left unchanged.
+`swiss/saves/MemoryCardA.USA.raw`, on the card the game starts from. These
+appear as folder cubes. With your games on another card than your settings,
+choose that card in the storage menu to reach them
+([Settings on one card, games on another](#settings-on-one-card-games-on-another)).
+Press **A** to open an image and browse its saves and animated icons; **B**
+returns to the containing folder. An unformatted or damaged image gets a
+clear message and is left unchanged.
 
 An open image works like a memory card: Move, Copy and Erase its saves, to
 and from Slot A, Slot B, an SD folder or an image open in the other column.
@@ -239,7 +260,9 @@ numbered: `…_2.gci`. A save copied from a folder keeps its file name.
 Settings › Setup › Storage › **Save Folder** is the folder the SD card's
 stack opens on, so it's where saves copied off a memory card go unless you
 open another folder first. It starts as `swiss/saves`, which Indigo makes
-the first time you open Memory Cards. A on Save Folder lists the SD card's folders: A
+the first time you open Memory Cards. The games' card, when it is another
+one, opens on the same folder if it has it, and Indigo makes nothing there.
+A on Save Folder lists the SD card's folders: A
 opens one, X chooses the one that's open, and B keeps the folder you had.
 Leave Settings with Save & Exit to keep your choice.
 
