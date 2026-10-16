@@ -95,6 +95,8 @@ run_binaries() {
 	done
 	echo "== raw card device adapter$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_saves_raw_backend.py; else python3 ./test_saves_raw_backend.py --sanitize; fi
+	echo "== raw card writer$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_saves_raw_writer.py; else python3 ./test_saves_raw_writer.py --sanitize; fi
 	echo "== game save stats$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_saves_stats.py; else python3 ./test_saves_stats.py --sanitize; fi
 	echo "== Game Detail's save choice$suffix =="

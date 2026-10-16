@@ -5,8 +5,9 @@
    two cards: two stacks of save cubes, either of them Slot A, Slot B or the
    SD card, with Move, Copy and Erase from one to the other. The card and FAT
    drivers do the reading and writing, as they do for the file browser's
-   Copy. This file decides what to call, reads every copy back before
-   calling it done, and removes a Move's original only after that. */
+   Copy; a card image on the SD card changes in place (saves_raw.c). This
+   file decides what to call, reads every copy back before calling it done,
+   and removes a Move's original only after that. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -239,17 +240,18 @@ static void folderContents(uiFolderSnapshot_t *snapshot, file_handle *chosen)
 		uiSavesRawStatus_t status = card != NULL ? SavesRaw_Load(&source, card) :
 			UI_SAVES_RAW_READ_ERROR;
 		if(status == UI_SAVES_RAW_OK) {
-			snprintf(snapshot->summary, sizeof(snapshot->summary), "%u saves. Read-only card image.",
-				(unsigned)card->count);
+			snprintf(snapshot->summary, sizeof(snapshot->summary), "%u saves. %s",
+				(unsigned)card->count, SavesRaw_Writable(&source) ?
+				"Card image." : "Read-only card image.");
 			for(unsigned i = 0; i < card->count && i < 2u; ++i)
 				folderSaveTitle(&source, card, i, snapshot->contents[i], sizeof(snapshot->contents[i]));
 			if(card->count == 0u) strcpy(snapshot->contents[0], "This card image has no saves.");
 		}
 		else {
-			strcpy(snapshot->summary, "Read-only card image. Contents unavailable.");
+			strcpy(snapshot->summary, "Card image. Contents unavailable.");
 			snprintf(snapshot->contents[0], sizeof(snapshot->contents[0]), "%s", UISavesRaw_StatusText(status));
 		}
-		strcpy(snapshot->status, "Color is saved in Indigo settings; the card image stays read-only.");
+		strcpy(snapshot->status, "Color is saved in Indigo settings, not in the card image.");
 		free(card);
 		return;
 	}
@@ -1048,7 +1050,7 @@ static void screenInfo(uiSaveCubesPageSnapshot_t *g, int tab, file_handle *chose
 					UI_SAVES_ICON_FRAMES * UI_SAVES_ICON_BYTES;
 			}
 		}
-		if(places[tab].rawOpen) {
+		if(places[tab].rawOpen && !SavesRaw_Writable(&places[tab].rawImage)) {
 			snprintf(g->line[1], sizeof(g->line[1]), "Read-only card image. Copy exports a .gci save.");
 		}
 	}
@@ -1775,7 +1777,16 @@ static bool folderWrite(const char *folder, const char *name, const u8 *data,
 
 static bool saveDelete(file_handle *save)
 {
-	if(rawSource(save, NULL) != NULL || SavesRaw_IsImageName(save->name)) return false;
+	unsigned ordinal;
+	savesPlace_t *raw = rawSource(save, &ordinal);
+
+	/* A card image's save goes from its image, as listed; an image itself
+	 * is never deleted here. */
+	if(raw != NULL) {
+		return SavesRaw_Erase(&raw->rawImage,
+			UISavesRaw_Entry(raw->rawCard, ordinal)) == UI_SAVES_RAW_OK;
+	}
+	if(SavesRaw_IsImageName(save->name)) return false;
 	save->device->closeFile(save);
 	return save->device->deleteFile(save) == 0;
 }
@@ -2000,7 +2011,8 @@ bool Saves_LoadCopy(int slot, const savesCopy_t *copy, char *why,
 /* The folder a Copy or Move goes to, as a path on the settings device. */
 static bool destinationFolder(uiSavesPlace_t to, char *path, size_t size);
 
-/* Copy or Move save to a card, or to a folder on the settings device. */
+/* Copy or Move save to a card, to a folder on the settings device, or to
+ * the card image the other stack has open. */
 static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 {
 	char why[128] = "";
@@ -2011,24 +2023,25 @@ static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 	u8 *data;
 	u32 length = 0;
 	size_t blocksAt;
+	unsigned ordinal = 0u;
+	savesPlace_t *raw = rawSource(save, &ordinal);
+	bool toFolder = to == UI_SAVES_PLACE_FOLDER || to == UI_SAVES_PLACE_CHOOSE;
+	u8 permissions = isCard(save->device) ? ((card_dir *)save->other)->permissions :
+		raw != NULL ? UISavesRaw_Entry(raw->rawCard, ordinal)[0x34] : 0u;
 	bool ok;
 
-	if(move && rawSource(save, NULL) != NULL) {
-		savesTell(D_WARN, "Card images are read-only.\nCopy exports a .gci save.\nPress A to continue.");
-		return;
-	}
-	if(move && isCard(save->device) && (((card_dir *)save->other)->permissions &
-		(CARD_ATTRIB_NOCOPY | CARD_ATTRIB_NOMOVE))) {
+	/* A card image's save carries the card's own no-copy and no-move. */
+	if(move && (isCard(save->device) || raw != NULL) &&
+		(permissions & (CARD_ATTRIB_NOCOPY | CARD_ATTRIB_NOMOVE))) {
 		savesTell(D_WARN, "This game doesn't let its save move.\n"
 			"Copy it instead.\nPress A to continue.");
 		return;
 	}
-	if(to >= UI_SAVES_PLACE_FOLDER && !destinationFolder(to, folder,
-		sizeof(folder))) {
+	if(toFolder && !destinationFolder(to, folder, sizeof(folder))) {
 		return;
 	}
 	artRoom(isCard(save->device) ? save->size + UI_SAVES_ENTRY_SIZE : save->size);
-	opBegin(move, to >= UI_SAVES_PLACE_FOLDER ? folder : NULL);
+	opBegin(move, toFolder ? folder : NULL);
 	data = saveRead(save, &length);
 	blocksAt = 0u;
 	if(data != NULL && isCard(save->device)) {
@@ -2050,6 +2063,21 @@ static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 	else if(to <= UI_SAVES_PLACE_SLOT_B) {
 		ok = cardWrite(to == UI_SAVES_PLACE_SLOT_B, entry, data + blocksAt,
 			length - (u32)blocksAt, why, sizeof(why));
+		snprintf(done, sizeof(done), "Finished %s.", move ? "moving" : "copying");
+	}
+	else if(to == UI_SAVES_PLACE_IMAGE) {
+		/* The image takes a .gci: the entry as found (a wrapper's header,
+		 * if any, sits before it), then the blocks. */
+		uiSavesRawStatus_t status;
+
+		memcpy(data + blocksAt - UI_SAVES_ENTRY_SIZE, entry, UI_SAVES_ENTRY_SIZE);
+		status = SavesRaw_Add(&places[screenStacks[!screenFocus]].rawImage,
+			data + blocksAt - UI_SAVES_ENTRY_SIZE,
+			length - (u32)blocksAt + UI_SAVES_ENTRY_SIZE);
+		ok = status == UI_SAVES_RAW_OK;
+		if(!ok) {
+			snprintf(why, sizeof(why), "%s.", UISavesRaw_StatusText(status));
+		}
 		snprintf(done, sizeof(done), "Finished %s.", move ? "moving" : "copying");
 	}
 	else {
@@ -2293,9 +2321,20 @@ static void saveRoom(int tab, const u8 entry[UI_SAVES_ENTRY_SIZE], bool known,
 
 	memset(room, 0, sizeof(*room));
 	room->ready = place->ready;
+	if(tab >= SAVES_TAB_FOLDER && place->rawOpen) {
+		room->name = "The card image";
+		room->card = true;
+		room->image = true;
+		room->writable = SavesRaw_Writable(&place->rawImage);
+		room->saves = place->count;
+		room->freeBlocks = place->freeBlocks;
+		room->hasIt = known && place->ready && place->rawCard != NULL &&
+			UISavesRaw_Find(place->rawCard, entry) < place->rawCard->count;
+		return;
+	}
 	if(tab >= SAVES_TAB_FOLDER) {
-		room->name = place->rawOpen ? "The card image" : "The SD card";
-		room->writable = !place->rawOpen && place->device != NULL &&
+		room->name = "The SD card";
+		room->writable = place->device != NULL &&
 			(place->device->features & FEAT_WRITE);
 		return;
 	}
@@ -2366,7 +2405,8 @@ static bool saveDetails(int tab, file_handle *save,
 	uiDrawObj_t *box;
 	char heading[64], date[24];
 	const char *updated, *icon;
-	const char *source = places[tab].rawOpen ? "Read-only card image" :
+	const char *source = places[tab].rawOpen ?
+		(SavesRaw_Writable(&places[tab].rawImage) ? "Card image" : "Read-only card image") :
 		(isCard(save->device) ? slotName(tab) : "SD save");
 	u32 seconds;
 	bool actions = false, readable = saveUpdated(save, entry, known, &seconds);
@@ -2447,15 +2487,15 @@ static void saveOptions(int tab)
 	memset(reason, 0, sizeof(reason));
 	saveRoom(toTab, entry, known, &room);
 	for(i = 0; i < 2; i++) {
-		if(UISaves_Verdict(i == 0, card, entry[0x34], blocks, &room, reason[i],
-			sizeof(reason[i])) != UI_SAVES_VERDICT_OK) {
+		if(UISaves_Verdict(i == 0, card || place->rawOpen, entry[0x34], blocks,
+			&room, reason[i], sizeof(reason[i])) != UI_SAVES_VERDICT_OK) {
 			dim |= 1u << i;
 		}
 	}
-	if(place->rawOpen) {
+	if(place->rawOpen && !SavesRaw_Writable(&place->rawImage)) {
 		dim |= 5u;
-		snprintf(reason[0], sizeof(reason[0]), "Card images are read-only. Use Copy to export a save.");
-		snprintf(reason[2], sizeof(reason[2]), "Card images are read-only. Saves cannot be erased here.");
+		snprintf(reason[0], sizeof(reason[0]), "This card image is read-only here. Use Copy to export a save.");
+		snprintf(reason[2], sizeof(reason[2]), "This card image is read-only here. Saves cannot be erased.");
 	}
 	action = savesMenu("", actions, 3, place->rawOpen ? 1 : 0, dim, why, 0u);
 	if(action < 0) {
@@ -2499,6 +2539,13 @@ static void saveOptions(int tab)
 			return;
 		}
 		to = toTab == 0 ? UI_SAVES_PLACE_SLOT_A : UI_SAVES_PLACE_SLOT_B;
+	}
+	else if(dest->rawOpen) {
+		snprintf(title, sizeof(title), "%s to the card image?", move ? "Move" : "Copy");
+		if(savesMenu(title, answers, 2, 0, 0u, NULL, ghosts) != 0) {
+			return;
+		}
+		to = UI_SAVES_PLACE_IMAGE;
 	}
 	else {
 		bool folders = false;

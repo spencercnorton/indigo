@@ -23,6 +23,17 @@ place a save is in, and Move, Copy and Erase take the save whose cube the
 cursor is on, never a folder's "..". A card's listing reads each save's permissions, which
 libogc2's listing leaves out, so the Move guard has them to read.
 
+A card image (.raw) on the SD card is a card too: its saves move, copy and
+erase only through its own writer (saves_raw.c), as they were listed, a
+Move's original going only after the copy was checked, and a save marked
+no-move stays; an image its device can't change keeps Move and Erase
+dimmed, and an image file itself is never deleted. The writer opens an
+image as it is, never through the device's writeFile (which creates the
+file anew), never creating, truncating, growing or deleting one, and writes
+an added save's blocks, then the block map, then the directory (an erase:
+the directory, then the map), each made to last before the next, reading
+every block back after.
+
 An operation's cube flies while the card works: it starts before the save
 is read, and lands (or goes back) only once the copy was written, read
 back and a Move's original removed, after every place is read again; the
@@ -47,6 +58,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[3]
 SAVES = ROOT / "cube/swiss/source/gui/saves.c"
+WRITER = ROOT / "cube/swiss/source/gui/saves_raw.c"
 
 
 def function(source: str, name: str) -> str:
@@ -79,7 +91,8 @@ def check(source: str) -> None:
     read = function(source, "saveRead")
 
     # A Move removes its original only once the copy is done and checked.
-    ordered(transfer, "ok = cardWrite(", "ok = folderWrite(",
+    ordered(transfer, "ok = cardWrite(", "SavesRaw_Add(",
+            "ok = status == UI_SAVES_RAW_OK;", "ok = folderWrite(",
             "if(ok && move && !saveDelete(save))")
     if transfer.count("saveDelete(") != 1:
         raise AssertionError("saveTransfer removes a save outside its one guard")
@@ -276,11 +289,32 @@ def check(source: str) -> None:
             "UICheats_Fit(over.message, sizeof(over.message), text,",
             "UI_SAVE_CUBES_MESSAGE_WIDTH, 0.56f, GetTextSizeInPixels);", "screenRedraw();")
     if centralized:
+        # A card image's save goes only through the image's writer, exactly
+        # as listed; an image file itself is never deleted.
         ordered(function(source, "saveDelete"),
-                "rawSource(save, NULL) != NULL || SavesRaw_IsImageName(save->name)",
-                "return false;", "closeFile(save);", "deleteFile(save)")
-        ordered(transfer, "if(move && rawSource(save, NULL) != NULL)",
+                "savesPlace_t *raw = rawSource(save, &ordinal);", "if(raw != NULL) {",
+                "return SavesRaw_Erase(&raw->rawImage,",
+                "UISavesRaw_Entry(raw->rawCard, ordinal)) == UI_SAVES_RAW_OK;",
+                "if(SavesRaw_IsImageName(save->name)) return false;",
+                "closeFile(save);", "deleteFile(save)")
+        # Its save keeps the card's own no-copy and no-move.
+        ordered(transfer, "raw != NULL ? UISavesRaw_Entry(raw->rawCard, ordinal)[0x34]",
+                "if(move && (isCard(save->device) || raw != NULL) &&",
+                "(permissions & (CARD_ATTRIB_NOCOPY | CARD_ATTRIB_NOMOVE))",
                 "return;", "artRoom(", "saveRead(save, &length)")
+        # The other stack's open image takes a save through its writer;
+        # a folder only through destinationFolder.
+        ordered(transfer, "bool toFolder = to == UI_SAVES_PLACE_FOLDER || to == UI_SAVES_PLACE_CHOOSE;",
+                "if(toFolder && !destinationFolder(", "else if(to == UI_SAVES_PLACE_IMAGE) {",
+                "SavesRaw_Add(&places[screenStacks[!screenFocus]].rawImage,")
+        options_raw = function(source, "saveOptions")
+        ordered(options_raw, "UISaves_Verdict(i == 0, card || place->rawOpen, entry[0x34], blocks,",
+                "if(place->rawOpen && !SavesRaw_Writable(&place->rawImage)) {", "dim |= 5u;",
+                "else if(dest->rawOpen) {", "to = UI_SAVES_PLACE_IMAGE;")
+        ordered(function(source, "saveRoom"), "if(tab >= SAVES_TAB_FOLDER && place->rawOpen) {",
+                "room->card = true;", "room->image = true;",
+                "room->writable = SavesRaw_Writable(&place->rawImage);",
+                "UISavesRaw_Find(place->rawCard, entry) < place->rawCard->count;")
         ordered(function(source, "destinationFolder"), "if(dest->rawOpen",
                 "dest->device->features & FEAT_WRITE", "return false;",
                 "if(to == UI_SAVES_PLACE_FOLDER)", "dest->dir.name")
@@ -486,8 +520,18 @@ def mutants(source: str) -> list[tuple[str, str]]:
         cases = [updates.get(name, (name, mutant)) for name, mutant in cases]
         cases += [
             ("storage choice moves the cursor to the chooser column", source.replace("focus = stackFocus(stacks, focus);\n\t\t\tinputInit(&input);", "focus = stackFocus(stacks, stack);\n\t\t\tinputInit(&input);")),
-            ("RAW virtual saves can be erased", source.replace("rawSource(save, NULL) != NULL || SavesRaw_IsImageName(save->name)", "false")),
-            ("RAW virtual saves can be moved", source.replace("if(move && rawSource(save, NULL) != NULL)", "if(false)")),
+            ("an image file can be deleted", source.replace("\tif(SavesRaw_IsImageName(save->name)) return false;\n", "")),
+            ("a card image's save is deleted through its device",
+             source.replace("return SavesRaw_Erase(&raw->rawImage,\n\t\t\tUISavesRaw_Entry(raw->rawCard, ordinal)) == UI_SAVES_RAW_OK;",
+                            "return save->device->deleteFile(save) == 0;")),
+            ("a card image's save ignores no-move", source.replace("(isCard(save->device) || raw != NULL)", "isCard(save->device)")),
+            ("a read-only image leaves Move and Erase open",
+             source.replace("if(place->rawOpen && !SavesRaw_Writable(&place->rawImage)) {", "if(false) {")),
+            ("an image's room is always writable",
+             source.replace("room->writable = SavesRaw_Writable(&place->rawImage);", "room->writable = true;")),
+            ("an image's room never has the save",
+             source.replace("\t\troom->hasIt = known && place->ready && place->rawCard != NULL &&\n"
+                            "\t\t\tUISavesRaw_Find(place->rawCard, entry) < place->rawCard->count;\n", "")),
             ("a read-only SD destination can be written", source.replace("!(dest->device->features & FEAT_WRITE)", "false")),
             ("a new RAW image inherits the folder selection", source.replace("place->rawOpen ? place->selection : 0", "place->selection")),
             ("an invalid RAW image loses its folder return position", source.replace("\t\t\t\t\tplace->selection = place->rawReturn;\n", "")),
@@ -497,18 +541,86 @@ def mutants(source: str) -> list[tuple[str, str]]:
     return cases
 
 
+def check_writer(source: str) -> None:
+    """saves_raw.c: an image changes in place, in the console's order."""
+    code = re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.S)
+    for forbidden in ("FA_CREATE_ALWAYS", "FA_CREATE_NEW", "FA_OPEN_ALWAYS", "FA_OPEN_APPEND",
+                      "f_truncate(", "f_expand(", "f_unlink(", "->writeFile(", "->deleteFile(",
+                      "->renameFile("):
+        if forbidden in code:
+            raise AssertionError(f"the image writer uses {forbidden}")
+    ordered(function(source, "SavesRaw_Writable"), "(image->device->features & FEAT_WRITE)",
+            "image->device->writeFile == deviceHandler_FAT_writeFile")
+    # Never past the image's end: FatFs grows a file a write seeks beyond.
+    ordered(function(source, "imageAt"), "offset <= f_size(fp) && length <= f_size(fp) - offset",
+            "f_lseek(fp, offset)")
+    ordered(function(source, "imageOpen"), "image->device->closeFile(image);",
+            "f_open(fp, image->name, mode)", "if(f_size(fp) != image->size) {", "f_close(fp);")
+    ordered(function(source, "writeSystem"), "imageWrite(fp, blocks[i] * UI_SAVES_BLOCK_SIZE,",
+            "f_sync(fp) != FR_OK")
+    add = function(source, "SavesRaw_Add")
+    ordered(add, "if(!SavesRaw_Writable(image)) return UI_SAVES_RAW_READ_ONLY;",
+            "imageOpen(image, &fp, FA_READ | FA_WRITE, metadata)",
+            "UISavesRaw_PlanAdd(metadata, image->size, gci, card, &change)",
+            "imageWrite(&fp, at * UI_SAVES_BLOCK_SIZE, block, UI_SAVES_BLOCK_SIZE)",
+            "f_sync(&fp) != FR_OK", "writeSystem(&fp, metadata, change.map)",
+            "writeSystem(&fp, metadata, change.directory)", "f_close(&fp);",
+            "readBack(image, metadata, &change, card, gci, block)",
+            "status = UI_SAVES_RAW_MISMATCH;", "eraseOpen(")
+    erase = function(source, "eraseOpen")
+    ordered(erase, "UISavesRaw_PlanErase(", "if(status != UI_SAVES_RAW_OK) {",
+            "writeSystem(fp, metadata, change.directory)", "writeSystem(fp, metadata, change.map)",
+            "readBack(image, metadata, &change, card, NULL, block)")
+    ordered(function(source, "SavesRaw_Erase"),
+            "if(!SavesRaw_Writable(image)) return UI_SAVES_RAW_READ_ONLY;",
+            "imageOpen(image, &fp, FA_READ | FA_WRITE, metadata)", "eraseOpen(")
+    ordered(function(source, "readBack"), "imageOpen(image, &fp, FA_READ, NULL)",
+            "!memcmp(block, gci + UI_SAVES_ENTRY_SIZE + i * UI_SAVES_BLOCK_SIZE,",
+            "!memcmp(block, metadata + system * UI_SAVES_BLOCK_SIZE, UI_SAVES_BLOCK_SIZE);")
+
+
+def writer_mutants(source: str) -> list[tuple[str, str]]:
+    return [
+        ("an image opens through the device's writeFile",
+         source.replace("f_open(fp, image->name, mode)", "f_open(fp, image->name, mode | FA_CREATE_ALWAYS)")),
+        ("any device's images are writable",
+         source.replace("\t\timage->device->writeFile == deviceHandler_FAT_writeFile;", "\t\ttrue;")),
+        ("a write may seek past the image's end",
+         source.replace("offset <= f_size(fp) && length <= f_size(fp) - offset &&", "")),
+        ("a reader still holds the image when it is opened to write",
+         source.replace("\timage->device->closeFile(image);\n\tif(f_open(", "\tif(f_open(")),
+        ("another file of another size is written",
+         source.replace("if(f_size(fp) != image->size) {", "if(false) {")),
+        ("the directory goes before the block map on an add",
+         source.replace("!writeSystem(&fp, metadata, change.map) ||\n\t\t!writeSystem(&fp, metadata, change.directory)",
+                        "!writeSystem(&fp, metadata, change.directory) ||\n\t\t!writeSystem(&fp, metadata, change.map)")),
+        ("the block map goes before the directory on an erase",
+         source.replace("if(!writeSystem(fp, metadata, change.directory) ||\n\t\t!writeSystem(fp, metadata, change.map)) {",
+                        "if(!writeSystem(fp, metadata, change.map) ||\n\t\t!writeSystem(fp, metadata, change.directory)) {")),
+        ("a system block isn't made to last before the next",
+         source.replace(" ||\n\t\t\tf_sync(fp) != FR_OK) return false;", ") return false;")),
+        ("an add isn't read back",
+         source.replace("if(readBack(image, metadata, &change, card, gci, block)) goto done;", "goto done;")),
+        ("a copy that doesn't read back the same stays",
+         source.replace("(void)eraseOpen(image, &fp, metadata, added, card, block);", "f_close(&fp);")),
+    ]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-root", type=Path, default=ROOT)
     args = parser.parse_args()
     source = (args.source_root / "cube/swiss/source/gui/saves.c").read_text()
+    writer = (args.source_root / "cube/swiss/source/gui/saves_raw.c").read_text()
     check(source)
+    check_writer(writer)
     rejected = 0
-    for name, mutant in mutants(source):
-        if mutant == source:
+    for name, mutant, gate in ([(n, m, check) for n, m in mutants(source)] +
+                               [(n, m, check_writer) for n, m in writer_mutants(writer)]):
+        if mutant in (source, writer):
             raise AssertionError(f"mutant '{name}' changed nothing")
         try:
-            check(mutant)
+            gate(mutant)
         except AssertionError:
             rejected += 1
             continue

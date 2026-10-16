@@ -1,3 +1,36 @@
+## 2026-10-16 — Card images become writable in Memory Cards
+
+A console test found Memory Cards pointless with Swiss's Emulate Memory
+Card on: every save lived in a `.raw` card image, and images opened
+read-only (Move and Erase dimmed, nothing copied in). Images now take
+Move, Copy and Erase like a memory card, to and from Slot A, Slot B, an SD
+folder or another image.
+
+`ui_saves_raw.c` plans each change in the image's five system blocks before
+anything is written (`UISavesRaw_PlanAdd`, `UISavesRaw_PlanErase`): the new
+directory and block map go into the older of their two copies with the next
+update count (both copies when the count would wrap), a new save's blocks
+are the free ones after the map's last allocated block, and the planned
+blocks must parse back with exactly the intended change or nothing is
+written. The parser now accepts blocks the map holds that no save reaches,
+which is what the GameCube's own write order leaves after an interruption.
+`saves_raw.c` writes through FatFs opened as the file is (the device's
+`writeFile` opens with `FA_CREATE_ALWAYS` and would empty the image): an
+add writes the save's blocks, then the map, then the directory, an erase the
+directory, then the map, each synced, then every block is read back through
+a fresh read-only open; an add that doesn't read back the same is erased
+again. Only FatFs devices are writable; a FlippyDrive's or KunaiGC's images
+stay read-only.
+
+Tests: planner cases in `test_ui_saves_raw.c` (allocation order and wrap,
+refusals leave the buffer untouched, counter wrap, interrupted writes),
+`test_saves_raw_writer.py` (a FatFs model: open modes, write order, a cut
+at every write, read-back mismatch clean-up), the controller harness now
+moves and erases through a planner-backed model, `audit_saves_safety.py`
+pins the new order with mutants, the raw fuzzer runs both planners, and the
+emulator route erases a save from the demonstration image, moves one out
+and a `.gci` back in, then reads the FAT image with an independent reader.
+
 ## 2026-10-16 — Library Path: the Library finds /games itself
 
 The Default Source prompts (Set as Default / This Session Only / Choose a

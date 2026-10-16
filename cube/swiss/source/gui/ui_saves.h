@@ -18,13 +18,14 @@ int UISaves_StorageTab(int stack, int choice, int other);
 #define UI_SAVES_NAME_LENGTH 32u	/* CARD_FILENAMELEN */
 
 /* The places a save can go: a card, the folder the SD card's stack has
- * open, or another folder, chosen then. The first three are also the places
- * a stack shows. */
+ * open, or another folder, chosen then, or the card image the SD card's
+ * stack has open. The first three are also the places a stack shows. */
 typedef enum {
 	UI_SAVES_PLACE_SLOT_A = 0,
 	UI_SAVES_PLACE_SLOT_B,
 	UI_SAVES_PLACE_FOLDER,
-	UI_SAVES_PLACE_CHOOSE
+	UI_SAVES_PLACE_CHOOSE,
+	UI_SAVES_PLACE_IMAGE
 } uiSavesPlace_t;
 
 /* A .gci is the card's directory entry, then the save's blocks. Action
@@ -62,7 +63,7 @@ typedef enum {
 	UI_SAVES_VERDICT_OK = 0,
 	UI_SAVES_VERDICT_NO_MOVE,	/* the game won't let its save move */
 	UI_SAVES_VERDICT_NO_CARD,	/* nothing usable in the slot */
-	UI_SAVES_VERDICT_READ_ONLY,	/* the SD card can't be written */
+	UI_SAVES_VERDICT_READ_ONLY,	/* the SD card or card image can't be written */
 	UI_SAVES_VERDICT_HAS_IT,	/* the card has a save of this game and name */
 	UI_SAVES_VERDICT_FULL,		/* the card holds its 127 saves */
 	UI_SAVES_VERDICT_ROOM		/* too few free blocks */
@@ -72,19 +73,21 @@ typedef enum {
 
 /* Where a save would go. */
 typedef struct {
-	const char *name;	/* "Slot B", "The SD card" */
-	bool card;		/* a memory card; else a folder on the SD card */
+	const char *name;	/* "Slot B", "The SD card", "The card image" */
+	bool card;		/* a memory card or card image; else a folder on the SD card */
 	bool ready;		/* a card listed, or a folder read */
-	bool writable;		/* a folder's card takes writes */
+	bool writable;		/* a folder's or card image's device takes writes */
 	bool hasIt;		/* the card has a save of this game, maker and name */
 	int saves;		/* on the card */
 	int freeBlocks;
+	bool image;		/* a card image: a card that is a file on the SD card */
 } uiSavesRoom_t;
 
 /* Whether a save blocks long goes to the room to, moved or copied, from a
- * card or a folder, as today's rules have it: a card's save marked no-copy
- * or no-move (entry byte 0x34) doesn't move, and copies always may. Writes
- * the reason in words to why ("" when it may go). */
+ * card (or card image) or a folder, as today's rules have it: a card's save
+ * marked no-copy or no-move (entry byte 0x34) doesn't move, and copies
+ * always may. A card image takes a save as a card does, when its device
+ * writes. Writes the reason in words to why ("" when it may go). */
 uiSavesVerdict_t UISaves_Verdict(bool move, bool fromCard, uint8_t permissions,
 	unsigned blocks, const uiSavesRoom_t *to, char *why, size_t size);
 

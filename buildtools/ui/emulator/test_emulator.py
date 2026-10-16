@@ -422,27 +422,76 @@ class MemoryCards(unittest.TestCase):
                         with self.assertRaises(run.Failed):
                             route.virtual_popup_checks()
 
-    def test_virtual_export_proof_rejects_wrong_payload_and_changed_source(self):
+    @staticmethod
+    def first_save_only(raw: bytes) -> bytes:
+        """The demonstration image once its second save is erased: what the
+        route leaves when the first save comes back to its own blocks."""
+        image, block = bytearray(raw), run.make_test_saves.BLOCK
+
+        def seal(data: bytearray, start: int, end: int, at: int) -> None:
+            words = struct.unpack(f">{(end - start) // 2}H", data[start:end])
+            value, inverse = sum(words) & 0xFFFF, sum(w ^ 0xFFFF for w in words) & 0xFFFF
+            struct.pack_into(">HH", data, at, 0 if value == 0xFFFF else value,
+                             0 if inverse == 0xFFFF else inverse)
+
+        for copy in (1, 2):
+            directory = image[copy * block:(copy + 1) * block]
+            directory[64:128] = b"\xff" * 64
+            seal(directory, 0, 0x1FFC, 0x1FFC)
+            image[copy * block:(copy + 1) * block] = directory
+        for copy in (3, 4):
+            block_map = image[copy * block:(copy + 1) * block]
+            struct.pack_into(">H", block_map, 6 * 2, 0)
+            struct.pack_into(">H", block_map, 6, 57)
+            seal(block_map, 4, block, 0)
+            image[copy * block:(copy + 1) * block] = block_map
+        return bytes(image)
+
+    def test_virtual_card_proof_reads_the_image_as_a_card(self):
         raw, gcis = run.make_test_saves.virtual_card()
+        after = self.first_save_only(raw)
         exported = bytearray(gcis[0])
         exported[0x36:0x38] = b"\x00\x05"  # the image's first block is retained
+        broken = bytearray(after)
+        broken[8192 + 1] ^= 1
+        broken[2 * 8192 + 1] ^= 1
+        moved = bytearray(after)  # a block the route never writes
+        moved[20 * 8192] ^= 1
         with tempfile.TemporaryDirectory() as directory:
-            for changed_raw, changed_export, passed in ((raw, bytes(exported), True),
-                    (raw, bytes(exported[:-1]) + bytes([exported[-1] ^ 1]), False),
-                    (raw[:-1] + bytes([raw[-1] ^ 1]), bytes(exported), False)):
+            for image, exports, passed in ((after, [bytes(exported), None], True),
+                                           (after, [None, bytes(exported)], True),
+                                           (after, [bytes(exported[:-1]) + bytes([exported[-1] ^ 1]), None], False),
+                                           (after, [bytes(exported), bytes(exported)], False),
+                                           (raw, [bytes(exported), None], False),
+                                           (bytes(broken), [bytes(exported), None], False),
+                                           (bytes(moved), [bytes(exported), None], False)):
                 with self.subTest(passed=passed):
                     route = run.Route.__new__(run.Route)
                     route.out, route.report, route.last_rgb = Path(directory), None, None
                     route.checks = []
                     route.emulator = mock.Mock(where=lambda: None)
                     fixtures = list(run.make_test_saves.memory_folder_files().values())
-                    with mock.patch.object(card, "read_card", side_effect=fixtures + [changed_raw, changed_export]):
+                    with mock.patch.object(card, "read_card", side_effect=fixtures + [image] + exports):
                         if passed:
                             route.virtual_card_checks(Path("test.img"))
-                            self.assertEqual(len(route.checks), 2 + len(fixtures))
+                            self.assertEqual(len(route.checks), 4 + len(fixtures))
                         else:
                             with self.assertRaises(run.Failed):
                                 route.virtual_card_checks(Path("test.img"))
+
+    def test_independent_card_reader(self):
+        raw, gcis = run.make_test_saves.virtual_card()
+        saves = run.card_image_saves(raw)
+        self.assertEqual(len(saves), 2)
+        for gci in gcis:
+            self.assertTrue(run.same_save(gci, saves[gci[:6] + gci[8:40]]))
+        self.assertEqual(len(run.card_image_saves(self.first_save_only(raw))), 1)
+        broken = bytearray(raw)
+        broken[8192 + 1] ^= 1  # one directory copy: the other stands
+        self.assertEqual(len(run.card_image_saves(bytes(broken))), 2)
+        broken[2 * 8192 + 1] ^= 1
+        with self.assertRaises(ValueError):
+            run.card_image_saves(bytes(broken))
 
     def test_public_folder_fixtures_have_static_and_disabled_metadata_shapes(self):
         files = run.make_test_saves.memory_folder_files()

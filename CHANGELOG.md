@@ -18,6 +18,15 @@ tag on `beta`. The newest changes are at the top until their release is named.
   **Library Path** names a folder to use instead (Auto, the default, looks
   for one); Left and Right step through devices, and A opens a folder
   chooser.
+- Memory Cards moves, copies and erases saves on **card images** too: the
+  `.raw` virtual memory cards Swiss's Emulate Memory Card keeps in
+  `swiss/saves`. Open one in the SD card's stack and Move, Copy and Erase
+  work as on a memory card, to and from Slot A, Slot B, an SD folder or an
+  image in the other stack. An image takes a save as a card does (not one it
+  has, not past 127 saves or its free blocks); its blocks, block map and
+  directory are written in the GameCube's own order and read back before a
+  Move removes the original. Images on a FlippyDrive or KunaiGC stay
+  read-only.
 - Choose the menu on each side of the Home cube: Settings › Setup › Console
   › **Up Face**, **Left Face**, **Right Face** and **Down Face**, each
   Source, Settings, System, Apps or None. Classic turns that way to it; the
@@ -128,7 +137,7 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - Press **Y Folder** on Memory Cards' small folder or card-image cubes to
   see the full device-prefixed path, direct contents and up to two save names.
   Choose a persistent color for that cube's rim and folder symbol, or restore
-  Default. A saves; B cancels. Card images remain read-only.
+  Default. A saves; B cancels.
 
 ### Removed
 
