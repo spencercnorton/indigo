@@ -128,6 +128,18 @@ def posters(out: Path) -> None:
         (out / "header-only").write_bytes(b"SWPK" + bytes(60))
 
 
+def manual(out: Path) -> None:
+    # Manuals from manual_pack.py, as small as one can be: pages one tile
+    # row tall, in colour and in gray.
+    sys.path.insert(0, str(ROOT / "buildtools/ui"))
+    import manual_pack
+    from PIL import Image
+
+    pages = [Image.new("RGB", (640, 16), (236, 232, 222)), Image.new("RGB", (640, 12), (20, 20, 24))]
+    (out / "colour.pak").write_bytes(manual_pack.build(pages, trim=False))
+    (out / "gray.pak").write_bytes(manual_pack.build(pages[:1], gray=True, trim=False))
+
+
 def about(out: Path) -> None:
     # Game descriptions as the downloads write them, and as a person might.
     (out / "descriptions.txt").write_bytes(
@@ -199,7 +211,7 @@ def cheats(out: Path) -> None:
 
 def main() -> int:
     out = Path(sys.argv[1])
-    for target in (history, saves, raw_saves, posters, about, settings, fst, png, cheats):
+    for target in (history, saves, raw_saves, posters, manual, about, settings, fst, png, cheats):
         folder = out / target.__name__
         folder.mkdir(parents=True, exist_ok=True)
         target(folder)
