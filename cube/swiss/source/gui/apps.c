@@ -414,8 +414,8 @@ static void showPrograms(appsScreen_t *which)
 	u32 selected = 0u;
 	u32 i;
 
-	/* Layouts after Grid show a game's still and description, which an app
-	 * hasn't: Apps shows those as the carousel. */
+	/* Layouts after Grid show a game's still and description, or its disc,
+	 * which an app hasn't: Apps shows those as the carousel. */
 	if(layout > UI_GAMEFLOW_LAYOUT_GRID) {
 		layout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
 	}

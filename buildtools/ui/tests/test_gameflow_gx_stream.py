@@ -17,6 +17,10 @@ and log what is drawn. The tests then check:
 - Spotlight lays the ring out as a row of banners under the selected game's
   gameplay still (its cover, else its banner card, when it has no still), with
   its title, publisher, description and facts in the column beside it.
+- Jewel Case draws no cards but the selected game's case, its disc printed
+  with the middle of its cover, and two cases while it moves: the one
+  leaving and the one arriving. Without the memory for its case it is the
+  carousel.
 - From every layout the focused card flies to Detail's pose.
 """
 
@@ -130,6 +134,7 @@ PRELUDE = r"""
 #include "ui_scene.h"
 #if LAYOUTS
 #include "ui_cheats.h"
+#include "ui_jewel_case.h"
 #include "ui_launch.h"
 #include "ui_stage.h"
 #endif
@@ -268,6 +273,27 @@ static float UIAnim_Delta(void) { return animDelta; }
 static float UIAnim_Seconds(void) { return animSeconds; }
 static uiMotionMode_t motionMode;
 static uiMotionMode_t _CurrentMotionMode(void) { return motionMode; }
+#if LAYOUTS
+/* The jewel case's renderer (ui_jewel_case.c) has GX of its own: here it
+ * logs each case it is given, a "J" line each, and K says it has no memory
+ * for its case. */
+static struct { s8 substickX, substickY; } padInstrument;
+static bool jewelUnready;
+bool UIJewelCase_Ready(void) { return !jewelUnready; }
+void UIJewelCase_Draw(const uiJewelCaseShot_t *shots, int count, int direction,
+	float seconds, float turnX, float turnY, uiMotionMode_t motion)
+{
+	CHECK(!active && count >= 0 && count <= 9 && isfinite(seconds) && turnX == 0.0f &&
+		turnY == 0.0f && motion == motionMode);
+	for(int i = 0; i < count; ++i) {
+		CHECK(shots[i].slot > -1.0f && shots[i].slot < 1.0f && shots[i].alpha > 0.0f);
+		fprintf(out, "J %.3f %u %s %.2f %.2f %.4f %.4f %.4f %.4f %d\n", shots[i].slot,
+			shots[i].index, shots[i].print ? (const char *)shots[i].print->data : "-",
+			shots[i].printAlpha, shots[i].alpha, shots[i].rect[0], shots[i].rect[1],
+			shots[i].rect[2], shots[i].rect[3], direction);
+	}
+}
+#endif
 """
 
 DRIVER = r"""
@@ -285,7 +311,7 @@ static bool banners;
 
 /* L layout count selected (A: apps, O: folders) | P selected hint rowDirection snap
  * | M motion | D mode | W (banners) | Y [game] (pictures, or its still, arrive)
- * | N frames dt  -- the log has one "F" per frame. */
+ * | K (no jewel case) | N frames dt  -- the log has one "F" per frame. */
 static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 	int rowDirection, int snap, bool first)
 {
@@ -409,6 +435,9 @@ int main(void)
 		else if(sscanf(line, "Y %u", &a) == 1) stillArrivedMs[a % 1000u] = clockMs;
 		else if(line[0] == 'Y') artArrivedMs = clockMs;
 		else if(line[0] == 'W') banners = true;
+#if LAYOUTS
+		else if(line[0] == 'K') jewelUnready = true;
+#endif
 		else if(sscanf(line, "D %d", &c) == 1) {
 			UIGameflow_SetMode(&eventData->state, (uiGameflowMode_t)c, motionMode);
 			sceneFrame.scene = c ? UI_SCENE_GAME_DETAIL : UI_SCENE_LIBRARY;
@@ -1084,8 +1113,71 @@ class GameflowGxStream(unittest.TestCase):
         self.assertEqual(olds, sorted(olds, reverse=True))
         self.assertLess(olds[-1], 128)
 
+    def jewel_cases(self, frame: str) -> list:
+        """The cases a frame hands the jewel case's renderer: (slot, game,
+        print, print's strength, strength, print's square, direction)."""
+        found = []
+        for line in frame.splitlines():
+            if line.startswith("J "):
+                f = line.split()
+                found.append((float(f[1]), int(f[2]), f[3], float(f[4]), float(f[5]),
+                              tuple(map(float, f[6:10])), int(f[10])))
+        return found
+
+    def test_jewel_case_shows_one_case_and_two_while_moving(self):
+        log = self.run_script(["L 4 40 20", "N 40 0.0167"])
+        last = frames(log)[-1]
+        self.assertEqual(self.jewel_cases(last),
+                         [(0.0, 20, "G020E0", 1.0, 1.0, (0.0, 0.125, 0.75, 0.875), 0)])
+        # No cards: the case stands where the carousel's covers were, its
+        # game's title and publisher under it.
+        self.assertEqual(covers(last), {})
+        self.assertIn("S 320 350 ", last)
+        self.assertIn("Game number 20", last)
+        self.assertIn("S 320 70 0.500 1 ", last)
+        self.assertIn("H 320 428 ", last)
+        # On to the next game: the old case leaves as the new one arrives.
+        log = self.run_script(["L 4 40 20", "N 40 0.0167", "P 21 1 0 0", "N 4 0.0167"])
+        moving = [self.jewel_cases(frame) for frame in frames(log)[-4:]]
+        for cases in moving:
+            self.assertEqual(sorted(c[1] for c in cases), [20, 21])
+            leaving = next(c for c in cases if c[1] == 20)
+            arriving = next(c for c in cases if c[1] == 21)
+            self.assertLess(leaving[0], 0.0)
+            self.assertGreater(arriving[0], 0.0)
+            self.assertEqual({c[6] for c in cases}, {1})
+        self.assertLess(moving[-1][0][0] if moving[-1][0][1] == 21 else moving[-1][1][0],
+                        moving[0][0][0] if moving[0][0][1] == 21 else moving[0][1][0])
+        log = self.run_script(["L 4 40 20", "N 40 0.0167", "P 19 -1 0 0", "N 3 0.0167"])
+        cases = self.jewel_cases(frames(log)[-1])
+        self.assertEqual(sorted((c[1], c[0] > 0.0, c[6]) for c in cases),
+                         [(19, False, -1), (20, True, -1)])
+        log = self.run_script(["L 4 40 20", "N 40 0.0167", "P 21 1 0 0", "N 90 0.0167"])
+        self.assertEqual([c[:3] for c in self.jewel_cases(frames(log)[-1])],
+                         [(0.0, 21, "G021E0")])
+        # A game without a cover has a bare disc.
+        log = self.run_script(["L 4 40 24", "N 40 0.0167"])
+        self.assertEqual([c[2] for c in self.jewel_cases(frames(log)[-1])], ["-"])
+        # The case gives way as Detail opens, and comes back as it closes.
+        log = self.run_script(["L 4 40 20", "N 40 0.0167", "D 1", "N 60 0.0167"])
+        strengths = [sum(c[4] for c in self.jewel_cases(frame)) for frame in frames(log)[40:]]
+        self.assertEqual(strengths[-1], 0.0)
+        self.assertTrue(all(a >= b for a, b in zip(strengths, strengths[1:])))
+        log = self.run_script(["L 4 40 20", "N 40 0.0167", "D 1", "N 60 0.0167", "D 0",
+                               "N 60 0.0167"])
+        self.assertEqual([c[:5] for c in self.jewel_cases(frames(log)[-1])],
+                         [(0.0, 20, "G020E0", 1.0, 1.0)])
+        self.assertEqual(covers(frames(log)[-1]), {})
+
+    def test_jewel_case_without_its_case_is_the_carousel(self):
+        jewel = self.run_script(["K", "L 4 40 20", "N 40 0.0167"])
+        carousel = self.run_script(["L 0 40 20", "N 40 0.0167"])
+        self.assertNotIn("J ", jewel)
+        self.assertEqual(set(covers(frames(jewel)[-1])), {f"G{i:03d}E0" for i in range(18, 23)})
+        self.assertEqual(frames(jewel)[-1], frames(carousel)[-1])
+
     def test_every_layout_flies_to_detail(self):
-        for layout in (0, 1, 2, 3):
+        for layout in (0, 1, 2, 3, 4):
             with self.subTest(layout=layout):
                 log = self.run_script([f"L {layout} 40 18", "N 30 0.0167", "D 1",
                                        "N 60 0.0167"])
@@ -1099,7 +1191,7 @@ class GameflowGxStream(unittest.TestCase):
                 self.assertNotIn("H 320 428", frames(log)[-1])
 
     def test_off_and_reduced_snap_like_the_carousel(self):
-        for layout in (1, 2, 3):
+        for layout in (1, 2, 3, 4):
             with self.subTest(layout=layout):
                 log = self.run_script(["M 2", f"L {layout} 40 17", "N 5 0.0167",
                                        "P 22 1 1 0", "N 1 0.0167"])
@@ -1134,11 +1226,18 @@ class GameflowGxStream(unittest.TestCase):
                                              "if(false) {"),
             "the description is read past the banner": ("in < sizeof(text) && description[in]",
                                                        "in < 2u * sizeof(text) && description[in]"),
+            "the jewel case shows the ring's cards": (
+                "presence = !focused ? 0.0f :", "presence = !focused ? presence :"),
+            "the jewel case draws only the selected case": (
+                "!(fabsf(slot) < 1.0f)) {", "!(fabsf(slot) < 0.001f)) {"),
+            "the disc carries the whole canvas": (
+                "{0.0f, 0.125f, 0.75f, 0.875f};", "{0.0f, 0.0f, 1.0f, 1.0f};"),
         }
         tests = (self.test_grid_rows_and_highlight, self.check_all_grid_moves,
                  self.test_vertical_column, self.test_horizontal_shows_two_covers_either_side,
                  self.test_spotlight_row_picture_and_column, self.test_spotlight_moves_never_jump,
-                 self.test_spotlight_never_leaves_the_column_blank)
+                 self.test_spotlight_never_leaves_the_column_blank,
+                 self.test_jewel_case_shows_one_case_and_two_while_moving)
         original = self.binary
         try:
             for index, (name, (old, new)) in enumerate(mutants.items()):

@@ -576,33 +576,39 @@ static void infoDrawCredits(uiDrawObj_t *container,
 	infoAddCard(container, &layout->wideCard, infoCardColor());
 	DrawAddChild(container, DrawStyledLabel(320, 150, "CURRENT PATREON SUPPORTERS",
 		0.66f, ALIGN_CENTER, systemLabelColor));
-	infoAddFitted(container, 320, 171,
+	infoAddFitted(container, 320, 168,
 		"BORG NUMBER ONE (STEVEN WEISER), ROMAN ANTONACCI, 8BITMODS,", 500,
 		0.60f, ALIGN_CENTER, systemValueColor);
-	infoAddFitted(container, 320, 189,
+	infoAddFitted(container, 320, 185,
 		"CASTLEMANIA RYAN, DAN KUNZ, FERNANDO AVELINO, HAKANAISEISHIN, HAYMOSE,",
 		500, 0.60f, ALIGN_CENTER, systemValueColor);
-	infoAddFitted(container, 320, 207,
+	infoAddFitted(container, 320, 202,
 		"ALEX MITCHELL, BADSECTOR, JEFFREY PIERCE, JON MOON, KEVIN,", 500,
 		0.60f, ALIGN_CENTER, systemValueColor);
-	infoAddFitted(container, 320, 225,
+	infoAddFitted(container, 320, 219,
 		"KORY, MARLON, SILVERSTEEL, WILLIAM FOWLER", 500, 0.60f,
 		ALIGN_CENTER, systemValueColor);
-	DrawAddChild(container, DrawStyledLabel(320, 248,
+	DrawAddChild(container, DrawStyledLabel(320, 240,
 		"HISTORICAL PATREON SUPPORTERS", 0.66f, ALIGN_CENTER,
 		systemLabelColor));
-	infoAddFitted(container, 320, 269,
+	infoAddFitted(container, 320, 258,
 		"MENEERBEER, SUBELEMENT, KIROVAIR, CRISTOFER CRUZ,", 500, 0.60f,
 		ALIGN_CENTER, systemValueColor);
-	infoAddFitted(container, 320, 287,
+	infoAddFitted(container, 320, 275,
 		"RAMBLINGOKIE, LINDH0LM154, FINNYGUY, CTPG", 500, 0.60f,
 		ALIGN_CENTER, systemValueColor);
-	/* Gameplay Spotlight (github.com/mvizensk/gameplay-spotlight): its author
-	 * let Indigo take its design for the Spotlight layout. See NOTICE. */
-	DrawAddChild(container, DrawStyledLabel(320, 310,
-		"SPOTLIGHT LIBRARY DESIGN", 0.66f, ALIGN_CENTER, systemLabelColor));
-	infoAddFitted(container, 320, 330,
+	/* The Library's layouts from elsewhere; see NOTICE. Gameplay Spotlight
+	 * (github.com/mvizensk/gameplay-spotlight): its author let Indigo take
+	 * its design for the Spotlight layout. The jewel case games view of
+	 * portlandhodl's Swiss (github.com/portlandhodl/swiss-gc), after Ann
+	 * Nguyen's CD Case (bubbbly.com/cd-case), is the Jewel Case layout. */
+	DrawAddChild(container, DrawStyledLabel(320, 296,
+		"LIBRARY DESIGNS", 0.66f, ALIGN_CENTER, systemLabelColor));
+	infoAddFitted(container, 320, 314,
 		"GAMEPLAY SPOTLIGHT BY MVIZENSK", 500, 0.60f,
+		ALIGN_CENTER, systemValueColor);
+	infoAddFitted(container, 320, 331,
+		"JEWEL CASE BY PORTLANDHODL, AFTER CD CASE BY ANN NGUYEN", 500, 0.60f,
 		ALIGN_CENTER, systemValueColor);
 	infoAddFitted(container, 320, 349,
 		"EXTRA GREETZ: FIX94, MEGALOMANIAC, SEPP256, NOVENARY", 500, 0.60f,

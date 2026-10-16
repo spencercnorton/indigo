@@ -32,6 +32,25 @@ enum {
  GX_TG_MTX2x4 = 1, GX_TG_TEX0 = 4, GX_TG_TEX1 = 5, GX_TG_TEX2 = 6,
  GX_TF_RGBA8 = 6, GX_TF_RGB565 = 4, GX_TF_RGB5A3 = 5, GX_TEXMAP2 = 2, GX_TEXMAP3 = 3, GX_CLAMP = 0, GX_LINEAR = 1, GX_LIN_MIP_LIN = 5, GX_ANISO_1 = 0
 };
+/* The Library's jewel case (gui/ui_jewel_case.c): its rods, indexed in a
+ * display list, and its own vertex formats, textures and TEV inputs. */
+enum {
+ GX_VTXFMT5 = 5, GX_VTXFMT6 = 6, GX_INDEX16 = 3, GX_VA_NRM = 10, GX_NRM_XYZ = 0,
+ GX_TF_I8 = 1, GX_TG_NRM = 1, GX_TEXMTX1 = 33, GX_TEXMTX2 = 36, GX_PASSCLR = 4, GX_MODULATE = 0,
+ GX_TEVREG0 = 1, GX_CC_C0 = 2, GX_CA_A0 = 1, GX_CA_TEXA = 4, GX_CA_KONST = 6,
+ GX_TEV_KASEL_K0_A = 28, GX_SRC_REG = 0, GX_SRC_VTX = 1, GX_LIGHTNULL = 0, GX_DF_NONE = 0,
+ GX_AF_NONE = 2, GX_COLORNULL = 0xff
+};
+void GX_SetArray(u32 attr, void *ptr, u8 stride);
+void GX_Position1x16(u16 index); void GX_Normal1x16(u16 index);
+void GX_BeginDispList(void *list, u32 size); u32 GX_EndDispList(void);
+void GX_CallDispList(void *list, u32 size);
+void GX_SetTevColor(u8 reg, GXColor color);
+void guMtxRotRad(Mtx m, char axis, float rad); void guMtxScale(Mtx m, float x, float y, float z);
+void DCInvalidateRange(void *p, u32 n);
+#define GX_SetCurrentMtx(...) STUBCALL()
+#define GX_SetChanCtrl(...) STUBCALL()
+#define GX_SetTevOp(...) STUBCALL()
 /* Counting stubs, defined in frame_budget.c */
 void GX_Begin(u8 p, u8 f, u16 n); void GX_End(void);
 void GX_Position3f32(float x, float y, float z); void GX_Color4u8(u8 r, u8 g, u8 b, u8 a);

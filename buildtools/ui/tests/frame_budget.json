@@ -164,6 +164,50 @@
   "trig": 1061,
   "vertices": 8156
  },
+ "jewel-case": {
+  "begins": 828,
+  "copy_pixels": 0,
+  "hash": "fcb2cd72306bb41b",
+  "minmax": 3319,
+  "scene": "jewel-case",
+  "sqrtf": 0,
+  "state": 228,
+  "trig": 203,
+  "vertices": 23346
+ },
+ "jewel-case-bare": {
+  "begins": 860,
+  "copy_pixels": 0,
+  "hash": "8bb487559ca728f0",
+  "minmax": 4556,
+  "scene": "jewel-case-bare",
+  "sqrtf": 0,
+  "state": 216,
+  "trig": 1116,
+  "vertices": 24178
+ },
+ "jewel-case-moving": {
+  "begins": 1650,
+  "copy_pixels": 0,
+  "hash": "c75e20906d2c4d3c",
+  "minmax": 6606,
+  "scene": "jewel-case-moving",
+  "sqrtf": 0,
+  "state": 440,
+  "trig": 367,
+  "vertices": 45668
+ },
+ "jewel-case-wide": {
+  "begins": 949,
+  "copy_pixels": 29824,
+  "hash": "5b4f83b26dc08efb",
+  "minmax": 3665,
+  "scene": "jewel-case-wide",
+  "sqrtf": 0,
+  "state": 502,
+  "trig": 1235,
+  "vertices": 30970
+ },
  "library-grid": {
   "begins": 22,
   "copy_pixels": 0,
@@ -196,6 +240,17 @@
   "state": 378,
   "trig": 1061,
   "vertices": 8212
+ },
+ "library-jewel-case": {
+  "begins": 22,
+  "copy_pixels": 0,
+  "hash": "44af59b2966c6513",
+  "minmax": 16,
+  "scene": "library-jewel-case",
+  "sqrtf": 0,
+  "state": 77,
+  "trig": 31,
+  "vertices": 1140
  },
  "library-spotlight": {
   "begins": 22,

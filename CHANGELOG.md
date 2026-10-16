@@ -4,6 +4,19 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## Unreleased
+
+### New
+
+- The Library can show your games as **Jewel Case**: one clear CD jewel
+  case at a time, the disc inside spinning with the middle of the game's
+  cover printed on it. Left and Right swap cases, the old one falling back
+  as the next swings in; the C-stick turns the case in your hands. Choose
+  it in Settings › Setup › Library › **Library Layout**. It is ported from
+  the jewel case games view of portlandhodl's Swiss
+  (github.com/portlandhodl/swiss-gc), after Ann Nguyen's CD Case
+  (bubbbly.com/cd-case); System › Credits names them.
+
 ## v2.4.0 — A new File Browser, cube sides and faces, Saves on Details
 
 ### New

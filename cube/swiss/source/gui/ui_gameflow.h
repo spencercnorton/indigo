@@ -26,12 +26,14 @@ typedef enum {
  * Horizontal is the original carousel and the default; Vertical is the same
  * ring on end; Grid is rows of posters that scroll up and down. Spotlight is
  * the ring again as a row of disc banners, under the selected game's
- * gameplay still and details. */
+ * gameplay still and details. Jewel Case is the ring as one clear CD case
+ * at a time, the game's disc spinning inside (gui/ui_jewel_case.c). */
 typedef enum {
 	UI_GAMEFLOW_LAYOUT_HORIZONTAL = 0,
 	UI_GAMEFLOW_LAYOUT_VERTICAL,
 	UI_GAMEFLOW_LAYOUT_GRID,
 	UI_GAMEFLOW_LAYOUT_SPOTLIGHT,
+	UI_GAMEFLOW_LAYOUT_JEWEL_CASE,
 	UI_GAMEFLOW_LAYOUT_COUNT
 } uiGameflowLayout_t;
 
