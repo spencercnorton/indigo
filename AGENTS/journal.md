@@ -1,3 +1,22 @@
+## 2026-10-16 — Web browser bundled, fork published, CI wired
+
+The Web face now ships a real browser. The hardened CubeBrowser fork is public
+at github.com/spencercnorton/cubebrowser (used with permission from Arial-Bold;
+credited in NOTICE). sd_package.sh bundles swiss/indigo/cubebrowser.dol and a
+gcbrowser/ CA folder at the card root when browser/ is staged; check_package.py
+allows them and the zip tripwire rose to 9 MiB. ci.yml and release.yml build the
+browser from a pinned fork commit (CUBEBROWSER_REF) with the runner's libogc2
+toolchain and stage it into browser/ before packaging.
+
+Validated end to end on the CI image: Indigo build, then the browser built from
+the published fork, then sd_package and check_package, produce a 7.33 MB zip
+carrying the browser and its CA bundle, check green.
+
+Not done: pass the theme to the browser via argv (it ignores argv today); a
+console test of launching the browser and returning to Indigo; the full
+public-repo ruleset suite on the fork (it has baseline settings only). Lands
+after 2.4.
+
 ## 2026-10-16 — Memory Cards reaches the games' card
 
 With settings on a GC Loader and games on an SD2SP2, a game's card images
