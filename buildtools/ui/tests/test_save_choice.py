@@ -32,6 +32,14 @@ HARNESS = r'''
 typedef uint8_t u8;
 typedef uint32_t u32;
 typedef int uiDrawObj_t;
+struct DEVICEHANDLER_STRUCT { const char *deviceName; };
+typedef struct DEVICEHANDLER_STRUCT DEVICEHANDLER_INTERFACE;
+#define DEVICE_CUR 0
+#define DEVICE_CONFIG 1
+/* Settings on a GC Loader, the games (the Source) on an SD2SP2. */
+static DEVICEHANDLER_INTERFACE settingsCard = {"GC Loader"}, sourceCard = {"SD Card - SD2SP2"};
+static DEVICEHANDLER_INTERFACE *devices[2] = {&sourceCard, &settingsCard};
+static const char *DeviceDisplayName(const DEVICEHANDLER_INTERFACE *device) { return device->deviceName; }
 static struct { int emulateMemoryCard; } swissSettings;
 typedef struct {
 	bool savesScanned; uiSavesGameStats_t saveStats; int saveSlot; int saveChoice;
@@ -54,9 +62,10 @@ static uiDrawObj_t *DrawProgressBar(bool a, int b, const char *c) { (void)a; (vo
 static uiDrawObj_t *DrawPublish(uiDrawObj_t *o) { return o; }
 static void DrawDispose(uiDrawObj_t *o) { (void)o; }
 static char *getRelativeName(char *p) { char *s = strrchr(p, '/'); return s ? s + 1 : p; }
+static const savesCopy_t *loaded;
 static bool Saves_LoadCopy(int slot, const savesCopy_t *copy, char *why, size_t n)
 {
-	(void)slot; (void)copy; (void)why; (void)n; ++loads; return true;
+	(void)slot; (void)why; (void)n; ++loads; loaded = copy; return true;
 }
 /* A memory card emulator's switch (card_slots.c): whether the slot may be
  * written, before the question and once it has been answered. */
@@ -76,15 +85,17 @@ static void press(gameflowLaunchContext_t *context, bool right)
 	enum { BUTTON_LEFT = 1u, BUTTON_RIGHT = 2u };
 	STEP
 }
-/* Copies: two in the Save Folder, then one on the card in slot when slot >= 0. */
+/* Copies: one on the card in slot when slot >= 0, then two in the Save Folder. */
 static void detail(gameflowLaunchContext_t *context, int emulate, bool card, int slot)
 {
 	memset(&gameflowSaveCopies, 0, sizeof(gameflowSaveCopies));
 	if(slot >= 0) gameflowSaveCopies.copy[gameflowSaveCopies.count++].source = (savesCopySource_t)slot;
 	gameflowSaveCopies.copy[gameflowSaveCopies.count].source = SAVES_COPY_FILE;
-	strcpy(gameflowSaveCopies.copy[gameflowSaveCopies.count++].path, "sd:/swiss/saves/a.gci");
+	gameflowSaveCopies.copy[gameflowSaveCopies.count].device = &settingsCard;
+	strcpy(gameflowSaveCopies.copy[gameflowSaveCopies.count++].path, "gcldr:/swiss/saves/a.gci");
 	gameflowSaveCopies.copy[gameflowSaveCopies.count].source = SAVES_COPY_IMAGE;
-	strcpy(gameflowSaveCopies.copy[gameflowSaveCopies.count++].path, "sd:/swiss/saves/b.raw");
+	gameflowSaveCopies.copy[gameflowSaveCopies.count].device = &settingsCard;
+	strcpy(gameflowSaveCopies.copy[gameflowSaveCopies.count++].path, "gcldr:/swiss/saves/b.raw");
 	gameflowSaveCopies.cards[0] = card;
 	swissSettings.emulateMemoryCard = emulate;
 	memset(context, 0, sizeof(*context));
@@ -138,6 +149,24 @@ int main(void)
 	assert(gameflowLoadChosenSave(&c) && asks == 2 && loads == 1);
 	assert(strstr(asked, "Slot A's own copy of it goes to the Save Folder first."));
 
+	/* Copies in the Source's swiss/saves: a .gci there goes by the Source's
+	 * name, not the Save Folder's, and a card image by its own, as anywhere.
+	 * The one chosen is the one loaded; the card's own copy still goes to
+	 * the Save Folder. */
+	detail(&c, 0, true, SAVES_COPY_SLOT_A);
+	assert(!strcmp(gameflowSaveWhere(&gameflowSaveCopies.copy[1]), "Save Folder"));
+	assert(!strcmp(gameflowSaveWhere(&gameflowSaveCopies.copy[2]), "b.raw"));
+	gameflowSaveCopies.copy[1].device = gameflowSaveCopies.copy[2].device = &sourceCard;
+	strcpy(gameflowSaveCopies.copy[1].path, "sdc:/swiss/saves/a.gci");
+	strcpy(gameflowSaveCopies.copy[2].path, "sdc:/swiss/saves/MemoryCardA.USA.raw");
+	assert(!strcmp(gameflowSaveWhere(&gameflowSaveCopies.copy[1]), "SD Card - SD2SP2"));
+	assert(!strcmp(gameflowSaveWhere(&gameflowSaveCopies.copy[2]), "MemoryCardA.USA.raw"));
+	c.saveChoice = 1;
+	assert(gameflowLoadChosenSave(&c) && asks == 1 && loads == 1 &&
+		loaded == &gameflowSaveCopies.copy[1]);
+	assert(strstr(asked, "Start with the save from SD Card - SD2SP2?\n"
+		"Slot A's own copy of it goes to the Save Folder first."));
+
 	/* A card without the game's save: a copy goes onto it, and a choice can
 	 * always be undone (the totals are one of the steps). */
 	detail(&c, 0, true, -1);
@@ -182,7 +211,7 @@ int main(void)
 	assert(!gameflowSaveChoosable(&c));
 	press(&c, true); assert(c.saveChoice == -1);
 
-	puts("save choice: none without a card or with Emulate Memory Card on, each copy then the totals, B keeps the card's, the question as the card is, nothing while a card changes or after one changed during the question PASS");
+	puts("save choice: none without a card or with Emulate Memory Card on, each copy then the totals, B keeps the card's, the question as the card is, a copy on the Source by its name, nothing while a card changes or after one changed during the question PASS");
 	return 0;
 }
 '''

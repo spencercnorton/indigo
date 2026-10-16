@@ -2,6 +2,7 @@
 #include "saves.h"
 #include "saves_raw.h"
 #include "deviceHandler.h"
+#include "deviceHandler-FAT.h"
 #include "config.h"
 #include "files.h"
 #include "main.h"
@@ -18,6 +19,10 @@
  * these first entries/images are examined. Never read a complete save. */
 #define SAVES_STATS_FILES 256
 #define SAVES_STATS_IMAGES 16u
+/* Where Swiss's Emulate Memory Card keeps a game's card images on the device
+ * the game starts from (deviceHandler_FAT_setupFile), whatever the Save
+ * Folder is. */
+#define SAVES_STATS_SOURCE_FOLDER "swiss/saves"
 
 static bool statsCardDevice(const DEVICEHANDLER_INTERFACE *device)
 {
@@ -50,14 +55,15 @@ static bool statsOnCard(const savesCopy_t *copy)
 	return copy->source == SAVES_COPY_SLOT_A || copy->source == SAVES_COPY_SLOT_B;
 }
 
-/* A copy the scan counted. Once the list is full, the oldest Save Folder
- * copy makes room for a card's copy (the one a game reads always stays) or
- * for a newer Save Folder copy, so the newest are the ones to choose. The
- * ones after it move up and the new one goes last: the list stays in the
- * order the scan found them, so two cards' copies keep Slot A's first. */
+/* A copy the scan counted. Once the list is full, the oldest copy in a
+ * folder (the Save Folder or the Source's swiss/saves) makes room for a
+ * card's copy (the one a game reads always stays) or for a newer folder
+ * copy, so the newest are the ones to choose. The ones after it move up and
+ * the new one goes last: the list stays in the order the scan found them,
+ * so two cards' copies keep Slot A's first. */
 static void statsCopy(savesCopies_t *copies, savesCopySource_t source,
-	const u8 entry[UI_SAVES_ENTRY_SIZE], const char *path, u32 size,
-	unsigned ordinal)
+	const u8 entry[UI_SAVES_ENTRY_SIZE], DEVICEHANDLER_INTERFACE *device,
+	const char *path, u32 size, unsigned ordinal)
 {
 	bool card = source == SAVES_COPY_SLOT_A || source == SAVES_COPY_SLOT_B;
 	savesCopy_t *copy = NULL;
@@ -85,6 +91,7 @@ static void statsCopy(savesCopies_t *copies, savesCopySource_t source,
 	}
 	memset(copy, 0, sizeof(*copy));
 	copy->source = source;
+	copy->device = device;
 	if(path != NULL) snprintf(copy->path, sizeof(copy->path), "%s", path);
 	copy->size = size;
 	copy->ordinal = ordinal;
@@ -92,7 +99,7 @@ static void statsCopy(savesCopies_t *copies, savesCopySource_t source,
 }
 
 /* Whether a goes before b on the list: the cards' copies first, as the scan
- * found them, then the Save Folder's newest first. */
+ * found them, then the folders' newest first. */
 static bool statsBefore(const savesCopy_t *a, const savesCopy_t *b)
 {
 	if(statsOnCard(a) != statsOnCard(b)) return statsOnCard(a);
@@ -163,7 +170,7 @@ static void statsSlot(const char gameId[6], uiSavesGameStats_t *stats,
 			else stats->partial = true;
 			if(UISaves_StatsAdd(stats, entry, gameId, slot)) {
 				statsCopy(copies, slot == 0u ? SAVES_COPY_SLOT_A : SAVES_COPY_SLOT_B,
-					entry, NULL, 0u, 0u);
+					entry, NULL, NULL, 0u, 0u);
 			}
 		}
 		result = CARD_FindNext(&dir);
@@ -199,10 +206,12 @@ static bool statsReadEntry(file_handle *file, u8 *head,
 	return ok && UISaves_FindEntryPrefix(head, want, file->size, entry) != 0u;
 }
 
+/* The save files and card images directly in path on device: the Save Folder
+ * on the settings device, or (saveFolder false) the Source's swiss/saves. */
 static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats,
-	savesCopies_t *copies)
+	savesCopies_t *copies, DEVICEHANDLER_INTERFACE *device, const char *path,
+	bool saveFolder)
 {
-	DEVICEHANDLER_INTERFACE *device = devices[DEVICE_CONFIG];
 	file_handle folder = {0}, *files = NULL;
 	uiSavesRawCard_t *raw = NULL;
 	u8 *head;
@@ -217,14 +226,18 @@ static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats,
 	}
 	folder.device = device;
 	folder.fileType = IS_DIR;
-	concat_path(folder.name, device->initial->name, saves_folder());
+	concat_path(folder.name, device->initial->name, path);
 	total = device->readDir(&folder, &files, -1);
 	if(total < 0 || (total > 0 && files == NULL)) {
-		stats->partial = true;
+		/* Swiss makes the Source's swiss/saves the first time a game starts
+		 * there with Emulate Memory Card on, so most cards have none. A
+		 * listing that fails there counts as no folder: the FAT driver
+		 * gives the same -1 for a missing folder as for a failed read. */
+		if(saveFolder || total >= 0) stats->partial = true;
 		free(files);
 		return;
 	}
-	stats->checkedSources |= 4u;
+	if(saveFolder) stats->checkedSources |= 4u;
 	if(total > SAVES_STATS_FILES) stats->partial = true;
 	head = memalign(32, UI_SAVES_HEAD_SIZE);
 	if(head == NULL) {
@@ -268,14 +281,15 @@ static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats,
 			for(ordinal = 0u; ordinal < raw->count; ordinal++) {
 				if(UISaves_StatsAdd(stats, UISavesRaw_Entry(raw, ordinal), gameId, 2u)) {
 					statsCopy(copies, SAVES_COPY_IMAGE, UISavesRaw_Entry(raw, ordinal),
-						file->name, file->size, ordinal);
+						device, file->name, file->size, ordinal);
 				}
 			}
 		}
 		else if(statsSaveName(leaf)) {
 			if(statsReadEntry(file, head, entry)) {
 				if(UISaves_StatsAdd(stats, entry, gameId, 2u)) {
-					statsCopy(copies, SAVES_COPY_FILE, entry, file->name, file->size, 0u);
+					statsCopy(copies, SAVES_COPY_FILE, entry, device, file->name,
+						file->size, 0u);
 				}
 			}
 			else stats->partial = true;
@@ -286,9 +300,19 @@ static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats,
 	free(files);
 }
 
+DEVICEHANDLER_INTERFACE *Saves_SourceDevice(void)
+{
+	DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];
+
+	return source != NULL && source != devices[DEVICE_CONFIG] &&
+		(source->features & FEAT_WRITE) &&
+		source->writeFile == deviceHandler_FAT_writeFile ? source : NULL;
+}
+
 void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats,
 	savesCopies_t *copies, unsigned slots)
 {
+	DEVICEHANDLER_INTERFACE *source;
 	bool mounted;
 	unsigned i;
 
@@ -303,8 +327,12 @@ void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats,
 			(gameId[i] >= '0' && gameId[i] <= '9'))) return;
 	}
 	mounted = config_set_device();
-	if(mounted) statsFolder(gameId, stats, copies);
+	if(mounted) statsFolder(gameId, stats, copies, devices[DEVICE_CONFIG], saves_folder(), true);
 	else stats->partial = true;
+	source = Saves_SourceDevice();
+	if(source != NULL) {
+		statsFolder(gameId, stats, copies, source, SAVES_STATS_SOURCE_FOLDER, false);
+	}
 	for(i = 0u; i < 2u; i++) {
 		if(slots & (1u << i)) statsSlot(gameId, stats, i, copies);
 	}

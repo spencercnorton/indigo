@@ -6457,12 +6457,15 @@ static int gameflowSaveSlot(const savesCopies_t *copies)
 	return -1;
 }
 
+/* A save file in the Source's swiss/saves goes by the Source's name; a card
+ * image anywhere by its own. */
 static const char *gameflowSaveWhere(const savesCopy_t *copy)
 {
 	switch(copy->source) {
 		case SAVES_COPY_SLOT_A: return "Slot A";
 		case SAVES_COPY_SLOT_B: return "Slot B";
-		case SAVES_COPY_FILE: return "Save Folder";
+		case SAVES_COPY_FILE: return copy->device == devices[DEVICE_CONFIG] ?
+			"Save Folder" : DeviceDisplayName(copy->device);
 		default: return getRelativeName((char *)copy->path);
 	}
 }

@@ -19,7 +19,6 @@
 #include <gccore.h>
 #include <ogc/card.h>
 #include "deviceHandler.h"
-#include "deviceHandler-FAT.h"
 #include "FrameBufferMagic.h"
 #include "IPLFontWrite.h"
 #include "swiss.h"
@@ -99,7 +98,8 @@ static char folderHome[2][PATHNAME_MAX];
 /* The settings device is mounted, so the SD card's place can be listed. */
 static bool foldersReady;
 /* The devices the SD card's stacks can show: the settings device, then the
- * Source when it is another FatFs device that takes writes. Swiss's Emulate
+ * Source when it is another FatFs device that takes writes
+ * (Saves_SourceDevice, which Game Details reads too). Swiss's Emulate
  * Memory Card keeps a game's card images on the device the game starts
  * from, so with settings on one card and games on another, they are on the
  * Source. The page mounts the settings device; the Source is mounted
@@ -1892,8 +1892,9 @@ static bool cardReplace(int slot, const u8 *entry, const u8 *blocks,
 	return false;
 }
 
-/* A copy the details scan found, read whole: its entry and blocks, with *at
- * where the blocks begin. NULL unless it is still the save the scan saw:
+/* A copy the details scan found, read whole from where the scan found it
+ * (a card, the settings device or the Source): its entry and blocks, with
+ * *at where the blocks begin. NULL unless it is still the save the scan saw:
  * the same game, maker and name. */
 static u8 *copyRead(const savesCopy_t *copy, u32 *length, size_t *at,
 	u8 entry[UI_SAVES_ENTRY_SIZE])
@@ -1919,10 +1920,10 @@ static u8 *copyRead(const savesCopy_t *copy, u32 *length, size_t *at,
 			*at = UI_SAVES_ENTRY_SIZE;
 		}
 	}
-	else if(devices[DEVICE_CONFIG] != NULL) {
+	else if(copy->device != NULL) {
 		memset(&file, 0, sizeof(file));
 		snprintf(file.name, sizeof(file.name), "%s", copy->path);
-		file.device = devices[DEVICE_CONFIG];
+		file.device = copy->device;
 		file.fileType = IS_FILE;
 		file.size = copy->size;
 		if(copy->source == SAVES_COPY_FILE) {
@@ -2666,12 +2667,11 @@ void show_saves(void)
 	scratch = memalign(32, SAVES_SCRATCH_BYTES);
 	sdDevices = 0;
 	if(folderMounted) {
+		DEVICEHANDLER_INTERFACE *source = Saves_SourceDevice();
+
 		sdDevice[sdDevices++] = devices[DEVICE_CONFIG];
-		/* The Source, as saves_raw.c can change its images: FatFs, written. */
-		if(devices[DEVICE_CUR] != NULL && devices[DEVICE_CUR] != devices[DEVICE_CONFIG] &&
-			(devices[DEVICE_CUR]->features & FEAT_WRITE) &&
-			devices[DEVICE_CUR]->writeFile == deviceHandler_FAT_writeFile) {
-			sdDevice[sdDevices++] = devices[DEVICE_CUR];
+		if(source != NULL) {
+			sdDevice[sdDevices++] = source;
 		}
 		folderEnsure(devices[DEVICE_CONFIG], saves_folder());
 	}

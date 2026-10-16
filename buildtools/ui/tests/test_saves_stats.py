@@ -27,19 +27,26 @@ typedef uint8_t u8;
 typedef uint32_t u32;
 typedef int32_t s32;
 typedef struct file_handle file_handle;
-typedef struct device DEVICEHANDLER_INTERFACE;
+typedef struct DEVICEHANDLER_STRUCT DEVICEHANDLER_INTERFACE;
 struct file_handle {
 	char name[1024]; u32 size, offset; unsigned fileType;
 	const u8 *data; DEVICEHANDLER_INTERFACE *device;
 };
-struct device {
-	file_handle *initial; u32 location;
+struct DEVICEHANDLER_STRUCT {
+	file_handle *initial; u32 location, features;
 	s32 (*init)(file_handle *); s32 (*deinit)(file_handle *);
 	s32 (*readDir)(file_handle *, file_handle **, u32);
 	int64_t (*seekFile)(file_handle *, int64_t, unsigned);
 	s32 (*readFile)(file_handle *, void *, u32);
+	s32 (*writeFile)(file_handle *, const void *, u32);
 	s32 (*closeFile)(file_handle *);
 };
+#define FEAT_WRITE 0x100u
+/* The FAT driver's writer marks a FatFs device; the scan never writes. */
+static s32 deviceHandler_FAT_writeFile(file_handle *f, const void *data, u32 bytes)
+{
+	(void)f; (void)data; (void)bytes; assert(!"the save scan writes"); return -1;
+}
 typedef struct {
 	u8 gamecode[4], company[2], filename[32];
 	u32 filelen; int fileno;
@@ -60,9 +67,11 @@ typedef struct {
 #define CARD_ERROR_NOCARD (-3)
 #define CARD_ERROR_NOFILE (-4)
 #define CARD_ERROR_WRONGDEVICE (-5)
-static DEVICEHANDLER_INTERFACE __device_card_a, __device_card_b, sd, occupied;
+/* sd holds the settings; sdc is another FatFs card, the Source with games on
+ * it, where Swiss's Emulate Memory Card keeps their card images. */
+static DEVICEHANDLER_INTERFACE __device_card_a, __device_card_b, sd, sdc, occupied;
 static DEVICEHANDLER_INTERFACE *devices[2];
-static file_handle initial[3];
+static file_handle initial[4];
 static u8 *image, *gci;
 static size_t imageSize, gciSize;
 static bool configOk, directoryError, shortRead, seekError, invalidSave, hugeSave;
@@ -71,6 +80,10 @@ static unsigned listingMode, fileReads, fileCloses, configCloses, probes[2];
 static unsigned mounts[2], unmounts[2], statusReads, maximumRead;
 static int probeResult[2];
 static card_dir physical;
+/* The Source's swiss/saves: missing (0 files), or the game's card image and
+ * a .gci of its save (2). How often it was listed. */
+static unsigned sourceFiles, sourceListings;
+static const char *saveFolder;
 /* listingMode 3: this many .gci copies, each dated a second apart in an
  * order that isn't the listing's (copy i is updated + dateOf(i)); 4: the
  * same copies listed newest first (5 is its own inverse mod 12). */
@@ -86,7 +99,7 @@ static void *host_memalign(size_t alignment, size_t bytes)
 	return posix_memalign(&p, alignment, bytes) == 0 ? p : NULL;
 }
 #define memalign host_memalign
-static const char *saves_folder(void) { return "swiss/saves"; }
+static const char *saves_folder(void) { return saveFolder; }
 static bool config_set_device(void)
 {
 	devices[DEVICE_CONFIG] = configOk ? &sd : NULL;
@@ -153,12 +166,37 @@ static s32 readFile(file_handle *f, void *out, u32 bytes)
 	return (s32)bytes;
 }
 static s32 closeFile(file_handle *f) { (void)f; ++fileCloses; return 0; }
+/* Swiss's swiss/saves on the Source, whatever the Save Folder is. */
+static s32 sourceDir(file_handle *f, file_handle **files)
+{
+	unsigned i;
+	assert(!strcmp(f->name, "sdc:/swiss/saves")); ++sourceListings;
+	if(sourceFiles == 0u) return -1;
+	*files = calloc(sourceFiles, sizeof(**files)); assert(*files);
+	for(i = 0u; i < sourceFiles; i++) {
+		file_handle *entry = &(*files)[i];
+		entry->fileType = IS_FILE; entry->device = &sdc;
+		if(i == 0u) {
+			strcpy(entry->name, "sdc:/swiss/saves/MemoryCardA.USA.raw");
+			entry->data = image; entry->size = (u32)imageSize;
+		}
+		else {
+			strcpy(entry->name, "sdc:/swiss/saves/export.gci");
+			entry->data = gci; entry->size = (u32)gciSize;
+		}
+	}
+	return (s32)sourceFiles;
+}
 static s32 readDir(file_handle *f, file_handle **files, u32 kind)
 {
 	unsigned count = listingMode == 1u ? 17u : listingMode == 2u ? 300u :
 		listingMode >= 3u ? DATED_COPIES : 5u;
 	unsigned i;
-	assert(kind == UINT32_MAX && !strcmp(f->name, "sd:/swiss/saves"));
+	char folder[1024];
+	assert(kind == UINT32_MAX);
+	if(f->device == &sdc) return sourceDir(f, files);
+	snprintf(folder, sizeof(folder), "sd:/%s", saveFolder);
+	assert(f->device == &sd && !strcmp(f->name, folder));
 	if(directoryError) return -1;
 	*files = calloc(count, sizeof(**files)); assert(*files);
 	for(i = 0u; i < count; i++) {
@@ -196,6 +234,9 @@ static void reset(void)
 	memset(unmounts, 0, sizeof(unmounts));
 	probeResult[0] = CARD_ERROR_READY; probeResult[1] = CARD_ERROR_NOCARD;
 	devices[0] = NULL; devices[1] = NULL;
+	sourceFiles = 2u; sourceListings = 0u; saveFolder = "swiss/saves";
+	sd.features = sdc.features = FEAT_WRITE;
+	sd.writeFile = sdc.writeFile = deviceHandler_FAT_writeFile;
 }
 static u8 *load(const char *path, size_t *size)
 {
@@ -218,12 +259,13 @@ int main(int argc, char **argv)
 	memset(&physical, 0, sizeof(physical));
 	memcpy(physical.gamecode, id, 4u); memcpy(physical.company, id + 4, 2u);
 	memcpy(physical.filename, gci + 8, 32u); physical.filelen = 2u * 8192u;
-	strcpy(initial[2].name, "sd:/");
+	strcpy(initial[2].name, "sd:/"); strcpy(initial[3].name, "sdc:/");
 	__device_card_a.initial = &initial[0]; __device_card_b.initial = &initial[1];
 	__device_card_a.init = __device_card_b.init = mount;
 	__device_card_a.deinit = __device_card_b.deinit = unmount;
 	sd.initial = &initial[2]; sd.readDir = readDir; sd.seekFile = seek;
 	sd.readFile = readFile; sd.closeFile = closeFile;
+	sdc = sd; sdc.initial = &initial[3];
 	for(i = 0u; i < DATED_COPIES; i++) {
 		u32 when = updated + dateOf(i);
 		dated[i] = malloc(gciSize); assert(dated[i]);
@@ -248,14 +290,60 @@ int main(int argc, char **argv)
 	assert(copies.copy[0].source == SAVES_COPY_SLOT_A &&
 		!memcmp(copies.copy[0].entry, id, 6u) &&
 		!memcmp(copies.copy[0].entry + 8, physical.filename, 32u) &&
-		copies.copy[0].entry[0x39] == 2u && copies.copy[0].path[0] == '\0');
-	assert(copies.copy[1].source == SAVES_COPY_FILE &&
+		copies.copy[0].entry[0x39] == 2u && copies.copy[0].path[0] == '\0' &&
+		copies.copy[0].device == NULL);
+	assert(copies.copy[1].source == SAVES_COPY_FILE && copies.copy[1].device == &sd &&
 		!strcmp(copies.copy[1].path, "sd:/swiss/saves/save0.gci") &&
 		copies.copy[1].size == (u32)gciSize && !memcmp(copies.copy[1].entry, gci, 64u));
-	assert(copies.copy[2].source == SAVES_COPY_IMAGE &&
+	assert(copies.copy[2].source == SAVES_COPY_IMAGE && copies.copy[2].device == &sd &&
 		!strcmp(copies.copy[2].path, "sd:/swiss/saves/card1.raw") &&
 		copies.copy[2].size == (u32)imageSize && copies.copy[2].ordinal == 0u &&
 		!memcmp(copies.copy[2].entry, id, 6u));
+	assert(Saves_SourceDevice() == NULL && sourceListings == 0u);
+	/* Settings on one card, games on another: Swiss's Emulate Memory Card
+	 * keeps the game's card images in the Source's swiss/saves, so their
+	 * saves and a .gci there count too, each copy with the device it is on,
+	 * after the Save Folder's (the same date: in the order they were read). */
+	reset(); devices[DEVICE_CUR] = &sdc; memset(&copies, 0xa5, sizeof(copies));
+	Saves_CollectGameStats(id, &stats, &copies, 3u);
+	assert(sourceListings == 1u && Saves_SourceDevice() == &sdc);
+	assert(stats.saves == 5u && stats.blocks == 10u && stats.sourceSaves[2] == 4u);
+	assert(!stats.partial && stats.checkedSources == 5u && configCloses == 1u);
+	assert(copies.count == 5u && copies.copy[0].source == SAVES_COPY_SLOT_A);
+	assert(copies.copy[1].device == &sd && copies.copy[2].device == &sd);
+	assert(copies.copy[3].source == SAVES_COPY_IMAGE && copies.copy[3].device == &sdc &&
+		!strcmp(copies.copy[3].path, "sdc:/swiss/saves/MemoryCardA.USA.raw") &&
+		copies.copy[3].size == (u32)imageSize && copies.copy[3].ordinal == 0u &&
+		!memcmp(copies.copy[3].entry, id, 6u));
+	assert(copies.copy[4].source == SAVES_COPY_FILE && copies.copy[4].device == &sdc &&
+		!strcmp(copies.copy[4].path, "sdc:/swiss/saves/export.gci") &&
+		copies.copy[4].size == (u32)gciSize && !memcmp(copies.copy[4].entry, gci, 64u));
+	/* Swiss's folder there, not the Save Folder's name. */
+	reset(); devices[DEVICE_CUR] = &sdc; saveFolder = "saves";
+	Saves_CollectGameStats(id, &stats, NULL, 3u);
+	assert(sourceListings == 1u && stats.saves == 5u && !stats.partial);
+	/* Swiss makes that folder only once a game starts there with Emulate
+	 * Memory Card on: a Source without one has no copies, and nothing is
+	 * partial about it. */
+	reset(); devices[DEVICE_CUR] = &sdc; sourceFiles = 0u;
+	Saves_CollectGameStats(id, &stats, &copies, 3u);
+	assert(sourceListings == 1u && stats.saves == 3u && copies.count == 3u && !stats.partial);
+	/* The Source is read only when it is another card than the settings
+	 * device, FatFs, and takes writes (Memory Cards' rule): never twice. */
+	reset(); devices[DEVICE_CUR] = &sd;
+	Saves_CollectGameStats(id, &stats, NULL, 3u);
+	assert(Saves_SourceDevice() == NULL && sourceListings == 0u && stats.saves == 3u);
+	reset(); devices[DEVICE_CUR] = &sdc; sdc.writeFile = NULL;
+	Saves_CollectGameStats(id, &stats, NULL, 3u);
+	assert(Saves_SourceDevice() == NULL && sourceListings == 0u && stats.saves == 3u);
+	reset(); devices[DEVICE_CUR] = &sdc; sdc.features = 0u;
+	Saves_CollectGameStats(id, &stats, NULL, 3u);
+	assert(Saves_SourceDevice() == NULL && sourceListings == 0u && stats.saves == 3u);
+	/* Without a settings device the Source's copies still count; the scan
+	 * says it is partial, the Save Folder unread. */
+	reset(); devices[DEVICE_CUR] = &sdc; configOk = false;
+	Saves_CollectGameStats(id, &stats, NULL, 3u);
+	assert(sourceListings == 1u && stats.saves == 3u && stats.partial && configCloses == 0u);
 	/* The list holds eight; the totals still count every one. */
 	reset(); listingMode = 1u; probeResult[0] = CARD_ERROR_NOCARD;
 	Saves_CollectGameStats(id, &stats, &copies, 3u);
@@ -347,7 +435,7 @@ int main(int argc, char **argv)
 	Saves_CollectGameStats(id, NULL, NULL, 3u);
 	for(i = 0u; i < DATED_COPIES; i++) free(dated[i]);
 	free(image); free(gci);
-	puts("save stats: exact IDs, real RAW metadata, bounded reads, partial failures, retained mounts, copy places, the cards first in slot order and the newest kept PASS");
+	puts("save stats: exact IDs, real RAW metadata, bounded reads, partial failures, retained mounts, copy places and devices, the Source's swiss/saves, the cards first in slot order and the newest kept PASS");
 	return 0;
 }
 '''

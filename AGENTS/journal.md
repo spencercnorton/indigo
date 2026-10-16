@@ -1,3 +1,42 @@
+## 2026-10-16 — Game Details counts the games' card images
+
+Memory Cards could reach the Source's card images (the entry below), but
+Game Details' SAVES still counted only the settings device's Save Folder
+and the card slots: with settings on a GC Loader and games on an SD2SP2,
+the game's own emulated card (`swiss/saves/MemoryCard{A,B}.<region>.raw` on
+the SD2SP2, written by `deviceHandler_FAT_setupFile`) was never counted or
+offered.
+
+Which device is the Source is one rule now, `Saves_SourceDevice` in
+`saves_stats.c`: `devices[DEVICE_CUR]` when it isn't the settings device,
+takes writes and is FatFs (`writeFile == deviceHandler_FAT_writeFile`).
+Memory Cards' `show_saves` and Game Details' `Saves_CollectGameStats` both
+use it, so they can't disagree. `statsFolder` takes the device, the folder
+and whether it is the Save Folder; the Source is read at Swiss's fixed
+`swiss/saves`, whatever the Save Folder is called. A folder the Source
+can't list counts as none and never makes the scan partial (the FAT driver
+returns -1 for a missing folder and a failed read alike, and most cards
+have no `swiss/saves`); the Save Folder still does. Each `savesCopy_t`
+keeps the `device` it was found on: `copyRead` reads FILE and IMAGE copies
+from it instead of always the settings device, and `Saves_LoadCopy` still
+keeps the card's own copy in the settings device's Save Folder. In the
+choice a `.gci` on the Source goes by `DeviceDisplayName`, not "Save
+Folder"; images keep their file names. Nothing mounts or lets go of the
+Source. With Emulate Memory Card on (the usual reason for these images)
+there is still no choice, only the totals.
+
+Tests: `test_saves_stats.py` has a second FatFs device (`sdc:`) for the
+Source's image and `.gci`, a renamed Save Folder, a missing `swiss/saves`,
+and a Source that is the settings device, isn't FatFs, doesn't write, or
+has no settings device beside it; `test_saves_card_io.py` now runs
+`copyRead` and `Saves_LoadCopy` against two in-memory SD cards, loading the
+public test card image's save (through saves_raw.c's own readers) and a
+`.gci` from the Source onto Slot B, the card's own copy kept on the settings
+device, a copy read only where it was found, nothing without a settings
+device; `test_save_choice.py` checks the label and the question;
+`audit_saves_safety.py` pins the rule and the scan in `saves_stats.c` and
+the load's devices in `saves.c` (100 mutants). No picture changes.
+
 ## 2026-10-16 — Memory Cards reaches the games' card
 
 With settings on a GC Loader and games on an SD2SP2, a game's card images
