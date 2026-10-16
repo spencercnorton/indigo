@@ -525,6 +525,13 @@ static void crossDeviceLibraryFallback(void) {
     homeApplyStartupSource();
     assert(devices[DEVICE_CUR]==&device && inits==0);
 
+    /* 6b. Started from the disc drive: it isn't read, and nothing mounts. */
+    reset("dvd:/",true,false);
+    devices[DEVICE_CUR]=&__device_dvd;
+    deviceAvailable=true;
+    homeApplyStartupSource();
+    assert(devices[DEVICE_CUR]==&__device_dvd && inits==0);
+
     /* 7. The Library Path's card fails to mount (taken out at startup):
      *    gcldr:/ stays the Source, and Library finds nothing else. */
     reset("gcldr:/",true,false);
