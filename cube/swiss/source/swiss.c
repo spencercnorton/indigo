@@ -562,8 +562,6 @@ static void filesUp(const file_handle *parent)
 	needsRefresh = 1;
 }
 
-static char homeSessionLibraryRoot[PATHNAME_MAX];
-
 static bool gameflowCustomRootForDevice(const DEVICEHANDLER_INTERFACE *device,
 	const char *customPath, char *gamesRoot)
 {
@@ -590,9 +588,8 @@ static void gameflowGamesRoot(const DEVICEHANDLER_INTERFACE *device,
 		gamesRoot[0] = '\0';
 		return;
 	}
-	if(gameflowCustomRootForDevice(device, homeSessionLibraryRoot,
-			gamesRoot) ||
-		gameflowCustomRootForDevice(device, swissSettings.defaultSource,
+	/* Settings › Library Path, when it is on this device; else /games. */
+	if(gameflowCustomRootForDevice(device, swissSettings.libraryPath,
 			gamesRoot)) {
 		return;
 	}
@@ -2906,9 +2903,7 @@ static bool gameflowInsideFolder(void)
 		UIGameflowLibrary_LocateFolders(gamesRoot, curDir.name));
 }
 
-static void homeDrainSelectorInput(void);
-
-#define DEFAULT_SOURCE_MODAL_BUTTONS (BUTTON_A | BUTTON_B | BUTTON_X | \
+#define LIBRARY_PATH_MODAL_BUTTONS (BUTTON_A | BUTTON_B | BUTTON_X | \
 	BUTTON_Y | BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT | BUTTON_RIGHT)
 
 static bool gameflowPathPrefixMatches(const char *entryPath,
@@ -2998,26 +2993,10 @@ static bool gameflowResolveDirOnDevice(DEVICEHANDLER_INTERFACE *device,
 	return false;
 }
 
-static void homeResolveDefaultTargetDir(file_handle *targetDir)
-{
-	char gamesRoot[PATHNAME_MAX];
-
-	memcpy(targetDir, &curDir, sizeof(file_handle));
-	if(devices[DEVICE_CUR] == NULL || devices[DEVICE_CUR]->initial == NULL) {
-		return;
-	}
-	if(strcmp(curDir.name, devices[DEVICE_CUR]->initial->name) != 0) {
-		return;
-	}
-	gameflowGamesRoot(devices[DEVICE_CUR], gamesRoot);
-	(void)gameflowResolveDirOnDevice(devices[DEVICE_CUR], gamesRoot,
-		targetDir);
-}
-
 static void homeSourceModalDrainButtons(uiMenuInputState_t *menuInput,
 	u32 *lastRetrace)
 {
-	while((padsButtonsHeld() & DEFAULT_SOURCE_MODAL_BUTTONS) != 0u) {
+	while((padsButtonsHeld() & LIBRARY_PATH_MODAL_BUTTONS) != 0u) {
 		(void)padsMenuInputPoll(menuInput,
 			menuInputElapsedMicroseconds(lastRetrace),
 			UI_MENU_INPUT_AXIS_BOTH | UI_MENU_INPUT_REPEAT, true);
@@ -3029,7 +3008,7 @@ static u32 homeSourceModalWaitInput(uiMenuInputState_t *menuInput,
 	u32 *lastRetrace)
 {
 	while(1) {
-		u32 held = padsButtonsHeld() & DEFAULT_SOURCE_MODAL_BUTTONS;
+		u32 held = padsButtonsHeld() & LIBRARY_PATH_MODAL_BUTTONS;
 		uiMenuInputDirection_t analog = padsMenuInputPoll(menuInput,
 			menuInputElapsedMicroseconds(lastRetrace),
 			UI_MENU_INPUT_AXIS_BOTH | UI_MENU_INPUT_REPEAT,
@@ -3076,8 +3055,9 @@ static void homeCloseDirListing(DEVICEHANDLER_INTERFACE *device,
 	*subCount = 0;
 }
 
-static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
-	size_t outSize, bool allowClear, bool mountSelectedDevice)
+/* Settings › Library Path's chooser: a folder on any storage connected,
+ * or Auto. The device it browses is mounted only while it is open. */
+static bool homeChooseLibraryFolder(char *outPath, size_t outSize)
 {
 	DEVICEHANDLER_INTERFACE *activeDevice = NULL;
 	DEVICEHANDLER_INTERFACE *candidates[MAX_DEVICES];
@@ -3121,11 +3101,7 @@ static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
 		candidates[candidateCount++] = dev;
 	}
 
-	if(ioDir != NULL && ioDir->name[0] != '\0') {
-		activeDevice = homeSourceFromPathIncludingUnavailable(ioDir->name);
-		memcpy(&openDir, ioDir, sizeof(file_handle));
-	}
-	else if(outPath != NULL && outPath[0] != '\0') {
+	if(outPath[0] != '\0') {
 		activeDevice = homeSourceFromPathIncludingUnavailable(outPath);
 		if(activeDevice != NULL && activeDevice != devices[DEVICE_CUR]) {
 			activeDevice->deinit(activeDevice->initial);
@@ -3161,7 +3137,7 @@ static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
 		u32 pressed;
 
 		if(choosingDevice) {
-			int totalDevices = candidateCount + (allowClear ? 1 : 0);
+			int totalDevices = candidateCount + 1;
 			int first;
 
 			if(totalDevices <= 0) {
@@ -3192,7 +3168,7 @@ static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
 				}
 				else {
 					snprintf(row->title, sizeof(row->title),
-						"None (Clear Default Source)");
+						"Auto (Find a Games Folder)");
 					snprintf(row->blocks, sizeof(row->blocks), "Clear");
 				}
 				shown.rowCount++;
@@ -3314,8 +3290,8 @@ static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
 			int parentRow = hasParent ? 1 : -1;
 			int firstSubRow = hasParent ? 2 : 1;
 			int switchDeviceRow = firstSubRow + subCount;
-			int clearRow = allowClear ? switchDeviceRow + 1 : -1;
-			int totalRows = allowClear ? clearRow + 1 : switchDeviceRow + 1;
+			int clearRow = switchDeviceRow + 1;
+			int totalRows = clearRow + 1;
 			int first;
 
 			if(selection >= totalRows) {
@@ -3366,7 +3342,7 @@ static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
 				}
 				else if(idx == clearRow) {
 					snprintf(row->title, sizeof(row->title),
-						"None (Clear Default Source)");
+						"Auto (Find a Games Folder)");
 					snprintf(row->blocks, sizeof(row->blocks), "Clear");
 				}
 				shown.rowCount++;
@@ -3476,35 +3452,10 @@ static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
 		&subCount);
 	if(chosen) {
 		if(cleared) {
-			if(outPath != NULL && outSize > 0u) {
-				outPath[0] = '\0';
-			}
+			outPath[0] = '\0';
 		}
 		else {
-			if(mountSelectedDevice && activeDevice != NULL &&
-				activeDevice != devices[DEVICE_CUR]) {
-				DEVICEHANDLER_INTERFACE *previous = devices[DEVICE_CUR];
-
-				filesOtherRelease();
-				DrawGameflowCancelPosters();
-				freeFiles();
-				if(previous != NULL) {
-					devices[DEVICE_PREV] = previous;
-					previous->deinit(previous->initial);
-					homeSourceRecord(previous,
-						UI_HOME_SOURCE_MOUNT_UNMOUNTED);
-				}
-				devices[DEVICE_CUR] = activeDevice;
-				deviceHandler_setDeviceAvailable(activeDevice, true);
-				homeSourceRecord(activeDevice,
-					UI_HOME_SOURCE_MOUNT_MOUNTED);
-			}
-			if(ioDir != NULL) {
-				memcpy(ioDir, &selectedDir, sizeof(file_handle));
-			}
-			if(outPath != NULL && outSize > 0u) {
-				strlcpy(outPath, selectedDir.name, outSize);
-			}
+			strlcpy(outPath, selectedDir.name, outSize);
 		}
 	}
 	if(activeDevice != NULL && activeDevice != devices[DEVICE_CUR]) {
@@ -3516,272 +3467,137 @@ static bool homeChooseSourceFolder(file_handle *ioDir, char *outPath,
 	return chosen;
 }
 
-bool choose_default_source_dir(char *selection, size_t size)
+bool choose_library_path(char *selection, size_t size)
 {
-	return homeChooseSourceFolder(NULL, selection, size, true, false);
+	return homeChooseLibraryFolder(selection, size);
 }
 
-static bool homePromptDefaultSource(file_handle *targetDir)
+/* A storage device the Library can open: one Swiss has seen, that can
+ * hold games and list folders, never the disc drive. */
+static bool homeLibraryDevice(DEVICEHANDLER_INTERFACE *device)
 {
-	uiSavesPageSnapshot_t shown;
-	uiDrawObj_t *page = NULL;
-	uiMenuInputState_t menuInput;
-	u32 lastRetrace = VIDEO_GetRetraceCount();
-	u32 listGen = 1u;
-	int selection = 0;
-	bool saveDefault = false;
-
-	UIMenuInput_Init(&menuInput);
-	homeSourceModalDrainButtons(&menuInput, &lastRetrace);
-	while(1) {
-		char sectionText[PATHNAME_MAX + 32];
-		char row0Text[PATHNAME_MAX + 32];
-		u32 pressed;
-
-		memset(&shown, 0, sizeof(shown));
-		snprintf(shown.title, sizeof(shown.title), "Default Source");
-		if(devices[DEVICE_CUR] != NULL) {
-			snprintf(shown.status, sizeof(shown.status), "%s",
-				DeviceDisplayName(devices[DEVICE_CUR]));
-		}
-		snprintf(sectionText, sizeof(sectionText),
-			"Startup Library Path: %s", targetDir->name);
-		UICheats_Fit(shown.section, sizeof(shown.section), sectionText,
-			420, 0.42f, GetTextSizeInPixels);
-		snprintf(shown.position, sizeof(shown.position), "%d / 3",
-			selection + 1);
-
-		snprintf(row0Text, sizeof(row0Text), "Set as Default (%s)",
-			targetDir->name);
-		UICheats_Fit(shown.rows[0].title, sizeof(shown.rows[0].title),
-			row0Text, 330, 0.62f, GetTextSizeInPixels);
-		snprintf(shown.rows[0].blocks, sizeof(shown.rows[0].blocks),
-			"Always");
-
-		snprintf(shown.rows[1].title, sizeof(shown.rows[1].title),
-			"Use for This Session Only");
-		snprintf(shown.rows[1].blocks, sizeof(shown.rows[1].blocks),
-			"Once");
-
-		snprintf(shown.rows[2].title, sizeof(shown.rows[2].title),
-			"Choose a Different Path...");
-		snprintf(shown.rows[2].blocks, sizeof(shown.rows[2].blocks),
-			"Browse");
-
-		shown.rowCount = 3;
-		shown.count = 3;
-		shown.first = 0;
-		shown.list = listGen;
-		shown.focusRow = (s8)selection;
-		snprintf(shown.hint[0], sizeof(shown.hint[0]),
-			"A  Select   X  Choose Path");
-		snprintf(shown.hint[1], sizeof(shown.hint[1]), "B  This Session");
-		if(page == NULL) {
-			if((page = DrawSavesPage(&shown)) != NULL) {
-				DrawPublish(page);
-			}
-		}
-		else {
-			DrawUpdateSavesPage(page, &shown);
-		}
-		pressed = homeSourceModalWaitInput(&menuInput, &lastRetrace);
-		if(pressed & (BUTTON_UP | BUTTON_LEFT)) {
-			selection = UICheats_Move(selection, 3, -1, false);
-			homeSourceModalDrainButtons(&menuInput, &lastRetrace);
-		}
-		else if(pressed & (BUTTON_DOWN | BUTTON_RIGHT)) {
-			selection = UICheats_Move(selection, 3, 1, false);
-			homeSourceModalDrainButtons(&menuInput, &lastRetrace);
-		}
-		else if((pressed & BUTTON_X) ||
-			((pressed & BUTTON_A) && selection == 2)) {
-			homeSourceModalDrainButtons(&menuInput, &lastRetrace);
-			if(page != NULL) {
-				DrawDispose(page);
-				page = NULL;
-			}
-			if(homeChooseSourceFolder(targetDir, NULL, 0u, false, true)) {
-				selection = 0;
-				listGen++;
-			}
-			UIMenuInput_Init(&menuInput);
-			lastRetrace = VIDEO_GetRetraceCount();
-			homeSourceModalDrainButtons(&menuInput, &lastRetrace);
-		}
-		else if((pressed & BUTTON_B) ||
-			((pressed & BUTTON_A) && selection == 1)) {
-			saveDefault = false;
-			break;
-		}
-		else if((pressed & BUTTON_A) && selection == 0) {
-			saveDefault = true;
-			break;
-		}
-		else {
-			homeSourceModalDrainButtons(&menuInput, &lastRetrace);
-		}
-	}
-	homeSourceModalDrainButtons(&menuInput, &lastRetrace);
-	if(page != NULL) {
-		DrawDispose(page);
-	}
-	homeDrainSelectorInput();
-	strlcpy(homeSessionLibraryRoot, targetDir->name,
-		sizeof(homeSessionLibraryRoot));
-	if(strcmp(curDir.name, targetDir->name) != 0) {
-		memcpy(&curDir, targetDir, sizeof(file_handle));
-		curSelection = 0;
-		needsRefresh = 1;
-	}
-	return saveDefault;
+	return device != NULL && device != &__device_dvd &&
+		(device->features & FEAT_BOOT_GCM) && device->initial != NULL &&
+		device->init != NULL && device->deinit != NULL &&
+		device->readDir != NULL && deviceHandler_getDeviceAvailable(device);
 }
 
-static void homeOfferDefaultSource(DEVICEHANDLER_INTERFACE *previousDevice)
+/* The Library's folder on a mounted device, into dir: false without one. */
+static bool homeLibraryOn(DEVICEHANDLER_INTERFACE *device, file_handle *dir)
 {
-	file_handle targetDir;
+	char gamesRoot[PATHNAME_MAX];
 
-	if(devices[DEVICE_CUR] == NULL || devices[DEVICE_CUR] == previousDevice ||
-		devices[DEVICE_CUR] == &__device_dvd ||
-		devices[DEVICE_CUR] == &__device_smb ||
-		devices[DEVICE_CUR] == &__device_ftp ||
-		devices[DEVICE_CUR] == &__device_fsp ||
-		!(devices[DEVICE_CUR]->features & FEAT_BOOT_GCM) ||
-		devices[DEVICE_CUR]->initial == NULL ||
-		devices[DEVICE_CONFIG] == NULL) {
-		return;
-	}
-	homeResolveDefaultTargetDir(&targetDir);
-	if(!strcmp(swissSettings.defaultSource, targetDir.name) ||
-		!strcmp(swissSettings.defaultSource,
-			devices[DEVICE_CUR]->initial->name) ||
-		(homeSessionLibraryRoot[0] != '\0' &&
-			!strcmp(homeSessionLibraryRoot, targetDir.name))) {
-		return;
-	}
-	if(!homePromptDefaultSource(&targetDir)) {
-		return;
-	}
-	strlcpy(swissSettings.defaultSource, targetDir.name,
-		sizeof(swissSettings.defaultSource));
-	uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0,
-		"Saving default source\205"));
-	config_update_default_source(true);
-	DrawDispose(msgBox);
+	gameflowGamesRoot(device, gamesRoot);
+	return gameflowResolveDirOnDevice(device, gamesRoot, dir);
 }
 
-static void homeApplyStartupSource(void)
+/* Mounts a device that isn't the Source; false, and nothing held, when it
+ * won't. */
+static bool homeLibraryMount(DEVICEHANDLER_INTERFACE *device)
 {
-	DEVICEHANDLER_INTERFACE *target;
-	DEVICEHANDLER_INTERFACE *previous;
+	bool mounted;
 
-	if(swissSettings.defaultSource[0] == '\0') {
-		return;
-	}
-	target = homeSourceFromPathIncludingUnavailable(
-		swissSettings.defaultSource);
-	if(target == NULL || target == devices[DEVICE_CUR] ||
-		target == &__device_dvd ||
-		!(target->features & FEAT_BOOT_GCM) ||
-		target->initial == NULL ||
-		!deviceHandler_getDeviceAvailable(target)) {
-		return;
-	}
-	target->deinit(target->initial);
+	device->deinit(device->initial);
 	deviceHandler_setStatEnabled(0);
-	if(target->init(target->initial) != 0) {
-		deviceHandler_setStatEnabled(1);
-		return;
-	}
+	mounted = device->init(device->initial) == 0;
 	deviceHandler_setStatEnabled(1);
-	previous = devices[DEVICE_CUR];
+	return mounted;
+}
+
+/* The first device after the Source, in the order Swiss looks for a boot
+ * device, with a Library folder: left mounted, with dir its folder. Only
+ * storage attached to the console: no network share, WODE or USB Gecko.
+ * Each device it looked at without one is let go again. */
+static DEVICEHANDLER_INTERFACE *homeFindLibrary(file_handle *dir)
+{
+	int i;
+
+	for(i = 0; i < MAX_DEVICES; ++i) {
+		DEVICEHANDLER_INTERFACE *candidate = allDevices[i];
+
+		if(candidate == devices[DEVICE_CUR] || !homeLibraryDevice(candidate) ||
+			candidate == &__device_smb || candidate == &__device_ftp ||
+			candidate == &__device_fsp || candidate == &__device_wode ||
+			candidate == &__device_usbgecko ||
+			(devices[DEVICE_CUR] != NULL &&
+				filesClash(candidate, devices[DEVICE_CUR], NULL, 0)) ||
+			!homeLibraryMount(candidate)) {
+			continue;
+		}
+		if(homeLibraryOn(candidate, dir)) {
+			return candidate;
+		}
+		candidate->deinit(candidate->initial);
+	}
+	return NULL;
+}
+
+/* A mounted device becomes the Source; the old one's listing and mount go. */
+static void homeSwitchSource(DEVICEHANDLER_INTERFACE *device)
+{
+	DEVICEHANDLER_INTERFACE *previous = devices[DEVICE_CUR];
+
+	filesOtherRelease();
+	DrawGameflowCancelPosters();
+	freeFiles();
 	if(previous != NULL) {
-		DrawGameflowCancelPosters();
-		freeFiles();
 		devices[DEVICE_PREV] = previous;
 		previous->deinit(previous->initial);
 		homeSourceRecord(previous, UI_HOME_SOURCE_MOUNT_UNMOUNTED);
 	}
-	devices[DEVICE_CUR] = target;
-	deviceHandler_setDeviceAvailable(target, true);
-	homeSourceRecord(target, UI_HOME_SOURCE_MOUNT_MOUNTED);
-	needsDeviceChange = 0;
+	devices[DEVICE_CUR] = device;
+	deviceHandler_setDeviceAvailable(device, true);
+	homeSourceRecord(device, UI_HOME_SOURCE_MOUNT_MOUNTED);
 }
 
+/* Home starts on the Library: Settings › Library Path's device when it is
+ * connected, else the boot device when it has /games, else the first
+ * storage that has. */
+static void homeApplyStartupSource(void)
+{
+	DEVICEHANDLER_INTERFACE *target = swissSettings.libraryPath[0] != '\0' ?
+		homeSourceFromPathIncludingUnavailable(swissSettings.libraryPath) : NULL;
+	file_handle dir;
+
+	if(target != NULL && target == devices[DEVICE_CUR]) {
+		return;
+	}
+	if(target != NULL && homeLibraryDevice(target) && homeLibraryMount(target)) {
+		homeSwitchSource(target);
+		needsDeviceChange = 0;
+		return;
+	}
+	if(devices[DEVICE_CUR] != NULL && homeLibraryOn(devices[DEVICE_CUR], &dir)) {
+		return;
+	}
+	target = homeFindLibrary(&dir);
+	if(target != NULL) {
+		homeSwitchSource(target);
+		needsDeviceChange = 0;
+	}
+}
+
+/* Library from Home on a Source without a Library folder: the first other
+ * storage with one becomes the Source, opened at it. */
 static bool gameflowTryOtherDevicesForLibrary(void)
 {
 	DEVICEHANDLER_INTERFACE *previous = devices[DEVICE_CUR];
-	int i;
+	DEVICEHANDLER_INTERFACE *found;
+	file_handle dir;
 
 	if(previous == NULL || previous->initial == NULL || needsRefresh ||
 		strcmp(curDir.name, previous->initial->name)) {
 		return false;
 	}
-	for(i = 0; i < MAX_DEVICES; ++i) {
-		DEVICEHANDLER_INTERFACE *candidate = allDevices[i];
-		file_handle *entries = NULL;
-		char gamesRoot[PATHNAME_MAX];
-		int count;
-		int j;
-
-		if(candidate == NULL || candidate == previous ||
-			candidate == &__device_dvd ||
-			candidate == &__device_fsp ||
-			candidate == &__device_wode ||
-			candidate == &__device_usbgecko ||
-			!(candidate->features & FEAT_BOOT_GCM) ||
-			candidate->initial == NULL ||
-			candidate->init == NULL ||
-			candidate->deinit == NULL ||
-			candidate->readDir == NULL ||
-			!deviceHandler_getDeviceAvailable(candidate)) {
-			continue;
-		}
-		candidate->deinit(candidate->initial);
-		deviceHandler_setStatEnabled(0);
-		if(candidate->init(candidate->initial) != 0) {
-			deviceHandler_setStatEnabled(1);
-			continue;
-		}
-		deviceHandler_setStatEnabled(1);
-		count = candidate->readDir(candidate->initial, &entries, -1);
-		gameflowGamesRoot(candidate, gamesRoot);
-		for(j = 0; entries != NULL && j < count; ++j) {
-			if(!UIGameflowLibrary_IsGamesRootEntry(gamesRoot,
-				gameflowEntryType(&entries[j]), entries[j].name)) {
-				continue;
-			}
-			filesOtherRelease();
-			DrawGameflowCancelPosters();
-			freeFiles();
-			devices[DEVICE_PREV] = previous;
-			previous->deinit(previous->initial);
-			homeSourceRecord(previous,
-				UI_HOME_SOURCE_MOUNT_UNMOUNTED);
-			devices[DEVICE_CUR] = candidate;
-			deviceHandler_setDeviceAvailable(candidate, true);
-			homeSourceRecord(candidate,
-				UI_HOME_SOURCE_MOUNT_MOUNTED);
-			memcpy(&curDir, &entries[j], sizeof(file_handle));
-			for(int k = 0; k < count; ++k) {
-				if(candidate->closeFile != NULL) {
-					candidate->closeFile(&entries[k]);
-				}
-			}
-			free(entries);
-			curSelection = 0;
-			needsRefresh = 1;
-			homeOfferDefaultSource(previous);
-			return true;
-		}
-		for(j = 0; entries != NULL && j < count; ++j) {
-			if(candidate->closeFile != NULL) {
-				candidate->closeFile(&entries[j]);
-			}
-		}
-		free(entries);
-		candidate->deinit(candidate->initial);
+	found = homeFindLibrary(&dir);
+	if(found == NULL) {
+		return false;
 	}
-	return false;
+	homeSwitchSource(found);
+	memcpy(&curDir, &dir, sizeof(file_handle));
+	curSelection = 0;
+	needsRefresh = 1;
+	return true;
 }
 
 static bool gameflowEnterLibraryFromHome(void)
@@ -8317,9 +8133,6 @@ void menu_loop()
 				homeSourceRecord(NULL, UI_HOME_SOURCE_MOUNT_ABSENT);
 				needsRefresh = 0;
 			}
-		}
-		if(deviceConfirmed && devices[DEVICE_CUR] != NULL) {
-			homeOfferDefaultSource(previousDevice);
 		}
 		if(devices[DEVICE_CUR] == NULL) {
 			curMenuLocation=ON_OPTIONS;

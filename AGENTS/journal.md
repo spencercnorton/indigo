@@ -1,3 +1,29 @@
+## 2026-10-16 — Library Path: the Library finds /games itself
+
+The Default Source prompts (Set as Default / This Session Only / Choose a
+Different Path, on a Source change and on the Library's cross-device
+fallback) never showed on a console test with a default already saved, and
+the maintainer asked for a simpler rule: the Library defaults to the games
+it finds on the storage attached, and one setting names another folder.
+
+`homeApplyStartupSource` now mounts Settings › Setup › Storage › Library
+Path's device when it is connected; otherwise (Auto, the default, or that
+device missing) the boot device stays when it has the Library folder, and
+`homeFindLibrary` mounts the first other storage that has one, in the
+boot-device order, skipping the disc drive, the network adapter, WODE, USB
+Gecko and a storage on the Source's own connector. Library from Home uses
+the same search. Nothing asks and nothing is saved. The key `Default
+Source` (in no release) is now `Library Path`; its chooser is Settings'
+only, with Auto as its last row. Removed: `homePromptDefaultSource`,
+`homeOfferDefaultSource`, the session-only root and
+`config_update_default_source`.
+
+Tests: `test_gameflow_folder_navigation.py` covers the silent switch, the
+excluded devices and connector clash, a Library Path at startup and in the
+Library, Auto at startup with and without /games on the boot device, a
+Library Path whose card fails to mount or is missing, and the subfolder
+entry; the settings audit and tests follow the rename.
+
 ## 2026-10-15 — MemCard PRO handled as the real-card test ran it
 
 The #102 reporter tested `test/mcp-card-slots` 92b4ed8 (2.3.0 with the

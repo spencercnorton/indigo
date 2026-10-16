@@ -70,8 +70,7 @@ def build_source(read):
     for marker in ("static bool gameflowCustomRootForDevice(",
                    "static void gameflowGamesRoot(",
                    "static bool gameflowPathPrefixMatches(",
-                   "static bool gameflowResolveDirOnDevice(",
-                   "static void homeResolveDefaultTargetDir("):
+                   "static bool gameflowResolveDirOnDevice("):
         if marker in swiss:
             parts.append(function(swiss, marker))
     for marker in ("bool upToParent(", "static uiGameflowLibraryEntryType_t gameflowEntryType(",
@@ -80,7 +79,10 @@ def build_source(read):
         parts.append(function(swiss, marker))
     for marker in ("static void filesUp(", "static void filesHome(",
                    "static DEVICEHANDLER_INTERFACE *homeSourceFromPathIncludingUnavailable(",
-                   "static void homeOfferDefaultSource(",
+                   "static bool homeLibraryDevice(", "static bool homeLibraryOn(",
+                   "static bool homeLibraryMount(",
+                   "static DEVICEHANDLER_INTERFACE *homeFindLibrary(",
+                   "static void homeSwitchSource(",
                    "static void homeApplyStartupSource(",
                    "static bool gameflowTryOtherDevicesForLibrary("):
         if marker in swiss:
@@ -167,8 +169,8 @@ static DEVICEHANDLER_INTERFACE *allDevices[MAX_DEVICES] = {&bootDevice, &__devic
 static DEVICEHANDLER_INTERFACE *devices[] = {&device, NULL, &bootDevice};
 static file_handle initial = {.name = "sdc:/", .fileType = IS_DIR};
 static file_handle bootInitial = {.name = "gcldr:/", .fileType = IS_DIR};
-static bool deviceAvailable, confirmResult;
-static unsigned defaultSourcePrompts, defaultSourceSaves;
+static bool deviceAvailable;
+static unsigned inits;
 static int initFailDevice;
 static bool deviceHandler_getDeviceAvailable(DEVICEHANDLER_INTERFACE *d) {
     return d == &bootDevice || (d == &device && deviceAvailable) ||
@@ -196,39 +198,18 @@ static size_t nav_strlcpy(char *dst, const char *src, size_t size) {
 }
 #undef strlcpy
 #define strlcpy nav_strlcpy
-static uiDrawObj_t progressObject;
-static uiDrawObj_t *DrawProgressBar(bool ind, int pct, const char *msg) {
-    (void)ind; (void)pct; (void)msg; return &progressObject;
-}
-static uiDrawObj_t *DrawPublish(uiDrawObj_t *e) { return e; }
 static file_handle curDir, curFile, *curDirEntries;
 static int curDirEntryCount, sortedDirEntryCount, curSelection;
 static int curMenuLocation, needsRefresh, needsDeviceChange, dvdDiscTypeInt;
-static char homeSessionLibraryRoot[PATHNAME_MAX];
-static const char *promptOverridePath;
-static __attribute__((unused)) bool confirmAction(const char *text) {
-    (void)text; ++defaultSourcePrompts; return confirmResult;
-}
-static __attribute__((unused)) bool homePromptDefaultSource(file_handle *targetDir) {
-    ++defaultSourcePrompts;
-    if(promptOverridePath) {
-        strcpy(targetDir->name, promptOverridePath);
-    }
-    strcpy(homeSessionLibraryRoot, targetDir->name);
-    if(strcmp(curDir.name, targetDir->name) != 0) {
-        memcpy(&curDir, targetDir, sizeof(file_handle));
-        curSelection = 0;
-        needsRefresh = 1;
-    }
-    return confirmResult;
-}
-static int config_update_default_source(bool check) {
-    (void)check; ++defaultSourceSaves; return 1;
+/* Two storages on one connector clash; here, only a test's pair. */
+static DEVICEHANDLER_INTERFACE *clashA, *clashB;
+static bool filesClash(DEVICEHANDLER_INTERFACE *a, DEVICEHANDLER_INTERFACE *b, char *r, size_t n) {
+    (void)r; (void)n; return (a == clashA && b == clashB) || (a == clashB && b == clashA);
 }
 static file_handle **sortedDirEntries;
 static struct { bool libraryFolders, showHiddenFiles, hideUnknownFileTypes;
     int fileBrowserType, gameBrowserType, appsBrowserType; char flattenDir[1024];
-    char defaultSource[PATHNAME_MAX];
+    char libraryPath[PATHNAME_MAX];
 } swissSettings;
 static char *knownExtensions[] = {".iso", ".gcm", ".tgc", ".dol", NULL};
 static unsigned listPublishes, libraryPublishes, homePublishes, disposals;
@@ -240,7 +221,7 @@ static bool homeLibraryEntryPending;
 static bool homeFileBrowser;
 static void DrawGameflowCancelPosters(void) {}
 static void homeSourceRecord(DEVICEHANDLER_INTERFACE *d, int state) { (void)d; (void)state; }
-static int fakeInit(file_handle *f) { return (initFailDevice && f == &initial) ? -1 : 0; }
+static int fakeInit(file_handle *f) { ++inits; return (initFailDevice && f == &initial) ? -1 : 0; }
 static void fakeDeinit(file_handle *f) { (void)f; }
 static bool is_rom_name(const char *name) { (void)name; return false; }
 static void print_debug(const char *fmt, ...) { (void)fmt; }
@@ -263,7 +244,7 @@ static void unlockFile(file_handle *f) { (void)f; }
 static unsigned padsButtonsHeld(void) { return 0; }
 static void VIDEO_WaitVSync(void) {}
 static __attribute__((unused)) void DrawUpdateFileBrowserButton(void *f, int state) { (void)f; (void)state; }
-static void DrawDispose(uiDrawObj_t *p) { if(p == &progressObject) return; assert(p == &panelObject); ++disposals; }
+static void DrawDispose(uiDrawObj_t *p) { assert(p == &panelObject); ++disposals; }
 static void homePublish(bool visible) {
     if(visible) { assert(filePanel == NULL); ++homePublishes; }
 }
@@ -355,8 +336,8 @@ static void reset(const char *path, bool folders, unsigned empty) {
     __device_wode.init=fakeInit; __device_wode.readDir=fakeReadDir; __device_wode.deinit=fakeDeinit;
     __device_usbgecko.initial=&usbInitial; __device_usbgecko.features=FEAT_BOOT_GCM;
     __device_usbgecko.init=fakeInit; __device_usbgecko.readDir=fakeReadDir; __device_usbgecko.deinit=fakeDeinit;
-    deviceAvailable=false; confirmResult=false; defaultSourcePrompts=defaultSourceSaves=0; initFailDevice=0; devices[DEVICE_CONFIG]=&bootDevice;
-    homeSessionLibraryRoot[0]='\0'; promptOverridePath=NULL;
+    deviceAvailable=false; inits=0; initFailDevice=0; devices[DEVICE_CONFIG]=&bootDevice;
+    swissSettings.libraryPath[0]='\0'; clashA=clashB=NULL;
     strcpy(curDir.name,path); curDir.fileType=IS_DIR; rootEmpty=empty;
     curSelection=0; curMenuLocation=ON_FILLIST; needsRefresh=needsDeviceChange=0;
     listPublishes=libraryPublishes=homePublishes=disposals=0; filePanel=&panelObject;
@@ -483,50 +464,33 @@ static void listFallback(void) {
     assert(otherReleases==1);
 }
 static void crossDeviceLibraryFallback(void) {
-    /* 1. Pressing Library on gcldr:/ (no /games) falls back to sdc:/games;
-     *    choosing B ("THIS SESSION ONLY") mounts sdc:/games without saving. */
+    /* 1. Library on gcldr:/, which has no /games: sdc:/games becomes the
+     *    Source and the Library opens on it. Nothing asks, nothing is saved. */
     reset("gcldr:/",true,false);
     devices[DEVICE_CUR]=&bootDevice;
     deviceAvailable=true;
-    confirmResult=false;
     assert(gameflowEnterLibraryFromHome());
     assert(devices[DEVICE_CUR]==&device);
     assert(devices[DEVICE_PREV]==&bootDevice);
     assert(!strcmp(curDir.name,"sdc:/games"));
-    assert(needsRefresh==1 && defaultSourcePrompts==1 && defaultSourceSaves==0);
-    assert(swissSettings.defaultSource[0]=='\0');
+    assert(needsRefresh==1 && swissSettings.libraryPath[0]=='\0');
     curMenuLocation=ON_FILLIST; nextIteration();
     assert(libraryPublishes==1 && listPublishes==0);
 
-    /* 2. Choosing A ("SET DEFAULT") saves Default Source=sdc:/games and does not
-     *    re-prompt once Default Source already matches the target folder. */
+    /* 2. The network adapter, WODE and USB Gecko are never searched, and a
+     *    storage on the Source's own connector isn't mounted beside it. */
     reset("gcldr:/",true,false);
     devices[DEVICE_CUR]=&bootDevice;
     deviceAvailable=true;
-    confirmResult=true;
-    assert(gameflowEnterLibraryFromHome());
-    assert(defaultSourcePrompts==1 && defaultSourceSaves==1);
-    assert(!strcmp(swissSettings.defaultSource,"sdc:/games"));
-    homeOfferDefaultSource(&bootDevice);
-    assert(defaultSourcePrompts==1 && defaultSourceSaves==1);
+    clashA=&device; clashB=&bootDevice;
+    assert(!gameflowEnterLibraryFromHome());
+    assert(devices[DEVICE_CUR]==&bootDevice && inits==0);
 
-    /* 2b. Choosing a custom folder via Choose a Different Path... updates both
-     *     the active session Library root and the saved Default Source path. */
+    /* 3. A Library Path names the folder the Library opens, on its device. */
     reset("gcldr:/",true,false);
     devices[DEVICE_CUR]=&bootDevice;
     deviceAvailable=true;
-    confirmResult=true;
-    promptOverridePath="sdc:/games/Racing.v1";
-    assert(gameflowEnterLibraryFromHome());
-    assert(defaultSourcePrompts==1 && defaultSourceSaves==1);
-    assert(!strcmp(curDir.name,"sdc:/games/Racing.v1"));
-    assert(!strcmp(homeSessionLibraryRoot,"sdc:/games/Racing.v1"));
-    assert(!strcmp(swissSettings.defaultSource,"sdc:/games/Racing.v1"));
-    /* Subsequent startup + Library entry resolves directly to the custom path. */
-    reset("gcldr:/",true,false);
-    devices[DEVICE_CUR]=&bootDevice;
-    deviceAvailable=true;
-    strcpy(swissSettings.defaultSource,"sdc:/games/Racing.v1");
+    strcpy(swissSettings.libraryPath,"sdc:/games/Racing.v1");
     homeApplyStartupSource();
     assert(devices[DEVICE_CUR]==&device);
     memcpy(&curDir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
@@ -534,53 +498,65 @@ static void crossDeviceLibraryFallback(void) {
     assert(gameflowEnterLibraryFromHome());
     assert(!strcmp(curDir.name,"sdc:/games/Racing.v1"));
 
-    /* 3. Startup mount: when Default Source=sdc:/ is configured, Home startup
-     *    switches from gcldr:/ to sdc:/ before scanning root. */
+    /* 4. Startup on a Library Path's device: it becomes the Source before
+     *    the root is read, and the Source picker isn't needed. */
     reset("gcldr:/",true,false);
     devices[DEVICE_CUR]=&bootDevice;
     deviceAvailable=true;
     needsDeviceChange=1;
-    strcpy(swissSettings.defaultSource,"sdc:/");
+    strcpy(swissSettings.libraryPath,"sdc:/");
     homeApplyStartupSource();
     assert(devices[DEVICE_CUR]==&device && devices[DEVICE_PREV]==&bootDevice);
-    assert(deviceAvailable);
-    assert(needsDeviceChange==0);
+    assert(deviceAvailable && needsDeviceChange==0);
 
-    /* 4. Startup mount failure safety: if sdc:/ fails to init at startup
-     *    (e.g. SD2SP2 removed), gcldr:/ remains the mounted Source. */
+    /* 5. Auto: the boot device has no /games, so startup finds sdc:/games. */
     reset("gcldr:/",true,false);
     devices[DEVICE_CUR]=&bootDevice;
     deviceAvailable=true;
-    strcpy(swissSettings.defaultSource,"sdc:/");
+    needsDeviceChange=1;
+    homeApplyStartupSource();
+    assert(devices[DEVICE_CUR]==&device && devices[DEVICE_PREV]==&bootDevice);
+    assert(needsDeviceChange==0 && swissSettings.libraryPath[0]=='\0');
+
+    /* 6. Auto with /games on the boot device: it stays, nothing else mounts. */
+    reset("sdc:/",true,false);
+    devices[DEVICE_CUR]=&device;
+    deviceAvailable=true;
+    homeApplyStartupSource();
+    assert(devices[DEVICE_CUR]==&device && inits==0);
+
+    /* 7. The Library Path's card fails to mount (taken out at startup):
+     *    gcldr:/ stays the Source, and Library finds nothing else. */
+    reset("gcldr:/",true,false);
+    devices[DEVICE_CUR]=&bootDevice;
+    deviceAvailable=true;
+    strcpy(swissSettings.libraryPath,"sdc:/");
     initFailDevice=1;
     homeApplyStartupSource();
     assert(devices[DEVICE_CUR]==&bootDevice);
     assert(!gameflowEnterLibraryFromHome());
     assert(devices[DEVICE_CUR]==&bootDevice);
 
-    /* 4b. Startup mount undetected target safety: if sdc:/ is not detected,
-     *     gcldr:/ remains the mounted Source and init is not called. */
+    /* 8. Its card not there at all: gcldr:/ stays, and nothing is mounted. */
     reset("gcldr:/",true,false);
     devices[DEVICE_CUR]=&bootDevice;
     deviceAvailable=false;
-    strcpy(swissSettings.defaultSource,"sdc:/");
+    strcpy(swissSettings.libraryPath,"sdc:/");
     homeApplyStartupSource();
-    assert(devices[DEVICE_CUR]==&bootDevice);
+    assert(devices[DEVICE_CUR]==&bootDevice && inits==0);
 
-    /* 5. Subfolder on boot device (e.g. gcldr:/apps after visiting Apps):
-     *    opening Library scans gcldr:/ root first via homeLibraryEntryPending,
-     *    then discovers sdc:/games and publishes the Library carousel. */
+    /* 9. From a subfolder of the boot device (gcldr:/apps after Apps):
+     *    Library reads gcldr:/ first, then finds sdc:/games and opens it. */
     reset("gcldr:/apps",true,false);
     devices[DEVICE_CUR]=&bootDevice;
     deviceAvailable=true;
-    confirmResult=false;
     assert(!gameflowEnterLibraryFromHome());
-    assert(devices[DEVICE_CUR]==&bootDevice && defaultSourcePrompts==0);
+    assert(devices[DEVICE_CUR]==&bootDevice);
     memcpy(&curDir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
     curSelection=0; needsRefresh=1; homeLibraryEntryPending=true; curMenuLocation=ON_FILLIST;
     nextIteration();
     assert(devices[DEVICE_CUR]==&device && !strcmp(curDir.name,"sdc:/games"));
-    assert(defaultSourcePrompts==1 && libraryPublishes==1 && listPublishes==0);
+    assert(libraryPublishes==1 && listPublishes==0);
 }
 int main(int argc, char **argv) {
     if(argc==2 && !strcmp(argv[1],"dots")) dottedFilter();

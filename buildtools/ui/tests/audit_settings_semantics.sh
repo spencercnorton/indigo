@@ -155,17 +155,17 @@ normalized = re.sub(
     r"\t+\}\n"
     r"\t+break;\n",
     "", normalized, count=1)
-# And the Default Source arm: A opens the folder chooser; Left/Right steps devices.
+# And the Library Path arm: A opens the folder chooser; Left/Right steps devices.
 normalized = re.sub(
-    r"(?ms)^\t+case SET_DEFAULT_SOURCE:\n"
+    r"(?ms)^\t+case SET_LIBRARY_PATH:\n"
     r"\t+\{\n"
     r"\t+if\(direction == 0\) \{\n"
-    r"\t+choose_default_source_dir\(swissSettings\.defaultSource,\n"
-    r"\t+sizeof\(swissSettings\.defaultSource\)\);\n"
+    r"\t+choose_library_path\(swissSettings\.libraryPath,\n"
+    r"\t+sizeof\(swissSettings\.libraryPath\)\);\n"
     r"\t+break;\n"
     r"\t+\}\n"
     r"\t+int curDevicePos = MAX_DEVICES;\n"
-    r"\t+DEVICEHANDLER_INTERFACE \*currentSource = getDeviceFromPath\(swissSettings\.defaultSource\);\n"
+    r"\t+DEVICEHANDLER_INTERFACE \*currentSource = getDeviceFromPath\(swissSettings\.libraryPath\);\n"
     r"\t+if\(currentSource != NULL\) \{\n"
     r"\t+for\(int i = 0; i < MAX_DEVICES; i\+\+\) \{\n"
     r"\t+if\(allDevices\[i\] == currentSource\) \{\n"
@@ -181,11 +181,11 @@ normalized = re.sub(
     r"\t+allDevices\[curDevicePos\]->initial == NULL \|\|\n"
     r"\t+allDevices\[curDevicePos\] == &__device_dvd\)\);\n"
     r"\t+if\(curDevicePos < MAX_DEVICES\) \{\n"
-    r"\t+concat_path\(swissSettings\.defaultSource,\n"
+    r"\t+concat_path\(swissSettings\.libraryPath,\n"
     r"\t+allDevices\[curDevicePos\]->initial->name, \"games\"\);\n"
     r"\t+\}\n"
     r"\t+else \{\n"
-    r"\t+swissSettings\.defaultSource\[0\] = '\\0';\n"
+    r"\t+swissSettings\.libraryPath\[0\] = '\\0';\n"
     r"\t+\}\n"
     r"\t+\}\n"
     r"\t+break;\n",

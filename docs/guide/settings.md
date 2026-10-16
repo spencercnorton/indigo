@@ -232,7 +232,7 @@ Press Y on any row for the same explanations on the console.
 | Setting | What it does |
 | --- | --- |
 | Configuration Device | Where `global.ini` is read and saved. Kept in the console's memory once Save & Exit has written the settings there. |
-| Default Source | The device and Library folder Home mounts at startup (such as `sdc:/games`); None uses the boot device. Left and Right change device; A opens a folder and device browser. Switching to another device, or finding `/games` on another card from Library, offers to save that path as Default Source or choose a different folder. |
+| Library Path | Where the Library finds your games. **Auto** (the default) opens `/games` on the boot device, or else on the first other storage connected that has one, and starts Home there. Choose a folder (such as `sdc:/games`) to use that one instead: Left and Right step through devices, and A opens a folder chooser where X chooses a folder, Y switches device, and Auto sets it back. |
 | Save Folder | The folder [Memory Cards](memory-cards.md) opens on the SD card, where saves copied off a memory card go unless you open or pick another: a folder on the Configuration Device, `swiss/saves` until you choose another. A lists the folders; X chooses the one that's open. |
 | SD/IDE-EXI Speed | 27 MHz is faster; some SD cards or adapters only work at 13.5 MHz. |
 | Init DVD Drive at startup | Needed for the eject button on the Panasonic Q when Indigo replaces the IPL. |

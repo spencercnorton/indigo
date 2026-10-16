@@ -11,13 +11,13 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### New
 
-- Settings › Setup › Storage › **Default Source** chooses the device Home
-  mounts as your Source at startup (or **Auto** for the boot device). When the
-  boot device has no `/games` folder (such as a GC Loader paired with an
-  SD2SP2 game card), pressing **A** on Library checks other connected devices
-  for `/games`, mounts the first one with games, and offers to save it as your
-  Default Source (**A** Set Default, **B** This Session Only). Switching
-  devices in Source › Change Source offers the same prompt.
+- The Library finds your games on whichever storage holds them: when the
+  boot device has no `/games` folder (such as a GC Loader with the games on
+  an SD2SP2 card), Indigo opens the first `/games` on the other storage
+  connected, at startup and from Library. Settings › Setup › Storage ›
+  **Library Path** names a folder to use instead (Auto, the default, looks
+  for one); Left and Right step through devices, and A opens a folder
+  chooser.
 - Choose the menu on each side of the Home cube: Settings › Setup › Console
   › **Up Face**, **Left Face**, **Right Face** and **Down Face**, each
   Source, Settings, System, Apps or None. Classic turns that way to it; the

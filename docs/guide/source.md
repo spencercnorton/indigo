@@ -15,13 +15,10 @@ change it.
 3. Push the control stick or the D-pad **Left** or **Right** (or press **L**
    or **R**) until the device you want is in the middle, then press **A**.
    Hold the stick to keep moving; the row goes round.
-4. Indigo shows the **Default Source** screen with the device name and the
-   exact Library folder path (such as `sdc:/games`), where you can choose
-   **Set as Default**, **Use for This Session Only** (**B**), or **Choose a
-   Different Path...** (**X**). You can also set or browse **Default Source**
-   in [Settings](settings.md) › Setup › Storage. You're then back on Home,
-   reading from that device; turn the cube to **Library** and press A to see
-   what's on it.
+4. You're back on Home, now reading from that device. Turn the cube to
+   **Library** and press A to see what's on it. To start on a particular
+   card or folder every time, set **Library Path** in
+   [Settings](settings.md) › Setup › Storage.
 
 <p align="center">
   <img alt="On the Source face, A shows Change Source and Refresh Library. Change Source lifts the cube and lines up the devices under it, Game Disc in the middle: Boot + Stream, Disc Drive, Detected, Current. Right slides Memory Card - Slot A into the middle: Files, Slot A. Z shows every device, so Right reaches Memory Card - Slot B, Not Detected; B goes back." src="images/source-picker.png" width="640">
@@ -54,8 +51,11 @@ The disc drive is called **Game Disc**.
 ## What the Library face opens
 
 Use a `/games` layout described in the [Library guide](library.md) to open
-the poster Library. Indigo skips unrelated files in that folder. When the current source has no `/games` folder at its root, Indigo checks other
-detected devices for `/games` first. For other
+the poster Library. Indigo skips unrelated files in that folder. When the
+Source has no `/games` folder, Indigo looks for one on the other storage
+connected (not the network or a WODE) and opens the first it finds, as it
+does when it starts; Settings › Setup › Storage › **Library Path** names
+another folder instead. For other
 layouts, Indigo opens the [File Browser](system.md#file-browser) at `/games`,
 or at the top of the device when there is no `/games`, where you can browse
 folders and open games, homebrew programs (`.dol`, `.elf`) and MP3s (see

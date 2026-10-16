@@ -48,7 +48,7 @@ static const struct {
 	{  6,  2,  7 }, /* Setup: one row per section */
 	{ 10,  2, 11 }, /* Display */
 	{ 24,  2, 25 }, /* Console: the four sides, Cube, Backdrop and Wave Color, Wave Speed, Clock, Temperature, Waves, Idle Animation, Face Labels, On-screen Controls too */
-	{  8,  2,  9 }, /* Storage: its Default Source and Save Folder too */
+	{  8,  2,  9 }, /* Storage: its Library Path and Save Folder too */
 	{ 20,  2, 21 }, /* Network */
 	{ 11,  2, 12 }, /* Library: Load at startup, Library Folders and Saves on Details too; no File Browser Types */
 	{  4,  2,  5 }, /* Developer */
