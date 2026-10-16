@@ -270,13 +270,24 @@ static void buildSettingsPresentation(uiGameflowDetailSnapshot_t *snapshot,
 	}
 }
 
+/* The game's own line after what the box says, when there is one. */
+static const char *savesLineAfter(const char *line)
+{
+	return line != NULL && line[0] != '\0' ? " | " : "";
+}
+
 /* SAVES shows for two or more save copies: with one, none, or a scan that
  * found fewer, the details leave it out, unless a memory card is changing to
- * this game's card or was given up on. Then it says just that. */
+ * this game's card or was given up on. Then it says just that. Copies of one
+ * file are copies; different files of the game are files, each file's
+ * blocks counted once. line: the newest copy's own line. */
 static void buildSavesPresentation(uiGameflowDetailSnapshot_t *snapshot,
-	const uiSavesGameStats_t *stats, bool waiting, bool cardFailed)
+	const uiSavesGameStats_t *stats, bool waiting, bool cardFailed,
+	const char *line)
 {
 	char updated[17];
+	const char *blocks;
+	uint32_t files;
 	bool incomplete;
 
 	if(stats == NULL || (stats->saves < 2u && !waiting && !cardFailed)) {
@@ -292,10 +303,24 @@ static void buildSavesPresentation(uiGameflowDetailSnapshot_t *snapshot,
 		return;
 	}
 	incomplete = stats->partial || stats->checkedSources == 0u;
-	(void)snprintf(snapshot->savesSummary, sizeof(snapshot->savesSummary),
-		"%lu save copies | %lu %s", (unsigned long)stats->saves,
-		(unsigned long)stats->blocks,
-		stats->blocks == 1u ? "block" : "blocks");
+	files = stats->files != 0u && stats->files <= stats->saves ?
+		stats->files : stats->saves;
+	blocks = stats->blocks == 1u ? "block" : "blocks";
+	if(files == 1u) {
+		(void)snprintf(snapshot->savesSummary, sizeof(snapshot->savesSummary),
+			"%lu copies | %lu %s", (unsigned long)stats->saves,
+			(unsigned long)stats->blocks, blocks);
+	}
+	else if(files == stats->saves) {
+		(void)snprintf(snapshot->savesSummary, sizeof(snapshot->savesSummary),
+			"%lu files | %lu %s", (unsigned long)files,
+			(unsigned long)stats->blocks, blocks);
+	}
+	else {
+		(void)snprintf(snapshot->savesSummary, sizeof(snapshot->savesSummary),
+			"%lu files, %lu copies | %lu %s", (unsigned long)files,
+			(unsigned long)stats->saves, (unsigned long)stats->blocks, blocks);
+	}
 	/* A card still changing to this game's card: the count grows when it
 	 * is done; nothing about it is a partial scan. */
 	if(waiting) {
@@ -306,22 +331,26 @@ static void buildSavesPresentation(uiGameflowDetailSnapshot_t *snapshot,
 	if(stats->updatedKnown &&
 		UISaves_FormatUpdated(stats->latestUpdated, updated, sizeof(updated))) {
 		(void)snprintf(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
-			"%sUpdated %s", incomplete ? "Partial scan | " : "", updated);
+			"%sUpdated %s%s%s", incomplete ? "Partial scan | " : "", updated,
+			savesLineAfter(line), line != NULL ? line : "");
 	}
 	else {
-		copyText(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
-			incomplete ? "Partial scan | Update date unavailable" :
-			"Update date unavailable");
+		(void)snprintf(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
+			"%s%s%s", incomplete ? "Partial scan | Update date unavailable" :
+			"Update date unavailable", savesLineAfter(line), line != NULL ? line : "");
 	}
 }
 
-/* With two or more copies Left and Right step through, the one chosen: where
- * it is, and whether the game reads it already or it goes on at launch. */
+/* With two or more copies Left and Right step through, the one chosen: its
+ * file when there are several, where it is, whether the game reads it
+ * already or it goes on at launch, and its own line. */
 static void buildSaveChoicePresentation(uiGameflowDetailSnapshot_t *snapshot,
 	const uiGameflowDetailSource_t *source)
 {
 	char updated[17];
 	const char *when;
+	const char *where;
+	const char *line;
 
 	if((snapshot->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) == 0u ||
 		source->saveCopies < 2u || source->savesWaiting) {
@@ -332,19 +361,32 @@ static void buildSaveChoicePresentation(uiGameflowDetailSnapshot_t *snapshot,
 		source->saveChoiceEntry == NULL) {
 		return;
 	}
-	(void)snprintf(snapshot->savesSummary, sizeof(snapshot->savesSummary),
-		"Copy %lu of %lu | %s", (unsigned long)source->saveChoice,
-		(unsigned long)source->saveCopies,
-		source->saveChoiceWhere != NULL ? source->saveChoiceWhere : "");
+	where = source->saveChoiceWhere != NULL ? source->saveChoiceWhere : "";
+	if(source->saveChoiceFile == NULL || source->saveChoiceFile[0] == '\0') {
+		(void)snprintf(snapshot->savesSummary, sizeof(snapshot->savesSummary),
+			"Copy %lu of %lu | %s", (unsigned long)source->saveChoice,
+			(unsigned long)source->saveCopies, where);
+	}
+	else if(source->saveChoiceFileCopies >= 2u) {
+		(void)snprintf(snapshot->savesSummary, sizeof(snapshot->savesSummary),
+			"%s %lu of %lu | %s", source->saveChoiceFile,
+			(unsigned long)source->saveChoiceFileCopy,
+			(unsigned long)source->saveChoiceFileCopies, where);
+	}
+	else {
+		(void)snprintf(snapshot->savesSummary, sizeof(snapshot->savesSummary),
+			"%s | %s", source->saveChoiceFile, where);
+	}
 	when = source->saveChoiceInUse ? "In use" : "Loads at launch";
+	line = source->saveChoiceLine != NULL ? source->saveChoiceLine : "";
 	if(UISaves_FormatUpdated(UISaves_UpdatedSeconds(source->saveChoiceEntry),
 		updated, sizeof(updated))) {
 		(void)snprintf(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
-			"%s | %s", when, updated);
+			"%s | %s%s%s", when, updated, savesLineAfter(line), line);
 	}
 	else {
 		(void)snprintf(snapshot->savesUpdated, sizeof(snapshot->savesUpdated),
-			"%s | Date unavailable", when);
+			"%s | Date unavailable%s%s", when, savesLineAfter(line), line);
 	}
 }
 
@@ -420,7 +462,7 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 	buildPresentation(snapshot);
 	buildSettingsPresentation(snapshot, source->firstCustomSetting);
 	buildSavesPresentation(snapshot, source->saveStats, source->savesWaiting,
-		source->savesCardFailed);
+		source->savesCardFailed, source->saveLine);
 	buildSaveChoicePresentation(snapshot, source);
 	return true;
 }

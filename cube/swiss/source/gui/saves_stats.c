@@ -107,8 +107,10 @@ static bool statsBefore(const savesCopy_t *a, const savesCopy_t *b)
 		UISaves_UpdatedSeconds(a->entry) > UISaves_UpdatedSeconds(b->entry);
 }
 
-/* The list in that order (a stable insertion sort of at most eight): Right
- * steps from the card's own copy to the latest one kept. */
+/* The list in that order (a stable insertion sort of at most eight), then
+ * each file's copies together, the files in the order their first copies
+ * came: Right steps from the card's own copy to the latest one kept, one
+ * file's copies before the next file's. */
 static void statsArrange(savesCopies_t *copies)
 {
 	savesCopy_t moving;
@@ -122,23 +124,36 @@ static void statsArrange(savesCopies_t *copies)
 		}
 		copies->copy[j] = moving;
 	}
+	for(i = 1u; i < copies->count; i++) {
+		for(j = i; j > 0u &&
+			!UISaves_SameFile(copies->copy[j - 1u].entry, copies->copy[i].entry); j--) {
+		}
+		if(j > 0u && j < i) {
+			moving = copies->copy[i];
+			memmove(&copies->copy[j + 1u], &copies->copy[j],
+				(i - j) * sizeof(copies->copy[0]));
+			copies->copy[j] = moving;
+		}
+	}
 }
 
-static void statsSlot(const char gameId[6], uiSavesGameStats_t *stats,
-	unsigned slot, savesCopies_t *copies)
+/* The game's saves on the card in slot. True when it mounted the card, which
+ * stays mounted until the copies' lines are read. */
+static bool statsSlot(const char gameId[6], uiSavesGameStats_t *stats,
+	uiSavesStatsFiles_t *counted, unsigned slot, savesCopies_t *copies)
 {
 	DEVICEHANDLER_INTERFACE *device = slot == 0u ? &__device_card_a : &__device_card_b;
 	card_dir dir;
 	s32 result;
 	unsigned count = 0u;
 
-	if(statsSlotInUse(slot)) return;
+	if(statsSlotInUse(slot)) return false;
 	/* Do not wait on a busy slot or probe an SD adapter as a memory card. */
 	result = CARD_ProbeEx((s32)slot, NULL, NULL);
-	if(result == CARD_ERROR_NOCARD || result == CARD_ERROR_WRONGDEVICE) return;
+	if(result == CARD_ERROR_NOCARD || result == CARD_ERROR_WRONGDEVICE) return false;
 	if(result != CARD_ERROR_READY || device->init(device->initial) != 0) {
 		stats->partial = true;
-		return;
+		return false;
 	}
 	if(copies != NULL) copies->cards[slot] = true;
 	memset(&dir, 0, sizeof(dir));
@@ -168,7 +183,7 @@ static void statsSlot(const char gameId[6], uiSavesGameStats_t *stats,
 				statsWrite32(entry + 0x28, status.time);
 			}
 			else stats->partial = true;
-			if(UISaves_StatsAdd(stats, entry, gameId, slot)) {
+			if(UISaves_StatsAdd(stats, counted, entry, gameId, slot)) {
 				statsCopy(copies, slot == 0u ? SAVES_COPY_SLOT_A : SAVES_COPY_SLOT_B,
 					entry, NULL, NULL, 0u, 0u);
 			}
@@ -177,10 +192,7 @@ static void statsSlot(const char gameId[6], uiSavesGameStats_t *stats,
 	}
 	if(result == CARD_ERROR_NOFILE) stats->checkedSources |= (u8)(1u << slot);
 	else stats->partial = true;
-	/* Preserve mounts used by the game or settings device. */
-	if(device != devices[DEVICE_CUR] && device != devices[DEVICE_CONFIG]) {
-		device->deinit(device->initial);
-	}
+	return true;
 }
 
 static bool statsSaveName(const char *name)
@@ -209,8 +221,8 @@ static bool statsReadEntry(file_handle *file, u8 *head,
 /* The save files and card images directly in path on device: the Save Folder
  * on the settings device, or (saveFolder false) the Source's swiss/saves. */
 static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats,
-	savesCopies_t *copies, DEVICEHANDLER_INTERFACE *device, const char *path,
-	bool saveFolder)
+	uiSavesStatsFiles_t *counted, savesCopies_t *copies,
+	DEVICEHANDLER_INTERFACE *device, const char *path, bool saveFolder)
 {
 	file_handle folder = {0}, *files = NULL;
 	uiSavesRawCard_t *raw = NULL;
@@ -279,7 +291,7 @@ static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats,
 				continue;
 			}
 			for(ordinal = 0u; ordinal < raw->count; ordinal++) {
-				if(UISaves_StatsAdd(stats, UISavesRaw_Entry(raw, ordinal), gameId, 2u)) {
+				if(UISaves_StatsAdd(stats, counted, UISavesRaw_Entry(raw, ordinal), gameId, 2u)) {
 					statsCopy(copies, SAVES_COPY_IMAGE, UISavesRaw_Entry(raw, ordinal),
 						device, file->name, file->size, ordinal);
 				}
@@ -287,7 +299,7 @@ static void statsFolder(const char gameId[6], uiSavesGameStats_t *stats,
 		}
 		else if(statsSaveName(leaf)) {
 			if(statsReadEntry(file, head, entry)) {
-				if(UISaves_StatsAdd(stats, entry, gameId, 2u)) {
+				if(UISaves_StatsAdd(stats, counted, entry, gameId, 2u)) {
 					statsCopy(copies, SAVES_COPY_FILE, entry, device, file->name,
 						file->size, 0u);
 				}
@@ -312,13 +324,16 @@ DEVICEHANDLER_INTERFACE *Saves_SourceDevice(void)
 void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats,
 	savesCopies_t *copies, unsigned slots)
 {
+	/* The files counted so far; the scan runs on the menu thread alone. */
+	static uiSavesStatsFiles_t counted;
 	DEVICEHANDLER_INTERFACE *source;
 	bool mounted;
-	unsigned i;
+	unsigned cards = 0u, i;
 
 	if(copies != NULL) memset(copies, 0, sizeof(*copies));
 	if(stats == NULL) return;
 	memset(stats, 0, sizeof(*stats));
+	memset(&counted, 0, sizeof(counted));
 	if(gameId == NULL) return;
 	/* Only six-byte disc game IDs can match a save; never a title/path. */
 	for(i = 0u; i < 6u; i++) {
@@ -327,15 +342,35 @@ void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats,
 			(gameId[i] >= '0' && gameId[i] <= '9'))) return;
 	}
 	mounted = config_set_device();
-	if(mounted) statsFolder(gameId, stats, copies, devices[DEVICE_CONFIG], saves_folder(), true);
+	if(mounted) {
+		statsFolder(gameId, stats, &counted, copies, devices[DEVICE_CONFIG],
+			saves_folder(), true);
+	}
 	else stats->partial = true;
 	source = Saves_SourceDevice();
 	if(source != NULL) {
-		statsFolder(gameId, stats, copies, source, SAVES_STATS_SOURCE_FOLDER, false);
+		statsFolder(gameId, stats, &counted, copies, source, SAVES_STATS_SOURCE_FOLDER,
+			false);
 	}
 	for(i = 0u; i < 2u; i++) {
-		if(slots & (1u << i)) statsSlot(gameId, stats, i, copies);
+		if((slots & (1u << i)) && statsSlot(gameId, stats, &counted, i, copies)) {
+			cards |= 1u << i;
+		}
+	}
+	statsArrange(copies);
+	/* Each listed copy's own line, while its card or SD card is mounted. */
+	for(i = 0u; copies != NULL && i < copies->count; i++) {
+		(void)Saves_CopyLine(&copies->copy[i], copies->copy[i].line,
+			sizeof(copies->copy[i].line));
+	}
+	/* Then the cards go, but those the game or settings device uses. */
+	for(i = 0u; i < 2u; i++) {
+		DEVICEHANDLER_INTERFACE *device = i == 0u ? &__device_card_a : &__device_card_b;
+
+		if((cards & (1u << i)) && device != devices[DEVICE_CUR] &&
+			device != devices[DEVICE_CONFIG]) {
+			device->deinit(device->initial);
+		}
 	}
 	if(mounted) config_unset_device();
-	statsArrange(copies);
 }

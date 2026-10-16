@@ -268,8 +268,13 @@ def check_save_load(controller: str, load: str, choosable: str, choice: str) -> 
     assert STEPS in controller
     assert choice.index("if(!gameflowSaveChoosable(context)) {\n\t\treturn;") < \
         choice.index("source->saveCopies = gameflowSaveCopies.count;")
+    # The question says the card's own copy goes to the Save Folder only when
+    # the card holds that same file, not just another file of the game.
+    assert OWN in load
 
 
+OWN = ("own |= gameflowSaveCopies.copy[i].source == (savesCopySource_t)context->saveSlot &&\n"
+       "\t\t\tUISaves_SameFile(gameflowSaveCopies.copy[i].entry, copy->entry);")
 save_load = extract_function(swiss_source, "static bool gameflowLoadChosenSave(")
 save_choosable = extract_function(swiss_source, "static bool gameflowSaveChoosable(")
 save_choice = extract_function(swiss_source, "static void gameflowSaveChoiceSource(")
@@ -290,6 +295,7 @@ for mutant_controller, mutant_load, mutant_choosable, mutant_choice in (
      save_load, save_choosable, save_choice),
     (detail, save_load, save_choosable,
      save_choice.replace("if(!gameflowSaveChoosable(context)) {\n\t\treturn;\n\t}\n", "", 1)),
+    (detail, save_load.replace(OWN, OWN.split(" &&")[0] + ";", 1), save_choosable, save_choice),
 ):
     try:
         check_save_load(mutant_controller, mutant_load, mutant_choosable, mutant_choice)

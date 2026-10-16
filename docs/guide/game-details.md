@@ -24,19 +24,24 @@ screen, and **B** there goes back to the File Browser, on the same row.
   game starts from, as with a single SD card. With no settings device to
   read it from, it says "History unavailable".
 - **Saves**, above Settings and Cheats, when the game has two or more save
-  copies: their number and total blocks appear first, with the latest update
-  beneath them. These totals come from inserted memory cards and the
-  configured Save Folder, including readable RAW images there. With your
-  games on another card than your settings (an SD2SP2 beside a GC Loader,
-  say), they also count the card images and saves in `swiss/saves` on the
-  games' card, where Swiss's Emulate Memory Card keeps each game's card. It
-  matches the full game and maker ID, not the title. A RAW save and an exported GCI
-  count as separate copies; this isn't a progress score. **Updated** is the
-  newest date recorded in those saves, and a scan that couldn't read
-  everything says **Partial scan**. Settings › Setup › Library ›
-  **Saves on Details** turns the box off, and then a game's details don't
-  read your memory cards at all. System › [Memory Cards](memory-cards.md)
-  opens the individual saves and their details.
+  copies. The first line counts them as the GameCube does: different files
+  of the game are files (**5 files | 58 blocks** for a game that keeps its
+  town, letters and options apart), one file in more than one place is
+  copies (**2 copies | 11 blocks**), and each file's blocks count once, as
+  its newest copy has them. Beneath it, **Updated** is the newest date
+  recorded in those saves, then that save's own line: the one the
+  GameCube's memory card screen shows under the block count, such as "Last
+  saved on 1/6". A save records no creation date. These totals come from
+  inserted memory cards and the configured Save Folder, including readable
+  RAW images there. With your games on another card than your settings (an
+  SD2SP2 beside a GC Loader, say), they also count the card images and saves
+  in `swiss/saves` on the games' card, where Swiss's Emulate Memory Card
+  keeps each game's card. It matches the full game and maker ID, not the
+  title; this isn't a progress score. A scan that couldn't read everything
+  says **Partial scan**. Settings › Setup › Library › **Saves on Details**
+  turns the box off, and then a game's details don't read your memory cards
+  at all. System › [Memory Cards](memory-cards.md) opens the individual
+  saves and their details.
 - **Settings**: "Game Defaults" while the game follows them, or how many of
   its settings are its own and the first of them, such as "1 custom" and
   "Force Video Mode: 480p". See [below](#this-games-own-settings).
@@ -54,9 +59,9 @@ two or more copies. If the card's status remains unconfirmed for a minute,
 Indigo stops waiting. Remove and reinsert the card to try again.
 
 A game with one save copy shows no Saves box. Copying a save from a RAW
-image into the Save Folder makes a second copy, and opening the game's
-details again shows it: **2 save copies | 4 blocks**, with the recorded
-update.
+image into the Save Folder makes a second copy of that file, and opening the
+game's details again shows it: **2 copies | 2 blocks**, with the recorded
+update and the save's own line.
 
 <p align="center">
   <img alt="Astral Circuit’s details after exporting one GCI: the Saves box, labelled « SAVES » since Left and Right choose a copy, reads 2 save copies | 4 blocks over Updated 2024-02-29 12:34." src="images/game-details-saves-after-copy.png" width="640">
@@ -66,23 +71,27 @@ update.
 
 With two or more copies and a memory card in a slot, **Left** and **Right**
 step through them, and the label reads **« SAVES »**. The box shows one copy
-at a time, such as **Copy 2 of 3 | Save Folder**, with its date and either
-**In use**, for the copy on the memory card the game reads, or **Loads at
-launch**. A card image goes by its file name, such as
+at a time, such as **Copy 2 of 3 | Save Folder**, with its date, **In use**
+for the copy on the memory card the game reads or **Loads at launch**, and
+the save's own line. A card image goes by its file name, such as
 **MemoryCardA.USA.raw**, and a save file in the games' card's `swiss/saves`
-by that card's name, such as **SD Card - SD2SP2**. After the last copy the
-totals show again: launching then leaves the card as it is. The card's own
-copies come first, then the SD cards', newest first; with more than eight,
-the oldest of those aren't offered.
+by that card's name, such as **SD Card - SD2SP2**. When the copies are of
+more than one of the game's files, each shows its file's name and its place
+among that file's copies instead, such as **DobutsunomoriP_MURA 2 of 2 |
+MemoryCardA.USA.raw**, and each file's copies come together. After the last
+copy the totals show again: launching then leaves the card as it is. The
+card's own copies come first, then the SD cards', newest first; with more
+than eight, the oldest of those aren't offered.
 
 <p align="center">
   <img alt="Astral Circuit’s details after Right twice: « SAVES » shows one copy, Copy 2 of 2 | Save Folder, over Loads at launch | 2024-02-29 12:34." src="images/game-details-save-choice.png" width="640">
 </p>
 
-Launch the game with another copy shown and Indigo asks first. **A** puts
-that copy on the memory card: the card's own copy of the save, if it has
-one, goes to the Save Folder first (on your settings card, wherever the new
-copy came from), the new one is read back from the card,
+Launch the game with another copy shown and Indigo asks first, naming the
+file when the game has more than one. **A** puts that copy on the memory
+card: the card's own copy of that file, if it has one, goes to the Save
+Folder first (on your settings card, wherever the new copy came from), the
+new one is read back from the card,
 and if anything goes wrong the card's own copy goes back and the game
 doesn't start. **B** leaves the card as it is and shows the totals
 again. The copy goes on the card that holds the game's save, Slot A first;

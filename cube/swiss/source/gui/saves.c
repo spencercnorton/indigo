@@ -1962,6 +1962,74 @@ static u8 *copyRead(const savesCopy_t *copy, u32 *length, size_t *at,
 	return data;
 }
 
+bool Saves_CopyLine(const savesCopy_t *copy, char *out, size_t size)
+{
+	file_handle file;
+	file_handle *entries = NULL;
+	file_handle *found;
+	uiSavesRawCard_t *raw;
+	uiSavesArt_t art;
+	u8 head[UI_SAVES_HEAD_SIZE] ATTRIBUTE_ALIGN(32);
+	u8 entry[UI_SAVES_ENTRY_SIZE];
+	u8 *data = NULL;
+	u32 want;
+	size_t body;
+	int count, used;
+	bool read = false;
+
+	if(out == NULL || size == 0u) return false;
+	out[0] = '\0';
+	if(copy == NULL) return false;
+	if(copy->source == SAVES_COPY_SLOT_A || copy->source == SAVES_COPY_SLOT_B) {
+		int slot = copy->source == SAVES_COPY_SLOT_B;
+		DEVICEHANDLER_INTERFACE *device = slotDevice(slot);
+
+		/* The card driver reads a save as a .gci from its start: its entry,
+		 * for where the comment is, then the save up to the comment's end. */
+		if(device->init(device->initial) == 0 &&
+			(found = cardFind(slot, copy->entry, &entries, &count, &used)) != NULL &&
+			readSaveAt(found, 0u, head, UI_SAVES_ENTRY_SIZE) &&
+			UISaves_SameFile(head, copy->entry) &&
+			UISaves_ArtLayout(head, found->size, &art) && art.comment) {
+			want = UI_SAVES_ENTRY_SIZE + art.commentAt + UI_SAVES_ENTRY_SIZE;
+			data = memalign(32, want);
+			read = data != NULL && readSaveAt(found, 0u, data, want) &&
+				UISaves_DisplayText(out, size, data + want - 32u, 32u);
+		}
+		free(data);
+		free(entries);
+	}
+	else if(copy->device != NULL) {
+		memset(&file, 0, sizeof(file));
+		snprintf(file.name, sizeof(file.name), "%s", copy->path);
+		file.device = copy->device;
+		file.fileType = IS_FILE;
+		file.size = copy->size;
+		if(copy->source == SAVES_COPY_FILE) {
+			want = file.size < UI_SAVES_HEAD_SIZE ? file.size : UI_SAVES_HEAD_SIZE;
+			body = readSaveAt(&file, 0u, head, want) ?
+				UISaves_FindEntryPrefix(head, want, file.size, entry) : 0u;
+			if(body != 0u && UISaves_SameFile(entry, copy->entry) &&
+				UISaves_ArtLayout(entry, file.size - body, &art) && art.comment &&
+				readSaveAt(&file, (u32)body + art.commentAt + 32u, head, 32u)) {
+				read = UISaves_DisplayText(out, size, head, 32u);
+			}
+		}
+		else if((raw = calloc(1, sizeof(*raw))) != NULL) {
+			if(SavesRaw_Load(&file, raw) == UI_SAVES_RAW_OK && copy->ordinal < raw->count &&
+				UISaves_SameFile(UISavesRaw_Entry(raw, copy->ordinal), copy->entry) &&
+				UISaves_ArtLayout(UISavesRaw_Entry(raw, copy->ordinal),
+					UISavesRaw_GciSize(raw, copy->ordinal) - UI_SAVES_ENTRY_SIZE, &art) &&
+				art.comment && SavesRaw_ReadGci(&file, raw, copy->ordinal,
+					UI_SAVES_ENTRY_SIZE + art.commentAt + 32u, head, 32u)) {
+				read = UISaves_DisplayText(out, size, head, 32u);
+			}
+			free(raw);
+		}
+	}
+	return read;
+}
+
 bool Saves_LoadCopy(int slot, const savesCopy_t *copy, char *why,
 	size_t whySize)
 {

@@ -6,6 +6,7 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ## Unreleased
 
+- Game details: the Saves box counts a game's saves as the GameCube does. Different files of the game are files and one file in more than one place is copies, each file's blocks counted once: Animal Crossing's town, letters and options read **5 files | 58 blocks**, and one 11-block save in two places **2 copies | 11 blocks** (it said 22). After the date it shows the save's own line, the one the GameCube's memory card screen shows under the block count; a save records no creation date. Choosing a copy names its file when the game has more than one, and the memory card's own copy goes to the Save Folder first only when the card holds that same file.
 - Game details: bind save replacement to the card's mount generation, so a write or read-back failure after a card swap never writes the original save to a replacement card.
 - Memory cards: keep waiting while an emulated card is creating its virtual card, and report a failure if its status remains unconfirmed for 60 seconds. Real MemCard PRO testing remains pending.
 - Clarify image filename matching, cheat memory limits and Library folder/source instructions.

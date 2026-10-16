@@ -77,6 +77,16 @@ typedef struct {
 	const uint8_t *saveChoiceEntry;
 	const char *saveChoiceWhere;
 	bool saveChoiceInUse;
+	/* With copies of more than one file: the chosen copy's file, and its
+	 * place among that file's copies (1-based). NULL: one file. */
+	const char *saveChoiceFile;
+	uint32_t saveChoiceFileCopy;
+	uint32_t saveChoiceFileCopies;
+	/* The game's own second comment line ("Last saved on 1/6") of the copy
+	 * the box describes: the newest for the totals, the chosen one while
+	 * choosing. NULL or empty: none. */
+	const char *saveLine;
+	const char *saveChoiceLine;
 	const uint8_t *banner;
 	size_t bannerSize;
 	const uiGameflowDetailCheatSource_t *cheats;

@@ -105,6 +105,7 @@ struct file_handle {
 #define D_FAIL 0
 #define print_debug(...) ((void)0)
 #define DCFlushRange(p, n) ((void)0)
+#define ATTRIBUTE_ALIGN(n) __attribute__((aligned(n)))
 #define CARD_SetGameAndCompany() CARD_SetGamecode("SWIS"); CARD_SetCompany("S0")
 typedef int uiDrawObj_t;
 static uiDrawObj_t *DrawMessageBox(int style, const char *text) {
@@ -688,6 +689,39 @@ static void sourceCopyCases(const char *imagePath, const char *gciPath) {
     sdPut(1, gciName, gci, gciSize); copy.device = &sourceSd; configOk = false;
     assert(!Saves_LoadCopy(1, &copy, why, sizeof(why)) && strstr(why, "no SD card"));
     assert(writes == 0 && deletes == 0 && cards[1][1].bytes[0] == 'O');
+    /* Detail's line for a copy: the game's own second comment line, read
+     * where the copy is, its entry and comment and nothing more. */
+    char line[33];
+    reset(); sdPut(1, imageName, image, imageSize); sdPut(1, gciName, gci, gciSize);
+    memset(&copy, 0, sizeof(copy));
+    copy.source = SAVES_COPY_IMAGE; copy.device = &sourceSd; copy.size = imageSize;
+    snprintf(copy.path, sizeof(copy.path), "%s", imageName);
+    memcpy(copy.entry, "GACZ01", 6); strcpy((char *)copy.entry + 8, "Demo Save");
+    assert(Saves_CopyLine(&copy, line, sizeof(line)) && !strcmp(line, "SD card image"));
+    copy.ordinal = 1u; memcpy(copy.entry, gci, 64);
+    assert(Saves_CopyLine(&copy, line, sizeof(line)) && !strcmp(line, "Synthetic save"));
+    /* Not the save the scan saw there: no line. */
+    copy.ordinal = 0u;
+    assert(!Saves_CopyLine(&copy, line, sizeof(line)) && line[0] == '\0');
+    copy.source = SAVES_COPY_FILE; copy.size = gciSize;
+    snprintf(copy.path, sizeof(copy.path), "%s", gciName);
+    assert(Saves_CopyLine(&copy, line, sizeof(line)) && !strcmp(line, "Synthetic save"));
+    /* From the device the scan found it on, whatever its path says. */
+    copy.device = &settingsSd;
+    assert(!Saves_CopyLine(&copy, line, sizeof(line)) && line[0] == '\0');
+    assert(sdCards[0].writes == 0 && sdCards[1].writes == 0 && sdCards[1].deletes == 0);
+    /* A card's copy, through the card driver: the comment where its entry
+     * says, here at the start of the save. */
+    reset(); add(1, 0, "GALE", "01", 'E'); addNamed(1, 1, "ZRVE", "ZZ", "Other Save", 'O');
+    memcpy(cards[1][1].bytes + 32, "Last saved on 1/6", 18);
+    memset(&copy, 0, sizeof(copy)); copy.source = SAVES_COPY_SLOT_B;
+    memcpy(copy.entry, "ZRVEZZ", 6); strcpy((char *)copy.entry + 8, "Other Save");
+    assert(Saves_CopyLine(&copy, line, sizeof(line)) && !strcmp(line, "Last saved on 1/6"));
+    assert(writes == 0 && deletes == 0);
+    /* Gone from the card since: none. */
+    strcpy((char *)copy.entry + 8, "Gone");
+    assert(!Saves_CopyLine(&copy, line, sizeof(line)) && line[0] == '\0');
+    assert(!Saves_CopyLine(NULL, line, sizeof(line)) && line[0] == '\0');
     reset(); free(image); free(gci);
 }
 int main(int argc, char **argv) {
@@ -699,7 +733,7 @@ int main(int argc, char **argv) {
     copyCases("GALP", "01"); copyCases("GALE", "02");
     copyCases("\0ABC", "\0D"); wildcardCases(); changedCardCases();
     sourceCopyCases(argv[1], argv[2]);
-    puts("card identity: reads, Erase, Copy, Move, both rollback paths, a card changed under them, wildcards and Detail's load, from the Source too PASS");
+    puts("card identity: reads, Erase, Copy, Move, both rollback paths, a card changed under them, wildcards and Detail's load and lines, from the Source too PASS");
     return 0;
 }
 """
@@ -744,7 +778,7 @@ static savesPlace_t places[SAVES_TABS];
                    "static const char *cardWhy(", "static bool cardWriteBound(",
                    "static bool cardWrite(",
                    "static bool cardReplace(", "static bool folderWrite(",
-                   "static u8 *copyRead(", "bool Saves_LoadCopy("):
+                   "static u8 *copyRead(", "bool Saves_CopyLine(", "bool Saves_LoadCopy("):
         pieces.append(extract_function(saves, marker))
     return "\n".join(pieces + [MAIN])
 
@@ -780,6 +814,7 @@ def main():
         subprocess.run(shlex.split(os.environ.get("CC", "cc")) + flags +
                        ["-I", str(ROOT / "cube/swiss/source/gui"), str(source),
                         str(ROOT / "cube/swiss/source/gui/ui_saves.c"),
+                        str(ROOT / "cube/swiss/source/gui/ui_saves_metadata.c"),
                         str(ROOT / "cube/swiss/source/gui/ui_saves_raw.c"), "-o", str(binary)],
                        check=True)
         subprocess.run([str(binary), str(Path(temp) / "card.raw"),

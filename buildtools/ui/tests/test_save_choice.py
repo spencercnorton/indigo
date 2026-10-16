@@ -167,6 +167,24 @@ int main(void)
 	assert(strstr(asked, "Start with the save from SD Card - SD2SP2?\n"
 		"Slot A's own copy of it goes to the Save Folder first."));
 
+	/* Different files of the game: Slot A holds one (Town), the Save Folder
+	 * another (Letters). The card has no copy of that file to keep, so none
+	 * goes to the Save Folder, and the question names the file. */
+	detail(&c, 0, true, SAVES_COPY_SLOT_A);
+	for(i = 0; i < 3; i++) memcpy(gameflowSaveCopies.copy[i].entry, "GACZ01", 6);
+	strcpy((char *)gameflowSaveCopies.copy[0].entry + 8, "Town");
+	strcpy((char *)gameflowSaveCopies.copy[1].entry + 8, "Letters");
+	strcpy((char *)gameflowSaveCopies.copy[2].entry + 8, "Town");
+	c.saveChoice = 1;
+	assert(gameflowLoadChosenSave(&c) && asks == 1 && loads == 1);
+	assert(strstr(asked, "Start with Letters from Save Folder?\n"
+		"It goes on the memory card in Slot A."));
+	/* The card's own file, in an image: its own copy of it goes first. */
+	c.saveChoice = 2;
+	assert(gameflowLoadChosenSave(&c) && asks == 2 && loads == 2);
+	assert(strstr(asked, "Start with Town from b.raw?\n"
+		"Slot A's own copy of it goes to the Save Folder first."));
+
 	/* A card without the game's save: a copy goes onto it, and a choice can
 	 * always be undone (the totals are one of the steps). */
 	detail(&c, 0, true, -1);
@@ -211,7 +229,7 @@ int main(void)
 	assert(!gameflowSaveChoosable(&c));
 	press(&c, true); assert(c.saveChoice == -1);
 
-	puts("save choice: none without a card or with Emulate Memory Card on, each copy then the totals, B keeps the card's, the question as the card is, a copy on the Source by its name, nothing while a card changes or after one changed during the question PASS");
+	puts("save choice: none without a card or with Emulate Memory Card on, each copy then the totals, B keeps the card's, the question as the card is and by file, a copy on the Source by its name, nothing while a card changes or after one changed during the question PASS");
 	return 0;
 }
 '''
@@ -231,6 +249,7 @@ def main() -> None:
         "static int gameflowSaveSlot(const savesCopies_t *copies)",
         "static bool gameflowSaveChoosable(const gameflowLaunchContext_t *context)",
         "static const char *gameflowSaveWhere(const savesCopy_t *copy)",
+        "static bool gameflowSaveFiles(void)",
         "static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)",
     )) + MAIN.replace("STEP", step)
     with tempfile.TemporaryDirectory(prefix="save-choice-") as tmp:
@@ -238,7 +257,8 @@ def main() -> None:
         (path / "test.c").write_text(source)
         command = [os.environ.get("CC", "cc"), "-std=c11", "-D_POSIX_C_SOURCE=200112L",
                    "-Wall", "-Wextra", "-Werror", "-Wno-unused-function", "-g", "-I", str(GUI),
-                   str(path / "test.c"), "-o", str(path / "test")]
+                   str(path / "test.c"), str(GUI / "ui_saves_metadata.c"), str(GUI / "ui_saves.c"),
+                   "-o", str(path / "test")]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
                         "-fno-omit-frame-pointer"]

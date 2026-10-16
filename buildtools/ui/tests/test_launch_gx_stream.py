@@ -86,8 +86,10 @@ static void detail(void)
 	const uiGameflowFrame_t *frame = UIGameflow_Frame(&eventData->state);
 	const uiGameflowCardSnapshot_t *record = _GameflowFindRecord(
 		&eventData->snapshot, frame->focusIndex, NULL);
+	/* The demonstration save in two places: one file, its blocks once,
+	 * and its own line after the date. */
 	uiSavesGameStats_t stats = {
-		.saves = 2u, .blocks = 4u, .latestUpdated = 762525240u,
+		.saves = 2u, .files = 1u, .blocks = 2u, .latestUpdated = 762525240u,
 		.sourceSaves = {0u, 0u, 2u}, .checkedSources = 4u, .updatedKnown = true
 	};
 	uiGameflowDetailCheatSource_t cheat = {"Infinite energy", true};
@@ -102,8 +104,9 @@ static void detail(void)
 	snprintf(title, sizeof(title), "Detail title %s", record->gameId);
 	source.title = title;
 	source.gameId = record->gameId;
+	source.saveLine = "SD card image";
 	if(savesVariant == 2u) stats.partial = true;
-	else if(savesVariant == 3u) stats.saves = stats.blocks = UINT32_MAX;
+	else if(savesVariant == 3u) stats.saves = stats.files = stats.blocks = UINT32_MAX;
 	else if(savesVariant == 4u) stats.saves = stats.blocks = 0u;
 	else if(savesVariant == 5u) stats.updatedKnown = false;
 	else if(savesVariant == 6u) {
@@ -119,7 +122,7 @@ static void detail(void)
 		stats.blocks = 2u;
 	}
 	source.saveStats = savesVariant == 0u ? NULL : &stats;
-	if(savesVariant == 9u) {
+	if(savesVariant == 9u || savesVariant == 10u) {
 		/* Left and Right chose the second of three: a Save Folder copy. */
 		static uint8_t chosen[UI_SAVES_ENTRY_SIZE];
 		chosen[0x28] = 0x2d; chosen[0x29] = 0x73; chosen[0x2a] = 0x36; chosen[0x2b] = 0x38;
@@ -127,6 +130,17 @@ static void detail(void)
 		source.saveChoice = 2u;
 		source.saveChoiceEntry = chosen;
 		source.saveChoiceWhere = "Save Folder";
+		source.saveChoiceLine = "SD card image";
+	}
+	if(savesVariant == 10u) {
+		/* Copies of two files: the chosen one's file and its place among
+		 * that file's copies, in an image. */
+		stats.saves = 3u;
+		stats.files = 2u;
+		source.saveChoiceFile = "DobutsunomoriP_MURA";
+		source.saveChoiceFileCopy = 2u;
+		source.saveChoiceFileCopies = 2u;
+		source.saveChoiceWhere = "MemoryCardA.USA.raw";
 	}
 	CHECK(UIGameflowDetail_Build(&eventData->detail, &source));
 	/* The video event must never retain borrowed menu-thread storage. */
@@ -493,8 +507,8 @@ class LaunchGxStream(unittest.TestCase):
                 rest = self.detail_rest(wide)
                 drawn = strings(rest)
                 self.assertIn((576, 214, "SAVES"), drawn)
-                self.assertIn((274, 214, "2 save copies | 4 blocks"), drawn)
-                self.assertIn((274, 232, "Updated 2024-02-29 12:34"), drawn)
+                self.assertIn((274, 214, "2 copies | 2 blocks"), drawn)
+                self.assertIn((274, 232, "Updated 2024-02-29 12:34 | SD card image"), drawn)
                 self.assertIn((274, 264, "SETTINGS"), drawn)
                 self.assertIn((274, 313, "CHEATS"), drawn)
                 self.assertIn((264, 122, "Detail title G018E0"), drawn)
@@ -509,11 +523,13 @@ class LaunchGxStream(unittest.TestCase):
                                       (2, (252.0, 294.0))):
                     self.assertEqual(self.lit_frame(self.detail_rest(wide, focus=row)), expected)
                 partial = strings(self.detail_rest(wide, 2))
-                self.assertIn((274, 232, "Partial scan | Updated 2024-02-29 12:34"), partial)
+                self.assertIn((274, 232, "Partial scan | Updated 2024-02-29 12:34 | SD card image"),
+                              partial)
                 unknown_date = strings(self.detail_rest(wide, 5))
-                self.assertIn((274, 232, "Update date unavailable"), unknown_date)
+                self.assertIn((274, 232, "Update date unavailable | SD card image"), unknown_date)
                 partial_date = strings(self.detail_rest(wide, 7))
-                self.assertIn((274, 232, "Partial scan | Update date unavailable"), partial_date)
+                self.assertIn((274, 232, "Partial scan | Update date unavailable | SD card image"),
+                              partial_date)
 
     def test_save_choice_draws_the_chosen_copy(self):
         # With Left and Right choosing among the copies, the label says so,
@@ -524,14 +540,20 @@ class LaunchGxStream(unittest.TestCase):
                 drawn = strings(self.detail_rest(wide, 9))
                 self.assertIn((576, 214, "\xab SAVES \xbb"), drawn)
                 self.assertIn((274, 214, "Copy 2 of 3 | Save Folder"), drawn)
-                self.assertIn((274, 232, "Loads at launch | 2024-02-29 12:34"), drawn)
+                self.assertIn((274, 232, "Loads at launch | 2024-02-29 12:34 | SD card image"), drawn)
                 self.assertIn((274, 264, "SETTINGS"), drawn)
-                cells = [c for c in text_cells(self.detail_rest(wide, 9))
-                         if 202 <= c["box"][1] and c["box"][3] <= 245]
-                self.assertEqual(len(cells), 3)
-                tag, summary, _ = cells
-                self.assertGreater(tag["box"][0] - summary["box"][2], 12)
-                self.assertTrue(all(c["box"][2] < 580 for c in cells))
+                # With copies of more than one file, the chosen copy's file
+                # and its place among that file's copies, still in the inset.
+                files = strings(self.detail_rest(wide, 10))
+                self.assertIn((274, 214, "DobutsunomoriP_MURA 2 of 2 | MemoryCardA.USA.raw"), files)
+                for variant in (9, 10):
+                    cells = [c for c in text_cells(self.detail_rest(wide, variant))
+                             if 202 <= c["box"][1] and c["box"][3] <= 245]
+                    self.assertEqual(len(cells), 3)
+                    tag, summary, _ = cells
+                    self.assertGreater(tag["box"][0] - summary["box"][2], 12)
+                    self.assertGreaterEqual(summary["scale"], 0.46)
+                    self.assertTrue(all(c["box"][2] < 580 for c in cells))
 
     def test_fewer_than_two_copies_leave_saves_out(self):
         # Saves on Details off (no statistics), no copies, a partial scan
@@ -588,7 +610,7 @@ class LaunchGxStream(unittest.TestCase):
                     self.assertGreater(252 - updated["box"][3], 14)
                     if variant == 3:
                         self.assertEqual(summary["text"],
-                                         "4294967295 save copies | 4294967295 blocks")
+                                         "4294967295 files | 4294967295 blocks")
                     colors = text_colors(rest)
                     self.assertEqual(colors[(274, 214)], (246, 243, 255, 255))
                     self.assertEqual(colors[(274, 232)], (202, 192, 244, 235))

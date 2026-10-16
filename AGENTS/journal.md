@@ -1,3 +1,49 @@
+## 2026-10-16 — Game Details counts saves by file
+
+A console test asked why Game Details never shows a creation date and why
+games showed "in multiple blocks". A GameCube directory entry has one
+stamp (0x28, last modified); the date people remember is the game's own
+second comment line, which the IPL shows under the block count and Memory
+Cards' info bar already draws. And the SAVES scan grouped by the six-byte
+game ID alone: Animal Crossing's five files read "5 save copies | 58
+blocks", and one 11-block save in two places "22 blocks".
+
+`UISaves_StatsAdd` now takes the scan's file table (`uiSavesStatsFiles_t`,
+16 files, each its newest copy's entry): `UISaves_SameFile` (game, maker,
+and the name compared as the card does) decides a file, `stats->files`
+counts them, and blocks add each file's newest copy once; more files than
+the table holds make the scan partial. The box says "copies" only for one
+file in several places ("2 copies | 11 blocks"), "5 files | 58 blocks" for
+different files, "2 files, 5 copies | 58 blocks" for both, and puts the
+described copy's own line after the date. `statsArrange` keeps each file's
+copies together after its sort. `Saves_CopyLine` (saves.c) reads a copy's
+second comment line where the scan found it: a card's through `cardFind`
+and `readSaveAt` (the driver's .gci header first, then the save up to the
+comment's end), a .gci's head then 32 bytes, an image's through
+`SavesRaw_ReadGci`. `Saves_CollectGameStats` reads every listed copy's
+line after arranging them, while its cards (each slot's unmount moved out
+of `statsSlot` to after the lines) and the settings device are still
+mounted; the card driver's init is a no-op on a mounted card. In the
+choice, copies of several files show "<file> k of m | where" (the file's
+own copies counted), the question names the file, and "Slot A's own copy
+goes to the Save Folder" needs Slot A to hold that same file. The summary
+fits 246 px instead of 264 while « SAVES » is up.
+
+Tests: `test_ui_saves_metadata.c` (files, newest copy's blocks, the table
+filling), `test_saves_stats.py` (one file in three places is 2 blocks, a
+second file of the game, grouping, each listed copy's line read with its
+card and the settings device mounted), `test_saves_card_io.py`
+(`Saves_CopyLine` on the test card image, a .gci, a card through the
+driver, a copy gone or read from the wrong device), `test_gameflow_detail.c`
+and `test_launch_gx_stream.py` (the wordings, the line, a several-files
+label that clears « SAVES »), `test_save_choice.py` (the question by
+file), audit pins with mutants in `audit_saves_safety.py` (106) and
+`audit_game_detail_safety.py`; `detail_frame_budget.json` re-pinned for the
+new text (6 shorter, 16 more for the line). Stale pictures, left for the
+wording Spencer settles: `game-details-saves-after-copy.png` and
+`game-details-save-choice.png`. Open for him: the box still needs two
+copies, and how a choice across several files should step.
+
 ## 2026-10-16 — Game Details counts the games' card images
 
 Memory Cards could reach the Source's card images (the entry below), but

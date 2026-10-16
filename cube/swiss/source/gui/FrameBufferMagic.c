@@ -3307,9 +3307,11 @@ static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
 	presentation->lastPlayedScale = _GameflowPrepareDetailText(
 		data->detail.lastPlayedText, sizeof(data->detail.lastPlayedText),
 		310, 0.46f, 0.46f);
+	/* « SAVES » takes more of the line than SAVES does. */
 	presentation->savesSummaryScale = _GameflowPrepareDetailText(
 		data->detail.savesSummary, sizeof(data->detail.savesSummary),
-		264, 0.54f, 0.46f);
+		(data->detail.flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) ? 246 : 264,
+		0.54f, 0.46f);
 	presentation->savesUpdatedScale = _GameflowPrepareDetailText(
 		data->detail.savesUpdated, sizeof(data->detail.savesUpdated),
 		294, 0.46f, 0.46f);
