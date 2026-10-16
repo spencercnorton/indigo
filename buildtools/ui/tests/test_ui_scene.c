@@ -719,9 +719,9 @@ static void testHomeDecorativeBlend(void)
 
 /* The Library's cube pose follows its layout: Horizontal keeps the one the
  * carousel always had, Vertical tucks the cube behind the column's cover
- * (Detail's place), and Grid and Spotlight move it clear of their screens; a
- * layout picked while the Library shows moves the cube there, and Home is
- * never touched. */
+ * (Detail's place), and Grid, Spotlight and Jewel Case move it clear of their
+ * screens; a layout picked while the Library shows moves the cube there, and
+ * Home is never touched. */
 static void testLibraryLayoutPoses(void)
 {
 	float carouselX, verticalX;
@@ -746,6 +746,13 @@ static void testLibraryLayoutPoses(void)
 	CHECK(UIScene_Frame()->cubeX < verticalX - 1.5f);
 	near(UIScene_Frame()->libraryReveal, 1.0f, 0.0f);
 	UIScene_RequestLibraryLayout(UI_GAMEFLOW_LAYOUT_SPOTLIGHT);
+	settle(0.02f, UI_MOTION_FULL);
+	CHECK(UIScene_Frame()->cubeX < verticalX - 1.5f);
+	near(UIScene_Frame()->libraryReveal, 1.0f, 0.0f);
+	/* The jewel case stands in the middle, where the carousel's cube sits. */
+	UIScene_RequestLibraryLayout(UI_GAMEFLOW_LAYOUT_HORIZONTAL);
+	settle(0.02f, UI_MOTION_FULL);
+	UIScene_RequestLibraryLayout(UI_GAMEFLOW_LAYOUT_JEWEL_CASE);
 	settle(0.02f, UI_MOTION_FULL);
 	CHECK(UIScene_Frame()->cubeX < verticalX - 1.5f);
 	near(UIScene_Frame()->libraryReveal, 1.0f, 0.0f);

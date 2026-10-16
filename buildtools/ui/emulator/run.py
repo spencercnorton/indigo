@@ -133,6 +133,8 @@ FOLDER_LAYOUTS = {
     "Vertical": ((258, 190, 605, 224), "UP", "DOWN"),
     "Grid": ((180, 374, 460, 402), "LEFT", "RIGHT"),
     "Spotlight": ((378, 78, 607, 108), "LEFT", "RIGHT"),
+    # The jewel case's title stands where the carousel's does.
+    "Jewel Case": (TITLE_BOX, "LEFT", "RIGHT"),
 }
 # The page title Settings opens with on a new card ("Storage").
 SETTINGS_TITLE_BOX = (30, 46, 230, 80)
@@ -1771,7 +1773,7 @@ class Route:
             self.press("DOWN")
             self.pause(0.6)
             self.press("RIGHT")
-        else:  # Library Layout is the first row, cycling the four layouts.
+        else:  # Library Layout is the first row, cycling the five layouts.
             self.press("RIGHT")
         self.pause(1.0)
         self.shot(f"folders-{name.lower()}-setting", self.emulator.frame())

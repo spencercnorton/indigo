@@ -80,7 +80,7 @@ CI runs ten jobs, the first of them the required **Emulator** check:
 | game, PAL, component | PAL, component | 480p | disc |
 | smoke, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the card with `non-default.ini` |
 | game, NTSC, SD2SP2 | NTSC, composite | 480i | SD2SP2, a new card |
-| folders, NTSC, component, SD2SP2 | NTSC, component | 480p | SD2SP2, a new card, all four Library layouts |
+| folders, NTSC, component, SD2SP2 | NTSC, component | 480p | SD2SP2, a new card, all five Library layouts |
 | virtual cards, NTSC, GC Loader | NTSC, component | 480p | GC Loader, both memory-card slots empty, 4:3 |
 | virtual cards, NTSC, GC Loader, widescreen | NTSC, component | 480p | same route with `save-details-wide.ini`, 16:9 |
 | save, NTSC, SD2SP2, failing card | NTSC, composite | 480i | SD2SP2, writes failing after 13 |
