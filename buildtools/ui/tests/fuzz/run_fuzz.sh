@@ -2,7 +2,7 @@
 # Coverage-guided fuzzing of the files Indigo reads from a card: poster and
 # stills packs, game descriptions, its play history, save files, settings files,
 # the file table of every disc image the Library lists, the pictures of the
-# programs in /apps and games' cheats files. Each target is built with libFuzzer, AddressSanitizer and
+# programs in /apps, games' cheats files and games' manuals. Each target is built with libFuzzer, AddressSanitizer and
 # UBSan and runs for SECONDS, starting from seeds.py's real files. A crash, a sanitizer finding or a broken invariant
 # fails the run and leaves the input that caused it in OUT/crashes/<target>/.
 #
@@ -19,7 +19,7 @@ if [ "${1:-}" = --build-only ]; then
 	shift
 	set -- 0 "${1:-fuzz-out}"
 fi
-targets="history saves raw_saves posters about settings fst png cheats"
+targets="history saves raw_saves posters manual about settings fst png cheats"
 seconds=${1:-30}
 case $seconds in
 total:*) seconds=$(( ${seconds#total:} / $(echo "$targets" | wc -w) )) ;;
@@ -43,6 +43,7 @@ echo "== building the fuzzers =="
 	$cc $flags -std=c11 -DUI_ASSETS_HOST_BUILD -I"$gui" -o "$out/bin/posters" \
 		"$here/fuzz_posters.c" "$gui/ui_assets.c" -lz
 	$cc $flags -std=c11 -I"$gui" -o "$out/bin/png" "$here/fuzz_png.c" "$gui/ui_png.c" -lz -lm
+	$cc $flags -std=c11 -I"$gui" -o "$out/bin/manual" "$here/fuzz_manual.c" "$gui/ui_manual.c" -lz -lm
 	python3 "$here/settings_source.py" "$out/fuzz_settings.c"
 	$cc $flags -std=gnu11 -w -o "$out/bin/settings" "$out/fuzz_settings.c"
 	python3 "$here/fst_source.py" "$out/fuzz_fst.c"
