@@ -1,3 +1,18 @@
+## 2026-10-16 — v2.4.0
+
+Released from the console-tested build f160ec5: the Update 2.4 line, MemCard
+PRO card slots handled exactly as the real card ran them, Library Path,
+Memory Cards writing card images on both SD cards, and Game Details counting
+saves by file. Main's guide clarifications released after v2.3.0 were merged
+in first (beta already had the same wording), and the changelog's Unreleased
+section became v2.4.0. The code is the tested build's; only the journal and
+the changelog differ.
+
+Known gap: five guide pictures still show earlier screens
+(memory-cards-raw, memory-cards-raw-details, memory-cards-details-both-raw,
+game-details-saves-after-copy, game-details-save-choice). They are
+re-recorded in a follow-up.
+
 ## 2026-10-16 — Game Details counts saves by file
 
 A console test asked why Game Details never shows a creation date and why
@@ -476,7 +491,7 @@ presence line and the EXI interrupt are the only signals.
   a card that leaves the bus the instant it takes the ID is sent it again
   once back and shows its save about 6 s after the open (a75efd4, which
   counted that send as no emulator, read it as a plain card: "No save
-  copies found" for good and an empty trace). Evidence: ~/Kleos/_reports/indigo-102-memcard-pro-investigation-20261009.
+  copies found" for good and an empty trace).
 - Tests: test_ui_card_slots (thirteen scripted cards, 284 checks),
   test_card_slots.py (the real card_slots.c with stubbed MMCE/CARD/EXI calls,
   a fake clock and presence register: partial sends, failed and queued sends,

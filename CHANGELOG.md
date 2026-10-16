@@ -4,11 +4,7 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
-## Unreleased
-
-- Game details: the Saves box counts a game's saves as the GameCube does. Different files of the game are files and one file in more than one place is copies, each file's blocks counted once: Animal Crossing's town, letters and options read **5 files | 58 blocks**, and one 11-block save in two places **2 copies | 11 blocks** (it said 22). After the date it shows the save's own line, the one the GameCube's memory card screen shows under the block count; a save records no creation date. Choosing a copy names its file when the game has more than one, and the memory card's own copy goes to the Save Folder first only when the card holds that same file.
-- Game details: bind save replacement to the card's mount generation, so a write or read-back failure after a card swap never writes the original save to a replacement card.
-- Clarify image filename matching, cheat memory limits and Library folder/source instructions.
+## v2.4.0 — A new File Browser, cube sides and faces, Saves on Details
 
 ### New
 
@@ -40,6 +36,15 @@ tag on `beta`. The newest changes are at the top until their release is named.
   them as well; a save file there goes by the card's name, such as
   **SD Card - SD2SP2**, and the memory card's own copy still goes to the
   Save Folder on your settings card first.
+- Game details' **Saves** counts a game's saves as the GameCube does:
+  different files of a game are files, and one file in more than one place
+  is copies, each file's blocks counted once. Animal Crossing's town,
+  letters and options read **5 files | 58 blocks**, and one 11-block save in
+  two places **2 copies | 11 blocks**. After the date it shows the save's
+  own line, the one the GameCube's memory card screen shows under the block
+  count; a save records no creation date. Choosing a copy names its file
+  when the game has more than one, and the memory card's own copy goes to
+  the Save Folder first only when the card holds that same file.
 - Choose the menu on each side of the Home cube: Settings › Setup › Console
   › **Up Face**, **Left Face**, **Right Face** and **Down Face**, each
   Source, Settings, System, Apps or None. Classic turns that way to it; the
@@ -208,6 +213,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Game details: replacing a save is bound to the card it started on, so a
+  write or read-back that fails after a card swap never writes the original
+  save to the replacement card.
 - Starting a damaged disc image no longer crashes Indigo. One whose file
   table counts more entries than it holds, or names a file outside it, sent
   the launch reading far past the table; the Library already listed such
@@ -249,6 +257,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
   it in the Library or after the source changed, kept the disc banner
   until you left them. The cover now fades in once it is read, and the
   first details opened after Indigo starts have it straight away.
+
+### Documentation
+
+- Clarify app image filenames, reserved cheat space, folder display and
+  supported Library source layouts.
 
 ### For developers
 
