@@ -74,13 +74,23 @@ The browser is **used with permission from Arial-Bold**
 separate DOL (an aggregate), so its licence stays its own and does not touch
 Indigo's GPL.
 
+## How CI builds it
+
+The Build jobs in `ci.yml` and `release.yml` clone the hardened fork at a pinned
+commit, fetch its checksum-verified dependencies and build it, then copy the DOL
+and CA bundle into `browser/` for `sd_package.sh`:
+
+- fork: https://github.com/spencercnorton/cubebrowser (maintained by us, used
+  with permission; its own README/NOTICE credit Arial-Bold)
+- pinned commit: `0b044e2cd7d38382d08e76d5f2b7082a18c61734` — bump it in both
+  workflows' `CUBEBROWSER_REF` to take browser changes.
+
+It builds with the same libogc2 toolchain the runner already carries, and
+`get-mbedtls.sh` fetches mbedTLS and stb from GitHub, which the CI egress proxy
+allows.
+
 ## Open decisions
 
-- **How `browser/cubebrowser.dol` gets built in CI.** Indigo CI reaches only
-  GitHub, so either the hardened fork is published and a CI step builds it from
-  a pinned commit, or the source is vendored here, or a reproducibly-built DOL
-  is committed. (Permission to redistribute is settled; this is now only a
-  build-plumbing choice.)
 - **Theme to the browser via argv** — the browser ignores argv today, so it
   opens in its own saved theme (Indigo by default). Add argv parsing to sync it.
 - **Return-path console test.** Returning from the browser to Indigo via the
