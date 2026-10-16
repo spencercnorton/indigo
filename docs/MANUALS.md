@@ -18,8 +18,9 @@ You need Python 3 with Pillow, NumPy and pypdfium2:
 pip install pillow numpy pypdfium2
 ```
 
-Then, with the game's ID (Game Details shows it in its facts line, such as
-`GALE01`):
+Then, with the game's six-character ID, such as `GALE01` (the Library
+shows it under the game's title and publisher; the guide says
+[where it comes from](guide/posters.md#where-the-game-id-comes-from)):
 
 ```bash
 python3 buildtools/ui/manual_pack.py "Super Smash Bros. Melee.pdf" --id GALE01
