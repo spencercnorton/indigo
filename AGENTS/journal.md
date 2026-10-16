@@ -1,3 +1,48 @@
+## 2026-10-16 — Jewel Case, a fifth Library layout
+
+Library Layout gains **Jewel Case** (`UI_GAMEFLOW_LAYOUT_JEWEL_CASE`, saved
+as `Library Layout=Jewel Case`): one clear CD jewel case at a time, the
+selected game's cover printed on its spinning disc. It is a port of the
+jewel case games view of portlandhodl's Swiss fork (`gui/jewelcase.c` in
+github.com/portlandhodl/swiss-gc, GPL-2.0), itself a GX port of Ann
+Nguyen's CD Case (bubbbly.com/cd-case, whose author asks for a mention or a
+link back). NOTICE, README, the Library guide and System › Credits name
+them; Credits' Spotlight label became LIBRARY DESIGNS, over both credits,
+and the page's lines moved up a few pixels to make room.
+
+`gui/ui_jewel_case.c` keeps the original's case (rods swept along paths and
+clear sheets), the studio baked into a matcap and two cube-map tables, the
+disc with its rainbow, the lid's sheen, the glints, the resting sway and
+the keys a case leaves and arrives by. Left out: its dock of disc
+thumbnails, the PNG disc art (`swiss/discs/<GAMEID>.png`), the white page
+and shadows, the opening lid, the launch and the slideshow. The Library
+drives it: `_GameflowDrawJewelCases` hands it the records within a place of
+the middle (`relativeSlot + carouselTravel`), each with its poster, the
+middle square of the 192x256 cover (s 0..0.75, t 0.125..0.875) laid over
+the disc, and the frame's direction picks which keys a case follows. The
+carousel spring runs at 8 instead of 15 for this layout so the swap can be
+seen. No cards are drawn; the selected game's cover leaves the case for
+Detail and the launch, as Spotlight's does. The C-stick turns the case
+(`padInstrument`), and the cube waits off screen as for Grid and Spotlight.
+With no memory for its case (`UIJewelCase_Ready`), the layout draws as the
+carousel. `_DrawGameflow` no longer opens its card batches with no card.
+
+Cost: the original made about 2,000 sqrtf a frame at rest; per-frame maths
+now goes through `invLength`, an estimate with two Newton steps. The
+studio and meshes (about 670 KB, kept) are built once on the menu thread
+when a jewel case Library is first made, and the rods' display lists are
+recorded on the video thread on the first frame. frame_budget.c runs the
+real renderer: 0 sqrtf, 203 calls of trig and the like, 23,346 vertices at
+rest with a printed disc; 1,116 trig with a bare disc (its rainbow);
+45,668 vertices mid-swap. Dolphin shows the swap, the C-stick turn and
+spring-back, and Detail; frame time on the console is unmeasured.
+
+Tests: test_gameflow_gx_stream.py logs what the renderer is given (one case
+at rest, two while moving, which way, the print and its square, the bare
+disc, Detail's fade, the carousel fallback) with three mutants;
+test_ui_scene.c parks the cube; frame_budget.json has the jewel case
+scenes; the folders emulator route walks it as a fifth layout.
+
 ## 2026-10-16 — Memory Cards reaches the games' card
 
 With settings on a GC Loader and games on an SD2SP2, a game's card images

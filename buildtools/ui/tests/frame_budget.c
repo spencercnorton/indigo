@@ -1,12 +1,13 @@
 /*
  * Frame budget: the cube renderer (gui/indigo_background.c), the hint
  * icons, Memory Cards' save cubes (gui/FrameBufferMagic.c, with
- * gui/ui_save_cubes.c) and the File Browser (with gui/ui_files.c), its words
+ * gui/ui_save_cubes.c), the Library's jewel case (gui/ui_jewel_case.c) and
+ * the File Browser (with gui/ui_files.c), its words
  * through a font stand-in below, run against counting GX stubs, one steady
  * frame per scene, posed by the real scene module. It counts what a frame
  * costs the console: software maths on the CPU (Gekko has no square-root
- * instruction, so sqrtf is newlib's integer loop; sinf, cosf, fminf and
- * friends are calls too) and the GPU's work (vertices, primitives, the
+ * instruction, so sqrtf is newlib's integer loop; sinf, cosf, expf, powf,
+ * fminf and friends are calls too) and the GPU's work (vertices, primitives, the
  * pixels each EFB copy reads). Each scene prints one JSON line;
  * test_frame_budget.py compares them with frame_budget.json.
  *
@@ -39,6 +40,9 @@ static float countFmodf(float x, float y) { cost.trigCalls++; return fmodf(x, y)
 static float countCeilf(float x) { cost.trigCalls++; return ceilf(x); }
 static float countFminf(float x, float y) { cost.minMaxCalls++; return fminf(x, y); }
 static float countFmaxf(float x, float y) { cost.minMaxCalls++; return fmaxf(x, y); }
+static float countExpf(float x) { cost.trigCalls++; return expf(x); }
+static float countPowf(float x, float y) { cost.trigCalls++; return powf(x, y); }
+static float countAtan2f(float y, float x) { cost.trigCalls++; return atan2f(y, x); }
 #define sqrtf countSqrtf
 #define sinf countSinf
 #define cosf countCosf
@@ -49,6 +53,9 @@ static float countFmaxf(float x, float y) { cost.minMaxCalls++; return fmaxf(x, 
 #define ceilf countCeilf
 #define fminf countFminf
 #define fmaxf countFmaxf
+#define expf countExpf
+#define powf countPowf
+#define atan2f countAtan2f
 #include "indigo_background.c"
 #include "hint_source.c"	/* written by test_frame_budget.py */
 #include "save_cubes_source.c"	/* and this */
@@ -99,6 +106,7 @@ static void drawString(int x, int y, const char *text, float scale, int align, G
 	fontQuads(x, y, text, scale, align, color, 1);
 }
 #include "files_source.c"	/* and this */
+#include "ui_jewel_case.c"
 #undef sqrtf
 #undef sinf
 #undef cosf
@@ -109,6 +117,9 @@ static void drawString(int x, int y, const char *text, float scale, int align, G
 #undef ceilf
 #undef fminf
 #undef fmaxf
+#undef expf
+#undef powf
+#undef atan2f
 
 /* ---- GX: count, and project each vertex the way the console would ---- */
 static Mtx position;
@@ -209,6 +220,52 @@ void GX_Color4u8(u8 r, u8 g, u8 b, u8 a)
 
 void GX_TexCoord2f32(float s, float t) { (void)s; (void)t; }
 
+/* ---- display lists: what one holds counts each time it is called ---- */
+static void *recording;
+static long recordedVertices, recordedBegins;
+static struct { void *list; long vertices, begins; } lists[4];
+
+void GX_SetArray(u32 attr, void *ptr, u8 stride) { (void)attr; (void)ptr; (void)stride; stubStateCalls++; }
+void GX_Position1x16(u16 index) { (void)index; emitted++; cost.vertices++; }
+void GX_Normal1x16(u16 index) { (void)index; }
+void GX_BeginDispList(void *list, u32 size)
+{
+	(void)size;
+	recording = list;
+	recordedVertices = cost.vertices;
+	recordedBegins = cost.begins;
+}
+u32 GX_EndDispList(void)
+{
+	int i;
+
+	for(i = 0; i < 4 && lists[i].list != NULL && lists[i].list != recording; i++) {}
+	if(i == 4) {
+		fprintf(stderr, "more than four display lists\n");
+		exit(2);
+	}
+	lists[i].list = recording;
+	lists[i].vertices = cost.vertices - recordedVertices;
+	lists[i].begins = cost.begins - recordedBegins;
+	/* Recording one draws nothing. */
+	cost.vertices = recordedVertices;
+	cost.begins = recordedBegins;
+	recording = NULL;
+	return 32u;
+}
+void GX_CallDispList(void *list, u32 size)
+{
+	(void)size;
+	for(int i = 0; i < 4; i++) {
+		if(lists[i].list == list) {
+			cost.vertices += lists[i].vertices;
+			cost.begins += lists[i].begins;
+		}
+	}
+}
+void GX_SetTevColor(u8 reg, GXColor color) { (void)reg; (void)color; }
+void DCInvalidateRange(void *p, u32 n) { (void)p; (void)n; }
+
 /* ---- gu ---- */
 void guMtxIdentity(Mtx m)
 {
@@ -238,6 +295,22 @@ void guMtxRotAxisRad(Mtx m, const guVector *axis, float radians)
 	m[0][0] = t * x * x + c; m[0][1] = t * x * y - s * z; m[0][2] = t * x * z + s * y;
 	m[1][0] = t * x * y + s * z; m[1][1] = t * y * y + c; m[1][2] = t * y * z - s * x;
 	m[2][0] = t * x * z - s * y; m[2][1] = t * y * z + s * x; m[2][2] = t * z * z + c;
+}
+/* libogc's works out a sine and a cosine: counted as the maths above is. */
+void guMtxRotRad(Mtx m, char axis, float radians)
+{
+	float c = cosf(radians), s = sinf(radians);
+	int a = axis == 'x' ? 0 : axis == 'y' ? 1 : 2, b = (a + 1) % 3, d = (a + 2) % 3;
+
+	cost.trigCalls += 2;
+	guMtxIdentity(m);
+	m[b][b] = c; m[b][d] = -s;
+	m[d][b] = s; m[d][d] = c;
+}
+void guMtxScale(Mtx m, float x, float y, float z)
+{
+	memset(m, 0, sizeof(Mtx));
+	m[0][0] = x; m[1][1] = y; m[2][2] = z;
 }
 void guMtxScaleApply(Mtx src, Mtx dst, float x, float y, float z)
 {
@@ -285,9 +358,16 @@ static void settle(int frames)
 	}
 }
 
+/* The Library's jewel case, drawn over the backdrop when it is on stage. */
+static const uiJewelCaseShot_t *jewelShots;
+static int jewelCount, jewelDirection;
+
 static void drawFrame(bool bootOverlay)
 {
 	IndigoBackground_Draw(seconds, true, true, UIScene_Frame(), &clock, &pad, icons);
+	if(jewelCount > 0) {
+		UIJewelCase_Draw(jewelShots, jewelCount, jewelDirection, DT, 0.0f, 0.0f, UI_MOTION_FULL);
+	}
 	if(bootOverlay) {
 		IndigoBackground_DrawBootOverlay(seconds, true, UIScene_Frame(), &clock, icons);
 	}
@@ -349,6 +429,34 @@ static void library(const char *name, uiGameflowLayout_t layout, bool wide)
 	UIStage_SetWide(wide);
 	measure(name, false);
 	UIStage_SetWide(false);
+}
+
+/* The Jewel Case layout: the selected game's case at rest, its disc
+ * printed with its cover, or bare with the rainbow; and half way through a
+ * move, the case leaving and the one arriving. */
+static void jewelCase(const char *name, bool printed, bool moving, bool wide)
+{
+	static GXTexObj cover;
+	const uiJewelCaseShot_t shots[2] = {
+		{moving ? 0.5f : 0.0f, 20u, printed ? &cover : NULL, {0.0f, 0.125f, 0.75f, 0.875f}, 1.0f, 1.0f},
+		{-0.5f, 19u, &cover, {0.0f, 0.125f, 0.75f, 0.875f}, 1.0f, 1.0f}
+	};
+
+	startScene();
+	UIScene_Request(UI_SCENE_LIBRARY);
+	UIScene_RequestLibraryLayout(UI_GAMEFLOW_LAYOUT_JEWEL_CASE);
+	settle(600);
+	if(!UIJewelCase_Prepare()) {
+		fprintf(stderr, "no memory for the jewel case\n");
+		exit(2);
+	}
+	jewelShots = shots;
+	jewelCount = moving ? 2 : 1;
+	jewelDirection = moving ? 1 : 0;
+	UIStage_SetWide(wide);
+	measure(name, false);
+	UIStage_SetWide(false);
+	jewelCount = 0;
 }
 
 static void scene(const char *name, uiSceneId_t id)
@@ -692,5 +800,11 @@ int main(void)
 	files("files-actions", false, UI_FILES_LEFT, -1, FILES_ACTIONS);
 	files("files-copy", true, UI_FILES_LEFT, -1, FILES_COPY);
 	files("files-message", false, UI_FILES_RIGHT, -1, FILES_MESSAGE);
+	/* Last, so the scenes before keep their clock. */
+	library("library-jewel-case", UI_GAMEFLOW_LAYOUT_JEWEL_CASE, false);
+	jewelCase("jewel-case", true, false, false);
+	jewelCase("jewel-case-wide", true, false, true);
+	jewelCase("jewel-case-bare", false, false, false);
+	jewelCase("jewel-case-moving", true, true, false);
 	return 0;
 }

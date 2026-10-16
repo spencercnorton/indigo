@@ -22,7 +22,7 @@ actions.
 
 **Library Layout**, the first row of [Settings](settings.md) › Setup ›
 Library, sets how the Library lays out your games. Left and Right on it step
-through the four, A lists them, and the line above the buttons says how each
+through the five, A lists them, and the line above the buttons says how each
 one moves.
 
 <p align="center">
@@ -48,6 +48,18 @@ one moves.
   disc banner. Spotlight's design comes from mvizensk's
   [Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight), with their
   permission.
+- **Jewel Case**: one game at a time as a clear CD jewel case, its disc
+  spinning inside with the middle of the game's cover printed on it, and its
+  title and publisher underneath. A game without a cover has a bare silver
+  disc. Moving to the next game, the case falls back as the next one swings
+  in from the side. The C-stick turns the case in your hands; let go and it
+  springs back. The jewel case comes from the jewel case games view of
+  portlandhodl's [Swiss](https://github.com/portlandhodl/swiss-gc), itself
+  after Ann Nguyen's [CD Case](https://www.bubbbly.com/cd-case).
+
+<p align="center">
+  <img alt="The Jewel Case layout: a clear CD jewel case in the middle of the screen, tilted a little, its disc printed with the demonstration game Dune Rally's green cover and turning slowly, with GAME LIBRARY above and the game's title and publisher below. Right swaps it: the case falls back to the left and fades as Ember and Ivy's case, its disc printed blue, swings out to the right and lands in front; Right again brings in Glacier Point's magenta disc the same way." src="images/library-jewel-case.png" width="640">
+</p>
 
 <p align="center">
   <img alt="The Spotlight layout, moving right through four games and back one: each game's gameplay still fills a framed panel at the left, with its title, publisher, a few sentences about it and its game ID and size beside it; below, a row of disc banners, the selected one in the middle a little larger and framed brighter. James Bond 007 in Agent Under Fire, 007: Everything or Nothing, From Russia With Love, 007: NightFire and 1080° Avalanche in turn, each still fading into the next; the controls are shown as GameCube buttons along the bottom." src="images/library-spotlight.png" width="640">
@@ -65,14 +77,14 @@ Every layout wraps round: after the last game comes the first.
 
 ## Moving around
 
-| To move | Horizontal, Spotlight | Vertical | Grid |
+| To move | Horizontal, Spotlight, Jewel Case | Vertical | Grid |
 | --- | --- | --- | --- |
 | To the next or previous game | Left, Right | Up, Down | Left, Right |
 | To the game above or below | | | Up, Down |
 | A page at a time | Up, Down, L, R | Left, Right, L, R | L, R |
 
 The control stick moves along the layout too, and in the grid in every
-direction. A page is nine games, or three rows of the grid; it stops at the
+direction. In Jewel Case the C-stick turns the case. A page is nine games, or three rows of the grid; it stops at the
 first or last game (or row) before it wraps round.
 
 In the grid, Left and Right run on from the end of one row to the start of

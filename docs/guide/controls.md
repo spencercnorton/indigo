@@ -64,13 +64,13 @@ See [Source](source.md).
 
 How the D-pad moves depends on **Library Layout** (Setup › Library):
 
-| To move | Horizontal, Spotlight | Vertical | Grid |
+| To move | Horizontal, Spotlight, Jewel Case | Vertical | Grid |
 | --- | --- | --- | --- |
 | To the next or previous game | Left, Right | Up, Down | Left, Right |
 | To the game above or below | | | Up, Down |
 | A page at a time | Up, Down, L, R | Left, Right, L, R | L, R |
 
-See [Library](library.md).
+In Jewel Case the C-stick turns the case in your hands. See [Library](library.md).
 
 ### Apps
 

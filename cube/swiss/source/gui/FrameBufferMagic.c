@@ -49,6 +49,7 @@
 #include "ui_cheats.h"
 #include "ui_about.h"
 #include "ui_launch.h"
+#include "ui_jewel_case.h"
 #include "card_art.h"
 
 #define GUI_MSGBOX_ALPHA 225
@@ -2333,6 +2334,18 @@ static const gameflowQuad_t gameflowSpotlightCover =
 #define GAMEFLOW_SPOTLIGHT_TEXT_SCALE 0.46f
 #define GAMEFLOW_SPOTLIGHT_NO_DESCRIPTION "No description for this game."
 
+/* The Jewel Case layout (ui_jewel_case.c), after portlandhodl's jewel case
+ * games view for Swiss; see NOTICE. No cards: one clear case at a time, its
+ * disc printed with the middle of the game's cover, as wide as the cover's
+ * 192x256 (s0, t0, s1, t1 of the pack's canvas). A cover leaves the case's
+ * middle for Detail. The carousel swaps cases a little slower than it turns
+ * the other rings, so a case can be seen falling back and the next one
+ * swinging in. */
+static const float gameflowJewelCasePrint[4] = {0.0f, 0.125f, 0.75f, 0.875f};
+static const gameflowQuad_t gameflowJewelCaseCover =
+	{{{245.0f, 106.0f}, {395.0f, 106.0f}, {395.0f, 306.0f}, {245.0f, 306.0f}}};
+#define GAMEFLOW_JEWEL_CASE_RESPONSE 8.0f
+
 /* The Grid layout: five columns, three rows on screen, the focused row in the
  * middle. The highlighted card grows by a tenth. */
 #define GAMEFLOW_GRID_CENTER_X 320.0f
@@ -3186,7 +3199,8 @@ static void _GameflowPrepareCardPresentation(drawGameflowEvent_t *data,
 	/* Room for the title, publisher and facts in each layout, in the
 	 * layouts' order: the line under the carousel's cover, the column beside
 	 * the vertical cover (x 262 to 606), the grid's strip above the command
-	 * line, Spotlight's column beside its picture (x 380 to 604). */
+	 * line, Spotlight's column beside its picture (x 380 to 604), and the
+	 * carousel's line again under the jewel case. */
 	static const struct {
 		int width;
 		float maximum;
@@ -3197,7 +3211,8 @@ static void _GameflowPrepareCardPresentation(drawGameflowEvent_t *data,
 		{{560, 0.66f, 0.50f}, {480, 0.46f, 0.42f}, {500, 0.44f, 0.42f}},
 		{{GAMEFLOW_SPOTLIGHT_COLUMN_W, 0.62f, 0.46f},
 			{GAMEFLOW_SPOTLIGHT_COLUMN_W, 0.46f, 0.40f},
-			{GAMEFLOW_SPOTLIGHT_COLUMN_W, 0.42f, 0.40f}}
+			{GAMEFLOW_SPOTLIGHT_COLUMN_W, 0.42f, 0.40f}},
+		{{520, 0.78f, 0.50f}, {420, 0.50f, 0.42f}, {500, 0.44f, 0.42f}}
 	};
 	/* A layout without its row would draw its text at scale 0. */
 	_Static_assert(sizeof(fit) / sizeof(fit[0]) == UI_GAMEFLOW_LAYOUT_COUNT,
@@ -3872,6 +3887,46 @@ static void _GameflowDrawLaunch(const drawGameflowEvent_t *data,
 	}
 }
 
+/* The Jewel Case layout's cases: the selected game's at rest, and while the
+ * carousel moves, the one leaving and the one arriving, each disc printed
+ * with its game's cover. They give way to the cover as Detail opens, and the
+ * C-stick turns them. */
+static void _GameflowDrawJewelCases(const drawGameflowEvent_t *data,
+	const uiGameflowFrame_t *frame, float reveal)
+{
+	uiJewelCaseShot_t shots[UI_GAMEFLOW_LIBRARY_WINDOW];
+	float alpha = reveal * (1.0f - frame->detailProgress) *
+		(1.0f - frame->launchProgress);
+	int count = 0;
+	u32 i;
+
+	if(alpha <= 0.001f) {
+		return;
+	}
+	for(i = 0u; i < data->snapshot.recordCount &&
+		count < (int)(sizeof(shots) / sizeof(shots[0])); ++i) {
+		const uiGameflowCardSnapshot_t *record = &data->snapshot.records[i];
+		uiJewelCaseShot_t *shot = &shots[count];
+		float slot = (float)record->relativeSlot + frame->carouselTravel;
+
+		if(!(record->flags & UI_GAMEFLOW_CARD_VALID) || !(fabsf(slot) < 1.0f)) {
+			continue;
+		}
+		shot->slot = slot;
+		shot->index = record->libraryIndex;
+		shot->printAlpha = 1.0f;
+		shot->print = _GameflowPosterTexture(record, &shot->printAlpha);
+		memcpy(shot->rect, gameflowJewelCasePrint, sizeof(shot->rect));
+		shot->alpha = alpha *
+			((record->flags & UI_GAMEFLOW_CARD_HIDDEN) ? 0.55f : 1.0f);
+		count++;
+	}
+	UIJewelCase_Draw(shots, count, (int)frame->direction, UIAnim_Delta(),
+		(float)padInstrument.substickX / 90.0f,
+		(float)padInstrument.substickY / 90.0f, _CurrentMotionMode());
+	drawInit();
+}
+
 static void _DrawGameflow(uiDrawObj_t *evt)
 {
 	drawGameflowEvent_t *data = (drawGameflowEvent_t*)evt->data;
@@ -3920,6 +3975,10 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		detail = &data->detail;
 	}
 	layout = (uiGameflowLayout_t)data->snapshot.layout;
+	/* Without the memory for its case, the jewel case is the carousel. */
+	if(layout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE && !UIJewelCase_Ready()) {
+		layout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
+	}
 	if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
 		rows = (frame->itemCount + data->snapshot.columns - 1u) /
 			data->snapshot.columns;
@@ -3992,6 +4051,14 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 				card->quad = gameflowSpotlightCover;
 				card->tile = false;
 				presence = frame->detailProgress > frame->launchProgress ?
+					frame->detailProgress : frame->launchProgress;
+			}
+			/* The jewel case shows no cards: its selected game leaves the
+			 * case for Detail or the launch as its cover. */
+			if(layout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE) {
+				card->quad = gameflowJewelCaseCover;
+				presence = !focused ? 0.0f :
+					frame->detailProgress > frame->launchProgress ?
 					frame->detailProgress : frame->launchProgress;
 			}
 			if(presence <= 0.001f) {
@@ -4076,45 +4143,52 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			heroAlpha * (1.0f - titleTravel));
 	}
 
+	if(layout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE) {
+		_GameflowDrawJewelCases(data, frame, reveal);
+	}
+
 	_GameflowDrawLaunch(data, detail, focusRecord, focusRecordIndex,
 		frame->launchProgress, reveal);
 	drawInit();
 	_SetupRasterColor();
-	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 4u));
-	for(i = 0u; i < count; ++i) {
-		u8 topAlpha = _GameflowAlpha((104.0f + cards[i].focus * 64.0f) *
-			cards[i].presence * reveal);
-		u8 bottomAlpha = _GameflowAlpha(210.0f * cards[i].presence * reveal);
-		GXColor top = _GameflowAccent(cards[i].record, topAlpha);
-		GXColor bottom = {10, 8, 30, bottomAlpha};
-		_GameflowPutQuad(&cards[i].quad, top, bottom);
-	}
-	GX_End();
+	/* The cards' shells: none in the jewel case, at rest. */
+	if(count > 0u) {
+		GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 4u));
+		for(i = 0u; i < count; ++i) {
+			u8 topAlpha = _GameflowAlpha((104.0f + cards[i].focus * 64.0f) *
+				cards[i].presence * reveal);
+			u8 bottomAlpha = _GameflowAlpha(210.0f * cards[i].presence * reveal);
+			GXColor top = _GameflowAccent(cards[i].record, topAlpha);
+			GXColor bottom = {10, 8, 30, bottomAlpha};
+			_GameflowPutQuad(&cards[i].quad, top, bottom);
+		}
+		GX_End();
 
-	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 4u));
-	for(i = 0u; i < count; ++i) {
-		gameflowQuad_t inner = cards[i].tile ?
-			_GameflowInsetPixels(&cards[i].quad, 4.0f) :
-			_GameflowInsetQuad(&cards[i].quad, 0.033333f, 0.033333f);
-		GXColor top = {49, 43, 92,
-			_GameflowAlpha(130.0f * cards[i].presence * reveal)};
-		GXColor bottom = {12, 10, 34,
-			_GameflowAlpha(190.0f * cards[i].presence * reveal)};
-		_GameflowPutQuad(&inner, top, bottom);
-	}
-	GX_End();
+		GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 4u));
+		for(i = 0u; i < count; ++i) {
+			gameflowQuad_t inner = cards[i].tile ?
+				_GameflowInsetPixels(&cards[i].quad, 4.0f) :
+				_GameflowInsetQuad(&cards[i].quad, 0.033333f, 0.033333f);
+			GXColor top = {49, 43, 92,
+				_GameflowAlpha(130.0f * cards[i].presence * reveal)};
+			GXColor bottom = {12, 10, 34,
+				_GameflowAlpha(190.0f * cards[i].presence * reveal)};
+			_GameflowPutQuad(&inner, top, bottom);
+		}
+		GX_End();
 
-	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 16u));
-	for(i = 0u; i < count; ++i) {
-		gameflowQuad_t inner = cards[i].tile ?
-			_GameflowInsetPixels(&cards[i].quad, 2.0f) :
-			_GameflowInsetQuad(&cards[i].quad, 0.018f, 0.018f);
-		GXColor border = {220, 214, 255,
-			_GameflowAlpha((112.0f + cards[i].focus * 126.0f) *
-			cards[i].presence * reveal)};
-		_GameflowPutBorder(&cards[i].quad, &inner, border);
+		GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 16u));
+		for(i = 0u; i < count; ++i) {
+			gameflowQuad_t inner = cards[i].tile ?
+				_GameflowInsetPixels(&cards[i].quad, 2.0f) :
+				_GameflowInsetQuad(&cards[i].quad, 0.018f, 0.018f);
+			GXColor border = {220, 214, 255,
+				_GameflowAlpha((112.0f + cards[i].focus * 126.0f) *
+				cards[i].presence * reveal)};
+			_GameflowPutBorder(&cards[i].quad, &inner, border);
+		}
+		GX_End();
 	}
-	GX_End();
 
 	/* Actual retail covers own the selected and near-card inset. While an
 	 * exact/universal record is loading (or unavailable), retain the native
@@ -5293,6 +5367,12 @@ uiDrawObj_t* DrawGameflow(const uiGameflowRenderSnapshot_t *snapshot)
 	memset(eventData, 0, sizeof(*eventData));
 	UIGameflow_Init(&eventData->state);
 	UIGameflow_SetColumns(&eventData->state, snapshot->columns);
+	if(snapshot->layout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE) {
+		/* The case's light and meshes, the first time it is shown. */
+		UIJewelCase_Prepare();
+		eventData->state.carouselSpring.response =
+			GAMEFLOW_JEWEL_CASE_RESPONSE;
+	}
 	if(!UIGameflow_ApplySnapshot(&eventData->state, &snapshot->selection,
 		_CurrentMotionMode())) {
 		free(eventData);
