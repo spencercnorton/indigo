@@ -473,7 +473,7 @@ static void testBackToFiles(void)
 static void testReadOnlySaveCopies(void)
 {
 	uiSavesGameStats_t stats = {
-		.saves = 1u, .blocks = 2u, .latestUpdated = 762525240u,
+		.saves = 1u, .files = 1u, .blocks = 2u, .latestUpdated = 762525240u,
 		.sourceSaves = {0u, 0u, 1u}, .checkedSources = 4u,
 		.updatedKnown = true
 	};
@@ -489,23 +489,41 @@ static void testReadOnlySaveCopies(void)
 	CHECK(snapshot.savesSummary[0] == '\0');
 	CHECK(snapshot.savesUpdated[0] == '\0');
 	CHECK(snapshot.saveStats.saves == 0u);
-	/* Two copies do. */
+	/* Two copies of one file do: copies, the file's blocks once. */
 	stats.saves = 2u;
-	stats.blocks = 4u;
 	stats.sourceSaves[2] = 2u;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
 	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u);
-	CHECK(strcmp(snapshot.savesSummary, "2 save copies | 4 blocks") == 0);
+	CHECK(strcmp(snapshot.savesSummary, "2 copies | 2 blocks") == 0);
 	CHECK(strcmp(snapshot.savesUpdated, "Updated 2024-02-29 12:34") == 0);
 	CHECK(snapshot.saveStats.sourceSaves[2] == 2u);
-	/* Retained statistics and labels survive mutation of the menu source. */
+	/* Retained statistics and labels survive mutation of the menu source.
+	 * Different files of the game are files, not copies. */
 	stats.saves = 3u;
+	stats.files = 3u;
 	stats.blocks = 6u;
 	stats.sourceSaves[2] = 3u;
 	CHECK(snapshot.saveStats.saves == 2u);
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
-	CHECK(strcmp(snapshot.savesSummary, "3 save copies | 6 blocks") == 0);
+	CHECK(strcmp(snapshot.savesSummary, "3 files | 6 blocks") == 0);
 	CHECK(strcmp(snapshot.savesUpdated, "Updated 2024-02-29 12:34") == 0);
+	/* Files and copies both, when some file is in more than one place. */
+	stats.saves = 5u;
+	stats.files = 2u;
+	stats.blocks = 58u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "2 files, 5 copies | 58 blocks") == 0);
+	/* A count of files the caller left out reads as files. */
+	stats.files = 0u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "5 files | 58 blocks") == 0);
+	stats.saves = 3u;
+	stats.files = 3u;
+	stats.blocks = 6u;
+	/* The newest copy's own line follows the date. */
+	source.saveLine = "Last saved on 1/6";
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesUpdated, "Updated 2024-02-29 12:34 | Last saved on 1/6") == 0);
 	CHECK(UIGameflowDetail_MoveFocus(&snapshot,
 		UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS, UI_GAMEFLOW_DETAIL_INPUT_UP) ==
 		UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS);
@@ -515,8 +533,13 @@ static void testReadOnlySaveCopies(void)
 
 	stats.partial = true;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
-	CHECK(strcmp(snapshot.savesUpdated, "Partial scan | Updated 2024-02-29 12:34") == 0);
+	CHECK(strcmp(snapshot.savesUpdated,
+		"Partial scan | Updated 2024-02-29 12:34 | Last saved on 1/6") == 0);
 	stats.updatedKnown = false;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesUpdated,
+		"Partial scan | Update date unavailable | Last saved on 1/6") == 0);
+	source.saveLine = "";
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
 	CHECK(strcmp(snapshot.savesUpdated, "Partial scan | Update date unavailable") == 0);
 	stats.partial = false;
@@ -542,12 +565,13 @@ static void testReadOnlySaveCopies(void)
 
 	source.saveStats = &stats;
 	stats.saves = UINT32_MAX;
+	stats.files = UINT32_MAX;
 	stats.blocks = UINT32_MAX;
 	stats.updatedKnown = true;
 	stats.latestUpdated = UINT32_MAX;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
 	CHECK(strcmp(snapshot.savesSummary,
-		"4294967295 save copies | 4294967295 blocks") == 0);
+		"4294967295 files | 4294967295 blocks") == 0);
 	CHECK(strcmp(snapshot.savesUpdated, "Update date unavailable") == 0);
 	stats.latestUpdated = 0u;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
@@ -559,7 +583,7 @@ static void testReadOnlySaveCopies(void)
 static void testSavesCardStates(void)
 {
 	uiSavesGameStats_t stats = {
-		.saves = 0u, .checkedSources = 4u
+		.saves = 0u, .files = 1u, .checkedSources = 4u
 	};
 	uiGameflowDetailSource_t source = {
 		.gameId = "GACZ01", .title = "Astral Circuit", .saveStats = &stats,
@@ -582,7 +606,7 @@ static void testSavesCardStates(void)
 	stats.blocks = 4u;
 	source.saveCopies = 2u;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
-	CHECK(strcmp(snapshot.savesSummary, "2 save copies | 4 blocks") == 0);
+	CHECK(strcmp(snapshot.savesSummary, "2 copies | 4 blocks") == 0);
 	CHECK(strcmp(snapshot.savesUpdated, "Memory card loading") == 0);
 	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) == 0u);
 	/* Given up on: said with fewer than two; with more, a partial scan. */
@@ -599,7 +623,7 @@ static void testSavesCardStates(void)
 	stats.saves = 2u;
 	stats.blocks = 4u;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
-	CHECK(strcmp(snapshot.savesSummary, "2 save copies | 4 blocks") == 0);
+	CHECK(strcmp(snapshot.savesSummary, "2 copies | 4 blocks") == 0);
 	CHECK(strcmp(snapshot.savesUpdated, "Partial scan | Update date unavailable") == 0);
 	/* Neither, with fewer than two (a partial Save Folder scan too): none. */
 	source.savesCardFailed = false;
@@ -616,7 +640,7 @@ static void testSavesCardStates(void)
 static void testSaveCopyChoice(void)
 {
 	uiSavesGameStats_t stats = {
-		.saves = 3u, .blocks = 6u, .latestUpdated = 762525240u,
+		.saves = 3u, .files = 1u, .blocks = 2u, .latestUpdated = 762525240u,
 		.sourceSaves = {1u, 0u, 2u}, .checkedSources = 5u,
 		.updatedKnown = true
 	};
@@ -632,7 +656,7 @@ static void testSaveCopyChoice(void)
 	/* Nothing chosen: the totals, and Left and Right can choose. */
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
 	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) != 0u);
-	CHECK(strcmp(snapshot.savesSummary, "3 save copies | 6 blocks") == 0);
+	CHECK(strcmp(snapshot.savesSummary, "3 copies | 2 blocks") == 0);
 	/* A copy chosen elsewhere goes on at launch; the card's own is in use. */
 	source.saveChoice = 2u;
 	source.saveChoiceEntry = entry;
@@ -640,6 +664,28 @@ static void testSaveCopyChoice(void)
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
 	CHECK(strcmp(snapshot.savesSummary, "Copy 2 of 3 | Save Folder") == 0);
 	CHECK(strcmp(snapshot.savesUpdated, "Loads at launch | 2024-02-29 12:34") == 0);
+	/* Its own line follows. */
+	source.saveChoiceLine = "Last saved on 1/6";
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesUpdated,
+		"Loads at launch | 2024-02-29 12:34 | Last saved on 1/6") == 0);
+	/* Copies of several files: the file, and its place among that file's
+	 * copies, never a count across files. */
+	source.saveChoiceFile = "DobutsunomoriP_MURA";
+	source.saveChoiceFileCopy = 2u;
+	source.saveChoiceFileCopies = 2u;
+	source.saveChoiceWhere = "MemoryCardA.USA.raw";
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary,
+		"DobutsunomoriP_MURA 2 of 2 | MemoryCardA.USA.raw") == 0);
+	source.saveChoiceFile = "DobutsunomoriP_LT0";
+	source.saveChoiceFileCopy = 1u;
+	source.saveChoiceFileCopies = 1u;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.savesSummary, "DobutsunomoriP_LT0 | MemoryCardA.USA.raw") == 0);
+	source.saveChoiceFile = NULL;
+	source.saveChoiceLine = NULL;
+	source.saveChoiceWhere = "Save Folder";
 	source.saveChoice = 1u;
 	source.saveChoiceWhere = "Slot A";
 	source.saveChoiceInUse = true;
@@ -652,13 +698,13 @@ static void testSaveCopyChoice(void)
 	/* A choice out of range shows the totals. */
 	source.saveChoice = 4u;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
-	CHECK(strcmp(snapshot.savesSummary, "3 save copies | 6 blocks") == 0);
+	CHECK(strcmp(snapshot.savesSummary, "3 copies | 2 blocks") == 0);
 	/* One copy, or no SAVES box: no choice, whatever the caller's flags. */
 	source.saveCopies = 1u;
 	source.saveChoice = 1u;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));
 	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) == 0u);
-	CHECK(strcmp(snapshot.savesSummary, "3 save copies | 6 blocks") == 0);
+	CHECK(strcmp(snapshot.savesSummary, "3 copies | 2 blocks") == 0);
 	source.saveCopies = 3u;
 	stats.saves = 1u;
 	CHECK(UIGameflowDetail_Build(&snapshot, &source));

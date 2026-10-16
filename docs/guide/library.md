@@ -11,11 +11,11 @@ choose. On Home, turn the cube to **Library** and press A.
 </p>
 
 For a game with two or more save copies, the [game details](game-details.md)
-screen also shows **Saves** above Settings and Cheats: copies, total blocks
-and the latest recorded update date from memory cards and the Save Folder,
-including RAW images, and from `swiss/saves` on the games' card when your
-settings are on another. Incomplete scans are marked. Settings › Setup ›
-Library › **Saves on Details** turns it off. Open System ›
+screen also shows **Saves** above Settings and Cheats: its files or copies,
+total blocks and the latest recorded update date from memory cards and the
+Save Folder, including RAW images, and from `swiss/saves` on the games' card
+when your settings are on another. Incomplete scans are marked. Settings ›
+Setup › Library › **Saves on Details** turns it off. Open System ›
 [Memory Cards](memory-cards.md) for an individual save’s size, date and
 actions.
 

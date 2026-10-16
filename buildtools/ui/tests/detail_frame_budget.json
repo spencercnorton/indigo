@@ -12,32 +12,32 @@
  "detail-max-count-native": {
   "geometry_begins": 5,
   "geometry_vertices": 136,
-  "medium_glyphs": 205
+  "medium_glyphs": 215
  },
  "detail-max-count-wide": {
   "geometry_begins": 5,
   "geometry_vertices": 136,
-  "medium_glyphs": 205
+  "medium_glyphs": 215
  },
  "detail-partial-native": {
   "geometry_begins": 5,
   "geometry_vertices": 136,
-  "medium_glyphs": 202
+  "medium_glyphs": 213
  },
  "detail-partial-wide": {
   "geometry_begins": 5,
   "geometry_vertices": 136,
-  "medium_glyphs": 202
+  "medium_glyphs": 213
  },
  "detail-recorded-native": {
   "geometry_begins": 5,
   "geometry_vertices": 136,
-  "medium_glyphs": 187
+  "medium_glyphs": 198
  },
  "detail-recorded-wide": {
   "geometry_begins": 5,
   "geometry_vertices": 136,
-  "medium_glyphs": 187
+  "medium_glyphs": 198
  },
  "detail-unavailable-native": {
   "geometry_begins": 5,

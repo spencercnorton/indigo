@@ -7223,6 +7223,34 @@ static const char *gameflowSaveWhere(const savesCopy_t *copy)
  * (indigo#102) never wrote to one. */
 static unsigned gameflowSaveEmulators;
 
+/* The newest copy's own line ("Last saved on 1/6"), for the totals: what the
+ * game wrote last. Empty when none was read. */
+static const char *gameflowSaveNewestLine(void)
+{
+	const savesCopy_t *newest = NULL;
+	unsigned i;
+
+	for(i = 0u; i < gameflowSaveCopies.count; i++) {
+		if(newest == NULL || UISaves_UpdatedSeconds(gameflowSaveCopies.copy[i].entry) >
+			UISaves_UpdatedSeconds(newest->entry)) {
+			newest = &gameflowSaveCopies.copy[i];
+		}
+	}
+	return newest != NULL ? newest->line : "";
+}
+
+/* Whether the copies listed are of more than one of the game's files. */
+static bool gameflowSaveFiles(void)
+{
+	unsigned i;
+
+	for(i = 1u; i < gameflowSaveCopies.count; i++) {
+		if(!UISaves_SameFile(gameflowSaveCopies.copy[i].entry,
+			gameflowSaveCopies.copy[0].entry)) return true;
+	}
+	return false;
+}
+
 /* Left and Right choose a copy only where a launch can put it on the card the
  * game reads: two or more copies, a card in a slot that isn't a memory card
  * emulator, and Emulate Memory Card off (the game would read its card image
@@ -7235,11 +7263,14 @@ static bool gameflowSaveChoosable(const gameflowLaunchContext_t *context)
 }
 
 /* The copy Left and Right show, while there is a choice. Without one the box
- * shows the totals, with no « SAVES ». */
+ * shows the totals, with no « SAVES ». With copies of more than one file, it
+ * names the chosen copy's file and its place among that file's copies. */
 static void gameflowSaveChoiceSource(const gameflowLaunchContext_t *context,
 	uiGameflowDetailSource_t *source)
 {
+	static char file[UI_SAVES_NAME_LENGTH + 1u];
 	const savesCopy_t *copy;
+	unsigned i;
 
 	if(!gameflowSaveChoosable(context)) {
 		return;
@@ -7255,6 +7286,17 @@ static void gameflowSaveChoiceSource(const gameflowLaunchContext_t *context,
 	source->saveChoiceWhere = gameflowSaveWhere(copy);
 	source->saveChoiceInUse = context->saveSlot >= 0 &&
 		copy->source == (savesCopySource_t)context->saveSlot;
+	source->saveChoiceLine = copy->line;
+	if(gameflowSaveFiles() && UISaves_DisplayText(file, sizeof(file),
+		copy->entry + 8, UI_SAVES_NAME_LENGTH)) {
+		source->saveChoiceFile = file;
+		for(i = 0u; i < gameflowSaveCopies.count; i++) {
+			if(UISaves_SameFile(gameflowSaveCopies.copy[i].entry, copy->entry)) {
+				source->saveChoiceFileCopies++;
+				if(i <= (unsigned)context->saveChoice) source->saveChoiceFileCopy++;
+			}
+		}
+	}
 }
 
 /* Set when a memory card slot changed (card_slots.c) while a box of
@@ -7320,6 +7362,7 @@ static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
 	const savesCopy_t *copy;
 	char why[256];
 	char text[512];
+	char file[UI_SAVES_NAME_LENGTH + 1u];
 	uiDrawObj_t *box;
 	bool ok, own = false;
 	unsigned i;
@@ -7333,10 +7376,12 @@ static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
 	if(copy->source == (savesCopySource_t)context->saveSlot) {
 		return true;
 	}
-	/* The card's own copies are never dropped from the list, so none there
-	 * means the card has none to keep. */
+	/* The card's own copies are never dropped from the list, so none of this
+	 * file there means the card has none of it to keep (another file of the
+	 * game it has stays as it is). */
 	for(i = 0u; i < gameflowSaveCopies.count; i++) {
-		own |= gameflowSaveCopies.copy[i].source == (savesCopySource_t)context->saveSlot;
+		own |= gameflowSaveCopies.copy[i].source == (savesCopySource_t)context->saveSlot &&
+			UISaves_SameFile(gameflowSaveCopies.copy[i].entry, copy->entry);
 	}
 	/* Never onto the card a memory card emulator is still changing from. */
 	if(!CardSlots_WritableFor(context->saveSlot, context->gameId)) {
@@ -7344,11 +7389,16 @@ static bool gameflowLoadChosenSave(gameflowLaunchContext_t *context)
 			"card. Try again in a moment.\nA  OK");
 		return false;
 	}
-	snprintf(text, sizeof(text), own ? "Start with the save from %s?\n"
+	/* With more than one file of the game, the question names the file. */
+	if(!gameflowSaveFiles() ||
+		!UISaves_DisplayText(file, sizeof(file), copy->entry + 8, UI_SAVES_NAME_LENGTH)) {
+		snprintf(file, sizeof(file), "the save");
+	}
+	snprintf(text, sizeof(text), own ? "Start with %s from %s?\n"
 		"%s's own copy of it goes to the Save Folder first.\nA  LOAD    B  KEEP" :
-		"Start with the save from %s?\n"
-		"It goes on the memory card in %s.\nA  LOAD    B  KEEP", gameflowSaveWhere(copy),
-		context->saveSlot == 0 ? "Slot A" : "Slot B");
+		"Start with %s from %s?\n"
+		"It goes on the memory card in %s.\nA  LOAD    B  KEEP", file,
+		gameflowSaveWhere(copy), context->saveSlot == 0 ? "Slot A" : "Slot B");
 	if(!gameflowSaveAsk(text)) {
 		context->saveChoice = -1;
 		return false;
@@ -7505,6 +7555,7 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 		}
 		context->savesWaiting = CardSlots_WaitingFor(context->gameId);
 		source.saveStats = &context->saveStats;
+		source.saveLine = gameflowSaveNewestLine();
 		source.savesWaiting = context->savesWaiting;
 		source.savesCardFailed = context->savesCardFailed;
 		gameflowSaveChoiceSource(context, &source);

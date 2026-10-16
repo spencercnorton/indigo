@@ -25,4 +25,11 @@ const char *saves_folder(void);
 bool Saves_LoadCopy(int slot, const savesCopy_t *copy, char *why,
 	size_t whySize);
 
+/* The game's own second comment line of a copy Saves_CollectGameStats found,
+ * as the IPL shows it under the block count ("Last saved on 1/6"), read from
+ * where the scan found it: the save's entry and its comment, not the save.
+ * False, with out empty, when it declares none or it can't be read. A card's
+ * copy is read on the card as the scan left it mounted. */
+bool Saves_CopyLine(const savesCopy_t *copy, char *out, size_t size);
+
 #endif

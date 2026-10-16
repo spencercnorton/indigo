@@ -25,10 +25,12 @@ typedef struct {
 	uint32_t size;			/* FILE and IMAGE: its size */
 	unsigned ordinal;		/* IMAGE: the save's place in the image */
 	uint8_t entry[UI_SAVES_ENTRY_SIZE];	/* game, maker, name, blocks and date */
+	char line[33];			/* the game's own second comment line, or "" */
 } savesCopy_t;
 
-/* Up to SAVES_COPIES_MAX copies the scan counted: the cards' first, then the
- * Save Folder's newest first, and the slots that hold a memory card it read. */
+/* Up to SAVES_COPIES_MAX copies the scan counted, each file's together: the
+ * cards' first, then the folders' newest first, and the slots that hold a
+ * memory card it read. */
 typedef struct {
 	unsigned count;
 	savesCopy_t copy[SAVES_COPIES_MAX];
@@ -40,8 +42,9 @@ typedef struct {
  * same in the Source's swiss/saves (Saves_SourceDevice), plus available
  * physical cards. A partial result is explicitly marked. With copies, it
  * also lists where the copies are, for a choice of the one to start the game
- * with. slots: the cards it may read (bit 0 Slot A, bit 1 Slot B); a card
- * still switching to the game is left alone. */
+ * with, and each listed copy's own second comment line (Saves_CopyLine).
+ * slots: the cards it may read (bit 0 Slot A, bit 1 Slot B); a card still
+ * switching to the game is left alone. */
 void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats,
 	savesCopies_t *copies, unsigned slots);
 

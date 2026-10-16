@@ -4,12 +4,14 @@
 #include "ui_saves.h"
 
 /* Slot A, Slot B and the SD card: the configured Save Folder, and the
- * Source's swiss/saves when the Source is another card. Entries in a RAW
- * image and exported copies are counted separately; this is not a progress
- * score. */
+ * Source's swiss/saves when the Source is another card. saves counts every
+ * copy found (a save in a RAW image and an exported .gci of it are two);
+ * files counts the different files among them (UISaves_SameFile), and
+ * blocks adds each file's newest copy once. This is not a progress score. */
 #define UI_SAVES_STATS_SOURCES 3u
 typedef struct {
 	uint32_t saves;
+	uint32_t files;
 	uint32_t blocks;
 	uint32_t latestUpdated;
 	uint32_t sourceSaves[UI_SAVES_STATS_SOURCES];
@@ -17,6 +19,19 @@ typedef struct {
 	bool updatedKnown;
 	bool partial;
 } uiSavesGameStats_t;
+
+/* The files a scan has counted, each as its newest copy's entry. A game
+ * with more files than this can tell apart makes the scan partial. */
+#define UI_SAVES_STATS_FILES 16u
+typedef struct {
+	unsigned count;
+	uint8_t entry[UI_SAVES_STATS_FILES][UI_SAVES_ENTRY_SIZE];
+} uiSavesStatsFiles_t;
+
+/* What the GameCube calls the same file, whatever card or folder it is in:
+ * the same game, maker and name. */
+bool UISaves_SameFile(const uint8_t a[UI_SAVES_ENTRY_SIZE],
+	const uint8_t b[UI_SAVES_ENTRY_SIZE]);
 
 /* The one per-save date in a GCI/RAW directory entry: seconds since
  * 2000-01-01. There is no separate creation date. The UI treats zero and
@@ -44,8 +59,10 @@ bool UISaves_DisplayTitle(char *out, size_t capacity,
 	size_t commentLength);
 
 /* Add one valid directory entry only when all six game/maker bytes match.
- * Blocks count the save data; wrappers and RAW system blocks are excluded. */
-bool UISaves_StatsAdd(uiSavesGameStats_t *stats,
+ * Blocks count the save data, once per file (files, the scan's own table):
+ * another copy of a file counted already only changes them when it is
+ * newer. Wrappers and RAW system blocks are excluded. */
+bool UISaves_StatsAdd(uiSavesGameStats_t *stats, uiSavesStatsFiles_t *files,
 	const uint8_t entry[UI_SAVES_ENTRY_SIZE], const char gameId[6],
 	unsigned source);
 
