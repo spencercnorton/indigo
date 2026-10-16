@@ -26,8 +26,11 @@ screen, and **B** there goes back to the File Browser, on the same row.
 - **Saves**, above Settings and Cheats, when the game has two or more save
   copies: their number and total blocks appear first, with the latest update
   beneath them. These totals come from inserted memory cards and the
-  configured Save Folder, including readable RAW images there. It matches
-  the full game and maker ID, not the title. A RAW save and an exported GCI
+  configured Save Folder, including readable RAW images there. With your
+  games on another card than your settings (an SD2SP2 beside a GC Loader,
+  say), they also count the card images and saves in `swiss/saves` on the
+  games' card, where Swiss's Emulate Memory Card keeps each game's card. It
+  matches the full game and maker ID, not the title. A RAW save and an exported GCI
   count as separate copies; this isn't a progress score. **Updated** is the
   newest date recorded in those saves, and a scan that couldn't read
   everything says **Partial scan**. Settings › Setup › Library ›
@@ -65,10 +68,12 @@ With two or more copies and a memory card in a slot, **Left** and **Right**
 step through them, and the label reads **« SAVES »**. The box shows one copy
 at a time, such as **Copy 2 of 3 | Save Folder**, with its date and either
 **In use**, for the copy on the memory card the game reads, or **Loads at
-launch**. After the last copy the totals show again: launching then leaves
-the card as it is. The card's own copies come first, then the Save Folder's,
-newest first; with more than eight, the oldest in the Save Folder aren't
-offered.
+launch**. A card image goes by its file name, such as
+**MemoryCardA.USA.raw**, and a save file in the games' card's `swiss/saves`
+by that card's name, such as **SD Card - SD2SP2**. After the last copy the
+totals show again: launching then leaves the card as it is. The card's own
+copies come first, then the SD cards', newest first; with more than eight,
+the oldest of those aren't offered.
 
 <p align="center">
   <img alt="Astral Circuit’s details after Right twice: « SAVES » shows one copy, Copy 2 of 2 | Save Folder, over Loads at launch | 2024-02-29 12:34." src="images/game-details-save-choice.png" width="640">
@@ -76,7 +81,8 @@ offered.
 
 Launch the game with another copy shown and Indigo asks first. **A** puts
 that copy on the memory card: the card's own copy of the save, if it has
-one, goes to the Save Folder first, the new one is read back from the card,
+one, goes to the Save Folder first (on your settings card, wherever the new
+copy came from), the new one is read back from the card,
 and if anything goes wrong the card's own copy goes back and the game
 doesn't start. **B** leaves the card as it is and shows the totals
 again. The copy goes on the card that holds the game's save, Slot A first;

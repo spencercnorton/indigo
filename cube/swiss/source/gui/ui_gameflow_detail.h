@@ -105,8 +105,9 @@ typedef struct {
 	char lastPlayedText[64];
 	char saveStatusText[48];
 	uiSavesGameStats_t saveStats;
-	/* Read-only save copies in the checked slots and configured Save Folder,
-	 * formatted only when UI_GAMEFLOW_DETAIL_HAS_SAVES is set. */
+	/* Read-only save copies in the checked slots, the configured Save Folder
+	 * and the Source's swiss/saves, formatted only when
+	 * UI_GAMEFLOW_DETAIL_HAS_SAVES is set. */
 	char savesSummary[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
 	char savesUpdated[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
 	char facts[UI_GAMEFLOW_DETAIL_FACTS_CAPACITY];

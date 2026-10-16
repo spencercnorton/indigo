@@ -29,7 +29,11 @@ the device the game starts from): never one the page would have to mount
 or let go. A stack lists, writes and chooses folders only on the device it
 shows, a device chosen anew opens at its Save Folder (its root when that
 can't be read) and B goes no higher, and Detail's own copy and Settings'
-Save Folder stay on the settings device.
+Save Folder stay on the settings device. Which device is the Source is one
+rule (Saves_SourceDevice in saves_stats.c), and Game Details' scan reads
+Swiss's swiss/saves there by it, never mounting it or letting it go: each
+copy keeps the device it was found on, Detail's load reads it from there,
+and the card's own copy still goes to the settings device first.
 
 A card image (.raw) on the SD card is a card too: its saves move, copy and
 erase only through its own writer (saves_raw.c), as they were listed, a
@@ -70,7 +74,7 @@ WRITER = ROOT / "cube/swiss/source/gui/saves_raw.c"
 
 
 def function(source: str, name: str) -> str:
-    start = re.search(r"^(?:static )?[a-z_][\w \*]*\b" + name + r"\([^;{}]*\)\s*\{",
+    start = re.search(r"^(?:static )?[A-Za-z_][\w \*]*\b" + name + r"\([^;{}]*\)\s*\{",
                       source, re.M)
     if start is None:
         raise AssertionError(f"{name} is missing")
@@ -222,17 +226,16 @@ def check(source: str) -> None:
         # when it is another FatFs device that takes writes; the page never
         # mounts the Source or lets it go.
         ordered(show, "sdDevices = 0;", "if(folderMounted) {",
+                "DEVICEHANDLER_INTERFACE *source = Saves_SourceDevice();",
                 "sdDevice[sdDevices++] = devices[DEVICE_CONFIG];",
-                "devices[DEVICE_CUR] != NULL && devices[DEVICE_CUR] != devices[DEVICE_CONFIG] &&",
-                "(devices[DEVICE_CUR]->features & FEAT_WRITE) &&",
-                "devices[DEVICE_CUR]->writeFile == deviceHandler_FAT_writeFile) {",
-                "sdDevice[sdDevices++] = devices[DEVICE_CUR];", "folderOpenHome(i, sdDevice[0]);")
+                "if(source != NULL) {", "sdDevice[sdDevices++] = source;",
+                "folderOpenHome(i, sdDevice[0]);")
         if re.search(r"(?:DEVICE_CUR\]|sdDevice\[[^\]]*\])->(?:de)?init\(", source):
             raise AssertionError("Memory Cards mounts the Source or lets it go")
         # A stack lists, writes and chooses folders only on the device it
         # shows: the settings device is named only by the card slots' guard,
         # Detail's own copy, Settings' Save Folder and the page's start.
-        allowed = ("slotTakenBy", "copyRead", "Saves_LoadCopy", "saves_choose_folder", "show_saves")
+        allowed = ("slotTakenBy", "Saves_LoadCopy", "saves_choose_folder", "show_saves")
         if source.count("devices[DEVICE_CONFIG]") != sum(
                 function(source, name).count("devices[DEVICE_CONFIG]") for name in allowed):
             raise AssertionError("an SD stack reaches for the settings device")
@@ -376,9 +379,20 @@ def check(source: str) -> None:
     ordered(show, "over.leaving = 1;", "screenRedraw();", "savesWait(",
             "placeClear(&places[i]);", "DrawDispose(page);", "free(pool);")
 
-    # Detail's load keeps the card's own copy of the save on the SD card
-    # before anything on the card changes, and replaces it only after that.
+    # Detail's load reads the chosen copy from the device the scan found it
+    # on: a card, the settings device or the Source.
+    ordered(function(source, "copyRead"), "else if(copy->device != NULL) {",
+            "snprintf(file.name, sizeof(file.name), \"%s\", copy->path);",
+            "file.device = copy->device;", "if(copy->source == SAVES_COPY_FILE) {",
+            "SavesRaw_Load(&file, raw)")
+    # It keeps the card's own copy of the save on the settings device, the
+    # Source's copies too, before anything on the card changes, and
+    # replaces it only after that.
     load = function(source, "Saves_LoadCopy")
+    ordered(load, "if(!config_set_device())", "return false;", "config = devices[DEVICE_CONFIG];",
+            "data = copyRead(copy, &length, &at, entry);",
+            "concat_path(folder, config->initial->name, saves_folder());",
+            "folderEnsure(config, saves_folder());")
     ordered(load, "if(!config_set_device())", "return false;",
             "own = found != NULL ? saveRead(found, &ownLength) : NULL;",
             "if(own == NULL ||\n\t\t\t\tfolderWrite(config, folder, name, own, ownLength, why, whySize)) {",
@@ -594,13 +608,16 @@ def mutants(source: str) -> list[tuple[str, str]]:
             ("a chosen folder is named on the settings device",
              source.replace("concat_path(path, dest->device->initial->name, chosen);",
                             "concat_path(path, devices[DEVICE_CONFIG]->initial->name, chosen);")),
-            ("the Source is offered when it is the settings device",
-             source.replace("devices[DEVICE_CUR] != NULL && devices[DEVICE_CUR] != devices[DEVICE_CONFIG] &&",
-                            "devices[DEVICE_CUR] != NULL &&")),
-            ("a Source that isn't FatFs is offered",
-             source.replace(" &&\n\t\t\tdevices[DEVICE_CUR]->writeFile == deviceHandler_FAT_writeFile) {", ") {")),
-            ("a read-only Source is offered",
-             source.replace("\t\t\t(devices[DEVICE_CUR]->features & FEAT_WRITE) &&\n", "")),
+            ("Memory Cards offers the Source by a rule of its own",
+             source.replace("DEVICEHANDLER_INTERFACE *source = Saves_SourceDevice();",
+                            "DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];")),
+            ("Detail reads a copy from the settings device, wherever it was found",
+             source.replace("\t\tfile.device = copy->device;", "\t\tfile.device = devices[DEVICE_CONFIG];")),
+            ("Detail reads a copy from the Source, wherever it was found",
+             source.replace("\t\tfile.device = copy->device;", "\t\tfile.device = devices[DEVICE_CUR];")),
+            ("Detail keeps a card's own copy where the chosen copy is",
+             source.replace("\tconfig = devices[DEVICE_CONFIG];\n",
+                            "\tconfig = copy->device != NULL ? copy->device : devices[DEVICE_CONFIG];\n")),
             ("the page lets the Source go",
              source.replace("\tif(folderMounted) {\n\t\tconfig_unset_device();\n\t}\n",
                             "\tif(folderMounted) {\n\t\tconfig_unset_device();\n\t}\n"
@@ -688,18 +705,86 @@ def writer_mutants(source: str) -> list[tuple[str, str]]:
     ]
 
 
+def check_stats(source: str) -> None:
+    """saves_stats.c: which device is the Source, and Game Details' scan of it."""
+    ordered(function(source, "Saves_SourceDevice"),
+            "DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];",
+            "source != NULL && source != devices[DEVICE_CONFIG] &&",
+            "(source->features & FEAT_WRITE) &&",
+            "source->writeFile == deviceHandler_FAT_writeFile ? source : NULL;")
+    # Swiss's swiss/saves on the Source, read only by that rule, once the
+    # settings device is set; nothing here mounts a folder's device or lets
+    # it go.
+    if '#define SAVES_STATS_SOURCE_FOLDER "swiss/saves"' not in source:
+        raise AssertionError("Game Details looks for the Source's card images where Swiss doesn't keep them")
+    ordered(function(source, "Saves_CollectGameStats"), "mounted = config_set_device();",
+            "statsFolder(gameId, stats, copies, devices[DEVICE_CONFIG], saves_folder(), true);",
+            "source = Saves_SourceDevice();", "if(source != NULL) {",
+            "statsFolder(gameId, stats, copies, source, SAVES_STATS_SOURCE_FOLDER, false);",
+            "if(mounted) config_unset_device();")
+    for name in ("Saves_SourceDevice", "Saves_CollectGameStats", "statsFolder"):
+        if re.search(r"->(?:de)?init\(", function(source, name)):
+            raise AssertionError("Game Details mounts or lets go of a folder's device")
+    # Every copy keeps the device it was found on, which Detail's load reads.
+    folder = function(source, "statsFolder")
+    ordered(function(source, "statsCopy"), "copy->source = source;", "copy->device = device;")
+    ordered(folder, "statsCopy(copies, SAVES_COPY_IMAGE, UISavesRaw_Entry(raw, ordinal),\n"
+            "\t\t\t\t\t\tdevice, file->name,", "statsCopy(copies, SAVES_COPY_FILE, entry, device, file->name,")
+    # A Save Folder it can't list makes the scan partial; the Source's
+    # swiss/saves, which most cards don't have, doesn't.
+    ordered(folder, "total = device->readDir(&folder, &files, -1);",
+            "if(saveFolder || total >= 0) stats->partial = true;",
+            "if(saveFolder) stats->checkedSources |= 4u;")
+
+
+def stats_mutants(source: str) -> list[tuple[str, str]]:
+    return [
+        ("the settings device is the Source",
+         source.replace("source != NULL && source != devices[DEVICE_CONFIG] &&", "source != NULL &&")),
+        ("a Source that isn't FatFs is the Source",
+         source.replace(" &&\n\t\tsource->writeFile == deviceHandler_FAT_writeFile ? source : NULL;",
+                        " ? source : NULL;")),
+        ("a read-only Source is the Source",
+         source.replace("\t\t(source->features & FEAT_WRITE) &&\n", "")),
+        ("Game Details leaves the Source's card images out",
+         source.replace("\tif(source != NULL) {\n\t\tstatsFolder(", "\tif(false) {\n\t\tstatsFolder(")),
+        ("Game Details reads any Source",
+         source.replace("source = Saves_SourceDevice();", "source = devices[DEVICE_CUR];")),
+        ("Game Details looks in the Source's Save Folder, not Swiss's folder",
+         source.replace("source, SAVES_STATS_SOURCE_FOLDER, false);", "source, saves_folder(), false);")),
+        ("Game Details looks for card images in another folder",
+         source.replace('#define SAVES_STATS_SOURCE_FOLDER "swiss/saves"', '#define SAVES_STATS_SOURCE_FOLDER "saves"')),
+        ("Game Details mounts the Source",
+         source.replace("\tif(source != NULL) {\n\t\tstatsFolder(",
+                        "\tif(source != NULL) {\n\t\tsource->init(source->initial);\n\t\tstatsFolder(")),
+        ("a copy forgets the device it is on",
+         source.replace("\tcopy->device = device;\n", "")),
+        ("a card image's copy names the settings device",
+         source.replace("\t\t\t\t\t\tdevice, file->name, file->size, ordinal);",
+                        "\t\t\t\t\t\tdevices[DEVICE_CONFIG], file->name, file->size, ordinal);")),
+        ("a Source without swiss/saves makes the scan partial",
+         source.replace("if(saveFolder || total >= 0) stats->partial = true;", "stats->partial = true;")),
+        ("a Save Folder it can't list isn't a partial scan",
+         source.replace("if(saveFolder || total >= 0) stats->partial = true;",
+                        "if(total >= 0) stats->partial = true;")),
+    ]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-root", type=Path, default=ROOT)
     args = parser.parse_args()
     source = (args.source_root / "cube/swiss/source/gui/saves.c").read_text()
     writer = (args.source_root / "cube/swiss/source/gui/saves_raw.c").read_text()
+    stats = (args.source_root / "cube/swiss/source/gui/saves_stats.c").read_text()
     check(source)
     check_writer(writer)
+    check_stats(stats)
     rejected = 0
     for name, mutant, gate in ([(n, m, check) for n, m in mutants(source)] +
-                               [(n, m, check_writer) for n, m in writer_mutants(writer)]):
-        if mutant in (source, writer):
+                               [(n, m, check_writer) for n, m in writer_mutants(writer)] +
+                               [(n, m, check_stats) for n, m in stats_mutants(stats)]):
+        if mutant in (source, writer, stats):
             raise AssertionError(f"mutant '{name}' changed nothing")
         try:
             gate(mutant)

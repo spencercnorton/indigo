@@ -3,8 +3,10 @@
 
 #include "ui_saves.h"
 
-/* Slot A, Slot B and the configured Save Folder. Entries in a RAW image
- * and exported copies are counted separately; this is not a progress score. */
+/* Slot A, Slot B and the SD card: the configured Save Folder, and the
+ * Source's swiss/saves when the Source is another card. Entries in a RAW
+ * image and exported copies are counted separately; this is not a progress
+ * score. */
 #define UI_SAVES_STATS_SOURCES 3u
 typedef struct {
 	uint32_t saves;

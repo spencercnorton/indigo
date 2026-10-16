@@ -32,6 +32,13 @@ tag on `beta`. The newest changes are at the top until their release is named.
   name both cards, and each SD column shows either. Swiss's Emulate Memory
   Card keeps a game's card images on the card the game starts from, so
   that's where they are.
+- Game details' **Saves** counts those copies too: with your settings on one
+  card and your games on another, the card images and saves in `swiss/saves`
+  on the games' card join the memory cards' and the Save Folder's. With a
+  memory card in a slot and Emulate Memory Card off, Left and Right offer
+  them as well; a save file there goes by the card's name, such as
+  **SD Card - SD2SP2**, and the memory card's own copy still goes to the
+  Save Folder on your settings card first.
 - Choose the menu on each side of the Home cube: Settings › Setup › Console
   › **Up Face**, **Left Face**, **Right Face** and **Down Face**, each
   Source, Settings, System, Apps or None. Classic turns that way to it; the
