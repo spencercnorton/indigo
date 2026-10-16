@@ -108,7 +108,7 @@ can have a saved color; resetting one frees its place.
 
 Colors are saved with Indigo's settings on the Configuration Device. If that
 save fails, the page stays open with an explanation and the previous saved
-color remains in place. Card images keep their read-only status throughout.
+color remains in place. A card image's color is saved there too, never in the image.
 
 ### Virtual memory cards
 
@@ -138,7 +138,7 @@ images stay read-only: Move and Erase are dimmed, and Copy exports a save
 as a `.gci` file.
 
 <p align="center">
-  <img alt="Demo Card.raw opened on the left shows Copper Archive and another save, with the other column still on the SD folder. The info bar shows the save's banner and two-block size, and says that Copy exports a GCI from the read-only card image." src="images/memory-cards-raw.png" width="640">
+  <img alt="Demo Card.raw opened on the left shows Copper Archive and another save, with the other column still on the SD folder. The info bar shows the save's banner, its two-block size and the save's own line, SD card image." src="images/memory-cards-raw.png" width="640">
 </p>
 
 <p align="center">
@@ -175,7 +175,7 @@ open Move, Copy and Erase. A dimmed action always explains why it can't be
 used.
 
 <p align="center">
-  <img alt="Copper Archive is the Save details headline. Separate metric cells show 2 Blocks and 16 KiB; aligned rows show Read-only card image, Last updated: 2024-02-29 12:34 and Save icon: Animated. The footer has native A Actions and B Back button icons." src="images/memory-cards-details.png" width="640">
+  <img alt="Copper Archive is the Save details headline. Separate metric cells show 2 Blocks and 16 KiB; aligned rows show Source: Card image, Last updated: 2024-02-29 12:34 and Save icon: Animated. The footer has native A Actions and B Back button icons." src="images/memory-cards-details.png" width="640">
 </p>
 
 A save without a recorded update date shows **Unknown**. The dialog remains
@@ -186,7 +186,7 @@ available when no action can be used.
 </p>
 
 <p align="center">
-  <img alt="Copper Archive’s details remains available with Demo Card.raw independently open in both columns. A Actions and B Back are visible even though the images are read-only." src="images/memory-cards-details-both-raw.png" width="640">
+  <img alt="Copper Archive’s details with Demo Card.raw open in both columns. A Actions and B Back are there even though Move and Copy can't be used: the image on the other side already holds this save." src="images/memory-cards-details-both-raw.png" width="640">
 </p>
 
 A save on a physical memory card names its slot in **Source**.
@@ -267,7 +267,7 @@ opens one, X chooses the one that's open, and B keeps the folder you had.
 Leave Settings with Save & Exit to keep your choice.
 
 <p align="center">
-  <img alt="Settings, Setup, Storage: Save Folder, the second row, reads /swiss/saves, and the line above the buttons reads: the folder Memory Cards (Home › System) opens on the SD card, where saves copied off a memory card go unless you open or pick another." src="images/memory-cards-save-folder.png" width="640">
+  <img alt="Settings, Setup, Storage: Save Folder, the third row, under Configuration Device and Library Path, reads /swiss/saves, and the line above the buttons begins: The folder Memory Cards (Home › System) opens on the SD card: saves copied off a memory card go there." src="images/memory-cards-save-folder.png" width="640">
 </p>
 
 <p align="center">

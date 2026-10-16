@@ -1,3 +1,35 @@
+## 2026-10-16 — v2.4.0's guide pictures
+
+Nine guide pictures were re-recorded from the v2.4.0 release zip, in CI's
+emulator image with the release's own harness and demonstration data only.
+The five the v2.4.0 entry named were stale, and so were four more:
+`memory-cards.png` and `memory-cards-raw-icons.webp` (the same read-only
+info bar as `memory-cards-raw.png`), `memory-cards-details-unknown.png`
+(Source: Read-only card image) and `memory-cards-save-folder.png` (no
+Library Path row, Save Folder 2 / 7 instead of 3 / 8).
+
+- The six Memory Cards pictures come from the virtual-cards route as CI runs
+  it (NTSC, component, a GC Loader card from the zip, both slots empty): the
+  open image's info bar now shows the save's own line, its details say Card
+  image, and with the image open on both sides Move and Copy are dimmed. The
+  icon animation is 24 frames 0.3 s of console time apart, a lossless WebP
+  at 300 ms each, as before. `memory-cards.png` is the same frame as
+  `memory-cards-raw.png`, as before.
+- `memory-cards-save-folder.png` is a new card's first screen, Storage, two
+  rows down.
+- The Game Details pictures have the Save Folder holding the RAW image, then
+  its exported GCI, with an empty card in Slot A: "2 copies | 2 blocks" over
+  the date and the save's own line, and after Right twice "Copy 2 of 2 |
+  Save Folder", "Loads at launch", the date and the line.
+
+Alt text follows the new pictures, and one sentence in memory-cards.md that
+called card images read-only now says that a card image's color is kept in
+Indigo's settings, never in the image (what the folder page says). Every
+other picture was checked against the release tree's own emulator captures
+and the settings rows and help text since it was recorded: none else
+changed, apart from the File Browser pictures' lighter unfocused pane (the
+2026-10-08 entry), which doesn't show at the guide's size.
+
 ## 2026-10-16 — v2.4.0
 
 Released from the console-tested build f160ec5: the Update 2.4 line, MemCard
