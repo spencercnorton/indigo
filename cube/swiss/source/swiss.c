@@ -3567,7 +3567,10 @@ static void homeApplyStartupSource(void)
 		needsDeviceChange = 0;
 		return;
 	}
-	if(devices[DEVICE_CUR] != NULL && homeLibraryOn(devices[DEVICE_CUR], &dir)) {
+	/* The boot device stays when it has the Library's folder, or when the
+	 * Library never reads it (the disc drive: no spin-up at startup). */
+	if(devices[DEVICE_CUR] != NULL && (!homeLibraryDevice(devices[DEVICE_CUR]) ||
+		homeLibraryOn(devices[DEVICE_CUR], &dir))) {
 		return;
 	}
 	target = homeFindLibrary(&dir);
