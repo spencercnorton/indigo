@@ -7,6 +7,8 @@
 #     swiss/patches/apploader.img    In-Game Reset (Apploader) returns to Indigo
 #     swiss/ui/                      posters.pak, if you add one
 #     swiss/indigo/LICENSE.txt, NOTICE.txt
+#     swiss/indigo/cubebrowser.dol   the web browser the Web face launches (if bundled)
+#     gcbrowser/cacert.pem           the browser's trusted certificates (if bundled)
 # Usage: buildtools/sd_package.sh <version> [swiss.dol] [out dir]
 # Run `make dev` first (see README, Install); run from the repository root.
 set -eu
@@ -27,6 +29,24 @@ cp "$dol" "$card/ipl.dol"
 python3 buildtools/dol2ipl.py "$card/swiss/patches/apploader.img" "$reboot" "*indigo-$version" >/dev/null
 cp LICENSE "$card/swiss/indigo/LICENSE.txt"
 cp NOTICE "$card/swiss/indigo/NOTICE.txt"
+# Web browser (optional): a separate program the Web face launches, built from
+# the hardened fork (docs/dev/web-browser.md). Its CA bundle goes in gcbrowser/
+# at the card root, where the browser looks for it. Without it the Web face
+# reports the browser isn't installed.
+browser_dol=${BROWSER_DOL:-browser/cubebrowser.dol}
+browser_gcbrowser=${BROWSER_GCBROWSER:-browser/gcbrowser}
+browser_zip=
+if [ -f "$browser_dol" ]; then
+	cp "$browser_dol" "$card/swiss/indigo/cubebrowser.dol"
+	if [ -d "$browser_gcbrowser" ]; then
+		mkdir -p "$card/gcbrowser"
+		cp -R "$browser_gcbrowser/." "$card/gcbrowser/"
+		browser_zip=gcbrowser
+	fi
+	echo "sd_package: bundled the web browser ($browser_dol)"
+else
+	echo "sd_package: no web browser at $browser_dol; the Web face will report it is not installed" >&2
+fi
 cat > "$card/Indigo-README.txt" <<TXT
 Indigo $version - an unofficial fork of Swiss with the interface rebuilt
 Guide:  https://norvitech.com/indigo/
@@ -100,6 +120,12 @@ ID (GMSE01). The poster pack and the cheat pack are on https://norvitech.com/ind
 or swiss/cheats (cheats) folder into the card's folder of the same name,
 making it if it isn't there.
 
+WEB BROWSER
+If this download has swiss/indigo/cubebrowser.dol and a gcbrowser folder,
+keep both: copy the gcbrowser folder to the top of the card beside ipl.dol.
+The Web face on the Home cube (turn it on under Settings > Setup > Interface)
+opens the browser; it needs a Broadband Adapter.
+
 IN-GAME RESET
 With In-Game Reset set to Apploader (Settings > Quick), A + Z + START
 during a game returns to Indigo: swiss/patches/apploader.img is Indigo.
@@ -109,5 +135,5 @@ TXT
 
 rm -f "$out/Indigo-$version.zip"
 # Directory entries included, so the ZIP shows the card's folders.
-(cd "$card" && zip -qrX "$out/Indigo-$version.zip" Indigo-README.txt ipl.dol swiss)
+(cd "$card" && zip -qrX "$out/Indigo-$version.zip" Indigo-README.txt ipl.dol swiss ${browser_zip})
 shasum -a 256 "$out/Indigo-$version.zip"
