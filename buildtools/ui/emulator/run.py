@@ -200,6 +200,20 @@ UP_ARROW_BOX = (169, 96, 184, 112)
 MESSAGE_BOX = (160, 200, 480, 250)
 MESSAGE_COLOUR = (120, 16, 36)  # the same under every Menu Color
 MESSAGE_PIXELS = 9000  # of the box's 16000: its fill, not a red icon or two behind it
+# A game's manual (card.MANUAL_GAME's): each page has a band of its own colour
+# along its top, which at full width from the page's top fills this box...
+MANUAL_BAND_BOX = (120, 28, 520, 58)
+# ...and in the whole-page view, this one, the half-size page standing in
+# the middle of the screen, the backdrop where the band was at full width.
+MANUAL_WHOLE_BAND_BOX = (240, 24, 400, 36)
+# Game Details' Manual row: its page count at the right, where without the
+# row there is nothing; and the lines a message over Detail covers.
+MANUAL_ROW_BOX = (470, 204, 580, 224)
+MANUAL_ROW_PIXELS = 20  # "7 PAGES" lights about 50; nothing is drawn there without the row
+MESSAGE_LINES_BOX = (60, 214, 580, 262)
+MANUAL_SCROLL_SECONDS = 1.0
+MANUAL_MEMORY = re.compile(r"manual: (\w{6}) open, (\d+) pages of (\d+) bytes, (\d+) bytes free \((\d+) before\)")
+MANUAL_CLOSED = re.compile(r"manual: closed, (\d+) bytes free \((\d+) before\)")
 ARROW_PIXELS = 20
 # A save's art loads once nothing has been held for 15 VSyncs: a moment
 # after a step, its comment replaces its file name in the info bar.
@@ -683,6 +697,37 @@ def message_up(rgb: np.ndarray, wide: bool = False) -> bool:
     return coloured(rgb[y0:y1, x0:x1], MESSAGE_COLOUR) >= MESSAGE_PIXELS
 
 
+def manual_page(rgb: np.ndarray, wide: bool = False, whole: bool = False) -> int | None:
+    """Which page of card.MANUAL_GAME's manual is on the screen from its top,
+    by its band's colour: at full width, or as the whole page."""
+    frame = detection_frame(rgb, wide)
+
+    def band(box: tuple[int, int, int, int]) -> int | None:
+        x0, y0, x1, y1 = box
+        patch = frame[y0:y1, x0:x1]
+        return next((n for n, colour in enumerate(card.MANUAL_BANDS)
+                     if coloured(patch, colour) >= patch.shape[0] * patch.shape[1] * 0.8), None)
+
+    full = band(MANUAL_BAND_BOX)
+    if not whole:
+        return full
+    return band(MANUAL_WHOLE_BAND_BOX) if full is None else None
+
+
+def manual_memory(log: Path) -> dict[str, int] | None:
+    """What Indigo said of its memory with card.MANUAL_GAME's manual open (two
+    pages of it held) and once it closed, or None when it never opened."""
+    text = log.read_text(errors="replace") if log.exists() else ""
+    opened = [m for m in MANUAL_MEMORY.finditer(text) if m.group(1) == card.MANUAL_GAME]
+    closed = list(MANUAL_CLOSED.finditer(text))
+    if not opened or not closed:
+        return None
+    pages, record, free, before = (int(g) for g in opened[0].groups()[1:])
+    after, before_close = (int(g) for g in closed[0].groups())
+    return {"pages": pages, "held": 2 * record, "free_open": free, "before": before,
+            "after": after, "returned": after - before_close}
+
+
 def arrow_up(gray: np.ndarray) -> bool:
     """The arrow above Memory Cards' left stack: rows lie above its window."""
     x0, y0, x1, y1 = UP_ARROW_BOX
@@ -971,7 +1016,7 @@ class Emulator:
                  storage: str = "dvd", card: Path | None = None, cable: str = "composite",
                  faults: str | None = None, cards: Path | None = None,
                  empty_slots: bool = False, folder_frames: bool = False,
-                 second: Path | None = None) -> None:
+                 second: Path | None = None, exact_textures: bool = False) -> None:
         self.out = out
         self.user = work / "dolphin"
         (self.user / "Config").mkdir(parents=True)
@@ -984,7 +1029,14 @@ class Emulator:
             "[Logs]\nOSREPORT = True\nPOWERPC = True\n[Options]\nVerbosity = 1\nWriteToConsole = True\nWriteToFile = False\n")
         (self.user / "GC").mkdir()
         (self.user / "GC/SRAM.raw").write_bytes(sram(*REGIONS[region][1:]))
+        # Dolphin's texture cache sees a texture rewritten in place by 128
+        # samples of it, evenly spaced: in a 640-texel-wide CMPR page each one
+        # falls in its leftmost tile column, the page's paper margin, so a page
+        # read into a slot over another looked unchanged and the old one
+        # stayed. A console reads the new one (GX_InvalidateTexAll); Dolphin
+        # does when it hashes all of every texture.
         (self.user / "Config/GFX.ini").write_text("[Settings]\nInternalResolution = 1\nShowFPS = False\n" +
+            ("SafeTextureCacheColorSamples = 0\n" if exact_textures else "") +
             ("DumpFramesAsImages = True\nFrameDumpsResolutionType = 2\nPNGCompressionLevel = 1\n"
              if folder_frames else ""))
         self.folder_frames = (PresentedFrames(self.user / "Dump/Frames", out / "folder-transitions")
@@ -3368,6 +3420,130 @@ class Route:
                        changed=changed)
             (self.out / "virtual-card-after.raw").write_bytes(raw)
 
+    def manual(self) -> None:
+        """A game's manual, card.MANUAL_GAME's: boot, open the Library and the
+        details of a game without one, which have no Manual row, then of the
+        game with one, where the row sits at the top with its page count. UP
+        to it and A opens the manual at full width from page 1's top. DOWN
+        scrolls the page up out of sight and UP back; RIGHT turns to page 2,
+        read ahead while page 1 showed; Y shows the whole page, Y again full
+        width; R the last page, read then; L the first; B goes back to the
+        details. Then a game whose manual is cut short: its row is there, A
+        says the manual can't be read, and A leaves Detail as it was."""
+        home = self.boot()
+        self.press("A")
+        self.check("A opens the Library", self.covered(home))
+        order = card.library_order(self.probe)
+        names = dict(card.GAMES)
+        at, title = 0, self.settled_label(box=TITLE_BOX)[0]
+        self.check("the Library shows a game's title", title is not None)
+
+        def go(game_id: str) -> np.ndarray:
+            nonlocal at, title
+            while at < order.index(names[game_id]):
+                title, _ = self.press_until("RIGHT", unlike=title, box=TITLE_BOX)
+                self.check("RIGHT moves to the next game", title is not None, to=order[at + 1])
+                at += 1
+            self.press("A")
+            self.check("A opens the game's details", self.covered(title, TITLE_BOX), game=game_id)
+            details, _ = self.settled_label(box=DETAIL_TITLE_BOX)
+            self.check("the details show the game's title", details is not None, game=game_id)
+            return details
+
+        def back(details: np.ndarray) -> None:
+            self.press("B")
+            again, _ = self.settled_label(like=title, box=TITLE_BOX)
+            self.check("B comes back to the Library, on the same game", again is not None)
+
+        def row_shown() -> bool:
+            return int(text_mask(self.gray(), MANUAL_ROW_BOX).sum()) >= MANUAL_ROW_PIXELS
+
+        def page_shown(whole: bool = False, seconds: float = SETTLE_SECONDS) -> int | None:
+            deadline = Deadline(self.emulator, seconds)
+            while not deadline.expired():
+                self.last_rgb = self.emulator.frame()
+                shown = manual_page(self.last_rgb, self.menu_wide, whole)
+                if shown is not None:
+                    return shown
+                time.sleep(0.15)
+            return None
+
+        def turn(button: str, page: int, name: str) -> int | None:
+            """The press, and how many frames (60 a second) until the page is there."""
+            frames = self.emulator.burst(3.0, lambda: self.press(button))
+            arrived = next((n for n in range(len(frames))
+                            if manual_page(np.array(frames[n]), self.menu_wide) == page), None)
+            del frames
+            shown = page_shown()
+            self.shot(name, self.last_rgb)
+            self.check(f"{button} shows page {page + 1}", shown == page, shown=shown, frames=arrived)
+            return arrived
+
+        plain = go("GACZ01")
+        self.shot("manual-none", self.last_rgb)
+        self.check("a game without a manual has no Manual row", not row_shown())
+        back(plain)
+
+        details = go(card.MANUAL_GAME)
+        self.shot("manual-row", self.last_rgb)
+        self.check("a game with a manual has a Manual row, with its page count", row_shown())
+        for _ in range(3):  # Settings, then Manual (no Cheats row), then the top
+            self.press("UP")
+            self.pause(0.3)
+        self.gray()
+        self.shot("manual-row-focused", self.last_rgb)
+        self.press("A")
+        shown = page_shown()
+        self.shot("manual-page-1", self.last_rgb)
+        self.check("A on the Manual row opens the manual at full width, on page 1's top", shown == 0,
+                   shown=shown)
+        self.pad.hold("DOWN")
+        self.pause(MANUAL_SCROLL_SECONDS)
+        self.pad.hold()
+        self.pause(0.3)
+        self.last_rgb = self.emulator.frame()
+        self.shot("manual-scrolled", self.last_rgb)
+        self.check("DOWN scrolls the page up", manual_page(self.last_rgb, self.menu_wide) is None)
+        self.pad.hold("UP")
+        self.pause(MANUAL_SCROLL_SECONDS * 1.5)
+        self.pad.hold()
+        self.check("UP scrolls back to the page's top", page_shown() == 0)
+        ahead = turn("RIGHT", 1, "manual-page-2")
+        self.press("Y")
+        shown = page_shown(whole=True)
+        self.shot("manual-whole-page", self.last_rgb)
+        self.check("Y shows the whole page", shown == 1, shown=shown)
+        self.press("Y")
+        self.check("Y again shows it at full width", page_shown() == 1)
+        cold = turn("R", len(card.MANUAL_BANDS) - 1, "manual-last-page")
+        turn("L", 0, "manual-first-page")
+        self.checks.append({"check": "page turns: frames until the page shows", "passed": True,
+                            "read_ahead": ahead, "read_then": cold})
+        self.press("B")
+        again, _ = self.settled_label(like=details, box=DETAIL_TITLE_BOX)
+        self.shot("manual-closed", self.last_rgb)
+        self.check("B closes the manual, back on the game's details", again is not None)
+        back(details)
+
+        details = go(card.BROKEN_MANUAL_GAME)
+        self.shot("manual-broken-row", self.last_rgb)
+        self.check("a game whose manual is damaged still has its Manual row", row_shown())
+        for _ in range(3):
+            self.press("UP")
+            self.pause(0.3)
+        lines = text_mask(self.gray(), MESSAGE_LINES_BOX)
+        self.press("A")
+        said = self.covered(lines, MESSAGE_LINES_BOX)
+        self.shot("manual-broken-message", self.last_rgb)
+        self.check("A on it says the manual can't be read", said and manual_page(self.last_rgb) is None)
+        self.press("A")
+        deadline, closed = Deadline(self.emulator, SETTLE_SECONDS), False
+        while not closed and not deadline.expired():
+            time.sleep(0.3)
+            closed = same_text(text_mask(self.gray(), MESSAGE_LINES_BOX), lines)
+        self.shot("manual-broken-back", self.last_rgb)
+        self.check("A closes the message, and Detail is as it was", closed)
+
     def tour(self) -> None:
         self.smoke()
 
@@ -3403,7 +3579,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dol", type=Path)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--route", choices=("smoke", "tour", "game", "save", "virtual-cards", "folders", "files"),
+    parser.add_argument("--route", choices=("smoke", "tour", "game", "save", "virtual-cards", "folders", "files",
+                                            "manual"),
                         default="smoke")
     parser.add_argument("--probe", type=Path, help="the probe DOL (probe/), launched as an app and a game")
     parser.add_argument("--region", choices=tuple(REGIONS), default="pal")
@@ -3429,6 +3606,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--fragments splits the probe's game on the SD card for the game route")
     if args.route == "virtual-cards" and args.storage not in ("gcloader", "sd2sp2"):
         parser.error("virtual-cards needs an SD card in GC Loader or SD2SP2, with both slots empty")
+    if args.route == "manual" and args.storage == "dvd":
+        parser.error("manual reads its pages on a thread, as from an SD card: give --storage")
     if args.route == "files" and (args.storage != "gcloader" or args.settings):
         parser.error("files needs a fresh card in a GC Loader (the route puts a second SD card in SD2SP2)")
     if args.route == "folders" and (args.storage != "sd2sp2" or args.region != "ntsc" or
@@ -3477,7 +3656,7 @@ def main(argv: list[str] | None = None) -> int:
                                 args.storage, sd, args.cable, args.sd_faults, cards,
                                 empty_slots=args.route in ("virtual-cards", "files"),
                                 folder_frames=args.route == "folders",
-                                second=second)
+                                second=second, exact_textures=args.route == "manual")
             route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd) and start is None,
                           cable=args.cable, region=args.region, fragments=args.fragments, cards=cards,
                           storage=args.storage, menu_wide=bool(start and "Menu Widescreen=Yes" in start),
@@ -3543,6 +3722,13 @@ def main(argv: list[str] | None = None) -> int:
         report["failure"] = (f"the poster thread used {stack['most']} of its {stack['of']} bytes of "
                              f"stack, more than {POSTER_STACK_SHARE:.0%}")
     report["poster_stack"] = stack
+    if args.route == "manual":
+        memory = manual_memory(args.out / "dolphin.log")
+        report["manual_memory"] = memory
+        if status == 0 and (memory is None or memory["returned"] != 0):
+            status = 1
+            report["failure"] = ("Indigo did not report the manual's memory" if memory is None else
+                                 f"closing the manual left {-memory['returned']} bytes held")
     report.update({
         "passed": status == 0,
         "checks": route.checks if route else [],
