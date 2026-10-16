@@ -64,10 +64,13 @@ card what Indigo wrote there.
 The files route boots from a GC Loader with a second SD card in SD2SP2 and
 copies, keeps both, moves, renames, deletes, stops a copy and a move, and
 copies into a folder between them, checking each on the card images, and
-a game's Detail from there shows its poster; then it boots again with that
-SD card failing its writes, and a copy fails. Last, A on the probe's game in
-the File Browser opens its Game Detail, B comes back to the same row, and
-Detail's Launch Game starts the probe as that game.
+a game's Detail from there shows its poster. Then the SD2SP2 becomes the
+Source, and Memory Cards, settings on the GC Loader, opens the card image
+Swiss keeps on the SD2SP2, erases a save from it and moves the other to the
+GC Loader. Then it boots again with that SD card failing its writes, and a
+copy fails. Last, A on the probe's game in the File Browser opens its Game
+Detail, B comes back to the same row, and Detail's Launch Game starts the
+probe as that game.
 
 The virtual-cards route leaves both physical slots empty, browses a public
 synthetic RAW image on SD and exports a GCI into the other SD column, then
@@ -2371,7 +2374,10 @@ class Route:
             copy it into that folder, not the SD card's top;
           - a game's Detail, the first since boot, shows its poster
             (files_poster);
-        and B leaves. files_write_fails runs on the next boot."""
+          - L, DOWN and A make the SD card the Source, as for games on it
+            with settings on the GC Loader;
+        and B leaves, for Memory Cards (files_memory_cards).
+        files_write_fails runs on the next boot."""
         gcl, sd2 = self.sd_image, self.second_sd
         faces = [self.boot()]
         for n in range(1, 4):
@@ -2484,8 +2490,92 @@ class Route:
                    card.read_card(sd2, "backups/b-two.txt") == card.SECOND_FILES["b-two.txt"] and
                    card.read_card(sd2, "b-two.txt") is None)
         self.files_poster(gcl, "b-two.txt")
+        before = self.files_path(box=FILES_NAME_BOXES[0])
+        self.press("L")
+        self.files_storage_menu(0, True)
+        self.steps("DOWN A")
+        name = self.files_path(box=FILES_NAME_BOXES[0], unlike=before) if before is not None else None
+        self.shot("files-source-sd2sp2", self.last_rgb)
+        self.check("L, DOWN and A make the SD card in SD2SP2 the Source",
+                   name is not None and self.files_list(True, pane=0))
         self.press("B")
         self.check("B leaves the File Browser", self.files_list(False))
+        self.files_memory_cards(gcl, sd2)
+
+    def files_memory_cards(self, gcl: Path, sd2: Path) -> None:
+        """Settings on the GC Loader, the Source the SD card in SD2SP2,
+        which holds a card image where Swiss's Emulate Memory Card keeps it
+        (card.SECOND_IMAGE). With both slots empty, UP and A on System's
+        rows open Memory Cards with both columns on the GC Loader's Save
+        Folder, where an SD column starts. L lists
+        both cards by name: DOWN and A put the SD2SP2's Save Folder on the
+        left, and A opens the image. Erase takes its second save off and
+        Move its first to the GC Loader's Save Folder on the right, and both
+        cards are read back: the image is a card with no save left, the
+        GC Loader has the first save whole, and the SD2SP2 no copy of it. B
+        closes the image and B leaves Memory Cards."""
+        self.steps("UP")
+        self.press("A")
+        self.pause(2.0)  # the screen opens, and its places are read
+        gray = self.gray()
+        left, right = text_mask(gray, LEFT_HEADER_BOX), text_mask(gray, RIGHT_HEADER_BOX)
+        self.shot("files-memory-cards", self.last_rgb)
+        self.check("Memory Cards opens both columns on SD, the slots being empty",
+                   has_label(left) and has_label(right))
+        self.press("L")
+        self.pause(0.3)
+        self.shot("files-memory-cards-storage-menu", self.emulator.frame())
+        self.steps("DOWN A")
+        moved = self.differs(left, LEFT_HEADER_BOX)
+        source = text_mask(self.gray(), LEFT_HEADER_BOX)
+        self.shot("files-memory-cards-sd2sp2", self.last_rgb)
+        self.check("L, DOWN and A put the SD2SP2's Save Folder on the left, the GC Loader's on the right",
+                   moved and has_label(source) and
+                   same_text(text_mask(self.gray(), RIGHT_HEADER_BOX), right))
+        image, _ = self.settled_label(box=INFO_BOX)
+        self.check("the SD2SP2's card image has the focus", image is not None)
+        self.press("A")
+        self.check("A opens the SD2SP2's card image", self.differs(source, LEFT_HEADER_BOX))
+        self.pause(ART_SECONDS)
+        first, _ = self.settled_label(box=INFO_BOX)
+        self.check("the image shows a save's comment", first is not None)
+        self.shot("files-memory-cards-image", self.last_rgb)
+        second = self.info("RIGHT", unlike=first)
+        self.check("RIGHT comes to the image's second save", second is not None)
+        self.save_details("files-memory-cards-details-to-erase")
+        self.steps("A DOWN A")  # Actions (on Copy), Erase, then its question
+        self.steps("UP")  # No is first: Yes
+        self.press("A")
+        self.check("Erase takes a save off the SD2SP2's image", self.message())
+        self.check("the erase message closes by itself", self.message_closes())
+        again = self.info("LEFT", like=first)
+        self.check("LEFT comes back to the image's first save", again is not None)
+        self.save_details("files-memory-cards-details-to-move")
+        self.steps("A UP A")  # Actions (on Copy), Move, then its question
+        self.shot("files-memory-cards-move-to", self.emulator.frame())
+        self.press("A")  # Yes: "Move to the SD card?", the GC Loader's folder
+        self.check("Move takes the image's save to the GC Loader", self.message())
+        self.check("the move message closes by itself", self.message_closes())
+        self.shot("files-memory-cards-moved", self.last_rgb)
+        _, gcis = make_test_saves.virtual_card()
+        raw = card.read_card(sd2, card.SECOND_IMAGE)
+        export = f"{make_test_saves.SAVE_FOLDER}/{make_test_saves.RAW_EXPORT_NAME}"
+        moved_save = card.read_card(gcl, export)
+        try:
+            left_saves = card_image_saves(raw) if raw is not None else None
+        except ValueError as error:
+            left_saves = None
+            self.check("the SD2SP2's image reads as a card after Erase and Move", False, error=str(error))
+        self.check("the SD2SP2's image is a card with no save left after Erase and Move",
+                   left_saves == {}, saves=None if left_saves is None else len(left_saves))
+        self.check("the GC Loader's Save Folder has the moved save, whole, and the SD2SP2 no copy",
+                   moved_save is not None and same_save(gcis[0], moved_save) and
+                   card.read_card(sd2, export) is None)
+        self.press("B")
+        back = self.text_until(LEFT_HEADER_BOX, lambda mask: same_text(mask, source))
+        self.check("B closes the image to the SD2SP2's Save Folder", back is not None)
+        self.press("B")
+        self.check("B leaves Memory Cards", self.differs(source, LEFT_HEADER_BOX))
 
     def files_write_fails(self) -> None:
         """The next boot, with the SD card in SD2SP2 failing every write to
@@ -3385,7 +3475,8 @@ def main(argv: list[str] | None = None) -> int:
                 report["second_card"] = card.second_card(second)
             emulator = Emulator(dol, disc.resolve() if disc else None, work, args.out, args.region,
                                 args.storage, sd, args.cable, args.sd_faults, cards,
-                                empty_slots=args.route == "virtual-cards", folder_frames=args.route == "folders",
+                                empty_slots=args.route in ("virtual-cards", "files"),
+                                folder_frames=args.route == "folders",
                                 second=second)
             route = Route(emulator, args.out, probe=bool(args.probe), fresh_card=bool(sd) and start is None,
                           cable=args.cable, region=args.region, fragments=args.fragments, cards=cards,

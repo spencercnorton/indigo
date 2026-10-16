@@ -7,7 +7,11 @@
 
 /* Physical slots are 0/1; SD columns keep independent positions at 2/3. */
 void UISaves_InitialStorage(bool slotA, bool slotB, bool sd, int stacks[2]);
-int UISaves_StorageTab(int stack, int choice, int other);
+/* The storage menu lists Slot A, Slot B, then sdDevices SD devices (1, or 2
+ * when the Source is another FatFs device than the settings device): choice
+ * 2 + n is SD device n. The tab a choice puts in stack's column, or -1 for
+ * none: cancelled, not listed, or the slot the other column shows. */
+int UISaves_StorageTab(int stack, int choice, int other, int sdDevices);
 
 /* Memory Cards (Home > System > Memory Cards): the pure half. saves.c asks
  * the card and SD drivers for the bytes; these decide what the bytes are and

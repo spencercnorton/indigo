@@ -603,16 +603,22 @@ def fragment(image: Path, path: str, pieces: int) -> int:
 
 # A second SD card for the File Browser's right pane (SD2SP2 beside a GC
 # Loader): three small text files, a folder, and a file big enough that a copy
-# of it is still running when the route stops it.
+# of it is still running when the route stops it. Memory Cards later finds a
+# card image on it where Swiss's Emulate Memory Card keeps Slot A's for a
+# game started from it.
 SECOND_BYTES = 256 << 20
 SECOND_FILES = {"a-one.txt": b"one\r\n" * 300, "b-two.txt": b"two\r\n" * 700,
                 "c-three.txt": b"three\r\n" * 50}
 SECOND_BIG = ("big.bin", 160 << 20)
+SECOND_IMAGE = "swiss/saves/MemoryCardA.USA.raw"
 
 
 def second_card(out: Path) -> dict[str, object]:
-    """A FAT32 card holding SECOND_FILES, an empty folder (backups) and
-    SECOND_BIG, a repeating pattern."""
+    """A FAT32 card holding SECOND_FILES, an empty folder (backups),
+    SECOND_BIG, a repeating pattern, and at SECOND_IMAGE the public
+    two-save card image (make_test_saves.virtual_card)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "qa"))
+    import make_test_saves
     with open(out, "wb") as image:
         image.truncate(SECOND_BYTES)
     subprocess.run(["mkfs.fat", "-F", "32", "-n", "SECOND", str(out)], check=True, capture_output=True)
@@ -627,8 +633,14 @@ def second_card(out: Path) -> dict[str, object]:
         for entry in sorted(folder.iterdir()):
             subprocess.run(["mcopy", "-i", str(out), str(entry), "::/"], check=True, env=MTOOLS,
                            capture_output=True)
-    subprocess.run(["mmd", "-i", str(out), "::/backups"], check=True, env=MTOOLS, capture_output=True)
-    return {"files": sorted(SECOND_FILES) + [SECOND_BIG[0], "backups/"], "bytes": SECOND_BYTES}
+        raw = folder / Path(SECOND_IMAGE).name
+        raw.write_bytes(make_test_saves.virtual_card()[0])
+        for made in ("::/backups", "::/swiss", "::/swiss/saves"):
+            subprocess.run(["mmd", "-i", str(out), made], check=True, env=MTOOLS, capture_output=True)
+        subprocess.run(["mcopy", "-i", str(out), str(raw), f"::/{SECOND_IMAGE}"], check=True,
+                       env=MTOOLS, capture_output=True)
+    return {"files": sorted(SECOND_FILES) + [SECOND_BIG[0], "backups/", SECOND_IMAGE],
+            "bytes": SECOND_BYTES}
 
 
 def free_sectors(card: Path) -> list[tuple[int, int]]:

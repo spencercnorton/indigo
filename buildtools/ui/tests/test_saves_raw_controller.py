@@ -6,8 +6,10 @@ handler fails immediately. Actual controller functions load/reload RAW places,
 read virtual headers and artwork ranges, export verified GCI bytes, move and
 erase saves in and out of images through the image writer (modelled here with
 the real planner) only after a verified copy, keep a read-only image's actions
-dimmed, and route the two independent SD columns. No device write or delete
-may name an image. --source-root supports reviewing an uncommitted
+dimmed, and route the two independent SD columns, each on either SD device
+(the settings device and a Source that is another FatFs device): every
+device call goes to the device whose path it names. No device write or
+delete may name an image. --source-root supports reviewing an uncommitted
 integration worktree.
 """
 import argparse
@@ -53,7 +55,6 @@ typedef int32_t s32;
 #define IS_DIR 1
 #define IS_SPECIAL 2
 #define FEAT_WRITE 1
-#define DEVICE_CONFIG 0
 #define DEVICE_HANDLER_SEEK_SET 0
 #define CARD_FILENAMELEN 32
 #define CARD_ATTRIB_NOCOPY 8
@@ -96,9 +97,20 @@ struct file_handle {
     int fileType;
     DEVICEHANDLER_INTERFACE *device;
 };
-static DEVICEHANDLER_INTERFACE __device_card_a, __device_card_b, sd;
-static DEVICEHANDLER_INTERFACE *devices[1] = {&sd};
+/* Two FatFs devices with the same handlers, as on a console: the settings
+ * device (sda:) and a Source on another card (sdc:). No devices[] here, so
+ * an extracted function that reaches for the settings device won't build. */
+static DEVICEHANDLER_INTERFACE __device_card_a, __device_card_b, sd, sd2;
 static file_handle sdRoot = {.name = "sda:/", .fileType = IS_DIR};
+static file_handle sdRoot2 = {.name = "sdc:/", .fileType = IS_DIR};
+static DEVICEHANDLER_INTERFACE *sdDevice[2];
+static int sdDevices;
+static char folderHome[2][PATHNAME_MAX];
+static DEVICEHANDLER_INTERFACE *owner(const char *name) {return strncmp(name,"sdc:",4) ? &sd : &sd2;}
+static const char *DeviceDisplayName(const DEVICEHANDLER_INTERFACE *device) {
+    return device==&sd ? "GC Loader" : device==&sd2 ? "SD Card - SD2SP2" : "?";
+}
+static const char *saves_folder(void) {return "swiss/saves";}
 static bool foldersReady = true, artFresh;
 static int wantCount, screenFocus, screenStacks[2] = {2,3};
 static u32 listings, placeIds[SAVES_TABS][SAVES_LIST_MAX];
@@ -121,13 +133,18 @@ static int savesMenu(const char *title,const char *const *items,int count,int in
 typedef int savesInput_t;
 static u32 inputs[32];
 static unsigned inputCount,inputAt,menusShown,detailsShown;
-static unsigned seenDim;
+static unsigned seenDim,menuSeen;
+static int menuOpenedOn=-1;
 static uiSaveDetailsSnapshot_t detailSnapshot;
 static void inputInit(savesInput_t *input) {*input=0;}
+static unsigned downs;
 static u32 inputNext(savesInput_t *input) {
     (void)input;
     if(inputAt<inputCount) return inputs[inputAt++];
-    return storageChoice<0 ? BUTTON_B : over.menuFocus==storageChoice ? BUTTON_A : BUTTON_DOWN;
+    if(storageChoice>=0 && over.menuFocus!=storageChoice && ++downs<=8) return BUTTON_DOWN;
+    /* Pressed, or an item the menu doesn't have: B, not DOWN for ever. */
+    u32 pressed=storageChoice>=0 && over.menuFocus==storageChoice ? BUTTON_A : BUTTON_B;
+    downs=0;return pressed;
 }
 static void script(const u32 *presses,unsigned count) {
     assert(count<=32);memcpy(inputs,presses,count*sizeof(*presses));inputCount=count;inputAt=0;
@@ -141,6 +158,7 @@ static void UICheats_Fit(char *out,size_t size,const char *text,int width,float 
 }
 static void screenRedraw(void) {
     if(over.menuOpen) {menusShown++;seenDim=over.menu.dim;assert(over.menuSerial);}
+    if(over.menuOpen && over.menuSerial!=menuSeen) {menuSeen=over.menuSerial;menuOpenedOn=over.menuFocus;}
 }
 typedef struct {int unused;} uiDrawObj_t;
 static uiDrawObj_t *DrawSaveDetails(const uiSaveDetailsSnapshot_t *snapshot) {
@@ -175,15 +193,11 @@ static void setCopyGCIMode(bool enabled) {copyMode=enabled;}
 static void savesTell(int kind, const char *why) {(void)kind; tells++; snprintf(told,sizeof(told),"%s",why);}
 static void savesSay(const char *why);
 static void artRoom(u32 length) {(void)length;}
-static void folderEnsure(DEVICEHANDLER_INTERFACE *device, const char *path) {(void)device;(void)path;}
+static DEVICEHANDLER_INTERFACE *ensured;
+static void folderEnsure(DEVICEHANDLER_INTERFACE *device, const char *path) {(void)path;ensured=device;}
 static void opBegin(bool move, const char *folder) {(void)move;(void)folder; starts++;}
 static void placesReload(void);
 static void opEnd(bool ok) {ends++; lastResult=ok; placesReload();}
-static bool chooseFolder(const char *start, char *out, size_t size) {
-    assert(!strcmp(start, screenFocus ? "left" : "right"));
-    if(!chosen[0]) return false;
-    snprintf(out,size,"%s",chosen); return true;
-}
 static bool cardWrite(int slot, const u8 *entry, const u8 *blocks, u32 size,
     char *why, size_t capacity) {
     (void)why;(void)capacity;
@@ -225,39 +239,53 @@ static void fixture(u8 *image,const char *game,const char *maker,char first,char
     }
     memset(image+5*8192,first,8192);memset(image+7*8192,second,8192);
 }
+/* The Source's card image, where Swiss's Emulate Memory Card keeps it. */
+#define SOURCE_IMAGE "sdc:/swiss/saves/MemoryCardA.USA.raw"
+static bool sourceSavesMissing;
 static const u8 *physical(file_handle *file,u32 *size) {
     assert(strchr(file->name,':') && "synthetic save reached physical device");
+    assert(file->device==owner(file->name) && "a device call names another device's path");
     if(!strcmp(file->name,"sda:/images/A.raw")) {*size=IMAGE_BYTES;return imageA;}
-    if(!strcmp(file->name,"sda:/images/B.raw")) {*size=IMAGE_BYTES;return imageB;}
+    if(!strcmp(file->name,"sda:/images/B.raw") || !strcmp(file->name,SOURCE_IMAGE)) {*size=IMAGE_BYTES;return imageB;}
     for(int i=0;i<exportCount;i++) if(!strcmp(file->name,exports[i].name)) {
         *size=exports[i].size;return exports[i].bytes;
     }
     *size=0;return NULL;
 }
 static long long sdSeek(file_handle *file,long long offset,u32 type) {
-    assert(strchr(file->name,':'));assert(type==0 && offset>=0);file->offset=(u32)offset;return offset;
+    assert(strchr(file->name,':') && file->device==owner(file->name));
+    assert(type==0 && offset>=0);file->offset=(u32)offset;return offset;
 }
 static s32 sdRead(file_handle *file,void *out,u32 size) {
     u32 available;const u8 *data=physical(file,&available);reads++;
     if(failReadAt==reads || !data || file->offset>available || size>available-file->offset) return -1;
     memcpy(out,data+file->offset,size);file->offset+=size;return (s32)size;
 }
-static s32 sdClose(file_handle *file) {assert(strchr(file->name,':'));closes++;return 0;}
+static s32 sdClose(file_handle *file) {assert(strchr(file->name,':') && file->device==owner(file->name));closes++;return 0;}
 static s32 sdStat(file_handle *file) {u32 size;return physical(file,&size) ? 0 : -1;}
 static bool failSdWrite;
 static s32 sdWrite(file_handle *file,const void *data,u32 size) {
     assert(strchr(file->name,':') && !SavesRaw_IsImageName(file->name));
-    assert(sd.features&FEAT_WRITE);assert(exportCount<8 && size<=sizeof(exports[0].bytes));
+    assert(file->device==owner(file->name) && (file->device->features&FEAT_WRITE));
+    assert(exportCount<8 && size<=sizeof(exports[0].bytes));
     if(failSdWrite) return -1;
     writes++;snprintf(exports[exportCount].name,PATHNAME_MAX,"%s",file->name);
     memcpy(exports[exportCount].bytes,data,size);exports[exportCount].size=size;exportCount++;
     return (s32)size;
 }
 static s32 sdDelete(file_handle *file) {
-    assert(strchr(file->name,':') && !SavesRaw_IsImageName(file->name));deletes++;return 0;
+    assert(strchr(file->name,':') && !SavesRaw_IsImageName(file->name));
+    assert(file->device==owner(file->name));deletes++;return 0;
 }
 static s32 sdDir(file_handle *directory,file_handle **out,u32 type) {
-    (void)type;int count=0;*out=calloc(10,sizeof(**out));assert(*out);
+    (void)type;int count=0;
+    assert(directory->device==owner(directory->name));
+    if(sourceSavesMissing && !strcmp(directory->name,"sdc:/swiss/saves")) {*out=NULL;return -1;}
+    *out=calloc(10,sizeof(**out));assert(*out);
+    if(!strcmp(directory->name,"sdc:/swiss/saves")) {
+        file_handle *file=&(*out)[count++];snprintf(file->name,PATHNAME_MAX,"%s",SOURCE_IMAGE);
+        file->size=IMAGE_BYTES;file->device=&sd2;file->fileType=IS_FILE;
+    }
     if(!strcmp(directory->name,"sda:/images")) {
         for(int i=0;i<2;i++) {
             file_handle *file=&(*out)[count++];
@@ -270,7 +298,7 @@ static s32 sdDir(file_handle *directory,file_handle **out,u32 type) {
         if((size_t)(slash-exports[i].name)!=strlen(directory->name) ||
             strncmp(exports[i].name,directory->name,strlen(directory->name))) continue;
         file_handle *file=&(*out)[count++];snprintf(file->name,PATHNAME_MAX,"%s",exports[i].name);
-        file->size=exports[i].size;file->device=&sd;file->fileType=IS_FILE;
+        file->size=exports[i].size;file->device=owner(file->name);file->fileType=IS_FILE;
     }
     return count;
 }
@@ -280,12 +308,22 @@ static void loadCard(savesPlace_t *place,int slot) {(void)slot;placeClear(place)
 static bool rawWritable=true;
 static int rawAdds,rawErases;
 static u8 *imageBytes(const file_handle *image) {
+    assert(image->device==owner(image->name));
     if(!strcmp(image->name,"sda:/images/A.raw")) return imageA;
-    if(!strcmp(image->name,"sda:/images/B.raw")) return imageB;
+    if(!strcmp(image->name,"sda:/images/B.raw") || !strcmp(image->name,SOURCE_IMAGE)) return imageB;
     assert(!"an image the model doesn't have");return NULL;
 }
 static bool SavesRaw_Writable(const file_handle *image) {
-    return rawWritable && image->device==&sd && (sd.features&FEAT_WRITE) && image->fileType==IS_FILE;
+    return rawWritable && image->device==owner(image->name) &&
+        (image->device->features&FEAT_WRITE) && image->fileType==IS_FILE;
+}
+/* Another folder: the chooser opens on the other stack's device, at its
+ * folder, and answers with a path under that device's root. */
+static bool chooseFolder(DEVICEHANDLER_INTERFACE *device,const char *start,char *out,size_t size) {
+    savesPlace_t *dest=&places[screenStacks[!screenFocus]];
+    assert(device==dest->device && !strcmp(start,getDevicePath(dest->dir.name)+1));
+    if(!chosen[0]) return false;
+    snprintf(out,size,"%s",chosen); return true;
 }
 static u8 rawMetadata[UI_SAVES_RAW_METADATA_SIZE];
 static uiSavesRawCard_t rawPlanned;
@@ -318,10 +356,12 @@ static unsigned imageSaves(const u8 *bytes,uiSavesRawCard_t *card) {
 static void setup(void) {
     memset(places,0,sizeof(places));memset(placeIdCount,0,sizeof(placeIdCount));
     sd=(DEVICEHANDLER_INTERFACE){&sdRoot,FEAT_WRITE,sdDir,sdRead,sdWrite,sdDelete,sdClose,sdSeek,sdStat};
-    sdRoot.device=&sd;
+    sdRoot.device=&sd;sd2=sd;sd2.initial=&sdRoot2;sdRoot2.device=&sd2;
+    sdDevice[0]=&sd;sdDevice[1]=NULL;sdDevices=1;sourceSavesMissing=false;ensured=NULL;
     for(int i=2;i<4;i++) {
         places[i].device=&sd;places[i].dir.device=&sd;places[i].dir.fileType=IS_DIR;
         snprintf(places[i].dir.name,PATHNAME_MAX,"sda:/%s",i==2?"left":"right");places[i].ready=true;
+        snprintf(folderHome[i-2],PATHNAME_MAX,"%s",places[i].dir.name);
     }
     reads=writes=deletes=closes=cardCopies=starts=ends=tells=says=exportCount=0;
     rawWritable=true;rawAdds=rawErases=0;failSdWrite=false;
@@ -329,7 +369,7 @@ static void setup(void) {
     pool=calloc(1,48*SAVES_SLOT_BYTES);assert(pool);memset(slots,0,sizeof(slots));
     screenFocus=0;screenStacks[0]=2;screenStacks[1]=3;failReadAt=-1;chosen[0]=0;
     memset(&over,0,sizeof(over));over.storageStack=-1;
-    inputCount=inputAt=menusShown=detailsShown=seenDim=0;storageChoice=-1;
+    inputCount=inputAt=menusShown=detailsShown=seenDim=menuSeen=0;storageChoice=-1;menuOpenedOn=-1;
     memset(&detailSnapshot,0,sizeof(detailSnapshot));
     memset(&status,0,sizeof(status));statusResult=CARD_ERROR_READY;statusReads=0;expectedStatusChannel=0;swissSettings.disableUIAnimations=false;
     fixture(imageA,"GALP","01",'A','B');fixture(imageB,"GZLP","02",'C','D');
@@ -505,8 +545,72 @@ static void storageFocus(void) {
         assert(focus==original && stacks[!original]==2+!original && stacks[original]==original);
         storageChoice=-1;focus=storagePress(stacks,original,original ? BUTTON_L : BUTTON_R);
         assert(focus==original && stacks[!original]==2+!original);
+        /* One SD device: the menu calls it the SD card. */
+        assert(over.menu.count==3 && !strcmp(over.menu.item[2],"SD card"));
         unchanged();clean();
     }
+}
+/* Settings on one card (sda:), games on another (sdc:), where Swiss's
+ * Emulate Memory Card keeps their card images: each SD column chooses
+ * either device by name, opens at its Save Folder, and lists, reads and
+ * writes there only; the device's handlers see only its own paths. */
+static void twoDevices(void) {
+    setup();sdDevice[1]=&sd2;sdDevices=2;places[0].ready=places[1].ready=true;
+    int stacks[2]={0,3};
+    /* R: Slot A, Slot B and both devices by name, on the one it shows. */
+    storageChoice=3;int focus=storagePress(stacks,0,BUTTON_R);
+    assert(menuOpenedOn==2 && over.menu.count==4 && over.menu.dim==1u);
+    assert(!strcmp(over.menu.item[2],"GC Loader") && !strcmp(over.menu.item[3],"SD Card - SD2SP2"));
+    assert(focus==0 && stacks[0]==0 && stacks[1]==3 && places[3].device==&sd2);
+    assert(!strcmp(places[3].dir.name,"sdc:/swiss/saves") && !strcmp(folderHome[1],"sdc:/swiss/saves"));
+    assert(places[3].ready && places[3].count==1 && !strcmp(places[3].list[0]->name,SOURCE_IMAGE));
+    /* Again: the menu starts on the Source, and choosing it keeps the folder. */
+    storageChoice=3;storagePress(stacks,0,BUTTON_R);
+    assert(menuOpenedOn==3 && places[3].device==&sd2 && !strcmp(places[3].dir.name,"sdc:/swiss/saves"));
+    /* The left column on the settings device, the right in the Source's image. */
+    storageChoice=2;storagePress(stacks,0,BUTTON_L);
+    assert(stacks[0]==2 && places[2].device==&sd && !strcmp(places[2].dir.name,"sda:/left"));
+    openSelected(&places[3],places[3].list[0]);
+    assert(places[3].rawOpen && places[3].ready && places[3].count==1 && places[3].rawImage.device==&sd2);
+    assert(SavesRaw_Writable(&places[3].rawImage));
+    /* The image takes a save from an image on the settings device, and
+     * lets its own one go. */
+    openImage(2,"A");screenStacks[0]=2;screenStacks[1]=3;screenFocus=0;
+    placesRemember();saveTransfer(places[2].list[0],UI_SAVES_PLACE_IMAGE,false);
+    assert(lastResult && rawAdds==1 && places[3].count==2 && !memcmp(imageA,frozenA,IMAGE_BYTES));
+    uiSavesRawCard_t card;assert(imageSaves(imageB,&card)==2);
+    u8 a[64],b[64],gone[64];assert(saveEntry(places[2].list[0],a) && UISavesRaw_Find(&card,a)<card.count);
+    file_handle *own=NULL;
+    for(int i=0;i<places[3].count;i++) {
+        assert(saveEntry(places[3].list[i],b));
+        if(!memcmp(b,"GZLP02",6)) {own=places[3].list[i];memcpy(gone,b,64);}
+    }
+    assert(own && saveDelete(own) && rawErases==1);
+    placesRemember();placesReload();assert(places[3].rawOpen && places[3].count==1);
+    assert(imageSaves(imageB,&card)==1 && UISavesRaw_Find(&card,a)<card.count && UISavesRaw_Find(&card,gone)==card.count);
+    /* B on the left: its folder. A Copy out of the Source's image lands there. */
+    loadFolder(&places[2],false);
+    assert(!places[2].rawOpen && places[2].device==&sd && !strcmp(places[2].dir.name,"sda:/left"));
+    screenFocus=1;placesRemember();saveTransfer(places[3].list[0],UI_SAVES_PLACE_FOLDER,false);
+    assert(lastResult && exportCount==1 && ensured==&sd && !strncmp(exports[0].name,"sda:/left/",10));
+    assert(places[2].count==1 && places[2].list[0]->device==&sd);
+    /* B on the right: the Source's folder, where a Copy from the left lands. */
+    loadFolder(&places[3],false);
+    assert(!places[3].rawOpen && places[3].device==&sd2 && places[3].count==1);
+    screenFocus=0;placesRemember();saveTransfer(places[2].list[0],UI_SAVES_PLACE_FOLDER,false);
+    assert(lastResult && exportCount==2 && ensured==&sd2 && !strncmp(exports[1].name,"sdc:/swiss/saves/",17));
+    assert(places[3].count==2 && places[3].list[0]->device==&sd2 && places[3].list[1]->device==&sd2);
+    char path[PATHNAME_MAX];snprintf(chosen,sizeof(chosen),"backup");
+    assert(destinationFolder(UI_SAVES_PLACE_CHOOSE,path,sizeof(path)) && !strcmp(path,"sdc:/backup"));
+    sd2.features=0;assert(!destinationFolder(UI_SAVES_PLACE_FOLDER,path,sizeof(path)));sd2.features=FEAT_WRITE;
+    /* Back to the settings device: its own Save Folder, its own home. */
+    storageChoice=2;storagePress(stacks,0,BUTTON_R);
+    assert(menuOpenedOn==3 && places[3].device==&sd && !strcmp(places[3].dir.name,"sda:/swiss/saves"));
+    assert(!strcmp(folderHome[1],"sda:/swiss/saves") && !strcmp(folderHome[0],"sda:/left"));
+    /* A Source without the Save Folder opens at its root. */
+    sourceSavesMissing=true;storageChoice=3;storagePress(stacks,0,BUTTON_R);
+    assert(places[3].device==&sd2 && !strcmp(places[3].dir.name,"sdc:/") && !strcmp(folderHome[1],"sdc:/"));
+    assert(deletes==0 && writes==2);clean();
 }
 static void detailsInput(void) {
     const u32 back[]={BUTTON_B};
@@ -634,8 +738,8 @@ static void detailsMetadata(void) {
     }
 }
 int main(void) {
-    readExport();twoColumns();destinationsAndFailures();openingFailures();emptyImage();storageFocus();detailsInput();detailsIconStates();detailsMetadata();
-    puts("RAW controller: load, virtual entry/art/read, details A/B, export, move and erase through the image writer, read-only images, reload and two SD columns PASS");
+    readExport();twoColumns();destinationsAndFailures();openingFailures();emptyImage();storageFocus();twoDevices();detailsInput();detailsIconStates();detailsMetadata();
+    puts("RAW controller: load, virtual entry/art/read, details A/B, export, move and erase through the image writer, read-only images, reload, two SD columns and two SD devices PASS");
     return 0;
 }
 '''
@@ -671,7 +775,7 @@ static void savesSay(const char *why) {
     pieces += [extract_function(saves, marker) for marker in ('static savesPlace_t *rawSource(', 'static bool readSaveAt(', 'static u32 saveTag(', 'static int placeSkip(', 'static void placeClear(', 'static void artRead(')]
     model, tests = MODEL.split('static void setup(void)', 1)
     pieces += [model, extract_function(saves, 'static bool isSaveName(')]
-    pieces += [extract_function(saves, marker) for marker in ('static int placeOrder(', 'static bool folderIsRoot(', 'static void loadFolder(', 'static void loadRaw(', 'static void loadTab(', 'static void folderPath(', 'static void placeRemember(')]
+    pieces += [extract_function(saves, marker) for marker in ('static int placeOrder(', 'static bool folderIsRoot(', 'static void loadFolder(', 'static void loadRaw(', 'static void loadTab(', 'static void folderSet(', 'static void folderOpenHome(', 'static void folderPath(', 'static void placeRemember(')]
     pieces += [extract_function(cube, marker) for marker in ('uiSaveCubesChange_t UISaveCubes_Change(', 'int UISaveCubes_Cells(', 'int UISaveCubes_Home(')]
     pieces += [extract_function(saves, marker) for marker in ('static void placesRemember(', 'static void placesReload(', 'static u8 *saveRead(', 'static bool folderWrite(', 'static bool saveDelete(', 'static bool destinationFolder(uiSavesPlace_t to, char *path, size_t size)\n{', 'static void saveTransfer(', 'static unsigned saveBlocks(', 'static bool saveEntry(', 'static void saveRoom(', 'static int placeCells(', 'static int placeCell(', 'static file_handle *placeAt(', 'static int stackFocus(', 'static int artSlot(', 'static void saveLine(', 'static void saveTitle(', 'static void saveHeading(', 'static void saveEntry32(', 'static bool saveUpdated(', 'static bool saveDetails(', 'static int savesMenu(', 'static void saveOptions(', 'static void chooseStorage(')]
     show = extract_function(saves, 'void show_saves(')

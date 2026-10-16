@@ -663,15 +663,29 @@ static void testStorage(void)
         assert(stacks[1] == ((mask & 2u) == 0u && (mask & 4u) != 0u ? 3 : 1));
         assert(stacks[0] != stacks[1]);
     }
-    assert(UISaves_StorageTab(0, 2, 3) == 2);
-    assert(UISaves_StorageTab(1, 2, 2) == 3);
-    assert(UISaves_StorageTab(1, 0, 0) == -1);
-    assert(UISaves_StorageTab(0, 1, 1) == -1);
-    assert(UISaves_StorageTab(0, 0, 1) == 0);
-    assert(UISaves_StorageTab(1, 1, 0) == 1);
-    assert(UISaves_StorageTab(0, -1, 3) == -1); /* cancelled */
-    assert(UISaves_StorageTab(2, 2, 1) == -1);
-    assert(UISaves_StorageTab(0, 3, 1) == -1);
+    assert(UISaves_StorageTab(0, 2, 3, 1) == 2);
+    assert(UISaves_StorageTab(1, 2, 2, 1) == 3);
+    assert(UISaves_StorageTab(1, 0, 0, 1) == -1);
+    assert(UISaves_StorageTab(0, 1, 1, 1) == -1);
+    assert(UISaves_StorageTab(0, 0, 1, 1) == 0);
+    assert(UISaves_StorageTab(1, 1, 0, 1) == 1);
+    assert(UISaves_StorageTab(0, -1, 3, 1) == -1); /* cancelled */
+    assert(UISaves_StorageTab(2, 2, 1, 1) == -1);
+    assert(UISaves_StorageTab(0, 3, 1, 1) == -1); /* one SD device: no fourth item */
+    /* Two SD devices (the settings device, then the Source): either one is
+     * the column's own SD tab, whatever the other column shows. */
+    for(int stack = 0; stack < 2; stack++) {
+        for(int other = 0; other < 4; other++) {
+            assert(UISaves_StorageTab(stack, 2, other, 2) == 2 + stack);
+            assert(UISaves_StorageTab(stack, 3, other, 2) == 2 + stack);
+            assert(UISaves_StorageTab(stack, 4, other, 2) == -1);
+        }
+    }
+    assert(UISaves_StorageTab(0, 1, 1, 2) == -1);
+    assert(UISaves_StorageTab(1, 0, 3, 2) == 0);
+    assert(UISaves_StorageTab(0, -1, 3, 2) == -1);
+    assert(UISaves_StorageTab(0, 2, 3, 0) == -1); /* a menu without SD */
+    assert(UISaves_StorageTab(0, 2, 3, 3) == -1);
     UISaves_InitialStorage(false, false, true, NULL);
 }
 

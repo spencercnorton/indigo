@@ -27,6 +27,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
   directory are written in the GameCube's own order and read back before a
   Move removes the original. Images on a FlippyDrive or KunaiGC stay
   read-only.
+- Memory Cards reaches the card your games are on when your settings are on
+  another: with settings on a GC Loader and games on an SD2SP2, say, L and R
+  name both cards, and each SD column shows either. Swiss's Emulate Memory
+  Card keeps a game's card images on the card the game starts from, so
+  that's where they are.
 - Choose the menu on each side of the Home cube: Settings › Setup › Console
   › **Up Face**, **Left Face**, **Right Face** and **Down Face**, each
   Source, Settings, System, Apps or None. Classic turns that way to it; the

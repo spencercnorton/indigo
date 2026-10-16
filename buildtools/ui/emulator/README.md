@@ -85,7 +85,7 @@ CI runs ten jobs, the first of them the required **Emulator** check:
 | virtual cards, NTSC, GC Loader, widescreen | NTSC, component | 480p | same route with `save-details-wide.ini`, 16:9 |
 | save, NTSC, SD2SP2, failing card | NTSC, composite | 480i | SD2SP2, writes failing after 13 |
 | game, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the game in 40 pieces |
-| files, NTSC, GC Loader and SD2SP2 | NTSC, component | 480p | GC Loader, a new card; a second SD card in SD2SP2, its writes failing on the second boot, which ends launching the probe's game from its Detail in the File Browser |
+| files, NTSC, GC Loader and SD2SP2 | NTSC, component | 480p | GC Loader, a new card, both memory-card slots empty; a second SD card in SD2SP2, made the Source for Memory Cards, its writes failing on the second boot, which ends launching the probe's game from its Detail in the File Browser |
 
 `--region pal|pal60|ntsc` is the console: the region Dolphin starts the video
 hardware in, and an SRAM (`GC/SRAM.raw`) with the same video format, as a
@@ -323,6 +323,18 @@ reads the actual FAT file back and checks its game, maker, name and every
 payload byte in BAT order, then checks the entire RAW image is unchanged.
 B closes the image to its containing folder and B again leaves Memory Cards.
 The artifact keeps the exported demonstration GCI and pictures of the route.
+
+The **files route** ends its first boot in Memory Cards with settings on the
+GC Loader and the SD card in SD2SP2 made the Source (L, DOWN and A in the
+File Browser). That card holds the same public image at
+`swiss/saves/MemoryCardA.USA.raw`, where Swiss's Emulate Memory Card keeps
+Slot A's card for a game started from it. With both slots empty, both
+columns start on the GC Loader's Save Folder; L lists Slot A, Slot B and
+both cards by name, and DOWN and A put the SD2SP2's Save Folder on the left.
+A opens the image, Erase takes its second save off and Move its first to
+the GC Loader's Save Folder on the right. Then both cards are read back:
+the image reads as a card with no save left (`card_image_saves`), the GC
+Loader has the first save whole, and the SD2SP2 has no copy of it.
 
 ## A GC Loader
 
