@@ -59,14 +59,30 @@ already carries:
 6. Use a distinct internal name (e.g. `WEB`): "browser" already means the File
    Browser in this codebase and its tests.
 
+## Packaging
+
+`sd_package.sh` bundles the browser when `browser/cubebrowser.dol` (and the
+`browser/gcbrowser/` CA folder) are present: the DOL goes to
+`swiss/indigo/cubebrowser.dol` (where `launchWebBrowser` looks) and the CA
+folder to `gcbrowser/` at the card root. Both paths are overridable with
+`BROWSER_DOL` / `BROWSER_GCBROWSER`. The browser is optional in the zip
+(`check_package.py` `OPTIONAL`), so a plain build still packages; a release
+ships it. The zip tripwire was raised to 9 MiB for the ~1 MiB the browser adds.
+
+The browser is **used with permission from Arial-Bold**
+(https://github.com/Arial-Bold/Cubebrowser); recorded in `NOTICE`. It ships as a
+separate DOL (an aggregate), so its licence stays its own and does not touch
+Indigo's GPL.
+
 ## Open decisions
 
-- **How CI builds the bundled DOL.** Indigo CI can reach only GitHub, and the
-  fork is not published yet (pending an explicit license grant from the creator,
-  since the upstream repo has none). Options: publish the fork once licensed and
-  have CI build it; vendor the browser source into this repo under the aesnd
-  precedent; or commit a reproducibly-built DOL artifact. Decide before wiring
-  step 5.
+- **How `browser/cubebrowser.dol` gets built in CI.** Indigo CI reaches only
+  GitHub, so either the hardened fork is published and a CI step builds it from
+  a pinned commit, or the source is vendored here, or a reproducibly-built DOL
+  is committed. (Permission to redistribute is settled; this is now only a
+  build-plumbing choice.)
+- **Theme to the browser via argv** — the browser ignores argv today, so it
+  opens in its own saved theme (Indigo by default). Add argv parsing to sync it.
 - **Return-path console test.** Returning from the browser to Indigo via the
   loader stub is the standard homebrew mechanism but is unverified on the real
   console; test before release.
