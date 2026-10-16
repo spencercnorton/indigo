@@ -254,9 +254,10 @@ Put each game in its own folder or put the disc images there directly:
 
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. The Library skips
 anything else there, such as a text file, a cover image or an empty folder.
-With **Library Folders** off, if `/games` holds no disc images at all, you
-get Swiss's plain file list instead. With it on, an empty `/games` stays
-in Indigo. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn
+With **Library Folders** off, if `/games` holds no disc images at all, the
+Library face opens the File Browser, two panes of files, instead. With it
+on, an empty `/games` stays in the Library. System › File Browser opens it on
+purpose, with Swiss's copy, move, rename and delete. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn
 the cube to Library and press A.
 
 To sort your games into folders, turn on Settings › Setup › Library ›
@@ -317,8 +318,8 @@ a PNG with the program's name. Home then gets an Apps face:
 ```
 
 A file called `boot.dol` is left out: in the Wii's Homebrew Channel layout it
-is the Wii program. Settings › Setup › Console › Apps Face turns the face
-off. [Apps](docs/guide/apps.md) has the rest.
+is the Wii program. Settings › Setup › Console › Down Face set to None
+takes the face off the cube. [Apps](docs/guide/apps.md) has the rest.
 
 ### Cheats
 

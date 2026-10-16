@@ -35,10 +35,15 @@ def build_source(read):
     # These are the actual activation and parent/back branches, not a policy
     # facsimile. The surrounding retained game-detail path is not entered by
     # a parent card. Its separate existing tests continue to cover game launch.
-    parent = function(carousel, "else if(directory[curSelection]->fileType==IS_SPECIAL)")
+    actions = carousel
+    if "static void filesActivate(" in swiss:
+        # The lists' one copy of A, which the Library calls as its own.
+        assert "filesActivate(directory, true);" in carousel
+        actions = function(swiss, "static void filesActivate(")
+    parent = function(actions, "else if(directory[curSelection]->fileType==IS_SPECIAL)")
     parent = parent[parent.index("{") + 1:parent.rindex("}")]
     x = function(carousel, "if(browserButtons & BUTTON_X)")
-    b = carousel[carousel.index("if((browserButtons & BUTTON_B) && useGameflow &&"):]
+    b = carousel[carousel.index("if((browserButtons & BUTTON_B) && gameflowInsideFolder()) {"):]
     b = b[:b.index("if((browserButtons & BUTTON_START)")]
     menu = function(swiss, "void menu_loop()")
     dispatch = function(menu, "if(devices[DEVICE_CUR] != NULL && curMenuLocation==ON_FILLIST)")
@@ -56,16 +61,32 @@ def build_source(read):
     parts = [STUBS.replace("@CAROUSEL_FOCUS@", initial_focus),
              record_sizes, model[record_start:record_end]]
     for marker in ("char *endsWith(", "bool canLoadFileType(", "bool checkExtension(",
-                   "char *getRelativeName(", "bool getParentPath("):
+                   "char *getRelativeName(", "bool getParentPath(", "char *getDevicePath("):
         parts.append(function(util, marker))
     for marker in ("int fileComparator(", "int sortFiles(", "void scanFiles(",
                    "file_handle** getSortedDirEntries(", "file_handle* getCurrentDirEntries(",
                    "int getSortedDirEntryCount(", "int getCurrentDirEntryCount("):
         parts.append(function(files, marker))
+    for marker in ("static bool gameflowCustomRootForDevice(",
+                   "static void gameflowGamesRoot(",
+                   "static bool gameflowPathPrefixMatches(",
+                   "static bool gameflowResolveDirOnDevice("):
+        if marker in swiss:
+            parts.append(function(swiss, marker))
     for marker in ("bool upToParent(", "static uiGameflowLibraryEntryType_t gameflowEntryType(",
                    "static uiGameflowLibraryMode_t gameflowLibraryMode(",
                    "static int gameflowLibraryEntries(", "static bool gameflowInsideFolder("):
         parts.append(function(swiss, marker))
+    for marker in ("static void filesUp(", "static void filesHome(",
+                   "static DEVICEHANDLER_INTERFACE *homeSourceFromPathIncludingUnavailable(",
+                   "static bool homeLibraryDevice(", "static bool homeLibraryOn(",
+                   "static bool homeLibraryMount(",
+                   "static DEVICEHANDLER_INTERFACE *homeFindLibrary(",
+                   "static void homeSwitchSource(",
+                   "static void homeApplyStartupSource(",
+                   "static bool gameflowTryOtherDevicesForLibrary("):
+        if marker in swiss:
+            parts.append(function(swiss, marker))
     parts += [helper, function(swiss, "static bool gameflowEnterLibraryFromHome("),
               function(swiss, "static void homePublishBrowserTransition("),
               function(swiss, "static file_handle *folderArtPicture("),
@@ -120,6 +141,8 @@ STUBS = r'''
 #define UI_SCENE_LIBRARY 1
 #define UI_HOME_SOURCE_MOUNT_UNMOUNTED 0
 #define UI_HOME_SOURCE_MOUNT_ABSENT 1
+#define UI_HOME_SOURCE_MOUNT_MOUNTED 2
+#define MAX_DEVICES 28
 #define ISO9660_GAMECUBE_DISC 4
 #define GAMECUBE_DISC 5
 #define MULTIDISC_DISC 6
@@ -133,25 +156,72 @@ typedef uint64_t u64;
 typedef struct { char name[PATHNAME_MAX]; int fileType, fileAttrib; uint32_t size;
     uint64_t fileBase; void *uiObj; } file_handle;
 typedef struct device { file_handle *initial; unsigned features; char **extraExtensions;
+    int (*init)(file_handle *);
     int (*readDir)(file_handle *, file_handle **, unsigned);
+    int (*closeFile)(file_handle *);
     void (*deinit)(file_handle *); } DEVICEHANDLER_INTERFACE;
-static DEVICEHANDLER_INTERFACE device, __device_dvd;
-static DEVICEHANDLER_INTERFACE *devices[] = {&device,NULL};
+#define DEVICE_CONFIG 2
+static DEVICEHANDLER_INTERFACE device, bootDevice, __device_dvd, __device_smb, __device_ftp, __device_fsp, __device_wode, __device_usbgecko;
+static file_handle fspInitial = {.name = "fsp:/", .fileType = IS_DIR};
+static file_handle wodeInitial = {.name = "wode:/", .fileType = IS_DIR};
+static file_handle usbInitial = {.name = "usb:/", .fileType = IS_DIR};
+static DEVICEHANDLER_INTERFACE *allDevices[MAX_DEVICES] = {&bootDevice, &__device_fsp, &__device_wode, &__device_usbgecko, &device};
+static DEVICEHANDLER_INTERFACE *devices[] = {&device, NULL, &bootDevice};
 static file_handle initial = {.name = "sdc:/", .fileType = IS_DIR};
+static file_handle bootInitial = {.name = "gcldr:/", .fileType = IS_DIR};
+static bool deviceAvailable;
+static unsigned inits;
+static int initFailDevice;
+static bool deviceHandler_getDeviceAvailable(DEVICEHANDLER_INTERFACE *d) {
+    return d == &bootDevice || (d == &device && deviceAvailable) ||
+        d == &__device_fsp || d == &__device_wode || d == &__device_usbgecko;
+}
+static void deviceHandler_setDeviceAvailable(DEVICEHANDLER_INTERFACE *d, bool a) {
+    if(d == &device) deviceAvailable = a;
+}
+static void deviceHandler_setStatEnabled(int enable) { (void)enable; }
+static char *getDevicePath(char *path);
+static DEVICEHANDLER_INTERFACE *getDeviceFromPath(char *path) {
+    char *devpos = getDevicePath(path);
+    if(devpos == path) return NULL;
+    for(int i = 0; i < MAX_DEVICES; i++) {
+        if(allDevices[i] && allDevices[i]->initial &&
+           !strncmp(allDevices[i]->initial->name, path, (size_t)(devpos - path)))
+            return allDevices[i];
+    }
+    return NULL;
+}
+static size_t nav_strlcpy(char *dst, const char *src, size_t size) {
+    size_t len = strlen(src);
+    if(size) { size_t n = len < size - 1 ? len : size - 1; memcpy(dst, src, n); dst[n] = '\0'; }
+    return len;
+}
+#undef strlcpy
+#define strlcpy nav_strlcpy
 static file_handle curDir, curFile, *curDirEntries;
-static file_handle **sortedDirEntries;
 static int curDirEntryCount, sortedDirEntryCount, curSelection;
 static int curMenuLocation, needsRefresh, needsDeviceChange, dvdDiscTypeInt;
+/* Two storages on one connector clash; here, only a test's pair. */
+static DEVICEHANDLER_INTERFACE *clashA, *clashB;
+static bool filesClash(DEVICEHANDLER_INTERFACE *a, DEVICEHANDLER_INTERFACE *b, char *r, size_t n) {
+    (void)r; (void)n; return (a == clashA && b == clashB) || (a == clashB && b == clashA);
+}
+static file_handle **sortedDirEntries;
 static struct { bool libraryFolders, showHiddenFiles, hideUnknownFileTypes;
     int fileBrowserType, gameBrowserType, appsBrowserType; char flattenDir[1024];
+    char libraryPath[PATHNAME_MAX];
 } swissSettings;
 static char *knownExtensions[] = {".iso", ".gcm", ".tgc", ".dol", NULL};
-static unsigned legacyPublishes, libraryPublishes, homePublishes, disposals;
+static unsigned listPublishes, libraryPublishes, homePublishes, disposals;
 static uiDrawObj_t panelObject;
 static uiDrawObj_t *filePanel = &panelObject;
+/* The File Browser's page pointer, cleared when that page goes. */
+static uiDrawObj_t *filesPage;
 static bool homeLibraryEntryPending;
+static bool homeFileBrowser;
 static void DrawGameflowCancelPosters(void) {}
 static void homeSourceRecord(DEVICEHANDLER_INTERFACE *d, int state) { (void)d; (void)state; }
+static int fakeInit(file_handle *f) { ++inits; return (initFailDevice && f == &initial) ? -1 : 0; }
 static void fakeDeinit(file_handle *f) { (void)f; }
 static bool is_rom_name(const char *name) { (void)name; return false; }
 static void print_debug(const char *fmt, ...) { (void)fmt; }
@@ -173,7 +243,7 @@ static void lockFile(file_handle *f) { (void)f; }
 static void unlockFile(file_handle *f) { (void)f; }
 static unsigned padsButtonsHeld(void) { return 0; }
 static void VIDEO_WaitVSync(void) {}
-static void DrawUpdateFileBrowserButton(void *f, int state) { (void)f; (void)state; }
+static __attribute__((unused)) void DrawUpdateFileBrowserButton(void *f, int state) { (void)f; (void)state; }
 static void DrawDispose(uiDrawObj_t *p) { assert(p == &panelObject); ++disposals; }
 static void homePublish(bool visible) {
     if(visible) { assert(filePanel == NULL); ++homePublishes; }
@@ -181,13 +251,23 @@ static void homePublish(bool visible) {
 static void folderArtClose(void) {}
 static void UIScene_RequestLibraryLayout(int layout) { (void)layout; }
 static void UIScene_Request(int scene) { (void)scene; }
-static int gameflowSceneLayout(void) { return 0; }
-static uiDrawObj_t *renderFileBrowser(file_handle **d, int n, uiDrawObj_t *p) {
-    (void)d; (void)n; ++legacyPublishes; return p;
+static __attribute__((unused)) int gameflowLayout(void) { return 0; }
+static __attribute__((unused)) int gameflowSceneLayout(void) { return 0; }
+/* The File Browser, and before it Swiss's lists (for --revision). */
+static __attribute__((unused)) uiDrawObj_t *renderFileList(file_handle **d, int n, uiDrawObj_t *p) {
+    (void)d; (void)n; ++listPublishes; return p;
 }
-static uiDrawObj_t *renderFileFullwidth(file_handle **d, int n, uiDrawObj_t *p) {
-    return renderFileBrowser(d, n, p);
+static __attribute__((unused)) uiDrawObj_t *renderFileBrowser(file_handle **d, int n, uiDrawObj_t *p) {
+    return renderFileList(d, n, p);
 }
+static __attribute__((unused)) uiDrawObj_t *renderFileFullwidth(file_handle **d, int n, uiDrawObj_t *p) {
+    return renderFileList(d, n, p);
+}
+static __attribute__((unused)) bool gameflowListFallback, filesKeepPresses;
+static unsigned otherReleases;
+static __attribute__((unused)) void filesOtherRelease(void) { ++otherReleases; }
+enum { UI_FILES_LEFT, UI_FILES_RIGHT };
+static __attribute__((unused)) bool DrawUpdateFilesReading(uiDrawObj_t *p, int pane) { (void)p; (void)pane; return false; }
 static uiDrawObj_t *renderFileCarousel(file_handle **directory, int num_files, uiDrawObj_t *p) {
     @CAROUSEL_FOCUS@
     (void)directory; assert(num_files > 0); ++libraryPublishes; return p;
@@ -226,6 +306,10 @@ static int fakeReadDir(file_handle *dir, file_handle **out, unsigned type) {
         n=2; names[1]="nested.game.iso"; types[1]=IS_FILE;
     } else if(!strcmp(dir->name, "sdc:/")) {
         n=3; names[1]="games"; types[1]=IS_DIR; names[2]="ipl.dol"; types[2]=IS_FILE;
+    } else if(!strcmp(dir->name, "gcldr:/")) {
+        n=3; names[1]="apps"; types[1]=IS_DIR; names[2]="boot.iso"; types[2]=IS_FILE;
+    } else if(!strcmp(dir->name, "gcldr:/apps")) {
+        n=2; names[1]="gbi.dol"; types[1]=IS_FILE;
     }
     *out = calloc((size_t)n, sizeof(**out)); assert(*out);
     for(int i=0;i<n;++i) {
@@ -242,11 +326,21 @@ static void reset(const char *path, bool folders, unsigned empty) {
     swissSettings.libraryFolders=folders; swissSettings.hideUnknownFileTypes=true;
     swissSettings.fileBrowserType=swissSettings.gameBrowserType=BROWSER_FULLWIDTH;
     strcpy(swissSettings.flattenDir, folders ? "*/games/*/*" : "*/games");
-    device.initial=&initial; device.features=FEAT_BOOT_GCM; device.readDir=fakeReadDir;
-    device.deinit=fakeDeinit;
+    device.initial=&initial; device.features=FEAT_BOOT_GCM; device.init=fakeInit;
+    device.readDir=fakeReadDir; device.deinit=fakeDeinit;
+    bootDevice.initial=&bootInitial; bootDevice.features=FEAT_BOOT_GCM;
+    bootDevice.init=fakeInit; bootDevice.readDir=fakeReadDir; bootDevice.deinit=fakeDeinit;
+    __device_fsp.initial=&fspInitial; __device_fsp.features=FEAT_BOOT_GCM;
+    __device_fsp.init=fakeInit; __device_fsp.readDir=fakeReadDir; __device_fsp.deinit=fakeDeinit;
+    __device_wode.initial=&wodeInitial; __device_wode.features=FEAT_BOOT_GCM;
+    __device_wode.init=fakeInit; __device_wode.readDir=fakeReadDir; __device_wode.deinit=fakeDeinit;
+    __device_usbgecko.initial=&usbInitial; __device_usbgecko.features=FEAT_BOOT_GCM;
+    __device_usbgecko.init=fakeInit; __device_usbgecko.readDir=fakeReadDir; __device_usbgecko.deinit=fakeDeinit;
+    deviceAvailable=false; inits=0; initFailDevice=0; devices[DEVICE_CONFIG]=&bootDevice;
+    swissSettings.libraryPath[0]='\0'; clashA=clashB=NULL;
     strcpy(curDir.name,path); curDir.fileType=IS_DIR; rootEmpty=empty;
     curSelection=0; curMenuLocation=ON_FILLIST; needsRefresh=needsDeviceChange=0;
-    legacyPublishes=libraryPublishes=homePublishes=disposals=0; filePanel=&panelObject;
+    listPublishes=libraryPublishes=homePublishes=disposals=0; filePanel=&panelObject;
     scanFiles();
 }
 static bool listed(const char *path) {
@@ -266,13 +360,13 @@ static void rootNavigation(void) {
         bool retained=gameflowLibraryMode(sortedDirEntries,sortedDirEntryCount)!=
             UI_GAMEFLOW_LIBRARY_NONE;
         navigate(buttons[k],retained); nextIteration();
-        assert(legacyPublishes==0); assert(homePublishes==1); assert(disposals==1);
+        assert(listPublishes==0); assert(homePublishes==1); assert(disposals==1);
         assert(curMenuLocation==ON_OPTIONS); assert(!strcmp(curDir.name,"sdc:/games"));
         assert(curSelection==selected);
         assert(!needsDeviceChange && !needsRefresh);
         assert(gameflowEnterLibraryFromHome()); assert(!needsRefresh);
         curMenuLocation=ON_FILLIST; nextIteration();
-        assert(libraryPublishes==1 && legacyPublishes==0);
+        assert(libraryPublishes==1 && listPublishes==0);
         if(k==0 && empty==0) {
             /* The real renderer starts past the parent when a card exists.
              * Keep this intentional first-card focus distinct from restoring
@@ -294,7 +388,7 @@ static void nestedNavigation(void) {
         navigate(buttons[b],true);
         assert(curMenuLocation==ON_FILLIST && needsRefresh && !needsDeviceChange);
         assert(!strcmp(curDir.name,parents[p])); assert(!strcmp(curFile.name,paths[p]));
-        nextIteration(); assert(legacyPublishes==0 && libraryPublishes==1);
+        nextIteration(); assert(listPublishes==0 && libraryPublishes==1);
         assert(homePublishes==0 && disposals==0);
         assert(!strcmp(sortedDirEntries[curSelection]->name,paths[p]));
     }
@@ -327,7 +421,7 @@ static void dottedFilter(void) {
      * dotted ancestry and deeper game path while omitting Old.Saves as a card. */
     assert(listed("sdc:/games/Racing.v1/Classics.Set/Old.Saves/nested.game.iso"));
     assert(!listed("sdc:/games/Racing.v1/Classics.Set/Old.Saves"));
-    dispatch(); assert(libraryPublishes==1 && !legacyPublishes);
+    dispatch(); assert(libraryPublishes==1 && !listPublishes);
     reset("sdc:/games",true,false); swissSettings.showHiddenFiles=true; scanFiles();
     assert(listed("sdc:/games/.Secret") && listed("sdc:/games/Flag.Hidden"));
     count=gameflowLibraryEntries(sortedDirEntries,sortedDirEntryCount);
@@ -335,23 +429,146 @@ static void dottedFilter(void) {
 }
 static void legacyAndEmptyPolicy(void) {
     reset("sdc:/games/Nintendo.GC",false,false);
-    dispatch(); assert(legacyPublishes==1 && libraryPublishes==0);
+    dispatch(); assert(listPublishes==1 && libraryPublishes==0);
     navigate(BUTTON_X,false); nextIteration(); assert(!strcmp(curDir.name,"sdc:/games"));
-    reset("sdc:/games",false,true); dispatch(); assert(legacyPublishes==1);
+    reset("sdc:/games",false,true); dispatch(); assert(listPublishes==1);
+    reset("sdc:/games",false,false); dispatch(); assert(libraryPublishes==1);
+    /* System > File Browser: the File Browser where the Library would show,
+     * and the Library again once it is over. */
+    reset("sdc:/games",false,false); homeFileBrowser=true; dispatch();
+    assert(listPublishes==1 && !libraryPublishes);
+    assert(gameflowLibraryMode(sortedDirEntries,sortedDirEntryCount)==UI_GAMEFLOW_LIBRARY_NONE);
+    homeFileBrowser=false; dispatch(); assert(listPublishes==1 && libraryPublishes==1);
     reset("sdc:/games",false,false); dispatch(); assert(libraryPublishes==1);
     curSelection=0; /* Explicitly select the parent before activating it. */
-    navigate(BUTTON_A,true); nextIteration(); assert(homePublishes==1 && !legacyPublishes);
-    reset("sdc:/other.v1",true,false); dispatch(); assert(legacyPublishes==1);
-    reset("sdc:/games",true,true); device.features=0; dispatch(); assert(legacyPublishes==1);
+    navigate(BUTTON_A,true); nextIteration(); assert(homePublishes==1 && !listPublishes);
+    reset("sdc:/other.v1",true,false); dispatch(); assert(listPublishes==1);
+    reset("sdc:/games",true,true); device.features=0; dispatch(); assert(listPublishes==1);
     assert(gameflowLibraryMode(NULL,0)==UI_GAMEFLOW_LIBRARY_NONE);
     assert(gameflowLibraryMode(sortedDirEntries,0)==UI_GAMEFLOW_LIBRARY_NONE);
-    reset("sdc:/games",true,true); failRead=true; needsRefresh=1; nextIteration();
+    reset("sdc:/games",true,true); failRead=true; needsRefresh=1; otherReleases=0;
+    nextIteration();
     assert(devices[DEVICE_CUR]==NULL && needsDeviceChange);
-    assert(!legacyPublishes && !libraryPublishes);
+    assert(!listPublishes && !libraryPublishes);
+    /* The right pane's listing goes before the Source does. */
+    assert(otherReleases==1);
+}
+static void listFallback(void) {
+    /* The Library couldn't draw here: the File Browser shows the folder,
+     * and the Library takes it again once the flag is cleared. */
+    reset("sdc:/games",false,false); gameflowListFallback=true; dispatch();
+    assert(listPublishes==1 && !libraryPublishes);
+    gameflowListFallback=false; otherReleases=0; dispatch();
+    assert(listPublishes==1 && libraryPublishes==1);
+    /* Going to the Library lets the right pane's listing go. */
+    assert(otherReleases==1);
+}
+static void crossDeviceLibraryFallback(void) {
+    /* 1. Library on gcldr:/, which has no /games: sdc:/games becomes the
+     *    Source and the Library opens on it. Nothing asks, nothing is saved. */
+    reset("gcldr:/",true,false);
+    devices[DEVICE_CUR]=&bootDevice;
+    deviceAvailable=true;
+    assert(gameflowEnterLibraryFromHome());
+    assert(devices[DEVICE_CUR]==&device);
+    assert(devices[DEVICE_PREV]==&bootDevice);
+    assert(!strcmp(curDir.name,"sdc:/games"));
+    assert(needsRefresh==1 && swissSettings.libraryPath[0]=='\0');
+    curMenuLocation=ON_FILLIST; nextIteration();
+    assert(libraryPublishes==1 && listPublishes==0);
+
+    /* 2. The network adapter, WODE and USB Gecko are never searched, and a
+     *    storage on the Source's own connector isn't mounted beside it. */
+    reset("gcldr:/",true,false);
+    devices[DEVICE_CUR]=&bootDevice;
+    deviceAvailable=true;
+    clashA=&device; clashB=&bootDevice;
+    assert(!gameflowEnterLibraryFromHome());
+    assert(devices[DEVICE_CUR]==&bootDevice && inits==0);
+
+    /* 3. A Library Path names the folder the Library opens, on its device. */
+    reset("gcldr:/",true,false);
+    devices[DEVICE_CUR]=&bootDevice;
+    deviceAvailable=true;
+    strcpy(swissSettings.libraryPath,"sdc:/games/Racing.v1");
+    homeApplyStartupSource();
+    assert(devices[DEVICE_CUR]==&device);
+    memcpy(&curDir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
+    scanFiles();
+    assert(gameflowEnterLibraryFromHome());
+    assert(!strcmp(curDir.name,"sdc:/games/Racing.v1"));
+
+    /* 4. Startup on a Library Path's device: it becomes the Source before
+     *    the root is read, and the Source picker isn't needed. */
+    reset("gcldr:/",true,false);
+    devices[DEVICE_CUR]=&bootDevice;
+    deviceAvailable=true;
+    needsDeviceChange=1;
+    strcpy(swissSettings.libraryPath,"sdc:/");
+    homeApplyStartupSource();
+    assert(devices[DEVICE_CUR]==&device && devices[DEVICE_PREV]==&bootDevice);
+    assert(deviceAvailable && needsDeviceChange==0);
+
+    /* 5. Auto: the boot device has no /games, so startup finds sdc:/games. */
+    reset("gcldr:/",true,false);
+    devices[DEVICE_CUR]=&bootDevice;
+    deviceAvailable=true;
+    needsDeviceChange=1;
+    homeApplyStartupSource();
+    assert(devices[DEVICE_CUR]==&device && devices[DEVICE_PREV]==&bootDevice);
+    assert(needsDeviceChange==0 && swissSettings.libraryPath[0]=='\0');
+
+    /* 6. Auto with /games on the boot device: it stays, nothing else mounts. */
+    reset("sdc:/",true,false);
+    devices[DEVICE_CUR]=&device;
+    deviceAvailable=true;
+    homeApplyStartupSource();
+    assert(devices[DEVICE_CUR]==&device && inits==0);
+
+    /* 6b. Started from the disc drive: it isn't read, and nothing mounts. */
+    reset("dvd:/",true,false);
+    devices[DEVICE_CUR]=&__device_dvd;
+    deviceAvailable=true;
+    homeApplyStartupSource();
+    assert(devices[DEVICE_CUR]==&__device_dvd && inits==0);
+
+    /* 7. The Library Path's card fails to mount (taken out at startup):
+     *    gcldr:/ stays the Source, and Library finds nothing else. */
+    reset("gcldr:/",true,false);
+    devices[DEVICE_CUR]=&bootDevice;
+    deviceAvailable=true;
+    strcpy(swissSettings.libraryPath,"sdc:/");
+    initFailDevice=1;
+    homeApplyStartupSource();
+    assert(devices[DEVICE_CUR]==&bootDevice);
+    assert(!gameflowEnterLibraryFromHome());
+    assert(devices[DEVICE_CUR]==&bootDevice);
+
+    /* 8. Its card not there at all: gcldr:/ stays, and nothing is mounted. */
+    reset("gcldr:/",true,false);
+    devices[DEVICE_CUR]=&bootDevice;
+    deviceAvailable=false;
+    strcpy(swissSettings.libraryPath,"sdc:/");
+    homeApplyStartupSource();
+    assert(devices[DEVICE_CUR]==&bootDevice && inits==0);
+
+    /* 9. From a subfolder of the boot device (gcldr:/apps after Apps):
+     *    Library reads gcldr:/ first, then finds sdc:/games and opens it. */
+    reset("gcldr:/apps",true,false);
+    devices[DEVICE_CUR]=&bootDevice;
+    deviceAvailable=true;
+    assert(!gameflowEnterLibraryFromHome());
+    assert(devices[DEVICE_CUR]==&bootDevice);
+    memcpy(&curDir, devices[DEVICE_CUR]->initial, sizeof(file_handle));
+    curSelection=0; needsRefresh=1; homeLibraryEntryPending=true; curMenuLocation=ON_FILLIST;
+    nextIteration();
+    assert(devices[DEVICE_CUR]==&device && !strcmp(curDir.name,"sdc:/games"));
+    assert(libraryPublishes==1 && listPublishes==0);
 }
 int main(int argc, char **argv) {
     if(argc==2 && !strcmp(argv[1],"dots")) dottedFilter();
-    else { rootNavigation(); nestedNavigation(); dottedFilter(); legacyAndEmptyPolicy(); }
+    else { rootNavigation(); nestedNavigation(); dottedFilter(); legacyAndEmptyPolicy();
+        listFallback(); crossDeviceLibraryFallback(); }
     freeFiles();
     puts("real folder filter/navigation/dispatch: PASS"); return 0;
 }

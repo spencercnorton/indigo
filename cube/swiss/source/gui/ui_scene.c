@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "ui_cube_motif.h"
+#include "ui_home_layout.h"
 
 #include "ui_scene.h"
 
@@ -80,6 +81,7 @@ static int32_t requestedHomeOrientation[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
 static uint32_t requestedHomeTurnAxis;
 static int32_t requestedHomeTurnDirection;
 static uint32_t requestedHomeStyle = UI_HOME_CUBE_INFINITE;
+static uint32_t requestedHomeLayout;
 static uint32_t sceneReady;
 static uint32_t requestedLibraryLayout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
 static uiSceneState_t state;
@@ -133,14 +135,22 @@ static bool isHomeSurface(int surface)
 		surface < (int)UI_HOME_SURFACE_COUNT;
 }
 
-static uiHomeFace_t faceForTurn(int32_t turnOrdinal, int32_t faceCount)
+/* The sides, four bits each, and the absent faces above them: the layout
+ * travels as one word. */
+static uint32_t packHomeLayout(const uiHomeState_t *home)
 {
-	int32_t face = turnOrdinal % faceCount;
+	uint32_t word = (uint32_t)home->absent << 16;
 
-	if(face < 0) {
-		face += faceCount;
-	}
-	return (uiHomeFace_t)face;
+	for(int side = 0; side < UI_HOME_SIDE_COUNT; ++side)
+		word |= (uint32_t)(home->sides[side] & 15u) << (4 * side);
+	return word;
+}
+
+static void unpackHomeLayout(uint32_t word, uiHomeState_t *home)
+{
+	for(int side = 0; side < UI_HOME_SIDE_COUNT; ++side)
+		home->sides[side] = (uint8_t)((word >> (4 * side)) & 15u);
+	home->absent = (uint8_t)(word >> 16);
 }
 
 static bool homeRequestValid(const uiHomeState_t *home)
@@ -148,25 +158,24 @@ static bool homeRequestValid(const uiHomeState_t *home)
 	if(home == NULL) return false;
 	uiHomeFace_t face = home->face;
 	int32_t turnOrdinal = home->turnOrdinal;
-	/* Four faces, or five with Apps. */
-	int32_t faceCount = home->faceCount;
 	uiHomeSurface_t surface = home->surface;
 	int selection = home->selection;
 	bool selectionValid = surface == UI_HOME_SURFACE_RING ? selection == 0 :
-		selection >= 0 && selection < 2;
+		selection >= 0 && selection < UI_HOME_LAYOUT_MAX_ROWS;
 	bool surfaceMatchesFace = surface == UI_HOME_SURFACE_RING ||
 		(surface == UI_HOME_SURFACE_SOURCE && face == UI_HOME_FACE_SOURCE) ||
 		((surface == UI_HOME_SURFACE_SYSTEM ||
 			surface == UI_HOME_SURFACE_RESTART_CONFIRM) &&
 			face == UI_HOME_FACE_SYSTEM);
 
-	if(faceCount != UI_HOME_FACE_APPS && faceCount != UI_HOME_FACE_COUNT)
+	/* Library and the faces on its sides, the face in front one of them. */
+	if(!UIHome_LayoutValid(home))
 		return false;
 	if(home->style != UI_HOME_CUBE_INFINITE &&
 		home->style != UI_HOME_CUBE_CLASSIC)
 		return false;
-	return isHomeFace((int)face) && (int32_t)face < faceCount &&
-		faceForTurn(turnOrdinal, faceCount) == face &&
+	return isHomeFace((int)face) && UIHome_RingIndex(home, face) >= 0 &&
+		UIHome_RingFace(home, turnOrdinal) == face &&
 		isHomeSurface((int)surface) && selectionValid && surfaceMatchesFace &&
 		UIHome_OrientationValid(&home->orientation) &&
 		((home->turnAxis == UI_HOME_TURN_NONE && home->turnDirection == 0) ||
@@ -177,11 +186,12 @@ static bool homeRequestValid(const uiHomeState_t *home)
 
 static uiScenePose_t homePose(void)
 {
+	/* Memory Cards, Emulators and File Browser sit as Apps does. */
 	static const float faceLift[UI_HOME_FACE_COUNT] = {
-		0.000f, 0.065f, -0.045f, 0.035f, -0.030f
+		0.000f, 0.065f, -0.045f, 0.035f, -0.030f, -0.030f, -0.030f, -0.030f
 	};
 	static const float facePitch[UI_HOME_FACE_COUNT] = {
-		0.000f, 0.070f, -0.090f, 0.045f, 0.055f
+		0.000f, 0.070f, -0.090f, 0.045f, 0.055f, 0.055f, 0.055f, 0.055f
 	};
 	uiScenePose_t pose = poses[UI_SCENE_HOME];
 	int face = isHomeFace((int)state.appliedHomeFace) ?
@@ -194,7 +204,9 @@ static uiScenePose_t homePose(void)
 	if(state.appliedHomeSurface == UI_HOME_SURFACE_SOURCE ||
 		state.appliedHomeSurface == UI_HOME_SURFACE_SYSTEM) {
 		float rowDirection = state.appliedHomeSelection == 0 ? 1.0f : -1.0f;
-		pose.cubeY += rowDirection * 0.055f;
+		/* System's four rows start a row higher, so its cube stays up. */
+		pose.cubeY += state.appliedHomeSurface == UI_HOME_SURFACE_SYSTEM ?
+			0.055f : rowDirection * 0.055f;
 		pose.cubePitch -= rowDirection * 0.095f;
 		pose.cubeScale += 0.030f;
 	}
@@ -251,6 +263,8 @@ static uiSceneHomeRequest_t loadHomeRequest(void)
 			__ATOMIC_RELAXED);
 		request.style = (uiHomeCubeStyle_t)__atomic_load_n(
 			&requestedHomeStyle, __ATOMIC_RELAXED);
+		unpackHomeLayout(__atomic_load_n(&requestedHomeLayout,
+			__ATOMIC_RELAXED), &request);
 		for(row = 0; row < 3; ++row) {
 			for(col = 0; col < 3; ++col) {
 				request.orientation.m[row][col] = (int8_t)__atomic_load_n(
@@ -468,10 +482,26 @@ static void retargetPose(uiSceneId_t scene, uiMotionMode_t motionMode)
 		isHomeYawScene(scene) ? 1.0f : 0.0f, motionMode);
 	retargetOrientation(scene, motionMode);
 	/* Classic's glyphs keep their sides in every scene, so leaving Home
-	 * moves none of them. */
-	UICubeMotif_Request(&state.motifs, isHomeYawScene(scene) ||
-		state.home.style == UI_HOME_CUBE_CLASSIC ? &state.home : NULL,
-		motionMode);
+	 * moves none of them. Away from Home Infinite shows Library in front of
+	 * its ring: the authored background for the default sides. */
+	if(isHomeYawScene(scene) || state.home.style == UI_HOME_CUBE_CLASSIC) {
+		UICubeMotif_Request(&state.motifs, &state.home, motionMode);
+	}
+	else if(UIHome_DefaultSides(&state.home)) {
+		UICubeMotif_Request(&state.motifs, NULL, motionMode);
+	}
+	else {
+		uiHomeState_t away = state.home;
+
+		away.face = UI_HOME_FACE_LIBRARY;
+		away.turnOrdinal = 0;
+		away.surface = UI_HOME_SURFACE_RING;
+		away.selection = 0;
+		UIHome_OrientationInit(&away.orientation);
+		away.turnAxis = UI_HOME_TURN_NONE;
+		away.turnDirection = 0;
+		UICubeMotif_Request(&state.motifs, &away, motionMode);
+	}
 	state.appliedScene = scene;
 }
 
@@ -487,6 +517,8 @@ static void applyHomeRequest(uiMotionMode_t motionMode)
 		request.turnAxis == state.homeTurnAxis &&
 		request.turnDirection == state.homeTurnDirection &&
 		request.style == state.home.style &&
+		request.absent == state.home.absent &&
+		memcmp(request.sides, state.home.sides, sizeof(request.sides)) == 0 &&
 		memcmp(&request.orientation, &state.homeTarget, sizeof(state.homeTarget)) == 0)
 		return;
 	state.home = request;
@@ -558,6 +590,8 @@ void UIScene_Reset(void)
 	UIHome_OrientationInit(&state.navigationTarget);
 	UIHome_Init(&state.home, (uiHomeCapabilities_t){.hasSource = true});
 	state.home.revision = 0u;
+	__atomic_store_n(&requestedHomeLayout, packHomeLayout(&state.home),
+		__ATOMIC_RELAXED);
 	UICubeMotif_Reset(&state.motifs);
 	for(int i = 0; i < 4; ++i)
 		UIMotion_SpringInit(&state.orientation[i], i == 0 ? 1.0f : 0.0f,
@@ -647,6 +681,7 @@ void UIScene_RequestHome(const uiHomeState_t *home)
 	__atomic_store_n(&requestedHomeTurnAxis, (uint32_t)home->turnAxis, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeTurnDirection, home->turnDirection, __ATOMIC_RELAXED);
 	__atomic_store_n(&requestedHomeStyle, (uint32_t)home->style, __ATOMIC_RELAXED);
+	__atomic_store_n(&requestedHomeLayout, packHomeLayout(home), __ATOMIC_RELAXED);
 	for(int row = 0; row < 3; ++row)
 		for(int col = 0; col < 3; ++col)
 			__atomic_store_n(&requestedHomeOrientation[row][col],
@@ -720,8 +755,9 @@ void UIScene_Update(float deltaSeconds, uiMotionMode_t motionMode)
 	state.frame.cubeYaw = UIMotion_SpringUpdate(&state.cubeYaw, deltaSeconds,
 		motionMode);
 	updateHomeFocus(motionMode);
+	/* Home's alone: the Source picker's smaller cube holds still. */
 	idleTarget = motionMode == UI_MOTION_FULL &&
-		isHomeYawScene(state.appliedScene) &&
+		state.appliedScene == UI_SCENE_HOME &&
 		UIMotion_SpringSettled(&state.cubeY, 0.0002f, 0.001f) &&
 		UIMotion_SpringSettled(&state.cubeScale, 0.0002f, 0.001f) &&
 		UIMotion_SpringSettled(&state.cubePitch, 0.0002f, 0.001f) &&

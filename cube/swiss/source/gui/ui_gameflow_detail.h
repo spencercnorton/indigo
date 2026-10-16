@@ -36,7 +36,13 @@ typedef enum {
 	UI_GAMEFLOW_DETAIL_CAN_CLEAN_BOOT = 1u << 9,
 	UI_GAMEFLOW_DETAIL_CLEAN_BOOT_DEFAULT = 1u << 10,
 	UI_GAMEFLOW_DETAIL_AUDIO_STREAMING = 1u << 11,
-	UI_GAMEFLOW_DETAIL_HAS_DISC_TWO = 1u << 12
+	UI_GAMEFLOW_DETAIL_HAS_DISC_TWO = 1u << 12,
+	/* Set by Build: the SAVES inset shows, for two or more save copies. */
+	UI_GAMEFLOW_DETAIL_HAS_SAVES = 1u << 13,
+	/* Set by Build: Left and Right choose the copy to start the game with. */
+	UI_GAMEFLOW_DETAIL_SAVE_CHOICE = 1u << 14,
+	/* Opened from the File Browser: B goes back there, not to the Library. */
+	UI_GAMEFLOW_DETAIL_BACK_FILES = 1u << 15
 } uiGameflowDetailFlags_t;
 
 typedef struct {
@@ -58,6 +64,29 @@ typedef struct {
 	bool playHistoryAvailable;
 	uiGameSaveStatus_t saveStatus;
 	const uiSavesGameStats_t *saveStats;
+	/* A memory card is still changing to this game's card: its saves aren't
+	 * in saveStats yet, and no copy is chosen. */
+	bool savesWaiting;
+	/* One was given up on: its saves are missing from saveStats. */
+	bool savesCardFailed;
+	/* Left and Right's choice among saveCopies copies (1-based; 0: none, the
+	 * totals show): its entry, where it is, and whether it is on the card the
+	 * game reads. */
+	uint32_t saveCopies;
+	uint32_t saveChoice;
+	const uint8_t *saveChoiceEntry;
+	const char *saveChoiceWhere;
+	bool saveChoiceInUse;
+	/* With copies of more than one file: the chosen copy's file, and its
+	 * place among that file's copies (1-based). NULL: one file. */
+	const char *saveChoiceFile;
+	uint32_t saveChoiceFileCopy;
+	uint32_t saveChoiceFileCopies;
+	/* The game's own second comment line ("Last saved on 1/6") of the copy
+	 * the box describes: the newest for the totals, the chosen one while
+	 * choosing. NULL or empty: none. */
+	const char *saveLine;
+	const char *saveChoiceLine;
 	const uint8_t *banner;
 	size_t bannerSize;
 	const uiGameflowDetailCheatSource_t *cheats;
@@ -86,7 +115,9 @@ typedef struct {
 	char lastPlayedText[64];
 	char saveStatusText[48];
 	uiSavesGameStats_t saveStats;
-	/* Read-only save copies in the checked slots and configured Save Folder. */
+	/* Read-only save copies in the checked slots, the configured Save Folder
+	 * and the Source's swiss/saves, formatted only when
+	 * UI_GAMEFLOW_DETAIL_HAS_SAVES is set. */
 	char savesSummary[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
 	char savesUpdated[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
 	char facts[UI_GAMEFLOW_DETAIL_FACTS_CAPACITY];
@@ -124,8 +155,9 @@ typedef enum {
 } uiGameflowDetailInput_t;
 
 /* The rows up and down move between, counted from the bottom as they are
- * drawn: Launch, Cheats above it, Settings above that. The SAVES inset is
- * read-only and takes no focus. A zeroed event rests on Launch. */
+ * drawn: Launch, Cheats above it, Settings above that. The SAVES inset,
+ * when shown, is read-only and takes no focus. A zeroed event rests on
+ * Launch. */
 typedef enum {
 	UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH = 0,
 	UI_GAMEFLOW_DETAIL_FOCUS_CHEATS,

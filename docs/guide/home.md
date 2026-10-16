@@ -21,8 +21,8 @@ press A.
 | **Library** | Your games, as posters. See [Library](library.md). |
 | **Source** | A short list: **Change Source** picks the device your games come from, and **Refresh Library** reads it again, for example after you swap the disc. See [Source](source.md). |
 | **Settings** | Settings. See [Settings](settings.md). |
-| **System** | A short list: **System Information**, **Memory Cards** and **Restart Indigo**. See [System](system.md) and [Memory Cards](memory-cards.md). |
-| **Apps** | Your emulators and other programs, as posters. Only there when the card's `/apps` folder has a program; it comes one turn left of Library (below it with a Classic cube). Settings › Setup › Console › Apps Face turns it off. See [Apps](apps.md). |
+| **System** | A short list: **System Information**, **Memory Cards**, **File Browser** and **Restart Indigo**. See [System](system.md) and [Memory Cards](memory-cards.md). |
+| **Apps** | Your emulators and other programs, as posters. Only there when the card's `/apps` folder has a program; it comes one turn left of Library (below it with a Classic cube). Set Down Face to None to turn it off (see [Choose the sides](#choose-the-sides)). See [Apps](apps.md). |
 
 Left and Right turn the cube sideways; Up and Down tip it over. Either way you
 reach the next face, and the name under the cube tells you which face is in
@@ -38,8 +38,9 @@ Settings › Setup › Console › **Cube** chooses how the faces sit on the cub
 - **Infinite** (the default) is the cube described above: every direction
   turns on to the next face, round and round.
 - **Classic** is laid out like the GameCube's own menu. Library is in front
-  and is where you start. Every other menu has a side of its own: Settings
-  on the left, System on the right, Source on top and Apps underneath. From
+  and is where you start. Every other menu has a side of its own, by
+  default Settings on the left, System on the right, Source on top and Apps
+  underneath ([Choose the sides](#choose-the-sides) moves them). From
   Library, a direction turns the cube a quarter turn to that side. From a
   side, only the way back, or B, turns it back to Library; the cube doesn't
   go round, so Settings to System is Right, Right. Each face keeps its icon
@@ -48,6 +49,38 @@ Settings › Setup › Console › **Cube** chooses how the faces sit on the cub
   starts on Library, and A turns up to Source with its list open.
 
 A change of Cube takes effect as you leave Settings.
+
+### Choose the sides
+
+Settings › Setup › Console › **Up Face**, **Left Face**, **Right Face** and
+**Down Face** choose the menu above, left of, right of and below Library:
+Source, Settings, System, Apps, Memory Cards, Emulators, File Browser, or
+**None** to leave that side empty. Memory Cards opens the same screen as
+System's Memory Cards row, and [File Browser](system.md#file-browser) the
+same File Browser as System's row; B there comes back to its face.
+[Emulators](apps.md#emulators) lists the programs in `/emulators` as Apps
+lists `/apps`, and shows while that folder has one. A
+Classic cube turns that way to it; the Infinite ring turns through the
+faces up, left, right and down, after Library. A menu on no side is off the
+cube. Y on Home opens Settings wherever its face is, and while Settings has
+no side the hint along the bottom says so. A menu named for two sides keeps
+the first. With no device to read games from and Source on no side, A on
+Library opens the device list straight away.
+
+<p align="center">
+  <img alt="Settings, Setup, Console: Up Face Source, Left Face Settings, Right Face System and Down Face Apps, with Down Face highlighted; the line above the buttons reads The menu below Library: Apps (default), another menu, or None." src="images/home-sides.png" width="640">
+</p>
+
+For example, Down Face **Settings**, Left Face **Apps**, Right Face
+**Emulators** and Up Face **Memory Cards** put Settings below Library, Apps
+on its left, Emulators on its right and Memory Cards above, with Source and
+System off the cube. Up Face **File Browser** puts the File Browser in
+place of Source: one press of Up away with a Classic cube, one press of
+Right with Infinite.
+
+<p align="center">
+  <img alt="Home on the File Browser face: the glass cube shows a folder, and FILE BROWSER is written underneath." src="images/home-files-face.png" width="480">
+</p>
 
 When Indigo starts, the cube flies in from the distance, spinning, and comes
 to rest on that face within a second. With UI Motion set to Reduced it fades
@@ -109,7 +142,8 @@ never plays by itself. UI Motion is in Settings › Quick.
   average of the last few seconds' readings: it holds steady and moves a
   degree at a time. It has no factory calibration; adjust it in Settings ›
   Setup › Console › CPU Temperature Calibration.
-- **Bottom:** the buttons that work here.
+- **Bottom:** the face's name and the buttons that work here. Settings ›
+  Setup › Console › Face Labels and On-screen Controls each take theirs away.
 - **Music and sounds:** Indigo plays its own menu music and soft navigation
   sounds. Turn either off in Settings › Quick.
 - **START:** shows your recently played games, when Settings › Setup ›

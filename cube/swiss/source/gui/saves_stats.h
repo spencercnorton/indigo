@@ -3,9 +3,56 @@
 
 #include "ui_saves_metadata.h"
 
+struct DEVICEHANDLER_STRUCT;
+
+/* Where a copy of a game's save is: on the card in a slot, a .gci, .gcs or
+ * .sav file in the Save Folder or the Source's swiss/saves, or one save
+ * inside a .raw card image there. */
+typedef enum {
+	SAVES_COPY_SLOT_A = 0,
+	SAVES_COPY_SLOT_B,
+	SAVES_COPY_FILE,
+	SAVES_COPY_IMAGE
+} savesCopySource_t;
+
+#define SAVES_COPIES_MAX 8u
+#define SAVES_COPY_PATH 1024u	/* PATHNAME_MAX */
+
+typedef struct {
+	savesCopySource_t source;
+	struct DEVICEHANDLER_STRUCT *device;	/* FILE and IMAGE: the settings device or the Source */
+	char path[SAVES_COPY_PATH];	/* FILE and IMAGE: the file on device */
+	uint32_t size;			/* FILE and IMAGE: its size */
+	unsigned ordinal;		/* IMAGE: the save's place in the image */
+	uint8_t entry[UI_SAVES_ENTRY_SIZE];	/* game, maker, name, blocks and date */
+	char line[33];			/* the game's own second comment line, or "" */
+} savesCopy_t;
+
+/* Up to SAVES_COPIES_MAX copies the scan counted, each file's together: the
+ * cards' first, then the folders' newest first, and the slots that hold a
+ * memory card it read. */
+typedef struct {
+	unsigned count;
+	savesCopy_t copy[SAVES_COPIES_MAX];
+	bool cards[2];
+} savesCopies_t;
+
 /* A bounded, read-only scan while opening Game Detail, never while drawing.
- * Reads the configured Save Folder's direct save files and RAW images plus
- * available physical cards. A partial result is explicitly marked. */
-void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats);
+ * Reads the configured Save Folder's direct save files and RAW images, the
+ * same in the Source's swiss/saves (Saves_SourceDevice), plus available
+ * physical cards. A partial result is explicitly marked. With copies, it
+ * also lists where the copies are, for a choice of the one to start the game
+ * with, and each listed copy's own second comment line (Saves_CopyLine).
+ * slots: the cards it may read (bit 0 Slot A, bit 1 Slot B); a card still
+ * switching to the game is left alone. */
+void Saves_CollectGameStats(const char gameId[6], uiSavesGameStats_t *stats,
+	savesCopies_t *copies, unsigned slots);
+
+/* The Source when it is another FatFs device than the settings device and
+ * takes writes, else NULL. Swiss's Emulate Memory Card keeps a game's card
+ * images in swiss/saves on the device the game starts from, and saves_raw.c
+ * can change them there. It is mounted already: nothing mounts it for this
+ * or lets it go. Read with the settings device set (config_set_device). */
+struct DEVICEHANDLER_STRUCT *Saves_SourceDevice(void);
 
 #endif

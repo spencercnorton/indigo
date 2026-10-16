@@ -23,6 +23,31 @@ place a save is in, and Move, Copy and Erase take the save whose cube the
 cursor is on, never a folder's "..". A card's listing reads each save's permissions, which
 libogc2's listing leaves out, so the Move guard has them to read.
 
+The SD card's stacks show the settings device, or the Source when it is
+another FatFs device that takes writes (Swiss keeps a game's card images on
+the device the game starts from): never one the page would have to mount
+or let go. A stack lists, writes and chooses folders only on the device it
+shows, a device chosen anew opens at its Save Folder (its root when that
+can't be read) and B goes no higher, and Detail's own copy and Settings'
+Save Folder stay on the settings device. Which device is the Source is one
+rule (Saves_SourceDevice in saves_stats.c), and Game Details' scan reads
+Swiss's swiss/saves there by it, never mounting it or letting it go: each
+copy keeps the device it was found on, Detail's load reads it from there,
+and the card's own copy still goes to the settings device first. Each
+listed copy's own comment line is read there too, its entry and comment
+only, while its card is still mounted, and nothing is written.
+
+A card image (.raw) on the SD card is a card too: its saves move, copy and
+erase only through its own writer (saves_raw.c), as they were listed, a
+Move's original going only after the copy was checked, and a save marked
+no-move stays; an image its device can't change keeps Move and Erase
+dimmed, and an image file itself is never deleted. The writer opens an
+image as it is, never through the device's writeFile (which creates the
+file anew), never creating, truncating, growing or deleting one, and writes
+an added save's blocks, then the block map, then the directory (an erase:
+the directory, then the map), each made to last before the next, reading
+every block back after.
+
 An operation's cube flies while the card works: it starts before the save
 is read, and lands (or goes back) only once the copy was written, read
 back and a Move's original removed, after every place is read again; the
@@ -47,10 +72,11 @@ import re
 
 ROOT = Path(__file__).resolve().parents[3]
 SAVES = ROOT / "cube/swiss/source/gui/saves.c"
+WRITER = ROOT / "cube/swiss/source/gui/saves_raw.c"
 
 
 def function(source: str, name: str) -> str:
-    start = re.search(r"^(?:static )?[a-z_][\w \*]*\b" + name + r"\([^;{}]*\)\s*\{",
+    start = re.search(r"^(?:static )?[A-Za-z_][\w \*]*\b" + name + r"\([^;{}]*\)\s*\{",
                       source, re.M)
     if start is None:
         raise AssertionError(f"{name} is missing")
@@ -74,12 +100,13 @@ def ordered(text: str, *needles: str) -> None:
 
 def check(source: str) -> None:
     transfer = function(source, "saveTransfer")
-    card = function(source, "cardWrite")
+    card = function(source, "cardWriteBound")
     folder = function(source, "folderWrite")
     read = function(source, "saveRead")
 
     # A Move removes its original only once the copy is done and checked.
-    ordered(transfer, "ok = cardWrite(", "ok = folderWrite(",
+    ordered(transfer, "ok = cardWrite(", "SavesRaw_Add(",
+            "ok = status == UI_SAVES_RAW_OK;", "ok = folderWrite(",
             "if(ok && move && !saveDelete(save))")
     if transfer.count("saveDelete(") != 1:
         raise AssertionError("saveTransfer removes a save outside its one guard")
@@ -96,6 +123,14 @@ def check(source: str) -> None:
             "saveRead(copy, &backLength)",
             "!memcmp(back + UI_SAVES_ENTRY_SIZE, blocks, blockBytes)",
             "if(!same)", "device->deleteFile(copy)", "return same;")
+    # Both clean-ups delete only on the card this write mounted: one taken
+    # out or changed since is mounted again (card_mount_count).
+    ordered(card, "mount = card_mount_count(slot);",
+            "if(boundMount != NULL && mount != *boundMount) {", "return false;",
+            "device->writeFile(",
+            "card_mount_count(slot) == mount) {\n\t\t\tdevice->deleteFile(copy);",
+            "saveRead(copy, &backLength)", "if(card_mount_count(slot) != mount) {",
+            "if(!same)")
 
     # A folder copy looks for a free name before it creates the file.
     ordered(folder, "device->statFile(&dest) != 0", "break;",
@@ -185,8 +220,44 @@ def check(source: str) -> None:
                 "getParentPath(place->dir.name, place->dir.name);", "loadFolder(place, false);")
         choose = function(source, "chooseStorage")
         ordered(choose, "if(other < SAVES_TAB_FOLDER)", "dim |= 1u << other;",
-                "choice = savesMenu(", "UISaves_StorageTab(stack, choice, other)", "loadTab(tab);")
+                "choice = savesMenu(", "UISaves_StorageTab(stack, choice, other, count - 2)",
+                "if(tab >= SAVES_TAB_FOLDER && sdDevice[choice - 2] != places[tab].device) {",
+                "folderOpenHome(tab, sdDevice[choice - 2]);", "else if(tab >= 0) {", "loadTab(tab);")
         ordered(show, "chooseStorage(stacks, stack);", "focus = stackFocus(stacks, focus);")
+        # The SD card's stacks show the settings device, and the Source only
+        # when it is another FatFs device that takes writes; the page never
+        # mounts the Source or lets it go.
+        ordered(show, "sdDevices = 0;", "if(folderMounted) {",
+                "DEVICEHANDLER_INTERFACE *source = Saves_SourceDevice();",
+                "sdDevice[sdDevices++] = devices[DEVICE_CONFIG];",
+                "if(source != NULL) {", "sdDevice[sdDevices++] = source;",
+                "folderOpenHome(i, sdDevice[0]);")
+        if re.search(r"(?:DEVICE_CUR\]|sdDevice\[[^\]]*\])->(?:de)?init\(", source):
+            raise AssertionError("Memory Cards mounts the Source or lets it go")
+        # A stack lists, writes and chooses folders only on the device it
+        # shows: the settings device is named only by the card slots' guard,
+        # Detail's own copy, Settings' Save Folder and the page's start.
+        allowed = ("slotTakenBy", "Saves_LoadCopy", "saves_choose_folder", "show_saves")
+        if source.count("devices[DEVICE_CONFIG]") != sum(
+                function(source, name).count("devices[DEVICE_CONFIG]") for name in allowed):
+            raise AssertionError("an SD stack reaches for the settings device")
+        ordered(function(source, "folderSet"), "place->device = device;",
+                "concat_path(place->dir.name, place->device->initial->name, path);",
+                "place->dir.device = place->device;")
+        # A device chosen anew opens at its Save Folder, or its root, and B
+        # goes no higher than that.
+        ordered(function(source, "folderOpenHome"), "placeClear(place);",
+                "folderSet(place, device, saves_folder());", "loadFolder(place, false);",
+                "if(!place->ready) {", 'folderSet(place, device, "/");', "loadFolder(place, false);",
+                "snprintf(folderHome[tab - SAVES_TAB_FOLDER],", "place->dir.name);")
+        ordered(transfer, "DEVICEHANDLER_INTERFACE *device = places[screenStacks[!screenFocus]].device;",
+                "folderEnsure(device, getDevicePath(folder) + 1);",
+                "ok = folderWrite(device, folder, name, data, length, why, sizeof(why));")
+        ordered(function(source, "destinationFolder"),
+                "if(!chooseFolder(dest->device, open, chosen, sizeof(chosen))) {",
+                "concat_path(path, dest->device->initial->name, chosen);")
+        ordered(function(source, "saves_choose_folder"),
+                "chooseFolder(devices[DEVICE_CONFIG], saves_folder(), folder, size);")
     else:
         ordered(below, "tab == SAVES_TAB_FOLDER", "strcmp(places[tab].dir.name, folderHome) != 0",
                 "!folderIsRoot(&places[tab])")
@@ -268,11 +339,32 @@ def check(source: str) -> None:
             "UICheats_Fit(over.message, sizeof(over.message), text,",
             "UI_SAVE_CUBES_MESSAGE_WIDTH, 0.56f, GetTextSizeInPixels);", "screenRedraw();")
     if centralized:
+        # A card image's save goes only through the image's writer, exactly
+        # as listed; an image file itself is never deleted.
         ordered(function(source, "saveDelete"),
-                "rawSource(save, NULL) != NULL || SavesRaw_IsImageName(save->name)",
-                "return false;", "closeFile(save);", "deleteFile(save)")
-        ordered(transfer, "if(move && rawSource(save, NULL) != NULL)",
+                "savesPlace_t *raw = rawSource(save, &ordinal);", "if(raw != NULL) {",
+                "return SavesRaw_Erase(&raw->rawImage,",
+                "UISavesRaw_Entry(raw->rawCard, ordinal)) == UI_SAVES_RAW_OK;",
+                "if(SavesRaw_IsImageName(save->name)) return false;",
+                "closeFile(save);", "deleteFile(save)")
+        # Its save keeps the card's own no-copy and no-move.
+        ordered(transfer, "raw != NULL ? UISavesRaw_Entry(raw->rawCard, ordinal)[0x34]",
+                "if(move && (isCard(save->device) || raw != NULL) &&",
+                "(permissions & (CARD_ATTRIB_NOCOPY | CARD_ATTRIB_NOMOVE))",
                 "return;", "artRoom(", "saveRead(save, &length)")
+        # The other stack's open image takes a save through its writer;
+        # a folder only through destinationFolder.
+        ordered(transfer, "bool toFolder = to == UI_SAVES_PLACE_FOLDER || to == UI_SAVES_PLACE_CHOOSE;",
+                "if(toFolder && !destinationFolder(", "else if(to == UI_SAVES_PLACE_IMAGE) {",
+                "SavesRaw_Add(&places[screenStacks[!screenFocus]].rawImage,")
+        options_raw = function(source, "saveOptions")
+        ordered(options_raw, "UISaves_Verdict(i == 0, card || place->rawOpen, entry[0x34], blocks,",
+                "if(place->rawOpen && !SavesRaw_Writable(&place->rawImage)) {", "dim |= 5u;",
+                "else if(dest->rawOpen) {", "to = UI_SAVES_PLACE_IMAGE;")
+        ordered(function(source, "saveRoom"), "if(tab >= SAVES_TAB_FOLDER && place->rawOpen) {",
+                "room->card = true;", "room->image = true;",
+                "room->writable = SavesRaw_Writable(&place->rawImage);",
+                "UISavesRaw_Find(place->rawCard, entry) < place->rawCard->count;")
         ordered(function(source, "destinationFolder"), "if(dest->rawOpen",
                 "dest->device->features & FEAT_WRITE", "return false;",
                 "if(to == UI_SAVES_PLACE_FOLDER)", "dest->dir.name")
@@ -289,9 +381,70 @@ def check(source: str) -> None:
     ordered(show, "over.leaving = 1;", "screenRedraw();", "savesWait(",
             "placeClear(&places[i]);", "DrawDispose(page);", "free(pool);")
 
+    # Detail's line for a copy reads its entry and comment where the scan
+    # found it, the same save there, and changes nothing.
+    line = function(source, "Saves_CopyLine")
+    for forbidden in ("saveRead(", "copyRead(", "writeFile", "deleteFile", "SavesRaw_Add(",
+                      "SavesRaw_Erase(", "cardWrite", "folderWrite(", "->deinit("):
+        if forbidden in line:
+            raise AssertionError(f"Detail's line uses {forbidden}")
+    ordered(line, "cardFind(slot, copy->entry, &entries, &count, &used)",
+            "readSaveAt(found, 0u, head, UI_SAVES_ENTRY_SIZE)", "UISaves_SameFile(head, copy->entry)",
+            "readSaveAt(found, 0u, data, want)", "file.device = copy->device;",
+            "UISaves_SameFile(entry, copy->entry)",
+            "readSaveAt(&file, (u32)body + art.commentAt + 32u, head, 32u)",
+            "UISaves_SameFile(UISavesRaw_Entry(raw, copy->ordinal), copy->entry)",
+            "SavesRaw_ReadGci(&file, raw, copy->ordinal,")
+    # Detail's load reads the chosen copy from the device the scan found it
+    # on: a card, the settings device or the Source.
+    ordered(function(source, "copyRead"), "else if(copy->device != NULL) {",
+            "snprintf(file.name, sizeof(file.name), \"%s\", copy->path);",
+            "file.device = copy->device;", "if(copy->source == SAVES_COPY_FILE) {",
+            "SavesRaw_Load(&file, raw)")
+    # It keeps the card's own copy of the save on the settings device, the
+    # Source's copies too, before anything on the card changes, and
+    # replaces it only after that.
+    load = function(source, "Saves_LoadCopy")
+    ordered(load, "if(!config_set_device())", "return false;", "config = devices[DEVICE_CONFIG];",
+            "data = copyRead(copy, &length, &at, entry);",
+            "concat_path(folder, config->initial->name, saves_folder());",
+            "folderEnsure(config, saves_folder());")
+    ordered(load, "if(!config_set_device())", "return false;",
+            "own = found != NULL ? saveRead(found, &ownLength) : NULL;",
+            "if(own == NULL ||\n\t\t\t\tfolderWrite(config, folder, name, own, ownLength, why, whySize)) {",
+            "ok = cardReplace(")
+    if load.count("cardReplace(") != 1:
+        raise AssertionError("Detail's load replaces a card's save outside its one guard")
+    # And puts the card's own copy back when the chosen one doesn't go on.
+    # It deletes the card's own copy only once that copy reads back as the
+    # one just kept in the Save Folder: a card swapped since keeps its save.
+    replace = function(source, "cardReplace")
+    ordered(replace, "now = found != NULL ? saveRead(found, &nowLength) : NULL;",
+            "same = now != NULL && nowLength == ownLength",
+            "gone = same && card_mount_count(slot) == mount && device->deleteFile(found) == 0;",
+            "if(!same || card_mount_count(slot) != mount) {", "return false;",
+            "if(!gone) {", "return false;",
+            "if(cardWriteBound(slot, entry, blocks, blockBytes, &mount, failed, sizeof(failed))) {",
+            "else if(card_mount_count(slot) == mount && cardWriteBound(slot, own,\n\t\town + UI_SAVES_ENTRY_SIZE,")
+
 
 def mutants(source: str) -> list[tuple[str, str]]:
     cases = [
+        ("Detail's load replaces a card's save without keeping it",
+         source.replace("if(own == NULL ||\n\t\t\t\tfolderWrite(config, folder, name, own, ownLength, why, whySize)) {",
+                        "if(true) {")),
+        ("Detail's load deletes a card's save it didn't keep",
+         source.replace("gone = same && card_mount_count(slot) == mount && device->deleteFile(found) == 0;",
+                        "gone = found != NULL && device->deleteFile(found) == 0;")),
+        ("Detail's load never puts the card's own copy back",
+         source.replace("else if(card_mount_count(slot) == mount && cardWriteBound(slot, own,\n\t\town + UI_SAVES_ENTRY_SIZE,",
+                        "else if(false && cardWriteBound(slot, own,\n\t\town + UI_SAVES_ENTRY_SIZE,")),
+        ("Detail's load puts the card's own copy back on a card changed since",
+         source.replace("else if(card_mount_count(slot) == mount && cardWriteBound(slot, own,\n\t\town + UI_SAVES_ENTRY_SIZE,",
+                        "else if(cardWriteBound(slot, own,\n\t\town + UI_SAVES_ENTRY_SIZE,")),
+        ("a bound card write ignores generation mismatch",
+         source.replace("if(boundMount != NULL && mount != *boundMount) {",
+                        "if(false) {")),
         ("a Move deletes without a good copy",
          source.replace("if(ok && move && !saveDelete(save))",
                         "if(move && !saveDelete(save))")),
@@ -413,8 +566,13 @@ def mutants(source: str) -> list[tuple[str, str]]:
         ("a save goes to the stack it is in",
          source.replace("int toTab = screenStacks[!screenFocus];", "int toTab = screenStacks[screenFocus];")),
         ("a half-written card copy is left on the card",
-         source.replace("!= NULL) {\n\t\t\tdevice->deleteFile(copy);\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"",
-                        "!= NULL) {\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"")),
+         source.replace("== mount) {\n\t\t\tdevice->deleteFile(copy);\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"",
+                        "== mount) {\n\t\t}\n\t\tfree(entries);\n\t\tsnprintf(why, whySize, \"%s: %s.\"")),
+        ("a failed write's clean-up deletes on a card changed since",
+         source.replace(" &&\n\t\t\tcard_mount_count(slot) == mount) {", ") {")),
+        ("a read-back from a card changed since is deleted",
+         source.replace("\tif(card_mount_count(slot) != mount) {\n\t\tfree(entries);",
+                        "\tif(false) {\n\t\tfree(entries);")),
     ]
     if "static bool readSaveAt(" in source:
         updates = {
@@ -437,15 +595,224 @@ def mutants(source: str) -> list[tuple[str, str]]:
         cases = [updates.get(name, (name, mutant)) for name, mutant in cases]
         cases += [
             ("storage choice moves the cursor to the chooser column", source.replace("focus = stackFocus(stacks, focus);\n\t\t\tinputInit(&input);", "focus = stackFocus(stacks, stack);\n\t\t\tinputInit(&input);")),
-            ("RAW virtual saves can be erased", source.replace("rawSource(save, NULL) != NULL || SavesRaw_IsImageName(save->name)", "false")),
-            ("RAW virtual saves can be moved", source.replace("if(move && rawSource(save, NULL) != NULL)", "if(false)")),
+            ("an image file can be deleted", source.replace("\tif(SavesRaw_IsImageName(save->name)) return false;\n", "")),
+            ("a card image's save is deleted through its device",
+             source.replace("return SavesRaw_Erase(&raw->rawImage,\n\t\t\tUISavesRaw_Entry(raw->rawCard, ordinal)) == UI_SAVES_RAW_OK;",
+                            "return save->device->deleteFile(save) == 0;")),
+            ("a card image's save ignores no-move", source.replace("(isCard(save->device) || raw != NULL)", "isCard(save->device)")),
+            ("a read-only image leaves Move and Erase open",
+             source.replace("if(place->rawOpen && !SavesRaw_Writable(&place->rawImage)) {", "if(false) {")),
+            ("an image's room is always writable",
+             source.replace("room->writable = SavesRaw_Writable(&place->rawImage);", "room->writable = true;")),
+            ("an image's room never has the save",
+             source.replace("\t\troom->hasIt = known && place->ready && place->rawCard != NULL &&\n"
+                            "\t\t\tUISavesRaw_Find(place->rawCard, entry) < place->rawCard->count;\n", "")),
             ("a read-only SD destination can be written", source.replace("!(dest->device->features & FEAT_WRITE)", "false")),
             ("a new RAW image inherits the folder selection", source.replace("place->rawOpen ? place->selection : 0", "place->selection")),
             ("an invalid RAW image loses its folder return position", source.replace("\t\t\t\t\tplace->selection = place->rawReturn;\n", "")),
             ("a RAW source reaches a physical handler", source.replace("return SavesRaw_ReadGci(", "return directReadGci(")),
             ("the checked reader leaves its physical handle open", source.replace("\tsave->device->closeFile(save);\n\treturn ok;", "\treturn ok;")),
+            ("a folder is listed on the settings device, whatever the stack shows",
+             source.replace("\tplaceClear(place);\n\tif(place->device == NULL) {",
+                            "\tplaceClear(place);\n\tplace->device = devices[DEVICE_CONFIG];\n\tif(place->device == NULL) {")),
+            ("a folder copy goes to the settings device",
+             source.replace("DEVICEHANDLER_INTERFACE *device = places[screenStacks[!screenFocus]].device;",
+                            "DEVICEHANDLER_INTERFACE *device = devices[DEVICE_CONFIG];")),
+            ("Another folder browses the settings device",
+             source.replace("if(!chooseFolder(dest->device, open, chosen, sizeof(chosen))) {",
+                            "if(!chooseFolder(devices[DEVICE_CONFIG], open, chosen, sizeof(chosen))) {")),
+            ("a chosen folder is named on the settings device",
+             source.replace("concat_path(path, dest->device->initial->name, chosen);",
+                            "concat_path(path, devices[DEVICE_CONFIG]->initial->name, chosen);")),
+            ("Memory Cards offers the Source by a rule of its own",
+             source.replace("DEVICEHANDLER_INTERFACE *source = Saves_SourceDevice();",
+                            "DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];")),
+            ("Detail reads a copy from the settings device, wherever it was found",
+             source.replace("\t\tfile.device = copy->device;", "\t\tfile.device = devices[DEVICE_CONFIG];")),
+            ("Detail reads a copy from the Source, wherever it was found",
+             source.replace("\t\tfile.device = copy->device;", "\t\tfile.device = devices[DEVICE_CUR];")),
+            ("Detail's line reads a whole save",
+             source.replace("readSaveAt(&file, (u32)body + art.commentAt + 32u, head, 32u)",
+                            "saveRead(&file, &want) != NULL")),
+            ("Detail's line lets the card go",
+             source.replace("\t\tfree(data);\n\t\tfree(entries);\n",
+                            "\t\tfree(data);\n\t\tfree(entries);\n\t\tdevice->deinit(device->initial);\n")),
+            ("Detail's line takes another save of the same name",
+             source.replace("\t\t\tUISaves_SameFile(head, copy->entry) &&\n", "")),
+            ("Detail keeps a card's own copy where the chosen copy is",
+             source.replace("\tconfig = devices[DEVICE_CONFIG];\n",
+                            "\tconfig = copy->device != NULL ? copy->device : devices[DEVICE_CONFIG];\n")),
+            ("the page lets the Source go",
+             source.replace("\tif(folderMounted) {\n\t\tconfig_unset_device();\n\t}\n",
+                            "\tif(folderMounted) {\n\t\tconfig_unset_device();\n\t}\n"
+                            "\tif(sdDevices > 1) sdDevice[1]->deinit(sdDevice[1]->initial);\n")),
+            ("another device opens where the stack was",
+             source.replace("\t\tfolderOpenHome(tab, sdDevice[choice - 2]);\n", "\t\tloadTab(tab);\n")),
+            ("another device's Save Folder isn't where B stops",
+             source.replace("\tsnprintf(folderHome[tab - SAVES_TAB_FOLDER], sizeof(folderHome[0]), \"%s\",\n"
+                            "\t\tplace->dir.name);\n", "")),
+            ("an unreadable Save Folder leaves the device's stack empty",
+             source.replace('\tif(!place->ready) {\n\t\tfolderSet(place, device, "/");',
+                            '\tif(false) {\n\t\tfolderSet(place, device, "/");')),
+            ("Settings' Save Folder lists a stack's device",
+             source.replace("chooseFolder(devices[DEVICE_CONFIG], saves_folder(), folder, size);",
+                            "chooseFolder(places[SAVES_TAB_FOLDER].device, saves_folder(), folder, size);")),
+            ("Detail keeps a card's own copy on the Source",
+             source.replace("folderWrite(config, folder, name, own, ownLength, why, whySize)",
+                            "folderWrite(sdDevice[sdDevices - 1], folder, name, own, ownLength, why, whySize)")),
         ]
     return cases
+
+
+def check_writer(source: str) -> None:
+    """saves_raw.c: an image changes in place, in the console's order."""
+    code = re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.S)
+    for forbidden in ("FA_CREATE_ALWAYS", "FA_CREATE_NEW", "FA_OPEN_ALWAYS", "FA_OPEN_APPEND",
+                      "f_truncate(", "f_expand(", "f_unlink(", "->writeFile(", "->deleteFile(",
+                      "->renameFile("):
+        if forbidden in code:
+            raise AssertionError(f"the image writer uses {forbidden}")
+    ordered(function(source, "SavesRaw_Writable"), "(image->device->features & FEAT_WRITE)",
+            "image->device->writeFile == deviceHandler_FAT_writeFile")
+    # Never past the image's end: FatFs grows a file a write seeks beyond.
+    ordered(function(source, "imageAt"), "offset <= f_size(fp) && length <= f_size(fp) - offset",
+            "f_lseek(fp, offset)")
+    ordered(function(source, "imageOpen"), "image->device->closeFile(image);",
+            "f_open(fp, image->name, mode)", "if(f_size(fp) != image->size) {", "f_close(fp);")
+    ordered(function(source, "writeSystem"), "imageWrite(fp, blocks[i] * UI_SAVES_BLOCK_SIZE,",
+            "f_sync(fp) != FR_OK")
+    add = function(source, "SavesRaw_Add")
+    ordered(add, "if(!SavesRaw_Writable(image)) return UI_SAVES_RAW_READ_ONLY;",
+            "imageOpen(image, &fp, FA_READ | FA_WRITE, metadata)",
+            "UISavesRaw_PlanAdd(metadata, image->size, gci, card, &change)",
+            "imageWrite(&fp, at * UI_SAVES_BLOCK_SIZE, block, UI_SAVES_BLOCK_SIZE)",
+            "f_sync(&fp) != FR_OK", "writeSystem(&fp, metadata, change.map)",
+            "writeSystem(&fp, metadata, change.directory)", "f_close(&fp);",
+            "readBack(image, metadata, &change, card, gci, block)",
+            "status = UI_SAVES_RAW_MISMATCH;", "eraseOpen(")
+    erase = function(source, "eraseOpen")
+    ordered(erase, "UISavesRaw_PlanErase(", "if(status != UI_SAVES_RAW_OK) {",
+            "writeSystem(fp, metadata, change.directory)", "writeSystem(fp, metadata, change.map)",
+            "readBack(image, metadata, &change, card, NULL, block)")
+    ordered(function(source, "SavesRaw_Erase"),
+            "if(!SavesRaw_Writable(image)) return UI_SAVES_RAW_READ_ONLY;",
+            "imageOpen(image, &fp, FA_READ | FA_WRITE, metadata)", "eraseOpen(")
+    ordered(function(source, "readBack"), "imageOpen(image, &fp, FA_READ, NULL)",
+            "!memcmp(block, gci + UI_SAVES_ENTRY_SIZE + i * UI_SAVES_BLOCK_SIZE,",
+            "!memcmp(block, metadata + system * UI_SAVES_BLOCK_SIZE, UI_SAVES_BLOCK_SIZE);")
+
+
+def writer_mutants(source: str) -> list[tuple[str, str]]:
+    return [
+        ("an image opens through the device's writeFile",
+         source.replace("f_open(fp, image->name, mode)", "f_open(fp, image->name, mode | FA_CREATE_ALWAYS)")),
+        ("any device's images are writable",
+         source.replace("\t\timage->device->writeFile == deviceHandler_FAT_writeFile;", "\t\ttrue;")),
+        ("a write may seek past the image's end",
+         source.replace("offset <= f_size(fp) && length <= f_size(fp) - offset &&", "")),
+        ("a reader still holds the image when it is opened to write",
+         source.replace("\timage->device->closeFile(image);\n\tif(f_open(", "\tif(f_open(")),
+        ("another file of another size is written",
+         source.replace("if(f_size(fp) != image->size) {", "if(false) {")),
+        ("the directory goes before the block map on an add",
+         source.replace("!writeSystem(&fp, metadata, change.map) ||\n\t\t!writeSystem(&fp, metadata, change.directory)",
+                        "!writeSystem(&fp, metadata, change.directory) ||\n\t\t!writeSystem(&fp, metadata, change.map)")),
+        ("the block map goes before the directory on an erase",
+         source.replace("if(!writeSystem(fp, metadata, change.directory) ||\n\t\t!writeSystem(fp, metadata, change.map)) {",
+                        "if(!writeSystem(fp, metadata, change.map) ||\n\t\t!writeSystem(fp, metadata, change.directory)) {")),
+        ("a system block isn't made to last before the next",
+         source.replace(" ||\n\t\t\tf_sync(fp) != FR_OK) return false;", ") return false;")),
+        ("an add isn't read back",
+         source.replace("if(readBack(image, metadata, &change, card, gci, block)) goto done;", "goto done;")),
+        ("a copy that doesn't read back the same stays",
+         source.replace("(void)eraseOpen(image, &fp, metadata, added, card, block);", "f_close(&fp);")),
+    ]
+
+
+def check_stats(source: str) -> None:
+    """saves_stats.c: which device is the Source, and Game Details' scan of it."""
+    ordered(function(source, "Saves_SourceDevice"),
+            "DEVICEHANDLER_INTERFACE *source = devices[DEVICE_CUR];",
+            "source != NULL && source != devices[DEVICE_CONFIG] &&",
+            "(source->features & FEAT_WRITE) &&",
+            "source->writeFile == deviceHandler_FAT_writeFile ? source : NULL;")
+    # Swiss's swiss/saves on the Source, read only by that rule, once the
+    # settings device is set; nothing here mounts a folder's device or lets
+    # it go.
+    if '#define SAVES_STATS_SOURCE_FOLDER "swiss/saves"' not in source:
+        raise AssertionError("Game Details looks for the Source's card images where Swiss doesn't keep them")
+    collect = function(source, "Saves_CollectGameStats")
+    ordered(collect, "mounted = config_set_device();",
+            "statsFolder(gameId, stats, &counted, copies, devices[DEVICE_CONFIG],",
+            "source = Saves_SourceDevice();", "if(source != NULL) {",
+            "statsFolder(gameId, stats, &counted, copies, source, SAVES_STATS_SOURCE_FOLDER,",
+            "if(mounted) config_unset_device();")
+    for name in ("Saves_SourceDevice", "statsFolder"):
+        if re.search(r"->(?:de)?init\(", function(source, name)):
+            raise AssertionError("Game Details mounts or lets go of a folder's device")
+    # The listed copies' lines are read while their card and the settings
+    # device are still mounted; then only the cards the scan mounted go,
+    # never one the game or settings device uses.
+    ordered(collect, "statsArrange(copies);",
+            "(void)Saves_CopyLine(&copies->copy[i], copies->copy[i].line,",
+            "if((cards & (1u << i)) && device != devices[DEVICE_CUR] &&",
+            "device != devices[DEVICE_CONFIG]) {", "device->deinit(device->initial);",
+            "if(mounted) config_unset_device();")
+    if collect.count("->deinit(") != 1 or "->init(" in collect or \
+            "->deinit(" in function(source, "statsSlot"):
+        raise AssertionError("a card goes before its copies' lines are read")
+    # Every copy keeps the device it was found on, which Detail's load reads.
+    folder = function(source, "statsFolder")
+    ordered(function(source, "statsCopy"), "copy->source = source;", "copy->device = device;")
+    ordered(folder, "statsCopy(copies, SAVES_COPY_IMAGE, UISavesRaw_Entry(raw, ordinal),\n"
+            "\t\t\t\t\t\tdevice, file->name,", "statsCopy(copies, SAVES_COPY_FILE, entry, device, file->name,")
+    # A Save Folder it can't list makes the scan partial; the Source's
+    # swiss/saves, which most cards don't have, doesn't.
+    ordered(folder, "total = device->readDir(&folder, &files, -1);",
+            "if(saveFolder || total >= 0) stats->partial = true;",
+            "if(saveFolder) stats->checkedSources |= 4u;")
+
+
+def stats_mutants(source: str) -> list[tuple[str, str]]:
+    return [
+        ("the settings device is the Source",
+         source.replace("source != NULL && source != devices[DEVICE_CONFIG] &&", "source != NULL &&")),
+        ("a Source that isn't FatFs is the Source",
+         source.replace(" &&\n\t\tsource->writeFile == deviceHandler_FAT_writeFile ? source : NULL;",
+                        " ? source : NULL;")),
+        ("a read-only Source is the Source",
+         source.replace("\t\t(source->features & FEAT_WRITE) &&\n", "")),
+        ("Game Details leaves the Source's card images out",
+         source.replace("\tif(source != NULL) {\n\t\tstatsFolder(", "\tif(false) {\n\t\tstatsFolder(")),
+        ("Game Details reads any Source",
+         source.replace("source = Saves_SourceDevice();", "source = devices[DEVICE_CUR];")),
+        ("Game Details looks in the Source's Save Folder, not Swiss's folder",
+         source.replace("source, SAVES_STATS_SOURCE_FOLDER,", "source, saves_folder(),")),
+        ("Game Details looks for card images in another folder",
+         source.replace('#define SAVES_STATS_SOURCE_FOLDER "swiss/saves"', '#define SAVES_STATS_SOURCE_FOLDER "saves"')),
+        ("Game Details mounts the Source",
+         source.replace("\tif(source != NULL) {\n\t\tstatsFolder(",
+                        "\tif(source != NULL) {\n\t\tsource->init(source->initial);\n\t\tstatsFolder(")),
+        ("a copy forgets the device it is on",
+         source.replace("\tcopy->device = device;\n", "")),
+        ("a card image's copy names the settings device",
+         source.replace("\t\t\t\t\t\tdevice, file->name, file->size, ordinal);",
+                        "\t\t\t\t\t\tdevices[DEVICE_CONFIG], file->name, file->size, ordinal);")),
+        ("a Source without swiss/saves makes the scan partial",
+         source.replace("if(saveFolder || total >= 0) stats->partial = true;", "stats->partial = true;")),
+        ("a Save Folder it can't list isn't a partial scan",
+         source.replace("if(saveFolder || total >= 0) stats->partial = true;",
+                        "if(total >= 0) stats->partial = true;")),
+        ("a card goes before its copies' lines are read",
+         source.replace("\telse stats->partial = true;\n\treturn true;\n}",
+                        "\telse stats->partial = true;\n\tdevice->deinit(device->initial);\n\treturn true;\n}")),
+        ("a copy's line is read after the settings device goes",
+         source.replace("\tif(mounted) config_unset_device();\n}", "}").replace(
+             "\tstatsArrange(copies);\n", "\tstatsArrange(copies);\n\tif(mounted) config_unset_device();\n")),
+        ("the scan lets go of the game's own card",
+         source.replace("if((cards & (1u << i)) && device != devices[DEVICE_CUR] &&",
+                        "if((cards & (1u << i)) &&")),
+    ]
 
 
 def main() -> None:
@@ -453,13 +820,19 @@ def main() -> None:
     parser.add_argument("--source-root", type=Path, default=ROOT)
     args = parser.parse_args()
     source = (args.source_root / "cube/swiss/source/gui/saves.c").read_text()
+    writer = (args.source_root / "cube/swiss/source/gui/saves_raw.c").read_text()
+    stats = (args.source_root / "cube/swiss/source/gui/saves_stats.c").read_text()
     check(source)
+    check_writer(writer)
+    check_stats(stats)
     rejected = 0
-    for name, mutant in mutants(source):
-        if mutant == source:
+    for name, mutant, gate in ([(n, m, check) for n, m in mutants(source)] +
+                               [(n, m, check_writer) for n, m in writer_mutants(writer)] +
+                               [(n, m, check_stats) for n, m in stats_mutants(stats)]):
+        if mutant in (source, writer, stats):
             raise AssertionError(f"mutant '{name}' changed nothing")
         try:
-            check(mutant)
+            gate(mutant)
         except AssertionError:
             rejected += 1
             continue

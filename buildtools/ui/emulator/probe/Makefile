@@ -5,7 +5,7 @@ include $(DEVKITPRO)/libogc2/gamecube_rules
 CFLAGS := -O2 -Wall -Wextra -Werror $(MACHDEP) -I$(LIBOGC_INC)
 
 probe.dol: probe.elf
-probe.elf: probe.c
+probe.elf: probe.c probe_grid.h
 	$(CC) $(CFLAGS) $< $(MACHDEP) -L$(LIBOGC_LIB) -logc -lm -o $@
 
 clean:

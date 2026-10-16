@@ -87,6 +87,14 @@ with a tagged release.
   `CHANGELOG.md`; the release renames that heading.
 - The full procedure, including hotfixes, is [docs/RELEASING.md](docs/RELEASING.md).
 
+The MemCard PRO switching/save change is candidate-only while
+`docs/validation/memcard-pro.json` is pending. Stable publication requires
+reviewed real-card evidence for the current implementation; a lab pass or an
+ordinary-card GameCube pass cannot mark that record passed. Preserve this hold
+when consolidating branches. The release helper checks the tested source;
+do not bypass it, prefill a hardware pass, or treat a general continue/release
+instruction as evidence that a MemCard PRO was tested.
+
 ## Rules
 
 - **Documentation moves with the code.** A change that alters a screen, a
