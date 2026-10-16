@@ -123,7 +123,7 @@ making it if it isn't there.
 WEB BROWSER
 If this download has swiss/indigo/cubebrowser.dol and a gcbrowser folder,
 keep both: copy the gcbrowser folder to the top of the card beside ipl.dol.
-The Web face on the Home cube (turn it on under Settings > Setup > Interface)
+The Web face on the Home cube (turn it on under Settings > Setup > Console)
 opens the browser; it needs a Broadband Adapter.
 
 IN-GAME RESET
