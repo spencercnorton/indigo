@@ -8,6 +8,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Documentation
 
+- Add `llms.txt` at the repository root with a plain-text overview and links to
+  every guide and contributor document.
 - The guide's Memory Cards and Game Details pictures show 2.4's screens:
   card images that take Move, Copy and Erase, the Storage page with Library
   Path, and Saves counted by file with the save's own line.

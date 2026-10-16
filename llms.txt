@@ -1,0 +1,35 @@
+# Indigo
+
+> A fork of Swiss for the Nintendo GameCube with the interface rebuilt: an animated glass Home cube, a box-art and cover-art library in four layouts, per-game details and Gecko cheat toggles, a visual Memory Cards manager (physical cards, SD folders and Swiss `.raw` virtual cards) and a two-pane File Browser, drawn in the console's own visual language.
+
+Indigo (`cube/swiss/source/gui/`, GPL-2.0-or-later, C with devkitPPC and libogc2) replaces the user interface of upstream [Swiss](https://github.com/emukidid/swiss-gc) while keeping upstream's device handlers, patch engine, game loader, `.raw` virtual memory card emulation, MemCard PRO GC game-ID switching and in-game reset (`A + Z + START` with `swiss/patches/apploader.img`). Settings in `swiss/swiss.ini` and `swiss/settings/*.ini` are shared in both directions with upstream Swiss.
+
+Runs on any Nintendo GameCube that already runs Swiss and reads an SD card (SD2SP2, SD Gecko or the loader's own slot), or a Wii with GameCube ports running Swiss in GameCube mode with an SD Gecko. GC Loader (`/boot.dol` beside a Swiss `boot.iso`), PicoBoot/PicoLoader (`/ipl.dol`) and FlippyDrive (`/boot.dol`) can start Indigo at power-on; every setup can also open `/apps/indigo.dol` from Swiss. Read these first: [docs/guide/install.md](docs/guide/install.md) to set up an SD card, [docs/guide/README.md](docs/guide/README.md) for every screen and setting, and [AGENTS.md](AGENTS.md) for architecture, build and test commands.
+
+## Docs
+
+- [Install guide](docs/guide/install.md): four-step SD card setup and full card layout for GC Loader, PicoBoot, PicoLoader, FlippyDrive, SD2SP2 and SD Gecko (at power-on or from Swiss), plus updating and returning to stock Swiss.
+- [Guide overview](docs/guide/README.md): index of every user-facing screen and setting in Indigo.
+- [Controls](docs/guide/controls.md): controller buttons across every screen and `A + Z + START` in-game reset back to Indigo.
+- [Source](docs/guide/source.md): choosing the storage device Indigo reads games from (SD2SP2, SD Gecko, GC Loader, FlippyDrive, DVD drive, Memory Card Adapter or network).
+- [Library](docs/guide/library.md): browsing games in `/games` (or `Library Path`) as box art in Horizontal, Vertical, Grid or Gameplay Spotlight layouts, in one list or two levels of folders.
+- [Home](docs/guide/home.md): the animated glass Home cube, Classic vs Infinite cube modes, Sway idle animation, and choosing which menu sits on Up, Left, Right and Down faces.
+- [Game details](docs/guide/game-details.md): per-game screen with cover art, save file and copy counts, per-game settings, Gecko cheats and the animated launch ring.
+- [Cheats](docs/guide/cheats.md): enabling WiiRD and Gecko cheat codes from `/swiss/cheats/<ID>.txt` per game, with codes that would break Indigo filtered and marked.
+- [Settings](docs/guide/settings.md): Quick settings, Defaults for every game, and Setup (Console, Appearance, Library, Storage, Network, Advanced).
+- [Make it yours](docs/guide/personalize.md): eight menu colors, sixteen cube face icons, background wave colors and speeds, and 32 kHz menu music.
+- [System](docs/guide/system.md): console hardware information, Memory Cards, the two-pane File Browser (copy, move, rename, hide and delete across devices) and restarting Indigo.
+- [Memory Cards](docs/guide/memory-cards.md): inspecting, copying, moving and erasing GameCube saves across Slot A, Slot B, SD folders and Swiss `.raw` virtual memory card images with read-back verification.
+- [Posters](docs/guide/posters.md): using the all-region box-art and Spotlight pack (`/swiss/ui/posters.pak` for 1,622 games) or building a custom pack with `buildtools/posters/build_poster_pack.py`.
+- [Apps](docs/guide/apps.md): launching GameCube homebrew (`.dol`, `.cli`, `.dcp`) from `/apps` (and `/emulators`) with custom PNG posters converted on the console.
+- [Troubleshooting](docs/guide/troubleshooting.md): fixing missing `/games` libraries, SD card formatting, video mode recovery, MemCard PRO GC and returning to stock Swiss.
+- [Settings files](docs/SETTINGS.md): reference for `swiss/swiss.ini` and `swiss/settings/<game>.ini` keys.
+- [Changelog](CHANGELOG.md): release history and user-visible changes.
+
+## Development and releases
+
+- [Agent and contributor guide](AGENTS.md): repository layout, upstream boundary (`UPSTREAM`), Docker build command, host test lanes (`buildtools/ui/tests/run_tests.sh all`), Dolphin emulator route tests and libFuzzer targets.
+- [Contributing](CONTRIBUTING.md): how to propose changes, branch workflow (`beta` for development, `main` for releases) and DCO sign-off (`git commit -s`).
+- [Releasing](docs/RELEASING.md): beta, release candidate and stable release procedures, reproducible build checks and MemCard PRO hardware qualification gates.
+- [Security policy](SECURITY.md) and [NOTICE](NOTICE): private vulnerability reporting, GPL-2.0-or-later licensing, upstream Swiss provenance and third-party credits.
+- [Web guide and downloads](https://norvitech.com/indigo/): interactive install chooser, video tour, all-region poster and cheat packs, and `https://norvitech.com/indigo/llms.txt`.
