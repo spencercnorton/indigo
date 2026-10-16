@@ -1811,6 +1811,15 @@ regressions, real folder navigation, 32 settings parser/writer tests and all
 Dolphin route now records save, revisit, cancel and reset for all layouts;
 its native captures remain to be recorded by CI on the integrated build.
 
+## 2026-10-12 — Clarify the released user guides
+
+Clarified image filenames and limits, reserved cheat space, folder depth and
+Library source layouts. These are wording corrections to the existing released
+interface. Product code, screenshots and release tags remain unchanged.
+
+The website can publish the reviewed text as source-pinned documentation errata
+for the existing release. Firmware promotion keeps its normal release checks.
+
 ## 2026-10-04 — Prepare the validated candidate for v2.3.0
 
 The maintainer tested the final release candidate on a GameCube and approved
