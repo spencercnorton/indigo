@@ -84,6 +84,7 @@ typedef struct {
 	const uint8_t *icon;	/* a 32x32 RGB5A3 frame, or NULL */
 	uint8_t shade;		/* uiSaveCubesShade_t */
 	uint8_t kind;		/* uiSaveCubesKind_t */
+	uint8_t folderColor;	/* prepared path identity; only folder rims/glyphs */
 	uint8_t alpha;
 } uiSaveCube_t;
 
@@ -117,6 +118,9 @@ int UISaveCubes_Coverage(const uiSaveCubesQuad_t *faces, int count,
 /* A face's color before Menu Color turns it, as RGBA: the shade's body or
  * rim, lit for the part of the cube it is. */
 void UISaveCubes_Colour(int shade, int role, uint8_t rgba[4]);
+/* Explicit folder identity bypasses Menu Color. False for saves, Default,
+ * invalid colors and body faces, which retain the native cube shading. */
+bool UISaveCubes_FolderColour(const uiSaveCube_t *cube, int role, uint8_t rgba[4]);
 
 /* ------------------------------------------------------------------------
  * A frame of the screen: what the menu thread publishes, and the motion the
@@ -126,6 +130,7 @@ typedef struct {
 	const uint8_t *texels;		/* the save's 8 frames, or NULL: plain */
 	const uiSavesArt_t *art;	/* which frame shows when, with texels */
 	uint8_t kind;			/* uiSaveCubesKind_t */
+	uint8_t folderColor;		/* path-keyed folder identity, never a save */
 } uiSaveCubesCell_t;
 
 /* How a stack's cells came to be what a new listing shows. */

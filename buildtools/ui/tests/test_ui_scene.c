@@ -7,11 +7,14 @@
 #include "ui_scene.h"
 
 static unsigned checks;
-static const uiHomeCapabilities_t caps = {true, true, false, UI_HOME_CUBE_INFINITE};
+static const uiHomeCapabilities_t caps = {.hasSource = true, .hasRecent = true,
+	.hasApps = false, .style = UI_HOME_CUBE_INFINITE};
 /* With an app on the source: a ring of five faces. */
-static const uiHomeCapabilities_t appsCaps = {true, true, true, UI_HOME_CUBE_INFINITE};
+static const uiHomeCapabilities_t appsCaps = {.hasSource = true, .hasRecent = true,
+	.hasApps = true, .style = UI_HOME_CUBE_INFINITE};
 /* Setup > Console > Cube set to Classic, with Apps: every side has a face. */
-static const uiHomeCapabilities_t classicCaps = {true, true, true, UI_HOME_CUBE_CLASSIC};
+static const uiHomeCapabilities_t classicCaps = {.hasSource = true, .hasRecent = true,
+	.hasApps = true, .style = UI_HOME_CUBE_CLASSIC};
 static const float identity[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
 
 #define CHECK(c) do { ++checks; if(!(c)) { \
@@ -272,9 +275,14 @@ static void testContextAndSceneReturns(void)
 	CHECK(UIScene_Frame()->cubeY > rowY + 0.5f);
 	CHECK(UIScene_Frame()->cubeScale < rowScale * 0.6f);
 	matrixNear(&UIScene_Frame()->homeOrientation[0][0], target, 0.0f);
+	/* Resting there is not Home's rest: no idle motion (Sway's included). */
+	advance(2.0f, 0.02f, UI_MOTION_FULL);
+	near(UIScene_Frame()->homeIdleBlend, 0.0f, 0.0001f);
 	UIScene_Request(UI_SCENE_HOME); settle(0.02f, UI_MOTION_FULL);
 	near(UIScene_Frame()->cubeY, rowY, 0.0001f);
 	near(UIScene_Frame()->cubeScale, rowScale, 0.0001f);
+	advance(2.0f, 0.02f, UI_MOTION_FULL);
+	near(UIScene_Frame()->homeIdleBlend, 1.0f, 0.0001f);
 	UIHome_Apply(&home, UI_HOME_INPUT_BACK, caps); UIScene_RequestHome(&home);
 	settle(0.02f, UI_MOTION_FULL);
 	CHECK(UIScene_Frame()->homeSurface == UI_HOME_SURFACE_RING);
@@ -300,7 +308,7 @@ static void testPublicationAndInvalidRequests(void)
 	CHECK(!UIScene_Frame()->visible);
 	UIScene_Activate(); settle(0.02f, UI_MOTION_FULL);
 	CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_SYSTEM);
-	for(int which = 0; which < 13; ++which) {
+	for(int which = 0; which < 16; ++which) {
 		uiHomeState_t invalid = home;
 		switch(which) {
 		case 0: invalid.face = (uiHomeFace_t)-1; break;
@@ -310,12 +318,18 @@ static void testPublicationAndInvalidRequests(void)
 		case 4: invalid.orientation.m[0][0] = 2; break;
 		case 5: invalid.turnAxis = (uiHomeTurnAxis_t)99; break;
 		case 6: invalid.turnDirection = 0; break;
-		/* A ring of neither four nor five faces, Apps in front of a ring
-		 * of four, and an ordinal that lands elsewhere in a ring of five. */
+		/* A count that isn't the sides' ring, Apps in front of a ring
+		 * without it, and an ordinal that lands elsewhere in a ring of
+		 * five. */
 		case 7: invalid.faceCount = 3; break;
 		case 8: invalid.faceCount = 6; break;
 		case 9: invalid.face = UI_HOME_FACE_APPS; invalid.turnOrdinal = 4; break;
 		case 10: invalid.faceCount = 5; break;
+		/* A face on two sides, an absent face on none, a side naming no
+		 * face. */
+		case 12: invalid.sides[UI_HOME_SIDE_DOWN] = UI_HOME_FACE_SOURCE; break;
+		case 13: invalid.sides[UI_HOME_SIDE_DOWN] = UI_HOME_FACE_LIBRARY; break;
+		case 14: invalid.sides[UI_HOME_SIDE_UP] = UI_HOME_FACE_COUNT; break;
 		/* A cube that is neither Infinite nor Classic. */
 		case 11: invalid.style = UI_HOME_CUBE_COUNT; break;
 		default: invalid.surface = UI_HOME_SURFACE_COUNT; break;
@@ -327,6 +341,33 @@ static void testPublicationAndInvalidRequests(void)
 	UIScene_RequestHome(NULL); UIScene_Request((uiSceneId_t)99);
 	tick(0.02f, UI_MOTION_OFF);
 	CHECK(UIScene_Frame()->scene == UI_SCENE_HOME);
+}
+/* System's four rows each publish, Restart's (the last) included, and its
+ * cube stays up above them all, only tilting: they start a row higher. */
+static void testSystemRows(void)
+{
+	uiHomeState_t home;
+	uiHomeState_t invalid;
+	float rowY;
+	float rowPitch;
+
+	UIHome_Init(&home, caps); UIHome_Apply(&home, UI_HOME_INPUT_UP, caps);
+	UIScene_Reset(); UIScene_RequestHome(&home); UIScene_Activate();
+	UIHome_Apply(&home, UI_HOME_INPUT_ACTIVATE, caps);
+	UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+	CHECK(UIScene_Frame()->homeSurface == UI_HOME_SURFACE_SYSTEM);
+	rowY = UIScene_Frame()->cubeY;
+	rowPitch = UIScene_Frame()->cubePitch;
+	for(int row = 1; row < 4; ++row) {
+		UIHome_Apply(&home, UI_HOME_INPUT_DOWN, caps);
+		UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+		CHECK(UIScene_Frame()->homeSelection == row);
+		near(UIScene_Frame()->cubeY, rowY, 0.0001f);
+		CHECK(UIScene_Frame()->cubePitch > rowPitch);
+	}
+	invalid = home; invalid.selection = 4; invalid.revision++;
+	UIScene_RequestHome(&invalid); tick(0.02f, UI_MOTION_OFF);
+	CHECK(UIScene_Frame()->homeSelection == 3);
 }
 /* Apps' face is published with its ring: the frame names it, and the
  * glyphs are placed for five faces, then four again when the apps go. */
@@ -398,7 +439,8 @@ static void testClassicCube(void)
 		for(int frame = 0; frame < 60; ++frame) {
 			tick(0.02f, UI_MOTION_FULL);
 			for(int face = 0; face < UI_HOME_FACE_COUNT; ++face)
-				near(UIScene_Frame()->homeMotifAlpha[face], 1.0f, 0.0f);
+				near(UIScene_Frame()->homeMotifAlpha[face],
+					face <= UI_HOME_FACE_APPS ? 1.0f : 0.0f, 0.0f);
 			CHECK(memcmp(basis, UIScene_Frame()->homeMotifBasis, sizeof(basis)) == 0);
 		}
 		matrixNear(&UIScene_Frame()->homeOrientation[0][0], expected, 0.0f);
@@ -419,7 +461,8 @@ static void testClassicCube(void)
 		for(int frame = 0; frame < 120; ++frame) {
 			tick(0.02f, UI_MOTION_FULL);
 			for(int face = 0; face < UI_HOME_FACE_COUNT; ++face)
-				near(UIScene_Frame()->homeMotifAlpha[face], 1.0f, 0.0f);
+				near(UIScene_Frame()->homeMotifAlpha[face],
+					face <= UI_HOME_FACE_APPS ? 1.0f : 0.0f, 0.0f);
 			CHECK(memcmp(basis, UIScene_Frame()->homeMotifBasis, sizeof(basis)) == 0);
 		}
 	}
@@ -437,6 +480,150 @@ static void testClassicCube(void)
 	near(UIScene_Frame()->homeMotifBasis[UI_HOME_FACE_SOURCE][1][2], 1.0f, 0.0f);
 	near(UIScene_Frame()->homeMotifBasis[UI_HOME_FACE_SETTINGS][0][2], -1.0f, 0.0f);
 	matrixNear(&UIScene_Frame()->homeOrientation[0][0], &identity[0][0], 0.0f);
+}
+
+/* Faces on other sides travel with the state. Classic puts each glyph on its
+ * face's side and turns there; Infinite turns round the faces on a side, in
+ * the order Up, Left, Right, Down, and a face on none has no glyph. */
+static void testCustomSides(void)
+{
+	/* The issue's cube from today's faces: Settings down, Apps left. */
+	uiHomeCapabilities_t moved = classicCaps;
+	uiHomeState_t home;
+	float defaults[UI_HOME_FACE_COUNT][3][3];
+
+	moved.customSides = true;
+	moved.sides[UI_HOME_SIDE_UP] = UI_HOME_FACE_SOURCE;
+	moved.sides[UI_HOME_SIDE_LEFT] = UI_HOME_FACE_APPS;
+	moved.sides[UI_HOME_SIDE_RIGHT] = UI_HOME_FACE_SYSTEM;
+	moved.sides[UI_HOME_SIDE_DOWN] = UI_HOME_FACE_SETTINGS;
+	(void)startWith(classicCaps, 0.02f, UI_MOTION_FULL);
+	memcpy(defaults, UIScene_Frame()->homeMotifBasis, sizeof(defaults));
+	home = startWith(moved, 0.02f, UI_MOTION_FULL);
+	/* Each glyph where today's face on that side has its own. */
+	CHECK(memcmp(UIScene_Frame()->homeMotifBasis[UI_HOME_FACE_APPS],
+		defaults[UI_HOME_FACE_SETTINGS], sizeof(defaults[0])) == 0);
+	CHECK(memcmp(UIScene_Frame()->homeMotifBasis[UI_HOME_FACE_SETTINGS],
+		defaults[UI_HOME_FACE_APPS], sizeof(defaults[0])) == 0);
+	CHECK(memcmp(UIScene_Frame()->homeMotifBasis[UI_HOME_FACE_SOURCE],
+		defaults[UI_HOME_FACE_SOURCE], sizeof(defaults[0])) == 0);
+	CHECK(memcmp(defaults[UI_HOME_FACE_APPS], defaults[UI_HOME_FACE_SETTINGS],
+		sizeof(defaults[0])) != 0);
+	/* The sides alone changing, Library in front, reaches the scene: no
+	 * other published field moves, the revision included. */
+	{
+		uiHomeState_t before = startWith(classicCaps, 0.02f, UI_MOTION_FULL);
+
+		home = before;
+		(void)UIHome_Apply(&home, UI_HOME_INPUT_NONE, moved);
+		CHECK(home.face == before.face && home.revision == before.revision &&
+			home.turnOrdinal == before.turnOrdinal &&
+			home.faceCount == before.faceCount &&
+			memcmp(&home.orientation, &before.orientation,
+			sizeof(home.orientation)) == 0);
+		UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+		CHECK(memcmp(UIScene_Frame()->homeMotifBasis[UI_HOME_FACE_SETTINGS],
+			defaults[UI_HOME_FACE_APPS], sizeof(defaults[0])) == 0);
+	}
+	/* Down turns down to Settings. */
+	{
+		float expected[9];
+
+		memcpy(expected, identity, sizeof(expected));
+		oracleTurn(expected, UI_HOME_INPUT_DOWN);
+		CHECK(UIHome_Apply(&home, UI_HOME_INPUT_DOWN, moved) ==
+			UI_HOME_EFFECT_NONE);
+		UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+		CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_SETTINGS);
+		matrixNear(&UIScene_Frame()->homeOrientation[0][0], expected, 0.0f);
+	}
+
+	/* Infinite with no Source or System: Library, Settings and Apps. */
+	{
+		uiHomeCapabilities_t three = appsCaps;
+
+		three.customSides = true;
+		three.sides[UI_HOME_SIDE_LEFT] = UI_HOME_FACE_SETTINGS;
+		three.sides[UI_HOME_SIDE_DOWN] = UI_HOME_FACE_APPS;
+		home = startWith(three, 0.02f, UI_MOTION_FULL);
+		CHECK(home.faceCount == 3);
+		near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SOURCE], 0.0f, 0.0f);
+		near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SYSTEM], 0.0f, 0.0f);
+		near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SETTINGS], 1.0f, 0.0f);
+		near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_APPS], 1.0f, 0.0f);
+		CHECK(UIHome_Apply(&home, UI_HOME_INPUT_RIGHT, three) ==
+			UI_HOME_EFFECT_NONE);
+		UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+		CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_SETTINGS);
+		CHECK(UIHome_Apply(&home, UI_HOME_INPUT_RIGHT, three) ==
+			UI_HOME_EFFECT_NONE);
+		UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+		CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_APPS);
+		near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SOURCE], 0.0f, 0.0f);
+	}
+
+	/* Away from Home, Infinite shows Library in front of its own ring, not
+	 * the default four: Source, on no side, stays off the cube. */
+	{
+		uiHomeCapabilities_t noSource = caps;
+
+		noSource.customSides = true;
+		noSource.sides[UI_HOME_SIDE_LEFT] = UI_HOME_FACE_SETTINGS;
+		noSource.sides[UI_HOME_SIDE_RIGHT] = UI_HOME_FACE_SYSTEM;
+		noSource.sides[UI_HOME_SIDE_DOWN] = UI_HOME_FACE_APPS;
+		home = startWith(noSource, 0.02f, UI_MOTION_FULL);
+		CHECK(UIHome_Apply(&home, UI_HOME_INPUT_RIGHT, noSource) ==
+			UI_HOME_EFFECT_NONE);
+		UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+		static const uiSceneId_t away[] = {UI_SCENE_LIBRARY, UI_SCENE_SETTINGS};
+		for(int i = 0; i < 2; ++i) {
+			UIScene_Request(away[i]);
+			advance(4.0f, 0.02f, UI_MOTION_FULL);
+			near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SOURCE], 0.0f, 0.0f);
+			near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_LIBRARY], 1.0f, 0.0f);
+			near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SETTINGS], 1.0f, 0.0f);
+			near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_SYSTEM], 1.0f, 0.0f);
+		}
+	}
+
+	/* File Browser in place of each side's face, Classic and Infinite: the
+	 * scene takes every snapshot that turns to it, shows its glyph and not
+	 * the face it replaced, and is back on it after Swiss's list (the
+	 * Library scene) hands Home back. */
+	for(int isClassic = 0; isClassic < 2; ++isClassic)
+	for(int side = 0; side < UI_HOME_SIDE_COUNT; ++side) {
+		static const uiHomeInput_t toward[UI_HOME_SIDE_COUNT] = {
+			UI_HOME_INPUT_UP, UI_HOME_INPUT_LEFT, UI_HOME_INPUT_RIGHT,
+			UI_HOME_INPUT_DOWN
+		};
+		uiHomeCapabilities_t files = isClassic ? classicCaps : caps;
+		int turns = 0;
+
+		files.customSides = true;
+		for(int s = 0; s < UI_HOME_SIDE_COUNT; ++s)
+			files.sides[s] = (uint8_t)(s + 1);
+		files.sides[side] = UI_HOME_FACE_FILES;
+		home = startWith(files, 0.02f, UI_MOTION_FULL);
+		near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_FILES], 1.0f, 0.0f);
+		near(UIScene_Frame()->homeMotifAlpha[side + 1], 0.0f, 0.0f);
+		while(home.face != UI_HOME_FACE_FILES && turns++ < UI_HOME_RING_MAX) {
+			CHECK(UIHome_Apply(&home, isClassic ? toward[side] :
+				UI_HOME_INPUT_RIGHT, files) == UI_HOME_EFFECT_NONE);
+			UIScene_RequestHome(&home); settle(0.02f, UI_MOTION_FULL);
+			CHECK(UIScene_Frame()->homeFace == home.face);
+		}
+		CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_FILES);
+		CHECK(UIScene_Frame()->homeRevision == home.revision);
+		CHECK(UIHome_Apply(&home, UI_HOME_INPUT_ACTIVATE, files) ==
+			UI_HOME_EFFECT_OPEN_FILES);
+		UIScene_Request(UI_SCENE_LIBRARY);
+		advance(4.0f, 0.02f, UI_MOTION_FULL);
+		UIScene_Request(UI_SCENE_HOME); UIScene_RequestHome(&home);
+		settle(0.02f, UI_MOTION_FULL);
+		CHECK(UIScene_Frame()->scene == UI_SCENE_HOME);
+		CHECK(UIScene_Frame()->homeFace == UI_HOME_FACE_FILES);
+		near(UIScene_Frame()->homeMotifAlpha[UI_HOME_FACE_FILES], 1.0f, 0.0f);
+	}
 }
 
 /* Exercise visible composition, not just arrival: posters remain transparent
@@ -627,8 +814,10 @@ int main(void)
 	testHalfTurnsFromEveryOrientation();
 	testMixedCoalescingAndInterruptions(); testModeChangesAndBadTiming();
 	testContextAndSceneReturns(); testPublicationAndInvalidRequests();
+	testSystemRows();
 	testAppsRing();
 	testClassicCube();
+	testCustomSides();
 	testLibraryLayoutPoses();
 	testHomeDecorativeBlend();
 	printf("ui_scene: %u checks passed\n", checks);

@@ -102,6 +102,7 @@ def between(source: str, start: str, end: str, inclusive: bool = False) -> str:
 
 def renderer(frame_c: str, frame_h: str) -> str:
     return "\n".join([
+        '#include "ui_folder.h"' if "UIFolder_ColorRGB" in frame_c else "",
         between(frame_h, "typedef struct uiDrawObj {", "} uiDrawObj_t;", True),
         between(frame_h, "#define UI_GAMEFLOW_RENDER_SLOTS", "} uiGameflowRenderSnapshot_t;", True),
         between(frame_c, "typedef struct drawGameflowDetailPresentation {",
@@ -445,7 +446,8 @@ def build(work: Path, gui: Path, frame_c: str, frame_h: str, layouts: bool, name
                 '#include "ui_saves_metadata.h"' in (gui / "ui_gameflow_detail.h").read_text() else ())
     result = subprocess.run(shlex.split(os.environ.get("CC", "cc")) + flags +
                             ["-o", str(binary), str(source)] +
-                            [str(gui / pure) for pure in PURE + metadata + (LAUNCH if layouts else ())] +
+                            [str(gui / pure) for pure in PURE + metadata + (LAUNCH if layouts else ()) +
+                             (("ui_folder.c",) if "UIFolder_ColorRGB" in frame_c else ())] +
                             ["-lm"],
                             capture_output=True, text=True, timeout=180)
     if result.returncode:
@@ -706,6 +708,18 @@ class GameflowGxStream(unittest.TestCase):
                 self.assertEqual(boxes, after[game], game)
         self.assertLess(rest["G039E0"][0][2], 240)
         self.assertGreater(rest["G039E0"][0][3] - rest["G039E0"][0][1], 200)
+
+    def test_game_folders_offer_navigation_without_identity_controls(self):
+        for layout in range(4):
+            with self.subTest(layout=layout):
+                result = subprocess.run([str(self.binary)], input=f"O {layout} 12 2\nN 40 0.0167\n",
+                                        capture_output=True, encoding="latin-1", timeout=120)
+                self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+                frame = frames(result.stdout)[-1]
+                self.assertNotIn("C 68 170 230 255", frame)
+                self.assertNotIn("Y  FOLDER", frame)
+                self.assertIn("A  OPEN", frame)
+                self.assertNotIn("Y  SETTINGS", frame)
 
     def test_grid_rows_and_highlight(self):
         log = self.run_script(["L 2 40 18", "N 40 0.0167"])

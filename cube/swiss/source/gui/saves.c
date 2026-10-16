@@ -1,12 +1,14 @@
 /* saves.c - Memory Cards (Home > System > Memory Cards)
 
    The saves on the memory cards in Slot A and Slot B and in folders on the
-   device Indigo keeps its settings on, as the IPL's Memory Card screen shows
-   two cards: two stacks of save cubes, either of them Slot A, Slot B or the
-   SD card, with Move, Copy and Erase from one to the other. The card and FAT
+   device Indigo keeps its settings on (and on the Source, when that is
+   another FatFs device), as the IPL's Memory Card screen shows two cards:
+   two stacks of save cubes, either of them Slot A, Slot B or the SD card,
+   with Move, Copy and Erase from one to the other. The card and FAT
    drivers do the reading and writing, as they do for the file browser's
-   Copy. This file decides what to call, reads every copy back before
-   calling it done, and removes a Move's original only after that. */
+   Copy; a card image on the SD card changes in place (saves_raw.c). This
+   file decides what to call, reads every copy back before calling it done,
+   and removes a Move's original only after that. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,6 +37,7 @@
 #include "ui_settings_layout.h"
 #include "saves.h"
 #include "saves_raw.h"
+#include "ui_folder.h"
 
 #define SAVES_DEFAULT_FOLDER "swiss/saves"
 #define SAVES_LIST_MAX 256
@@ -94,6 +97,15 @@ static uiSaveCubesPageSnapshot_t screen;
 static char folderHome[2][PATHNAME_MAX];
 /* The settings device is mounted, so the SD card's place can be listed. */
 static bool foldersReady;
+/* The devices the SD card's stacks can show: the settings device, then the
+ * Source when it is another FatFs device that takes writes
+ * (Saves_SourceDevice, which Game Details reads too). Swiss's Emulate
+ * Memory Card keeps a game's card images on the device the game starts
+ * from, so with settings on one card and games on another, they are on the
+ * Source. The page mounts the settings device; the Source is mounted
+ * already. */
+static DEVICEHANDLER_INTERFACE *sdDevice[2];
+static int sdDevices;
 /* What the screen last showed, so a box, an operation or a message can show
  * it again. */
 static int screenStacks[UI_SAVE_CUBES_STACKS];
@@ -184,6 +196,106 @@ static bool readSaveAt(file_handle *save, u32 offset, void *data, u32 length)
 	if(card) setCopyGCIMode(false);
 	save->device->closeFile(save);
 	return ok;
+}
+
+/* One-time folder previews read only the checked directory entry and, when
+ * present, its first comment line. No icon pixels or full save payload are loaded. */
+static void folderSaveTitle(file_handle *source, const uiSavesRawCard_t *raw,
+	unsigned ordinal, char *out, size_t capacity)
+{
+	file_handle file = *source;
+	u8 head[UI_SAVES_HEAD_SIZE] ATTRIBUTE_ALIGN(32);
+	u8 entry[UI_SAVES_ENTRY_SIZE], comment[32] ATTRIBUTE_ALIGN(32);
+	uiSavesArt_t art;
+	size_t body = 0u;
+	bool hasComment = false;
+	file.fp = NULL; file.ffsFp = NULL; file.meta = NULL; file.uiObj = NULL;
+	if(raw != NULL) {
+		const u8 *selected = UISavesRaw_Entry(raw, ordinal);
+		if(selected != NULL) {
+			memcpy(entry, selected, sizeof(entry));
+			body = UI_SAVES_ENTRY_SIZE;
+			if(UISaves_ArtLayout(entry, UISavesRaw_GciSize(raw, ordinal) - body, &art) &&
+				art.comment) hasComment = SavesRaw_ReadGci(&file, raw, ordinal,
+					(u32)body + art.commentAt, comment, sizeof(comment));
+		}
+	}
+	else {
+		u32 length = file.size < sizeof(head) ? file.size : sizeof(head);
+		if(readSaveAt(&file, 0u, head, length))
+			body = UISaves_FindEntryPrefix(head, length, file.size, entry);
+		if(body != 0u && UISaves_ArtLayout(entry, file.size - body, &art) && art.comment)
+			hasComment = readSaveAt(&file, (u32)body + art.commentAt, comment, sizeof(comment));
+	}
+	if(body != 0u && UISaves_DisplayTitle(out, capacity, entry,
+		hasComment ? comment : NULL, hasComment ? sizeof(comment) : 0u)) return;
+	const char *leaf = getRelativeName(source->name);
+	if(!UISaves_DisplayText(out, capacity, (const u8*)leaf, strnlen(leaf, PATHNAME_MAX)))
+		snprintf(out, capacity, "Unnamed save");
+}
+
+static bool folderIdentity(const file_handle *entry)
+{
+	return entry != NULL && entry->fileType != IS_SPECIAL &&
+		(entry->fileType == IS_DIR || (entry->fileType == IS_FILE &&
+		SavesRaw_IsImageName(entry->name))) && !isCard(entry->device);
+}
+
+static void folderContents(uiFolderSnapshot_t *snapshot, file_handle *chosen)
+{
+	file_handle source = *chosen;
+	source.fp = NULL; source.ffsFp = NULL; source.meta = NULL; source.uiObj = NULL;
+	if(SavesRaw_IsImageName(source.name)) {
+		uiSavesRawCard_t *card = calloc(1, sizeof(*card));
+		uiSavesRawStatus_t status = card != NULL ? SavesRaw_Load(&source, card) :
+			UI_SAVES_RAW_READ_ERROR;
+		if(status == UI_SAVES_RAW_OK) {
+			snprintf(snapshot->summary, sizeof(snapshot->summary), "%u saves. %s",
+				(unsigned)card->count, SavesRaw_Writable(&source) ?
+				"Card image." : "Read-only card image.");
+			for(unsigned i = 0; i < card->count && i < 2u; ++i)
+				folderSaveTitle(&source, card, i, snapshot->contents[i], sizeof(snapshot->contents[i]));
+			if(card->count == 0u) strcpy(snapshot->contents[0], "This card image has no saves.");
+		}
+		else {
+			strcpy(snapshot->summary, "Card image. Contents unavailable.");
+			snprintf(snapshot->contents[0], sizeof(snapshot->contents[0]), "%s", UISavesRaw_StatusText(status));
+		}
+		strcpy(snapshot->status, "Color is saved in Indigo settings, not in the card image.");
+		free(card);
+		return;
+	}
+	file_handle *entries = NULL;
+	int count = source.device != NULL && source.device->readDir != NULL ?
+		source.device->readDir(&source, &entries, -1) : -1;
+	if(count < 0 || (count > 0 && entries == NULL)) {
+		strcpy(snapshot->summary, "This folder's contents could not be read.");
+		free(entries);
+		return;
+	}
+	unsigned saves = 0u, images = 0u, folders = 0u, shown = 0u;
+	const int maximum = 4096;
+	for(int i = 0; i < count && i < maximum; ++i) {
+		file_handle *entry = &entries[i];
+		const char *leaf = getRelativeName(entry->name);
+		if(entry->fileType == IS_SPECIAL || leaf[0] == '.') continue;
+		if(entry->fileType == IS_DIR) ++folders;
+		else if(entry->fileType == IS_FILE && isSaveName(leaf)) {
+			++saves;
+			if(shown < 2u) folderSaveTitle(entry, NULL, 0u,
+				snapshot->contents[shown++], sizeof(snapshot->contents[0]));
+		}
+		else if(entry->fileType == IS_FILE && SavesRaw_IsImageName(leaf)) ++images;
+	}
+	snprintf(snapshot->summary, sizeof(snapshot->summary), "%u save files, %u card images, %u folders%s",
+		saves, images, folders, count > maximum ? " (preview limit)" : "");
+	if(shown == 0u) strcpy(snapshot->contents[0], images > 0u ?
+		"Open a card image to browse its saves." : "No save files in this folder.");
+	for(int i = 0; i < count; ++i) {
+		if(source.device->closeFile != NULL) source.device->closeFile(&entries[i]);
+	}
+	free(entries);
+	if(source.device != NULL && source.device->closeFile != NULL) source.device->closeFile(&source);
 }
 
 /* ------------------------------------------------------------------------
@@ -325,21 +437,29 @@ static void artRead(file_handle *save, int s, u32 tag)
 			at = UISaves_FindEntryPrefix(scratch, want, save->size, entry);
 		}
 	}
-	if(at != 0u && UISaves_ArtLayout(entry, card ? save->size :
-		save->size - at, &slot->art)) {
-		want = (u32)at + slot->art.end;
-		got = readSaveAt(save, 0u, scratch, want) ? (s32)want : -1;
-		slot->failed = got != (s32)want;
+	if(at != 0u) {
+		u32 dataLength = card ? save->size : save->size - at;
+		UISaves_DisplayTitle(slot->line[0], sizeof(slot->line[0]), entry, NULL, 0u);
+		if(UISaves_ArtLayout(entry, dataLength, &slot->art)) {
+			want = (u32)at + slot->art.end;
+			got = readSaveAt(save, 0u, scratch, want) ? (s32)want : -1;
+			slot->failed = got != (s32)want;
+		}
+		else if((entry[0x07] & 3u) == 0u &&
+			!strcmp(UISaves_IconDescription(entry, dataLength, false), "None stored")) {
+			/* A valid save can deliberately have neither icons nor comments. */
+			slot->failed = false;
+		}
 	}
 	if(!slot->failed) {
 		const u8 *data = scratch + at;
 		const uiSavesArt_t *art = &slot->art;
 
 		if(art->comment) {
-			snprintf(slot->line[0], sizeof(slot->line[0]), "%.32s",
-				(const char *)data + art->commentAt);
-			snprintf(slot->line[1], sizeof(slot->line[1]), "%.32s",
-				(const char *)data + art->commentAt + 32);
+			UISaves_DisplayTitle(slot->line[0], sizeof(slot->line[0]), entry,
+				data + art->commentAt, 32u);
+			UISaves_DisplayText(slot->line[1], sizeof(slot->line[1]),
+				data + art->commentAt + 32u, 32u);
 		}
 		if(texels != NULL) {
 			for(i = 0; i < (int)art->frames; i++) {
@@ -407,7 +527,7 @@ static bool artLoad(void)
  * repeating on the shared schedule.
  * --------------------------------------------------------------------- */
 #define SAVES_DIRECTIONS (BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT | BUTTON_RIGHT)
-#define SAVES_BUTTONS (SAVES_DIRECTIONS | BUTTON_A | BUTTON_B | BUTTON_X | \
+#define SAVES_BUTTONS (SAVES_DIRECTIONS | BUTTON_A | BUTTON_B | BUTTON_X | BUTTON_Y | \
 	BUTTON_L | BUTTON_R)
 
 static u32 inputElapsed(u32 *lastRetrace)
@@ -576,7 +696,7 @@ static void loadCard(savesPlace_t *place, int slot)
 				snprintf(place->note[0], sizeof(place->note[0]),
 					"Nothing is inserted in %s.", slotName(slot));
 				snprintf(place->note[1], sizeof(place->note[1]),
-					"Choose SD card above to browse virtual cards.");
+					"Choose storage above to browse virtual cards.");
 				break;
 			case CARD_ERROR_WRONGDEVICE:
 				snprintf(place->note[0], sizeof(place->note[0]),
@@ -644,13 +764,12 @@ static bool folderIsRoot(const savesPlace_t *place)
 	return !strcmp(place->dir.name, place->device->initial->name);
 }
 
-/* place->dir names the folder; lists it. */
+/* place->dir names the folder, on place->device; lists it. */
 static void loadFolder(savesPlace_t *place, bool foldersOnly)
 {
 	int i;
 
 	placeClear(place);
-	place->device = devices[DEVICE_CONFIG];
 	if(place->device == NULL) {
 		snprintf(place->note[0], sizeof(place->note[0]),
 			"No device for settings and saves");
@@ -755,18 +874,35 @@ static void loadTab(int tab)
 	}
 }
 
-/* The folder under the settings device's root: "swiss/saves", "/" for the
- * root. */
-static void folderSet(savesPlace_t *place, const char *path)
+/* The folder under device's root: "swiss/saves", "/" for the root. */
+static void folderSet(savesPlace_t *place, DEVICEHANDLER_INTERFACE *device,
+	const char *path)
 {
 	memset(&place->dir, 0, sizeof(place->dir));
-	place->device = devices[DEVICE_CONFIG];
+	place->device = device;
 	if(place->device != NULL) {
 		concat_path(place->dir.name, place->device->initial->name, path);
 	}
 	place->dir.fileType = IS_DIR;
 	place->dir.device = place->device;
 	place->selection = 0;
+}
+
+/* The SD card's stack tab on device: its Save Folder there, or its root
+ * when that can't be read. B goes back up as far as this, no further. */
+static void folderOpenHome(int tab, DEVICEHANDLER_INTERFACE *device)
+{
+	savesPlace_t *place = &places[tab];
+
+	placeClear(place);
+	folderSet(place, device, saves_folder());
+	loadFolder(place, false);
+	if(!place->ready) {
+		folderSet(place, device, "/");
+		loadFolder(place, false);
+	}
+	snprintf(folderHome[tab - SAVES_TAB_FOLDER], sizeof(folderHome[0]), "%s",
+		place->dir.name);
 }
 
 /* The path under the device's root that folderSet takes back. */
@@ -818,12 +954,17 @@ static void saveTitle(char *out, size_t size, file_handle *save)
 	savesPlace_t *raw = rawSource(save, &ordinal);
 
 	if(raw != NULL) {
-		snprintf(out, size, "%.*s", UI_SAVES_NAME_LENGTH,
-			(const char *)UISavesRaw_Entry(raw->rawCard, ordinal) + 8);
+		if(!UISaves_DisplayTitle(out, size, UISavesRaw_Entry(raw->rawCard, ordinal), NULL, 0u))
+			snprintf(out, size, "Unnamed save");
 	}
 	else if(isCard(save->device)) {
-		snprintf(out, size, "%.*s", CARD_FILENAMELEN,
-			((card_dir *)save->other)->filename);
+		const card_dir *dir = (const card_dir *)save->other;
+		u8 entry[UI_SAVES_ENTRY_SIZE] = {0};
+		unsigned blocks = (save->size + UI_SAVES_BLOCK_SIZE - 1u) / UI_SAVES_BLOCK_SIZE;
+		memcpy(entry, dir->gamecode, 4u); memcpy(entry + 4u, dir->company, 2u);
+		memcpy(entry + 8u, dir->filename, CARD_FILENAMELEN);
+		entry[0x38] = (u8)(blocks >> 8); entry[0x39] = (u8)blocks;
+		if(!UISaves_DisplayTitle(out, size, entry, NULL, 0u)) snprintf(out, size, "Unnamed save");
 	}
 	else {
 		snprintf(out, size, "%s", getRelativeName(save->name));
@@ -884,12 +1025,7 @@ static bool folderBelowHome(int tab)
 /* A comment line as it shows: without the spaces that pad it. */
 static void saveLine(char *out, size_t size, const char *line)
 {
-	size_t length;
-
-	snprintf(out, size, "%s", line);
-	for(length = strlen(out); length > 0 && out[length - 1] == ' '; length--) {
-		out[length - 1] = '\0';
-	}
+	UISaves_DisplayText(out, size, (const u8*)line, strnlen(line, 33u));
 }
 
 /* What a save is called: the first line of its comment, once its art is
@@ -898,10 +1034,11 @@ static void saveHeading(char *out, size_t size, int tab, file_handle *save)
 {
 	int s = artSlot(saveTag(tab, save));
 
-	if(s >= 0) {
+	out[0] = '\0';
+	if(s >= 0 && !slots[s].failed) {
 		saveLine(out, size, slots[s].line[0]);
 	}
-	if(s < 0 || out[0] == '\0') {
+	if(out[0] == '\0') {
 		saveTitle(out, size, save);
 	}
 }
@@ -939,7 +1076,7 @@ static void screenInfo(uiSaveCubesPageSnapshot_t *g, int tab, file_handle *chose
 					UI_SAVES_ICON_FRAMES * UI_SAVES_ICON_BYTES;
 			}
 		}
-		if(places[tab].rawOpen) {
+		if(places[tab].rawOpen && !SavesRaw_Writable(&places[tab].rawImage)) {
 			snprintf(g->line[1], sizeof(g->line[1]), "Read-only card image. Copy exports a .gci save.");
 		}
 	}
@@ -1008,10 +1145,13 @@ static void screenBuild(const int stacks[UI_SAVE_CUBES_STACKS], int focus)
 			}
 		}
 		else {
+			/* With two SD devices, a folder shows its device's prefix
+			 * ("sdc:/swiss/saves"), as Y's page does. */
 			snprintf(text->name, sizeof(text->name), "SD");
 			UICheats_Fit(text->path, sizeof(text->path),
 				place->rawOpen ? getRelativeName(place->rawImage.name) :
-				getDevicePath(place->dir.name), 150, 0.42f, GetTextSizeInPixels);
+				sdDevices > 1 ? place->dir.name : getDevicePath(place->dir.name),
+				150, 0.42f, GetTextSizeInPixels);
 		}
 		for(k = 0; k < UI_SAVE_CUBES_DRAWN; k++) {
 			file_handle *entry = placeAt(place, (place->top - 1) *
@@ -1023,6 +1163,8 @@ static void screenBuild(const int stacks[UI_SAVE_CUBES_STACKS], int focus)
 				(entry->fileType == IS_DIR || SavesRaw_IsImageName(entry->name)) ?
 				UI_SAVE_CUBES_KIND_FOLDER :
 				UI_SAVE_CUBES_KIND_SAVE;
+			if(cell->kind == UI_SAVE_CUBES_KIND_FOLDER && folderIdentity(entry))
+				cell->folderColor = config_folder_color(entry->name);
 			if(cell->kind == UI_SAVE_CUBES_KIND_SAVE && pool != NULL &&
 				(slot = artSlot(saveTag(stacks[s], entry))) >= 0 && !slots[slot].failed) {
 				cell->texels = pool + slot * SAVES_SLOT_BYTES;
@@ -1067,10 +1209,13 @@ static void screenBuild(const int stacks[UI_SAVE_CUBES_STACKS], int focus)
 		snprintf(g->hint[0], sizeof(g->hint[0]), "B  Cancel   A  Confirm");
 	}
 	else {
-		snprintf(g->hint[0], sizeof(g->hint[0]),
-			"STICK / D-PAD  Select   B  %s   A  Confirm",
-			focus >= 0 && folderBelowHome(stacks[focus]) ? "Up" : "Finish");
-		snprintf(g->hint[1], sizeof(g->hint[1]), "L  Left storage   R  Right storage");
+			bool folder = folderIdentity(chosen);
+			snprintf(g->hint[0], sizeof(g->hint[0]),
+				"STICK / D-PAD  Select   B  %s   A  %s",
+				focus >= 0 && folderBelowHome(stacks[focus]) ? "Up" : "Finish",
+				folder ? "Open" : "Confirm");
+			snprintf(g->hint[1], sizeof(g->hint[1]), "%s", folder ?
+				"Y  Folder" : "L  Left storage   R  Right storage");
 	}
 }
 
@@ -1153,6 +1298,55 @@ static void savesWait(u32 since, float seconds)
 	while((float)(VIDEO_GetRetraceCount() - since) < seconds * rate) {
 		VIDEO_WaitVSync();
 	}
+}
+
+/* Y belongs only to the small folder cubes on Memory Cards. The dialog
+ * keeps prepared text and previews separate from the published save art. */
+static void showFolderIdentity(file_handle *chosen)
+{
+	uiFolderSnapshot_t *snapshot;
+	uiDrawObj_t *page;
+	savesInput_t input;
+	if(!folderIdentity(chosen)) return;
+	snapshot = calloc(1, sizeof(*snapshot));
+	if(snapshot == NULL) return;
+	if(!UIFolder_PreparePath(snapshot, chosen->name, GetTextSizeInPixels)) {
+		free(snapshot);
+		return;
+	}
+	snapshot->color = config_folder_color(chosen->name);
+	folderContents(snapshot, chosen);
+	for(unsigned i = 0; i < 2u; ++i) {
+		char text[sizeof(snapshot->contents[0])];
+		memcpy(text, snapshot->contents[i], sizeof(text));
+		UICheats_Fit(snapshot->contents[i], sizeof(snapshot->contents[i]), text,
+			532, 0.42f, GetTextSizeInPixels);
+	}
+	page = DrawMemoryCardFolder(snapshot);
+	if(page == NULL) { free(snapshot); return; }
+	DrawPublish(page);
+	inputInit(&input);
+	while(1) {
+		u32 pressed = inputNext(&input), actions = 0u;
+		if(pressed & BUTTON_A) actions |= UI_FOLDER_INPUT_SAVE;
+		if(pressed & BUTTON_B) actions |= UI_FOLDER_INPUT_CANCEL;
+		if(pressed & BUTTON_Y) actions |= UI_FOLDER_INPUT_RESET;
+		if(pressed & BUTTON_LEFT) actions |= UI_FOLDER_INPUT_LEFT;
+		if(pressed & BUTTON_RIGHT) actions |= UI_FOLDER_INPUT_RIGHT;
+		if(pressed & BUTTON_UP) actions |= UI_FOLDER_INPUT_UP;
+		if(pressed & BUTTON_DOWN) actions |= UI_FOLDER_INPUT_DOWN;
+		uiFolderAction_t action = UIFolder_Input(snapshot, actions);
+		if(action == UI_FOLDER_ACTION_CANCEL) break;
+		if(action == UI_FOLDER_ACTION_SAVE) {
+			/* Memory Cards holds the settings device: keep it mounted. */
+			if(config_set_folder_color(chosen->name, snapshot->color, false)) break;
+			strcpy(snapshot->status, "Could not save. Check the Configuration Device or the 32-folder limit.");
+		}
+		DrawUpdateMemoryCardFolder(page, snapshot);
+	}
+	DrawDispose(page);
+	free(snapshot);
+	while(padsButtonsHeld() & SAVES_BUTTONS) VIDEO_WaitVSync();
 }
 
 /* The box beside the focused cube, the IPL's, or a question with title
@@ -1442,9 +1636,10 @@ static const char *cardWhy(s32 error)
 
 /* Writes a save to the card in slot and reads it back. The driver creates
  * it from entry (game, maker, name, banner and icon places) and writes
- * blocks, the save's data. */
-static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
-	u32 blockBytes, char *why, size_t whySize)
+ * blocks, the save's data. When boundMount is non-NULL, the write is bound
+ * to that mount generation. */
+static bool cardWriteBound(int slot, const u8 *entry, const u8 *blocks,
+	u32 blockBytes, const u32 *boundMount, char *why, size_t whySize)
 {
 	DEVICEHANDLER_INTERFACE *device = slotDevice(slot);
 	file_handle dest;
@@ -1453,6 +1648,7 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 	int count, used, total;
 	u8 *back;
 	u32 backLength = 0;
+	u32 mount;
 	s32 written;
 	bool has, same;
 
@@ -1468,6 +1664,15 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 		return false;
 	}
 	places[slot].mounted = true;
+	/* The clean-up below deletes only on the card this mounted: one taken
+	 * out or changed since (a memory card emulator switching) is mounted
+	 * again, and its save of the same name isn't this write's. */
+	mount = card_mount_count(slot);
+	if(boundMount != NULL && mount != *boundMount) {
+		snprintf(why, whySize, "The card in %s changed, so nothing was written.",
+			slotName(slot));
+		return false;
+	}
 	/* The driver would write over a save of the same name in place, whatever
 	 * its size, so one already there stops the copy. */
 	has = cardFind(slot, entry, &entries, &count, &used) != NULL;
@@ -1494,6 +1699,12 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 			total - used == 1 ? "" : "s", UISaves_Blocks(entry));
 		return false;
 	}
+	if((boundMount != NULL && card_mount_count(slot) != *boundMount) ||
+		card_mount_count(slot) != mount) {
+		snprintf(why, whySize, "The card in %s changed, so nothing was written.",
+			slotName(slot));
+		return false;
+	}
 	concatf_path(dest.name, device->initial->name, "%.*s", CARD_FILENAMELEN,
 		(const char *)entry + 8);
 	dest.device = device;
@@ -1502,11 +1713,13 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 	setGCIInfo(NULL);
 	if(written != (s32)blockBytes) {
 		/* The save wasn't there before, so what the driver left is ours. */
-		if((copy = cardFind(slot, entry, &entries, &count, &used)) != NULL) {
+		if((copy = cardFind(slot, entry, &entries, &count, &used)) != NULL &&
+			card_mount_count(slot) == mount) {
 			device->deleteFile(copy);
 		}
 		free(entries);
 		snprintf(why, whySize, "%s: %s.", slotName(slot),
+			card_mount_count(slot) != mount ? "the card changed meanwhile" :
 			cardWhy(written < 0 ? written : CARD_ERROR_FATAL_ERROR));
 		return false;
 	}
@@ -1518,6 +1731,13 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 		!strncmp((const char *)back + 8, (const char *)entry + 8, CARD_FILENAMELEN) &&
 		!memcmp(back + UI_SAVES_ENTRY_SIZE, blocks, blockBytes);
 	free(back);
+	/* Read back from another card: neither proof nor this write's to delete. */
+	if(card_mount_count(slot) != mount) {
+		free(entries);
+		snprintf(why, whySize, "The card in %s changed while the save was "
+			"written.", slotName(slot));
+		return false;
+	}
 	if(!same) {
 		if(copy != NULL) {
 			device->deleteFile(copy);
@@ -1529,12 +1749,17 @@ static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
 	return same;
 }
 
-/* Writes data to a new file named name in folder (on the settings device),
- * as name_2 and so on while a name is taken, and reads it back. */
-static bool folderWrite(const char *folder, const char *name, const u8 *data,
-	u32 length, char *why, size_t whySize)
+static bool cardWrite(int slot, const u8 *entry, const u8 *blocks,
+	u32 blockBytes, char *why, size_t whySize)
 {
-	DEVICEHANDLER_INTERFACE *device = devices[DEVICE_CONFIG];
+	return cardWriteBound(slot, entry, blocks, blockBytes, NULL, why, whySize);
+}
+
+/* Writes data to a new file named name in folder on device, as name_2 and
+ * so on while a name is taken, and reads it back. */
+static bool folderWrite(DEVICEHANDLER_INTERFACE *device, const char *folder,
+	const char *name, const u8 *data, u32 length, char *why, size_t whySize)
+{
 	file_handle dest;
 	char leaf[PATHNAME_MAX];
 	u8 *back;
@@ -1580,15 +1805,311 @@ static bool folderWrite(const char *folder, const char *name, const u8 *data,
 
 static bool saveDelete(file_handle *save)
 {
-	if(rawSource(save, NULL) != NULL || SavesRaw_IsImageName(save->name)) return false;
+	unsigned ordinal;
+	savesPlace_t *raw = rawSource(save, &ordinal);
+
+	/* A card image's save goes from its image, as listed; an image itself
+	 * is never deleted here. */
+	if(raw != NULL) {
+		return SavesRaw_Erase(&raw->rawImage,
+			UISavesRaw_Entry(raw->rawCard, ordinal)) == UI_SAVES_RAW_OK;
+	}
+	if(SavesRaw_IsImageName(save->name)) return false;
 	save->device->closeFile(save);
 	return save->device->deleteFile(save) == 0;
 }
 
-/* The folder a Copy or Move goes to, as a path on the settings device. */
+/* ------------------------------------------------------------------------
+ * Game Details: start a game with the copy of its save chosen there.
+ * --------------------------------------------------------------------- */
+
+/* Puts a game's chosen save on the card in slot in place of the card's own
+ * copy of it (own: that copy's entry and blocks, as saveRead reads it), or
+ * adds it when the card has none. The card's own copy goes back if the new
+ * one doesn't go on or doesn't read back the same. */
+static bool cardReplace(int slot, const u8 *entry, const u8 *blocks,
+	u32 blockBytes, const u8 *own, u32 ownLength, char *why, size_t whySize)
+{
+	DEVICEHANDLER_INTERFACE *device = slotDevice(slot);
+	file_handle *entries = NULL;
+	file_handle *found;
+	char failed[128];
+	int count, used;
+	u8 *now;
+	u32 nowLength = 0;
+	u32 mount;
+	bool readAgain, same, gone;
+
+	if(device->init(device->initial) != 0) {
+		snprintf(why, whySize, "%s has no memory card.", slotName(slot));
+		return false;
+	}
+	places[slot].mounted = true;
+	mount = card_mount_count(slot);
+
+	if(own != NULL) {
+		/* Only the copy just kept in the Save Folder goes: a card swapped
+		 * since then keeps its save. */
+		found = cardFind(slot, entry, &entries, &count, &used);
+		now = found != NULL ? saveRead(found, &nowLength) : NULL;
+		readAgain = found == NULL || now != NULL;
+		/* The same save: game, maker and name, and every byte of it. */
+		same = now != NULL && nowLength == ownLength && !memcmp(now, own, 6) &&
+			!strncmp((const char *)now + 8, (const char *)own + 8, CARD_FILENAMELEN) &&
+			!memcmp(now + UI_SAVES_ENTRY_SIZE, own + UI_SAVES_ENTRY_SIZE,
+				ownLength - UI_SAVES_ENTRY_SIZE);
+		free(now);
+		gone = same && card_mount_count(slot) == mount && device->deleteFile(found) == 0;
+		free(entries);
+		if(!same || card_mount_count(slot) != mount) {
+			snprintf(why, whySize, readAgain ?
+				"The card in %s changed, so nothing was replaced." :
+				"%s's own copy couldn't be read again.", slotName(slot));
+			return false;
+		}
+		if(!gone) {
+			snprintf(why, whySize, "%s's own copy couldn't be replaced.",
+				slotName(slot));
+			return false;
+		}
+	}
+	if(cardWriteBound(slot, entry, blocks, blockBytes, &mount, failed, sizeof(failed))) {
+		return true;
+	}
+	if(own == NULL) {
+		snprintf(why, whySize, "%s", failed);
+	}
+	else if(card_mount_count(slot) == mount && cardWriteBound(slot, own,
+		own + UI_SAVES_ENTRY_SIZE, ownLength - UI_SAVES_ENTRY_SIZE, &mount,
+		why, whySize)) {
+		snprintf(why, whySize, "%s\n%s's own copy went back.", failed,
+			slotName(slot));
+	}
+	else {
+		snprintf(why, whySize, "%s\n%s's own copy is in the Save Folder.",
+			failed, slotName(slot));
+	}
+	return false;
+}
+
+/* A copy the details scan found, read whole from where the scan found it
+ * (a card, the settings device or the Source): its entry and blocks, with
+ * *at where the blocks begin. NULL unless it is still the save the scan saw:
+ * the same game, maker and name. */
+static u8 *copyRead(const savesCopy_t *copy, u32 *length, size_t *at,
+	u8 entry[UI_SAVES_ENTRY_SIZE])
+{
+	file_handle file;
+	file_handle *entries = NULL;
+	file_handle *found;
+	uiSavesRawCard_t *raw;
+	u8 *data = NULL;
+	int count, used;
+
+	*at = 0u;
+	*length = 0u;
+	if(copy->source == SAVES_COPY_SLOT_A || copy->source == SAVES_COPY_SLOT_B) {
+		int slot = copy->source == SAVES_COPY_SLOT_B;
+		DEVICEHANDLER_INTERFACE *device = slotDevice(slot);
+
+		if(device->init(device->initial) == 0) {
+			found = cardFind(slot, copy->entry, &entries, &count, &used);
+			/* The card driver reads it as a .gci: its entry, then its blocks. */
+			data = found != NULL ? saveRead(found, length) : NULL;
+			free(entries);
+			*at = UI_SAVES_ENTRY_SIZE;
+		}
+	}
+	else if(copy->device != NULL) {
+		memset(&file, 0, sizeof(file));
+		snprintf(file.name, sizeof(file.name), "%s", copy->path);
+		file.device = copy->device;
+		file.fileType = IS_FILE;
+		file.size = copy->size;
+		if(copy->source == SAVES_COPY_FILE) {
+			data = saveRead(&file, length);
+			if(data != NULL) {
+				*at = UISaves_FindEntry(data, *length, entry);
+			}
+		}
+		else if((raw = calloc(1, sizeof(*raw))) != NULL) {
+			if(SavesRaw_Load(&file, raw) == UI_SAVES_RAW_OK &&
+				copy->ordinal < raw->count) {
+				*length = UISavesRaw_GciSize(raw, copy->ordinal);
+				data = *length > UI_SAVES_ENTRY_SIZE && *length <= SAVES_MAX_BYTES ?
+					memalign(32, *length) : NULL;
+				if(data != NULL && !SavesRaw_ReadGci(&file, raw, copy->ordinal, 0u,
+					data, *length)) {
+					free(data);
+					data = NULL;
+				}
+				*at = UI_SAVES_ENTRY_SIZE;
+			}
+			free(raw);
+			file.device->closeFile(&file);
+		}
+	}
+	if(data != NULL && copy->source != SAVES_COPY_FILE) {
+		memcpy(entry, data, UI_SAVES_ENTRY_SIZE);
+	}
+	if(data == NULL || *at == 0u || *at >= *length ||
+		memcmp(entry, copy->entry, 6u) != 0 ||
+		strncmp((const char *)entry + 8, (const char *)copy->entry + 8,
+			CARD_FILENAMELEN) != 0) {
+		free(data);
+		return NULL;
+	}
+	return data;
+}
+
+bool Saves_CopyLine(const savesCopy_t *copy, char *out, size_t size)
+{
+	file_handle file;
+	file_handle *entries = NULL;
+	file_handle *found;
+	uiSavesRawCard_t *raw;
+	uiSavesArt_t art;
+	u8 head[UI_SAVES_HEAD_SIZE] ATTRIBUTE_ALIGN(32);
+	u8 entry[UI_SAVES_ENTRY_SIZE];
+	u8 *data = NULL;
+	u32 want;
+	size_t body;
+	int count, used;
+	bool read = false;
+
+	if(out == NULL || size == 0u) return false;
+	out[0] = '\0';
+	if(copy == NULL) return false;
+	if(copy->source == SAVES_COPY_SLOT_A || copy->source == SAVES_COPY_SLOT_B) {
+		int slot = copy->source == SAVES_COPY_SLOT_B;
+		DEVICEHANDLER_INTERFACE *device = slotDevice(slot);
+
+		/* The card driver reads a save as a .gci from its start: its entry,
+		 * for where the comment is, then the save up to the comment's end. */
+		if(device->init(device->initial) == 0 &&
+			(found = cardFind(slot, copy->entry, &entries, &count, &used)) != NULL &&
+			readSaveAt(found, 0u, head, UI_SAVES_ENTRY_SIZE) &&
+			UISaves_SameFile(head, copy->entry) &&
+			UISaves_ArtLayout(head, found->size, &art) && art.comment) {
+			want = UI_SAVES_ENTRY_SIZE + art.commentAt + UI_SAVES_ENTRY_SIZE;
+			data = memalign(32, want);
+			read = data != NULL && readSaveAt(found, 0u, data, want) &&
+				UISaves_DisplayText(out, size, data + want - 32u, 32u);
+		}
+		free(data);
+		free(entries);
+	}
+	else if(copy->device != NULL) {
+		memset(&file, 0, sizeof(file));
+		snprintf(file.name, sizeof(file.name), "%s", copy->path);
+		file.device = copy->device;
+		file.fileType = IS_FILE;
+		file.size = copy->size;
+		if(copy->source == SAVES_COPY_FILE) {
+			want = file.size < UI_SAVES_HEAD_SIZE ? file.size : UI_SAVES_HEAD_SIZE;
+			body = readSaveAt(&file, 0u, head, want) ?
+				UISaves_FindEntryPrefix(head, want, file.size, entry) : 0u;
+			if(body != 0u && UISaves_SameFile(entry, copy->entry) &&
+				UISaves_ArtLayout(entry, file.size - body, &art) && art.comment &&
+				readSaveAt(&file, (u32)body + art.commentAt + 32u, head, 32u)) {
+				read = UISaves_DisplayText(out, size, head, 32u);
+			}
+		}
+		else if((raw = calloc(1, sizeof(*raw))) != NULL) {
+			if(SavesRaw_Load(&file, raw) == UI_SAVES_RAW_OK && copy->ordinal < raw->count &&
+				UISaves_SameFile(UISavesRaw_Entry(raw, copy->ordinal), copy->entry) &&
+				UISaves_ArtLayout(UISavesRaw_Entry(raw, copy->ordinal),
+					UISavesRaw_GciSize(raw, copy->ordinal) - UI_SAVES_ENTRY_SIZE, &art) &&
+				art.comment && SavesRaw_ReadGci(&file, raw, copy->ordinal,
+					UI_SAVES_ENTRY_SIZE + art.commentAt + 32u, head, 32u)) {
+				read = UISaves_DisplayText(out, size, head, 32u);
+			}
+			free(raw);
+		}
+	}
+	return read;
+}
+
+bool Saves_LoadCopy(int slot, const savesCopy_t *copy, char *why,
+	size_t whySize)
+{
+	DEVICEHANDLER_INTERFACE *device;
+	DEVICEHANDLER_INTERFACE *config;
+	file_handle *entries = NULL;
+	file_handle *found;
+	char folder[PATHNAME_MAX] = "";
+	char name[PATHNAME_MAX] = "";
+	u8 entry[UI_SAVES_ENTRY_SIZE];
+	u8 *data;
+	u8 *own = NULL;
+	u32 length = 0, ownLength = 0;
+	size_t at = 0;
+	int count, used, i;
+	bool ok = false;
+
+	if(copy == NULL || slot < 0 || slot > 1) {
+		snprintf(why, whySize, "There's no save to put on a card.");
+		return false;
+	}
+	/* The card's own copy is kept on the SD card before anything changes. */
+	if(!config_set_device()) {
+		snprintf(why, whySize, "There's no SD card to keep the card's own copy on.");
+		return false;
+	}
+	config = devices[DEVICE_CONFIG];
+	device = slotDevice(slot);
+	data = copyRead(copy, &length, &at, entry);
+	if(data == NULL) {
+		snprintf(why, whySize, "The chosen save couldn't be read.");
+	}
+	else if(device->init(device->initial) != 0) {
+		snprintf(why, whySize, "%s has no memory card.", slotName(slot));
+	}
+	else {
+		found = cardFind(slot, entry, &entries, &count, &used);
+		own = found != NULL ? saveRead(found, &ownLength) : NULL;
+		free(entries);
+		if(found != NULL && own == NULL) {
+			snprintf(why, whySize, "%s's own copy couldn't be read.",
+				slotName(slot));
+		}
+		else if(own != NULL && ownLength - UI_SAVES_ENTRY_SIZE == length - at &&
+			!memcmp(own + UI_SAVES_ENTRY_SIZE, data + at, length - at)) {
+			ok = true;	/* the card has this save already */
+		}
+		else {
+			if(own != NULL) {
+				concat_path(folder, config->initial->name, saves_folder());
+				folderEnsure(config, saves_folder());
+				UISaves_FileName(name, sizeof(name), own);
+			}
+			if(own == NULL ||
+				folderWrite(config, folder, name, own, ownLength, why, whySize)) {
+				ok = cardReplace(slot, entry, data + at, length - (u32)at, own,
+					ownLength, why, whySize);
+			}
+		}
+	}
+	free(data);
+	free(own);
+	/* Unmount the cards this read, unless the game or settings device is one. */
+	for(i = 0; i < 2; i++) {
+		DEVICEHANDLER_INTERFACE *card = slotDevice(i);
+
+		if(card != devices[DEVICE_CUR] && card != config) {
+			card->deinit(card->initial);
+		}
+		places[i].mounted = false;
+	}
+	config_unset_device();
+	return ok;
+}
+
+/* The folder a Copy or Move goes to, as a path on the other stack's device. */
 static bool destinationFolder(uiSavesPlace_t to, char *path, size_t size);
 
-/* Copy or Move save to a card, or to a folder on the settings device. */
+/* Copy or Move save to a card, to a folder on the other stack's device, or
+ * to the card image the other stack has open. */
 static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 {
 	char why[128] = "";
@@ -1599,24 +2120,25 @@ static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 	u8 *data;
 	u32 length = 0;
 	size_t blocksAt;
+	unsigned ordinal = 0u;
+	savesPlace_t *raw = rawSource(save, &ordinal);
+	bool toFolder = to == UI_SAVES_PLACE_FOLDER || to == UI_SAVES_PLACE_CHOOSE;
+	u8 permissions = isCard(save->device) ? ((card_dir *)save->other)->permissions :
+		raw != NULL ? UISavesRaw_Entry(raw->rawCard, ordinal)[0x34] : 0u;
 	bool ok;
 
-	if(move && rawSource(save, NULL) != NULL) {
-		savesTell(D_WARN, "Card images are read-only.\nCopy exports a .gci save.\nPress A to continue.");
-		return;
-	}
-	if(move && isCard(save->device) && (((card_dir *)save->other)->permissions &
-		(CARD_ATTRIB_NOCOPY | CARD_ATTRIB_NOMOVE))) {
+	/* A card image's save carries the card's own no-copy and no-move. */
+	if(move && (isCard(save->device) || raw != NULL) &&
+		(permissions & (CARD_ATTRIB_NOCOPY | CARD_ATTRIB_NOMOVE))) {
 		savesTell(D_WARN, "This game doesn't let its save move.\n"
 			"Copy it instead.\nPress A to continue.");
 		return;
 	}
-	if(to >= UI_SAVES_PLACE_FOLDER && !destinationFolder(to, folder,
-		sizeof(folder))) {
+	if(toFolder && !destinationFolder(to, folder, sizeof(folder))) {
 		return;
 	}
 	artRoom(isCard(save->device) ? save->size + UI_SAVES_ENTRY_SIZE : save->size);
-	opBegin(move, to >= UI_SAVES_PLACE_FOLDER ? folder : NULL);
+	opBegin(move, toFolder ? folder : NULL);
 	data = saveRead(save, &length);
 	blocksAt = 0u;
 	if(data != NULL && isCard(save->device)) {
@@ -1640,7 +2162,24 @@ static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 			length - (u32)blocksAt, why, sizeof(why));
 		snprintf(done, sizeof(done), "Finished %s.", move ? "moving" : "copying");
 	}
+	else if(to == UI_SAVES_PLACE_IMAGE) {
+		/* The image takes a .gci: the entry as found (a wrapper's header,
+		 * if any, sits before it), then the blocks. */
+		uiSavesRawStatus_t status;
+
+		memcpy(data + blocksAt - UI_SAVES_ENTRY_SIZE, entry, UI_SAVES_ENTRY_SIZE);
+		status = SavesRaw_Add(&places[screenStacks[!screenFocus]].rawImage,
+			data + blocksAt - UI_SAVES_ENTRY_SIZE,
+			length - (u32)blocksAt + UI_SAVES_ENTRY_SIZE);
+		ok = status == UI_SAVES_RAW_OK;
+		if(!ok) {
+			snprintf(why, sizeof(why), "%s.", UISavesRaw_StatusText(status));
+		}
+		snprintf(done, sizeof(done), "Finished %s.", move ? "moving" : "copying");
+	}
 	else {
+		DEVICEHANDLER_INTERFACE *device = places[screenStacks[!screenFocus]].device;
+
 		/* A card's save becomes a .gci; a file keeps its name and form. */
 		if(isCard(save->device) || rawSource(save, NULL) != NULL) {
 			UISaves_FileName(name, sizeof(name), entry);
@@ -1648,8 +2187,8 @@ static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 		else {
 			snprintf(name, sizeof(name), "%s", getRelativeName(save->name));
 		}
-		folderEnsure(devices[DEVICE_CONFIG], getDevicePath(folder) + 1);
-		ok = folderWrite(folder, name, data, length, why, sizeof(why));
+		folderEnsure(device, getDevicePath(folder) + 1);
+		ok = folderWrite(device, folder, name, data, length, why, sizeof(why));
 		snprintf(done, sizeof(done), "Finished %s to %s.", move ? "moving" : "copying",
 			getDevicePath(folder));
 	}
@@ -1673,7 +2212,8 @@ static void saveTransfer(file_handle *save, uiSavesPlace_t to, bool move)
 
 /* ------------------------------------------------------------------------
  * The folder chooser, for Another folder and for Settings > Storage > Save
- * Folder: a list page of the settings device's folders.
+ * Folder: a list page of a device's folders, the other stack's or the
+ * settings device's.
  * --------------------------------------------------------------------- */
 
 /* The folder chooser lists folders, and first the way back up. */
@@ -1747,19 +2287,20 @@ static void pageShow(uiDrawObj_t **page)
 	}
 }
 
-/* Browses the settings device's folders from start; X chooses the one open.
- * The device must be mounted. */
-static bool chooseFolder(const char *start, char *path, size_t size)
+/* Browses device's folders from start; X chooses the one open. The device
+ * must be mounted. */
+static bool chooseFolder(DEVICEHANDLER_INTERFACE *device, const char *start,
+	char *path, size_t size)
 {
 	uiDrawObj_t *page = NULL;
 	savesInput_t input;
 	bool chosen = false;
 
-	folderSet(&chooser, start);
+	folderSet(&chooser, device, start);
 	loadFolder(&chooser, true);
 	if(!chooser.ready) {
 		/* The folder is gone: start at the root. */
-		folderSet(&chooser, "/");
+		folderSet(&chooser, device, "/");
 		loadFolder(&chooser, true);
 	}
 	inputInit(&input);
@@ -1819,10 +2360,10 @@ static bool destinationFolder(uiSavesPlace_t to, char *path, size_t size)
 		return true;
 	}
 	folderPath(&dest->dir, open, sizeof(open));
-	if(!chooseFolder(open, chosen, sizeof(chosen))) {
+	if(!chooseFolder(dest->device, open, chosen, sizeof(chosen))) {
 		return false;
 	}
-	concat_path(path, devices[DEVICE_CONFIG]->initial->name, chosen);
+	concat_path(path, dest->device->initial->name, chosen);
 	return true;
 }
 
@@ -1835,7 +2376,7 @@ bool saves_choose_folder(char *folder, size_t size)
 			"Press A to continue.");
 		return false;
 	}
-	chosen = chooseFolder(saves_folder(), folder, size);
+	chosen = chooseFolder(devices[DEVICE_CONFIG], saves_folder(), folder, size);
 	config_unset_device();
 	return chosen;
 }
@@ -1881,9 +2422,20 @@ static void saveRoom(int tab, const u8 entry[UI_SAVES_ENTRY_SIZE], bool known,
 
 	memset(room, 0, sizeof(*room));
 	room->ready = place->ready;
+	if(tab >= SAVES_TAB_FOLDER && place->rawOpen) {
+		room->name = "The card image";
+		room->card = true;
+		room->image = true;
+		room->writable = SavesRaw_Writable(&place->rawImage);
+		room->saves = place->count;
+		room->freeBlocks = place->freeBlocks;
+		room->hasIt = known && place->ready && place->rawCard != NULL &&
+			UISavesRaw_Find(place->rawCard, entry) < place->rawCard->count;
+		return;
+	}
 	if(tab >= SAVES_TAB_FOLDER) {
-		room->name = place->rawOpen ? "The card image" : "The SD card";
-		room->writable = !place->rawOpen && place->device != NULL &&
+		room->name = "The SD card";
+		room->writable = place->device != NULL &&
 			(place->device->features & FEAT_WRITE);
 		return;
 	}
@@ -1901,11 +2453,19 @@ static void saveRoom(int tab, const u8 entry[UI_SAVES_ENTRY_SIZE], bool known,
 	}
 }
 
-/* A physical listing has identity and size, but not the directory date.
+static void saveEntry32(u8 *bytes, u32 value)
+{
+	bytes[0] = (u8)(value >> 24);
+	bytes[1] = (u8)(value >> 16);
+	bytes[2] = (u8)(value >> 8);
+	bytes[3] = (u8)value;
+}
+
+/* A physical listing has identity and size, but no date or icon metadata.
  * Read status without changing the save, and don't display another entry's
- * date if the card changed since it was listed. */
+ * metadata if the card changed since it was listed. */
 static bool saveUpdated(file_handle *save,
-	const u8 entry[UI_SAVES_ENTRY_SIZE], bool known, u32 *seconds)
+	u8 entry[UI_SAVES_ENTRY_SIZE], bool known, u32 *seconds)
 {
 	*seconds = 0u;
 	if(!known) return false;
@@ -1921,6 +2481,14 @@ static bool saveUpdated(file_handle *save,
 			strncmp(status.filename, dir->filename, CARD_FILENAMELEN) ||
 			status.len != save->size) return false;
 		*seconds = status.time;
+		entry[0x07] = status.banner_fmt;
+		saveEntry32(entry + 0x28, status.time);
+		saveEntry32(entry + 0x2C, status.icon_addr);
+		entry[0x30] = (u8)(status.icon_fmt >> 8);
+		entry[0x31] = (u8)status.icon_fmt;
+		entry[0x32] = (u8)(status.icon_speed >> 8);
+		entry[0x33] = (u8)status.icon_speed;
+		saveEntry32(entry + 0x3C, status.comment_addr);
 	}
 	else {
 		*seconds = UISaves_UpdatedSeconds(entry);
@@ -1931,17 +2499,19 @@ static bool saveUpdated(file_handle *save,
 /* Details are available even when the other stack cannot take a copy.
  * The save format has one update date, never a separate creation date. */
 static bool saveDetails(int tab, file_handle *save,
-	const u8 entry[UI_SAVES_ENTRY_SIZE], bool known, unsigned blocks)
+	u8 entry[UI_SAVES_ENTRY_SIZE], bool known, unsigned blocks)
 {
 	uiSaveDetailsSnapshot_t details;
 	savesInput_t input;
 	uiDrawObj_t *box;
 	char heading[64], date[24];
-	const char *updated;
-	const char *source = places[tab].rawOpen ? "Read-only card image" :
+	const char *updated, *icon;
+	const char *source = places[tab].rawOpen ?
+		(SavesRaw_Writable(&places[tab].rawImage) ? "Card image" : "Read-only card image") :
 		(isCard(save->device) ? slotName(tab) : "SD save");
 	u32 seconds;
 	bool actions = false, readable = saveUpdated(save, entry, known, &seconds);
+	int slot = artSlot(saveTag(tab, save));
 	size_t i;
 
 	saveHeading(heading, sizeof(heading), tab, save);
@@ -1953,7 +2523,13 @@ static bool saveDetails(int tab, file_handle *save,
 	if(heading[0] == '\0') snprintf(heading, sizeof(heading), "Unnamed save");
 	updated = !readable ? "Unable to read metadata" :
 		(UISaves_FormatUpdated(seconds, date, sizeof(date)) ? date : "Unknown");
-	if(!UISaveDetails_Build(&details, heading, blocks, !known, source, updated)) {
+	icon = UISaves_IconDescription(readable ? entry : NULL,
+		(size_t)blocks * UI_SAVES_BLOCK_SIZE, swissSettings.disableUIAnimations);
+	if(readable && strcmp(icon, "None stored") &&
+		(pool == NULL || (slot >= 0 && slots[slot].failed))) {
+		icon = "Preview unavailable";
+	}
+	if(!UISaveDetails_Build(&details, heading, blocks, !known, source, updated, icon)) {
 		savesTell(D_FAIL, "Save details couldn't be opened.\nPress A to continue.");
 		return false;
 	}
@@ -2012,15 +2588,15 @@ static void saveOptions(int tab)
 	memset(reason, 0, sizeof(reason));
 	saveRoom(toTab, entry, known, &room);
 	for(i = 0; i < 2; i++) {
-		if(UISaves_Verdict(i == 0, card, entry[0x34], blocks, &room, reason[i],
-			sizeof(reason[i])) != UI_SAVES_VERDICT_OK) {
+		if(UISaves_Verdict(i == 0, card || place->rawOpen, entry[0x34], blocks,
+			&room, reason[i], sizeof(reason[i])) != UI_SAVES_VERDICT_OK) {
 			dim |= 1u << i;
 		}
 	}
-	if(place->rawOpen) {
+	if(place->rawOpen && !SavesRaw_Writable(&place->rawImage)) {
 		dim |= 5u;
-		snprintf(reason[0], sizeof(reason[0]), "Card images are read-only. Use Copy to export a save.");
-		snprintf(reason[2], sizeof(reason[2]), "Card images are read-only. Saves cannot be erased here.");
+		snprintf(reason[0], sizeof(reason[0]), "This card image is read-only here. Use Copy to export a save.");
+		snprintf(reason[2], sizeof(reason[2]), "This card image is read-only here. Saves cannot be erased.");
 	}
 	action = savesMenu("", actions, 3, place->rawOpen ? 1 : 0, dim, why, 0u);
 	if(action < 0) {
@@ -2065,6 +2641,13 @@ static void saveOptions(int tab)
 		}
 		to = toTab == 0 ? UI_SAVES_PLACE_SLOT_A : UI_SAVES_PLACE_SLOT_B;
 	}
+	else if(dest->rawOpen) {
+		snprintf(title, sizeof(title), "%s to the card image?", move ? "Move" : "Copy");
+		if(savesMenu(title, answers, 2, 0, 0u, NULL, ghosts) != 0) {
+			return;
+		}
+		to = UI_SAVES_PLACE_IMAGE;
+	}
 	else {
 		bool folders = false;
 
@@ -2093,14 +2676,23 @@ static void saveOptions(int tab)
 }
 
 /* The button above each column opens named choices. SD has its own folder
- * position in each column, so an image on one side can export to the other. */
+ * position in each column, so an image on one side can export to the other.
+ * With two SD devices, each is a choice by its name; one the column isn't
+ * on opens at its Save Folder. */
 static void chooseStorage(int stacks[UI_SAVE_CUBES_STACKS], int stack)
 {
-	static const char *const names[3] = {"Slot A", "Slot B", "SD card"};
-	const char *reasons[3] = {NULL, NULL, NULL};
+	const char *names[4] = {"Slot A", "Slot B", "SD card", NULL};
+	const char *reasons[4] = {NULL, NULL, NULL, NULL};
 	unsigned dim = 0u;
-	int other = stacks[!stack], choice, tab;
+	int other = stacks[!stack], count = 3, on = 0, choice, tab, i;
 
+	if(sdDevices > 1) {
+		for(i = 0; i < sdDevices; i++) {
+			names[2 + i] = DeviceDisplayName(sdDevice[i]);
+			if(places[SAVES_TAB_FOLDER + stack].device == sdDevice[i]) on = i;
+		}
+		count = 2 + sdDevices;
+	}
 	if(other < SAVES_TAB_FOLDER) {
 		dim |= 1u << other;
 		reasons[other] = "This slot is displayed in the other column.";
@@ -2110,11 +2702,15 @@ static void chooseStorage(int stacks[UI_SAVE_CUBES_STACKS], int stack)
 		reasons[2] = "Choose a device for settings and saves in Settings, Storage.";
 	}
 	over.storageStack = (s8)stack;
-	choice = savesMenu(stack ? "Right storage" : "Left storage", names, 3,
-		stacks[stack] < SAVES_TAB_FOLDER ? stacks[stack] : 2, dim, reasons, 0u);
+	choice = savesMenu(stack ? "Right storage" : "Left storage", names, count,
+		stacks[stack] < SAVES_TAB_FOLDER ? stacks[stack] : 2 + on, dim, reasons, 0u);
 	over.storageStack = -1;
-	tab = UISaves_StorageTab(stack, choice, other);
-	if(tab >= 0) {
+	tab = UISaves_StorageTab(stack, choice, other, count - 2);
+	if(tab >= SAVES_TAB_FOLDER && sdDevice[choice - 2] != places[tab].device) {
+		stacks[stack] = tab;
+		folderOpenHome(tab, sdDevice[choice - 2]);
+	}
+	else if(tab >= 0) {
 		stacks[stack] = tab;
 		loadTab(tab);
 	}
@@ -2137,22 +2733,31 @@ void show_saves(void)
 	foldersReady = folderMounted;
 	pool = memalign(32, (SAVES_SLOTS + 1) * SAVES_SLOT_BYTES);
 	scratch = memalign(32, SAVES_SCRATCH_BYTES);
+	sdDevices = 0;
 	if(folderMounted) {
-		for(i = SAVES_TAB_FOLDER; i < SAVES_TABS; i++) {
-			folderSet(&places[i], saves_folder());
+		DEVICEHANDLER_INTERFACE *source = Saves_SourceDevice();
+
+		sdDevice[sdDevices++] = devices[DEVICE_CONFIG];
+		if(source != NULL) {
+			sdDevice[sdDevices++] = source;
 		}
 		folderEnsure(devices[DEVICE_CONFIG], saves_folder());
 	}
 	/* The screen goes up at once and opens while the cards are read, each
-	 * stack's cubes coming in as its place is listed. */
+	 * stack's cubes coming in as its place is listed. Both SD stacks start
+	 * on the settings device. */
 	screenBuild(stacks, -1);
 	screenShow(&page);
 	for(i = 0; i < SAVES_TABS; i++) {
-		if(i < SAVES_TAB_FOLDER || folderMounted) {
+		if(i < SAVES_TAB_FOLDER) {
 			loadTab(i);
+		}
+		else if(folderMounted) {
+			folderOpenHome(i, sdDevice[0]);
 		}
 		else {
 			places[i].device = NULL;
+			folderHome[i - SAVES_TAB_FOLDER][0] = '\0';
 			snprintf(places[i].note[0], sizeof(places[i].note[0]),
 				"No device for settings and saves");
 			snprintf(places[i].note[1], sizeof(places[i].note[1]),
@@ -2160,15 +2765,6 @@ void show_saves(void)
 		}
 		screenBuild(stacks, stackFocus(stacks, 0));
 		screenShow(&page);
-	}
-	for(i = SAVES_TAB_FOLDER; i < SAVES_TABS; i++) {
-		if(folderMounted && !places[i].ready) {
-			/* An unreadable Save Folder: start at the device's root. */
-			folderSet(&places[i], "/");
-			loadTab(i);
-		}
-		snprintf(folderHome[i - SAVES_TAB_FOLDER], sizeof(folderHome[0]), "%s",
-			places[i].dir.name);
 	}
 	UISaves_InitialStorage(places[0].ready, places[1].ready,
 		places[SAVES_TAB_FOLDER].ready, stacks);
@@ -2200,6 +2796,12 @@ void show_saves(void)
 
 			chooseStorage(stacks, stack);
 			focus = stackFocus(stacks, focus);
+			inputInit(&input);
+		}
+		else if((pressed & BUTTON_Y) && !(pressed & BUTTON_A) && focus >= 0) {
+			file_handle *chosen = placeAt(&places[stacks[focus]],
+				placeCell(&places[stacks[focus]]));
+			if(folderIdentity(chosen)) showFolderIdentity(chosen);
 			inputInit(&input);
 		}
 		else if((pressed & BUTTON_A) && focus >= 0) {

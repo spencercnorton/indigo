@@ -10,6 +10,94 @@
   "trig": 541,
   "vertices": 5202
  },
+ "files": {
+  "begins": 1701,
+  "copy_pixels": 0,
+  "hash": "c8bb2df726879961",
+  "minmax": 0,
+  "scene": "files",
+  "sqrtf": 232,
+  "state": 24,
+  "trig": 0,
+  "vertices": 8140
+ },
+ "files-actions": {
+  "begins": 1802,
+  "copy_pixels": 0,
+  "hash": "b540face8775d7f0",
+  "minmax": 0,
+  "scene": "files-actions",
+  "sqrtf": 116,
+  "state": 24,
+  "trig": 0,
+  "vertices": 8240
+ },
+ "files-copy": {
+  "begins": 2198,
+  "copy_pixels": 0,
+  "hash": "71ae2ea96fd18181",
+  "minmax": 0,
+  "scene": "files-copy",
+  "sqrtf": 116,
+  "state": 24,
+  "trig": 0,
+  "vertices": 9908
+ },
+ "files-message": {
+  "begins": 1782,
+  "copy_pixels": 0,
+  "hash": "084db6f62514c9c4",
+  "minmax": 0,
+  "scene": "files-message",
+  "sqrtf": 87,
+  "state": 24,
+  "trig": 0,
+  "vertices": 8096
+ },
+ "files-right": {
+  "begins": 1710,
+  "copy_pixels": 0,
+  "hash": "a85a70b501cc2556",
+  "minmax": 0,
+  "scene": "files-right",
+  "sqrtf": 232,
+  "state": 24,
+  "trig": 0,
+  "vertices": 8176
+ },
+ "files-storage": {
+  "begins": 1894,
+  "copy_pixels": 0,
+  "hash": "80b9a36cfdef921c",
+  "minmax": 0,
+  "scene": "files-storage",
+  "sqrtf": 116,
+  "state": 24,
+  "trig": 0,
+  "vertices": 8624
+ },
+ "files-storage-right": {
+  "begins": 1652,
+  "copy_pixels": 0,
+  "hash": "6db2d75807ed7dd6",
+  "minmax": 0,
+  "scene": "files-storage-right",
+  "sqrtf": 116,
+  "state": 24,
+  "trig": 0,
+  "vertices": 7488
+ },
+ "files-wide": {
+  "begins": 2316,
+  "copy_pixels": 0,
+  "hash": "92ac62a4b3dcc08f",
+  "minmax": 0,
+  "scene": "files-wide",
+  "sqrtf": 232,
+  "state": 24,
+  "trig": 0,
+  "vertices": 10632
+ },
  "hint-round-rect": {
   "begins": 2,
   "copy_pixels": 0,

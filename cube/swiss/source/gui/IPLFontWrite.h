@@ -36,7 +36,6 @@ void drawString(int x, int y, const char *string, float scale, int align, GXColo
 void drawStringMedium(int x, int y, const char *string, float scale, int align, GXColor fontColor);
 void drawStringMediumUntinted(int x, int y, const char *string, float scale, int align, GXColor fontColor);
 void drawStringWithCaret(int x, int y, const char *string, float scale, int align, GXColor fontColor, int caretPosition, GXColor caretColor);
-void drawStringEllipsis(int x, int y, const char *string, float scale, int align, GXColor fontColor, bool rotateVertical, int maxSize);
 int GetFontHeight(float scale);
 int GetTextSizeInPixels(const char *string);
 float GetTextScaleToFitInWidth(const char *string, int width);

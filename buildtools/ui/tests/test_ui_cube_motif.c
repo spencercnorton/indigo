@@ -9,9 +9,11 @@ static unsigned long checks;
 #define CHECK(c) do { ++checks; if(!(c)) { \
 	fprintf(stderr,"CHECK %s:%d: %s\n",__FILE__,__LINE__,#c); exit(1); \
 } } while(0)
-static const uiHomeCapabilities_t caps = {true, true, false, UI_HOME_CUBE_INFINITE};
+static const uiHomeCapabilities_t caps = {.hasSource = true, .hasRecent = true,
+	.hasApps = false, .style = UI_HOME_CUBE_INFINITE};
 /* With an app on the source: a ring of five faces. */
-static const uiHomeCapabilities_t appsCaps = {true, true, true, UI_HOME_CUBE_INFINITE};
+static const uiHomeCapabilities_t appsCaps = {.hasSource = true, .hasRecent = true,
+	.hasApps = true, .style = UI_HOME_CUBE_INFINITE};
 
 static bool placed_alike(const uiCubeMotifBasis_t *a, const uiCubeMotifBasis_t *b, int f)
 {
@@ -285,9 +287,13 @@ static void classic_fixed_sides(void)
 		UICubeMotif_Build(&home,&map); proper_basis(&map);
 		CHECK(map.faceCount==ring);
 		for(int glyph=0;glyph<UI_HOME_FACE_COUNT;++glyph) {
+			/* Memory Cards, Emulators and File Browser are on no side by default:
+			 * behind the authored front, never drawn. */
+			static const float behind[3][3]={{-1,0,0},{0,1,0},{0,0,-1}};
 			CHECK(map.shown[glyph]==(glyph<ring));
 			for(int r=0;r<3;++r) for(int c=0;c<3;++c)
-				CHECK(map.face[glyph][r][c]==(float)sides[glyph][c][r]);
+				CHECK(map.face[glyph][r][c]==(glyph<=UI_HOME_FACE_APPS ?
+					(float)sides[glyph][c][r]:behind[r][c]));
 		}
 	}
 	/* Every Classic turn the reducer makes, from Library and back, with
@@ -326,6 +332,111 @@ static void classic_fixed_sides(void)
 		for(int i=0;i<10;++i) update_without_visible_basis_swap(&state,0.02f,UI_MOTION_FULL);
 		CHECK(UICubeMotif_Settled(&state));
 		CHECK(state.basis.face[UI_HOME_FACE_SOURCE][1][2]==1.0f);
+	}
+}
+
+/* Faces on other sides, and sides with none. Infinite places the ring the
+ * sides make (Library, then Up, Left, Right and Down) as it places today's;
+ * Classic puts each glyph on its face's side, where today's face on that side
+ * has its own. A face on no side, or not there now, draws nothing. */
+static void custom_sides(void)
+{
+	enum { N=UI_HOME_FACE_LIBRARY, SRC=UI_HOME_FACE_SOURCE, SET=UI_HOME_FACE_SETTINGS,
+		SYS=UI_HOME_FACE_SYSTEM, APP=UI_HOME_FACE_APPS, MC=UI_HOME_FACE_SAVES,
+		EMU=UI_HOME_FACE_EMULATORS, FB=UI_HOME_FACE_FILES };
+	static const uint8_t layouts[][UI_HOME_SIDE_COUNT]={
+		{SRC,APP,SYS,SET}, {N,SET,SYS,APP}, {N,SET,N,APP}, {N,N,N,SET},
+		{N,N,N,N}, {APP,SRC,SET,SYS}, {SET,SYS,APP,SRC}, {MC,APP,EMU,SET},
+		{SRC,MC,SYS,EMU},
+		/* File Browser on each side in turn, and with every other new face. */
+		{FB,SET,SYS,APP}, {SRC,FB,SYS,APP}, {SRC,SET,FB,APP}, {SRC,SET,SYS,FB},
+		{FB,MC,EMU,APP}
+	};
+	/* Today's face on each side, Up, Left, Right and Down. */
+	static const int onSide[UI_HOME_SIDE_COUNT]={SRC,SET,SYS,APP};
+	static const int normalH[4][3]={{0,0,1},{1,0,0},{0,0,-1},{-1,0,0}};
+	static const int normalV[4][3]={{0,0,1},{0,-1,0},{0,0,-1},{0,1,0}};
+	static const float behind[3][3]={{-1,0,0},{0,1,0},{0,0,-1}};
+	uiHomeOrientation_t all[24];
+	size_t count=orientations(all);
+	uiCubeMotifBasis_t classicDefault;
+	{
+		uiHomeCapabilities_t with=appsCaps;
+		uiHomeState_t home;
+		with.style=UI_HOME_CUBE_CLASSIC;
+		UIHome_Init(&home,with); UICubeMotif_Build(&home,&classicDefault);
+	}
+	for(size_t l=0u;l<sizeof(layouts)/sizeof(layouts[0]);++l)
+	for(int apps=0;apps<2;++apps) for(int classic=0;classic<2;++classic) {
+		uiHomeCapabilities_t with=apps ? appsCaps:caps;
+		int ring[UI_HOME_RING_MAX]={N}, place[UI_HOME_FACE_COUNT], side[UI_HOME_FACE_COUNT];
+		int n=1;
+		with.customSides=true;
+		with.hasEmulators=apps;
+		memcpy(with.sides,layouts[l],sizeof(with.sides));
+		if(classic) with.style=UI_HOME_CUBE_CLASSIC;
+		for(int f=0;f<UI_HOME_FACE_COUNT;++f) place[f]=side[f]=-1;
+		place[N]=0;
+		for(int s=0;s<UI_HOME_SIDE_COUNT;++s) {
+			int f=layouts[l][s];
+			if(f==N) continue;
+			side[f]=s;
+			if((f==APP || f==EMU) && !apps) continue;
+			place[f]=n; ring[n++]=f;
+		}
+		for(size_t o=0u;o<count;++o) for(int front=0;front<n;++front) for(int a=0;a<3;++a) {
+			uiHomeState_t home;
+			uiCubeMotifBasis_t map;
+			UIHome_Init(&home,with); home.orientation=all[o];
+			home.face=(uiHomeFace_t)ring[front]; home.turnOrdinal=(int32_t)front;
+			home.turnAxis=(uiHomeTurnAxis_t)a;
+			CHECK(home.faceCount==n);
+			UICubeMotif_Build(&home,&map); proper_basis(&map);
+			CHECK(map.faceCount==n);
+			for(int glyph=0;glyph<UI_HOME_FACE_COUNT;++glyph) {
+				bool shown=place[glyph]>=0;
+				int band=2;
+				if(classic) {
+					const float (*expected)[3]=behind;
+					if(glyph==N) expected=(const float (*)[3])classicDefault.face[N];
+					else if(side[glyph]>=0)
+						expected=(const float (*)[3])classicDefault.face[onSide[side[glyph]]];
+					CHECK(map.shown[glyph]==shown);
+					for(int r=0;r<3;++r) for(int c=0;c<3;++c)
+						CHECK(map.face[glyph][r][c]==expected[r][c]);
+					continue;
+				}
+				if(shown) {
+					int relative=(place[glyph]-front+n)%n;
+					if(relative==0) band=0;
+					else if(relative==1) band=1;
+					else if(relative==n-1) band=3;
+					else if(n==5 && relative==2) shown=false;
+				}
+				CHECK(map.shown[glyph]==shown);
+				if(!shown) {
+					for(int r=0;r<3;++r) for(int c=0;c<3;++c)
+						CHECK(map.face[glyph][r][c]==behind[r][c]);
+					continue;
+				}
+				for(int r=0;r<3;++r) {
+					float world=0.0f;
+					int normal=a==UI_HOME_TURN_VERTICAL ? normalV[band][r]:normalH[band][r];
+					for(int k=0;k<3;++k) world+=(float)home.orientation.m[r][k]*map.face[glyph][k][2];
+					CHECK(world==(float)normal);
+				}
+			}
+		}
+	}
+	/* A layout that isn't one draws the authored background. */
+	{
+		uiHomeState_t home;
+		uiCubeMotifBasis_t authored, actual;
+		UICubeMotif_Build(NULL,&authored);
+		UIHome_Init(&home,appsCaps); home.sides[UI_HOME_SIDE_UP]=UI_HOME_FACE_SETTINGS;
+		UICubeMotif_Build(&home,&actual); CHECK(same(&authored,&actual));
+		UIHome_Init(&home,caps); home.absent=0u;
+		UICubeMotif_Build(&home,&actual); CHECK(same(&authored,&actual));
 	}
 }
 
@@ -394,7 +505,8 @@ static void mixed_halfway_retarget_and_latest_pending(void)
 	}
 	for(int i=0;i<30;++i) update_without_visible_basis_swap(&state,0.01f,UI_MOTION_FULL);
 	CHECK(same(&state.basis,&wanted) && UICubeMotif_Settled(&state) && !state.changing);
-	CHECK(sizeof(state)<=512u);
+	/* Two maps and an opacity for each of the eight faces, no more. */
+	CHECK(sizeof(state)<=640u);
 	/* Returning to the currently displayed map cancels an obsolete swap. */
 	UICubeMotif_Reset(&state); UIHome_Init(&home,caps);
 	(void)UIHome_Apply(&home,UI_HOME_INPUT_UP,caps);
@@ -487,6 +599,7 @@ int main(void)
 	five_face_ring_glyphs();
 	same_axis_four_turns_leave_physical_glyphs_unchanged();
 	classic_fixed_sides();
+	custom_sides();
 	mixed_halfway_retarget_and_latest_pending();
 	frame_rate_and_motion_modes();
 	malformed_request_falls_back();

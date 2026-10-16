@@ -12,6 +12,12 @@
 
 ## Start here
 
+Your first session: **[install for your setup](install.md)**
+→ **[after the first start](install.md#after-the-first-start)**
+→ **[choose your source](source.md#change-the-source)**
+→ **[find your games](library.md#set-up-the-games-folder)**.
+Add posters and cheats after that first successful launch.
+
 - **[Install](install.md)**: put Indigo on your SD card, boot it, update it,
   and get back to stock Swiss when you want it.
 - **[Controls](controls.md)**: what each button does on every screen.
@@ -31,7 +37,7 @@
   </tr>
   <tr>
     <td valign="top">
-      <a href="game-details.md"><img alt="The detail screen for 1080° Avalanche." src="images/game-details.png" width="100%"></a><br>
+      <a href="game-details.md"><img alt="Astral Circuit’s game details: Last played, Settings and Cheats, with Launch Game selected." src="images/game-details.png" width="100%"></a><br>
       <b><a href="game-details.md">Game details</a></b>: launch, settings and shortcuts for one game.
     </td>
     <td valign="top">
@@ -55,8 +61,8 @@
       <b><a href="source.md">Source</a></b>: choose the device your games come from.
     </td>
     <td valign="top">
-      <a href="system.md"><img alt="The System face with System Information, Memory Cards and Restart Indigo below the cube." src="../screenshots/system.png" width="100%"></a><br>
-      <b><a href="system.md">System</a></b>: console information and restarting Indigo.
+      <a href="system.md"><img alt="The System face with System Information, Memory Cards, File Browser and Restart Indigo below the cube." src="../screenshots/system.png" width="100%"></a><br>
+      <b><a href="system.md">System</a></b>: console information, the File Browser and restarting Indigo.
     </td>
   </tr>
   <tr>
@@ -71,7 +77,7 @@
   </tr>
   <tr>
     <td valign="top">
-      <a href="troubleshooting.md"><img alt="Swiss's plain file list, which appears when the games folder holds no disc images." src="images/library-file-list.png" width="100%"></a><br>
+      <a href="troubleshooting.md"><img alt="The File Browser's two panes of files, which the Library face opens when the games folder holds no disc images." src="images/files.png" width="100%"></a><br>
       <b><a href="troubleshooting.md">Troubleshooting</a></b>: fixes for the common surprises.
     </td>
     <td valign="top">

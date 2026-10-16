@@ -90,6 +90,17 @@ _Static_assert(sizeof(libraryIconStr) / sizeof(libraryIconStr[0]) == UI_HOME_ICO
 _Static_assert(sizeof(sourceIconStr) / sizeof(sourceIconStr[0]) == UI_HOME_ICON_CHOICES, "source icon names drift");
 _Static_assert(sizeof(settingsIconStr) / sizeof(settingsIconStr[0]) == UI_HOME_ICON_CHOICES, "settings icon names drift");
 _Static_assert(sizeof(systemIconStr) / sizeof(systemIconStr[0]) == UI_HOME_ICON_CHOICES, "system icon names drift");
+/* What each of Library's sides can show, its default first and then each
+ * face after it round (UIHome_SideFace), so a zeroed setting is the cube of
+ * before. */
+char *upFaceStr[] = {"Source", "Settings", "System", "Apps", "Memory Cards", "Emulators", "File Browser", "None"};
+char *leftFaceStr[] = {"Settings", "System", "Apps", "Memory Cards", "Emulators", "File Browser", "None", "Source"};
+char *rightFaceStr[] = {"System", "Apps", "Memory Cards", "Emulators", "File Browser", "None", "Source", "Settings"};
+char *downFaceStr[] = {"Apps", "Memory Cards", "Emulators", "File Browser", "None", "Source", "Settings", "System"};
+_Static_assert(sizeof(upFaceStr) / sizeof(upFaceStr[0]) == UI_HOME_FACE_COUNT, "up face names drift");
+_Static_assert(sizeof(leftFaceStr) / sizeof(leftFaceStr[0]) == UI_HOME_FACE_COUNT, "left face names drift");
+_Static_assert(sizeof(rightFaceStr) / sizeof(rightFaceStr[0]) == UI_HOME_FACE_COUNT, "right face names drift");
+_Static_assert(sizeof(downFaceStr) / sizeof(downFaceStr[0]) == UI_HOME_FACE_COUNT, "down face names drift");
 char *libraryLayoutStr[] = {"Horizontal", "Vertical", "Grid", "Spotlight"};
 _Static_assert(sizeof(libraryLayoutStr) / sizeof(libraryLayoutStr[0]) == UI_GAMEFLOW_LAYOUT_COUNT, "library layout names drift");
 static const char *uiMotionModeStr[] = {"Full", "Reduced", "Off"};
@@ -110,6 +121,7 @@ static char *tooltips_global[PAGE_GLOBAL_MAX+1] = {
 	[SET_SCREEN_POS] = "Screen Position:\n\nAdjusts the horizontal screen position in games",
 	[SET_SYS_LANG] = "System Language:\n\nSystem language used in games, primarily multi-5 PAL games",
 	[SET_CONFIG_DEV] = "Configuration Device:\n\nThe device Indigo loads settings from and saves them to, in\nswiss/settings/global.ini. The choice is stored in SRAM, and it\nchanges only once Save & Exit has written the settings there.\nThe line under the Storage title says whether that file loaded.",
+	[SET_LIBRARY_PATH] = "Library Path:\n\nWhere the Library finds your games. Auto looks for a /games\nfolder on the boot device, then on the other storage connected,\nand starts on the first it finds. Or choose a folder, such as\nsdc:/games: Left and Right step through devices, A opens the\nfolder chooser, where X chooses a folder and Y switches devices.",
 	[SET_SAVE_FOLDER] = "Save Folder:\n\nThe folder Memory Cards (Home > System) opens on the SD\ncard: saves copied off a memory card go there, unless you\nopen or pick another. It's a folder on the Configuration\nDevice; swiss/saves until you choose another.\n\nA opens its folders: A goes into one, X chooses the one open.",
 	[SET_INIT_DRIVE] = "Init DVD Drive at startup:\n\nDisabled - Leave it as-is (default)\nEnabled - Deassert reset signal when Swiss starts\n\nThis is necessary for the eject button to function on the\nPanasonic Q when Swiss is used as IPL replacement.",
 	[SET_STOP_MOTOR] = "Stop DVD Drive motor:\n\nDisabled - Leave it as-is (default)\nEnabled - Stop the disc from spinning when Swiss starts\n\nThis option is mostly for users booting from game save exploits\nwhere the disc will already be spinning.",
@@ -128,9 +140,6 @@ static char *tooltips_global[PAGE_GLOBAL_MAX+1] = {
 };
 
 static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
-	[SET_FILEBROWSER_TYPE] = "File Browser Type:\n\nStandard - Displays files with minimal detail. (default)\n\nFullwidth - Displays files across the entire screen while hiding\nside information panels.\n\nCarousel - Suited towards Game/DOL only use, consider combining\nthis option with the \223File Management\224 setting turned off and\n\223Hide unknown file types\224 turned on for a better experience.",
-	[SET_APPSBROWSER_TYPE] = "File Browser Type for apps:\n\nApplicable to the /apps directory.",
-	[SET_GAMEBROWSER_TYPE] = "File Browser Type for games:\n\nApplicable to the /games directory.",
 	[SET_FILE_MGMT] = "File Management:\n\nWhen enabled, pressing Z on an entry in the file browser will\nallow it to be managed.",
 	[SET_RECENT_LIST] = "Recent List:\n\n(On) - Press Start while browsing to show a recent list.\n(Lazy) - Same as On but list updates only for new entries.\n(Off) - Recent list is completely disabled.\n\nThe lazy/off options exist to minimise SD card writes.",
 	[SET_HIDE_UNK] = "Hide unknown file types:\n\nDisabled - Show all files (default)\nEnabled - Hide unknown file types from being displayed\n\nKnown file types are:\n GameCube Executables (.bin/.dol/.elf)\n Disc images (.gcm/.iso/.nkit.iso/.tgc)\n MP3 Music (.mp3)\n WASP/WKF Flash files (.fzn)\n GameCube Memory Card files (.gci/.gcs/.sav)\n GameCube Executables with parameters appended (.dol+cli)",
@@ -152,11 +161,19 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_MENU_WIDESCREEN] = "Menu Widescreen:\n\nYes - Drawn for a TV set to 16:9: the background fills the\nscreen and the menus keep their shape.\nNo - Drawn for a 4:3 picture (default)\n\nSet your TV or HDMI adapter to 16:9 too. Games follow Force\nWidescreen in Game Defaults, not this.",
 	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\nSpotlight - A gameplay still over banners; Left and Right move\n\nThe selected game's title and details show beside its cover in\nVertical and its still in Spotlight, and above the controls in Grid.\nEvery layout wraps round from the last game to the first; L and R\njump a page. Y opens the focused game's settings.",
 	[SET_LIBRARY_FOLDERS] = "Library Folders:\n\nOff - The Library is one list of every game in /games, however\nthey sit in folders there (default)\nOn - The Library shows the folders in /games beside the games:\nA opens one, B goes back. A folder in a folder is the deepest;\nit lists every game below it.\n\nKeep a game's discs in the same folder.",
+	[SET_DETAIL_SAVES] = "Saves on Details:\n\nOn - A game's details show its saves on both memory cards and\nin the Save Folder when there are two or more copies, and Left\nand Right choose the one to start with (default)\nOff - A game's details leave the memory cards alone.",
+	[SET_IDLE_ANIMATION] = "Idle Animation:\n\nHow the cube moves while Home rests.\nCalm - A slight drift, turned a little to the right (default)\nSway - It turns slowly left and right, so the faces beside\nthe one in front peek round its edges\n\nUI Motion Reduced or Off keeps the cube still.",
+	[SET_WAVES] = "Waves:\n\nOn - Waves drift behind the cube (default)\nOff - No waves: the backdrop and its rings only\n\nWave Color and Wave Speed apply while they are on.",
+	[SET_HOME_CONTROLS] = "On-screen Controls:\n\nOn - Home shows its button hints under the cube (default)\nOff - Home shows none\n\nOther screens, and Restart's question, keep theirs.\nY on Home always opens Settings.",
+	[SET_FACE_LABELS] = "Face Labels:\n\nOn - Home names the face in front under the cube (default)\nOff - The cube shows only its icons.",
 	[SET_WAVE_SPEED] = "Wave Speed:\n\nHow fast the waves behind the cube drift.\nSlow - Half as fast\nNormal - As they always have (default)\nFast - Three times as fast\n\nUI Motion Off or Reduced, or Animated Backdrop off (Setup >\nLibrary), still stops them.",
 	[SET_CLOCK_POSITION] = "Clock:\n\nRight - The time sits in the top right corner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nTemperature places the temperature dial on its own.",
 	[SET_TEMPERATURE_POSITION] = "Temperature:\n\nRight - The CPU temperature dial sits in the top right\ncorner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nIn the clock's corner, the dial sits nearer the edge.",
-	[SET_APPS_FACE] = "Apps Face:\n\nOn - Home shows Apps, one turn from Library, while the\nsource has a program in /apps (default)\nOff - Home never shows Apps. The programs stay in /apps,\nand the file list still starts them.",
-	[SET_CUBE] = "Cube:\n\nInfinite - Left and Right turn round every face in a ring (default)\nClassic - Every menu sits on its own side of the cube, as on\nthe GameCube\n\nIn Classic, turn to a side, and back to Library to reach the\nothers: Settings is left of Library, System right, Source\nabove and Apps below. B turns back to Library.",
+	[SET_UP_FACE] = "Up Face:\n\nThe menu above Library: Source (default), another\nmenu, or None.\n\nThe menus: Source, Settings, System, Apps, Memory Cards,\nEmulators and File Browser. Classic turns Up to it; Infinite\nturns through the faces above, left, right and below Library,\nin that order. A menu on no side is off the cube. Y on Home\nalways opens Settings, and Apps and Emulators show while the\nsource has a program in /apps or /emulators.",
+	[SET_LEFT_FACE] = "Left Face:\n\nThe menu left of Library: Settings (default), another\nmenu, or None.\n\nThe menus: Source, Settings, System, Apps, Memory Cards,\nEmulators and File Browser. Classic turns Left to it; Infinite\nturns through the faces above, left, right and below Library,\nin that order. A menu on no side is off the cube. Y on Home\nalways opens Settings, and Apps and Emulators show while the\nsource has a program in /apps or /emulators.",
+	[SET_RIGHT_FACE] = "Right Face:\n\nThe menu right of Library: System (default), another\nmenu, or None.\n\nThe menus: Source, Settings, System, Apps, Memory Cards,\nEmulators and File Browser. Classic turns Right to it; Infinite\nturns through the faces above, left, right and below Library,\nin that order. A menu on no side is off the cube. Y on Home\nalways opens Settings, and Apps and Emulators show while the\nsource has a program in /apps or /emulators.",
+	[SET_DOWN_FACE] = "Down Face:\n\nThe menu below Library: Apps (default), another\nmenu, or None.\n\nThe menus: Source, Settings, System, Apps, Memory Cards,\nEmulators and File Browser. Classic turns Down to it; Infinite\nturns through the faces above, left, right and below Library,\nin that order. A menu on no side is off the cube. Y on Home\nalways opens Settings, and Apps and Emulators show while the\nsource has a program in /apps or /emulators.",
+	[SET_CUBE] = "Cube:\n\nInfinite - Left and Right turn round every face in a ring (default)\nClassic - Every menu sits on its own side of the cube, as on\nthe GameCube\n\nIn Classic, turn to a side, and back to Library to reach the\nothers; Up Face, Left Face, Right Face and Down Face say\nwhat is on each side. B turns back to Library.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
 
@@ -230,6 +247,23 @@ char* getConfigDeviceName(SwissSettings *settings) {
 char* getAutoLoadDeviceName(SwissSettings *settings) {
 	DEVICEHANDLER_INTERFACE *entryDevice = getDeviceFromPath(settings->autoload);
 	return entryDevice != NULL ? (char*)(entryDevice->deviceName) : "None";
+}
+
+char* getLibraryPathName(SwissSettings *settings) {
+	static char formatted[UI_SETLAYOUT_VALUE_TEXT_MAX + 1];
+	DEVICEHANDLER_INTERFACE *sourceDevice = getDeviceFromPath(settings->libraryPath);
+	size_t length;
+
+	if(sourceDevice == NULL || settings->libraryPath[0] == '\0') {
+		return "Auto";
+	}
+	length = strlen(settings->libraryPath);
+	snprintf(formatted, sizeof(formatted), "%s%s",
+		length > UI_SETLAYOUT_VALUE_TEXT_MAX ? "\205" : "",
+		length > UI_SETLAYOUT_VALUE_TEXT_MAX ?
+			settings->libraryPath + length - (UI_SETLAYOUT_VALUE_TEXT_MAX - 1) :
+			settings->libraryPath);
+	return formatted;
 }
 
 char* getGameVideoModeString(int gameVMode) {
@@ -576,14 +610,21 @@ static const settingsRowRef_t displayRows[] = {
 static const settingsRowRef_t consoleRows[] = {
 	{PAGE_INTERFACE, SET_UI_COLOR},
 	{PAGE_INTERFACE, SET_UI_BACKDROP_COLOR},
+	{PAGE_INTERFACE, SET_WAVES},
 	{PAGE_INTERFACE, SET_UI_WAVE_COLOR},
 	{PAGE_INTERFACE, SET_WAVE_SPEED},
 	{PAGE_INTERFACE, SET_LIBRARY_ICON},
 	{PAGE_INTERFACE, SET_SOURCE_ICON},
 	{PAGE_INTERFACE, SET_SETTINGS_ICON},
 	{PAGE_INTERFACE, SET_SYSTEM_ICON},
-	{PAGE_INTERFACE, SET_APPS_FACE},
+	{PAGE_INTERFACE, SET_UP_FACE},
+	{PAGE_INTERFACE, SET_LEFT_FACE},
+	{PAGE_INTERFACE, SET_RIGHT_FACE},
+	{PAGE_INTERFACE, SET_DOWN_FACE},
 	{PAGE_INTERFACE, SET_CUBE},
+	{PAGE_INTERFACE, SET_IDLE_ANIMATION},
+	{PAGE_INTERFACE, SET_FACE_LABELS},
+	{PAGE_INTERFACE, SET_HOME_CONTROLS},
 	{PAGE_INTERFACE, SET_CLOCK_POSITION},
 	{PAGE_INTERFACE, SET_TEMPERATURE_POSITION},
 	{PAGE_GLOBAL, SET_SYS_SOUND},
@@ -595,6 +636,7 @@ static const settingsRowRef_t consoleRows[] = {
 
 static const settingsRowRef_t storageRows[] = {
 	{PAGE_GLOBAL, SET_CONFIG_DEV},
+	{PAGE_GLOBAL, SET_LIBRARY_PATH},
 	{PAGE_GLOBAL, SET_SAVE_FOLDER},
 	{PAGE_GLOBAL, SET_EXI_SPEED},
 	{PAGE_GLOBAL, SET_INIT_DRIVE},
@@ -629,9 +671,7 @@ static const settingsRowRef_t networkRows[] = {
 static const settingsRowRef_t libraryRows[] = {
 	{PAGE_INTERFACE, SET_LIBRARY_LAYOUT},
 	{PAGE_INTERFACE, SET_LIBRARY_FOLDERS},
-	{PAGE_INTERFACE, SET_GAMEBROWSER_TYPE},
-	{PAGE_INTERFACE, SET_APPSBROWSER_TYPE},
-	{PAGE_INTERFACE, SET_FILEBROWSER_TYPE},
+	{PAGE_INTERFACE, SET_DETAIL_SAVES},
 	{PAGE_INTERFACE, SET_RECENT_LIST},
 	{PAGE_INTERFACE, SET_AUTOLOAD},
 	{PAGE_INTERFACE, SET_FLATTEN_DIR},
@@ -1011,6 +1051,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_SCREEN_POS: rowNumber(row, "Screen Position:", "%+i", swissSettings.sramHOffset, true); break;
 			case SET_SYS_LANG: rowCycle(row, "System Language:", sramLanguageStr[swissSettings.sramLanguage], true); break;
 			case SET_CONFIG_DEV: rowCycle(row, "Configuration Device:", getConfigDeviceName(&swissSettings), true); break;
+			case SET_LIBRARY_PATH: rowCycle(row, "Library Path:", getLibraryPathName(&swissSettings), true); break;
 			case SET_SAVE_FOLDER: {
 				/* The value holds 24 bytes; a longer path shows its end. */
 				static char folder[UI_SETLAYOUT_VALUE_TEXT_MAX + 1];
@@ -1046,9 +1087,6 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 	}
 	else if(page == PAGE_INTERFACE) {
 		switch(option) {
-			case SET_FILEBROWSER_TYPE: rowCycle(row, "File Browser Type:", fileBrowserTypeStr[swissSettings.fileBrowserType], true); break;
-			case SET_APPSBROWSER_TYPE: rowCycle(row, "File Browser Type for apps:", fileBrowserTypeStr[swissSettings.appsBrowserType], true); break;
-			case SET_GAMEBROWSER_TYPE: rowCycle(row, "File Browser Type for games:", fileBrowserTypeStr[swissSettings.gameBrowserType], true); break;
 			case SET_FILE_MGMT: rowYesNo(row, "File Management:", swissSettings.enableFileManagement, true); break;
 			case SET_RECENT_LIST: rowCycle(row, "Recent List:", recentListLevelStr[swissSettings.recentListLevel], true); break;
 			case SET_SHOW_HIDDEN: rowYesNo(row, "Show hidden files:", swissSettings.showHiddenFiles, true); break;
@@ -1064,8 +1102,15 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_SOURCE_ICON: rowCycle(row, "Source Icon:", sourceIconStr[swissSettings.sourceIcon], true); break;
 			case SET_SETTINGS_ICON: rowCycle(row, "Settings Icon:", settingsIconStr[swissSettings.settingsIcon], true); break;
 			case SET_SYSTEM_ICON: rowCycle(row, "System Icon:", systemIconStr[swissSettings.systemIcon], true); break;
-			case SET_APPS_FACE: rowOnOff(row, "Apps Face:", !swissSettings.hideAppsFace, true); break;
+			case SET_UP_FACE: rowCycle(row, "Up Face:", upFaceStr[swissSettings.upFace], true); break;
+			case SET_LEFT_FACE: rowCycle(row, "Left Face:", leftFaceStr[swissSettings.leftFace], true); break;
+			case SET_RIGHT_FACE: rowCycle(row, "Right Face:", rightFaceStr[swissSettings.rightFace], true); break;
+			case SET_DOWN_FACE: rowCycle(row, "Down Face:", downFaceStr[swissSettings.downFace], true); break;
 			case SET_CUBE: rowCycle(row, "Cube:", swissSettings.cubeStyle ? "Classic" : "Infinite", true); break;
+			case SET_IDLE_ANIMATION: rowCycle(row, "Idle Animation:", swissSettings.idleAnimation ? "Sway" : "Calm", true); break;
+			case SET_WAVES: rowOnOff(row, "Waves:", !swissSettings.hideWaves, true); break;
+			case SET_HOME_CONTROLS: rowOnOff(row, "On-screen Controls:", !swissSettings.hideHomeControls, true); break;
+			case SET_FACE_LABELS: rowOnOff(row, "Face Labels:", !swissSettings.hideFaceLabels, true); break;
 			case SET_CLOCK_POSITION: rowCycle(row, "Clock:", clockPositionStr[swissSettings.clockPosition], true); break;
 			case SET_TEMPERATURE_POSITION: rowCycle(row, "Temperature:", clockPositionStr[swissSettings.temperaturePosition], true); break;
 			case SET_WAVE_SPEED: rowCycle(row, "Wave Speed:", waveSpeedStr[swissSettings.waveSpeed], true); break;
@@ -1078,6 +1123,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_FLATTEN_DIR: rowText(row, "Flatten directory:", swissSettings.flattenDir, !swissSettings.libraryFolders); break;
 			case SET_LIBRARY_LAYOUT: rowCycle(row, "Library Layout:", libraryLayoutStr[swissSettings.libraryLayout], true); break;
 			case SET_LIBRARY_FOLDERS: rowOnOff(row, "Library Folders:", swissSettings.libraryFolders, true); break;
+			case SET_DETAIL_SAVES: rowOnOff(row, "Saves on Details:", !swissSettings.hideDetailSaves, true); break;
 			case SET_MENU_WIDESCREEN: rowYesNo(row, "Menu Widescreen:", swissSettings.menuWidescreen, true); break;
 		}
 	}
@@ -1253,7 +1299,8 @@ static void settingsDescribeFocus(uiSetPageSnapshot_t *page, int view,
 			}
 		}
 		else if(row.enabled) {
-			hints[count++] = settingsRowHasList(ref->page, ref->option) ?
+			hints[count++] = (settingsRowHasList(ref->page, ref->option) ||
+				(ref->page == PAGE_GLOBAL && ref->option == SET_LIBRARY_PATH)) ?
 				"A  Choose" : "A  Change";
 		}
 		if(help != NULL) {
@@ -1262,6 +1309,21 @@ static void settingsDescribeFocus(uiSetPageSnapshot_t *page, int view,
 				sizeof(summary)) > 0) {
 				about = summary;
 			}
+		}
+		if(ref->page == PAGE_GLOBAL && ref->option == SET_LIBRARY_PATH) {
+			DEVICEHANDLER_INTERFACE *sourceDevice =
+				getDeviceFromPath(swissSettings.libraryPath);
+			if(sourceDevice != NULL) {
+				snprintf(summary, sizeof(summary),
+					"%s (%s) - A chooses a folder; Left/Right changes device.",
+					DeviceDisplayName(sourceDevice),
+					swissSettings.libraryPath);
+			}
+			else {
+				snprintf(summary, sizeof(summary),
+					"Auto: the first /games found - A chooses a folder instead.");
+			}
+			about = summary;
 		}
 		if(settingsIsLiveVideoRow(ref->page, ref->option) &&
 			settingsVideoStepped()) {
@@ -1456,6 +1518,38 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 				}
 			}
 			break;
+			case SET_LIBRARY_PATH:
+			{
+				if(direction == 0) {
+					choose_library_path(swissSettings.libraryPath,
+						sizeof(swissSettings.libraryPath));
+					break;
+				}
+				int curDevicePos = MAX_DEVICES;
+				DEVICEHANDLER_INTERFACE *currentSource = getDeviceFromPath(swissSettings.libraryPath);
+				if(currentSource != NULL) {
+					for(int i = 0; i < MAX_DEVICES; i++) {
+						if(allDevices[i] == currentSource) {
+							curDevicePos = i;
+							break;
+						}
+					}
+				}
+				do {
+					curDevicePos = (curDevicePos + direction + (MAX_DEVICES + 1)) % (MAX_DEVICES + 1);
+				} while(curDevicePos < MAX_DEVICES && (allDevices[curDevicePos] == NULL ||
+					!(allDevices[curDevicePos]->features & FEAT_BOOT_GCM) ||
+					allDevices[curDevicePos]->initial == NULL ||
+					allDevices[curDevicePos] == &__device_dvd));
+				if(curDevicePos < MAX_DEVICES) {
+					concat_path(swissSettings.libraryPath,
+						allDevices[curDevicePos]->initial->name, "games");
+				}
+				else {
+					swissSettings.libraryPath[0] = '\0';
+				}
+			}
+			break;
 			case SET_SWISS_VIDEOMODE:
 				swissSettings.uiVMode += direction;
 				swissSettings.uiVMode = (swissSettings.uiVMode + 9) % 9;
@@ -1547,18 +1641,6 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 	}
 	else if(page == PAGE_INTERFACE) {
 		switch(option) {
-			case SET_FILEBROWSER_TYPE:
-				swissSettings.fileBrowserType += direction;
-				swissSettings.fileBrowserType = (swissSettings.fileBrowserType + BROWSER_MAX) % BROWSER_MAX;
-			break;
-			case SET_APPSBROWSER_TYPE:
-				swissSettings.appsBrowserType += direction;
-				swissSettings.appsBrowserType = (swissSettings.appsBrowserType + BROWSER_MAX) % BROWSER_MAX;
-			break;
-			case SET_GAMEBROWSER_TYPE:
-				swissSettings.gameBrowserType += direction;
-				swissSettings.gameBrowserType = (swissSettings.gameBrowserType + BROWSER_MAX) % BROWSER_MAX;
-			break;
 			case SET_FILE_MGMT:
 				swissSettings.enableFileManagement ^= 1;
 			break;
@@ -1609,8 +1691,21 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 				swissSettings.systemIcon += direction;
 				swissSettings.systemIcon = (swissSettings.systemIcon + UI_HOME_ICON_CHOICES) % UI_HOME_ICON_CHOICES;
 			break;
-			case SET_APPS_FACE:
-				swissSettings.hideAppsFace ^= 1;
+			case SET_UP_FACE:
+				swissSettings.upFace += direction;
+				swissSettings.upFace = (swissSettings.upFace + UI_HOME_FACE_COUNT) % UI_HOME_FACE_COUNT;
+			break;
+			case SET_LEFT_FACE:
+				swissSettings.leftFace += direction;
+				swissSettings.leftFace = (swissSettings.leftFace + UI_HOME_FACE_COUNT) % UI_HOME_FACE_COUNT;
+			break;
+			case SET_RIGHT_FACE:
+				swissSettings.rightFace += direction;
+				swissSettings.rightFace = (swissSettings.rightFace + UI_HOME_FACE_COUNT) % UI_HOME_FACE_COUNT;
+			break;
+			case SET_DOWN_FACE:
+				swissSettings.downFace += direction;
+				swissSettings.downFace = (swissSettings.downFace + UI_HOME_FACE_COUNT) % UI_HOME_FACE_COUNT;
 			break;
 			case SET_CUBE:
 				swissSettings.cubeStyle ^= 1;
@@ -1629,6 +1724,21 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_LIBRARY_FOLDERS:
 				config_set_library_folders(!swissSettings.libraryFolders);
+			break;
+			case SET_DETAIL_SAVES:
+				swissSettings.hideDetailSaves ^= 1;
+			break;
+			case SET_IDLE_ANIMATION:
+				swissSettings.idleAnimation ^= 1;
+			break;
+			case SET_WAVES:
+				swissSettings.hideWaves ^= 1;
+			break;
+			case SET_HOME_CONTROLS:
+				swissSettings.hideHomeControls ^= 1;
+			break;
+			case SET_FACE_LABELS:
+				swissSettings.hideFaceLabels ^= 1;
 			break;
 			case SET_PANEL_TRANSPARENCY:
 				swissSettings.disablePanelTransparency ^= 1;
@@ -2220,7 +2330,7 @@ static bool settingsRowIsAction(int page, int option)
 {
 	switch(page) {
 		case PAGE_GLOBAL:
-			return option == SET_SAVE_FOLDER;
+			return option == SET_SAVE_FOLDER || option == SET_LIBRARY_PATH;
 		case PAGE_INTERFACE:
 			return in_range(option, SET_AUTOLOAD, SET_FLATTEN_DIR);
 		case PAGE_NETWORK:
@@ -2428,6 +2538,10 @@ static const settingsPickerRow_t settingsPickerRows[] = {
 	PICK_SETTING(PAGE_INTERFACE, SET_SOURCE_ICON, sourceIcon),
 	PICK_SETTING(PAGE_INTERFACE, SET_SETTINGS_ICON, settingsIcon),
 	PICK_SETTING(PAGE_INTERFACE, SET_SYSTEM_ICON, systemIcon),
+	PICK_SETTING(PAGE_INTERFACE, SET_UP_FACE, upFace),
+	PICK_SETTING(PAGE_INTERFACE, SET_LEFT_FACE, leftFace),
+	PICK_SETTING(PAGE_INTERFACE, SET_RIGHT_FACE, rightFace),
+	PICK_SETTING(PAGE_INTERFACE, SET_DOWN_FACE, downFace),
 	PICK_SETTING(PAGE_GAME_GLOBAL, SET_BS2BOOT, bs2Boot),
 	PICK_SETTING(PAGE_GAME_GLOBAL, SET_DISABLE_MCPGAMEID, disableMCPGameID),
 	PICK_SETTING(PAGE_GAME_DEFAULTS, SET_DEFAULT_NTSC_VIDEOMODE, gameVModeNtsc),
@@ -2672,6 +2786,7 @@ static bool settingsInputMayBlock(int page, int option, u32 buttons)
 	if(page == PAGE_GLOBAL) {
 		return ((horizontal || activate) && (option == SET_RT4K_OPTIM ||
 			option == SET_SAVE_FOLDER)) ||
+			(activate && option == SET_LIBRARY_PATH) ||
 			(activate && settingsIsLiveVideoRow(page, option));
 	}
 	if(page == PAGE_INTERFACE) {

@@ -181,3 +181,23 @@ uiMenuInputDirection_t padsMenuInputPoll(uiMenuInputState_t *state,
 	return UIMenuInput_Update(state, samples, elapsedMicroseconds,
 		policy, inhibited);
 }
+
+/* The same for the C-stick, which the File Browser pages with. */
+uiMenuInputDirection_t padsSubMenuInputPoll(uiMenuInputState_t *state,
+	u32 elapsedMicroseconds, u32 policy, bool inhibited)
+{
+	u32 validMask = __atomic_load_n(&menuInputValidMask, __ATOMIC_RELAXED);
+	uiMenuInputSample_t samples[UI_MENU_INPUT_CHANNEL_COUNT] = {
+		{PAD_SubStickX(PAD_CHAN0), PAD_SubStickY(PAD_CHAN0),
+			(validMask & (1u << PAD_CHAN0)) != 0u},
+		{PAD_SubStickX(PAD_CHAN1), PAD_SubStickY(PAD_CHAN1),
+			(validMask & (1u << PAD_CHAN1)) != 0u},
+		{PAD_SubStickX(PAD_CHAN2), PAD_SubStickY(PAD_CHAN2),
+			(validMask & (1u << PAD_CHAN2)) != 0u},
+		{PAD_SubStickX(PAD_CHAN3), PAD_SubStickY(PAD_CHAN3),
+			(validMask & (1u << PAD_CHAN3)) != 0u}
+	};
+
+	return UIMenuInput_Update(state, samples, elapsedMicroseconds,
+		policy, inhibited);
+}

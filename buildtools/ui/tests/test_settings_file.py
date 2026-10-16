@@ -121,12 +121,17 @@ static bool getRawDTVStatus(void) { return false; }
 """,
     # swiss.h reaches the Home face icons through FrameBufferMagic.h.
     re.search(r"^#define UI_HOME_ICON_CHOICES \d+$", UI_HOME_H, re.M).group(0),
+    # And the faces the cube's sides name.
+    re.search(r"^typedef enum \{[^}]*\} uiHomeFace_t;", UI_HOME_H, re.M).group(0),
     # And the Library layouts, through the same header.
     re.search(r"^typedef enum \{[^}]*\} uiGameflowLayout_t;", UI_GAMEFLOW_H, re.M).group(0),
     "\n".join(re.findall(r"^enum \w+\s*\{.*?\};", SWISS_H, re.S | re.M)),
     re.search(r"^enum setupStream\s*\{.*?\};", MAIN_H, re.S | re.M).group(0),
     SWISS_SETTINGS,
     "SwissSettings swissSettings;",
+    (SWISS / "source/gui/ui_folder.h").read_text(),
+    (SWISS / "source/gui/ui_folder.c").read_text().replace('#include "ui_folder.h"', ""),
+    "static uiFolderColors_t folderColors;",
     CONFIG_ENTRY,
     "\n".join(STRING_ARRAYS),
     re.search(r"^const int simulatedMemSizeInt\[\] = \{.*?\};", SETTINGS_C, re.S | re.M).group(0),
@@ -185,6 +190,7 @@ static bool getRawDTVStatus(void) { return false; }
     "static void write_game(FILE *fp, ConfigEntry *entry, ConfigEntry *defaults)\n{\n"
     + between(GAME_WRITER, 'fprintf(fp, "# Game specific', "fclose(fp);") + "}",
     "static void set_defaults(void)\n{\n"
+    "\tmemset(&folderColors, 0, sizeof(folderColors));\n"
     "\tmemset(&swissSettings, 0, sizeof(SwissSettings));\n"
     '\tstrcpy(swissSettings.flattenDir, "*/games");\n'
     + DEFAULTS + "}",
@@ -414,6 +420,8 @@ def writer_keys(writer: str, subject: str) -> dict:
             keys[key] = re.search(r'\? "([^"]+)":"([^"]+)"', rest).groups()
         else:
             keys[key] = "raw"
+    for key in re.findall(r'fputs\("([^"=]+)=", fp\)', writer):
+        keys[key] = "raw"
     return keys
 
 
@@ -423,7 +431,8 @@ READ_KEYS = set(re.findall(r'strcmp\("([^"]+)", name\)', GLOBAL_PARSER + GAME_PA
 # Written by Swiss but never read back (the ID comes from the file name).
 WRITE_ONLY = {"ID"}
 # Earlier names the parser still accepts.
-OLD_NAMES = {"Enable Debug", "USB Gecko debug output", "Stop DVD Motor on startup"}
+OLD_NAMES = {"Enable Debug", "USB Gecko debug output", "Stop DVD Motor on startup",
+             "Hide Apps Face"}
 # Listed values global.ini does not accept, all explained in SETTINGS.md: the
 # NTSC default only takes NTSC modes, "Default" is a game's language, and
 # 32 MiB and up exceed a retail GameCube's memory.
@@ -473,6 +482,18 @@ class SettingsFileTest(unittest.TestCase):
         self.assertEqual(set(GAME_KEYS) - READ_KEYS - WRITE_ONLY, set())
         self.assertEqual(READ_KEYS - set(GLOBAL_KEYS) - set(GAME_KEYS) - OLD_NAMES, set())
 
+    def test_folder_colors_survive_the_real_global_parser_and_writer(self):
+        encoded = "sda:/games/Spaces%20#%3B%7E%25%3D%0A%09%0D~3"
+        second = "sdb:/games/Spaces%20#%3B%7E%25%3D%0A%09%0D~2"
+        written = self.global_file(f"Memory Card Folder Colors={encoded};{second}\nMenu Color=Gold\n")
+        self.assertEqual(written["Memory Card Folder Colors"], f"{encoded};{second}")
+        self.assertEqual(written["Menu Color"], "Gold")
+        again = self.global_file("\n".join(f"{key}={value}" for key, value in written.items()))
+        self.assertEqual(written, again)
+        self.assertEqual(self.global_file("Memory Card Folder Colors=bad%00path~1;wrong~9;good~8\n")
+                         ["Memory Card Folder Colors"], "good~8")
+        self.assertEqual(self.global_file("Memory Card Folder Colors=\n")["Memory Card Folder Colors"], "")
+
     def test_defaults_survive_a_round_trip(self):
         first = self.run_harness("global")
         self.assertEqual(first, self.run_harness("global", stdin=first))
@@ -483,6 +504,8 @@ class SettingsFileTest(unittest.TestCase):
         self.assertEqual(written["SD/IDE Speed"], "32MHz")
         self.assertEqual(written["FlattenDir"], "*/games")
         self.assertEqual(written["AVECompat"], "GCVideo")
+        # A game's details show two or more save copies unless this is Yes.
+        self.assertEqual(written["Hide Saves on Details"], "No")
 
     def test_every_listed_value_round_trips(self):
         known_exceptions = set()
@@ -519,6 +542,35 @@ class SettingsFileTest(unittest.TestCase):
         for other in ("Infinite", "classic", "Ring", ""):
             self.assertEqual(self.global_file(f"Cube=Classic\r\nCube={other}\r\n")["Cube"],
                              "Infinite", other)
+
+    def test_the_sides_default_to_the_cube_of_before(self):
+        # Setup > Console > Up, Left, Right and Down Face. Without them the
+        # cube is Source up, Settings left, System right and Apps down; an
+        # older Hide Apps Face=Yes empties Apps' side unless the file names
+        # the sides, and is never written again.
+        sides = ("Up Face", "Left Face", "Right Face", "Down Face")
+        self.assertEqual([self.global_file()[key] for key in sides],
+                         ["Source", "Settings", "System", "Apps"])
+        moved = self.global_file("Down Face=Settings\r\nLeft Face=Apps\r\n")
+        self.assertEqual([moved[key] for key in sides], ["Source", "Apps", "System", "Settings"])
+        self.assertEqual(self.global_file("Up Face=None")["Up Face"], "None")
+        self.assertEqual(self.global_file("Up Face=Library")["Up Face"], "Source")
+        # File Browser on any side, written back as read.
+        for key in sides:
+            self.assertEqual(self.global_file(f"{key}=File Browser\r\n")[key], "File Browser", key)
+        old = self.global_file("Hide Apps Face=Yes\r\n")
+        self.assertEqual(old["Down Face"], "None")
+        self.assertNotIn("Hide Apps Face", old)
+        self.assertEqual(self.global_file("Hide Apps Face=No\r\n")["Down Face"], "Apps")
+        named = self.global_file("Hide Apps Face=Yes\r\nDown Face=Apps\r\n")
+        self.assertEqual(named["Down Face"], "Apps")
+        # Each side's choices start at its default and go round the faces,
+        # None among them (UIHome_SideFace): zeroed settings are that cube.
+        faces = ["None", "Source", "Settings", "System", "Apps", "Memory Cards", "Emulators",
+                 "File Browser"]
+        for side, default in (("up", 1), ("left", 2), ("right", 3), ("down", 4)):
+            self.assertEqual(VALUES[f"{side}FaceStr"],
+                             [faces[(default + i) % len(faces)] for i in range(len(faces))], side)
 
     def test_a_face_icon_only_takes_that_faces_own(self):
         # Each face has its own four icons; a name from another face's list
@@ -749,7 +801,7 @@ class SettingsFileTest(unittest.TestCase):
         self.assertIn("!= (s32)configFile->size", extract_function(CONFIG_C, "char* config_file_read("))
         self.assertEqual(SWISS_C.count("config_update_autoload(true);"),
                          SWISS_C.count("Saving autoload\\205"))
-        self.assertEqual(SWISS_C.count("config_update_autoload(true);"), 5)
+        self.assertEqual(SWISS_C.count("config_update_autoload(true);"), 3)
         self.assertNotIn("config_update_global(", SWISS_C)
 
     def saved(self, existing: str, changes: str = "", game: bool = False) -> str:

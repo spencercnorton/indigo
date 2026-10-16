@@ -43,7 +43,9 @@ void meta_free(file_meta* meta) {
 			free(meta->banner);
 			meta->banner = NULL;
 		}
-		free(meta);
+		if(meta_mspace) {
+			mspace_free(meta_mspace, meta);
+		}
 	}
 }
 
@@ -68,6 +70,7 @@ file_meta* meta_alloc() {
 	while(!meta) {
 		file_handle** dirEntries = getSortedDirEntries();
 		int dirEntryCount = getSortedDirEntryCount();
+		bool released = false;
 		for(int i = 0; i < dirEntryCount; i++) {
 			if(!in_range(i, current_view_start, current_view_end)) {
 				if(dirEntries[i]->meta && trylockFile(dirEntries[i])) {
@@ -75,11 +78,15 @@ file_meta* meta_alloc() {
 					dirEntries[i]->meta = NULL;
 					dirEntries[i]->device->closeFile(dirEntries[i]);
 					unlockFile(dirEntries[i]);
+					released = true;
 					break;
 				}
 			}
 		}
 		meta = mspace_calloc(meta_mspace, 1, sizeof(file_meta));
+		if(!meta && !released) {
+			break;
+		}
 	}
 	return meta;
 }
@@ -103,7 +110,19 @@ void meta_iconv(iconv_t cd, char *inbuf, size_t inbytesleft, char *outbuf, size_
 	iconv(cd, NULL, NULL, &outbuf, &outbytesleft);
 }
 
+static bool is_ascii_desc(const BNRDesc *desc) {
+	const u8 *bytes = (const u8 *)desc;
+	for (size_t i = 0; i < sizeof(*desc); i++) {
+		if (bytes[i] & 0x80) return false;
+	}
+	return true;
+}
+
 void iconvBannerDesc(BNRDesc *to, BNRDesc *from, u16 fontEncode) {
+	if (is_ascii_desc(from)) {
+		memcpy(to, from, sizeof(*to));
+		return;
+	}
 	uchardet_t ud = uchardet_new();
 	uchardet_handle_data(ud, from->gameName, BNR_SHORT_TEXT_LEN);
 	uchardet_handle_data(ud, from->company, BNR_SHORT_TEXT_LEN);
@@ -368,8 +387,13 @@ void populate_meta(file_handle *f) {
 				TGCHeader tgcHeader;
 				f->device->seekFile(f, 0, DEVICE_HANDLER_SEEK_SET);
 				if(f->device->readFile(f, &tgcHeader, sizeof(TGCHeader)) == sizeof(TGCHeader) && tgcHeader.magic == TGC_MAGIC) {
+					DiskHeader diskHeader;
 					populate_game_meta(f, tgcHeader.bannerStart, tgcHeader.bannerLength, SYS_FONTENC_ANSI);
 					f->meta->fileTypeTexObj = &tgcimgTexObj;
+					f->device->seekFile(f, tgcHeader.headerStart, DEVICE_HANDLER_SEEK_SET);
+					if(f->device->readFile(f, &diskHeader, sizeof(DiskHeader)) == sizeof(DiskHeader) && valid_gcm_magic(&diskHeader)) {
+						memcpy(&f->meta->diskId, &diskHeader, sizeof(dvddiskid));
+					}
 				}
 			}
 			else if(endsWith(f->name,"/default.dol")) {

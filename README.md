@@ -6,6 +6,11 @@
 </p>
 
 <p align="center">
+  <strong><a href="https://norvitech.com/indigo/guide/install/">Install Guide →</a></strong><br>
+  Pick what starts your GameCube and follow four steps.
+</p>
+
+<p align="center">
   <a href="https://norvitech.com"><img alt="NorviTech Suite" src="https://img.shields.io/badge/NorviTech-Suite-FD8024.svg"></a>
   <a href="https://github.com/spencercnorton/indigo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/spencercnorton/indigo/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/spencercnorton/indigo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/spencercnorton/indigo?label=release"></a>
@@ -20,7 +25,8 @@
 
 Captured in the Dolphin emulator. The library and game detail pictures show a real poster pack and cheat file in use; box art belongs to its publishers.
 
-**New to Indigo?** The [Indigo guide](docs/guide/README.md) walks through every screen and setting, with pictures.
+**New to Indigo?** Start with the [Install Guide](https://norvitech.com/indigo/guide/install/),
+then explore every screen and setting in the [Indigo guide](docs/guide/README.md).
 Watch it in motion: [the video tour](https://norvitech.com/indigo/#videos) on norvitech.com.
 
 Indigo is an unofficial fork of [Swiss](https://github.com/emukidid/swiss-gc),
@@ -186,44 +192,28 @@ Storage › Save Folder sets the folder the SD card's stack opens on
   <img alt="Memory Cards with Demo Card.raw open on the left and an independent SD folder on the right. Copper Archive’s save cube is selected; its banner and two-block size appear below." src="docs/guide/images/memory-cards.png" width="640">
 </p>
 
+<a id="installation"></a>
+
 ## Install
 
-### Download — drag and drop
+**[Install Guide →](https://norvitech.com/indigo/guide/install/)** Pick what
+starts your GameCube and follow four steps, with a picture of the card for
+each setup.
 
-Each [release](https://github.com/spencercnorton/indigo/releases/latest) has
-an `Indigo-vX.Y.Z.zip` laid out exactly as it goes on the card:
+| What starts your GameCube? | Copy the download's `ipl.dol` to | Indigo starts |
+| --- | --- | --- |
+| [GC Loader](https://norvitech.com/indigo/guide/install/?loader=gcloader) | `boot.dol` at the top of the card, keeping `boot.iso` (Swiss starts it) | When you switch on |
+| [PicoBoot or PicoLoader](https://norvitech.com/indigo/guide/install/?loader=picoboot) | `ipl.dol` at the top of the card, replacing the old one | When you switch on |
+| [FlippyDrive](https://norvitech.com/indigo/guide/install/?loader=flippy) | `boot.dol` at the top of its microSD card | When you switch on |
+| [Something else, or not sure](https://norvitech.com/indigo/guide/install/?loader=other) | `apps/indigo.dol` (make `apps` if needed) | From Swiss |
 
-```text
-Indigo-README.txt              what goes where, in plain words
-ipl.dol                        Indigo; PicoBoot and other modchips boot this
-swiss/patches/apploader.img    Indigo again, for In-Game Reset
-swiss/ui/                      posters.pak, if you add one (see Posters)
-swiss/indigo/                  the licence and notice
-```
-
-**New to Indigo:**
-
-1. First, before you copy anything: if your card already has an `ipl.dol` in
-   its root, that is your current Swiss. Rename it to `z.dol` to keep it; with
-   PicoBoot or PicoLoader, holding Z at power-on starts it.
-2. Unzip the download, select everything inside and drag it onto the root of
-   the card. Let it replace files of the same name. On a Mac, hold Option as
-   you drop and choose **Merge**: **Replace** deletes what is already in the
-   card's `swiss` folder (your settings, cheats and saves).
-3. Put your games in `/games` (make the folder if the card has none), with
-   nothing else in it or in the game folders, and power on.
-
-**Updating from Indigo 1.x:** `ipl.dol` is already Indigo, so don't rename
-it; copy the new files over it the same way (on a Mac, Merge). If you renamed
-stock Swiss to `swiss.dol` for 1.25.0, you can rename it back to `z.dol`: 2.0
-no longer starts it by itself
-([#3](https://github.com/spencercnorton/indigo/issues/3)).
-
-FlippyDrive boots `boot.dol`: replace that file with `ipl.dol`, keeping the
-name `boot.dol`. With GC Loader and other loaders that boot a disc image,
-start `ipl.dol` from Swiss instead. The
-[install guide](docs/guide/install.md) covers every loader, updating and
-going back to stock Swiss.
+First back up the card's `swiss` folder (Swiss hides it, so show hidden
+folders) and the `ipl.dol` or `boot.dol` you replace. Then also copy the
+download's `swiss/patches/apploader.img` into the card's `swiss/patches`
+folder. Any setup can use `apps/indigo.dol` and open Indigo from Swiss. Some
+PicoBoot and PicoLoader chips have Swiss built in and never read `ipl.dol`:
+the [install guide](docs/guide/install.md) shows how to check, and has every
+step, updating and going back to stock Swiss.
 
 ### Any platform — from source
 
@@ -246,32 +236,9 @@ here: they need prebuilt tools and device firmware images that this fork does
 not redistribute. `make dev` builds the executable, which is what the fork
 changes.
 
-### On the console
-
-`cube/swiss/swiss.dol` is where the build leaves the file, not a path on your
-SD card. On the card, Indigo takes the place of the file your loader already
-boots, under that file's name. Your Swiss settings carry over.
-
-- **PicoBoot and PicoLoader** boot `ipl.dol` from the root of the card.
-  If that file is your current Swiss, rename it to `z.dol`; then copy
-  `swiss.dol` to the root as `ipl.dol`.
-  They start `z.dol` when Z is held at power-on, so stock Swiss stays one
-  button away.
-- **PicoBoot or PicoLoader with no `ipl.dol` on the card** has Swiss in the
-  chip's flash. First flash the firmware that starts the card's `ipl.dol`:
-  PicoBoot's `picoboot_full_pico.uf2` or `picoboot_full_pico2.uf2` (see its
-  [installation guide](https://support.webhdx.dev/gc/picoboot/installation-guide)),
-  or PicoLoader's `picoloader_gekkoboot.uf2`. Then do the step above.
-- **Another loader that boots a `.dol` from the card by name**: replace that
-  file the same way, keeping its name (FlippyDrive boots `boot.dol`).
-- **GC Loader, and other loaders that boot a disc image**: start `swiss.dol`
-  from Swiss's file browser. This fork does not build `boot.iso` or the other
-  packaged formats.
-
-With In-Game Reset set to **Apploader**, a reset returns to the program in
-`/swiss/patches/apploader.img`. The release zip puts Indigo there, and
-`buildtools/sd_package.sh` builds that file from `make dev`'s output.
-**Reboot** resets the console, which starts whatever your loader boots.
+`cube/swiss/swiss.dol` is the build output on your computer. Package it
+with `buildtools/sd_package.sh dev`, then follow the install guide with the
+ZIP's `ipl.dol`.
 
 ## Set up your library
 
@@ -287,9 +254,10 @@ Put each game in its own folder or put the disc images there directly:
 
 Disc images end in `.iso`, `.gcm`, `.tgc` or `.fdi`. The Library skips
 anything else there, such as a text file, a cover image or an empty folder.
-With **Library Folders** off, if `/games` holds no disc images at all, you
-get Swiss's plain file list instead. With it on, an empty `/games` stays
-in Indigo. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn
+With **Library Folders** off, if `/games` holds no disc images at all, the
+Library face opens the File Browser, two panes of files, instead. With it
+on, an empty `/games` stays in the Library. System › File Browser opens it on
+purpose, with Swiss's copy, move, rename and delete. Programs belong in `/apps` (see [Apps](#apps)). On Home, turn
 the cube to Library and press A.
 
 To sort your games into folders, turn on Settings › Setup › Library ›
@@ -302,7 +270,10 @@ you open, two levels deep. See
 Without posters, each game shows its disc banner and its six-character game
 ID, such as `GMSE01`. For box art like the screenshots above, download
 [the poster pack](https://indigo.norvitech.com/indigo-posters-all.zip) and
-unzip it into the root of the card. One pack covers games from every region,
+unzip it on your computer, then copy the files in its `swiss/ui` folder into
+the card's `swiss/ui` folder (make it if it isn't there; Swiss hides its
+`swiss` folder, so show hidden folders first). One pack covers games from
+every region,
 so there is nothing to choose; it holds `swiss/ui/posters.pak` and the stills
 and descriptions Spotlight shows (below). Checksums are in
 [SHA256SUMS.txt](https://indigo.norvitech.com/SHA256SUMS.txt); the
@@ -347,15 +318,18 @@ a PNG with the program's name. Home then gets an Apps face:
 ```
 
 A file called `boot.dol` is left out: in the Wii's Homebrew Channel layout it
-is the Wii program. Settings › Setup › Console › Apps Face turns the face
-off. [Apps](docs/guide/apps.md) has the rest.
+is the Wii program. Settings › Setup › Console › Down Face set to None
+takes the face off the cube. [Apps](docs/guide/apps.md) has the rest.
 
 ### Cheats
 
 Indigo runs Gecko codes from `/swiss/cheats/<game ID>.txt`, or from
 `<game ID>_v102.txt` and the like for one revision of a disc.
 [Download the cheat pack](https://indigo.norvitech.com/indigo-cheats.zip)
-(every region), unzip it into the root of the card, open a game and press Y. Cheats that the files show
+(every region), unzip it on your computer and copy the files in its
+`swiss/cheats` folder into the card's `swiss/cheats` folder (make it if it
+isn't there; Swiss hides its `swiss` folder, so show hidden folders first),
+then open a game and press Y. Cheats that the files show
 would break Indigo are switched off and marked;
 [the download page](https://norvitech.com/indigo/#downloads) says what can't
 be checked in advance.

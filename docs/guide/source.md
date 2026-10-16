@@ -16,7 +16,9 @@ change it.
    or **R**) until the device you want is in the middle, then press **A**.
    Hold the stick to keep moving; the row goes round.
 4. You're back on Home, now reading from that device. Turn the cube to
-   **Library** and press A to see what's on it.
+   **Library** and press A to see what's on it. To start on a particular
+   card or folder every time, set **Library Path** in
+   [Settings](settings.md) › Setup › Storage.
 
 <p align="center">
   <img alt="On the Source face, A shows Change Source and Refresh Library. Change Source lifts the cube and lines up the devices under it, Game Disc in the middle: Boot + Stream, Disc Drive, Detected, Current. Right slides Memory Card - Slot A into the middle: Files, Slot A. Z shows every device, so Right reaches Memory Card - Slot B, Not Detected; B goes back." src="images/source-picker.png" width="640">
@@ -49,17 +51,16 @@ The disc drive is called **Game Disc**.
 ## What the Library face opens
 
 Use a `/games` layout described in the [Library guide](library.md) to open
-the poster Library. Indigo skips unrelated files in that folder. For other layouts, Indigo
-opens Swiss's file list
-of the device, where you can browse folders and open games, homebrew
-programs (`.dol`, `.elf`) and MP3s:
-
-- **A** opens a file or folder, and **X** goes up a folder.
-- With **File Management** on (Settings › Setup › Library), **Z** on a file
-  offers to copy, move, rename, hide or delete it. Copy and Move choose the
-  device to put it on in the same picker, headed Destination.
-- Settings › Setup › Library › **File Browser Type** changes how the list
-  looks.
+the poster Library. Indigo skips unrelated files in that folder. When the
+Source has no `/games` folder, Indigo looks for one on the other storage
+connected (not the network or a WODE) and opens the first it finds, as it
+does when it starts; Settings › Setup › Storage › **Library Path** names
+another folder instead. For other
+layouts, Indigo opens the [File Browser](system.md#file-browser) at `/games`,
+or at the top of the device when there is no `/games`, where you can browse
+folders and open games, homebrew programs (`.dol`, `.elf`) and MP3s (see
+[File Browser](system.md#file-browser) for controls, pane navigation and file
+actions).
 
 While an MP3 plays, Left rewinds and Right goes forward. Rewinding near the
 start returns to the start of the same track. B stops playback.

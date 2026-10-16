@@ -140,6 +140,33 @@ static void expectSteps(const uiSavesArt_t *art, const char *frames,
     }
 }
 
+static void testIconDescription(void)
+{
+    uint8_t entry[UI_SAVES_ENTRY_SIZE] = {0};
+    const unsigned formats[3] = {2, 1, 3}, speeds[3] = {1, 2, 3};
+    const unsigned gap[3] = {2, 0, 0}, zeroSpeed[3] = {0, 2, 3};
+    uiSavesArt_t art;
+
+    assert(!strcmp(UISaves_IconDescription(NULL, 8192u, false), "Unavailable"));
+    setArt(entry, 64u, 0u, formats, speeds, 1u, UINT32_MAX);
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, false), "Static"));
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, true), "Static"));
+    setArt(entry, 64u, 0u, formats, speeds, 3u, UINT32_MAX);
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, false), "Animated"));
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, true), "Paused: UI Motion Off"));
+    assert(!strcmp(UISaves_IconDescription(entry, 1024u, false), "Preview unavailable"));
+    setArt(entry, UINT32_MAX, 0u, formats, speeds, 3u, UINT32_MAX);
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, false), "None stored"));
+    setArt(entry, 64u, 0u, formats, zeroSpeed, 3u, UINT32_MAX);
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, false), "None stored"));
+    setArt(entry, 64u, 0u, gap, speeds, 3u, UINT32_MAX);
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, false), "Animated"));
+    assert(UISaves_ArtLayout(entry, 8192u, &art));
+    assert(UISaves_ArtStep(&art, 0u) == 0 && UISaves_ArtStep(&art, 1u) == -1);
+    entry[0x31] = 0u;
+    assert(!strcmp(UISaves_IconDescription(entry, 8192u, false), "None stored"));
+}
+
 /* Decodes a picture the slow way, written apart from ui_saves.c: walk the
  * source in its own tile order (CI8 8x4, RGB5A3 4x4) into rows of 16-bit
  * texels, as Dolphin's DecodeCI8Image and Decode5A3Image do. */
@@ -538,8 +565,9 @@ static void testCopyRoom(void)
 
 static void testVerdict(void)
 {
-    uiSavesRoom_t card = {"Slot B", true, true, false, false, 12, 40};
-    uiSavesRoom_t folder = {"The SD card", false, true, true, false, 0, 0};
+    uiSavesRoom_t card = {"Slot B", true, true, false, false, 12, 40, false};
+    uiSavesRoom_t folder = {"The SD card", false, true, true, false, 0, 0, false};
+    uiSavesRoom_t image = {"The card image", true, true, true, false, 2, 56, true};
     uiSavesRoom_t room;
     char tiny[8];
 
@@ -598,6 +626,30 @@ static void testVerdict(void)
         UI_SAVES_VERDICT_READ_ONLY && strlen(tiny) == 7u);
     assert(UISaves_Verdict(false, false, 0, 1u, &room, NULL, 0u) ==
         UI_SAVES_VERDICT_READ_ONLY);
+    /* A card image is a card that is a file: it has the save, its 127 and
+     * its blocks as a card does, and can't be written when its device
+     * doesn't, or when it didn't read. */
+    room = image;
+    expectVerdict(true, true, 0x04, 11u, &room, UI_SAVES_VERDICT_OK, "");
+    expectVerdict(true, true, 0x10, 11u, &room, UI_SAVES_VERDICT_NO_MOVE,
+        "This game doesn't let its save move");
+    room.hasIt = true;
+    expectVerdict(false, false, 0x00, 11u, &room, UI_SAVES_VERDICT_HAS_IT,
+        "The card image already has this save");
+    room.hasIt = false;
+    room.saves = 127;
+    expectVerdict(false, false, 0x00, 11u, &room, UI_SAVES_VERDICT_FULL,
+        "The card image has 127 saves");
+    room.saves = 3;
+    expectVerdict(false, true, 0x00, 60u, &room, UI_SAVES_VERDICT_ROOM,
+        "The card image has 56 free blocks; this needs 60");
+    room.writable = false;
+    expectVerdict(false, true, 0x00, 1u, &room, UI_SAVES_VERDICT_READ_ONLY,
+        "The card image can't be written");
+    room = image;
+    room.ready = false;
+    expectVerdict(false, true, 0x00, 1u, &room, UI_SAVES_VERDICT_READ_ONLY,
+        "The card image can't be written");
 }
 
 static void testStorage(void)
@@ -611,15 +663,29 @@ static void testStorage(void)
         assert(stacks[1] == ((mask & 2u) == 0u && (mask & 4u) != 0u ? 3 : 1));
         assert(stacks[0] != stacks[1]);
     }
-    assert(UISaves_StorageTab(0, 2, 3) == 2);
-    assert(UISaves_StorageTab(1, 2, 2) == 3);
-    assert(UISaves_StorageTab(1, 0, 0) == -1);
-    assert(UISaves_StorageTab(0, 1, 1) == -1);
-    assert(UISaves_StorageTab(0, 0, 1) == 0);
-    assert(UISaves_StorageTab(1, 1, 0) == 1);
-    assert(UISaves_StorageTab(0, -1, 3) == -1); /* cancelled */
-    assert(UISaves_StorageTab(2, 2, 1) == -1);
-    assert(UISaves_StorageTab(0, 3, 1) == -1);
+    assert(UISaves_StorageTab(0, 2, 3, 1) == 2);
+    assert(UISaves_StorageTab(1, 2, 2, 1) == 3);
+    assert(UISaves_StorageTab(1, 0, 0, 1) == -1);
+    assert(UISaves_StorageTab(0, 1, 1, 1) == -1);
+    assert(UISaves_StorageTab(0, 0, 1, 1) == 0);
+    assert(UISaves_StorageTab(1, 1, 0, 1) == 1);
+    assert(UISaves_StorageTab(0, -1, 3, 1) == -1); /* cancelled */
+    assert(UISaves_StorageTab(2, 2, 1, 1) == -1);
+    assert(UISaves_StorageTab(0, 3, 1, 1) == -1); /* one SD device: no fourth item */
+    /* Two SD devices (the settings device, then the Source): either one is
+     * the column's own SD tab, whatever the other column shows. */
+    for(int stack = 0; stack < 2; stack++) {
+        for(int other = 0; other < 4; other++) {
+            assert(UISaves_StorageTab(stack, 2, other, 2) == 2 + stack);
+            assert(UISaves_StorageTab(stack, 3, other, 2) == 2 + stack);
+            assert(UISaves_StorageTab(stack, 4, other, 2) == -1);
+        }
+    }
+    assert(UISaves_StorageTab(0, 1, 1, 2) == -1);
+    assert(UISaves_StorageTab(1, 0, 3, 2) == 0);
+    assert(UISaves_StorageTab(0, -1, 3, 2) == -1);
+    assert(UISaves_StorageTab(0, 2, 3, 0) == -1); /* a menu without SD */
+    assert(UISaves_StorageTab(0, 2, 3, 3) == -1);
     UISaves_InitialStorage(false, false, true, NULL);
 }
 
@@ -716,6 +782,7 @@ int main(void)
 
     testStorage();
     testArtLayout();
+    testIconDescription();
     testPool();
     testVerdict();
     testCopyRoom();

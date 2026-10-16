@@ -15,11 +15,11 @@ void UISaves_InitialStorage(bool slotA, bool slotB, bool sd, int stacks[2])
 	stacks[1] = !slotB && sd ? 3 : 1;
 }
 
-int UISaves_StorageTab(int stack, int choice, int other)
+int UISaves_StorageTab(int stack, int choice, int other, int sdDevices)
 {
-	if(stack < 0 || stack > 1 || choice < 0 || choice > 2 ||
-		(choice < 2 && choice == other)) return -1;
-	return choice == 2 ? 2 + stack : choice;
+	if(stack < 0 || stack > 1 || sdDevices < 1 || sdDevices > 2 || choice < 0 ||
+		choice >= 2 + sdDevices || (choice < 2 && choice == other)) return -1;
+	return choice >= 2 ? 2 + stack : choice;
 }
 
 unsigned UISaves_Blocks(const uint8_t entry[UI_SAVES_ENTRY_SIZE])
@@ -157,15 +157,16 @@ uiSavesVerdict_t UISaves_Verdict(bool move, bool fromCard, uint8_t permissions,
 		verdict = UI_SAVES_VERDICT_NO_MOVE;
 		(void)snprintf(text, sizeof(text), "This game doesn't let its save move");
 	}
-	else if(to == NULL || (to->card && !to->ready)) {
+	else if(to == NULL || (to->card && !to->image && !to->ready)) {
 		verdict = UI_SAVES_VERDICT_NO_CARD;
 		(void)snprintf(text, sizeof(text), "No memory card in %s", name);
 	}
+	else if((!to->card || to->image) && (!to->ready || !to->writable)) {
+		verdict = UI_SAVES_VERDICT_READ_ONLY;
+		(void)snprintf(text, sizeof(text), "%s can't be written", name);
+	}
 	else if(!to->card) {
-		if(!to->ready || !to->writable) {
-			verdict = UI_SAVES_VERDICT_READ_ONLY;
-			(void)snprintf(text, sizeof(text), "%s can't be written", name);
-		}
+		/* A folder numbers a name that's taken, and has room enough. */
 	}
 	else if(to->hasIt) {
 		verdict = UI_SAVES_VERDICT_HAS_IT;
@@ -362,6 +363,26 @@ bool UISaves_ToRgb5a3(const uint8_t *data, size_t length,
 		}
 	}
 	return true;
+}
+
+const char *UISaves_IconDescription(const uint8_t entry[UI_SAVES_ENTRY_SIZE],
+	size_t dataLength, bool motionOff)
+{
+	uiSavesArt_t art;
+	unsigned i;
+
+	if(entry == NULL) return "Unavailable";
+	/* The format's no-icon markers are valid metadata, not read failures. */
+	if(be32(entry + 0x2C) == UINT32_MAX || (entry[0x31] & 3u) == 0u ||
+		(entry[0x33] & 3u) == 0u) return "None stored";
+	UISaves_ArtLayout(entry, dataLength, &art);
+	if(art.steps == 0u) return "Preview unavailable";
+	for(i = 1u; i < art.steps; i++) {
+		if(art.stepFrame[i] != art.stepFrame[0]) {
+			return motionOff ? "Paused: UI Motion Off" : "Animated";
+		}
+	}
+	return "Static";
 }
 
 int UISaves_ArtStep(const uiSavesArt_t *art, uint32_t tick)

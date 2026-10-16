@@ -395,17 +395,6 @@ uiGameflowLibraryMode_t UIGameflowLibrary_EntryMode(
 	return UI_GAMEFLOW_LIBRARY_NONE;
 }
 
-int UIGameflowLibrary_SelectBrowser(uiGameflowLibraryMode_t mode,
-	int requestedBrowser, int retainedBrowser)
-{
-	if(mode == UI_GAMEFLOW_LIBRARY_IMAGE_FILES ||
-		mode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS ||
-		mode == UI_GAMEFLOW_LIBRARY_FOLDERS) {
-		return retainedBrowser;
-	}
-	return requestedBrowser;
-}
-
 bool UIGameflowLibrary_UsesRetainedDetail(uiGameflowLibraryMode_t mode,
 	uiGameflowLibraryEntryType_t type)
 {

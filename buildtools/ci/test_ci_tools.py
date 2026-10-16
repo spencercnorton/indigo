@@ -331,15 +331,20 @@ class Release(unittest.TestCase):
         self.assertNotIn("](docs/", notes)
 
     def test_install_keeps_the_card_safe(self):
-        """Someone new to Indigo renames the Swiss already on the card before anything
-        is copied over it, and a Mac's Replace, which deletes the card's games and
-        swiss folders, is warned about."""
+        """Release instructions copy two files and never a whole swiss folder (a Mac's
+        Replace on that folder deletes settings and saves), back up first, and name
+        the file to update for every setup."""
         install = self.notes("v2.0.0-rc.1").split("## Install", 1)[1]
-        self.assertLess(install.index("**New to Indigo:**"), install.index("Rename it to `z.dol`"))
-        self.assertLess(install.index("Rename it to `z.dol`"), install.index("drag it onto the root"))
-        self.assertIn("choose **Merge**", install)
-        self.assertIn("nothing else in it or in the game folders", install)
-        self.assertIn("Updating from Indigo 1.x", install)
+        self.assertLess(install.index("back up the card's `swiss` folder"), install.index("copy two files"))
+        self.assertIn("`swiss/patches/apploader.img`", install)
+        self.assertNotIn("Merge", install)
+        for destination in ("`apps/indigo.dol`", "`ipl.dol` at the top of the card",
+                            "`boot.dol` at the top of its microSD card"):
+            self.assertIn(destination, install)
+        updating = install.split("**Updating:**", 1)[1]
+        for name in ("`ipl.dol`", "`boot.dol`", "`indigo.dol`"):
+            self.assertIn(name, updating)
+
 
 
 if __name__ == "__main__":

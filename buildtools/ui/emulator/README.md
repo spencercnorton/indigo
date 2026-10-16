@@ -36,24 +36,35 @@ exception screen as it would on a console. The route:
    must say so and come back to the Library once A dismisses it. On the Source
    face, A on Change Source opens the device picker, RIGHT shows another
    device and B leaves the picker. On the System face, Memory Cards opens
-   with a memory card in each slot: see [Memory Cards](#memory-cards). On the
-   Settings face, Setup › Console › Apps
-   Face Off takes Apps off the cube and On puts it back; Setup › Console › Cube
+   with a memory card in each slot: see [Memory Cards](#memory-cards). Then
+   DOWN and A on File Browser open the File Browser's two panes, the left one
+   focused, though the disc has games: RIGHT focuses the right pane, DOWN and
+   A there open a folder and X comes back to the same listing, and LEFT
+   focuses the left pane again; A on /games, where the left pane opens, reads
+   it into that pane and X comes back up; Z opens Swiss's box and B closes
+   it; B comes back to System's rows. On the
+   Settings face, Setup › Console › Down Face None takes Apps off the cube,
+   File Browser puts its own face after System (A there opens the File
+   Browser and B comes back to that face) and Apps puts Apps back; Setup › Console › Cube
    at Classic lays the faces out as the GameCube's menu does, and the route
    walks it (LEFT goes nowhere from Settings, RIGHT twice is Library then
    System, B is Library, UP Source, DOWN Library and DOWN Apps) before setting
-   it back to Infinite; and Setup › Library
+   it back to Infinite; Setup › Console › Face Labels Off leaves no name under
+   the cube, and On puts the Settings face's name back; and Setup › Library
    › Library Folders On shows the disc's folders in the Library: an empty
    folder opens with only its way back, A opens a folder and a folder in it,
    which also lists the game a level further down, and B goes back up a
    folder at a time to the same card, then Home.
-4. **Apps, last.** RIGHT and LEFT move between the disc's apps and back, and
+4. **Library again.** From Apps, RIGHT comes round to Library, and A opens
+   the Library on a game, not the File Browser: File Browser is over once Home
+   is back. B and LEFT return to Apps.
+5. **Apps, last.** RIGHT and LEFT move between the disc's apps and back, and
    A on the probe brings up the launch screen and then the probe itself,
    which must report that the menu music stopped before the hand-off, that
    nothing still writes to memory after it, and that the app was started
    with its own path (`dvd:/apps/Probe.dol`), which homebrew uses to find
    its files.
-5. **Nothing crashed.** No step lands on the exception screen or a black
+6. **Nothing crashed.** No step lands on the exception screen or a black
    screen, and Dolphin's log reports no exception or invalid access.
 
 The **game route** (`--route game`) boots, opens the Library, moves to the
@@ -61,7 +72,7 @@ probe's game and launches it from its details: the probe must see the game's
 own disc ID, the 24 MB a game is promised, the music stopped and memory
 quiet.
 
-CI runs nine jobs, the first of them the required **Emulator** check:
+CI runs ten jobs, the first of them the required **Emulator** check:
 
 | Job | Console | Video | Storage |
 | --- | --- | --- | --- |
@@ -74,6 +85,7 @@ CI runs nine jobs, the first of them the required **Emulator** check:
 | virtual cards, NTSC, GC Loader, widescreen | NTSC, component | 480p | same route with `save-details-wide.ini`, 16:9 |
 | save, NTSC, SD2SP2, failing card | NTSC, composite | 480i | SD2SP2, writes failing after 13 |
 | game, NTSC, component, GC Loader | NTSC, component | 480p | GC Loader, the game in 40 pieces |
+| files, NTSC, GC Loader and SD2SP2 | NTSC, component | 480p | GC Loader, a new card, both memory-card slots empty; a second SD card in SD2SP2, made the Source for Memory Cards, its writes failing on the second boot, which ends launching the probe's game from its Detail in the File Browser |
 
 `--region pal|pal60|ntsc` is the console: the region Dolphin starts the video
 hardware in, and an SRAM (`GC/SRAM.raw`) with the same video format, as a
@@ -192,8 +204,10 @@ its own, and Save & Exit must write the file and go Home. With `--settings
 `global.ini` instead and Indigo goes straight Home; at the end every line of
 it must still be on the card, through Indigo's own saves. CI's GC Loader smoke
 job starts with [`non-default.ini`](settings/non-default.ini): colours, icons,
-the clock on the left, no menu music or sounds, reduced motion, In-Game Reset. At the end the
-test reads the card back: the settings Indigo saved (with Apps Face as the
+the clock on the left, no menu music or sounds, reduced motion, In-Game Reset,
+no waves, the Sway idle animation and no button hints on Home, which the route
+checks as Home appears (with the default settings it checks they show). At the end the
+test reads the card back: the settings Indigo saved (with Down Face as the
 route left it, and Library Folders saved on with the card's own
 `FlattenDir=*/games` kept beside it), and after the game route the launched
 game first in the recent list and in Indigo's play history. The card holds
@@ -254,17 +268,34 @@ The **virtual-cards route** (`--route virtual-cards --storage gcloader`, or
 The release zip's SD image also holds `swiss/saves/Demo Card.raw`, a 59-block
 memory-card image made by the same public demonstration generator. It has
 two fictitious saves, with generated icon/banner art; its first save's
-blocks are deliberately separated at blocks 5 and 9.
+blocks are deliberately separated at blocks 5 and 9. `Backups` beside it
+contains a synthetic save with an opaque filename, readable comment and
+one static icon texture, plus a synthetic racing profile whose header
+advertises neither comments nor art. Its public game ID supplies the
+readable title; arbitrary text inside its generated payload is ignored.
+
+Y on the selected folder cube must have a visible contextual hint and open
+its full path, contents and color page. The route previews Indigo and Azure,
+saves Azure, verifies the cube's native rim pixels and the device-prefixed
+`Memory Card Folder Colors` FAT settings entry, reopens the page, cancels a
+new preview, and resets to Default. It saves Azure again, restarts Dolphin
+with a fresh user directory and the same SD image, verifies the restored
+path, contents and color, then resets. Y also opens the RAW image's path and
+read-only contents. Browsing these pages preserves every source save and
+image byte. Library folders retain their ordinary appearance and navigation;
+the four-layout route verifies that Y opens no folder color page there.
 
 Memory Cards must start with both columns on SD. The route opens Library
-first and sees the synthetic game's SAVES inset, then checks it again after
-export: one copy/two blocks becomes two copies/four blocks with the same
-recorded update. Renderer host contracts check the exact values; the route
-checks that the real fields appear and their count text changes.
+first: with one save copy, the synthetic game's details leave SAVES out.
+After the export there are two copies, and the SAVES inset shows their count
+and recorded update (Saves on Details is on by default; a card seeded with
+`Hide Saves on Details=Yes` would still leave it out). Renderer host
+contracts check the exact values; the route checks that the real fields
+appear, or that the inset is absent.
 
 A on each RAW save opens details first: the known `2024-02-29 12:34` date
-and an unknown date have different text, both show Created: Not recorded,
-and their block counts differ. B cancels without an action. Opening RAW
+and an unknown date have different text, their stored icon statuses differ,
+and their block counts differ. A save has no separate creation-date field. B cancels without an action. Opening RAW
 independently in both columns still allows details and Back; an unusable
 Copy stays in its action menu. Before the real Copy, the source RAW is
 byte-identical and no exported GCI exists. The first icon's generated
@@ -292,6 +323,18 @@ reads the actual FAT file back and checks its game, maker, name and every
 payload byte in BAT order, then checks the entire RAW image is unchanged.
 B closes the image to its containing folder and B again leaves Memory Cards.
 The artifact keeps the exported demonstration GCI and pictures of the route.
+
+The **files route** ends its first boot in Memory Cards with settings on the
+GC Loader and the SD card in SD2SP2 made the Source (L, DOWN and A in the
+File Browser). That card holds the same public image at
+`swiss/saves/MemoryCardA.USA.raw`, where Swiss's Emulate Memory Card keeps
+Slot A's card for a game started from it. With both slots empty, both
+columns start on the GC Loader's Save Folder; L lists Slot A, Slot B and
+both cards by name, and DOWN and A put the SD2SP2's Save Folder on the left.
+A opens the image, Erase takes its second save off and Move its first to
+the GC Loader's Save Folder on the right. Then both cards are read back:
+the image reads as a card with no save left (`card_image_saves`), the GC
+Loader has the first save whole, and the SD2SP2 has no copy of it.
 
 ## A GC Loader
 

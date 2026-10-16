@@ -45,7 +45,8 @@ static bool copyText(char *out, size_t capacity, const char *source)
 }
 
 bool UISaveDetails_Build(uiSaveDetailsSnapshot_t *snapshot, const char *name,
-	uint32_t blocks, bool estimated, const char *source, const char *updated)
+	uint32_t blocks, bool estimated, const char *source, const char *updated,
+	const char *icon)
 {
 	uiSaveDetailsSnapshot_t candidate;
 
@@ -59,6 +60,7 @@ bool UISaveDetails_Build(uiSaveDetailsSnapshot_t *snapshot, const char *name,
 	if(!copyText(candidate.name, sizeof(candidate.name), name) ||
 		!copyText(candidate.source, sizeof(candidate.source), source) ||
 		!copyText(candidate.updated, sizeof(candidate.updated), updated) ||
+		!copyText(candidate.icon, sizeof(candidate.icon), icon) ||
 		!UISaveDetails_Valid(&candidate)) {
 		return false;
 	}
@@ -71,5 +73,6 @@ bool UISaveDetails_Valid(const uiSaveDetailsSnapshot_t *snapshot)
 	return snapshot != NULL && snapshot->blocks <= UINT32_MAX / 8u &&
 		textValid(snapshot->name, sizeof(snapshot->name)) &&
 		textValid(snapshot->source, sizeof(snapshot->source)) &&
-		textValid(snapshot->updated, sizeof(snapshot->updated));
+		textValid(snapshot->updated, sizeof(snapshot->updated)) &&
+		textValid(snapshot->icon, sizeof(snapshot->icon));
 }

@@ -35,6 +35,9 @@ static device_info initial_CARD_info[2];
 
 static unsigned char *sys_area[2] = {NULL, NULL};
 static int card_init[2] = {0,0};
+/* Each slot's mounts so far: a card taken out, or changed under us by a
+ * memory card emulator, is mounted again before anything reads it. */
+static u32 card_mounts[2] = {0,0};
 static u16 card_memsize[2] = {0,0};
 static u32 card_sectorsize[2] = {8192, 8192};
 static GCI *gciInfo;
@@ -81,12 +84,17 @@ int initialize_card(int slot) {
 		if(slot_error == CARD_ERROR_READY) {
 			slot_error = CARD_Mount (slot, sys_area[slot], card_removed_cb);
 			if(slot_error == CARD_ERROR_READY) {
+				card_mounts[slot]++;
 				slot_error = CARD_GetSectorSize (slot, &card_sectorsize[slot]);
 			}
 		}
 	}
 	card_init[slot] = slot_error == CARD_ERROR_READY;
 	return slot_error;
+}
+
+u32 card_mount_count(int slot) {
+	return card_mounts[slot];
 }
 
 device_info* deviceHandler_CARD_info(file_handle* file) {

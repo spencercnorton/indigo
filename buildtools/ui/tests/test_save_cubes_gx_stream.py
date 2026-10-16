@@ -47,6 +47,8 @@ PRELUDE = r"""
 #include <string.h>
 #include "ui_save_cubes.h"
 #include "ui_stage.h"
+#include "ui_folder.h"
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -250,6 +252,28 @@ int main(void)
 			page.snapshot.grid.focusStack = (s8)a;
 			page.snapshot.grid.focusCell = (s16)b;
 		}
+		else if(sscanf(line, "J %d %d", &a, &b) == 2) {
+			uiSaveCubesStack_t *s = &page.snapshot.grid.stack[1];
+			int k = 2 - (s->first - 1) * UI_SAVE_CUBES_COLUMNS;
+			CHECK(k >= 0 && k < UI_SAVE_CUBES_DRAWN);
+			s->cell[k].kind = (u8)a;
+			s->cell[k].folderColor = (u8)b;
+			s->cell[k].texels = a == UI_SAVE_CUBES_KIND_SAVE ? texels : NULL;
+			s->cell[k].art = a == UI_SAVE_CUBES_KIND_SAVE ? &art : NULL;
+		}
+		else if(sscanf(line, "D %d", &a) == 1) {
+			uiFolderSnapshot_t folder = {0};
+			uiDrawObj_t dialog = {0, &folder, NULL, false};
+			folder.lineCount = 9; folder.firstLine = a == 2 ? 3u : 0u; folder.color = 2u;
+			for(unsigned n = 0; n < folder.lineCount; ++n)
+				snprintf(folder.lines[n], sizeof(folder.lines[n]), "sda:/swiss/saves/Path line %u", n);
+			snprintf(folder.summary, sizeof(folder.summary), "2 saves. Read-only card image.");
+			snprintf(folder.contents[0], sizeof(folder.contents[0]), "Copper Archive");
+			snprintf(folder.contents[1], sizeof(folder.contents[1]), "Moonlit Lake");
+			if(a == 1) snprintf(folder.status, sizeof(folder.status), "Could not save. Check the Configuration Device.");
+			printf("F\n"); drawInit(); _DrawMemoryCardFolder(&dialog);
+			CHECK(!active && pipeline == TEXTURED);
+		}
 		else if(sscanf(line, "I %d %d %d", &a, &b, &c) == 3) {
 			page.snapshot.info = (u8)a;
 			page.snapshot.banner = b ? banner : NULL;
@@ -326,6 +350,7 @@ def screen(frame_c: str, frame_h: str) -> str:
     return "\n".join([
         between(frame_h, "typedef struct {\n\tchar control[32];", "} uiSaveCubesPageSnapshot_t;", True),
         between(frame_c, "/* What one frame's cubes need. */", "uiDrawObj_t* DrawSaveCubesPage("),
+        between(frame_c, "static void _DrawMemoryCardFolder(", "uiDrawObj_t* DrawMemoryCardFolder("),
     ])
 
 
@@ -415,7 +440,7 @@ class SaveCubesGXStreamTests(unittest.TestCase):
         command = shlex.split(os.environ.get("CC", "cc")) + [
             "-std=c99", "-Wall", "-Wextra", "-pedantic", "-Wno-unused-function", f"-I{GUI}",
             str(harness), str(pure), str(GUI / "ui_motion.c"), str(GUI / "ui_saves.c"),
-            str(GUI / "ui_stage.c"), "-o", str(program), "-lm",
+            str(GUI / "ui_stage.c"), str(GUI / "ui_folder.c"), "-o", str(program), "-lm",
         ]
         compiled = subprocess.run(command, capture_output=True, text=True, timeout=60)
         assert compiled.returncode == 0, compiled.stdout + compiled.stderr
@@ -426,6 +451,48 @@ class SaveCubesGXStreamTests(unittest.TestCase):
                                 capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
         return parse(result.stdout)
+
+    def test_folder_identity_color_survives_theme_in_both_shapes(self):
+        for wide in (0, 1):
+            for theme in (0, 1):
+                with self.subTest(wide=wide, theme=theme):
+                    frame = self.run_script(
+                        f"W {wide}\nU {theme}\n" + AT_REST.replace("N 120", "J 1 2\nN 120"))[-1]
+                    colors = {vertex[2:5] for batch in cube_batches(frame)
+                              for vertex in batch["vertices"]}
+                    self.assertIn((68, 170, 230), colors, "Azure folder rim keeps its path identity")
+                    self.assertTrue(all(0 <= value <= 255 for color in colors for value in color))
+
+    def test_folder_color_field_cannot_recolor_save_items(self):
+        for wide in (0, 1):
+            for theme in (0, 1):
+                prefix = f"W {wide}\nU {theme}\n"
+                zero = self.run_script(prefix + AT_REST.replace("N 120", "J 0 0\nN 120"))[-1]
+                colored = self.run_script(prefix + AT_REST.replace("N 120", "J 0 2\nN 120"))[-1]
+                self.assertEqual(zero, colored, "only folder cube identities use the color map")
+
+    def test_memory_folder_dialog_draws_native_panel_content_and_controls(self):
+        for wide in (0, 1):
+            for theme in (0, 1):
+                for state in (0, 1, 2):
+                    with self.subTest(wide=wide, theme=theme, state=state):
+                        frame = self.run_script(f"W {wide}\nU {theme}\nD {state}\n")[-1]
+                        events = "\n".join(text for tag, text in frame["events"] if tag in ("S", "H"))
+                        self.assertIn("FOLDER", events)
+                        self.assertIn("FULL PATH", events)
+                        self.assertIn("Read-only card image", events)
+                        self.assertIn("Copper Archive", events)
+                        self.assertIn("Moonlit Lake", events)
+                        self.assertIn("Azure", events)
+                        self.assertIn("Y  Reset   A  Save   B  Cancel", events)
+                        self.assertIn("UP/DOWN  Scroll path", events)
+                        if state == 1:
+                            self.assertIn("Could not save", events)
+                        path_lines = [text for tag, text in frame["events"] if tag == "S" and "Path line" in text]
+                        self.assertEqual(len(path_lines), 6)
+                        first = 3 if state == 2 else 0
+                        self.assertTrue(path_lines[0].endswith(f"Path line {first}"))
+                        self.assertTrue(path_lines[-1].endswith(f"Path line {first + 5}"))
 
     def assert_rest(self, frame: dict) -> None:
         """Slot A's 16 cubes in its window, Slot B's 16, the focus (A's cell

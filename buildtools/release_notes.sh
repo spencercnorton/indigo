@@ -34,17 +34,20 @@ cat <<NOTES
 
 ## Install
 
-**New to Indigo:**
+Follow the **[install guide](https://norvitech.com/indigo/guide/install/)**: pick what starts your GameCube, then four steps. In short: download **\`Indigo-$tag.zip\`** from Assets below (not the Source code ZIP), unzip it on your computer, back up the card's \`swiss\` folder (Swiss hides it) and any \`ipl.dol\` or \`boot.dol\` you replace, then copy two files onto the card.
 
-1. First, before you copy anything: if the card already has an \`ipl.dol\` in its root, that is your current Swiss. Rename it to \`z.dol\` to keep it; with PicoBoot or PicoLoader, holding Z at power-on starts it.
-2. Unzip \`Indigo-$tag.zip\` (below), select everything inside and drag it onto the root of the card. Let it replace files of the same name. On a Mac, hold Option as you drop and choose **Merge**: **Replace** deletes what is already in the card's \`swiss\` folder (your settings, cheats and saves).
-3. Put your games in \`/games\` (make the folder if the card has none), with nothing else in it or in the game folders, and power on.
+| What starts your GameCube? | Copy \`ipl.dol\` to | Indigo starts |
+| --- | --- | --- |
+| GC Loader | \`boot.dol\` at the top of the card, keeping \`boot.iso\` (Swiss starts it) | When you switch on |
+| PicoBoot or PicoLoader | \`ipl.dol\` at the top of the card, replacing the old one | When you switch on |
+| FlippyDrive | \`boot.dol\` at the top of its microSD card | When you switch on |
+| Something else, or not sure | \`apps/indigo.dol\` (make \`apps\` if needed) | From Swiss: open \`apps\`, then \`indigo.dol\` |
 
-**Updating from Indigo 1.x:** \`ipl.dol\` is already Indigo, so don't rename it; copy the new files over the old ones, choosing Merge on a Mac. If 1.25.0 made you rename stock Swiss to \`swiss.dol\`, you can rename it back to \`z.dol\`: since 2.0, Indigo doesn't start it by itself ([#3](https://github.com/spencercnorton/indigo/issues/3)).
+The second file is \`swiss/patches/apploader.img\`: copy it into the card's \`swiss/patches\` folder (make the folders if needed), replacing the old one, so In-Game Reset set to Apploader returns to Indigo. Any setup can use \`apps/indigo.dol\` and keep starting as it does today. Some PicoBoot and PicoLoader chips have Swiss built in and never read \`ipl.dol\`: the guide shows how to check.
 
-PicoBoot and PicoLoader boot \`ipl.dol\`. FlippyDrive boots \`boot.dol\`, and with GC Loader or another loader that boots a disc image you start \`ipl.dol\` from Swiss: the [install guide]($repo/blob/$tag/docs/guide/install.md) covers every loader, updating and going back to stock Swiss.
+**Updating:** back up the card's \`swiss\` folder, rename the new \`ipl.dol\` to the name of the Indigo file you start now (\`ipl.dol\`, \`boot.dol\` or \`indigo.dol\`) and copy it over that file. Then copy the new \`swiss/patches/apploader.img\` over the old one.
 
-**Posters and cheats** (optional; unzip one and drag its \`swiss\` folder onto the card the same way): [Posters](https://indigo.norvitech.com/indigo-posters-all.zip) (every region, with Spotlight's stills and descriptions) · [Cheats](https://indigo.norvitech.com/indigo-cheats.zip)
+**Posters and cheats** (optional; unzip one and copy the files in its \`swiss/ui\` or \`swiss/cheats\` folder into the card's folder of the same name, making it if needed): [Posters](https://indigo.norvitech.com/indigo-posters-all.zip) (every region, with Spotlight's stills and descriptions) · [Cheats](https://indigo.norvitech.com/indigo-cheats.zip)
 
 **Verify:** \`SHA256SUMS.txt\` lists the zip's SHA-256, and the zip carries a build provenance attestation: \`gh attestation verify Indigo-$tag.zip --repo spencercnorton/indigo\`.
 NOTES

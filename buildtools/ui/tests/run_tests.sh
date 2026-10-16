@@ -74,6 +74,8 @@ run_binaries() {
 	fixtures=
 	echo "== game folder navigation$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_gameflow_folder_navigation.py; else python3 ./test_gameflow_folder_navigation.py --sanitize; fi
+	echo "== a game's Detail from the File Browser: its window$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_files_detail.py; else python3 ./test_files_detail.py --sanitize; fi
 	if make_fixture; then
 		fixtures="$TMP/fixture.pak $TMP/fixture-stills.pak"
 	else
@@ -93,8 +95,14 @@ run_binaries() {
 	done
 	echo "== raw card device adapter$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_saves_raw_backend.py; else python3 ./test_saves_raw_backend.py --sanitize; fi
+	echo "== raw card writer$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_saves_raw_writer.py; else python3 ./test_saves_raw_writer.py --sanitize; fi
 	echo "== game save stats$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_saves_stats.py; else python3 ./test_saves_stats.py --sanitize; fi
+	echo "== Game Detail's save choice$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_save_choice.py; else python3 ./test_save_choice.py --sanitize; fi
+	echo "== memory card slots$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_card_slots.py; else python3 ./test_card_slots.py --sanitize; fi
 	echo "== manual MP3 player$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_mp3_player.py; else python3 ./test_mp3_player.py --sanitize; fi
 	# card_art builds its own binaries: posters of apps and folders, their guards.
@@ -159,6 +167,10 @@ run_contracts() {
 	echo "== settings files: real parser/writer vs docs/SETTINGS.md =="
 	python3 ./test_settings_file.py
 	echo "== settings saves: power lost at any step leaves them whole =="
+	python3 ./test_folder_config.py
+	python3 ./test_folder_config.py --sanitize
+	python3 ./test_memory_folder_controls.py
+	python3 ./test_memory_folder_controls.py --sanitize
 	python3 ./test_config_save.py
 	echo "== settings views: every setting in exactly one view =="
 	python3 ./test_settings_views.py
@@ -200,6 +212,9 @@ run_contracts() {
 
 	echo "== strict Game Library dispatch audit =="
 	python3 ./audit_gameflow_dispatch.py
+
+	echo "== File Browser list contract audit =="
+	python3 ./audit_files_contract.py
 
 	echo "== hardware Alpha V1 Home polish audit =="
 	python3 ./audit_home_polish.py

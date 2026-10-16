@@ -190,12 +190,6 @@ uiGameflowLibraryMode_t UIGameflowLibrary_EntryMode(
 	uiGameflowLibraryMode_t mode, uiGameflowLibraryEntryType_t type,
 	const char *name);
 
-/* A Library location always uses the retained presentation. Anywhere else
- * keeps the caller's requested legacy browser. Browser values remain opaque
- * here so this pure policy is host-testable. */
-int UIGameflowLibrary_SelectBrowser(uiGameflowLibraryMode_t mode,
-	int requestedBrowser, int retainedBrowser);
-
 /* Both supported library layouts own Game Detail: strict roots expose folder
  * cards, while Swiss's default games-directory flattening exposes their child
  * images directly. */

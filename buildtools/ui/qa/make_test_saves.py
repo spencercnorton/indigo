@@ -55,6 +55,12 @@ RAW_GAME_ID = "GACZ01"  # Astral Circuit on the emulator's demonstration disc
 RAW_UPDATED_SECONDS = 762525240  # 2024-02-29 12:34, seconds since 2000-01-01
 RAW_EXPORT_NAME = "01-GACZ-Demo Save.gci"
 RAW_ICON_COLOURS = ((240, 40, 40), (40, 230, 80))
+MEMORY_FOLDER_NAME = "Backups"
+MEMORY_STATIC_NAME = "opaque-profile.gci"
+MEMORY_STATIC_TITLE = "Copper Garage"
+MEMORY_STATIC_COLOUR = (240, 190, 40)
+MEMORY_NO_ART_NAME = "racing-profile.gci"
+MEMORY_NO_ART_TITLE = "Need for Speed: Underground 2"
 
 
 @dataclass
@@ -221,6 +227,28 @@ def encode(save: Save, when: int) -> bytes:
         save.name.encode().ljust(32, b"\0"), when, save.icon_addr,
         formats, speeds, save.permissions, 0, 0, blocks, 0xFFFF, 0)
     return entry + bytes(data)
+
+
+def memory_folder_files() -> dict[str, bytes]:
+    """Public save-folder data: an opaque filename with readable metadata.
+
+    One authored texture frame is deliberately static; the native route must
+    never report it as an animation or mistake cube motion for another frame.
+    """
+    save = Save("ZCGE", "profile.dat", (MEMORY_STATIC_TITLE, "Synthetic profile"),
+                banner=BANNER_RGB5A3, frames=((RGB5A3, 2),),
+                frame_colours=(MEMORY_STATIC_COLOUR,))
+    # A real-world header shape, with all console metadata disabled. This
+    # payload is entirely synthetic, including its unadvertised caption.
+    # A console title fallback must use the public game ID, not scan random
+    # save data for text or invent animation frames.
+    no_art = bytearray(encode(Save("GUGE", "2profile", ("", ""), banner=0,
+                                 frames=(), icon_addr=NO_ART, maker="69"),
+                              RAW_UPDATED_SECONDS))
+    struct.pack_into(">I", no_art, 0x3C, NO_ART)
+    no_art[64 + 0x10:64 + 0x10 + 16] = b"Night Circuit 2\0"
+    return {MEMORY_STATIC_NAME: encode(save, RAW_UPDATED_SECONDS),
+            MEMORY_NO_ART_NAME: bytes(no_art)}
 
 
 def virtual_saves(game_id: str = RAW_GAME_ID) -> tuple[Save, Save]:

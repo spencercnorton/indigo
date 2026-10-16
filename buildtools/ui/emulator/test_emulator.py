@@ -227,6 +227,8 @@ class Card(unittest.TestCase):
             raw, _ = run.make_test_saves.virtual_card()
             folder = run.make_test_saves.SAVE_FOLDER
             self.assertEqual(card.read_card(image, f"{folder}/{run.make_test_saves.RAW_CARD_NAME}"), raw)
+            for name, data in run.make_test_saves.memory_folder_files().items():
+                self.assertEqual(card.read_card(image, f"{folder}/{run.make_test_saves.MEMORY_FOLDER_NAME}/{name}"), data)
             self.assertIsNone(card.read_card(image, f"{folder}/{run.make_test_saves.RAW_EXPORT_NAME}"),
                               "only Indigo's Copy operation should create the export")
 
@@ -252,11 +254,44 @@ class Card(unittest.TestCase):
             with self.assertRaises(ValueError):
                 card.fragment(image, "ipl.dol", 2)  # one cluster can't be two pieces
 
+    @unittest.skipUnless(shutil.which("mkfs.fat") and shutil.which("mdir"), "needs dosfstools and mtools")
+    def test_the_files_routes_second_card(self):
+        """The second SD card holds its files, and its listing reads as the
+        File Browser sorts it: "..", folders, then names ignoring case."""
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "second.img"
+            card.second_card(image)
+            for name, data in card.SECOND_FILES.items():
+                self.assertEqual(card.read_card(image, name), data)
+            self.assertEqual(card.listing(image), ["..", "backups/", "swiss/", "a-one.txt", "b-two.txt",
+                                                  "big.bin", "c-three.txt"])
+            # Memory Cards finds a card image where Swiss's Emulate Memory
+            # Card keeps a game's: on the device the game starts from.
+            self.assertEqual(card.read_card(image, card.SECOND_IMAGE),
+                             run.make_test_saves.virtual_card()[0])
+            self.assertEqual(card.listing(image, "swiss/saves"), ["..", "MemoryCardA.USA.raw"])
+            # A folder below the top reads the same way.
+            self.assertEqual(card.listing(image, "backups"), [".."])
+            note = Path(directory) / "Zed.txt"
+            note.write_bytes(b"z")
+            subprocess.run(["mcopy", "-i", str(image), str(note), "::/backups/"], check=True,
+                           env=card.MTOOLS, capture_output=True)
+            subprocess.run(["mmd", "-i", str(image), "::/backups/old"], check=True, env=card.MTOOLS,
+                           capture_output=True)
+            self.assertEqual(card.listing(image, "backups/"), ["..", "old/", "Zed.txt"])
+        ini = run.dolphin_ini("gcloader", Path("/work/card.img"), second=Path("/work/second.img"))
+        self.assertIn("SerialPort2 = 15\nSP2SDCardImage = /work/second.img\n", ini)
+        self.assertNotIn("/work/card.img", ini)  # the GC Loader's card is the drive's
+
     def test_settings_to_start_with(self):
         text = (run.SETTINGS / "non-default.ini").read_text()
         pairs = run.seeded(text)
         self.assertEqual(pairs["Clock"], "Left")
         self.assertNotIn("Menu Widescreen", pairs)
+        # The route tells the faces apart by their names, so Face Labels stays
+        # on; the smoke route checks Home without its hints.
+        self.assertNotIn("Hide Face Labels", pairs)
+        self.assertEqual(pairs["Hide On-screen Controls"], "Yes")
         self.assertTrue(all(not key.startswith("#") for key in pairs))
         self.assertEqual(run.seeded("# Clock=Right\nClock = Off\r\n"), {"Clock": "Off"})
 
@@ -264,7 +299,7 @@ class Card(unittest.TestCase):
         text = (run.SETTINGS / "save-details-wide.ini").read_text()
         start = run.seeded(text)
         self.assertEqual(start, {"Menu Widescreen": "Yes", "Swiss Video Mode": "Auto",
-                                 "Hide Apps Face": "No"})
+                                 "Down Face": "Apps"})
         route = run.Route.__new__(run.Route)
         route.checks, route.report, route.last_rgb = [], None, None
         route.folders_on = False
@@ -392,26 +427,126 @@ class MemoryCards(unittest.TestCase):
                         with self.assertRaises(run.Failed):
                             route.virtual_popup_checks()
 
-    def test_virtual_export_proof_rejects_wrong_payload_and_changed_source(self):
+    @staticmethod
+    def first_save_only(raw: bytes) -> bytes:
+        """The demonstration image once its second save is erased: what the
+        route leaves when the first save comes back to its own blocks."""
+        image, block = bytearray(raw), run.make_test_saves.BLOCK
+
+        def seal(data: bytearray, start: int, end: int, at: int) -> None:
+            words = struct.unpack(f">{(end - start) // 2}H", data[start:end])
+            value, inverse = sum(words) & 0xFFFF, sum(w ^ 0xFFFF for w in words) & 0xFFFF
+            struct.pack_into(">HH", data, at, 0 if value == 0xFFFF else value,
+                             0 if inverse == 0xFFFF else inverse)
+
+        for copy in (1, 2):
+            directory = image[copy * block:(copy + 1) * block]
+            directory[64:128] = b"\xff" * 64
+            seal(directory, 0, 0x1FFC, 0x1FFC)
+            image[copy * block:(copy + 1) * block] = directory
+        for copy in (3, 4):
+            block_map = image[copy * block:(copy + 1) * block]
+            struct.pack_into(">H", block_map, 6 * 2, 0)
+            struct.pack_into(">H", block_map, 6, 57)
+            seal(block_map, 4, block, 0)
+            image[copy * block:(copy + 1) * block] = block_map
+        return bytes(image)
+
+    def test_virtual_card_proof_reads_the_image_as_a_card(self):
         raw, gcis = run.make_test_saves.virtual_card()
+        after = self.first_save_only(raw)
         exported = bytearray(gcis[0])
         exported[0x36:0x38] = b"\x00\x05"  # the image's first block is retained
+        broken = bytearray(after)
+        broken[8192 + 1] ^= 1
+        broken[2 * 8192 + 1] ^= 1
+        moved = bytearray(after)  # a block the route never writes
+        moved[20 * 8192] ^= 1
         with tempfile.TemporaryDirectory() as directory:
-            for changed_raw, changed_export, passed in ((raw, bytes(exported), True),
-                    (raw, bytes(exported[:-1]) + bytes([exported[-1] ^ 1]), False),
-                    (raw[:-1] + bytes([raw[-1] ^ 1]), bytes(exported), False)):
+            for image, exports, passed in ((after, [bytes(exported), None], True),
+                                           (after, [None, bytes(exported)], True),
+                                           (after, [bytes(exported[:-1]) + bytes([exported[-1] ^ 1]), None], False),
+                                           (after, [bytes(exported), bytes(exported)], False),
+                                           (raw, [bytes(exported), None], False),
+                                           (bytes(broken), [bytes(exported), None], False),
+                                           (bytes(moved), [bytes(exported), None], False)):
                 with self.subTest(passed=passed):
                     route = run.Route.__new__(run.Route)
                     route.out, route.report, route.last_rgb = Path(directory), None, None
                     route.checks = []
                     route.emulator = mock.Mock(where=lambda: None)
-                    with mock.patch.object(card, "read_card", side_effect=[changed_raw, changed_export]):
+                    fixtures = list(run.make_test_saves.memory_folder_files().values())
+                    with mock.patch.object(card, "read_card", side_effect=fixtures + [image] + exports):
                         if passed:
                             route.virtual_card_checks(Path("test.img"))
-                            self.assertEqual(len(route.checks), 2)
+                            self.assertEqual(len(route.checks), 4 + len(fixtures))
                         else:
                             with self.assertRaises(run.Failed):
                                 route.virtual_card_checks(Path("test.img"))
+
+    def test_independent_card_reader(self):
+        raw, gcis = run.make_test_saves.virtual_card()
+        saves = run.card_image_saves(raw)
+        self.assertEqual(len(saves), 2)
+        for gci in gcis:
+            self.assertTrue(run.same_save(gci, saves[gci[:6] + gci[8:40]]))
+        self.assertEqual(len(run.card_image_saves(self.first_save_only(raw))), 1)
+        broken = bytearray(raw)
+        broken[8192 + 1] ^= 1  # one directory copy: the other stands
+        self.assertEqual(len(run.card_image_saves(bytes(broken))), 2)
+        broken[2 * 8192 + 1] ^= 1
+        with self.assertRaises(ValueError):
+            run.card_image_saves(bytes(broken))
+
+    def test_public_folder_fixtures_have_static_and_disabled_metadata_shapes(self):
+        files = run.make_test_saves.memory_folder_files()
+        static = files[run.make_test_saves.MEMORY_STATIC_NAME]
+        absent = files[run.make_test_saves.MEMORY_NO_ART_NAME]
+        self.assertEqual(set(files), {"opaque-profile.gci", "racing-profile.gci"})
+        self.assertEqual(struct.unpack_from(">HH", static, 0x30), (2, 2))
+        self.assertEqual(static[64:96].rstrip(b"\0"), b"Copper Garage")
+        self.assertEqual(absent[:6], b"GUGE69")
+        self.assertEqual(absent[7], 0)
+        self.assertEqual(struct.unpack_from(">IHH", absent, 0x2C), (0xFFFFFFFF, 0, 0))
+        self.assertEqual(struct.unpack_from(">I", absent, 0x3C)[0], 0xFFFFFFFF)
+        self.assertEqual(absent[64 + 0x10:64 + 0x20], b"Night Circuit 2\0")
+        self.assertNotIn(b"Need for Speed", absent, "the fallback cannot get its title by scanning payload")
+        self.assertEqual(len(absent), 64 + run.make_test_saves.BLOCK)
+
+    def test_folder_color_readback_requires_its_memory_card_key_and_exact_path(self):
+        for settings, colour, passed in (
+                (b"Memory Card Folder Colors=gcldr:/swiss/saves/Backups~2\r\n", 2, True),
+                (b"Memory Card Folder Colors=sd2sp2:/swiss/saves/Backups~2\r\n", 2, True),
+                (b"Library Folder Colors=gcldr:/swiss/saves/Backups~2\r\n", 2, False),
+                (b"Memory Card Folder Colors=gcldr:/games/Backups~2\r\n", 2, False),
+                (b"Memory Card Folder Colors=gcldr:/swiss/saves/Backups~3\r\n", 2, False),
+                (b"Memory Card Folder Colors=gcldr:/swiss/saves/Backups~20\r\n", 2, False),
+                (b"Memory Card Folder Colors=\r\n", None, True),
+                (b"Memory Card Folder Colors=gcldr:/swiss/saves/Backups~2\r\n", None, False)):
+            with self.subTest(settings=settings, colour=colour):
+                route = run.Route.__new__(run.Route)
+                route.sd_image, route.checks, route.report, route.last_rgb = Path("test.img"), [], None, None
+                route.emulator = mock.Mock(where=lambda: None)
+                with mock.patch.object(card, "read_card", return_value=settings):
+                    if passed:
+                        route.memory_folder_saved(colour)
+                        self.assertTrue(all(check["passed"] for check in route.checks))
+                    else:
+                        with self.assertRaises(run.Failed):
+                            route.memory_folder_saved(colour)
+
+    def test_folder_identity_proof_rejects_a_changed_save(self):
+        raw, gcis = run.make_test_saves.virtual_card()
+        fixtures = run.make_test_saves.memory_folder_files()
+        changed = next(iter(fixtures.values()))
+        changed = changed[:-1] + bytes([changed[-1] ^ 1])
+        route = run.Route.__new__(run.Route)
+        route.out, route.report, route.last_rgb = Path("."), None, None
+        route.checks = []
+        route.emulator = mock.Mock(where=lambda: None)
+        with mock.patch.object(card, "read_card", side_effect=[changed, *list(fixtures.values())[1:], raw, gcis[0]]):
+            with self.assertRaises(run.Failed):
+                route.virtual_card_checks(Path("test.img"))
 
     def test_the_cards_hold_saves_dolphin_lists(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -538,6 +673,50 @@ class Screen(unittest.TestCase):
         from PIL import Image
         return np.asarray(Image.open(Path(__file__).parent / "fixtures" / name).convert("RGB"))
 
+    def test_native_short_folder_colors_and_stale_frames(self):
+        from PIL import Image
+        fixture = Path(__file__).parent / "fixtures"
+        indigo, azure = [np.asarray(Image.open(fixture / f"folder-color-{name}.png")
+                                   .convert("RGB")).max(axis=2) >= run.TEXT_LEVEL
+                         for name in ("indigo", "azure")]
+        self.assertEqual((int(indigo.sum()), int(azure.sum())), (73, 50))
+        # The original generic title waiter rejected this real Azure word.
+        self.assertTrue(run.has_label(indigo))
+        self.assertFalse(run.has_label(azure))
+        self.assertTrue(run.has_folder_color_label(azure))
+        self.assertFalse(run.same_text(indigo, azure))
+        self.assertFalse(run.has_folder_color_label(np.zeros_like(azure)))
+        self.assertFalse(run.has_folder_color_label(np.ones_like(azure)))
+        pixel = np.zeros_like(azure)
+        pixel[8, 20] = True
+        self.assertFalse(run.has_folder_color_label(pixel))
+        bar = np.zeros_like(azure)
+        bar[8:11, 10:35] = True
+        self.assertFalse(run.has_folder_color_label(bar))
+
+        class Samples:
+            def __init__(self, *unused):
+                self.remaining = 6
+
+            def expired(self):
+                self.remaining -= 1
+                return self.remaining < 0
+
+        def wait(sequence, **match):
+            route = run.Route.__new__(run.Route)
+            route.emulator = mock.Mock()
+            frames = iter(sequence)
+            route.gray = lambda: None
+            with mock.patch.object(run, "Deadline", Samples), \
+                 mock.patch.object(run.time, "sleep"), \
+                 mock.patch.object(run, "text_mask", side_effect=lambda *unused: next(frames, sequence[-1])):
+                return route.folder_color(**match)
+
+        self.assertIsNone(wait([indigo] * 6, unlike=indigo))
+        self.assertIsNone(wait([indigo, azure, indigo, indigo, indigo, indigo], unlike=indigo))
+        self.assertTrue(np.array_equal(wait([indigo, azure, indigo, azure, azure], unlike=indigo), azure))
+        self.assertTrue(np.array_equal(wait([azure, azure], like=azure), azure))
+
     def test_actual_legacy_folder_chrome_and_its_fades(self):
         legacy = self.folder_frame("folder-legacy-browser.png")
         for strength in (1.0, 0.75, 0.5, 0.25, 0.1):
@@ -559,6 +738,118 @@ class Screen(unittest.TestCase):
         with self.assertRaises(run.Broken):
             run.legacy_folder_browser(legacy[:400])
         self.assertEqual((run.TEXT_LEVEL, run.SAME, run.DIFFERENT), (160, 0.85, 0.5))
+
+    def test_the_file_browser_text_the_route_reads(self):
+        main, right = self.folder_frame("files-screen.png"), self.folder_frame("files-screen-right.png")
+        wide = self.folder_frame("files-screen-wide.png")
+        # Each pane's path line, in both shapes: the left pane's sits outside
+        # the stage detection_frame keeps when Menu Widescreen widens it.
+        for frame, shape in ((main, False), (right, False), (wide, True)):
+            self.assertTrue(run.files_text(frame, shape).any())
+            self.assertTrue(run.files_text(frame, shape, right=True).any())
+        self.assertFalse(run.text_mask(run.detection_frame(wide, True).max(axis=2),
+                                       run.FILES_PATH_BOX).any())
+        # "/" against "/apps", and the root's rows against /apps' rows.
+        self.assertLess(run.overlap(run.files_text(main, right=True),
+                                    run.files_text(right, right=True)), run.DIFFERENT)
+        self.assertLess(run.overlap(run.files_text(main, box=run.FILES_RIGHT_ROWS_BOX),
+                                    run.files_text(right, box=run.FILES_RIGHT_ROWS_BOX)),
+                        run.DIFFERENT)
+        # The Actions box beside the left pane's row, which files_screen still
+        # finds; not on the plain screens, nor beside the right pane.
+        boxed = self.folder_frame("files-screen-z.png")
+        self.assertTrue(run.files_screen(boxed))
+        self.assertTrue(run.files_box(boxed, 0))
+        self.assertFalse(run.files_box(boxed, 1))
+        for frame in (main, right):
+            self.assertFalse(run.files_box(frame, 0))
+            self.assertFalse(run.files_box(frame, 1))
+        # A storage menu is a box beside the pane too.
+        self.assertTrue(run.files_box(self.folder_frame("files-storage-right.png"), 1))
+
+    def test_the_file_browser_and_its_focused_pane(self):
+        for name, wide, pane in (("files-screen.png", False, 0), ("files-screen-right.png", False, 1),
+                                 ("files-screen-wide.png", True, 0),
+                                 ("files-screen-themed.png", False, 0)):
+            frame = self.folder_frame(name)
+            self.assertTrue(run.files_screen(frame, wide), name)
+            self.assertEqual(run.active_pane(frame, wide), pane, name)
+            self.assertFalse(run.legacy_folder_browser(frame), name)
+        # Menu Widescreen's letterbox read as 4:3 isn't the screen.
+        self.assertFalse(run.files_screen(self.folder_frame("files-screen-wide.png")))
+        for name in ("folder-legacy-browser.png", "folder-horizontal.png", "folder-vertical.png",
+                     "folder-grid.png", "folder-spotlight.png", "folder-home.png",
+                     "themed-save-browser.png"):
+            self.assertFalse(run.files_screen(self.folder_frame(name)), name)
+        frame = self.folder_frame("files-screen.png")
+        for frame_ in (np.zeros_like(frame), np.full_like(frame, 255)):
+            self.assertFalse(run.files_screen(frame_))
+        # Each part counts: a pane's top or bottom, a storage button, the info
+        # bar, and the gutter between the panes.
+        for box in ((150, 100, 300, 116), (340, 332, 490, 348), (80, 22, 220, 60),
+                    (440, 22, 560, 60), (150, 355, 490, 368), (150, 425, 490, 438)):
+            missing = frame.copy()
+            x0, y0, x1, y1 = box
+            missing[y0:y1, x0:x1] = frame[104, 200]
+            self.assertFalse(run.files_screen(missing), box)
+        joined = frame.copy()
+        joined[107:110, 300:340] = frame[108, 200]
+        self.assertFalse(run.files_screen(joined))
+        with self.assertRaises(run.Broken):
+            run.files_screen(frame[:400])
+
+    def test_the_file_browser_storage_menus(self):
+        right, left = self.folder_frame("files-storage-right.png"), self.folder_frame("files-storage-left.png")
+        # Each menu over its own pane, the screen still found under it.
+        for frame, pane in ((right, 1), (left, 0)):
+            self.assertTrue(run.files_screen(frame))
+            self.assertTrue(run.files_menu(frame, pane))
+            self.assertFalse(run.files_menu(frame, 1 - pane))
+        # No menu: the panes' rows, a focus bar, Swiss's Z box, other screens.
+        for name in ("files-screen.png", "files-screen-right.png", "files-screen-themed.png",
+                     "files-screen-z.png", "folder-legacy-browser.png", "folder-home.png",
+                     "themed-save-browser.png"):
+            for pane in (0, 1):
+                self.assertFalse(run.files_menu(self.folder_frame(name), pane), (name, pane))
+        # The title box's top edge and the items box's both count.
+        for frame, pane in ((right, 1), (left, 0)):
+            x0, x1 = run.FILES_MENU_EDGES[pane]
+            for y0, y1 in ((110, 120), (145, 153)):
+                missing = frame.copy()
+                missing[y0:y1, x0:x1] = frame[130, x0 + 60]
+                self.assertFalse(run.files_menu(missing, pane), (pane, y0))
+
+    def test_the_file_browser_storage_menus_in_widescreen(self):
+        # Menu Widescreen moves the right pane's outer edge, and the boxes
+        # right-aligned to it, past the 4:3 stage: the detectors read the
+        # pane where UIFiles_Layout puts it, on the whole stage.
+        self.assertEqual(run.files_pane_x(0, True), (-67, 312))
+        self.assertEqual(run.files_pane_x(1, True), (328, 707))
+        self.assertEqual(run.files_pane_x(1), (328, 600))
+        self.assertEqual(run.FILES_MENU_EDGES, ((186, 300), (474, 588)))
+        left, right = (self.folder_frame(f"files-storage-wide-{side}.png") for side in ("left", "right"))
+        for frame, pane in ((left, 0), (right, 1)):
+            self.assertTrue(run.files_screen(frame, True))
+            self.assertTrue(run.files_menu(frame, pane, True), pane)
+            self.assertFalse(run.files_menu(frame, 1 - pane, True), pane)
+            self.assertTrue(run.files_box(frame, pane, True), pane)
+            self.assertFalse(run.files_box(frame, 1 - pane, True), pane)
+            # Read as 4:3, the letterbox holds no menu.
+            self.assertFalse(run.files_menu(frame, pane), pane)
+        plain = self.folder_frame("files-screen-wide.png")
+        for pane in (0, 1):
+            self.assertFalse(run.files_menu(plain, pane, True), pane)
+            self.assertFalse(run.files_box(plain, pane, True), pane)
+        # The right menu's own edges count: its items box's top edge, out
+        # past the 4:3 stage's right side.
+        frame, at = run.files_stage(right, True)
+        self.assertEqual(frame.shape[1], run.WIDTH + 2 * at)
+        x0, x1 = run.files_menu_edges(1, True)
+        self.assertGreater(x1, 640)
+        missing = right.copy()
+        c0, y0, c1, y1 = run.stage_box((x0, 145, x1, 153), True)
+        missing[y0:y1, c0:c1] = right[run.stage_box((0, 130, 0, 130), True)[1], c0 + 40]
+        self.assertFalse(run.files_menu(missing, 1, True))
 
     def test_native_frame_reader_catches_one_legacy_frame_and_checks_each_index(self):
         from PIL import Image
@@ -737,8 +1028,10 @@ class Screen(unittest.TestCase):
             self.assertFalse(run.same_text(*kib), shape + " actually distinguishes 16 from 8")
             dates = [run.text_mask(frame, run.SAVE_DETAILS_UPDATED_BOX) for frame in gray]
             self.assertFalse(run.same_text(*dates), "recorded date and Unknown differ")
-            created = [run.text_mask(frame, run.SAVE_DETAILS_CREATED_BOX) for frame in gray]
-            self.assertTrue(run.same_text(*created), "both creation values are Not recorded")
+            metadata = [run.text_mask(frame, run.SAVE_DETAILS_ICON_BOX) for frame in gray]
+            self.assertTrue(all(run.has_label(value) for value in metadata),
+                            "the save icon status must be visible in both native captures")
+            self.assertFalse(run.same_text(*metadata), "Animated and None stored differ")
 
     def test_actual_popup_value_only_boxes_reject_erasure_and_label_only_frames(self):
         from PIL import Image
@@ -746,13 +1039,12 @@ class Screen(unittest.TestCase):
         fields = ((run.SAVE_DETAILS_BLOCKS_BOX, (122, 214, 302, 234), True),
                   (run.SAVE_DETAILS_SIZE_BOX, (350, 214, 528, 234), True),
                   (run.SAVE_DETAILS_SOURCE_BOX, (100, 244, 234, 270), False),
-                  (run.SAVE_DETAILS_CREATED_BOX, (100, 274, 234, 300), False),
-                  (run.SAVE_DETAILS_UPDATED_BOX, (100, 304, 234, 330), False))
+                  (run.SAVE_DETAILS_ICON_BOX, (100, 304, 234, 330), False),
+                  (run.SAVE_DETAILS_UPDATED_BOX, (100, 274, 234, 300), False))
         for name, wide in (("default-save-details-known.png", False),
                            ("default-save-details-unknown.png", False),
                            ("wide-save-details-known.png", True),
-                           ("wide-save-details-unknown.png", True),
-                           ("themed-save-details.png", False)):
+                           ("wide-save-details-unknown.png", True)):
             rgb = np.asarray(Image.open(root / name).convert("RGB"))
             original = rgb.copy()
             gray = run.detection_frame(rgb, wide).max(axis=2)
@@ -776,7 +1068,7 @@ class Screen(unittest.TestCase):
             for value_box, _, numeric in fields:
                 predicate = run.has_save_number if numeric else run.has_label
                 self.assertFalse(predicate(run.text_mask(label_only, value_box)), (name, "labels only"))
-            for box in (run.SAVE_DETAILS_TITLE_BOX, run.SAVE_DETAILS_CREATED_BOX,
+            for box in (run.SAVE_DETAILS_TITLE_BOX, run.SAVE_DETAILS_ICON_BOX,
                         run.SAVE_DETAILS_UPDATED_BOX, run.SAVE_DETAILS_ACTIONS_BOX):
                 self.assertTrue(run.has_label(run.text_mask(gray, box)), (name, box))
             np.testing.assert_array_equal(rgb, original, "positive native capture remains untouched")
@@ -915,6 +1207,33 @@ class Screen(unittest.TestCase):
                 # texture cannot be mistaken for that second frame.
                 self.assertEqual(run.raw_icon_frame(np.roll(picture, 2, axis=1), wide), frame)
 
+    def test_native_wide_folder_path_change_is_not_hidden_by_the_sd_glyph(self):
+        from PIL import Image
+        root = Path(__file__).parent / "fixtures"
+        before, opened = [np.asarray(Image.open(root / ("memory-folder-path-" + name + ".png"))
+                                     .convert("RGB")).max(axis=2) >= run.TEXT_LEVEL
+                          for name in ("root", "open")]
+        self.assertTrue(run.has_label(before))
+        self.assertTrue(run.has_label(opened))
+        self.assertFalse(run.same_text(before, opened))
+        self.assertTrue(run.same_text(before, before.copy()))
+        self.assertFalse(run.has_label(np.zeros_like(opened)), "an empty transition is not the new path")
+        # The actual unchanged SD marker reproduces the whole-header rejection.
+        old_before, old_opened = [np.asarray(Image.open(root / ("memory-folder-header-" + name + ".png"))
+                                             .convert("RGB")).max(axis=2) >= run.TEXT_LEVEL
+                                  for name in ("root", "open")]
+        self.assertTrue(run.same_text(old_before, old_opened))
+
+    def test_folder_color_proof_is_scoped_to_the_mini_cube_in_both_shapes(self):
+        for wide in (False, True):
+            rgb = np.zeros((run.HEIGHT, run.WIDTH, 3), np.uint8)
+            rgb[300:350, 300:350] = run.FOLDER_AZURE
+            self.assertEqual(run.folder_cube_azure(rgb, wide), 0,
+                             "dialog swatches and backdrop colors cannot stand in for the cube")
+            x0, y0, _, _ = run.stage_box(run.FOLDER_CUBE_BOX, wide)
+            rgb[y0+8:y0+12, x0+8:x0+20] = run.FOLDER_AZURE
+            self.assertEqual(run.folder_cube_azure(rgb, wide), 48)
+
     def test_crash_and_black_screens_are_named(self):
         crash = np.zeros((run.HEIGHT, run.WIDTH, 3), np.uint8)
         crash[20:120, 20:400:2] = 255
@@ -924,13 +1243,13 @@ class Screen(unittest.TestCase):
         self.assertEqual(run.diagnose(indigo), "")
 
     @staticmethod
-    def probe_screen(words) -> np.ndarray:
-        """The probe's screen as probe.c draws it into a 640x480 framebuffer."""
-        rgb = np.zeros((480, 640, 3), np.uint8)
+    def probe_screen(words, height=480, cell_height=16) -> np.ndarray:
+        """The probe's bit words in the actual XFB, before capture scaling."""
+        rgb = np.zeros((height, 640, 3), np.uint8)
         rgb[88:] = (0, 128, 255)
         for row, word in enumerate(words):
             for bit in range(32):
-                rgb[112 + row * 16:128 + row * 16, 64 + bit * 16:80 + bit * 16] = \
+                rgb[112 + row * cell_height:112 + (row + 1) * cell_height, 64 + bit * 16:80 + bit * 16] = \
                     235 if word >> (31 - bit) & 1 else 16
         return rgb
 
@@ -954,6 +1273,14 @@ class Screen(unittest.TestCase):
         squashed = np.zeros_like(screen)
         squashed[40:440, 29:611] = np.asarray(Image.fromarray(screen).resize((582, 400), Image.NEAREST))
         self.assertEqual(run.probe_report(squashed)["disc_id"], "GPRE01")
+        # A 240p game patched the probe into a 240-line XFB. Its previous
+        # fixed-height drawing clipped the report (and overran that XFB).
+        low = self.probe_screen(words, height=240, cell_height=5)
+        for image in [low, np.asarray(Image.fromarray(low).resize((640, 480), Image.NEAREST))]:
+            self.assertTrue(run.probe_report(image)["valid"])
+            self.assertEqual(run.probe_report(image)["disc_id"], "GPRE01")
+        clipped = run.probe_report(self.probe_screen(words, height=240))
+        self.assertFalse(clipped and clipped["valid"], "a cropped report cannot stand in for a valid CRC")
         words[4] ^= 1
         self.assertFalse(run.probe_report(self.probe_screen(words))["valid"], "a misread fails its CRC")
         self.assertIsNone(run.probe_report(np.full((480, 640, 3), (35, 25, 60), np.uint8)))
@@ -983,6 +1310,23 @@ class Screen(unittest.TestCase):
             self.assertTrue(wait.expired())
             self.assertEqual(emulator.where(), "PC 801179a0 LR 8011774c at 3.5 s")
 
+    def test_a_fresh_wait_counts_from_a_report_after_it_began(self):
+        """A press must not end at the next report when the last one is old."""
+        with tempfile.TemporaryDirectory() as directory:
+            emulator = run.Emulator.__new__(run.Emulator)
+            emulator.log = Path(directory) / "dolphin.log"
+            emulator.log.write_text("TICKS 486000000 PC 80003100 LR 00000000\n")
+            stale, fresh = run.Deadline(emulator, 0.25), run.Deadline(emulator, 0.25, fresh=True)
+            self.assertEqual(fresh.elapsed(), 0.0, "nothing reported since it began")
+            with emulator.log.open("a") as log:
+                log.write("TICKS 607500000 PC 80003100 LR 00000000\n")
+            self.assertTrue(stale.expired(), "a stale start can end a press at once")
+            self.assertFalse(fresh.expired())
+            with emulator.log.open("a") as log:
+                log.write("TICKS 729000000 PC 80003100 LR 00000000\n")
+            self.assertEqual(fresh.elapsed(), 0.25)
+            self.assertTrue(fresh.expired())
+
     def test_without_the_consoles_clock_a_wait_counts_the_machines(self):
         with tempfile.TemporaryDirectory() as directory:
             emulator = run.Emulator.__new__(run.Emulator)
@@ -993,6 +1337,19 @@ class Screen(unittest.TestCase):
             time.sleep(0.06)
             self.assertTrue(wait.expired())
             self.assertIsNone(emulator.where())
+
+    def test_a_slow_dolphin_does_not_cut_a_press_short(self):
+        """With reports slower than WALL_FACTOR times a press, the machine's
+        seconds end it no sooner than WALL_FLOOR."""
+        with tempfile.TemporaryDirectory() as directory:
+            emulator = run.Emulator.__new__(run.Emulator)
+            emulator.log = Path(directory) / "dolphin.log"
+            emulator.log.write_text("TICKS 486000000 PC 80003100 LR 00000000\n")
+            wait = run.Deadline(emulator, run.PRESS_SECONDS, fresh=True)
+            wait.wall -= run.PRESS_SECONDS * run.WALL_FACTOR + 0.01
+            self.assertFalse(wait.expired(), "no report yet, and less than WALL_FLOOR")
+            wait.wall -= run.WALL_FLOOR
+            self.assertTrue(wait.expired())
 
     def press_until(self, screens, answers):
         """press_until with the screen's text and settled_label's answers scripted."""
@@ -1018,6 +1375,40 @@ class Screen(unittest.TestCase):
         found, presses, again = self.press_until(iter([before, moved]), iter([(None, 0.0), (None, 1.0)]))
         self.assertIsNone(found)
         self.assertEqual((presses, again), (["RIGHT"], []))
+
+    def test_a_settings_walk_takes_back_a_repeat_and_presses_a_missed_step_again(self):
+        """A Settings page of 20 rows that keeps its focus in the fourth visible
+        row once it scrolls. The sixth DOWN is missed and the last is held into
+        the repeat (two rows): the walk still ends on the eleventh row below."""
+        focus, moves = [0], iter([1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 2, 1])
+        presses = []
+
+        def gray():
+            frame = np.zeros((480, 640), np.uint8)
+            first = max(0, focus[0] - 3)
+            for slot, top in enumerate(run.SETTINGS_ROW_TOPS):
+                x = 50 + 12 * (first + slot)
+                frame[top + 8:top + 24, x:x + 8] = 255  # each row's own label
+                if first + slot == focus[0]:  # lit, its label a little bolder
+                    frame[top + 2:top + 30, 320:480] = 60
+                    frame[top + 8:top + 24, x + 8:x + 10] = 255
+            return frame
+
+        def press(button, seconds=0):
+            presses.append(button)
+            focus[0] += next(moves) * (1 if button == "DOWN" else -1)
+
+        route = run.Route.__new__(run.Route)
+        route.checks, route.last_rgb, route.report = [], None, None
+        route.emulator = mock.Mock(where=lambda: None)
+        route.gray, route.press, route.pause = gray, press, lambda seconds: None
+        route.walk_rows(11, "DOWNs reach the row")
+        self.assertEqual(focus[0], 11)
+        self.assertEqual(presses, ["DOWN"] * 12 + ["UP"])
+        self.assertEqual(route.checks[-1]["odd_steps"], [0, 2])
+        focus[0], moves = 0, iter([1, 10])
+        with self.assertRaises(run.Failed):  # a row it can't find among the rows before
+            route.walk_rows(2, "DOWNs reach the row")
 
     def test_fatal_lines(self):
         with tempfile.TemporaryDirectory() as directory:

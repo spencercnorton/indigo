@@ -118,13 +118,15 @@ static void computeRows(const uiHomeState_t *state,
 			state->selection == 0);
 		return;
 	}
-	/* Three rows share the band between the cube's rail and the command
-	 * line at a 19-pixel pitch: 12-pixel panels, the glows a pixel apart. */
-	if(count == 3) {
+	/* Three or four rows share the band between the cube's rail and the
+	 * command line at a 19-pixel pitch: 12-pixel panels, the glows a pixel
+	 * apart. Four start a row higher, below System's raised cube. */
+	if(count >= 3) {
+		int first = count == 4 ? 353 : 372;
 		int row;
 
-		for(row = 0; row < 3; ++row) {
-			int top = 372 + row * 19;
+		for(row = 0; row < count; ++row) {
+			int top = first + row * 19;
 
 			setItem(&out->rows[row], rect(142, top, 498, top + 12),
 				rect(160, top + 2, 480, top + 10), HOME_CENTER_X, top + 6,
@@ -194,7 +196,7 @@ bool UIHomeLayout_Compute(const uiHomeState_t *state,
 	return UIHomeLayout_Validate(out);
 }
 
-static bool itemIsValid(const uiHomeLayoutItem_t *item)
+static bool itemIsValid(const uiHomeLayoutItem_t *item, int rail)
 {
 	uiHomeLayoutRect_t expectedGlow;
 
@@ -210,13 +212,15 @@ static bool itemIsValid(const uiHomeLayoutItem_t *item)
 		item->glowBounds.top == expectedGlow.top &&
 		item->glowBounds.right == expectedGlow.right &&
 		item->glowBounds.bottom == expectedGlow.bottom &&
-		item->glowBounds.top > UI_HOME_LAYOUT_CUBE_RAIL_BOTTOM &&
+		item->glowBounds.top > rail &&
 		pointInside(item->labelCenter, item->labelBounds);
 }
 
 static bool itemSetIsValid(const uiHomeLayoutItem_t *items, int count,
 	int selectedIndex, uiHomeLayoutRect_t command)
 {
+	int rail = count == 4 ? UI_HOME_LAYOUT_SYSTEM_RAIL_BOTTOM :
+		UI_HOME_LAYOUT_CUBE_RAIL_BOTTOM;
 	int first;
 	int second;
 
@@ -228,7 +232,7 @@ static bool itemSetIsValid(const uiHomeLayoutItem_t *items, int count,
 		return false;
 	}
 	for(first = 0; first < count; ++first) {
-		if(!itemIsValid(&items[first]) ||
+		if(!itemIsValid(&items[first], rail) ||
 			!UIHomeLayout_RectsDisjoint(items[first].glowBounds, command) ||
 			items[first].selected != (first == selectedIndex)) {
 			return false;

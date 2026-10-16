@@ -18,8 +18,12 @@ every region:
 
 - [Download the poster pack](https://indigo.norvitech.com/indigo-posters-all.zip) (about 90 MB)
 
-Unzip it into the root of the card. It holds `swiss/ui/posters.pak`, with the
-[gameplay stills](#gameplay-stills) and [descriptions](#game-descriptions)
+Unzip it on your computer, then copy the files in its `swiss/ui` folder into
+the card's `swiss/ui` folder; make the folder if it isn't there. Swiss hides
+its `swiss` folder, so first show hidden folders: press Shift-Command-Period
+in a Mac's Finder, or turn on **Hidden items** under **View** in Windows File
+Explorer. The pack holds `swiss/ui/posters.pak`, with the [gameplay
+stills](#gameplay-stills) and [descriptions](#game-descriptions)
 Spotlight shows beside it. Checksums are in
 [SHA256SUMS.txt](https://indigo.norvitech.com/SHA256SUMS.txt), and the
 [Indigo page](https://norvitech.com/indigo/) has the details.
