@@ -50,6 +50,8 @@
 #include "ui_about.h"
 #include "ui_launch.h"
 #include "card_art.h"
+#include "manual.h"
+#include "ui_manual.h"
 
 #define GUI_MSGBOX_ALPHA 225
 #define GUI_PANEL_ALPHA 150	// Phase 2: translucent content panels (config-gated; dialogs stay at GUI_MSGBOX_ALPHA)
@@ -190,12 +192,13 @@ enum VideoEventType
 	EV_SAVES,
 	EV_SAVE_CUBES,
 	EV_SAVE_DETAILS,
-	EV_FILES
+	EV_FILES,
+	EV_MANUAL
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Background", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "MemoryCardFolder", "Saves", "SaveCubes", "SaveDetails", "Files"};
-_Static_assert(sizeof(typeStrings) / sizeof(typeStrings[0]) == EV_FILES + 1u,
+						"VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "MemoryCardFolder", "Saves", "SaveCubes", "SaveDetails", "Files", "Manual"};
+_Static_assert(sizeof(typeStrings) / sizeof(typeStrings[0]) == EV_MANUAL + 1u,
 	"every video event needs a diagnostic name");
 
 typedef struct drawTexObjEvent {
@@ -349,6 +352,7 @@ typedef struct drawGameflowDetailPresentation {
 	float cheatPreviewScale;
 	float settingsSummaryScale;
 	float settingsPreviewScale;
+	float manualSummaryScale;
 	float launchScale;
 	float primaryActionsScale;
 	float advancedLineOneScale;
@@ -3325,6 +3329,9 @@ static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
 	presentation->settingsPreviewScale = _GameflowPrepareDetailText(
 		data->detail.settingsPreview, sizeof(data->detail.settingsPreview),
 		294, 0.46f, 0.46f);
+	presentation->manualSummaryScale = _GameflowPrepareDetailText(
+		data->detail.manualSummary, sizeof(data->detail.manualSummary),
+		180, 0.42f, 0.42f);
 	presentation->launchScale = _GameflowPrepareDetailText(
 		data->detail.launchLabel, sizeof(data->detail.launchLabel),
 		278, 0.56f, 0.50f);
@@ -3374,23 +3381,39 @@ static gameflowQuad_t _GameflowGrowQuad(const gameflowQuad_t *quad, float by);
 
 /* Where Detail's lines and rows sit. The SAVES inset takes its room from the
  * title block above it and moves the rows down; without it, Detail keeps the
- * places it had before the inset. */
+ * places it had before the inset. The Manual row takes the inset's place, or
+ * with both, the title block closes up and the two slim down. */
 typedef struct {
-	int company, status, lastPlayed, lastPlayedValue;
-	int settings, cheats, launch, panelHeight;
-	int rowTop[3];	/* the rows the focus moves between, bottom up */
+	int top, bottom;
+} gameflowDetailRow_t;
+
+typedef struct {
+	int panelHeight;
+	int title, company, status, lastPlayed;
+	int lastPlayedValue;	/* 0: on LAST PLAYED's line, at the right */
+	int saves, savesHeight, savesLine[2];
+	int manual, manualHint;	/* the Manual row's lines (0: no hint line) */
+	int settings, cheats, launch;
+	gameflowDetailRow_t row[4];	/* the rows the focus moves between, bottom up */
 } gameflowDetailLayout_t;
 
-static const gameflowDetailLayout_t gameflowDetailLayouts[2] = {
-	{148, 177, 202, 219, 244, 293, 369, 328, {348, 281, 232}},
-	{140, 159, 176, 191, 264, 313, 388, 344, {367, 301, 252}},
+static const gameflowDetailLayout_t gameflowDetailLayouts[4] = {
+	{328, 122, 148, 177, 202, 219, 0, 0, {0, 0}, 0, 0, 244, 293, 369,
+		{{348, 391}, {281, 340}, {232, 274}, {0, 0}}},
+	{344, 122, 140, 159, 176, 191, 202, 43, {214, 232}, 0, 0, 264, 313, 388,
+		{{367, 410}, {301, 360}, {252, 294}, {0, 0}}},
+	{344, 122, 140, 159, 176, 191, 0, 0, {0, 0}, 214, 232, 264, 313, 388,
+		{{367, 410}, {301, 360}, {252, 294}, {202, 245}}},
+	{344, 118, 135, 151, 165, 0, 175, 36, {186, 201}, 231, 0, 264, 313, 388,
+		{{367, 410}, {301, 360}, {252, 294}, {217, 245}}},
 };
 
 static const gameflowDetailLayout_t *_GameflowDetailLayout(
 	const uiGameflowDetailSnapshot_t *detail)
 {
 	return &gameflowDetailLayouts[
-		(detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u];
+		((detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u) +
+		((detail->flags & UI_GAMEFLOW_DETAIL_HAS_MANUAL) != 0u) * 2];
 }
 
 static void _GameflowDrawDetailPlanes(
@@ -3399,11 +3422,13 @@ static void _GameflowDrawDetailPlanes(
 	const uiGameflowFrame_t *frame, float alpha,
 	uiGameflowDetailFocus_t focusRow, uiMotionSpring_t lit[2])
 {
-	/* The rows the focus moves between, bottom up: Launch, Cheats, Settings. */
+	/* The rows the focus moves between, bottom up: Launch, Cheats, Settings,
+	 * Manual. */
 	const gameflowDetailLayout_t *layout = _GameflowDetailLayout(detail);
-	const int *rowTop = layout->rowTop;
-	static const int rowHeight[] = {43, 59, 42};
+	int rowTop[4];
+	int rowHeight[4];
 	bool hasSaves = (detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u;
+	bool hasManual = (detail->flags & UI_GAMEFLOW_DETAIL_HAS_MANUAL) != 0u;
 	uiMotionMode_t motion = _CurrentMotionMode();
 	float litTop;
 	float litBottom;
@@ -3439,7 +3464,18 @@ static void _GameflowDrawDetailPlanes(
 		_GameflowAlpha(78.0f * alpha * focus)};
 	bool hasSettings = detail->settingsSummary[0] != '\0';
 	u16 panelCount = (u16)(3u + (hasSaves ? 1u : 0u) +
-		(hasAdvanced ? 1u : 0u) + (hasSettings ? 1u : 0u));
+		(hasAdvanced ? 1u : 0u) + (hasSettings ? 1u : 0u) +
+		(hasManual ? 1u : 0u));
+
+	for(row = 0; row < 4; ++row) {
+		rowTop[row] = layout->row[row].top;
+		rowHeight[row] = layout->row[row].bottom - layout->row[row].top;
+	}
+	/* A focus left on a row that has gone (the manual was removed) rests
+	 * on the row below it. */
+	if(focusRow == UI_GAMEFLOW_DETAIL_FOCUS_MANUAL && !hasManual) {
+		focusRow = UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS;
+	}
 
 	/* The bright frame slides from row to row, as the cheat list's focus
 	 * does; Detail opening places it on its row at once. */
@@ -3469,16 +3505,17 @@ static void _GameflowDrawDetailPlanes(
 		_GameflowPutDetailPanel(246, 76, 358, layout->panelHeight, 2,
 			panelGlow, panelFill, panelEdge);
 		if(hasSaves) {
-			_GameflowPutDetailPanel(260, 202, 330, 43, 2,
-				insetGlow, insetFill, insetEdge);
+			_GameflowPutDetailPanel(260, layout->saves, 330,
+				layout->savesHeight, 2, insetGlow, insetFill, insetEdge);
 		}
 		/* The focused row takes the bright edge and the glow, and the
 		 * grid's frame round it; Launch keeps its button fill. */
 		for(row = UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH;
-			row <= UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS; ++row) {
+			row <= UI_GAMEFLOW_DETAIL_FOCUS_MANUAL; ++row) {
 			bool lit = row == (int)focusRow;
 
-			if(row == UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS && !hasSettings) {
+			if((row == UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS && !hasSettings) ||
+				(row == UI_GAMEFLOW_DETAIL_FOCUS_MANUAL && !hasManual)) {
 				continue;
 			}
 			_GameflowPutDetailPanel(260, rowTop[row], 330, rowHeight[row],
@@ -3529,8 +3566,8 @@ static void _GameflowDrawDetailDashboard(
 
 	drawStringMedium(264, 95, frame->launchProgress > 0.02f ?
 		"LAUNCHING" : "GAME DETAIL", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(264, 122, detail->title, presentation->titleScale,
-		ALIGN_LEFT, primary);
+	drawStringMedium(264, layout->title, detail->title,
+		presentation->titleScale, ALIGN_LEFT, primary);
 	if(detail->company[0] != '\0') {
 		drawStringMedium(264, layout->company, detail->company,
 			presentation->companyScale, ALIGN_LEFT, secondary);
@@ -3542,18 +3579,37 @@ static void _GameflowDrawDetailDashboard(
 
 	drawStringMedium(264, layout->lastPlayed, "LAST PLAYED", 0.42f,
 		ALIGN_LEFT, secondary);
-	drawStringMedium(264, layout->lastPlayedValue, detail->lastPlayedText,
-		presentation->lastPlayedScale, ALIGN_LEFT, primary);
+	if(layout->lastPlayedValue != 0) {
+		drawStringMedium(264, layout->lastPlayedValue, detail->lastPlayedText,
+			presentation->lastPlayedScale, ALIGN_LEFT, primary);
+	}
+	else {
+		drawStringMedium(576, layout->lastPlayed, detail->lastPlayedText,
+			presentation->lastPlayedScale, ALIGN_RIGHT, primary);
+	}
 	/* The count is the headline. A small trailing label leaves the two-line
 	 * inset readable without competing with the actions below it. */
 	if(detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) {
 		/* With a choice, the label says Left and Right change it. */
-		drawStringMedium(576, 214, (detail->flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) ?
+		drawStringMedium(576, layout->savesLine[0],
+			(detail->flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) ?
 			"\253 SAVES \273" : "SAVES", 0.38f, ALIGN_RIGHT, secondary);
-		drawStringMedium(274, 214, detail->savesSummary,
+		drawStringMedium(274, layout->savesLine[0], detail->savesSummary,
 			presentation->savesSummaryScale, ALIGN_LEFT, primary);
-		drawStringMedium(274, 232, detail->savesUpdated,
+		drawStringMedium(274, layout->savesLine[1], detail->savesUpdated,
 			presentation->savesUpdatedScale, ALIGN_LEFT, secondary);
+	}
+
+	/* MANUAL, at the top of the rows: its pages, and A to read it. */
+	if(detail->flags & UI_GAMEFLOW_DETAIL_HAS_MANUAL) {
+		drawStringMedium(274, layout->manual, "MANUAL", 0.42f, ALIGN_LEFT,
+			secondary);
+		drawStringMedium(576, layout->manual, detail->manualSummary,
+			presentation->manualSummaryScale, ALIGN_RIGHT, muted);
+		if(layout->manualHint != 0) {
+			_DrawHintText(274, layout->manualHint, "A  Read the manual",
+				0.46f, ALIGN_LEFT, muted);
+		}
 	}
 
 	/* SETTINGS, like CHEATS below it: this game's own rows, or how to set
@@ -5113,6 +5169,7 @@ void DrawGameflowCancelPosters(void)
 	 * callback, so it only marks them stale, and the next lookup reads the
 	 * file again. */
 	descriptionsAttempted = false;
+	Manual_Forget();
 	if(!posterPackAttempted && !posterPackFileOwned && !stillsPackFileOwned) {
 		return;
 	}
@@ -5364,7 +5421,7 @@ bool DrawSetGameflowDetailFocus(uiDrawObj_t *evt,
 {
 	bool updated = false;
 
-	if(evt == NULL || focus > UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS) {
+	if(evt == NULL || focus > UI_GAMEFLOW_DETAIL_FOCUS_MANUAL) {
 		return false;
 	}
 	LWP_MutexLock(_videomutex);
@@ -5966,6 +6023,130 @@ void DrawCheatsSelector(const char *fileName)
 	DrawDispose(event);
 }
 
+
+/* ------------------------------------------------------------------------
+ * A game's manual (manual.c): the page, at full width or whole, and a bar
+ * under it with the page's number and the buttons. The page's texels are
+ * the manual's own: at full width on a 640 x 480 screen, one texel a pixel.
+ * --------------------------------------------------------------------- */
+typedef struct {
+	uiManualView_t view;
+	float hintScale;
+} drawManualEvent_t;
+
+static void _ManualPage(const uiManualView_t *v)
+{
+	uiManualPage_t page = {0u, v->pageWidth, v->pageHeight};
+	uiManualRect_t r = UIManual_Place(&page, v->whole, v->scroll, v->zoom);
+	GXRModeObj *mode = getVideoMode();
+	u16 width = v->whole ? UI_MANUAL_WIDTH / 2u : UI_MANUAL_WIDTH;
+	u32 rows = v->whole ? v->height / 2u : v->height;	/* the texture's */
+	u32 shown = v->whole ? (v->pageHeight + 1u) / 2u : v->pageHeight;
+	float across = (float)(v->whole ? (v->pageWidth + 1u) / 2u : v->pageWidth) /
+		(float)width;
+	const u8 *texels = v->whole ? v->texels + v->pageBytes : v->texels;
+	/* One texel a pixel is sharpest point-sampled; anything scaled blends. */
+	u8 filter = !v->whole && v->zoom == 1.0f && UIStage_PixelWidth() == 1.0f &&
+		mode->fbWidth == 640 && mode->efbHeight == 480 ? GX_NEAR : GX_LINEAR;
+	float perRow = r.height / (float)shown;
+	u32 top;
+
+	/* Drawn as it is: no tint, no blend (an I4 page's alpha is its gray). */
+	GX_SetNumTevStages(1);
+	GX_SetTevOp(GX_TEVSTAGE0, GX_REPLACE);
+	GX_SetBlendMode(GX_BM_NONE, GX_BL_ONE, GX_BL_ZERO, GX_LO_CLEAR);
+	GX_InvalidateTexAll();
+	/* GX takes 1024 rows of a texture at most: a taller page draws in two. */
+	for(top = 0u; top < shown; top += UI_MANUAL_STRIP_ROWS) {
+		u32 strip = rows - top < UI_MANUAL_STRIP_ROWS ? rows - top :
+			UI_MANUAL_STRIP_ROWS;
+		u32 drawn = shown - top < strip ? shown - top : strip;
+		float y0 = r.y + (float)top * perRow;
+		float y1 = y0 + (float)drawn * perRow;
+		float t1 = (float)drawn / (float)strip;
+		GXTexObj texture;
+
+		if(y1 <= 0.0f || y0 >= 480.0f) {
+			continue;
+		}
+		/* 4 bits a texel in 8 x 8 tiles: 8 rows are width * 4 bytes. */
+		GX_InitTexObj(&texture, (void *)(texels + top * width / 2u), width,
+			(u16)strip, v->format, GX_CLAMP, GX_CLAMP, GX_FALSE);
+		GX_InitTexObjLOD(&texture, filter, filter, 0.0f, 0.0f, 0.0f,
+			GX_FALSE, GX_FALSE, GX_ANISO_1);
+		GX_LoadTexObj(&texture, GX_TEXMAP0);
+		GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+			GX_Position3f32(r.x, y0, 0.0f);
+			GX_Color4u8(255, 255, 255, 255);
+			GX_TexCoord2f32(0.0f, 0.0f);
+			GX_Position3f32(r.x + r.width, y0, 0.0f);
+			GX_Color4u8(255, 255, 255, 255);
+			GX_TexCoord2f32(across, 0.0f);
+			GX_Position3f32(r.x + r.width, y1, 0.0f);
+			GX_Color4u8(255, 255, 255, 255);
+			GX_TexCoord2f32(across, t1);
+			GX_Position3f32(r.x, y1, 0.0f);
+			GX_Color4u8(255, 255, 255, 255);
+			GX_TexCoord2f32(0.0f, t1);
+		GX_End();
+	}
+	drawInit();
+}
+
+static void _DrawManual(uiDrawObj_t *evt)
+{
+	const drawManualEvent_t *data = evt->data;
+	const uiManualView_t *v = &data->view;
+	const int bar = (int)UI_MANUAL_BAR;
+
+	_PagePanel(-6, -6, 652, 492, (GXColor){8, 12, 27, 255});
+	if(v->texels != NULL) {
+		_ManualPage(v);
+	}
+	else {
+		drawStringMedium(320, 225, v->message, 0.66f, ALIGN_CENTER,
+			(GXColor){241, 244, 255, 255});
+	}
+	_PagePanel(-6, 480 - bar, 652, bar + 6, (GXColor){8, 12, 27, 236});
+	drawStringMedium(20, 480 - bar / 2, v->counter, 0.48f, ALIGN_LEFT,
+		(GXColor){115, 234, 234, 255});
+	_DrawHintText(620, 480 - bar / 2, v->hints, data->hintScale, ALIGN_RIGHT,
+		(GXColor){173, 187, 216, 255});
+	drawInit();
+}
+
+uiDrawObj_t* DrawManual(const uiManualView_t *view)
+{
+	uiDrawObj_t *event = calloc(1, sizeof(*event));
+	drawManualEvent_t *data = calloc(1, sizeof(*data));
+
+	if(event == NULL || data == NULL) {
+		free(event);
+		free(data);
+		return NULL;
+	}
+	data->view = *view;
+	data->hintScale = GetHintScaleToFitInWidthWithMax(view->hints, 480, 0.46f);
+	event->type = EV_MANUAL;
+	event->data = data;
+	return event;
+}
+
+void DrawUpdateManual(uiDrawObj_t *page, const uiManualView_t *view)
+{
+	float hintScale = GetHintScaleToFitInWidthWithMax(view->hints, 480, 0.46f);
+
+	if(page == NULL) {
+		return;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!page->disposed && page->type == EV_MANUAL && page->data != NULL) {
+		drawManualEvent_t *data = page->data;
+		data->view = *view;
+		data->hintScale = hintScale;
+	}
+	LWP_MutexUnlock(_videomutex);
+}
 
 /* ------------------------------------------------------------------------
  * Settings, in the cheat browser's language (_DrawCheats): the page, the
@@ -8178,6 +8359,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 		case EV_FILES:
 			_DrawFiles(videoEvent);
 			break;
+		case EV_MANUAL:
+			_DrawManual(videoEvent);
+			break;
 		default:
 			break;
 	}
@@ -8239,7 +8423,8 @@ static bool _FrameCovered(uiDrawObjQueue_t *queue)
 		const uiDrawObj_t *event = queue->event;
 		if(!event->disposed && (event->type == EV_SETTINGS ||
 			event->type == EV_CHEATS || event->type == EV_SAVES ||
-			event->type == EV_SAVE_CUBES || event->type == EV_FILES)) {
+			event->type == EV_SAVE_CUBES || event->type == EV_FILES ||
+			event->type == EV_MANUAL)) {
 			return true;
 		}
 	}

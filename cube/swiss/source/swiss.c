@@ -56,6 +56,7 @@
 #include "gui/IPLFontWrite.h"
 #include "gui/apps.h"
 #include "gui/card_art.h"
+#include "gui/manual.h"
 #include "gui/ui_apps.h"
 #include "gui/ui_gameflow_detail.h"
 #include "gui/saves_stats.h"
@@ -2769,6 +2770,9 @@ typedef struct {
 	 * One given up on at the last read: its saves are missing. */
 	bool savesWaiting;
 	bool savesCardFailed;
+	/* The game's manual (gui/manual.c): its pages, 0 for none, -1 for one
+	 * that can't be read. */
+	int32_t manualPages;
 } gameflowLaunchContext_t;
 
 /* The copies of the open Detail's save, one Detail at a time. */
@@ -7508,6 +7512,8 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 	}
 	source.customSettings = (uint32_t)settings_game_custom_count(config);
 	source.firstCustomSetting = settings_game_custom_first(config);
+	context->manualPages = Manual_Pages(devices[DEVICE_CUR], context->gameId);
+	source.manualPages = context->manualPages;
 	if(meta != NULL && meta->banner != NULL &&
 		meta->bannerSize == UI_GAMEFLOW_DETAIL_BANNER_BYTES &&
 		meta->bannerSum != 0xFFFF) {
@@ -7647,6 +7653,8 @@ static int gameflow_info_game(ConfigEntry *config,
 					UI_GAMEFLOW_DETAIL_CAN_CHEATS : 0u) |
 				(devices[DEVICE_CONFIG] != NULL ?
 					UI_GAMEFLOW_DETAIL_CAN_AUTOLOAD : 0u) |
+				(context->manualPages != 0 ?
+					UI_GAMEFLOW_DETAIL_HAS_MANUAL : 0u) |
 				(is_verifiable_disc(&GCMDisk) ?
 					UI_GAMEFLOW_DETAIL_CAN_VERIFY : 0u) |
 				(((devices[DEVICE_CUR]->location & LOC_DVD_CONNECTOR) &&
@@ -7736,6 +7744,15 @@ static int gameflow_info_game(ConfigEntry *config,
 			DrawCheatsSelector(curFile.name);
 			saveCheatsSelection();
 			gameflowPublishDetail(config, context);
+		}
+		else if(action == UI_GAMEFLOW_DETAIL_ACTION_MANUAL) {
+			Manual_Show(devices[DEVICE_CUR], context->gameId);
+			gameflowPublishDetail(config, context);
+			/* Its file gone meanwhile: the row is too. */
+			if(context->manualPages == 0) {
+				focus = UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS;
+				DrawSetGameflowDetailFocus(context->event, focus);
+			}
 		}
 		/* A modal's dismissal is not a new Detail action. Do not require
 		 * unrelated buttons or a held clean-boot modifier to be released. */

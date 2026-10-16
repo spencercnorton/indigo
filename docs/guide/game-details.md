@@ -34,6 +34,11 @@ screen, and **B** there goes back to the File Browser, on the same row.
   **Saves on Details** turns the box off, and then a game's details don't
   read your memory cards at all. System › [Memory Cards](memory-cards.md)
   opens the individual saves and their details.
+- **Manual**, at the top of the rows, for a game whose manual is on the
+  card: its page count. A on it opens the manual, at the width of the
+  screen; Up and Down scroll, Left and Right turn the page, Y shows the
+  whole page and B comes back here. Indigo comes with no manuals: see
+  [Game manuals](../MANUALS.md) to convert your own.
 - **Settings**: "Game Defaults" while the game follows them, or how many of
   its settings are its own and the first of them, such as "1 custom" and
   "Force Video Mode: 480p". See [below](#this-games-own-settings).

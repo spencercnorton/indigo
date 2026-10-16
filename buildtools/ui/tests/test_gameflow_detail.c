@@ -666,6 +666,64 @@ static void testSaveCopyChoice(void)
 		UI_GAMEFLOW_DETAIL_HAS_SAVES)) == 0u);
 }
 
+/* A game with a manual has a Manual row at the top: UP from Settings
+ * reaches it and A opens the manual. Without one, or before Build says so,
+ * the row isn't there. */
+static void testManualRow(void)
+{
+	uiGameflowDetailSource_t source = {
+		.gameId = "GALE01",
+		.title = "Super Smash Bros. Melee",
+		.facts = "GALE01",
+		.description = "",
+		.saveStatus = UI_GAME_SAVE_NOT_CHECKED,
+		.flags = UI_GAMEFLOW_DETAIL_CHEATS_KNOWN |
+			UI_GAMEFLOW_DETAIL_CAN_SETTINGS | UI_GAMEFLOW_DETAIL_CAN_LIBRARY |
+			UI_GAMEFLOW_DETAIL_HAS_MANUAL
+	};
+	uiGameflowDetailSnapshot_t snapshot;
+
+	/* The flag is Build's alone: a source without pages has no row. */
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_HAS_MANUAL) == 0u);
+	CHECK(snapshot.manualSummary[0] == '\0');
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS,
+		UI_GAMEFLOW_DETAIL_INPUT_UP) == UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS);
+	CHECK(UIGameflowDetail_ResolveAction(&snapshot, UI_GAMEFLOW_DETAIL_FOCUS_MANUAL,
+		UI_GAMEFLOW_DETAIL_INPUT_A) == UI_GAMEFLOW_DETAIL_ACTION_NONE);
+
+	source.manualPages = 24;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_HAS_MANUAL) != 0u);
+	CHECK(strcmp(snapshot.manualSummary, "24 PAGES") == 0);
+	/* Launch, Settings (no cheats), Manual, and no further. */
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH,
+		UI_GAMEFLOW_DETAIL_INPUT_UP) == UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS);
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS,
+		UI_GAMEFLOW_DETAIL_INPUT_UP) == UI_GAMEFLOW_DETAIL_FOCUS_MANUAL);
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, UI_GAMEFLOW_DETAIL_FOCUS_MANUAL,
+		UI_GAMEFLOW_DETAIL_INPUT_UP) == UI_GAMEFLOW_DETAIL_FOCUS_MANUAL);
+	CHECK(UIGameflowDetail_MoveFocus(&snapshot, UI_GAMEFLOW_DETAIL_FOCUS_MANUAL,
+		UI_GAMEFLOW_DETAIL_INPUT_DOWN) == UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS);
+	CHECK(UIGameflowDetail_ResolveAction(&snapshot, UI_GAMEFLOW_DETAIL_FOCUS_MANUAL,
+		UI_GAMEFLOW_DETAIL_INPUT_A) == UI_GAMEFLOW_DETAIL_ACTION_MANUAL);
+	/* Its shortcuts stay theirs: X is Settings, wherever the focus is. */
+	CHECK(UIGameflowDetail_ResolveAction(&snapshot, UI_GAMEFLOW_DETAIL_FOCUS_MANUAL,
+		UI_GAMEFLOW_DETAIL_INPUT_X) == UI_GAMEFLOW_DETAIL_ACTION_SETTINGS);
+	CHECK(UIGameflowDetail_ResolveAction(&snapshot, UI_GAMEFLOW_DETAIL_FOCUS_MANUAL,
+		UI_GAMEFLOW_DETAIL_INPUT_B) == UI_GAMEFLOW_DETAIL_ACTION_LIBRARY);
+	source.manualPages = 1;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK(strcmp(snapshot.manualSummary, "1 PAGE") == 0);
+	/* A file that can't be read keeps its row, and says so. */
+	source.manualPages = -1;
+	CHECK(UIGameflowDetail_Build(&snapshot, &source));
+	CHECK((snapshot.flags & UI_GAMEFLOW_DETAIL_HAS_MANUAL) != 0u);
+	CHECK(strcmp(snapshot.manualSummary, "CAN'T BE READ") == 0);
+	CHECK(UIGameflowDetail_ResolveAction(&snapshot, UI_GAMEFLOW_DETAIL_FOCUS_MANUAL,
+		UI_GAMEFLOW_DETAIL_INPUT_A) == UI_GAMEFLOW_DETAIL_ACTION_MANUAL);
+}
+
 int main(void)
 {
 	testReadOnlySaveCopies();
@@ -681,6 +739,7 @@ int main(void)
 	testFocus();
 	testInvalidInputResetsSnapshot();
 	testBackToFiles();
+	testManualRow();
 	puts("gameflow detail tests passed");
 	return EXIT_SUCCESS;
 }

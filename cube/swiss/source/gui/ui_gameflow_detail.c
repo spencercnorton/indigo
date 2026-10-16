@@ -348,6 +348,24 @@ static void buildSaveChoicePresentation(uiGameflowDetailSnapshot_t *snapshot,
 	}
 }
 
+/* MANUAL, for a game with a manual: its page count, or that the file can't
+ * be read (a damaged or wrong file still shows, so it can be replaced). */
+static void buildManualPresentation(uiGameflowDetailSnapshot_t *snapshot,
+	int32_t pages)
+{
+	if(pages == 0) {
+		return;
+	}
+	snapshot->flags |= UI_GAMEFLOW_DETAIL_HAS_MANUAL;
+	if(pages < 0) {
+		copyText(snapshot->manualSummary, sizeof(snapshot->manualSummary),
+			"CAN'T BE READ");
+		return;
+	}
+	(void)snprintf(snapshot->manualSummary, sizeof(snapshot->manualSummary),
+		"%ld %s", (long)pages, pages == 1 ? "PAGE" : "PAGES");
+}
+
 bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 	const uiGameflowDetailSource_t *source)
 {
@@ -370,6 +388,7 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 	snapshot->customSettings = source->customSettings;
 	snapshot->flags =
 		(source->flags & ~(uint32_t)(UI_GAMEFLOW_DETAIL_HAS_BANNER |
+			UI_GAMEFLOW_DETAIL_HAS_MANUAL |
 			UI_GAMEFLOW_DETAIL_HAS_SAVES | UI_GAMEFLOW_DETAIL_SAVE_CHOICE)) |
 		UI_GAMEFLOW_DETAIL_VALID;
 	memcpy(snapshot->gameId, source->gameId,
@@ -422,6 +441,7 @@ bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
 	buildSavesPresentation(snapshot, source->saveStats, source->savesWaiting,
 		source->savesCardFailed);
 	buildSaveChoicePresentation(snapshot, source);
+	buildManualPresentation(snapshot, source->manualPages);
 	return true;
 }
 
@@ -444,7 +464,9 @@ static bool focusable(uint32_t flags, int row)
 		(row == UI_GAMEFLOW_DETAIL_FOCUS_CHEATS &&
 			(flags & UI_GAMEFLOW_DETAIL_CAN_CHEATS) != 0u) ||
 		(row == UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS &&
-			(flags & UI_GAMEFLOW_DETAIL_CAN_SETTINGS) != 0u);
+			(flags & UI_GAMEFLOW_DETAIL_CAN_SETTINGS) != 0u) ||
+		(row == UI_GAMEFLOW_DETAIL_FOCUS_MANUAL &&
+			(flags & UI_GAMEFLOW_DETAIL_HAS_MANUAL) != 0u);
 }
 
 uiGameflowDetailFocus_t UIGameflowDetail_MoveFocus(
@@ -460,7 +482,7 @@ uiGameflowDetailFocus_t UIGameflowDetail_MoveFocus(
 		return focus;
 	}
 	for(row = (int)focus + step; row >= UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH &&
-		row <= UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS; row += step) {
+		row <= UI_GAMEFLOW_DETAIL_FOCUS_MANUAL; row += step) {
 		if(focusable(snapshot->flags, row)) {
 			return (uiGameflowDetailFocus_t)row;
 		}
@@ -495,6 +517,10 @@ uiGameflowDetailAction_t UIGameflowDetail_ResolveAction(
 		if(focus == UI_GAMEFLOW_DETAIL_FOCUS_CHEATS &&
 			(flags & UI_GAMEFLOW_DETAIL_CAN_CHEATS) != 0u) {
 			return UI_GAMEFLOW_DETAIL_ACTION_CHEATS;
+		}
+		if(focus == UI_GAMEFLOW_DETAIL_FOCUS_MANUAL &&
+			(flags & UI_GAMEFLOW_DETAIL_HAS_MANUAL) != 0u) {
+			return UI_GAMEFLOW_DETAIL_ACTION_MANUAL;
 		}
 		return UI_GAMEFLOW_DETAIL_ACTION_NONE;
 	}

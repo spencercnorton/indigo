@@ -11,6 +11,13 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### New
 
+- Game manuals: a game whose manual is on the card has a **Manual** row at
+  the top of its details, and A opens it at the width of the screen. Up and
+  Down scroll, Left and Right turn the page (the next one is read ahead), Y
+  shows the whole page, L and R go to the first and last page. Indigo comes
+  with no manuals: `buildtools/ui/manual_pack.py` converts your own PDF or
+  page pictures into `/swiss/ui/manuals/<game ID>.pak`
+  ([docs/MANUALS.md](docs/MANUALS.md)).
 - The Library finds your games on whichever storage holds them: when the
   boot device has no `/games` folder (such as a GC Loader with the games on
   an SD2SP2 card), Indigo opens the first `/games` on the other storage

@@ -42,7 +42,10 @@ typedef enum {
 	/* Set by Build: Left and Right choose the copy to start the game with. */
 	UI_GAMEFLOW_DETAIL_SAVE_CHOICE = 1u << 14,
 	/* Opened from the File Browser: B goes back there, not to the Library. */
-	UI_GAMEFLOW_DETAIL_BACK_FILES = 1u << 15
+	UI_GAMEFLOW_DETAIL_BACK_FILES = 1u << 15,
+	/* Set by Build: the game has a manual (swiss/ui/manuals/): the Manual
+	 * row shows, above Settings, and A on it opens the manual. */
+	UI_GAMEFLOW_DETAIL_HAS_MANUAL = 1u << 16
 } uiGameflowDetailFlags_t;
 
 typedef struct {
@@ -86,6 +89,9 @@ typedef struct {
 	uint32_t flags;
 	uint32_t customSettings;    /* this game's rows that differ from Game Defaults */
 	const char *firstCustomSetting; /* the first of them, "Name: value" */
+	/* The game's manual: its pages, 0 for none, -1 for one that can't be
+	 * read (the row still shows, so the reason can). */
+	int32_t manualPages;
 } uiGameflowDetailSource_t;
 
 /* Fixed, pointer-free video-thread payload. The banner begins on a cache-line
@@ -123,6 +129,8 @@ typedef struct {
 	 * custom row, or how to set some. */
 	char settingsSummary[UI_GAMEFLOW_DETAIL_ADVANCED_CAPACITY];
 	char settingsPreview[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
+	/* The MANUAL row: "24 PAGES", or why it can't open. */
+	char manualSummary[UI_GAMEFLOW_DETAIL_ADVANCED_CAPACITY];
 	char launchLabel[UI_GAMEFLOW_DETAIL_LAUNCH_LABEL_CAPACITY];
 	char primaryActions[UI_GAMEFLOW_DETAIL_PRESENTATION_CAPACITY];
 	char advancedLineOne[UI_GAMEFLOW_DETAIL_ADVANCED_CAPACITY];
@@ -144,13 +152,14 @@ typedef enum {
 } uiGameflowDetailInput_t;
 
 /* The rows up and down move between, counted from the bottom as they are
- * drawn: Launch, Cheats above it, Settings above that. The SAVES inset,
- * when shown, is read-only and takes no focus. A zeroed event rests on
- * Launch. */
+ * drawn: Launch, Cheats above it, Settings above that, and Manual at the
+ * top when the game has one. The SAVES inset, when shown, is read-only and
+ * takes no focus. A zeroed event rests on Launch. */
 typedef enum {
 	UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH = 0,
 	UI_GAMEFLOW_DETAIL_FOCUS_CHEATS,
-	UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS
+	UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS,
+	UI_GAMEFLOW_DETAIL_FOCUS_MANUAL
 } uiGameflowDetailFocus_t;
 
 typedef enum {
@@ -161,7 +170,8 @@ typedef enum {
 	UI_GAMEFLOW_DETAIL_ACTION_SETTINGS,
 	UI_GAMEFLOW_DETAIL_ACTION_CHEATS,
 	UI_GAMEFLOW_DETAIL_ACTION_AUTOLOAD,
-	UI_GAMEFLOW_DETAIL_ACTION_VERIFY
+	UI_GAMEFLOW_DETAIL_ACTION_VERIFY,
+	UI_GAMEFLOW_DETAIL_ACTION_MANUAL
 } uiGameflowDetailAction_t;
 
 bool UIGameflowDetail_Build(uiGameflowDetailSnapshot_t *snapshot,
@@ -170,7 +180,7 @@ bool UIGameflowDetail_Matches(const uiGameflowDetailSnapshot_t *snapshot,
 	uint32_t generation, uint32_t focusIndex, const char *gameId,
 	size_t gameIdLength);
 /* UP or DOWN moves one row, past a row the game can't use (Cheats when it
- * has none), and stops at the ends. */
+ * has none, Manual when it has no manual), and stops at the ends. */
 uiGameflowDetailFocus_t UIGameflowDetail_MoveFocus(
 	const uiGameflowDetailSnapshot_t *snapshot, uiGameflowDetailFocus_t focus,
 	uint32_t input);
