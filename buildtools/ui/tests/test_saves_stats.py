@@ -365,7 +365,12 @@ def main():
     image, entries = fixture.virtual_card()
     sources = []
     for name in ("saves_raw.c", "saves_stats.c"):
-        sources.append("\n".join(line for line in (GUI / name).read_text().splitlines()
+        # The scan only reads images: saves_raw.c's in-place writer (FatFs) stays out.
+        text = (GUI / name).read_text()
+        writer = text.find(" * Changing an image in place.")
+        if writer >= 0:
+            text = text[:text.rindex("/*", 0, writer)]
+        sources.append("\n".join(line for line in text.splitlines()
                                   if not line.startswith("#include")))
     with tempfile.TemporaryDirectory(prefix="save-stats-") as tmp:
         path = Path(tmp)
