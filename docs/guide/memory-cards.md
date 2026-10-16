@@ -100,12 +100,21 @@ to open an image and browse its saves and animated icons; **B** returns to
 the containing folder. An unformatted or damaged image gets a clear message
 and is left unchanged.
 
-Images are read-only. With the other column on an SD folder, highlight a
-save, press **A** to see its details, then **A Actions** and choose **Copy**
-to export it as a `.gci` file. Move
-and Erase are dimmed; importing into, formatting or repairing an image is
-not offered. The exported file is read back and compared before the copy
-is reported as finished.
+An open image works like a memory card: Move, Copy and Erase its saves, to
+and from Slot A, Slot B, an SD folder or an image open in the other column.
+Open the image on one side and the other place on the other, highlight a
+save, press **A** to see its details, then **A Actions**. Actions on an
+image start on **Copy**. An image takes a save the way a card does: not one
+it already has, not past its 127 saves or its free blocks, and a save its
+game marks no-move only copies. Indigo writes the save's blocks first, then
+the image's block map, then its directory, the order the GameCube itself
+uses, and reads every block back before the copy is finished, so a Move
+takes the original away only once its copy is safe. Formatting, repairing
+or resizing an image is not offered.
+
+On a FlippyDrive or a KunaiGC, whose files Indigo can't change in place,
+images stay read-only: Move and Erase are dimmed, and Copy exports a save
+as a `.gci` file.
 
 <p align="center">
   <img alt="Demo Card.raw opened on the left shows Copper Archive and another save, with the other column still on the SD folder. The info bar shows the save's banner and two-block size, and says that Copy exports a GCI from the read-only card image." src="images/memory-cards-raw.png" width="640">
@@ -118,8 +127,7 @@ is reported as finished.
 ## Save details
 
 Highlight a save and press **A** to open its details. This works even when
-both columns show read-only card images and no action can be used. The save
-name is the headline; separate **Blocks** and **KiB** summaries sit above
+no action can be used. The save name is the headline; separate **Blocks** and **KiB** summaries sit above
 aligned source and date rows. Unreadable headers mark the size as estimated.
 
 - **Size** shows blocks and KiB. One block is 8 KiB of save data; the GCI
@@ -127,7 +135,8 @@ aligned source and date rows. Unreadable headers mark the size as estimated.
 - **Last updated** shows the date recorded in the save, or **Unknown** when
   it has no usable date. It uses the console's recorded clock without
   assuming a time zone. The SD file's dates aren't substituted for it.
-- **Source** names the physical slot, SD save or read-only card image.
+- **Source** names the physical slot, SD save or card image (**Read-only
+  card image** when its device can't change it).
 - **Save icon** explains its preview: **Animated** uses the game's stored
   frames, **Static** has one picture, and **None stored** means the save
   supplies no icon. **Paused: UI Motion Off** means an animated icon is
@@ -149,7 +158,7 @@ used.
 </p>
 
 A save without a recorded update date shows **Unknown**. The dialog remains
-available when both columns hold read-only RAW images.
+available when no action can be used.
 
 <p align="center">
   <img alt="Moonlit Lake’s Save details shows separate 1 Block and 8 KiB cells, Last updated: Unknown and Save icon: None stored." src="images/memory-cards-details-unknown.png" width="640">
@@ -165,8 +174,8 @@ A save on a physical memory card names its slot in **Source**.
 
 From save details, press **A Actions**. A box opens beside its cube:
 
-- **Move** puts the save in the other stack's card or folder, then removes
-  it here.
+- **Move** puts the save in the other stack's card, card image or folder,
+  then removes it here.
 - **Copy** puts a copy there and leaves the save where it is.
 - **Erase** removes it.
 
@@ -187,6 +196,7 @@ why:
 | Slot B has 4 free blocks; this needs 11 | The card has too little room. |
 | This game doesn't let its save move | The game ties its save to its memory card, and moving it would lose it. Copy it instead: the original stays where it works. |
 | The SD card can't be written | The SD card is read-only. |
+| The card image can't be written | The image's device can't change it in place, or the image couldn't be read. A card image otherwise has the save, 127 saves or too few free blocks the way a card does. |
 
 Saves with the same name from different games or makers are separate saves:
 Copy, Move and Erase act on the one highlighted. A damaged save header with
@@ -195,8 +205,8 @@ save with such a header is not offered as an import. An entry with such a
 code on a memory card cannot be read or erased safely and is left untouched.
 
 Choose Move or Copy and Memory Cards asks first, **Yes** highlighted: "Copy
-to Slot B?", or "Copy to the SD card?" for the folder the SD card's stack
-has open. A pale cube pulses where the save will land. When that folder
+to Slot B?", "Copy to the card image?" for an image the SD card's stack has
+open, or "Copy to the SD card?" for the folder it has open. A pale cube pulses where the save will land. When that folder
 holds folders of its own, you choose instead between it and **Another
 folder…**, the folder chooser: A opens a folder, X chooses the one that's
 open, and B cancels. Erase asks "Erase this save?" with **No** highlighted,

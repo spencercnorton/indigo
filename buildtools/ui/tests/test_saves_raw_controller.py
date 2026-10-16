@@ -3,9 +3,12 @@
 
 The SD model accepts only physical device paths, so a synthetic GCI reaching a
 handler fails immediately. Actual controller functions load/reload RAW places,
-read virtual headers and artwork ranges, export verified GCI bytes, reject RAW
-Move/Erase, and route the two independent SD columns. No device writes may name
-an image. --source-root supports reviewing an uncommitted integration worktree.
+read virtual headers and artwork ranges, export verified GCI bytes, move and
+erase saves in and out of images through the image writer (modelled here with
+the real planner) only after a verified copy, keep a read-only image's actions
+dimmed, and route the two independent SD columns. No device write or delete
+may name an image. --source-root supports reviewing an uncommitted
+integration worktree.
 """
 import argparse
 import os
@@ -241,9 +244,11 @@ static s32 sdRead(file_handle *file,void *out,u32 size) {
 }
 static s32 sdClose(file_handle *file) {assert(strchr(file->name,':'));closes++;return 0;}
 static s32 sdStat(file_handle *file) {u32 size;return physical(file,&size) ? 0 : -1;}
+static bool failSdWrite;
 static s32 sdWrite(file_handle *file,const void *data,u32 size) {
     assert(strchr(file->name,':') && !SavesRaw_IsImageName(file->name));
     assert(sd.features&FEAT_WRITE);assert(exportCount<8 && size<=sizeof(exports[0].bytes));
+    if(failSdWrite) return -1;
     writes++;snprintf(exports[exportCount].name,PATHNAME_MAX,"%s",file->name);
     memcpy(exports[exportCount].bytes,data,size);exports[exportCount].size=size;exportCount++;
     return (s32)size;
@@ -270,6 +275,46 @@ static s32 sdDir(file_handle *directory,file_handle **out,u32 type) {
     return count;
 }
 static void loadCard(savesPlace_t *place,int slot) {(void)slot;placeClear(place);place->ready=true;}
+/* saves_raw.c's writer, modelled with the real planner on the images: the
+ * planned system blocks and the save's blocks land, nothing else. */
+static bool rawWritable=true;
+static int rawAdds,rawErases;
+static u8 *imageBytes(const file_handle *image) {
+    if(!strcmp(image->name,"sda:/images/A.raw")) return imageA;
+    if(!strcmp(image->name,"sda:/images/B.raw")) return imageB;
+    assert(!"an image the model doesn't have");return NULL;
+}
+static bool SavesRaw_Writable(const file_handle *image) {
+    return rawWritable && image->device==&sd && (sd.features&FEAT_WRITE) && image->fileType==IS_FILE;
+}
+static u8 rawMetadata[UI_SAVES_RAW_METADATA_SIZE];
+static uiSavesRawCard_t rawPlanned;
+static uiSavesRawStatus_t SavesRaw_Add(file_handle *image,const uint8_t *gci,uint32_t length) {
+    uiSavesRawChange_t change;u8 *bytes;uiSavesRawStatus_t status;unsigned at,blocks;
+    if(!SavesRaw_Writable(image)) return UI_SAVES_RAW_READ_ONLY;
+    bytes=imageBytes(image);blocks=UISaves_Blocks(gci);assert(length==64+blocks*8192u);
+    memcpy(rawMetadata,bytes,sizeof(rawMetadata));
+    status=UISavesRaw_PlanAdd(rawMetadata,IMAGE_BYTES,gci,&rawPlanned,&change);
+    if(status!=UI_SAVES_RAW_OK) return status;
+    at=change.first;
+    for(unsigned i=0;i<blocks;i++,at=rawPlanned.next[at]) memcpy(bytes+at*8192u,gci+64+i*8192u,8192);
+    memcpy(bytes,rawMetadata,sizeof(rawMetadata));rawAdds++;
+    return UI_SAVES_RAW_OK;
+}
+static uiSavesRawStatus_t SavesRaw_Erase(file_handle *image,const uint8_t entry[UI_SAVES_ENTRY_SIZE]) {
+    uiSavesRawChange_t change;u8 *bytes;uiSavesRawStatus_t status;
+    if(!SavesRaw_Writable(image)) return UI_SAVES_RAW_READ_ONLY;
+    bytes=imageBytes(image);memcpy(rawMetadata,bytes,sizeof(rawMetadata));
+    status=UISavesRaw_PlanErase(rawMetadata,IMAGE_BYTES,entry,&rawPlanned,&change);
+    if(status!=UI_SAVES_RAW_OK) return status;
+    memcpy(bytes,rawMetadata,sizeof(rawMetadata));rawErases++;
+    return UI_SAVES_RAW_OK;
+}
+/* An image's saves as the console would read them. */
+static unsigned imageSaves(const u8 *bytes,uiSavesRawCard_t *card) {
+    assert(UISavesRaw_Parse(bytes,UI_SAVES_RAW_METADATA_SIZE,IMAGE_BYTES,card)==UI_SAVES_RAW_OK);
+    return card->count;
+}
 static void setup(void) {
     memset(places,0,sizeof(places));memset(placeIdCount,0,sizeof(placeIdCount));
     sd=(DEVICEHANDLER_INTERFACE){&sdRoot,FEAT_WRITE,sdDir,sdRead,sdWrite,sdDelete,sdClose,sdSeek,sdStat};
@@ -279,6 +324,7 @@ static void setup(void) {
         snprintf(places[i].dir.name,PATHNAME_MAX,"sda:/%s",i==2?"left":"right");places[i].ready=true;
     }
     reads=writes=deletes=closes=cardCopies=starts=ends=tells=says=exportCount=0;
+    rawWritable=true;rawAdds=rawErases=0;failSdWrite=false;
     expectInvalidMessage=invalidMessageSeen=false;
     pool=calloc(1,48*SAVES_SLOT_BYTES);assert(pool);memset(slots,0,sizeof(slots));
     screenFocus=0;screenStacks[0]=2;screenStacks[1]=3;failReadAt=-1;chosen[0]=0;
@@ -310,8 +356,7 @@ static void readExport(void) {
     for(int i=0;i<32;i++)assert(artwork[i]==(i<10?'A':'B'));
     u32 length=0;u8 *data=saveRead(virtual,&length);assert(data && length==64+2*8192);
     assert(!memcmp(data,entry,64));for(unsigned i=64;i<length;i++)assert(data[i]==(i<64+8192?'A':'B'));free(data);
-    before=closes;assert(!saveDelete(virtual));assert(closes==before && deletes==0);
-    saveTransfer(virtual,UI_SAVES_PLACE_FOLDER,true);assert(starts==0 && writes==0 && ends==0 && tells==1);
+    /* Copy exports it and leaves the image as it was. */
     placesRemember();saveTransfer(virtual,UI_SAVES_PLACE_FOLDER,false);
     assert(starts==1 && ends==1 && lastResult && writes==1 && exportCount==1);
     assert(exports[0].size==64+2*8192 && !memcmp(exports[0].bytes,entry,64));
@@ -319,24 +364,75 @@ static void readExport(void) {
     assert(!strncmp(exports[0].name,"sda:/right/",11) && strstr(exports[0].name,".gci"));
     assert(places[2].rawOpen && places[2].count==1 && !strcmp(places[2].rawImage.name,"sda:/images/A.raw"));
     assert(!places[3].rawOpen && places[3].count==1);
-    unchanged();clean();
+    unchanged();
+    /* Move: a copy that doesn't go in leaves the save on the image. */
+    failSdWrite=true;placesRemember();saveTransfer(places[2].list[0],UI_SAVES_PLACE_FOLDER,true);
+    /* folderWrite takes its own partial file away (never an image). */
+    assert(!lastResult && rawErases==0 && exportCount==1 && tells==1 && deletes==1);
+    assert(!memcmp(imageA,frozenA,IMAGE_BYTES));deletes=0;
+    /* One that does: the image lets it go, as listed, and reads again. */
+    failSdWrite=false;placesRemember();saveTransfer(places[2].list[0],UI_SAVES_PLACE_FOLDER,true);
+    assert(lastResult && exportCount==2 && rawErases==1 && deletes==0);
+    assert(strstr(exports[1].name,"_2.gci") && !memcmp(exports[1].bytes,entry,64));
+    assert(places[2].rawOpen && places[2].ready && places[2].count==0 && places[2].freeBlocks==59);
+    uiSavesRawCard_t card;assert(imageSaves(imageA,&card)==0 && card.freeBlocks==59);
+    assert(!memcmp(imageB,frozenB,IMAGE_BYTES));clean();
+    /* To a card: Copy leaves the image; Move erases it there after. */
     for(int slot=0;slot<2;slot++) {
         setup();openImage(2,"A");screenStacks[1]=slot;placesRemember();
         saveTransfer(places[2].list[0],slot ? UI_SAVES_PLACE_SLOT_B : UI_SAVES_PLACE_SLOT_A,false);
-        assert(lastResult && cardCopies==1 && writes==0);
-        unchanged();clean();
+        assert(lastResult && cardCopies==1 && writes==0 && rawErases==0);
+        unchanged();
+        placesRemember();saveTransfer(places[2].list[0],slot ? UI_SAVES_PLACE_SLOT_B : UI_SAVES_PLACE_SLOT_A,true);
+        assert(lastResult && cardCopies==2 && rawErases==1 && places[2].count==0);
+        clean();
     }
+    /* A save marked no-move doesn't move off an image either. */
+    setup();
+    for(int i=0;i<2;i++) {u8 *directory=imageA+(1+i)*8192;directory[0x34]=0x10;seal(directory,8188,directory+8188);}
+    memcpy(frozenA,imageA,IMAGE_BYTES);openImage(2,"A");placesRemember();
+    saveTransfer(places[2].list[0],UI_SAVES_PLACE_FOLDER,true);
+    assert(tells==1 && strstr(told,"doesn't let its save move") && starts==0 && writes==0);
+    unchanged();clean();
 }
 static void twoColumns(void) {
     setup();openImage(2,"A");openImage(3,"B");
     u8 a[64],b[64];assert(saveEntry(places[2].list[0],a));assert(saveEntry(places[3].list[0],b));
     assert(!memcmp(a,"GALP01",6) && !memcmp(b,"GZLP02",6));
-    uiSavesRoom_t room;saveRoom(3,a,true,&room);assert(room.ready && !room.writable && !room.card);
+    /* The other column's image is a card: room, free blocks, its saves. */
+    uiSavesRoom_t room;saveRoom(3,a,true,&room);
+    assert(room.ready && room.writable && room.card && room.image && !room.hasIt);
+    assert(room.saves==1 && room.freeBlocks==57 && !strcmp(room.name,"The card image"));
+    saveRoom(3,b,true,&room);assert(room.hasIt);
+    rawWritable=false;saveRoom(3,a,true,&room);assert(!room.writable);rawWritable=true;
     char path[PATHNAME_MAX];assert(!destinationFolder(UI_SAVES_PLACE_FOLDER,path,sizeof(path)));
     saveTransfer(places[2].list[0],UI_SAVES_PLACE_FOLDER,false);assert(writes==0 && starts==0);
     placesRemember();placesReload();assert(places[2].rawOpen && places[3].rawOpen);
     assert(saveEntry(places[2].list[0],a) && saveEntry(places[3].list[0],b));
-    assert(!memcmp(a,"GALP01",6) && !memcmp(b,"GZLP02",6));unchanged();clean();
+    assert(!memcmp(a,"GALP01",6) && !memcmp(b,"GZLP02",6));unchanged();
+    /* Copy into the other image: both images read, A as it was. */
+    placesRemember();saveTransfer(places[2].list[0],UI_SAVES_PLACE_IMAGE,false);
+    assert(lastResult && rawAdds==1 && rawErases==0 && writes==0 && deletes==0);
+    assert(!memcmp(imageA,frozenA,IMAGE_BYTES) && places[3].count==2);
+    uiSavesRawCard_t card;assert(imageSaves(imageB,&card)==2);
+    unsigned at=UISavesRaw_Find(&card,a);assert(at<card.count);
+    u8 copied[64+2*8192];
+    for(unsigned i=0,block=card.entry[at][0x36]*256u+card.entry[at][0x37];i<2;i++,block=card.next[block])
+        memcpy(copied+64+i*8192,imageB+block*8192,8192);
+    for(int i=0;i<2*8192;i++)assert(copied[64+i]==(i<8192?'A':'B'));
+    /* Again: it's there, so nothing is written. */
+    placesRemember();saveTransfer(places[2].list[0],UI_SAVES_PLACE_IMAGE,false);
+    assert(!lastResult && rawAdds==1 && tells==1 && strstr(told,"already has this save"));
+    /* Move the other way: from B into A, then off B. */
+    screenFocus=1;places[3].selection=0;placesRemember();
+    file_handle *moving=NULL;
+    for(int i=0;i<places[3].count;i++) {u8 e[64];assert(saveEntry(places[3].list[i],e));if(!memcmp(e,"GZLP02",6))moving=places[3].list[i];}
+    assert(moving);saveTransfer(moving,UI_SAVES_PLACE_IMAGE,true);
+    assert(lastResult && rawAdds==2 && rawErases==1);
+    assert(imageSaves(imageA,&card)==2 && UISavesRaw_Find(&card,b)<card.count);
+    assert(imageSaves(imageB,&card)==1 && UISavesRaw_Find(&card,b)==card.count);
+    assert(places[2].count==2 && places[3].count==1 && deletes==0 && writes==0);
+    clean();
     setup();screenFocus=1;openImage(3,"A");placesRemember();
     saveTransfer(places[3].list[0],UI_SAVES_PLACE_FOLDER,false);
     assert(lastResult && writes==1 && !strncmp(exports[0].name,"sda:/left/",10));
@@ -355,7 +451,13 @@ static void destinationsAndFailures(void) {
     int before=closes;assert(!saveDelete(&raw) && closes==before && deletes==0);
     screenFocus=0;openImage(2,"A");placesRemember();
     failReadAt=reads+1;saveTransfer(places[2].list[0],UI_SAVES_PLACE_FOLDER,false);
-    assert(!lastResult && writes==0 && deletes==0);unchanged();clean();
+    assert(!lastResult && writes==0 && deletes==0);unchanged();
+    /* An image its device can't change: no erase, a Move's copy stays a copy. */
+    failReadAt=-1;rawWritable=false;tells=0;
+    assert(!saveDelete(places[2].list[0]) && rawErases==0);
+    placesRemember();saveTransfer(places[2].list[0],UI_SAVES_PLACE_FOLDER,true);
+    assert(writes==1 && rawErases==0 && tells==1 && strstr(told,"couldn't be removed"));
+    assert(!memcmp(imageA,frozenA,IMAGE_BYTES));clean();
 }
 static void openingFailures(void) {
     setup();strcpy(places[2].dir.name,"sda:/images");loadFolder(&places[2],false);
@@ -415,22 +517,38 @@ static void detailsInput(void) {
     assert(detailsShown==1 && menusShown==0);
     assert(!strcmp(detailSnapshot.name,"raw-save"));
     assert(detailSnapshot.blocks==2 && !detailSnapshot.estimated);
-    assert(!strcmp(detailSnapshot.source,"Read-only card image"));
+    assert(!strcmp(detailSnapshot.source,"Card image"));
     assert(!strcmp(detailSnapshot.updated,"Unknown"));
     assert(!strcmp(detailSnapshot.icon,"Static"));
     assert(starts==0 && writes==0 && deletes==0);
     script(back,1);selectPress(0,BUTTON_A);assert(detailsShown==2);
     selectPress(0,BUTTON_B);assert(detailsShown==2);
     places[2].selection=1;selectPress(0,BUTTON_A);assert(detailsShown==2);
+    rawWritable=false;script(back,1);places[2].selection=0;selectPress(0,BUTTON_A);
+    assert(detailsShown==3 && !strcmp(detailSnapshot.source,"Read-only card image"));
     unchanged();clean();
 
-    /* A enters the unchanged action menu. Every dimmed action remains
-     * unselectable, while both the dialog and action menu were rendered. */
+    /* Images whose device can't change them: every action is dimmed and
+     * stays unselectable, while the dialog and action menu were rendered. */
     const u32 allDim[]={BUTTON_A,BUTTON_A,BUTTON_UP,BUTTON_A,
         BUTTON_DOWN,BUTTON_DOWN,BUTTON_A,BUTTON_B};
-    setup();openImage(2,"A");openImage(3,"B");script(allDim,8);selectPress(0,BUTTON_A);
+    setup();rawWritable=false;openImage(2,"A");openImage(3,"B");script(allDim,8);selectPress(0,BUTTON_A);
     assert(inputAt==8 && detailsShown==1 && menusShown>0 && seenDim==7 && over.menuSerial==1);
-    assert(starts==0 && writes==0 && deletes==0);unchanged();clean();
+    assert(starts==0 && writes==0 && deletes==0 && rawAdds==0 && rawErases==0);unchanged();clean();
+
+    /* Writable images: the menu starts on Copy, which goes into the other
+     * image after its question; Erase asks first, No first. */
+    const u32 copyIn[]={BUTTON_A,BUTTON_A,BUTTON_A};
+    setup();openImage(2,"A");openImage(3,"B");script(copyIn,3);selectPress(0,BUTTON_A);
+    assert(inputAt==3 && seenDim==0 && rawAdds==1 && rawErases==0 && lastResult);
+    assert(!memcmp(imageA,frozenA,IMAGE_BYTES) && places[3].count==2);clean();
+    const u32 eraseNo[]={BUTTON_A,BUTTON_DOWN,BUTTON_A,BUTTON_A};
+    setup();openImage(2,"A");script(eraseNo,4);selectPress(0,BUTTON_A);
+    assert(inputAt==4 && rawErases==0);unchanged();clean();
+    const u32 eraseYes[]={BUTTON_A,BUTTON_DOWN,BUTTON_A,BUTTON_UP,BUTTON_A};
+    setup();openImage(2,"A");script(eraseYes,5);selectPress(0,BUTTON_A);
+    assert(inputAt==5 && rawErases==1 && starts==1 && ends==1 && lastResult);
+    assert(places[2].rawOpen && places[2].count==0 && deletes==0);clean();
 
     /* A real RAW-to-independent-SD export still needs action selection
      * and its confirmation; opening details alone never performs it. */
@@ -517,7 +635,7 @@ static void detailsMetadata(void) {
 }
 int main(void) {
     readExport();twoColumns();destinationsAndFailures();openingFailures();emptyImage();storageFocus();detailsInput();detailsIconStates();detailsMetadata();
-    puts("RAW controller: load, virtual entry/art/read, details A/B, guarded actions/export, read-only operations, reload and two SD columns PASS");
+    puts("RAW controller: load, virtual entry/art/read, details A/B, export, move and erase through the image writer, read-only images, reload and two SD columns PASS");
     return 0;
 }
 '''

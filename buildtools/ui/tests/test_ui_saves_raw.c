@@ -172,12 +172,15 @@ static void testMetadata(void)
 		put16(metadata + copy * UI_SAVES_BLOCK_SIZE + 9u * 2u, 5u);
 	}
 	fix(); expect(UI_SAVES_RAW_INVALID_CHAIN);
+	/* A block the map holds that no save reaches: what an interrupted write
+	 * leaves, as on the console. It stays allocated, and the card reads. */
 	fixture();
 	for(unsigned copy = 3u; copy <= 4u; ++copy) {
 		put16(metadata + copy * UI_SAVES_BLOCK_SIZE + 7u * 2u, 65535u);
 		put16(metadata + copy * UI_SAVES_BLOCK_SIZE + 6u, 55u);
 	}
-	fix(); expect(UI_SAVES_RAW_INVALID_CHAIN);
+	fix(); expect(UI_SAVES_RAW_OK);
+	assert(card.count == 2u && card.freeBlocks == 55u && card.next[7] == 65535u);
 	fixture();
 	for(unsigned copy = 3u; copy <= 4u; ++copy) {
 		put16(metadata + copy * UI_SAVES_BLOCK_SIZE + 5u * 2u, 64u);
@@ -224,11 +227,353 @@ static void testGeometry(void)
 	assert(card.count == 0u && card.freeBlocks == 59u);
 }
 
+/* ------------------------------------------------------------------------
+ * Writing: changes planned in the system blocks, checked here by their own
+ * sums and by reading them as the parser does.
+ * --------------------------------------------------------------------- */
+#define BLOCK UI_SAVES_BLOCK_SIZE
+static uint8_t before[UI_SAVES_RAW_METADATA_SIZE];
+static uiSavesRawChange_t change;
+
+static unsigned get16(const uint8_t *at)
+{
+	return ((unsigned)at[0] << 8) | at[1];
+}
+
+/* A .gci's directory entry: a game, a name and a size; its first block is
+ * left for the image to set. */
+static void gciEntry(uint8_t entry[UI_SAVES_ENTRY_SIZE], const char *id,
+	const char *name, unsigned blocks)
+{
+	memset(entry, 0, UI_SAVES_ENTRY_SIZE);
+	memcpy(entry, id, 6u);
+	entry[6] = 0xffu;
+	memcpy(entry + 8u, name, strlen(name));
+	put16(entry + 0x2cu, 0x40u);
+	entry[0x34] = 0x04u;
+	put16(entry + 0x36u, 0x1234u);
+	put16(entry + 0x38u, blocks);
+	put16(entry + 0x3au, 0xffffu);
+}
+
+/* A system block whose sums the console would accept, by this file's own
+ * arithmetic. */
+static bool sealed(unsigned block)
+{
+	uint8_t copy[BLOCK];
+
+	memcpy(copy, metadata + block * BLOCK, BLOCK);
+	if(block >= 3u) sum(copy + 4u, BLOCK - 4u, copy);
+	else sum(copy, BLOCK - 4u, copy + BLOCK - 4u);
+	return !memcmp(copy, metadata + block * BLOCK, BLOCK);
+}
+
+static bool unchanged(void)
+{
+	return !memcmp(metadata, before, sizeof(metadata));
+}
+
+/* A 16 Mbit card holding count one-block saves at blocks 5 onwards. */
+static void manySaves(unsigned count)
+{
+	memset(metadata, 0xff, sizeof(metadata));
+	put16(metadata + 0x22u, 16u);
+	put16(metadata + 0x24u, 0u);
+	for(unsigned copy = 0u; copy < 2u; ++copy) {
+		uint8_t *directory = metadata + (1u + copy) * BLOCK;
+		uint8_t *map = metadata + (3u + copy) * BLOCK;
+		memset(map, 0, BLOCK);
+		for(unsigned i = 0u; i < count; ++i) {
+			uint8_t *entry = directory + i * UI_SAVES_ENTRY_SIZE;
+			char name[16];
+			snprintf(name, sizeof(name), "Save %u", i);
+			gciEntry(entry, "MANY01", name, 1u);
+			put16(entry + 0x36u, 5u + i);
+			put16(map + (5u + i) * 2u, 65535u);
+		}
+		put16(directory + 0x1ffau, copy);
+		put16(map + 4u, copy);
+		put16(map + 6u, 251u - count);
+		put16(map + 8u, 4u + count);
+	}
+	fix();
+}
+
+static void testAdd(void)
+{
+	uint8_t entry[UI_SAVES_ENTRY_SIZE];
+	unsigned at;
+
+	fixture();
+	memcpy(before, metadata, sizeof(metadata));
+	gciEntry(entry, "NEWS01", "New Save", 3u);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_OK);
+	/* The fixture's newer copies are the second ones: the new versions go
+	 * into the first, one count past, and nothing else changes. */
+	assert(change.directory[0] == 1u && change.directory[1] == 0u);
+	assert(change.map[0] == 3u && change.map[1] == 0u);
+	assert(!memcmp(metadata, before, BLOCK));
+	assert(!memcmp(metadata + 2u * BLOCK, before + 2u * BLOCK, BLOCK));
+	assert(!memcmp(metadata + 4u * BLOCK, before + 4u * BLOCK, BLOCK));
+	assert(sealed(1u) && sealed(3u));
+	assert(get16(metadata + BLOCK + 0x1ffau) == 2u);
+	assert(get16(metadata + 3u * BLOCK + 4u) == 2u);
+	/* Blocks after the last allocated (9), in order; that one now last. */
+	assert(change.first == 10u);
+	assert(get16(metadata + 3u * BLOCK + 6u) == 53u);
+	assert(get16(metadata + 3u * BLOCK + 8u) == 12u);
+	assert(card.count == 3u && card.freeBlocks == 53u);
+	assert(card.directoryCopy == 0u && card.mapCopy == 0u);
+	assert(card.next[10] == 11u && card.next[11] == 12u && card.next[12] == 65535u);
+	assert(card.next[5] == 9u && card.next[9] == 65535u && card.next[6] == 65535u);
+	/* The .gci's entry in the first free place, starting at its block. */
+	at = UISavesRaw_Find(&card, entry);
+	assert(at < card.count && card.directoryIndex[at] == 2u);
+	assert(get16(card.entry[at] + 0x36u) == 10u);
+	assert(!memcmp(card.entry[at], entry, 0x36u));
+	assert(!memcmp(card.entry[at] + 0x38u, entry + 0x38u, 8u));
+	assert(UISavesRaw_GciSize(&card, at) == UI_SAVES_ENTRY_SIZE + 3u * BLOCK);
+
+	/* Round from the last block to the first data block, skipping used. */
+	fixture();
+	for(unsigned copy = 3u; copy <= 4u; ++copy) {
+		put16(metadata + copy * BLOCK + 8u, 62u);
+	}
+	fix();
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_OK);
+	assert(change.first == 63u && card.next[63] == 7u && card.next[7] == 8u &&
+		card.next[8] == 65535u);
+	assert(get16(metadata + 3u * BLOCK + 8u) == 8u);
+	/* An out-of-range last block starts at the first data block. */
+	fixture();
+	for(unsigned copy = 3u; copy <= 4u; ++copy) {
+		put16(metadata + copy * BLOCK + 8u, 65535u);
+	}
+	fix();
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_OK);
+	assert(change.first == 7u && card.next[7] == 8u && card.next[8] == 10u);
+
+	/* A block the map holds without a save is never taken. */
+	fixture();
+	for(unsigned copy = 3u; copy <= 4u; ++copy) {
+		put16(metadata + copy * BLOCK + 10u * 2u, 65535u);
+		put16(metadata + copy * BLOCK + 6u, 55u);
+	}
+	fix();
+	gciEntry(entry, "NEWS01", "New Save", 1u);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_OK);
+	assert(change.first == 11u && card.next[10] == 65535u && card.freeBlocks == 54u);
+
+	/* Every free block, exactly. */
+	fixture();
+	gciEntry(entry, "BIGS01", "Big Save", 56u);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_OK);
+	assert(card.freeBlocks == 0u && card.count == 3u);
+}
+
+static void testAddRefused(void)
+{
+	uint8_t entry[UI_SAVES_ENTRY_SIZE];
+
+	fixture();
+	memcpy(before, metadata, sizeof(metadata));
+	/* The same game, maker and name, whatever else differs. */
+	gciEntry(entry, "DEMO01", "Demo Save", 1u);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_EXISTS);
+	assert(unchanged() && change.directory[0] == 0u && change.map[0] == 0u);
+	gciEntry(entry, "DEMO02", "Demo Save", 1u);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_OK);
+	fixture();
+	gciEntry(entry, "BIGS01", "Big Save", 57u);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_NO_ROOM);
+	assert(unchanged());
+	gciEntry(entry, "NEWS01", "New Save", 0u);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_INVALID_ARGUMENT);
+	/* A first byte of 0xff is a free place, or libogc2's wildcard. */
+	gciEntry(entry, "NEWS01", "New Save", 1u);
+	entry[0] = 0xffu;
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_INVALID_ARGUMENT);
+	gciEntry(entry, "NEWS01", "New Save", 1u);
+	entry[4] = 0xffu;
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_INVALID_ARGUMENT);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, NULL, &card, &change) ==
+		UI_SAVES_RAW_INVALID_ARGUMENT);
+	gciEntry(entry, "NEWS01", "New Save", 1u);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, NULL, &change) ==
+		UI_SAVES_RAW_INVALID_ARGUMENT);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, NULL) ==
+		UI_SAVES_RAW_INVALID_ARGUMENT);
+	assert(unchanged());
+	/* An image that doesn't read is never planned on. */
+	metadata[0] ^= 1u;
+	memcpy(before, metadata, sizeof(metadata));
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_INVALID_HEADER);
+	assert(unchanged() && change.directory[0] == 0u);
+	/* 127 saves fill the directory; 126 leave its last place. */
+	manySaves(127u);
+	memcpy(before, metadata, sizeof(metadata));
+	assert(UISavesRaw_PlanAdd(metadata, 16u * 131072u, entry, &card, &change) ==
+		UI_SAVES_RAW_FULL);
+	assert(unchanged());
+	manySaves(126u);
+	assert(UISavesRaw_PlanAdd(metadata, 16u * 131072u, entry, &card, &change) ==
+		UI_SAVES_RAW_OK);
+	assert(card.count == 127u && card.directoryIndex[UISavesRaw_Find(&card, entry)] == 126u);
+	assert(change.first == 131u);
+}
+
+static void testErase(void)
+{
+	uint8_t entry[UI_SAVES_ENTRY_SIZE];
+	uint8_t other[UI_SAVES_ENTRY_SIZE];
+
+	fixture();
+	expect(UI_SAVES_RAW_OK);
+	memcpy(entry, UISavesRaw_Entry(&card, 0u), sizeof(entry));
+	memcpy(other, UISavesRaw_Entry(&card, 1u), sizeof(other));
+	memcpy(before, metadata, sizeof(metadata));
+	assert(UISavesRaw_PlanErase(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_OK);
+	assert(change.directory[0] == 1u && change.directory[1] == 0u);
+	assert(change.map[0] == 3u && change.map[1] == 0u);
+	assert(sealed(1u) && sealed(3u));
+	assert(!memcmp(metadata + 2u * BLOCK, before + 2u * BLOCK, BLOCK));
+	assert(!memcmp(metadata + 4u * BLOCK, before + 4u * BLOCK, BLOCK));
+	assert(card.count == 1u && card.freeBlocks == 58u);
+	assert(card.next[5] == 0u && card.next[9] == 0u && card.next[6] == 65535u);
+	assert(!memcmp(UISavesRaw_Entry(&card, 0u), other, sizeof(other)));
+	for(unsigned i = 0u; i < UI_SAVES_ENTRY_SIZE; ++i) {
+		assert(metadata[BLOCK + i] == 0xffu);
+	}
+	/* The last block allocated stays where it was; a new save follows it. */
+	assert(get16(metadata + 3u * BLOCK + 8u) == 9u);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_OK);
+	assert(change.first == 10u && card.count == 2u && card.freeBlocks == 56u);
+	assert(change.directory[0] == 2u && change.map[0] == 4u);
+	assert(get16(metadata + 2u * BLOCK + 0x1ffau) == 3u);
+	/* The save comes back at the free place its erasing left. */
+	assert(card.directoryIndex[UISavesRaw_Find(&card, entry)] == 0u);
+
+	/* Only the save exactly as it was listed. */
+	fixture();
+	memcpy(before, metadata, sizeof(metadata));
+	entry[0x28] ^= 1u;
+	assert(UISavesRaw_PlanErase(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_NOT_FOUND);
+	assert(unchanged() && change.directory[0] == 0u);
+	gciEntry(entry, "GONE01", "Gone Save", 1u);
+	assert(UISavesRaw_PlanErase(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_NOT_FOUND);
+	assert(UISavesRaw_PlanErase(metadata, IMAGE_SIZE, NULL, &card, &change) ==
+		UI_SAVES_RAW_INVALID_ARGUMENT);
+	assert(unchanged());
+}
+
+/* At the highest count the next compares lower, so the new version goes
+ * into both copies, the older first, and they tie (the first is read). */
+static void testCounterWrap(void)
+{
+	uint8_t entry[UI_SAVES_ENTRY_SIZE];
+
+	fixture();
+	put16(metadata + BLOCK + 0x1ffau, 32766u);
+	put16(metadata + 2u * BLOCK + 0x1ffau, 32767u);
+	put16(metadata + 4u * BLOCK + 4u, 32767u);
+	fix();
+	gciEntry(entry, "NEWS01", "New Save", 1u);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_OK);
+	assert(change.directory[0] == 1u && change.directory[1] == 2u);
+	assert(change.map[0] == 3u && change.map[1] == 4u);
+	assert(!memcmp(metadata + BLOCK, metadata + 2u * BLOCK, BLOCK));
+	assert(!memcmp(metadata + 3u * BLOCK, metadata + 4u * BLOCK, BLOCK));
+	assert(get16(metadata + BLOCK + 0x1ffau) == 32768u);
+	assert(get16(metadata + 3u * BLOCK + 4u) == 32768u);
+	assert(sealed(1u) && sealed(2u) && sealed(3u) && sealed(4u));
+	assert(card.count == 3u && card.directoryCopy == 0u);
+	/* And the count goes on from there. The entry may be the card's own. */
+	assert(UISavesRaw_PlanErase(metadata, IMAGE_SIZE, card.entry[UISavesRaw_Find(&card, entry)],
+		&card, &change) == UI_SAVES_RAW_OK);
+	assert(change.directory[0] == 2u && change.directory[1] == 0u);
+	assert(get16(metadata + 2u * BLOCK + 0x1ffau) == 32769u);
+	assert(card.count == 2u && card.directoryCopy == 1u);
+}
+
+/* Each write is a whole system block. An add writes its data, then the map,
+ * then the directory; an erase the directory, then the map. Stopped between
+ * any two, or partway through one, the image reads as before or with the
+ * blocks held and no save in them. */
+static void testInterrupted(void)
+{
+	static uint8_t planned[UI_SAVES_RAW_METADATA_SIZE];
+	uint8_t entry[UI_SAVES_ENTRY_SIZE];
+
+	fixture();
+	memcpy(before, metadata, sizeof(metadata));
+	gciEntry(entry, "NEWS01", "New Save", 3u);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_OK);
+	memcpy(planned, metadata, sizeof(planned));
+	/* The map only: the save's blocks held, the save not yet there. */
+	memcpy(metadata, before, sizeof(metadata));
+	memcpy(metadata + change.map[0] * BLOCK, planned + change.map[0] * BLOCK, BLOCK);
+	expect(UI_SAVES_RAW_OK);
+	assert(card.count == 2u && card.freeBlocks == 53u && card.next[10] == 11u);
+	/* Half of the directory: it doesn't sum, so the other copy stands. */
+	memcpy(metadata + change.directory[0] * BLOCK,
+		planned + change.directory[0] * BLOCK, BLOCK / 2u);
+	expect(UI_SAVES_RAW_OK);
+	assert(card.count == 2u && UISavesRaw_Find(&card, entry) == 2u);
+	/* The map's first sums and counts without its chain (on a small card
+	 * every change is in its first sector): as if nothing had been written. */
+	memcpy(metadata, before, sizeof(metadata));
+	memcpy(metadata + change.map[0] * BLOCK, planned + change.map[0] * BLOCK, 8u);
+	expect(UI_SAVES_RAW_OK);
+	assert(card.count == 2u && card.freeBlocks == 56u && card.next[10] == 0u);
+
+	fixture();
+	memcpy(before, metadata, sizeof(metadata));
+	expect(UI_SAVES_RAW_OK);
+	memcpy(entry, UISavesRaw_Entry(&card, 0u), sizeof(entry));
+	assert(UISavesRaw_PlanErase(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_OK);
+	memcpy(planned, metadata, sizeof(planned));
+	/* The directory only: the save gone, its blocks still held. */
+	memcpy(metadata, before, sizeof(metadata));
+	memcpy(metadata + change.directory[0] * BLOCK,
+		planned + change.directory[0] * BLOCK, BLOCK);
+	expect(UI_SAVES_RAW_OK);
+	assert(card.count == 1u && card.freeBlocks == 56u && card.next[5] == 9u);
+	/* And the next change starts from there. */
+	gciEntry(entry, "NEWS01", "New Save", 1u);
+	assert(UISavesRaw_PlanAdd(metadata, IMAGE_SIZE, entry, &card, &change) ==
+		UI_SAVES_RAW_OK);
+	assert(change.first == 10u && card.count == 2u && card.freeBlocks == 55u);
+}
+
 int main(void)
 {
 	testReads();
 	testMetadata();
 	testGeometry();
-	puts("raw memory card parser tests passed");
+	testAdd();
+	testAddRefused();
+	testErase();
+	testCounterWrap();
+	testInterrupted();
+	puts("raw memory card parser and planner tests passed");
 	return 0;
 }

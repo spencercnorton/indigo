@@ -86,6 +86,31 @@ def raw_saves(out: Path) -> None:
     (out / "two-block-save").write_bytes(size + header + directory * 2 + block_map * 2)
     (out / "unformatted").write_bytes(size + bytes(5 * 8192))
     (out / "truncated").write_bytes(size + header)
+    # At the highest update counts: the next change goes into both copies.
+    struct.pack_into(">H", directory, 0x1FFA, 0x7FFF)
+    checksum(directory, 0, 0x1FFC, 0x1FFC)
+    struct.pack_into(">H", block_map, 4, 0x7FFF)
+    checksum(block_map, 4, 8192, 0)
+    (out / "counters-at-wrap").write_bytes(size + header + directory * 2 + block_map * 2)
+    # 16 Mbit, 127 one-block saves: the directory is full.
+    struct.pack_into(">HH", header, 0x22, 16, 0)
+    checksum(header, 0, 0x1FC, 0x1FC)
+    directory = bytearray(b"\xff" * 8192)
+    block_map = bytearray(8192)
+    for index in range(127):
+        entry = bytearray(64)
+        entry[:6] = b"FULL01"
+        name = f"Save {index}".encode()
+        entry[8:8 + len(name)] = name
+        struct.pack_into(">HH", entry, 0x36, 5 + index, 1)
+        directory[index * 64:(index + 1) * 64] = entry
+        struct.pack_into(">H", block_map, (5 + index) * 2, 0xFFFF)
+    struct.pack_into(">H", directory, 0x1FFA, 0)
+    checksum(directory, 0, 0x1FFC, 0x1FFC)
+    struct.pack_into(">HHH", block_map, 4, 0, 251 - 127, 4 + 127)
+    checksum(block_map, 4, 8192, 0)
+    (out / "full-directory").write_bytes(struct.pack(">I", 2 * 1024 * 1024) + header +
+                                         directory * 2 + block_map * 2)
 
 
 def posters(out: Path) -> None:

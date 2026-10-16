@@ -70,8 +70,10 @@ the File Browser opens its Game Detail, B comes back to the same row, and
 Detail's Launch Game starts the probe as that game.
 
 The virtual-cards route leaves both physical slots empty, browses a public
-synthetic RAW image on SD and exports a GCI into the other SD column. The
-actual exported payload and unchanged RAW bytes are checked on the FAT image.
+synthetic RAW image on SD and exports a GCI into the other SD column, then
+erases one of the image's saves, moves the other out to the SD column and
+moves a .gci of it back in. The exported payloads and the image, read as the
+console reads a card, are checked on the FAT image.
 
 usage: run.py DOL --out DIR [--route smoke|tour|game|save|virtual-cards|folders|files] [--probe DOL]
               [--region pal|pal60|ntsc]
@@ -90,6 +92,7 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -592,6 +595,60 @@ def dolphin_ini(storage: str = "dvd", card: Path | None = None, cards: Path | No
 def saves(folder: Path) -> set[str]:
     """The saves in a GCI folder memory card, by file name."""
     return {path.name for path in folder.glob("*.gci")}
+
+
+def card_image_saves(image: bytes) -> dict[bytes, bytes]:
+    """A card image's saves as the console reads them, by game, maker and
+    name: the header's sums, the newer valid directory and block map (their
+    counts compared signed, the first copy winning ties), the map's free
+    count, and each save's chain, ending where it should. Independent of
+    Indigo's own reader. Raises ValueError for an image a console would
+    call broken."""
+    block = 8192
+
+    def sums(data: bytes) -> tuple[int, int]:
+        words = struct.unpack(f">{len(data) // 2}H", data)
+        value, inverse = sum(words) & 0xFFFF, sum(w ^ 0xFFFF for w in words) & 0xFFFF
+        return (0 if value == 0xFFFF else value, 0 if inverse == 0xFFFF else inverse)
+
+    def signed(value: int) -> int:
+        return value - 0x10000 if value >= 0x8000 else value
+
+    def newer(copies: list[bytes], valid: list[bool], at: int) -> bytes:
+        if not any(valid):
+            raise ValueError("neither copy sums")
+        if not valid[0] or not valid[1]:
+            return copies[valid.index(True)]
+        counts = [signed(struct.unpack_from(">H", c, at)[0]) for c in copies]
+        return copies[0] if counts[0] >= counts[1] else copies[1]
+
+    if sums(image[:0x1FC]) != struct.unpack_from(">HH", image, 0x1FC):
+        raise ValueError("the header doesn't sum")
+    directories = [image[block:2 * block], image[2 * block:3 * block]]
+    maps = [image[3 * block:4 * block], image[4 * block:5 * block]]
+    directory = newer(directories, [sums(d[:0x1FFC]) == struct.unpack_from(">HH", d, 0x1FFC)
+                                    for d in directories], 0x1FFA)
+    block_map = newer(maps, [sums(m[4:]) == struct.unpack_from(">HH", m, 0) for m in maps], 4)
+    blocks = len(image) // block
+    links = [struct.unpack_from(">H", block_map, b * 2)[0] for b in range(blocks)]
+    if sum(1 for b in range(5, blocks) if links[b] == 0) != struct.unpack_from(">H", block_map, 6)[0]:
+        raise ValueError("the block map's free count is wrong")
+    found: dict[bytes, bytes] = {}
+    for place in range(127):
+        entry = directory[place * 64:(place + 1) * 64]
+        if entry[:4] == b"\xff" * 4:
+            continue
+        at, count = struct.unpack_from(">HH", entry, 0x36)
+        body = bytearray()
+        for _ in range(count):
+            if not 5 <= at < blocks:
+                raise ValueError("a save's chain leaves the card")
+            body += image[at * block:(at + 1) * block]
+            at = links[at]
+        if at != 0xFFFF:
+            raise ValueError("a save's chain doesn't end where its size says")
+        found[entry[:6] + entry[8:40]] = entry + bytes(body)
+    return found
 
 
 def same_save(original: bytes, copy: bytes) -> bool:
@@ -3069,20 +3126,21 @@ class Route:
         self.press("B")
         again = self.info("LEFT", like=first)
         self.check("LEFT returns to the RAW save to export", again is not None)
-        # Open the same image independently on the right. All actions are
-        # unavailable, but details still opens and B always returns.
+        # Open the same image independently on the right. Move and Copy are
+        # dimmed (the other image has the save already), details still opens
+        # and B always returns.
         self.steps("RIGHT RIGHT RIGHT RIGHT RIGHT")
         self.press("A")
         self.check("right SD independently opens RAW", self.differs(right, RIGHT_HEADER_BOX))
         self.pause(ART_SECONDS)
         both = self.save_details("virtual-cards-details-both-raw")
-        self.check("details works with two read-only RAW columns",
+        self.check("details works with the same RAW image in both columns",
                    same_text(known["updated"], both["updated"]))
         self.press("A")
         self.pause(.3)
-        self.shot("virtual-cards-all-actions-unavailable", self.emulator.frame())
+        self.shot("virtual-cards-copy-unavailable", self.emulator.frame())
         disabled = text_mask(self.gray(), FOOTER_BOX)
-        self.press("A")  # dimmed Copy cannot export into a RAW image
+        self.press("A")  # dimmed Copy: the other image has this save
         self.pause(.3)
         self.check("an unavailable RAW Copy keeps its action menu",
                    same_text(text_mask(self.gray(), FOOTER_BOX), disabled) and
@@ -3096,7 +3154,7 @@ class Route:
                    self.text_until(INFO_BOX, lambda mask: same_text(mask, first)) is not None)
         self.virtual_popup_checks()
         self.save_details("virtual-cards-details-to-export")
-        self.press("A")  # Actions: read-only RAW starts on Copy
+        self.press("A")  # Actions: a RAW image's save starts on Copy
         self.pause(0.3)
         self.shot("virtual-cards-copy-menu", self.emulator.frame())
         self.press("A")
@@ -3106,6 +3164,7 @@ class Route:
         self.check("Copy exports RAW's save to the SD folder", self.message())
         self.shot("virtual-cards-exported", self.last_rgb)
         self.check("the export message closes by itself", self.message_closes())
+        self.virtual_card_changes(first)
         self.press("B")
         back = self.text_until(LEFT_HEADER_BOX, lambda mask: same_text(mask, left))
         self.check("B closes RAW to its containing SD folder", back is not None)
@@ -3121,6 +3180,51 @@ class Route:
             self.check("LEFT returns toward Home Library", mask is not None, to=n)
         # Two copies after the export: SAVES shows, unless Saves on Details is off.
         self.library_save_stats("virtual-cards-library-after-export", shown=self.detail_saves)
+
+    def virtual_card_changes(self, first: np.ndarray) -> None:
+        """The image changes as a card does: Erase its other save, Move this
+        one out to the SD column, then Move a .gci of it back in."""
+        other = self.info("RIGHT", unlike=first)
+        self.check("RIGHT comes to the image's other save", other is not None)
+        self.save_details("virtual-cards-details-to-erase")
+        self.steps("A DOWN A")  # Actions (on Copy), Erase, then its question
+        self.shot("virtual-cards-erase-question", self.emulator.frame())
+        self.steps("UP")  # No is first: Yes
+        self.press("A")
+        self.check("Erase takes a save off the RAW image", self.message())
+        self.shot("virtual-cards-erased", self.last_rgb)
+        self.check("the erase message closes by itself", self.message_closes())
+        again = self.info("LEFT", like=first)
+        self.check("LEFT comes back to the image's first save", again is not None)
+        self.save_details("virtual-cards-details-to-move-out")
+        self.steps("A UP A")  # Actions (on Copy), Move, then where to
+        self.shot("virtual-cards-move-to", self.emulator.frame())
+        self.press("A")  # the folder the other stack has open
+        self.check("Move takes the RAW image's save to the SD folder", self.message())
+        self.check("the move-out message closes by itself", self.message_closes())
+        self.shot("virtual-cards-moved-out", self.last_rgb)
+        # The image is empty; its save and the earlier export are in the SD
+        # column, by the same name: either goes back.
+        mask, _ = self.press_until("RIGHT", like=first, box=INFO_BOX)
+        for _ in range(6):
+            if mask is not None:
+                break
+            mask, _ = self.press_until("RIGHT", like=first, box=INFO_BOX)
+        self.check("RIGHT reaches a .gci of the save in the SD column", mask is not None)
+        self.pause(ART_SECONDS)
+        self.save_details("virtual-cards-details-to-move-in")
+        self.steps("A A")  # Actions start on Move for a file; Move
+        self.shot("virtual-cards-move-in-question", self.emulator.frame())
+        self.press("A")  # Yes: "Move to the card image?"
+        self.check("Move puts the .gci into the RAW image", self.message())
+        self.check("the move-in message closes by itself", self.message_closes())
+        self.shot("virtual-cards-moved-in", self.last_rgb)
+        back = self.info("LEFT", like=first)
+        for _ in range(6):
+            if back is not None:
+                break
+            back = self.info("LEFT", like=first)
+        self.check("the moved save shows in the RAW image", back is not None)
 
     def virtual_popup_checks(self) -> None:
         """The private emulator image after dialogs, before authorizing Copy."""
@@ -3143,15 +3247,36 @@ class Route:
             self.check("folder identity, colors and native save browsing preserve the save bytes",
                        unchanged == data, file=name, bytes=len(data))
         raw = card.read_card(image, f"{folder}/{make_test_saves.RAW_CARD_NAME}")
-        exported = card.read_card(image, f"{folder}/{make_test_saves.RAW_EXPORT_NAME}")
-        self.check("the source RAW image is byte-identical after browsing and export", raw == original,
-                   bytes=len(raw) if raw is not None else None)
-        self.check("the exported GCI has the selected identity and exact BAT-ordered payload",
-                   exported is not None and same_save(gcis[0], exported),
-                   file=make_test_saves.RAW_EXPORT_NAME,
-                   bytes=len(exported) if exported is not None else None)
-        if exported is not None:
-            (self.out / "virtual-card-export.gci").write_bytes(exported)
+        numbered = make_test_saves.RAW_EXPORT_NAME.replace(".gci", "_2.gci")
+        exports = {name: card.read_card(image, f"{folder}/{name}")
+                   for name in (make_test_saves.RAW_EXPORT_NAME, numbered)}
+        left = [data for data in exports.values() if data is not None]
+        # The export and the Move out made two .gci files; one went back in.
+        self.check("one exported GCI is left in the SD folder, with the save's exact payload",
+                   len(left) == 1 and same_save(gcis[0], left[0]),
+                   files=sorted(name for name, data in exports.items() if data is not None))
+        if left:
+            (self.out / "virtual-card-export.gci").write_bytes(left[0])
+        try:
+            saves = card_image_saves(raw) if raw is not None else None
+        except ValueError as error:
+            saves = None
+            self.check("the RAW image reads as a card after Erase and both Moves", False,
+                       error=str(error))
+        if saves is not None:
+            back = saves.get(gcis[0][:6] + gcis[0][8:40])
+            self.check("the RAW image reads as a card after Erase and both Moves", True)
+            self.check("the erased save is gone and the moved save is back, whole",
+                       len(saves) == 1 and back is not None and same_save(gcis[0], back) and
+                       back[0x38:0x40] == gcis[0][0x38:0x40] and back[8:0x36] == gcis[0][8:0x36],
+                       saves=len(saves))
+            # Only the system blocks and the save's new blocks were written.
+            changed = [n for n in range(len(original) // 8192)
+                       if raw[n * 8192:(n + 1) * 8192] != original[n * 8192:(n + 1) * 8192]]
+            self.check("the image changed only in its system blocks and the save's new blocks",
+                       len(raw) == len(original) and set(changed) <= {1, 2, 3, 4, 10, 11},
+                       changed=changed)
+            (self.out / "virtual-card-after.raw").write_bytes(raw)
 
     def tour(self) -> None:
         self.smoke()
