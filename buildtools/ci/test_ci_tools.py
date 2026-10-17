@@ -212,6 +212,10 @@ class Upstream(unittest.TestCase):
     def test_line_endings_and_the_interface_are_not_changes(self):
         self.assertEqual(self.check(b"a\nb\n"), [])
 
+    def test_llms_txt_is_owned_at_repository_root(self):
+        self.assertEqual(self.check(b"a\nb\n", extra={"llms.txt": b"# Indigo\n"}), [])
+        self.assertIn("does not list it", self.check(b"a\nb\n", extra={"sub/llms.txt": b"# Indigo\n"})[0])
+
     def test_project_journal_is_owned_without_exempting_upstream_code(self):
         journal = {"AGENTS/journal.md": b"Project development history\n"}
         self.assertEqual(self.check(b"a\nb\n", extra=journal), [])

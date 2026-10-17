@@ -1,3 +1,12 @@
+## 2026-10-16 — llms.txt at the repository root
+
+Add `llms.txt` at the root with a concise overview of Indigo, supported
+GameCube loaders and storage devices, and direct links to every page in
+`docs/guide/`, `docs/SETTINGS.md`, `CHANGELOG.md` and the contributor
+documents. `OWN` in `buildtools/ci/check_upstream.py` includes root
+`llms.txt`, pinned by `test_llms_txt_is_owned_at_repository_root` in
+`buildtools/ci/test_ci_tools.py`.
+
 ## 2026-10-16 — v2.4.0's guide pictures
 
 Nine guide pictures were re-recorded from the v2.4.0 release zip, in CI's
