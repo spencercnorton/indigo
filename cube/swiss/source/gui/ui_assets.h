@@ -296,6 +296,30 @@ void UIStills_CancelForDeviceChange(void);
 s32 UIStills_DisposeAfterVideoStop(void);
 u32 UIStills_MemoryFootprint(void);
 
+/*
+ * Disc art for the Jewel Case layout: a third cache with the same contract,
+ * fed by /swiss/ui/discs.pak. Its header declares a disc's shape: one
+ * 160x160 GX_TF_CMPR texture per game, no mip chain (the jewel case draws a
+ * disc about that size or larger). Three slots, for the selected game and
+ * the one either side of it. Each cache refuses the others' packs.
+ */
+#define UI_DISCS_SLOTS 3
+#define UI_DISCS_SIZE 160
+#define UI_DISCS_BYTES 12800 /* 160 * 160 / 2 */
+
+s32 UIDiscs_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync);
+bool UIDiscs_Ready(void);
+void UIDiscs_RequestWindow(const char (*ids)[8], int count, int selected);
+bool UIDiscs_Poll(void);
+bool UIDiscs_PollStep(void);
+uiPosterResult_t UIDiscs_Query(const char *gameId, size_t gameIdLen,
+                               bool bnrAvailable, uiPosterHandle_t *out);
+GXTexObj *UIDiscs_Peek(uiPosterHandle_t handle);
+u32 UIDiscs_PeekAgeMs(uiPosterHandle_t handle);
+void UIDiscs_CancelForDeviceChange(void);
+s32 UIDiscs_DisposeAfterVideoStop(void);
+u32 UIDiscs_MemoryFootprint(void);
+
 #ifdef UI_ASSETS_HOST_BUILD
 /* Host-test seam: force a slot's generation counter (e.g. to the wrap
  * boundary). Not compiled for the target. */

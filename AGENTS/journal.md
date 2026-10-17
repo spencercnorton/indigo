@@ -1,3 +1,37 @@
+## 2026-10-16 — Disc art for the Jewel Case
+
+A third Library pack, `/swiss/ui/discs.pak`, gives the Jewel Case each
+game's own disc: SWPK v1 with kind `discs`, one 160x160 CMPR level, 12,800
+bytes a record. `poster_pack.py --discs` builds it from pictures at least
+160x160, cropped square; what is clear around the disc and in its hole is
+laid on grey (176, 178, 184) first, so CMPR blocks at the rim don't take
+in black. ui_assets gains a third shape, `UIDiscs_*`, with three slots.
+FrameBufferMagic opens the file with the posters and, while the layout is
+Jewel Case, asks for the selected game's disc and its neighbours';
+`_GameflowDiscTexture` hands the jewel case the disc with the whole texture
+laid over it, fading in as it arrives. A game without one keeps the
+poster's middle square, and one without either the bare disc. Older Indigo
+never opens the file.
+
+GameTDB's disc art (art.gametdb.com/wii/disc/<LANG>/<ID>.png) is 160x160
+RGBA, the disc filling the square, its corners clear and a clear middle
+26.5 px across the radius: 80 sampled, all alike. 1,321 of GameTDB's
+1,708 GameCube IDs have one in their region's languages (Japan has 96 of
+351), about 16.9 MB of pack; the ready-made poster pack is to carry it.
+
+Emulator: card.py draws a disc for every demo game but three (`NO_DISC`;
+Ember and Ivy shows its cover's middle instead) and builds discs.pak from
+them, and the guide picture was recorded again with them. Dolphin shows the
+demo discs, the cover fallback, and real GameTDB discs (swapped in locally,
+never published) square on the disc, the case's hub over the clear middle.
+
+Tests: test_poster_pack.py builds a discs pack (header, shape, the grey
+under clear pixels, the minimum size); test_ui_assets.c loads discs one
+texture at a time and refuses the other packs' shapes;
+test_gameflow_gx_stream.py has the disc first, the poster's middle without
+one, a bare disc while it loads, and a mutant that ignores discs.pak;
+test_emulator.py checks `NO_DISC` against the demo games.
+
 ## 2026-10-16 — Jewel Case, a fifth Library layout
 
 Library Layout gains **Jewel Case** (`UI_GAMEFLOW_LAYOUT_JEWEL_CASE`, saved

@@ -149,6 +149,10 @@ static bool posterPackFileOwned;
 static file_handle stillsPackFile;
 static bool stillsPackFileOwned;
 static bool stillsPackAttempted;
+/* The Jewel Case's disc art: discs.pak, opened the same way. */
+static file_handle discsPackFile;
+static bool discsPackFileOwned;
+static bool discsPackAttempted;
 /* Spotlight's game descriptions: swiss/ui/descriptions.txt on the browsed
  * device, read whole the first time Spotlight asks there. The menu thread's
  * alone; the video thread only ever sees a snapshot's copy. */
@@ -2324,11 +2328,14 @@ static const gameflowQuad_t gameflowSpotlightCover =
 /* The Jewel Case layout (ui_jewel_case.c), after portlandhodl's jewel case
  * games view for Swiss; see NOTICE. No cards: one clear case at a time, its
  * disc printed with the middle of the game's cover, as wide as the cover's
- * 192x256 (s0, t0, s1, t1 of the pack's canvas). A cover leaves the case's
+ * 192x256 (s0, t0, s1, t1 of the pack's canvas), or its own disc art from
+ * discs.pak, which comes first when the pack has it. A cover leaves the case's
  * middle for Detail. The carousel swaps cases a little slower than it turns
  * the other rings, so a case can be seen falling back and the next one
  * swinging in. */
 static const float gameflowJewelCasePrint[4] = {0.0f, 0.125f, 0.75f, 0.875f};
+/* A disc from discs.pak fills its 160x160 square. */
+static const float gameflowJewelCaseDisc[4] = {0.0f, 0.0f, 1.0f, 1.0f};
 static const gameflowQuad_t gameflowJewelCaseCover =
 	{{{245.0f, 106.0f}, {395.0f, 106.0f}, {395.0f, 306.0f}, {245.0f, 306.0f}}};
 #define GAMEFLOW_JEWEL_CASE_RESPONSE 8.0f
@@ -2921,6 +2928,24 @@ static GXTexObj *_GameflowStillTexture(const uiGameflowCardSnapshot_t *record)
 		return NULL;
 	}
 	return UIStills_Peek(handle);
+}
+
+/* The game's disc from discs.pak: true when the pack has one for it, with
+ * *texture NULL while it is still being read, and *arrival how far it has
+ * faded in since it arrived. The same borrowing rules as its poster. */
+static bool _GameflowDiscTexture(const uiGameflowCardSnapshot_t *record,
+	GXTexObj **texture, float *arrival)
+{
+	uiPosterHandle_t handle;
+	uiPosterResult_t result = UIDiscs_Query(record->gameId,
+		strnlen(record->gameId, sizeof(record->gameId)), false, &handle);
+
+	if(result != UI_POSTER_EXACT && result != UI_POSTER_UNIVERSAL) {
+		return false;
+	}
+	*texture = UIDiscs_Peek(handle);
+	*arrival = _GameflowArrival(UIDiscs_PeekAgeMs(handle));
+	return true;
 }
 
 /* How far the game's still has faded in since it arrived. */
@@ -3904,8 +3929,16 @@ static void _GameflowDrawJewelCases(const drawGameflowEvent_t *data,
 		shot->slot = slot;
 		shot->index = record->libraryIndex;
 		shot->printAlpha = 1.0f;
-		shot->print = _GameflowPosterTexture(record, &shot->printAlpha);
-		memcpy(shot->rect, gameflowJewelCasePrint, sizeof(shot->rect));
+		/* Its own disc from discs.pak, laid over the whole disc: bare
+		 * until it is read, then fading in. Without one, the middle of
+		 * its cover. */
+		if(_GameflowDiscTexture(record, &shot->print, &shot->printAlpha)) {
+			memcpy(shot->rect, gameflowJewelCaseDisc, sizeof(shot->rect));
+		}
+		else {
+			shot->print = _GameflowPosterTexture(record, &shot->printAlpha);
+			memcpy(shot->rect, gameflowJewelCasePrint, sizeof(shot->rect));
+		}
 		shot->alpha = alpha *
 			((record->flags & UI_GAMEFLOW_CARD_HIDDEN) ? 0.55f : 1.0f);
 		count++;
@@ -5100,6 +5133,16 @@ static void _GameflowCloseStillsPackFile(void)
 	stillsPackFileOwned = false;
 }
 
+static void _GameflowCloseDiscsPackFile(void)
+{
+	if(discsPackFileOwned && discsPackFile.device != NULL &&
+		discsPackFile.device->closeFile != NULL) {
+		discsPackFile.device->closeFile(&discsPackFile);
+	}
+	memset(&discsPackFile, 0, sizeof(discsPackFile));
+	discsPackFileOwned = false;
+}
+
 static void _GameflowDropDescriptions(void)
 {
 	free(descriptionsText);
@@ -5177,7 +5220,8 @@ void DrawGameflowCancelPosters(void)
 	 * file again. */
 	descriptionsAttempted = false;
 	if(!posterPackAttempted && !posterPackFileOwned &&
-		!stillsPackFileOwned && !stillsPackAttempted) {
+		!stillsPackFileOwned && !stillsPackAttempted &&
+		!discsPackFileOwned && !discsPackAttempted) {
 		return;
 	}
 
@@ -5185,11 +5229,14 @@ void DrawGameflowCancelPosters(void)
 	 * the same private mutex through ui_assets' callback contract. */
 	UIAssets_CancelForDeviceChange();
 	UIStills_CancelForDeviceChange();
+	UIDiscs_CancelForDeviceChange();
 	_GameflowClosePosterPackFile();
 	_GameflowCloseStillsPackFile();
+	_GameflowCloseDiscsPackFile();
 	posterPackDevice = NULL;
 	posterPackAttempted = false;
 	stillsPackAttempted = false;
+	discsPackAttempted = false;
 }
 
 static s32 _GameflowOnReset(s32 final)
@@ -5271,6 +5318,34 @@ static bool _GameflowOpenStillsPack(DEVICEHANDLER_INTERFACE *device)
 	return UIStills_Ready();
 }
 
+/* Only the Jewel Case needs disc art: opened as the stills are, on its
+ * first use, once per mounted device. */
+static bool _GameflowOpenDiscsPack(DEVICEHANDLER_INTERFACE *device)
+{
+	uiAssetsSource_t source;
+	uiAssetsSync_t sync;
+
+	if(device == NULL || device->initial == NULL ||
+		_videomutex == LWP_MUTEX_NULL) {
+		return false;
+	}
+	if(discsPackAttempted) {
+		return UIDiscs_Ready();
+	}
+	discsPackAttempted = true;
+	UIAssets_SyncFromMutex(_videomutex, &sync);
+	memset(&discsPackFile, 0, sizeof(discsPackFile));
+	concat_path(discsPackFile.name, device->initial->name,
+		"swiss/ui/discs.pak");
+	discsPackFile.device = device;
+	discsPackFileOwned = true;
+	if(UIAssets_SourceFromFileHandle(&discsPackFile, &source) !=
+		UI_ASSETS_OK || UIDiscs_Init(&source, &sync) != UI_ASSETS_OK) {
+		_GameflowCloseDiscsPackFile();
+	}
+	return UIDiscs_Ready();
+}
+
 void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	const uiGameflowRenderSnapshot_t *snapshot)
 {
@@ -5296,6 +5371,22 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 			memcpy(stills[position], record->gameId, UI_ASSETS_ID_LEN);
 		}
 		UIStills_RequestWindow(stills, UI_STILLS_SLOTS, 1);
+	}
+	if(snapshot->layout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE &&
+		_GameflowOpenDiscsPack(device)) {
+		/* The selected game's disc and the ones either side of it. */
+		char discs[UI_DISCS_SLOTS][8] = {{0}};
+		for(i = 0u; i < snapshot->recordCount; ++i) {
+			const uiGameflowCardSnapshot_t *record = &snapshot->records[i];
+			int position = (int)record->relativeSlot + 1;
+			if(position < 0 || position >= UI_DISCS_SLOTS ||
+				strnlen(record->gameId, sizeof(record->gameId)) !=
+					UI_ASSETS_ID_LEN) {
+				continue;
+			}
+			memcpy(discs[position], record->gameId, UI_ASSETS_ID_LEN);
+		}
+		UIDiscs_RequestWindow(discs, UI_DISCS_SLOTS, 1);
 	}
 	if(!UIAssets_Ready()) {
 		return;
@@ -5336,7 +5427,8 @@ bool DrawGameflowPollPosters(void)
 {
 	/* At most one 16 KiB range per pack, between input checks. */
 	bool more = UIAssets_PollStep();
-	return UIStills_PollStep() || more;
+	more = UIStills_PollStep() || more;
+	return UIDiscs_PollStep() || more;
 }
 
 static void _GameflowCopySnapshot(drawGameflowEvent_t *data,
@@ -8599,6 +8691,7 @@ void DrawShutdown() {
 	 * lock-free and remains safe before the mutex is destroyed. */
 	UIAssets_DisposeAfterVideoStop();
 	UIStills_DisposeAfterVideoStop();
+	UIDiscs_DisposeAfterVideoStop();
 	mutex = _videomutex;
 	_videomutex = LWP_MUTEX_NULL;
 	if(mutex != LWP_MUTEX_NULL) {

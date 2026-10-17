@@ -52,6 +52,18 @@ def flat_image(w, h, rgb):
     return Image.new("RGB", (w, h), rgb)
 
 
+def disc_image(size, rgb):
+    """A disc as GameTDB draws one: an opaque circle filling the square,
+    clear outside it and in its hole."""
+    from PIL import ImageDraw
+    im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(im)
+    draw.ellipse((0, 0, size - 1, size - 1), fill=rgb + (255,))
+    hole = size * 0.14
+    draw.ellipse((size / 2 - hole, size / 2 - hole, size / 2 + hole, size / 2 + hole), fill=(0, 0, 0, 0))
+    return im
+
+
 class Fixtures:
     """Class-level art fixtures shared by every test."""
 
@@ -67,6 +79,11 @@ class Fixtures:
         gradient_image(640, 480).save(self.path("still-GALE01.png"))
         flat_image(512, 384, (40, 160, 60)).save(self.path("still-GC6E01.png"))
         gradient_image(854, 480).save(self.path("still-GM4E01.png"))
+        # Disc art: GameTDB's 160x160 with a clear outside and hole, a bigger
+        # flat one to shrink, and a wide one to crop square.
+        disc_image(160, (200, 40, 40)).save(self.path("disc-GALE01.png"))
+        flat_image(320, 320, (40, 160, 60)).save(self.path("disc-GC6E01.png"))
+        gradient_image(240, 160).save(self.path("disc-GM4E01.png"))
         with open(self.path("corrupt.png"), "wb") as f:
             f.write(b"this is not a png at all")
 
@@ -189,6 +206,8 @@ class ManifestValidation(unittest.TestCase):
         self.assertIs(pp.read_manifest(manifest)[1], pp.STILL)
         manifest = FX.write_manifest([FX.record("GALE01")], kind="posters")
         self.assertIs(pp.read_manifest(manifest)[1], pp.POSTER)
+        manifest = FX.write_manifest([FX.record("GALE01")], kind="discs")
+        self.assertIs(pp.read_manifest(manifest)[1], pp.DISC)
 
     def test_unknown_kind_rejected(self):
         manifest = FX.write_manifest([FX.record("GALE01")], kind="videos")
@@ -234,6 +253,21 @@ class CoversFolder(unittest.TestCase):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(manifest, f)
         self.assertIs(pp.read_manifest(path)[1], pp.STILL)
+
+    def test_discs_folder_becomes_discs_manifest(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        for name in ("GALE01.png", "Mario.png"):
+            with open(os.path.join(d, name), "wb") as f:
+                f.write(name.encode())
+        manifest, skipped = pp.covers_manifest(d, "discs")
+        self.assertEqual(manifest["kind"], "discs")
+        self.assertEqual(skipped, ["Mario.png"])
+        self.assertEqual(manifest["records"][0]["note"], "discs folder: GALE01.png")
+        path = os.path.join(d, "manifest.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(manifest, f)
+        self.assertIs(pp.read_manifest(path)[1], pp.DISC)
 
     def test_duplicate_id_across_extensions_is_rejected(self):
         d = tempfile.mkdtemp()
@@ -341,6 +375,41 @@ class ImageValidation(unittest.TestCase):
         with self.assertRaisesRegex(pp.PackError,
                                     "need at least 320x240"):
             pp.prepare_images(records, FX.dir, staging, shape)
+
+    def test_disc_crop_is_square(self):
+        wide = gradient_image(240, 160)   # loses its sides, not its top
+        self.assertEqual(pp.focal_crop(wide, [0.5, 0.5], pp.DISC).size, (160, 160))
+        self.assertEqual(pp.focal_crop(flat_image(320, 320, (1, 2, 3)), [0.5, 0.5],
+                                       pp.DISC).size, (160, 160))
+
+    def test_discs_need_160x160(self):
+        staging = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, staging)
+        manifest = FX.write_manifest([FX.record("GALE01", source="small.png")], kind="discs")
+        records, shape = pp.read_manifest(manifest)
+        with self.assertRaisesRegex(pp.PackError, "need at least 160x160"):
+            pp.prepare_images(records, FX.dir, staging, shape)
+
+    def test_a_disc_s_clear_parts_are_grey(self):
+        """Clear pixels are laid on grey, never left as the black they store."""
+        staging = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, staging)
+        manifest = FX.write_manifest([FX.record("GALE01", source="disc-GALE01.png")], kind="discs")
+        records, shape = pp.read_manifest(manifest)
+        pp.prepare_images(records, FX.dir, staging, shape)
+        with Image.open(os.path.join(staging, "GALE01.png")) as im:
+            self.assertEqual(im.mode, "RGB")
+            self.assertEqual(im.getpixel((0, 0)), pp.DISC_BACKDROP)       # outside
+            self.assertEqual(im.getpixel((80, 80)), pp.DISC_BACKDROP)     # the hole
+            self.assertEqual(im.getpixel((80, 20)), (200, 40, 40))        # the print
+        with open(os.path.join(staging, "GALE01.scf"), encoding="utf-8") as f:
+            self.assertIn("mipmap=no", f.read())
+
+    def test_disc_is_one_cmpr_level(self):
+        self.assertEqual((pp.DISC.canvas_w, pp.DISC.canvas_h), (160, 160))
+        self.assertEqual((pp.DISC.content_w, pp.DISC.content_h), (160, 160))
+        self.assertEqual(pp.DISC.mips, 1)
+        self.assertEqual(pp.DISC.bytes, 160 * 160 // 2)
 
     def test_still_is_one_cmpr_level(self):
         self.assertEqual((pp.STILL.canvas_w, pp.STILL.canvas_h), (320, 240))
@@ -630,3 +699,62 @@ class StillsGeneration(unittest.TestCase):
     def test_provenance_names_the_kind(self):
         with open(self.pak_path + ".provenance.json", encoding="utf-8") as f:
             self.assertEqual(json.load(f)["kind"], "stills")
+
+
+@NEEDS_ENCODER
+class DiscsGeneration(unittest.TestCase):
+    """discs.pak: the same format, one 160x160 CMPR level per record."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.workdir = tempfile.mkdtemp(prefix="pp_discs_")
+        cls.records = [
+            FX.record("GALE01", source="disc-GALE01.png"),
+            FX.record("GC6E01", source="disc-GC6E01.png"),
+            FX.record("GM4E01", source="disc-GM4E01.png"),
+        ]
+        manifest = FX.write_manifest(cls.records, kind="discs")
+        cls.pak_path = os.path.join(cls.workdir, "discs.pak")
+        cls.pack = pp.generate(manifest, cls.pak_path, art_root=FX.dir)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.workdir, ignore_errors=True)
+
+    def test_header_declares_a_disc(self):
+        fields, records = parse_pack(self.pack)
+        self.assertEqual(fields["poster_bytes"], 12800)
+        self.assertEqual(fields["canvas"], (160, 160))
+        self.assertEqual(fields["content"], (160, 160))
+        self.assertEqual(fields["mips"], 1)
+        self.assertEqual(fields["fmt"], 14)
+        self.assertEqual(fields["file_length"], len(self.pack))
+        self.assertEqual(fields["file_length"], 160 + 3 * 12800)
+        self.assertEqual([r["id"] for r in records], ["GALE01", "GC6E01", "GM4E01"])
+        for i, rec in enumerate(records):
+            self.assertEqual(rec["offset"], 160 + i * 12800)
+            self.assertEqual(rec["length"], 12800)
+            payload = self.pack[rec["offset"]:rec["offset"] + rec["length"]]
+            self.assertEqual(zlib.crc32(payload), rec["crc"])
+
+    def test_deterministic_rebuild(self):
+        manifest = FX.write_manifest(self.records, kind="discs")
+        again = pp.generate(manifest, os.path.join(self.workdir, "again.pak"), art_root=FX.dir)
+        self.assertEqual(self.pack, again)
+
+    def test_content_color(self):
+        fields, records = parse_pack(self.pack)
+        rec = records[1]   # flat (40,160,60), shrunk to 160x160
+        payload = self.pack[rec["offset"]:rec["offset"] + rec["length"]]
+        avg = decode_cmpr_average(payload, 0, 160, 160, 160)
+        for got, want in zip(avg, (40, 160, 60)):
+            self.assertLess(abs(got - want), 12)
+        rec = records[2]   # a gradient, cropped square from its middle
+        payload = self.pack[rec["offset"]:rec["offset"] + rec["length"]]
+        left = decode_cmpr_average(payload, 0, 40, 160, 160)
+        right = decode_cmpr_average(payload, 120, 160, 160, 160)
+        self.assertLess(left[0] + 40, right[0])
+
+    def test_provenance_names_the_kind(self):
+        with open(self.pak_path + ".provenance.json", encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["kind"], "discs")

@@ -9,13 +9,18 @@ tag on `beta`. The newest changes are at the top until their release is named.
 ### New
 
 - The Library can show your games as **Jewel Case**: one clear CD jewel
-  case at a time, the disc inside spinning with the middle of the game's
-  cover printed on it. Left and Right swap cases, the old one falling back
-  as the next swings in; the C-stick turns the case in your hands. Choose
-  it in Settings › Setup › Library › **Library Layout**. It is ported from
-  the jewel case games view of portlandhodl's Swiss
-  (github.com/portlandhodl/swiss-gc), after Ann Nguyen's CD Case
-  (bubbbly.com/cd-case); System › Credits names them.
+  case at a time, the game's disc spinning inside. Left and Right swap
+  cases, the old one falling back as the next swings in; the C-stick turns
+  the case in your hands. Choose it in Settings › Setup › Library ›
+  **Library Layout**. It is ported from the jewel case games view of
+  portlandhodl's Swiss (github.com/portlandhodl/swiss-gc), after Ann
+  Nguyen's CD Case (bubbbly.com/cd-case); System › Credits names them.
+- The Jewel Case's discs come from `/swiss/ui/discs.pak`, a third pack next
+  to the posters: a 160×160 picture of each game's disc. The poster pack
+  carries it, made from GameTDB's disc art, and `poster_pack.py --discs`
+  builds one from your own pictures. A game the pack has no disc for has
+  the middle of its cover printed on its disc, and one with no cover either
+  a bare silver disc.
 
 ### Improved
 

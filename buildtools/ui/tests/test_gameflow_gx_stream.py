@@ -254,6 +254,27 @@ GXTexObj *UIStills_Peek(uiPosterHandle_t handle)
 	stills[handle.slot].data = stillIds[handle.slot];
 	return &stills[handle.slot];
 }
+/* Every fourth game (2, 6, 10, ...) has a disc in discs.pak; Q has them all
+ * still being read. */
+static GXTexObj discs[1000];
+static char discIds[1000][16];
+static bool discsLoading;
+uiPosterResult_t UIDiscs_Query(const char *id, size_t length, bool bnr, uiPosterHandle_t *handle)
+{
+	int n = atoi(id + 1);
+	(void)bnr;
+	if(packClosed || length < 6 || id[0] != 'G' || n % 4 != 2) return UI_POSTER_USE_BNR;
+	handle->slot = (u16)n; handle->generation = 1u;
+	return UI_POSTER_EXACT;
+}
+GXTexObj *UIDiscs_Peek(uiPosterHandle_t handle)
+{
+	if(discsLoading) return NULL;
+	snprintf(discIds[handle.slot], sizeof(discIds[0]), "disc:G%03uE0", handle.slot);
+	discs[handle.slot].data = discIds[handle.slot];
+	return &discs[handle.slot];
+}
+u32 UIDiscs_PeekAgeMs(uiPosterHandle_t handle) { (void)handle; return clockMs - artArrivedMs; }
 #endif
 /* Posters made on the console (gui/card_art.c), an app's or a folder of
  * games': every third card has none. */
@@ -311,7 +332,7 @@ static bool banners;
 
 /* L layout count selected (A: apps, O: folders) | P selected hint rowDirection snap
  * | M motion | D mode | W (banners) | Y [game] (pictures, or its still, arrive)
- * | K (no jewel case) | N frames dt  -- the log has one "F" per frame. */
+ * | K (no jewel case) | Q (discs being read) | N frames dt  -- the log has one "F" per frame. */
 static void publish(int layout, uint32_t count, uint32_t selected, int hint,
 	int rowDirection, int snap, bool first)
 {
@@ -437,6 +458,7 @@ int main(void)
 		else if(line[0] == 'W') banners = true;
 #if LAYOUTS
 		else if(line[0] == 'K') jewelUnready = true;
+		else if(line[0] == 'Q') discsLoading = true;
 #endif
 		else if(sscanf(line, "D %d", &c) == 1) {
 			UIGameflow_SetMode(&eventData->state, (uiGameflowMode_t)c, motionMode);
@@ -1169,6 +1191,18 @@ class GameflowGxStream(unittest.TestCase):
                          [(0.0, 20, "G020E0", 1.0, 1.0)])
         self.assertEqual(covers(frames(log)[-1]), {})
 
+    def test_jewel_case_prints_the_disc_first(self):
+        """A game discs.pak has gets its own disc over the whole disc, bare
+        while it is read; any other game, the middle of its cover."""
+        log = self.run_script(["L 4 40 22", "N 40 0.0167"])
+        self.assertEqual([c[2:6] for c in self.jewel_cases(frames(log)[-1])],
+                         [("disc:G022E0", 1.0, 1.0, (0.0, 0.0, 1.0, 1.0))])
+        log = self.run_script(["L 4 40 21", "N 40 0.0167"])
+        self.assertEqual([c[2:6] for c in self.jewel_cases(frames(log)[-1])],
+                         [("G021E0", 1.0, 1.0, (0.0, 0.125, 0.75, 0.875))])
+        log = self.run_script(["Q", "L 4 40 22", "N 40 0.0167"])
+        self.assertEqual([c[2] for c in self.jewel_cases(frames(log)[-1])], ["-"])
+
     def test_jewel_case_without_its_case_is_the_carousel(self):
         jewel = self.run_script(["K", "L 4 40 20", "N 40 0.0167"])
         carousel = self.run_script(["L 0 40 20", "N 40 0.0167"])
@@ -1232,12 +1266,16 @@ class GameflowGxStream(unittest.TestCase):
                 "!(fabsf(slot) < 1.0f)) {", "!(fabsf(slot) < 0.001f)) {"),
             "the disc carries the whole canvas": (
                 "{0.0f, 0.125f, 0.75f, 0.875f};", "{0.0f, 0.0f, 1.0f, 1.0f};"),
+            "the jewel case ignores discs.pak": (
+                "if(_GameflowDiscTexture(record, &shot->print, &shot->printAlpha)) {",
+                "if(false) {"),
         }
         tests = (self.test_grid_rows_and_highlight, self.check_all_grid_moves,
                  self.test_vertical_column, self.test_horizontal_shows_two_covers_either_side,
                  self.test_spotlight_row_picture_and_column, self.test_spotlight_moves_never_jump,
                  self.test_spotlight_never_leaves_the_column_blank,
-                 self.test_jewel_case_shows_one_case_and_two_while_moving)
+                 self.test_jewel_case_shows_one_case_and_two_while_moving,
+                 self.test_jewel_case_prints_the_disc_first)
         original = self.binary
         try:
             for index, (name, (old, new)) in enumerate(mutants.items()):

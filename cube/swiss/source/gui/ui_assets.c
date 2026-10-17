@@ -175,12 +175,21 @@ static const uiAssetsShape_t stillShape = {
 	UI_STILLS_SLOTS
 };
 
+static const uiAssetsShape_t discShape = {
+	UI_DISCS_BYTES, UI_DISCS_SIZE, UI_DISCS_SIZE, UI_DISCS_SIZE, UI_DISCS_SIZE, 1,
+	UI_DISCS_SLOTS
+};
+
 _Static_assert(UI_STILLS_SLOTS <= UI_ASSETS_SLOTS, "stills slots overflow");
 _Static_assert(UI_STILLS_BYTES == UI_STILLS_W * UI_STILLS_H / 2,
                "a CMPR still is half a byte per texel");
+_Static_assert(UI_DISCS_SLOTS <= UI_ASSETS_SLOTS, "disc slots overflow");
+_Static_assert(UI_DISCS_BYTES == UI_DISCS_SIZE * UI_DISCS_SIZE / 2,
+               "a CMPR disc is half a byte per texel");
 
 static uiAssetsCache_t posters = { .shape = &posterShape };
 static uiAssetsCache_t stills = { .shape = &stillShape };
+static uiAssetsCache_t discs = { .shape = &discShape };
 
 /* Menu-thread-only critical-section entry/exit. Video APIs never call
  * these: their caller already owns the lock. */
@@ -982,6 +991,53 @@ s32 UIStills_DisposeAfterVideoStop(void) {
 
 u32 UIStills_MemoryFootprint(void) {
 	return cacheFootprint(&stills);
+}
+
+/* ---- discs ---- */
+
+s32 UIDiscs_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync) {
+	return cacheInit(&discs, source, sync);
+}
+
+bool UIDiscs_Ready(void) {
+	return discs.packOpen;
+}
+
+void UIDiscs_RequestWindow(const char (*ids)[8], int count, int selected) {
+	cacheRequestWindow(&discs, ids, count, selected);
+}
+
+bool UIDiscs_Poll(void) {
+	return cachePoll(&discs, UI_DISCS_BYTES);
+}
+
+bool UIDiscs_PollStep(void) {
+	return cachePoll(&discs, UI_ASSETS_READ_BYTES);
+}
+
+uiPosterResult_t UIDiscs_Query(const char *gameId, size_t gameIdLen,
+                               bool bnrAvailable, uiPosterHandle_t *out) {
+	return cacheQuery(&discs, gameId, gameIdLen, bnrAvailable, out);
+}
+
+GXTexObj *UIDiscs_Peek(uiPosterHandle_t handle) {
+	return cachePeek(&discs, handle);
+}
+
+u32 UIDiscs_PeekAgeMs(uiPosterHandle_t handle) {
+	return cachePeekAgeMs(&discs, handle);
+}
+
+void UIDiscs_CancelForDeviceChange(void) {
+	cacheCancel(&discs);
+}
+
+s32 UIDiscs_DisposeAfterVideoStop(void) {
+	return cacheDispose(&discs);
+}
+
+u32 UIDiscs_MemoryFootprint(void) {
+	return cacheFootprint(&discs);
 }
 
 #ifdef UI_ASSETS_HOST_BUILD
