@@ -240,7 +240,8 @@ void uiAssetsHostFlush(void *ptr, u32 len) {
 		        "section\n", currentTest);
 		failures++;
 	}
-	if (len != UI_ASSETS_POSTER_BYTES && len != UI_STILLS_BYTES) {
+	if (len != UI_ASSETS_POSTER_BYTES && len != UI_STILLS_BYTES &&
+	    len != UI_DISCS_BYTES) {
 		fprintf(stderr, "FAIL [%s] flush of %u bytes\n", currentTest,
 		        (unsigned)len);
 		failures++;
@@ -331,7 +332,8 @@ static void packFixCrc(u8 *pack, u32 count) {
 
 #define BUILD_NOSORT 1
 
-/* The texture shape a pack declares: posters.pak's or stills.pak's. */
+/* The texture shape a pack declares: posters.pak's, stills.pak's or
+ * discs.pak's. */
 typedef struct {
 	u32 bytes;
 	u16 canvasW, canvasH, contentW, contentH;
@@ -344,6 +346,9 @@ static const packShape_t POSTER_SHAPE = {
 };
 static const packShape_t STILL_SHAPE = {
 	UI_STILLS_BYTES, UI_STILLS_W, UI_STILLS_H, UI_STILLS_W, UI_STILLS_H, 1
+};
+static const packShape_t DISC_SHAPE = {
+	UI_DISCS_BYTES, UI_DISCS_SIZE, UI_DISCS_SIZE, UI_DISCS_SIZE, UI_DISCS_SIZE, 1
 };
 
 static u8 *buildShapedPack(const testRec_t *recs, int count, size_t *outLen,
@@ -410,6 +415,10 @@ static u8 *buildStillPack(const testRec_t *recs, int count, size_t *outLen) {
 	return buildShapedPack(recs, count, outLen, 0, &STILL_SHAPE);
 }
 
+static u8 *buildDiscPack(const testRec_t *recs, int count, size_t *outLen) {
+	return buildShapedPack(recs, count, outLen, 0, &DISC_SHAPE);
+}
+
 /* ---- in-memory source with fault injection ---- */
 
 static struct {
@@ -468,6 +477,12 @@ static void resetWorld(void) {
 	UIStills_CancelForDeviceChange();
 	if (UIStills_DisposeAfterVideoStop() != UI_ASSETS_OK) {
 		fprintf(stderr, "FAIL [%s] reset could not dispose stills cache\n",
+		        currentTest ? currentTest : "startup");
+		failures++;
+	}
+	UIDiscs_CancelForDeviceChange();
+	if (UIDiscs_DisposeAfterVideoStop() != UI_ASSETS_OK) {
+		fprintf(stderr, "FAIL [%s] reset could not dispose discs cache\n",
 		        currentTest ? currentTest : "startup");
 		failures++;
 	}
@@ -1918,6 +1933,68 @@ static void test_stills_and_posters_refuse_each_other(void) {
 	free(stillPack);
 }
 
+/* ---- discs (discs.pak): the third cache ---- */
+
+/* A disc is one 160x160 CMPR texture with no mip chain, byte for byte as the
+ * pack holds it, in a cache of its own of three slots. */
+static void test_discs_load_one_texture_each(void) {
+	size_t len;
+	u8 *pack = buildDiscPack(BASIC, 3, &len);
+	uiAssetsSource_t src = memSource(pack, len);
+	uiPosterHandle_t h;
+	GXTexObj *tex;
+	char ids[3][8];
+	int guard = 64;
+	static u8 full[UI_DISCS_BYTES];
+	CHECK(UIDiscs_Init(&src, &testSync) == UI_ASSETS_OK);
+	CHECK(UIDiscs_Ready());
+	CHECK(!UIAssets_Ready() && !UIStills_Ready()); /* a cache of its own */
+	CHECK(UIDiscs_MemoryFootprint() ==
+	      UI_DISCS_SLOTS * UI_DISCS_BYTES + 3 * REC);
+	memset(ids, 0, sizeof(ids));
+	memcpy(ids[0], "GALE01", UI_ASSETS_ID_LEN);
+	memcpy(ids[1], "GC6E01", UI_ASSETS_ID_LEN);
+	memcpy(ids[2], "GZLE01", UI_ASSETS_ID_LEN);
+	UIDiscs_RequestWindow((const char (*)[8])ids, 3, 1);
+	fakeNowValue += UI_ASSETS_EVICT_QUARANTINE_MS + 1;
+	while (UIDiscs_Poll() && guard-- > 0)
+		fakeNowValue += UI_ASSETS_EVICT_QUARANTINE_MS + 1;
+	CHECK(flushCalls == 3);
+	CHECK(UIDiscs_Query("GC6E01", 6, true, &h) == UI_POSTER_EXACT);
+	tex = UIDiscs_Peek(h);
+	CHECK(tex != NULL);
+	if (tex) {
+		CHECK(tex->width == UI_DISCS_SIZE && tex->height == UI_DISCS_SIZE);
+		CHECK(tex->format == 14 && !tex->mipmap && !tex->lodConfigured);
+		fillPayloadLen(full, "GC6E01", UI_DISCS_BYTES);
+		CHECK(memcmp(tex->data, full, UI_DISCS_BYTES) == 0);
+	}
+	CHECK(UIDiscs_Query("GZLE69", 6, true, &h) == UI_POSTER_UNIVERSAL);
+	CHECK(UIDiscs_Peek(h) != NULL);
+	free(pack);
+}
+
+/* Each cache takes only its own pack's shape. */
+static void test_discs_refuse_the_other_packs(void) {
+	size_t posterLen, stillLen, discLen;
+	u8 *posterPack = buildPack(BASIC, 3, &posterLen, 0);
+	u8 *stillPack = buildStillPack(BASIC, 3, &stillLen);
+	u8 *discPack = buildDiscPack(BASIC, 3, &discLen);
+	uiAssetsSource_t src = memSource(posterPack, posterLen);
+	CHECK(UIDiscs_Init(&src, &testSync) == UI_ASSETS_ERR_FORMAT);
+	src = memSource(stillPack, stillLen);
+	CHECK(UIDiscs_Init(&src, &testSync) == UI_ASSETS_ERR_FORMAT);
+	CHECK(!UIDiscs_Ready());
+	src = memSource(discPack, discLen);
+	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_ERR_FORMAT);
+	CHECK(UIStills_Init(&src, &testSync) == UI_ASSETS_ERR_FORMAT);
+	CHECK(!UIAssets_Ready() && !UIStills_Ready());
+	CHECK(liveAllocs == 0);
+	free(posterPack);
+	free(stillPack);
+	free(discPack);
+}
+
 /* Three slots: a longer window is cut to its first three entries, and
  * moving one game on reads only the still that came into the window. */
 static void test_stills_window_of_three(void) {
@@ -2236,6 +2313,8 @@ int main(int argc, char **argv) {
 	RUN(test_stills_payload_corrupt);
 	RUN(test_stills_independent_of_posters);
 	RUN(test_stills_memory_budget);
+	RUN(test_discs_load_one_texture_each);
+	RUN(test_discs_refuse_the_other_packs);
 
 	if (argc > 2 && strcmp(argv[1], "--exact-pack") == 0)
 		test_exact_pack(argv[2], argc - 3, &argv[3]);

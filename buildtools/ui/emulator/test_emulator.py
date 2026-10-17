@@ -74,6 +74,11 @@ class Disc(unittest.TestCase):
         self.assertTrue(card.NO_STILL < games)
         self.assertTrue(card.NO_STILL - card.NO_POSTER)
         self.assertTrue(card.NO_STILL & card.NO_POSTER)
+        # The Jewel Case shows every kind of disc: its own, the middle of a
+        # cover, and a bare one.
+        self.assertTrue(card.NO_DISC < games)
+        self.assertTrue(card.NO_DISC - card.NO_POSTER)
+        self.assertTrue(card.NO_DISC & card.NO_POSTER)
         with self.assertRaises(ValueError):
             card.disc_header("gacz01", "lower case")
 

@@ -7,9 +7,10 @@ The Library's pictures and descriptions come from optional files in
 | --- | --- |
 | `posters.pak` | Box art: a 192×256 front cover per game. |
 | `stills.pak` | Gameplay stills: a 320×240 screenshot per game. |
+| `discs.pak` | Disc art: a 160×160 picture of each game's disc, for the Jewel Case layout. |
 | `descriptions.txt` | A few sentences about each game, for Spotlight. See [below](#game-descriptions). |
 
-Both are built with `buildtools/ui/poster_pack.py` and share one format,
+The three packs are built with `buildtools/ui/poster_pack.py` and share one format,
 described here. Indigo checks every field below before it uses a pack, and
 refuses a pack that differs in any of them.
 
@@ -18,12 +19,16 @@ refuses a pack that differs in any of them.
 ```bash
 python3 buildtools/ui/poster_pack.py --covers ~/covers --out posters.pak
 python3 buildtools/ui/poster_pack.py --stills ~/screenshots --out stills.pak
+python3 buildtools/ui/poster_pack.py --discs ~/discs --out discs.pak
 ```
 
 Name each image after its game ID, such as `GMSE01.png` or `GALE01.jpg`.
 Covers are cropped to 3:4 from the center and must be at least 192×256;
-screenshots are cropped to 4:3 and must be at least 320×240. Nothing is
-scaled up.
+screenshots are cropped to 4:3 and must be at least 320×240. Disc pictures
+are cropped square and must be at least 160×160: the disc filling the
+picture edge to edge, as GameTDB's disc art is. What is clear around the disc
+and in its hole is laid on grey; the jewel case's hub and rim cover both.
+Nothing is scaled up.
 
 For more control, pass `--manifest manifest.json` instead of a folder:
 
@@ -39,7 +44,7 @@ For more control, pass `--manifest manifest.json` instead of a folder:
 }
 ```
 
-`kind` is `posters` (the default) or `stills`. Every record needs
+`kind` is `posters` (the default), `stills` or `discs`. Every record needs
 `game_id`, `source` (relative to the manifest, or to `--art-root`),
 `universal` (below), `source_sha256` and a `note`; `focal` (where to keep
 the crop, 0 to 1 across and down, default the center) and `dominant_rgb`
@@ -80,17 +85,18 @@ of the file.
 
 ### What each pack declares
 
-| | `posters.pak` | `stills.pak` |
-| --- | --- | --- |
-| Record size | 43,648 | 38,400 |
-| Canvas | 256×256 | 320×240 |
-| Content | 192×256 | 320×240 |
-| Levels | 5 (256 down to 16) | 1 |
+| | `posters.pak` | `stills.pak` | `discs.pak` |
+| --- | --- | --- | --- |
+| Record size | 43,648 | 38,400 | 12,800 |
+| Canvas | 256×256 | 320×240 | 160×160 |
+| Content | 192×256 | 320×240 | 160×160 |
+| Levels | 5 (256 down to 16) | 1 | 1 |
 
 A mipmapped GX texture must be a power of two on each side, so a cover sits
 on a 256×256 canvas with its last column repeated to the right; Indigo draws
 only the left 192 columns. A still is never drawn smaller than it is, so it
-has no smaller levels and no padding.
+has no smaller levels and no padding; nor has a disc, which the jewel case
+draws about its own size or larger.
 
 ### Index (32 bytes a record, sorted by game ID)
 
@@ -119,8 +125,10 @@ At most one universal record may share those four characters.
 
 A texture whose CRC doesn't match is not shown: that game looks as if the
 pack had no picture for it, and the rest of the pack still works. The file is read in pieces as the
-Library needs them, never all at once: 25 posters and 3 stills at most are
-held in memory.
+Library needs them, never all at once: 25 posters, 3 stills and 3 discs at
+most are held in memory. A game with no disc in `discs.pak` (or no
+`discs.pak` at all) has the middle of its cover printed on its disc in the
+jewel case, and a game with neither has a bare silver disc.
 
 ## Game descriptions
 

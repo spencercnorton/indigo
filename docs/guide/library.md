@@ -50,16 +50,18 @@ one moves.
   [Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight), with their
   permission.
 - **Jewel Case**: one game at a time as a clear CD jewel case, its disc
-  spinning inside with the middle of the game's cover printed on it, and its
-  title and publisher underneath. A game without a cover has a bare silver
-  disc. Moving to the next game, the case falls back as the next one swings
-  in from the side. The C-stick turns the case in your hands; let go and it
-  springs back. The jewel case comes from the jewel case games view of
-  portlandhodl's [Swiss](https://github.com/portlandhodl/swiss-gc), itself
-  after Ann Nguyen's [CD Case](https://www.bubbbly.com/cd-case).
+  spinning inside, and its title and publisher underneath. The disc is the
+  game's own, from the [disc art](posters.md#disc-art) in the poster pack;
+  without it the disc carries the middle of the game's cover, and without a
+  cover it is bare silver. Moving to the next game, the case falls back as
+  the next one swings in from the side. The C-stick turns the case in your
+  hands; let go and it springs back. The jewel case comes from the jewel
+  case games view of portlandhodl's
+  [Swiss](https://github.com/portlandhodl/swiss-gc), itself after Ann
+  Nguyen's [CD Case](https://www.bubbbly.com/cd-case).
 
 <p align="center">
-  <img alt="The Jewel Case layout: a clear CD jewel case in the middle of the screen, tilted a little, its disc printed with the demonstration game Dune Rally's green cover and turning slowly, with GAME LIBRARY above and the game's title and publisher below. Right swaps it: the case falls back to the left and fades as Ember and Ivy's case, its disc printed blue, swings out to the right and lands in front; Right again brings in Glacier Point's magenta disc the same way." src="images/library-jewel-case.png" width="640">
+  <img alt="The Jewel Case layout: a clear CD jewel case in the middle of the screen, tilted a little, holding the demonstration game Dune Rally's disc, green with rings, a pale block and a row of small marks, turning slowly, with GAME LIBRARY above and the game's title and publisher below. Right swaps it: the case falls back to the left and fades as Ember and Ivy's case swings out to the right and lands in front, its disc printed with the middle of the game's blue cover, as the pack has no disc for it; Right again brings in Glacier Point's magenta disc the same way." src="images/library-jewel-case.png" width="640">
 </p>
 
 <p align="center">

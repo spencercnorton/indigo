@@ -73,7 +73,7 @@ wide, Spotlight: the selected game's gameplay still and description over
 a row of disc banners, a design that comes from mvizensk's
 [Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight), with
 their permission, or Jewel Case: one clear CD jewel case at a time, the
-game's cover printed on its spinning disc, from portlandhodl's
+game's own disc spinning inside, from portlandhodl's
 [Swiss](https://github.com/portlandhodl/swiss-gc) after Ann Nguyen's
 [CD Case](https://www.bubbbly.com/cd-case) (Setup › Library › Library
 Layout). Y on a game opens its own settings. Cover art comes from a
@@ -297,14 +297,17 @@ skipped and listed.
 
 The Spotlight layout also shows each game's gameplay still from
 `swiss/ui/stills.pak` and a few sentences about it from
-`swiss/ui/descriptions.txt`, which the poster pack carries beside the
-posters. Its covers and descriptions come from
+`swiss/ui/descriptions.txt`, and the Jewel Case layout each game's disc
+from `swiss/ui/discs.pak`; the poster pack carries all three beside the
+posters. Its covers, descriptions and discs come from
 [GameTDB](https://www.gametdb.com/), and its stills from
 [libretro-thumbnails](https://github.com/libretro-thumbnails/Nintendo_-_GameCube),
 as do the screenshots above. The descriptions file is plain text you can
 edit (see [Posters](docs/guide/posters.md#game-descriptions)).
-To build one from your own screenshots (at least 320×240, named like the
-covers): `poster_pack.py --stills ~/screenshots --out stills.pak`. See
+To build stills from your own screenshots (at least 320×240, named like the
+covers): `poster_pack.py --stills ~/screenshots --out stills.pak`; disc art
+from pictures of the discs (at least 160×160):
+`poster_pack.py --discs ~/discs --out discs.pak`. See
 [Posters](docs/guide/posters.md#gameplay-stills).
 
 ### Apps
