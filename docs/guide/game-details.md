@@ -64,7 +64,7 @@ game's details again shows it: **2 copies | 2 blocks**, with the recorded
 update and the save's own line.
 
 <p align="center">
-  <img alt="Astral Circuit’s details after exporting one GCI: the Saves box, labelled « SAVES » since Left and Right choose a copy, reads 2 save copies | 4 blocks over Updated 2024-02-29 12:34." src="images/game-details-saves-after-copy.png" width="640">
+  <img alt="Astral Circuit’s details after exporting one GCI: the Saves box, labelled « SAVES » since Left and Right choose a copy, reads 2 copies | 2 blocks over Updated 2024-02-29 12:34 and the save's own line, SD card image." src="images/game-details-saves-after-copy.png" width="640">
 </p>
 
 ### Start with another copy of the save
@@ -84,7 +84,7 @@ card's own copies come first, then the SD cards', newest first; with more
 than eight, the oldest of those aren't offered.
 
 <p align="center">
-  <img alt="Astral Circuit’s details after Right twice: « SAVES » shows one copy, Copy 2 of 2 | Save Folder, over Loads at launch | 2024-02-29 12:34." src="images/game-details-save-choice.png" width="640">
+  <img alt="Astral Circuit’s details after Right twice: « SAVES » shows one copy, Copy 2 of 2 | Save Folder, over Loads at launch | 2024-02-29 12:34 | SD card image." src="images/game-details-save-choice.png" width="640">
 </p>
 
 Launch the game with another copy shown and Indigo asks first, naming the
