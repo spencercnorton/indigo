@@ -27,7 +27,7 @@ TESTS := test_ui_cheats test_ui_saves test_ui_saves_raw test_ui_saves_metadata t
 	test_gameflow_state test_gameflow_library test_ui_folder test_gameflow_resolver \
 	test_gameflow_detail test_ui_game_history test_ui_about \
 	test_gameflow_ownership test_cheat_policy test_ui_launch test_ui_files \
-	test_ui_card_slots
+	test_ui_card_slots test_ui_hint_geometry
 
 test_ui_cheats.src := $(GUI)/ui_cheats.c
 test_ui_saves.src := $(GUI)/ui_saves.c
@@ -66,6 +66,7 @@ test_ui_clock.src := $(GUI)/ui_clock.c
 test_ui_card_slots.src := $(GUI)/ui_card_slots.c
 test_ui_clock.libs := -lm
 test_ui_hint.src := $(GUI)/ui_hint.c
+test_ui_hint_geometry.libs := -lm
 test_ui_stage.src := $(GUI)/ui_stage.c
 test_ui_stage.libs := -lm
 test_ui_home.src := $(GUI)/ui_home.c

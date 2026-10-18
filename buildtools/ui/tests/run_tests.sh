@@ -110,6 +110,10 @@ run_binaries() {
 	# card_art builds its own binaries: posters of apps and folders, their guards.
 	echo "== test_card_art$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_card_art.py; else python3 ./test_card_art.py --sanitize; fi
+	echo "== Spotlight stills: only on first use$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_stills_lifecycle.py; else python3 ./test_stills_lifecycle.py --sanitize; fi
+	echo "== font batches: the release's exact glyph stream$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_font_batches.py; else python3 ./test_font_batches.py --sanitize; fi
 	echo "== game folder visibility$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_gameflow_folder_visibility.py; else python3 ./test_gameflow_folder_visibility.py --sanitize; fi
 	echo "== test_saves_card_io$suffix =="

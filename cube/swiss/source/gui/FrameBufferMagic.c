@@ -38,6 +38,7 @@
 #include "ui_scene.h"
 #include "ui_stage.h"
 #include "ui_hint.h"
+#include "ui_hint_geometry.h"
 #include "ui_system_info.h"
 #include "ui_assets.h"
 #include "ui_command_rail.h"
@@ -146,6 +147,7 @@ static bool posterPackFileOwned;
  * same attempt on the same device. */
 static file_handle stillsPackFile;
 static bool stillsPackFileOwned;
+static bool stillsPackAttempted;
 /* Spotlight's game descriptions: swiss/ui/descriptions.txt on the browsed
  * device, read whole the first time Spotlight asks there. The menu thread's
  * alone; the video thread only ever sees a snapshot's copy. */
@@ -1852,9 +1854,11 @@ static void _HintVertex(float x, float y, GXColor color)
 static void _HintShape(float cx, float cy, const float (*points)[2], int count,
 	GXColor color)
 {
+	const float (*normals)[2] = UIHintGeometry_Normals(cx, cy, points, count);
 	GXColor clear = color;
 	int i;
 
+	if(normals == NULL) return;
 	clear.a = 0;
 	GX_Begin(GX_TRIANGLEFAN, GX_VTXFMT0, (u16)(count + 2));
 	_HintVertex(cx, cy, color);
@@ -1864,26 +1868,9 @@ static void _HintShape(float cx, float cy, const float (*points)[2], int count,
 	GX_End();
 	GX_Begin(GX_TRIANGLESTRIP, GX_VTXFMT0, (u16)((count + 1) * 2));
 	for(i = 0; i <= count; i++) {
-		const float *prev = points[(i + count - 1) % count];
 		const float *here = points[i % count];
-		const float *next = points[(i + 1) % count];
-		float nx = next[1] - prev[1];
-		float ny = prev[0] - next[0];
-		float length = sqrtf(nx * nx + ny * ny);
-
-		if(length <= 0.0f) {
-			nx = here[0] - cx;
-			ny = here[1] - cy;
-			length = sqrtf(nx * nx + ny * ny);
-		}
-		if(length > 0.0f) {
-			nx /= length;
-			ny /= length;
-		}
-		if(nx * (here[0] - cx) + ny * (here[1] - cy) < 0.0f) {
-			nx = -nx;
-			ny = -ny;
-		}
+		float nx = normals[i % count][0];
+		float ny = normals[i % count][1];
 		_HintVertex(here[0], here[1], color);
 		_HintVertex(here[0] + nx, here[1] + ny, clear);
 	}
@@ -5115,7 +5102,8 @@ void DrawGameflowCancelPosters(void)
 	 * callback, so it only marks them stale, and the next lookup reads the
 	 * file again. */
 	descriptionsAttempted = false;
-	if(!posterPackAttempted && !posterPackFileOwned && !stillsPackFileOwned) {
+	if(!posterPackAttempted && !posterPackFileOwned &&
+		!stillsPackFileOwned && !stillsPackAttempted) {
 		return;
 	}
 
@@ -5127,6 +5115,7 @@ void DrawGameflowCancelPosters(void)
 	_GameflowCloseStillsPackFile();
 	posterPackDevice = NULL;
 	posterPackAttempted = false;
+	stillsPackAttempted = false;
 }
 
 static s32 _GameflowOnReset(s32 final)
@@ -5176,7 +5165,26 @@ static bool _GameflowOpenPosterPack(DEVICEHANDLER_INTERFACE *device)
 		_GameflowClosePosterPackFile();
 	}
 
-	/* The stills beside them, whether or not the posters opened. */
+	return result == UI_ASSETS_OK;
+}
+
+/* Only Spotlight needs gameplay stills. Keep one attempt per mounted
+ * device, independently of a missing poster pack; a later layout change
+ * must still be able to open them. Cancel retires both caches together. */
+static bool _GameflowOpenStillsPack(DEVICEHANDLER_INTERFACE *device)
+{
+	uiAssetsSource_t source;
+	uiAssetsSync_t sync;
+
+	if(device == NULL || device->initial == NULL ||
+		_videomutex == LWP_MUTEX_NULL) {
+		return false;
+	}
+	if(stillsPackAttempted) {
+		return UIStills_Ready();
+	}
+	stillsPackAttempted = true;
+	UIAssets_SyncFromMutex(_videomutex, &sync);
 	memset(&stillsPackFile, 0, sizeof(stillsPackFile));
 	concat_path(stillsPackFile.name, device->initial->name,
 		"swiss/ui/stills.pak");
@@ -5186,7 +5194,7 @@ static bool _GameflowOpenPosterPack(DEVICEHANDLER_INTERFACE *device)
 		UI_ASSETS_OK || UIStills_Init(&source, &sync) != UI_ASSETS_OK) {
 		_GameflowCloseStillsPackFile();
 	}
-	return result == UI_ASSETS_OK;
+	return UIStills_Ready();
 }
 
 void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
@@ -5199,7 +5207,8 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 		return;
 	}
 	_GameflowOpenPosterPack(device);
-	if(snapshot->layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT && UIStills_Ready()) {
+	if(snapshot->layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT &&
+		_GameflowOpenStillsPack(device)) {
 		/* The selected game's still and the ones either side of it. */
 		char stills[UI_STILLS_SLOTS][8] = {{0}};
 		for(i = 0u; i < snapshot->recordCount; ++i) {
@@ -5242,11 +5251,18 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 4);
 }
 
+bool DrawGameflowPrimePoster(void)
+{
+	/* One fixed-size poster (43 KiB), before the first Detail is published.
+	 * Never drain neighbours or gameplay stills at this entry boundary. */
+	return UIAssets_Poll();
+}
+
 bool DrawGameflowPollPosters(void)
 {
-	/* One read for each pack at most: a poster, then a still. */
-	bool more = UIAssets_Poll();
-	return UIStills_Poll() || more;
+	/* At most one 16 KiB range per pack, between input checks. */
+	bool more = UIAssets_PollStep();
+	return UIStills_PollStep() || more;
 }
 
 static void _GameflowCopySnapshot(drawGameflowEvent_t *data,

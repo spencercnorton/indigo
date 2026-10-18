@@ -2,12 +2,12 @@
 
 Indigo's menu music and sounds play through AESND, libogc2's audio library.
 Swiss is built with AESND from this directory rather than the toolchain's
-`-laesnd`, because one function in it needed a fix libogc2 does not have.
+`-laesnd`, so its exact sources and DSP mixer remain auditable. The current libogc2
+already fixes the reset race; no local AESND patch is needed.
 
 | Path | What it is |
 | --- | --- |
 | `libogc2/` | libogc2's AESND, byte for byte, at the commit `UPSTREAM` names: the toolchain's own |
-| `0001-reset-waits-for-the-dsp.patch` | Indigo's change, applied when Swiss is built |
 | `UPSTREAM` | That commit, and the toolchain version that must still match it |
 
 ## The fix
@@ -23,10 +23,11 @@ still being mixed, the DSP's answer was never read, the DSP never took the
 stop, and both waited for ever. Indigo's menu stops AESND before every launch,
 so a launch froze until the console was switched off.
 
-Everywhere else AESND mails the DSP only once `__aesnddspcomplete` says the
-last frame is done. The patch makes `AESND_Reset` wait for that too, and for
-the task to have started (`__aesnddspinit`), letting the DSP interrupt in
-while it waits. The DSP then waits for mail, and takes the stop at once.
+Libogc2 commit `7a54fa08` fixes this upstream: reset cancels the DSP task,
+then either sends the stop immediately when the last frame is complete, or
+lets the request callback send it when the frame finishes. This replaces
+Indigo's earlier wait-for-completion patch. Applying that older wait after
+cancelling the task would be wrong, so it has been removed.
 
 How it was found and shown:
 
@@ -48,7 +49,7 @@ directory and applies the patches here in order (`patch -F0`: one that no
 longer applies exactly fails the build), assembles the mixer from
 `dspmixer.s` with the toolchain's `gcdsptool`, and compiles AESND with Swiss's
 flags. The copy's headers come before the toolchain's on the include path.
-Without the patches this is the library the toolchain ships: the same
+With no local patches this is the library the toolchain ships: the same
 sources, the same headers, and a mixer byte-identical to the one in its
 `libaesnd.a`.
 

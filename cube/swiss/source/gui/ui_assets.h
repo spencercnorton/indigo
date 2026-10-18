@@ -212,6 +212,11 @@ void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected);
  * (a job captured before CancelForDeviceChange/Init/eviction can never
  * publish afterwards). Returns true while more loading work is queued. */
 bool UIAssets_Poll(void);
+/* Menu-thread incremental variant: at most 16 KiB per call. No texture is
+ * published until its full CRC passes. Cancel/window changes discard an
+ * unfinished record without another read of its old source. */
+#define UI_ASSETS_READ_BYTES 16384u
+bool UIAssets_PollStep(void);
 
 /* Video thread, lock ALREADY HELD by the caller; never locks. Classifies
  * gameId (gameIdLen is the number of bytes readable at gameId; inputs
@@ -280,6 +285,7 @@ s32 UIStills_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync);
 bool UIStills_Ready(void);
 void UIStills_RequestWindow(const char (*ids)[8], int count, int selected);
 bool UIStills_Poll(void);
+bool UIStills_PollStep(void);
 uiPosterResult_t UIStills_Query(const char *gameId, size_t gameIdLen,
                                 bool bnrAvailable, uiPosterHandle_t *out);
 GXTexObj *UIStills_Peek(uiPosterHandle_t handle);

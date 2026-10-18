@@ -6,6 +6,20 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ## Unreleased
 
+### Improved
+
+- Menu text batches adjacent glyphs on the same font sheet, keeping the
+  same letters and weight with fewer GPU submissions. Button outlines keep
+  their exact edge normals while their geometry stays the same.
+- The Library opens Spotlight's gameplay stills only when you use Spotlight,
+  saving their cache memory and card reads in the other layouts.
+- Artwork reads give the menus a turn between pieces. Folder and app
+  pictures on a disc no longer hold up a button for the whole picture;
+  leaving the page or scrolling away discards an unfinished read. Detail
+  still preloads its first poster before opening.
+- CI keeps the full tag history but fetches historical file contents only
+  when needed, avoiding old guide pictures in each build and host-test clone.
+
 ### Fixes
 
 - An interrupted or incomplete network/USB upload is rejected without
@@ -13,6 +27,14 @@ tag on `beta`. The newest changes are at the top until their release is named.
   exact advertised size; network reads time out after ten idle seconds.
   DOL/ELF headers, sections and entrypoint probes stay inside the received
   file. Uploads no longer suspend the menu while it owns the video lock.
+
+- The pinned build now links libiconv-lite instead of the full character-set
+  library, reducing the DOL by about 834 KiB while retaining every banner
+  encoding. The emulator launch probe checks the actual PowerPC conversions.
+- Updated the SDK to libogc2 r2482, including its AESND reset race fix, EXI
+  locking cleanup, monotonic timing and SD fixes. The upstream audio fix
+  replaces Indigo's earlier local patch. A fresh MemCard PRO GC hardware
+  qualification is required before publishing this SDK as stable.
 
 ### Documentation
 

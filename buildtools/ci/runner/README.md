@@ -38,6 +38,12 @@ The toolchain is the same one every Indigo DOL has been built with. A build
 job checks that its runner carries the exact image its workflow names
 ([`toolchain.sh`](../toolchain.sh)), and records it in the DOL's provenance.
 
+Build, reproducibility, host and source checks keep the complete commit/tag
+history with a `blob:none` partial clone. Checkout fetches the current tree;
+historical file contents arrive only when a test asks for them. Tagged
+renderer comparisons and upstream checks still have their original inputs,
+without downloading every old guide picture into each job.
+
 ## Images
 
 `indigo_ci.py` builds the images itself, from the `beta` branch, never from a
