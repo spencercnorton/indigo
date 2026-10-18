@@ -17,6 +17,14 @@ tag on `beta`. The newest changes are at the top until their release is named.
   pictures on a disc no longer hold up a button for the whole picture;
   leaving the page or scrolling away discards an unfinished read.
 
+### Fixes
+
+- An interrupted or incomplete network/USB upload is rejected without
+  stopping the menus. Transfers must finish their compressed stream at the
+  exact advertised size; network reads time out after ten idle seconds.
+  DOL/ELF headers, sections and entrypoint probes stay inside the received
+  file. Uploads no longer suspend the menu while it owns the video lock.
+
 ### Documentation
 
 - The guide's Memory Cards and Game Details pictures show 2.4's screens:

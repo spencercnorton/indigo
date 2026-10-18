@@ -19,7 +19,7 @@ if [ "${1:-}" = --build-only ]; then
 	shift
 	set -- 0 "${1:-fuzz-out}"
 fi
-targets="history saves raw_saves posters about settings fst png cheats"
+targets="history saves raw_saves posters about settings fst png cheats wiiload"
 seconds=${1:-30}
 case $seconds in
 total:*) seconds=$(( ${seconds#total:} / $(echo "$targets" | wc -w) )) ;;
@@ -49,6 +49,8 @@ echo "== building the fuzzers =="
 	$cc $flags -funsigned-char -std=gnu11 -w -o "$out/bin/fst" "$out/fuzz_fst.c"
 	python3 "$here/cheats_source.py" "$out/fuzz_cheats.c"
 	$cc $flags -funsigned-char -std=gnu11 -w -o "$out/bin/cheats" "$out/fuzz_cheats.c"
+	python3 "$here/wiiload_source.py" "$out/fuzz_wiiload.c"
+	$cc $flags -std=gnu11 -w -o "$out/bin/wiiload" "$out/fuzz_wiiload.c" -lz
 }
 [ -n "$build_only" ] && exit 0
 python3 "$here/seeds.py" "$out/corpus"

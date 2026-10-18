@@ -20,6 +20,7 @@
 #include <gccore.h>
 #include <malloc.h>
 #include <network.h>
+#include <ogc/mutex.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -46,6 +47,12 @@ typedef struct {
 } ATTRIBUTE_PACKED wiiload_header_t;
 
 typedef int wiiload_read_function_t(int, void *, size_t);
+
+/* One transfer at a time, bounded by the GameCube's available address space. */
+#define WIILOAD_MAX_IMAGE (16u * 1024u * 1024u)
+#define WIILOAD_MAX_DEFLATE (WIILOAD_MAX_IMAGE + 65536u)
+#define WIILOAD_IDLE_SECONDS 10
+static mutex_t upload_mutex = LWP_MUTEX_NULL;
 
 static lwp_t main_thread = LWP_THREAD_NULL;
 static lwp_t tcp_thread = LWP_THREAD_NULL;
@@ -83,14 +90,19 @@ static struct {
 
 static int tcp_read(int sd, void *buf, size_t size)
 {
-	int ret, pos = 0;
+	int pos = 0;
 
-	while (pos < size) {
-		ret = net_read(sd, buf + pos, size - pos);
+	while ((size_t)pos < size) {
+		fd_set readable;
+		struct timeval timeout = {WIILOAD_IDLE_SECONDS, 0};
+		FD_ZERO(&readable);
+		FD_SET(sd, &readable);
+		if (net_select(sd + 1, &readable, NULL, NULL, &timeout) <= 0)
+			return -1;
+		int ret = net_read(sd, (u8 *)buf + pos, size - (size_t)pos);
 		if (ret < 1) return ret < 0 ? ret : pos;
-		else pos += ret;
+		pos += ret;
 	}
-
 	return pos;
 }
 
@@ -103,47 +115,55 @@ static void *wiiload_read(int sd, size_t insize, size_t outsize, wiiload_read_fu
 {
 	Byte inbuf[4096];
 	z_stream zstream = {0};
-	int ret, pos = 0;
+	size_t pos = 0;
+	void *outbuf;
+	bool complete = false;
 
-	void *outbuf = malloc(outsize);
-
-	if (!outbuf)
-		goto fail;
-	if (inflateInit(&zstream) < 0)
-		goto fail;
-
-	zstream.next_out  = outbuf;
-	zstream.avail_out = outsize;
-
-	while (pos < insize) {
-		ret = read(sd, inbuf, MIN(insize - pos, sizeof(inbuf)));
-		if (ret < 0) goto fail;
-		else pos += ret;
-
-		zstream.next_in  = inbuf;
-		zstream.avail_in = ret;
-		ret = inflate(&zstream, Z_NO_FLUSH);
-		if (ret < 0) goto fail;
-
-		DrawUpdateProgressBar(progress, pos * 100 / insize);
+	if (insize == 0u || insize > WIILOAD_MAX_DEFLATE ||
+	    outsize < 4u || outsize > WIILOAD_MAX_IMAGE) return NULL;
+	/* One guard byte lets inflate consume a split checksum after filling
+	 * the exact output. Any use of that byte is an oversized stream. */
+	outbuf = malloc(outsize + 1u);
+	if (!outbuf) return NULL;
+	if (inflateInit(&zstream) != Z_OK) {
+		free(outbuf);
+		return NULL;
 	}
-
+	zstream.next_out = outbuf;
+	zstream.avail_out = (uInt)(outsize + 1u);
+	while (pos < insize) {
+		size_t take = MIN(insize - pos, sizeof(inbuf));
+		int got = read(sd, inbuf, take);
+		if (got <= 0 || (size_t)got > take) break;
+		pos += (size_t)got;
+		zstream.next_in = inbuf;
+		zstream.avail_in = (uInt)got;
+		int ret = inflate(&zstream, Z_NO_FLUSH);
+		if (ret == Z_STREAM_END) {
+			complete = pos == insize && zstream.total_in == insize &&
+				zstream.total_out == outsize;
+			break;
+		}
+		if (ret != Z_OK || zstream.total_out > outsize) break;
+		DrawUpdateProgressBar(progress, (int)(pos * 100u / insize));
+	}
 	inflateEnd(&zstream);
+	if (!complete) {
+		free(outbuf);
+		return NULL;
+	}
+	DrawUpdateProgressBar(progress, 100);
 	return outbuf;
-
-fail:
-	inflateEnd(&zstream);
-	free(outbuf);
-	return NULL;
 }
 
 static void *wiiload_read_args(int sd, size_t size, wiiload_read_function_t read)
 {
+	if (size == 0u) return NULL;
 	void *args = malloc(size);
 
 	if (!args)
 		goto fail;
-	if (read(sd, args, size) < size)
+	if (read(sd, args, size) != (int)size || ((const u8 *)args)[size - 1u] != 0u)
 		goto fail;
 
 	return args;
@@ -153,42 +173,133 @@ fail:
 	return NULL;
 }
 
+static u32 wiiload_be32(const u8 *p)
+{
+	return (u32)p[0] << 24 | (u32)p[1] << 16 | (u32)p[2] << 8 | p[3];
+}
+
+static u32 wiiload_be16(const u8 *p)
+{
+	return (u32)p[0] << 8 | p[1];
+}
+
+static bool wiiload_range(size_t offset, size_t length, size_t size)
+{
+	return offset <= size && length <= size - offset;
+}
+
+/* Sidestep has no input-length argument. Prove its header/table/payload
+ * reads fit before calling it, including its entrypoint's argv probe. */
+static bool wiiload_image_valid(const u8 *image, size_t size, bool raw)
+{
+	bool entryFound = false;
+	u32 entry;
+
+	if (image == NULL || size < 4u || size > WIILOAD_MAX_IMAGE) return false;
+	if (raw) return true;
+	if (memcmp(image, ELFMAG, SELFMAG) == 0) {
+		if (size < 52u || image[4] != 1u || image[5] != 2u ||
+		    wiiload_be16(image + 16) != 2u || wiiload_be16(image + 18) != 20u ||
+		    wiiload_be16(image + 42) != 32u) return false;
+		u32 offset = wiiload_be32(image + 28), count = wiiload_be16(image + 44);
+		if ((offset & 3u) || !wiiload_range(offset, (size_t)count * 32u, size)) return false;
+		entry = wiiload_be32(image + 24);
+		for (u32 i = 0u; i < count; ++i) {
+			const u8 *ph = image + offset + i * 32u;
+			if (wiiload_be32(ph) != 1u) continue;
+			u32 file = wiiload_be32(ph + 4), address = wiiload_be32(ph + 12);
+			u32 bytes = wiiload_be32(ph + 16), memory = wiiload_be32(ph + 20);
+			if (bytes > memory || !wiiload_range(file, bytes, size) ||
+			    !wiiload_range(address & 0x3fffffffu, memory, 24u * 1024u * 1024u)) return false;
+			if (entry >= address && entry - address < bytes) {
+				size_t at = (size_t)file + (entry - address);
+				if ((at & 3u) || !wiiload_range(at, 40u, size)) return false;
+				entryFound = true;
+			}
+		}
+		return entryFound;
+	}
+	if (size < 256u || (wiiload_be32(image) != 0x100u && wiiload_be32(image) != 0x620u))
+		return false;
+	if (wiiload_be32(image + 0xdc) != 0u &&
+	    !wiiload_range(wiiload_be32(image + 0xd8) & 0x3fffffffu,
+	                   wiiload_be32(image + 0xdc), 24u * 1024u * 1024u)) return false;
+	entry = wiiload_be32(image + 0xe0);
+	for (u32 i = 0u; i < 18u; ++i) {
+		u32 file = wiiload_be32(image + i * 4u);
+		u32 address = wiiload_be32(image + 0x48u + i * 4u);
+		u32 bytes = wiiload_be32(image + 0x90u + i * 4u);
+		if (file == 0u || bytes == 0u) continue;
+		if (!wiiload_range(file, bytes, size) ||
+		    !wiiload_range(address & 0x3fffffffu, bytes, 24u * 1024u * 1024u)) return false;
+		if (i < 7u && entry >= address && entry - address < bytes) {
+			size_t at = (size_t)file + (entry - address);
+			if ((at & 3u) || !wiiload_range(at, 40u, size)) return false;
+			entryFound = true;
+		}
+	}
+	return entryFound;
+}
+
+/* Acquire the video mutex before suspending its possible owner. The upload
+ * cannot strand that owner while its progress or shutdown waits for it. */
+static void wiiload_suspend_main(void *unused)
+{
+	(void)unused;
+	LWP_SuspendThread(main_thread);
+}
+
 static void wiiload_handler(int sd, wiiload_read_function_t read, const char *message, const char *host)
 {
 	wiiload_header_t header;
 
-	if (read(sd, &header, sizeof(header)) < sizeof(header))
+	if (read(sd, &header, sizeof(header)) != (int)sizeof(header))
 		return;
 	if (memcmp(&header.magic, "HAXX", 4))
 		return;
 	if (header.version != 5)
 		return;
 
-	setenv("WIILOAD", host, 1);
-
+	if (header.deflate_size == 0u || header.deflate_size > WIILOAD_MAX_DEFLATE ||
+	    header.inflate_size < 4u || header.inflate_size > WIILOAD_MAX_IMAGE ||
+	    upload_mutex == LWP_MUTEX_NULL) return;
+	LWP_MutexLock(upload_mutex);
 	int priority = LWP_SetThreadPriority(LWP_THREAD_NULL, LWP_PRIO_NORMAL);
-	LWP_SuspendThread(main_thread);
-
+	bool suspended = false;
 	uiDrawObj_t *progress = DrawPublish(DrawProgressBar(false, 0, message));
 	void *buffer = wiiload_read(sd, header.deflate_size, header.inflate_size, read, progress);
-	void *args = wiiload_read_args(sd, header.args_size, read);
+	void *args = buffer ? wiiload_read_args(sd, header.args_size, read) : NULL;
+	if (header.args_size != 0u && args == NULL) {
+		free(buffer);
+		buffer = NULL;
+	}
+
+	static const char sdloaderName[] = "SDLOADER.BIN";
+	size_t argNameLen = args ? strnlen(args, header.args_size) : 0;
+	bool isSdLoader = argNameLen == sizeof(sdloaderName) - 1 &&
+	                 !strncasecmp(args, sdloaderName, argNameLen);
+	bool isBranchBin = buffer != NULL && branchResolve(buffer, PATCH_BIN, 0) != 0;
+	if (buffer != NULL && ((isSdLoader && header.inflate_size > 1024u * 1024u) ||
+	    !wiiload_image_valid(buffer, header.inflate_size, isSdLoader || isBranchBin))) {
+		free(buffer);
+		buffer = NULL;
+	}
 
 	bool restartMenuAudio = false;
 	bool resetOnLoadFailure = false;
 	if (buffer) {
+		DrawWithVideoLocked(wiiload_suspend_main, NULL);
+		suspended = true;
+		setenv("WIILOAD", host, 1);
 		// Stop the shared MP3 decoder before sidestep resets AESND's ARAM.
 		resetOnLoadFailure = mp3_player_initialized();
 		MP3Player_Stop();
 		restartMenuAudio = menuaudio_shutdown();
-		static const char sdloaderName[] = "SDLOADER.BIN";
-		size_t argNameLen = args ? strnlen(args, header.args_size) : 0;
-		bool isSdLoader = argNameLen == sizeof(sdloaderName) - 1 &&
-		                  !strncasecmp(args, sdloaderName, argNameLen);
 		if (!memcmp(buffer, ELFMAG, SELFMAG))
 			ELFtoARAM(buffer, args, header.args_size);
 		else if (isSdLoader)
 			BINtoARAM(buffer, header.inflate_size, 0x81700000, 0x81700000);
-		else if (branchResolve(buffer, PATCH_BIN, 0))
+		else if (isBranchBin)
 			BINtoARAM(buffer, header.inflate_size, 0x80003100, 0x80003100);
 		else
 			DOLtoARAM(buffer, args, header.args_size);
@@ -207,8 +318,9 @@ static void wiiload_handler(int sd, wiiload_read_function_t read, const char *me
 	// A valid image never returns. Resume only after a rejected upload.
 	if (restartMenuAudio) menuaudio_init();
 
-	LWP_ResumeThread(main_thread);
+	if (suspended) LWP_ResumeThread(main_thread);
 	LWP_SetThreadPriority(LWP_THREAD_NULL, priority);
+	LWP_MutexUnlock(upload_mutex);
 }
 
 static void *tcp_thread_func(void *arg)
@@ -226,9 +338,10 @@ static void *tcp_thread_func(void *arg)
 		fd_set readset;
 		FD_ZERO(&readset);
 		FD_SET(wiiload.sv.sd, &readset);
-		net_select(FD_SETSIZE, &readset, NULL, NULL, &wiiload.sv.tv);
+		struct timeval timeout = wiiload.sv.tv;
+		int ready = net_select(wiiload.sv.sd + 1, &readset, NULL, NULL, &timeout);
 
-		if (FD_ISSET(wiiload.sv.sd, &readset)) {
+		if (ready > 0 && FD_ISSET(wiiload.sv.sd, &readset)) {
 			socklen_t addrlen = sizeof(wiiload.cl.sin);
 			wiiload.cl.sd = net_accept(wiiload.sv.sd, &wiiload.cl.sa, &addrlen);
 
@@ -271,6 +384,7 @@ __attribute((constructor))
 static void init_wiiload(void)
 {
 	main_thread = LWP_GetSelf();
+	LWP_MutexInit(&upload_mutex, false);
 }
 
 void init_wiiload_tcp_thread(void)
