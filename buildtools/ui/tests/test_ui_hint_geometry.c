@@ -36,8 +36,8 @@ int main(void)
 {
 	float points[UI_HINT_GEOMETRY_POINTS][2];
 	assert(UIHintGeometry_Normals(0, 0, NULL, 4) == NULL);
-	assert(UIHintGeometry_Normals(0, 0, points, 2) == NULL);
-	assert(UIHintGeometry_Normals(0, 0, points, UI_HINT_GEOMETRY_POINTS + 1) == NULL);
+	assert(UIHintGeometry_Normals(0, 0, (const float (*)[2])points, 2) == NULL);
+	assert(UIHintGeometry_Normals(0, 0, (const float (*)[2])points, UI_HINT_GEOMETRY_POINTS + 1) == NULL);
 	for(int round = 0; round < 200; ++round) {
 		int count = 3 + round % (UI_HINT_GEOMETRY_POINTS - 2);
 		float cx = 211.125f + (float)round * 0.125f;
@@ -47,16 +47,16 @@ int main(void)
 			points[i][0] = cx + (7.0f + (float)(round % 5)) * cosf(angle);
 			points[i][1] = cy + 6.5f * sinf(angle);
 		}
-		check(cx, cy, points, count);
+		check(cx, cy, (const float (*)[2])points, count);
 		unsigned before = roots;
-		for(int frame = 0; frame < 60; ++frame) check(cx, cy, points, count);
+		for(int frame = 0; frame < 60; ++frame) check(cx, cy, (const float (*)[2])points, count);
 		assert(roots == before);
 		points[0][0] += 0.03125f;
-		check(cx, cy, points, count);
+		check(cx, cy, (const float (*)[2])points, count);
 		assert(roots > before);
 	}
 	memset(points, 0, sizeof(points));
-	check(0, 0, points, 4);
+	check(0, 0, (const float (*)[2])points, 4);
 	puts("hint normals: exact edges, changed geometry, bounded eviction, zero warm roots PASS");
 	return 0;
 }

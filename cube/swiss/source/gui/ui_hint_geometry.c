@@ -31,7 +31,7 @@ const float (*UIHintGeometry_Normals(float cx, float cy,
 		shape = &cache[i];
 		if(shape->count == count && shape->cx == cx && shape->cy == cy &&
 			memcmp(shape->points, points, bytes) == 0) {
-			return shape->normals;
+			return (const float (*)[2])shape->normals;
 		}
 	}
 	shape = &cache[next];
@@ -64,5 +64,5 @@ const float (*UIHintGeometry_Normals(float cx, float cy,
 		shape->normals[i][0] = nx;
 		shape->normals[i][1] = ny;
 	}
-	return shape->normals;
+	return (const float (*)[2])shape->normals;
 }

@@ -49,7 +49,10 @@ static file_handle posterPackFile, stillsPackFile;
 static unsigned posterOpens, stillOpens, closes, stillRequests;
 static void closeFile(file_handle *f) { (void)f; closes++; }
 static void concat_path(char *out, const char *root, const char *leaf) {
-    snprintf(out, 256, "%s/%s", root, leaf);
+    size_t a = strlen(root), b = strlen(leaf);
+    assert(a + b + 2 <= 256);
+    memcpy(out, root, a); out[a] = '/';
+    memcpy(out + a + 1, leaf, b + 1);
 }
 static bool UIAssets_Ready(void) { return postersReady; }
 static bool UIStills_Ready(void) { return stillsReady; }
