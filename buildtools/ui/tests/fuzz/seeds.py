@@ -159,6 +159,7 @@ def settings(out: Path) -> None:
     for example in sorted((ROOT / "docs/examples").rglob("*.ini")):
         shutil.copyfile(example, out / example.name)
     (out / "keys.ini").write_bytes(b"# a comment\nSystem Language=English\nAutoload=sd:/x.dol\n")
+    (out / "apps-video.ini").write_bytes(b"Apps Video Mode=480i\nSwiss Video Mode=480p\n")
 
 
 def fst(out: Path) -> None:

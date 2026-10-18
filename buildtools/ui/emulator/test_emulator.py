@@ -1253,6 +1253,16 @@ class Screen(unittest.TestCase):
                     235 if word >> (31 - bit) & 1 else 16
         return rgb
 
+    def test_the_app_video_oracle_checks_forced_modes(self):
+        progressive = {"vi_dcr": 0x0005, "vi_clk_dtv": 0x00010001}
+        interlaced = {"vi_dcr": 0x0001, "vi_clk_dtv": 1}
+        self.assertTrue(run.app_video_matches("Auto", progressive, "ntsc", "component"))
+        self.assertFalse(run.app_video_matches("480i", progressive, "ntsc", "component"))
+        self.assertTrue(run.app_video_matches("480i", interlaced, "ntsc", "component"))
+        self.assertTrue(run.app_video_matches("Auto", {"vi_dcr": 0x0101, "vi_clk_dtv": 0}, "pal", "composite"))
+        self.assertTrue(run.app_video_matches("576p", {"vi_dcr": 0x0105, "vi_clk_dtv": 0x10001}, "ntsc", "component"))
+        self.assertTrue(run.app_video_matches("240p", {"vi_dcr": 5, "vi_clk_dtv": 1}, "ntsc", "component"))
+
     def test_the_probe_report_reads_back_at_any_scale(self):
         from PIL import Image
         words = [run.PROBE_MAGIC, 2, int.from_bytes(b"GPRE", "big"), int.from_bytes(b"01\0\0", "big"),
