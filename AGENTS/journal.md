@@ -1,3 +1,20 @@
+## 2026-10-17 — Read artwork between input checks
+
+Poster and still caches expose a 16 KiB idle step, retaining an unpublished
+record and incremental CRC until complete. Slot generations, quarantine,
+window changes and cancellation still fence publication; the original
+whole-record Poll API remains for callers that want it. New host cases
+check each range, complete-payload publication, read/CRC failure, cancellation
+and mixing step/full polls. Both cache variants pass 5,727 checks.
+
+Non-thread-safe app/folder PNG reads also advance by at most 16 KiB per
+idle call, closing their temporary file every time. A paused or scrolled-away
+picture frees its bytes without marking it failed; thread-safe devices keep
+their existing worker read. The real card-art harness checks the 2 MiB
+boundary in 128 sequential ranges and pause/resume, with memory returned.
+The complete local plain, sanitizer and contract lanes pass. The DOL builds
+in the pinned toolchain; native CI and emulator routes remain the merge gate.
+
 ## 2026-10-17 — Batch font glyphs and retain hint normals
 
 The IPL font emits runs of up to 64 glyphs on the same sheet, separately

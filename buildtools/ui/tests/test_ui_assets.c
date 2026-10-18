@@ -418,12 +418,16 @@ static struct {
 	int readCalls;
 	int failAfter;   /* -1: never fail; else fail on the Nth call (0-based) */
 	u32 shortReadAt; /* offset whose read returns len-1; 0xFFFFFFFF off */
+	u32 lastOffset, lastLength, maxLength;
 } mem;
 
 static void (*memReadHook)(void); /* optional reentrant chaos, runs pre-read */
 
 static s32 memRead(void *ctx, u32 offset, void *dst, u32 len) {
 	int call = mem.readCalls++;
+	mem.lastOffset = offset;
+	mem.lastLength = len;
+	if (len > mem.maxLength) mem.maxLength = len;
 	(void)ctx;
 	if (lockDepth != 0) {
 		fprintf(stderr, "FAIL [%s] source read under the lock (depth %d)\n",
@@ -449,6 +453,7 @@ static uiAssetsSource_t memSource(const u8 *data, size_t len) {
 	mem.readCalls = 0;
 	mem.failAfter = -1;
 	mem.shortReadAt = 0xFFFFFFFFu;
+	mem.lastOffset = mem.lastLength = mem.maxLength = 0u;
 	src.read = memRead;
 	src.size = (u32)len;
 	src.ctx = NULL;
@@ -1820,6 +1825,84 @@ static bool stillReady(const char *id) {
 
 /* A still is one 320x240 CMPR texture with no mip chain, byte for byte as
  * the pack holds it, looked up as a poster is. */
+static void test_incremental_records_publish_only_when_complete(void) {
+	size_t len;
+	u8 *pack = buildPack(BASIC, 3, &len, 0);
+	uiAssetsSource_t src = memSource(pack, len);
+	uiPosterHandle_t h;
+	u32 start = rbe32(pack + 0x18), done = 0;
+	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
+	requestOne("GALE01");
+	CHECK(UIAssets_Query("GALE01", 6, true, &h) == UI_POSTER_EXACT);
+	mem.maxLength = 0;
+	allocsFrozen = 1;
+	while (done < UI_ASSETS_POSTER_BYTES) {
+		int reads = mem.readCalls;
+		bool more = UIAssets_PollStep();
+		u32 take = UI_ASSETS_POSTER_BYTES - done;
+		if (take > UI_ASSETS_READ_BYTES) take = UI_ASSETS_READ_BYTES;
+		CHECK(mem.readCalls == reads + 1);
+		CHECK(mem.lastOffset == start + done && mem.lastLength == take);
+		done += take;
+		CHECK((UIAssets_Peek(h) != NULL) == (done == UI_ASSETS_POSTER_BYTES));
+		CHECK(more == (done < UI_ASSETS_POSTER_BYTES));
+		CHECK(flushCalls == (done == UI_ASSETS_POSTER_BYTES ? 1 : 0));
+	}
+	CHECK(mem.maxLength <= UI_ASSETS_READ_BYTES);
+	CHECK(memcmp(UIAssets_Peek(h)->data, pack + start, UI_ASSETS_POSTER_BYTES) == 0);
+	allocsFrozen = 0;
+	UIAssets_CancelForDeviceChange();
+	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
+	fakeNowValue += UI_ASSETS_EVICT_QUARANTINE_MS;
+	requestOne("GALE01");
+	CHECK(UIAssets_PollStep());
+	int reads = mem.readCalls;
+	UIAssets_CancelForDeviceChange();
+	CHECK(!UIAssets_PollStep() && mem.readCalls == reads);
+	CHECK(UIAssets_Peek(h) == NULL);
+	free(pack);
+}
+
+static void test_incremental_crc_and_read_failure(void) {
+	size_t len;
+	u8 *pack = buildPack(BASIC, 3, &len, 0);
+	uiAssetsSource_t src = memSource(pack, len);
+	uiPosterHandle_t h;
+	pack[rbe32(pack + 0x18) + UI_ASSETS_READ_BYTES + 7] ^= 1;
+	CHECK(UIAssets_Init(&src, &testSync) == UI_ASSETS_OK);
+	requestOne("GALE01");
+	CHECK(UIAssets_PollStep());
+	CHECK(UIAssets_PollStep());
+	CHECK(!UIAssets_PollStep());
+	CHECK(UIAssets_Query("GALE01", 6, true, &h) == UI_POSTER_CORRUPT_OR_UNAVAILABLE);
+	CHECK(UIAssets_Peek(h) == NULL && flushCalls == 0);
+	requestOne("GC6E01");
+	CHECK(UIAssets_PollStep());
+	mem.failAfter = mem.readCalls;
+	CHECK(!UIAssets_PollStep());
+	CHECK(UIAssets_Query("GC6E01", 6, true, &h) == UI_POSTER_CORRUPT_OR_UNAVAILABLE);
+	CHECK(UIAssets_Peek(h) == NULL && flushCalls == 0);
+	free(pack);
+}
+
+static void test_incremental_stills_and_full_poll_interoperate(void) {
+	size_t len;
+	u8 *pack = buildStillPack(BASIC, 3, &len);
+	uiAssetsSource_t src = memSource(pack, len);
+	uiPosterHandle_t h;
+	char empty[8] = {0};
+	CHECK(UIStills_Init(&src, &testSync) == UI_ASSETS_OK);
+	requestStills(empty, "GC6E01", empty);
+	CHECK(UIStills_Query("GC6E01", 6, true, &h) == UI_POSTER_EXACT);
+	mem.maxLength = 0;
+	CHECK(UIStills_PollStep());
+	CHECK(UIStills_Peek(h) == NULL && mem.maxLength <= UI_ASSETS_READ_BYTES);
+	CHECK(!UIStills_Poll()); /* finish the same record, continuing its CRC */
+	CHECK(UIStills_Peek(h) != NULL && flushCalls == 1);
+	CHECK(!UIAssets_Ready());
+	free(pack);
+}
+
 static void test_stills_load_one_texture_each(void) {
 	size_t len;
 	u8 *pack = buildStillPack(BASIC, 3, &len);
@@ -2231,6 +2314,9 @@ int main(int argc, char **argv) {
 	RUN(test_short_id_rejected_before_read);
 	RUN(test_request_window_mid_read_no_stale_publish);
 	RUN(test_stills_load_one_texture_each);
+	RUN(test_incremental_records_publish_only_when_complete);
+	RUN(test_incremental_crc_and_read_failure);
+	RUN(test_incremental_stills_and_full_poll_interoperate);
 	RUN(test_stills_and_posters_refuse_each_other);
 	RUN(test_stills_window_of_three);
 	RUN(test_stills_payload_corrupt);

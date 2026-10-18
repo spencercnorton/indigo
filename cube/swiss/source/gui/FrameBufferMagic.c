@@ -5253,9 +5253,9 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 
 bool DrawGameflowPollPosters(void)
 {
-	/* One read for each pack at most: a poster, then a still. */
-	bool more = UIAssets_Poll();
-	return UIStills_Poll() || more;
+	/* At most one 16 KiB range per pack, between input checks. */
+	bool more = UIAssets_PollStep();
+	return UIStills_PollStep() || more;
 }
 
 static void _GameflowCopySnapshot(drawGameflowEvent_t *data,

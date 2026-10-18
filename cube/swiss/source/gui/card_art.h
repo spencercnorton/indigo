@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define CARD_ART_READ_BYTES 16384u
+
 /* card_art: posters made on the console, for the cards the poster pack has
  * none for: an app (Apps) or a folder of games (the Library, with Library
  * Folders on). A card's poster is its own picture, a PNG on the card, or its
@@ -25,10 +27,10 @@ typedef struct {
 	/* The card's picture's size in bytes, or 0 when it has none (or it
 	 * failed before and isn't to be tried again). */
 	uint32_t (*pictureSize)(int32_t card);
-	/* Reads the card's picture, size bytes of it, into data; false when it
-	 * can't. On the poster thread when threadSafe, else on the menu thread
-	 * between frames. */
-	bool (*readPicture)(int32_t card, uint8_t *data, uint32_t size);
+	/* Reads this range of the picture, closing its file before returning.
+	 * On the poster thread when threadSafe, else one range per idle frame
+	 * on the menu thread, at most CARD_ART_READ_BYTES. */
+	bool (*readPicture)(int32_t card, uint32_t offset, uint8_t *data, uint32_t size);
 	/* The card's name, drawn as its poster when it has no picture. */
 	const char *(*name)(int32_t card);
 	/* After the card's picture was tried: whether it made a poster. Not

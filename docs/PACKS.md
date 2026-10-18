@@ -120,7 +120,9 @@ At most one universal record may share those four characters.
 A texture whose CRC doesn't match is not shown: that game looks as if the
 pack had no picture for it, and the rest of the pack still works. The file is read in pieces as the
 Library needs them, never all at once: 25 posters and 3 stills at most are
-held in memory.
+held in memory. Stills open only on first Spotlight use. Each idle step
+reads at most 16 KiB from each pack, checking a texture's complete CRC
+before publishing it; changing device discards an unfinished texture.
 
 ## Game descriptions
 

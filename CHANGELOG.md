@@ -13,6 +13,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   their exact edge normals while their geometry stays the same.
 - The Library opens Spotlight's gameplay stills only when you use Spotlight,
   saving their cache memory and card reads in the other layouts.
+- Artwork reads give the menus a turn between pieces. Folder and app
+  pictures on a disc no longer hold up a button for the whole picture;
+  leaving the page or scrolling away discards an unfinished read.
 
 ### Documentation
 
