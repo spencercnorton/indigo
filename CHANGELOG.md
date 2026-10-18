@@ -25,6 +25,14 @@ tag on `beta`. The newest changes are at the top until their release is named.
   DOL/ELF headers, sections and entrypoint probes stay inside the received
   file. Uploads no longer suspend the menu while it owns the video lock.
 
+- The pinned build now links libiconv-lite instead of the full character-set
+  library, reducing the DOL by about 834 KiB while retaining every banner
+  encoding. The emulator launch probe checks the actual PowerPC conversions.
+- Updated the SDK to libogc2 r2482, including its AESND reset race fix, EXI
+  locking cleanup, monotonic timing and SD fixes. The upstream audio fix
+  replaces Indigo's earlier local patch. A fresh MemCard PRO GC hardware
+  qualification is required before publishing this SDK as stable.
+
 ### Documentation
 
 - The guide's Memory Cards and Game Details pictures show 2.4's screens:

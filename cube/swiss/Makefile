@@ -77,7 +77,7 @@ LIBS	:=	-ldvm -ltinysmb -lbba -ldb -logc -lm -lpsoarchive $(shell $(PREFIX)pkg-c
 # list of directories containing libraries, this must be the top level containing
 # include and lib
 #---------------------------------------------------------------------------------
-LIBDIRS	:=	$(PORTLIBS)
+LIBDIRS	:=	$(abspath ../../.build-deps/libiconv-lite) $(PORTLIBS)
 
 #---------------------------------------------------------------------------------
 # no real need to edit anything past this point unless you need to add additional

@@ -218,13 +218,19 @@ step, updating and going back to stock Swiss.
 ### Any platform — from source
 
 The build runs in the same container image the project's CI uses, so no
-toolchain is installed on your machine:
+toolchain is installed on your machine. `make dev` also downloads and
+SHA-256-verifies the pinned libiconv-lite package into `.build-deps/` on the
+first build; subsequent builds reuse it. CI preloads that same archive in
+its runner image. The overlay needs no administrator access. Native builds
+need curl, a SHA-256 utility (`sha256sum` or `shasum`) and tar with Zstd
+support; the pinned Docker image includes them:
+
 
 ```bash
 git clone https://github.com/spencercnorton/indigo.git
 cd indigo
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
+  ghcr.io/extremscorner/libogc2@sha256:f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2 make dev
 # writes cube/swiss/swiss.dol inside this folder, on your computer
 ```
 
@@ -285,7 +291,7 @@ repository, and copy it to `/swiss/ui/posters.pak` on the card:
 
 ```bash
 python3 -m pip install pillow
-docker pull ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f
+docker pull ghcr.io/extremscorner/libogc2@sha256:f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2
 python3 buildtools/ui/poster_pack.py --covers ~/covers --out posters.pak
 ```
 
@@ -354,7 +360,7 @@ be checked in advance.
 
 ```bash
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev   # the DOL, as CI builds it
+  ghcr.io/extremscorner/libogc2@sha256:f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2 make dev   # the DOL, as CI builds it
 buildtools/ui/tests/run_tests.sh all          # host tests: plain, sanitized, contracts
 buildtools/check_whitespace.sh origin/beta    # lint
 python3 buildtools/ci/check_upstream.py       # upstream's files match UPSTREAM
