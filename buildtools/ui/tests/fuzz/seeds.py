@@ -9,10 +9,27 @@ import shutil
 import struct
 import subprocess
 import sys
+import zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
+
+
+def wiiload(out: Path) -> None:
+    image = bytearray(320)
+    struct.pack_into(">I", image, 0, 256)
+    struct.pack_into(">I", image, 0x48, 0x80003100)
+    struct.pack_into(">I", image, 0x90, 64)
+    struct.pack_into(">I", image, 0xE0, 0x80003100)
+    packed = zlib.compress(image)
+    def wire(output: int, declared: int, payload: bytes) -> bytes:
+        return struct.pack(">II", output, declared) + payload
+    (out / "valid").write_bytes(wire(len(image), len(packed), packed))
+    (out / "eof-after-end").write_bytes(wire(len(image), len(packed) + 1, packed))
+    (out / "truncated").write_bytes(wire(len(image), len(packed) - 2, packed[:-2]))
+    (out / "wrong-output").write_bytes(wire(len(image) + 1, len(packed), packed))
+    (out / "dol").write_bytes(image)
 
 
 def history(out: Path) -> None:
@@ -199,7 +216,7 @@ def cheats(out: Path) -> None:
 
 def main() -> int:
     out = Path(sys.argv[1])
-    for target in (history, saves, raw_saves, posters, about, settings, fst, png, cheats):
+    for target in (history, saves, raw_saves, posters, about, settings, fst, png, cheats, wiiload):
         folder = out / target.__name__
         folder.mkdir(parents=True, exist_ok=True)
         target(folder)

@@ -1,3 +1,22 @@
+## 2026-10-17 — Reject incomplete uploads and hand off under the video lock
+
+The wiiload decoder stops on EOF, requires Z_STREAM_END with exact input
+and output counts, caps the image at 16 MiB, and gives inflate one guard byte
+to consume a split checksum without accepting extra output. Arguments must
+arrive whole and end in NUL. Before Sidestep, DOL/ELF tables, payloads and
+the entrypoint's argv probe are bounded by the actual image; raw BIN routes
+remain. TCP reads have a ten-second idle timeout and accept checks select's
+return value with a fresh timeout.
+
+Transfers serialize on their own mutex. The menu keeps running through the
+receive and validation; only a complete usable image reaches suspension,
+under DrawWithVideoLocked so the menu cannot be stranded owning that lock.
+The actual decoder, image checks, TCP reader and handler run in a host
+harness, including single-byte streams/checksums and a fake scheduler that
+holds the menu's video lock at handoff. Plain and sanitizer runs pass. A
+new coverage-guided target compares accepted streams with zlib's independent
+uncompress2 and exercises executable bounds. Native CI remains the merge gate.
+
 ## 2026-10-16 — v2.4.0's guide pictures
 
 Nine guide pictures were re-recorded from the v2.4.0 release zip, in CI's
