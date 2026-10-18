@@ -60,7 +60,8 @@ compile-patches:
 	@cd $(PATCHES) && $(MAKE)
 
 compile: # compile
-	@$(PACMAN) -Q devkitppc-licenses gamecube-tools-git libogc2-git libogc2-libdvm-git libogc2-pkg-config ppc-libdeflate ppc-libiconv ppc-libmad ppc-libpsoarchive ppc-libuchardet ppc-libxxhash ppc-zlib-ng-compat
+	@buildtools/ci/runner/libiconv-lite.sh .build-deps/libiconv-lite
+	@$(PACMAN) -Q devkitppc-licenses gamecube-tools-git libogc2-git libogc2-libdvm-git libogc2-pkg-config ppc-libdeflate ppc-libmad ppc-libpsoarchive ppc-libuchardet ppc-libxxhash ppc-zlib-ng-compat
 	@cd $(SOURCES)/swiss && $(MAKE)
 
 compile-packer:
@@ -95,7 +96,7 @@ build:
 	@cp $(DEVKITPRO)/licenses/devkitPPC/COPYING.LIBGLOSS $(DIST)/Licenses/libgloss.txt
 	@cp $(DEVKITPRO)/licenses/devkitPPC/COPYING.NEWLIB $(DIST)/Licenses/newlib.txt
 	@cp $(DEVKITPRO)/portlibs/ppc/licenses/ppc-libdeflate/COPYING $(DIST)/Licenses/libdeflate.txt
-	@cp $(DEVKITPRO)/portlibs/ppc/licenses/ppc-libiconv/COPYING.LIB $(DIST)/Licenses/libiconv.txt
+	@cp .build-deps/libiconv-lite/licenses/ppc-libiconv-lite/COPYING.LIB $(DIST)/Licenses/libiconv.txt
 	@cp $(DEVKITPRO)/portlibs/ppc/licenses/ppc-libmad/COPYING $(DIST)/Licenses/libmad.txt
 	@cp $(DEVKITPRO)/portlibs/ppc/licenses/ppc-libpsoarchive/COPYING.LGPL21 $(DIST)/Licenses/libpsoarchive.txt
 	@cp $(DEVKITPRO)/portlibs/ppc/licenses/ppc-libuchardet/COPYING $(DIST)/Licenses/uchardet.txt

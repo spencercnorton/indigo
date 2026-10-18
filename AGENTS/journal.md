@@ -1,3 +1,15 @@
+## 2026-10-17 — Pin libiconv-lite and libogc2 r2482
+
+The SDK is f9ffb7e3 (libogc2 f0a7627, r2482). Its AESND_Reset cancellation
+and callback fix replaces the older local wait patch; the copied sources
+remain byte-identical and the 300-reset emulator stress test stays required.
+The verified libiconv-lite 1.19-4 archive is extracted as an unprivileged
+portlib overlay before make dev; CI caches it in the build image and does
+not fetch packages from a job. The launch probe exercises each accepted
+banner encoding with this exact PowerPC library. The SDK invalidates the
+old MemCard PRO GC qualification, whose evidence remains historical; the
+record is pending and stable publication remains blocked on a fresh test.
+
 ## 2026-10-16 — v2.4.0's guide pictures
 
 Nine guide pictures were re-recorded from the v2.4.0 release zip, in CI's

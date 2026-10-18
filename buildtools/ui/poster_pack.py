@@ -83,7 +83,7 @@ TPL_MAGIC = 0x0020AF30
 # offline, so the docker fallback never resolves a mutable tag and never
 # pulls (docker run --pull=never). The digest is recorded in provenance.
 DOCKER_IMAGE = ("ghcr.io/extremscorner/libogc2@sha256:"
-                "e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f")
+                "f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2")
 
 GAME_ID_RE = re.compile(r"[A-Z0-9]{6}")
 COVER_NAME_RE = re.compile(r"([A-Za-z0-9]{6})\.(?:png|jpe?g)", re.IGNORECASE)

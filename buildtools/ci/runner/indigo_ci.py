@@ -85,7 +85,7 @@ class Pool:
 
 
 POOLS = {
-    "build": Pool("build", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py"),
+    "build": Pool("build", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py", "libiconv-lite.sh"),
                   "indigo-build", "8", "6g"),
     "emulator": Pool("emulator", "emulator.Dockerfile",
                      ("entrypoint.sh", "dolphin/0001-sd2sp2-adapter.patch", "dolphin/0002-flush-sd-writes.patch",
@@ -94,7 +94,7 @@ POOLS = {
                       "dolphin/0007-dabr.patch"),
                      "indigo-emulator", "8", "6g", shares=4096),
     # norvitech.com's checks (Python, Node, gitleaks) on the build image.
-    "site": Pool("site", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py"),
+    "site": Pool("site", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py", "libiconv-lite.sh"),
                  "norvitech-site", "2", "2g", repo="spencercnorton/norvitech-site"),
 }
 REF = os.environ.get("INDIGO_CI_REF", "beta")
