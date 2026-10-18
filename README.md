@@ -12,9 +12,9 @@
 
 <p align="center">
   <a href="https://norvitech.com"><img alt="NorviTech Suite" src="https://img.shields.io/badge/NorviTech-Suite-FD8024.svg"></a>
-  <a href="https://github.com/spencercnorton/indigo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/spencercnorton/indigo/actions/workflows/ci.yml/badge.svg?branch=main"></a>
-  <a href="https://github.com/spencercnorton/indigo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/spencercnorton/indigo?label=release"></a>
-  <a href="https://github.com/spencercnorton/indigo/releases/latest"><img alt="Download for your SD card" src="https://img.shields.io/badge/download-SD%20card%20zip-2D2D2D.svg"></a>
+  <a href="https://github.com/spencernorton/indigo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/spencernorton/indigo/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/spencernorton/indigo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/spencernorton/indigo?label=release"></a>
+  <a href="https://github.com/spencernorton/indigo/releases/latest"><img alt="Download for your SD card" src="https://img.shields.io/badge/download-SD%20card%20zip-2D2D2D.svg"></a>
   <a href="LICENSE"><img alt="Licence" src="https://img.shields.io/badge/licence-GPL--2.0--or--later-blue.svg"></a>
   <a href="https://buy.stripe.com/8x26oH2U44f65TRe574wM04"><img alt="Donate" src="https://img.shields.io/badge/donate-Stripe-635bff.svg?logo=stripe&logoColor=white"></a>
 </p>
@@ -227,7 +227,7 @@ support; the pinned Docker image includes them:
 
 
 ```bash
-git clone https://github.com/spencercnorton/indigo.git
+git clone https://github.com/spencernorton/indigo.git
 cd indigo
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
   ghcr.io/extremscorner/libogc2@sha256:f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2 make dev
@@ -351,8 +351,8 @@ be checked in advance.
 
 ## Contributing and support
 
-- Bugs and feature requests: [open an issue](https://github.com/spencercnorton/indigo/issues/new/choose). Questions: [Discussions](https://github.com/spencercnorton/indigo/discussions). Do not report fork issues to the upstream project.
-- Security reports: [private vulnerability reporting](https://github.com/spencercnorton/indigo/security/advisories/new) — see [SECURITY.md](SECURITY.md). There is no e-mail address; that is deliberate.
+- Bugs and feature requests: [open an issue](https://github.com/spencernorton/indigo/issues/new/choose). Questions: [Discussions](https://github.com/spencernorton/indigo/discussions). Do not report fork issues to the upstream project.
+- Security reports: [private vulnerability reporting](https://github.com/spencernorton/indigo/security/advisories/new) — see [SECURITY.md](SECURITY.md). There is no e-mail address; that is deliberate.
 - Pull requests are welcome: they go to the `beta` branch, and CI builds a test zip for each one. Read [CONTRIBUTING.md](CONTRIBUTING.md) first; [docs/RELEASING.md](docs/RELEASING.md) says how betas and release candidates become releases.
 - If Indigo saves you time, you can [support its development](https://buy.stripe.com/8x26oH2U44f65TRe574wM04).
 
@@ -394,14 +394,14 @@ Indigo's interface was built with [Claude Code](https://claude.com/claude-code).
 </p>
 
 <p align="center">
-  <a href="https://github.com/spencercnorton/helios">Helios</a> ·
-  <a href="https://github.com/spencercnorton/bitagent">BitAgent</a> ·
-  <a href="https://github.com/spencercnorton/xnote">XNote</a> ·
-  <a href="https://github.com/spencercnorton/xnote-placement">XNote Placement</a> ·
-  <a href="https://github.com/spencercnorton/snipsnap">SnipSnap</a> ·
-  <a href="https://github.com/spencercnorton/conductor">Conductor</a> ·
-  <a href="https://github.com/spencercnorton/norvi-os">NorviOS</a> ·
-  <a href="https://github.com/spencercnorton/indigo">Indigo</a> ·
-  <a href="https://github.com/spencercnorton/roadtrack">Road Track</a> ·
+  <a href="https://github.com/spencernorton/helios">Helios</a> ·
+  <a href="https://github.com/spencernorton/bitagent">BitAgent</a> ·
+  <a href="https://github.com/spencernorton/xnote">XNote</a> ·
+  <a href="https://github.com/spencernorton/xnote-placement">XNote Placement</a> ·
+  <a href="https://github.com/spencernorton/snipsnap">SnipSnap</a> ·
+  <a href="https://github.com/spencernorton/conductor">Conductor</a> ·
+  <a href="https://github.com/spencernorton/norvi-os">NorviOS</a> ·
+  <a href="https://github.com/spencernorton/indigo">Indigo</a> ·
+  <a href="https://github.com/spencernorton/roadtrack">Road Track</a> ·
   <a href="https://norvitech.com">norvitech.com</a>
 </p>
