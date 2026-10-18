@@ -40,9 +40,9 @@ enum { GX_QUADS=1,GX_TRIANGLESTRIP=2,GX_LINES=3,GX_VTXFMT0=0,
 #define REAR_WAVE_SEGMENTS 12
 #define GLOBE_SEGMENTS 24
 #define CHECK(c,m) do { if(!(c)) { fprintf(stderr,"%s\n",m); exit(73); } } while(0)
-static indigoPoint_t positions[1024];
-static GXColor colors[1024];
-static int count,begins,remaining,phase,destination,blendAt[1024];
+static indigoPoint_t positions[2048];
+static GXColor colors[2048];
+static int count,begins,remaining,phase,destination,blendAt[2048];
 static bool active;
 static void GX_SetZMode(int enable,int comparison,int write) {
     CHECK(enable==GX_DISABLE && comparison==GX_ALWAYS && write==GX_FALSE,
@@ -65,7 +65,7 @@ static void GX_Begin(int primitive,int format,int vertices) {
     active=true; remaining=vertices; begins++;
 }
 static void GX_Position3f32(float x,float y,float z) {
-    CHECK(active && phase==0 && remaining>0 && count<1024,"bad position stream");
+    CHECK(active && phase==0 && remaining>0 && count<2048,"bad position stream");
     CHECK(isfinite(x)&&isfinite(y)&&z==0,"invalid raster position");
     positions[count]=(indigoPoint_t){x,y}; blendAt[count]=destination; phase=1;
 }
@@ -245,8 +245,28 @@ static void testWaveClock(void) {
     float now=waveClock(0.1f);
     CHECK(closef(waveClock(2.1f),now+2),"back to Normal kept the old pace");
 }
+/* Setup > Console > Waves, as IndigoBackground_Draw lays the backdrop: Off
+ * draws no waves, and the wash and the globe's rings stay; On again brings
+ * the waves back. */
+enum { UI_COLOR_LAYER_MENU, UI_COLOR_LAYER_BACKDROP, UI_COLOR_LAYER_WAVES, UI_COLOR_LAYERS };
+static int layerColors[UI_COLOR_LAYERS];
+static void UIColor_Select(int color) { (void)color; }
+static float UIColor_BackdropShade(int color) { (void)color; return 1.0f; }
+typedef struct { bool visible; } uiSceneFrame_t;
+/* BACKDROP */
+static int backdrop(bool waves) {
+    const uiSceneFrame_t scene={true};
+    IndigoBackground_SetWaves(waves);
+    reset(); drawBackdrop(10.0f,&scene,true,0.0f,.76f);
+    return count*100+begins;
+}
+static void testWavesSetting(void) {
+    CHECK(backdrop(true)==(4+600+510)*100+1+12+8,"the backdrop is not its wash, rings and waves");
+    CHECK(backdrop(false)==(4+600)*100+1+12,"Waves Off drew waves, or took the wash or the rings");
+    CHECK(backdrop(true)==(4+600+510)*100+1+12+8,"Waves On did not bring the waves back");
+}
 int main(void) {
-    testWaves(); testGrid(); testWaveClock();
+    testWaves(); testGrid(); testWaveClock(); testWavesSetting();
     /* Menu Widescreen: every fade still spans one frame pixel. */
     pixelWidth=4.0f/3; squeeze=.75f;
     for(int t=0;t<3;t++) checkWave(t*400.5f,true,.76f);
@@ -278,13 +298,25 @@ class BackgroundGXStreamTests(unittest.TestCase):
         cls.emitters = "\n".join(blocks)
         cls.wave_clock = "\n".join([extract_function(source, "void IndigoBackground_SetWaveSpeed("),
             extract_function(source, "static float waveClock(")])
+        # The backdrop's layers, cut from IndigoBackground_Draw as they stand.
+        draw = extract_function(source, "void IndigoBackground_Draw(")
+        layers = draw[draw.index("\tUIColor_Select(layerColors[UI_COLOR_LAYER_BACKDROP]);"):
+                      draw.index("\tif(!scene->visible) {")]
+        cls.backdrop = "\n".join(["static bool wavesShown = true;",
+            extract_function(source, "void IndigoBackground_SetWaves("),
+            extract_function(source, "static void drawIndigoWash("),
+            "static void drawBackdrop(float seconds, const uiSceneFrame_t *scene,\n"
+            "\t\tbool backdropMotionActive, float drift, float decorativeStrength)\n{\n"
+            + layers + "}"])
+        assert "static bool wavesShown = true;\n" in source
 
-    def run_emitters(self, emitters):
+    def run_emitters(self, emitters, backdrop=None):
         with tempfile.TemporaryDirectory(prefix="swiss-background-gx-") as directory:
             root = Path(directory)
             source, binary = root / "background.c", root / "background"
             source.write_text(HARNESS.replace("/* EMITTERS */", emitters)
-                .replace("/* WAVE CLOCK */", self.wave_clock))
+                .replace("/* WAVE CLOCK */", self.wave_clock)
+                .replace("/* BACKDROP */", backdrop or self.backdrop))
             result = subprocess.run(shlex.split(os.environ.get("CC", "cc")) +
                 ["-std=c99", "-Wall", "-Wextra", "-Werror", str(source), "-o", str(binary), "-lm"],
                 capture_output=True, text=True, timeout=30)
@@ -317,6 +349,16 @@ class BackgroundGXStreamTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn(old, self.emitters)
                 result = self.run_emitters(self.emitters.replace(old, new, 1))
+                self.assertNotEqual(result.returncode, 0, "mutant survived: " + name)
+
+    def test_waves_off_is_rejected_when_it_draws_them(self):
+        for name, (old, new) in {
+            "the gate": ("if(scene->visible && wavesShown) {", "if(scene->visible) {"),
+            "the setting": ("wavesShown = shown;", "wavesShown = shown || true;"),
+        }.items():
+            with self.subTest(name=name):
+                self.assertIn(old, self.backdrop)
+                result = self.run_emitters(self.emitters, self.backdrop.replace(old, new, 1))
                 self.assertNotEqual(result.returncode, 0, "mutant survived: " + name)
 
 

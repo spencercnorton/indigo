@@ -154,7 +154,7 @@ def check_runtime(swiss: str, main: str) -> None:
     refresh = extract_block(swiss, "static void homeRefreshLibrary(")
     flippy_update = extract_block(swiss, "static void homeRunFlippyUpdate(")
     restart_drain = extract_block(swiss, "static bool homeDrainRestartInput(")
-    selector_drain = extract_block(swiss, "static void homeDrainSelectorInput(")
+    selector_drain = extract_block(swiss, "static void homeDrainSelectorInput(void)\n{")
     restart_confirm = extract_block(swiss, "static void homeConfirmRestartEffect(")
     selector = extract_block(swiss, "static bool select_device_internal(")
     load_file = extract_block(
@@ -226,6 +226,8 @@ def check_runtime(swiss: str, main: str) -> None:
     )
     flippy = extract_block(load_file, 'else if(endsWith(fileName,".fpkg"))')
     assert "homeFlippyUpdatePending = true;" in flippy
+    # A firmware update asks first: only A on the question queues it.
+    ordered(flippy, "if(confirmAction(", "homeFlippyUpdatePending = true;")
     for unsafe_inline in ("freeFiles();", "flippy_closefrom(1);", "flippy_reset();"):
         assert unsafe_inline not in flippy
     ordered(

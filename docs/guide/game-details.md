@@ -3,10 +3,12 @@
 # Game details
 
 A on a game in the [Library](library.md) opens its details: everything about
-that one game, and every way to start it, on one screen.
+that one game, and every way to start it, on one screen. A on a game in the
+left pane of the [File Browser](system.md#file-browser) opens the same
+screen, and **B** there goes back to the File Browser, on the same row.
 
 <p align="center">
-  <img alt="Astral Circuit’s game details: its demonstration cover on the left; Last played says No play recorded. The Saves inset shows 1 save copy, 2 blocks and Updated 2024-02-29 12:34 above Settings and Cheats. Launch Game is selected." src="images/game-details.png" width="640">
+  <img alt="Astral Circuit’s game details: its demonstration cover on the left; Last played says No play recorded, above Settings and Cheats. Launch Game is selected." src="images/game-details.png" width="640">
 </p>
 
 ## What's on the screen
@@ -21,15 +23,25 @@ that one game, and every way to start it, on one screen.
   play recorded". Indigo records it when your settings live on the card the
   game starts from, as with a single SD card. With no settings device to
   read it from, it says "History unavailable".
-- **Saves**, above Settings and Cheats: the number of save copies and
-  their total blocks appear first, with the latest update beneath them.
-  These totals come from inserted memory cards and the configured Save
-  Folder, including readable RAW images there. It matches the full game and
-  maker ID, not the title. A RAW save and an exported GCI count as separate
-  copies; this isn't a progress score. **Updated** is the newest date
-  recorded in those saves. An incomplete or unavailable scan says so,
-  rather than reporting no saves. System › [Memory Cards](memory-cards.md)
-  opens the individual saves and their details.
+- **Saves**, above Settings and Cheats, when the game has two or more save
+  copies. The first line counts them as the GameCube does: different files
+  of the game are files (**5 files | 58 blocks** for a game that keeps its
+  town, letters and options apart), one file in more than one place is
+  copies (**2 copies | 11 blocks**), and each file's blocks count once, as
+  its newest copy has them. Beneath it, **Updated** is the newest date
+  recorded in those saves, then that save's own line: the one the
+  GameCube's memory card screen shows under the block count, such as "Last
+  saved on 1/6". A save records no creation date. These totals come from
+  inserted memory cards and the configured Save Folder, including readable
+  RAW images there. With your games on another card than your settings (an
+  SD2SP2 beside a GC Loader, say), they also count the card images and saves
+  in `swiss/saves` on the games' card, where Swiss's Emulate Memory Card
+  keeps each game's card. It matches the full game and maker ID, not the
+  title; this isn't a progress score. A scan that couldn't read everything
+  says **Partial scan**. Settings › Setup › Library › **Saves on Details**
+  turns the box off, and then a game's details don't read your memory cards
+  at all. System › [Memory Cards](memory-cards.md) opens the individual
+  saves and their details.
 - **Settings**: "Game Defaults" while the game follows them, or how many of
   its settings are its own and the first of them, such as "1 custom" and
   "Force Video Mode: 480p". See [below](#this-games-own-settings).
@@ -39,13 +51,59 @@ that one game, and every way to start it, on one screen.
 - **Launch Game**, where the screen opens (below).
 - **Shortcuts**: the extra ways to start or check the game (below).
 
-Copying a save from a RAW image into the Save Folder creates another save
-copy. Opening the game's details again refreshes the totals: the example
-below now has **2 save copies | 4 blocks**, with the same recorded update.
+With a memory card that changes to each game's own card, such as a MemCard
+PRO GC, the box also shows while that card loads, however many copies there
+are: **Memory card loading**, then the saves once it is ready. A card that
+never finishes says **Memory card didn't load**, or **Partial scan** under
+two or more copies. If the card's status remains unconfirmed for a minute,
+Indigo stops waiting. Remove and reinsert the card to try again.
+
+A game with one save copy shows no Saves box. Copying a save from a RAW
+image into the Save Folder makes a second copy of that file, and opening the
+game's details again shows it: **2 copies | 2 blocks**, with the recorded
+update and the save's own line.
 
 <p align="center">
-  <img alt="Astral Circuit’s Saves inset after exporting one GCI: 2 save copies, 4 blocks and the unchanged Updated 2024-02-29 12:34." src="images/game-details-saves-after-copy.png" width="640">
+  <img alt="Astral Circuit’s details after exporting one GCI: the Saves box, labelled « SAVES » since Left and Right choose a copy, reads 2 copies | 2 blocks over Updated 2024-02-29 12:34 and the save's own line, SD card image." src="images/game-details-saves-after-copy.png" width="640">
 </p>
+
+### Start with another copy of the save
+
+With two or more copies and a memory card in a slot, **Left** and **Right**
+step through them, and the label reads **« SAVES »**. The box shows one copy
+at a time, such as **Copy 2 of 3 | Save Folder**, with its date, **In use**
+for the copy on the memory card the game reads or **Loads at launch**, and
+the save's own line. A card image goes by its file name, such as
+**MemoryCardA.USA.raw**, and a save file in the games' card's `swiss/saves`
+by that card's name, such as **SD Card - SD2SP2**. When the copies are of
+more than one of the game's files, each shows its file's name and its place
+among that file's copies instead, such as **DobutsunomoriP_MURA 2 of 2 |
+MemoryCardA.USA.raw**, and each file's copies come together. After the last
+copy the totals show again: launching then leaves the card as it is. The
+card's own copies come first, then the SD cards', newest first; with more
+than eight, the oldest of those aren't offered.
+
+<p align="center">
+  <img alt="Astral Circuit’s details after Right twice: « SAVES » shows one copy, Copy 2 of 2 | Save Folder, over Loads at launch | 2024-02-29 12:34 | SD card image." src="images/game-details-save-choice.png" width="640">
+</p>
+
+Launch the game with another copy shown and Indigo asks first, naming the
+file when the game has more than one. **A** puts that copy on the memory
+card: the card's own copy of that file, if it has one, goes to the Save
+Folder first (on your settings card, wherever the new copy came from), the
+new one is read back from the card,
+and if anything goes wrong the card's own copy goes back and the game
+doesn't start. **B** leaves the card as it is and shows the totals
+again. The copy goes on the card that holds the game's save, Slot A first;
+with no copy on a card, on the card in Slot A, or in Slot B when Slot A is
+empty.
+
+It isn't offered with no memory card in a slot, or while **Emulate Memory
+Card** is on, since the game then reads a card image on the SD card rather
+than the card in the slot. Nor is it offered for a memory card that changes
+to each game's own card, such as a MemCard PRO GC: Indigo only reads that
+card, once it has loaded this game's card, and the game starts with the
+card's own copy.
 
 ## Start the game
 
@@ -64,8 +122,8 @@ without its glint, and the screen goes straight to black.
   <img alt="A on Launch Game for 1080° Avalanche: the details have made way for its cover, centred in a ring that is filling, with the title, the publisher and the step under it, Loading game." src="images/game-details-launch.png" width="640">
 </p>
 
-If the game can't start, a message says why, and then the Library comes
-back.
+If the game can't start, a message says why, and then the Library (or the
+File Browser) comes back.
 
 Up and down on the D-pad or the control stick move the frame between
 **Launch Game**, **Cheats** and **Settings**, and **A** opens the one it's
@@ -106,9 +164,9 @@ Game Defaults value, and **B** leaves. The rest works like the main
 
 ## Autoload
 
-**Z** marks the game to open every time Indigo starts, so its details are
-the first thing you see. With **Boot without prompts** on, the game starts
-straight away instead. The shortcut then reads **Z Autoload On**; press Z
+**Z** marks the game to open every time Indigo starts, so it is the first
+thing you see, on Swiss's own game screen. With **Boot without prompts** on,
+the game starts straight away instead. The shortcut then reads **Z Autoload On**; press Z
 again to turn it off.
 
 Autoload is saved in your settings file, so it appears only when Indigo has

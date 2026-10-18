@@ -421,6 +421,7 @@ static s32 cacheInit(uiAssetsCache_t *c, const uiAssetsSource_t *source,
 	uiAssetsSync_t requestedSync;
 	u32 recordCount, dataOffset, fileLength, indexLength;
 	u32 (*nowMs)(void);
+	bool freshArena;
 	s32 err;
 	int i;
 
@@ -484,7 +485,8 @@ static s32 cacheInit(uiAssetsCache_t *c, const uiAssetsSource_t *source,
 	syncLock(c);
 	c->src = *source;
 	c->nowMs = nowMs;
-	if (!c->arenaReady) {
+	freshArena = !c->arenaReady;
+	if (freshArena) {
 		for (i = 0; i < shape->slotCount; i++)
 			c->slots[i].data =
 				c->arena + (size_t)i * shape->recordBytes;
@@ -496,6 +498,12 @@ static s32 cacheInit(uiAssetsCache_t *c, const uiAssetsSource_t *source,
 	c->dataOffset = dataOffset;
 	c->fileLength = fileLength;
 	invalidateAll(c); /* new pack: every previous handle goes stale */
+	if (freshArena) {
+		/* No frame has drawn from a new arena: its first posters need not
+		 * wait out a quarantine, so the first Poll after a request reads. */
+		for (i = 0; i < shape->slotCount; i++)
+			c->slots[i].quarantineUntil = nowMs();
+	}
 	c->packOpen = true;
 	syncUnlock(c);
 

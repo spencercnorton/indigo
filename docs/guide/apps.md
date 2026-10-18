@@ -43,8 +43,19 @@ apps/
 
 The **Apps** face appears on [Home](home.md) as soon as the card has an app,
 one turn left of Library, or below it with a Classic cube. To keep it off
-Home, set Settings › Setup › Console › **Apps Face** to Off; the programs
-stay where they are, and the file list still starts them.
+Home, set Settings › Setup › Console › **Down Face** to None (or put Apps
+on another side with its own row); the programs stay where they are, and
+the File Browser still starts them.
+
+## Emulators
+
+Programs in a folder called `emulators` at the root of the source make a
+second screen just like Apps: the same folders, pictures, `.cli` arguments
+and `.dcp` choices, headed EMULATORS. Its face is on no side of the cube
+until you give it one: Settings › Setup › Console › **Up Face**, **Left
+Face**, **Right Face** or **Down Face** › Emulators (see
+[Choose the sides](home.md#choose-the-sides)). Programs can stay in `/apps`
+too; Emulators only reads `/emulators`.
 
 <p align="center">
   <img alt="Home on the Apps face: the glass cube shows four rounded squares, two by two, and APPS is written underneath." src="images/home-apps-face.png" width="480">
@@ -68,7 +79,7 @@ Most GameCube programs drop straight in:
 
 ### Programs that take options
 
-Apps starts a program the way Swiss's file list does, so the files Swiss
+Apps starts a program the way the File Browser does, so the files Swiss
 reads beside it still work: a `.cli` file with the program's name
 (`gbi.cli` for `gbi.dol`) gives it its command line, one argument a line,
 and a `.dcp` file lists choices to pick from before it starts.
@@ -124,10 +135,10 @@ Settings › Setup › Library › Recent List is on.
 
 ## When Apps doesn't look right
 
-- **No Apps face on Home.** Check that Settings › Setup › Console › Apps
-  Face is On. Otherwise the device has no app Indigo can show: check that
-  the folder is called `apps`, sits at the root, and holds a `.dol` that
-  isn't `boot.dol`. After adding apps to a device that stays connected, such
+- **No Apps face on Home.** Check that Settings › Setup › Console puts
+  Apps on a side (Down Face, by default). Otherwise the device has no app
+  Indigo can show: check that the folder is called `apps`, sits at the
+  root, and holds a `.dol` that isn't `boot.dol`. After adding apps to a device that stays connected, such
   as a network share, use Source › Refresh Library.
 - **An app is missing.** It is named `boot.dol` or `boot.elf`, it is hidden,
   its name starts with a dot, or it is two folders deep.

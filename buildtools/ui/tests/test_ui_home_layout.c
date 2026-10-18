@@ -119,7 +119,7 @@ static void checkItem(const uiHomeLayoutItem_t *item,
 		item->panelBounds.right + UI_HOME_LAYOUT_GLOW_EXTENT);
 	CHECK(item->glowBounds.bottom ==
 		item->panelBounds.bottom + UI_HOME_LAYOUT_GLOW_EXTENT);
-	CHECK(item->glowBounds.top > UI_HOME_LAYOUT_CUBE_RAIL_BOTTOM);
+	CHECK(item->glowBounds.top > UI_HOME_LAYOUT_SYSTEM_RAIL_BOTTOM);
 	checkPointInRect(item->labelCenter, item->labelBounds);
 	CHECK(UIHomeLayout_RectsDisjoint(item->glowBounds, command));
 }
@@ -288,13 +288,15 @@ static void testEveryValidLayout(void)
 							CHECK(layout.optionCount == 0);
 						}
 						else if(surface == (int)UI_HOME_SURFACE_SYSTEM) {
-							/* Information, Memory Cards, Restart: all
-							 * three between the rail and the command. */
-							CHECK(layout.rowCount == 3);
+							/* Information, Memory Cards, File Browser,
+							 * Restart: all four between System's raised
+							 * rail and the command. */
+							CHECK(layout.rowCount == 4);
 							CHECK(layout.optionCount == 0);
 							CHECK(layout.rows[0].glowBounds.top >
-								UI_HOME_LAYOUT_CUBE_RAIL_BOTTOM);
-							CHECK(layout.rows[2].glowBounds.bottom <
+								UI_HOME_LAYOUT_SYSTEM_RAIL_BOTTOM);
+							CHECK(layout.rows[0].panelBounds.top == 353);
+							CHECK(layout.rows[3].glowBounds.bottom <
 								layout.commandGlyphBounds.top);
 						}
 						else {
@@ -371,6 +373,8 @@ static void testValidationRejectsTampering(void)
 		UI_HOME_SURFACE_RING, 0);
 	uiHomeState_t confirm = stateAt(UI_HOME_FACE_SYSTEM,
 		UI_HOME_SURFACE_RESTART_CONFIRM, 0);
+	uiHomeState_t system = stateAt(UI_HOME_FACE_SYSTEM,
+		UI_HOME_SURFACE_SYSTEM, 3);
 	uiHomeLayout_t valid;
 	uiHomeLayout_t broken;
 
@@ -401,6 +405,17 @@ static void testValidationRejectsTampering(void)
 	broken = valid;
 	broken.rows[0].selected = true;
 	broken.rows[1].selected = true;
+	CHECK(!UIHomeLayout_Validate(&broken));
+
+	CHECK(UIHomeLayout_Compute(&system, caps, &valid));
+	broken = valid;
+	broken.rows[0].panelBounds.top -= 1;
+	broken.rows[0].glowBounds.top -= 1;
+	CHECK(!UIHomeLayout_Validate(&broken));
+	CHECK(UIHomeLayout_Compute(&source, caps, &valid));
+	broken = valid;
+	broken.rows[0].panelBounds.top = 353;
+	broken.rows[0].glowBounds.top = 350;
 	CHECK(!UIHomeLayout_Validate(&broken));
 
 	CHECK(UIHomeLayout_Compute(&ring, caps, &valid));

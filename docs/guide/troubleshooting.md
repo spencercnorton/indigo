@@ -2,7 +2,7 @@
 
 # Troubleshooting
 
-- [I see Swiss's file list instead of the Library](#i-see-swisss-file-list-instead-of-the-library)
+- [I see the File Browser instead of the Library](#i-see-the-file-browser-instead-of-the-library)
 - [Home starts on Source, or Library says Select Source](#home-starts-on-source-or-library-says-select-source)
 - [Some games have no box art](#some-games-have-no-box-art)
 - [A message says the file is a bad dump](#a-message-says-the-file-is-a-bad-dump)
@@ -16,15 +16,19 @@
 - [There's no Apps face, or an app or its picture is missing](#theres-no-apps-face-or-an-app-or-its-picture-is-missing)
 - [Still stuck](#still-stuck)
 
-## I see Swiss's file list instead of the Library
+<a id="i-see-swisss-file-list-instead-of-the-library"></a>
+
+## I see the File Browser instead of the Library
 
 <p align="center">
-  <img alt="Swiss's plain file list, shown in place of the Library." src="images/library-file-list.png" width="640">
+  <img alt="The File Browser's two panes of files, which the Library face opens when it has no games to show." src="images/files.png" width="640">
 </p>
 
-The Library appears when `/games` holds at least one disc image (`.iso`,
-`.gcm`, `.tgc`, `.fdi`), directly or in a game's folder, and it skips
-anything else there. You get the file list when:
+The File Browser, two panes of files, is part of Indigo: System ›
+[File Browser](system.md#file-browser) opens it on purpose. The Library face
+shows the poster Library when `/games` holds at least one disc image
+(`.iso`, `.gcm`, `.tgc`, `.fdi`), directly or in a game's folder, and it
+skips anything else there. It opens the File Browser instead when:
 
 - `/games` holds no disc images, for example only compressed `.rvz` or `.gcz`
   images, which must be decompressed with NKit or Dolphin first.
@@ -142,7 +146,7 @@ again and press **Z**: the shortcut changes from "Autoload On" back to
 
 The Apps face shows only when `/apps`, at the root of the source, holds a
 program: a `.dol`, `.dol+cli` or `.elf` that isn't called `boot.dol` (the
-Wii's), and Settings › Setup › Console › Apps Face is On. Programs two folders deep, hidden ones and names starting with a dot
+Wii's), and Settings › Setup › Console puts Apps on a side (Down Face, by default). Programs two folders deep, hidden ones and names starting with a dot
 are left out. A picture must be a PNG with the program's name, or its
 folder's `icon.png`, up to 2048 pixels a side and 2 MB, and not interlaced.
 [Apps](apps.md#when-apps-doesnt-look-right) has the details.

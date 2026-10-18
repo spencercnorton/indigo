@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <string.h>
 
 #include "ui_gameflow_resolver.h"
@@ -95,6 +96,25 @@ bool UIGameflowResolver_MayBeOppositeDisc(
 	return primary != NULL && (knownId == NULL ||
 		memcmp(knownId, unknown, sizeof(unknown)) == 0 ||
 		memcmp(knownId, primary->gameId, sizeof(unknown)) == 0);
+}
+
+bool UIGameflowResolver_NamedAsOppositeDisc(const char *primaryName,
+	uint8_t primaryDisc, const char *candidateName, uint8_t candidateDisc)
+{
+	size_t i = 0u;
+
+	if(primaryName == NULL || candidateName == NULL ||
+		strlen(primaryName) != strlen(candidateName)) {
+		return false;
+	}
+	while(primaryName[i] != '\0' &&
+		tolower((unsigned char)primaryName[i]) ==
+		tolower((unsigned char)candidateName[i])) {
+		++i;
+	}
+	return tolower((unsigned char)candidateName[i]) -
+		tolower((unsigned char)primaryName[i]) ==
+		(int)candidateDisc - (int)primaryDisc;
 }
 
 static bool duplicateSupportedSource(

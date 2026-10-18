@@ -153,23 +153,47 @@ bool UISaves_DisplayTitle(char *out, size_t capacity,
 	return UISaves_DisplayText(out, capacity, name, sizeof(name));
 }
 
-bool UISaves_StatsAdd(uiSavesGameStats_t *stats,
+bool UISaves_SameFile(const uint8_t a[UI_SAVES_ENTRY_SIZE],
+	const uint8_t b[UI_SAVES_ENTRY_SIZE])
+{
+	return a != NULL && b != NULL && memcmp(a, b, 6u) == 0 &&
+		strncmp((const char *)a + 8, (const char *)b + 8, UI_SAVES_NAME_LENGTH) == 0;
+}
+
+bool UISaves_StatsAdd(uiSavesGameStats_t *stats, uiSavesStatsFiles_t *files,
 	const uint8_t entry[UI_SAVES_ENTRY_SIZE], const char gameId[6],
 	unsigned source)
 {
-	unsigned blocks;
+	unsigned blocks, i;
 	uint32_t updated;
 
-	if(stats == NULL || entry == NULL || gameId == NULL ||
+	if(stats == NULL || files == NULL || entry == NULL || gameId == NULL ||
 		source >= UI_SAVES_STATS_SOURCES || memcmp(entry, gameId, 6u) != 0) return false;
 	blocks = UISaves_Blocks(entry);
 	if(blocks == 0u || blocks > 2043u || stats->saves == UINT32_MAX ||
 		stats->sourceSaves[source] == UINT32_MAX ||
 		stats->blocks > UINT32_MAX - blocks) return false;
-	stats->saves++;
-	stats->blocks += blocks;
-	stats->sourceSaves[source]++;
 	updated = UISaves_UpdatedSeconds(entry);
+	for(i = 0u; i < files->count && i < UI_SAVES_STATS_FILES &&
+		!UISaves_SameFile(files->entry[i], entry); i++) {
+	}
+	if(i < files->count && i < UI_SAVES_STATS_FILES) {
+		/* Another copy of a file already counted: the newest copy's blocks. */
+		if(updated > UISaves_UpdatedSeconds(files->entry[i])) {
+			stats->blocks = stats->blocks - UISaves_Blocks(files->entry[i]) + blocks;
+			memcpy(files->entry[i], entry, UI_SAVES_ENTRY_SIZE);
+		}
+	}
+	else {
+		if(files->count < UI_SAVES_STATS_FILES) {
+			memcpy(files->entry[files->count++], entry, UI_SAVES_ENTRY_SIZE);
+		}
+		else stats->partial = true;	/* more files than it can tell apart */
+		stats->files++;
+		stats->blocks += blocks;
+	}
+	stats->saves++;
+	stats->sourceSaves[source]++;
 	if(updated != 0u && (!stats->updatedKnown || updated > stats->latestUpdated)) {
 		stats->latestUpdated = updated;
 		stats->updatedKnown = true;

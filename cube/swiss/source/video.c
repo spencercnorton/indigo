@@ -190,6 +190,11 @@ static void ProperScanPADS(u32 retrace) {
 
 GXRModeObj *getVideoMode() {
 	if(vmode == NULL) {
+		if(!swissSettings.cubebootInvoked) {
+			volatile unsigned short* vireg = (volatile unsigned short*)0xCC002000;
+			vireg[1] = 0;
+			vireg[54] = 0;
+		}
 		switch(getScanMode()) {
 			case VI_INTERLACE:
 				switch(getTVFormat()) {
@@ -239,6 +244,11 @@ void updateVideoMode(GXRModeObj *m) {
 		m->viWidth = 704;
 		m->viXOrigin = 8;
 	}
+	if(vmode == NULL && !swissSettings.cubebootInvoked) {
+		volatile unsigned short* vireg = (volatile unsigned short*)0xCC002000;
+		vireg[1] = 0;
+		vireg[54] = 0;
+	}
 	VIDEO_Init ();
 	VIDEO_Configure (m);
 	VIDEO_Flush ();
@@ -246,7 +256,9 @@ void updateVideoMode(GXRModeObj *m) {
 
 void setVideoMode(GXRModeObj *m) {
 	updateVideoMode(m);
-	GX_AbortFrame ();
+	if(vmode != NULL) {
+		GX_AbortFrame ();
+	}
 	free(xfb[0]);
 	free(xfb[1]);
 	xfb[0] = (u32 *) SYS_AllocateFramebuffer (m);
