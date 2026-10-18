@@ -6,6 +6,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ## Unreleased
 
+### Improved
+
+- The Library opens Spotlight's gameplay stills only when you use Spotlight,
+  saving their cache memory and card reads in the other layouts.
+
 ### Documentation
 
 - The guide's Memory Cards and Game Details pictures show 2.4's screens:

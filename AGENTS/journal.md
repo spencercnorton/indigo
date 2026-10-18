@@ -1,3 +1,12 @@
+## 2026-10-17 — Open gameplay stills on first Spotlight use
+
+The Library's poster opener no longer initializes the gameplay-stills cache.
+Spotlight opens it on demand, with its own one-attempt flag, so it still
+works after another layout or with a missing poster pack. Device changes and
+cancellation retire both caches. The actual renderer lifecycle functions
+run in a counted host harness covering those routes and failure, plain and
+under ASan/UBSan. No pictures or controls change.
+
 ## 2026-10-16 — v2.4.0's guide pictures
 
 Nine guide pictures were re-recorded from the v2.4.0 release zip, in CI's

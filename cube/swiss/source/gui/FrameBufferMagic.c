@@ -146,6 +146,7 @@ static bool posterPackFileOwned;
  * same attempt on the same device. */
 static file_handle stillsPackFile;
 static bool stillsPackFileOwned;
+static bool stillsPackAttempted;
 /* Spotlight's game descriptions: swiss/ui/descriptions.txt on the browsed
  * device, read whole the first time Spotlight asks there. The menu thread's
  * alone; the video thread only ever sees a snapshot's copy. */
@@ -5115,7 +5116,8 @@ void DrawGameflowCancelPosters(void)
 	 * callback, so it only marks them stale, and the next lookup reads the
 	 * file again. */
 	descriptionsAttempted = false;
-	if(!posterPackAttempted && !posterPackFileOwned && !stillsPackFileOwned) {
+	if(!posterPackAttempted && !posterPackFileOwned &&
+		!stillsPackFileOwned && !stillsPackAttempted) {
 		return;
 	}
 
@@ -5127,6 +5129,7 @@ void DrawGameflowCancelPosters(void)
 	_GameflowCloseStillsPackFile();
 	posterPackDevice = NULL;
 	posterPackAttempted = false;
+	stillsPackAttempted = false;
 }
 
 static s32 _GameflowOnReset(s32 final)
@@ -5176,7 +5179,26 @@ static bool _GameflowOpenPosterPack(DEVICEHANDLER_INTERFACE *device)
 		_GameflowClosePosterPackFile();
 	}
 
-	/* The stills beside them, whether or not the posters opened. */
+	return result == UI_ASSETS_OK;
+}
+
+/* Only Spotlight needs gameplay stills. Keep one attempt per mounted
+ * device, independently of a missing poster pack; a later layout change
+ * must still be able to open them. Cancel retires both caches together. */
+static bool _GameflowOpenStillsPack(DEVICEHANDLER_INTERFACE *device)
+{
+	uiAssetsSource_t source;
+	uiAssetsSync_t sync;
+
+	if(device == NULL || device->initial == NULL ||
+		_videomutex == LWP_MUTEX_NULL) {
+		return false;
+	}
+	if(stillsPackAttempted) {
+		return UIStills_Ready();
+	}
+	stillsPackAttempted = true;
+	UIAssets_SyncFromMutex(_videomutex, &sync);
 	memset(&stillsPackFile, 0, sizeof(stillsPackFile));
 	concat_path(stillsPackFile.name, device->initial->name,
 		"swiss/ui/stills.pak");
@@ -5186,7 +5208,7 @@ static bool _GameflowOpenPosterPack(DEVICEHANDLER_INTERFACE *device)
 		UI_ASSETS_OK || UIStills_Init(&source, &sync) != UI_ASSETS_OK) {
 		_GameflowCloseStillsPackFile();
 	}
-	return result == UI_ASSETS_OK;
+	return UIStills_Ready();
 }
 
 void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
@@ -5199,7 +5221,8 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 		return;
 	}
 	_GameflowOpenPosterPack(device);
-	if(snapshot->layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT && UIStills_Ready()) {
+	if(snapshot->layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT &&
+		_GameflowOpenStillsPack(device)) {
 		/* The selected game's still and the ones either side of it. */
 		char stills[UI_STILLS_SLOTS][8] = {{0}};
 		for(i = 0u; i < snapshot->recordCount; ++i) {
