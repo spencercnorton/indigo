@@ -4,7 +4,7 @@
 # See README.md for what it sets up and how to give it GH_TOKEN.
 set -eu
 
-repo=${INDIGO_CI_REPO:-spencercnorton/indigo}
+repo=${INDIGO_CI_REPO:-spencernorton/indigo}
 ref=${INDIGO_CI_REF:-beta}
 home=${INDIGO_CI_HOME:-$HOME/.local/share/indigo-ci}
 units=$HOME/.config/systemd/user

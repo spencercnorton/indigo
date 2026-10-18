@@ -30,7 +30,7 @@ in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Before you start
 
-- **Bugs** — open a [bug report](https://github.com/spencercnorton/indigo/issues/new/choose).
+- **Bugs** — open a [bug report](https://github.com/spencernorton/indigo/issues/new/choose).
   A report with reproduction steps, versions and a scrubbed log excerpt is
   usually fixed faster than a pull request that arrives without one.
 - **Features** — open a feature request first. Indigo has strong opinions
@@ -38,7 +38,7 @@ in [docs/RELEASING.md](docs/RELEASING.md).
   (see the README); an idea that cuts across them needs a conversation before
   code.
 - **Security** — never in a public issue. Use
-  [private vulnerability reporting](https://github.com/spencercnorton/indigo/security/advisories/new);
+  [private vulnerability reporting](https://github.com/spencernorton/indigo/security/advisories/new);
   see [SECURITY.md](SECURITY.md).
 
 ## Working on the code

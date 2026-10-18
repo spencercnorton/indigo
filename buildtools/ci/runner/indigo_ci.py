@@ -16,7 +16,7 @@ Environment:
     GH_TOKEN          admin on the repository (it mints runner registrations)
     INDIGO_CI_POOLS   slots per pool, default "build:3,emulator:1"; the site pool
                       serves spencercnorton/norvitech-site
-    INDIGO_CI_REPO    default spencercnorton/indigo (its pools, and the images' source)
+    INDIGO_CI_REPO    default spencernorton/indigo (its pools, and the images' source)
     INDIGO_CI_REF     the trusted branch images are built from, default beta
     INDIGO_CI_NAME    the prefix of this machine's runner names, default "indigo";
                       runner names show in public job logs, so never a hostname.
@@ -67,7 +67,7 @@ HEALTH_EVERY = 60           # how often to ask GitHub whether running runners ar
 ALERT_AFTER = 5             # consecutive failed starts, or failed ticks, before INDIGO_CI_ALERT
 
 
-REPO = os.environ.get("INDIGO_CI_REPO", "spencercnorton/indigo")
+REPO = os.environ.get("INDIGO_CI_REPO", "spencernorton/indigo")
 
 
 @dataclass(frozen=True)

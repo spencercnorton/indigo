@@ -7,7 +7,6 @@ takes that one job, and is thrown away. Nothing a job does survives it.
 | Pool | `runs-on` | Image | What runs there |
 | --- | --- | --- | --- |
 | build | `[self-hosted, indigo-build]` | [`build.Dockerfile`](build.Dockerfile): the pinned devkitPPC/libogc2 image, GCC and Clang with their sanitizers, Python with Pillow and NumPy | the DOL, the SD card zip, host tests, source checks, releases |
-| site | `[self-hosted, norvitech-site]` | the build image | norvitech.com's checks, for [spencercnorton/norvitech-site](https://github.com/spencercnorton/norvitech-site) |
 | emulator | `[self-hosted, indigo-emulator]` | [`emulator.Dockerfile`](emulator.Dockerfile): Dolphin built from a pinned commit with an SD card adapter ([`dolphin/`](dolphin/README.md)), a virtual X server, FFmpeg, the FAT tools, gxtexconv | the emulator test ([buildtools/ui/emulator/](../../ui/emulator/README.md)) |
 
 ## How a job is contained
@@ -59,7 +58,7 @@ it merges. A change to `indigo_ci.py` restarts the supervisor the same way.
 On a Linux machine with Docker, as the user that will own the runners:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/spencercnorton/indigo/beta/buildtools/ci/runner/install.sh
+curl -fsSLO https://raw.githubusercontent.com/spencernorton/indigo/beta/buildtools/ci/runner/install.sh
 sh install.sh
 ```
 
