@@ -1,3 +1,13 @@
+## 2026-10-17 — Fetch historical CI blobs on demand
+
+The four full-history CI checkouts now use blob:none. All commit/tag refs
+remain available; current files arrive at checkout and tagged test sources
+arrive on demand. A fresh filtered clone used 626,845 bytes before checkout
+and about 47.4 MB after checkout, instead of preloading the guide's historical
+images. Both real-font and archived tagged-renderer comparisons pass from
+that clone. Workflow policy checks pass; native CI exercises the same setup
+through the runner's GitHub-only proxy. Release checkouts are unchanged.
+
 ## 2026-10-17 — Preserve the first Detail poster
 
 Native CI caught the first File Browser Detail showing its banner while the

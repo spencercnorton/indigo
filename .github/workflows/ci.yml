@@ -41,6 +41,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
       - name: Toolchain
         run: buildtools/ci/toolchain.sh "$TOOLCHAIN"
       - name: Build Indigo
@@ -106,6 +107,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
           path: elsewhere
       - name: Toolchain
         working-directory: elsewhere
@@ -260,6 +262,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
       - name: Run the ${{ matrix.name }} lane
         env:
           CC: ${{ matrix.cc }}
@@ -322,6 +325,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
       - name: Whitespace and line endings
         env:
           BASE_REF: ${{ github.base_ref }}
