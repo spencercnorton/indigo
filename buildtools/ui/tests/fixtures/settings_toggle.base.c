@@ -72,6 +72,10 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 				swissSettings.uiVMode += direction;
 				swissSettings.uiVMode = (swissSettings.uiVMode + 9) % 9;
 			break;
+			case SET_APPS_VIDEOMODE:
+				swissSettings.appsVMode += direction;
+				swissSettings.appsVMode = (swissSettings.appsVMode + 9) % 9;
+			break;
 			case SET_INIT_DRIVE:
 				if(deviceHandler_getDeviceAvailable(&__device_dvd))
 					swissSettings.initDVDDriveAtStart ^= 1;

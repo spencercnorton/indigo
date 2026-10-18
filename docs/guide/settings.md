@@ -186,9 +186,12 @@ Press Y on any row for the same explanations on the console.
 <details>
 <summary><b>Setup › Display</b></summary>
 
+The Settings tour above predates the Apps Video Mode row.
+
 | Setting | What it does |
 | --- | --- |
 | Swiss Video Mode | The video mode of Indigo's own screens. Auto picks 480p with a digital cable and otherwise follows the console's region. A switches to a new mode and asks before it keeps it. |
+| Apps Video Mode | The mode passed to homebrew when it launches. **Auto** keeps Indigo’s mode. Libogc2 apps use it; other apps may choose their own. Changing it leaves Indigo’s own screens as they are. |
 | Menu Widescreen | Draws Indigo's own screens for a TV set to 16:9: the background fills the screen and the menus keep their shape in the middle. Set your TV or HDMI adapter to 16:9 too. Games follow **Force Widescreen** instead. |
 | System Video | NTSC, PAL or PAL-M, mainly for the Brazilian console. |
 | Screen Position | Moves the picture left or right in games. |
