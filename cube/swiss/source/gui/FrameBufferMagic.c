@@ -38,6 +38,7 @@
 #include "ui_scene.h"
 #include "ui_stage.h"
 #include "ui_hint.h"
+#include "ui_hint_geometry.h"
 #include "ui_system_info.h"
 #include "ui_assets.h"
 #include "ui_command_rail.h"
@@ -1853,9 +1854,11 @@ static void _HintVertex(float x, float y, GXColor color)
 static void _HintShape(float cx, float cy, const float (*points)[2], int count,
 	GXColor color)
 {
+	const float (*normals)[2] = UIHintGeometry_Normals(cx, cy, points, count);
 	GXColor clear = color;
 	int i;
 
+	if(normals == NULL) return;
 	clear.a = 0;
 	GX_Begin(GX_TRIANGLEFAN, GX_VTXFMT0, (u16)(count + 2));
 	_HintVertex(cx, cy, color);
@@ -1865,26 +1868,9 @@ static void _HintShape(float cx, float cy, const float (*points)[2], int count,
 	GX_End();
 	GX_Begin(GX_TRIANGLESTRIP, GX_VTXFMT0, (u16)((count + 1) * 2));
 	for(i = 0; i <= count; i++) {
-		const float *prev = points[(i + count - 1) % count];
 		const float *here = points[i % count];
-		const float *next = points[(i + 1) % count];
-		float nx = next[1] - prev[1];
-		float ny = prev[0] - next[0];
-		float length = sqrtf(nx * nx + ny * ny);
-
-		if(length <= 0.0f) {
-			nx = here[0] - cx;
-			ny = here[1] - cy;
-			length = sqrtf(nx * nx + ny * ny);
-		}
-		if(length > 0.0f) {
-			nx /= length;
-			ny /= length;
-		}
-		if(nx * (here[0] - cx) + ny * (here[1] - cy) < 0.0f) {
-			nx = -nx;
-			ny = -ny;
-		}
+		float nx = normals[i % count][0];
+		float ny = normals[i % count][1];
 		_HintVertex(here[0], here[1], color);
 		_HintVertex(here[0] + nx, here[1] + ny, clear);
 	}

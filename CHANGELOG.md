@@ -8,6 +8,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Improved
 
+- Menu text batches adjacent glyphs on the same font sheet, keeping the
+  same letters and weight with fewer GPU submissions. Button outlines keep
+  their exact edge normals while their geometry stays the same.
 - The Library opens Spotlight's gameplay stills only when you use Spotlight,
   saving their cache memory and card reads in the other layouts.
 

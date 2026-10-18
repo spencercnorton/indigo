@@ -1,3 +1,17 @@
+## 2026-10-17 — Batch font glyphs and retain hint normals
+
+The IPL font emits runs of up to 64 glyphs on the same sheet, separately
+for each weight pass. Its host stream is byte-identical to v2.4.0 across
+sheets, alignments, scales, alpha, extended bytes, newlines and long text;
+the sample workload uses 540 batches instead of 17,010. Hint outlines keep
+exact normals in sixteen bounded geometry slots (no frame allocation or
+approximate math). The geometry test compares the old formula and changed
+inputs; warm calls make no square roots. The steady File Browser fixtures
+now have zero square roots and 148/148/150 batches instead of
+1,701/1,710/2,316, with identical vertex hashes. The budget's font stand-in
+now models these bounded runs; the real font has its own stream comparison.
+No controls or pictures change, and these counts are not console timings.
+
 ## 2026-10-17 — Open gameplay stills on first Spotlight use
 
 The Library's poster opener no longer initializes the gameplay-stills cache.
