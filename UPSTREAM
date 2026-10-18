@@ -11,7 +11,7 @@
 # a pull request of its own.
 
 upstream https://github.com/emukidid/swiss-gc.git
-commit 163f8b1de75328ad3a9a79caabff924930c04213 (v0.6r2119, 2026-09-24)
+commit 39a0867ec0350f152f6395d932cf4457d49eb825 (Swiss master, 2026-10-17 intake)
 
 Makefile                                   make dev also builds the packer, for In-Game Reset's apploader.img; verifies and extracts the pinned libiconv-lite overlay before compiling
 cube/packer/Makefile                       compresses with xz: the build image has no 7z; links its files in byte order, whatever the locale

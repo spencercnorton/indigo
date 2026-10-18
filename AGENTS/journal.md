@@ -97,6 +97,35 @@ banner encoding with this exact PowerPC library. The SDK invalidates the
 old MemCard PRO GC qualification, whose evidence remains historical; the
 record is pending and stable publication remains blocked on a fresh test.
 
+## 2026-10-17 — Swiss intake through 39a0867e
+
+UPSTREAM now names the current Swiss head, 39a0867e, with all thirteen
+commits since 163f8b1d accounted for below. The patch engine and VI assembly
+match that commit. Translation and No-Intro database updates are present;
+Latin-1 title bytes remain ASCII C escapes. Apps Video Mode is reachable
+in Display, has a choice picker, config round trips, help and documentation.
+Nintendo Gateway identification uses the bounded System model helper.
+
+The routing fixture follows the new upstream main.c. The settings fixture
+keeps the pre-presentation toggle baseline and adds the new upstream Apps
+arm, preserving its existing tests of Indigo’s explicit motion cycle.
+Indigo’s CI, README, presentation and tooltip line wrapping remain its own.
+The Settings tour picture predates the new Apps row, as the guide states.
+
+- `42b0c707` - Fix regression from 53a6f10da2a8e5912cec318527bc49bf69a0e3d8.: already present; retained.
+- `602a4160` - Update [T-En] Collection database.: imported.
+- `4bf58ab5` - Update [T-En] Collection database.: imported.
+- `4e8d2c24` - Update [T-En] Collection database. (it's all Giftpia): imported.
+- `a047de40` - Update [T-En] Collection database.: imported.
+- `cd3ddefc` - Fix 960/1152i in Need for Speed games.: imported.
+- `13e5d069` - Insurance for force field rendering off.: imported.
+- `9fd007a9` - Use libiconv-lite.: covered by the pinned libiconv-lite overlay and runner cache.
+- `8a33d884` Update README.md: upstream service list; Indigo’s own README retained.
+- `c6052c4c` - Update No-Intro database.: imported.
+- `a6cde773` - Identify Nintendo Gateway GameCube.: model detection adapted to Indigo’s bounded System text.
+- `ecf8fda6` - Add video mode option specific to libogc2 applications.: launch/config imported; Display row, picker and help adapted to Indigo.
+- `39a0867e` - Reformat tooltips for readability.: format-only tooltip changes; Indigo help and layout retained.
+
 ## 2026-10-16 — v2.4.0's guide pictures
 
 Nine guide pictures were re-recorded from the v2.4.0 release zip, in CI's

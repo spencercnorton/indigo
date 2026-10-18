@@ -216,6 +216,9 @@ static void infoGetConsoleModel(char *out, size_t capacity)
 			infoCopy(out, capacity, !strncmp(&IPLInfo[0x55], "PAL ", 4) ?
 				"NINTENDO GAMECUBE DOT-001P" : "NINTENDO GAMECUBE DOT-001");
 		}
+		else if(*DVDDeviceCode == 0x8000 && DVDDriveInfo->rel_date == 0x20010619) {
+			infoCopy(out, capacity, "NINTENDO GATEWAY GAMECUBE MSA-500");
+		}
 		else if(*DVDDeviceCode == 0x8000 && DVDDriveInfo->pad[1] == 'M') {
 			infoCopy(out, capacity, "PANASONIC Q SL-GC10-S");
 		}

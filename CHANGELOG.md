@@ -36,6 +36,13 @@ tag on `beta`. The newest changes are at the top until their release is named.
   replaces Indigo's earlier local patch. A fresh MemCard PRO GC hardware
   qualification is required before publishing this SDK as stable.
 
+- Updated the Swiss base from r2119 to commit `39a0867e`: newer translation
+  and disc databases, Need for Speed 960i/1152i fixes, additional field-mode
+  detection, and Nintendo Gateway GameCube MSA-500 identification.
+- Setup › Display has Apps Video Mode, the mode passed to libogc2 homebrew.
+  Auto keeps the menu mode; other apps may choose their own. The setting is
+  saved as `Apps Video Mode` in global.ini.
+
 ### Documentation
 
 - The guide's Memory Cards and Game Details pictures show 2.4's screens:
