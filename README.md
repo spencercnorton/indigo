@@ -221,7 +221,9 @@ The build runs in the same container image the project's CI uses, so no
 toolchain is installed on your machine. `make dev` also downloads and
 SHA-256-verifies the pinned libiconv-lite package into `.build-deps/` on the
 first build; subsequent builds reuse it. CI preloads that same archive in
-its runner image. The overlay needs no administrator access:
+its runner image. The overlay needs no administrator access. Native builds
+need curl, a SHA-256 utility (`sha256sum` or `shasum`) and tar with Zstd
+support; the pinned Docker image includes them:
 
 
 ```bash

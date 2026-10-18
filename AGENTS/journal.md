@@ -1,3 +1,10 @@
+## 2026-10-17 — Keep the portlib overlay usable on native builds
+
+The libiconv-lite helper accepts shasum when sha256sum is absent and the
+system tar when bsdtar is absent. A native macOS extraction with shasum,
+BSD tar and Zstd produced a libiconv.a byte-identical to the Docker overlay.
+The build guide names the native tools; Docker supplies them already.
+
 ## 2026-10-17 — Pin libiconv-lite and libogc2 r2482
 
 The SDK is f9ffb7e3 (libogc2 f0a7627, r2482). Its AESND_Reset cancellation
