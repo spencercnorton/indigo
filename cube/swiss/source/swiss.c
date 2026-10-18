@@ -4730,7 +4730,7 @@ static void filesOpenDetail(file_handle **directory, uiDrawObj_t **filePanel)
 		filesDetailSnapshot(snapshot, entry, &header);
 		/* The Library's one bounded poster read before Detail. */
 		DrawGameflowRequestPosters(devices[DEVICE_CUR], snapshot);
-		DrawGameflowPollPosters();
+		DrawGameflowPrimePoster();
 		event = DrawGameflow(snapshot);
 	}
 	if(event != NULL) {

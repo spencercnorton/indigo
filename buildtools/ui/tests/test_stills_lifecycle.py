@@ -47,6 +47,10 @@ static bool posterPackAttempted, posterPackFileOwned, stillsPackFileOwned, still
 static bool descriptionsAttempted, postersReady, stillsReady, noPosters, noStills;
 static file_handle posterPackFile, stillsPackFile;
 static unsigned posterOpens, stillOpens, closes, stillRequests;
+static unsigned fullPosterReads, posterSteps, stillSteps;
+static bool UIAssets_Poll(void) {fullPosterReads++;return true;}
+static bool UIAssets_PollStep(void) {posterSteps++;return true;}
+static bool UIStills_PollStep(void) {stillSteps++;return true;}
 static void closeFile(file_handle *f) { (void)f; closes++; }
 static void concat_path(char *out, const char *root, const char *leaf) {
     size_t a = strlen(root), b = strlen(leaf);
@@ -85,6 +89,10 @@ int main(void) {
     DEVICEHANDLER_INTERFACE a = {&aRoot, closeFile}, b = {&bRoot, closeFile};
     uiGameflowRenderSnapshot_t snapshot = {.recordCount=1};
     memcpy(snapshot.records[0].gameId, "GTEST1", 7);
+    assert(DrawGameflowPrimePoster());
+    assert(fullPosterReads==1 && posterSteps==0 && stillSteps==0);
+    assert(DrawGameflowPollPosters());
+    assert(fullPosterReads==1 && posterSteps==1 && stillSteps==1);
     for(int layout=0;layout<3;layout++) {
         snapshot.layout=layout;
         DrawGameflowRequestPosters(&a,&snapshot);
@@ -130,6 +138,8 @@ def main():
         "static bool _GameflowOpenPosterPack(",
         "static bool _GameflowOpenStillsPack(",
         "void DrawGameflowRequestPosters(",
+        "bool DrawGameflowPrimePoster(",
+        "bool DrawGameflowPollPosters(",
     ))
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp)

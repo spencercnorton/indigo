@@ -1,3 +1,14 @@
+## 2026-10-17 — Preserve the first Detail poster
+
+Native CI caught the first File Browser Detail showing its banner while the
+new idle reader completed its poster across frames. Keep the original
+one-poster prefetch before publishing Detail (a fixed 43 KiB); idle work
+still advances by 16 KiB per pack and never drains neighbouring posters or
+stills at entry. The lifecycle harness checks the separate full/step calls,
+and the File Browser audit rejects a partial prefetch. Its two-frame native
+poster assertion remains unchanged. Host lifecycle sanitizers, all 146
+File Browser mutants and the unchanged frame budgets pass.
+
 ## 2026-10-17 — Read artwork between input checks
 
 Poster and still caches expose a 16 KiB idle step, retaining an unpublished

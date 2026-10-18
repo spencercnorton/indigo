@@ -5251,6 +5251,13 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 4);
 }
 
+bool DrawGameflowPrimePoster(void)
+{
+	/* One fixed-size poster (43 KiB), before the first Detail is published.
+	 * Never drain neighbours or gameplay stills at this entry boundary. */
+	return UIAssets_Poll();
+}
+
 bool DrawGameflowPollPosters(void)
 {
 	/* At most one 16 KiB range per pack, between input checks. */

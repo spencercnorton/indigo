@@ -15,7 +15,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
   saving their cache memory and card reads in the other layouts.
 - Artwork reads give the menus a turn between pieces. Folder and app
   pictures on a disc no longer hold up a button for the whole picture;
-  leaving the page or scrolling away discards an unfinished read.
+  leaving the page or scrolling away discards an unfinished read. Detail
+  still preloads its first poster before opening.
 
 ### Fixes
 
