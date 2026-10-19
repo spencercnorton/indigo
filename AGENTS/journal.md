@@ -1,3 +1,20 @@
+## 2026-10-19 — Runners carry their toolchain; a release pool built from main
+
+Since beta moved to libogc2 r2482, main (2.4.0) and every branch cut from it
+fail CI's toolchain and AESND checks: the runners are built from beta only.
+The supervisor now gives each runner a second label naming its toolchain
+(`indigo-build-<first 12 hex of the libogc2 digest>`, read from the
+Dockerfile it was built from) and offers a `release` pool built from `main`
+(a worktree of the source clone) that answers only to that label. Image
+inputs are now what each Dockerfile actually COPYs (main's copies fewer
+files than beta's); tags are unchanged, so nothing rebuilds on deploy. Idle
+runners whose labels differ are replaced, as for a new image.
+
+Nothing routes by the new label yet. The next step names it in every build
+job and has check_workflows enforce it; then `release:N` in
+`INDIGO_CI_POOLS` (only after the supervisor has updated itself), and a
+hotfix giving main's workflows main's label.
+
 ## 2026-10-19 — Weekly CI runs on beta; housekeeping
 
 The weekly scheduled CI ran main's workflow on runners built from beta, so it
