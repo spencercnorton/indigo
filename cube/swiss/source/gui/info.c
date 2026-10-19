@@ -565,7 +565,7 @@ static void infoDrawAbout(uiDrawObj_t *container,
 		0.66f, ALIGN_CENTER, systemMutedColor);
 	DrawAddChild(container, DrawStyledLabel(320, 310, "SOURCE / UPDATES",
 		0.66f, ALIGN_CENTER, systemLabelColor));
-	infoAddFitted(container, 320, 331, "GITHUB.COM/SPENCERCNORTON/INDIGO",
+	infoAddFitted(container, 320, 331, "GITHUB.COM/SPENCERNORTON/INDIGO",
 		UI_SYSTEM_ABOUT_TEXT_WIDTH, 0.70f, ALIGN_CENTER, systemValueColor);
 	DrawAddChild(container, DrawStyledLabel(320, 354,
 		UI_SYSTEM_ABOUT_HELP_LABEL, 0.66f, ALIGN_CENTER, systemLabelColor));

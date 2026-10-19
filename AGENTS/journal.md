@@ -1,3 +1,19 @@
+## 2026-10-19 — Weekly CI runs on beta; housekeeping
+
+The weekly scheduled CI ran main's workflow on runners built from beta, so it
+failed its toolchain check (and AESND's) once beta moved to libogc2 r2482.
+`.github/workflows/weekly.yml` now dispatches `ci.yml` on beta with
+`long_fuzz=true`; ci.yml lost its schedule, and its concurrency group names
+the event so the dispatch and a beta push never cancel each other. Schedules
+fire from main, so main's old schedule keeps failing until this is released.
+Main also cannot build on today's runners until then (hotfixes included).
+
+Housekeeping: the retired norvitech-site runner pool and the `nodejs` it
+needed are gone; remaining old-owner links, System › Info's address, the
+zip README and release notes follow the renamed account (the MemCard PRO
+evidence URL stays as recorded); one unreferenced guide picture removed.
+`docs/guide/images/system-info.png` still shows the old address.
+
 ## 2026-10-18 — Swiss watch sends through the M365 mailer
 
 Supersedes the SMTP plan in the entry below, before merge: the estate has

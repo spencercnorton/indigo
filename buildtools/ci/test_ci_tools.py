@@ -322,7 +322,7 @@ class Release(unittest.TestCase):
         notes = self.notes("v2.0.0-rc.1", "- See [RELEASING](docs/RELEASING.md), [the examples](docs/examples/),"
                                           " [AGENTS.md](AGENTS.md#rules), [above](#install) and"
                                           " [the site](https://norvitech.com/indigo/).")
-        repo = "https://github.com/spencercnorton/indigo"
+        repo = "https://github.com/spencernorton/indigo"
         self.assertIn(f"[RELEASING]({repo}/blob/v2.0.0-rc.1/docs/RELEASING.md)", notes)
         self.assertIn(f"[the examples]({repo}/tree/v2.0.0-rc.1/docs/examples/)", notes)
         self.assertIn(f"[AGENTS.md]({repo}/blob/v2.0.0-rc.1/AGENTS.md#rules)", notes)

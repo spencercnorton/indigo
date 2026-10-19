@@ -30,7 +30,7 @@ cp NOTICE "$card/swiss/indigo/NOTICE.txt"
 cat > "$card/Indigo-README.txt" <<TXT
 Indigo $version - an unofficial fork of Swiss with the interface rebuilt
 Guide:  https://norvitech.com/indigo/
-Source: https://github.com/spencercnorton/indigo/tree/$version
+Source: https://github.com/spencernorton/indigo/tree/$version
 
 INSTALL
 The install guide shows each setup step by step, with a picture of the card:

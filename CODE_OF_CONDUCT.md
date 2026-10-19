@@ -54,7 +54,7 @@ representing the project in public spaces.
 
 Report unacceptable behavior to the maintainer privately through GitHub's
 [report abuse](https://github.com/contact/report-abuse) form or a
-[private security advisory](https://github.com/spencercnorton/indigo/security/advisories/new)
+[private security advisory](https://github.com/spencernorton/indigo/security/advisories/new)
 marked *conduct*. Reports are handled promptly, fairly, and confidentially.
 
 ## Attribution

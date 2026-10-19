@@ -28,7 +28,7 @@ switch on. Leave `boot.iso` as it is: this needs Swiss there, as on most GC
 Loader cards.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -74,7 +74,7 @@ Leave that file as it is, and don't rename anything to `boot.iso`. Your
 console starts as it does today, and you open Indigo from Swiss.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -129,7 +129,7 @@ instead. Do the same if the card's `ipl.dol` is something you want to keep
 starting, such as cubeboot.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -173,7 +173,7 @@ while you switch on to start it. Other buttons are in
 Your console starts as it does today, and you open Indigo from Swiss.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -215,7 +215,7 @@ takes its place, so Indigo starts every time you switch on, instead of
 FlippyDrive's own menu.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -264,7 +264,7 @@ as you did before, put your old `boot.dol` back.
 Your console starts as it does today, and you open Indigo from Swiss.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -309,7 +309,7 @@ chip, cubeboot, Swiss on a Wii, or any setup above. Your console
 starts as it does today, and you open Indigo from Swiss.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -474,7 +474,7 @@ Indigo.
    shows the new release's commit.
 
 This works for Indigo 1.x and 2.x. If you renamed stock Swiss to `swiss.dol`
-to get round [issue 3](https://github.com/spencercnorton/indigo/issues/3) in
+to get round [issue 3](https://github.com/spencernorton/indigo/issues/3) in
 1.25.0, you can rename it back to `z.dol`: since 2.0, Indigo no longer starts
 a `z.dol` by itself.
 
@@ -506,7 +506,7 @@ Most people should use the ready-made ZIP. For a source build, run the same
 container image as CI:
 
 ```bash
-git clone https://github.com/spencercnorton/indigo.git
+git clone https://github.com/spencernorton/indigo.git
 cd indigo
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
   ghcr.io/extremscorner/libogc2@sha256:f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2 make dev

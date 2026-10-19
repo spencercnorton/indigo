@@ -22,7 +22,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
-- Repository links and CI runner defaults follow the renamed GitHub account.
+- Repository links, the address on System › Info and CI runner defaults
+  follow the renamed GitHub account.
 
 - An interrupted or incomplete network/USB upload is rejected without
   stopping the menus. Transfers must finish their compressed stream at the

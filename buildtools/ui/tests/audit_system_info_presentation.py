@@ -171,7 +171,7 @@ for token in (
 require('"REOPEN PAGE TO REFRESH"' in input_output,
         "Input / Output page-entry snapshot is not disclosed")
 for identity in ("SWISS 0.6", "INDIGO - UNOFFICIAL SWISS FORK", "GIT_COMMIT",
-                 "GIT_REVISION", "_V_STRING", "GITHUB.COM/SPENCERCNORTON/INDIGO",
+                 "GIT_REVISION", "_V_STRING", "GITHUB.COM/SPENCERNORTON/INDIGO",
                  "UI_SYSTEM_ABOUT_HELP_LABEL", "UI_SYSTEM_ABOUT_HELP_TEXT"):
     require(identity in about, f"About page omits {identity}")
 # Indigo's problems are Indigo's: About sends nobody to upstream's community.
