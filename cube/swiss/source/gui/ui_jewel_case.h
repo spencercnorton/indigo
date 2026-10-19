@@ -42,8 +42,9 @@ bool UIJewelCase_Ready(void);
 /* Draws up to two cases, the one leaving and the one arriving. direction is
  * where the selection last moved: 1 on, -1 back, 0 at rest. seconds is the
  * frame's length; turnX and turnY are the C-stick, -1 to 1, turning the case
- * in the hands. Video thread only. It leaves GX to drawInit to set up again. */
+ * in the hands. spin false eases the disc to rest (Z in the Jewel Case).
+ * Video thread only. It leaves GX to drawInit to set up again. */
 void UIJewelCase_Draw(const uiJewelCaseShot_t *shots, int count, int direction,
-	float seconds, float turnX, float turnY, uiMotionMode_t motion);
+	float seconds, float turnX, float turnY, uiMotionMode_t motion, bool spin);
 
 #endif

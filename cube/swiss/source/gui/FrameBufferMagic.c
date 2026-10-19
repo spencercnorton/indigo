@@ -3945,7 +3945,8 @@ static void _GameflowDrawJewelCases(const drawGameflowEvent_t *data,
 	}
 	UIJewelCase_Draw(shots, count, (int)frame->direction, UIAnim_Delta(),
 		(float)padInstrument.substickX / 90.0f,
-		(float)padInstrument.substickY / 90.0f, _CurrentMotionMode());
+		(float)padInstrument.substickY / 90.0f, _CurrentMotionMode(),
+		!swissSettings.stillDiscs);
 	drawInit();
 }
 

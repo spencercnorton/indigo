@@ -21,6 +21,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   builds one from your own pictures. A game the pack has no disc for has
   the middle of its cover printed on its disc, and one with no cover either
   a bare silver disc.
+- In the Jewel Case, Z stops the disc spinning, and Z again starts it.
+  Indigo remembers the choice. There, Z no longer opens a file's actions
+  with Enable File Management on; the other layouts keep it.
 
 ### Improved
 

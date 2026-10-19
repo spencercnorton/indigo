@@ -371,7 +371,7 @@ static void drawFrame(bool bootOverlay)
 {
 	IndigoBackground_Draw(seconds, true, true, UIScene_Frame(), &clock, &pad, icons);
 	if(jewelCount > 0) {
-		UIJewelCase_Draw(jewelShots, jewelCount, jewelDirection, DT, 0.0f, 0.0f, UI_MOTION_FULL);
+		UIJewelCase_Draw(jewelShots, jewelCount, jewelDirection, DT, 0.0f, 0.0f, UI_MOTION_FULL, true);
 	}
 	if(bootOverlay) {
 		IndigoBackground_DrawBootOverlay(seconds, true, UIScene_Frame(), &clock, icons);
