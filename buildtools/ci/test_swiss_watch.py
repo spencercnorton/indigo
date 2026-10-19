@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """The Swiss watch stays silent for free, and never emails a guess."""
 
+import io
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.parse import parse_qs
 
 import swiss_watch
 
@@ -101,6 +103,33 @@ class Verdict(unittest.TestCase):
         self.assertIn(f"buildtools/upstream_merge.sh {'b' * 40}", body)
         self.assertIn(f"https://github.com/emukidid/swiss-gc/compare/{'a' * 40}...{'b' * 40}", body)
         self.assertIn("Nothing has been merged", body)
+
+
+class Mail(unittest.TestCase):
+    def test_graph_send_shape(self):
+        sent, replies = [], [b'{"access_token": "fake-token"}', b""]
+
+        def opener(request):
+            sent.append(request)
+            return io.BytesIO(replies.pop(0))
+
+        env = {"SWISS_WATCH_TO": "inbox@example.invalid",
+               "SWISS_WATCH_FROM": "sender@example.invalid",
+               "M365_TENANT_ID": "tenant", "M365_MAILER_CLIENT_ID": "client",
+               "M365_MAILER_CLIENT_SECRET": "not-a-real-secret"}
+        swiss_watch.send_mail("Subject", "Body\n", env, opener)
+        token_request, send_request = sent
+        self.assertIn("login.microsoftonline.com/tenant/oauth2/v2.0/token",
+                      token_request.full_url)
+        self.assertEqual(parse_qs(token_request.data.decode())["grant_type"],
+                         ["client_credentials"])
+        self.assertIn("/users/sender%40example.invalid/sendMail", send_request.full_url)
+        self.assertEqual(send_request.get_header("Authorization"), "Bearer fake-token")
+        payload = json.loads(send_request.data)
+        self.assertEqual(payload["message"]["toRecipients"][0]["emailAddress"]["address"],
+                         "inbox@example.invalid")
+        self.assertEqual(payload["message"]["body"], {"contentType": "Text", "content": "Body\n"})
+        self.assertFalse(payload["saveToSentItems"])
 
 
 if __name__ == "__main__":

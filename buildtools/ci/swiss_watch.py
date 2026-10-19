@@ -20,12 +20,13 @@ each one for Indigo, in gates cheapest first so most weeks cost nothing:
 
 Configuration is environment only (GitHub secrets/vars; see the workflow):
   SWISS_WATCH_TO        recipient (required to send)
+  SWISS_WATCH_FROM      Microsoft 365 mailbox the mailer app sends as
   SWISS_WATCH_AI_KEY    API key for an OpenAI-compatible chat endpoint
   SWISS_WATCH_AI_BASE   default https://api.openai.com/v1
   SWISS_WATCH_AI_MODEL  default gpt-4o-mini; set BASE+MODEL together for
                         another provider (e.g. OpenRouter)
-  SMTP_HOST, SMTP_PORT  submission server; port defaults to 587 (465 = TLS)
-  SMTP_USER, SMTP_PASSWORD, SMTP_FROM (FROM defaults to USER)
+  M365_TENANT_ID, M365_MAILER_CLIENT_ID, M365_MAILER_CLIENT_SECRET
+                        the estate's Microsoft Graph mailer app (Mail.Send)
 
 usage: swiss_watch.py [--dry-run] [--no-ai] [--report FILE] [upstream repo]
   --dry-run  print the email instead of sending it (missing mail/AI config
@@ -38,13 +39,12 @@ import argparse
 import json
 import os
 import re
-import smtplib
-import ssl
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.parse
 import urllib.request
-from email.message import EmailMessage
 from pathlib import Path
 
 import check_upstream
@@ -260,24 +260,54 @@ def render(bundle: dict, verdict: dict) -> tuple[str, str]:
     return subject, "\n".join(lines) + "\n"
 
 
-def send_mail(subject: str, body: str, env: dict[str, str]) -> None:
-    message = EmailMessage()
-    message["Subject"], message["To"] = subject, env["SWISS_WATCH_TO"]
-    message["From"] = env.get("SMTP_FROM") or env.get("SMTP_USER", "")
-    message.set_content(body)
-    host, port = env["SMTP_HOST"], int(env.get("SMTP_PORT") or 587)
+def _open(request, opener=None):
+    return (opener or (lambda req: urllib.request.urlopen(req, timeout=60)))(request)
+
+
+def _http_code(problem: Exception) -> str:
+    return f"HTTP {problem.code}" if isinstance(problem, urllib.error.HTTPError) else type(problem).__name__
+
+
+def graph_token(env: dict[str, str], opener=None) -> str:
+    """One client-credentials token for the estate's Graph mailer app."""
+    data = urllib.parse.urlencode({
+        "grant_type": "client_credentials",
+        "client_id": env["M365_MAILER_CLIENT_ID"],
+        "client_secret": env["M365_MAILER_CLIENT_SECRET"],
+        "scope": "https://graph.microsoft.com/.default",
+    }).encode()
+    request = urllib.request.Request(
+        f"https://login.microsoftonline.com/{env['M365_TENANT_ID']}/oauth2/v2.0/token",
+        data=data, method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"})
     try:
-        if port == 465:
-            server = smtplib.SMTP_SSL(host, port, timeout=60, context=ssl.create_default_context())
-        else:
-            server = smtplib.SMTP(host, port, timeout=60)
-            server.starttls(context=ssl.create_default_context())
-        with server:
-            if env.get("SMTP_USER"):
-                server.login(env["SMTP_USER"], env.get("SMTP_PASSWORD", ""))
-            server.send_message(message)
+        with _open(request, opener) as reply:
+            return json.loads(reply.read().decode("utf-8", "replace"))["access_token"]
+    except Exception as problem:  # the response body is never echoed: it is not needed to act
+        raise WatchError(f"Microsoft Graph token request failed ({_http_code(problem)})") from problem
+
+
+def send_mail(subject: str, body: str, env: dict[str, str], opener=None) -> None:
+    """Send one plain-text message as SWISS_WATCH_FROM through Graph sendMail."""
+    token = graph_token(env, opener)
+    sender = urllib.parse.quote(env["SWISS_WATCH_FROM"], safe="")
+    payload = json.dumps({
+        "message": {
+            "subject": subject,
+            "body": {"contentType": "Text", "content": body},
+            "toRecipients": [{"emailAddress": {"address": env["SWISS_WATCH_TO"]}}],
+        },
+        "saveToSentItems": False,
+    }).encode()
+    request = urllib.request.Request(
+        f"https://graph.microsoft.com/v1.0/users/{sender}/sendMail",
+        data=payload, method="POST",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+    try:
+        with _open(request, opener):
+            pass  # Graph answers 202 with no body worth reading
     except Exception as problem:
-        raise WatchError(f"sending mail via {host}:{port} failed: {problem}") from problem
+        raise WatchError(f"sending mail through Microsoft Graph failed ({_http_code(problem)})") from problem
 
 
 def describe(bundle: dict) -> str:
@@ -300,11 +330,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("source", nargs="?", default="", help="upstream repository (default: UPSTREAM's)")
     args = parser.parse_args(argv)
     env = {key: os.environ.get(key, "").strip() for key in
-           ("SWISS_WATCH_TO", "SWISS_WATCH_AI_KEY", "SWISS_WATCH_AI_BASE", "SWISS_WATCH_AI_MODEL",
-            "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM")}
+           ("SWISS_WATCH_TO", "SWISS_WATCH_FROM", "SWISS_WATCH_AI_KEY", "SWISS_WATCH_AI_BASE",
+            "SWISS_WATCH_AI_MODEL", "M365_TENANT_ID", "M365_MAILER_CLIENT_ID",
+            "M365_MAILER_CLIENT_SECRET")}
     try:
         if not args.dry_run and not args.no_ai:  # a sending run with no config fails on week one
-            missing = [k for k in ("SWISS_WATCH_TO", "SWISS_WATCH_AI_KEY", "SMTP_HOST") if not env[k]]
+            missing = [k for k in ("SWISS_WATCH_TO", "SWISS_WATCH_FROM", "SWISS_WATCH_AI_KEY",
+                                   "M365_TENANT_ID", "M365_MAILER_CLIENT_ID",
+                                   "M365_MAILER_CLIENT_SECRET") if not env[k]]
             if missing:
                 print(f"swiss_watch: missing {', '.join(missing)}; see the workflow header",
                       file=sys.stderr)

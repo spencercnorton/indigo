@@ -1,3 +1,15 @@
+## 2026-10-18 — Swiss watch sends through the M365 mailer
+
+Supersedes the SMTP plan in the entry below, before merge: the estate has
+no SMTP account, but it has a Microsoft Graph mailer app whose token holds
+only `Mail.Send`. `swiss_watch.py` now sends through Graph `sendMail` as
+`SWISS_WATCH_FROM`; sender and recipient are both the accounts mailbox.
+Repository secrets are set from Infisical (the mailer app's canonical
+entries, plus a dedicated `API_KEY_SWISS_WATCH` copy of the generic OpenAI
+key — rotate those two together). A labelled test message was delivered
+through the script's own send path, and a real model dry-run over
+163f8b1d..39a0867e rendered its email without sending.
+
 ## 2026-10-18 — Weekly Swiss watch (gated, email-only)
 
 New `buildtools/ci/swiss_watch.py` + `.github/workflows/swiss-watch.yml`

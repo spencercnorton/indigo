@@ -7,10 +7,11 @@
 #
 # Setup (Settings -> Secrets and variables -> Actions). A sending run
 # without these fails loudly on its first week rather than going quiet:
-#   Secrets: SWISS_WATCH_TO, SWISS_WATCH_AI_KEY,
-#            SMTP_USER, SMTP_PASSWORD, SMTP_FROM (FROM optional)
-#   Vars:    SMTP_HOST, SMTP_PORT (587, or 465 for implicit TLS),
-#            SWISS_WATCH_AI_BASE / SWISS_WATCH_AI_MODEL (optional;
+#   Secrets: SWISS_WATCH_TO, SWISS_WATCH_FROM, SWISS_WATCH_AI_KEY,
+#            M365_TENANT_ID, M365_MAILER_CLIENT_ID,
+#            M365_MAILER_CLIENT_SECRET (the estate's Graph mailer app,
+#            Mail.Send only; canonical copies live in Infisical)
+#   Vars:    SWISS_WATCH_AI_BASE / SWISS_WATCH_AI_MODEL (optional;
 #            defaults are OpenAI's endpoint and gpt-4o-mini)
 # Test by hand first: workflow_dispatch defaults to dry-run, which prints
 # the would-be email to the job summary and sends nothing. Schedules run
@@ -47,14 +48,13 @@ jobs:
         env:
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
           SWISS_WATCH_TO: ${{ secrets.SWISS_WATCH_TO }}
+          SWISS_WATCH_FROM: ${{ secrets.SWISS_WATCH_FROM }}
           SWISS_WATCH_AI_KEY: ${{ secrets.SWISS_WATCH_AI_KEY }}
           SWISS_WATCH_AI_BASE: ${{ vars.SWISS_WATCH_AI_BASE }}
           SWISS_WATCH_AI_MODEL: ${{ vars.SWISS_WATCH_AI_MODEL }}
-          SMTP_HOST: ${{ vars.SMTP_HOST }}
-          SMTP_PORT: ${{ vars.SMTP_PORT }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          M365_TENANT_ID: ${{ secrets.M365_TENANT_ID }}
+          M365_MAILER_CLIENT_ID: ${{ secrets.M365_MAILER_CLIENT_ID }}
+          M365_MAILER_CLIENT_SECRET: ${{ secrets.M365_MAILER_CLIENT_SECRET }}
         run: |
           args="--report swiss-watch-report.md"
           if [ "$DRY_RUN" = "true" ]; then args="$args --dry-run"; fi
