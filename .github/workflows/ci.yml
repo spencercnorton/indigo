@@ -15,16 +15,17 @@ on:
     branches: [main, beta]
   pull_request:
   workflow_dispatch:
-  # Weekly on main: the same checks on the release, which catches a change in
-  # the runners themselves, and a longer fuzzing run.
-  schedule:
-    - cron: '23 9 * * 1'
+    inputs:
+      long_fuzz:
+        description: Fuzz for 55 minutes (weekly.yml asks for it on beta)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
@@ -287,7 +288,7 @@ jobs:
       - name: Fuzz the files Indigo reads from a card
         env:
           # The weekly run shares 55 of its 60 minutes between the targets.
-          SECONDS_EACH: ${{ github.event_name == 'schedule' && 'total:3300' || '30' }}
+          SECONDS_EACH: ${{ inputs.long_fuzz && 'total:3300' || '30' }}
         run: buildtools/ui/tests/fuzz/run_fuzz.sh "$SECONDS_EACH" fuzz-out
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()

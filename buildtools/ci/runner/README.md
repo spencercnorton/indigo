@@ -67,7 +67,7 @@ writes `~/.config/indigo-ci.env`. The supervisor needs `GH_TOKEN`, a token
 with admin rights on the repository (it mints runner registrations): put it
 in that file (it is mode 0600), or give the unit a drop-in that fetches it
 from a secret store at start. `INDIGO_CI_POOLS` sets the slots per pool
-(default `build:3,emulator:1`; `site:1` also serves norvitech.com's checks);
+(default `build:3,emulator:1`);
 two machines can serve the same pools.
 
 ```bash

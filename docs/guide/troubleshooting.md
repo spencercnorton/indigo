@@ -153,8 +153,8 @@ folder's `icon.png`, up to 2048 pixels a side and 2 MB, and not interlaced.
 
 ## Still stuck
 
-- Questions: [Discussions](https://github.com/spencercnorton/indigo/discussions).
-- Bugs: [open an issue](https://github.com/spencercnorton/indigo/issues/new/choose),
+- Questions: [Discussions](https://github.com/spencernorton/indigo/discussions).
+- Bugs: [open an issue](https://github.com/spencernorton/indigo/issues/new/choose),
   with the version you downloaded, or the commit System › System
   Information › About Indigo shows, your loader and what you pressed.
 - Report problems with Indigo here, not to the Swiss project: Indigo is an

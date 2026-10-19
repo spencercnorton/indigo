@@ -38,12 +38,10 @@
  *
  * Lifetime rules enforced by that contract:
  *   - The pack index is only freed after it is unpublished inside the
- *     critical section, so no locked reader can ever observe freed memory
- *     (fixes the Query/DominantColor vs CancelForDeviceChange UAF).
+ *     critical section, so no locked reader can ever observe freed memory.
  *   - Slot recordPos/generation/state and every GXTexObj are only written
- *     inside the critical section (fixes the RequestWindow/Poll
- *     publication race). The 40 ms eviction quarantine remains a separate
- *     guarantee for GPU texel reuse; the lock protects CPU metadata.
+ *     inside the critical section. The 40 ms eviction quarantine remains a
+ *     separate guarantee for GPU texel reuse; the lock protects CPU metadata.
  *   - Handle generations are u32 and increment exactly once per new slot
  *     ownership; a stale handle yields NULL, never a dangling pointer.
  *   - CancelForDeviceChange must run while the video mutex is still live,

@@ -11,11 +11,10 @@ ENV DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8 TZ=UTC
 COPY --chmod=0755 libiconv-lite.sh /opt/indigo-ci/libiconv-lite.sh
 RUN /opt/indigo-ci/libiconv-lite.sh --cache /usr/local/share/indigo
 
-# Node is for the site pool (norvitech.com's checks run on this image too).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates clang curl git jq libclang-rt-14-dev libicu72 libkrb5-3 \
-      liblttng-ust1 libssl3 llvm nodejs python3 python3-numpy python3-pil \
+      liblttng-ust1 libssl3 llvm python3 python3-numpy python3-pil \
       shellcheck time unzip xz-utils zip zlib1g-dev \
  && rm -rf /var/lib/apt/lists/*
 
