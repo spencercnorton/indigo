@@ -1,3 +1,20 @@
+## 2026-10-18 — Z stops the Jewel Case's disc
+
+A console tester on #139 (component, 3fedaab) found the Library smooth with
+discs streaming and asked for a way to stop the spin. In the Jewel Case, Z
+now flips `swissSettings.stillDiscs` (settings key `Spin Discs`, default
+`Yes`) and saves the settings file at once, as the autoload's Z does: the
+metadata thread is stopped and card art paused around
+`config_update_spin_discs(true)` (only that key, through the autoload's
+merge), then the metadata thread starts again and the
+loop's `folderArtShow` resumes card art. Z there no longer reaches
+`filesManage`; the other layouts keep it. `UIJewelCase_Draw` takes `spin`,
+and the disc's spin rate eases to 0 through the same filter that eases it
+up. The Library hint line is unchanged (one more item overflows the longest
+one); the guide's Library and Controls pages, SETTINGS.md and the changelog
+say it. The tester also saw NHL Hitz 2003 (US) with NHL 2K3's disc: that is
+GameTDB's picture; the poster pack's builder now gives it the PAL disc.
+
 ## 2026-10-16 — Disc art for the Jewel Case
 
 A third Library pack, `/swiss/ui/discs.pak`, gives the Jewel Case each

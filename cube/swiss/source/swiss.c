@@ -5165,10 +5165,23 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
 			break;
 		}
-		if((browserButtons & BUTTON_Z) && filesManage(directory)) {
+		if((browserButtons & BUTTON_Z) &&
+				layout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE) {
+			/* Z stops the discs spinning or starts them, and the choice is
+			 * kept: the Jewel Case has no file management. Only its key is
+			 * saved, as the autoload's is, with the readers stopped while it
+			 * writes; the folders' posters go on with the next frame. */
+			swissSettings.stillDiscs ^= 1;
+			menuaudio_select();
+			meta_thread_stop();
+			CardArt_Pause();
+			config_update_spin_discs(true);
+			meta_thread_start(loadingBox);
+		}
+		else if((browserButtons & BUTTON_Z) && filesManage(directory)) {
 			break;
 		}
-		
+
 		if((browserButtons & BUTTON_B) && gameflowInsideFolder()) {
 			/* Library Folders: B goes up a folder, as X does; at /games
 			 * it goes Home. */

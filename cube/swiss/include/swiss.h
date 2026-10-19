@@ -148,6 +148,7 @@ typedef struct {
 	int temperaturePosition;	// the same three for the temperature dial
 	int waveSpeed;	// WAVE_SPEED_NORMAL (default), WAVE_SPEED_FAST or WAVE_SPEED_SLOW: how fast the waves drift
 	int libraryLayout;	// uiGameflowLayout_t (gui/ui_gameflow.h): Horizontal (default), Vertical, Grid, Spotlight or Jewel Case
+	int stillDiscs;	// 1 = the Jewel Case's disc rests; 0 = it spins (default). Z in the Jewel Case
 	int libraryFolders;	// 1 = the Library shows folders in /games, two deep; 0 = one list of games (default)
 	char libraryFoldersFlattenDir[PATHNAME_MAX];	// FlattenDir as saved, while Library Folders sets its own
 	int hideDetailSaves;	// 1 = a game's details never read the memory cards; 0 = they show two or more save copies (default)

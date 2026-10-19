@@ -803,6 +803,8 @@ class SettingsFileTest(unittest.TestCase):
                          SWISS_C.count("Saving autoload\\205"))
         self.assertEqual(SWISS_C.count("config_update_autoload(true);"), 3)
         self.assertNotIn("config_update_global(", SWISS_C)
+        # Z in the Jewel Case saves only Spin Discs, the same way.
+        self.assertEqual(SWISS_C.count("config_update_spin_discs(true);"), 1)
 
     def saved(self, existing: str, changes: str = "", game: bool = False) -> str:
         path = Path(self.tmp.name) / ("existing-game.ini" if game else "existing.ini")

@@ -576,6 +576,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Temperature=%s\r\n", clockPositionStr[swissSettings.temperaturePosition]);
 	fprintf(fp, "Wave Speed=%s\r\n", waveSpeedStr[swissSettings.waveSpeed]);
 	fprintf(fp, "Library Layout=%s\r\n", libraryLayoutStr[swissSettings.libraryLayout]);
+	fprintf(fp, "Spin Discs=%s\r\n", swissSettings.stillDiscs ? "No":"Yes");
 	fprintf(fp, "Library Folders=%s\r\n", swissSettings.libraryFolders ? "Yes":"No");
 	fprintf(fp, "Hide Saves on Details=%s\r\n", swissSettings.hideDetailSaves ? "Yes":"No");
 	fprintf(fp, "Idle Animation=%s\r\n", swissSettings.idleAnimation ? "Sway":"Calm");
@@ -754,16 +755,24 @@ static char *config_merge_autoload(const char *existing) {
 	return config_merge_file(existing, line, NULL);
 }
 
-/* Toggling autoload saves only that key. Other settings in memory may hold
- * values nobody chose to keep (holding B at launch turns AutoBoot off until
- * the next boot), so the file keeps its own. */
-int config_update_autoload(bool checkConfigDevice) {
+/* What Z in the Jewel Case saves: the file with only its Spin Discs key
+ * changed, or NULL when there is no file to keep. */
+static char *config_merge_spin_discs(const char *existing) {
+	return config_merge_file(existing, swissSettings.stillDiscs ?
+		"Spin Discs=No\r\n" : "Spin Discs=Yes\r\n", NULL);
+}
+
+/* Toggling autoload, or the Jewel Case's spin, saves only that key. Other
+ * settings in memory may hold values nobody chose to keep (holding B at
+ * launch turns AutoBoot off until the next boot), so the file keeps its own. */
+static int config_update_one_key(char *(*merge)(const char *existing),
+	bool checkConfigDevice) {
 	if(checkConfigDevice && !config_set_device()) return 0;
 
 	char path[PATHNAME_MAX];
 	concat_path(path, SWISS_SETTINGS_DIR, SWISS_SETTINGS_FILENAME);
 	char *existing = config_file_read(path);
-	char *merged = config_merge_autoload(existing);
+	char *merged = merge(existing);
 	/* No readable file to keep: save every setting, as before. */
 	int res = merged != NULL ? config_file_write(path, merged) : config_update_global(false);
 	free(merged);
@@ -772,6 +781,14 @@ int config_update_autoload(bool checkConfigDevice) {
 		config_unset_device();
 	}
 	return res;
+}
+
+int config_update_autoload(bool checkConfigDevice) {
+	return config_update_one_key(config_merge_autoload, checkConfigDevice);
+}
+
+int config_update_spin_discs(bool checkConfigDevice) {
+	return config_update_one_key(config_merge_spin_discs, checkConfigDevice);
 }
 
 int config_update_recent(bool checkConfigDevice) {
@@ -1592,6 +1609,9 @@ void config_parse_global(char *configData, bool settingsFile) {
 							break;
 						}
 					}
+				}
+				else if(!strcmp("Spin Discs", name)) {
+					swissSettings.stillDiscs = !strcmp("No", value);
 				}
 				else if(!strcmp("Library Folders", name)) {
 					libraryFolders = !strcmp("Yes", value);

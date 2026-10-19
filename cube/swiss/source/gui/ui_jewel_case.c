@@ -1134,11 +1134,12 @@ static struct {
 	float dragX, dragY, dragVX, dragVY;
 } jc;
 
-static void update(float dt, float turnX, float turnY, uiMotionMode_t motion)
+static void update(float dt, float turnX, float turnY, uiMotionMode_t motion,
+	bool spin)
 {
 	jc.t += dt;
 	if(jc.t > 3600.0f) jc.t -= 3600.0f;
-	float target = UIMotion_Amplitude(SPIN_RATE, motion);
+	float target = spin ? UIMotion_Amplitude(SPIN_RATE, motion) : 0.0f;
 	jc.spinRate += (target - jc.spinRate) * (1 - expf(-2.7f * dt));
 	jc.spin = fmodf(jc.spin + jc.spinRate * dt, 2 * PI_F);
 
@@ -1970,7 +1971,7 @@ bool UIJewelCase_Ready(void)
 typedef struct { int caseIdx; bool lid; float depth; } part_t;
 
 void UIJewelCase_Draw(const uiJewelCaseShot_t *shots, int count, int direction,
-	float seconds, float turnX, float turnY, uiMotionMode_t motion)
+	float seconds, float turnX, float turnY, uiMotionMode_t motion, bool spin)
 {
 	if(!UIJewelCase_Ready()) return;
 	if(!recorded) {
@@ -1980,7 +1981,7 @@ void UIJewelCase_Draw(const uiJewelCaseShot_t *shots, int count, int direction,
 			return;
 		}
 	}
-	update(clampf(seconds, 0.0f, 0.1f), turnX, turnY, motion);
+	update(clampf(seconds, 0.0f, 0.1f), turnX, turnY, motion, spin);
 
 	/* The lavender, in this frame's Menu Color. */
 	u8 tint[3] = {(u8)(GLASS_TINT_R * 255), (u8)(GLASS_TINT_G * 255), (u8)(GLASS_TINT_B * 255)};

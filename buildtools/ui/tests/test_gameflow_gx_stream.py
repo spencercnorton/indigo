@@ -149,7 +149,7 @@ typedef struct { u8 r, g, b, a; } GXColor;
 enum { GX_QUADS = 0x80, GX_TRIANGLESTRIP = 0x98, GX_VTXFMT0 = 0, GX_TEXMAP0 = 0, GX_BM_BLEND = 1,
 	GX_BL_SRCALPHA = 4, GX_BL_INVSRCALPHA = 5, GX_LO_CLEAR = 0,
 	GX_TF_RGB5A3 = 5, GX_CLAMP = 0, GX_FALSE = 0, GX_LINEAR = 1, GX_NEAR = 0 };
-static struct { int uiColor; } swissSettings;
+static struct { int uiColor, stillDiscs; } swissSettings;
 
 #define CHECK(c) do { if(!(c)) { fprintf(stderr, "failed %d: %s\n", __LINE__, #c); exit(73); } } while(0)
 static FILE *out;
@@ -302,10 +302,10 @@ static struct { s8 substickX, substickY; } padInstrument;
 static bool jewelUnready;
 bool UIJewelCase_Ready(void) { return !jewelUnready; }
 void UIJewelCase_Draw(const uiJewelCaseShot_t *shots, int count, int direction,
-	float seconds, float turnX, float turnY, uiMotionMode_t motion)
+	float seconds, float turnX, float turnY, uiMotionMode_t motion, bool spin)
 {
 	CHECK(!active && count >= 0 && count <= 9 && isfinite(seconds) && turnX == 0.0f &&
-		turnY == 0.0f && motion == motionMode);
+		turnY == 0.0f && motion == motionMode && spin == !swissSettings.stillDiscs);
 	for(int i = 0; i < count; ++i) {
 		CHECK(shots[i].slot > -1.0f && shots[i].slot < 1.0f && shots[i].alpha > 0.0f);
 		fprintf(out, "J %.3f %u %s %.2f %.2f %.4f %.4f %.4f %.4f %d\n", shots[i].slot,
