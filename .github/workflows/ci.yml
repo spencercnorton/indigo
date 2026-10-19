@@ -30,13 +30,15 @@ concurrency:
 
 env:
   # The image every DOL is built in. The build runner is built on it, and
-  # buildtools/ci/check_workflows.py keeps this line and its Dockerfile equal.
+  # buildtools/ci/check_workflows.py keeps this line, its Dockerfile and the
+  # indigo-build-<first 12 hex digits> label of every build job equal: the
+  # label sends a job to a runner on this toolchain, beta's or main's.
   TOOLCHAIN: ghcr.io/extremscorner/libogc2@sha256:f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2
 
 jobs:
   build:
     name: Build
-    runs-on: [self-hosted, indigo-build]
+    runs-on: [self-hosted, indigo-build-f9ffb7e33c4b]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -101,7 +103,7 @@ jobs:
   reproducible:
     name: Reproducible build
     needs: build
-    runs-on: [self-hosted, indigo-build]
+    runs-on: [self-hosted, indigo-build-f9ffb7e33c4b]
     timeout-minutes: 20
     steps:
       # In another folder than Build's: the bytes must not care where.
@@ -249,7 +251,7 @@ jobs:
 
   host-tests:
     name: Host tests (${{ matrix.name }})
-    runs-on: [self-hosted, indigo-build]
+    runs-on: [self-hosted, indigo-build-f9ffb7e33c4b]
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -281,7 +283,7 @@ jobs:
     # same runners.
     name: Fuzz
     needs: passed
-    runs-on: [self-hosted, indigo-build]
+    runs-on: [self-hosted, indigo-build-f9ffb7e33c4b]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -302,7 +304,7 @@ jobs:
   target:
     name: Target branch
     if: github.event_name == 'pull_request'
-    runs-on: [self-hosted, indigo-build]
+    runs-on: [self-hosted, indigo-build-f9ffb7e33c4b]
     timeout-minutes: 2
     steps:
       - name: Changes go to beta; main takes only beta or a hotfix
@@ -320,7 +322,7 @@ jobs:
 
   source:
     name: Source checks
-    runs-on: [self-hosted, indigo-build]
+    runs-on: [self-hosted, indigo-build-f9ffb7e33c4b]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -344,7 +346,7 @@ jobs:
     name: CI passed
     if: always()
     needs: [build, reproducible, emulator, host-tests, target, source]
-    runs-on: [self-hosted, indigo-build]
+    runs-on: [self-hosted, indigo-build-f9ffb7e33c4b]
     timeout-minutes: 2
     steps:
       - name: Every job passed

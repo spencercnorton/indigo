@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Hold the workflows to how Indigo's CI works.
 
-- Every job runs on our own runners (runs-on names self-hosted and a pool).
+- Every job runs on our own runners (runs-on names self-hosted and a pool),
+  and a build job names the toolchain it needs: indigo-build-<the first 12 hex
+  digits of build.Dockerfile's digest>. Runners carry their toolchain as that
+  label, so main and beta each find runners on their own when they differ.
 - Every action is pinned to a full commit SHA.
 - No job asks for Docker (container:, services:): our runners have none.
 - No pull_request_target: a fork's code never runs with this repository's rights.
@@ -18,7 +21,7 @@ import re
 import sys
 from pathlib import Path
 
-POOLS = {"indigo-build", "indigo-emulator"}
+EMULATOR = "indigo-emulator"
 # A copy of the toolchain's digest, written whole or split over two string
 # literals.
 DIGEST = re.compile(r"libogc2@sha256:[\"'\s]*([0-9a-f]{64})")
@@ -56,7 +59,9 @@ def problems(root: Path) -> list[str]:
     found: list[str] = []
     dockerfile = (root / "buildtools/ci/runner/build.Dockerfile").read_text()
     base = re.search(r"^FROM (\S+)", dockerfile, re.M)
-    if not base or "@sha256:" not in base.group(1):
+    pinned = base.group(1).rsplit("@sha256:", 1)[1] if base and "@sha256:" in base.group(1) else ""
+    build = f"indigo-build-{pinned[:12]}" if pinned else "indigo-build-<toolchain>"
+    if not pinned:
         found.append("build.Dockerfile: FROM must pin the toolchain by digest")
     elif f'echo "{base.group(1)}"' not in dockerfile:
         found.append("build.Dockerfile: /etc/indigo-ci/toolchain must record its FROM image")
@@ -78,9 +83,10 @@ def problems(root: Path) -> list[str]:
         if not values:
             found.append(f"{name}: no jobs found")
         for number, labels in values:
-            if "self-hosted" not in labels or not labels & POOLS:
+            # The bare indigo-build would keep the job off the release pool's runners.
+            if "self-hosted" not in labels or not labels & {build, EMULATOR} or "indigo-build" in labels:
                 found.append(f"{name}:{number}: runs-on {sorted(labels)} is not one of our pools "
-                             f"(self-hosted plus {' or '.join(sorted(POOLS))})")
+                             f"(self-hosted plus {build}, the toolchain build.Dockerfile pins, or {EMULATOR})")
         for number, line in enumerate(lines, 1):
             use = re.match(r"^\s*(?:-\s*)?uses:\s*(\S+)", line)
             if use and not use.group(1).startswith("./") and \
@@ -89,8 +95,7 @@ def problems(root: Path) -> list[str]:
         toolchain = re.search(r"^\s*TOOLCHAIN:\s*(\S+)", text, re.M)
         if toolchain and base and toolchain.group(1) != base.group(1):
             found.append(f"{name}: TOOLCHAIN {toolchain.group(1)} is not build.Dockerfile's {base.group(1)}")
-    if base and "@sha256:" in base.group(1):
-        pinned = base.group(1).rsplit("@sha256:", 1)[1]
+    if pinned:
         for path in sorted(root.rglob("*")):
             if ".git" in path.parts or path.suffix not in COPIES or not path.is_file():
                 continue

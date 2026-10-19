@@ -124,7 +124,7 @@ env:
   TOOLCHAIN: example.invalid/libogc2@sha256:{digest}
 jobs:
   build:
-    runs-on: [self-hosted, indigo-build]
+    runs-on: [self-hosted, indigo-build-{label}]
     steps:
       - uses: actions/checkout@{sha} # v7
   emulator:
@@ -151,15 +151,19 @@ class Workflows(unittest.TestCase):
             return check_workflows.problems(self.root(Path(directory), workflow))
 
     def good(self) -> str:
-        return GOOD_WORKFLOW.format(digest="1" * 64, sha="a" * 40)
+        return GOOD_WORKFLOW.format(digest="1" * 64, sha="a" * 40, label="1" * 12)
 
     def test_our_runners_pinned_actions_and_the_runner_toolchain_pass(self):
         self.assertEqual(self.check(self.good()), [])
 
     def test_each_breach_is_caught(self):
         good = self.good()
-        for bad in (good.replace("[self-hosted, indigo-build]", "ubuntu-24.04"),
-                    good.replace("[self-hosted, indigo-build]", "[self-hosted]"),
+        build = "[self-hosted, indigo-build-" + "1" * 12 + "]"
+        for bad in (good.replace(build, "ubuntu-24.04"),
+                    good.replace(build, "[self-hosted]"),
+                    good.replace(build, "[self-hosted, indigo-build]"),  # names no toolchain
+                    good.replace(build, "[self-hosted, indigo-build, indigo-build-" + "1" * 12 + "]"),
+                    good.replace(build, "[self-hosted, indigo-build-" + "2" * 12 + "]"),  # another toolchain
                     good.replace("      - indigo-emulator\n", ""),
                     good.replace("@" + "a" * 40, "@v7"),
                     good.replace("  pull_request:", "  pull_request_target:"),

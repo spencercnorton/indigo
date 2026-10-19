@@ -19,6 +19,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   still preloads its first poster before opening.
 - CI keeps the full tag history but fetches historical file contents only
   when needed, avoiding old guide pictures in each build and host-test clone.
+- Each CI build job runs on a runner with the toolchain its own branch pins,
+  so the release branch and its hotfixes still build after `beta` moves to a
+  new toolchain.
 
 ### Fixes
 
