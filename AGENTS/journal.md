@@ -1,3 +1,14 @@
+## 2026-10-19 — Build jobs name their toolchain
+
+Every `indigo-build` job now runs on `indigo-build-f9ffb7e33c4b` (beta's
+libogc2 digest, first 12 hex digits), and `check_workflows.py` fails a build
+job that names any other label or the bare `indigo-build`. A toolchain change
+moves this label with every other copy of the digest; until runners on the
+new toolchain exist (bootstrap through `INDIGO_CI_REF`, as before), its jobs
+wait in Queued rather than fail at the Toolchain step. Main gets the same
+change with its own digest through a hotfix, so it builds on the release
+pool.
+
 ## 2026-10-19 — Runners carry their toolchain; a release pool built from main
 
 Since beta moved to libogc2 r2482, main (2.4.0) and every branch cut from it

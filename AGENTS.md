@@ -126,9 +126,12 @@ instruction as evidence that a MemCard PRO was tested.
   layouts in 0..640, and reach the screen's edges with `UIStage_Left()` and
   `UIStage_Right()` rather than 0 and 640 (a full-screen page goes through
   `_PagePanel`).
-- **CI stays on our runners.** Every job names `[self-hosted, indigo-build]`
-  or `[self-hosted, indigo-emulator]`, pins its actions to a full commit SHA,
-  and uses no `container:`, `services:` or `pull_request_target`;
+- **CI stays on our runners.** Every job names
+  `[self-hosted, indigo-build-<toolchain>]` (the first 12 hex digits of the
+  libogc2 digest `build.Dockerfile` pins; a toolchain change moves it with
+  every other copy of the digest) or `[self-hosted, indigo-emulator]`, pins
+  its actions to a full commit SHA, and uses no `container:`, `services:` or
+  `pull_request_target`;
   `buildtools/ci/check_workflows.py` fails CI otherwise. A change to a runner
   image (`buildtools/ci/runner/`) applies from the first run after it merges.
 - **The emulator test reads the screen.** It finds the face's name under the

@@ -6,7 +6,7 @@ takes that one job, and is thrown away. Nothing a job does survives it.
 
 | Pool | `runs-on` | Image | What runs there |
 | --- | --- | --- | --- |
-| build | `[self-hosted, indigo-build]` | [`build.Dockerfile`](build.Dockerfile): the pinned devkitPPC/libogc2 image, GCC and Clang with their sanitizers, Python with Pillow and NumPy | the DOL, the SD card zip, host tests, source checks, releases |
+| build | `[self-hosted, indigo-build-<toolchain>]` | [`build.Dockerfile`](build.Dockerfile): the pinned devkitPPC/libogc2 image, GCC and Clang with their sanitizers, Python with Pillow and NumPy | the DOL, the SD card zip, host tests, source checks, releases |
 | release | `[self-hosted, indigo-build-<toolchain>]` | `build.Dockerfile` as `main` has it | jobs on the release's toolchain after `beta` has moved to another: `main`, hotfixes, branches cut from a release |
 | emulator | `[self-hosted, indigo-emulator]` | [`emulator.Dockerfile`](emulator.Dockerfile): Dolphin built from a pinned commit with an SD card adapter ([`dolphin/`](dolphin/README.md)), a virtual X server, FFmpeg, the FAT tools, gxtexconv | the emulator test ([buildtools/ui/emulator/](../../ui/emulator/README.md)) |
 

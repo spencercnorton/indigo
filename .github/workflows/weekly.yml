@@ -14,7 +14,7 @@ permissions:
 jobs:
   dispatch:
     name: CI on beta
-    runs-on: [self-hosted, indigo-build]
+    runs-on: [self-hosted, indigo-build-f9ffb7e33c4b]
     timeout-minutes: 2
     steps:
       - env:

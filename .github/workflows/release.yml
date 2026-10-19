@@ -28,7 +28,7 @@ env:
 jobs:
   build:
     name: Build the release zip
-    runs-on: [self-hosted, indigo-build]
+    runs-on: [self-hosted, indigo-build-f9ffb7e33c4b]
     timeout-minutes: 20
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
@@ -104,7 +104,7 @@ jobs:
     name: Publish the GitHub Release
     needs: build
     if: github.event_name == 'push'
-    runs-on: [self-hosted, indigo-build]
+    runs-on: [self-hosted, indigo-build-f9ffb7e33c4b]
     timeout-minutes: 10
     permissions:
       contents: write
