@@ -51,6 +51,15 @@ tag on `beta`. The newest changes are at the top until their release is named.
   card images that take Move, Copy and Erase, the Storage page with Library
   Path, and Saves counted by file with the save's own line.
 
+### For developers
+
+- A weekly Swiss watch (`.github/workflows/swiss-watch.yml`) checks whether
+  upstream Swiss moved past the commit `UPSTREAM` names. Cheap gates first
+  (one `ls-remote`, then a deterministic file filter) keep silent weeks
+  free; one model call judges each new commit take/review/skip for Indigo,
+  and only a week with a candidate sends email, with the exact
+  `upstream_merge.sh` command. It merges nothing itself.
+
 ## v2.4.0 — A new File Browser, cube sides and faces, Saves on Details
 
 ### New

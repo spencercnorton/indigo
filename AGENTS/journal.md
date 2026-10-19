@@ -1,3 +1,30 @@
+## 2026-10-18 — Swiss watch sends through the M365 mailer
+
+Supersedes the SMTP plan in the entry below, before merge: the estate has
+no SMTP account, but it has a Microsoft Graph mailer app whose token holds
+only `Mail.Send`. `swiss_watch.py` now sends through Graph `sendMail` as
+`SWISS_WATCH_FROM`; sender and recipient are both the accounts mailbox.
+Repository secrets are set from Infisical (the mailer app's canonical
+entries, plus a dedicated `API_KEY_SWISS_WATCH` copy of the generic OpenAI
+key — rotate those two together). A labelled test message was delivered
+through the script's own send path, and a real model dry-run over
+163f8b1d..39a0867e rendered its email without sending.
+
+## 2026-10-18 — Weekly Swiss watch (gated, email-only)
+
+New `buildtools/ci/swiss_watch.py` + `.github/workflows/swiss-watch.yml`
+(Tuesdays 14:17 UTC, self-hosted `indigo-build`; schedules run from `main`,
+so it starts when this reaches a release). Gates: one `ls-remote` against
+the UPSTREAM pin, a deterministic classifier reusing `check_upstream`'s
+`OWN`/`parse`/`covers`, one OpenAI-compatible model call only on a real
+diff, and plain-text email only when a commit is take/review. Unassessed
+commits default to review; a model reply assessing nothing fails the run.
+Verified against the real 163f8b1d..39a0867e range (classification matches
+the 2026-10-17 manual intake) with a local fake model endpoint; a real
+model call and SMTP delivery still need the workflow's secrets/vars set
+(dry-run dispatch prints the would-be email first). Tests:
+`buildtools/ci/test_swiss_watch.py`.
+
 ## 2026-10-17 — Verify upstream homebrew video and console identity
 
 The existing non-default GC Loader smoke fixture now selects Apps Video Mode
