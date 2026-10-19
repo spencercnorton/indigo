@@ -14,9 +14,12 @@ file has the design.
 
 Environment:
     GH_TOKEN          admin on the repository (it mints runner registrations)
-    INDIGO_CI_POOLS   slots per pool, default "build:3,emulator:1"
+    INDIGO_CI_POOLS   slots per pool, default "build:3,emulator:1"; "release" is a
+                      build pool whose image comes from main, for jobs on main's
+                      toolchain while beta has moved to another
     INDIGO_CI_REPO    default spencernorton/indigo (its pools, and the images' source)
     INDIGO_CI_REF     the trusted branch images are built from, default beta
+                      (the release pool's always come from main)
     INDIGO_CI_NAME    the prefix of this machine's runner names, default "indigo";
                       runner names show in public job logs, so never a hostname.
                       A second machine needs a name of its own ("indigo2"):
@@ -73,7 +76,6 @@ REPO = os.environ.get("INDIGO_CI_REPO", "spencernorton/indigo")
 class Pool:
     name: str
     dockerfile: str
-    copies: tuple[str, ...]  # what the Dockerfile COPYs: with it, the image's inputs
     label: str
     cpus: str
     memory: str
@@ -81,17 +83,14 @@ class Pool:
     # CPU weight when the machine is short of it (docker --cpu-shares): an
     # emulator's console runs in real time, a build only waits longer.
     shares: int = 1024
+    ref: str = ""  # the trusted branch its image is built from; "" is INDIGO_CI_REF
 
 
 POOLS = {
-    "build": Pool("build", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py", "libiconv-lite.sh"),
-                  "indigo-build", "8", "6g"),
-    "emulator": Pool("emulator", "emulator.Dockerfile",
-                     ("entrypoint.sh", "dolphin/0001-sd2sp2-adapter.patch", "dolphin/0002-flush-sd-writes.patch",
-                      "dolphin/0003-controller-no-response.patch", "dolphin/0004-sd-faults.patch",
-                      "dolphin/0005-emulated-clock.patch", "dolphin/0006-gcloader.patch",
-                      "dolphin/0007-dabr.patch"),
-                     "indigo-emulator", "8", "6g", shares=4096),
+    "build": Pool("build", "build.Dockerfile", "indigo-build", "8", "6g"),
+    "emulator": Pool("emulator", "emulator.Dockerfile", "indigo-emulator", "8", "6g", shares=4096),
+    # main's toolchain, so a hotfix (or main itself) builds after beta has moved on.
+    "release": Pool("release", "build.Dockerfile", "indigo-build", "8", "6g", ref="main"),
 }
 REF = os.environ.get("INDIGO_CI_REF", "beta")
 NAME = (os.environ.get("INDIGO_CI_NAME") or "indigo").lower()
@@ -139,10 +138,37 @@ def parse_runner_release(release: dict) -> tuple[str, str]:
     return version, match.group(1)
 
 
+def copied(dockerfile: str) -> set[str]:
+    """What a Dockerfile COPYs from its context (not from another stage)."""
+    names: set[str] = set()
+    for line in dockerfile.splitlines():
+        if line.startswith("COPY ") and "--from=" not in line:
+            names.update([word for word in line.split()[1:] if not word.startswith("--")][:-1])
+    return names
+
+
+def pinned_toolchain(dockerfile: str) -> str:
+    """The first 12 hex digits of the libogc2 image's digest a Dockerfile builds FROM, or ""."""
+    match = re.search(r"^FROM \S*libogc2@sha256:([0-9a-f]{64})", dockerfile, re.M)
+    return match.group(1)[:12] if match else ""
+
+
+def runner_labels(pool: Pool, toolchain: str) -> list[str]:
+    """What a pool's runners answer to. A job names the toolchain it needs
+    (indigo-build-<toolchain>, check_workflows.py), so it finds a runner built on
+    that toolchain from whichever branch has it: beta's own, or main's from the
+    release pool. Only pools built from INDIGO_CI_REF keep the bare label, which
+    workflows from before toolchain labels name: those never reach main's toolchain."""
+    if pool.ref and not toolchain:
+        raise RuntimeError(f"{pool.dockerfile} on {pool.ref} names no libogc2 image")
+    return ["self-hosted", "linux", "x64", *([] if pool.ref else [pool.label]),
+            *([f"{pool.label}-{toolchain}"] if toolchain else [])]
+
+
 def image_tag(pool: Pool, context: Path, runner: tuple[str, str]) -> str:
     """Content address of a pool's image: its Dockerfile, what it copies, the runner release."""
     digest = hashlib.sha256()
-    for name in (pool.dockerfile, *sorted(pool.copies)):
+    for name in (pool.dockerfile, *sorted(copied((context / pool.dockerfile).read_text()))):
         digest.update(name.encode() + b"\0" + (context / name).read_bytes() + b"\0")
     digest.update(f"{runner[0]}\0{runner[1]}".encode())
     return f"indigo-ci/{pool.name}:{digest.hexdigest()[:16]}"
@@ -197,6 +223,19 @@ def repo_runners(repos: set[str]) -> list[dict]:
     return runners
 
 
+def checkout(ref: str) -> Path:
+    """The runner directory at origin/<ref>: the source checkout for INDIGO_CI_REF,
+    a worktree of it for another trusted branch."""
+    if ref == REF:
+        return SOURCE / CONTEXT
+    tree = HOME / f"src-{ref}"
+    if not (tree / ".git").exists():
+        run("git", "-C", str(SOURCE), "worktree", "add", "--quiet", "--force", "--detach", str(tree),
+            f"origin/{ref}")
+    run("git", "-C", str(tree), "checkout", "--quiet", "--force", "--detach", f"origin/{ref}")
+    return tree / CONTEXT
+
+
 def inspect(name: str) -> dict | None:
     result = docker("inspect", "--type", "container", name, check=False)
     return json.loads(result.stdout)[0] if result.returncode == 0 else None
@@ -223,6 +262,7 @@ class Supervisor:
     def __init__(self, pools: dict[str, int]) -> None:
         self.pools = pools
         self.images: dict[str, str] = {}
+        self.labels: dict[str, list[str]] = {}  # each image's runner labels, set with it
         self.runner: tuple[str, str] | None = None
         self.next_source = self.next_release = self.next_cleanup = self.next_health = 0.0
         self.failures: dict[str, int] = {}
@@ -242,10 +282,10 @@ class Supervisor:
         if not (SOURCE / ".git").exists():
             SOURCE.parent.mkdir(parents=True, exist_ok=True)
             run("git", "clone", "--quiet", "--no-checkout", f"https://github.com/{REPO}.git", str(SOURCE))
+        refs = sorted({REF} | {POOLS[name].ref or REF for name in self.pools})
         run("git", "-C", str(SOURCE), "fetch", "--quiet", "--prune", "origin",
-            f"+refs/heads/{REF}:refs/remotes/origin/{REF}", timeout=300)
+            *(f"+refs/heads/{ref}:refs/remotes/origin/{ref}" for ref in refs), timeout=300)
         run("git", "-C", str(SOURCE), "checkout", "--quiet", "--force", "--detach", f"origin/{REF}")
-        context = SOURCE / CONTEXT
         if SELF.is_relative_to(SOURCE.resolve()) and \
                 hashlib.sha256(SELF.read_bytes()).hexdigest() != SELF_DIGEST:
             log(f"{REF} changed the supervisor; exiting so the service restarts it")
@@ -253,9 +293,11 @@ class Supervisor:
             return
         for name in self.pools:
             pool = POOLS[name]
+            context = checkout(pool.ref or REF)
             tag = image_tag(pool, context, self.runner)
+            labels = runner_labels(pool, pinned_toolchain((context / pool.dockerfile).read_text()))
             if not image_exists(tag):
-                log(f"building {tag} from {REF} with runner {self.runner[0]}")
+                log(f"building {tag} from {pool.ref or REF} with runner {self.runner[0]}")
                 try:
                     run("docker", "build", "--file", str(context / pool.dockerfile),
                         "--build-arg", f"RUNNER_VERSION={self.runner[0]}",
@@ -271,8 +313,8 @@ class Supervisor:
                 self.broken_images.discard(name)
                 alert(f"the {name} image builds again", f"{name}-image", resolved=True)
             if self.images.get(name) != tag:
-                log(f"{name} pool now uses {tag}")
-            self.images[name] = tag
+                log(f"{name} pool now uses {tag} ({', '.join(labels[3:])})")
+            self.images[name], self.labels[name] = tag, labels
 
     # -- the proxy and the networks
     def ensure_network(self, network: str, internal: bool) -> None:
@@ -318,7 +360,7 @@ class Supervisor:
         network = slot_network(pool.name, slot)
         config = github("POST", f"/repos/{pool.repo}/actions/runners/generate-jitconfig", {
             "name": name, "runner_group_id": 1, "work_folder": "_work",
-            "labels": ["self-hosted", "linux", "x64", pool.label]})["encoded_jit_config"]
+            "labels": self.labels[pool.name]})["encoded_jit_config"]
         proxy = f"http://{PROXY}:{PROXY_PORT}"
         with tempfile.NamedTemporaryFile("w", dir=HOME, prefix=".env-", delete=True) as env:
             os.chmod(env.name, 0o600)
@@ -329,7 +371,9 @@ class Supervisor:
             env.flush()
             docker("run", "--detach", "--name", container_name(pool.name, slot),
                    "--label", LABEL, "--label", f"{LABEL}.pool={pool.name}",
-                   "--label", f"{LABEL}.runner={name}", "--network", network, "--runtime", "runc",
+                   "--label", f"{LABEL}.runner={name}",
+                   "--label", f"{LABEL}.labels={','.join(self.labels[pool.name])}",
+                   "--network", network, "--runtime", "runc",
                    "--user", RUNNER_UID, "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
                    "--pids-limit", "4096", "--cpus", pool.cpus, "--cpu-shares", str(pool.shares),
                    "--memory", pool.memory,
@@ -367,7 +411,9 @@ class Supervisor:
                 if info and info["State"]["Running"]:
                     runner = info["Config"]["Labels"].get(f"{LABEL}.runner", "")
                     live.add(runner)
-                    outdated = info["Config"]["Image"] != self.images.get(pool_name)
+                    # A runner's labels are fixed at registration, so new ones need a new runner too.
+                    outdated = (info["Config"]["Image"], info["Config"]["Labels"].get(f"{LABEL}.labels")) != \
+                        (self.images.get(pool_name), ",".join(self.labels.get(pool_name, [])))
                     started = info["State"].get("StartedAt", "")
                     old = started and now - _epoch(started) > MAX_IDLE_AGE
                     if (outdated or old) and not registrations().get(runner, {}).get("busy", True):

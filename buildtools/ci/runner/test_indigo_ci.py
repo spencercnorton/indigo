@@ -2,6 +2,7 @@
 """The supervisor's decisions, without Docker or GitHub."""
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,8 @@ class Pools(unittest.TestCase):
     def test_default_and_custom(self):
         self.assertEqual(indigo_ci.parse_pools("build:3,emulator:1"), {"build": 3, "emulator": 1})
         self.assertEqual(indigo_ci.parse_pools("build:4,emulator:4"), {"build": 4, "emulator": 4})
+        self.assertEqual(indigo_ci.parse_pools("build:4,emulator:4,release:2"),
+                         {"build": 4, "emulator": 4, "release": 2})
         self.assertEqual(indigo_ci.POOLS["build"].repo, indigo_ci.REPO)
         self.assertEqual(indigo_ci.parse_pools(" build:0 "), {"build": 0})
 
@@ -43,14 +46,15 @@ class RunnerRelease(unittest.TestCase):
                 indigo_ci.parse_runner_release(release)
 
 
+HERE = Path(__file__).resolve().parent
+TOOLCHAIN = "ghcr.io/extremscorner/libogc2@sha256:" + "e" * 64
+
+
 class ImageTag(unittest.TestCase):
     def test_changes_with_its_inputs_and_the_runner_only(self):
         with tempfile.TemporaryDirectory() as directory:
-            context = Path(directory)
-            names = {name for pool in indigo_ci.POOLS.values() for name in (pool.dockerfile, *pool.copies)}
-            for name in names:
-                (context / name).parent.mkdir(parents=True, exist_ok=True)
-                (context / name).write_text(name)
+            context = Path(directory, "runner")
+            shutil.copytree(HERE, context)
             build, emulator = indigo_ci.POOLS["build"], indigo_ci.POOLS["emulator"]
             runner = ("2.337.0", "a" * 64)
             first = indigo_ci.image_tag(build, context, runner)
@@ -66,19 +70,99 @@ class ImageTag(unittest.TestCase):
             (context / "dolphin/0002-flush-sd-writes.patch").write_text("changed")  # Dolphin's patches
             self.assertNotEqual(emulator_tag, indigo_ci.image_tag(emulator, context, runner))
 
+    def test_another_branch_s_dockerfile_hashes_what_it_copies(self):
+        """main's build.Dockerfile can copy fewer files than beta's: the release
+        pool hashes what main's copies, not what beta's does."""
+        with tempfile.TemporaryDirectory() as directory:
+            context = Path(directory)
+            (context / "build.Dockerfile").write_text(f"FROM {TOOLCHAIN}\nCOPY --chmod=0755 entrypoint.sh /opt/\n")
+            (context / "entrypoint.sh").write_text("#!/bin/sh\n")
+            release, runner = indigo_ci.POOLS["release"], ("2.337.0", "a" * 64)
+            first = indigo_ci.image_tag(release, context, runner)
+            self.assertRegex(first, r"^indigo-ci/release:[0-9a-f]{16}$")
+            (context / "entrypoint.sh").write_text("#!/bin/sh\nexit 1\n")
+            self.assertNotEqual(first, indigo_ci.image_tag(release, context, runner))
+
 
 class Dockerfiles(unittest.TestCase):
-    def test_each_pool_declares_what_its_dockerfile_copies(self):
-        here = Path(__file__).resolve().parent
+    def test_every_file_a_dockerfile_copies_is_here(self):
+        self.assertEqual(indigo_ci.copied((HERE / "build.Dockerfile").read_text()),
+                         {"entrypoint.sh", "egress_proxy.py", "libiconv-lite.sh"})
         for pool in indigo_ci.POOLS.values():
-            copied = set()
-            for line in (here / pool.dockerfile).read_text().splitlines():
-                if line.startswith("COPY ") and "--from=" not in line:
-                    words = [w for w in line.split()[1:] if not w.startswith("--")]
-                    copied.update(words[:-1])
-            self.assertEqual(copied, set(pool.copies), pool.dockerfile)
-            for name in pool.copies:
-                self.assertTrue((here / name).is_file(), name)
+            copied = indigo_ci.copied((HERE / pool.dockerfile).read_text())
+            self.assertIn("entrypoint.sh", copied, pool.dockerfile)
+            for name in copied:
+                self.assertTrue((HERE / name).is_file(), name)
+
+
+class Labels(unittest.TestCase):
+    def test_the_toolchain_is_the_libogc2_digest_a_dockerfile_builds_from(self):
+        self.assertEqual(indigo_ci.pinned_toolchain(f"# x\nFROM {TOOLCHAIN} AS toolchain\nFROM ubuntu\n"), "e" * 12)
+        self.assertEqual(indigo_ci.pinned_toolchain("FROM ghcr.io/extremscorner/libogc2:latest\n"), "")
+        self.assertRegex(indigo_ci.pinned_toolchain((HERE / "build.Dockerfile").read_text()), r"^[0-9a-f]{12}$")
+
+    def test_jobs_find_their_toolchain_and_old_workflows_stay_on_beta(self):
+        build, release = indigo_ci.POOLS["build"], indigo_ci.POOLS["release"]
+        self.assertEqual(release.ref, "main")
+        self.assertEqual(indigo_ci.runner_labels(build, "f" * 12),
+                         ["self-hosted", "linux", "x64", "indigo-build", "indigo-build-" + "f" * 12])
+        # No bare indigo-build: a workflow that names no toolchain is beta's.
+        self.assertEqual(indigo_ci.runner_labels(release, "e" * 12),
+                         ["self-hosted", "linux", "x64", "indigo-build-" + "e" * 12])
+        with self.assertRaises(RuntimeError):
+            indigo_ci.runner_labels(release, "")
+
+
+class Checkout(unittest.TestCase):
+    def test_another_trusted_branch_is_a_worktree_of_the_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            source = home / "src"
+
+            def git(*args):
+                subprocess.run(["git", "-C", str(source), "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                                "-c", "commit.gpgsign=false", *args], check=True, capture_output=True)
+            (source / indigo_ci.CONTEXT).mkdir(parents=True)
+            git("init", "-q")
+            for branch in ("main", "beta"):
+                (source / indigo_ci.CONTEXT / "build.Dockerfile").write_text(f"FROM {branch}\n")
+                git("add", "-A")
+                git("commit", "-qm", branch)
+                git("update-ref", f"refs/remotes/origin/{branch}", "HEAD")
+            with mock.patch.multiple(indigo_ci, HOME=home, SOURCE=source, REF="beta"):
+                self.assertEqual(indigo_ci.checkout("beta"), source / indigo_ci.CONTEXT)
+                context = indigo_ci.checkout("main")
+                self.assertEqual(context, home / "src-main" / indigo_ci.CONTEXT)
+                self.assertEqual((context / "build.Dockerfile").read_text(), "FROM main\n")
+                git("update-ref", "refs/remotes/origin/main", "refs/remotes/origin/beta")  # main moves on
+                self.assertEqual(indigo_ci.checkout("main"), context)
+                self.assertEqual((context / "build.Dockerfile").read_text(), "FROM beta\n")
+
+
+class Retire(unittest.TestCase):
+    def test_an_idle_runner_registered_with_other_labels_is_replaced(self):
+        """Labels are fixed at registration: runners from before toolchain labels
+        must give way, or jobs that name one queue behind them."""
+        supervisor = indigo_ci.Supervisor({"build": 1})
+        supervisor.images = {"build": "indigo-ci/build:1"}
+        supervisor.labels = {"build": ["self-hosted", "linux", "x64", "indigo-build", "indigo-build-" + "f" * 12]}
+        supervisor.next_source = supervisor.next_release = supervisor.next_cleanup = supervisor.next_health = 1e12
+        supervisor.runner = ("2.337.0", "a" * 64)
+        running = {"State": {"Running": True, "StartedAt": "2026-10-19T00:00:00Z"},
+                   "Config": {"Image": "indigo-ci/build:1", "Labels": {"indigo-ci.runner": "ci-host-build-1-aaaaaa"}}}
+        removed = []
+        with mock.patch.multiple(indigo_ci, log=lambda *_: None, inspect=lambda name: running,
+                                 repo_runners=lambda repos: [{"name": "ci-host-build-1-aaaaaa", "busy": False}],
+                                 docker=lambda *args, **_: removed.append(args)), \
+                mock.patch.object(supervisor, "ensure_proxy"), mock.patch.object(supervisor, "launch") as launch:
+            now = indigo_ci._epoch("2026-10-19T00:01:00Z")
+            supervisor.tick(now)
+            self.assertIn(("rm", "--force", "indigo-ci-build-1"), removed)
+            removed.clear()
+            running["Config"]["Labels"]["indigo-ci.labels"] = ",".join(supervisor.labels["build"])
+            supervisor.tick(now)
+            self.assertEqual(removed, [])
+            launch.assert_not_called()
 
 
 class Cleanup(unittest.TestCase):

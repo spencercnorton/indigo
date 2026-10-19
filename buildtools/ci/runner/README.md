@@ -7,7 +7,16 @@ takes that one job, and is thrown away. Nothing a job does survives it.
 | Pool | `runs-on` | Image | What runs there |
 | --- | --- | --- | --- |
 | build | `[self-hosted, indigo-build]` | [`build.Dockerfile`](build.Dockerfile): the pinned devkitPPC/libogc2 image, GCC and Clang with their sanitizers, Python with Pillow and NumPy | the DOL, the SD card zip, host tests, source checks, releases |
+| release | `[self-hosted, indigo-build-<toolchain>]` | `build.Dockerfile` as `main` has it | jobs on the release's toolchain after `beta` has moved to another: `main`, hotfixes, branches cut from a release |
 | emulator | `[self-hosted, indigo-emulator]` | [`emulator.Dockerfile`](emulator.Dockerfile): Dolphin built from a pinned commit with an SD card adapter ([`dolphin/`](dolphin/README.md)), a virtual X server, FFmpeg, the FAT tools, gxtexconv | the emulator test ([buildtools/ui/emulator/](../../ui/emulator/README.md)) |
+
+Every runner also answers to its pool's label with its toolchain added (a
+build runner to `indigo-build-<toolchain>`): the first 12 hex digits of the
+libogc2 digest its Dockerfile builds `FROM`. A job that names it gets a runner on exactly that
+toolchain, built from whichever branch pins it: `beta`'s for `beta` and its
+pull requests, the release pool's for `main` while `beta` has moved on. The
+release pool's runners answer to nothing else, so a workflow that names the
+bare `indigo-build` (one written before toolchain labels) stays on `beta`'s.
 
 ## How a job is contained
 
@@ -45,10 +54,11 @@ without downloading every old guide picture into each job.
 
 ## Images
 
-`indigo_ci.py` builds the images itself, from the `beta` branch, never from a
-pull request. Every ten minutes it fetches `beta`; when a file in this
-directory changed, or GitHub published a new runner, it builds the new image,
-then replaces idle runners with ones on the new image. Runners in the middle
+`indigo_ci.py` builds the images itself, from the `beta` branch (the release
+pool's from `main`), never from a pull request. Every ten minutes it fetches
+both; when a file in this directory changed, or GitHub published a new
+runner, it builds the new image, then replaces idle runners with ones on the
+new image (or with new labels). Runners in the middle
 of a job finish it first. A pull request that changes an image is therefore
 tested on the current image, and the change applies from the first run after
 it merges. A change to `indigo_ci.py` restarts the supervisor the same way.
@@ -67,8 +77,10 @@ writes `~/.config/indigo-ci.env`. The supervisor needs `GH_TOKEN`, a token
 with admin rights on the repository (it mints runner registrations): put it
 in that file (it is mode 0600), or give the unit a drop-in that fetches it
 from a secret store at start. `INDIGO_CI_POOLS` sets the slots per pool
-(default `build:3,emulator:1`);
-two machines can serve the same pools.
+(default `build:3,emulator:1`; add `release:1` or more so `main` can build
+once `beta` moves the toolchain); two machines can serve the same pools. Add
+a pool only after the supervisor has updated itself to a version that knows
+it: an unknown pool name stops the service before it can update.
 
 ```bash
 systemctl --user status indigo-ci     # the supervisor
@@ -82,7 +94,9 @@ restarts it unless you `systemctl --user disable --now indigo-ci` first.
 
 ## When CI waits
 
-A job that sits in "Queued" is waiting for a runner with its labels. Check
+A job that sits in "Queued" is waiting for a runner with its labels: a
+toolchain label no runner has means the branch pins a toolchain that is
+neither `beta`'s nor, with the release pool, `main`'s. Check
 the service on the runner host, then `indigo_ci.py status`: it lists the
 containers and what GitHub thinks of each runner. The supervisor retries a
 runner that fails to start with a growing delay, and rides out GitHub or
