@@ -264,6 +264,7 @@ int main(int argc, char *argv[])
 	swissSettings.fspPort = 21;
 	swissSettings.fspPathMtu = 1500;
 	swissSettings.bbaUseDhcp = 1;
+	strcpy(swissSettings.ntpHostIp, "162.159.200.123");	// time.cloudflare.com: GameCube's lwIP has no DNS
 	swissSettings.aveCompat = GCVIDEO_COMPAT;
 	swissSettings.fileBrowserType = BROWSER_STANDARD;
 	swissSettings.appsBrowserType = BROWSER_FULLWIDTH;

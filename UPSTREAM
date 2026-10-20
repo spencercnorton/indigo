@@ -21,6 +21,7 @@ cube/swiss/include/gcm.h                   adjust_tgc_fst takes the file table's
 cube/swiss/source/devices/deviceHandler.c  devices shut down on reset after the interface stops reading them (priority 1)
 cube/swiss/source/devices/memcard/deviceHandler-CARD.c  save reads and erases keep their exact game and maker codes; copied headers cannot use libogc2's wildcard codes; each slot's mounts are counted, so Memory Cards deletes a failed copy only on the card it wrote to
 cube/swiss/source/devices/memcard/deviceHandler-CARD.h  declares that mount count (card_mount_count)
+cube/swiss/source/bba.c                    once the network is up, its thread sets the clock from an NTP server (Settings › Network › Sync Clock, gui/time_sync.c)
 cube/swiss/source/gcm.c                    every walk of a file table stays inside it (fst_entries, fst_name): a damaged image cannot crash the Library, a launch or a disc opened as a folder
 cube/swiss/source/devices/filemeta.c       evicted metadata returns to meta_mspace, eviction stops if every entry is in view, 7-bit ASCII banner text skips uchardet/iconv, and TGC metadata populates diskId
 cube/swiss/source/video.c                  the retrace callback scans the pads through padsScan(), which the menus read; first setVideoMode resets VI_DCR before VIDEO_Init and skips GX_AbortFrame before GX_Init so warm-booted DOLs do not hang in VIDEO_WaitForFlush

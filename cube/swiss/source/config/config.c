@@ -626,6 +626,9 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "BBANetmask=%hu\r\n", swissSettings.bbaNetmask);
 	fprintf(fp, "BBAGateway=%s\r\n", swissSettings.bbaGateway);
 	fprintf(fp, "BBAUseDHCP=%s\r\n", swissSettings.bbaUseDhcp ? "Yes":"No");
+	fprintf(fp, "NTPSync=%s\r\n", swissSettings.ntpSync ? "Yes":"No");
+	fprintf(fp, "NTPHostIP=%s\r\n", swissSettings.ntpHostIp);
+	fprintf(fp, "TimeZone=%s\r\n", swissSettings.timeZone);
 	fprintf(fp, "ShowHiddenFiles=%s\r\n", swissSettings.showHiddenFiles ? "Yes":"No");
 	fprintf(fp, "RecentListLevel=%s\r\n", recentListLevelStr[swissSettings.recentListLevel]);
 	fprintf(fp, "GCLoaderHWVersion=%i\r\n", swissSettings.gcloaderHwVersion);
@@ -1797,6 +1800,15 @@ void config_parse_global(char *configData, bool settingsFile) {
 				}
 				else if(!strcmp("BBAUseDHCP", name)) {
 					swissSettings.bbaUseDhcp = !strcmp("Yes", value);
+				}
+				else if(!strcmp("NTPSync", name)) {
+					swissSettings.ntpSync = !strcmp("Yes", value);
+				}
+				else if(!strcmp("NTPHostIP", name)) {
+					strlcpy(swissSettings.ntpHostIp, value, sizeof(swissSettings.ntpHostIp));
+				}
+				else if(!strcmp("TimeZone", name)) {
+					strlcpy(swissSettings.timeZone, value, sizeof(swissSettings.timeZone));
 				}
 				else if(!strcmp("ShowHiddenFiles", name)) {
 					swissSettings.showHiddenFiles = !strcmp("Yes", value);

@@ -69,6 +69,7 @@ extern syssramex* __SYS_LockSramEx(void);
 extern u32 __SYS_UnlockSram(u32 write);
 extern u32 __SYS_UnlockSramEx(u32 write);
 extern u32 __SYS_SyncSram(void);
+extern u32 __SYS_GetRTC(u32 *gctime);
 extern u32 __SYS_CheckSram(void);
 extern void __SYS_ReadROM(void *buf,u32 len,u32 offset);
 extern u8 __SYS_SetTAUCalibration(s8 calib);
@@ -201,6 +202,9 @@ typedef struct {
 	u16 bbaNetmask;
 	char bbaGateway[16];
 	bool bbaUseDhcp;
+	bool ntpSync;	// Sync Clock: set the clock from ntpHostIp when the network starts (gui/time_sync.c)
+	char ntpHostIp[16];
+	char timeZone[64];	// a POSIX TZ string; empty keeps the console's own offset from UTC
 	int autoBoot;
 	int autoCheats;
 	int igrType;

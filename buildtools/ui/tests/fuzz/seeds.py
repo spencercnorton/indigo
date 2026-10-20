@@ -215,9 +215,21 @@ def cheats(out: Path) -> None:
     (out / "no-name.txt").write_bytes(b"04275CAC FFFFFFFF\n")
 
 
+def time_sync(out: Path) -> None:
+    # Time zones as the guide's examples write them, and a server's reply to
+    # a request whose cookie is 0, the one the fuzzer checks against.
+    for name, zone in (("denver", b"MST7MDT,M3.2.0,M11.1.0"), ("sydney", b"AEST-10AEDT,M10.1.0,M4.1.0/3"),
+                       ("nuuk", b"<-02>2<-01>,M3.5.0/-1,M10.5.0/0"), ("india", b"IST-5:30")):
+        (out / name).write_bytes(zone)
+    reply = bytearray(48)
+    reply[0], reply[1] = 0x24, 2
+    reply[40:48] = ((1792432800 + 2208988800) << 32 | 1 << 31).to_bytes(8, "big")
+    (out / "reply").write_bytes(bytes(reply))
+
+
 def main() -> int:
     out = Path(sys.argv[1])
-    for target in (history, saves, raw_saves, posters, about, settings, fst, png, cheats, wiiload):
+    for target in (history, saves, raw_saves, posters, about, settings, fst, png, cheats, wiiload, time_sync):
         folder = out / target.__name__
         folder.mkdir(parents=True, exist_ok=True)
         target(folder)
