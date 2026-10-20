@@ -21,6 +21,7 @@
 #include "bba.h"
 #include "sram.h"
 #include "rt4k.h"
+#include "time_sync.h"
 #include "input.h"
 #include "ui_color.h"
 #include "ui_motion.h"
@@ -186,7 +187,7 @@ static char *tooltips_network[PAGE_NETWORK_MAX+1] = {
 	[SET_BBA_GATEWAY] = "IPv4 Gateway:\n\nYour router's address when DHCP is off.",
 	[SET_BBA_DHCP] = "IPv4 uses DHCP:\n\nYes - Your router assigns the address, netmask and gateway (default)\nNo - Use the address, netmask and gateway set above",
 	[SET_NTP_SYNC] = "Sync Clock:\n\nYes - Set the clock from the NTP server when the network starts\nNo - Leave the clock as it is (default)\n\nThe IPL and games see the new time too. The network starts with\nIndigo when Init network at startup is on.",
-	[SET_NTP_HOSTIP] = "NTP Server IP:\n\nAddress of the time server Sync Clock asks. The default,\n162.159.200.123, is Cloudflare's. A name won't work: the console\nhas no DNS.",
+	[SET_NTP_HOSTIP] = "NTP Server IP:\n\nAddress of the time server Sync Clock asks. Empty asks\nCloudflare's, 162.159.200.123 (default). A name won't work: the\nconsole has no DNS.",
 	[SET_TIME_ZONE] = "Time Zone:\n\nA POSIX TZ string, such as MST7MDT,M3.2.0,M11.1.0 (US Mountain),\nGMT0BST,M3.5.0/1,M10.5.0 (UK) or IST-5:30 (India). Daylight time\nchanges by itself.\n\nEmpty keeps the zone the clock is already in, to the nearest\nquarter hour; you change it for daylight time in the IPL.",
 	[SET_FSP_HOSTIP] = "FSP Host IP:\n\nAddress of the computer running the FSP server with your games.",
 	[SET_FSP_PORT] = "FSP Port:\n\nPort of the FSP server (21 by default).",
@@ -1148,7 +1149,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_BBA_GATEWAY: rowText(row, "IPv4 Gateway:", swissSettings.bbaGateway, netEnable); break;
 			case SET_BBA_DHCP: rowYesNo(row, "IPv4 uses DHCP:", swissSettings.bbaUseDhcp, netEnable); break;
 			case SET_NTP_SYNC: rowYesNo(row, "Sync Clock:", swissSettings.ntpSync, netEnable); break;
-			case SET_NTP_HOSTIP: rowText(row, "NTP Server IP:", swissSettings.ntpHostIp, netEnable); break;
+			case SET_NTP_HOSTIP: rowText(row, "NTP Server IP:", swissSettings.ntpHostIp[0] ? swissSettings.ntpHostIp : TIME_SYNC_DEFAULT_SERVER, netEnable); break;
 			case SET_TIME_ZONE: rowText(row, "Time Zone:", swissSettings.timeZone[0] ? swissSettings.timeZone : "Keep console's", netEnable); break;
 			case SET_FSP_HOSTIP: rowText(row, "FSP Host IP:", swissSettings.fspHostIp, netEnable); break;
 			case SET_FSP_PORT: rowTextNumber(row, "FSP Port:", swissSettings.fspPort, netEnable); break;

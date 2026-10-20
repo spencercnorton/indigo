@@ -65,7 +65,8 @@ void time_sync_network(void)
 	int32_t east;
 	u32 rtc;
 
-	if(!swissSettings.ntpSync || !inet_aton(swissSettings.ntpHostIp, &server) ||
+	if(!swissSettings.ntpSync || !inet_aton(swissSettings.ntpHostIp[0] ?
+		swissSettings.ntpHostIp : TIME_SYNC_DEFAULT_SERVER, &server) ||
 		!time_sync_ask(server, &utc)) {
 		return;
 	}
