@@ -233,9 +233,14 @@ void load_auto_dol(int argc, char *argv[]) {
 void print_debug(const char *fmt, ...)
 {
 	/* Indigo: every line also goes to the console lab's log (gui/lab.c),
-	 * stamped with the time since power-on. */
+	 * stamped with the time since the first line. libogc2 starts the time
+	 * base at the console's clock, so gettime() alone counts from 2000. */
+	static u64 start;
 	char line[256];
-	u64 ms = ticks_to_millisecs(gettime());
+	u64 now = gettime();
+	if (start == 0)
+		start = now;
+	u64 ms = ticks_to_millisecs(diff_ticks(start, now));
 	int prefix = snprintf(line, sizeof(line), "[%5u.%03u] ", (unsigned)(ms / 1000), (unsigned)(ms % 1000));
 	va_list arglist;
 	va_start(arglist, fmt);

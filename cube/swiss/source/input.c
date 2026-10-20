@@ -72,6 +72,8 @@ static void samplingCallback(void)
 
 void padsInit()
 {
+	/* Quiet counts from here until a real button goes down. */
+	realInputAt = gettime();
 	PAD_Init();
 	SI_InitSteering();
 	SI_SetSteeringSamplingCallback(samplingCallback);

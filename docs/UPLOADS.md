@@ -38,8 +38,8 @@ it in `global.ini`.
 
 - `GET /xfb` is the framebuffer on screen, raw YUYV; `X-Size` in the reply
   gives its size for `ffmpeg -s`.
-- `GET /log` is every debug line since power-on: the first 16 KiB and the
-  latest 48 KiB.
+- `GET /log` is every debug line since Indigo started: the first 16 KiB
+  and the latest 48 KiB.
 - `GET /pad` says how long since a real controller's button went down, so
   a test run can wait until nobody is playing.
 - `POST /pad?press=<buttons>&hold=<ms>` presses buttons on a virtual pad:
