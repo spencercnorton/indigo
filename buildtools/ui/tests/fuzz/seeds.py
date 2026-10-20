@@ -155,6 +155,14 @@ def about(out: Path) -> None:
     (out / "hand-written").write_bytes(b"GZLE01\tSail the Great Sea.\r\n\r\ngale01 not an ID\nGALE01 Melee\nGALE01 again")
 
 
+def lab(out: Path) -> None:
+    # Console lab requests as curl sends them, and LogHost settings.
+    (out / "xfb").write_bytes(b"GET /xfb HTTP/1.1\r\nHost: 192.168.1.135:4300\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\n\r\n")
+    (out / "press").write_bytes(b"POST /pad?press=A,Right&hold=150 HTTP/1.1\r\nHost: cube\r\nX-Lab: 1\r\nContent-Length: 0\r\n\r\n")
+    (out / "reset-no-header").write_bytes(b"POST /reset HTTP/1.1\r\nHost: cube\r\n\r\n")
+    (out / "log-host").write_bytes(b"192.168.1.57:4405")
+
+
 def settings(out: Path) -> None:
     for example in sorted((ROOT / "docs/examples").rglob("*.ini")):
         shutil.copyfile(example, out / example.name)
@@ -229,7 +237,7 @@ def time_sync(out: Path) -> None:
 
 def main() -> int:
     out = Path(sys.argv[1])
-    for target in (history, saves, raw_saves, posters, about, settings, fst, png, cheats, wiiload, time_sync):
+    for target in (history, saves, raw_saves, posters, about, lab, settings, fst, png, cheats, wiiload, time_sync):
         folder = out / target.__name__
         folder.mkdir(parents=True, exist_ok=True)
         target(folder)

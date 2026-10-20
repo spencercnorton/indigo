@@ -211,6 +211,8 @@ most use the same key there.
 | `SMBPassword` | Text, stored as written. | empty | SMB Password |
 | `RT4KHostIP` | An IPv4 address. | empty | RetroTINK-4K Host IP |
 | `RT4KPort` | A port number. | `0` | RetroTINK-4K Port |
+| `LabServer` | `Yes`, `No`. `Yes` opens TCP port 4300 to a test run on the LAN: screenshots, the debug log, a virtual controller and a restart ([Console lab](UPLOADS.md#console-lab)). | `No` | — |
+| `LogHost` | An IPv4 address, with `:port` or without (port `4405`). Each debug line goes there over UDP. | empty | — |
 
 ### Setup › Library
 
