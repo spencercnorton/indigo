@@ -626,6 +626,8 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "BBANetmask=%hu\r\n", swissSettings.bbaNetmask);
 	fprintf(fp, "BBAGateway=%s\r\n", swissSettings.bbaGateway);
 	fprintf(fp, "BBAUseDHCP=%s\r\n", swissSettings.bbaUseDhcp ? "Yes":"No");
+	fprintf(fp, "LabServer=%s\r\n", swissSettings.labServer ? "Yes":"No");
+	fprintf(fp, "LogHost=%s\r\n", swissSettings.logHost);
 	fprintf(fp, "ShowHiddenFiles=%s\r\n", swissSettings.showHiddenFiles ? "Yes":"No");
 	fprintf(fp, "RecentListLevel=%s\r\n", recentListLevelStr[swissSettings.recentListLevel]);
 	fprintf(fp, "GCLoaderHWVersion=%i\r\n", swissSettings.gcloaderHwVersion);
@@ -1797,6 +1799,12 @@ void config_parse_global(char *configData, bool settingsFile) {
 				}
 				else if(!strcmp("BBAUseDHCP", name)) {
 					swissSettings.bbaUseDhcp = !strcmp("Yes", value);
+				}
+				else if(!strcmp("LabServer", name)) {
+					swissSettings.labServer = !strcmp("Yes", value);
+				}
+				else if(!strcmp("LogHost", name)) {
+					strlcpy(swissSettings.logHost, value, sizeof(swissSettings.logHost));
 				}
 				else if(!strcmp("ShowHiddenFiles", name)) {
 					swissSettings.showHiddenFiles = !strcmp("Yes", value);
