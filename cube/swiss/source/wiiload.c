@@ -32,6 +32,7 @@
 #include "bba.h"
 #include "elf.h"
 #include "gui/FrameBufferMagic.h"
+#include "gui/lab.h"
 #include "gui/menuaudio.h"
 #include "mp3.h"
 #include "patcher.h"
@@ -391,6 +392,9 @@ void init_wiiload_tcp_thread(void)
 {
 	if (net_initialized && tcp_thread == LWP_THREAD_NULL)
 		LWP_CreateThread(&tcp_thread, tcp_thread_func, NULL, NULL, 0, LWP_PRIO_NORMAL);
+	/* Indigo: the network is up, so the console lab starts too (gui/lab.c). */
+	if (net_initialized)
+		lab_start();
 }
 
 void init_wiiload_usb_thread(void *arg)

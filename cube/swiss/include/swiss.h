@@ -201,6 +201,8 @@ typedef struct {
 	u16 bbaNetmask;
 	char bbaGateway[16];
 	bool bbaUseDhcp;
+	bool labServer;	// LabServer: the console lab's port, off by default (gui/ui_lab.h)
+	char logHost[24];	// LogHost: address[:port] that gets each print_debug line over UDP; empty = none
 	int autoBoot;
 	int autoCheats;
 	int igrType;
