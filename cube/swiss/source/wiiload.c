@@ -190,8 +190,9 @@ static bool wiiload_range(size_t offset, size_t length, size_t size)
 }
 
 /* Sidestep has no input-length argument. Prove its header/table/payload
- * reads fit before calling it, including its entrypoint's argv probe. */
-static bool wiiload_image_valid(const u8 *image, size_t size, bool raw)
+ * reads fit before calling it, including its entrypoint's argv probe.
+ * boot_dol checks a file from a card with it too. */
+bool wiiload_image_valid(const u8 *image, size_t size, bool raw)
 {
 	bool entryFound = false;
 	u32 entry;
