@@ -72,6 +72,13 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Animal Crossing Deluxe starts with Force Widescreen off. The game has its
+  own Widescreen mode and sizes its rain and snow by it, so widening the game
+  from Indigo as well left the sides of the screen without weather and
+  stretched the clock and other on-screen displays. For 16:9, turn on
+  Widescreen mode in the game's Settings at startup. A game file that sets
+  Force Widescreen still applies.
+
 - Repository links, the address on System › Info and CI runner defaults
   follow the renamed GitHub account.
 
