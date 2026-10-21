@@ -151,7 +151,7 @@ static bool getRawDTVStatus(void) { return false; }
     "void config_parse_game(char *configData, ConfigEntry *entry);\n"
     "typedef unsigned long long u64;\n"
     "static u64 harness_ms;\n"
-    "static u64 gettime(void) { return harness_ms; }\n"
+    "static u64 SYS_GetSystemTime(void) { return harness_ms; }\n"
     "#define ticks_to_millisecs(t) (t)\n"
     "static int harness_scan_result, harness_scans;\n"
     "static int config_each_game_file(void (*visit)(const char *, char *, void *), void *context)\n"

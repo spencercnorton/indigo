@@ -80,6 +80,7 @@ s32 LWP_SemDestroy(sem_t sem);
     "ogc/lwp_watchdog.h": r"""
 #include <gccore.h>
 u64 gettime(void);
+int64_t SYS_GetSystemTime(void);
 #define ticks_to_millisecs(ticks) (ticks)
 """,
     "FrameBufferMagic.h": r"""
@@ -225,6 +226,8 @@ u64 gettime(void)
 	clock_gettime(CLOCK_MONOTONIC, &now);
 	return (u64)now.tv_sec * 1000u + (u64)now.tv_nsec / 1000000u;
 }
+
+int64_t SYS_GetSystemTime(void) { return (int64_t)gettime(); }
 
 s32 LWP_CreateThread(lwp_t *thread, void *(*entry)(void *), void *arg,
 	void *stack, u32 stackSize, u8 priority)

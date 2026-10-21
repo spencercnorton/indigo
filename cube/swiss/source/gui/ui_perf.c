@@ -39,7 +39,7 @@ void UIPerf_Reset(void)
 
 u64 UIPerf_Now(void)
 {
-	return gettime();
+	return SYS_GetSystemTime();
 }
 
 void UIPerf_RecordTicks(uiPerfMetric_t metric, u64 startTicks, u64 endTicks)

@@ -857,13 +857,13 @@ void settings_game_files_forget(void)
 void settings_game_files_load(void)
 {
 	if(settingsGameFilesRead || (settingsGameFilesFailed &&
-		ticks_to_millisecs(gettime() - settingsGameFilesFailedAt) <
+		ticks_to_millisecs(SYS_GetSystemTime() - settingsGameFilesFailedAt) <
 			SETTINGS_GAME_FILES_RETRY_MS)) {
 		return;
 	}
 	settingsGameFilesFailed = config_each_game_file(settingsKeepGameFile, NULL) < 0;
 	if(settingsGameFilesFailed) {
-		settingsGameFilesFailedAt = gettime();
+		settingsGameFilesFailedAt = SYS_GetSystemTime();
 	}
 	else {
 		settingsGameFilesRead = true;

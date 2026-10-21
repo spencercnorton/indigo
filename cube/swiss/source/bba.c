@@ -114,6 +114,7 @@ bool init_network(void)
 {
 	init_network_async();
 	wait_network();
+	time_sync_wait();
 	return net_initialized && (bba_localip.s_addr = net_gethostip()) != INADDR_ANY;
 }
 

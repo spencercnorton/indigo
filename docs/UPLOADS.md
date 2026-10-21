@@ -45,15 +45,16 @@ it in `global.ini`.
 - `POST /pad?press=<buttons>&hold=<ms>` presses buttons on a virtual pad:
   A, B, X, Y, Z, L, R, Start, Up, Down, Left and Right, comma separated,
   held 1 to 5000 ms (100 by default).
-- `POST /reset` restarts the console into its boot program.
+- `POST /reset` restarts the console into its boot program. An upload
+  under way goes first; if it starts a program, that is the restart.
 
 A POST needs the `X-Lab` header. A browser sends a header of its own only
 after a preflight this server never answers, so no web page can press or
 restart.
 
 `LogHost=<address>[:port]` (port 4405 by default) sends each debug line over
-UDP as it is written, starting with the lines from before the network came
-up.
+UDP, starting with the lines from before the network came up. A thread of
+its own sends them, so a thread that logs never waits for the network.
 
 `gui/ui_lab.c` reads the requests and settings; `test_ui_lab` and the `lab`
 target in `buildtools/ui/tests/fuzz/run_fuzz.sh` cover it.

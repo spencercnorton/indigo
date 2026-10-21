@@ -240,7 +240,7 @@ static bool idCharsValid(const char *id) {
 
 #ifndef UI_ASSETS_HOST_BUILD
 static u32 defaultNowMs(void) {
-	return (u32)ticks_to_millisecs(gettime());
+	return (u32)ticks_to_millisecs(SYS_GetSystemTime());
 }
 #endif
 
