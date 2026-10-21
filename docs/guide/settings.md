@@ -252,6 +252,7 @@ The Settings tour above predates the Apps Video Mode row.
 | --- | --- |
 | Init network at startup | Starts the Broadband Adapter when Indigo starts. |
 | IPv4 uses DHCP, IPv4 Address, Netmask, Gateway | Your router assigns the address, or you set it here. |
+| Sync Clock, NTP Server IP, Time Zone | Sets the clock from a time server each time the network starts; the IPL and games see it too. Time Zone is a POSIX TZ string such as `MST7MDT,M3.2.0,M11.1.0` (US Mountain), so daylight time changes by itself. Empty keeps the zone the clock is in. |
 | FSP Host IP, Port, Password, Path MTU | A computer serving your games over FSP. |
 | FTP Host IP, Port, Username, Password, PASV Mode | An FTP server with your games. Try PASV if listings stall. |
 | SMB Host IP, Share, Username, Password | A computer sharing your games over SMB. |
