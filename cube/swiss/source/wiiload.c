@@ -190,8 +190,9 @@ static bool wiiload_range(size_t offset, size_t length, size_t size)
 }
 
 /* Sidestep has no input-length argument. Prove its header/table/payload
- * reads fit before calling it, including its entrypoint's argv probe. */
-static bool wiiload_image_valid(const u8 *image, size_t size, bool raw)
+ * reads fit before calling it, including its entrypoint's argv probe.
+ * boot_dol checks a file from a card with it too. */
+bool wiiload_image_valid(const u8 *image, size_t size, bool raw)
 {
 	bool entryFound = false;
 	u32 entry;
@@ -403,4 +404,11 @@ void init_wiiload_tcp_thread(void)
 void init_wiiload_usb_thread(void *arg)
 {
 	LWP_CreateThread(&usb_thread, usb_thread_func, arg, NULL, 0, LWP_PRIO_LOWEST);
+}
+
+/* Indigo: the console lab's POST /reset runs an upload's hand-off too
+ * (gui/lab.c), so it takes the upload's lock first and keeps it. */
+void wiiload_hold(void)
+{
+	LWP_MutexLock(upload_mutex);
 }

@@ -26,6 +26,49 @@ The fork's pull request (spencernorton/cubebrowser#2) merged as `412d592`,
 the tree tested, and `CUBEBROWSER_REF` pins it in both workflows. Left
 open: the Web face hand-off is unchecked on a console. The card holds the
 released browser, which has no lab, so a launch there ends remote control.
+## 2026-10-21 — Lab and Sync Clock: reset vs uploads, locked frame copy, LogHost thread, steady timers
+
+Closes the lab and Sync Clock items the 2.5 review left open (entry below).
+
+`POST /reset` ran an upload's hand-off (suspend the main thread, stop the
+audio, `DrawShutdown`, `SYS_ResetSystem`) without wiiload's `upload_mutex`,
+so a reset during an upload could run it twice. `lab_restart` takes
+`wiiload_hold()` first (declared in `gui/lab.h`, so `wiiload.h` stays
+upstream's): an upload under way finishes, a good one restarting the console
+itself, and none starts after. `GET /xfb` copied
+`VIDEO_GetCurrentFramebuffer()` unlocked while `setVideoMode` frees and
+reallocates the framebuffers under `_videomutex`; it now sizes and copies
+the frame inside `DrawWithVideoLocked`. The video thread, at the highest
+priority, draws first after the retrace, so the copy takes the rest of the
+frame.
+
+LogHost did a synchronous `net_send` under a mutex for every `print_debug`,
+on whatever thread logged. A sender thread now drains the log ring with
+`IndigoLog_Read` (a position; only appends that have finished, counted in
+`committed`; the same gap note as `IndigoLog_Copy`), woken by a semaphore
+`lab_log` posts. A post is safe in an interrupt (libogc2's IRQ entry raises
+the dispatch-disable level), so lines logged there reach LogHost too.
+
+`clock_settime` goes through `__SYS_SetTime`, which writes the time base
+and moves the boot-time bias at 0x800030d8 by as much: `gettime()` steps,
+`SYS_GetSystemTime()` (CLOCK_MONOTONIC, and libogc2's own sleeps and
+alarms) doesn't. Indigo's interval timers use it now: the log's stamps, the
+virtual pad and its idle time, the poster cache's eviction quarantine,
+Apps art, frame deltas, the perf clock and the settings-device retry. On
+`gettime()` on purpose: the MMCE deadlines (`card_slots.c`,
+`ui_card_slots.c`, `gameflowWaitForCardIds`, which the MemCard PRO
+qualification fingerprints), the EXI probe times `load_app` hands a game
+(0x800030C0/C4, read against the game's clock), upstream's copy progress
+and FTP timeouts, and the SNTP round trip.
+
+SNTP ran on the network thread `wait_network()` joins, so an unanswered
+server held the first Settings open or game launch for 3 s.
+`time_sync_network()` now copies its settings there and starts a detached
+thread. Two places still wait for it: `init_network()` (FTP, SMB, FSP)
+calls `time_sync_wait()`, since FTP times out on `gettime()` and fsplib on
+`gettimeofday()`; and a game's launch calls `time_sync_close()` before
+`gameflowWaitForCardIds`, after which Sync Clock doesn't step (a step
+under way finishes first; the check is made with interrupts off).
 
 ## 2026-10-21 — 2.5 review on a console: Web face, Apps Video Mode, uploads
 

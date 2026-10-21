@@ -21,9 +21,10 @@ static u32 menuInputValidMask;
 static u32 buttonsDown;
 /* The console lab's virtual pad (gui/lab.c): buttons pressed over the LAN,
  * held until virtualUntil. A new press counts as down once, at the next
- * scan, even when it repeats the last one. */
+ * scan, even when it repeats the last one. Both times here are on the
+ * steady clock: Sync Clock steps gettime(). */
 static u32 virtualButtons;
-static u64 virtualUntil;
+static s64 virtualUntil;
 static u32 virtualPresses, virtualPressesSeen;
 /* When a real controller last had a button down: the lab waits for quiet. */
 static u64 realInputAt;
@@ -73,7 +74,7 @@ static void samplingCallback(void)
 void padsInit()
 {
 	/* Quiet counts from here until a real button goes down. */
-	realInputAt = gettime();
+	realInputAt = SYS_GetSystemTime();
 	PAD_Init();
 	SI_InitSteering();
 	SI_SetSteeringSamplingCallback(samplingCallback);
@@ -90,7 +91,7 @@ void padsScan(void)
 		PAD_ButtonsDown(PAD_CHAN2) | PAD_ButtonsDown(PAD_CHAN3);
 	if(PAD_ButtonsHeld(PAD_CHAN0) | PAD_ButtonsHeld(PAD_CHAN1) |
 	   PAD_ButtonsHeld(PAD_CHAN2) | PAD_ButtonsHeld(PAD_CHAN3))
-		realInputAt = gettime();
+		realInputAt = SYS_GetSystemTime();
 	if(virtualPresses != virtualPressesSeen) {
 		virtualPressesSeen = virtualPresses;
 		buttonsDown |= virtualButtons;
@@ -101,7 +102,7 @@ void padsVirtualPress(u32 buttons, u32 holdMs)
 {
 	u32 level = IRQ_Disable();
 	virtualButtons = buttons;
-	virtualUntil = gettime() + millisecs_to_ticks(holdMs);
+	virtualUntil = SYS_GetSystemTime() + (s64)millisecs_to_ticks(holdMs);
 	virtualPresses++;
 	IRQ_Restore(level);
 }
@@ -111,14 +112,14 @@ u32 padsRealIdleMs(void)
 	u32 level = IRQ_Disable();
 	u64 at = realInputAt;
 	IRQ_Restore(level);
-	u64 idle = ticks_to_millisecs(diff_ticks(at, gettime()));
+	u64 idle = ticks_to_millisecs(diff_ticks(at, SYS_GetSystemTime()));
 	return idle > 0xFFFFFFFFull ? 0xFFFFFFFFu : (u32)idle;
 }
 
 static u32 virtualHeld(void)
 {
 	u32 level = IRQ_Disable();
-	u32 held = gettime() < virtualUntil ? virtualButtons : 0;
+	u32 held = SYS_GetSystemTime() < virtualUntil ? virtualButtons : 0;
 	IRQ_Restore(level);
 	return held;
 }

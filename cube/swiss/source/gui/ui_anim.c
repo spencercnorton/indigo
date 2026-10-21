@@ -13,14 +13,14 @@ static float elapsedSeconds;
 
 void UIAnim_Reset(void)
 {
-	lastTicks = gettime();
+	lastTicks = SYS_GetSystemTime();
 	frameDelta = 0.0f;
 	elapsedSeconds = 0.0f;
 }
 
 void UIAnim_BeginFrame(void)
 {
-	u64 now = gettime();
+	u64 now = SYS_GetSystemTime();
 	u64 elapsedTicks = diff_ticks(lastTicks, now);
 	u64 elapsedMicroseconds = ticks_to_microsecs(elapsedTicks);
 	float delta = (float)elapsedMicroseconds / 1000000.0f;

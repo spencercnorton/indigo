@@ -70,6 +70,7 @@
 #include "gui/ui_scene.h"
 #include "gui/ui_motion.h"
 #include "gui/ui_stage.h"
+#include "gui/time_sync.h"
 #include "devices/deviceHandler.h"
 #include "devices/filelock.h"
 #include "devices/filemeta.h"
@@ -5767,6 +5768,17 @@ fail_early:
 	}
 }
 
+/* Whether a file boot_dol read whole may start: a DOL Swiss knows must match
+ * its hash, and sidestep, which copies sections without a length, must find
+ * each one the header names inside the file, so a copy cut short is refused.
+ * SDLOADER.BIN and branch BINs load raw, as boot_dol loads them. */
+static bool boot_image_valid(file_handle *file, void *buffer, XXH64_hash_t hash)
+{
+	bool raw = file->size >= 4 && memcmp(buffer, ELFMAG, SELFMAG) != 0 &&
+		(endsWith(file->name, "/SDLOADER.BIN") || branchResolve(buffer, PATCH_BIN, 0));
+	return valid_dol_xxh3(file, hash) && wiiload_image_valid(buffer, file->size, raw);
+}
+
 void boot_dol(file_handle* file, int argc, char *argv[])
 {
 	void *buffer = memalign(32, file->size);
@@ -5801,7 +5813,7 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	}
 	
 	XXH64_hash_t hash = XXH3_64bits(buffer, file->size);
-	if(!valid_dol_xxh3(file, hash)) {
+	if(!boot_image_valid(file, buffer, hash)) {
 		DrawDispose(progBar);
 		free(buffer);
 		file->device->closeFile(file);
@@ -6738,6 +6750,9 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 		free(config);
 		goto exit;
 	}
+	/* From here the launch times its waits and hands the game the clock, so
+	 * Sync Clock leaves the clock as it is (gui/time_sync.c). */
+	time_sync_close();
 	gameflowWaitForCardIds();
 	/* A Library launch shows the launch screen from here to the hand-off,
 	 * Boot without prompts included. */

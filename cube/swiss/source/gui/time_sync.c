@@ -3,12 +3,23 @@
 #include <network.h>
 #include <ogc/lwp_watchdog.h>
 #include <ogc/system.h>
+#include <ogc/irq.h>
+#include <ogc/lwp.h>
+#include <string.h>
 
 #include "swiss.h"
 #include "time_sync.h"
 #include "ui_time_sync.h"
+#include "util.h"
 
 #define TIME_SYNC_TRIES 3	/* a second each: the first can go before ARP has an answer */
+
+/* What the thread asks, copied on the network thread: Settings waits for
+ * that thread, so it can't change them underneath. */
+static struct in_addr timeSyncServer;
+static char timeSyncZone[sizeof(swissSettings.timeZone)];
+static volatile enum { TIME_SYNC_IDLE, TIME_SYNC_ASKING, TIME_SYNC_STEPPING } timeSyncState;
+static volatile bool timeSyncClosed;
 
 /* One SNTP request, a second's wait for the reply, three tries. The reply is
  * the server's time; half the round trip and the time since bring it to now. */
@@ -59,30 +70,42 @@ static bool time_sync_ask(struct in_addr server, int64_t *utcMicroseconds)
 /* The console keeps local time with no zone, and so does the IPL: the time base
  * while it runs, and after a restart the RTC's seconds plus the SRAM's counter
  * bias. Both move, so games and the IPL read the new time too. */
-void time_sync_network(void)
+static void time_sync_set(void)
 {
-	struct in_addr server;
 	int64_t utc;
 	int32_t east;
 	u32 rtc;
 
-	if(!swissSettings.ntpSync || !inet_aton(swissSettings.ntpHostIp[0] ?
-		swissSettings.ntpHostIp : TIME_SYNC_DEFAULT_SERVER, &server) ||
-		!time_sync_ask(server, &utc)) {
+	if(!time_sync_ask(timeSyncServer, &utc)) {
+		print_debug("Sync Clock: no answer from the NTP server\n");
 		return;
 	}
 	int64_t utcSeconds = utc / 1000000;
-	if(swissSettings.timeZone[0] == '\0') {
+	if(timeSyncZone[0] == '\0') {
 		east = UITimeSync_KeptOffset(time(NULL), utcSeconds);
 	}
-	else if(!UITimeSync_ZoneOffset(swissSettings.timeZone, utcSeconds, &east)) {
+	else if(!UITimeSync_ZoneOffset(timeSyncZone, utcSeconds, &east)) {
+		print_debug("Sync Clock: Time Zone %s isn't a POSIX TZ string\n", timeSyncZone);
+		return;
+	}
+	/* A game's launch that began meanwhile keeps the clock as it is. */
+	u32 level = IRQ_Disable();
+	bool open = !timeSyncClosed;
+	if(open) timeSyncState = TIME_SYNC_STEPPING;
+	IRQ_Restore(level);
+	if(!open) {
+		print_debug("Sync Clock: a game started first, so the clock stays\n");
 		return;
 	}
 	int64_t local = utc + (int64_t)east * 1000000;
 	struct timespec now = {
 		.tv_sec = (time_t)(local / 1000000), .tv_nsec = (long)(local % 1000000) * 1000,
 	};
+	struct timespec was;
+	clock_gettime(CLOCK_REALTIME, &was);
 	clock_settime(CLOCK_REALTIME, &now);
+	print_debug("Sync Clock: moved the clock %lld ms\n", (long long)(now.tv_sec - was.tv_sec) * 1000 +
+		(now.tv_nsec - was.tv_nsec) / 1000000);
 	/* __SYS_GetRTC gives up while another device holds EXI channel 0 (an
 	 * adapter sending, a card mid-transfer). Try for a moment longer: the
 	 * counter bias is what keeps this time over a power-off. */
@@ -93,5 +116,45 @@ void time_sync_network(void)
 	if(haveRtc) {
 		SYS_SetCounterBias((u32)(now.tv_sec - DIFF_SEC_1970_2000) - rtc);
 		while(!__SYS_SyncSram());
+	}
+}
+
+static void *time_sync_thread(void *unused)
+{
+	(void)unused;
+	LWP_DetachThread(LWP_THREAD_NULL);
+	time_sync_set();
+	timeSyncState = TIME_SYNC_IDLE;
+	return NULL;
+}
+
+void time_sync_network(void)
+{
+	lwp_t thread;
+
+	if(!swissSettings.ntpSync || !inet_aton(swissSettings.ntpHostIp[0] ?
+		swissSettings.ntpHostIp : TIME_SYNC_DEFAULT_SERVER, &timeSyncServer)) {
+		return;
+	}
+	memcpy(timeSyncZone, swissSettings.timeZone, sizeof(timeSyncZone));
+	timeSyncZone[sizeof(timeSyncZone) - 1] = '\0';
+	timeSyncState = TIME_SYNC_ASKING;
+	if(LWP_CreateThread(&thread, time_sync_thread, NULL, NULL, 0, LWP_PRIO_LOWEST) != 0) {
+		timeSyncState = TIME_SYNC_IDLE;
+	}
+}
+
+void time_sync_wait(void)
+{
+	while(timeSyncState != TIME_SYNC_IDLE) {
+		usleep(10000);
+	}
+}
+
+void time_sync_close(void)
+{
+	timeSyncClosed = true;
+	while(timeSyncState == TIME_SYNC_STEPPING) {
+		usleep(1000);
 	}
 }

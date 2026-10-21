@@ -24,6 +24,13 @@ void IndigoLog_Append(const char *text, size_t length);
  * Returns the length written. */
 size_t IndigoLog_Copy(char *out, size_t capacity);
 
+/* What was appended since *from (0: the start), up to capacity bytes and
+ * ending on a line where one fits; *from moves past it. A *from the ring
+ * has let go of gets IndigoLog_Copy's note instead and moves to the oldest
+ * byte kept. Not NUL-terminated. Returns 0 when nothing is new, and while
+ * an append is still being written: its bytes may not be there yet. */
+size_t IndigoLog_Read(unsigned *from, char *out, size_t capacity);
+
 /* Tests only: forget everything. */
 void IndigoLog_Reset(void);
 

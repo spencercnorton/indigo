@@ -10,8 +10,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 - Settings › Network › Sync Clock sets the console's clock from an NTP
   server each time the network starts, so a network adapter keeps the
-  clock right. The IPL and games see the new time too. It shows only when
-  a network adapter is there, and stays off until you turn it on. Time
+  clock right. The IPL and games see the new time too. It asks in the
+  background, so a server that doesn't answer never holds up Settings or
+  a game; a game started before the answer keeps the time it had. It
+  shows only when a network adapter is there, and stays off until you
+  turn it on. Time
   Zone takes a POSIX TZ string, such as `MST7MDT,M3.2.0,M11.1.0`, and
   changes for daylight time by itself; left empty, the clock keeps the
   zone it is in, snapped to the nearest real one so a clock that drifted
@@ -51,6 +54,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
   exact advertised size; network reads time out after ten idle seconds.
   DOL/ELF headers, sections and entrypoint probes stay inside the received
   file. Uploads no longer suspend the menu while it owns the video lock.
+- A DOL or ELF started from a card is checked the same way: one cut short,
+  such as a copy that stopped partway, says "DOL is corrupted" instead of
+  starting and running whatever lies past its end. SDLOADER.BIN and other
+  raw BINs still start.
 
 - The pinned build now links libiconv-lite instead of the full character-set
   library, reducing the DOL by about 834 KiB while retaining every banner
@@ -79,8 +86,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - A console lab for testing on real hardware, off by default. With
   `LabServer=Yes`, TCP port 4300 serves the framebuffer on screen, the debug
   log and a virtual controller, and restarts the console, so a test run on
-  the LAN can drive and check Indigo with nobody at the console.
-  `LogHost` sends every debug line over UDP. See `docs/UPLOADS.md`.
+  the LAN can drive and check Indigo with nobody at the console; a
+  restart waits for an upload under way. `LogHost` sends every debug line
+  over UDP from a thread of its own, so nothing that logs waits for the
+  network. The log's times and virtual presses run on the steady clock,
+  which Sync Clock doesn't move. See `docs/UPLOADS.md`.
 - A weekly Swiss watch (`.github/workflows/swiss-watch.yml`) checks whether
   upstream Swiss moved past the commit `UPSTREAM` names. Cheap gates first
   (one `ls-remote`, then a deterministic file filter) keep silent weeks

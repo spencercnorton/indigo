@@ -28,7 +28,7 @@ static volatile bool posterStop;
 
 static u32 nowMs(void)
 {
-	return (u32)ticks_to_millisecs(gettime());
+	return (u32)ticks_to_millisecs(SYS_GetSystemTime());
 }
 
 /* The card's picture, read whole: its bytes in *data (the caller frees
