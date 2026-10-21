@@ -61,6 +61,20 @@ jobs:
             echo "::error::The DOL names the folder it was built in ($PWD): a build elsewhere would differ."
             exit 1
           fi
+      - name: Build the bundled web browser
+        env:
+          # The Web face launches this; built from a pinned commit of our
+          # hardened fork (used with permission; see NOTICE).
+          CUBEBROWSER_REPO: https://github.com/spencernorton/cubebrowser
+          CUBEBROWSER_REF: cfe550b255eb432377e1d3abe12a8b92006cd0ae
+        run: |
+          git clone --no-tags "$CUBEBROWSER_REPO" browser-src
+          git -C browser-src -c advice.detachedHead=false checkout "$CUBEBROWSER_REF"
+          (cd browser-src && ./get-mbedtls.sh && make -j8)
+          mkdir -p browser/gcbrowser
+          cp browser-src/cubebrowser.dol browser/cubebrowser.dol
+          cp browser-src/sd/gcbrowser/cacert.pem browser/gcbrowser/cacert.pem
+          rm -rf browser-src
       - name: Package and check the SD card zip
         run: |
           version="ci-$(git rev-parse --short=8 HEAD)"

@@ -65,5 +65,11 @@ Third-party components redistributed in this tree:
     and OGA-BY 3.0). Indigo's menu music is made from it; see
     buildtools/audio/README.md.
 
+  CubeBrowser — https://github.com/Arial-Bold/Cubebrowser
+    By Arial-Bold. Used with permission. A GameCube web browser that ships in
+    this download as a separate program, swiss/indigo/cubebrowser.dol, which
+    the Web face launches; it is not part of Indigo's own DOL. Built from a
+    hardened fork; see docs/dev/web-browser.md.
+
   XZ Embedded, and the other upstream third-party sources under cube/, carry
   their own notices in place.

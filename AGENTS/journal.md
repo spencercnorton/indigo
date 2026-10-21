@@ -1,3 +1,25 @@
+## 2026-10-21 — Web face mounts the config device; browser at cfe550b
+
+On a console with games on an SD2SP2 and settings on a GC Loader, the Web
+face said "The web browser isn't installed" although the GC Loader card had
+`swiss/indigo/cubebrowser.dol`. `launchWebBrowser` listed
+`devices[DEVICE_CONFIG]` without mounting it, and the config device stays
+mounted only while something reads it unless it is the Source
+(`config_unset_device`). It now calls `config_set_device()` first, lets the
+device go when the DOL isn't there, and keeps it through `boot_dol`, which
+reads the DOL from it (`boot_dol`'s own Recent list save mounts and lets go
+again). If `boot_dol` comes back, the DOL is closed and the device let go.
+The other readers of the config device already mount it (config.c's saves,
+Memory Cards, Game Details' SAVES, the Save Folder chooser, the File
+Browser's right pane) or, like play history, write only when it is the
+Source. `audit_four_face_home.py` pins the order.
+
+The browser is built from the fork's cfe550b: it finds the SD card in a GC
+Loader too, preferring the card whose `gcbrowser/` holds `cacert.pem`, and
+no longer draws a grey wedge over some pages. The workflows clone the fork
+at its renamed address. Beta (Sync Clock, the console lab) is merged into
+the face's branch, which now lands on beta.
+
 ## 2026-10-19 — Weekly CI runs on beta; housekeeping
 
 The weekly scheduled CI ran main's workflow on runners built from beta, so it
@@ -211,6 +233,25 @@ other picture was checked against the release tree's own emulator captures
 and the settings rows and help text since it was recorded: none else
 changed, apart from the File Browser pictures' lighter unfocused pane (the
 2026-10-08 entry), which doesn't show at the guide's size.
+
+## 2026-10-16 — Web browser bundled, fork published, CI wired
+
+The Web face now ships a real browser. The hardened CubeBrowser fork is public
+at github.com/spencercnorton/cubebrowser (used with permission from Arial-Bold;
+credited in NOTICE). sd_package.sh bundles swiss/indigo/cubebrowser.dol and a
+gcbrowser/ CA folder at the card root when browser/ is staged; check_package.py
+allows them and the zip tripwire rose to 9 MiB. ci.yml and release.yml build the
+browser from a pinned fork commit (CUBEBROWSER_REF) with the runner's libogc2
+toolchain and stage it into browser/ before packaging.
+
+Validated end to end on the CI image: Indigo build, then the browser built from
+the published fork, then sd_package and check_package, produce a 7.33 MB zip
+carrying the browser and its CA bundle, check green.
+
+Not done: pass the theme to the browser via argv (it ignores argv today); a
+console test of launching the browser and returning to Indigo; the full
+public-repo ruleset suite on the fork (it has baseline settings only). Lands
+after 2.4.
 
 ## 2026-10-16 — v2.4.0
 
@@ -469,6 +510,37 @@ Five-way 60-minute soak runs (`final936-e1/e2/m1/m2/m3`) and a code audit of the
 
 A launch while a MemCard PRO is switching stays as the real-card test build ran
 it (2026-10-15).
+
+## 2026-10-15 — Web browser cube face (Stage 1)
+
+Added a ninth Home face, Web, that launches a bundled GameCube web browser
+(cubebrowser.dol, a hardened fork of Arial-Bold/Cubebrowser) the way the Apps
+and Emulators faces launch a program. Chosen shape: launch a separate DOL, not
+compile the browser into ipl.dol — it keeps Indigo under the 6 MiB DOL tripwire
+(the in-process version would add ~1.18 MB against ~0.86 MB of headroom) and
+isolates a browser crash from the menu. Design note: docs/dev/web-browser.md.
+
+Changes: UI_HOME_FACE_WEB (always available, a side face like File Browser),
+its OPEN_WEB effect and a globe icon; the absent-face mask widened from 8 to 16
+bits for the ninth face; homeDispatchEffect -> launchWebBrowser(), which finds
+the DOL on the config device and hands it to boot_dol (which shuts the menu
+down and jumps); the four Settings face-choice lists, their help and
+docs/SETTINGS.md gain Web. Config still persists faces by name, so older files
+load unchanged (the choice indices shift, the names do not).
+
+Validation: the full Indigo DOL builds at 5,428,016 B (5.18 MB, under the
+tripwire) on the indigo-ci/build image, and the whole host suite — plain,
+sanitized and contracts, every audit and the home/gameflow/launch/stroke
+GX-stream goldens — passes; the default cube renders identically. Pinned tests
+updated: the motif-state size bound (640 -> 720), the stroke extraction list,
+frame_budget's icons[], audit_four_face_home's enum/label/icon checks and
+test_settings_file's face cycle.
+
+Not done: packaging the browser DOL and its gcbrowser/ CA folder into the zip
+(held pending the fork's license/publish path), passing the theme to the
+browser through argv, and a console test of the launch and the return to
+Indigo. Lands after 2.4 (this touches swiss.c, which resets the MemCard PRO
+qualification 2.4 is finishing).
 
 ## 2026-10-12 — Emulated card mounts gated on known sane status
 

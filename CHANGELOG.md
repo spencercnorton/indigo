@@ -17,6 +17,12 @@ tag on `beta`. The newest changes are at the top until their release is named.
   zone it is in, snapped to the nearest real one so a clock that drifted
   a few minutes still lands on its own zone. NTP Server IP is an address
   (the console has no DNS); empty asks Cloudflare's, `162.159.200.123`.
+- Home has a Web face, which opens CubeBrowser, a web browser for the
+  GameCube by Arial-Bold (used with permission). It ships in the zip as
+  `swiss/indigo/cubebrowser.dol`, with its certificates in `gcbrowser/` at
+  the top of the card. Give it a side under Settings › Setup › Console
+  (Up Face, Left Face, Right Face or Down Face › Web). It needs a network
+  adapter; in the browser, Settings › Exit to Indigo comes back.
 
 ### Improved
 
