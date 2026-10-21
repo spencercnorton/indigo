@@ -55,5 +55,13 @@ restart.
 UDP as it is written, starting with the lines from before the network came
 up.
 
+The Web face's browser has the same lab. With `LabServer=Yes`, Indigo starts
+it with `lab=1`, so a test run that opens the Web face goes on watching and
+pressing on the same port. The browser adds `POST /open?url=<address>` and
+`POST /point?x=<px>&y=<px>`, and its `POST /reset` comes back to Indigo.
+While it runs, a crash screen restarts the console after 10 seconds, and so
+do 15 minutes with no request and no button pressed
+([its README](https://github.com/spencernorton/cubebrowser#console-lab)).
+
 `gui/ui_lab.c` reads the requests and settings; `test_ui_lab` and the `lab`
 target in `buildtools/ui/tests/fuzz/run_fuzz.sh` cover it.

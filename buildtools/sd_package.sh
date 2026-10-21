@@ -128,7 +128,10 @@ copy both: cubebrowser.dol into the swiss/indigo folder of the card that
 holds Indigo's settings (make the folder if it isn't there), and the
 gcbrowser folder to the top of the card beside ipl.dol. The Web face on
 the Home cube (give it a side under Settings > Setup > Console) opens the
-browser; it needs a network adapter.
+browser; it needs a network adapter. The browser reads gcbrowser from an
+SD2SP2, an SD Gecko or a GC Loader, not from a FlippyDrive's card: with a
+FlippyDrive, put gcbrowser on a card in an SD2SP2 or SD Gecko. With only a
+FlippyDrive, secure (https) pages don't open and the browser saves nothing.
 
 IN-GAME RESET
 With In-Game Reset set to Apploader (Settings > Quick), A + Z + START

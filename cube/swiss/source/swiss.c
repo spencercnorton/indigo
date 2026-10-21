@@ -3874,9 +3874,13 @@ static void launchWebBrowser(void)
 	curFile.lockCount = 0;
 	curFile.thread = LWP_THREAD_NULL;
 	free(entries);
-	/* TODO: pass the current theme as argv once the browser reads it. */
+	/* With the console lab on, lab=1 starts the browser's own, on the same
+	 * port with the same requests: a test run goes on watching and driving,
+	 * and its /reset comes back to Indigo.
+	 * TODO: pass the current theme as argv once the browser reads it. */
+	char *labArgs[] = {NULL, "lab=1"};
 	bootDolSkipRecent = true;
-	boot_dol(&curFile, 0, NULL);
+	boot_dol(&curFile, swissSettings.labServer ? 2 : 0, labArgs);
 	bootDolSkipRecent = false;
 	/* It didn't start: close the DOL before its device goes. */
 	device->closeFile(&curFile);

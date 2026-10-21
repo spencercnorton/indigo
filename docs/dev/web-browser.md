@@ -40,7 +40,16 @@ permission to integrate). The fork already carries:
 - the SD card in a GC Loader as well as an SD2SP2 or SD Gecko: with more than
   one card it takes the one whose `gcbrowser/` holds `cacert.pem`;
 - rectangles cut to the clip box before drawing, which stopped a grey wedge
-  drawn over some pages.
+  drawn over some pages;
+- a console lab, off unless the browser starts with `lab=1`. `launchWebBrowser`
+  passes it while Indigo's own lab (`LabServer`) is on, so a lab session that
+  opens the Web face keeps watching and driving, and its `/reset` returns to
+  Indigo (docs/UPLOADS.md, Console lab).
+
+It reads its files through libogc2's SD drivers: the SD2SP2, an SD Gecko and
+the GC Loader. libogc2 has no FlippyDrive device, so on a FlippyDrive-only
+console the browser has no certificates (https pages fail) and saves
+nothing; the zip's README and the install guide say so.
 
 ## Integration checklist (Indigo side)
 

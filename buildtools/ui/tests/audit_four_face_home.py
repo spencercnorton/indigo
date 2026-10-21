@@ -318,14 +318,17 @@ assert "swissSettings.enableFileManagement =" not in SWISS
 # Web reads the browser's DOL from the config device, which is mounted only
 # while something reads it unless it is the Source too: mount it to look, let
 # it go when the DOL isn't there, and keep it through boot_dol, which reads
-# the DOL from it.
+# the DOL from it. The browser gets lab=1, its own console lab, only while
+# Indigo's is on.
 ordered(dispatch, "case UI_HOME_EFFECT_OPEN_WEB:", "launchWebBrowser();")
 web_launch = extract_function(SWISS, "static void launchWebBrowser(void)\n{")
 ordered(web_launch, "mounted = config_set_device();", "device = devices[DEVICE_CONFIG];",
     "if(mounted && ", "device->readDir(", "if(found < 0) {", "if(mounted) {",
-    "config_unset_device();", "return;", "boot_dol(&curFile, 0, NULL);",
+    "config_unset_device();", "return;", 'char *labArgs[] = {NULL, "lab=1"};',
+    "boot_dol(&curFile, swissSettings.labServer ? 2 : 0, labArgs);",
     "device->closeFile(&curFile);", "config_unset_device();")
 assert web_launch.count("config_unset_device();") == 2
+assert web_launch.count("boot_dol(") == 1
 assert SWISS.count("show_saves();") == 1
 # Memory Cards hands the Home cube over where it stands, System side to the
 # front: any scene but Home's would turn it while it goes and comes back.

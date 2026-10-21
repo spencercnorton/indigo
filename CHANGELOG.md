@@ -22,7 +22,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
   `swiss/indigo/cubebrowser.dol`, with its certificates in `gcbrowser/` at
   the top of the card. Give it a side under Settings › Setup › Console
   (Up Face, Left Face, Right Face or Down Face › Web). It needs a network
-  adapter; in the browser, Settings › Exit to Indigo comes back.
+  adapter; in the browser, Settings › Exit to Indigo comes back. The
+  browser reads `gcbrowser/` from an SD2SP2, an SD Gecko or a GC Loader,
+  not from a FlippyDrive's card. With the console lab on (`LabServer=Yes`)
+  the browser starts its own, so a test run can follow Indigo into it.
 
 ### Improved
 
