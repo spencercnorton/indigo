@@ -188,7 +188,7 @@ static char *tooltips_network[PAGE_NETWORK_MAX+1] = {
 	[SET_BBA_DHCP] = "IPv4 uses DHCP:\n\nYes - Your router assigns the address, netmask and gateway (default)\nNo - Use the address, netmask and gateway set above",
 	[SET_NTP_SYNC] = "Sync Clock:\n\nYes - Set the clock from the NTP server when the network starts\nNo - Leave the clock as it is (default)\n\nThe IPL and games see the new time too. The network starts with\nIndigo when Init network at startup is on.",
 	[SET_NTP_HOSTIP] = "NTP Server IP:\n\nAddress of the time server Sync Clock asks. Empty asks\nCloudflare's, 162.159.200.123 (default). A name won't work: the\nconsole has no DNS.",
-	[SET_TIME_ZONE] = "Time Zone:\n\nA POSIX TZ string, such as MST7MDT,M3.2.0,M11.1.0 (US Mountain),\nGMT0BST,M3.5.0/1,M10.5.0 (UK) or IST-5:30 (India). Daylight time\nchanges by itself.\n\nEmpty keeps the zone the clock is already in, to the nearest\nquarter hour; you change it for daylight time in the IPL.",
+	[SET_TIME_ZONE] = "Time Zone:\n\nA POSIX TZ string, such as MST7MDT,M3.2.0,M11.1.0 (US Mountain),\nGMT0BST,M3.5.0/1,M10.5.0 (UK) or IST-5:30 (India). Daylight time\nchanges by itself.\n\nEmpty keeps the zone the clock is already in: its offset from UTC,\nto the nearest real time zone. Change it for daylight time in the IPL.",
 	[SET_FSP_HOSTIP] = "FSP Host IP:\n\nAddress of the computer running the FSP server with your games.",
 	[SET_FSP_PORT] = "FSP Port:\n\nPort of the FSP server (21 by default).",
 	[SET_FSP_PASS] = "FSP Password:\n\nPassword for the FSP server, if it has one. It is stored as plain\ntext in global.ini.",
@@ -657,9 +657,6 @@ static const settingsRowRef_t networkRows[] = {
 	{PAGE_NETWORK, SET_BBA_NETMASK},
 	{PAGE_NETWORK, SET_BBA_GATEWAY},
 	{PAGE_NETWORK, SET_BBA_DHCP},
-	{PAGE_NETWORK, SET_NTP_SYNC},
-	{PAGE_NETWORK, SET_NTP_HOSTIP},
-	{PAGE_NETWORK, SET_TIME_ZONE},
 	{PAGE_NETWORK, SET_FSP_HOSTIP},
 	{PAGE_NETWORK, SET_FSP_PORT},
 	{PAGE_NETWORK, SET_FSP_PASS},
@@ -675,7 +672,16 @@ static const settingsRowRef_t networkRows[] = {
 	{PAGE_NETWORK, SET_SMB_PASS},
 	{PAGE_NETWORK, SET_RT4K_HOSTIP},
 	{PAGE_NETWORK, SET_RT4K_PORT},
+	/* Sync Clock's rows stay last: without a network adapter, Settings hides
+	 * them (SETTINGS_SYNC_CLOCK_ROWS, UISetLayout_HideTail). */
+	{PAGE_NETWORK, SET_NTP_SYNC},
+	{PAGE_NETWORK, SET_NTP_HOSTIP},
+	{PAGE_NETWORK, SET_TIME_ZONE},
 };
+#define SETTINGS_SYNC_CLOCK_ROWS 3
+
+/* Whether a network adapter is there, read once as Settings opens. */
+static bool settingsNetAdapter;
 
 static const settingsRowRef_t libraryRows[] = {
 	{PAGE_INTERFACE, SET_LIBRARY_LAYOUT},
@@ -973,7 +979,7 @@ _Static_assert(sizeof(setupSummaries) / sizeof(setupSummaries[0]) == UI_SETLAYOU
 static const settingsRowRef_t *settingsViewRow(int view, int option)
 {
 	if(view < 0 || view >= UI_SETLAYOUT_PAGE_COUNT ||
-		option < 0 || option >= settingsViews[view].count) {
+		option < 0 || option >= UISetLayout_RowCount(view)) {
 		return NULL;
 	}
 	return &settingsViews[view].rows[option];
@@ -1141,7 +1147,7 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 		}
 	}
 	else if(page == PAGE_NETWORK) {
-		bool netEnable = net_initialized || bba_exists(LOC_ANY);
+		bool netEnable = settingsNetAdapter;
 		switch(option) {
 			case SET_INIT_NET: rowYesNo(row, "Init network at startup:", swissSettings.initNetworkAtStart, !bba_requires_init()); break;
 			case SET_BBA_LOCALIP: rowText(row, "IPv4 Address:", swissSettings.bbaLocalIp, netEnable); break;
@@ -1351,7 +1357,7 @@ static void settingsDescribeFocus(uiSetPageSnapshot_t *page, int view,
 			hints[count++] = "X  Default";
 		}
 	}
-	else if(option == settingsViews[view].count) {
+	else if(option == UISetLayout_RowCount(view)) {
 		hints[count++] = "A  Save";
 		about = "Keeps every change and closes Settings.";
 	}
@@ -2849,6 +2855,7 @@ int show_settings(int page, int option, ConfigEntry *config) {
 		if((view == VIEW_GAME) != (page == PAGE_GAME)) {
 			continue;
 		}
+		/* The whole table: show_settings_view hides what it must. */
 		for(row = 0; row < settingsViews[view].count; row++) {
 			const settingsRowRef_t *ref = &settingsViews[view].rows[row];
 			if(ref->page == page && ref->option == option) {
@@ -2868,6 +2875,11 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 		view = VIEW_QUICK;
 	}
 	wait_network();
+	settingsNetAdapter = net_initialized || bba_exists(LOC_ANY);
+	UISetLayout_HideTail(VIEW_NETWORK, settingsNetAdapter ? 0 : SETTINGS_SYNC_CLOCK_ROWS);
+	if(option >= UISetLayout_RowCount(view)) {
+		option = 0;
+	}
 	// Copy current settings to a temp copy in case the user cancels out
 	if(config != NULL) {
 		memcpy(&tempConfig, config, sizeof(ConfigEntry));
@@ -2895,7 +2907,7 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 		bool inputMayBlock;
 		int inputView;
 		int inputOption;
-		int rows = settingsViews[view].count;
+		int rows = UISetLayout_RowCount(view);
 		const settingsRowRef_t *ref = settingsViewRow(view, option);
 		bool onSetting = ref != NULL && ref->page != SETTINGS_ROW_LINK;
 		uiDrawObj_t* settingsPage = settings_draw_page(view, option, config);
@@ -2994,13 +3006,13 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 			}
 			else {
 				option = settingsChanged(config) ?
-					settingsViews[view].count : settingsViews[view].count + 1;
+					UISetLayout_RowCount(view) : UISetLayout_RowCount(view) + 1;
 				btns |= BUTTON_A;
 			}
 		}
 		// Handle all options/buttons here
 		if((btns & BUTTON_A)) {
-			if(option == settingsViews[view].count) {
+			if(option == UISetLayout_RowCount(view)) {
 				uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving changes\205"));
 				// Save settings to SRAM
 				swissSettings.sram60Hz = getTVFormat() == VI_EURGB60;
@@ -3047,7 +3059,7 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 				DrawDispose(settingsPage);
 				return 1;
 			}
-			if(option == settingsViews[view].count + 1) {
+			if(option == UISetLayout_RowCount(view) + 1) {
 				// Exit without saving (revert)
 				if(config != NULL) {
 					memcpy(config, &tempConfig, sizeof(ConfigEntry));

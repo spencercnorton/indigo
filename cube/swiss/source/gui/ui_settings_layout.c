@@ -113,7 +113,7 @@ const char *UISetLayout_SettingsFileText(int state) {
 }
 
 int UISetLayout_DiscardIndex(int page) {
-	return UISetLayout_PageDesc(page)->rowCount + 1;
+	return UISetLayout_RowCount(page) + 1;
 }
 
 static int clampInt(int value, int lo, int hi) {
@@ -122,6 +122,19 @@ static int clampInt(int value, int lo, int hi) {
 	if (value > hi)
 		return hi;
 	return value;
+}
+
+static int hiddenTail[UI_SETLAYOUT_PAGE_COUNT];
+
+void UISetLayout_HideTail(int page, int rows) {
+	if (page >= 0 && page < UI_SETLAYOUT_PAGE_COUNT)
+		hiddenTail[page] = clampInt(rows, 0, PAGES[page].rowCount - 1);
+}
+
+int UISetLayout_RowCount(int page) {
+	if (page < 0 || page >= UI_SETLAYOUT_PAGE_COUNT)
+		page = 0;
+	return PAGES[page].rowCount - hiddenTail[page];
 }
 
 size_t UISetLayout_EllipsizeText(const char *source, size_t sourceLength,
@@ -433,10 +446,13 @@ static void computeFooter(const uiSetLayoutPage_t *desc, uiSetLayout_t *out) {
 void UISetLayout_Compute(int page, int option, int motionMode,
                          uiSetLayout_t *out) {
 	const uiSetLayoutPage_t *desc;
+	uiSetLayoutPage_t shown;
 
 	memset(out, 0, sizeof(*out));
 	page = clampInt(page, 0, UI_SETLAYOUT_PAGE_COUNT - 1);
-	desc = UISetLayout_PageDesc(page);
+	shown = *UISetLayout_PageDesc(page);
+	shown.rowCount = UISetLayout_RowCount(page);
+	desc = &shown;
 	out->page = page;
 	out->option = clampInt(option, 0, UISetLayout_DiscardIndex(page));
 	out->currentTab = desc->tab;

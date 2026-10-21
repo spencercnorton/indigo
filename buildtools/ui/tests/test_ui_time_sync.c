@@ -219,11 +219,25 @@ static void checkKeptOffset(void)
 	CHECK(UITimeSync_KeptOffset(utc, utc) == 0);
 	CHECK(UITimeSync_KeptOffset(utc - 6 * 3600 + 437, utc) == -6 * 3600);
 	CHECK(UITimeSync_KeptOffset(utc - 6 * 3600 - 449, utc) == -6 * 3600);
-	CHECK(UITimeSync_KeptOffset(utc - 6 * 3600 - 451, utc) == -6 * 3600 - 900);
+	/* A Denver console 8 minutes fast (seen on a real one) keeps -6:00, not
+	 * -5:45; a quarter-hour rounding would have picked a zone nobody uses. */
+	CHECK(UITimeSync_KeptOffset(utc - 6 * 3600 + 8 * 60, utc) == -6 * 3600);
+	CHECK(UITimeSync_KeptOffset(utc - 6 * 3600 - 451, utc) == -6 * 3600);
+	CHECK(UITimeSync_KeptOffset(utc - 6 * 3600 + 29 * 60, utc) == -6 * 3600);
+	CHECK(UITimeSync_KeptOffset(utc - 6 * 3600 - 29 * 60, utc) == -6 * 3600);
+	CHECK(UITimeSync_KeptOffset(utc + 25 * 60, utc) == 0);
+	/* Half- and quarter-hour zones are kept when the clock is close to them. */
 	CHECK(UITimeSync_KeptOffset(utc + 5 * 3600 + 1800 + 30, utc) == 5 * 3600 + 1800);
+	CHECK(UITimeSync_KeptOffset(utc + 5 * 3600 + 2700 - 300, utc) == 5 * 3600 + 2700);
+	CHECK(UITimeSync_KeptOffset(utc - 3 * 3600 - 1800 + 200, utc) == -3 * 3600 - 1800);
+	CHECK(UITimeSync_KeptOffset(utc + 9 * 3600 + 1800 - 400, utc) == 9 * 3600 + 1800);
+	/* A drift that leaves a half-hour zone nearer than the whole hour takes it. */
+	CHECK(UITimeSync_KeptOffset(utc + 3 * 3600 + 1700, utc) == 3 * 3600 + 1800);
 	CHECK(UITimeSync_KeptOffset(utc + 14 * 3600, utc) == 14 * 3600);
-	CHECK(UITimeSync_KeptOffset(utc - 14 * 3600, utc) == -14 * 3600);
+	CHECK(UITimeSync_KeptOffset(utc + 14 * 3600 + 1700, utc) == 14 * 3600);
+	CHECK(UITimeSync_KeptOffset(utc - 14 * 3600, utc) == -12 * 3600);
 	CHECK(UITimeSync_KeptOffset(utc + 15 * 3600, utc) == 0);
+	CHECK(UITimeSync_KeptOffset(utc - 15 * 3600, utc) == 0);
 	/* A console whose clock went back to 2000 has no zone to keep. */
 	CHECK(UITimeSync_KeptOffset(INT64_C(946684800), utc) == 0);
 }

@@ -31,8 +31,9 @@ bool UITimeSync_ZoneOffset(const char *zone, int64_t utcSeconds,
 	int32_t *eastSeconds);
 
 /* With no Time Zone, the console keeps its own: the offset its clock already
- * has from UTC, to the nearest quarter hour. A clock more than 14 hours out has
- * no zone to keep, and gets UTC. */
+ * has from UTC, snapped to the nearest offset a real time zone uses, so a
+ * drift of up to half an hour still finds a whole-hour zone. A clock more
+ * than 14 and a half hours out has no zone to keep, and gets UTC. */
 int32_t UITimeSync_KeptOffset(int64_t consoleSeconds, int64_t utcSeconds);
 
 #endif

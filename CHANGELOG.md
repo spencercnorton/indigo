@@ -9,12 +9,14 @@ tag on `beta`. The newest changes are at the top until their release is named.
 ### New
 
 - Settings › Network › Sync Clock sets the console's clock from an NTP
-  server each time the network starts, so a Broadband Adapter keeps the
-  clock right. The IPL and games see the new time too. Time Zone takes a
-  POSIX TZ string, such as `MST7MDT,M3.2.0,M11.1.0`, and changes for
-  daylight time by itself; left empty, the clock keeps the zone it is in.
-  NTP Server IP is an address (the console has no DNS); empty asks
-  Cloudflare's, `162.159.200.123`.
+  server each time the network starts, so a network adapter keeps the
+  clock right. The IPL and games see the new time too. It shows only when
+  a network adapter is there, and stays off until you turn it on. Time
+  Zone takes a POSIX TZ string, such as `MST7MDT,M3.2.0,M11.1.0`, and
+  changes for daylight time by itself; left empty, the clock keeps the
+  zone it is in, snapped to the nearest real one so a clock that drifted
+  a few minutes still lands on its own zone. NTP Server IP is an address
+  (the console has no DNS); empty asks Cloudflare's, `162.159.200.123`.
 
 ### Improved
 
