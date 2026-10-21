@@ -3,6 +3,7 @@
 #include "ui_time_sync.h"
 
 #define NTP_TO_UNIX INT64_C(2208988800)	/* 1900 to 1970, in seconds */
+#define UNIX_2000 INT64_C(946684800)	/* where the console's clock starts */
 #define DAY 86400
 #define HOUR 3600
 
@@ -48,6 +49,11 @@ bool UITimeSync_Reply(const uint8_t *packet, size_t length, uint64_t cookie,
 	uint32_t seconds = (uint32_t)(transmit >> 32);
 	int64_t unixSeconds = (int64_t)seconds - NTP_TO_UNIX +
 		((seconds & 0x80000000u) ? 0 : INT64_C(1) << 32);
+	/* The console's clock counts from 2000: a server whose own clock was
+	 * never set (it says 1970) has no time to give it. */
+	if(unixSeconds < UNIX_2000) {
+		return false;
+	}
 	*utcMicroseconds = unixSeconds * 1000000 +
 		(int64_t)(((transmit & 0xffffffffu) * 1000000u) >> 32);
 	return true;

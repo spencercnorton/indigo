@@ -87,15 +87,18 @@ static size_t compressed(const u8 *plain,size_t size) {
     uLongf n=sizeof(incoming);assert(compress(incoming,&n,plain,size)==Z_OK);
     incomingSize=n;cursor=0;chunk=4096;suspended=false;videoOwner=false;return n;
 }
-static void transfer(const u8 *image,size_t size,bool badArgs) {
+static void transferArgs(const u8 *image,size_t size,const char *args,size_t argsSize) {
     u8 packed[65536];size_t n=compressed(image,size);memcpy(packed,incoming,n);
     wiiload_header_t h={0};memcpy(&h.magic,"HAXX",4);h.version=5;
-    h.deflate_size=(u32)n;h.inflate_size=(u32)size;h.args_size=badArgs?2:0;
+    h.deflate_size=(u32)n;h.inflate_size=(u32)size;h.args_size=argsSize;
     memcpy(incoming,&h,sizeof(h));memcpy(incoming+sizeof(h),packed,n);
-    if(badArgs)memcpy(incoming+sizeof(h)+n,"xx",2);
+    memcpy(incoming+sizeof(h)+n,args,argsSize);
     incomingSize=sizeof(h)+n+h.args_size;cursor=0;chunk=4096;videoOwner=true;
     wiiload_handler(0,reader,"Receiving","TCP:192.0.2.1");
     assert(!suspended&&!mutexHeld);
+}
+static void transfer(const u8 *image,size_t size,bool badArgs) {
+    transferArgs(image,size,"xx",badArgs?2:0);
 }
 int main(void) {
     u8 plain[320]={0};memset(plain+256,0x55,64);
@@ -132,12 +135,15 @@ int main(void) {
     assert(wiiload_image_valid(plain,sizeof(plain),false));
     transfer(plain,sizeof(plain),false);assert(launches==2&&suspends==2);
     be32(plain+28,0xfffffff0u);assert(!wiiload_image_valid(plain,sizeof(plain),false));
+    /* Named SDLOADER.BIN, an ELF still loads as an ELF: it is checked as one. */
+    transferArgs(plain,sizeof(plain),"SDLOADER.BIN",13);assert(launches==2&&suspends==2);
     for(size_t size=0;size<256;size++)assert(!wiiload_image_valid(plain,size,false));
     memset(plain,0,4);rawMode=1;transfer(plain,4,false);assert(launches==3&&suspends==3);
+    rawMode=0;transferArgs(plain,4,"SDLOADER.BIN",13);assert(launches==4&&suspends==4);
     n=compressed(plain,4);idleSocket=true;
     assert(tcp_read(3,plain,4)<0);idleSocket=false;chunk=1;
     assert(tcp_read(3,plain,4)==4);
-    assert(disposes==5&&progresses>0);
+    assert(disposes==7&&progresses>0);
     puts("uploads: bounded exact streams, executable ranges, EOF, timeouts, args and video-safe handoff PASS");
     return 0;
 }

@@ -19,7 +19,8 @@ void UITimeSync_Request(uint8_t packet[UI_TIME_SYNC_PACKET], uint64_t cookie);
 /* The server's transmit time, in microseconds since 1970 UTC, from its reply
  * to the request carrying `cookie`. False for anything else: a short packet,
  * not a server's reply, an unsynchronised server, a Kiss-o'-Death, a reply to
- * another request, or no time. */
+ * another request, no time, or a time before 2000, where the console's
+ * clock starts. */
 bool UITimeSync_Reply(const uint8_t *packet, size_t length, uint64_t cookie,
 	int64_t *utcMicroseconds);
 

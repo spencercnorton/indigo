@@ -210,6 +210,16 @@ static void checkPackets(void)
 	CHECK(UITimeSync_Reply(answer, sizeof(answer), cookie, &utc));
 	put64(answer + 40, 0);
 	CHECK(!UITimeSync_Reply(answer, sizeof(answer), cookie, &utc));
+
+	/* A server whose own clock was never set says 1970; the console's
+	 * clock starts at 2000, which it can take. */
+	reply(answer, request, UINT64_C(2208988800) << 32);
+	CHECK(!UITimeSync_Reply(answer, sizeof(answer), cookie, &utc));
+	reply(answer, request, (UINT64_C(946684799) + UINT64_C(2208988800)) << 32);
+	CHECK(!UITimeSync_Reply(answer, sizeof(answer), cookie, &utc));
+	reply(answer, request, (UINT64_C(946684800) + UINT64_C(2208988800)) << 32);
+	CHECK(UITimeSync_Reply(answer, sizeof(answer), cookie, &utc));
+	CHECK(utc == INT64_C(946684800) * 1000000);
 }
 
 static void checkKeptOffset(void)

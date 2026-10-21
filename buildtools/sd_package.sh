@@ -89,13 +89,15 @@ UPDATING INDIGO
 Back up the card's swiss folder. Rename the new ipl.dol to the name of the
 Indigo file you start now (ipl.dol, boot.dol or indigo.dol) and copy it
 over that file. Then copy the new swiss/patches/apploader.img over the old
-one.
+one. If you use the Web face, copy the new cubebrowser.dol and gcbrowser
+folder too (see WEB BROWSER).
 
 WHAT EACH FILE IS FOR
   ipl.dol                      Indigo itself (renamed for some setups)
   swiss/patches/apploader.img  In-Game Reset returns to Indigo (see below)
   swiss/ui/                    the poster pack goes here, if you add it
-  swiss/indigo/                Indigo's licence and notice
+  swiss/indigo/                Indigo's licence, notice and web browser
+  gcbrowser/                   the web browser's certificates
 
 GAMES
 Put your games in /games, either one folder per game or the disc images
@@ -122,9 +124,11 @@ making it if it isn't there.
 
 WEB BROWSER
 If this download has swiss/indigo/cubebrowser.dol and a gcbrowser folder,
-keep both: copy the gcbrowser folder to the top of the card beside ipl.dol.
-The Web face on the Home cube (turn it on under Settings > Setup > Console)
-opens the browser; it needs a Broadband Adapter.
+copy both: cubebrowser.dol into the swiss/indigo folder of the card that
+holds Indigo's settings (make the folder if it isn't there), and the
+gcbrowser folder to the top of the card beside ipl.dol. The Web face on
+the Home cube (give it a side under Settings > Setup > Console) opens the
+browser; it needs a network adapter.
 
 IN-GAME RESET
 With In-Game Reset set to Apploader (Settings > Quick), A + Z + START

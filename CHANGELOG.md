@@ -61,8 +61,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   and disc databases, Need for Speed 960i/1152i fixes, additional field-mode
   detection, and Nintendo Gateway GameCube MSA-500 identification.
 - Setup › Display has Apps Video Mode, the mode passed to libogc2 homebrew.
-  Auto keeps the menu mode; other apps may choose their own. The setting is
-  saved as `Apps Video Mode` in global.ini.
+  Auto keeps the menu mode; other apps may choose their own, and a program
+  sent over the network keeps the menu's. The setting is saved as
+  `Apps Video Mode` in global.ini.
 
 ### Documentation
 
