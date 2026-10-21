@@ -26,9 +26,7 @@ themes already mirror Indigo's (Indigo / Jet Black / Platinum / Spice).
 ## The browser
 
 Upstream: `Arial-Bold/Cubebrowser`. We maintain a hardened fork (the creator gave
-permission to integrate). Review and fork history: see the session report at
-`~/Kleos/_reports/cubebrowser-review-20261015/` and tracker OP#1115. The fork
-already carries:
+permission to integrate). The fork already carries:
 
 - a clean Mozilla CA bundle (the upstream one shipped four TLS-interception
   roots) plus a guard that fails the build if one returns;
@@ -38,7 +36,11 @@ already carries:
   (CSS value underflow, `:is`/`:not` recursion, a `<title>` overrun);
 - a parser fuzz suite (the upstream project had no tests);
 - `Settings > Exit to Indigo`, which returns from the browser's main loop so the
-  loader hands control back to Indigo.
+  loader hands control back to Indigo;
+- the SD card in a GC Loader as well as an SD2SP2 or SD Gecko: with more than
+  one card it takes the one whose `gcbrowser/` holds `cacert.pem`;
+- rectangles cut to the clip box before drawing, which stopped a grey wedge
+  drawn over some pages.
 
 ## Integration checklist (Indigo side)
 
@@ -63,11 +65,13 @@ already carries:
 
 `sd_package.sh` bundles the browser when `browser/cubebrowser.dol` (and the
 `browser/gcbrowser/` CA folder) are present: the DOL goes to
-`swiss/indigo/cubebrowser.dol` (where `launchWebBrowser` looks) and the CA
-folder to `gcbrowser/` at the card root. Both paths are overridable with
-`BROWSER_DOL` / `BROWSER_GCBROWSER`. The browser is optional in the zip
-(`check_package.py` `OPTIONAL`), so a plain build still packages; a release
-ships it. The zip tripwire was raised to 9 MiB for the ~1 MiB the browser adds.
+`swiss/indigo/cubebrowser.dol` (where `launchWebBrowser` looks, on the config
+device, which it mounts first: with games on another device the config device
+is mounted only while something reads it) and the CA folder to `gcbrowser/` at
+the card root. Both paths are overridable with `BROWSER_DOL` /
+`BROWSER_GCBROWSER`. The browser is optional in the zip (`check_package.py`
+`OPTIONAL`), so a plain build still packages; a release ships it. The zip
+tripwire was raised to 9 MiB for the ~1 MiB the browser adds.
 
 The browser is **used with permission from Arial-Bold**
 (https://github.com/Arial-Bold/Cubebrowser); recorded in `NOTICE`. It ships as a
@@ -80,9 +84,9 @@ The Build jobs in `ci.yml` and `release.yml` clone the hardened fork at a pinned
 commit, fetch its checksum-verified dependencies and build it, then copy the DOL
 and CA bundle into `browser/` for `sd_package.sh`:
 
-- fork: https://github.com/spencercnorton/cubebrowser (maintained by us, used
+- fork: https://github.com/spencernorton/cubebrowser (maintained by us, used
   with permission; its own README/NOTICE credit Arial-Bold)
-- pinned commit: `0b044e2cd7d38382d08e76d5f2b7082a18c61734` — bump it in both
+- pinned commit: `cfe550b255eb432377e1d3abe12a8b92006cd0ae` — bump it in both
   workflows' `CUBEBROWSER_REF` to take browser changes.
 
 It builds with the same libogc2 toolchain the runner already carries, and
