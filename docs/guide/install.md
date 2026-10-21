@@ -349,10 +349,11 @@ starts as it does today, and you open Indigo from Swiss.
 
 ## Where everything goes
 
-The card with everything Indigo can use. Only Indigo's own file and
-`apploader.img` come from the download: the rest are your files, and
-downloads you can add any time. Indigo's own file and `boot.iso` aren't
-drawn here, because they depend on your setup: its step 3 shows them. Most
+The card with everything Indigo can use. Only Indigo's own file,
+`apploader.img` and the web browser come from the download: the rest are
+your files, and downloads you can add any time. Indigo's own file and
+`boot.iso` aren't drawn here, because they depend on your setup: its step 3
+shows them. Most
 people keep everything on one card; if you use two, put the poster pack and
 your apps on the card with your games.
 
@@ -366,8 +367,11 @@ SD card
 │   ├── Nintendo/            a folder of games
 │   │   └── The Wind Waker.iso
 │   └── Nintendo.png         the folder's picture
+├── gcbrowser/               the web browser's certificates
 └── swiss/
     ├── cheats/              cheats, one file per game
+    ├── indigo/
+    │   └── cubebrowser.dol  the web browser, for the Web face
     ├── patches/
     │   └── apploader.img    returns to Indigo after a game
     ├── saves/               saves copied off memory cards
@@ -394,6 +398,9 @@ SD card
   folder, one file per game, such as `GMSE01.txt`. Unzip the pack on your
   computer and copy the files in its `swiss/cheats` folder into this one;
   make it if it isn't there.
+- **`gcbrowser` and `swiss/indigo/cubebrowser.dol`:** From the download,
+  for the Web face: the web browser and its certificates. Put
+  `cubebrowser.dol` on the card with your settings.
 - **`apploader.img`:** From the download. It makes leaving a game return to
   Indigo; copy it to every card you use with Swiss. See
   [Leaving a game](#leaving-a-game).

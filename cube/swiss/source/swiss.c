@@ -3819,6 +3819,10 @@ static void homeConfirmRestartEffect(void)
 #define WEB_BROWSER_DIR "swiss/indigo"
 #define WEB_BROWSER_DOL "cubebrowser.dol"
 
+/* The bundled browser isn't a program someone chose: boot_dol keeps it out
+ * of the Recent list, whose top entry Indigo would open at the next start. */
+static bool bootDolSkipRecent;
+
 /* Launch the bundled web browser the way the Apps face launches a program:
  * find its DOL on the config device and hand it to boot_dol, which shuts the
  * menu down and jumps. boot_dol returns only when the DOL won't start.
@@ -3871,7 +3875,9 @@ static void launchWebBrowser(void)
 	curFile.thread = LWP_THREAD_NULL;
 	free(entries);
 	/* TODO: pass the current theme as argv once the browser reads it. */
+	bootDolSkipRecent = true;
 	boot_dol(&curFile, 0, NULL);
+	bootDolSkipRecent = false;
 	/* It didn't start: close the DOL before its device goes. */
 	device->closeFile(&curFile);
 	config_unset_device();
@@ -5190,10 +5196,11 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				bool handled = false;
 
 				meta_thread_stop();
-				/* Complete at most the already-requested center-cover job
-				 * before Detail freezes the request window. Detail draws its
-				 * BNR until the cover lands: its idle retraces poll for it. */
-				DrawGameflowPollPosters();
+				/* Finish the already-requested center cover before Detail
+				 * freezes the request window, as the File Browser's Detail
+				 * does. Detail draws its BNR until a cover still missing lands:
+				 * its idle retraces poll for it. */
+				DrawGameflowPrimePoster();
 				if(entryMode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS) {
 					file_handle folderSnapshot;
 
@@ -5803,7 +5810,7 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	gameID_set(NULL, hash);
 	DrawDispose(progBar);
 	
-	if(devices[DEVICE_CONFIG] != NULL) {
+	if(devices[DEVICE_CONFIG] != NULL && !bootDolSkipRecent) {
 		// Update the recent list.
 		if(update_recent()) {
 			uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving recent list\205"));
@@ -5817,6 +5824,11 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	strncpy(fileName, file->name, strrchr(file->name, '.') - file->name);
 	print_debug("DOL file name without extension [%s]\n", fileName);
 
+	/* The Source's device, or with none mounted (the Web face starts the
+	 * browser without one) the DOL's own. */
+	DEVICEHANDLER_INTERFACE *cur = devices[DEVICE_CUR] != NULL ?
+		devices[DEVICE_CUR] : file->device;
+
 	// .iso disc image file
 	file_handle *imageFile = calloc(1, sizeof(file_handle));
 	snprintf(imageFile->name, PATHNAME_MAX, "%s.iso", fileName);
@@ -5825,12 +5837,12 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 		getParentPath(imageFile->name, imageFile->name);
 		concat_path(imageFile->name, imageFile->name, "data.iso");
 	}
-	if(devices[DEVICE_CUR]->statFile) {
-		devices[DEVICE_CUR]->statFile(imageFile);
+	if(cur->statFile) {
+		cur->statFile(imageFile);
 	}
 
 	file_handle *bootFile = NULL;
-	if(devices[DEVICE_CUR] == &__device_gcloader) {
+	if(cur == &__device_gcloader) {
 		bootFile = calloc(1, sizeof(file_handle));
 
 		if(!gcloaderGetBootFile(bootFile)) {
@@ -5848,12 +5860,12 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	snprintf(cliArgFile->name, PATHNAME_MAX, "%s.cli", fileName);
 	
 	// we found something, use parameters (.cli)
-	if(devices[DEVICE_CUR]->readFile(cliArgFile, NULL, 0) == 0 && cliArgFile->size) {
+	if(cur->readFile(cliArgFile, NULL, 0) == 0 && cliArgFile->size) {
 		print_debug("Argument file found [%s]\n", cliArgFile->name);
 		char *cli_buffer = calloc(1, cliArgFile->size + 1);
 		if(cli_buffer) {
-			devices[DEVICE_CUR]->seekFile(cliArgFile, 0, DEVICE_HANDLER_SEEK_SET);
-			devices[DEVICE_CUR]->readFile(cliArgFile, cli_buffer, cliArgFile->size);
+			cur->seekFile(cliArgFile, 0, DEVICE_HANDLER_SEEK_SET);
+			cur->readFile(cliArgFile, cli_buffer, cliArgFile->size);
 
 			// Parse CLI
 			char *line, *linectx = NULL;
@@ -5866,7 +5878,7 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 			free(cli_buffer);
 		}
 	}
-	devices[DEVICE_CUR]->closeFile(cliArgFile);
+	cur->closeFile(cliArgFile);
 	free(cliArgFile);
 
 	// .dcp parameter file
@@ -5874,12 +5886,12 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	snprintf(dcpArgFile->name, PATHNAME_MAX, "%s.dcp", fileName);
 	
 	// we found something, parse and display parameters for selection (.dcp)
-	if(devices[DEVICE_CUR]->readFile(dcpArgFile, NULL, 0) == 0 && dcpArgFile->size) {
+	if(cur->readFile(dcpArgFile, NULL, 0) == 0 && dcpArgFile->size) {
 		print_debug("Argument file found [%s]\n", dcpArgFile->name);
 		char *dcp_buffer = calloc(1, dcpArgFile->size + 1);
 		if(dcp_buffer) {
-			devices[DEVICE_CUR]->seekFile(dcpArgFile, 0, DEVICE_HANDLER_SEEK_SET);
-			devices[DEVICE_CUR]->readFile(dcpArgFile, dcp_buffer, dcpArgFile->size);
+			cur->seekFile(dcpArgFile, 0, DEVICE_HANDLER_SEEK_SET);
+			cur->readFile(dcpArgFile, dcp_buffer, dcpArgFile->size);
 
 			// Parse DCP
 			parseParameters(dcp_buffer);
@@ -5893,7 +5905,7 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 			}
 		}
 	}
-	devices[DEVICE_CUR]->closeFile(dcpArgFile);
+	cur->closeFile(dcpArgFile);
 	free(dcpArgFile);
 
 	for(i = 1; i < argc; i++) {
@@ -5901,12 +5913,14 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	}
 
 	// Boot
-	if(devices[DEVICE_CUR]->location == LOC_DVD_CONNECTOR) {
-		devices[DEVICE_CUR]->setupFile(imageFile, bootFile, NULL, -1);
+	if(cur->location == LOC_DVD_CONNECTOR) {
+		cur->setupFile(imageFile, bootFile, NULL, -1);
 	}
 	if(swissSettings.hasFlippyDrive && needs_flippy_bypass(file, hash)) {
 		flippy_bypass(true);
 	}
+	int sram60Hz = swissSettings.sram60Hz;
+	int sramProgressive = swissSettings.sramProgressive;
 	if(swissSettings.appsVMode > 0) {
 		GXRModeObj *forcedMode = getVideoModeFromSwissSetting(swissSettings.appsVMode);
 		DrawVideoMode(forcedMode);
@@ -5940,10 +5954,19 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	free(argz);
 	free(buffer);
 
-	devices[DEVICE_CUR]->closeFile(bootFile);
-	devices[DEVICE_CUR]->closeFile(imageFile);
+	cur->closeFile(bootFile);
+	cur->closeFile(imageFile);
 	free(bootFile);
 	free(imageFile);
+	/* It didn't start: go back to the menu's mode, as a failed game launch
+	 * does, and to the SRAM flags the next game's Auto video mode reads. */
+	if(swissSettings.appsVMode > 0) {
+		swissSettings.sram60Hz = sram60Hz;
+		swissSettings.sramProgressive = sramProgressive;
+		GXRModeObj *menuMode = getVideoModeFromSwissSetting(swissSettings.uiVMode);
+		if(menuMode != getVideoMode())
+			DrawVideoMode(menuMode);
+	}
 	// Successful boots never return. Restore audio only if it was already live.
 	if(restartMenuAudio) menuaudio_init();
 }

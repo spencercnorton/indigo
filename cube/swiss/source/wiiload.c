@@ -280,8 +280,11 @@ static void wiiload_handler(int sd, wiiload_read_function_t read, const char *me
 	bool isSdLoader = argNameLen == sizeof(sdloaderName) - 1 &&
 	                 !strncasecmp(args, sdloaderName, argNameLen);
 	bool isBranchBin = buffer != NULL && branchResolve(buffer, PATCH_BIN, 0) != 0;
+	/* An ELF loads as an ELF whatever its name, so it is checked as one. */
+	bool raw = buffer != NULL && (isSdLoader || isBranchBin) &&
+	           memcmp(buffer, ELFMAG, SELFMAG) != 0;
 	if (buffer != NULL && ((isSdLoader && header.inflate_size > 1024u * 1024u) ||
-	    !wiiload_image_valid(buffer, header.inflate_size, isSdLoader || isBranchBin))) {
+	    !wiiload_image_valid(buffer, header.inflate_size, raw))) {
 		free(buffer);
 		buffer = NULL;
 	}

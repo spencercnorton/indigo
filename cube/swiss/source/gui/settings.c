@@ -117,7 +117,7 @@ const int simulatedMemSizeInt[] = {
 
 static char *tooltips_global[PAGE_GLOBAL_MAX+1] = {
 	[SET_SYS_BOOTMODE] = "System Boot Mode:\n\nSets development or production mode on development hardware.\nOn retail hardware with GC Loader or PicoLoader, the default\nskips the GameCube logo screen.",
-	[SET_APPS_VIDEOMODE] = "Apps Video Mode:\n\nSets the video mode passed to homebrew apps. Auto keeps Indigo's\nmode. Applies to libogc2 apps; other apps may choose their own.",
+	[SET_APPS_VIDEOMODE] = "Apps Video Mode:\n\nSets the video mode passed to homebrew apps. Auto keeps Indigo's\nmode. Applies to libogc2 apps; other apps may choose their own.\nA program sent over the network keeps Indigo's mode.",
 	[SET_SYS_SOUND] = "System Sound:\n\nSets the default audio output type used by most games",
 	[SET_SYS_VIDEO] = "System Video:\n\nIntended to select between NTSC and PAL-M on DOL-002(BRA)",
 	[SET_SCREEN_POS] = "Screen Position:\n\nAdjusts the horizontal screen position in games",

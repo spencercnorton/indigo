@@ -191,7 +191,7 @@ The Settings tour above predates the Apps Video Mode row.
 | Setting | What it does |
 | --- | --- |
 | Swiss Video Mode | The video mode of Indigo's own screens. Auto picks 480p with a digital cable and otherwise follows the console's region. A switches to a new mode and asks before it keeps it. |
-| Apps Video Mode | The mode passed to homebrew when it launches. **Auto** keeps Indigo’s mode. Libogc2 apps use it; other apps may choose their own. Changing it leaves Indigo’s own screens as they are. |
+| Apps Video Mode | The mode passed to homebrew that Indigo starts; a program sent over the network keeps Indigo's mode. **Auto** keeps Indigo’s mode. Libogc2 apps use it; other apps may choose their own. Changing it leaves Indigo’s own screens as they are. |
 | Menu Widescreen | Draws Indigo's own screens for a TV set to 16:9: the background fills the screen and the menus keep their shape in the middle. Set your TV or HDMI adapter to 16:9 too. Games follow **Force Widescreen** instead. |
 | System Video | NTSC, PAL or PAL-M, mainly for the Brazilian console. |
 | Screen Position | Moves the picture left or right in games. |
@@ -214,7 +214,7 @@ The Settings tour above predates the Apps Video Mode row.
 | Waves | **Off** takes the waves away, leaving the backdrop and its rings. Wave Color and Wave Speed apply while they're on. See [Make it yours](personalize.md#backdrop-and-wave-color). |
 | Wave Speed | How fast the waves drift: **Slow** (half as fast), **Normal** or **Fast** (three times as fast). See [Make it yours](personalize.md#backdrop-and-wave-color). |
 | Library Icon, Source Icon, Settings Icon, System Icon | The icon on each face of the Home cube. See [Make it yours](personalize.md#cube-icons). |
-| Up Face, Left Face, Right Face, Down Face | Which menu sits above, left of, right of and below Library on the [Home](home.md#choose-the-sides) cube: Source, Settings, System, Apps, Memory Cards, Emulators, File Browser, or **None** for an empty side. By default Source is up, Settings left, System right and Apps down. A menu on no side is off the cube; Y on Home still opens Settings. |
+| Up Face, Left Face, Right Face, Down Face | Which menu sits above, left of, right of and below Library on the [Home](home.md#choose-the-sides) cube: Source, Settings, System, Apps, Memory Cards, Emulators, File Browser, Web, or **None** for an empty side. By default Source is up, Settings left, System right and Apps down. A menu on no side is off the cube; Y on Home still opens Settings. |
 | Cube | How the [Home](home.md#infinite-or-classic) cube turns. **Infinite** turns round every face in a ring. **Classic** puts each menu on its own side of the cube, as on the GameCube, and you turn back to Library to reach another. |
 | Idle Animation | How the cube moves while Home rests: **Calm**, a slight drift turned a little to the right, or **Sway**, which turns it slowly left and right so the faces beside the one in front peek round its edges. UI Motion Reduced or Off keeps it still. See [Make it yours](personalize.md#motion). |
 | Face Labels | **Off** takes the face's name from under the cube on Home. See [Make it yours](personalize.md#just-the-cube). |

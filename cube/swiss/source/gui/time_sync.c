@@ -1,4 +1,5 @@
 #include <time.h>
+#include <unistd.h>
 #include <network.h>
 #include <ogc/lwp_watchdog.h>
 #include <ogc/system.h>
@@ -82,7 +83,14 @@ void time_sync_network(void)
 		.tv_sec = (time_t)(local / 1000000), .tv_nsec = (long)(local % 1000000) * 1000,
 	};
 	clock_settime(CLOCK_REALTIME, &now);
-	if(__SYS_GetRTC(&rtc)) {
+	/* __SYS_GetRTC gives up while another device holds EXI channel 0 (an
+	 * adapter sending, a card mid-transfer). Try for a moment longer: the
+	 * counter bias is what keeps this time over a power-off. */
+	bool haveRtc = false;
+	for(int i = 0; i < 50 && !(haveRtc = __SYS_GetRTC(&rtc)); i++) {
+		usleep(2000);
+	}
+	if(haveRtc) {
 		SYS_SetCounterBias((u32)(now.tv_sec - DIFF_SEC_1970_2000) - rtc);
 		while(!__SYS_SyncSram());
 	}
