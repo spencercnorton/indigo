@@ -395,7 +395,7 @@ def validate(files: dict[str, str]) -> list[str]:
          "a new Settings session reuses the last session's page")
     need(show.count("DrawDispose(settingsPage);") == 2 and
          loop.index("DrawDispose(settingsPage);") >
-         loop.index("if(option == settingsViews[view].count) {"),
+         loop.index("if(option == UISetLayout_RowCount(view)) {"),
          "the page is disposed outside Save and Discard, so it flickers")
     # No bare frame between screens: the caller moves the scene to Settings
     # before this runs and back after it returns, so the page goes up before
