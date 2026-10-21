@@ -1,3 +1,31 @@
+## 2026-10-21 — Sync Clock hides without an adapter; kept zones are real
+
+Sync Clock (Settings › Network, #153) sets the clock once the network is
+up: `gui/time_sync.c` sends one SNTP request (three tries, a second each),
+then sets `clock_settime`, the SRAM counter bias and `__SYS_SyncSram`, so the
+IPL and games see the time and it survives a power-off. bba.c's network
+thread calls it (one line, listed in UPSTREAM). libogc2's lwIP has no DNS
+or SNTP and ignores `SO_RCVTIMEO`, so the server is an address and the wait
+is `net_select`. `ui_time_sync.c` (packets, POSIX TZ, the kept offset) has
+no console calls; it is host-tested and fuzzed.
+
+Its three rows are now the last of `networkRows`, and Settings hides them
+without a network adapter: `show_settings_view` reads `net_initialized ||
+bba_exists(LOC_ANY)` once and calls `UISetLayout_HideTail`, and whatever
+counted the page's rows uses `UISetLayout_RowCount`, so Save & Exit and
+Discard & Exit follow the rows shown. `show_settings` still searches the
+whole table; the view moves a hidden option to row 0. Sync Clock stays off.
+With Time Zone empty, `UITimeSync_KeptOffset` snaps the clock's offset to
+the nearest of 40 real ones instead of a quarter hour: a Denver console 8
+minutes fast kept -5:45 and now keeps -6:00.
+
+Changing Settings' action block moves `SHOW_ACTIONS_SHA256` in
+`audit_settings_semantics.sh`; `audit_settings_hardware_followup.py`
+anchors on the literal `if(option == UISetLayout_RowCount(view)) {` and
+holds tooltip lines to 68 columns. The host suite in Docker, run from a
+worktree, needs the main checkout's `.git` mounted at its own path, or
+`test_font_batches.py` cannot `git show v2.4.0:`.
+
 ## 2026-10-21 — Web face mounts the config device; browser at cfe550b
 
 On a console with games on an SD2SP2 and settings on a GC Loader, the Web

@@ -43,7 +43,9 @@
 # to, instead of stepping it; Discard takes the page down last, after the
 # video mode is put back and B is let go, so no frame shows the screen
 # behind it bare; A does nothing on a row another setting owns for now
-# (Flatten directory while Library Folders sets it). It is pinned by content
+# (Flatten directory while Library Folders sets it); Save and Discard sit
+# after the rows a page shows (UISetLayout_RowCount), since Network hides
+# Sync Clock's rows without a network adapter. It is pinned by content
 # hash rather than
 # by a base commit, so a rebase cannot break the pin but any further drift
 # still fails until SHOW_ACTIONS_SHA256 is updated deliberately.
@@ -315,7 +317,7 @@ PY
 }
 
 normalize_show_actions "$FILE" "$TMP/head_show_actions"
-SHOW_ACTIONS_SHA256="ce10b773b4682e2d05e90a6ed3f1085f6e83d6c9083e06bacde982a41c22e515"
+SHOW_ACTIONS_SHA256="f6a20b0fe340fab39be0e83325716450b89cac33fd8cc74c0736fc6c2db57058"
 actual_show_actions=$(shasum -a 256 < "$TMP/head_show_actions" | cut -d' ' -f1)
 if [ "$actual_show_actions" = "$SHOW_ACTIONS_SHA256" ]; then
 	echo "  show actions       B/A/L/R/value semantics match the pinned hash"

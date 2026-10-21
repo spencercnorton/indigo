@@ -195,7 +195,7 @@ most use the same key there.
 | `BBAGateway` | An IPv4 address. | empty | IPv4 Gateway |
 | `NTPSync` | `Yes`, `No` | `No` | Sync Clock |
 | `NTPHostIP` | An IPv4 address. Names don't work: the console has no DNS. Empty means `162.159.200.123` (Cloudflare). | empty | NTP Server IP |
-| `TimeZone` | A POSIX TZ string, such as `MST7MDT,M3.2.0,M11.1.0` or `IST-5:30`. Daylight time needs both rules in the `Mm.w.d` form. Empty keeps the zone the console's clock is in, to the nearest quarter hour. | empty | Time Zone |
+| `TimeZone` | A POSIX TZ string, such as `MST7MDT,M3.2.0,M11.1.0` or `IST-5:30`. Daylight time needs both rules in the `Mm.w.d` form. Empty keeps the zone the console's clock is in: its offset from UTC, snapped to the nearest one a real time zone uses. | empty | Time Zone |
 | `FSPHostIP` | An IPv4 address. | empty | FSP Host IP |
 | `FSPPort` | A port number. | `21` | FSP Port |
 | `FSPPassword` | Text, stored as written. | empty | FSP Password |

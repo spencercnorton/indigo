@@ -198,8 +198,29 @@ bool UITimeSync_ZoneOffset(const char *zone, int64_t utcSeconds,
 	return true;
 }
 
+/* Every offset a time zone uses, standard or daylight, in minutes east of UTC
+ * (the IANA database, 2026). Snapping to these rather than to any quarter hour
+ * lets a clock that drifted half an hour or less keep a whole-hour zone. */
+static const int16_t zoneOffsets[] = {
+	-720, -660, -600, -570, -540, -480, -420, -360, -300, -240, -210, -180,
+	-150, -120, -60, 0, 60, 120, 180, 210, 240, 270, 300, 330, 345, 360, 390,
+	420, 480, 525, 540, 570, 600, 630, 660, 720, 765, 780, 825, 840,
+};
+
 int32_t UITimeSync_KeptOffset(int64_t consoleSeconds, int64_t utcSeconds)
 {
-	int64_t east = floorDiv(consoleSeconds - utcSeconds + 450, 900) * 900;
-	return east < -14 * HOUR || east > 14 * HOUR ? 0 : (int32_t)east;
+	int64_t east = consoleSeconds - utcSeconds, best = 0, nearest = INT64_MAX;
+
+	if(east < -14 * HOUR - 1800 || east > 14 * HOUR + 1800) {
+		return 0;
+	}
+	for(size_t i = 0; i < sizeof(zoneOffsets) / sizeof(zoneOffsets[0]); i++) {
+		int64_t offset = zoneOffsets[i] * INT64_C(60);
+		int64_t distance = east > offset ? east - offset : offset - east;
+		if(distance < nearest) {
+			nearest = distance;
+			best = offset;
+		}
+	}
+	return (int32_t)best;
 }

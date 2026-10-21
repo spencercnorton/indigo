@@ -1004,6 +1004,38 @@ static void test_value_list_geometry(void) {
 
 /* The help card holds the longest tooltip (the audit caps them at 16 lines
  * of 68 characters) inside the safe area. */
+/* Settings › Network hides Sync Clock's rows, its last three, without a
+ * network adapter: the page then lays out, scrolls and exits as if it had
+ * only the rows it shows, and every other page keeps all of its own. */
+static void test_hidden_tail_rows(void) {
+	const int network = 6;
+	int full = UISetLayout_PageDesc(network)->rowCount;
+	uiSetLayout_t l;
+
+	CHECK(UISetLayout_RowCount(network) == full);
+	UISetLayout_HideTail(network, 3);
+	CHECK(UISetLayout_RowCount(network) == full - 3);
+	CHECK(UISetLayout_DiscardIndex(network) == full - 2);
+	UISetLayout_Compute(network, full - 4, 0, &l);
+	CHECK(l.rowCount == full - 3 && l.selectedRow == full - 4);
+	UISetLayout_Compute(network, full - 3, 0, &l);
+	CHECK(l.selectedRow == -1 && l.selectedAction == 0);
+	UISetLayout_Compute(network, 999, 0, &l);
+	CHECK(l.option == full - 2 && l.selectedAction == 1);
+	for (int p = 0; p < UI_SETLAYOUT_PAGE_COUNT; p++) {
+		if (p != network)
+			CHECK(UISetLayout_RowCount(p) == UISetLayout_PageDesc(p)->rowCount);
+	}
+	/* A page keeps one row however many it is told to hide; a page out of
+	 * range changes nothing. */
+	UISetLayout_HideTail(network, 999);
+	CHECK(UISetLayout_RowCount(network) == 1);
+	UISetLayout_HideTail(-1, 3);
+	UISetLayout_HideTail(UI_SETLAYOUT_PAGE_COUNT, 3);
+	UISetLayout_HideTail(network, 0);
+	CHECK(UISetLayout_RowCount(network) == full);
+}
+
 static void test_help_card_holds_sixteen_lines(void) {
 	uiSetHelpLayout_t l;
 	int lines;
@@ -1048,6 +1080,7 @@ int main(void) {
 	RUN(test_help_summary_reads_the_current_value);
 	RUN(test_value_list_geometry);
 	RUN(test_help_card_holds_sixteen_lines);
+	RUN(test_hidden_tail_rows);
 	printf("%d checks, %d failures\n", checks, failures);
 	return failures ? 1 : 0;
 }

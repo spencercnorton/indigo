@@ -358,8 +358,13 @@ const uiSetLayoutPage_t *UISetLayout_PageDesc(int page);
 #define UI_SETLAYOUT_SETTINGS_FILE_STATES 3
 const char *UISetLayout_SettingsFileText(int state);
 
-/* Index of the Discard & Exit option: rowCount + 1. */
+/* Index of the Discard & Exit option: the rows shown + 1. */
 int UISetLayout_DiscardIndex(int page);
+
+/* The rows a page shows: its rowCount less its last `rows`, which it hides
+ * (Settings › Network hides Sync Clock's without a network adapter). */
+void UISetLayout_HideTail(int page, int rows);
+int UISetLayout_RowCount(int page);
 
 /* Full layout for one page. motionMode uses the mirror enum. */
 void UISetLayout_Compute(int page, int option, int motionMode,
