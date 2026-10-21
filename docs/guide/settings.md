@@ -160,7 +160,7 @@ Press Y on any row for the same explanations on the console.
 | --- | --- |
 | Force NTSC Video Mode, Force PAL Video Mode | The video mode games start in. Auto keeps each game's own mode. A game's own settings have one row, **Force Video Mode**. |
 | Game Language | *Game's own settings only.* The language the game uses; Default follows System Language. Matters most for PAL games. |
-| Force Widescreen | Stretches games made for 4:3 to 16:9. **3D** widens the 3D view; **2D+3D** also widens menus. Set your TV to 16:9. |
+| Force Widescreen | Stretches games made for 4:3 to 16:9. **3D** widens the 3D view; **2D+3D** also widens menus. Set your TV to 16:9. Animal Crossing Deluxe starts with it off: turn on the game's own Widescreen mode instead. |
 | Force Polling Rate | How often the game reads the controller. **VSync** is the most compatible; **1000Hz** has the least delay. |
 | Invert Camera Stick | Inverts the C-stick's X axis, Y axis or both. |
 | Swap Camera Stick | Swaps the C-stick's axes with the control stick's. |

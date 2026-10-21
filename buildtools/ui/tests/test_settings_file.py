@@ -751,6 +751,13 @@ class SettingsFileTest(unittest.TestCase):
             self.assertEqual(VALUES["gameVModeStr"][int(pal["gameVMode"])], "576i")
             self.assertEqual(VALUES["forceWidescreenStr"][int(ntsc["forceWidescreen"])], "3D")
             self.assertEqual(ntsc["gameLanguage"], "8")
+            # Animal Crossing Deluxe widens itself, so it starts with Force
+            # Widescreen off; its own file still turns it on, and keeps it.
+            deluxe = pairs(self.run_harness("game-fields", "GADE", "E", handle.name))
+            self.assertEqual(VALUES["forceWidescreenStr"][int(deluxe["forceWidescreen"])], "No")
+            own = pairs(self.run_harness("game", "GADE", "E", handle.name,
+                                         stdin="Force Widescreen=3D\r\n"))
+            self.assertEqual(own.get("Force Widescreen"), "3D")
         finally:
             os.unlink(handle.name)
 

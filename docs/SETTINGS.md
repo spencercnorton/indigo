@@ -292,8 +292,11 @@ way in a game's file.
 | `RetroTINK-4K Profile` | `0` to `12` | from global.ini |
 
 For some games, Swiss starts from its own fix instead of global.ini:
-Fix Pixel Center, Digital Trigger Level, Emulate Audio Streaming, Emulate Read
-Speed or Emulate Broadband Adapter. A game's file still overrides the fix.
+Fix Pixel Center, Force Anisotropic Filter, Force Widescreen, Digital Trigger
+Level, Emulate Audio Streaming, Emulate Read Speed or Emulate Broadband
+Adapter. Animal Crossing Deluxe (`GADE`) starts with Force Widescreen at `No`:
+the game has a Widescreen mode of its own, in its Settings at startup. A game's
+file still overrides the fix.
 
 ## Settings a file can't set
 
