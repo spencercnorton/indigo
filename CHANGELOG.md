@@ -23,7 +23,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
 - Home has a Web face, which opens CubeBrowser, a web browser for the
   GameCube by Arial-Bold (used with permission). It ships in the zip as
   `swiss/indigo/cubebrowser.dol`, with its certificates in `gcbrowser/` at
-  the top of the card. Give it a side under Settings › Setup › Console
+  the top of the card, and the licences of what it's built from in
+  `swiss/indigo/NOTICE.txt` and `swiss/indigo/LICENSE-mbedtls.txt`. Give it a side under Settings › Setup › Console
   (Up Face, Left Face, Right Face or Down Face › Web). It needs a network
   adapter; in the browser, Settings › Exit to Indigo comes back.
 
