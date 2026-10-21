@@ -74,6 +74,8 @@ jobs:
           mkdir -p browser/gcbrowser
           cp browser-src/cubebrowser.dol browser/cubebrowser.dol
           cp browser-src/sd/gcbrowser/cacert.pem browser/gcbrowser/cacert.pem
+          # mbed TLS is built into the DOL: its licence ships beside it.
+          cp browser-src/third_party/mbedtls/LICENSE browser/LICENSE-mbedtls.txt
           rm -rf browser-src
       - name: Package and check the SD card zip
         run: |

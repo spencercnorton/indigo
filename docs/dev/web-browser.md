@@ -68,8 +68,14 @@ permission to integrate). The fork already carries:
 `swiss/indigo/cubebrowser.dol` (where `launchWebBrowser` looks, on the config
 device, which it mounts first: with games on another device the config device
 is mounted only while something reads it) and the CA folder to `gcbrowser/` at
-the card root. Both paths are overridable with `BROWSER_DOL` /
-`BROWSER_GCBROWSER`. The browser is optional in the zip (`check_package.py`
+the card root. mbed TLS is compiled into the DOL, so its licence goes with it:
+the Build jobs copy the pinned release's `LICENSE` to
+`browser/LICENSE-mbedtls.txt`, `sd_package.sh` ships it as
+`swiss/indigo/LICENSE-mbedtls.txt` and won't bundle the browser without it,
+and `check_package.py` fails a zip that has the browser but not the licence.
+`NOTICE` names mbed TLS, stb_image and the CA bundle's MPL-2.0 terms. The
+paths are overridable with `BROWSER_DOL`, `BROWSER_GCBROWSER` and
+`BROWSER_MBEDTLS_LICENSE`. The browser is optional in the zip (`check_package.py`
 `OPTIONAL`), so a plain build still packages; a release ships it. The zip
 tripwire was raised to 9 MiB for the ~1 MiB the browser adds.
 
@@ -81,8 +87,8 @@ Indigo's GPL.
 ## How CI builds it
 
 The Build jobs in `ci.yml` and `release.yml` clone the hardened fork at a pinned
-commit, fetch its checksum-verified dependencies and build it, then copy the DOL
-and CA bundle into `browser/` for `sd_package.sh`:
+commit, fetch its checksum-verified dependencies and build it, then copy the DOL,
+CA bundle and mbed TLS's licence into `browser/` for `sd_package.sh`:
 
 - fork: https://github.com/spencernorton/cubebrowser (maintained by us, used
   with permission; its own README/NOTICE credit Arial-Bold)

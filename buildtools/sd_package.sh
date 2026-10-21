@@ -9,6 +9,7 @@
 #     swiss/indigo/LICENSE.txt, NOTICE.txt
 #     swiss/indigo/cubebrowser.dol   the web browser the Web face launches (if bundled)
 #     gcbrowser/cacert.pem           the browser's trusted certificates (if bundled)
+#     swiss/indigo/LICENSE-mbedtls.txt  the licence of mbed TLS, built into the browser
 # Usage: buildtools/sd_package.sh <version> [swiss.dol] [out dir]
 # Run `make dev` first (see README, Install); run from the repository root.
 set -eu
@@ -35,9 +36,16 @@ cp NOTICE "$card/swiss/indigo/NOTICE.txt"
 # reports the browser isn't installed.
 browser_dol=${BROWSER_DOL:-browser/cubebrowser.dol}
 browser_gcbrowser=${BROWSER_GCBROWSER:-browser/gcbrowser}
+# mbed TLS is built into the browser, and its licence goes with it.
+browser_mbedtls_license=${BROWSER_MBEDTLS_LICENSE:-browser/LICENSE-mbedtls.txt}
 browser_zip=
 if [ -f "$browser_dol" ]; then
+	if [ ! -f "$browser_mbedtls_license" ]; then
+		echo "sd_package: $browser_dol needs mbed TLS's licence at $browser_mbedtls_license" >&2
+		exit 1
+	fi
 	cp "$browser_dol" "$card/swiss/indigo/cubebrowser.dol"
+	cp "$browser_mbedtls_license" "$card/swiss/indigo/LICENSE-mbedtls.txt"
 	if [ -d "$browser_gcbrowser" ]; then
 		mkdir -p "$card/gcbrowser"
 		cp -R "$browser_gcbrowser/." "$card/gcbrowser/"
@@ -96,7 +104,7 @@ WHAT EACH FILE IS FOR
   ipl.dol                      Indigo itself (renamed for some setups)
   swiss/patches/apploader.img  In-Game Reset returns to Indigo (see below)
   swiss/ui/                    the poster pack goes here, if you add it
-  swiss/indigo/                Indigo's licence, notice and web browser
+  swiss/indigo/                licences, notices and the web browser
   gcbrowser/                   the web browser's certificates
 
 GAMES
