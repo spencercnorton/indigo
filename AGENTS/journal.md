@@ -1,3 +1,31 @@
+## 2026-10-21 — The browser's lab ships off; cut-short DOLs; FlippyDrive
+
+Three follow-ups from the 2.5 review:
+
+- `boot_dol` refuses a DOL or ELF whose header names sections past the end
+  of the file (#158, into beta): `boot_image_valid` keeps `valid_dol_xxh3`
+  and adds wiiload's `wiiload_image_valid`, now declared in `swiss.h`.
+  `SDLOADER.BIN` and branch BINs stay raw; an ELF named `SDLOADER.BIN` is
+  checked as an ELF, as `boot_dol` starts it. `test_boot_image.py` runs the
+  real check on every cut-short size.
+- The fork's console lab ships, off unless the browser starts with `lab=1`
+  (fork branch `feat/console-lab`): Indigo's parser copied unchanged with
+  its test; `/open` and `/point` look for `X-Lab` only among the headers (the
+  test build's `strstr` also matched a body); an idle deadline (900 s, from
+  a periodic alarm, kept in 32-bit milliseconds so the interrupt never
+  reads half a write) and a crash reload after 10 s; `/reset` from the main
+  loop, or from the lab's thread after 3 s; `sd=0` keeps the card off. Run
+  from RAM on a console: header checks, `/open`, `/point`, a virtual
+  press, the deadline and `/reset` back to Indigo.
+- This branch: `launchWebBrowser` passes `lab=1` while `LabServer` is on
+  (`audit_four_face_home.py` pins it), and the zip README, install guide,
+  `docs/UPLOADS.md` and `docs/dev/web-browser.md` say the browser can't read
+  a FlippyDrive's card (libogc2 has no FlippyDrive device).
+
+The fork's pull request (spencernorton/cubebrowser#2) merged as `412d592`,
+the tree tested, and `CUBEBROWSER_REF` pins it in both workflows. Left
+open: the Web face hand-off is unchecked on a console. The card holds the
+released browser, which has no lab, so a launch there ends remote control.
 ## 2026-10-21 — Lab and Sync Clock: reset vs uploads, locked frame copy, LogHost thread, steady timers
 
 Closes the lab and Sync Clock items the 2.5 review left open (entry below).
