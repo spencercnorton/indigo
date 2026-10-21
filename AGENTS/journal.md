@@ -22,11 +22,10 @@ Three follow-ups from the 2.5 review:
   `docs/UPLOADS.md` and `docs/dev/web-browser.md` say the browser can't read
   a FlippyDrive's card (libogc2 has no FlippyDrive device).
 
-Left open: `CUBEBROWSER_REF` points at the fork pull request's head
-(spencernorton/cubebrowser#2, `e7199ce`) and moves to its merge commit once
-it merges; that branch is deleted on merge. The Web face hand-off is
-unchecked on a console: the card holds the released browser, which has no
-lab, so a launch there ends remote control.
+The fork's pull request (spencernorton/cubebrowser#2) merged as `412d592`,
+the tree tested, and `CUBEBROWSER_REF` pins it in both workflows. Left
+open: the Web face hand-off is unchecked on a console. The card holds the
+released browser, which has no lab, so a launch there ends remote control.
 
 ## 2026-10-21 — 2.5 review on a console: Web face, Apps Video Mode, uploads
 
