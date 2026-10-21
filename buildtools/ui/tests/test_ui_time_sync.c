@@ -231,8 +231,10 @@ static void checkKeptOffset(void)
 	CHECK(UITimeSync_KeptOffset(utc + 5 * 3600 + 2700 - 300, utc) == 5 * 3600 + 2700);
 	CHECK(UITimeSync_KeptOffset(utc - 3 * 3600 - 1800 + 200, utc) == -3 * 3600 - 1800);
 	CHECK(UITimeSync_KeptOffset(utc + 9 * 3600 + 1800 - 400, utc) == 9 * 3600 + 1800);
-	/* A drift that leaves a half-hour zone nearer than the whole hour takes it. */
+	/* A drift that leaves another zone nearer takes it: a half-hour zone beside
+	 * a whole hour, or India for a Nepal clock 8 minutes slow. */
 	CHECK(UITimeSync_KeptOffset(utc + 3 * 3600 + 1700, utc) == 3 * 3600 + 1800);
+	CHECK(UITimeSync_KeptOffset(utc + 5 * 3600 + 2700 - 480, utc) == 5 * 3600 + 1800);
 	CHECK(UITimeSync_KeptOffset(utc + 14 * 3600, utc) == 14 * 3600);
 	CHECK(UITimeSync_KeptOffset(utc + 14 * 3600 + 1700, utc) == 14 * 3600);
 	CHECK(UITimeSync_KeptOffset(utc - 14 * 3600, utc) == -12 * 3600);
