@@ -241,12 +241,13 @@ static uint32_t appPictureSize(int32_t card)
 	return app->picture[0] == '\0' || app->pictureFailed ? 0u : app->pictureSize;
 }
 
-static bool appReadPicture(int32_t card, uint8_t *data, uint32_t size)
+static bool appReadPicture(int32_t card, uint32_t offset, uint8_t *data, uint32_t size)
 {
 	file_handle file;
 	s32 read;
 
 	takeEntry(&file, &appsFiles[(u32)card * 2u + 1u]);
+	file.offset = offset;
 	read = appsDevice->readFile(&file, data, size);
 	appsDevice->closeFile(&file);
 	return read == (s32)size;

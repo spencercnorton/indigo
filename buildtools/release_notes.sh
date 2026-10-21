@@ -26,7 +26,7 @@ esac
 # repository. GitHub's release page and feed rewrite them, but the API and gh
 # pass them on as written, so each goes to the file at this tag by full URL
 # (a folder, ending in /, to its tree).
-repo=https://github.com/spencercnorton/indigo
+repo=https://github.com/spencernorton/indigo
 printf '%s\n' "$notes" | sed -e '/./,$!d' | sed -E \
 	-e "s#\]\(([A-Za-z0-9._][^):]*/)\)#]($repo/tree/$tag/\1)#g" \
 	-e "s#\]\(([A-Za-z0-9._][^):]*)\)#]($repo/blob/$tag/\1)#g"
@@ -49,5 +49,5 @@ The second file is \`swiss/patches/apploader.img\`: copy it into the card's \`sw
 
 **Posters and cheats** (optional; unzip one and copy the files in its \`swiss/ui\` or \`swiss/cheats\` folder into the card's folder of the same name, making it if needed): [Posters](https://indigo.norvitech.com/indigo-posters-all.zip) (every region, with Spotlight's stills and descriptions) · [Cheats](https://indigo.norvitech.com/indigo-cheats.zip)
 
-**Verify:** \`SHA256SUMS.txt\` lists the zip's SHA-256, and the zip carries a build provenance attestation: \`gh attestation verify Indigo-$tag.zip --repo spencercnorton/indigo\`.
+**Verify:** \`SHA256SUMS.txt\` lists the zip's SHA-256, and the zip carries a build provenance attestation: \`gh attestation verify Indigo-$tag.zip --repo spencernorton/indigo\`.
 NOTES

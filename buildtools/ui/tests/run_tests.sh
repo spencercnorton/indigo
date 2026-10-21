@@ -105,15 +105,23 @@ run_binaries() {
 	if [ -z "$suffix" ]; then python3 ./test_card_slots.py; else python3 ./test_card_slots.py --sanitize; fi
 	echo "== manual MP3 player$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_mp3_player.py; else python3 ./test_mp3_player.py --sanitize; fi
+	echo "== uploads: exact stream and safe handoff$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_wiiload.py; else python3 ./test_wiiload.py --sanitize; fi
 	# card_art builds its own binaries: posters of apps and folders, their guards.
 	echo "== test_card_art$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_card_art.py; else python3 ./test_card_art.py --sanitize; fi
+	echo "== Spotlight stills: only on first use$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_stills_lifecycle.py; else python3 ./test_stills_lifecycle.py --sanitize; fi
+	echo "== font batches: the release's exact glyph stream$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_font_batches.py; else python3 ./test_font_batches.py --sanitize; fi
 	echo "== game folder visibility$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_gameflow_folder_visibility.py; else python3 ./test_gameflow_folder_visibility.py --sanitize; fi
 	echo "== test_saves_card_io$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_saves_card_io.py; else python3 ./test_saves_card_io.py --sanitize; fi
 	echo "== test_saves_raw_controller$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_saves_raw_controller.py; else python3 ./test_saves_raw_controller.py --sanitize; fi
+	echo "== upstream console identity$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_upstream_console.py; else python3 ./test_upstream_console.py --sanitize; fi
 }
 
 # The fuzzers (fuzz/) must build on every change, since a Fuzz run is not

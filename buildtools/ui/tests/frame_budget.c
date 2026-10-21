@@ -50,6 +50,7 @@ static float countFmaxf(float x, float y) { cost.minMaxCalls++; return fmaxf(x, 
 #define fminf countFminf
 #define fmaxf countFmaxf
 #include "indigo_background.c"
+#include "ui_hint_geometry.c"
 #include "hint_source.c"	/* written by test_frame_budget.py */
 #include "save_cubes_source.c"	/* and this */
 /* The IPL font for the File Browser's words: 11 px a character at scale 1
@@ -68,15 +69,19 @@ static void fontQuads(int x, int y, const char *text, float scale, int align,
 	const char *c;
 
 	for(pass = 2 - passes; pass < 2; pass++) {
-		for(c = text; *c != '\0' && *c != '\n'; c++) {
-			float x0 = left + (float)(c - text) * 11.0f * scale + (float)(1 - pass);
-
-			GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-			for(v = 0; v < 4; v++) {
-				GX_Position3f32(x0 + (((v & 1) ^ ((v & 2) >> 1)) ? 11.0f * scale : 0.0f),
-					(float)y + ((v & 2) ? 12.0f : -12.0f) * scale, 0.0f);
-				GX_Color4u8(color.r, color.g, color.b, pass == 0 ? color.a * 3 / 4 : color.a);
-				GX_TexCoord2f32(0.0f, 0.0f);
+		c = text;
+		while(*c != '\0' && *c != '\n') {
+			const char *end = c;
+			while(*end != '\0' && *end != '\n' && end - c < 64) end++;
+			GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)((end - c) * 4));
+			for(; c < end; c++) {
+				float x0 = left + (float)(c - text) * 11.0f * scale + (float)(1 - pass);
+				for(v = 0; v < 4; v++) {
+					GX_Position3f32(x0 + (((v & 1) ^ ((v & 2) >> 1)) ? 11.0f * scale : 0.0f),
+						(float)y + ((v & 2) ? 12.0f : -12.0f) * scale, 0.0f);
+					GX_Color4u8(color.r, color.g, color.b, pass == 0 ? color.a * 3 / 4 : color.a);
+					GX_TexCoord2f32(0.0f, 0.0f);
+				}
 			}
 			GX_End();
 		}
@@ -626,18 +631,21 @@ static void files(const char *name, bool wide, int active, int menu, int extra)
 		UIFiles_Hints(UI_FILES_HINTS_MESSAGE, active, UI_FILES_KIND_FOLDER, false, false, false,
 			snapshot.hint[0], snapshot.hint[1]);
 	}
-	memset(&cost, 0, sizeof(cost));
-	cost.hash = 1469598103934665603ULL;
-	stubStateCalls = 0;
-	IndigoBackground_DrawSavesBackdrop(1.0f, 0.0f, seconds, true, UIScene_Frame(), &clock, icons);
-	_FilesShapes(&snapshot, &layout, 1.0f, 1.0f, (float)active, focusY, 0, 0.84f,
-		extra == FILES_MESSAGE ? 1.0f : 0.0f);
-	_FilesWords(&snapshot, &layout, 1.0f, 1.0f, (float)active, 0.84f);
-	if(menu >= 0 || extra == FILES_ACTIONS || extra == FILES_COPY) {
-		_FilesMenu(&snapshot.menu, &layout, 1.0f, 1.0f, (float)snapshot.menu.focus);
-	}
-	if(extra == FILES_MESSAGE) {
-		_FilesMessage(snapshot.message, snapshot.messageWidth, 1.0f);
+	/* First use builds edge normals; the second is the steady frame. */
+	for(int frame = 0; frame < 2; frame++) {
+		memset(&cost, 0, sizeof(cost));
+		cost.hash = 1469598103934665603ULL;
+		stubStateCalls = 0;
+		IndigoBackground_DrawSavesBackdrop(1.0f, 0.0f, seconds, true, UIScene_Frame(), &clock, icons);
+		_FilesShapes(&snapshot, &layout, 1.0f, 1.0f, (float)active, focusY, 0, 0.84f,
+			extra == FILES_MESSAGE ? 1.0f : 0.0f);
+		_FilesWords(&snapshot, &layout, 1.0f, 1.0f, (float)active, 0.84f);
+		if(menu >= 0 || extra == FILES_ACTIONS || extra == FILES_COPY) {
+			_FilesMenu(&snapshot.menu, &layout, 1.0f, 1.0f, (float)snapshot.menu.focus);
+		}
+		if(extra == FILES_MESSAGE) {
+			_FilesMessage(snapshot.message, snapshot.messageWidth, 1.0f);
+		}
 	}
 	printf("{\"scene\": \"%s\", \"sqrtf\": %ld, \"trig\": %ld, \"minmax\": %ld, "
 		"\"vertices\": %ld, \"begins\": %ld, \"copy_pixels\": %.0f, \"state\": %ld, "

@@ -563,6 +563,8 @@ def check_detail(swiss: str, screen: str, frame: str) -> None:
     before(opener, "if(gameflowReadResolverHeader(entry, &header)) {", "memalign(")
     before(opener, "filesDetailSnapshot(snapshot, entry, &header);", "DrawGameflowRequestPosters(")
     before(opener, "DrawGameflowRequestPosters(", "event = DrawGameflow(snapshot);")
+    before(opener, "DrawGameflowRequestPosters(", "DrawGameflowPrimePoster();")
+    before(opener, "DrawGameflowPrimePoster();", "event = DrawGameflow(snapshot);")
     # A poster that one read can't land (a slot just let go, the pack only
     # now opened) is read on Detail's idle retraces, as the Library's, and
     # fades in: the banner standing in for it never stays.
@@ -990,6 +992,8 @@ MUTANTS = (
     ("Detail's poster never lands", SWISS,
      "\t\t\t\tif(buttons == 0u) {\n\t\t\t\t\tDrawGameflowPollPosters();\n\t\t\t\t\t/* A card",
      "\t\t\t\tif(buttons == 0u) {\n\t\t\t\t\t/* A card"),
+    ("Detail opens with a partial poster", SWISS,
+     "\t\tDrawGameflowPrimePoster();", "\t\tDrawGameflowPollPosters();"),
     ("A  Details on storage that doesn't start games", SWISS,
      "\t\t!filesOpensDetail(entry)) {", "\t\tfalse) {"),
     ("a mode set now moves", FRAME,

@@ -198,6 +198,8 @@ int CoreTemperature(void);
 uiDrawObj_t* DrawGameflow(const uiGameflowRenderSnapshot_t *snapshot);
 void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	const uiGameflowRenderSnapshot_t *snapshot);
+/* Complete one poster before first Detail publication; idle work is stepped. */
+bool DrawGameflowPrimePoster(void);
 bool DrawGameflowPollPosters(void);
 void DrawGameflowCancelPosters(void);
 /* Spotlight's description of a game, from swiss/ui/descriptions.txt on

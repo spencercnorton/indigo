@@ -1,5 +1,6 @@
 #include <gctypes.h>
 #include <ogc/irq.h>
+#include <ogc/lwp_watchdog.h>
 #include <ogc/n64.h>
 #include <ogc/pad.h>
 #include <ogc/si.h>
@@ -18,6 +19,14 @@ static u32 menuInputValidMask;
  * press held and let go while the menu thread was busy reading a card is
  * still a press. */
 static u32 buttonsDown;
+/* The console lab's virtual pad (gui/lab.c): buttons pressed over the LAN,
+ * held until virtualUntil. A new press counts as down once, at the next
+ * scan, even when it repeats the last one. */
+static u32 virtualButtons;
+static u64 virtualUntil;
+static u32 virtualPresses, virtualPressesSeen;
+/* When a real controller last had a button down: the lab waits for quiet. */
+static u64 realInputAt;
 
 static void resetCallback(void)
 {
@@ -63,6 +72,8 @@ static void samplingCallback(void)
 
 void padsInit()
 {
+	/* Quiet counts from here until a real button goes down. */
+	realInputAt = gettime();
 	PAD_Init();
 	SI_InitSteering();
 	SI_SetSteeringSamplingCallback(samplingCallback);
@@ -77,6 +88,39 @@ void padsScan(void)
 	/* The retrace callback: interrupts are off. */
 	buttonsDown |= PAD_ButtonsDown(PAD_CHAN0) | PAD_ButtonsDown(PAD_CHAN1) |
 		PAD_ButtonsDown(PAD_CHAN2) | PAD_ButtonsDown(PAD_CHAN3);
+	if(PAD_ButtonsHeld(PAD_CHAN0) | PAD_ButtonsHeld(PAD_CHAN1) |
+	   PAD_ButtonsHeld(PAD_CHAN2) | PAD_ButtonsHeld(PAD_CHAN3))
+		realInputAt = gettime();
+	if(virtualPresses != virtualPressesSeen) {
+		virtualPressesSeen = virtualPresses;
+		buttonsDown |= virtualButtons;
+	}
+}
+
+void padsVirtualPress(u32 buttons, u32 holdMs)
+{
+	u32 level = IRQ_Disable();
+	virtualButtons = buttons;
+	virtualUntil = gettime() + millisecs_to_ticks(holdMs);
+	virtualPresses++;
+	IRQ_Restore(level);
+}
+
+u32 padsRealIdleMs(void)
+{
+	u32 level = IRQ_Disable();
+	u64 at = realInputAt;
+	IRQ_Restore(level);
+	u64 idle = ticks_to_millisecs(diff_ticks(at, gettime()));
+	return idle > 0xFFFFFFFFull ? 0xFFFFFFFFu : (u32)idle;
+}
+
+static u32 virtualHeld(void)
+{
+	u32 level = IRQ_Disable();
+	u32 held = gettime() < virtualUntil ? virtualButtons : 0;
+	IRQ_Restore(level);
+	return held;
 }
 
 /* The buttons in mask pressed since they were last taken, taken now. */
@@ -123,7 +167,8 @@ u32 padsButtonsHeld() {
 		PAD_ButtonsHeld(PAD_CHAN0) |
 		PAD_ButtonsHeld(PAD_CHAN1) |
 		PAD_ButtonsHeld(PAD_CHAN2) |
-		PAD_ButtonsHeld(PAD_CHAN3)
+		PAD_ButtonsHeld(PAD_CHAN3) |
+		virtualHeld()
 	);
 }
 

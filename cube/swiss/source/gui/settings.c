@@ -21,6 +21,7 @@
 #include "bba.h"
 #include "sram.h"
 #include "rt4k.h"
+#include "time_sync.h"
 #include "input.h"
 #include "ui_color.h"
 #include "ui_motion.h"
@@ -116,6 +117,7 @@ const int simulatedMemSizeInt[] = {
 
 static char *tooltips_global[PAGE_GLOBAL_MAX+1] = {
 	[SET_SYS_BOOTMODE] = "System Boot Mode:\n\nSets development or production mode on development hardware.\nOn retail hardware with GC Loader or PicoLoader, the default\nskips the GameCube logo screen.",
+	[SET_APPS_VIDEOMODE] = "Apps Video Mode:\n\nSets the video mode passed to homebrew apps. Auto keeps Indigo's\nmode. Applies to libogc2 apps; other apps may choose their own.",
 	[SET_SYS_SOUND] = "System Sound:\n\nSets the default audio output type used by most games",
 	[SET_SYS_VIDEO] = "System Video:\n\nIntended to select between NTSC and PAL-M on DOL-002(BRA)",
 	[SET_SCREEN_POS] = "Screen Position:\n\nAdjusts the horizontal screen position in games",
@@ -184,6 +186,9 @@ static char *tooltips_network[PAGE_NETWORK_MAX+1] = {
 	[SET_BBA_NETMASK] = "IPv4 Netmask:\n\nThe network's prefix length when DHCP is off, such as 24 on a\ntypical home network.",
 	[SET_BBA_GATEWAY] = "IPv4 Gateway:\n\nYour router's address when DHCP is off.",
 	[SET_BBA_DHCP] = "IPv4 uses DHCP:\n\nYes - Your router assigns the address, netmask and gateway (default)\nNo - Use the address, netmask and gateway set above",
+	[SET_NTP_SYNC] = "Sync Clock:\n\nYes - Set the clock from the NTP server when the network starts\nNo - Leave the clock as it is (default)\n\nThe IPL and games see the new time too. The network starts with\nIndigo when Init network at startup is on.",
+	[SET_NTP_HOSTIP] = "NTP Server IP:\n\nAddress of the time server Sync Clock asks. Empty asks\nCloudflare's, 162.159.200.123 (default). A name won't work: the\nconsole has no DNS.",
+	[SET_TIME_ZONE] = "Time Zone:\n\nA POSIX TZ string, such as MST7MDT,M3.2.0,M11.1.0 (US Mountain),\nGMT0BST,M3.5.0/1,M10.5.0 (UK) or IST-5:30 (India). Daylight time\nchanges by itself.\n\nEmpty keeps the zone the clock is already in, to the nearest\nquarter hour; you change it for daylight time in the IPL.",
 	[SET_FSP_HOSTIP] = "FSP Host IP:\n\nAddress of the computer running the FSP server with your games.",
 	[SET_FSP_PORT] = "FSP Port:\n\nPort of the FSP server (21 by default).",
 	[SET_FSP_PASS] = "FSP Password:\n\nPassword for the FSP server, if it has one. It is stored as plain\ntext in global.ini.",
@@ -596,6 +601,7 @@ static const settingsRowRef_t setupRows[] = {
 
 static const settingsRowRef_t displayRows[] = {
 	{PAGE_GLOBAL, SET_SWISS_VIDEOMODE},
+	{PAGE_GLOBAL, SET_APPS_VIDEOMODE},
 	{PAGE_INTERFACE, SET_MENU_WIDESCREEN},
 	{PAGE_GLOBAL, SET_SYS_VIDEO},
 	{PAGE_GLOBAL, SET_SCREEN_POS},
@@ -651,6 +657,9 @@ static const settingsRowRef_t networkRows[] = {
 	{PAGE_NETWORK, SET_BBA_NETMASK},
 	{PAGE_NETWORK, SET_BBA_GATEWAY},
 	{PAGE_NETWORK, SET_BBA_DHCP},
+	{PAGE_NETWORK, SET_NTP_SYNC},
+	{PAGE_NETWORK, SET_NTP_HOSTIP},
+	{PAGE_NETWORK, SET_TIME_ZONE},
 	{PAGE_NETWORK, SET_FSP_HOSTIP},
 	{PAGE_NETWORK, SET_FSP_PORT},
 	{PAGE_NETWORK, SET_FSP_PASS},
@@ -1069,6 +1078,10 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 				snprintf(row->text, sizeof(row->text), "%s%s", getVideoModeString(getVideoModeFromSwissSetting(swissSettings.uiVMode)), swissSettings.uiVMode == 0 ? " (Auto) " : "");
 				rowCycle(row, "Swiss Video Mode:", row->text, true);
 			break;
+			case SET_APPS_VIDEOMODE:
+				snprintf(row->text, sizeof(row->text), "%s%s", getVideoModeString(getVideoModeFromSwissSetting(swissSettings.appsVMode ? swissSettings.appsVMode : swissSettings.uiVMode)), swissSettings.appsVMode == 0 ? " (Auto) " : "");
+				rowCycle(row, "Apps Video Mode:", row->text, true);
+			break;
 			case SET_INIT_DRIVE: rowYesNo(row, "Init DVD Drive at startup:", swissSettings.initDVDDriveAtStart, dvdEnable); break;
 			case SET_STOP_MOTOR: rowYesNo(row, "Stop DVD Drive motor:", swissSettings.stopMotor, dvdEnable); break;
 			case SET_AUDIO_BUFFER: rowCycle(row, "Configure Audio Buffer:", configAudioBufferStr[swissSettings.configAudioBuffer], dvdEnable); break;
@@ -1135,6 +1148,9 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 			case SET_BBA_NETMASK: rowTextNumber(row, "IPv4 Netmask:", swissSettings.bbaNetmask, netEnable); break;
 			case SET_BBA_GATEWAY: rowText(row, "IPv4 Gateway:", swissSettings.bbaGateway, netEnable); break;
 			case SET_BBA_DHCP: rowYesNo(row, "IPv4 uses DHCP:", swissSettings.bbaUseDhcp, netEnable); break;
+			case SET_NTP_SYNC: rowYesNo(row, "Sync Clock:", swissSettings.ntpSync, netEnable); break;
+			case SET_NTP_HOSTIP: rowText(row, "NTP Server IP:", swissSettings.ntpHostIp[0] ? swissSettings.ntpHostIp : TIME_SYNC_DEFAULT_SERVER, netEnable); break;
+			case SET_TIME_ZONE: rowText(row, "Time Zone:", swissSettings.timeZone[0] ? swissSettings.timeZone : "Keep console's", netEnable); break;
 			case SET_FSP_HOSTIP: rowText(row, "FSP Host IP:", swissSettings.fspHostIp, netEnable); break;
 			case SET_FSP_PORT: rowTextNumber(row, "FSP Port:", swissSettings.fspPort, netEnable); break;
 			case SET_FSP_PASS: rowText(row, "FSP Password:", "*****", netEnable); break;
@@ -1554,6 +1570,10 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 				swissSettings.uiVMode += direction;
 				swissSettings.uiVMode = (swissSettings.uiVMode + 9) % 9;
 			break;
+			case SET_APPS_VIDEOMODE:
+				swissSettings.appsVMode += direction;
+				swissSettings.appsVMode = (swissSettings.appsVMode + 9) % 9;
+			break;
 			case SET_INIT_DRIVE:
 				if(deviceHandler_getDeviceAvailable(&__device_dvd))
 					swissSettings.initDVDDriveAtStart ^= 1;
@@ -1806,6 +1826,15 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_BBA_DHCP:
 				swissSettings.bbaUseDhcp ^= 1;
+			break;
+			case SET_NTP_SYNC:
+				swissSettings.ntpSync ^= 1;
+			break;
+			case SET_NTP_HOSTIP:
+				DrawGetTextEntry(ENTRYMODE_IP, "NTP Server IP", &swissSettings.ntpHostIp, sizeof(swissSettings.ntpHostIp) - 1);
+			break;
+			case SET_TIME_ZONE:
+				DrawGetTextEntry(ENTRYMODE_NUMERIC|ENTRYMODE_ALPHA, "Time Zone", &swissSettings.timeZone, sizeof(swissSettings.timeZone) - 1);
 			break;
 			case SET_FSP_HOSTIP:
 				DrawGetTextEntry(ENTRYMODE_IP, "FSP Host IP", &swissSettings.fspHostIp, sizeof(swissSettings.fspHostIp) - 1);
@@ -2335,7 +2364,7 @@ static bool settingsRowIsAction(int page, int option)
 			return in_range(option, SET_AUTOLOAD, SET_FLATTEN_DIR);
 		case PAGE_NETWORK:
 			return in_range(option, SET_BBA_LOCALIP, SET_BBA_GATEWAY) ||
-				in_range(option, SET_FSP_HOSTIP, SET_FTP_PASS) ||
+				in_range(option, SET_NTP_HOSTIP, SET_FTP_PASS) ||
 				in_range(option, SET_SMB_HOSTIP, SET_RT4K_PORT);
 		case PAGE_GAME_GLOBAL:
 			return option == SET_GLOBAL_DEFAULTS;
@@ -2528,6 +2557,7 @@ typedef struct {
 	offsetof(ConfigEntry, field), sizeof(((ConfigEntry *)0)->field)}
 static const settingsPickerRow_t settingsPickerRows[] = {
 	PICK_SETTING(PAGE_GLOBAL, SET_SYS_LANG, sramLanguage),
+	PICK_SETTING(PAGE_GLOBAL, SET_APPS_VIDEOMODE, appsVMode),
 	PICK_SETTING(PAGE_GLOBAL, SET_ENABLE_USBGECKO, enableUSBGecko),
 	PICK_SETTING(PAGE_GLOBAL, SET_SIMMEMSIZE, simulatedMemSize),
 	PICK_SETTING(PAGE_INTERFACE, SET_UI_COLOR, uiColor),
@@ -2794,7 +2824,7 @@ static bool settingsInputMayBlock(int page, int option, u32 buttons)
 	}
 	if(page == PAGE_NETWORK && (horizontal || activate)) {
 		return in_range(option, SET_BBA_LOCALIP, SET_BBA_GATEWAY) ||
-			in_range(option, SET_FSP_HOSTIP, SET_FTP_PASS) ||
+			in_range(option, SET_NTP_HOSTIP, SET_FTP_PASS) ||
 			in_range(option, SET_SMB_HOSTIP, SET_RT4K_PORT);
 	}
 	if(page == PAGE_GAME_DEFAULTS && (horizontal || activate)) {

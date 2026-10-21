@@ -9,6 +9,7 @@
 #include "rt4k.h"
 #include "swiss.h"
 #include "wiiload.h"
+#include "time_sync.h"
 #include "deviceHandler.h"
 
 static s32 MX98730EC_GetExiSpeed(s32 chan, s32 dev);
@@ -98,6 +99,7 @@ static void *net_thread_func(void *arg)
 	init_httpd_thread();
 	init_wiiload_tcp_thread();
 	rt4k_init();
+	time_sync_network();
 	return NULL;
 }
 

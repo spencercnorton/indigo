@@ -640,6 +640,13 @@ class SettingsFileTest(unittest.TestCase):
         self.assertIn("\nlibraryFolders=0\n", off)
         self.assertIn("\nflattenDir=*/isos\n", off)
 
+    def test_apps_video_mode_is_independent_of_the_menu(self):
+        for mode in VALUES["uiVModeStr"]:
+            written = self.global_file(f"Swiss Video Mode=480p\nApps Video Mode={mode}\n")
+            self.assertEqual(written["Apps Video Mode"], mode)
+            self.assertEqual(written["Swiss Video Mode"], "480p")
+        self.assertEqual(self.global_file("Apps Video Mode=Unknown")["Apps Video Mode"], "Auto")
+
     def test_an_unknown_value_keeps_the_previous_one(self):
         defaults = self.global_file()
         for key, kind in GLOBAL_KEYS.items():

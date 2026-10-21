@@ -38,12 +38,10 @@
  *
  * Lifetime rules enforced by that contract:
  *   - The pack index is only freed after it is unpublished inside the
- *     critical section, so no locked reader can ever observe freed memory
- *     (fixes the Query/DominantColor vs CancelForDeviceChange UAF).
+ *     critical section, so no locked reader can ever observe freed memory.
  *   - Slot recordPos/generation/state and every GXTexObj are only written
- *     inside the critical section (fixes the RequestWindow/Poll
- *     publication race). The 40 ms eviction quarantine remains a separate
- *     guarantee for GPU texel reuse; the lock protects CPU metadata.
+ *     inside the critical section. The 40 ms eviction quarantine remains a
+ *     separate guarantee for GPU texel reuse; the lock protects CPU metadata.
  *   - Handle generations are u32 and increment exactly once per new slot
  *     ownership; a stale handle yields NULL, never a dangling pointer.
  *   - CancelForDeviceChange must run while the video mutex is still live,
@@ -212,6 +210,11 @@ void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected);
  * (a job captured before CancelForDeviceChange/Init/eviction can never
  * publish afterwards). Returns true while more loading work is queued. */
 bool UIAssets_Poll(void);
+/* Menu-thread incremental variant: at most 16 KiB per call. No texture is
+ * published until its full CRC passes. Cancel/window changes discard an
+ * unfinished record without another read of its old source. */
+#define UI_ASSETS_READ_BYTES 16384u
+bool UIAssets_PollStep(void);
 
 /* Video thread, lock ALREADY HELD by the caller; never locks. Classifies
  * gameId (gameIdLen is the number of bytes readable at gameId; inputs
@@ -280,6 +283,7 @@ s32 UIStills_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync);
 bool UIStills_Ready(void);
 void UIStills_RequestWindow(const char (*ids)[8], int count, int selected);
 bool UIStills_Poll(void);
+bool UIStills_PollStep(void);
 uiPosterResult_t UIStills_Query(const char *gameId, size_t gameIdLen,
                                 bool bnrAvailable, uiPosterHandle_t *out);
 GXTexObj *UIStills_Peek(uiPosterHandle_t handle);

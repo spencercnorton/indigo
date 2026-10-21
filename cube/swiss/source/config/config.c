@@ -547,6 +547,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Screen Position=%+hi\r\n", swissSettings.sramHOffset);
 	fprintf(fp, "System Language=%s\r\n", sramLanguageStr[swissSettings.sramLanguage]);
 	fprintf(fp, "Swiss Video Mode=%s\r\n", uiVModeStr[swissSettings.uiVMode]);
+	fprintf(fp, "Apps Video Mode=%s\r\n", uiVModeStr[swissSettings.appsVMode]);
 	fprintf(fp, "Disable PAD Recalibration=%s\r\n", swissSettings.disableRecalibration ? "Yes":"No");
 	fprintf(fp, "Disable PAD Rumble=%s\r\n", swissSettings.disableRumble ? "Yes":"No");
 	fprintf(fp, "Enable USB Gecko=%s\r\n", enableUSBGeckoStr[swissSettings.enableUSBGecko]);
@@ -625,6 +626,11 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "BBANetmask=%hu\r\n", swissSettings.bbaNetmask);
 	fprintf(fp, "BBAGateway=%s\r\n", swissSettings.bbaGateway);
 	fprintf(fp, "BBAUseDHCP=%s\r\n", swissSettings.bbaUseDhcp ? "Yes":"No");
+	fprintf(fp, "NTPSync=%s\r\n", swissSettings.ntpSync ? "Yes":"No");
+	fprintf(fp, "NTPHostIP=%s\r\n", swissSettings.ntpHostIp);
+	fprintf(fp, "TimeZone=%s\r\n", swissSettings.timeZone);
+	fprintf(fp, "LabServer=%s\r\n", swissSettings.labServer ? "Yes":"No");
+	fprintf(fp, "LogHost=%s\r\n", swissSettings.logHost);
 	fprintf(fp, "ShowHiddenFiles=%s\r\n", swissSettings.showHiddenFiles ? "Yes":"No");
 	fprintf(fp, "RecentListLevel=%s\r\n", recentListLevelStr[swissSettings.recentListLevel]);
 	fprintf(fp, "GCLoaderHWVersion=%i\r\n", swissSettings.gcloaderHwVersion);
@@ -1435,6 +1441,14 @@ void config_parse_global(char *configData, bool settingsFile) {
 						}
 					}
 				}
+				else if(!strcmp("Apps Video Mode", name)) {
+					for(int i = 0; i < 9; i++) {
+						if(!strcmp(uiVModeStr[i], value)) {
+							swissSettings.appsVMode = i;
+							break;
+						}
+					}
+				}
 				else if(!strcmp("Disable PAD Recalibration", name)) {
 					swissSettings.disableRecalibration = !strcmp("Yes", value);
 				}
@@ -1788,6 +1802,21 @@ void config_parse_global(char *configData, bool settingsFile) {
 				}
 				else if(!strcmp("BBAUseDHCP", name)) {
 					swissSettings.bbaUseDhcp = !strcmp("Yes", value);
+				}
+				else if(!strcmp("NTPSync", name)) {
+					swissSettings.ntpSync = !strcmp("Yes", value);
+				}
+				else if(!strcmp("NTPHostIP", name)) {
+					strlcpy(swissSettings.ntpHostIp, value, sizeof(swissSettings.ntpHostIp));
+				}
+				else if(!strcmp("TimeZone", name)) {
+					strlcpy(swissSettings.timeZone, value, sizeof(swissSettings.timeZone));
+				}
+				else if(!strcmp("LabServer", name)) {
+					swissSettings.labServer = !strcmp("Yes", value);
+				}
+				else if(!strcmp("LogHost", name)) {
+					strlcpy(swissSettings.logHost, value, sizeof(swissSettings.logHost));
 				}
 				else if(!strcmp("ShowHiddenFiles", name)) {
 					swissSettings.showHiddenFiles = !strcmp("Yes", value);

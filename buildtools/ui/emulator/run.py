@@ -934,6 +934,17 @@ def video_mode(report: dict[str, object]) -> str:
     return f"{scan}, {timing} timing, {'a' if clock & 1 else 'no'} component cable"
 
 
+def app_video_matches(mode: str, report: dict[str, object], region: str, cable: str) -> bool:
+    """Check the VI registers at handoff, including a forced homebrew mode."""
+    progressive = bool(int(report["vi_clk_dtv"]) >> 16 & 1)
+    pal = int(report["vi_dcr"]) >> 8 & 3 == 1
+    double_strike = not progressive and bool(int(report["vi_dcr"]) >> 2 & 1)
+    expected_progressive = CABLES[cable] and (mode == "Auto" or mode in ("480p", "576p"))
+    expected_pal = (region == "pal" and not CABLES[cable]) if mode == "Auto" else mode in ("576i", "576sf", "576p", "288p")
+    return (progressive == expected_progressive and pal == expected_pal and
+            double_strike == (mode in ("240p", "288p")))
+
+
 def printable(data: bytes) -> str:
     """Bytes as text for a report: anything outside printable ASCII as a dot."""
     return "".join(chr(b) if 32 <= b < 127 else "." for b in data)
@@ -1099,10 +1110,12 @@ class Route:
                  cable: str = "composite", region: str = "pal", fragments: int = 0,
                  cards: Path | None = None, storage: str = "dvd", menu_wide: bool = False,
                  sd_image: Path | None = None, detail_saves: bool = True,
-                 second_sd: Path | None = None, home_controls: bool = True) -> None:
+                 second_sd: Path | None = None, home_controls: bool = True,
+                 apps_video: str = "Auto") -> None:
         self.emulator = emulator
         self.detail_saves = detail_saves  # Saves on Details is on (the default)
         self.home_controls = home_controls  # On-screen Controls is on (the default)
+        self.apps_video = apps_video
         self.cards = cards  # the memory cards' GCI folders, cards/A and cards/B
         self.storage = storage
         self.menu_wide = menu_wide
@@ -1392,14 +1405,9 @@ class Route:
             report = self.handoff("app")
             self.check("the app starts with its own path", str(report["path"]).lower().endswith("probe.dol"),
                        path=report["path"], argc=report["argc"])
-            # Settings' Video Mode is Auto: 480p with a component cable, else
-            # interlaced, at 50 Hz (PAL timing) only on a PAL console set to 50.
-            progressive = bool(int(report["vi_clk_dtv"]) >> 16 & 1)
-            pal_timing = int(report["vi_dcr"]) >> 8 & 3 == 1
-            self.check("the menu ran in the video mode its console and cable ask for",
-                       progressive == CABLES[self.cable] and
-                       pal_timing == (self.region == "pal" and not CABLES[self.cable]),
-                       region=self.region, cable=self.cable, video=video_mode(report))
+            self.check("the app inherits the selected video mode",
+                       app_video_matches(self.apps_video, report, self.region, self.cable),
+                       selected=self.apps_video, region=self.region, cable=self.cable, video=video_mode(report))
 
     def handoff(self, tag: str) -> dict[str, object]:
         """After a launch, wait for the probe's screen and check what the
@@ -3486,7 +3494,8 @@ def main(argv: list[str] | None = None) -> int:
                           storage=args.storage, menu_wide=bool(start and "Menu Widescreen=Yes" in start),
                           sd_image=sd, second_sd=second,
                           detail_saves=not start or seeded(start).get("Hide Saves on Details") != "Yes",
-                          home_controls=not start or seeded(start).get("Hide On-screen Controls") != "Yes")
+                          home_controls=not start or seeded(start).get("Hide On-screen Controls") != "Yes",
+                          apps_video=seeded(start).get("Apps Video Mode", "Auto") if start else "Auto")
             getattr(route, args.route.replace("-", "_"))()
             if args.route == "files":
                 # Again, with the SD card in SD2SP2 failing writes where a new

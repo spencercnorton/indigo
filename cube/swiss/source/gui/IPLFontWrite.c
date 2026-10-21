@@ -179,29 +179,47 @@ static void drawStringWeighted(int x, int y, const char *string, float scale,
 		 * one native output pixel even for small 480p/480i text. */
 		guMtxTransApply(GXmodelView2D, GXmodelView2D, x + screenOffset, y, 0);
 		GX_LoadPosMtxImm(GXmodelView2D,GX_PNMTX0);
-		while (*cursor)
-		{
-			unsigned char c = *cursor;
-			if(c == '\n') break;
-			void *image;
-			int s0, t0, width;
-			int i;
-			SYS_GetFontTexture(c, &image, &s0, &t0, &width);
-			if (GX_GetTexObjData(&fontTexObj) != (void *)MEM_VIRTUAL_TO_PHYSICAL(image)) {
+		/* A run shares one sheet and one weight pass. Keep the glyph data on
+		 * the stack: no allocation in a frame, and no 16-bit GX count can
+		 * overflow even for a very long file name. */
+		while(*cursor && *cursor != '\n') {
+			struct { int s, t, width; } glyphs[64];
+			void *image = NULL;
+			const char *end = cursor;
+			int count = 0;
+
+			while(*end && *end != '\n' && count < 64) {
+				void *sheet;
+				int s0, t0, width;
+
+				SYS_GetFontTexture((unsigned char)*end, &sheet, &s0, &t0, &width);
+				if(count > 0 && sheet != image) break;
+				image = sheet;
+				glyphs[count].s = s0;
+				glyphs[count].t = t0;
+				glyphs[count].width = width;
+				count++;
+				end++;
+			}
+			if(GX_GetTexObjData(&fontTexObj) != (void *)MEM_VIRTUAL_TO_PHYSICAL(image)) {
 				GX_InitTexObjData(&fontTexObj, image);
 				GX_LoadTexObj(&fontTexObj, GX_TEXMAP0);
 			}
-			GX_Begin(GX_QUADS, GX_VTXFMT1, 4);
-			for (i=0; i<4; i++) {
-				int s = (i & 1) ^ ((i & 2) >> 1) ? width : 0;
-				int t = (i & 2) ? font->cell_height : 0;
-				GX_Position2s16(cursorX + s, t);
-				GX_Color4u8(fontColor.r, fontColor.g, fontColor.b, alpha);
-				GX_TexCoord2s16(s0 + s, t0 + t);
+			GX_Begin(GX_QUADS, GX_VTXFMT1, (u16)(count * 4));
+			for(int glyph = 0; glyph < count; glyph++) {
+				int width = glyphs[glyph].width;
+
+				for(int i = 0; i < 4; i++) {
+					int s = (i & 1) ^ ((i & 2) >> 1) ? width : 0;
+					int t = (i & 2) ? font->cell_height : 0;
+					GX_Position2s16(cursorX + s, t);
+					GX_Color4u8(fontColor.r, fontColor.g, fontColor.b, alpha);
+					GX_TexCoord2s16(glyphs[glyph].s + s, glyphs[glyph].t + t);
+				}
+				cursorX += width - 1;
 			}
 			GX_End();
-			cursorX += width - 1;
-			cursor++;
+			cursor = end;
 		}
 	}
 }

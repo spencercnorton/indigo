@@ -4788,7 +4788,7 @@ static void filesOpenDetail(file_handle **directory, uiDrawObj_t **filePanel)
 		filesDetailSnapshot(snapshot, entry, &header);
 		/* The Library's one bounded poster read before Detail. */
 		DrawGameflowRequestPosters(devices[DEVICE_CUR], snapshot);
-		DrawGameflowPollPosters();
+		DrawGameflowPrimePoster();
 		event = DrawGameflow(snapshot);
 	}
 	if(event != NULL) {
@@ -4877,7 +4877,7 @@ static uint32_t folderArtPictureSize(int32_t card)
 	return picture->size;
 }
 
-static bool folderArtReadPicture(int32_t card, uint8_t *data, uint32_t size)
+static bool folderArtReadPicture(int32_t card, uint32_t offset, uint8_t *data, uint32_t size)
 {
 	file_handle *picture = folderArtPicture(card);
 	file_handle file;
@@ -4888,7 +4888,7 @@ static bool folderArtReadPicture(int32_t card, uint8_t *data, uint32_t size)
 	}
 	/* A copy, nothing of it open, as Apps reads its pictures. */
 	memcpy(&file, picture, sizeof(file));
-	file.offset = 0;
+	file.offset = offset;
 	file.fp = NULL;
 	file.ffsFp = NULL;
 	file.meta = NULL;
@@ -5084,10 +5084,9 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				break;
 			}
 			VIDEO_WaitVSync();
-			/* Poll performs at most one read, tied to an idle retrace to
-			 * keep input/navigation frames free of pack I/O. From a source
-			 * that is not thread safe it reads the whole picture here, up
-			 * to 2 MB: about a second from DVD. */
+			/* Each pack and a non-thread-safe folder picture advance by
+			 * at most 16 KiB, then input gets another turn. Thread-safe
+			 * picture reads stay on their own worker. */
 			DrawGameflowPollPosters();
 			CardArt_Poll();
 		}
@@ -5895,6 +5894,12 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	}
 	if(swissSettings.hasFlippyDrive && needs_flippy_bypass(file, hash)) {
 		flippy_bypass(true);
+	}
+	if(swissSettings.appsVMode > 0) {
+		GXRModeObj *forcedMode = getVideoModeFromSwissSetting(swissSettings.appsVMode);
+		DrawVideoMode(forcedMode);
+		swissSettings.sram60Hz = getTVFormat() == VI_EURGB60;
+		swissSettings.sramProgressive = getScanMode() == VI_PROGRESSIVE;
 	}
 
 	// sidestep resets ARAM before handing off; stop AESND first because its

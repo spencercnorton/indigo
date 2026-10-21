@@ -1,3 +1,217 @@
+## 2026-10-19 — Weekly CI runs on beta; housekeeping
+
+The weekly scheduled CI ran main's workflow on runners built from beta, so it
+failed its toolchain check (and AESND's) once beta moved to libogc2 r2482.
+`.github/workflows/weekly.yml` now dispatches `ci.yml` on beta with
+`long_fuzz=true`; ci.yml lost its schedule, and its concurrency group names
+the event so the dispatch and a beta push never cancel each other. Schedules
+fire from main, so main's old schedule keeps failing until this is released.
+Main also cannot build on today's runners until then (hotfixes included).
+
+Housekeeping: the retired norvitech-site runner pool and the `nodejs` it
+needed are gone; remaining old-owner links, System › Info's address, the
+zip README and release notes follow the renamed account (the MemCard PRO
+evidence URL stays as recorded); one unreferenced guide picture removed.
+`docs/guide/images/system-info.png` still shows the old address.
+
+## 2026-10-18 — Swiss watch sends through the M365 mailer
+
+Supersedes the SMTP plan in the entry below, before merge: the estate has
+no SMTP account, but it has a Microsoft Graph mailer app whose token holds
+only `Mail.Send`. `swiss_watch.py` now sends through Graph `sendMail` as
+`SWISS_WATCH_FROM`; sender and recipient are both the accounts mailbox.
+Repository secrets are set from Infisical (the mailer app's canonical
+entries, plus a dedicated `API_KEY_SWISS_WATCH` copy of the generic OpenAI
+key — rotate those two together). A labelled test message was delivered
+through the script's own send path, and a real model dry-run over
+163f8b1d..39a0867e rendered its email without sending.
+
+## 2026-10-18 — Weekly Swiss watch (gated, email-only)
+
+New `buildtools/ci/swiss_watch.py` + `.github/workflows/swiss-watch.yml`
+(Tuesdays 14:17 UTC, self-hosted `indigo-build`; schedules run from `main`,
+so it starts when this reaches a release). Gates: one `ls-remote` against
+the UPSTREAM pin, a deterministic classifier reusing `check_upstream`'s
+`OWN`/`parse`/`covers`, one OpenAI-compatible model call only on a real
+diff, and plain-text email only when a commit is take/review. Unassessed
+commits default to review; a model reply assessing nothing fails the run.
+Verified against the real 163f8b1d..39a0867e range (classification matches
+the 2026-10-17 manual intake) with a local fake model endpoint; a real
+model call and SMTP delivery still need the workflow's secrets/vars set
+(dry-run dispatch prints the would-be email first). Tests:
+`buildtools/ci/test_swiss_watch.py`.
+
+## 2026-10-17 — Verify upstream homebrew video and console identity
+
+The existing non-default GC Loader smoke fixture now selects Apps Video Mode
+480i while the menu uses Auto 480p. Its launch probe checks VI registers for
+the selected app mode, with a host-tested oracle; removing the forced-mode
+handoff fails that native test. All nine mode names round-trip independently
+of the menu setting. The actual System model classifier is compiled under
+GCC/Clang and sanitizers to check Gateway identity before the Panasonic Q
+fallback and retain bounded text. The updated settings parser completed
+480,033 coverage-guided executions without a failure.
+
+## 2026-10-17 — Swiss intake through 39a0867e
+
+UPSTREAM now names the current Swiss head, 39a0867e, with all thirteen
+commits since 163f8b1d accounted for below. The patch engine and VI assembly
+match that commit. Translation and No-Intro database updates are present;
+Latin-1 title bytes remain ASCII C escapes. Apps Video Mode is reachable
+in Display, has a choice picker, config round trips, help and documentation.
+Nintendo Gateway identification uses the bounded System model helper.
+
+The routing fixture follows the new upstream main.c. The settings fixture
+keeps the pre-presentation toggle baseline and adds the new upstream Apps
+arm, preserving its existing tests of Indigo’s explicit motion cycle.
+Indigo’s CI, README, presentation and tooltip line wrapping remain its own.
+The Settings tour picture predates the new Apps row, as the guide states.
+
+- `42b0c707` - Fix regression from 53a6f10da2a8e5912cec318527bc49bf69a0e3d8.: already present; retained.
+- `602a4160` - Update [T-En] Collection database.: imported.
+- `4bf58ab5` - Update [T-En] Collection database.: imported.
+- `4e8d2c24` - Update [T-En] Collection database. (it's all Giftpia): imported.
+- `a047de40` - Update [T-En] Collection database.: imported.
+- `cd3ddefc` - Fix 960/1152i in Need for Speed games.: imported.
+- `13e5d069` - Insurance for force field rendering off.: imported.
+- `9fd007a9` - Use libiconv-lite.: covered by the pinned libiconv-lite overlay and runner cache.
+- `8a33d884` Update README.md: upstream service list; Indigo’s own README retained.
+- `c6052c4c` - Update No-Intro database.: imported.
+- `a6cde773` - Identify Nintendo Gateway GameCube.: model detection adapted to Indigo’s bounded System text.
+- `ecf8fda6` - Add video mode option specific to libogc2 applications.: launch/config imported; Display row, picker and help adapted to Indigo.
+- `39a0867e` - Reformat tooltips for readability.: format-only tooltip changes; Indigo help and layout retained.
+
+## 2026-10-17 — Fetch historical CI blobs on demand
+
+The four full-history CI checkouts now use blob:none. All commit/tag refs
+remain available; current files arrive at checkout and tagged test sources
+arrive on demand. A fresh filtered clone used 626,845 bytes before checkout
+and about 47.4 MB after checkout, instead of preloading the guide's historical
+images. Both real-font and archived tagged-renderer comparisons pass from
+that clone. Workflow policy checks pass; native CI exercises the same setup
+through the runner's GitHub-only proxy. Release checkouts are unchanged.
+
+## 2026-10-17 — Preserve the first Detail poster
+
+Native CI caught the first File Browser Detail showing its banner while the
+new idle reader completed its poster across frames. Keep the original
+one-poster prefetch before publishing Detail (a fixed 43 KiB); idle work
+still advances by 16 KiB per pack and never drains neighbouring posters or
+stills at entry. The lifecycle harness checks the separate full/step calls,
+and the File Browser audit rejects a partial prefetch. Its two-frame native
+poster assertion remains unchanged. Host lifecycle sanitizers, all 146
+File Browser mutants and the unchanged frame budgets pass.
+
+## 2026-10-17 — Read artwork between input checks
+
+Poster and still caches expose a 16 KiB idle step, retaining an unpublished
+record and incremental CRC until complete. Slot generations, quarantine,
+window changes and cancellation still fence publication; the original
+whole-record Poll API remains for callers that want it. New host cases
+check each range, complete-payload publication, read/CRC failure, cancellation
+and mixing step/full polls. Both cache variants pass 5,727 checks.
+
+Non-thread-safe app/folder PNG reads also advance by at most 16 KiB per
+idle call, closing their temporary file every time. A paused or scrolled-away
+picture frees its bytes without marking it failed; thread-safe devices keep
+their existing worker read. The real card-art harness checks the 2 MiB
+boundary in 128 sequential ranges and pause/resume, with memory returned.
+The complete local plain, sanitizer and contract lanes pass. The DOL builds
+in the pinned toolchain; native CI and emulator routes remain the merge gate.
+
+## 2026-10-17 — Batch font glyphs and retain hint normals
+
+The IPL font emits runs of up to 64 glyphs on the same sheet, separately
+for each weight pass. Its host stream is byte-identical to v2.4.0 across
+sheets, alignments, scales, alpha, extended bytes, newlines and long text;
+the sample workload uses 540 batches instead of 17,010. Hint outlines keep
+exact normals in sixteen bounded geometry slots (no frame allocation or
+approximate math). The geometry test compares the old formula and changed
+inputs; warm calls make no square roots. The steady File Browser fixtures
+now have zero square roots and 148/148/150 batches instead of
+1,701/1,710/2,316, with identical vertex hashes. The budget's font stand-in
+now models these bounded runs; the real font has its own stream comparison.
+No controls or pictures change, and these counts are not console timings.
+
+## 2026-10-17 — Open gameplay stills on first Spotlight use
+
+The Library's poster opener no longer initializes the gameplay-stills cache.
+Spotlight opens it on demand, with its own one-attempt flag, so it still
+works after another layout or with a missing poster pack. Device changes and
+cancellation retire both caches. The actual renderer lifecycle functions
+run in a counted host harness covering those routes and failure, plain and
+under ASan/UBSan. No pictures or controls change.
+
+## 2026-10-17 — Reject incomplete uploads and hand off under the video lock
+
+The wiiload decoder stops on EOF, requires Z_STREAM_END with exact input
+and output counts, caps the image at 16 MiB, and gives inflate one guard byte
+to consume a split checksum without accepting extra output. Arguments must
+arrive whole and end in NUL. Before Sidestep, DOL/ELF tables, payloads and
+the entrypoint's argv probe are bounded by the actual image; raw BIN routes
+remain. TCP reads have a ten-second idle timeout and accept checks select's
+return value with a fresh timeout.
+
+Transfers serialize on their own mutex. The menu keeps running through the
+receive and validation; only a complete usable image reaches suspension,
+under DrawWithVideoLocked so the menu cannot be stranded owning that lock.
+The actual decoder, image checks, TCP reader and handler run in a host
+harness, including single-byte streams/checksums and a fake scheduler that
+holds the menu's video lock at handoff. Plain and sanitizer runs pass. A
+new coverage-guided target compares accepted streams with zlib's independent
+uncompress2 and exercises executable bounds. Native CI remains the merge gate.
+
+## 2026-10-17 — Keep the portlib overlay usable on native builds
+
+The libiconv-lite helper accepts shasum when sha256sum is absent and the
+system tar when bsdtar is absent. A native macOS extraction with shasum,
+BSD tar and Zstd produced a libiconv.a byte-identical to the Docker overlay.
+The build guide names the native tools; Docker supplies them already.
+
+## 2026-10-17 — Pin libiconv-lite and libogc2 r2482
+
+The SDK is f9ffb7e3 (libogc2 f0a7627, r2482). Its AESND_Reset cancellation
+and callback fix replaces the older local wait patch; the copied sources
+remain byte-identical and the 300-reset emulator stress test stays required.
+The verified libiconv-lite 1.19-4 archive is extracted as an unprivileged
+portlib overlay before make dev; CI caches it in the build image and does
+not fetch packages from a job. The launch probe exercises each accepted
+banner encoding with this exact PowerPC library. The SDK invalidates the
+old MemCard PRO GC qualification, whose evidence remains historical; the
+record is pending and stable publication remains blocked on a fresh test.
+
+## 2026-10-16 — v2.4.0's guide pictures
+
+Nine guide pictures were re-recorded from the v2.4.0 release zip, in CI's
+emulator image with the release's own harness and demonstration data only.
+The five the v2.4.0 entry named were stale, and so were four more:
+`memory-cards.png` and `memory-cards-raw-icons.webp` (the same read-only
+info bar as `memory-cards-raw.png`), `memory-cards-details-unknown.png`
+(Source: Read-only card image) and `memory-cards-save-folder.png` (no
+Library Path row, Save Folder 2 / 7 instead of 3 / 8).
+
+- The six Memory Cards pictures come from the virtual-cards route as CI runs
+  it (NTSC, component, a GC Loader card from the zip, both slots empty): the
+  open image's info bar now shows the save's own line, its details say Card
+  image, and with the image open on both sides Move and Copy are dimmed. The
+  icon animation is 24 frames 0.3 s of console time apart, a lossless WebP
+  at 300 ms each, as before. `memory-cards.png` is the same frame as
+  `memory-cards-raw.png`, as before.
+- `memory-cards-save-folder.png` is a new card's first screen, Storage, two
+  rows down.
+- The Game Details pictures have the Save Folder holding the RAW image, then
+  its exported GCI, with an empty card in Slot A: "2 copies | 2 blocks" over
+  the date and the save's own line, and after Right twice "Copy 2 of 2 |
+  Save Folder", "Loads at launch", the date and the line.
+
+Alt text follows the new pictures, and one sentence in memory-cards.md that
+called card images read-only now says that a card image's color is kept in
+Indigo's settings, never in the image (what the folder page says). Every
+other picture was checked against the release tree's own emulator captures
+and the settings rows and help text since it was recorded: none else
+changed, apart from the File Browser pictures' lighter unfocused pane (the
+2026-10-08 entry), which doesn't show at the guide's size.
+
 ## 2026-10-16 — Web browser bundled, fork published, CI wired
 
 The Web face now ships a real browser. The hardened CubeBrowser fork is public
@@ -274,6 +488,7 @@ Five-way 60-minute soak runs (`final936-e1/e2/m1/m2/m3`) and a code audit of the
 
 A launch while a MemCard PRO is switching stays as the real-card test build ran
 it (2026-10-15).
+
 ## 2026-10-15 — Web browser cube face (Stage 1)
 
 Added a ninth Home face, Web, that launches a bundled GameCube web browser

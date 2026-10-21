@@ -186,9 +186,12 @@ Press Y on any row for the same explanations on the console.
 <details>
 <summary><b>Setup › Display</b></summary>
 
+The Settings tour above predates the Apps Video Mode row.
+
 | Setting | What it does |
 | --- | --- |
 | Swiss Video Mode | The video mode of Indigo's own screens. Auto picks 480p with a digital cable and otherwise follows the console's region. A switches to a new mode and asks before it keeps it. |
+| Apps Video Mode | The mode passed to homebrew when it launches. **Auto** keeps Indigo’s mode. Libogc2 apps use it; other apps may choose their own. Changing it leaves Indigo’s own screens as they are. |
 | Menu Widescreen | Draws Indigo's own screens for a TV set to 16:9: the background fills the screen and the menus keep their shape in the middle. Set your TV or HDMI adapter to 16:9 too. Games follow **Force Widescreen** instead. |
 | System Video | NTSC, PAL or PAL-M, mainly for the Brazilian console. |
 | Screen Position | Moves the picture left or right in games. |
@@ -249,6 +252,7 @@ Press Y on any row for the same explanations on the console.
 | --- | --- |
 | Init network at startup | Starts the Broadband Adapter when Indigo starts. |
 | IPv4 uses DHCP, IPv4 Address, Netmask, Gateway | Your router assigns the address, or you set it here. |
+| Sync Clock, NTP Server IP, Time Zone | Sets the clock from a time server each time the network starts; the IPL and games see it too. Time Zone is a POSIX TZ string such as `MST7MDT,M3.2.0,M11.1.0` (US Mountain), so daylight time changes by itself. Empty keeps the zone the clock is in. |
 | FSP Host IP, Port, Password, Path MTU | A computer serving your games over FSP. |
 | FTP Host IP, Port, Username, Password, PASV Mode | An FTP server with your games. Try PASV if listings stall. |
 | SMB Host IP, Share, Username, Password | A computer sharing your games over SMB. |

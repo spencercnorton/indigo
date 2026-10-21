@@ -15,22 +15,23 @@ on:
     branches: [main, beta]
   pull_request:
   workflow_dispatch:
-  # Weekly on main: the same checks on the release, which catches a change in
-  # the runners themselves, and a longer fuzzing run.
-  schedule:
-    - cron: '23 9 * * 1'
+    inputs:
+      long_fuzz:
+        description: Fuzz for 55 minutes (weekly.yml asks for it on beta)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
   # The image every DOL is built in. The build runner is built on it, and
   # buildtools/ci/check_workflows.py keeps this line and its Dockerfile equal.
-  TOOLCHAIN: ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f
+  TOOLCHAIN: ghcr.io/extremscorner/libogc2@sha256:f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2
 
 jobs:
   build:
@@ -41,6 +42,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
       - name: Toolchain
         run: buildtools/ci/toolchain.sh "$TOOLCHAIN"
       - name: Build Indigo
@@ -93,13 +95,13 @@ jobs:
           cp buildtools/ui/emulator/probe/probe.dol dist/probe.dol
           make -C buildtools/ui/emulator/aesnd
           cp buildtools/ui/emulator/aesnd/aesnd.dol dist/aesnd.dol
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: indigo-sd-card-${{ github.sha }}
           path: dist/*.zip
           if-no-files-found: error
           retention-days: 14
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dol-${{ github.sha }}
           path: |
@@ -120,11 +122,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
           path: elsewhere
       - name: Toolchain
         working-directory: elsewhere
         run: buildtools/ci/toolchain.sh "$TOOLCHAIN"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dol-${{ github.sha }}
           path: first
@@ -147,7 +150,7 @@ jobs:
         # the Emulator job, so it adds nothing to the time CI takes.
         working-directory: elsewhere
         run: make -C cube/swiss -j8 BUILD=build-perf TARGET=swiss-perf UI_PERF=1
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dol-perf-${{ github.sha }}
           path: elsewhere/cube/swiss/swiss-perf.dol
@@ -211,11 +214,11 @@ jobs:
               artifact: emulator-game-ntsc-component-gcloader }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dol-${{ github.sha }}
           path: build
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: matrix.storage != 'dvd'
         with:
           name: indigo-sd-card-${{ github.sha }}
@@ -250,7 +253,7 @@ jobs:
       - name: Summary
         if: always()
         run: cat emulator/summary.md >> "$GITHUB_STEP_SUMMARY" || true
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: ${{ matrix.artifact }}-${{ github.sha }}
@@ -274,6 +277,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
       - name: Run the ${{ matrix.name }} lane
         env:
           CC: ${{ matrix.cc }}
@@ -298,9 +302,9 @@ jobs:
       - name: Fuzz the files Indigo reads from a card
         env:
           # The weekly run shares 55 of its 60 minutes between the targets.
-          SECONDS_EACH: ${{ github.event_name == 'schedule' && 'total:3300' || '30' }}
+          SECONDS_EACH: ${{ inputs.long_fuzz && 'total:3300' || '30' }}
         run: buildtools/ui/tests/fuzz/run_fuzz.sh "$SECONDS_EACH" fuzz-out
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: fuzz-crashes-${{ github.sha }}
@@ -336,6 +340,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
       - name: Whitespace and line endings
         env:
           BASE_REF: ${{ github.base_ref }}

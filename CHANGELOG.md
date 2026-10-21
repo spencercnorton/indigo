@@ -4,6 +4,78 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
+## Unreleased
+
+### New
+
+- Settings › Network › Sync Clock sets the console's clock from an NTP
+  server each time the network starts, so a Broadband Adapter keeps the
+  clock right. The IPL and games see the new time too. Time Zone takes a
+  POSIX TZ string, such as `MST7MDT,M3.2.0,M11.1.0`, and changes for
+  daylight time by itself; left empty, the clock keeps the zone it is in.
+  NTP Server IP is an address (the console has no DNS); empty asks
+  Cloudflare's, `162.159.200.123`.
+
+### Improved
+
+- Menu text batches adjacent glyphs on the same font sheet, keeping the
+  same letters and weight with fewer GPU submissions. Button outlines keep
+  their exact edge normals while their geometry stays the same.
+- The Library opens Spotlight's gameplay stills only when you use Spotlight,
+  saving their cache memory and card reads in the other layouts.
+- Artwork reads give the menus a turn between pieces. Folder and app
+  pictures on a disc no longer hold up a button for the whole picture;
+  leaving the page or scrolling away discards an unfinished read. Detail
+  still preloads its first poster before opening.
+- CI keeps the full tag history but fetches historical file contents only
+  when needed, avoiding old guide pictures in each build and host-test clone.
+
+### Fixes
+
+- Repository links, the address on System › Info and CI runner defaults
+  follow the renamed GitHub account.
+
+- An interrupted or incomplete network/USB upload is rejected without
+  stopping the menus. Transfers must finish their compressed stream at the
+  exact advertised size; network reads time out after ten idle seconds.
+  DOL/ELF headers, sections and entrypoint probes stay inside the received
+  file. Uploads no longer suspend the menu while it owns the video lock.
+
+- The pinned build now links libiconv-lite instead of the full character-set
+  library, reducing the DOL by about 834 KiB while retaining every banner
+  encoding. The emulator launch probe checks the actual PowerPC conversions.
+- Updated the SDK to libogc2 r2482, including its AESND reset race fix, EXI
+  locking cleanup, monotonic timing and SD fixes. The upstream audio fix
+  replaces Indigo's earlier local patch. A fresh MemCard PRO GC hardware
+  qualification is required before publishing this SDK as stable.
+
+- Updated the Swiss base from r2119 to commit `39a0867e`: newer translation
+  and disc databases, Need for Speed 960i/1152i fixes, additional field-mode
+  detection, and Nintendo Gateway GameCube MSA-500 identification.
+- Setup › Display has Apps Video Mode, the mode passed to libogc2 homebrew.
+  Auto keeps the menu mode; other apps may choose their own. The setting is
+  saved as `Apps Video Mode` in global.ini.
+
+### Documentation
+
+- The guide's Memory Cards and Game Details pictures show 2.4's screens:
+  card images that take Move, Copy and Erase, the Storage page with Library
+  Path, and Saves counted by file with the save's own line.
+
+### For developers
+
+- A console lab for testing on real hardware, off by default. With
+  `LabServer=Yes`, TCP port 4300 serves the framebuffer on screen, the debug
+  log and a virtual controller, and restarts the console, so a test run on
+  the LAN can drive and check Indigo with nobody at the console.
+  `LogHost` sends every debug line over UDP. See `docs/UPLOADS.md`.
+- A weekly Swiss watch (`.github/workflows/swiss-watch.yml`) checks whether
+  upstream Swiss moved past the commit `UPSTREAM` names. Cheap gates first
+  (one `ls-remote`, then a deterministic file filter) keep silent weeks
+  free; one model call judges each new commit take/review/skip for Indigo,
+  and only a week with a candidate sends email, with the exact
+  `upstream_merge.sh` command. It merges nothing itself.
+
 ## v2.4.0 — A new File Browser, cube sides and faces, Saves on Details
 
 ### New

@@ -135,6 +135,18 @@ typedef struct {
 } uiAssetsShape_t;
 
 typedef struct {
+	bool active;
+	int slotIdx;
+	u32 generation;
+	s16 recordPos;
+	u32 dataOffset, expectedCrc, fileLength;
+	u32 readBytes, crc;
+	u8 *data;
+	s32 (*read)(void *ctx, u32 offset, void *dst, u32 len);
+	void *readCtx;
+} uiAssetJob_t;
+
+typedef struct {
 	const uiAssetsShape_t *shape;
 	bool arenaReady;   /* arena allocated (survives CancelForDeviceChange) */
 	bool packOpen;     /* header+index validated, source readable */
@@ -148,6 +160,7 @@ typedef struct {
 	u32 dataOffset;
 	u32 fileLength;
 	u32 requests;      /* window requests so far */
+	uiAssetJob_t loading; /* an unpublished record read between idle frames */
 	uiAssetSlot_t slots[UI_ASSETS_SLOTS];
 } uiAssetsCache_t;
 
@@ -315,6 +328,7 @@ static void evictSlot(const uiAssetsCache_t *c, uiAssetSlot_t *slot) {
 
 static void invalidateAll(uiAssetsCache_t *c) {
 	int i;
+	c->loading.active = false;
 	for (i = 0; i < c->shape->slotCount; i++)
 		evictSlot(c, &c->slots[i]);
 }
@@ -632,82 +646,75 @@ static void cacheRequestWindow(uiAssetsCache_t *c, const char (*ids)[8],
 	syncUnlock(c);
 }
 
-static bool cachePoll(uiAssetsCache_t *c) {
+static bool cachePoll(uiAssetsCache_t *c, u32 maxBytes) {
 	const uiAssetsShape_t *shape = c->shape;
-	struct {
-		int slotIdx;
-		u32 generation;
-		s16 recordPos;
-		u32 dataOffset;
-		u32 expectedCrc;
-		u8 *data;
-		s32 (*read)(void *ctx, u32 offset, void *dst, u32 len);
-		void *readCtx;
-		u32 fileLength;
-	} job;
+	uiAssetJob_t job;
 	uiAssetSlot_t *slot = NULL;
-	bool pending = false;
-	bool loadOk;
-	u32 now;
+	bool pending = false, loadOk, finished;
+	u32 now, take, crc = 0u;
 	int i;
 
-	/* Phase 1 (locked): pick and capture the nearest pending job. */
+	/* Capture one bounded range under the video lock. A range in hand
+	 * belongs only to its original slot generation, including across calls. */
 	syncLock(c);
 	if (!c->packOpen || !c->arenaReady) {
 		syncUnlock(c);
 		return false;
 	}
-	now = c->nowMs();
-	for (i = 0; i < shape->slotCount; i++) {
-		uiAssetSlot_t *candidate = &c->slots[i];
-		if (candidate->state != SLOT_PENDING)
-			continue;
-		pending = true;
-		if ((s32)(now - candidate->quarantineUntil) < 0)
-			continue; /* GPU may still sample the old texels */
-		if (!slot || candidate->distance < slot->distance)
-			slot = candidate;
+	if (c->loading.active) {
+		slot = &c->slots[c->loading.slotIdx];
+		if (slot->state != SLOT_LOADING || slot->generation != c->loading.generation ||
+		    slot->recordPos != c->loading.recordPos) {
+			c->loading.active = false;
+			slot = NULL;
+		}
 	}
-	if (!slot) {
-		syncUnlock(c);
-		return pending;
-	}
-	{
+	if (!c->loading.active) {
+		now = c->nowMs();
+		for (i = 0; i < shape->slotCount; i++) {
+			uiAssetSlot_t *candidate = &c->slots[i];
+			if (candidate->state != SLOT_PENDING) continue;
+			pending = true;
+			if ((s32)(now - candidate->quarantineUntil) < 0) continue;
+			if (!slot || candidate->distance < slot->distance) slot = candidate;
+		}
+		if (!slot) {
+			syncUnlock(c);
+			return pending;
+		}
 		const u8 *rec = record(c->index, (u32)slot->recordPos);
 		slot->state = SLOT_LOADING;
-		job.slotIdx = (int)(slot - c->slots);
-		job.generation = slot->generation;
-		job.recordPos = slot->recordPos;
-		job.dataOffset = be32(rec + 0x08);
-		job.expectedCrc = be32(rec + 0x10);
-		job.data = slot->data;
-		job.read = c->src.read;
-		job.readCtx = c->src.ctx;
-		job.fileLength = c->fileLength;
+		c->loading = (uiAssetJob_t) {
+			.active = true, .slotIdx = (int)(slot - c->slots),
+			.generation = slot->generation, .recordPos = slot->recordPos,
+			.dataOffset = be32(rec + 0x08), .expectedCrc = be32(rec + 0x10),
+			.data = slot->data, .read = c->src.read, .readCtx = c->src.ctx,
+			.fileLength = c->fileLength
+		};
 	}
+	job = c->loading;
+	take = shape->recordBytes - job.readBytes;
+	if (take > maxBytes) take = maxBytes;
 	syncUnlock(c);
 
-	/* Phase 2 (UNLOCKED): the bounded device read, CRC, and cache flush.
-	 * Writing into the captured arena region is single-writer: Poll runs
-	 * on the menu thread only, and the GPU is fenced by the quarantine. */
-	loadOk = job.read != NULL &&
+	/* No lock across device I/O, CRC or cache flush. Partial records stay
+	 * unpublished; the next idle frame can read another range or cancel. */
+	loadOk = take > 0u && job.read != NULL &&
 	         (u64)job.dataOffset + shape->recordBytes <= job.fileLength &&
-	         job.read(job.readCtx, job.dataOffset, job.data,
-	                  shape->recordBytes) == (s32)shape->recordBytes &&
-	         crc32(0, job.data, shape->recordBytes) == job.expectedCrc;
-	if (loadOk)
-		DCFlushRange(job.data, shape->recordBytes);
+	         job.read(job.readCtx, job.dataOffset + job.readBytes,
+	                  job.data + job.readBytes, take) == (s32)take;
+	finished = job.readBytes + take == shape->recordBytes;
+	if (loadOk) {
+		crc = crc32(job.crc, job.data + job.readBytes, take);
+		if (finished) loadOk = crc == job.expectedCrc;
+	}
+	if (loadOk && finished) DCFlushRange(job.data, shape->recordBytes);
 
-	/* Phase 3 (locked): revalidate ownership, then publish. A slot that
-	 * was cancelled, re-inited, evicted, or reassigned while we were
-	 * reading has a different generation/state and the stale job is
-	 * dropped without publishing anything. */
 	syncLock(c);
 	slot = &c->slots[job.slotIdx];
-	if (c->packOpen && slot->state == SLOT_LOADING &&
-	    slot->generation == job.generation &&
-	    slot->recordPos == job.recordPos) {
-		if (loadOk) {
+	if (c->packOpen && c->loading.active && slot->state == SLOT_LOADING &&
+	    slot->generation == job.generation && slot->recordPos == job.recordPos) {
+		if (loadOk && finished) {
 			bool mipmapped = shape->mipLevels > 1;
 			GX_InitTexObj(&slot->tex, slot->data, shape->canvasW,
 			              shape->canvasH, GX_TF_CMPR, GX_CLAMP,
@@ -718,16 +725,23 @@ static bool cachePoll(uiAssetsCache_t *c) {
 				                 0.0f, GX_FALSE, GX_TRUE, GX_ANISO_1);
 			slot->readyMs = c->nowMs();
 			slot->state = SLOT_READY;
-		} else {
+			c->loading.active = false;
+		} else if (!loadOk) {
 			slot->state = SLOT_FAILED;
+			c->loading.active = false;
+		} else {
+			c->loading.readBytes += take;
+			c->loading.crc = crc;
 		}
+	} else if (c->loading.active && c->loading.slotIdx == job.slotIdx &&
+	           c->loading.generation == job.generation) {
+		/* A window change retired this range while it was read. Do not
+		 * leave a phantom in-flight job or disturb a newer generation. */
+		c->loading.active = false;
 	}
-	pending = false;
-	for (i = 0; i < shape->slotCount; i++) {
-		if (c->slots[i].state == SLOT_PENDING) {
-			pending = true;
-			break;
-		}
+	pending = c->loading.active;
+	for (i = 0; i < shape->slotCount && !pending; i++) {
+		if (c->slots[i].state == SLOT_PENDING) pending = true;
 	}
 	syncUnlock(c);
 	return pending;
@@ -881,7 +895,11 @@ void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected) {
 }
 
 bool UIAssets_Poll(void) {
-	return cachePoll(&posters);
+	return cachePoll(&posters, UI_ASSETS_POSTER_BYTES);
+}
+
+bool UIAssets_PollStep(void) {
+	return cachePoll(&posters, UI_ASSETS_READ_BYTES);
 }
 
 uiPosterResult_t UIAssets_Query(const char *gameId, size_t gameIdLen,
@@ -929,7 +947,11 @@ void UIStills_RequestWindow(const char (*ids)[8], int count, int selected) {
 }
 
 bool UIStills_Poll(void) {
-	return cachePoll(&stills);
+	return cachePoll(&stills, UI_STILLS_BYTES);
+}
+
+bool UIStills_PollStep(void) {
+	return cachePoll(&stills, UI_ASSETS_READ_BYTES);
 }
 
 uiPosterResult_t UIStills_Query(const char *gameId, size_t gameIdLen,

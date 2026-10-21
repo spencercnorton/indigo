@@ -135,6 +135,7 @@ most use the same key there.
 | `System Video` | `NTSC`, `PAL`, `PAL-M`. Ignored on a Wii (AVE-RVL). | the console's region | System Video |
 | `Screen Position` | A signed number, such as `+0` or `-2`. | the console's SRAM | Screen Position |
 | `Swiss Video Mode` | `Auto`, `480i`, `480sf`, `240p`, `480p`, `576i`, `576sf`, `288p`, `576p` | `Auto` | Swiss Video Mode |
+| `Apps Video Mode` | `Auto`, `480i`, `480sf`, `240p`, `480p`, `576i`, `576sf`, `288p`, `576p`. Passed when launching homebrew; Auto keeps the menu mode. Applies to libogc2; other apps may choose their own. | `Auto` | Apps Video Mode |
 | `Menu Widescreen` | `Yes`, `No`. `Yes` draws Indigo's own screens for a TV set to 16:9; games follow `Force Widescreen`. | `No` | Menu Widescreen |
 | `AVECompat` | `AVE N-DOL`, `AVE P-DOL`, `CMPV-DOL`, `GCDigital`, `GCVideo`, `AVE-RVL` | `GCVideo`, or what your loader reports | AVE Compatibility |
 | `Force DTV Status` | `No`, `Yes`, `Region Switch` | `No` | Force DTV Status |
@@ -192,6 +193,9 @@ most use the same key there.
 | `BBALocalIP` | An IPv4 address. | empty | IPv4 Address |
 | `BBANetmask` | The prefix length, such as `24`. | `0` | IPv4 Netmask |
 | `BBAGateway` | An IPv4 address. | empty | IPv4 Gateway |
+| `NTPSync` | `Yes`, `No` | `No` | Sync Clock |
+| `NTPHostIP` | An IPv4 address. Names don't work: the console has no DNS. Empty means `162.159.200.123` (Cloudflare). | empty | NTP Server IP |
+| `TimeZone` | A POSIX TZ string, such as `MST7MDT,M3.2.0,M11.1.0` or `IST-5:30`. Daylight time needs both rules in the `Mm.w.d` form. Empty keeps the zone the console's clock is in, to the nearest quarter hour. | empty | Time Zone |
 | `FSPHostIP` | An IPv4 address. | empty | FSP Host IP |
 | `FSPPort` | A port number. | `21` | FSP Port |
 | `FSPPassword` | Text, stored as written. | empty | FSP Password |
@@ -207,6 +211,8 @@ most use the same key there.
 | `SMBPassword` | Text, stored as written. | empty | SMB Password |
 | `RT4KHostIP` | An IPv4 address. | empty | RetroTINK-4K Host IP |
 | `RT4KPort` | A port number. | `0` | RetroTINK-4K Port |
+| `LabServer` | `Yes`, `No`. `Yes` opens TCP port 4300 to a test run on the LAN: screenshots, the debug log, a virtual controller and a restart ([Console lab](UPLOADS.md#console-lab)). | `No` | — |
+| `LogHost` | An IPv4 address, with `:port` or without (port `4405`). Each debug line goes there over UDP. | empty | — |
 
 ### Setup › Library
 

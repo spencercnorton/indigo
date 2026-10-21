@@ -216,6 +216,9 @@ static void infoGetConsoleModel(char *out, size_t capacity)
 			infoCopy(out, capacity, !strncmp(&IPLInfo[0x55], "PAL ", 4) ?
 				"NINTENDO GAMECUBE DOT-001P" : "NINTENDO GAMECUBE DOT-001");
 		}
+		else if(*DVDDeviceCode == 0x8000 && DVDDriveInfo->rel_date == 0x20010619) {
+			infoCopy(out, capacity, "NINTENDO GATEWAY GAMECUBE MSA-500");
+		}
 		else if(*DVDDeviceCode == 0x8000 && DVDDriveInfo->pad[1] == 'M') {
 			infoCopy(out, capacity, "PANASONIC Q SL-GC10-S");
 		}
@@ -562,7 +565,7 @@ static void infoDrawAbout(uiDrawObj_t *container,
 		0.66f, ALIGN_CENTER, systemMutedColor);
 	DrawAddChild(container, DrawStyledLabel(320, 310, "SOURCE / UPDATES",
 		0.66f, ALIGN_CENTER, systemLabelColor));
-	infoAddFitted(container, 320, 331, "GITHUB.COM/SPENCERCNORTON/INDIGO",
+	infoAddFitted(container, 320, 331, "GITHUB.COM/SPENCERNORTON/INDIGO",
 		UI_SYSTEM_ABOUT_TEXT_WIDTH, 0.70f, ALIGN_CENTER, systemValueColor);
 	DrawAddChild(container, DrawStyledLabel(320, 354,
 		UI_SYSTEM_ABOUT_HELP_LABEL, 0.66f, ALIGN_CENTER, systemLabelColor));

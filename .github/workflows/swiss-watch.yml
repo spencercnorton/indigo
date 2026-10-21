@@ -1,0 +1,70 @@
+# Weekly: has upstream Swiss moved past the commit UPSTREAM names, and
+# should Indigo take the new work? buildtools/ci/swiss_watch.py answers in
+# gates, cheapest first (one ls-remote, then a deterministic file filter,
+# then one model call), and emails only when a commit is worth taking or
+# reviewing. It merges nothing; the email carries the exact
+# upstream_merge.sh command for a pull request of its own.
+#
+# Setup (Settings -> Secrets and variables -> Actions). A sending run
+# without these fails loudly on its first week rather than going quiet:
+#   Secrets: SWISS_WATCH_TO, SWISS_WATCH_FROM, SWISS_WATCH_AI_KEY,
+#            M365_TENANT_ID, M365_MAILER_CLIENT_ID,
+#            M365_MAILER_CLIENT_SECRET (the estate's Graph mailer app,
+#            Mail.Send only; canonical copies live in Infisical)
+#   Vars:    SWISS_WATCH_AI_BASE / SWISS_WATCH_AI_MODEL (optional;
+#            defaults are OpenAI's endpoint and gpt-4o-mini)
+# Test by hand first: workflow_dispatch defaults to dry-run, which prints
+# the would-be email to the job summary and sends nothing. Schedules run
+# from the default branch, so this starts the week it reaches main.
+name: Swiss watch
+
+on:
+  schedule:
+    - cron: '17 14 * * 2'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Print the email instead of sending it
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: swiss-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: Swiss watch
+    runs-on: [self-hosted, indigo-build]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+      - name: Check Swiss and email the candidates, if any
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          SWISS_WATCH_TO: ${{ secrets.SWISS_WATCH_TO }}
+          SWISS_WATCH_FROM: ${{ secrets.SWISS_WATCH_FROM }}
+          SWISS_WATCH_AI_KEY: ${{ secrets.SWISS_WATCH_AI_KEY }}
+          SWISS_WATCH_AI_BASE: ${{ vars.SWISS_WATCH_AI_BASE }}
+          SWISS_WATCH_AI_MODEL: ${{ vars.SWISS_WATCH_AI_MODEL }}
+          M365_TENANT_ID: ${{ secrets.M365_TENANT_ID }}
+          M365_MAILER_CLIENT_ID: ${{ secrets.M365_MAILER_CLIENT_ID }}
+          M365_MAILER_CLIENT_SECRET: ${{ secrets.M365_MAILER_CLIENT_SECRET }}
+        run: |
+          args="--report swiss-watch-report.md"
+          if [ "$DRY_RUN" = "true" ]; then args="$args --dry-run"; fi
+          # Deliberately simple: the two fixed arguments split into words.
+          # shellcheck disable=SC2086
+          python3 buildtools/ci/swiss_watch.py $args
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: swiss-watch-${{ github.run_id }}
+          path: swiss-watch-report.md
+          if-no-files-found: ignore
+          retention-days: 30
