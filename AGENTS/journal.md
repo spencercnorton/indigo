@@ -1,3 +1,38 @@
+## 2026-10-21 — 2.5 review on a console: Web face, Apps Video Mode, uploads
+
+beta f8ad73b's CI build ran on a DOL-001 (WIZnet W5500, GC Loader and
+SD2SP2, a card in slot A that switches by game ID), pushed over wiiload with
+`LabServer=Yes` and driven through the lab: every side of a Classic cube, a
+149-game Library, Game Details with a card switch, every Settings page, File
+Browser, System Information, interrupted and stalled uploads (dropped at the
+10 s idle timeout, with the menus answering underneath) and `/reset`. Nothing
+failed on the console; a review of v2.4.0..f8ad73b found what this fixes:
+
+- `boot_dol` looked for a DOL's `.iso`, `.cli` and `.dcp` through
+  `devices[DEVICE_CUR]`, NULL when the Web face starts the browser with no
+  Source; it falls back to the DOL's own device. It also put the bundled
+  browser in the Recent list, whose top entry `main.c` opens at start with
+  Recent List On; `bootDolSkipRecent` keeps it out.
+- `boot_dol` switched to Apps Video Mode and wrote `sram60Hz` and
+  `sramProgressive` before the loaders checked the image; a refused image
+  restores both, as the game path's `fail:` does.
+- The Library's A path called the stepped `DrawGameflowPollPosters()` where
+  2.4 read a whole poster; it calls `DrawGameflowPrimePoster()`.
+- wiiload's check treated an ELF named `SDLOADER.BIN` as a raw binary while
+  the loader starts it as an ELF; the check follows the loader now.
+- Sync Clock refuses a server time before 2000 and retries `__SYS_GetRTC`
+  while EXI channel 0 is busy, since the counter bias needs it.
+
+Left open: the zip carries no licence text for the browser's mbed TLS or
+its CA bundle; a cut-short `cubebrowser.dol` still starts (`DOLtoARAM` never
+bounds sections by the file); a FlippyDrive-only console has no card the
+browser reads; the lab's `/reset` isn't serialised with an upload and `/xfb`
+copies without the video lock; Sync Clock's step moves `gettime()`, which
+the lab log, the virtual pad and MMCE switch deadlines use, and an
+unanswered SNTP request holds `wait_network()` up to 3 s. Stable still waits
+on `docs/validation/memcard-pro.json` (pending). The shipped browser has no
+lab, so a Web face launch ends remote control until someone presses Reset.
+
 ## 2026-10-21 — Sync Clock hides without an adapter; kept zones are real
 
 Sync Clock (Settings › Network, #153) sets the clock once the network is
