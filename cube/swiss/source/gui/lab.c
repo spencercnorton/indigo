@@ -1,7 +1,6 @@
 #include <gccore.h>
 #include <malloc.h>
 #include <network.h>
-#include <ogc/lwp_threads.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,7 +20,7 @@
 #define LAB_LOG_DATAGRAM 1024u
 
 static s32 logSocket = INVALID_SOCKET;
-static mutex_t logMutex = LWP_MUTEX_NULL;
+static sem_t logWake = LWP_SEM_NULL;
 static lwp_t labThread = LWP_THREAD_NULL;
 static lwp_t mainThread = LWP_THREAD_NULL;
 
@@ -34,50 +33,43 @@ static void lab_init(void)
 void lab_log(const char *line, size_t length)
 {
 	IndigoLog_Append(line, length);
-	/* A sender waits for the network thread, which no interrupt may do. */
-	if(logSocket != INVALID_SOCKET && !__lwp_isr_in_progress()) {
-		LWP_MutexLock(logMutex);
-		net_send(logSocket, line, length, 0);
-		LWP_MutexUnlock(logMutex);
-	}
+	/* LogHost's sender takes it from the log. A post never waits, so any
+	 * thread, or an interrupt, logs without waiting for the network. */
+	if(logWake != LWP_SEM_NULL) LWP_SemPost(logWake);
 }
 
-/* The lines from before the network came up, in datagrams that end on a
- * line where one fits. */
-static void lab_log_replay(s32 fd)
+/* LogHost: the log from its first line, those from before the network came
+ * up included, then each line as it comes, in datagrams that end on a line
+ * where one fits. */
+static void *lab_log_thread_func(void *arg)
 {
-	char *text = malloc(INDIGO_LOG_COPY_BYTES);
-	size_t length, at = 0;
+	char datagram[LAB_LOG_DATAGRAM];
+	unsigned at = 0;
 
-	if(text == NULL) return;
-	length = IndigoLog_Copy(text, INDIGO_LOG_COPY_BYTES);
-	while(at < length) {
-		size_t n = length - at;
-		if(n > LAB_LOG_DATAGRAM) {
-			n = LAB_LOG_DATAGRAM;
-			while(n > 1u && text[at + n - 1u] != '\n') n--;
-			if(text[at + n - 1u] != '\n') n = LAB_LOG_DATAGRAM;
-		}
-		net_send(fd, text + at, n, 0);
-		at += n;
+	(void)arg;
+	for(;;) {
+		size_t length = IndigoLog_Read(&at, datagram, sizeof(datagram));
+		if(length > 0u) net_send(logSocket, datagram, length, 0);
+		else LWP_SemWait(logWake);
 	}
-	free(text);
+	return NULL;
 }
 
 static void lab_log_open(const unsigned char address[4], unsigned short port)
 {
 	struct sockaddr_in to = {.sin_family = AF_INET, .sin_port = htons(port)};
 	s32 fd = net_socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+	lwp_t thread;
 
 	memcpy(&to.sin_addr.s_addr, address, 4);
 	if(fd == INVALID_SOCKET) return;
 	if(net_connect(fd, (struct sockaddr *)&to, sizeof(to)) < 0 ||
-	   LWP_MutexInit(&logMutex, false) < 0) {
+	   LWP_SemInit(&logWake, 0, 1) != 0) {
 		net_close(fd);
 		return;
 	}
-	lab_log_replay(fd);
 	logSocket = fd;
+	LWP_CreateThread(&thread, lab_log_thread_func, NULL, NULL, 16 * 1024, LWP_PRIO_NORMAL);
 }
 
 static bool lab_send(s32 client, const void *data, size_t length)
@@ -107,34 +99,50 @@ static void lab_text(s32 client, const char *status, const char *text)
 	lab_reply(client, status, "text/plain", text, strlen(text));
 }
 
-/* The frame on screen, copied just after a retrace: the next one is drawn
- * into the other framebuffer and shown only at the next retrace. */
+typedef struct {
+	u8 *frame;
+	u32 size;	/* 0: no framebuffer yet */
+	u32 height;
+} labFrame_t;
+
+/* Under the video lock: setVideoMode frees and reallocates the framebuffers
+ * only under it, and the video thread draws only while it holds it, so the
+ * frame on screen stays whole and stays put. */
+static void lab_xfb_copy(void *context)
+{
+	labFrame_t *copy = context;
+	GXRModeObj *mode = getVideoMode();
+	void *shown = VIDEO_GetCurrentFramebuffer();
+
+	if(shown == NULL) return;
+	copy->size = VIDEO_GetFrameBufferSize(mode);
+	copy->height = mode->xfbHeight;
+	copy->frame = memalign(32, copy->size);
+	if(copy->frame != NULL)
+		memcpy(copy->frame, MEM_PHYSICAL_TO_K1(MEM_VIRTUAL_TO_PHYSICAL(shown)), copy->size);
+}
+
+/* The frame on screen, copied just after a retrace: the video thread, the
+ * higher priority, draws the next frame first, and the copy takes the rest
+ * of the frame's time. */
 static void lab_xfb(s32 client)
 {
-	GXRModeObj *mode = getVideoMode();
-	u32 size = VIDEO_GetFrameBufferSize(mode);
-	u8 *frame = memalign(32, size);
-	void *shown;
+	labFrame_t copy = {NULL, 0, 0};
 	char head[192];
 	int n;
 
-	if(frame == NULL) {
-		lab_text(client, "503 Service Unavailable", "no memory for a frame\n");
-		return;
-	}
 	VIDEO_WaitVSync();
-	shown = VIDEO_GetCurrentFramebuffer();
-	if(shown == NULL) {
-		free(frame);
-		lab_text(client, "503 Service Unavailable", "no framebuffer yet\n");
+	DrawWithVideoLocked(lab_xfb_copy, &copy);
+	if(copy.frame == NULL) {
+		lab_text(client, "503 Service Unavailable",
+			copy.size == 0u ? "no framebuffer yet\n" : "no memory for a frame\n");
 		return;
 	}
-	memcpy(frame, MEM_PHYSICAL_TO_K1(MEM_VIRTUAL_TO_PHYSICAL(shown)), size);
 	n = snprintf(head, sizeof(head), "HTTP/1.0 200 OK\r\nContent-Type: application/octet-stream\r\n"
 		"Content-Length: %u\r\nX-Size: %ux%u\r\nX-Format: yuyv422\r\n\r\n",
-		(unsigned)size, (unsigned)(size / 2u / mode->xfbHeight), (unsigned)mode->xfbHeight);
-	if(n > 0 && lab_send(client, head, (size_t)n)) lab_send(client, frame, size);
-	free(frame);
+		(unsigned)copy.size, (unsigned)(copy.size / 2u / copy.height), (unsigned)copy.height);
+	if(n > 0 && lab_send(client, head, (size_t)n)) lab_send(client, copy.frame, copy.size);
+	free(copy.frame);
 }
 
 static void lab_log_reply(s32 client)
@@ -175,9 +183,11 @@ static void lab_suspend_main(void *unused)
 }
 
 /* As an upload does: the main thread stops where it is and the menu audio
- * stops, then the console restarts into its boot program. */
+ * stops, then the console restarts into its boot program. An upload under
+ * way goes first, and may restart the console itself; none starts after. */
 static void lab_restart(void)
 {
+	wiiload_hold();
 	DrawWithVideoLocked(lab_suspend_main, NULL);
 	MP3Player_Stop();
 	menuaudio_shutdown();

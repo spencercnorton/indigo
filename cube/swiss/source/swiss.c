@@ -70,6 +70,7 @@
 #include "gui/ui_scene.h"
 #include "gui/ui_motion.h"
 #include "gui/ui_stage.h"
+#include "gui/time_sync.h"
 #include "devices/deviceHandler.h"
 #include "devices/filelock.h"
 #include "devices/filemeta.h"
@@ -6734,6 +6735,9 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 		free(config);
 		goto exit;
 	}
+	/* From here the launch times its waits and hands the game the clock, so
+	 * Sync Clock leaves the clock as it is (gui/time_sync.c). */
+	time_sync_close();
 	gameflowWaitForCardIds();
 	/* A Library launch shows the launch screen from here to the hand-off,
 	 * Boot without prompts included. */

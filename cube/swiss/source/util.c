@@ -233,11 +233,11 @@ void load_auto_dol(int argc, char *argv[]) {
 void print_debug(const char *fmt, ...)
 {
 	/* Indigo: every line also goes to the console lab's log (gui/lab.c),
-	 * stamped with the time since the first line. libogc2 starts the time
-	 * base at the console's clock, so gettime() alone counts from 2000. */
+	 * stamped with the time since the first line, on the steady clock:
+	 * gettime() is the console's clock, which Sync Clock steps. */
 	static u64 start;
 	char line[256];
-	u64 now = gettime();
+	u64 now = SYS_GetSystemTime();
 	if (start == 0)
 		start = now;
 	u64 ms = ticks_to_millisecs(diff_ticks(start, now));

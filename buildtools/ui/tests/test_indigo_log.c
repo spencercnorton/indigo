@@ -71,11 +71,64 @@ static void aShortBufferGetsAClippedCopy(void)
 	CHECK(IndigoLog_Copy(copy, sizeof(copy)) == 11u);
 }
 
+/* LogHost's sender reads in turn: the pieces add up to what Copy shows,
+ * gap note included, each ends on a line where one fits, and then only what
+ * is new comes. */
+static void readsInPiecesAsCopyShowsIt(void)
+{
+	static char stream[INDIGO_LOG_COPY_BYTES];
+	char piece[1024], line[32];
+	unsigned at = 0, unended = 0;
+	size_t length = 0, n;
+
+	IndigoLog_Reset();
+	CHECK(IndigoLog_Read(&at, piece, sizeof(piece)) == 0u);
+	appendText("START\n");
+	for(n = 0; n < 20000u; n++) {
+		snprintf(line, sizeof(line), "line %05u\n", (unsigned)n);
+		appendText(line);
+	}
+	while((n = IndigoLog_Read(&at, piece, sizeof(piece))) > 0u) {
+		CHECK(length + n < sizeof(stream));
+		memcpy(stream + length, piece, n);
+		length += n;
+		unended += piece[n - 1u] != '\n';
+	}
+	stream[length] = '\0';
+	CHECK(unended == 1u);  /* the head's last piece: the gap note follows */
+	CHECK(length == IndigoLog_Copy(copy, sizeof(copy)));
+	CHECK(strcmp(stream, copy) == 0);
+	appendText("after\n");
+	CHECK(IndigoLog_Read(&at, piece, sizeof(piece)) == 6u);
+	CHECK(memcmp(piece, "after\n", 6) == 0);
+	CHECK(IndigoLog_Read(&at, piece, sizeof(piece)) == 0u);
+}
+
+/* A line longer than the buffer comes in pieces; a position past the end
+ * reads nothing. */
+static void aLongLineComesInPieces(void)
+{
+	char small[8];
+	unsigned at = 0;
+
+	IndigoLog_Reset();
+	appendText("0123456789\n");
+	CHECK(IndigoLog_Read(&at, small, sizeof(small)) == 8u && at == 8u);
+	CHECK(memcmp(small, "01234567", 8) == 0);
+	CHECK(IndigoLog_Read(&at, small, sizeof(small)) == 3u && at == 11u);
+	CHECK(memcmp(small, "89\n", 3) == 0);
+	at = 50u;
+	CHECK(IndigoLog_Read(&at, small, sizeof(small)) == 0u && at == 50u);
+	CHECK(IndigoLog_Read(NULL, small, sizeof(small)) == 0u);
+}
+
 int main(void)
 {
 	keepsWhatFits();
 	keepsTheStartAndTheLatest();
 	aShortBufferGetsAClippedCopy();
+	readsInPiecesAsCopyShowsIt();
+	aLongLineComesInPieces();
 	printf("indigo log: %lu checks passed\n", checks);
 	return 0;
 }

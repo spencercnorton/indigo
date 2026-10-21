@@ -404,3 +404,10 @@ void init_wiiload_usb_thread(void *arg)
 {
 	LWP_CreateThread(&usb_thread, usb_thread_func, arg, NULL, 0, LWP_PRIO_LOWEST);
 }
+
+/* Indigo: the console lab's POST /reset runs an upload's hand-off too
+ * (gui/lab.c), so it takes the upload's lock first and keeps it. */
+void wiiload_hold(void)
+{
+	LWP_MutexLock(upload_mutex);
+}
