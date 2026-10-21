@@ -1,3 +1,25 @@
+## 2026-10-21 — Web face mounts the config device; browser at cfe550b
+
+On a console with games on an SD2SP2 and settings on a GC Loader, the Web
+face said "The web browser isn't installed" although the GC Loader card had
+`swiss/indigo/cubebrowser.dol`. `launchWebBrowser` listed
+`devices[DEVICE_CONFIG]` without mounting it, and the config device stays
+mounted only while something reads it unless it is the Source
+(`config_unset_device`). It now calls `config_set_device()` first, lets the
+device go when the DOL isn't there, and keeps it through `boot_dol`, which
+reads the DOL from it (`boot_dol`'s own Recent list save mounts and lets go
+again). If `boot_dol` comes back, the DOL is closed and the device let go.
+The other readers of the config device already mount it (config.c's saves,
+Memory Cards, Game Details' SAVES, the Save Folder chooser, the File
+Browser's right pane) or, like play history, write only when it is the
+Source. `audit_four_face_home.py` pins the order.
+
+The browser is built from the fork's cfe550b: it finds the SD card in a GC
+Loader too, preferring the card whose `gcbrowser/` holds `cacert.pem`, and
+no longer draws a grey wedge over some pages. The workflows clone the fork
+at its renamed address. Beta (Sync Clock, the console lab) is merged into
+the face's branch, which now lands on beta.
+
 ## 2026-10-19 — Weekly CI runs on beta; housekeeping
 
 The weekly scheduled CI ran main's workflow on runners built from beta, so it
