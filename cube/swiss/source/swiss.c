@@ -3814,23 +3814,29 @@ static void homeConfirmRestartEffect(void)
 	homeRestartSwiss();
 }
 
-/* The bundled web browser DOL, under Indigo's own folder on the config device.
- * (The exact bundled path is settled with the packaging step.) */
+/* The bundled web browser DOL, under Indigo's own folder on the config device,
+ * where sd_package.sh puts it. */
 #define WEB_BROWSER_DIR "swiss/indigo"
 #define WEB_BROWSER_DOL "cubebrowser.dol"
 
 /* Launch the bundled web browser the way the Apps face launches a program:
  * find its DOL on the config device and hand it to boot_dol, which shuts the
- * menu down and jumps. boot_dol returns only when the DOL won't start. */
+ * menu down and jumps. boot_dol returns only when the DOL won't start.
+ * The config device is mounted only while something reads it, unless it is
+ * the Source too (config_set_device): mount it to look, and keep it through
+ * boot_dol, which reads the DOL from it. */
 static void launchWebBrowser(void)
 {
-	DEVICEHANDLER_INTERFACE *device = devices[DEVICE_CONFIG];
+	DEVICEHANDLER_INTERFACE *device;
 	file_handle dir;
 	file_handle *entries = NULL;
 	int count = 0, found = -1;
+	bool mounted;
 	uiDrawObj_t *box;
 
-	if(device != NULL && device->initial != NULL && device->readDir != NULL) {
+	mounted = config_set_device();
+	device = devices[DEVICE_CONFIG];
+	if(mounted && device->initial != NULL && device->readDir != NULL) {
 		memset(&dir, 0, sizeof(dir));
 		concat_path(dir.name, device->initial->name, WEB_BROWSER_DIR);
 		dir.device = device;
@@ -3846,6 +3852,9 @@ static void launchWebBrowser(void)
 	}
 	if(found < 0) {
 		free(entries);
+		if(mounted) {
+			config_unset_device();
+		}
 		box = DrawPublish(DrawMessageBox(D_FAIL,
 			"The web browser isn't installed. Press A."));
 		wait_press_A();
@@ -3863,6 +3872,9 @@ static void launchWebBrowser(void)
 	free(entries);
 	/* TODO: pass the current theme as argv once the browser reads it. */
 	boot_dol(&curFile, 0, NULL);
+	/* It didn't start: close the DOL before its device goes. */
+	device->closeFile(&curFile);
+	config_unset_device();
 	box = DrawPublish(DrawMessageBox(D_WARN, "The web browser couldn't start"));
 	sleep(2);
 	DrawDispose(box);
