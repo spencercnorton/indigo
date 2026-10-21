@@ -95,7 +95,7 @@ and CA bundle into `browser/` for `sd_package.sh`:
 
 - fork: https://github.com/spencernorton/cubebrowser (maintained by us, used
   with permission; its own README/NOTICE credit Arial-Bold)
-- pinned commit: `cfe550b255eb432377e1d3abe12a8b92006cd0ae` — bump it in both
+- pinned commit: `e7199ce2c91a8e05c31060645d0dacf82b41b4e6` — bump it in both
   workflows' `CUBEBROWSER_REF` to take browser changes.
 
 It builds with the same libogc2 toolchain the runner already carries, and
