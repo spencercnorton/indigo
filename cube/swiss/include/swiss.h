@@ -76,6 +76,10 @@ extern u8 __SYS_SetTAUCalibration(s8 calib);
 
 extern void menu_loop();
 extern void boot_dol(file_handle* file, int argc, char *argv[]);
+/* wiiload.c: whether the sections a DOL or ELF header names, and its entry
+ * point's argument words, lie inside its size bytes; raw (a BIN) checks only
+ * the size. */
+extern bool wiiload_image_valid(const u8 *image, size_t size, bool raw);
 extern bool manage_file();
 /* manage_file with its box's choice made (MANAGE_ASK: ask) and, for Copy
  * and Move, the destination folder (NULL: ask). */

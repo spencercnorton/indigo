@@ -107,6 +107,8 @@ run_binaries() {
 	if [ -z "$suffix" ]; then python3 ./test_mp3_player.py; else python3 ./test_mp3_player.py --sanitize; fi
 	echo "== uploads: exact stream and safe handoff$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_wiiload.py; else python3 ./test_wiiload.py --sanitize; fi
+	echo "== a DOL or ELF cut short never starts$suffix =="
+	if [ -z "$suffix" ]; then python3 ./test_boot_image.py; else python3 ./test_boot_image.py --sanitize; fi
 	# card_art builds its own binaries: posters of apps and folders, their guards.
 	echo "== test_card_art$suffix =="
 	if [ -z "$suffix" ]; then python3 ./test_card_art.py; else python3 ./test_card_art.py --sanitize; fi

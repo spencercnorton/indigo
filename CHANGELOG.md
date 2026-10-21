@@ -48,6 +48,10 @@ tag on `beta`. The newest changes are at the top until their release is named.
   exact advertised size; network reads time out after ten idle seconds.
   DOL/ELF headers, sections and entrypoint probes stay inside the received
   file. Uploads no longer suspend the menu while it owns the video lock.
+- A DOL or ELF started from a card is checked the same way: one cut short,
+  such as a copy that stopped partway, says "DOL is corrupted" instead of
+  starting and running whatever lies past its end. SDLOADER.BIN and other
+  raw BINs still start.
 
 - The pinned build now links libiconv-lite instead of the full character-set
   library, reducing the DOL by about 834 KiB while retaining every banner
