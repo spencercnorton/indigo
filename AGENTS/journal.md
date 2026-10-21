@@ -22,8 +22,9 @@ Three follow-ups from the 2.5 review:
   `docs/UPLOADS.md` and `docs/dev/web-browser.md` say the browser can't read
   a FlippyDrive's card (libogc2 has no FlippyDrive device).
 
-Left open: `CUBEBROWSER_REF` moves to the fork's merge commit once its pull
-request merges (gekleos can't push to the fork). The Web face hand-off is
+Left open: `CUBEBROWSER_REF` points at the fork pull request's head
+(spencernorton/cubebrowser#2, `e7199ce`) and moves to its merge commit once
+it merges; that branch is deleted on merge. The Web face hand-off is
 unchecked on a console: the card holds the released browser, which has no
 lab, so a launch there ends remote control.
 
