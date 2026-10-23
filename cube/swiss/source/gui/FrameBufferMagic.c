@@ -38,6 +38,7 @@
 #include "ui_scene.h"
 #include "ui_stage.h"
 #include "ui_hint.h"
+#include "ui_hint_geometry.h"
 #include "ui_system_info.h"
 #include "ui_assets.h"
 #include "ui_command_rail.h"
@@ -49,7 +50,10 @@
 #include "ui_cheats.h"
 #include "ui_about.h"
 #include "ui_launch.h"
+#include "ui_jewel_case.h"
 #include "card_art.h"
+#include "manual.h"
+#include "ui_manual.h"
 
 #define GUI_MSGBOX_ALPHA 225
 #define GUI_PANEL_ALPHA 150	// Phase 2: translucent content panels (config-gated; dialogs stay at GUI_MSGBOX_ALPHA)
@@ -146,6 +150,11 @@ static bool posterPackFileOwned;
  * same attempt on the same device. */
 static file_handle stillsPackFile;
 static bool stillsPackFileOwned;
+static bool stillsPackAttempted;
+/* The Jewel Case's disc art: discs.pak, opened the same way. */
+static file_handle discsPackFile;
+static bool discsPackFileOwned;
+static bool discsPackAttempted;
 /* Spotlight's game descriptions: swiss/ui/descriptions.txt on the browsed
  * device, read whole the first time Spotlight asks there. The menu thread's
  * alone; the video thread only ever sees a snapshot's copy. */
@@ -190,12 +199,13 @@ enum VideoEventType
 	EV_SAVES,
 	EV_SAVE_CUBES,
 	EV_SAVE_DETAILS,
-	EV_FILES
+	EV_FILES,
+	EV_MANUAL
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Background", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "MemoryCardFolder", "Saves", "SaveCubes", "SaveDetails", "Files"};
-_Static_assert(sizeof(typeStrings) / sizeof(typeStrings[0]) == EV_FILES + 1u,
+						"VertScrollbar", "StyledLabel", "Container", "Home", "DeviceSelector", "Tooltip", "TitleBar", "Gameflow", "Presentation", "Settings", "Cheats", "SettingsList", "SettingsHelp", "MemoryCardFolder", "Saves", "SaveCubes", "SaveDetails", "Files", "Manual"};
+_Static_assert(sizeof(typeStrings) / sizeof(typeStrings[0]) == EV_MANUAL + 1u,
 	"every video event needs a diagnostic name");
 
 typedef struct drawTexObjEvent {
@@ -349,6 +359,7 @@ typedef struct drawGameflowDetailPresentation {
 	float cheatPreviewScale;
 	float settingsSummaryScale;
 	float settingsPreviewScale;
+	float manualSummaryScale;
 	float launchScale;
 	float primaryActionsScale;
 	float advancedLineOneScale;
@@ -1852,9 +1863,11 @@ static void _HintVertex(float x, float y, GXColor color)
 static void _HintShape(float cx, float cy, const float (*points)[2], int count,
 	GXColor color)
 {
+	const float (*normals)[2] = UIHintGeometry_Normals(cx, cy, points, count);
 	GXColor clear = color;
 	int i;
 
+	if(normals == NULL) return;
 	clear.a = 0;
 	GX_Begin(GX_TRIANGLEFAN, GX_VTXFMT0, (u16)(count + 2));
 	_HintVertex(cx, cy, color);
@@ -1864,26 +1877,9 @@ static void _HintShape(float cx, float cy, const float (*points)[2], int count,
 	GX_End();
 	GX_Begin(GX_TRIANGLESTRIP, GX_VTXFMT0, (u16)((count + 1) * 2));
 	for(i = 0; i <= count; i++) {
-		const float *prev = points[(i + count - 1) % count];
 		const float *here = points[i % count];
-		const float *next = points[(i + 1) % count];
-		float nx = next[1] - prev[1];
-		float ny = prev[0] - next[0];
-		float length = sqrtf(nx * nx + ny * ny);
-
-		if(length <= 0.0f) {
-			nx = here[0] - cx;
-			ny = here[1] - cy;
-			length = sqrtf(nx * nx + ny * ny);
-		}
-		if(length > 0.0f) {
-			nx /= length;
-			ny /= length;
-		}
-		if(nx * (here[0] - cx) + ny * (here[1] - cy) < 0.0f) {
-			nx = -nx;
-			ny = -ny;
-		}
+		float nx = normals[i % count][0];
+		float ny = normals[i % count][1];
 		_HintVertex(here[0], here[1], color);
 		_HintVertex(here[0] + nx, here[1] + ny, clear);
 	}
@@ -2332,6 +2328,21 @@ static const gameflowQuad_t gameflowSpotlightCover =
 #define GAMEFLOW_SPOTLIGHT_COLUMN_W 224
 #define GAMEFLOW_SPOTLIGHT_TEXT_SCALE 0.46f
 #define GAMEFLOW_SPOTLIGHT_NO_DESCRIPTION "No description for this game."
+
+/* The Jewel Case layout (ui_jewel_case.c), after portlandhodl's jewel case
+ * games view for Swiss; see NOTICE. No cards: one clear case at a time, its
+ * disc printed with the middle of the game's cover, as wide as the cover's
+ * 192x256 (s0, t0, s1, t1 of the pack's canvas), or its own disc art from
+ * discs.pak, which comes first when the pack has it. A cover leaves the case's
+ * middle for Detail. The carousel swaps cases a little slower than it turns
+ * the other rings, so a case can be seen falling back and the next one
+ * swinging in. */
+static const float gameflowJewelCasePrint[4] = {0.0f, 0.125f, 0.75f, 0.875f};
+/* A disc from discs.pak fills its 160x160 square. */
+static const float gameflowJewelCaseDisc[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+static const gameflowQuad_t gameflowJewelCaseCover =
+	{{{245.0f, 106.0f}, {395.0f, 106.0f}, {395.0f, 306.0f}, {245.0f, 306.0f}}};
+#define GAMEFLOW_JEWEL_CASE_RESPONSE 8.0f
 
 /* The Grid layout: five columns, three rows on screen, the focused row in the
  * middle. The highlighted card grows by a tenth. */
@@ -2923,6 +2934,24 @@ static GXTexObj *_GameflowStillTexture(const uiGameflowCardSnapshot_t *record)
 	return UIStills_Peek(handle);
 }
 
+/* The game's disc from discs.pak: true when the pack has one for it, with
+ * *texture NULL while it is still being read, and *arrival how far it has
+ * faded in since it arrived. The same borrowing rules as its poster. */
+static bool _GameflowDiscTexture(const uiGameflowCardSnapshot_t *record,
+	GXTexObj **texture, float *arrival)
+{
+	uiPosterHandle_t handle;
+	uiPosterResult_t result = UIDiscs_Query(record->gameId,
+		strnlen(record->gameId, sizeof(record->gameId)), false, &handle);
+
+	if(result != UI_POSTER_EXACT && result != UI_POSTER_UNIVERSAL) {
+		return false;
+	}
+	*texture = UIDiscs_Peek(handle);
+	*arrival = _GameflowArrival(UIDiscs_PeekAgeMs(handle));
+	return true;
+}
+
 /* How far the game's still has faded in since it arrived. */
 static float _GameflowStillArrival(const uiGameflowCardSnapshot_t *record)
 {
@@ -3186,7 +3215,8 @@ static void _GameflowPrepareCardPresentation(drawGameflowEvent_t *data,
 	/* Room for the title, publisher and facts in each layout, in the
 	 * layouts' order: the line under the carousel's cover, the column beside
 	 * the vertical cover (x 262 to 606), the grid's strip above the command
-	 * line, Spotlight's column beside its picture (x 380 to 604). */
+	 * line, Spotlight's column beside its picture (x 380 to 604), and the
+	 * carousel's line again under the jewel case. */
 	static const struct {
 		int width;
 		float maximum;
@@ -3197,7 +3227,8 @@ static void _GameflowPrepareCardPresentation(drawGameflowEvent_t *data,
 		{{560, 0.66f, 0.50f}, {480, 0.46f, 0.42f}, {500, 0.44f, 0.42f}},
 		{{GAMEFLOW_SPOTLIGHT_COLUMN_W, 0.62f, 0.46f},
 			{GAMEFLOW_SPOTLIGHT_COLUMN_W, 0.46f, 0.40f},
-			{GAMEFLOW_SPOTLIGHT_COLUMN_W, 0.42f, 0.40f}}
+			{GAMEFLOW_SPOTLIGHT_COLUMN_W, 0.42f, 0.40f}},
+		{{520, 0.78f, 0.50f}, {420, 0.50f, 0.42f}, {500, 0.44f, 0.42f}}
 	};
 	/* A layout without its row would draw its text at scale 0. */
 	_Static_assert(sizeof(fit) / sizeof(fit[0]) == UI_GAMEFLOW_LAYOUT_COUNT,
@@ -3327,6 +3358,9 @@ static void _GameflowPrepareDetailPresentation(drawGameflowEvent_t *data)
 	presentation->settingsPreviewScale = _GameflowPrepareDetailText(
 		data->detail.settingsPreview, sizeof(data->detail.settingsPreview),
 		294, 0.46f, 0.46f);
+	presentation->manualSummaryScale = _GameflowPrepareDetailText(
+		data->detail.manualSummary, sizeof(data->detail.manualSummary),
+		180, 0.42f, 0.42f);
 	presentation->launchScale = _GameflowPrepareDetailText(
 		data->detail.launchLabel, sizeof(data->detail.launchLabel),
 		278, 0.56f, 0.50f);
@@ -3376,23 +3410,39 @@ static gameflowQuad_t _GameflowGrowQuad(const gameflowQuad_t *quad, float by);
 
 /* Where Detail's lines and rows sit. The SAVES inset takes its room from the
  * title block above it and moves the rows down; without it, Detail keeps the
- * places it had before the inset. */
+ * places it had before the inset. The Manual row takes the inset's place, or
+ * with both, the title block closes up and the two slim down. */
 typedef struct {
-	int company, status, lastPlayed, lastPlayedValue;
-	int settings, cheats, launch, panelHeight;
-	int rowTop[3];	/* the rows the focus moves between, bottom up */
+	int top, bottom;
+} gameflowDetailRow_t;
+
+typedef struct {
+	int panelHeight;
+	int title, company, status, lastPlayed;
+	int lastPlayedValue;	/* 0: on LAST PLAYED's line, at the right */
+	int saves, savesHeight, savesLine[2];
+	int manual, manualHint;	/* the Manual row's lines (0: no hint line) */
+	int settings, cheats, launch;
+	gameflowDetailRow_t row[4];	/* the rows the focus moves between, bottom up */
 } gameflowDetailLayout_t;
 
-static const gameflowDetailLayout_t gameflowDetailLayouts[2] = {
-	{148, 177, 202, 219, 244, 293, 369, 328, {348, 281, 232}},
-	{140, 159, 176, 191, 264, 313, 388, 344, {367, 301, 252}},
+static const gameflowDetailLayout_t gameflowDetailLayouts[4] = {
+	{328, 122, 148, 177, 202, 219, 0, 0, {0, 0}, 0, 0, 244, 293, 369,
+		{{348, 391}, {281, 340}, {232, 274}, {0, 0}}},
+	{344, 122, 140, 159, 176, 191, 202, 43, {214, 232}, 0, 0, 264, 313, 388,
+		{{367, 410}, {301, 360}, {252, 294}, {0, 0}}},
+	{344, 122, 140, 159, 176, 191, 0, 0, {0, 0}, 214, 232, 264, 313, 388,
+		{{367, 410}, {301, 360}, {252, 294}, {202, 245}}},
+	{344, 118, 135, 151, 165, 0, 175, 36, {186, 201}, 231, 0, 264, 313, 388,
+		{{367, 410}, {301, 360}, {252, 294}, {217, 245}}},
 };
 
 static const gameflowDetailLayout_t *_GameflowDetailLayout(
 	const uiGameflowDetailSnapshot_t *detail)
 {
 	return &gameflowDetailLayouts[
-		(detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u];
+		((detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u) +
+		((detail->flags & UI_GAMEFLOW_DETAIL_HAS_MANUAL) != 0u) * 2];
 }
 
 static void _GameflowDrawDetailPlanes(
@@ -3401,11 +3451,13 @@ static void _GameflowDrawDetailPlanes(
 	const uiGameflowFrame_t *frame, float alpha,
 	uiGameflowDetailFocus_t focusRow, uiMotionSpring_t lit[2])
 {
-	/* The rows the focus moves between, bottom up: Launch, Cheats, Settings. */
+	/* The rows the focus moves between, bottom up: Launch, Cheats, Settings,
+	 * Manual. */
 	const gameflowDetailLayout_t *layout = _GameflowDetailLayout(detail);
-	const int *rowTop = layout->rowTop;
-	static const int rowHeight[] = {43, 59, 42};
+	int rowTop[4];
+	int rowHeight[4];
 	bool hasSaves = (detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) != 0u;
+	bool hasManual = (detail->flags & UI_GAMEFLOW_DETAIL_HAS_MANUAL) != 0u;
 	uiMotionMode_t motion = _CurrentMotionMode();
 	float litTop;
 	float litBottom;
@@ -3441,7 +3493,18 @@ static void _GameflowDrawDetailPlanes(
 		_GameflowAlpha(78.0f * alpha * focus)};
 	bool hasSettings = detail->settingsSummary[0] != '\0';
 	u16 panelCount = (u16)(3u + (hasSaves ? 1u : 0u) +
-		(hasAdvanced ? 1u : 0u) + (hasSettings ? 1u : 0u));
+		(hasAdvanced ? 1u : 0u) + (hasSettings ? 1u : 0u) +
+		(hasManual ? 1u : 0u));
+
+	for(row = 0; row < 4; ++row) {
+		rowTop[row] = layout->row[row].top;
+		rowHeight[row] = layout->row[row].bottom - layout->row[row].top;
+	}
+	/* A focus left on a row that has gone (the manual was removed) rests
+	 * on the row below it. */
+	if(focusRow == UI_GAMEFLOW_DETAIL_FOCUS_MANUAL && !hasManual) {
+		focusRow = UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS;
+	}
 
 	/* The bright frame slides from row to row, as the cheat list's focus
 	 * does; Detail opening places it on its row at once. */
@@ -3471,16 +3534,17 @@ static void _GameflowDrawDetailPlanes(
 		_GameflowPutDetailPanel(246, 76, 358, layout->panelHeight, 2,
 			panelGlow, panelFill, panelEdge);
 		if(hasSaves) {
-			_GameflowPutDetailPanel(260, 202, 330, 43, 2,
-				insetGlow, insetFill, insetEdge);
+			_GameflowPutDetailPanel(260, layout->saves, 330,
+				layout->savesHeight, 2, insetGlow, insetFill, insetEdge);
 		}
 		/* The focused row takes the bright edge and the glow, and the
 		 * grid's frame round it; Launch keeps its button fill. */
 		for(row = UI_GAMEFLOW_DETAIL_FOCUS_LAUNCH;
-			row <= UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS; ++row) {
+			row <= UI_GAMEFLOW_DETAIL_FOCUS_MANUAL; ++row) {
 			bool lit = row == (int)focusRow;
 
-			if(row == UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS && !hasSettings) {
+			if((row == UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS && !hasSettings) ||
+				(row == UI_GAMEFLOW_DETAIL_FOCUS_MANUAL && !hasManual)) {
 				continue;
 			}
 			_GameflowPutDetailPanel(260, rowTop[row], 330, rowHeight[row],
@@ -3531,8 +3595,8 @@ static void _GameflowDrawDetailDashboard(
 
 	drawStringMedium(264, 95, frame->launchProgress > 0.02f ?
 		"LAUNCHING" : "GAME DETAIL", 0.42f, ALIGN_LEFT, secondary);
-	drawStringMedium(264, 122, detail->title, presentation->titleScale,
-		ALIGN_LEFT, primary);
+	drawStringMedium(264, layout->title, detail->title,
+		presentation->titleScale, ALIGN_LEFT, primary);
 	if(detail->company[0] != '\0') {
 		drawStringMedium(264, layout->company, detail->company,
 			presentation->companyScale, ALIGN_LEFT, secondary);
@@ -3544,18 +3608,37 @@ static void _GameflowDrawDetailDashboard(
 
 	drawStringMedium(264, layout->lastPlayed, "LAST PLAYED", 0.42f,
 		ALIGN_LEFT, secondary);
-	drawStringMedium(264, layout->lastPlayedValue, detail->lastPlayedText,
-		presentation->lastPlayedScale, ALIGN_LEFT, primary);
+	if(layout->lastPlayedValue != 0) {
+		drawStringMedium(264, layout->lastPlayedValue, detail->lastPlayedText,
+			presentation->lastPlayedScale, ALIGN_LEFT, primary);
+	}
+	else {
+		drawStringMedium(576, layout->lastPlayed, detail->lastPlayedText,
+			presentation->lastPlayedScale, ALIGN_RIGHT, primary);
+	}
 	/* The count is the headline. A small trailing label leaves the two-line
 	 * inset readable without competing with the actions below it. */
 	if(detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) {
 		/* With a choice, the label says Left and Right change it. */
-		drawStringMedium(576, 214, (detail->flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) ?
+		drawStringMedium(576, layout->savesLine[0],
+			(detail->flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) ?
 			"\253 SAVES \273" : "SAVES", 0.38f, ALIGN_RIGHT, secondary);
-		drawStringMedium(274, 214, detail->savesSummary,
+		drawStringMedium(274, layout->savesLine[0], detail->savesSummary,
 			presentation->savesSummaryScale, ALIGN_LEFT, primary);
-		drawStringMedium(274, 232, detail->savesUpdated,
+		drawStringMedium(274, layout->savesLine[1], detail->savesUpdated,
 			presentation->savesUpdatedScale, ALIGN_LEFT, secondary);
+	}
+
+	/* MANUAL, at the top of the rows: its pages, and A to read it. */
+	if(detail->flags & UI_GAMEFLOW_DETAIL_HAS_MANUAL) {
+		drawStringMedium(274, layout->manual, "MANUAL", 0.42f, ALIGN_LEFT,
+			secondary);
+		drawStringMedium(576, layout->manual, detail->manualSummary,
+			presentation->manualSummaryScale, ALIGN_RIGHT, muted);
+		if(layout->manualHint != 0) {
+			_DrawHintText(274, layout->manualHint, "A  Read the manual",
+				0.46f, ALIGN_LEFT, muted);
+		}
 	}
 
 	/* SETTINGS, like CHEATS below it: this game's own rows, or how to set
@@ -3874,6 +3957,55 @@ static void _GameflowDrawLaunch(const drawGameflowEvent_t *data,
 	}
 }
 
+/* The Jewel Case layout's cases: the selected game's at rest, and while the
+ * carousel moves, the one leaving and the one arriving, each disc printed
+ * with its game's cover. They give way to the cover as Detail opens, and the
+ * C-stick turns them. */
+static void _GameflowDrawJewelCases(const drawGameflowEvent_t *data,
+	const uiGameflowFrame_t *frame, float reveal)
+{
+	uiJewelCaseShot_t shots[UI_GAMEFLOW_LIBRARY_WINDOW];
+	float alpha = reveal * (1.0f - frame->detailProgress) *
+		(1.0f - frame->launchProgress);
+	int count = 0;
+	u32 i;
+
+	if(alpha <= 0.001f) {
+		return;
+	}
+	for(i = 0u; i < data->snapshot.recordCount &&
+		count < (int)(sizeof(shots) / sizeof(shots[0])); ++i) {
+		const uiGameflowCardSnapshot_t *record = &data->snapshot.records[i];
+		uiJewelCaseShot_t *shot = &shots[count];
+		float slot = (float)record->relativeSlot + frame->carouselTravel;
+
+		if(!(record->flags & UI_GAMEFLOW_CARD_VALID) || !(fabsf(slot) < 1.0f)) {
+			continue;
+		}
+		shot->slot = slot;
+		shot->index = record->libraryIndex;
+		shot->printAlpha = 1.0f;
+		/* Its own disc from discs.pak, laid over the whole disc: bare
+		 * until it is read, then fading in. Without one, the middle of
+		 * its cover. */
+		if(_GameflowDiscTexture(record, &shot->print, &shot->printAlpha)) {
+			memcpy(shot->rect, gameflowJewelCaseDisc, sizeof(shot->rect));
+		}
+		else {
+			shot->print = _GameflowPosterTexture(record, &shot->printAlpha);
+			memcpy(shot->rect, gameflowJewelCasePrint, sizeof(shot->rect));
+		}
+		shot->alpha = alpha *
+			((record->flags & UI_GAMEFLOW_CARD_HIDDEN) ? 0.55f : 1.0f);
+		count++;
+	}
+	UIJewelCase_Draw(shots, count, (int)frame->direction, UIAnim_Delta(),
+		(float)padInstrument.substickX / 90.0f,
+		(float)padInstrument.substickY / 90.0f, _CurrentMotionMode(),
+		!swissSettings.stillDiscs);
+	drawInit();
+}
+
 static void _DrawGameflow(uiDrawObj_t *evt)
 {
 	drawGameflowEvent_t *data = (drawGameflowEvent_t*)evt->data;
@@ -3922,6 +4054,10 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 		detail = &data->detail;
 	}
 	layout = (uiGameflowLayout_t)data->snapshot.layout;
+	/* Without the memory for its case, the jewel case is the carousel. */
+	if(layout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE && !UIJewelCase_Ready()) {
+		layout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
+	}
 	if(layout == UI_GAMEFLOW_LAYOUT_GRID) {
 		rows = (frame->itemCount + data->snapshot.columns - 1u) /
 			data->snapshot.columns;
@@ -3994,6 +4130,14 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 				card->quad = gameflowSpotlightCover;
 				card->tile = false;
 				presence = frame->detailProgress > frame->launchProgress ?
+					frame->detailProgress : frame->launchProgress;
+			}
+			/* The jewel case shows no cards: its selected game leaves the
+			 * case for Detail or the launch as its cover. */
+			if(layout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE) {
+				card->quad = gameflowJewelCaseCover;
+				presence = !focused ? 0.0f :
+					frame->detailProgress > frame->launchProgress ?
 					frame->detailProgress : frame->launchProgress;
 			}
 			if(presence <= 0.001f) {
@@ -4078,45 +4222,52 @@ static void _DrawGameflow(uiDrawObj_t *evt)
 			heroAlpha * (1.0f - titleTravel));
 	}
 
+	if(layout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE) {
+		_GameflowDrawJewelCases(data, frame, reveal);
+	}
+
 	_GameflowDrawLaunch(data, detail, focusRecord, focusRecordIndex,
 		frame->launchProgress, reveal);
 	drawInit();
 	_SetupRasterColor();
-	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 4u));
-	for(i = 0u; i < count; ++i) {
-		u8 topAlpha = _GameflowAlpha((104.0f + cards[i].focus * 64.0f) *
-			cards[i].presence * reveal);
-		u8 bottomAlpha = _GameflowAlpha(210.0f * cards[i].presence * reveal);
-		GXColor top = _GameflowAccent(cards[i].record, topAlpha);
-		GXColor bottom = {10, 8, 30, bottomAlpha};
-		_GameflowPutQuad(&cards[i].quad, top, bottom);
-	}
-	GX_End();
+	/* The cards' shells: none in the jewel case, at rest. */
+	if(count > 0u) {
+		GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 4u));
+		for(i = 0u; i < count; ++i) {
+			u8 topAlpha = _GameflowAlpha((104.0f + cards[i].focus * 64.0f) *
+				cards[i].presence * reveal);
+			u8 bottomAlpha = _GameflowAlpha(210.0f * cards[i].presence * reveal);
+			GXColor top = _GameflowAccent(cards[i].record, topAlpha);
+			GXColor bottom = {10, 8, 30, bottomAlpha};
+			_GameflowPutQuad(&cards[i].quad, top, bottom);
+		}
+		GX_End();
 
-	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 4u));
-	for(i = 0u; i < count; ++i) {
-		gameflowQuad_t inner = cards[i].tile ?
-			_GameflowInsetPixels(&cards[i].quad, 4.0f) :
-			_GameflowInsetQuad(&cards[i].quad, 0.033333f, 0.033333f);
-		GXColor top = {49, 43, 92,
-			_GameflowAlpha(130.0f * cards[i].presence * reveal)};
-		GXColor bottom = {12, 10, 34,
-			_GameflowAlpha(190.0f * cards[i].presence * reveal)};
-		_GameflowPutQuad(&inner, top, bottom);
-	}
-	GX_End();
+		GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 4u));
+		for(i = 0u; i < count; ++i) {
+			gameflowQuad_t inner = cards[i].tile ?
+				_GameflowInsetPixels(&cards[i].quad, 4.0f) :
+				_GameflowInsetQuad(&cards[i].quad, 0.033333f, 0.033333f);
+			GXColor top = {49, 43, 92,
+				_GameflowAlpha(130.0f * cards[i].presence * reveal)};
+			GXColor bottom = {12, 10, 34,
+				_GameflowAlpha(190.0f * cards[i].presence * reveal)};
+			_GameflowPutQuad(&inner, top, bottom);
+		}
+		GX_End();
 
-	GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 16u));
-	for(i = 0u; i < count; ++i) {
-		gameflowQuad_t inner = cards[i].tile ?
-			_GameflowInsetPixels(&cards[i].quad, 2.0f) :
-			_GameflowInsetQuad(&cards[i].quad, 0.018f, 0.018f);
-		GXColor border = {220, 214, 255,
-			_GameflowAlpha((112.0f + cards[i].focus * 126.0f) *
-			cards[i].presence * reveal)};
-		_GameflowPutBorder(&cards[i].quad, &inner, border);
+		GX_Begin(GX_QUADS, GX_VTXFMT0, (u16)(count * 16u));
+		for(i = 0u; i < count; ++i) {
+			gameflowQuad_t inner = cards[i].tile ?
+				_GameflowInsetPixels(&cards[i].quad, 2.0f) :
+				_GameflowInsetQuad(&cards[i].quad, 0.018f, 0.018f);
+			GXColor border = {220, 214, 255,
+				_GameflowAlpha((112.0f + cards[i].focus * 126.0f) *
+				cards[i].presence * reveal)};
+			_GameflowPutBorder(&cards[i].quad, &inner, border);
+		}
+		GX_End();
 	}
-	GX_End();
 
 	/* Actual retail covers own the selected and near-card inset. While an
 	 * exact/universal record is loading (or unavailable), retain the native
@@ -5039,6 +5190,16 @@ static void _GameflowCloseStillsPackFile(void)
 	stillsPackFileOwned = false;
 }
 
+static void _GameflowCloseDiscsPackFile(void)
+{
+	if(discsPackFileOwned && discsPackFile.device != NULL &&
+		discsPackFile.device->closeFile != NULL) {
+		discsPackFile.device->closeFile(&discsPackFile);
+	}
+	memset(&discsPackFile, 0, sizeof(discsPackFile));
+	discsPackFileOwned = false;
+}
+
 static void _GameflowDropDescriptions(void)
 {
 	free(descriptionsText);
@@ -5115,7 +5276,10 @@ void DrawGameflowCancelPosters(void)
 	 * callback, so it only marks them stale, and the next lookup reads the
 	 * file again. */
 	descriptionsAttempted = false;
-	if(!posterPackAttempted && !posterPackFileOwned && !stillsPackFileOwned) {
+	Manual_Forget();
+	if(!posterPackAttempted && !posterPackFileOwned &&
+		!stillsPackFileOwned && !stillsPackAttempted &&
+		!discsPackFileOwned && !discsPackAttempted) {
 		return;
 	}
 
@@ -5123,10 +5287,14 @@ void DrawGameflowCancelPosters(void)
 	 * the same private mutex through ui_assets' callback contract. */
 	UIAssets_CancelForDeviceChange();
 	UIStills_CancelForDeviceChange();
+	UIDiscs_CancelForDeviceChange();
 	_GameflowClosePosterPackFile();
 	_GameflowCloseStillsPackFile();
+	_GameflowCloseDiscsPackFile();
 	posterPackDevice = NULL;
 	posterPackAttempted = false;
+	stillsPackAttempted = false;
+	discsPackAttempted = false;
 }
 
 static s32 _GameflowOnReset(s32 final)
@@ -5176,7 +5344,26 @@ static bool _GameflowOpenPosterPack(DEVICEHANDLER_INTERFACE *device)
 		_GameflowClosePosterPackFile();
 	}
 
-	/* The stills beside them, whether or not the posters opened. */
+	return result == UI_ASSETS_OK;
+}
+
+/* Only Spotlight needs gameplay stills. Keep one attempt per mounted
+ * device, independently of a missing poster pack; a later layout change
+ * must still be able to open them. Cancel retires both caches together. */
+static bool _GameflowOpenStillsPack(DEVICEHANDLER_INTERFACE *device)
+{
+	uiAssetsSource_t source;
+	uiAssetsSync_t sync;
+
+	if(device == NULL || device->initial == NULL ||
+		_videomutex == LWP_MUTEX_NULL) {
+		return false;
+	}
+	if(stillsPackAttempted) {
+		return UIStills_Ready();
+	}
+	stillsPackAttempted = true;
+	UIAssets_SyncFromMutex(_videomutex, &sync);
 	memset(&stillsPackFile, 0, sizeof(stillsPackFile));
 	concat_path(stillsPackFile.name, device->initial->name,
 		"swiss/ui/stills.pak");
@@ -5186,7 +5373,35 @@ static bool _GameflowOpenPosterPack(DEVICEHANDLER_INTERFACE *device)
 		UI_ASSETS_OK || UIStills_Init(&source, &sync) != UI_ASSETS_OK) {
 		_GameflowCloseStillsPackFile();
 	}
-	return result == UI_ASSETS_OK;
+	return UIStills_Ready();
+}
+
+/* Only the Jewel Case needs disc art: opened as the stills are, on its
+ * first use, once per mounted device. */
+static bool _GameflowOpenDiscsPack(DEVICEHANDLER_INTERFACE *device)
+{
+	uiAssetsSource_t source;
+	uiAssetsSync_t sync;
+
+	if(device == NULL || device->initial == NULL ||
+		_videomutex == LWP_MUTEX_NULL) {
+		return false;
+	}
+	if(discsPackAttempted) {
+		return UIDiscs_Ready();
+	}
+	discsPackAttempted = true;
+	UIAssets_SyncFromMutex(_videomutex, &sync);
+	memset(&discsPackFile, 0, sizeof(discsPackFile));
+	concat_path(discsPackFile.name, device->initial->name,
+		"swiss/ui/discs.pak");
+	discsPackFile.device = device;
+	discsPackFileOwned = true;
+	if(UIAssets_SourceFromFileHandle(&discsPackFile, &source) !=
+		UI_ASSETS_OK || UIDiscs_Init(&source, &sync) != UI_ASSETS_OK) {
+		_GameflowCloseDiscsPackFile();
+	}
+	return UIDiscs_Ready();
 }
 
 void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
@@ -5199,7 +5414,8 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 		return;
 	}
 	_GameflowOpenPosterPack(device);
-	if(snapshot->layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT && UIStills_Ready()) {
+	if(snapshot->layout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT &&
+		_GameflowOpenStillsPack(device)) {
 		/* The selected game's still and the ones either side of it. */
 		char stills[UI_STILLS_SLOTS][8] = {{0}};
 		for(i = 0u; i < snapshot->recordCount; ++i) {
@@ -5213,6 +5429,22 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 			memcpy(stills[position], record->gameId, UI_ASSETS_ID_LEN);
 		}
 		UIStills_RequestWindow(stills, UI_STILLS_SLOTS, 1);
+	}
+	if(snapshot->layout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE &&
+		_GameflowOpenDiscsPack(device)) {
+		/* The selected game's disc and the ones either side of it. */
+		char discs[UI_DISCS_SLOTS][8] = {{0}};
+		for(i = 0u; i < snapshot->recordCount; ++i) {
+			const uiGameflowCardSnapshot_t *record = &snapshot->records[i];
+			int position = (int)record->relativeSlot + 1;
+			if(position < 0 || position >= UI_DISCS_SLOTS ||
+				strnlen(record->gameId, sizeof(record->gameId)) !=
+					UI_ASSETS_ID_LEN) {
+				continue;
+			}
+			memcpy(discs[position], record->gameId, UI_ASSETS_ID_LEN);
+		}
+		UIDiscs_RequestWindow(discs, UI_DISCS_SLOTS, 1);
 	}
 	if(!UIAssets_Ready()) {
 		return;
@@ -5242,11 +5474,19 @@ void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	UIAssets_RequestWindow(ids, UI_ASSETS_WINDOW, 4);
 }
 
+bool DrawGameflowPrimePoster(void)
+{
+	/* One fixed-size poster (43 KiB), before the first Detail is published.
+	 * Never drain neighbours or gameplay stills at this entry boundary. */
+	return UIAssets_Poll();
+}
+
 bool DrawGameflowPollPosters(void)
 {
-	/* One read for each pack at most: a poster, then a still. */
-	bool more = UIAssets_Poll();
-	return UIStills_Poll() || more;
+	/* At most one 16 KiB range per pack, between input checks. */
+	bool more = UIAssets_PollStep();
+	more = UIStills_PollStep() || more;
+	return UIDiscs_PollStep() || more;
 }
 
 static void _GameflowCopySnapshot(drawGameflowEvent_t *data,
@@ -5295,6 +5535,12 @@ uiDrawObj_t* DrawGameflow(const uiGameflowRenderSnapshot_t *snapshot)
 	memset(eventData, 0, sizeof(*eventData));
 	UIGameflow_Init(&eventData->state);
 	UIGameflow_SetColumns(&eventData->state, snapshot->columns);
+	if(snapshot->layout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE) {
+		/* The case's light and meshes, the first time it is shown. */
+		UIJewelCase_Prepare();
+		eventData->state.carouselSpring.response =
+			GAMEFLOW_JEWEL_CASE_RESPONSE;
+	}
 	if(!UIGameflow_ApplySnapshot(&eventData->state, &snapshot->selection,
 		_CurrentMotionMode())) {
 		free(eventData);
@@ -5366,7 +5612,7 @@ bool DrawSetGameflowDetailFocus(uiDrawObj_t *evt,
 {
 	bool updated = false;
 
-	if(evt == NULL || focus > UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS) {
+	if(evt == NULL || focus > UI_GAMEFLOW_DETAIL_FOCUS_MANUAL) {
 		return false;
 	}
 	LWP_MutexLock(_videomutex);
@@ -5968,6 +6214,130 @@ void DrawCheatsSelector(const char *fileName)
 	DrawDispose(event);
 }
 
+
+/* ------------------------------------------------------------------------
+ * A game's manual (manual.c): the page, at full width or whole, and a bar
+ * under it with the page's number and the buttons. The page's texels are
+ * the manual's own: at full width on a 640 x 480 screen, one texel a pixel.
+ * --------------------------------------------------------------------- */
+typedef struct {
+	uiManualView_t view;
+	float hintScale;
+} drawManualEvent_t;
+
+static void _ManualPage(const uiManualView_t *v)
+{
+	uiManualPage_t page = {0u, v->pageWidth, v->pageHeight};
+	uiManualRect_t r = UIManual_Place(&page, v->whole, v->scroll, v->zoom);
+	GXRModeObj *mode = getVideoMode();
+	u16 width = v->whole ? UI_MANUAL_WIDTH / 2u : UI_MANUAL_WIDTH;
+	u32 rows = v->whole ? v->height / 2u : v->height;	/* the texture's */
+	u32 shown = v->whole ? (v->pageHeight + 1u) / 2u : v->pageHeight;
+	float across = (float)(v->whole ? (v->pageWidth + 1u) / 2u : v->pageWidth) /
+		(float)width;
+	const u8 *texels = v->whole ? v->texels + v->pageBytes : v->texels;
+	/* One texel a pixel is sharpest point-sampled; anything scaled blends. */
+	u8 filter = !v->whole && v->zoom == 1.0f && UIStage_PixelWidth() == 1.0f &&
+		mode->fbWidth == 640 && mode->efbHeight == 480 ? GX_NEAR : GX_LINEAR;
+	float perRow = r.height / (float)shown;
+	u32 top;
+
+	/* Drawn as it is: no tint, no blend (an I4 page's alpha is its gray). */
+	GX_SetNumTevStages(1);
+	GX_SetTevOp(GX_TEVSTAGE0, GX_REPLACE);
+	GX_SetBlendMode(GX_BM_NONE, GX_BL_ONE, GX_BL_ZERO, GX_LO_CLEAR);
+	GX_InvalidateTexAll();
+	/* GX takes 1024 rows of a texture at most: a taller page draws in two. */
+	for(top = 0u; top < shown; top += UI_MANUAL_STRIP_ROWS) {
+		u32 strip = rows - top < UI_MANUAL_STRIP_ROWS ? rows - top :
+			UI_MANUAL_STRIP_ROWS;
+		u32 drawn = shown - top < strip ? shown - top : strip;
+		float y0 = r.y + (float)top * perRow;
+		float y1 = y0 + (float)drawn * perRow;
+		float t1 = (float)drawn / (float)strip;
+		GXTexObj texture;
+
+		if(y1 <= 0.0f || y0 >= 480.0f) {
+			continue;
+		}
+		/* 4 bits a texel in 8 x 8 tiles: 8 rows are width * 4 bytes. */
+		GX_InitTexObj(&texture, (void *)(texels + top * width / 2u), width,
+			(u16)strip, v->format, GX_CLAMP, GX_CLAMP, GX_FALSE);
+		GX_InitTexObjLOD(&texture, filter, filter, 0.0f, 0.0f, 0.0f,
+			GX_FALSE, GX_FALSE, GX_ANISO_1);
+		GX_LoadTexObj(&texture, GX_TEXMAP0);
+		GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+			GX_Position3f32(r.x, y0, 0.0f);
+			GX_Color4u8(255, 255, 255, 255);
+			GX_TexCoord2f32(0.0f, 0.0f);
+			GX_Position3f32(r.x + r.width, y0, 0.0f);
+			GX_Color4u8(255, 255, 255, 255);
+			GX_TexCoord2f32(across, 0.0f);
+			GX_Position3f32(r.x + r.width, y1, 0.0f);
+			GX_Color4u8(255, 255, 255, 255);
+			GX_TexCoord2f32(across, t1);
+			GX_Position3f32(r.x, y1, 0.0f);
+			GX_Color4u8(255, 255, 255, 255);
+			GX_TexCoord2f32(0.0f, t1);
+		GX_End();
+	}
+	drawInit();
+}
+
+static void _DrawManual(uiDrawObj_t *evt)
+{
+	const drawManualEvent_t *data = evt->data;
+	const uiManualView_t *v = &data->view;
+	const int bar = (int)UI_MANUAL_BAR;
+
+	_PagePanel(-6, -6, 652, 492, (GXColor){8, 12, 27, 255});
+	if(v->texels != NULL) {
+		_ManualPage(v);
+	}
+	else {
+		drawStringMedium(320, 225, v->message, 0.66f, ALIGN_CENTER,
+			(GXColor){241, 244, 255, 255});
+	}
+	_PagePanel(-6, 480 - bar, 652, bar + 6, (GXColor){8, 12, 27, 236});
+	drawStringMedium(20, 480 - bar / 2, v->counter, 0.48f, ALIGN_LEFT,
+		(GXColor){115, 234, 234, 255});
+	_DrawHintText(620, 480 - bar / 2, v->hints, data->hintScale, ALIGN_RIGHT,
+		(GXColor){173, 187, 216, 255});
+	drawInit();
+}
+
+uiDrawObj_t* DrawManual(const uiManualView_t *view)
+{
+	uiDrawObj_t *event = calloc(1, sizeof(*event));
+	drawManualEvent_t *data = calloc(1, sizeof(*data));
+
+	if(event == NULL || data == NULL) {
+		free(event);
+		free(data);
+		return NULL;
+	}
+	data->view = *view;
+	data->hintScale = GetHintScaleToFitInWidthWithMax(view->hints, 480, 0.46f);
+	event->type = EV_MANUAL;
+	event->data = data;
+	return event;
+}
+
+void DrawUpdateManual(uiDrawObj_t *page, const uiManualView_t *view)
+{
+	float hintScale = GetHintScaleToFitInWidthWithMax(view->hints, 480, 0.46f);
+
+	if(page == NULL) {
+		return;
+	}
+	LWP_MutexLock(_videomutex);
+	if(!page->disposed && page->type == EV_MANUAL && page->data != NULL) {
+		drawManualEvent_t *data = page->data;
+		data->view = *view;
+		data->hintScale = hintScale;
+	}
+	LWP_MutexUnlock(_videomutex);
+}
 
 /* ------------------------------------------------------------------------
  * Settings, in the cheat browser's language (_DrawCheats): the page, the
@@ -8180,6 +8550,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 		case EV_FILES:
 			_DrawFiles(videoEvent);
 			break;
+		case EV_MANUAL:
+			_DrawManual(videoEvent);
+			break;
 		default:
 			break;
 	}
@@ -8241,7 +8614,8 @@ static bool _FrameCovered(uiDrawObjQueue_t *queue)
 		const uiDrawObj_t *event = queue->event;
 		if(!event->disposed && (event->type == EV_SETTINGS ||
 			event->type == EV_CHEATS || event->type == EV_SAVES ||
-			event->type == EV_SAVE_CUBES || event->type == EV_FILES)) {
+			event->type == EV_SAVE_CUBES || event->type == EV_FILES ||
+			event->type == EV_MANUAL)) {
 			return true;
 		}
 	}
@@ -8503,6 +8877,7 @@ void DrawShutdown() {
 	 * lock-free and remains safe before the mutex is destroyed. */
 	UIAssets_DisposeAfterVideoStop();
 	UIStills_DisposeAfterVideoStop();
+	UIDiscs_DisposeAfterVideoStop();
 	mutex = _videomutex;
 	_videomutex = LWP_MUTEX_NULL;
 	if(mutex != LWP_MUTEX_NULL) {

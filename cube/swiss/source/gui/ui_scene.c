@@ -99,8 +99,8 @@ static const uiScenePose_t poses[UI_SCENE_COUNT] = {
 	[UI_SCENE_SETTINGS] = {1.16f, 0.0f, 0.50f, 0.08f, -0.48f, 0.58f}
 };
 /* The Library's other layouts. Vertical's cover sits where Game Detail's
- * does, so the cube keeps Detail's place behind it; the grid and Spotlight
- * fill the screen, so the cube waits beyond its left edge. */
+ * does, so the cube keeps Detail's place behind it; the grid, Spotlight and
+ * the jewel case fill the screen, so the cube waits beyond its left edge. */
 static const uiScenePose_t verticalLibraryPose =
 	{-1.36f, 0.0f, 0.44f, 0.10f, 0.58f, 0.48f};
 static const uiScenePose_t gridLibraryPose =
@@ -150,7 +150,7 @@ static void unpackHomeLayout(uint32_t word, uiHomeState_t *home)
 {
 	for(int side = 0; side < UI_HOME_SIDE_COUNT; ++side)
 		home->sides[side] = (uint8_t)((word >> (4 * side)) & 15u);
-	home->absent = (uint8_t)(word >> 16);
+	home->absent = (uint16_t)(word >> 16);
 }
 
 static bool homeRequestValid(const uiHomeState_t *home)
@@ -186,12 +186,12 @@ static bool homeRequestValid(const uiHomeState_t *home)
 
 static uiScenePose_t homePose(void)
 {
-	/* Memory Cards, Emulators and File Browser sit as Apps does. */
+	/* Memory Cards, Emulators, File Browser and Web sit as Apps does. */
 	static const float faceLift[UI_HOME_FACE_COUNT] = {
-		0.000f, 0.065f, -0.045f, 0.035f, -0.030f, -0.030f, -0.030f, -0.030f
+		0.000f, 0.065f, -0.045f, 0.035f, -0.030f, -0.030f, -0.030f, -0.030f, -0.030f
 	};
 	static const float facePitch[UI_HOME_FACE_COUNT] = {
-		0.000f, 0.070f, -0.090f, 0.045f, 0.055f, 0.055f, 0.055f, 0.055f
+		0.000f, 0.070f, -0.090f, 0.045f, 0.055f, 0.055f, 0.055f, 0.055f, 0.055f
 	};
 	uiScenePose_t pose = poses[UI_SCENE_HOME];
 	int face = isHomeFace((int)state.appliedHomeFace) ?
@@ -459,7 +459,8 @@ static void retargetPose(uiSceneId_t scene, uiMotionMode_t motionMode)
 	}
 	else if(scene == UI_SCENE_LIBRARY &&
 		(state.libraryLayout == UI_GAMEFLOW_LAYOUT_GRID ||
-		state.libraryLayout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT)) {
+		state.libraryLayout == UI_GAMEFLOW_LAYOUT_SPOTLIGHT ||
+		state.libraryLayout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE)) {
 		pose = &gridLibraryPose;
 		cubeYaw = pose->cubeYaw;
 	}

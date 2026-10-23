@@ -9,10 +9,27 @@ import shutil
 import struct
 import subprocess
 import sys
+import zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
+
+
+def wiiload(out: Path) -> None:
+    image = bytearray(320)
+    struct.pack_into(">I", image, 0, 256)
+    struct.pack_into(">I", image, 0x48, 0x80003100)
+    struct.pack_into(">I", image, 0x90, 64)
+    struct.pack_into(">I", image, 0xE0, 0x80003100)
+    packed = zlib.compress(image)
+    def wire(output: int, declared: int, payload: bytes) -> bytes:
+        return struct.pack(">II", output, declared) + payload
+    (out / "valid").write_bytes(wire(len(image), len(packed), packed))
+    (out / "eof-after-end").write_bytes(wire(len(image), len(packed) + 1, packed))
+    (out / "truncated").write_bytes(wire(len(image), len(packed) - 2, packed[:-2]))
+    (out / "wrong-output").write_bytes(wire(len(image) + 1, len(packed), packed))
+    (out / "dol").write_bytes(image)
 
 
 def history(out: Path) -> None:
@@ -128,6 +145,18 @@ def posters(out: Path) -> None:
         (out / "header-only").write_bytes(b"SWPK" + bytes(60))
 
 
+def manual(out: Path) -> None:
+    # Manuals from manual_pack.py, as small as one can be: pages one tile
+    # row tall, in colour and in gray.
+    sys.path.insert(0, str(ROOT / "buildtools/ui"))
+    import manual_pack
+    from PIL import Image
+
+    pages = [Image.new("RGB", (640, 16), (236, 232, 222)), Image.new("RGB", (640, 12), (20, 20, 24))]
+    (out / "colour.pak").write_bytes(manual_pack.build(pages, trim=False))
+    (out / "gray.pak").write_bytes(manual_pack.build(pages[:1], gray=True, trim=False))
+
+
 def about(out: Path) -> None:
     # Game descriptions as the downloads write them, and as a person might.
     (out / "descriptions.txt").write_bytes(
@@ -138,10 +167,19 @@ def about(out: Path) -> None:
     (out / "hand-written").write_bytes(b"GZLE01\tSail the Great Sea.\r\n\r\ngale01 not an ID\nGALE01 Melee\nGALE01 again")
 
 
+def lab(out: Path) -> None:
+    # Console lab requests as curl sends them, and LogHost settings.
+    (out / "xfb").write_bytes(b"GET /xfb HTTP/1.1\r\nHost: 192.168.1.135:4300\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\n\r\n")
+    (out / "press").write_bytes(b"POST /pad?press=A,Right&hold=150 HTTP/1.1\r\nHost: cube\r\nX-Lab: 1\r\nContent-Length: 0\r\n\r\n")
+    (out / "reset-no-header").write_bytes(b"POST /reset HTTP/1.1\r\nHost: cube\r\n\r\n")
+    (out / "log-host").write_bytes(b"192.168.1.57:4405")
+
+
 def settings(out: Path) -> None:
     for example in sorted((ROOT / "docs/examples").rglob("*.ini")):
         shutil.copyfile(example, out / example.name)
     (out / "keys.ini").write_bytes(b"# a comment\nSystem Language=English\nAutoload=sd:/x.dol\n")
+    (out / "apps-video.ini").write_bytes(b"Apps Video Mode=480i\nSwiss Video Mode=480p\n")
 
 
 def fst(out: Path) -> None:
@@ -197,9 +235,21 @@ def cheats(out: Path) -> None:
     (out / "no-name.txt").write_bytes(b"04275CAC FFFFFFFF\n")
 
 
+def time_sync(out: Path) -> None:
+    # Time zones as the guide's examples write them, and a server's reply to
+    # a request whose cookie is 0, the one the fuzzer checks against.
+    for name, zone in (("denver", b"MST7MDT,M3.2.0,M11.1.0"), ("sydney", b"AEST-10AEDT,M10.1.0,M4.1.0/3"),
+                       ("nuuk", b"<-02>2<-01>,M3.5.0/-1,M10.5.0/0"), ("india", b"IST-5:30")):
+        (out / name).write_bytes(zone)
+    reply = bytearray(48)
+    reply[0], reply[1] = 0x24, 2
+    reply[40:48] = ((1792432800 + 2208988800) << 32 | 1 << 31).to_bytes(8, "big")
+    (out / "reply").write_bytes(bytes(reply))
+
+
 def main() -> int:
     out = Path(sys.argv[1])
-    for target in (history, saves, raw_saves, posters, about, settings, fst, png, cheats):
+    for target in (history, saves, raw_saves, posters, manual, about, lab, settings, fst, png, cheats, wiiload, time_sync):
         folder = out / target.__name__
         folder.mkdir(parents=True, exist_ok=True)
         target(folder)

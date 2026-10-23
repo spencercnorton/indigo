@@ -135,6 +135,7 @@ most use the same key there.
 | `System Video` | `NTSC`, `PAL`, `PAL-M`. Ignored on a Wii (AVE-RVL). | the console's region | System Video |
 | `Screen Position` | A signed number, such as `+0` or `-2`. | the console's SRAM | Screen Position |
 | `Swiss Video Mode` | `Auto`, `480i`, `480sf`, `240p`, `480p`, `576i`, `576sf`, `288p`, `576p` | `Auto` | Swiss Video Mode |
+| `Apps Video Mode` | `Auto`, `480i`, `480sf`, `240p`, `480p`, `576i`, `576sf`, `288p`, `576p`. Passed to homebrew Indigo starts, not to a program sent over the network; Auto keeps the menu mode. Applies to libogc2; other apps may choose their own. | `Auto` | Apps Video Mode |
 | `Menu Widescreen` | `Yes`, `No`. `Yes` draws Indigo's own screens for a TV set to 16:9; games follow `Force Widescreen`. | `No` | Menu Widescreen |
 | `AVECompat` | `AVE N-DOL`, `AVE P-DOL`, `CMPV-DOL`, `GCDigital`, `GCVideo`, `AVE-RVL` | `GCVideo`, or what your loader reports | AVE Compatibility |
 | `Force DTV Status` | `No`, `Yes`, `Region Switch` | `No` | Force DTV Status |
@@ -158,10 +159,10 @@ most use the same key there.
 | `Wave Speed` | `Normal`, `Fast`, `Slow`. How fast the waves drift: `Fast` three times as fast, `Slow` half as fast. | `Normal` | Wave Speed |
 | `Clock` | `Right`, `Left`, `Off`. Where the time sits: the top right or top left corner, or neither. | `Right` | Clock |
 | `Temperature` | `Right`, `Left`, `Off`. Where the temperature dial sits, the same way. Without this line, the dial follows `Clock`. | `Right` | Temperature |
-| `Up Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu above Library on the Home cube; `None` leaves that side empty. A face named for two sides keeps the first, in the order Up, Left, Right, Down. Apps shows only while `/apps` has a program, and Emulators while `/emulators` has one. | `Source` | Up Face |
-| `Left Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu left of Library, the same way. | `Settings` | Left Face |
-| `Right Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu right of Library, the same way. | `System` | Right Face |
-| `Down Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`. The menu below Library, the same way. | `Apps` | Down Face |
+| `Up Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`, `Web`. The menu above Library on the Home cube; `None` leaves that side empty. A face named for two sides keeps the first, in the order Up, Left, Right, Down. Apps shows only while `/apps` has a program, and Emulators while `/emulators` has one. | `Source` | Up Face |
+| `Left Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`, `Web`. The menu left of Library, the same way. | `Settings` | Left Face |
+| `Right Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`, `Web`. The menu right of Library, the same way. | `System` | Right Face |
+| `Down Face` | `None`, `Source`, `Settings`, `System`, `Apps`, `Memory Cards`, `Emulators`, `File Browser`, `Web`. The menu below Library, the same way. | `Apps` | Down Face |
 | `Cube` | `Infinite`, `Classic`. How Home's faces sit on the cube: `Infinite` turns round them in a ring; `Classic` gives each its own side, Library in front, as the GameCube's menu does. Any other value means `Infinite`. | `Infinite` | Cube |
 | `Idle Animation` | `Calm`, `Sway`. How the cube moves while Home rests: `Calm` drifts a little, turned to the right; `Sway` turns it slowly left and right, so the faces beside the one in front peek round its edges. Any other value means `Calm`. | `Calm` | Idle Animation |
 | `Hide Face Labels` | `Yes`, `No`. `Yes` shows as Face Labels › Off: Home shows no face name under the cube. | `No` | Face Labels |
@@ -192,6 +193,9 @@ most use the same key there.
 | `BBALocalIP` | An IPv4 address. | empty | IPv4 Address |
 | `BBANetmask` | The prefix length, such as `24`. | `0` | IPv4 Netmask |
 | `BBAGateway` | An IPv4 address. | empty | IPv4 Gateway |
+| `NTPSync` | `Yes`, `No` | `No` | Sync Clock |
+| `NTPHostIP` | An IPv4 address. Names don't work: the console has no DNS. Empty means `162.159.200.123` (Cloudflare). | empty | NTP Server IP |
+| `TimeZone` | A POSIX TZ string, such as `MST7MDT,M3.2.0,M11.1.0` or `IST-5:30`. Daylight time needs both rules in the `Mm.w.d` form. Empty keeps the zone the console's clock is in: its offset from UTC, snapped to the nearest one a real time zone uses. | empty | Time Zone |
 | `FSPHostIP` | An IPv4 address. | empty | FSP Host IP |
 | `FSPPort` | A port number. | `21` | FSP Port |
 | `FSPPassword` | Text, stored as written. | empty | FSP Password |
@@ -207,15 +211,18 @@ most use the same key there.
 | `SMBPassword` | Text, stored as written. | empty | SMB Password |
 | `RT4KHostIP` | An IPv4 address. | empty | RetroTINK-4K Host IP |
 | `RT4KPort` | A port number. | `0` | RetroTINK-4K Port |
+| `LabServer` | `Yes`, `No`. `Yes` opens TCP port 4300 to a test run on the LAN: screenshots, the debug log, a virtual controller and a restart ([Console lab](UPLOADS.md#console-lab)). | `No` | — |
+| `LogHost` | An IPv4 address, with `:port` or without (port `4405`). Each debug line goes there over UDP. | empty | — |
 
 ### Setup › Library
 
 | Key | Values | Default | On screen |
 | --- | --- | --- | --- |
+| `Spin Discs` | `Yes`, `No`. `No`: the Jewel Case's disc rests instead of spinning. Z in the Jewel Case sets it and saves. | `Yes` | (Z in the Jewel Case) |
 | `Library Folders` | `Yes`, `No`. `Yes` shows as Library Folders › On: the Library shows the folders in `/games`, two levels deep. While it is `Yes`, Indigo flattens by `*/games/*/*` and `FlattenDir` keeps the value it replaced. | `No` | Library Folders |
 | `Hide Saves on Details` | `Yes`, `No`. `Yes` shows as Saves on Details › Off: a game's details leave the memory cards alone. With `No`, they read the memory cards and the Save Folder for the game's saves, and show them when there are two or more copies. | `No` | Saves on Details |
 | `Memory Card Folder Colors` | Saved colors for the small folder and RAW card-image cubes on Memory Cards, set with Y Folder. Up to 32 device-prefixed full paths, separated by `;`, each followed by `~1` through `~8` for Indigo, Azure, Emerald, Gold, Spice, Crimson, Rose and Jet Black. Reserved characters and spaces in paths use `%HH` hexadecimal escapes. For example `sda:/swiss/saves/Backups~3`. An empty value clears the colors; invalid entries are ignored. Resetting to Default removes that path. | empty | Memory Cards › Y Folder |
-| `Library Layout` | `Horizontal`, `Vertical`, `Grid`, `Spotlight`. How the Library shows your games: a row, a column, rows of five, or a gameplay still over a row of banners. | `Horizontal` | Library Layout |
+| `Library Layout` | `Horizontal`, `Vertical`, `Grid`, `Spotlight`, `Jewel Case`. How the Library shows your games: a row, a column, rows of five, a gameplay still over a row of banners, or one CD jewel case at a time with the game's disc spinning inside. | `Horizontal` | Library Layout |
 | `FileBrowserType` | `Standard`, `Fullwidth`, `Carousel`. Read and written for Swiss; Indigo ignores it. | `Standard` | — |
 | `AppsBrowserType` | `Standard`, `Fullwidth`, `Carousel`. Read and written for Swiss; Indigo ignores it. | `Fullwidth` | — |
 | `GameBrowserType` | `Standard`, `Fullwidth`, `Carousel`. Read and written for Swiss; Indigo ignores it. | `Fullwidth` | — |
@@ -289,8 +296,11 @@ way in a game's file.
 | `RetroTINK-4K Profile` | `0` to `12` | from global.ini |
 
 For some games, Swiss starts from its own fix instead of global.ini:
-Fix Pixel Center, Digital Trigger Level, Emulate Audio Streaming, Emulate Read
-Speed or Emulate Broadband Adapter. A game's file still overrides the fix.
+Fix Pixel Center, Force Anisotropic Filter, Force Widescreen, Digital Trigger
+Level, Emulate Audio Streaming, Emulate Read Speed or Emulate Broadband
+Adapter. Animal Crossing Deluxe (`GADE`) starts with Force Widescreen at `No`:
+the game has a Widescreen mode of its own, in its Settings at startup. A game's
+file still overrides the fix.
 
 ## Settings a file can't set
 

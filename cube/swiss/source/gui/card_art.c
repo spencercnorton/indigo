@@ -24,21 +24,23 @@ static uiAppsArt_t art;
 static u8 *artTexels;
 static GXTexObj artTexture[UI_APPS_ART_SLOTS];
 static u32 artReadyMs[UI_APPS_ART_SLOTS];	/* when each was made */
+static volatile bool posterStop;
 
 static u32 nowMs(void)
 {
-	return (u32)ticks_to_millisecs(gettime());
+	return (u32)ticks_to_millisecs(SYS_GetSystemTime());
 }
 
 /* The card's picture, read whole: its bytes in *data (the caller frees
  * them) and their count in *size. False, *data NULL, when it has none or it
  * can't be read. A picture over UI_PNG_MAX_FILE is never read, and one too
  * big or unreadable is reported to the source, which doesn't offer it again. */
-static bool readPicture(int32_t card, u8 **data, u32 *size)
+static bool preparePicture(int32_t card, u8 **data, u32 *size)
 {
 	u32 bytes = source.pictureSize(card);
 
 	*data = NULL;
+	*size = 0u;
 	if(bytes == 0u) {
 		return false;
 	}
@@ -46,14 +48,19 @@ static bool readPicture(int32_t card, u8 **data, u32 *size)
 		source.verdict(card, false);
 		return false;
 	}
-	if(!source.readPicture(card, *data, bytes)) {
-		free(*data);
-		*data = NULL;
-		source.verdict(card, false);
-		return false;
-	}
 	*size = bytes;
 	return true;
+}
+
+/* Thread-safe devices keep their whole-picture read on the worker. */
+static void readPicture(int32_t card, u8 **data, u32 *size)
+{
+	if(!preparePicture(card, data, size)) return;
+	if(!source.readPicture(card, 0u, *data, *size)) {
+		source.verdict(card, false);
+		free(*data);
+		*data = NULL;
+	}
 }
 
 /* The IPL font, as a poster of a name draws it. */
@@ -77,6 +84,7 @@ typedef struct {
 	int32_t card;
 	u8 *data;	/* the picture's bytes, or NULL: its name */
 	u32 size;
+	u32 readBytes;
 	bool read;	/* the poster thread reads the picture */
 	bool ok;
 } posterJob_t;
@@ -97,7 +105,7 @@ static posterJob_t posterJob;
 /* Set by the menu thread as it hands posterJob over, cleared by the poster
  * thread once the slot has it. */
 static volatile bool posterBusy;
-static volatile bool posterStop;
+static bool posterReading;	/* main thread owns an unfinished file read */
 
 typedef struct {
 	const int32_t *cards;
@@ -117,6 +125,14 @@ static void nextPoster(void *context)
 
 	job->slot = UIAppsArt_Next(&art, nowMs());
 	job->card = job->slot >= 0 ? art.slots[job->slot].app : -1;
+}
+
+static void pictureStillWanted(void *context)
+{
+	bool *wanted = context;
+	const uiAppsArtSlot_t *slot = &art.slots[posterJob.slot];
+
+	*wanted = slot->app == posterJob.card && slot->state == UI_APPS_ART_WANTED;
 }
 
 static void posterDone(void *context)
@@ -226,6 +242,7 @@ static void startPosters(void)
 	}
 	posterStop = false;
 	posterBusy = false;
+	posterReading = false;
 	if(artTexels == NULL || LWP_SemInit(&posterStart, 0, 1) < 0) {
 		return;
 	}
@@ -251,6 +268,7 @@ static void stopPosters(void)
 	free(posterJob.data);
 	posterJob.data = NULL;
 	posterBusy = false;
+	posterReading = false;
 }
 
 void CardArt_Open(const cardArtSource_t *cards)
@@ -285,23 +303,48 @@ void CardArt_Poll(void)
 {
 	posterJob_t job;
 
-	if(posterThread == LWP_THREAD_NULL || posterBusy) {
+	if(posterThread == LWP_THREAD_NULL || (posterBusy && !posterReading)) {
 		return;
 	}
-	DrawWithVideoLocked(nextPoster, &job);
-	if(job.slot < 0) {
-		return;
+	if(!posterBusy) {
+		DrawWithVideoLocked(nextPoster, &job);
+		if(job.slot < 0) return;
+		job.data = NULL;
+		job.size = 0u;
+		job.readBytes = 0u;
+		job.read = source.threadSafe;
+		if(!job.read) {
+			(void)preparePicture(job.card, &job.data, &job.size);
+		}
+		job.ok = false;
+		posterJob = job;
+		posterBusy = true;
+		posterReading = !job.read && job.data != NULL;
 	}
-	job.data = NULL;
-	job.size = 0u;
-	job.read = source.threadSafe;
-	if(!job.read) {
-		(void)readPicture(job.card, &job.data, &job.size);
+	if(posterReading) {
+		bool wanted;
+		DrawWithVideoLocked(pictureStillWanted, &wanted);
+		if(!wanted) {
+			free(posterJob.data);
+			posterJob.data = NULL;
+			posterReading = posterBusy = false;
+			return;
+		}
+		u32 take = posterJob.size - posterJob.readBytes;
+		if(take > CARD_ART_READ_BYTES) take = CARD_ART_READ_BYTES;
+		if(!source.readPicture(posterJob.card, posterJob.readBytes,
+			posterJob.data + posterJob.readBytes, take)) {
+			source.verdict(posterJob.card, false);
+			free(posterJob.data);
+			posterJob.data = NULL;
+			posterReading = false;
+		}
+		else {
+			posterJob.readBytes += take;
+			posterReading = posterJob.readBytes < posterJob.size;
+		}
 	}
-	job.ok = false;
-	posterJob = job;
-	posterBusy = true;
-	LWP_SemPost(posterStart);
+	if(!posterReading) LWP_SemPost(posterStart);
 }
 
 void CardArt_Pause(void)

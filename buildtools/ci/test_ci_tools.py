@@ -69,10 +69,10 @@ class Dol(unittest.TestCase):
 
 class Package(unittest.TestCase):
     def build(self, directory: Path, extra: str | None = None, drop: str | None = None,
-              ipl: bytes | None = None) -> Path:
+              ipl: bytes | None = None, also: tuple[str, ...] = ()) -> Path:
         path = directory / "Indigo-v9.9.9.zip"
         with zipfile.ZipFile(path, "w") as archive:
-            for name in sorted(check_package.LAYOUT | ({extra} if extra else set())):
+            for name in sorted(check_package.LAYOUT | ({extra} if extra else set()) | set(also)):
                 if name == drop:
                     continue
                 if name.endswith("/"):
@@ -99,6 +99,16 @@ class Package(unittest.TestCase):
                          {"drop": "swiss/patches/apploader.img"}, {"ipl": dol(revisions=2)}):
                 self.assertNotEqual(check_package.problems(self.build(here, **case), dol(), "v9.9.9"),
                                     [], case)
+
+    def test_the_browser_brings_mbed_tls_licence(self):
+        browser = (check_package.BROWSER, "gcbrowser/", "gcbrowser/cacert.pem")
+        with tempfile.TemporaryDirectory() as directory:
+            here = Path(directory)
+            whole = self.build(here, also=browser + (check_package.MBEDTLS_LICENSE,))
+            self.assertEqual(check_package.problems(whole, dol(), "v9.9.9"), [])
+            self.assertEqual(check_package.problems(self.build(here, also=browser), dol(), "v9.9.9"),
+                             ["swiss/indigo/cubebrowser.dol ships without mbed TLS's licence, "
+                              "swiss/indigo/LICENSE-mbedtls.txt"])
 
     def test_a_long_version_is_cut_to_the_header_field(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -322,7 +332,7 @@ class Release(unittest.TestCase):
         notes = self.notes("v2.0.0-rc.1", "- See [RELEASING](docs/RELEASING.md), [the examples](docs/examples/),"
                                           " [AGENTS.md](AGENTS.md#rules), [above](#install) and"
                                           " [the site](https://norvitech.com/indigo/).")
-        repo = "https://github.com/spencercnorton/indigo"
+        repo = "https://github.com/spencernorton/indigo"
         self.assertIn(f"[RELEASING]({repo}/blob/v2.0.0-rc.1/docs/RELEASING.md)", notes)
         self.assertIn(f"[the examples]({repo}/tree/v2.0.0-rc.1/docs/examples/)", notes)
         self.assertIn(f"[AGENTS.md]({repo}/blob/v2.0.0-rc.1/AGENTS.md#rules)", notes)

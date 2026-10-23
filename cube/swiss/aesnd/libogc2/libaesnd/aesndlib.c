@@ -305,12 +305,18 @@ static void __dsp_initcallback(dsptask_t *task)
 
 static void __dsp_resumecallback(dsptask_t *task)
 {
-	__aesnddspprocesstime = (gettime() - __aesnddspstarttime);
+	__aesnddspprocesstime = (SYS_GetSystemTime() - __aesnddspstarttime);
 	__aesnddspcomplete = 1;
 }
 
 static void __dsp_requestcallback(dsptask_t *task)
 {
+	if(__aesnddsptask.flags&DSPTASK_CANCEL) {
+		DSP_SendMailTo(0xfacedead);
+		while(DSP_CheckMailTo());
+		return;
+	}
+
 	DCInvalidateRange(&__aesndcommand,PB_STRUCT_SIZE);
 
 	if(__aesndcommand.flags&VOICE_FINISHED) {
@@ -371,7 +377,7 @@ static void __audio_dma_callback(void)
 	if(__aesndcurrvoice>=MAX_VOICES) {
 		__aesndvoicesstopped = true;
 
-		__aesnddspstarttime = gettime();
+		__aesnddspstarttime = SYS_GetSystemTime();
 		DSP_SendMailTo(0xface0200);
 		while(DSP_CheckMailTo());
 		return;
@@ -385,7 +391,7 @@ static void __audio_dma_callback(void)
 	__aesndcommand.out_buf = MEM_VIRTUAL_TO_PHYSICAL(audio_buffer[__aesndcurrab]);
 	DCFlushRange(&__aesndcommand,PB_STRUCT_SIZE);
 
-	__aesnddspstarttime = gettime();
+	__aesnddspstarttime = SYS_GetSystemTime();
 	DSP_SendMailTo(0xface0010);
 	while(DSP_CheckMailTo());
 }
@@ -467,10 +473,13 @@ void AESND_Reset(void)
 	if(__aesndinit) {
 		AUDIO_StopDMA();
 		AUDIO_RegisterDMACallback(NULL);
+		DSP_CancelTask(&__aesnddsptask);
 
-		DSP_SendMailTo(0xfacedead);
-		while(DSP_CheckMailTo());
-		
+		if(__aesnddspcomplete) {
+			DSP_SendMailTo(0xfacedead);
+			while(DSP_CheckMailTo());
+		}
+
 		do {
 			_CPU_ISR_Flash(level);
 		} while(__aesnddspinit);

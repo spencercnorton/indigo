@@ -241,12 +241,13 @@ static uint32_t appPictureSize(int32_t card)
 	return app->picture[0] == '\0' || app->pictureFailed ? 0u : app->pictureSize;
 }
 
-static bool appReadPicture(int32_t card, uint8_t *data, uint32_t size)
+static bool appReadPicture(int32_t card, uint32_t offset, uint8_t *data, uint32_t size)
 {
 	file_handle file;
 	s32 read;
 
 	takeEntry(&file, &appsFiles[(u32)card * 2u + 1u]);
+	file.offset = offset;
 	read = appsDevice->readFile(&file, data, size);
 	appsDevice->closeFile(&file);
 	return read == (s32)size;
@@ -414,8 +415,8 @@ static void showPrograms(appsScreen_t *which)
 	u32 selected = 0u;
 	u32 i;
 
-	/* Layouts after Grid show a game's still and description, which an app
-	 * hasn't: Apps shows those as the carousel. */
+	/* Layouts after Grid show a game's still and description, or its disc,
+	 * which an app hasn't: Apps shows those as the carousel. */
 	if(layout > UI_GAMEFLOW_LAYOUT_GRID) {
 		layout = UI_GAMEFLOW_LAYOUT_HORIZONTAL;
 	}

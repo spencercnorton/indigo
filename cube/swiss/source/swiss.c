@@ -56,6 +56,7 @@
 #include "gui/IPLFontWrite.h"
 #include "gui/apps.h"
 #include "gui/card_art.h"
+#include "gui/manual.h"
 #include "gui/ui_apps.h"
 #include "gui/ui_gameflow_detail.h"
 #include "gui/saves_stats.h"
@@ -70,6 +71,7 @@
 #include "gui/ui_scene.h"
 #include "gui/ui_motion.h"
 #include "gui/ui_stage.h"
+#include "gui/time_sync.h"
 #include "devices/deviceHandler.h"
 #include "devices/filelock.h"
 #include "devices/filemeta.h"
@@ -2769,6 +2771,9 @@ typedef struct {
 	 * One given up on at the last read: its saves are missing. */
 	bool savesWaiting;
 	bool savesCardFailed;
+	/* The game's manual (gui/manual.c): its pages, 0 for none, -1 for one
+	 * that can't be read. */
+	int32_t manualPages;
 } gameflowLaunchContext_t;
 
 /* The copies of the open Detail's save, one Detail at a time. */
@@ -3814,6 +3819,82 @@ static void homeConfirmRestartEffect(void)
 	homeRestartSwiss();
 }
 
+/* The bundled web browser DOL, under Indigo's own folder on the config device,
+ * where sd_package.sh puts it. */
+#define WEB_BROWSER_DIR "swiss/indigo"
+#define WEB_BROWSER_DOL "cubebrowser.dol"
+
+/* The bundled browser isn't a program someone chose: boot_dol keeps it out
+ * of the Recent list, whose top entry Indigo would open at the next start. */
+static bool bootDolSkipRecent;
+
+/* Launch the bundled web browser the way the Apps face launches a program:
+ * find its DOL on the config device and hand it to boot_dol, which shuts the
+ * menu down and jumps. boot_dol returns only when the DOL won't start.
+ * The config device is mounted only while something reads it, unless it is
+ * the Source too (config_set_device): mount it to look, and keep it through
+ * boot_dol, which reads the DOL from it. */
+static void launchWebBrowser(void)
+{
+	DEVICEHANDLER_INTERFACE *device;
+	file_handle dir;
+	file_handle *entries = NULL;
+	int count = 0, found = -1;
+	bool mounted;
+	uiDrawObj_t *box;
+
+	mounted = config_set_device();
+	device = devices[DEVICE_CONFIG];
+	if(mounted && device->initial != NULL && device->readDir != NULL) {
+		memset(&dir, 0, sizeof(dir));
+		concat_path(dir.name, device->initial->name, WEB_BROWSER_DIR);
+		dir.device = device;
+		dir.fileType = IS_DIR;
+		count = device->readDir(&dir, &entries, -1);
+		for(int i = 0; i < count; i++) {
+			if(entries[i].fileType != IS_DIR && strcasecmp(
+				getRelativeName(entries[i].name), WEB_BROWSER_DOL) == 0) {
+				found = i;
+				break;
+			}
+		}
+	}
+	if(found < 0) {
+		free(entries);
+		if(mounted) {
+			config_unset_device();
+		}
+		box = DrawPublish(DrawMessageBox(D_FAIL,
+			"The web browser isn't installed. Press A."));
+		wait_press_A();
+		DrawDispose(box);
+		return;
+	}
+	memcpy(&curFile, &entries[found], sizeof(file_handle));
+	curFile.offset = 0;
+	curFile.fp = NULL;
+	curFile.ffsFp = NULL;
+	curFile.meta = NULL;
+	curFile.uiObj = NULL;
+	curFile.lockCount = 0;
+	curFile.thread = LWP_THREAD_NULL;
+	free(entries);
+	/* With the console lab on, lab=1 starts the browser's own, on the same
+	 * port with the same requests: a test run goes on watching and driving,
+	 * and its /reset comes back to Indigo.
+	 * TODO: pass the current theme as argv once the browser reads it. */
+	char *labArgs[] = {NULL, "lab=1"};
+	bootDolSkipRecent = true;
+	boot_dol(&curFile, swissSettings.labServer ? 2 : 0, labArgs);
+	bootDolSkipRecent = false;
+	/* It didn't start: close the DOL before its device goes. */
+	device->closeFile(&curFile);
+	config_unset_device();
+	box = DrawPublish(DrawMessageBox(D_WARN, "The web browser couldn't start"));
+	sleep(2);
+	DrawDispose(box);
+}
+
 static void homeDispatchEffect(uiHomeEffect_t effect)
 {
 	if(effect != UI_HOME_EFFECT_NONE) {
@@ -3880,6 +3961,10 @@ static void homeDispatchEffect(uiHomeEffect_t effect)
 				needsRefresh = 1;
 				curMenuLocation = ON_FILLIST;
 			}
+			break;
+		case UI_HOME_EFFECT_OPEN_WEB:
+			launchWebBrowser();
+			UIScene_Request(UI_SCENE_HOME);
 			break;
 		case UI_HOME_EFFECT_RESTART:
 			homeConfirmRestartEffect();
@@ -4730,7 +4815,7 @@ static void filesOpenDetail(file_handle **directory, uiDrawObj_t **filePanel)
 		filesDetailSnapshot(snapshot, entry, &header);
 		/* The Library's one bounded poster read before Detail. */
 		DrawGameflowRequestPosters(devices[DEVICE_CUR], snapshot);
-		DrawGameflowPollPosters();
+		DrawGameflowPrimePoster();
 		event = DrawGameflow(snapshot);
 	}
 	if(event != NULL) {
@@ -4819,7 +4904,7 @@ static uint32_t folderArtPictureSize(int32_t card)
 	return picture->size;
 }
 
-static bool folderArtReadPicture(int32_t card, uint8_t *data, uint32_t size)
+static bool folderArtReadPicture(int32_t card, uint32_t offset, uint8_t *data, uint32_t size)
 {
 	file_handle *picture = folderArtPicture(card);
 	file_handle file;
@@ -4830,7 +4915,7 @@ static bool folderArtReadPicture(int32_t card, uint8_t *data, uint32_t size)
 	}
 	/* A copy, nothing of it open, as Apps reads its pictures. */
 	memcpy(&file, picture, sizeof(file));
-	file.offset = 0;
+	file.offset = offset;
 	file.fp = NULL;
 	file.ffsFp = NULL;
 	file.meta = NULL;
@@ -5026,10 +5111,9 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				break;
 			}
 			VIDEO_WaitVSync();
-			/* Poll performs at most one read, tied to an idle retrace to
-			 * keep input/navigation frames free of pack I/O. From a source
-			 * that is not thread safe it reads the whole picture here, up
-			 * to 2 MB: about a second from DVD. */
+			/* Each pack and a non-thread-safe folder picture advance by
+			 * at most 16 KiB, then input gets another turn. Thread-safe
+			 * picture reads stay on their own worker. */
 			DrawGameflowPollPosters();
 			CardArt_Poll();
 		}
@@ -5121,10 +5205,11 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 				bool handled = false;
 
 				meta_thread_stop();
-				/* Complete at most the already-requested center-cover job
-				 * before Detail freezes the request window. Detail draws its
-				 * BNR until the cover lands: its idle retraces poll for it. */
-				DrawGameflowPollPosters();
+				/* Finish the already-requested center cover before Detail
+				 * freezes the request window, as the File Browser's Detail
+				 * does. Detail draws its BNR until a cover still missing lands:
+				 * its idle retraces poll for it. */
+				DrawGameflowPrimePoster();
 				if(entryMode == UI_GAMEFLOW_LIBRARY_GAME_FOLDERS) {
 					file_handle folderSnapshot;
 
@@ -5165,10 +5250,23 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
 			break;
 		}
-		if((browserButtons & BUTTON_Z) && filesManage(directory)) {
+		if((browserButtons & BUTTON_Z) &&
+				layout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE) {
+			/* Z stops the discs spinning or starts them, and the choice is
+			 * kept: the Jewel Case has no file management. Only its key is
+			 * saved, as the autoload's is, with the readers stopped while it
+			 * writes; the folders' posters go on with the next frame. */
+			swissSettings.stillDiscs ^= 1;
+			menuaudio_select();
+			meta_thread_stop();
+			CardArt_Pause();
+			config_update_spin_discs(true);
+			meta_thread_start(loadingBox);
+		}
+		else if((browserButtons & BUTTON_Z) && filesManage(directory)) {
 			break;
 		}
-		
+
 		if((browserButtons & BUTTON_B) && gameflowInsideFolder()) {
 			/* Library Folders: B goes up a folder, as X does; at /games
 			 * it goes Home. */
@@ -5687,6 +5785,17 @@ fail_early:
 	}
 }
 
+/* Whether a file boot_dol read whole may start: a DOL Swiss knows must match
+ * its hash, and sidestep, which copies sections without a length, must find
+ * each one the header names inside the file, so a copy cut short is refused.
+ * SDLOADER.BIN and branch BINs load raw, as boot_dol loads them. */
+static bool boot_image_valid(file_handle *file, void *buffer, XXH64_hash_t hash)
+{
+	bool raw = file->size >= 4 && memcmp(buffer, ELFMAG, SELFMAG) != 0 &&
+		(endsWith(file->name, "/SDLOADER.BIN") || branchResolve(buffer, PATCH_BIN, 0));
+	return valid_dol_xxh3(file, hash) && wiiload_image_valid(buffer, file->size, raw);
+}
+
 void boot_dol(file_handle* file, int argc, char *argv[])
 {
 	void *buffer = memalign(32, file->size);
@@ -5721,7 +5830,7 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	}
 	
 	XXH64_hash_t hash = XXH3_64bits(buffer, file->size);
-	if(!valid_dol_xxh3(file, hash)) {
+	if(!boot_image_valid(file, buffer, hash)) {
 		DrawDispose(progBar);
 		free(buffer);
 		file->device->closeFile(file);
@@ -5734,7 +5843,7 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	gameID_set(NULL, hash);
 	DrawDispose(progBar);
 	
-	if(devices[DEVICE_CONFIG] != NULL) {
+	if(devices[DEVICE_CONFIG] != NULL && !bootDolSkipRecent) {
 		// Update the recent list.
 		if(update_recent()) {
 			uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving recent list\205"));
@@ -5748,6 +5857,11 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	strncpy(fileName, file->name, strrchr(file->name, '.') - file->name);
 	print_debug("DOL file name without extension [%s]\n", fileName);
 
+	/* The Source's device, or with none mounted (the Web face starts the
+	 * browser without one) the DOL's own. */
+	DEVICEHANDLER_INTERFACE *cur = devices[DEVICE_CUR] != NULL ?
+		devices[DEVICE_CUR] : file->device;
+
 	// .iso disc image file
 	file_handle *imageFile = calloc(1, sizeof(file_handle));
 	snprintf(imageFile->name, PATHNAME_MAX, "%s.iso", fileName);
@@ -5756,12 +5870,12 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 		getParentPath(imageFile->name, imageFile->name);
 		concat_path(imageFile->name, imageFile->name, "data.iso");
 	}
-	if(devices[DEVICE_CUR]->statFile) {
-		devices[DEVICE_CUR]->statFile(imageFile);
+	if(cur->statFile) {
+		cur->statFile(imageFile);
 	}
 
 	file_handle *bootFile = NULL;
-	if(devices[DEVICE_CUR] == &__device_gcloader) {
+	if(cur == &__device_gcloader) {
 		bootFile = calloc(1, sizeof(file_handle));
 
 		if(!gcloaderGetBootFile(bootFile)) {
@@ -5779,12 +5893,12 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	snprintf(cliArgFile->name, PATHNAME_MAX, "%s.cli", fileName);
 	
 	// we found something, use parameters (.cli)
-	if(devices[DEVICE_CUR]->readFile(cliArgFile, NULL, 0) == 0 && cliArgFile->size) {
+	if(cur->readFile(cliArgFile, NULL, 0) == 0 && cliArgFile->size) {
 		print_debug("Argument file found [%s]\n", cliArgFile->name);
 		char *cli_buffer = calloc(1, cliArgFile->size + 1);
 		if(cli_buffer) {
-			devices[DEVICE_CUR]->seekFile(cliArgFile, 0, DEVICE_HANDLER_SEEK_SET);
-			devices[DEVICE_CUR]->readFile(cliArgFile, cli_buffer, cliArgFile->size);
+			cur->seekFile(cliArgFile, 0, DEVICE_HANDLER_SEEK_SET);
+			cur->readFile(cliArgFile, cli_buffer, cliArgFile->size);
 
 			// Parse CLI
 			char *line, *linectx = NULL;
@@ -5797,7 +5911,7 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 			free(cli_buffer);
 		}
 	}
-	devices[DEVICE_CUR]->closeFile(cliArgFile);
+	cur->closeFile(cliArgFile);
 	free(cliArgFile);
 
 	// .dcp parameter file
@@ -5805,12 +5919,12 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	snprintf(dcpArgFile->name, PATHNAME_MAX, "%s.dcp", fileName);
 	
 	// we found something, parse and display parameters for selection (.dcp)
-	if(devices[DEVICE_CUR]->readFile(dcpArgFile, NULL, 0) == 0 && dcpArgFile->size) {
+	if(cur->readFile(dcpArgFile, NULL, 0) == 0 && dcpArgFile->size) {
 		print_debug("Argument file found [%s]\n", dcpArgFile->name);
 		char *dcp_buffer = calloc(1, dcpArgFile->size + 1);
 		if(dcp_buffer) {
-			devices[DEVICE_CUR]->seekFile(dcpArgFile, 0, DEVICE_HANDLER_SEEK_SET);
-			devices[DEVICE_CUR]->readFile(dcpArgFile, dcp_buffer, dcpArgFile->size);
+			cur->seekFile(dcpArgFile, 0, DEVICE_HANDLER_SEEK_SET);
+			cur->readFile(dcpArgFile, dcp_buffer, dcpArgFile->size);
 
 			// Parse DCP
 			parseParameters(dcp_buffer);
@@ -5824,7 +5938,7 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 			}
 		}
 	}
-	devices[DEVICE_CUR]->closeFile(dcpArgFile);
+	cur->closeFile(dcpArgFile);
 	free(dcpArgFile);
 
 	for(i = 1; i < argc; i++) {
@@ -5832,11 +5946,19 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	}
 
 	// Boot
-	if(devices[DEVICE_CUR]->location == LOC_DVD_CONNECTOR) {
-		devices[DEVICE_CUR]->setupFile(imageFile, bootFile, NULL, -1);
+	if(cur->location == LOC_DVD_CONNECTOR) {
+		cur->setupFile(imageFile, bootFile, NULL, -1);
 	}
 	if(swissSettings.hasFlippyDrive && needs_flippy_bypass(file, hash)) {
 		flippy_bypass(true);
+	}
+	int sram60Hz = swissSettings.sram60Hz;
+	int sramProgressive = swissSettings.sramProgressive;
+	if(swissSettings.appsVMode > 0) {
+		GXRModeObj *forcedMode = getVideoModeFromSwissSetting(swissSettings.appsVMode);
+		DrawVideoMode(forcedMode);
+		swissSettings.sram60Hz = getTVFormat() == VI_EURGB60;
+		swissSettings.sramProgressive = getScanMode() == VI_PROGRESSIVE;
 	}
 
 	// sidestep resets ARAM before handing off; stop AESND first because its
@@ -5865,10 +5987,19 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	free(argz);
 	free(buffer);
 
-	devices[DEVICE_CUR]->closeFile(bootFile);
-	devices[DEVICE_CUR]->closeFile(imageFile);
+	cur->closeFile(bootFile);
+	cur->closeFile(imageFile);
 	free(bootFile);
 	free(imageFile);
+	/* It didn't start: go back to the menu's mode, as a failed game launch
+	 * does, and to the SRAM flags the next game's Auto video mode reads. */
+	if(swissSettings.appsVMode > 0) {
+		swissSettings.sram60Hz = sram60Hz;
+		swissSettings.sramProgressive = sramProgressive;
+		GXRModeObj *menuMode = getVideoModeFromSwissSetting(swissSettings.uiVMode);
+		if(menuMode != getVideoMode())
+			DrawVideoMode(menuMode);
+	}
 	// Successful boots never return. Restore audio only if it was already live.
 	if(restartMenuAudio) menuaudio_init();
 }
@@ -6329,8 +6460,8 @@ bool manage_file_ex(int preset, const char *destDir) {
 				DrawProgressBar(false, 0, txtbuffer);
 			DrawPublish(progBar);
 			
-			u64 startTime = gettime();
-			u64 lastTime = gettime();
+			u64 startTime = SYS_GetSystemTime();
+			u64 lastTime = SYS_GetSystemTime();
 			u32 lastOffset = 0;
 			int speed = 0;
 			int timeremain = 0;
@@ -6345,12 +6476,12 @@ bool manage_file_ex(int preset, const char *destDir) {
 					cancelled = 1;
 					break;
 				}
-				u32 timeDiff = diff_msec(lastTime, gettime());
-				u32 timeStart = diff_msec(startTime, gettime());
+				u32 timeDiff = diff_msec(lastTime, SYS_GetSystemTime());
+				u32 timeStart = diff_msec(startTime, SYS_GetSystemTime());
 				if(timeDiff >= 1000) {
 					speed = (int)((float)(curOffset-lastOffset) / (float)(timeDiff/1000.0f));
 					timeremain = (curFile.size - curOffset) / speed;
-					lastTime = gettime();
+					lastTime = SYS_GetSystemTime();
 					lastOffset = curOffset;
 				}
 				DrawUpdateProgressBarDetail(progBar, (int)((float)((float)curOffset/(float)curFile.size)*100), speed, timeStart/1000, timeremain);
@@ -6465,8 +6596,8 @@ void verify_game()
 	uiDrawObj_t* progBar = DrawProgressBar(false, 0, "Verifying\205");
 	DrawPublish(progBar);
 	
-	u64 startTime = gettime();
-	u64 lastTime = gettime();
+	u64 startTime = SYS_GetSystemTime();
+	u64 lastTime = SYS_GetSystemTime();
 	u32 lastOffset = 0;
 	int speed = 0;
 	int timeremain = 0;
@@ -6480,12 +6611,12 @@ void verify_game()
 			cancelled = 1;
 			break;
 		}
-		u32 timeDiff = diff_msec(lastTime, gettime());
-		u32 timeStart = diff_msec(startTime, gettime());
+		u32 timeDiff = diff_msec(lastTime, SYS_GetSystemTime());
+		u32 timeStart = diff_msec(startTime, SYS_GetSystemTime());
 		if(timeDiff >= 1000) {
 			speed = (int)((float)(curOffset-lastOffset) / (float)(timeDiff/1000.0f));
 			timeremain = (curFile.size - curOffset) / speed;
-			lastTime = gettime();
+			lastTime = SYS_GetSystemTime();
 			lastOffset = curOffset;
 		}
 		DrawUpdateProgressBarDetail(progBar, (int)((float)((float)curOffset/(float)curFile.size)*100), speed, timeStart/1000, timeremain);
@@ -6636,6 +6767,9 @@ static void load_game_with_context(gameflowLaunchContext_t *context) {
 		free(config);
 		goto exit;
 	}
+	/* From here the launch times its waits and hands the game the clock, so
+	 * Sync Clock leaves the clock as it is (gui/time_sync.c). */
+	time_sync_close();
 	gameflowWaitForCardIds();
 	/* A Library launch shows the launch screen from here to the hand-off,
 	 * Boot without prompts included. */
@@ -7562,6 +7696,8 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 	}
 	source.customSettings = (uint32_t)settings_game_custom_count(config);
 	source.firstCustomSetting = settings_game_custom_first(config);
+	context->manualPages = Manual_Pages(devices[DEVICE_CUR], context->gameId);
+	source.manualPages = context->manualPages;
 	if(meta != NULL && meta->banner != NULL &&
 		meta->bannerSize == UI_GAMEFLOW_DETAIL_BANNER_BYTES &&
 		meta->bannerSum != 0xFFFF) {
@@ -7701,6 +7837,8 @@ static int gameflow_info_game(ConfigEntry *config,
 					UI_GAMEFLOW_DETAIL_CAN_CHEATS : 0u) |
 				(devices[DEVICE_CONFIG] != NULL ?
 					UI_GAMEFLOW_DETAIL_CAN_AUTOLOAD : 0u) |
+				(context->manualPages != 0 ?
+					UI_GAMEFLOW_DETAIL_HAS_MANUAL : 0u) |
 				(is_verifiable_disc(&GCMDisk) ?
 					UI_GAMEFLOW_DETAIL_CAN_VERIFY : 0u) |
 				(((devices[DEVICE_CUR]->location & LOC_DVD_CONNECTOR) &&
@@ -7790,6 +7928,15 @@ static int gameflow_info_game(ConfigEntry *config,
 			DrawCheatsSelector(curFile.name);
 			saveCheatsSelection();
 			gameflowPublishDetail(config, context);
+		}
+		else if(action == UI_GAMEFLOW_DETAIL_ACTION_MANUAL) {
+			Manual_Show(devices[DEVICE_CUR], context->gameId);
+			gameflowPublishDetail(config, context);
+			/* Its file gone meanwhile: the row is too. */
+			if(context->manualPages == 0) {
+				focus = UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS;
+				DrawSetGameflowDetailFocus(context->event, focus);
+			}
 		}
 		/* A modal's dismissal is not a new Detail action. Do not require
 		 * unrelated buttons or a held clean-boot modifier to be released. */

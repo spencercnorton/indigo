@@ -1,3 +1,573 @@
+## 2026-10-23 — Align agent instructions with the coverage policy
+
+Remove the obsolete real-card publication hold from AGENTS.md as well as
+the already-updated release procedure and workflow. Real MemCard PRO GC
+access is not a release requirement. Pending coverage and strict claimed-pass
+auditing remain unchanged; release approval is not hardware evidence. This
+prevents a later session from restoring the superseded expectation.
+
+## 2026-10-23 — Report unavailable card coverage without blocking release
+
+The maintainer explicitly removes real MemCard PRO GC access as a release
+requirement: that hardware is not available. The release workflow now emits
+an informational coverage report and continues. The record stays pending,
+bound to its historical source/SDK, and the default qualification audit
+remains strict. Candidate and stable reports both expose missing coverage;
+CI and GCMCE runs never become a real-card pass. The v2.5 notes disclose the
+current SDK coverage gap. This supersedes the earlier publication hold in
+the release-preparation entry below.
+
+## 2026-10-23 — Final candidate and release preparation
+
+The maintainer approves release after the combined candidate's console
+validation. Pin the merged browser return-button change in both build
+workflows, name the v2.5.0 changelog section and clarify disc-pack copying
+on the games card. The browser's one-press return and actual disc labels
+passed console checks. Indigo runtime source is unchanged from38367c3;
+the card-slot/SDK qualification remains pending and is not inferred from
+these results. Run the full native CI and packaged-build verification
+before promotion. Stable publication still requires its recorded hardware
+qualification; no release gate is removed here.
+
+## 2026-10-22 — Wait for System before the File Browser route continues
+
+The combined candidate's two-card route accepted a transition frame as
+"File Browser closed", then sent UP and A before System was ready. Its
+later save-comment assertion failed on a game's Details; the screenshots
+show the intervening commands had reopened the File Browser and picked the
+disc. Capture System's row text before entry and require it stable on B,
+as the existing file_browser route does. No added sleep, retry or relaxed
+save assertion, and no console code changes. The next pinned test build
+carries this stronger oracle with the combined features.
+
+## 2026-10-22 — Combined validation candidate
+
+Combine the current beta with the manuals test branch (0bcfc74), the Jewel
+Case/disc-art/Z-toggle test branch (4935a7b), the Deluxe widescreen default
+(02d01b4), and the Swiss intake through abe21df5. Retain all current beta
+clock, upload, browser and lab hardening. Manual cancellation joins the
+poster/stills/discs lifecycle, and all fuzz targets and host tests remain.
+The pinned test branch and CI package are for console validation before
+feature acceptance. MemCard PRO qualification remains pending; no stable
+promotion or card install is represented by assembling this candidate.
+
+## 2026-10-22 — Swiss intake through abe21df5 on the pinned SDK
+
+Account for the five upstream commits after 39a0867e. Keep Indigo's README
+and removed legacy file/settings screens. Import application SDK metadata
+without replacing a supplied banner description, clear TZ for programs that
+do not accept an environment, and use the monotonic clock for FTP timeouts
+and copy/verification progress. The SDK remains libogc2 r2482: its libraries
+export __SYS_SetTime but not __SYS_InitTime, so the newer-SDK shutdown call
+from 99b59e7a stays deferred and is listed in UPSTREAM. No physical-card
+qualification is inferred; its pending record remains unchanged.
+
+- 345e4d5e: upstream device-list README; Indigo's own README retained.
+- b3cd55b9: SDK metadata imported; Indigo's own screens retained.
+- 5341410b: TZ handoff imported.
+- 99b59e7a: deferred because it requires a newer SDK ABI.
+- abe21df5: monotonic FTP/copy/verification intervals imported; Indigo's
+  renderer already uses its own steady clock.
+
+## 2026-10-19 — The Jewel Case on beta
+
+The Jewel Case, its disc art and Z moved from v2.4.0 onto beta (CI's
+runners only carry the libogc2 r2482 toolchain now). Beta reads packs in
+16 KiB steps and opens stills only on first Spotlight use, so `discs.pak`
+follows suit: `_GameflowOpenDiscsPack` opens it on first Jewel Case use,
+once per mounted device (`discsPackAttempted`, reset with the others in
+`DrawGameflowCancelPosters`), and `DrawGameflowPollPosters` steps it with
+`UIDiscs_PollStep` after the posters and stills. test_stills_lifecycle.py
+covers discs too: only the Jewel Case opens them, once per device.
+
+## 2026-10-18 — Z stops the Jewel Case's disc
+
+A console tester on #139 (component, 3fedaab) found the Library smooth with
+discs streaming and asked for a way to stop the spin. In the Jewel Case, Z
+now flips `swissSettings.stillDiscs` (settings key `Spin Discs`, default
+`Yes`) and saves the settings file at once, as the autoload's Z does: the
+metadata thread is stopped and card art paused around
+`config_update_spin_discs(true)` (only that key, through the autoload's
+merge), then the metadata thread starts again and the
+loop's `folderArtShow` resumes card art. Z there no longer reaches
+`filesManage`; the other layouts keep it. `UIJewelCase_Draw` takes `spin`,
+and the disc's spin rate eases to 0 through the same filter that eases it
+up. The Library hint line is unchanged (one more item overflows the longest
+one); the guide's Library and Controls pages, SETTINGS.md and the changelog
+say it. The tester also saw NHL Hitz 2003 (US) with NHL 2K3's disc: that is
+GameTDB's picture; the poster pack's builder now gives it the PAL disc.
+
+## 2026-10-16 — Disc art for the Jewel Case
+
+A third Library pack, `/swiss/ui/discs.pak`, gives the Jewel Case each
+game's own disc: SWPK v1 with kind `discs`, one 160x160 CMPR level, 12,800
+bytes a record. `poster_pack.py --discs` builds it from pictures at least
+160x160, cropped square; what is clear around the disc and in its hole is
+laid on grey (176, 178, 184) first, so CMPR blocks at the rim don't take
+in black. ui_assets gains a third shape, `UIDiscs_*`, with three slots.
+FrameBufferMagic opens the file with the posters and, while the layout is
+Jewel Case, asks for the selected game's disc and its neighbours';
+`_GameflowDiscTexture` hands the jewel case the disc with the whole texture
+laid over it, fading in as it arrives. A game without one keeps the
+poster's middle square, and one without either the bare disc. Older Indigo
+never opens the file.
+
+GameTDB's disc art (art.gametdb.com/wii/disc/<LANG>/<ID>.png) is 160x160
+RGBA, the disc filling the square, its corners clear and a clear middle
+26.5 px across the radius: 80 sampled, all alike. 1,321 of GameTDB's
+1,708 GameCube IDs have one in their region's languages (Japan has 96 of
+351), about 16.9 MB of pack; the ready-made poster pack is to carry it.
+
+Emulator: card.py draws a disc for every demo game but three (`NO_DISC`;
+Ember and Ivy shows its cover's middle instead) and builds discs.pak from
+them, and the guide picture was recorded again with them. Dolphin shows the
+demo discs, the cover fallback, and real GameTDB discs (swapped in locally,
+never published) square on the disc, the case's hub over the clear middle.
+
+Tests: test_poster_pack.py builds a discs pack (header, shape, the grey
+under clear pixels, the minimum size); test_ui_assets.c loads discs one
+texture at a time and refuses the other packs' shapes;
+test_gameflow_gx_stream.py has the disc first, the poster's middle without
+one, a bare disc while it loads, and a mutant that ignores discs.pak;
+test_emulator.py checks `NO_DISC` against the demo games.
+
+## 2026-10-16 — Jewel Case, a fifth Library layout
+
+Library Layout gains **Jewel Case** (`UI_GAMEFLOW_LAYOUT_JEWEL_CASE`, saved
+as `Library Layout=Jewel Case`): one clear CD jewel case at a time, the
+selected game's cover printed on its spinning disc. It is a port of the
+jewel case games view of portlandhodl's Swiss fork (`gui/jewelcase.c` in
+github.com/portlandhodl/swiss-gc, GPL-2.0), itself a GX port of Ann
+Nguyen's CD Case (bubbbly.com/cd-case, whose author asks for a mention or a
+link back). NOTICE, README, the Library guide and System › Credits name
+them; Credits' Spotlight label became LIBRARY DESIGNS, over both credits,
+and the page's lines moved up a few pixels to make room.
+
+`gui/ui_jewel_case.c` keeps the original's case (rods swept along paths and
+clear sheets), the studio baked into a matcap and two cube-map tables, the
+disc with its rainbow, the lid's sheen, the glints, the resting sway and
+the keys a case leaves and arrives by. Left out: its dock of disc
+thumbnails, the PNG disc art (`swiss/discs/<GAMEID>.png`), the white page
+and shadows, the opening lid, the launch and the slideshow. The Library
+drives it: `_GameflowDrawJewelCases` hands it the records within a place of
+the middle (`relativeSlot + carouselTravel`), each with its poster, the
+middle square of the 192x256 cover (s 0..0.75, t 0.125..0.875) laid over
+the disc, and the frame's direction picks which keys a case follows. The
+carousel spring runs at 8 instead of 15 for this layout so the swap can be
+seen. No cards are drawn; the selected game's cover leaves the case for
+Detail and the launch, as Spotlight's does. The C-stick turns the case
+(`padInstrument`), and the cube waits off screen as for Grid and Spotlight.
+With no memory for its case (`UIJewelCase_Ready`), the layout draws as the
+carousel. `_DrawGameflow` no longer opens its card batches with no card.
+
+Cost: the original made about 2,000 sqrtf a frame at rest; per-frame maths
+now goes through `invLength`, an estimate with two Newton steps. The
+studio and meshes (about 670 KB, kept) are built once on the menu thread
+when a jewel case Library is first made, and the rods' display lists are
+recorded on the video thread on the first frame. frame_budget.c runs the
+real renderer: 0 sqrtf, 203 calls of trig and the like, 23,346 vertices at
+rest with a printed disc; 1,116 trig with a bare disc (its rainbow);
+45,668 vertices mid-swap. Dolphin shows the swap, the C-stick turn and
+spring-back, and Detail; frame time on the console is unmeasured.
+
+Tests: test_gameflow_gx_stream.py logs what the renderer is given (one case
+at rest, two while moving, which way, the print and its square, the bare
+disc, Detail's fade, the carousel fallback) with three mutants;
+test_ui_scene.c parks the cube; frame_budget.json has the jewel case
+scenes; the folders emulator route walks it as a fifth layout.
+
+## 2026-10-16 — Game manuals: a Manual row and a page viewer
+
+A game's manual, converted once on a computer, reads on the console from a
+Manual row at the top of its Game Details (requested in the issue tracker;
+the maintainer chose full width by default, the whole page as an overview).
+The console can't decode the PDFs people have: scans are JPEG 2000 or
+JBIG2 inside, a decoded page won't fit beside the menus, and a PDF library
+would not fit the DOL's headroom.
+
+- `buildtools/ui/manual_pack.py` (Pillow, NumPy, and pypdfium2 for a PDF)
+  renders each page at 1920 wide, trims the paper's margins and a scanner's
+  dark edge (the edge peel runs on the page's own edges only: inside, a band
+  of content is a heading, which the prototype peeled), splits spreads,
+  scales to 640 wide (a page taller than 1152 rows is scaled to that height)
+  and encodes GX CMPR (or I4 with `--gray`) itself, with NumPy, so no
+  devkitPro is needed. Format `SWMN` v1 in docs/MANUALS.md: the packs'
+  family, one fixed canvas a file, a record a page (the page, then its
+  half for the whole-page view), CRCs over the header and index and over
+  each page.
+- `gui/ui_manual.c` is pure: the header and index checks, a page's CRC, the
+  two page slots (the page shown, then the next one the way the pages turn;
+  a slot rests two frames after it stops showing before a read reuses it),
+  page placement and the memory guard. Host test `test_ui_manual` (every bit
+  of a header and index flipped is refused), `test_manual_pack.py` runs
+  packs the converter writes through it, fuzz target `manual`.
+- `gui/manual.c` finds `swiss/ui/manuals/<ID>.pak` (then the first four
+  characters', as a universal pack record) on the browsed device, reads
+  pages on a thread for a thread-safe device (on the menu thread between
+  frames for the disc drive) and runs the viewer; FrameBufferMagic draws it
+  (EV_MANUAL, a covering page), texels as they are: one texel a pixel with
+  GX_NEAR at full width on a 640 x 480 frame, linear otherwise, in two
+  strips past 1024 rows. Game Details has four layouts now (Saves, Manual,
+  both, neither); the row table holds top/bottom pairs, since the colour
+  audit reads a brace of three small numbers as a colour.
+- libogc2's zlib is zlib-ng: `crc32` over more than 256 KiB takes the
+  Chorba path with a 64 KiB table on the stack, and on the 32 KiB reader
+  thread the emulator's stack guard stopped it (DSI). A page is summed in
+  16 KiB pieces.
+
+The emulator's manual route (GC Loader) opens a synthetic manual made from
+the guide's own pictures of the demonstration data (Cobalt Harrier), turns,
+scrolls, toggles and closes it, refuses a damaged one (Ember and Ivy) and
+checks the viewer gave back every byte it took. Dolphin's texture cache
+sees a texture rewritten in place by 128 evenly spaced samples, which in a
+640-wide CMPR page all fall in its leftmost tile column, the paper margin:
+a slot refilled right after it showed kept its old page on screen. The
+route hashes textures whole (`SafeTextureCacheColorSamples = 0`); a console
+reads them anew after `GX_InvalidateTexAll`.
+
+Defaults a console and TV pass may change, each a constant: CMPR over I4
+and trimmed margins (manual_pack.py), and with Menu Widescreen a page keeps
+its 4:3 width (`UI_MANUAL_FILL_WIDESCREEN`).
+
+## 2026-10-21 — The browser's lab ships off; cut-short DOLs; FlippyDrive
+
+Three follow-ups from the 2.5 review:
+
+- `boot_dol` refuses a DOL or ELF whose header names sections past the end
+  of the file (#158, into beta): `boot_image_valid` keeps `valid_dol_xxh3`
+  and adds wiiload's `wiiload_image_valid`, now declared in `swiss.h`.
+  `SDLOADER.BIN` and branch BINs stay raw; an ELF named `SDLOADER.BIN` is
+  checked as an ELF, as `boot_dol` starts it. `test_boot_image.py` runs the
+  real check on every cut-short size.
+- The fork's console lab ships, off unless the browser starts with `lab=1`
+  (fork branch `feat/console-lab`): Indigo's parser copied unchanged with
+  its test; `/open` and `/point` look for `X-Lab` only among the headers (the
+  test build's `strstr` also matched a body); an idle deadline (900 s, from
+  a periodic alarm, kept in 32-bit milliseconds so the interrupt never
+  reads half a write) and a crash reload after 10 s; `/reset` from the main
+  loop, or from the lab's thread after 3 s; `sd=0` keeps the card off. Run
+  from RAM on a console: header checks, `/open`, `/point`, a virtual
+  press, the deadline and `/reset` back to Indigo.
+- This branch: `launchWebBrowser` passes `lab=1` while `LabServer` is on
+  (`audit_four_face_home.py` pins it), and the zip README, install guide,
+  `docs/UPLOADS.md` and `docs/dev/web-browser.md` say the browser can't read
+  a FlippyDrive's card (libogc2 has no FlippyDrive device).
+
+The fork's pull request (spencernorton/cubebrowser#2) merged as `412d592`,
+the tree tested, and `CUBEBROWSER_REF` pins it in both workflows. Left
+open: the Web face hand-off is unchecked on a console. The card holds the
+released browser, which has no lab, so a launch there ends remote control.
+## 2026-10-21 — Lab and Sync Clock: reset vs uploads, locked frame copy, LogHost thread, steady timers
+
+Closes the lab and Sync Clock items the 2.5 review left open (entry below).
+
+`POST /reset` ran an upload's hand-off (suspend the main thread, stop the
+audio, `DrawShutdown`, `SYS_ResetSystem`) without wiiload's `upload_mutex`,
+so a reset during an upload could run it twice. `lab_restart` takes
+`wiiload_hold()` first (declared in `gui/lab.h`, so `wiiload.h` stays
+upstream's): an upload under way finishes, a good one restarting the console
+itself, and none starts after. `GET /xfb` copied
+`VIDEO_GetCurrentFramebuffer()` unlocked while `setVideoMode` frees and
+reallocates the framebuffers under `_videomutex`; it now sizes and copies
+the frame inside `DrawWithVideoLocked`. The video thread, at the highest
+priority, draws first after the retrace, so the copy takes the rest of the
+frame.
+
+LogHost did a synchronous `net_send` under a mutex for every `print_debug`,
+on whatever thread logged. A sender thread now drains the log ring with
+`IndigoLog_Read` (a position; only appends that have finished, counted in
+`committed`; the same gap note as `IndigoLog_Copy`), woken by a semaphore
+`lab_log` posts. A post is safe in an interrupt (libogc2's IRQ entry raises
+the dispatch-disable level), so lines logged there reach LogHost too.
+
+`clock_settime` goes through `__SYS_SetTime`, which writes the time base
+and moves the boot-time bias at 0x800030d8 by as much: `gettime()` steps,
+`SYS_GetSystemTime()` (CLOCK_MONOTONIC, and libogc2's own sleeps and
+alarms) doesn't. Indigo's interval timers use it now: the log's stamps, the
+virtual pad and its idle time, the poster cache's eviction quarantine,
+Apps art, frame deltas, the perf clock and the settings-device retry. On
+`gettime()` on purpose: the MMCE deadlines (`card_slots.c`,
+`ui_card_slots.c`, `gameflowWaitForCardIds`, which the MemCard PRO
+qualification fingerprints), the EXI probe times `load_app` hands a game
+(0x800030C0/C4, read against the game's clock), upstream's copy progress
+and FTP timeouts, and the SNTP round trip.
+
+SNTP ran on the network thread `wait_network()` joins, so an unanswered
+server held the first Settings open or game launch for 3 s.
+`time_sync_network()` now copies its settings there and starts a detached
+thread. Two places still wait for it: `init_network()` (FTP, SMB, FSP)
+calls `time_sync_wait()`, since FTP times out on `gettime()` and fsplib on
+`gettimeofday()`; and a game's launch calls `time_sync_close()` before
+`gameflowWaitForCardIds`, after which Sync Clock doesn't step (a step
+under way finishes first; the check is made with interrupts off).
+
+## 2026-10-21 — 2.5 review on a console: Web face, Apps Video Mode, uploads
+
+beta f8ad73b's CI build ran on a DOL-001 (WIZnet W5500, GC Loader and
+SD2SP2, a card in slot A that switches by game ID), pushed over wiiload with
+`LabServer=Yes` and driven through the lab: every side of a Classic cube, a
+149-game Library, Game Details with a card switch, every Settings page, File
+Browser, System Information, interrupted and stalled uploads (dropped at the
+10 s idle timeout, with the menus answering underneath) and `/reset`. Nothing
+failed on the console; a review of v2.4.0..f8ad73b found what this fixes:
+
+- `boot_dol` looked for a DOL's `.iso`, `.cli` and `.dcp` through
+  `devices[DEVICE_CUR]`, NULL when the Web face starts the browser with no
+  Source; it falls back to the DOL's own device. It also put the bundled
+  browser in the Recent list, whose top entry `main.c` opens at start with
+  Recent List On; `bootDolSkipRecent` keeps it out.
+- `boot_dol` switched to Apps Video Mode and wrote `sram60Hz` and
+  `sramProgressive` before the loaders checked the image; a refused image
+  restores both, as the game path's `fail:` does.
+- The Library's A path called the stepped `DrawGameflowPollPosters()` where
+  2.4 read a whole poster; it calls `DrawGameflowPrimePoster()`.
+- wiiload's check treated an ELF named `SDLOADER.BIN` as a raw binary while
+  the loader starts it as an ELF; the check follows the loader now.
+- Sync Clock refuses a server time before 2000 and retries `__SYS_GetRTC`
+  while EXI channel 0 is busy, since the counter bias needs it.
+
+Left open: the zip carries no licence text for the browser's mbed TLS or
+its CA bundle; a cut-short `cubebrowser.dol` still starts (`DOLtoARAM` never
+bounds sections by the file); a FlippyDrive-only console has no card the
+browser reads; the lab's `/reset` isn't serialised with an upload and `/xfb`
+copies without the video lock; Sync Clock's step moves `gettime()`, which
+the lab log, the virtual pad and MMCE switch deadlines use, and an
+unanswered SNTP request holds `wait_network()` up to 3 s. Stable still waits
+on `docs/validation/memcard-pro.json` (pending). The shipped browser has no
+lab, so a Web face launch ends remote control until someone presses Reset.
+
+## 2026-10-21 — Sync Clock hides without an adapter; kept zones are real
+
+Sync Clock (Settings › Network, #153) sets the clock once the network is
+up: `gui/time_sync.c` sends one SNTP request (three tries, a second each),
+then sets `clock_settime`, the SRAM counter bias and `__SYS_SyncSram`, so the
+IPL and games see the time and it survives a power-off. bba.c's network
+thread calls it (one line, listed in UPSTREAM). libogc2's lwIP has no DNS
+or SNTP and ignores `SO_RCVTIMEO`, so the server is an address and the wait
+is `net_select`. `ui_time_sync.c` (packets, POSIX TZ, the kept offset) has
+no console calls; it is host-tested and fuzzed.
+
+Its three rows are now the last of `networkRows`, and Settings hides them
+without a network adapter: `show_settings_view` reads `net_initialized ||
+bba_exists(LOC_ANY)` once and calls `UISetLayout_HideTail`, and whatever
+counted the page's rows uses `UISetLayout_RowCount`, so Save & Exit and
+Discard & Exit follow the rows shown. `show_settings` still searches the
+whole table; the view moves a hidden option to row 0. Sync Clock stays off.
+With Time Zone empty, `UITimeSync_KeptOffset` snaps the clock's offset to
+the nearest of 40 real ones instead of a quarter hour: a Denver console 8
+minutes fast kept -5:45 and now keeps -6:00.
+
+Changing Settings' action block moves `SHOW_ACTIONS_SHA256` in
+`audit_settings_semantics.sh`; `audit_settings_hardware_followup.py`
+anchors on the literal `if(option == UISetLayout_RowCount(view)) {` and
+holds tooltip lines to 68 columns. The host suite in Docker, run from a
+worktree, needs the main checkout's `.git` mounted at its own path, or
+`test_font_batches.py` cannot `git show v2.4.0:`.
+
+## 2026-10-21 — Web face mounts the config device; browser at cfe550b
+
+On a console with games on an SD2SP2 and settings on a GC Loader, the Web
+face said "The web browser isn't installed" although the GC Loader card had
+`swiss/indigo/cubebrowser.dol`. `launchWebBrowser` listed
+`devices[DEVICE_CONFIG]` without mounting it, and the config device stays
+mounted only while something reads it unless it is the Source
+(`config_unset_device`). It now calls `config_set_device()` first, lets the
+device go when the DOL isn't there, and keeps it through `boot_dol`, which
+reads the DOL from it (`boot_dol`'s own Recent list save mounts and lets go
+again). If `boot_dol` comes back, the DOL is closed and the device let go.
+The other readers of the config device already mount it (config.c's saves,
+Memory Cards, Game Details' SAVES, the Save Folder chooser, the File
+Browser's right pane) or, like play history, write only when it is the
+Source. `audit_four_face_home.py` pins the order.
+
+The browser is built from the fork's cfe550b: it finds the SD card in a GC
+Loader too, preferring the card whose `gcbrowser/` holds `cacert.pem`, and
+no longer draws a grey wedge over some pages. The workflows clone the fork
+at its renamed address. Beta (Sync Clock, the console lab) is merged into
+the face's branch, which now lands on beta.
+
+## 2026-10-19 — Weekly CI runs on beta; housekeeping
+
+The weekly scheduled CI ran main's workflow on runners built from beta, so it
+failed its toolchain check (and AESND's) once beta moved to libogc2 r2482.
+`.github/workflows/weekly.yml` now dispatches `ci.yml` on beta with
+`long_fuzz=true`; ci.yml lost its schedule, and its concurrency group names
+the event so the dispatch and a beta push never cancel each other. Schedules
+fire from main, so main's old schedule keeps failing until this is released.
+Main also cannot build on today's runners until then (hotfixes included).
+
+Housekeeping: the retired norvitech-site runner pool and the `nodejs` it
+needed are gone; remaining old-owner links, System › Info's address, the
+zip README and release notes follow the renamed account (the MemCard PRO
+evidence URL stays as recorded); one unreferenced guide picture removed.
+`docs/guide/images/system-info.png` still shows the old address.
+
+## 2026-10-18 — Swiss watch sends through the M365 mailer
+
+Supersedes the SMTP plan in the entry below, before merge: the estate has
+no SMTP account, but it has a Microsoft Graph mailer app whose token holds
+only `Mail.Send`. `swiss_watch.py` now sends through Graph `sendMail` as
+`SWISS_WATCH_FROM`; sender and recipient are both the accounts mailbox.
+Repository secrets are set from Infisical (the mailer app's canonical
+entries, plus a dedicated `API_KEY_SWISS_WATCH` copy of the generic OpenAI
+key — rotate those two together). A labelled test message was delivered
+through the script's own send path, and a real model dry-run over
+163f8b1d..39a0867e rendered its email without sending.
+
+## 2026-10-18 — Weekly Swiss watch (gated, email-only)
+
+New `buildtools/ci/swiss_watch.py` + `.github/workflows/swiss-watch.yml`
+(Tuesdays 14:17 UTC, self-hosted `indigo-build`; schedules run from `main`,
+so it starts when this reaches a release). Gates: one `ls-remote` against
+the UPSTREAM pin, a deterministic classifier reusing `check_upstream`'s
+`OWN`/`parse`/`covers`, one OpenAI-compatible model call only on a real
+diff, and plain-text email only when a commit is take/review. Unassessed
+commits default to review; a model reply assessing nothing fails the run.
+Verified against the real 163f8b1d..39a0867e range (classification matches
+the 2026-10-17 manual intake) with a local fake model endpoint; a real
+model call and SMTP delivery still need the workflow's secrets/vars set
+(dry-run dispatch prints the would-be email first). Tests:
+`buildtools/ci/test_swiss_watch.py`.
+
+## 2026-10-17 — Verify upstream homebrew video and console identity
+
+The existing non-default GC Loader smoke fixture now selects Apps Video Mode
+480i while the menu uses Auto 480p. Its launch probe checks VI registers for
+the selected app mode, with a host-tested oracle; removing the forced-mode
+handoff fails that native test. All nine mode names round-trip independently
+of the menu setting. The actual System model classifier is compiled under
+GCC/Clang and sanitizers to check Gateway identity before the Panasonic Q
+fallback and retain bounded text. The updated settings parser completed
+480,033 coverage-guided executions without a failure.
+
+## 2026-10-17 — Swiss intake through 39a0867e
+
+UPSTREAM now names the current Swiss head, 39a0867e, with all thirteen
+commits since 163f8b1d accounted for below. The patch engine and VI assembly
+match that commit. Translation and No-Intro database updates are present;
+Latin-1 title bytes remain ASCII C escapes. Apps Video Mode is reachable
+in Display, has a choice picker, config round trips, help and documentation.
+Nintendo Gateway identification uses the bounded System model helper.
+
+The routing fixture follows the new upstream main.c. The settings fixture
+keeps the pre-presentation toggle baseline and adds the new upstream Apps
+arm, preserving its existing tests of Indigo’s explicit motion cycle.
+Indigo’s CI, README, presentation and tooltip line wrapping remain its own.
+The Settings tour picture predates the new Apps row, as the guide states.
+
+- `42b0c707` - Fix regression from 53a6f10da2a8e5912cec318527bc49bf69a0e3d8.: already present; retained.
+- `602a4160` - Update [T-En] Collection database.: imported.
+- `4bf58ab5` - Update [T-En] Collection database.: imported.
+- `4e8d2c24` - Update [T-En] Collection database. (it's all Giftpia): imported.
+- `a047de40` - Update [T-En] Collection database.: imported.
+- `cd3ddefc` - Fix 960/1152i in Need for Speed games.: imported.
+- `13e5d069` - Insurance for force field rendering off.: imported.
+- `9fd007a9` - Use libiconv-lite.: covered by the pinned libiconv-lite overlay and runner cache.
+- `8a33d884` Update README.md: upstream service list; Indigo’s own README retained.
+- `c6052c4c` - Update No-Intro database.: imported.
+- `a6cde773` - Identify Nintendo Gateway GameCube.: model detection adapted to Indigo’s bounded System text.
+- `ecf8fda6` - Add video mode option specific to libogc2 applications.: launch/config imported; Display row, picker and help adapted to Indigo.
+- `39a0867e` - Reformat tooltips for readability.: format-only tooltip changes; Indigo help and layout retained.
+
+## 2026-10-17 — Fetch historical CI blobs on demand
+
+The four full-history CI checkouts now use blob:none. All commit/tag refs
+remain available; current files arrive at checkout and tagged test sources
+arrive on demand. A fresh filtered clone used 626,845 bytes before checkout
+and about 47.4 MB after checkout, instead of preloading the guide's historical
+images. Both real-font and archived tagged-renderer comparisons pass from
+that clone. Workflow policy checks pass; native CI exercises the same setup
+through the runner's GitHub-only proxy. Release checkouts are unchanged.
+
+## 2026-10-17 — Preserve the first Detail poster
+
+Native CI caught the first File Browser Detail showing its banner while the
+new idle reader completed its poster across frames. Keep the original
+one-poster prefetch before publishing Detail (a fixed 43 KiB); idle work
+still advances by 16 KiB per pack and never drains neighbouring posters or
+stills at entry. The lifecycle harness checks the separate full/step calls,
+and the File Browser audit rejects a partial prefetch. Its two-frame native
+poster assertion remains unchanged. Host lifecycle sanitizers, all 146
+File Browser mutants and the unchanged frame budgets pass.
+
+## 2026-10-17 — Read artwork between input checks
+
+Poster and still caches expose a 16 KiB idle step, retaining an unpublished
+record and incremental CRC until complete. Slot generations, quarantine,
+window changes and cancellation still fence publication; the original
+whole-record Poll API remains for callers that want it. New host cases
+check each range, complete-payload publication, read/CRC failure, cancellation
+and mixing step/full polls. Both cache variants pass 5,727 checks.
+
+Non-thread-safe app/folder PNG reads also advance by at most 16 KiB per
+idle call, closing their temporary file every time. A paused or scrolled-away
+picture frees its bytes without marking it failed; thread-safe devices keep
+their existing worker read. The real card-art harness checks the 2 MiB
+boundary in 128 sequential ranges and pause/resume, with memory returned.
+The complete local plain, sanitizer and contract lanes pass. The DOL builds
+in the pinned toolchain; native CI and emulator routes remain the merge gate.
+
+## 2026-10-17 — Batch font glyphs and retain hint normals
+
+The IPL font emits runs of up to 64 glyphs on the same sheet, separately
+for each weight pass. Its host stream is byte-identical to v2.4.0 across
+sheets, alignments, scales, alpha, extended bytes, newlines and long text;
+the sample workload uses 540 batches instead of 17,010. Hint outlines keep
+exact normals in sixteen bounded geometry slots (no frame allocation or
+approximate math). The geometry test compares the old formula and changed
+inputs; warm calls make no square roots. The steady File Browser fixtures
+now have zero square roots and 148/148/150 batches instead of
+1,701/1,710/2,316, with identical vertex hashes. The budget's font stand-in
+now models these bounded runs; the real font has its own stream comparison.
+No controls or pictures change, and these counts are not console timings.
+
+## 2026-10-17 — Open gameplay stills on first Spotlight use
+
+The Library's poster opener no longer initializes the gameplay-stills cache.
+Spotlight opens it on demand, with its own one-attempt flag, so it still
+works after another layout or with a missing poster pack. Device changes and
+cancellation retire both caches. The actual renderer lifecycle functions
+run in a counted host harness covering those routes and failure, plain and
+under ASan/UBSan. No pictures or controls change.
+
+## 2026-10-17 — Reject incomplete uploads and hand off under the video lock
+
+The wiiload decoder stops on EOF, requires Z_STREAM_END with exact input
+and output counts, caps the image at 16 MiB, and gives inflate one guard byte
+to consume a split checksum without accepting extra output. Arguments must
+arrive whole and end in NUL. Before Sidestep, DOL/ELF tables, payloads and
+the entrypoint's argv probe are bounded by the actual image; raw BIN routes
+remain. TCP reads have a ten-second idle timeout and accept checks select's
+return value with a fresh timeout.
+
+Transfers serialize on their own mutex. The menu keeps running through the
+receive and validation; only a complete usable image reaches suspension,
+under DrawWithVideoLocked so the menu cannot be stranded owning that lock.
+The actual decoder, image checks, TCP reader and handler run in a host
+harness, including single-byte streams/checksums and a fake scheduler that
+holds the menu's video lock at handoff. Plain and sanitizer runs pass. A
+new coverage-guided target compares accepted streams with zlib's independent
+uncompress2 and exercises executable bounds. Native CI remains the merge gate.
+
+## 2026-10-17 — Keep the portlib overlay usable on native builds
+
+The libiconv-lite helper accepts shasum when sha256sum is absent and the
+system tar when bsdtar is absent. A native macOS extraction with shasum,
+BSD tar and Zstd produced a libiconv.a byte-identical to the Docker overlay.
+The build guide names the native tools; Docker supplies them already.
+
+## 2026-10-17 — Pin libiconv-lite and libogc2 r2482
+
+The SDK is f9ffb7e3 (libogc2 f0a7627, r2482). Its AESND_Reset cancellation
+and callback fix replaces the older local wait patch; the copied sources
+remain byte-identical and the 300-reset emulator stress test stays required.
+The verified libiconv-lite 1.19-4 archive is extracted as an unprivileged
+portlib overlay before make dev; CI caches it in the build image and does
+not fetch packages from a job. The launch probe exercises each accepted
+banner encoding with this exact PowerPC library. The SDK invalidates the
+old MemCard PRO GC qualification, whose evidence remains historical; the
+record is pending and stable publication remains blocked on a fresh test.
+
 ## 2026-10-16 — v2.4.0's guide pictures
 
 Nine guide pictures were re-recorded from the v2.4.0 release zip, in CI's
@@ -29,6 +599,25 @@ other picture was checked against the release tree's own emulator captures
 and the settings rows and help text since it was recorded: none else
 changed, apart from the File Browser pictures' lighter unfocused pane (the
 2026-10-08 entry), which doesn't show at the guide's size.
+
+## 2026-10-16 — Web browser bundled, fork published, CI wired
+
+The Web face now ships a real browser. The hardened CubeBrowser fork is public
+at github.com/spencercnorton/cubebrowser (used with permission from Arial-Bold;
+credited in NOTICE). sd_package.sh bundles swiss/indigo/cubebrowser.dol and a
+gcbrowser/ CA folder at the card root when browser/ is staged; check_package.py
+allows them and the zip tripwire rose to 9 MiB. ci.yml and release.yml build the
+browser from a pinned fork commit (CUBEBROWSER_REF) with the runner's libogc2
+toolchain and stage it into browser/ before packaging.
+
+Validated end to end on the CI image: Indigo build, then the browser built from
+the published fork, then sd_package and check_package, produce a 7.33 MB zip
+carrying the browser and its CA bundle, check green.
+
+Not done: pass the theme to the browser via argv (it ignores argv today); a
+console test of launching the browser and returning to Indigo; the full
+public-repo ruleset suite on the fork (it has baseline settings only). Lands
+after 2.4.
 
 ## 2026-10-16 — v2.4.0
 
@@ -287,6 +876,37 @@ Five-way 60-minute soak runs (`final936-e1/e2/m1/m2/m3`) and a code audit of the
 
 A launch while a MemCard PRO is switching stays as the real-card test build ran
 it (2026-10-15).
+
+## 2026-10-15 — Web browser cube face (Stage 1)
+
+Added a ninth Home face, Web, that launches a bundled GameCube web browser
+(cubebrowser.dol, a hardened fork of Arial-Bold/Cubebrowser) the way the Apps
+and Emulators faces launch a program. Chosen shape: launch a separate DOL, not
+compile the browser into ipl.dol — it keeps Indigo under the 6 MiB DOL tripwire
+(the in-process version would add ~1.18 MB against ~0.86 MB of headroom) and
+isolates a browser crash from the menu. Design note: docs/dev/web-browser.md.
+
+Changes: UI_HOME_FACE_WEB (always available, a side face like File Browser),
+its OPEN_WEB effect and a globe icon; the absent-face mask widened from 8 to 16
+bits for the ninth face; homeDispatchEffect -> launchWebBrowser(), which finds
+the DOL on the config device and hands it to boot_dol (which shuts the menu
+down and jumps); the four Settings face-choice lists, their help and
+docs/SETTINGS.md gain Web. Config still persists faces by name, so older files
+load unchanged (the choice indices shift, the names do not).
+
+Validation: the full Indigo DOL builds at 5,428,016 B (5.18 MB, under the
+tripwire) on the indigo-ci/build image, and the whole host suite — plain,
+sanitized and contracts, every audit and the home/gameflow/launch/stroke
+GX-stream goldens — passes; the default cube renders identically. Pinned tests
+updated: the motif-state size bound (640 -> 720), the stroke extraction list,
+frame_budget's icons[], audit_four_face_home's enum/label/icon checks and
+test_settings_file's face cycle.
+
+Not done: packaging the browser DOL and its gcbrowser/ CA folder into the zip
+(held pending the fork's license/publish path), passing the theme to the
+browser through argv, and a console test of the launch and the return to
+Indigo. Lands after 2.4 (this touches swiss.c, which resets the MemCard PRO
+qualification 2.4 is finishing).
 
 ## 2026-10-12 — Emulated card mounts gated on known sane status
 

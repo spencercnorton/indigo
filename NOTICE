@@ -27,6 +27,21 @@ gameplay-first GameCube launcher by mvizensk, with its author's permission:
 
 Indigo's code for the layout is its own. System › Credits thanks mvizensk too.
 
+The Library's Jewel Case layout, the selected game as a clear CD jewel case
+with its disc spinning inside, is ported from the jewel case games view of
+portlandhodl's fork of Swiss: gui/ui_jewel_case.c is that view's
+gui/jewelcase.c, its case, studio light, disc, glass and glints, the poses
+and the swap from one case to the next, adapted to the Library. That view
+is itself a port of CD Case by Ann Nguyen, who asks for a mention or a link
+back:
+
+    portlandhodl/swiss-gc — https://github.com/portlandhodl/swiss-gc
+    Licensed under the GNU General Public License, version 2.
+    CD Case by Ann Nguyen — https://www.bubbbly.com/cd-case
+    (source: https://github.com/annnguyentt/vibe-coding/tree/main/cd-case)
+
+System › Credits names them both.
+
 Memory Cards' save cubes are sized, coloured and moved by the GameCube's own
 Memory Card screen as Cubeboot and Gameplay Spotlight document it from their
 study of the console's menu: how far the highlighted cube sways and how
@@ -64,6 +79,27 @@ Third-party components redistributed in this tree:
     Music by Memoraphile, released under CC0 1.0 (also offered under CC-BY 4.0
     and OGA-BY 3.0). Indigo's menu music is made from it; see
     buildtools/audio/README.md.
+
+  CubeBrowser — https://github.com/Arial-Bold/Cubebrowser
+    By Arial-Bold. Used with permission. A GameCube web browser that ships in
+    this download as a separate program, swiss/indigo/cubebrowser.dol, which
+    the Web face launches; it is not part of Indigo's own DOL. Built from a
+    hardened fork; see docs/dev/web-browser.md. Built into it:
+
+    mbed TLS — https://github.com/Mbed-TLS/mbedtls
+      Dual-licensed Apache-2.0 OR GPL-2.0-or-later, and used here under the
+      Apache License, Version 2.0. Its licence file, with both texts,
+      ships as swiss/indigo/LICENSE-mbedtls.txt.
+
+    stb_image — https://github.com/nothings/stb
+      Public domain (or MIT).
+
+  Mozilla's root certificates — gcbrowser/cacert.pem
+    The CA bundle curl extracts from Mozilla's certdata.txt
+    (https://curl.se/docs/caextract.html), for the browser:
+    This Source Code Form is subject to the terms of the Mozilla Public
+    License, v. 2.0. If a copy of the MPL was not distributed with this
+    file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
   XZ Embedded, and the other upstream third-party sources under cube/, carry
   their own notices in place.

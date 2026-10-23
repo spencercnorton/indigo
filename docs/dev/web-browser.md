@@ -1,0 +1,115 @@
+# Web browser cube face
+
+The **Web** face opens a GameCube web browser, the way Apps and Emulators
+open a program. It ships as a separate DOL with Indigo v2.5.0.
+
+## Shape: launch a bundled DOL (not compiled into ipl.dol)
+
+The browser ships as its own `cubebrowser.dol` inside the Indigo zip; the Web
+face launches it through `boot_dol`, exactly like an app in `/apps`. Chosen over
+compiling it into `ipl.dol` because:
+
+- It keeps Indigo's DOL under the 6 MiB tripwire. The browser links mbedTLS and
+  would add ~1.18 MB; Indigo has ~0.86 MB of headroom. The in-process version is
+  a later, separate effort that first needs the tripwire raised or mbedTLS
+  trimmed (a console-tested boot-path change).
+- The browser keeps its own renderer, audio, network and crash isolation, so a
+  browser fault cannot corrupt Indigo.
+
+Trade-off: the browser renders itself rather than through Indigo's GX/IPL-font
+path, so the match to the rest of the UI is close but not pixel-identical. Its
+themes already mirror Indigo's (Indigo / Jet Black / Platinum / Spice).
+
+## The browser
+
+Upstream: `Arial-Bold/Cubebrowser`. We maintain a hardened fork (the creator gave
+permission to integrate). The fork already carries:
+
+- a clean Mozilla CA bundle (the upstream one shipped four TLS-interception
+  roots) plus a guard that fails the build if one returns;
+- pinned, checksum-verified mbedTLS 3.6.7 and stb_image, replacing unpinned
+  downloads;
+- fixes for the page-reachable parser memory-safety bugs found by fuzzing
+  (CSS value underflow, `:is`/`:not` recursion, a `<title>` overrun);
+- a parser fuzz suite (the upstream project had no tests);
+- **Return to Indigo** at bottom-left of every browsing page: one click
+  returns from the browser's main loop so the loader hands control back to
+  the installed Indigo. Dialogs retain input ownership;
+- the SD card in a GC Loader as well as an SD2SP2 or SD Gecko: with more than
+  one card it takes the one whose `gcbrowser/` holds `cacert.pem`;
+- rectangles cut to the clip box before drawing, which stopped a grey wedge
+  drawn over some pages;
+- a console lab, off unless the browser starts with `lab=1`. `launchWebBrowser`
+  passes it while Indigo's own lab (`LabServer`) is on, so a lab session that
+  opens the Web face keeps watching and driving, and its `/reset` returns to
+  Indigo (docs/UPLOADS.md, Console lab).
+
+It reads its files through libogc2's SD drivers: the SD2SP2, an SD Gecko and
+the GC Loader. libogc2 has no FlippyDrive device, so on a FlippyDrive-only
+console the browser has no certificates (https pages fail) and saves
+nothing; the zip's README and the install guide say so.
+
+## Integration checklist (Indigo side)
+
+1. **Widen the 8-face cap first.** `gui/ui_home.c` asserts `UI_HOME_FACE_COUNT
+   <= 8` because the `absent` mask is a `uint8_t`; widen it, and raise the
+   640-byte motif-state bound in `test_ui_cube_motif.c`.
+2. Append `UI_HOME_FACE_WEB` after `FILES`, an icon, and
+   `UI_HOME_EFFECT_OPEN_WEB`; update the side-choice name arrays in
+   `gui/settings.c` (modulo order) and the ~dozen tests/audits that pin the face
+   list (`audit_four_face_home.py`, `test_ui_home.c`, the `*_gx_stream.py`
+   per-face arrays, `frame_budget.c`, …).
+3. Dispatch the effect in `swiss.c` `homeDispatchEffect` to `boot_dol` on the
+   bundled browser, after `menuaudio_shutdown()` + `DrawShutdown()`. Pass the
+   current theme to the browser via argv so it opens in the matching colour.
+4. Draw a web/globe icon in `gui/indigo_background.c`, fixed primitive count.
+5. Ship `cubebrowser.dol` in the zip (`buildtools/sd_package.sh`) at a known
+   path, and add a build step that produces it (see Open decisions).
+6. Use a distinct internal name (e.g. `WEB`): "browser" already means the File
+   Browser in this codebase and its tests.
+
+## Packaging
+
+`sd_package.sh` bundles the browser when `browser/cubebrowser.dol` (and the
+`browser/gcbrowser/` CA folder) are present: the DOL goes to
+`swiss/indigo/cubebrowser.dol` (where `launchWebBrowser` looks, on the config
+device, which it mounts first: with games on another device the config device
+is mounted only while something reads it) and the CA folder to `gcbrowser/` at
+the card root. mbed TLS is compiled into the DOL, so its licence goes with it:
+the Build jobs copy the pinned release's `LICENSE` to
+`browser/LICENSE-mbedtls.txt`, `sd_package.sh` ships it as
+`swiss/indigo/LICENSE-mbedtls.txt` and won't bundle the browser without it,
+and `check_package.py` fails a zip that has the browser but not the licence.
+`NOTICE` names mbed TLS, stb_image and the CA bundle's MPL-2.0 terms. The
+paths are overridable with `BROWSER_DOL`, `BROWSER_GCBROWSER` and
+`BROWSER_MBEDTLS_LICENSE`. The browser is optional in the zip (`check_package.py`
+`OPTIONAL`), so a plain build still packages; a release ships it. The zip
+tripwire was raised to 9 MiB for the ~1 MiB the browser adds.
+
+The browser is **used with permission from Arial-Bold**
+(https://github.com/Arial-Bold/Cubebrowser); recorded in `NOTICE`. It ships as a
+separate DOL (an aggregate), so its licence stays its own and does not touch
+Indigo's GPL.
+
+## How CI builds it
+
+The Build jobs in `ci.yml` and `release.yml` clone the hardened fork at a pinned
+commit, fetch its checksum-verified dependencies and build it, then copy the DOL,
+CA bundle and mbed TLS's licence into `browser/` for `sd_package.sh`:
+
+- fork: https://github.com/spencernorton/cubebrowser (maintained by us, used
+  with permission; its own README/NOTICE credit Arial-Bold)
+- pinned commit: `e338aa6d0a2262a350363a431770e8720788e0cc` — bump it in both
+  workflows' `CUBEBROWSER_REF` to take browser changes.
+
+It builds with the same libogc2 toolchain the runner already carries, and
+`get-mbedtls.sh` fetches mbedTLS and stb from GitHub, which the CI egress proxy
+allows.
+
+## Open decisions
+
+- **Theme to the browser via argv** — the browser ignores argv today, so it
+  opens in its own saved theme (Indigo by default). Add argv parsing to sync it.
+- The main-screen return passed a real-console check: one press returned to
+  the installed Indigo in about eight seconds. The start/help pages keep the
+  button visible, and an open Bookmarks dialog blocks clicks through it.

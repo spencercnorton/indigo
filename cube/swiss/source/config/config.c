@@ -547,6 +547,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Screen Position=%+hi\r\n", swissSettings.sramHOffset);
 	fprintf(fp, "System Language=%s\r\n", sramLanguageStr[swissSettings.sramLanguage]);
 	fprintf(fp, "Swiss Video Mode=%s\r\n", uiVModeStr[swissSettings.uiVMode]);
+	fprintf(fp, "Apps Video Mode=%s\r\n", uiVModeStr[swissSettings.appsVMode]);
 	fprintf(fp, "Disable PAD Recalibration=%s\r\n", swissSettings.disableRecalibration ? "Yes":"No");
 	fprintf(fp, "Disable PAD Rumble=%s\r\n", swissSettings.disableRumble ? "Yes":"No");
 	fprintf(fp, "Enable USB Gecko=%s\r\n", enableUSBGeckoStr[swissSettings.enableUSBGecko]);
@@ -576,6 +577,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "Temperature=%s\r\n", clockPositionStr[swissSettings.temperaturePosition]);
 	fprintf(fp, "Wave Speed=%s\r\n", waveSpeedStr[swissSettings.waveSpeed]);
 	fprintf(fp, "Library Layout=%s\r\n", libraryLayoutStr[swissSettings.libraryLayout]);
+	fprintf(fp, "Spin Discs=%s\r\n", swissSettings.stillDiscs ? "No":"Yes");
 	fprintf(fp, "Library Folders=%s\r\n", swissSettings.libraryFolders ? "Yes":"No");
 	fprintf(fp, "Hide Saves on Details=%s\r\n", swissSettings.hideDetailSaves ? "Yes":"No");
 	fprintf(fp, "Idle Animation=%s\r\n", swissSettings.idleAnimation ? "Sway":"Calm");
@@ -625,6 +627,11 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "BBANetmask=%hu\r\n", swissSettings.bbaNetmask);
 	fprintf(fp, "BBAGateway=%s\r\n", swissSettings.bbaGateway);
 	fprintf(fp, "BBAUseDHCP=%s\r\n", swissSettings.bbaUseDhcp ? "Yes":"No");
+	fprintf(fp, "NTPSync=%s\r\n", swissSettings.ntpSync ? "Yes":"No");
+	fprintf(fp, "NTPHostIP=%s\r\n", swissSettings.ntpHostIp);
+	fprintf(fp, "TimeZone=%s\r\n", swissSettings.timeZone);
+	fprintf(fp, "LabServer=%s\r\n", swissSettings.labServer ? "Yes":"No");
+	fprintf(fp, "LogHost=%s\r\n", swissSettings.logHost);
 	fprintf(fp, "ShowHiddenFiles=%s\r\n", swissSettings.showHiddenFiles ? "Yes":"No");
 	fprintf(fp, "RecentListLevel=%s\r\n", recentListLevelStr[swissSettings.recentListLevel]);
 	fprintf(fp, "GCLoaderHWVersion=%i\r\n", swissSettings.gcloaderHwVersion);
@@ -754,16 +761,24 @@ static char *config_merge_autoload(const char *existing) {
 	return config_merge_file(existing, line, NULL);
 }
 
-/* Toggling autoload saves only that key. Other settings in memory may hold
- * values nobody chose to keep (holding B at launch turns AutoBoot off until
- * the next boot), so the file keeps its own. */
-int config_update_autoload(bool checkConfigDevice) {
+/* What Z in the Jewel Case saves: the file with only its Spin Discs key
+ * changed, or NULL when there is no file to keep. */
+static char *config_merge_spin_discs(const char *existing) {
+	return config_merge_file(existing, swissSettings.stillDiscs ?
+		"Spin Discs=No\r\n" : "Spin Discs=Yes\r\n", NULL);
+}
+
+/* Toggling autoload, or the Jewel Case's spin, saves only that key. Other
+ * settings in memory may hold values nobody chose to keep (holding B at
+ * launch turns AutoBoot off until the next boot), so the file keeps its own. */
+static int config_update_one_key(char *(*merge)(const char *existing),
+	bool checkConfigDevice) {
 	if(checkConfigDevice && !config_set_device()) return 0;
 
 	char path[PATHNAME_MAX];
 	concat_path(path, SWISS_SETTINGS_DIR, SWISS_SETTINGS_FILENAME);
 	char *existing = config_file_read(path);
-	char *merged = config_merge_autoload(existing);
+	char *merged = merge(existing);
 	/* No readable file to keep: save every setting, as before. */
 	int res = merged != NULL ? config_file_write(path, merged) : config_update_global(false);
 	free(merged);
@@ -772,6 +787,14 @@ int config_update_autoload(bool checkConfigDevice) {
 		config_unset_device();
 	}
 	return res;
+}
+
+int config_update_autoload(bool checkConfigDevice) {
+	return config_update_one_key(config_merge_autoload, checkConfigDevice);
+}
+
+int config_update_spin_discs(bool checkConfigDevice) {
+	return config_update_one_key(config_merge_spin_discs, checkConfigDevice);
 }
 
 int config_update_recent(bool checkConfigDevice) {
@@ -861,6 +884,9 @@ int config_update_game(ConfigEntry *entry, ConfigEntry *defaults, bool checkConf
 
 static char fixPixelCenterEntries[][5] = {"00\0E\1", "DNDD\1", "G2BE\1", "G2BP\1", "GD7E\1", "GD7P\1", "GEME\1", "GEMJ\1", "GEMP\1", "GNBE\1", "GNBJ\1", "GNBP\1", "GZBJ\1"};
 static char forceAnisotropyEntries[][5] = {"GADE\0", "GAEE\0", "GAEJ\0", "GAFE\0", "GAFJ\0", "GAFP\0", "GAFU\0", "GM8E\0", "GM8J\0", "GM8P\0", "PGSE\0", "PKBJ\0", "PZLE\0", "PZLJ\0", "PZLP\0"};
+/* Animal Crossing Deluxe widens itself (its own Widescreen mode) and sizes
+ * its rain and snow by that mode, not by the projection Swiss widens. */
+static char forceWidescreenEntries[][5] = {"GADE\0"};
 static char triggerLevelEntries[][5] = {"GKGE\0", "GKGJ\0", "GKGP\0", "GY2E\0", "GY2J\0", "GY2P\0", "GY3E\0", "GY3J\0", "GYBE\0", "GYBJ\0", "GYBP\0"};
 static char emulateAudioStreamEntries[][5] = {"UFZE\0", "UFZJ\0", "UFZP\0"};
 static char emulateReadSpeedEntries[][5] = {"DRSE\1", "GADE\0", "GQSD\1", "GQSE\1", "GQSF\1", "GQSI\1", "GQSP\1", "GQSS\1", "GRSE\1", "GRSJ\1", "GRSP\1", "GTOJ\1"};
@@ -903,6 +929,12 @@ void config_defaults_from(ConfigEntry *entry, const SwissSettings *settings) {
 	for(int i = 0; i < countof(forceAnisotropyEntries); i++) {
 		if(!strncmp(entry->game_id, forceAnisotropyEntries[i], 4)) {
 			entry->forceAnisotropy = forceAnisotropyEntries[i][4];
+			break;
+		}
+	}
+	for(int i = 0; i < countof(forceWidescreenEntries); i++) {
+		if(!strncmp(entry->game_id, forceWidescreenEntries[i], 4)) {
+			entry->forceWidescreen = forceWidescreenEntries[i][4];
 			break;
 		}
 	}
@@ -1435,6 +1467,14 @@ void config_parse_global(char *configData, bool settingsFile) {
 						}
 					}
 				}
+				else if(!strcmp("Apps Video Mode", name)) {
+					for(int i = 0; i < 9; i++) {
+						if(!strcmp(uiVModeStr[i], value)) {
+							swissSettings.appsVMode = i;
+							break;
+						}
+					}
+				}
 				else if(!strcmp("Disable PAD Recalibration", name)) {
 					swissSettings.disableRecalibration = !strcmp("Yes", value);
 				}
@@ -1592,6 +1632,9 @@ void config_parse_global(char *configData, bool settingsFile) {
 							break;
 						}
 					}
+				}
+				else if(!strcmp("Spin Discs", name)) {
+					swissSettings.stillDiscs = !strcmp("No", value);
 				}
 				else if(!strcmp("Library Folders", name)) {
 					libraryFolders = !strcmp("Yes", value);
@@ -1788,6 +1831,21 @@ void config_parse_global(char *configData, bool settingsFile) {
 				}
 				else if(!strcmp("BBAUseDHCP", name)) {
 					swissSettings.bbaUseDhcp = !strcmp("Yes", value);
+				}
+				else if(!strcmp("NTPSync", name)) {
+					swissSettings.ntpSync = !strcmp("Yes", value);
+				}
+				else if(!strcmp("NTPHostIP", name)) {
+					strlcpy(swissSettings.ntpHostIp, value, sizeof(swissSettings.ntpHostIp));
+				}
+				else if(!strcmp("TimeZone", name)) {
+					strlcpy(swissSettings.timeZone, value, sizeof(swissSettings.timeZone));
+				}
+				else if(!strcmp("LabServer", name)) {
+					swissSettings.labServer = !strcmp("Yes", value);
+				}
+				else if(!strcmp("LogHost", name)) {
+					strlcpy(swissSettings.logHost, value, sizeof(swissSettings.logHost));
 				}
 				else if(!strcmp("ShowHiddenFiles", name)) {
 					swissSettings.showHiddenFiles = !strcmp("Yes", value);

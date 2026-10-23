@@ -188,12 +188,26 @@ require("UI_GAMEFLOW_DETAIL_HAS_SAVES | UI_GAMEFLOW_DETAIL_SAVE_CHOICE)) |" in b
         "a caller's flags could show SAVES or its choice without two or more copies")
 require(renderer.index('"SAVES"') < renderer.index('"SETTINGS"') < renderer.index('"CHEATS"'),
         "save copies are not above the settings and cheats insets")
-require("if(hasSaves) {\n\t\t\t_GameflowPutDetailPanel(260, 202, 330, 43, 2," in planes,
+require("if(hasSaves) {\n\t\t\t_GameflowPutDetailPanel(260, layout->saves, 330,\n"
+        "\t\t\t\tlayout->savesHeight, 2," in planes,
         "read-only save inset has no panel, or one without SAVES")
 require("if(detail->flags & UI_GAMEFLOW_DETAIL_HAS_SAVES) {\n" in renderer and
-        "drawStringMedium(576, 214, (detail->flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) ?\n"
+        "drawStringMedium(576, layout->savesLine[0],\n"
+        "\t\t\t(detail->flags & UI_GAMEFLOW_DETAIL_SAVE_CHOICE) ?\n"
         "\t\t\t\"\\253 SAVES \\273\" : \"SAVES\"" in renderer,
         "the SAVES inset draws without two or more copies, or hides its choice")
+# The Manual row: only for a game with a manual (Build sets the flag from the
+# pages it is given), above Settings, and a panel only then.
+require("UI_GAMEFLOW_DETAIL_HAS_MANUAL |\n" in build and
+        "buildManualPresentation(snapshot, source->manualPages);" in build,
+        "a caller's flags could show Manual without a manual")
+require("if(detail->flags & UI_GAMEFLOW_DETAIL_HAS_MANUAL) {\n"
+        "\t\tdrawStringMedium(274, layout->manual, \"MANUAL\"" in renderer and
+        renderer.index('"SAVES"') < renderer.index('"MANUAL"') < renderer.index('"SETTINGS"'),
+        "the Manual row draws without a manual, or not between SAVES and SETTINGS")
+require("(row == UI_GAMEFLOW_DETAIL_FOCUS_MANUAL && !hasManual)) {\n\t\t\t\tcontinue;" in planes and
+        "if(focusRow == UI_GAMEFLOW_DETAIL_FOCUS_MANUAL && !hasManual) {" in planes,
+        "the Manual row's panel or focus frame draws without a manual")
 for forbidden in ("Saves_CollectGameStats(", "UISaves_FormatUpdated(", "->readFile(", "->readDir("):
     require(forbidden not in renderer and forbidden not in planes,
             f"Detail draw performs menu-thread save work: {forbidden}")

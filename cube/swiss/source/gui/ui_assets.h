@@ -38,12 +38,10 @@
  *
  * Lifetime rules enforced by that contract:
  *   - The pack index is only freed after it is unpublished inside the
- *     critical section, so no locked reader can ever observe freed memory
- *     (fixes the Query/DominantColor vs CancelForDeviceChange UAF).
+ *     critical section, so no locked reader can ever observe freed memory.
  *   - Slot recordPos/generation/state and every GXTexObj are only written
- *     inside the critical section (fixes the RequestWindow/Poll
- *     publication race). The 40 ms eviction quarantine remains a separate
- *     guarantee for GPU texel reuse; the lock protects CPU metadata.
+ *     inside the critical section. The 40 ms eviction quarantine remains a
+ *     separate guarantee for GPU texel reuse; the lock protects CPU metadata.
  *   - Handle generations are u32 and increment exactly once per new slot
  *     ownership; a stale handle yields NULL, never a dangling pointer.
  *   - CancelForDeviceChange must run while the video mutex is still live,
@@ -212,6 +210,11 @@ void UIAssets_RequestWindow(const char (*ids)[8], int count, int selected);
  * (a job captured before CancelForDeviceChange/Init/eviction can never
  * publish afterwards). Returns true while more loading work is queued. */
 bool UIAssets_Poll(void);
+/* Menu-thread incremental variant: at most 16 KiB per call. No texture is
+ * published until its full CRC passes. Cancel/window changes discard an
+ * unfinished record without another read of its old source. */
+#define UI_ASSETS_READ_BYTES 16384u
+bool UIAssets_PollStep(void);
 
 /* Video thread, lock ALREADY HELD by the caller; never locks. Classifies
  * gameId (gameIdLen is the number of bytes readable at gameId; inputs
@@ -280,6 +283,7 @@ s32 UIStills_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync);
 bool UIStills_Ready(void);
 void UIStills_RequestWindow(const char (*ids)[8], int count, int selected);
 bool UIStills_Poll(void);
+bool UIStills_PollStep(void);
 uiPosterResult_t UIStills_Query(const char *gameId, size_t gameIdLen,
                                 bool bnrAvailable, uiPosterHandle_t *out);
 GXTexObj *UIStills_Peek(uiPosterHandle_t handle);
@@ -289,6 +293,30 @@ bool UIStills_DominantColor(const char *gameId, size_t gameIdLen,
 void UIStills_CancelForDeviceChange(void);
 s32 UIStills_DisposeAfterVideoStop(void);
 u32 UIStills_MemoryFootprint(void);
+
+/*
+ * Disc art for the Jewel Case layout: a third cache with the same contract,
+ * fed by /swiss/ui/discs.pak. Its header declares a disc's shape: one
+ * 160x160 GX_TF_CMPR texture per game, no mip chain (the jewel case draws a
+ * disc about that size or larger). Three slots, for the selected game and
+ * the one either side of it. Each cache refuses the others' packs.
+ */
+#define UI_DISCS_SLOTS 3
+#define UI_DISCS_SIZE 160
+#define UI_DISCS_BYTES 12800 /* 160 * 160 / 2 */
+
+s32 UIDiscs_Init(const uiAssetsSource_t *source, const uiAssetsSync_t *sync);
+bool UIDiscs_Ready(void);
+void UIDiscs_RequestWindow(const char (*ids)[8], int count, int selected);
+bool UIDiscs_Poll(void);
+bool UIDiscs_PollStep(void);
+uiPosterResult_t UIDiscs_Query(const char *gameId, size_t gameIdLen,
+                               bool bnrAvailable, uiPosterHandle_t *out);
+GXTexObj *UIDiscs_Peek(uiPosterHandle_t handle);
+u32 UIDiscs_PeekAgeMs(uiPosterHandle_t handle);
+void UIDiscs_CancelForDeviceChange(void);
+s32 UIDiscs_DisposeAfterVideoStop(void);
+u32 UIDiscs_MemoryFootprint(void);
 
 #ifdef UI_ASSETS_HOST_BUILD
 /* Host-test seam: force a slot's generation counter (e.g. to the wrap

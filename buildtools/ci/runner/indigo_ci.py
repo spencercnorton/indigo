@@ -14,9 +14,8 @@ file has the design.
 
 Environment:
     GH_TOKEN          admin on the repository (it mints runner registrations)
-    INDIGO_CI_POOLS   slots per pool, default "build:3,emulator:1"; the site pool
-                      serves spencercnorton/norvitech-site
-    INDIGO_CI_REPO    default spencercnorton/indigo (its pools, and the images' source)
+    INDIGO_CI_POOLS   slots per pool, default "build:3,emulator:1"
+    INDIGO_CI_REPO    default spencernorton/indigo (its pools, and the images' source)
     INDIGO_CI_REF     the trusted branch images are built from, default beta
     INDIGO_CI_NAME    the prefix of this machine's runner names, default "indigo";
                       runner names show in public job logs, so never a hostname.
@@ -67,7 +66,7 @@ HEALTH_EVERY = 60           # how often to ask GitHub whether running runners ar
 ALERT_AFTER = 5             # consecutive failed starts, or failed ticks, before INDIGO_CI_ALERT
 
 
-REPO = os.environ.get("INDIGO_CI_REPO", "spencercnorton/indigo")
+REPO = os.environ.get("INDIGO_CI_REPO", "spencernorton/indigo")
 
 
 @dataclass(frozen=True)
@@ -85,7 +84,7 @@ class Pool:
 
 
 POOLS = {
-    "build": Pool("build", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py"),
+    "build": Pool("build", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py", "libiconv-lite.sh"),
                   "indigo-build", "8", "6g"),
     "emulator": Pool("emulator", "emulator.Dockerfile",
                      ("entrypoint.sh", "dolphin/0001-sd2sp2-adapter.patch", "dolphin/0002-flush-sd-writes.patch",
@@ -93,9 +92,6 @@ POOLS = {
                       "dolphin/0005-emulated-clock.patch", "dolphin/0006-gcloader.patch",
                       "dolphin/0007-dabr.patch"),
                      "indigo-emulator", "8", "6g", shares=4096),
-    # norvitech.com's checks (Python, Node, gitleaks) on the build image.
-    "site": Pool("site", "build.Dockerfile", ("entrypoint.sh", "egress_proxy.py"),
-                 "norvitech-site", "2", "2g", repo="spencercnorton/norvitech-site"),
 }
 REF = os.environ.get("INDIGO_CI_REF", "beta")
 NAME = (os.environ.get("INDIGO_CI_NAME") or "indigo").lower()

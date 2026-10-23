@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """poster_pack.py -- offline generator for Indigo's Library packs.
 
-Builds /swiss/ui/posters.pak (box art) or /swiss/ui/stills.pak (gameplay
-stills) from a local JSON manifest and user-supplied source art. Fully
+Builds /swiss/ui/posters.pak (box art), /swiss/ui/stills.pak (gameplay
+stills) or /swiss/ui/discs.pak (disc art, for the Jewel Case layout) from a
+local JSON manifest and user-supplied source art. Fully
 offline: never scrapes, downloads, or calls any network service. Output is
 byte-for-byte deterministic for the same inputs and toolchain (gxtexconv +
 Pillow versions are recorded in the provenance sidecar; they are inputs to
@@ -15,19 +16,25 @@ dimensions for mipmapped textures, so the 192x256 poster content is
 composited onto a 256x256 canvas (right band edge-extended to keep deep
 mip levels from bleeding) and encoded as GX_TF_CMPR with a 5-level mip
 chain (256..16). The runtime samples s in [0, 192/256]. A still is never
-drawn smaller than itself, so it is one 320x240 GX_TF_CMPR level, 4:3.
+drawn smaller than itself, so it is one 320x240 GX_TF_CMPR level, 4:3. A
+disc is one 160x160 GX_TF_CMPR level, square, the size GameTDB's disc art
+comes in: the Jewel Case draws it about that size or larger. Whatever is
+transparent around the disc and in its hole is laid on grey first; the
+case's hub and rim cover both.
 
 Usage:
   poster_pack.py --covers DIR --out posters.pak
   poster_pack.py --stills DIR --out stills.pak
+  poster_pack.py --discs DIR --out discs.pak
   poster_pack.py --manifest manifest.json --out posters.pak [--art-root DIR]
                  [--gxtexconv CMD] [--staging DIR]
 
 --covers takes a folder of front-cover images named by game ID (GMSE01.png,
 GALE01.jpg; at least 192x256, cropped to 3:4); --stills a folder of gameplay
-screenshots named the same way (at least 320x240, cropped to 4:3). Both need
+screenshots named the same way (at least 320x240, cropped to 4:3); --discs a
+folder of disc pictures (at least 160x160, cropped square). Each needs
 Pillow plus either gxtexconv or Docker. A manifest makes stills with
-"kind": "stills".
+"kind": "stills" and discs with "kind": "discs".
 
 gxtexconv resolution order: --gxtexconv / $GXTEXCONV, `gxtexconv` on PATH,
 then the repo's libogc2 Docker image (one container run for the whole batch).
@@ -74,7 +81,11 @@ class Shape:
 POSTER = Shape("posters", (CANVAS_W, CANVAS_H), (CONTENT_W, CONTENT_H),
                MIP_LEVELS, POSTER_BYTES)
 STILL = Shape("stills", (320, 240), (320, 240), 1, 320 * 240 // 2)
-SHAPES = {shape.kind: shape for shape in (POSTER, STILL)}
+DISC = Shape("discs", (160, 160), (160, 160), 1, 160 * 160 // 2)
+SHAPES = {shape.kind: shape for shape in (POSTER, STILL, DISC)}
+# What shows through a disc picture's clear parts once it is CMPR: a grey near
+# the bare disc's silver, so a clear edge pixel never prints black.
+DISC_BACKDROP = (176, 178, 184)
 
 FLAG_UNIVERSAL = 0x01
 
@@ -83,7 +94,7 @@ TPL_MAGIC = 0x0020AF30
 # offline, so the docker fallback never resolves a mutable tag and never
 # pulls (docker run --pull=never). The digest is recorded in provenance.
 DOCKER_IMAGE = ("ghcr.io/extremscorner/libogc2@sha256:"
-                "e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f")
+                "f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2")
 
 GAME_ID_RE = re.compile(r"[A-Z0-9]{6}")
 COVER_NAME_RE = re.compile(r"([A-Za-z0-9]{6})\.(?:png|jpe?g)", re.IGNORECASE)
@@ -209,9 +220,9 @@ def covers_manifest(covers_dir, kind="posters"):
 
 
 def focal_crop(im, focal, shape=POSTER):
-    """Largest window of the content's aspect (3:4 poster, 4:3 still) inside
-    im, positioned so the focal point stays proportionally placed, then
-    resized to the content size."""
+    """Largest window of the content's aspect (3:4 poster, 4:3 still, square
+    disc) inside im, positioned so the focal point stays proportionally
+    placed, then resized to the content size."""
     cw, ch = shape.content_w, shape.content_h
     w, h = im.size
     if w * ch > h * cw:                     # wider than the content -- full height
@@ -266,6 +277,9 @@ def prepare_images(records, art_root, staging, shape=POSTER):
             im.load()
         except (UnidentifiedImageError, OSError) as e:
             raise PackError(f"{gid}: corrupt source image {src}: {e}")
+        if shape is DISC:
+            rgba = im.convert("RGBA")
+            im = Image.alpha_composite(Image.new("RGBA", rgba.size, DISC_BACKDROP + (255,)), rgba)
         im = im.convert("RGB")
         _require(im.width >= shape.content_w and im.height >= shape.content_h,
                  f"{gid}: bad dimensions {im.width}x{im.height} "
@@ -486,6 +500,8 @@ def main(argv=None):
                                          "ID, e.g. GMSE01.png or GALE01.jpg")
     source.add_argument("--stills", help="folder of gameplay screenshots named "
                                          "by game ID, for stills.pak")
+    source.add_argument("--discs", help="folder of disc pictures named by game "
+                                        "ID, for discs.pak")
     ap.add_argument("--out", required=True)
     ap.add_argument("--art-root", help="base dir for manifest source paths "
                                        "(default: manifest's directory)")
@@ -494,9 +510,9 @@ def main(argv=None):
     ap.add_argument("--staging", help="keep intermediates in this directory")
     args = ap.parse_args(argv)
     try:
-        folder = args.covers or args.stills
+        folder = args.covers or args.stills or args.discs
         if folder:
-            kind = "posters" if args.covers else "stills"
+            kind = "posters" if args.covers else "stills" if args.stills else "discs"
             manifest, skipped = covers_manifest(folder, kind)
             for name in skipped:
                 print(f"poster_pack: skipped {name} (name it GAMEID.png or "

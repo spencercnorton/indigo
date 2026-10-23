@@ -69,12 +69,17 @@ extern syssramex* __SYS_LockSramEx(void);
 extern u32 __SYS_UnlockSram(u32 write);
 extern u32 __SYS_UnlockSramEx(u32 write);
 extern u32 __SYS_SyncSram(void);
+extern u32 __SYS_GetRTC(u32 *gctime);
 extern u32 __SYS_CheckSram(void);
 extern void __SYS_ReadROM(void *buf,u32 len,u32 offset);
 extern u8 __SYS_SetTAUCalibration(s8 calib);
 
 extern void menu_loop();
 extern void boot_dol(file_handle* file, int argc, char *argv[]);
+/* wiiload.c: whether the sections a DOL or ELF header names, and its entry
+ * point's argument words, lie inside its size bytes; raw (a BIN) checks only
+ * the size. */
+extern bool wiiload_image_valid(const u8 *image, size_t size, bool raw);
 extern bool manage_file();
 /* manage_file with its box's choice made (MANAGE_ASK: ask) and, for Copy
  * and Move, the destination folder (NULL: ask). */
@@ -105,6 +110,7 @@ typedef struct {
 	int hasFlippyDrive;
 	int exiSpeed;
 	int uiVMode;	// What mode to force Swiss into
+	int appsVMode;
 	int gameVMode;	// What mode to force a Game into
 	int gameVModeNtsc;
 	int gameVModePal;
@@ -147,7 +153,8 @@ typedef struct {
 	int clockPosition;	// CLOCK_RIGHT (default), CLOCK_LEFT or CLOCK_OFF: the time
 	int temperaturePosition;	// the same three for the temperature dial
 	int waveSpeed;	// WAVE_SPEED_NORMAL (default), WAVE_SPEED_FAST or WAVE_SPEED_SLOW: how fast the waves drift
-	int libraryLayout;	// uiGameflowLayout_t (gui/ui_gameflow.h): Horizontal (default), Vertical, Grid or Spotlight
+	int libraryLayout;	// uiGameflowLayout_t (gui/ui_gameflow.h): Horizontal (default), Vertical, Grid, Spotlight or Jewel Case
+	int stillDiscs;	// 1 = the Jewel Case's disc rests; 0 = it spins (default). Z in the Jewel Case
 	int libraryFolders;	// 1 = the Library shows folders in /games, two deep; 0 = one list of games (default)
 	char libraryFoldersFlattenDir[PATHNAME_MAX];	// FlattenDir as saved, while Library Folders sets its own
 	int hideDetailSaves;	// 1 = a game's details never read the memory cards; 0 = they show two or more save copies (default)
@@ -200,6 +207,11 @@ typedef struct {
 	u16 bbaNetmask;
 	char bbaGateway[16];
 	bool bbaUseDhcp;
+	bool ntpSync;	// Sync Clock: set the clock from ntpHostIp when the network starts (gui/time_sync.c)
+	char ntpHostIp[16];
+	char timeZone[64];	// a POSIX TZ string; empty keeps the console's own offset from UTC
+	bool labServer;	// LabServer: the console lab's port, off by default (gui/ui_lab.h)
+	char logHost[24];	// LogHost: address[:port] that gets each print_debug line over UDP; empty = none
 	int autoBoot;
 	int autoCheats;
 	int igrType;

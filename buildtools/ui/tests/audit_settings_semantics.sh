@@ -26,7 +26,10 @@
 # the Saves on Details arm (SET_DETAIL_SAVES) only flips
 # swissSettings.hideDetailSaves, and the Idle Animation, Waves, On-screen
 # Controls and Face Labels arms (SET_IDLE_ANIMATION, SET_WAVES,
-# SET_HOME_CONTROLS, SET_FACE_LABELS) each only flip their own setting. The three File Browser Type arms
+# SET_HOME_CONTROLS, SET_FACE_LABELS) each only flip their own setting, and
+# the clock sync arms only flip swissSettings.ntpSync (SET_NTP_SYNC) or take
+# swissSettings.ntpHostIp and swissSettings.timeZone as text (SET_NTP_HOSTIP,
+# SET_TIME_ZONE). The three File Browser Type arms
 # (SET_*BROWSER_TYPE) went with Swiss's lists and their rows; the settings
 # file still reads and writes their keys.
 #
@@ -40,7 +43,9 @@
 # to, instead of stepping it; Discard takes the page down last, after the
 # video mode is put back and B is let go, so no frame shows the screen
 # behind it bare; A does nothing on a row another setting owns for now
-# (Flatten directory while Library Folders sets it). It is pinned by content
+# (Flatten directory while Library Folders sets it); Save and Discard sit
+# after the rows a page shows (UISetLayout_RowCount), since Network hides
+# Sync Clock's rows without a network adapter. It is pinned by content
 # hash rather than
 # by a base commit, so a rebase cannot break the pin but any further drift
 # still fails until SHOW_ACTIONS_SHA256 is updated deliberately.
@@ -225,6 +230,18 @@ for option, field in (("IDLE_ANIMATION", "idleAnimation"), ("WAVES", "hideWaves"
         r"\t+swissSettings\." + field + r" \^= 1;\n"
         r"\t+break;\n",
         "", normalized, count=1)
+# And the clock sync: Sync Clock flips, NTP Server IP and Time Zone take text.
+normalized = re.sub(
+    r"(?ms)^\t+case SET_NTP_SYNC:\n"
+    r"\t+swissSettings\.ntpSync \^= 1;\n"
+    r"\t+break;\n"
+    r"\t+case SET_NTP_HOSTIP:\n"
+    r"\t+DrawGetTextEntry\(ENTRYMODE_IP, \"NTP Server IP\", &swissSettings\.ntpHostIp, sizeof\(swissSettings\.ntpHostIp\) - 1\);\n"
+    r"\t+break;\n"
+    r"\t+case SET_TIME_ZONE:\n"
+    r"\t+DrawGetTextEntry\(ENTRYMODE_NUMERIC\|ENTRYMODE_ALPHA, \"Time Zone\", &swissSettings\.timeZone, sizeof\(swissSettings\.timeZone\) - 1\);\n"
+    r"\t+break;\n",
+    "", normalized, count=1)
 # The File Browser Type arms are gone, with Swiss's lists.
 normalized, browsers = re.subn(
     r"(?ms)^\t+case SET_(FILE|APPS|GAME)BROWSER_TYPE:\n"
@@ -250,9 +267,9 @@ for fn in settings_toggle; do
 			normalize_intended_changes "$TMP/base_$fn" "$TMP/base_${fn}_normalized"
 			normalize_intended_changes "$TMP/head_$fn" "$TMP/head_${fn}_normalized"
 			if cmp -s "$TMP/base_${fn}_normalized" "$TMP/head_${fn}_normalized"; then
-				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, temperature, icon, layout, library folders, save folder, widescreen, side, cube, saves on details, idle animation, waves, on-screen controls and face labels arms, the File Browser Type arms and game reset\n' "$fn"
+				printf '  %-18s unchanged outside motion, color, backdrop and wave color, wave speed, clock, temperature, icon, layout, library folders, save folder, widescreen, side, cube, saves on details, idle animation, waves, on-screen controls, face labels and clock sync arms, the File Browser Type arms and game reset\n' "$fn"
 			else
-				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_TEMPERATURE_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_LIBRARY_FOLDERS, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_*_FACE, SET_CUBE, SET_DETAIL_SAVES, SET_IDLE_ANIMATION, SET_WAVES, SET_HOME_CONTROLS, SET_FACE_LABELS, SET_*BROWSER_TYPE and the game reset" >&2
+				echo "AUDIT FAILED: $fn differs outside SET_UI_ANIMS, SET_UI_COLOR, SET_UI_BACKDROP_COLOR, SET_UI_WAVE_COLOR, SET_WAVE_SPEED, SET_CLOCK_POSITION, SET_TEMPERATURE_POSITION, SET_*_ICON, SET_LIBRARY_LAYOUT, SET_LIBRARY_FOLDERS, SET_SAVE_FOLDER, SET_MENU_WIDESCREEN, SET_*_FACE, SET_CUBE, SET_DETAIL_SAVES, SET_IDLE_ANIMATION, SET_WAVES, SET_HOME_CONTROLS, SET_FACE_LABELS, SET_NTP_*, SET_TIME_ZONE, SET_*BROWSER_TYPE and the game reset" >&2
 				diff -u "$TMP/base_${fn}_normalized" \
 					"$TMP/head_${fn}_normalized" | head -40 >&2 || true
 				fail=1
@@ -300,7 +317,7 @@ PY
 }
 
 normalize_show_actions "$FILE" "$TMP/head_show_actions"
-SHOW_ACTIONS_SHA256="ce10b773b4682e2d05e90a6ed3f1085f6e83d6c9083e06bacde982a41c22e515"
+SHOW_ACTIONS_SHA256="f6a20b0fe340fab39be0e83325716450b89cac33fd8cc74c0736fc6c2db57058"
 actual_show_actions=$(shasum -a 256 < "$TMP/head_show_actions" | cut -d' ' -f1)
 if [ "$actual_show_actions" = "$SHOW_ACTIONS_SHA256" ]; then
 	echo "  show actions       B/A/L/R/value semantics match the pinned hash"

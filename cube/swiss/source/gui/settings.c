@@ -21,6 +21,7 @@
 #include "bba.h"
 #include "sram.h"
 #include "rt4k.h"
+#include "time_sync.h"
 #include "input.h"
 #include "ui_color.h"
 #include "ui_motion.h"
@@ -93,15 +94,15 @@ _Static_assert(sizeof(systemIconStr) / sizeof(systemIconStr[0]) == UI_HOME_ICON_
 /* What each of Library's sides can show, its default first and then each
  * face after it round (UIHome_SideFace), so a zeroed setting is the cube of
  * before. */
-char *upFaceStr[] = {"Source", "Settings", "System", "Apps", "Memory Cards", "Emulators", "File Browser", "None"};
-char *leftFaceStr[] = {"Settings", "System", "Apps", "Memory Cards", "Emulators", "File Browser", "None", "Source"};
-char *rightFaceStr[] = {"System", "Apps", "Memory Cards", "Emulators", "File Browser", "None", "Source", "Settings"};
-char *downFaceStr[] = {"Apps", "Memory Cards", "Emulators", "File Browser", "None", "Source", "Settings", "System"};
+char *upFaceStr[] = {"Source", "Settings", "System", "Apps", "Memory Cards", "Emulators", "File Browser", "Web", "None"};
+char *leftFaceStr[] = {"Settings", "System", "Apps", "Memory Cards", "Emulators", "File Browser", "Web", "None", "Source"};
+char *rightFaceStr[] = {"System", "Apps", "Memory Cards", "Emulators", "File Browser", "Web", "None", "Source", "Settings"};
+char *downFaceStr[] = {"Apps", "Memory Cards", "Emulators", "File Browser", "Web", "None", "Source", "Settings", "System"};
 _Static_assert(sizeof(upFaceStr) / sizeof(upFaceStr[0]) == UI_HOME_FACE_COUNT, "up face names drift");
 _Static_assert(sizeof(leftFaceStr) / sizeof(leftFaceStr[0]) == UI_HOME_FACE_COUNT, "left face names drift");
 _Static_assert(sizeof(rightFaceStr) / sizeof(rightFaceStr[0]) == UI_HOME_FACE_COUNT, "right face names drift");
 _Static_assert(sizeof(downFaceStr) / sizeof(downFaceStr[0]) == UI_HOME_FACE_COUNT, "down face names drift");
-char *libraryLayoutStr[] = {"Horizontal", "Vertical", "Grid", "Spotlight"};
+char *libraryLayoutStr[] = {"Horizontal", "Vertical", "Grid", "Spotlight", "Jewel Case"};
 _Static_assert(sizeof(libraryLayoutStr) / sizeof(libraryLayoutStr[0]) == UI_GAMEFLOW_LAYOUT_COUNT, "library layout names drift");
 static const char *uiMotionModeStr[] = {"Full", "Reduced", "Off"};
 
@@ -116,6 +117,7 @@ const int simulatedMemSizeInt[] = {
 
 static char *tooltips_global[PAGE_GLOBAL_MAX+1] = {
 	[SET_SYS_BOOTMODE] = "System Boot Mode:\n\nSets development or production mode on development hardware.\nOn retail hardware with GC Loader or PicoLoader, the default\nskips the GameCube logo screen.",
+	[SET_APPS_VIDEOMODE] = "Apps Video Mode:\n\nSets the video mode passed to homebrew apps. Auto keeps Indigo's\nmode. Applies to libogc2 apps; other apps may choose their own.\nA program sent over the network keeps Indigo's mode.",
 	[SET_SYS_SOUND] = "System Sound:\n\nSets the default audio output type used by most games",
 	[SET_SYS_VIDEO] = "System Video:\n\nIntended to select between NTSC and PAL-M on DOL-002(BRA)",
 	[SET_SCREEN_POS] = "Screen Position:\n\nAdjusts the horizontal screen position in games",
@@ -159,7 +161,7 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_FLATTEN_DIR] = "Flatten directory:\n\nFlattens a directory structure matching a glob pattern.\n\nWhile Library Folders is on, it sets this itself.",
 	[SET_SHOW_HIDDEN] = "Show hidden files:\n\nLists files and folders marked hidden, such as the /swiss folder\nthat holds Indigo's settings.",
 	[SET_MENU_WIDESCREEN] = "Menu Widescreen:\n\nYes - Drawn for a TV set to 16:9: the background fills the\nscreen and the menus keep their shape.\nNo - Drawn for a 4:3 picture (default)\n\nSet your TV or HDMI adapter to 16:9 too. Games follow Force\nWidescreen in Game Defaults, not this.",
-	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\nSpotlight - A gameplay still over banners; Left and Right move\n\nThe selected game's title and details show beside its cover in\nVertical and its still in Spotlight, and above the controls in Grid.\nEvery layout wraps round from the last game to the first; L and R\njump a page. Y opens the focused game's settings.",
+	[SET_LIBRARY_LAYOUT] = "Library Layout:\n\nHorizontal - A row of covers; Left and Right move (default)\nVertical - A column of covers; Up and Down move\nGrid - Rows of five covers; every direction moves\nSpotlight - A gameplay still over banners; Left and Right move\nJewel Case - A CD case, its disc spinning; Left and Right move\n\nThe selected game's title and details show beside its cover in\nVertical and its still in Spotlight, and above the controls in Grid.\nEvery layout wraps round from the last game to the first; L and R\njump a page. Y opens the focused game's settings. In Jewel Case the\nC-stick turns the case.",
 	[SET_LIBRARY_FOLDERS] = "Library Folders:\n\nOff - The Library is one list of every game in /games, however\nthey sit in folders there (default)\nOn - The Library shows the folders in /games beside the games:\nA opens one, B goes back. A folder in a folder is the deepest;\nit lists every game below it.\n\nKeep a game's discs in the same folder.",
 	[SET_DETAIL_SAVES] = "Saves on Details:\n\nOn - A game's details show its saves on both memory cards and\nin the Save Folder when there are two or more copies, and Left\nand Right choose the one to start with (default)\nOff - A game's details leave the memory cards alone.",
 	[SET_IDLE_ANIMATION] = "Idle Animation:\n\nHow the cube moves while Home rests.\nCalm - A slight drift, turned a little to the right (default)\nSway - It turns slowly left and right, so the faces beside\nthe one in front peek round its edges\n\nUI Motion Reduced or Off keeps the cube still.",
@@ -169,10 +171,10 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_WAVE_SPEED] = "Wave Speed:\n\nHow fast the waves behind the cube drift.\nSlow - Half as fast\nNormal - As they always have (default)\nFast - Three times as fast\n\nUI Motion Off or Reduced, or Animated Backdrop off (Setup >\nLibrary), still stops them.",
 	[SET_CLOCK_POSITION] = "Clock:\n\nRight - The time sits in the top right corner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nTemperature places the temperature dial on its own.",
 	[SET_TEMPERATURE_POSITION] = "Temperature:\n\nRight - The CPU temperature dial sits in the top right\ncorner (default)\nLeft - It sits in the top left corner instead\nOff - It is not shown\n\nIn the clock's corner, the dial sits nearer the edge.",
-	[SET_UP_FACE] = "Up Face:\n\nThe menu above Library: Source (default), another\nmenu, or None.\n\nThe menus: Source, Settings, System, Apps, Memory Cards,\nEmulators and File Browser. Classic turns Up to it; Infinite\nturns through the faces above, left, right and below Library,\nin that order. A menu on no side is off the cube. Y on Home\nalways opens Settings, and Apps and Emulators show while the\nsource has a program in /apps or /emulators.",
-	[SET_LEFT_FACE] = "Left Face:\n\nThe menu left of Library: Settings (default), another\nmenu, or None.\n\nThe menus: Source, Settings, System, Apps, Memory Cards,\nEmulators and File Browser. Classic turns Left to it; Infinite\nturns through the faces above, left, right and below Library,\nin that order. A menu on no side is off the cube. Y on Home\nalways opens Settings, and Apps and Emulators show while the\nsource has a program in /apps or /emulators.",
-	[SET_RIGHT_FACE] = "Right Face:\n\nThe menu right of Library: System (default), another\nmenu, or None.\n\nThe menus: Source, Settings, System, Apps, Memory Cards,\nEmulators and File Browser. Classic turns Right to it; Infinite\nturns through the faces above, left, right and below Library,\nin that order. A menu on no side is off the cube. Y on Home\nalways opens Settings, and Apps and Emulators show while the\nsource has a program in /apps or /emulators.",
-	[SET_DOWN_FACE] = "Down Face:\n\nThe menu below Library: Apps (default), another\nmenu, or None.\n\nThe menus: Source, Settings, System, Apps, Memory Cards,\nEmulators and File Browser. Classic turns Down to it; Infinite\nturns through the faces above, left, right and below Library,\nin that order. A menu on no side is off the cube. Y on Home\nalways opens Settings, and Apps and Emulators show while the\nsource has a program in /apps or /emulators.",
+	[SET_UP_FACE] = "Up Face:\n\nThe menu above Library: Source (default), another\nmenu, or None.\n\nThe menus: Source, Settings, System, Apps, Memory Cards,\nEmulators, File Browser and Web. Classic turns Up to it; Infinite\nturns through the faces above, left, right and below Library,\nin that order. A menu on no side is off the cube. Y on Home\nalways opens Settings, and Apps and Emulators show while the\nsource has a program in /apps or /emulators.",
+	[SET_LEFT_FACE] = "Left Face:\n\nThe menu left of Library: Settings (default), another\nmenu, or None.\n\nThe menus: Source, Settings, System, Apps, Memory Cards,\nEmulators, File Browser and Web. Classic turns Left to it; Infinite\nturns through the faces above, left, right and below Library,\nin that order. A menu on no side is off the cube. Y on Home\nalways opens Settings, and Apps and Emulators show while the\nsource has a program in /apps or /emulators.",
+	[SET_RIGHT_FACE] = "Right Face:\n\nThe menu right of Library: System (default), another\nmenu, or None.\n\nThe menus: Source, Settings, System, Apps, Memory Cards,\nEmulators, File Browser and Web. Classic turns Right to it; Infinite\nturns through the faces above, left, right and below Library,\nin that order. A menu on no side is off the cube. Y on Home\nalways opens Settings, and Apps and Emulators show while the\nsource has a program in /apps or /emulators.",
+	[SET_DOWN_FACE] = "Down Face:\n\nThe menu below Library: Apps (default), another\nmenu, or None.\n\nThe menus: Source, Settings, System, Apps, Memory Cards,\nEmulators, File Browser and Web. Classic turns Down to it; Infinite\nturns through the faces above, left, right and below Library,\nin that order. A menu on no side is off the cube. Y on Home\nalways opens Settings, and Apps and Emulators show while the\nsource has a program in /apps or /emulators.",
 	[SET_CUBE] = "Cube:\n\nInfinite - Left and Right turn round every face in a ring (default)\nClassic - Every menu sits on its own side of the cube, as on\nthe GameCube\n\nIn Classic, turn to a side, and back to Library to reach the\nothers; Up Face, Left Face, Right Face and Down Face say\nwhat is on each side. B turns back to Library.",
 	[SET_AUTOBOOT] = "Boot without prompts:\n\nStarts a game as soon as you choose it, without its detail screen.\nHold B while choosing a game to see the screen instead; that turns\nthis off for the rest of the session."
 };
@@ -184,6 +186,9 @@ static char *tooltips_network[PAGE_NETWORK_MAX+1] = {
 	[SET_BBA_NETMASK] = "IPv4 Netmask:\n\nThe network's prefix length when DHCP is off, such as 24 on a\ntypical home network.",
 	[SET_BBA_GATEWAY] = "IPv4 Gateway:\n\nYour router's address when DHCP is off.",
 	[SET_BBA_DHCP] = "IPv4 uses DHCP:\n\nYes - Your router assigns the address, netmask and gateway (default)\nNo - Use the address, netmask and gateway set above",
+	[SET_NTP_SYNC] = "Sync Clock:\n\nYes - Set the clock from the NTP server when the network starts\nNo - Leave the clock as it is (default)\n\nThe IPL and games see the new time too. The network starts with\nIndigo when Init network at startup is on.",
+	[SET_NTP_HOSTIP] = "NTP Server IP:\n\nAddress of the time server Sync Clock asks. Empty asks\nCloudflare's, 162.159.200.123 (default). A name won't work: the\nconsole has no DNS.",
+	[SET_TIME_ZONE] = "Time Zone:\n\nA POSIX TZ string, such as MST7MDT,M3.2.0,M11.1.0 (US Mountain),\nGMT0BST,M3.5.0/1,M10.5.0 (UK) or IST-5:30 (India). Daylight time\nchanges by itself.\n\nEmpty keeps the zone the clock is already in: its offset from UTC,\nsnapped to a real time zone. Set daylight time in the IPL.",
 	[SET_FSP_HOSTIP] = "FSP Host IP:\n\nAddress of the computer running the FSP server with your games.",
 	[SET_FSP_PORT] = "FSP Port:\n\nPort of the FSP server (21 by default).",
 	[SET_FSP_PASS] = "FSP Password:\n\nPassword for the FSP server, if it has one. It is stored as plain\ntext in global.ini.",
@@ -596,6 +601,7 @@ static const settingsRowRef_t setupRows[] = {
 
 static const settingsRowRef_t displayRows[] = {
 	{PAGE_GLOBAL, SET_SWISS_VIDEOMODE},
+	{PAGE_GLOBAL, SET_APPS_VIDEOMODE},
 	{PAGE_INTERFACE, SET_MENU_WIDESCREEN},
 	{PAGE_GLOBAL, SET_SYS_VIDEO},
 	{PAGE_GLOBAL, SET_SCREEN_POS},
@@ -666,7 +672,16 @@ static const settingsRowRef_t networkRows[] = {
 	{PAGE_NETWORK, SET_SMB_PASS},
 	{PAGE_NETWORK, SET_RT4K_HOSTIP},
 	{PAGE_NETWORK, SET_RT4K_PORT},
+	/* Sync Clock's rows stay last: without a network adapter, Settings hides
+	 * them (SETTINGS_SYNC_CLOCK_ROWS, UISetLayout_HideTail). */
+	{PAGE_NETWORK, SET_NTP_SYNC},
+	{PAGE_NETWORK, SET_NTP_HOSTIP},
+	{PAGE_NETWORK, SET_TIME_ZONE},
 };
+#define SETTINGS_SYNC_CLOCK_ROWS 3
+
+/* Whether a network adapter is there, read once as Settings opens. */
+static bool settingsNetAdapter;
 
 static const settingsRowRef_t libraryRows[] = {
 	{PAGE_INTERFACE, SET_LIBRARY_LAYOUT},
@@ -842,13 +857,13 @@ void settings_game_files_forget(void)
 void settings_game_files_load(void)
 {
 	if(settingsGameFilesRead || (settingsGameFilesFailed &&
-		ticks_to_millisecs(gettime() - settingsGameFilesFailedAt) <
+		ticks_to_millisecs(SYS_GetSystemTime() - settingsGameFilesFailedAt) <
 			SETTINGS_GAME_FILES_RETRY_MS)) {
 		return;
 	}
 	settingsGameFilesFailed = config_each_game_file(settingsKeepGameFile, NULL) < 0;
 	if(settingsGameFilesFailed) {
-		settingsGameFilesFailedAt = gettime();
+		settingsGameFilesFailedAt = SYS_GetSystemTime();
 	}
 	else {
 		settingsGameFilesRead = true;
@@ -964,7 +979,7 @@ _Static_assert(sizeof(setupSummaries) / sizeof(setupSummaries[0]) == UI_SETLAYOU
 static const settingsRowRef_t *settingsViewRow(int view, int option)
 {
 	if(view < 0 || view >= UI_SETLAYOUT_PAGE_COUNT ||
-		option < 0 || option >= settingsViews[view].count) {
+		option < 0 || option >= UISetLayout_RowCount(view)) {
 		return NULL;
 	}
 	return &settingsViews[view].rows[option];
@@ -1069,6 +1084,10 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 				snprintf(row->text, sizeof(row->text), "%s%s", getVideoModeString(getVideoModeFromSwissSetting(swissSettings.uiVMode)), swissSettings.uiVMode == 0 ? " (Auto) " : "");
 				rowCycle(row, "Swiss Video Mode:", row->text, true);
 			break;
+			case SET_APPS_VIDEOMODE:
+				snprintf(row->text, sizeof(row->text), "%s%s", getVideoModeString(getVideoModeFromSwissSetting(swissSettings.appsVMode ? swissSettings.appsVMode : swissSettings.uiVMode)), swissSettings.appsVMode == 0 ? " (Auto) " : "");
+				rowCycle(row, "Apps Video Mode:", row->text, true);
+			break;
 			case SET_INIT_DRIVE: rowYesNo(row, "Init DVD Drive at startup:", swissSettings.initDVDDriveAtStart, dvdEnable); break;
 			case SET_STOP_MOTOR: rowYesNo(row, "Stop DVD Drive motor:", swissSettings.stopMotor, dvdEnable); break;
 			case SET_AUDIO_BUFFER: rowCycle(row, "Configure Audio Buffer:", configAudioBufferStr[swissSettings.configAudioBuffer], dvdEnable); break;
@@ -1128,13 +1147,16 @@ static void settingsDescribeRow(int page, int option, ConfigEntry *gameConfig,
 		}
 	}
 	else if(page == PAGE_NETWORK) {
-		bool netEnable = net_initialized || bba_exists(LOC_ANY);
+		bool netEnable = settingsNetAdapter;
 		switch(option) {
 			case SET_INIT_NET: rowYesNo(row, "Init network at startup:", swissSettings.initNetworkAtStart, !bba_requires_init()); break;
 			case SET_BBA_LOCALIP: rowText(row, "IPv4 Address:", swissSettings.bbaLocalIp, netEnable); break;
 			case SET_BBA_NETMASK: rowTextNumber(row, "IPv4 Netmask:", swissSettings.bbaNetmask, netEnable); break;
 			case SET_BBA_GATEWAY: rowText(row, "IPv4 Gateway:", swissSettings.bbaGateway, netEnable); break;
 			case SET_BBA_DHCP: rowYesNo(row, "IPv4 uses DHCP:", swissSettings.bbaUseDhcp, netEnable); break;
+			case SET_NTP_SYNC: rowYesNo(row, "Sync Clock:", swissSettings.ntpSync, netEnable); break;
+			case SET_NTP_HOSTIP: rowText(row, "NTP Server IP:", swissSettings.ntpHostIp[0] ? swissSettings.ntpHostIp : TIME_SYNC_DEFAULT_SERVER, netEnable); break;
+			case SET_TIME_ZONE: rowText(row, "Time Zone:", swissSettings.timeZone[0] ? swissSettings.timeZone : "Keep console's", netEnable); break;
 			case SET_FSP_HOSTIP: rowText(row, "FSP Host IP:", swissSettings.fspHostIp, netEnable); break;
 			case SET_FSP_PORT: rowTextNumber(row, "FSP Port:", swissSettings.fspPort, netEnable); break;
 			case SET_FSP_PASS: rowText(row, "FSP Password:", "*****", netEnable); break;
@@ -1335,7 +1357,7 @@ static void settingsDescribeFocus(uiSetPageSnapshot_t *page, int view,
 			hints[count++] = "X  Default";
 		}
 	}
-	else if(option == settingsViews[view].count) {
+	else if(option == UISetLayout_RowCount(view)) {
 		hints[count++] = "A  Save";
 		about = "Keeps every change and closes Settings.";
 	}
@@ -1553,6 +1575,10 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			case SET_SWISS_VIDEOMODE:
 				swissSettings.uiVMode += direction;
 				swissSettings.uiVMode = (swissSettings.uiVMode + 9) % 9;
+			break;
+			case SET_APPS_VIDEOMODE:
+				swissSettings.appsVMode += direction;
+				swissSettings.appsVMode = (swissSettings.appsVMode + 9) % 9;
 			break;
 			case SET_INIT_DRIVE:
 				if(deviceHandler_getDeviceAvailable(&__device_dvd))
@@ -1806,6 +1832,15 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			break;
 			case SET_BBA_DHCP:
 				swissSettings.bbaUseDhcp ^= 1;
+			break;
+			case SET_NTP_SYNC:
+				swissSettings.ntpSync ^= 1;
+			break;
+			case SET_NTP_HOSTIP:
+				DrawGetTextEntry(ENTRYMODE_IP, "NTP Server IP", &swissSettings.ntpHostIp, sizeof(swissSettings.ntpHostIp) - 1);
+			break;
+			case SET_TIME_ZONE:
+				DrawGetTextEntry(ENTRYMODE_NUMERIC|ENTRYMODE_ALPHA, "Time Zone", &swissSettings.timeZone, sizeof(swissSettings.timeZone) - 1);
 			break;
 			case SET_FSP_HOSTIP:
 				DrawGetTextEntry(ENTRYMODE_IP, "FSP Host IP", &swissSettings.fspHostIp, sizeof(swissSettings.fspHostIp) - 1);
@@ -2335,7 +2370,7 @@ static bool settingsRowIsAction(int page, int option)
 			return in_range(option, SET_AUTOLOAD, SET_FLATTEN_DIR);
 		case PAGE_NETWORK:
 			return in_range(option, SET_BBA_LOCALIP, SET_BBA_GATEWAY) ||
-				in_range(option, SET_FSP_HOSTIP, SET_FTP_PASS) ||
+				in_range(option, SET_NTP_HOSTIP, SET_FTP_PASS) ||
 				in_range(option, SET_SMB_HOSTIP, SET_RT4K_PORT);
 		case PAGE_GAME_GLOBAL:
 			return option == SET_GLOBAL_DEFAULTS;
@@ -2528,6 +2563,7 @@ typedef struct {
 	offsetof(ConfigEntry, field), sizeof(((ConfigEntry *)0)->field)}
 static const settingsPickerRow_t settingsPickerRows[] = {
 	PICK_SETTING(PAGE_GLOBAL, SET_SYS_LANG, sramLanguage),
+	PICK_SETTING(PAGE_GLOBAL, SET_APPS_VIDEOMODE, appsVMode),
 	PICK_SETTING(PAGE_GLOBAL, SET_ENABLE_USBGECKO, enableUSBGecko),
 	PICK_SETTING(PAGE_GLOBAL, SET_SIMMEMSIZE, simulatedMemSize),
 	PICK_SETTING(PAGE_INTERFACE, SET_UI_COLOR, uiColor),
@@ -2794,7 +2830,7 @@ static bool settingsInputMayBlock(int page, int option, u32 buttons)
 	}
 	if(page == PAGE_NETWORK && (horizontal || activate)) {
 		return in_range(option, SET_BBA_LOCALIP, SET_BBA_GATEWAY) ||
-			in_range(option, SET_FSP_HOSTIP, SET_FTP_PASS) ||
+			in_range(option, SET_NTP_HOSTIP, SET_FTP_PASS) ||
 			in_range(option, SET_SMB_HOSTIP, SET_RT4K_PORT);
 	}
 	if(page == PAGE_GAME_DEFAULTS && (horizontal || activate)) {
@@ -2819,6 +2855,7 @@ int show_settings(int page, int option, ConfigEntry *config) {
 		if((view == VIEW_GAME) != (page == PAGE_GAME)) {
 			continue;
 		}
+		/* The whole table: show_settings_view hides what it must. */
 		for(row = 0; row < settingsViews[view].count; row++) {
 			const settingsRowRef_t *ref = &settingsViews[view].rows[row];
 			if(ref->page == page && ref->option == option) {
@@ -2838,6 +2875,11 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 		view = VIEW_QUICK;
 	}
 	wait_network();
+	settingsNetAdapter = net_initialized || bba_exists(LOC_ANY);
+	UISetLayout_HideTail(VIEW_NETWORK, settingsNetAdapter ? 0 : SETTINGS_SYNC_CLOCK_ROWS);
+	if(option >= UISetLayout_RowCount(view)) {
+		option = 0;
+	}
 	// Copy current settings to a temp copy in case the user cancels out
 	if(config != NULL) {
 		memcpy(&tempConfig, config, sizeof(ConfigEntry));
@@ -2865,7 +2907,7 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 		bool inputMayBlock;
 		int inputView;
 		int inputOption;
-		int rows = settingsViews[view].count;
+		int rows = UISetLayout_RowCount(view);
 		const settingsRowRef_t *ref = settingsViewRow(view, option);
 		bool onSetting = ref != NULL && ref->page != SETTINGS_ROW_LINK;
 		uiDrawObj_t* settingsPage = settings_draw_page(view, option, config);
@@ -2964,13 +3006,13 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 			}
 			else {
 				option = settingsChanged(config) ?
-					settingsViews[view].count : settingsViews[view].count + 1;
+					UISetLayout_RowCount(view) : UISetLayout_RowCount(view) + 1;
 				btns |= BUTTON_A;
 			}
 		}
 		// Handle all options/buttons here
 		if((btns & BUTTON_A)) {
-			if(option == settingsViews[view].count) {
+			if(option == UISetLayout_RowCount(view)) {
 				uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Saving changes\205"));
 				// Save settings to SRAM
 				swissSettings.sram60Hz = getTVFormat() == VI_EURGB60;
@@ -3017,7 +3059,7 @@ int show_settings_view(int view, int option, ConfigEntry *config) {
 				DrawDispose(settingsPage);
 				return 1;
 			}
-			if(option == settingsViews[view].count + 1) {
+			if(option == UISetLayout_RowCount(view) + 1) {
 				// Exit without saving (revert)
 				if(config != NULL) {
 					memcpy(config, &tempConfig, sizeof(ConfigEntry));

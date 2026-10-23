@@ -1,5 +1,5 @@
 {
-  "status": "passed",
+  "status": "pending",
   "environment": "real-hardware",
   "source_fingerprint": "81e082a41d2bb478e33d379942a85cff1f1c35990d600f9f403189e47d5002a6",
   "tested_revision": "92b4ed8eb8b7eaca0726a5b300834bca82289778",
@@ -10,9 +10,9 @@
   },
   "evidence": "https://github.com/spencercnorton/indigo/issues/102#issuecomment-6181841745",
   "results": {
-    "existing_card_updates": true,
-    "new_card_finishes": true,
-    "rapid_gameid_switches": true
+    "existing_card_updates": false,
+    "new_card_finishes": false,
+    "rapid_gameid_switches": false
   },
-  "note": "Tested on test/mcp-card-slots (2.3.0 with the card-slot code); the report's card-trace.txt records each switch. This release carries the same card-slot files and the same launch around a switch on the same libogc2 image (the same fingerprint). Game Detail offers no save-copy choice on a memory card emulator, so it only reads one, as the tested build did."
+  "note": "The linked real-card report qualifies the previous SDK and source fingerprint only. The current SDK has no completed MemCard PRO GC qualification for existing cards, new-card completion and rapid game-ID switches. Historical tested_revision and source_fingerprint are retained as evidence of the older pass. This coverage gap is reported in release notes and build summaries; access to this hardware is not a publication requirement."
 }

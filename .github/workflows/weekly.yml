@@ -1,0 +1,22 @@
+# Weekly: CI on beta with the long fuzzing run. Schedules fire from main, but
+# the runners are built from beta, so main's own workflow fails its toolchain
+# check whenever beta has moved the toolchain since the last release. This
+# runs beta's workflow on beta instead.
+name: Weekly
+
+on:
+  schedule:
+    - cron: '23 9 * * 1'
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch:
+    name: CI on beta
+    runs-on: [self-hosted, indigo-build]
+    timeout-minutes: 2
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref beta -f long_fuzz=true

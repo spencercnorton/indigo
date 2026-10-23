@@ -74,6 +74,11 @@ class Disc(unittest.TestCase):
         self.assertTrue(card.NO_STILL < games)
         self.assertTrue(card.NO_STILL - card.NO_POSTER)
         self.assertTrue(card.NO_STILL & card.NO_POSTER)
+        # The Jewel Case shows every kind of disc: its own, the middle of a
+        # cover, and a bare one.
+        self.assertTrue(card.NO_DISC < games)
+        self.assertTrue(card.NO_DISC - card.NO_POSTER)
+        self.assertTrue(card.NO_DISC & card.NO_POSTER)
         with self.assertRaises(ValueError):
             card.disc_header("gacz01", "lower case")
 
@@ -1252,6 +1257,16 @@ class Screen(unittest.TestCase):
                 rgb[112 + row * cell_height:112 + (row + 1) * cell_height, 64 + bit * 16:80 + bit * 16] = \
                     235 if word >> (31 - bit) & 1 else 16
         return rgb
+
+    def test_the_app_video_oracle_checks_forced_modes(self):
+        progressive = {"vi_dcr": 0x0005, "vi_clk_dtv": 0x00010001}
+        interlaced = {"vi_dcr": 0x0001, "vi_clk_dtv": 1}
+        self.assertTrue(run.app_video_matches("Auto", progressive, "ntsc", "component"))
+        self.assertFalse(run.app_video_matches("480i", progressive, "ntsc", "component"))
+        self.assertTrue(run.app_video_matches("480i", interlaced, "ntsc", "component"))
+        self.assertTrue(run.app_video_matches("Auto", {"vi_dcr": 0x0101, "vi_clk_dtv": 0}, "pal", "composite"))
+        self.assertTrue(run.app_video_matches("576p", {"vi_dcr": 0x0105, "vi_clk_dtv": 0x10001}, "ntsc", "component"))
+        self.assertTrue(run.app_video_matches("240p", {"vi_dcr": 5, "vi_clk_dtv": 1}, "ntsc", "component"))
 
     def test_the_probe_report_reads_back_at_any_scale(self):
         from PIL import Image

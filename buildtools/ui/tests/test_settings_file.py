@@ -151,7 +151,7 @@ static bool getRawDTVStatus(void) { return false; }
     "void config_parse_game(char *configData, ConfigEntry *entry);\n"
     "typedef unsigned long long u64;\n"
     "static u64 harness_ms;\n"
-    "static u64 gettime(void) { return harness_ms; }\n"
+    "static u64 SYS_GetSystemTime(void) { return harness_ms; }\n"
     "#define ticks_to_millisecs(t) (t)\n"
     "static int harness_scan_result, harness_scans;\n"
     "static int config_each_game_file(void (*visit)(const char *, char *, void *), void *context)\n"
@@ -567,7 +567,7 @@ class SettingsFileTest(unittest.TestCase):
         # Each side's choices start at its default and go round the faces,
         # None among them (UIHome_SideFace): zeroed settings are that cube.
         faces = ["None", "Source", "Settings", "System", "Apps", "Memory Cards", "Emulators",
-                 "File Browser"]
+                 "File Browser", "Web"]
         for side, default in (("up", 1), ("left", 2), ("right", 3), ("down", 4)):
             self.assertEqual(VALUES[f"{side}FaceStr"],
                              [faces[(default + i) % len(faces)] for i in range(len(faces))], side)
@@ -639,6 +639,13 @@ class SettingsFileTest(unittest.TestCase):
         off = self.boot_with_arguments(booted, "Library Folders=No\n", fields=True)
         self.assertIn("\nlibraryFolders=0\n", off)
         self.assertIn("\nflattenDir=*/isos\n", off)
+
+    def test_apps_video_mode_is_independent_of_the_menu(self):
+        for mode in VALUES["uiVModeStr"]:
+            written = self.global_file(f"Swiss Video Mode=480p\nApps Video Mode={mode}\n")
+            self.assertEqual(written["Apps Video Mode"], mode)
+            self.assertEqual(written["Swiss Video Mode"], "480p")
+        self.assertEqual(self.global_file("Apps Video Mode=Unknown")["Apps Video Mode"], "Auto")
 
     def test_an_unknown_value_keeps_the_previous_one(self):
         defaults = self.global_file()
@@ -744,6 +751,13 @@ class SettingsFileTest(unittest.TestCase):
             self.assertEqual(VALUES["gameVModeStr"][int(pal["gameVMode"])], "576i")
             self.assertEqual(VALUES["forceWidescreenStr"][int(ntsc["forceWidescreen"])], "3D")
             self.assertEqual(ntsc["gameLanguage"], "8")
+            # Animal Crossing Deluxe widens itself, so it starts with Force
+            # Widescreen off; its own file still turns it on, and keeps it.
+            deluxe = pairs(self.run_harness("game-fields", "GADE", "E", handle.name))
+            self.assertEqual(VALUES["forceWidescreenStr"][int(deluxe["forceWidescreen"])], "No")
+            own = pairs(self.run_harness("game", "GADE", "E", handle.name,
+                                         stdin="Force Widescreen=3D\r\n"))
+            self.assertEqual(own.get("Force Widescreen"), "3D")
         finally:
             os.unlink(handle.name)
 
@@ -803,6 +817,8 @@ class SettingsFileTest(unittest.TestCase):
                          SWISS_C.count("Saving autoload\\205"))
         self.assertEqual(SWISS_C.count("config_update_autoload(true);"), 3)
         self.assertNotIn("config_update_global(", SWISS_C)
+        # Z in the Jewel Case saves only Spin Discs, the same way.
+        self.assertEqual(SWISS_C.count("config_update_spin_discs(true);"), 1)
 
     def saved(self, existing: str, changes: str = "", game: bool = False) -> str:
         path = Path(self.tmp.name) / ("existing-game.ini" if game else "existing.ini")

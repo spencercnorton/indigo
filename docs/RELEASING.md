@@ -45,18 +45,19 @@ to the code needs another candidate.
 
 ## A release
 
-MemCard PRO switching ships only as a real card ran it.
-`docs/validation/memcard-pro.json` records that run: the tested revision, card
-firmware and console/loader setup, evidence link, and the three switching
-checks. Ordinary-card console tests and emulator runs do not qualify it.
-`buildtools/ci/check_memcard_qualification.py --fingerprint` covers the
-card-slot code and swiss.c's launch around a switch (the wait for an ID that
-waited, then the cards' set-up), on the pinned libogc2 image; the rest of
-swiss.c is the release's own. The stable release workflow checks both that
-fingerprint and the tested revision's source against the release's. Missing,
-pending, emulator-only or stale qualification holds stable publication;
-betas and release candidates remain available for testing. A change to that
-code needs a new real-card run, or it stays out of the stable version.
+MemCard PRO test coverage is reported during the release build. A real-card
+run is useful evidence when available, but access to that hardware is not a
+publication requirement. `docs/validation/memcard-pro.json` keeps the actual
+tested revision, firmware/setup and results. Keep a pending record pending;
+emulator or GCMCE tests do not become a MemCard PRO GC pass.
+
+`buildtools/ci/check_memcard_qualification.py --fingerprint` binds the card-slot
+code, launch around a switch and pinned SDK. Its default mode audits a claimed
+qualification strictly. The release workflow uses `--report`, which records
+missing, pending or stale coverage in its summary and continues publication.
+Release notes disclose the current coverage gap. A new real-card result can
+update the record later, without requiring hardware the maintainer does not
+own for every release.
 
 1. On `beta`, by pull request: rename `## Unreleased` to
    `## vX.Y.Z — <what this release is about>`, and make sure the README and

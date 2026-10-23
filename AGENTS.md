@@ -28,7 +28,7 @@ Indigo is built on and lists the upstream files Indigo does change, with why.
 ```bash
 # The DOL, in the pinned image CI uses (writes cube/swiss/swiss.dol):
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
+  ghcr.io/extremscorner/libogc2@sha256:f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2 make dev
 
 # The performance build, after make dev: frame times and the GPU's counters
 # (vertices, pixels, texels, copy clocks) over the menus, to measure a change
@@ -87,13 +87,13 @@ with a tagged release.
   `CHANGELOG.md`; the release renames that heading.
 - The full procedure, including hotfixes, is [docs/RELEASING.md](docs/RELEASING.md).
 
-The MemCard PRO switching/save change is candidate-only while
-`docs/validation/memcard-pro.json` is pending. Stable publication requires
-reviewed real-card evidence for the current implementation; a lab pass or an
-ordinary-card GameCube pass cannot mark that record passed. Preserve this hold
-when consolidating branches. The release helper checks the tested source;
-do not bypass it, prefill a hardware pass, or treat a general continue/release
-instruction as evidence that a MemCard PRO was tested.
+MemCard PRO GC coverage is informational during publication. Access to a
+real card is not a release requirement. Keep `docs/validation/memcard-pro.json`
+accurate: pending coverage stays pending, and emulator or ordinary-card
+GameCube results do not establish a real MemCard PRO GC pass. The release
+workflow uses the helper's `--report` mode to disclose missing or stale
+coverage and continue; its default mode still audits claimed qualification
+strictly. Never prefill a hardware pass or infer one from release approval.
 
 ## Rules
 

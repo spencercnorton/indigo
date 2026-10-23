@@ -32,7 +32,7 @@ index e5dca73..1f5655b 100644
 +// this way and switches the DABR with the thread, so a guard stays watched once
 +// named. MMU mode already compiles watch-capable code: no JIT cache clear,
 +// which mtspr could not do safely anyway.
-+// ponytail: one watch per guard ever named, never removed; a cap if a program
++// Known gap: one watch per guard ever named, never removed; a cap if a program
 +// ever creates threads without end.
 +void MemChecks::WatchDABR(u32 dabr)
 +{

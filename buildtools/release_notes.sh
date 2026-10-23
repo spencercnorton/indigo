@@ -26,7 +26,7 @@ esac
 # repository. GitHub's release page and feed rewrite them, but the API and gh
 # pass them on as written, so each goes to the file at this tag by full URL
 # (a folder, ending in /, to its tree).
-repo=https://github.com/spencercnorton/indigo
+repo=https://github.com/spencernorton/indigo
 printf '%s\n' "$notes" | sed -e '/./,$!d' | sed -E \
 	-e "s#\]\(([A-Za-z0-9._][^):]*/)\)#]($repo/tree/$tag/\1)#g" \
 	-e "s#\]\(([A-Za-z0-9._][^):]*)\)#]($repo/blob/$tag/\1)#g"
@@ -47,7 +47,17 @@ The second file is \`swiss/patches/apploader.img\`: copy it into the card's \`sw
 
 **Updating:** back up the card's \`swiss\` folder, rename the new \`ipl.dol\` to the name of the Indigo file you start now (\`ipl.dol\`, \`boot.dol\` or \`indigo.dol\`) and copy it over that file. Then copy the new \`swiss/patches/apploader.img\` over the old one.
 
-**Posters and cheats** (optional; unzip one and copy the files in its \`swiss/ui\` or \`swiss/cheats\` folder into the card's folder of the same name, making it if needed): [Posters](https://indigo.norvitech.com/indigo-posters-all.zip) (every region, with Spotlight's stills and descriptions) · [Cheats](https://indigo.norvitech.com/indigo-cheats.zip)
+**Posters and cheats** (optional; unzip one and copy the files in its \`swiss/ui\` or \`swiss/cheats\` folder into the card's folder of the same name, making it if needed): [Posters](https://indigo.norvitech.com/indigo-posters-all.zip) (every region, with Spotlight's stills/descriptions and Jewel Case's disc art) · [Cheats](https://indigo.norvitech.com/indigo-cheats.zip)
 
-**Verify:** \`SHA256SUMS.txt\` lists the zip's SHA-256, and the zip carries a build provenance attestation: \`gh attestation verify Indigo-$tag.zip --repo spencercnorton/indigo\`.
+For Jewel Case, copy the poster pack's \`swiss/ui/discs.pak\` onto the card
+holding your games too, even if Indigo starts on another card. Updating
+Indigo's executable alone does not install disc art. Restart after updating
+the pack. Games absent from the pack keep the cover-image fallback.
+
+**Web:** copy the new \`swiss/indigo/cubebrowser.dol\` and its licences to
+the settings card, and \`gcbrowser\` to a supported card. The browser's
+**Return to Indigo** button at bottom-left exits with one press and restarts
+the Indigo installed on the card.
+
+**Verify:** \`SHA256SUMS.txt\` lists the zip's SHA-256, and the zip carries a build provenance attestation: \`gh attestation verify Indigo-$tag.zip --repo spencernorton/indigo\`.
 NOTES

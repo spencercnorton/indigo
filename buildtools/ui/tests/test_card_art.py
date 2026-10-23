@@ -80,6 +80,7 @@ s32 LWP_SemDestroy(sem_t sem);
     "ogc/lwp_watchdog.h": r"""
 #include <gccore.h>
 u64 gettime(void);
+int64_t SYS_GetSystemTime(void);
 #define ticks_to_millisecs(ticks) (ticks)
 """,
     "FrameBufferMagic.h": r"""
@@ -123,6 +124,7 @@ DRIVER = r"""
 #include "FrameBufferMagic.h"
 #include "IPLFontWrite.h"
 #include "card_art.h"
+#include <assert.h>
 #include "ui_png.h"
 
 /* -- the counter ------------------------------------------------------------ */
@@ -224,6 +226,8 @@ u64 gettime(void)
 	clock_gettime(CLOCK_MONOTONIC, &now);
 	return (u64)now.tv_sec * 1000u + (u64)now.tv_nsec / 1000000u;
 }
+
+int64_t SYS_GetSystemTime(void) { return (int64_t)gettime(); }
 
 s32 LWP_CreateThread(lwp_t *thread, void *(*entry)(void *), void *arg,
 	void *stack, u32 stackSize, u8 priority)
@@ -343,14 +347,28 @@ static uint32_t pictureSize(int32_t card)
 	return st.st_size > 0xffffffffLL ? 0xffffffffu : (uint32_t)st.st_size;
 }
 
-static bool readPicture(int32_t card, uint8_t *data, uint32_t size)
+static unsigned menuReadCalls, menuReadMax, menuReadBytes;
+static uint32_t nextOffset[CARDS];
+
+static bool readPicture(int32_t card, uint32_t offset, uint8_t *data, uint32_t size)
 {
 	FILE *file = fopen(pictures[card], "rb");
 	size_t got = 0u;
 
 	pthread_mutex_lock(&logLock);
-	reads[card]++;
-	if(!pthread_equal(pthread_self(), menuThread)) readsOffMenu[card]++;
+	if(offset == 0u) {
+		reads[card]++;
+		nextOffset[card] = 0u;
+		if(!pthread_equal(pthread_self(), menuThread)) readsOffMenu[card]++;
+	}
+	if(pthread_equal(pthread_self(), menuThread)) {
+		menuReadCalls++;
+		menuReadBytes += size;
+		if(size > menuReadMax) menuReadMax = size;
+		assert(size <= CARD_ART_READ_BYTES);
+	}
+	assert(offset == nextOffset[card]);
+	nextOffset[card] += size;
 	pthread_mutex_unlock(&logLock);
 	if(card == holdCard) {
 		holdCard = -1;
@@ -363,7 +381,7 @@ static bool readPicture(int32_t card, uint8_t *data, uint32_t size)
 		return false;
 	}
 	if(file != NULL) {
-		got = fread(data, 1u, size, file);
+		if(fseek(file, (long)offset, SEEK_SET) == 0) got = fread(data, 1u, size, file);
 		fclose(file);
 	}
 	return got == size;
@@ -505,6 +523,9 @@ int main(void)
 		}
 		else if(strcmp(word, "failread") == 0 && sscanf(line, "failread %d", &card) == 1) {
 			failRead[card] = true;
+		}
+		else if(strcmp(word, "traffic") == 0) {
+			printf("traffic %u %u %u\n", menuReadCalls, menuReadMax, menuReadBytes);
 		}
 		else if(strcmp(word, "pause") == 0) {
 			pausing = true;
@@ -748,6 +769,27 @@ class CardArtTests(unittest.TestCase):
         # Resumed: the picture is read again and its poster made, judged once.
         self.assertEqual(shows[3], "picture 2 2 1")
         self.assertEqual(written[1], "written 2")
+        self.assertEqual(self.mems(out)[-1][0], 0)
+
+    def test_partial_menu_read_can_be_paused_or_scrolled_away(self):
+        picture = self.files["exactly the limit"]
+        out = self.run_script(f"card 0 {picture} Large", "card 1 - Small",
+                              "open 0", "want 0", "poll", "traffic", "show 0",
+                              "pause", "mem", "resume", "want 1", "settle 20000",
+                              "show 1", "traffic", "close", "mem")
+        traffic = [tuple(map(int, line.split()[1:])) for line in out if line.startswith("traffic ")]
+        self.assertEqual(traffic, [(1, 16384, 16384), (1, 16384, 16384)])
+        self.assertIn("card 0 none 1 0", out)
+        self.assertEqual(self.cards(out)[1], ("name", 0, 0, []))
+        self.assertEqual([row[0] for row in self.mems(out)], [SLOTS_BYTES, 0])
+
+    def test_menu_read_finishes_in_bounded_sequential_ranges(self):
+        picture = self.files["exactly the limit"]
+        out = self.run_script(f"card 0 {picture} Large", "open 0", "want 0",
+                              "settle 20000", "show 0", "traffic", "close", "mem")
+        self.assertIn("settled", out)
+        self.assertEqual(self.cards(out)[0], ("picture", 1, 0, [1]))
+        self.assertIn("traffic 128 16384 2097152", out)
         self.assertEqual(self.mems(out)[-1][0], 0)
 
     def test_open_again_takes_the_new_cards_in_the_same_memory(self):

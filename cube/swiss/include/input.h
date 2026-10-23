@@ -23,6 +23,10 @@ void padsInit();
 void padsScan(void);
 u32 padsButtonsHeld();
 u32 padsButtonsTaken(u32 mask);
+/* The console lab (gui/lab.c): press buttons for holdMs, as if on a pad, and
+ * how long since a real controller last had a button down. */
+void padsVirtualPress(u32 buttons, u32 holdMs);
+u32 padsRealIdleMs(void);
 s8 padsStickX();
 s8 padsStickY();
 s8 padsSubStickX();

@@ -54,8 +54,13 @@ A change of Cube takes effect as you leave Settings.
 
 Settings › Setup › Console › **Up Face**, **Left Face**, **Right Face** and
 **Down Face** choose the menu above, left of, right of and below Library:
-Source, Settings, System, Apps, Memory Cards, Emulators, File Browser, or
-**None** to leave that side empty. Memory Cards opens the same screen as
+Source, Settings, System, Apps, Memory Cards, Emulators, File Browser, Web,
+or **None** to leave that side empty. Web opens the web browser that comes
+with Indigo, with a network adapter and the browser on the card
+([Where everything goes](install.md#where-everything-goes)). In the browser,
+select **Return to Indigo** at bottom-left and press A once. It restarts
+the Indigo installed on the card; a build sent over the network or opened
+from Apps does not replace that startup file. Memory Cards opens the same screen as
 System's Memory Cards row, and [File Browser](system.md#file-browser) the
 same File Browser as System's row; B there comes back to its face.
 [Emulators](apps.md#emulators) lists the programs in `/emulators` as Apps

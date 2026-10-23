@@ -171,7 +171,7 @@ for token in (
 require('"REOPEN PAGE TO REFRESH"' in input_output,
         "Input / Output page-entry snapshot is not disclosed")
 for identity in ("SWISS 0.6", "INDIGO - UNOFFICIAL SWISS FORK", "GIT_COMMIT",
-                 "GIT_REVISION", "_V_STRING", "GITHUB.COM/SPENCERCNORTON/INDIGO",
+                 "GIT_REVISION", "_V_STRING", "GITHUB.COM/SPENCERNORTON/INDIGO",
                  "UI_SYSTEM_ABOUT_HELP_LABEL", "UI_SYSTEM_ABOUT_HELP_TEXT"):
     require(identity in about, f"About page omits {identity}")
 # Indigo's problems are Indigo's: About sends nobody to upstream's community.
@@ -189,9 +189,12 @@ for credit in (
 ):
     require(credit in credits, f"Credits page omits legacy content {credit}")
 # The Spotlight layout's design comes from Gameplay Spotlight, with its
-# author's permission; the credit stays.
-for credit in ('"SPOTLIGHT LIBRARY DESIGN"', '"GAMEPLAY SPOTLIGHT BY MVIZENSK"'):
+# author's permission, and the Jewel Case layout is portlandhodl's jewel case
+# view, after Ann Nguyen's CD Case: the credits stay.
+for credit in ('"LIBRARY DESIGNS"', '"GAMEPLAY SPOTLIGHT BY MVIZENSK"'):
     require(credit in credits, "Credits page omits Gameplay Spotlight's author")
+require('"JEWEL CASE BY PORTLANDHODL, AFTER CD CASE BY ANN NGUYEN"' in credits,
+        "Credits page omits the jewel case's authors")
 
 # Input remains exactly the established B-only, one-level return contract.
 interactive = show_info[show_info.index("while(1)") :]

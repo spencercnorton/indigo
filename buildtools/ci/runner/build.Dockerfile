@@ -4,15 +4,17 @@
 # Python with Pillow and NumPy, zlib), and a GitHub Actions runner that takes
 # one job. indigo_ci.py builds it from beta; a job checks it runs on the
 # toolchain its workflow names (buildtools/ci/toolchain.sh).
-FROM ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f
+FROM ghcr.io/extremscorner/libogc2@sha256:f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2
 
 ENV DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8 TZ=UTC
 
-# Node is for the site pool (norvitech.com's checks run on this image too).
+COPY --chmod=0755 libiconv-lite.sh /opt/indigo-ci/libiconv-lite.sh
+RUN /opt/indigo-ci/libiconv-lite.sh --cache /usr/local/share/indigo
+
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates clang curl git jq libclang-rt-14-dev libicu72 libkrb5-3 \
-      liblttng-ust1 libssl3 llvm nodejs python3 python3-numpy python3-pil \
+      liblttng-ust1 libssl3 llvm python3 python3-numpy python3-pil \
       shellcheck time unzip xz-utils zip zlib1g-dev \
  && rm -rf /var/lib/apt/lists/*
 
@@ -28,7 +30,7 @@ RUN curl -fsSL -o /tmp/gh.tgz \
 
 RUN useradd --create-home --uid 1001 --shell /bin/bash runner \
  && mkdir -p /etc/indigo-ci \
- && echo "ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f" \
+ && echo "ghcr.io/extremscorner/libogc2@sha256:f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2" \
       > /etc/indigo-ci/toolchain
 
 # Last, so a new runner release rebuilds only this layer, never the toolchain.

@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "iconv_check.h"
 
 #define PROBE_MAGIC 0x1D160B0Eu
 #define PROBE_VERSION 2u
@@ -129,6 +130,11 @@ static void fill(u32 *xfb, int stride, int x, int y, int w, int h, u32 colour)
 int main(int argc, char **argv)
 {
 	uart("probe: main\r");
+	if (!iconv_check()) {
+		uart("probe: iconv FAILED\r");
+		return 1;
+	}
+	uart("probe: iconv passed\r");
 	word[W_MAGIC] = PROBE_MAGIC;
 	word[W_VERSION] = PROBE_VERSION;
 	word[W_ARGC] = (u32)argc;

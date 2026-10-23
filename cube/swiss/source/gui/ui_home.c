@@ -6,11 +6,11 @@
 
 static const char *const faceLabels[UI_HOME_FACE_COUNT] = {
 	"LIBRARY", "SOURCE", "SETTINGS", "SYSTEM", "APPS", "MEMORY CARDS",
-	"EMULATORS", "FILE BROWSER"
+	"EMULATORS", "FILE BROWSER", "WEB"
 };
 
-/* Absent faces are bits of a byte. */
-_Static_assert(UI_HOME_FACE_COUNT <= 8, "a face's absent bit fits a byte");
+/* Absent faces are bits of a mask. */
+_Static_assert(UI_HOME_FACE_COUNT <= 16, "a face's absent bit fits a 16-bit mask");
 
 /* The cube unless Settings says otherwise: Source on top, Settings on the
  * left, System on the right and Apps underneath, as the GameCube's own menu
@@ -46,7 +46,7 @@ bool UIHome_IsSurface(int surface)
 /* The capabilities' sides, each face once, and those of their faces that
  * aren't there now: Apps without apps. */
 static void resolveLayout(uiHomeCapabilities_t capabilities,
-	uint8_t sides[UI_HOME_SIDE_COUNT], uint8_t *absent)
+	uint8_t sides[UI_HOME_SIDE_COUNT], uint16_t *absent)
 {
 	const uint8_t *wanted = capabilities.customSides ? capabilities.sides :
 		defaultSides;
@@ -66,14 +66,14 @@ static void resolveLayout(uiHomeCapabilities_t capabilities,
 		sides[side] = (uint8_t)face;
 		if((face == (int)UI_HOME_FACE_APPS && !capabilities.hasApps) ||
 			(face == (int)UI_HOME_FACE_EMULATORS && !capabilities.hasEmulators)) {
-			*absent = (uint8_t)(*absent | (1u << face));
+			*absent = (uint16_t)(*absent | (1u << face));
 		}
 	}
 }
 
 /* The face on a side when it is there now, else Library. */
 static int presentFace(const uint8_t sides[UI_HOME_SIDE_COUNT],
-	uint8_t absent, int side)
+	uint16_t absent, int side)
 {
 	int face = sides[side];
 
@@ -84,7 +84,7 @@ static int presentFace(const uint8_t sides[UI_HOME_SIDE_COUNT],
 	return face;
 }
 
-static int ringCount(const uint8_t sides[UI_HOME_SIDE_COUNT], uint8_t absent)
+static int ringCount(const uint8_t sides[UI_HOME_SIDE_COUNT], uint16_t absent)
 {
 	int count = 1;
 	int side;
@@ -100,7 +100,7 @@ static int ringCount(const uint8_t sides[UI_HOME_SIDE_COUNT], uint8_t absent)
 int UIHome_FaceCount(uiHomeCapabilities_t capabilities)
 {
 	uint8_t sides[UI_HOME_SIDE_COUNT];
-	uint8_t absent;
+	uint16_t absent;
 
 	resolveLayout(capabilities, sides, &absent);
 	return ringCount(sides, absent);
@@ -463,6 +463,8 @@ static uiHomeEffect_t applyRing(uiHomeState_t *state, uiHomeInput_t input,
 				return UI_HOME_EFFECT_OPEN_EMULATORS;
 			case UI_HOME_FACE_FILES:
 				return openFiles(capabilities);
+			case UI_HOME_FACE_WEB:
+				return UI_HOME_EFFECT_OPEN_WEB;
 			default:
 				break;
 		}
@@ -624,7 +626,7 @@ static void reconcileFaces(uiHomeState_t *state,
 	uiHomeCapabilities_t capabilities)
 {
 	uint8_t sides[UI_HOME_SIDE_COUNT];
-	uint8_t absent;
+	uint16_t absent;
 	uiHomeCubeStyle_t style = cubeStyle(capabilities);
 	int count;
 	int place;
@@ -722,6 +724,7 @@ const char *UIHome_PrimaryHint(uiHomeFace_t face,
 		case UI_HOME_FACE_APPS:
 		case UI_HOME_FACE_SAVES:
 		case UI_HOME_FACE_EMULATORS:
+		case UI_HOME_FACE_WEB:
 			return "A  OPEN";
 		default:
 			return "";

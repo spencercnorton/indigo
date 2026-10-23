@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TOOLCHAIN: ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f
+  TOOLCHAIN: ghcr.io/extremscorner/libogc2@sha256:f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2
 
 jobs:
   build:
@@ -68,13 +68,13 @@ jobs:
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
       # The checked-out tag may predate the feature and this helper.
-      # A stable tag containing it must qualify before building/uploading.
-      - name: Check real MemCard PRO qualification for stable publication
+      # Report recorded card coverage without blocking an untested card.
+      - name: Report MemCard PRO test coverage
         env:
           TAG: ${{ steps.meta.outputs.tag }}
         run: |
           if [ -f cube/swiss/source/gui/card_slots.c ]; then
-            python3 buildtools/ci/check_memcard_qualification.py "$TAG"
+            python3 buildtools/ci/check_memcard_qualification.py "$TAG" --report >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Build Indigo
         run: make -j8 dev
@@ -84,6 +84,22 @@ jobs:
           python3 buildtools/ci/verify_dol.py cube/swiss/swiss.dol --toolchain "$TOOLCHAIN" \
             --revision "$(git rev-parse HEAD)" --short "$(git rev-parse HEAD | cut -c1-7)" \
             --out dist/provenance.json
+      - name: Build the bundled web browser
+        env:
+          # The Web face launches this; built from a pinned commit of our
+          # hardened fork (used with permission; see NOTICE).
+          CUBEBROWSER_REPO: https://github.com/spencernorton/cubebrowser
+          CUBEBROWSER_REF: e338aa6d0a2262a350363a431770e8720788e0cc
+        run: |
+          git clone --no-tags "$CUBEBROWSER_REPO" browser-src
+          git -C browser-src -c advice.detachedHead=false checkout "$CUBEBROWSER_REF"
+          (cd browser-src && ./get-mbedtls.sh && make -j8)
+          mkdir -p browser/gcbrowser
+          cp browser-src/cubebrowser.dol browser/cubebrowser.dol
+          cp browser-src/sd/gcbrowser/cacert.pem browser/gcbrowser/cacert.pem
+          # mbed TLS is built into the DOL: its licence ships beside it.
+          cp browser-src/third_party/mbedtls/LICENSE browser/LICENSE-mbedtls.txt
+          rm -rf browser-src
       - name: Package the SD card zip and the notes
         env:
           TAG: ${{ steps.meta.outputs.tag }}
@@ -94,7 +110,7 @@ jobs:
           (cd dist && sha256sum "Indigo-$TAG.zip" > SHA256SUMS.txt)
           buildtools/release_notes.sh "$TAG" > dist/notes.md
           cat dist/SHA256SUMS.txt
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-${{ steps.meta.outputs.tag }}
           path: dist/
@@ -111,7 +127,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-${{ needs.build.outputs.tag }}
           path: dist

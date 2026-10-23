@@ -160,7 +160,7 @@ Press Y on any row for the same explanations on the console.
 | --- | --- |
 | Force NTSC Video Mode, Force PAL Video Mode | The video mode games start in. Auto keeps each game's own mode. A game's own settings have one row, **Force Video Mode**. |
 | Game Language | *Game's own settings only.* The language the game uses; Default follows System Language. Matters most for PAL games. |
-| Force Widescreen | Stretches games made for 4:3 to 16:9. **3D** widens the 3D view; **2D+3D** also widens menus. Set your TV to 16:9. |
+| Force Widescreen | Stretches games made for 4:3 to 16:9. **3D** widens the 3D view; **2D+3D** also widens menus. Set your TV to 16:9. Animal Crossing Deluxe starts with it off: turn on the game's own Widescreen mode instead. |
 | Force Polling Rate | How often the game reads the controller. **VSync** is the most compatible; **1000Hz** has the least delay. |
 | Invert Camera Stick | Inverts the C-stick's X axis, Y axis or both. |
 | Swap Camera Stick | Swaps the C-stick's axes with the control stick's. |
@@ -186,9 +186,12 @@ Press Y on any row for the same explanations on the console.
 <details>
 <summary><b>Setup › Display</b></summary>
 
+The Settings tour above predates the Apps Video Mode row.
+
 | Setting | What it does |
 | --- | --- |
 | Swiss Video Mode | The video mode of Indigo's own screens. Auto picks 480p with a digital cable and otherwise follows the console's region. A switches to a new mode and asks before it keeps it. |
+| Apps Video Mode | The mode passed to homebrew that Indigo starts; a program sent over the network keeps Indigo's mode. **Auto** keeps Indigo’s mode. Libogc2 apps use it; other apps may choose their own. Changing it leaves Indigo’s own screens as they are. |
 | Menu Widescreen | Draws Indigo's own screens for a TV set to 16:9: the background fills the screen and the menus keep their shape in the middle. Set your TV or HDMI adapter to 16:9 too. Games follow **Force Widescreen** instead. |
 | System Video | NTSC, PAL or PAL-M, mainly for the Brazilian console. |
 | Screen Position | Moves the picture left or right in games. |
@@ -211,7 +214,7 @@ Press Y on any row for the same explanations on the console.
 | Waves | **Off** takes the waves away, leaving the backdrop and its rings. Wave Color and Wave Speed apply while they're on. See [Make it yours](personalize.md#backdrop-and-wave-color). |
 | Wave Speed | How fast the waves drift: **Slow** (half as fast), **Normal** or **Fast** (three times as fast). See [Make it yours](personalize.md#backdrop-and-wave-color). |
 | Library Icon, Source Icon, Settings Icon, System Icon | The icon on each face of the Home cube. See [Make it yours](personalize.md#cube-icons). |
-| Up Face, Left Face, Right Face, Down Face | Which menu sits above, left of, right of and below Library on the [Home](home.md#choose-the-sides) cube: Source, Settings, System, Apps, Memory Cards, Emulators, File Browser, or **None** for an empty side. By default Source is up, Settings left, System right and Apps down. A menu on no side is off the cube; Y on Home still opens Settings. |
+| Up Face, Left Face, Right Face, Down Face | Which menu sits above, left of, right of and below Library on the [Home](home.md#choose-the-sides) cube: Source, Settings, System, Apps, Memory Cards, Emulators, File Browser, Web, or **None** for an empty side. By default Source is up, Settings left, System right and Apps down. A menu on no side is off the cube; Y on Home still opens Settings. |
 | Cube | How the [Home](home.md#infinite-or-classic) cube turns. **Infinite** turns round every face in a ring. **Classic** puts each menu on its own side of the cube, as on the GameCube, and you turn back to Library to reach another. |
 | Idle Animation | How the cube moves while Home rests: **Calm**, a slight drift turned a little to the right, or **Sway**, which turns it slowly left and right so the faces beside the one in front peek round its edges. UI Motion Reduced or Off keeps it still. See [Make it yours](personalize.md#motion). |
 | Face Labels | **Off** takes the face's name from under the cube on Home. See [Make it yours](personalize.md#just-the-cube). |
@@ -253,6 +256,7 @@ Press Y on any row for the same explanations on the console.
 | FTP Host IP, Port, Username, Password, PASV Mode | An FTP server with your games. Try PASV if listings stall. |
 | SMB Host IP, Share, Username, Password | A computer sharing your games over SMB. |
 | RetroTINK-4K Host IP, Port | A RetroTINK-4K on your network, which Indigo switches to each game's profile. |
+| Sync Clock, NTP Server IP, Time Zone | Shown only with a network adapter, and off until you turn it on. Sets the clock from a time server each time the network starts; the IPL and games see it too. Time Zone is a POSIX TZ string such as `MST7MDT,M3.2.0,M11.1.0` (US Mountain), so daylight time changes by itself. Empty keeps the zone the clock is in. |
 
 Passwords are saved as plain text in `global.ini`.
 
@@ -263,7 +267,7 @@ Passwords are saved as plain text in `global.ini`.
 
 | Setting | What it does |
 | --- | --- |
-| Library Layout | How the poster Library lays out your games: **Horizontal**, a row (the default); **Vertical**, a column with the title beside the cover; **Grid**, rows of five; or **Spotlight**, the selected game's gameplay still and details over a row of disc banners. See [Library](library.md#choose-a-layout). |
+| Library Layout | How the poster Library lays out your games: **Horizontal**, a row (the default); **Vertical**, a column with the title beside the cover; **Grid**, rows of five; **Spotlight**, the selected game's gameplay still and details over a row of disc banners; or **Jewel Case**, one clear CD case at a time with the game's disc spinning inside. See [Library](library.md#choose-a-layout). |
 | Library Folders | **On** shows the folders in `/games` as cards beside the games, two levels deep; **Off** (the default) shows every game in one Library. See [Library](library.md#folders-of-games). |
 | Saves on Details | **On** (the default) reads both memory card slots and the Save Folder when a game's details open, and shows a **Saves** box for a game with two or more save copies; **Off** leaves the memory cards alone. See [Game details](game-details.md#whats-on-the-screen). |
 | Recent List | START shows recently played games. **Lazy** updates it only for new games; **Off** saves SD card writes. |

@@ -505,8 +505,8 @@ static void mixed_halfway_retarget_and_latest_pending(void)
 	}
 	for(int i=0;i<30;++i) update_without_visible_basis_swap(&state,0.01f,UI_MOTION_FULL);
 	CHECK(same(&state.basis,&wanted) && UICubeMotif_Settled(&state) && !state.changing);
-	/* Two maps and an opacity for each of the eight faces, no more. */
-	CHECK(sizeof(state)<=640u);
+	/* Two maps and an opacity for each of the nine faces, no more. */
+	CHECK(sizeof(state)<=720u);
 	/* Returning to the currently displayed map cancels an obsolete swap. */
 	UICubeMotif_Reset(&state); UIHome_Init(&home,caps);
 	(void)UIHome_Apply(&home,UI_HOME_INPUT_UP,caps);

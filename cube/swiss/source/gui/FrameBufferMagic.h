@@ -21,6 +21,7 @@
 #include "ui_saves_details.h"
 #include "ui_folder.h"
 #include "ui_files.h"
+#include "ui_manual.h"
 
 #define D_WARN  0
 #define D_INFO  1
@@ -198,6 +199,8 @@ int CoreTemperature(void);
 uiDrawObj_t* DrawGameflow(const uiGameflowRenderSnapshot_t *snapshot);
 void DrawGameflowRequestPosters(DEVICEHANDLER_INTERFACE *device,
 	const uiGameflowRenderSnapshot_t *snapshot);
+/* Complete one poster before first Detail publication; idle work is stepped. */
+bool DrawGameflowPrimePoster(void);
 bool DrawGameflowPollPosters(void);
 void DrawGameflowCancelPosters(void);
 /* Spotlight's description of a game, from swiss/ui/descriptions.txt on
@@ -339,6 +342,9 @@ void DrawUpdateSaveCubesPage(uiDrawObj_t *page,
 uiDrawObj_t* DrawVertScrollBar(int x, int y, int width, int height, float scrollPercent, int scrollHeight);
 void DrawArgsSelector(const char *fileName);
 void DrawCheatsSelector(const char *fileName);
+/* A game's manual (manual.c): the page shown and the bar under it. */
+uiDrawObj_t* DrawManual(const uiManualView_t *view);
+void DrawUpdateManual(uiDrawObj_t *page, const uiManualView_t *view);
 void DrawGetTextEntry(int entryMode, const char *label, void *src, int size);
 void DrawInit(GXRModeObj *videoMode, bool black);
 void DrawLoadBackdrop(DEVICEHANDLER_INTERFACE *device);

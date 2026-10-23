@@ -30,7 +30,7 @@ in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Before you start
 
-- **Bugs** — open a [bug report](https://github.com/spencercnorton/indigo/issues/new/choose).
+- **Bugs** — open a [bug report](https://github.com/spencernorton/indigo/issues/new/choose).
   A report with reproduction steps, versions and a scrubbed log excerpt is
   usually fixed faster than a pull request that arrives without one.
 - **Features** — open a feature request first. Indigo has strong opinions
@@ -38,7 +38,7 @@ in [docs/RELEASING.md](docs/RELEASING.md).
   (see the README); an idea that cuts across them needs a conversation before
   code.
 - **Security** — never in a public issue. Use
-  [private vulnerability reporting](https://github.com/spencercnorton/indigo/security/advisories/new);
+  [private vulnerability reporting](https://github.com/spencernorton/indigo/security/advisories/new);
   see [SECURITY.md](SECURITY.md).
 
 ## Working on the code
@@ -46,7 +46,7 @@ in [docs/RELEASING.md](docs/RELEASING.md).
 ```bash
 # Build the DOL in the image CI uses; writes cube/swiss/swiss.dol
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
+  ghcr.io/extremscorner/libogc2@sha256:f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2 make dev
 buildtools/sd_package.sh dev cube/swiss/swiss.dol .   # the SD card zip
 buildtools/ui/tests/run_tests.sh all                  # host tests
 buildtools/check_whitespace.sh origin/beta            # lint; CI enforces it

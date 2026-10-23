@@ -7,6 +7,9 @@
 #     swiss/patches/apploader.img    In-Game Reset (Apploader) returns to Indigo
 #     swiss/ui/                      posters.pak, if you add one
 #     swiss/indigo/LICENSE.txt, NOTICE.txt
+#     swiss/indigo/cubebrowser.dol   the web browser the Web face launches (if bundled)
+#     gcbrowser/cacert.pem           the browser's trusted certificates (if bundled)
+#     swiss/indigo/LICENSE-mbedtls.txt  the licence of mbed TLS, built into the browser
 # Usage: buildtools/sd_package.sh <version> [swiss.dol] [out dir]
 # Run `make dev` first (see README, Install); run from the repository root.
 set -eu
@@ -27,10 +30,35 @@ cp "$dol" "$card/ipl.dol"
 python3 buildtools/dol2ipl.py "$card/swiss/patches/apploader.img" "$reboot" "*indigo-$version" >/dev/null
 cp LICENSE "$card/swiss/indigo/LICENSE.txt"
 cp NOTICE "$card/swiss/indigo/NOTICE.txt"
+# Web browser (optional): a separate program the Web face launches, built from
+# the hardened fork (docs/dev/web-browser.md). Its CA bundle goes in gcbrowser/
+# at the card root, where the browser looks for it. Without it the Web face
+# reports the browser isn't installed.
+browser_dol=${BROWSER_DOL:-browser/cubebrowser.dol}
+browser_gcbrowser=${BROWSER_GCBROWSER:-browser/gcbrowser}
+# mbed TLS is built into the browser, and its licence goes with it.
+browser_mbedtls_license=${BROWSER_MBEDTLS_LICENSE:-browser/LICENSE-mbedtls.txt}
+browser_zip=
+if [ -f "$browser_dol" ]; then
+	if [ ! -f "$browser_mbedtls_license" ]; then
+		echo "sd_package: $browser_dol needs mbed TLS's licence at $browser_mbedtls_license" >&2
+		exit 1
+	fi
+	cp "$browser_dol" "$card/swiss/indigo/cubebrowser.dol"
+	cp "$browser_mbedtls_license" "$card/swiss/indigo/LICENSE-mbedtls.txt"
+	if [ -d "$browser_gcbrowser" ]; then
+		mkdir -p "$card/gcbrowser"
+		cp -R "$browser_gcbrowser/." "$card/gcbrowser/"
+		browser_zip=gcbrowser
+	fi
+	echo "sd_package: bundled the web browser ($browser_dol)"
+else
+	echo "sd_package: no web browser at $browser_dol; the Web face will report it is not installed" >&2
+fi
 cat > "$card/Indigo-README.txt" <<TXT
 Indigo $version - an unofficial fork of Swiss with the interface rebuilt
 Guide:  https://norvitech.com/indigo/
-Source: https://github.com/spencercnorton/indigo/tree/$version
+Source: https://github.com/spencernorton/indigo/tree/$version
 
 INSTALL
 The install guide shows each setup step by step, with a picture of the card:
@@ -69,13 +97,15 @@ UPDATING INDIGO
 Back up the card's swiss folder. Rename the new ipl.dol to the name of the
 Indigo file you start now (ipl.dol, boot.dol or indigo.dol) and copy it
 over that file. Then copy the new swiss/patches/apploader.img over the old
-one.
+one. If you use the Web face, copy the new cubebrowser.dol and gcbrowser
+folder too (see WEB BROWSER).
 
 WHAT EACH FILE IS FOR
   ipl.dol                      Indigo itself (renamed for some setups)
   swiss/patches/apploader.img  In-Game Reset returns to Indigo (see below)
   swiss/ui/                    the poster pack goes here, if you add it
-  swiss/indigo/                Indigo's licence and notice
+  swiss/indigo/                licences, notices and the web browser
+  gcbrowser/                   the web browser's certificates
 
 GAMES
 Put your games in /games, either one folder per game or the disc images
@@ -98,7 +128,24 @@ Without posters, each game shows its disc banner and its six-character game
 ID (GMSE01). The poster pack and the cheat pack are on https://norvitech.com/indigo/
 - unzip one on your computer and copy the files in its swiss/ui (posters)
 or swiss/cheats (cheats) folder into the card's folder of the same name,
-making it if it isn't there.
+making it if it isn't there. For Jewel Case's actual disc images, include
+swiss/ui/discs.pak on the card holding the games (even if Indigo starts
+from another card). Updating Indigo itself does not add the disc pack.
+Restart Indigo after adding or replacing artwork packs.
+
+WEB BROWSER
+If this download has swiss/indigo/cubebrowser.dol and a gcbrowser folder,
+copy both: cubebrowser.dol into the swiss/indigo folder of the card that
+holds Indigo's settings (make the folder if it isn't there), and the
+gcbrowser folder to the top of the card beside ipl.dol. The Web face on
+the Home cube (give it a side under Settings > Setup > Console) opens the
+browser; it needs a network adapter. The browser reads gcbrowser from an
+SD2SP2, an SD Gecko or a GC Loader, not from a FlippyDrive's card: with a
+FlippyDrive, put gcbrowser on a card in an SD2SP2 or SD Gecko. With only a
+FlippyDrive, secure (https) pages don't open and the browser saves nothing.
+To leave the browser, select Return to Indigo at bottom-left and press A
+once. It restarts the Indigo installed on the card. A network/Apps test
+build does not replace that startup file.
 
 IN-GAME RESET
 With In-Game Reset set to Apploader (Settings > Quick), A + Z + START
@@ -109,5 +156,5 @@ TXT
 
 rm -f "$out/Indigo-$version.zip"
 # Directory entries included, so the ZIP shows the card's folders.
-(cd "$card" && zip -qrX "$out/Indigo-$version.zip" Indigo-README.txt ipl.dol swiss)
+(cd "$card" && zip -qrX "$out/Indigo-$version.zip" Indigo-README.txt ipl.dol swiss ${browser_zip})
 shasum -a 256 "$out/Indigo-$version.zip"

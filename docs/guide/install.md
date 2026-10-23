@@ -28,7 +28,7 @@ switch on. Leave `boot.iso` as it is: this needs Swiss there, as on most GC
 Loader cards.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -74,7 +74,7 @@ Leave that file as it is, and don't rename anything to `boot.iso`. Your
 console starts as it does today, and you open Indigo from Swiss.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -129,7 +129,7 @@ instead. Do the same if the card's `ipl.dol` is something you want to keep
 starting, such as cubeboot.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -173,7 +173,7 @@ while you switch on to start it. Other buttons are in
 Your console starts as it does today, and you open Indigo from Swiss.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -215,7 +215,7 @@ takes its place, so Indigo starts every time you switch on, instead of
 FlippyDrive's own menu.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -264,7 +264,7 @@ as you did before, put your old `boot.dol` back.
 Your console starts as it does today, and you open Indigo from Swiss.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -309,7 +309,7 @@ chip, cubeboot, Swiss on a Wii, or any setup above. Your console
 starts as it does today, and you open Indigo from Swiss.
 
 1. **Download and unzip.** [Download the Indigo
-   ZIP](https://github.com/spencercnorton/indigo/releases/latest)
+   ZIP](https://github.com/spencernorton/indigo/releases/latest)
    (`Indigo-vX.Y.Z.zip` under Assets, not the Source code ZIP) and unzip it on
    your computer. Inside are `ipl.dol`, a `swiss` folder and a readme. Older
    readmes say to drag the whole `swiss` folder onto the card: don't.
@@ -349,10 +349,11 @@ starts as it does today, and you open Indigo from Swiss.
 
 ## Where everything goes
 
-The card with everything Indigo can use. Only Indigo's own file and
-`apploader.img` come from the download: the rest are your files, and
-downloads you can add any time. Indigo's own file and `boot.iso` aren't
-drawn here, because they depend on your setup: its step 3 shows them. Most
+The card with everything Indigo can use. Only Indigo's own file,
+`apploader.img` and the web browser come from the download: the rest are
+your files, and downloads you can add any time. Indigo's own file and
+`boot.iso` aren't drawn here, because they depend on your setup: its step 3
+shows them. Most
 people keep everything on one card; if you use two, put the poster pack and
 your apps on the card with your games.
 
@@ -366,8 +367,11 @@ SD card
 │   ├── Nintendo/            a folder of games
 │   │   └── The Wind Waker.iso
 │   └── Nintendo.png         the folder's picture
+├── gcbrowser/               the web browser's certificates
 └── swiss/
     ├── cheats/              cheats, one file per game
+    ├── indigo/
+    │   └── cubebrowser.dol  the web browser, for the Web face
     ├── patches/
     │   └── apploader.img    returns to Indigo after a game
     ├── saves/               saves copied off memory cards
@@ -375,7 +379,8 @@ SD card
     └── ui/
         ├── posters.pak      box art for the Library
         ├── stills.pak       pictures for Spotlight
-        └── descriptions.txt  descriptions for Spotlight
+        ├── descriptions.txt  descriptions for Spotlight
+        └── discs.pak        disc art for Jewel Case
 ```
 
 - **`ipl.dol`, `boot.dol` or `indigo.dol`:** Indigo itself. Step 3 of your
@@ -394,15 +399,24 @@ SD card
   folder, one file per game, such as `GMSE01.txt`. Unzip the pack on your
   computer and copy the files in its `swiss/cheats` folder into this one;
   make it if it isn't there.
+- **`gcbrowser` and `swiss/indigo/cubebrowser.dol`:** From the download,
+  for the Web face: the web browser and its certificates. Put
+  `cubebrowser.dol` on the card with your settings. The browser reads
+  `gcbrowser` from an SD2SP2, an SD Gecko or a GC Loader, not from a
+  FlippyDrive's card: with a FlippyDrive, put `gcbrowser` on a card in an
+  SD2SP2 or SD Gecko. With only a FlippyDrive, secure (`https`) pages don't
+  open and the browser saves nothing.
 - **`apploader.img`:** From the download. It makes leaving a game return to
   Indigo; copy it to every card you use with Swiss. See
   [Leaving a game](#leaving-a-game).
 - **`saves` and `settings`:** Indigo makes these. Memory Cards copies saves
   into `saves`, and your settings are in `settings/global.ini`.
-- **`ui`:** The [poster pack](posters.md#download-the-pack) goes here: box
-  art for the Library, and the pictures and descriptions the Spotlight layout
-  shows. Unzip the pack on your computer and copy the three files in its
-  `swiss/ui` folder into this one; make it if it isn't there.
+- **`ui`:** The [poster pack](posters.md#download-the-pack) goes here:
+  `posters.pak` for box art, `stills.pak` and `descriptions.txt` for
+  Spotlight, and `discs.pak` for Jewel Case. Unzip the pack on your computer
+  and copy all four files from its `swiss/ui` folder into this one on the
+  card holding your games; make the folder if it isn't there. Restart
+  Indigo after updating artwork packs.
 
 ## After the first start
 
@@ -474,7 +488,7 @@ Indigo.
    shows the new release's commit.
 
 This works for Indigo 1.x and 2.x. If you renamed stock Swiss to `swiss.dol`
-to get round [issue 3](https://github.com/spencercnorton/indigo/issues/3) in
+to get round [issue 3](https://github.com/spencernorton/indigo/issues/3) in
 1.25.0, you can rename it back to `z.dol`: since 2.0, Indigo no longer starts
 a `z.dol` by itself.
 
@@ -506,10 +520,10 @@ Most people should use the ready-made ZIP. For a source build, run the same
 container image as CI:
 
 ```bash
-git clone https://github.com/spencercnorton/indigo.git
+git clone https://github.com/spencernorton/indigo.git
 cd indigo
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work \
-  ghcr.io/extremscorner/libogc2@sha256:e6531ecaa458d0b5d8c9ba57cee1facc5fb9120808c6d9eebb2c05e4ffaf6f0f make dev
+  ghcr.io/extremscorner/libogc2@sha256:f9ffb7e33c4ba4010da8e40c01366f7c24732130146abd99690403bd42d3e4c2 make dev
 buildtools/sd_package.sh dev
 ```
 
