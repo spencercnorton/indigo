@@ -387,6 +387,58 @@ Not done: pass the theme to the browser via argv (it ignores argv today); a
 console test of launching the browser and returning to Indigo; the full
 public-repo ruleset suite on the fork (it has baseline settings only). Lands
 after 2.4.
+## 2026-10-16 — Game manuals: a Manual row and a page viewer
+
+A game's manual, converted once on a computer, reads on the console from a
+Manual row at the top of its Game Details (requested in the issue tracker;
+the maintainer chose full width by default, the whole page as an overview).
+The console can't decode the PDFs people have: scans are JPEG 2000 or
+JBIG2 inside, a decoded page won't fit beside the menus, and a PDF library
+would not fit the DOL's headroom.
+
+- `buildtools/ui/manual_pack.py` (Pillow, NumPy, and pypdfium2 for a PDF)
+  renders each page at 1920 wide, trims the paper's margins and a scanner's
+  dark edge (the edge peel runs on the page's own edges only: inside, a band
+  of content is a heading, which the prototype peeled), splits spreads,
+  scales to 640 wide (a page taller than 1152 rows is scaled to that height)
+  and encodes GX CMPR (or I4 with `--gray`) itself, with NumPy, so no
+  devkitPro is needed. Format `SWMN` v1 in docs/MANUALS.md: the packs'
+  family, one fixed canvas a file, a record a page (the page, then its
+  half for the whole-page view), CRCs over the header and index and over
+  each page.
+- `gui/ui_manual.c` is pure: the header and index checks, a page's CRC, the
+  two page slots (the page shown, then the next one the way the pages turn;
+  a slot rests two frames after it stops showing before a read reuses it),
+  page placement and the memory guard. Host test `test_ui_manual` (every bit
+  of a header and index flipped is refused), `test_manual_pack.py` runs
+  packs the converter writes through it, fuzz target `manual`.
+- `gui/manual.c` finds `swiss/ui/manuals/<ID>.pak` (then the first four
+  characters', as a universal pack record) on the browsed device, reads
+  pages on a thread for a thread-safe device (on the menu thread between
+  frames for the disc drive) and runs the viewer; FrameBufferMagic draws it
+  (EV_MANUAL, a covering page), texels as they are: one texel a pixel with
+  GX_NEAR at full width on a 640 x 480 frame, linear otherwise, in two
+  strips past 1024 rows. Game Details has four layouts now (Saves, Manual,
+  both, neither); the row table holds top/bottom pairs, since the colour
+  audit reads a brace of three small numbers as a colour.
+- libogc2's zlib is zlib-ng: `crc32` over more than 256 KiB takes the
+  Chorba path with a 64 KiB table on the stack, and on the 32 KiB reader
+  thread the emulator's stack guard stopped it (DSI). A page is summed in
+  16 KiB pieces.
+
+The emulator's manual route (GC Loader) opens a synthetic manual made from
+the guide's own pictures of the demonstration data (Cobalt Harrier), turns,
+scrolls, toggles and closes it, refuses a damaged one (Ember and Ivy) and
+checks the viewer gave back every byte it took. Dolphin's texture cache
+sees a texture rewritten in place by 128 evenly spaced samples, which in a
+640-wide CMPR page all fall in its leftmost tile column, the paper margin:
+a slot refilled right after it showed kept its old page on screen. The
+route hashes textures whole (`SafeTextureCacheColorSamples = 0`); a console
+reads them anew after `GX_InvalidateTexAll`.
+
+Defaults a console and TV pass may change, each a constant: CMPR over I4
+and trimmed margins (manual_pack.py), and with Menu Widescreen a page keeps
+its 4:3 width (`UI_MANUAL_FILL_WIDESCREEN`).
 
 ## 2026-10-16 — v2.4.0
 
