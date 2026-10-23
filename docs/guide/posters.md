@@ -86,7 +86,10 @@ third file next to the posters, `/swiss/ui/discs.pak`: a 160×160 picture of
 each disc. It's optional as well: without it, or for a game it has no disc
 for, the disc carries the middle of the game's cover, and a game with
 neither has a bare silver disc. The poster pack carries it too, made from
-[GameTDB](https://www.gametdb.com/)'s disc art.
+[GameTDB](https://www.gametdb.com/)'s disc art. Copy its `discs.pak` file to
+`/swiss/ui/discs.pak` on the card that holds your games, including when
+Indigo starts from a different card. Updating Indigo's executable alone
+does not add disc images. Restart Indigo after adding or replacing the pack.
 
 To build your own, put pictures of the discs in one folder, each named after
 its game ID and at least 160×160, the disc filling the picture edge to edge,

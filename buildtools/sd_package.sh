@@ -128,7 +128,10 @@ Without posters, each game shows its disc banner and its six-character game
 ID (GMSE01). The poster pack and the cheat pack are on https://norvitech.com/indigo/
 - unzip one on your computer and copy the files in its swiss/ui (posters)
 or swiss/cheats (cheats) folder into the card's folder of the same name,
-making it if it isn't there.
+making it if it isn't there. For Jewel Case's actual disc images, include
+swiss/ui/discs.pak on the card holding the games (even if Indigo starts
+from another card). Updating Indigo itself does not add the disc pack.
+Restart Indigo after adding or replacing artwork packs.
 
 WEB BROWSER
 If this download has swiss/indigo/cubebrowser.dol and a gcbrowser folder,
@@ -140,6 +143,9 @@ browser; it needs a network adapter. The browser reads gcbrowser from an
 SD2SP2, an SD Gecko or a GC Loader, not from a FlippyDrive's card: with a
 FlippyDrive, put gcbrowser on a card in an SD2SP2 or SD Gecko. With only a
 FlippyDrive, secure (https) pages don't open and the browser saves nothing.
+To leave the browser, select Return to Indigo at bottom-left and press A
+once. It restarts the Indigo installed on the card. A network/Apps test
+build does not replace that startup file.
 
 IN-GAME RESET
 With In-Game Reset set to Apploader (Settings > Quick), A + Z + START

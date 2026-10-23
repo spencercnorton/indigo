@@ -1,3 +1,15 @@
+## 2026-10-23 — Final candidate and release preparation
+
+The maintainer approves release after the combined candidate's console
+validation. Pin the merged browser return-button change in both build
+workflows, name the v2.5.0 changelog section and clarify disc-pack copying
+on the games card. The browser's one-press return and actual disc labels
+passed console checks. Indigo runtime source is unchanged from38367c3;
+the card-slot/SDK qualification remains pending and is not inferred from
+these results. Run the full native CI and packaged-build verification
+before promotion. Stable publication still requires its recorded hardware
+qualification; no release gate is removed here.
+
 ## 2026-10-22 — Wait for System before the File Browser route continues
 
 The combined candidate's two-card route accepted a transition frame as

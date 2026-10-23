@@ -305,7 +305,9 @@ The Spotlight layout also shows each game's gameplay still from
 `swiss/ui/stills.pak` and a few sentences about it from
 `swiss/ui/descriptions.txt`, and the Jewel Case layout each game's disc
 from `swiss/ui/discs.pak`; the poster pack carries all three beside the
-posters. Its covers, descriptions and discs come from
+posters. Copy `discs.pak` to `swiss/ui/discs.pak` on the games card too:
+updating Indigo itself does not install the disc images. Restart Indigo
+after updating the pack. Its covers, descriptions and discs come from
 [GameTDB](https://www.gametdb.com/), and its stills from
 [libretro-thumbnails](https://github.com/libretro-thumbnails/Nintendo_-_GameCube),
 as do the screenshots above. The descriptions file is plain text you can

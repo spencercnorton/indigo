@@ -4,7 +4,7 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
-## Unreleased
+## v2.5.0 — Manuals, disc art and a connected cube
 
 ### New
 
@@ -51,7 +51,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
   the top of the card, and the licences of what it's built from in
   `swiss/indigo/NOTICE.txt` and `swiss/indigo/LICENSE-mbedtls.txt`. Give it a side under Settings › Setup › Console
   (Up Face, Left Face, Right Face or Down Face › Web). It needs a network
-  adapter; in the browser, Settings › Exit to Indigo comes back. The
+  adapter; the browser's **Return to Indigo** button at bottom-left comes
+  back with one press. The
   browser reads `gcbrowser/` from an SD2SP2, an SD Gecko or a GC Loader,
   not from a FlippyDrive's card. With the console lab on (`LabServer=Yes`)
   the browser starts its own, so a test run can follow Indigo into it.

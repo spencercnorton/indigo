@@ -1,4 +1,4 @@
-# Web browser cube face (in progress)
+# Web browser cube face
 
 Adds a **Web** face to the Home cube that opens a GameCube web browser, the way
 the Apps and Emulators faces open a program. Target release: the first minor
@@ -35,8 +35,9 @@ permission to integrate). The fork already carries:
 - fixes for the page-reachable parser memory-safety bugs found by fuzzing
   (CSS value underflow, `:is`/`:not` recursion, a `<title>` overrun);
 - a parser fuzz suite (the upstream project had no tests);
-- `Settings > Exit to Indigo`, which returns from the browser's main loop so the
-  loader hands control back to Indigo;
+- **Return to Indigo** at bottom-left of every browsing page: one click
+  returns from the browser's main loop so the loader hands control back to
+  the installed Indigo. Dialogs retain input ownership;
 - the SD card in a GC Loader as well as an SD2SP2 or SD Gecko: with more than
   one card it takes the one whose `gcbrowser/` holds `cacert.pem`;
 - rectangles cut to the clip box before drawing, which stopped a grey wedge
@@ -101,7 +102,7 @@ CA bundle and mbed TLS's licence into `browser/` for `sd_package.sh`:
 
 - fork: https://github.com/spencernorton/cubebrowser (maintained by us, used
   with permission; its own README/NOTICE credit Arial-Bold)
-- pinned commit: `412d5923f9dd09f949d74c2fc3f356c2c3744aa1` — bump it in both
+- pinned commit: `e338aa6d0a2262a350363a431770e8720788e0cc` — bump it in both
   workflows' `CUBEBROWSER_REF` to take browser changes.
 
 It builds with the same libogc2 toolchain the runner already carries, and
@@ -112,6 +113,6 @@ allows.
 
 - **Theme to the browser via argv** — the browser ignores argv today, so it
   opens in its own saved theme (Indigo by default). Add argv parsing to sync it.
-- **Return-path console test.** Returning from the browser to Indigo via the
-  loader stub is the standard homebrew mechanism but is unverified on the real
-  console; test before release.
+- The main-screen return passed a real-console check: one press returned to
+  the installed Indigo in about eight seconds. The start/help pages keep the
+  button visible, and an open Bookmarks dialog blocks clicks through it.
