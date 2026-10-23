@@ -411,10 +411,12 @@ SD card
   [Leaving a game](#leaving-a-game).
 - **`saves` and `settings`:** Indigo makes these. Memory Cards copies saves
   into `saves`, and your settings are in `settings/global.ini`.
-- **`ui`:** The [poster pack](posters.md#download-the-pack) goes here: box
-  art for the Library, and the pictures and descriptions the Spotlight layout
-  shows. Unzip the pack on your computer and copy the three files in its
-  `swiss/ui` folder into this one; make it if it isn't there.
+- **`ui`:** The [poster pack](posters.md#download-the-pack) goes here:
+  `posters.pak` for box art, `stills.pak` and `descriptions.txt` for
+  Spotlight, and `discs.pak` for Jewel Case. Unzip the pack on your computer
+  and copy all four files from its `swiss/ui` folder into this one on the
+  card holding your games; make the folder if it isn't there. Restart
+  Indigo after updating artwork packs.
 
 ## After the first start
 
