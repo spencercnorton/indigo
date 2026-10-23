@@ -1,3 +1,11 @@
+## 2026-10-23 — Align agent instructions with the coverage policy
+
+Remove the obsolete real-card publication hold from AGENTS.md as well as
+the already-updated release procedure and workflow. Real MemCard PRO GC
+access is not a release requirement. Pending coverage and strict claimed-pass
+auditing remain unchanged; release approval is not hardware evidence. This
+prevents a later session from restoring the superseded expectation.
+
 ## 2026-10-23 — Report unavailable card coverage without blocking release
 
 The maintainer explicitly removes real MemCard PRO GC access as a release
