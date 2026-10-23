@@ -1,3 +1,14 @@
+## 2026-10-22 — Combined validation candidate
+
+Combine the current beta with the manuals test branch (0bcfc74), the Jewel
+Case/disc-art/Z-toggle test branch (4935a7b), the Deluxe widescreen default
+(02d01b4), and the Swiss intake through abe21df5. Retain all current beta
+clock, upload, browser and lab hardening. Manual cancellation joins the
+poster/stills/discs lifecycle, and all fuzz targets and host tests remain.
+The pinned test branch and CI package are for console validation before
+feature acceptance. MemCard PRO qualification remains pending; no stable
+promotion or card install is represented by assembling this candidate.
+
 ## 2026-10-22 — Swiss intake through abe21df5 on the pinned SDK
 
 Account for the five upstream commits after 39a0867e. Keep Indigo's README
