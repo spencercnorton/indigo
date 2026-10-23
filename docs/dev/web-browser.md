@@ -1,10 +1,7 @@
 # Web browser cube face
 
-Adds a **Web** face to the Home cube that opens a GameCube web browser, the way
-the Apps and Emulators faces open a program. Target release: the first minor
-version **after 2.4** (this touches `swiss.c`, which resets the pending MemCard
-PRO stable qualification 2.4 is finishing, so it must not merge into the 2.4
-line).
+The **Web** face opens a GameCube web browser, the way Apps and Emulators
+open a program. It ships as a separate DOL with Indigo v2.5.0.
 
 ## Shape: launch a bundled DOL (not compiled into ipl.dol)
 

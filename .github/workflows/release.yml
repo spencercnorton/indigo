@@ -68,13 +68,13 @@ jobs:
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
       # The checked-out tag may predate the feature and this helper.
-      # A stable tag containing it must qualify before building/uploading.
-      - name: Check real MemCard PRO qualification for stable publication
+      # Report recorded card coverage without blocking an untested card.
+      - name: Report MemCard PRO test coverage
         env:
           TAG: ${{ steps.meta.outputs.tag }}
         run: |
           if [ -f cube/swiss/source/gui/card_slots.c ]; then
-            python3 buildtools/ci/check_memcard_qualification.py "$TAG"
+            python3 buildtools/ci/check_memcard_qualification.py "$TAG" --report >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Build Indigo
         run: make -j8 dev

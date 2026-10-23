@@ -103,8 +103,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   encoding. The emulator launch probe checks the actual PowerPC conversions.
 - Updated the SDK to libogc2 r2482, including its AESND reset race fix, EXI
   locking cleanup, monotonic timing and SD fixes. The upstream audio fix
-  replaces Indigo's earlier local patch. A fresh MemCard PRO GC hardware
-  qualification is required before publishing this SDK as stable.
+  replaces Indigo's earlier local patch. The current SDK has not been qualified on a real MemCard PRO GC. The
+  earlier real-card report applies to the previous SDK; emulator and GCMCE
+  checks do not establish a new real-card result.
 
 - Updated the Swiss base from r2119 to commit `39a0867e`: newer translation
   and disc databases, Need for Speed 960i/1152i fixes, additional field-mode
@@ -121,6 +122,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
   Path, and Saves counted by file with the save's own line.
 
 ### For developers
+
+- Release builds report MemCard PRO GC test coverage without requiring
+  hardware the maintainer does not own. Pending and historical records keep
+  their actual source/SDK identity; publication does not turn them into a
+  hardware pass.
 
 - A console lab for testing on real hardware, off by default. With
   `LabServer=Yes`, TCP port 4300 serves the framebuffer on screen, the debug

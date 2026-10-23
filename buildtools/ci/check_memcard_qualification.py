@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require real MemCard PRO qualification before publishing its code as stable."""
+"""Inspect recorded MemCard PRO test coverage without inferring a hardware pass."""
 from pathlib import Path
 import argparse
 import hashlib
@@ -99,17 +99,35 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tag", nargs="?")
     parser.add_argument("--fingerprint", action="store_true")
+    parser.add_argument("--report", action="store_true",
+                        help="report coverage without making it a publication gate")
     args = parser.parse_args()
     if args.fingerprint:
         print(fingerprint(ROOT))
         return 0
     if not args.tag:
         parser.error("a tag or --fingerprint is required")
+    if args.report:
+        if not re.fullmatch(r"v\d+\.\d+\.\d+(?:-(?:beta|rc)\.\d+)?", args.tag):
+            parser.error("not a release or prerelease tag")
+        # Report the same missing coverage on candidates and stable releases.
+        found = problems(ROOT, args.tag.split("-", 1)[0])
+        print("## MemCard PRO GC test coverage")
+        if found:
+            print("Current source/SDK: **pending real-card qualification**.")
+            print("This coverage gap does not block publication.")
+            for problem in found:
+                print(f"- {problem}")
+        elif not (ROOT / SOURCES[0]).exists():
+            print("This source does not contain the switching implementation.")
+        else:
+            print("The recorded real-card pass matches the current source/SDK.")
+        return 0
     found = problems(ROOT, args.tag)
     for problem in found:
-        print(f"Release held: {problem}", file=sys.stderr)
+        print(f"Qualification audit: {problem}", file=sys.stderr)
     if not found:
-        print("Hardware qualification permits this release channel.")
+        print("Qualification audit completed for this release channel.")
     return bool(found)
 
 

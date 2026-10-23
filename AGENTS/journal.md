@@ -1,3 +1,14 @@
+## 2026-10-23 — Report unavailable card coverage without blocking release
+
+The maintainer explicitly removes real MemCard PRO GC access as a release
+requirement: that hardware is not available. The release workflow now emits
+an informational coverage report and continues. The record stays pending,
+bound to its historical source/SDK, and the default qualification audit
+remains strict. Candidate and stable reports both expose missing coverage;
+CI and GCMCE runs never become a real-card pass. The v2.5 notes disclose the
+current SDK coverage gap. This supersedes the earlier publication hold in
+the release-preparation entry below.
+
 ## 2026-10-23 — Final candidate and release preparation
 
 The maintainer approves release after the combined candidate's console
