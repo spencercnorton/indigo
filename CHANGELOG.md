@@ -47,6 +47,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Updated the Swiss base through `abe21df5`: homebrew keeps its own banner
+  description while SDK metadata is read, apps without environment support
+  no longer inherit TZ, and FTP/copy/verification timeouts use the steady
+  clock. The pinned libogc2 r2482 SDK is unchanged.
+
 - Repository links, the address on System › Info and CI runner defaults
   follow the renamed GitHub account.
 

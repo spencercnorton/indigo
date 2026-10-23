@@ -1,3 +1,21 @@
+## 2026-10-22 — Swiss intake through abe21df5 on the pinned SDK
+
+Account for the five upstream commits after 39a0867e. Keep Indigo's README
+and removed legacy file/settings screens. Import application SDK metadata
+without replacing a supplied banner description, clear TZ for programs that
+do not accept an environment, and use the monotonic clock for FTP timeouts
+and copy/verification progress. The SDK remains libogc2 r2482: its libraries
+export __SYS_SetTime but not __SYS_InitTime, so the newer-SDK shutdown call
+from 99b59e7a stays deferred and is listed in UPSTREAM. No physical-card
+qualification is inferred; its pending record remains unchanged.
+
+- 345e4d5e: upstream device-list README; Indigo's own README retained.
+- b3cd55b9: SDK metadata imported; Indigo's own screens retained.
+- 5341410b: TZ handoff imported.
+- 99b59e7a: deferred because it requires a newer SDK ABI.
+- abe21df5: monotonic FTP/copy/verification intervals imported; Indigo's
+  renderer already uses its own steady clock.
+
 ## 2026-10-21 — The browser's lab ships off; cut-short DOLs; FlippyDrive
 
 Three follow-ups from the 2.5 review:

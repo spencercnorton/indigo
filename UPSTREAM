@@ -11,7 +11,7 @@
 # a pull request of its own.
 
 upstream https://github.com/emukidid/swiss-gc.git
-commit 39a0867ec0350f152f6395d932cf4457d49eb825 (Swiss master, 2026-10-17 intake)
+commit abe21df5165e9cfe8cdbb908f9f44e137fcfae98 (Swiss master, 2026-10-22 intake)
 
 Makefile                                   make dev also builds the packer, for In-Game Reset's apploader.img; verifies and extracts the pinned libiconv-lite overlay before compiling
 cube/packer/Makefile                       compresses with xz: the build image has no 7z; links its files in byte order, whatever the locale
@@ -31,3 +31,4 @@ cube/swiss/source/nkit.c                   Latin-1 bytes in game titles are writ
 cube/swiss/source/littlefs/                vendored as files, at the commit upstream's submodule names
 .gitmodules                                no submodule: littlefs is vendored
 cube/swiss/source/resources/               design sources and Windows tools the build never uses are not carried
+cube/swiss/source/aram/sidestep.c           retain the r2482 shutdown handoff: __SYS_InitTime is not exported by the pinned libogc2 SDK; the newer-SDK reset call from 99b59e7a is deferred
