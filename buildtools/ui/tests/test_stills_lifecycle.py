@@ -51,6 +51,9 @@ static bool descriptionsAttempted, postersReady, stillsReady, noPosters, noStill
 static file_handle posterPackFile, stillsPackFile, discsPackFile;
 static unsigned posterOpens, stillOpens, discOpens, closes, stillRequests, discRequests;
 static unsigned fullPosterReads, posterSteps, stillSteps, discSteps;
+static unsigned manualForgets;
+static bool manualReady;
+static void Manual_Forget(void) { manualReady=false;manualForgets++; }
 static bool UIAssets_Poll(void) {fullPosterReads++;return true;}
 static bool UIAssets_PollStep(void) {posterSteps++;return true;}
 static bool UIStills_PollStep(void) {stillSteps++;return true;}
@@ -102,6 +105,11 @@ int main(void) {
     DEVICEHANDLER_INTERFACE a = {&aRoot, closeFile}, b = {&bRoot, closeFile};
     uiGameflowRenderSnapshot_t snapshot = {.recordCount=1};
     memcpy(snapshot.records[0].gameId, "GTEST1", 7);
+    /* A manual may be open without any artwork pack: cancel it even on
+     * the early-return path, before a device is released. */
+    manualReady=true;
+    DrawGameflowCancelPosters();
+    assert(!manualReady && manualForgets==1 && closes==0);
     assert(DrawGameflowPrimePoster());
     assert(fullPosterReads==1 && posterSteps==0 && stillSteps==0);
     assert(DrawGameflowPollPosters());
@@ -121,7 +129,9 @@ int main(void) {
     DrawGameflowRequestPosters(&a,&snapshot);
     assert(discOpens==1 && discRequests==2 && discsReady && stillRequests==2);
     snapshot.layout=0;
+    manualReady=true;
     DrawGameflowRequestPosters(&b,&snapshot);
+    assert(!manualReady);
     assert(posterOpens==2 && stillOpens==1 && !stillsReady && !discsReady && closes==3);
     snapshot.layout=UI_GAMEFLOW_LAYOUT_SPOTLIGHT;
     noStills=true;
