@@ -6460,8 +6460,8 @@ bool manage_file_ex(int preset, const char *destDir) {
 				DrawProgressBar(false, 0, txtbuffer);
 			DrawPublish(progBar);
 			
-			u64 startTime = gettime();
-			u64 lastTime = gettime();
+			u64 startTime = SYS_GetSystemTime();
+			u64 lastTime = SYS_GetSystemTime();
 			u32 lastOffset = 0;
 			int speed = 0;
 			int timeremain = 0;
@@ -6476,12 +6476,12 @@ bool manage_file_ex(int preset, const char *destDir) {
 					cancelled = 1;
 					break;
 				}
-				u32 timeDiff = diff_msec(lastTime, gettime());
-				u32 timeStart = diff_msec(startTime, gettime());
+				u32 timeDiff = diff_msec(lastTime, SYS_GetSystemTime());
+				u32 timeStart = diff_msec(startTime, SYS_GetSystemTime());
 				if(timeDiff >= 1000) {
 					speed = (int)((float)(curOffset-lastOffset) / (float)(timeDiff/1000.0f));
 					timeremain = (curFile.size - curOffset) / speed;
-					lastTime = gettime();
+					lastTime = SYS_GetSystemTime();
 					lastOffset = curOffset;
 				}
 				DrawUpdateProgressBarDetail(progBar, (int)((float)((float)curOffset/(float)curFile.size)*100), speed, timeStart/1000, timeremain);
@@ -6596,8 +6596,8 @@ void verify_game()
 	uiDrawObj_t* progBar = DrawProgressBar(false, 0, "Verifying\205");
 	DrawPublish(progBar);
 	
-	u64 startTime = gettime();
-	u64 lastTime = gettime();
+	u64 startTime = SYS_GetSystemTime();
+	u64 lastTime = SYS_GetSystemTime();
 	u32 lastOffset = 0;
 	int speed = 0;
 	int timeremain = 0;
@@ -6611,12 +6611,12 @@ void verify_game()
 			cancelled = 1;
 			break;
 		}
-		u32 timeDiff = diff_msec(lastTime, gettime());
-		u32 timeStart = diff_msec(startTime, gettime());
+		u32 timeDiff = diff_msec(lastTime, SYS_GetSystemTime());
+		u32 timeStart = diff_msec(startTime, SYS_GetSystemTime());
 		if(timeDiff >= 1000) {
 			speed = (int)((float)(curOffset-lastOffset) / (float)(timeDiff/1000.0f));
 			timeremain = (curFile.size - curOffset) / speed;
-			lastTime = gettime();
+			lastTime = SYS_GetSystemTime();
 			lastOffset = curOffset;
 		}
 		DrawUpdateProgressBarDetail(progBar, (int)((float)((float)curOffset/(float)curFile.size)*100), speed, timeStart/1000, timeremain);
