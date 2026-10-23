@@ -2450,6 +2450,8 @@ class Route:
         self.press("A")
         self.check("A opens System", self.covered(faces[3]))
         self.steps("DOWN DOWN")
+        system, _ = self.settled_label()
+        self.check("System shows its File Browser row before opening it", system is not None)
         self.press("A")
         self.check("File Browser opens on the GC Loader", self.files_list(True, pane=0))
         before = self.files_path(right=True, box=FILES_NAME_BOXES[1])
@@ -2564,7 +2566,12 @@ class Route:
         self.check("L, DOWN and A make the SD card in SD2SP2 the Source",
                    name is not None and self.files_list(True, pane=0))
         self.press("B")
-        self.check("B leaves the File Browser", self.files_list(False))
+        gone = self.files_list(False)
+        # A fading File Browser can briefly fail its edge detector before
+        # Home can take the next press. Require System's own stable words,
+        # as file_browser() does, before UP and A open Memory Cards.
+        label, _ = self.settled_label(like=system) if system is not None else (None, 0.0)
+        self.check("B leaves the File Browser for System's rows", gone and label is not None)
         self.files_memory_cards(gcl, sd2)
 
     def files_memory_cards(self, gcl: Path, sd2: Path) -> None:

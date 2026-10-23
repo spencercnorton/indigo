@@ -1,3 +1,14 @@
+## 2026-10-22 — Wait for System before the File Browser route continues
+
+The combined candidate's two-card route accepted a transition frame as
+"File Browser closed", then sent UP and A before System was ready. Its
+later save-comment assertion failed on a game's Details; the screenshots
+show the intervening commands had reopened the File Browser and picked the
+disc. Capture System's row text before entry and require it stable on B,
+as the existing file_browser route does. No added sleep, retry or relaxed
+save assertion, and no console code changes. The next pinned test build
+carries this stronger oracle with the combined features.
+
 ## 2026-10-22 — Combined validation candidate
 
 Combine the current beta with the manuals test branch (0bcfc74), the Jewel
