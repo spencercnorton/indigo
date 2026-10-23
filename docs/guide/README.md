@@ -32,7 +32,7 @@ Add posters and cheats after that first successful launch.
     </td>
     <td width="50%" valign="top">
       <a href="library.md"><img alt="The Library with 1080° Avalanche selected, its box art raised and its title underneath." src="images/library-posters.png" width="100%"></a><br>
-      <b><a href="library.md">Library</a></b>: your games as posters, in a row, a column or a grid, or as gameplay stills in Spotlight.
+      <b><a href="library.md">Library</a></b>: your games as posters, in a row, a column or a grid, as gameplay stills in Spotlight, or as spinning discs in jewel cases.
     </td>
   </tr>
   <tr>

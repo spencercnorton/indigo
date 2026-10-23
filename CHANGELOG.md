@@ -8,6 +8,23 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### New
 
+- The Library can show your games as **Jewel Case**: one clear CD jewel
+  case at a time, the game's disc spinning inside. Left and Right swap
+  cases, the old one falling back as the next swings in; the C-stick turns
+  the case in your hands. Choose it in Settings › Setup › Library ›
+  **Library Layout**. It is ported from the jewel case games view of
+  portlandhodl's Swiss (github.com/portlandhodl/swiss-gc), after Ann
+  Nguyen's CD Case (bubbbly.com/cd-case); System › Credits names them.
+- The Jewel Case's discs come from `/swiss/ui/discs.pak`, a third pack next
+  to the posters: a 160×160 picture of each game's disc. The poster pack
+  carries it, made from GameTDB's disc art, and `poster_pack.py --discs`
+  builds one from your own pictures. A game the pack has no disc for has
+  the middle of its cover printed on its disc, and one with no cover either
+  a bare silver disc.
+- In the Jewel Case, Z stops the disc spinning, and Z again starts it.
+  Indigo remembers the choice. There, Z no longer opens a file's actions
+  with Enable File Management on; the other layouts keep it.
+
 - Game manuals: a game whose manual is on the card has a **Manual** row at
   the top of its details, and A opens it at the width of the screen. Up and
   Down scroll, Left and Right turn the page (the next one is read ahead), Y

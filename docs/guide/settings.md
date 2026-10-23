@@ -267,7 +267,7 @@ Passwords are saved as plain text in `global.ini`.
 
 | Setting | What it does |
 | --- | --- |
-| Library Layout | How the poster Library lays out your games: **Horizontal**, a row (the default); **Vertical**, a column with the title beside the cover; **Grid**, rows of five; or **Spotlight**, the selected game's gameplay still and details over a row of disc banners. See [Library](library.md#choose-a-layout). |
+| Library Layout | How the poster Library lays out your games: **Horizontal**, a row (the default); **Vertical**, a column with the title beside the cover; **Grid**, rows of five; **Spotlight**, the selected game's gameplay still and details over a row of disc banners; or **Jewel Case**, one clear CD case at a time with the game's disc spinning inside. See [Library](library.md#choose-a-layout). |
 | Library Folders | **On** shows the folders in `/games` as cards beside the games, two levels deep; **Off** (the default) shows every game in one Library. See [Library](library.md#folders-of-games). |
 | Saves on Details | **On** (the default) reads both memory card slots and the Save Folder when a game's details open, and shows a **Saves** box for a game with two or more save copies; **Off** leaves the memory cards alone. See [Game details](game-details.md#whats-on-the-screen). |
 | Recent List | START shows recently played games. **Lazy** updates it only for new games; **Off** saves SD card writes. |

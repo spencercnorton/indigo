@@ -379,7 +379,8 @@ SD card
     └── ui/
         ├── posters.pak      box art for the Library
         ├── stills.pak       pictures for Spotlight
-        └── descriptions.txt  descriptions for Spotlight
+        ├── descriptions.txt  descriptions for Spotlight
+        └── discs.pak        disc art for Jewel Case
 ```
 
 - **`ipl.dol`, `boot.dol` or `indigo.dol`:** Indigo itself. Step 3 of your

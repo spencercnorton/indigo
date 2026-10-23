@@ -17,7 +17,9 @@ past the 2 MB one may have, and Classics.Set's, damaged.
 /swiss/ui/posters.pak holds posters drawn here from gradients and shapes, for
 all but two of the games, so the Library shows both kinds of card, and
 /swiss/ui/stills.pak gameplay stills drawn the same way for all but three, so
-Spotlight shows a still, a cover and a banner card, and
+Spotlight shows a still, a cover and a banner card, /swiss/ui/discs.pak disc
+art drawn the same way for all but three, so the Jewel Case shows a disc of
+its own, the middle of a cover and a bare disc, and
 /swiss/ui/descriptions.txt a line about all but one, which keeps its
 banner's. /swiss/ui/manuals holds a manual for one game, made with
 manual_pack.py from pages laid out here of Indigo's own guide pictures
@@ -67,6 +69,9 @@ FOLDERS = {"GRZZ01": "Racing.v1", "GNTZ01": "Racing.v1/Classics.Set", "GPLZ01": 
 FOLDER_PICTURES = {"Racing.v1": "shown", "Nintendo.GC": "too big", "Racing.v1/Classics.Set": "damaged"}
 SHOWN_PICTURE, REFUSED_PICTURE = (255, 0, 255), (0, 255, 255)
 NO_STILL = frozenset({"GDRZ01", "GPLZ01", "GSSZ01"})
+# The Jewel Case's discs: one with a poster and no disc prints its cover's
+# middle, and the two with neither are bare.
+NO_DISC = frozenset({"GEIZ01", "GPLZ01", "GSSZ01"})
 # Spotlight's descriptions; Rally Cross Zero keeps its banner's.
 DESCRIPTIONS = {
     "GACZ01": "Race through orbiting circuits where every lap rewires the track, and the fastest line is the one nobody has drawn yet.",
@@ -329,13 +334,39 @@ def still(index: int):
     return image
 
 
+def disc_art(index: int):
+    """A disc's print for one fictitious game, as GameTDB draws one: the disc
+    filling the square, clear outside it and in its hole, with rings, a
+    shape for a logo and a strip of small marks."""
+    from PIL import Image, ImageDraw
+
+    size = 160
+    hue = (index * 67 + 20) % 360
+    image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.ellipse([0, 0, size - 1, size - 1], fill=_rgb(hue, 0.6, 0.55) + (255,))
+    for n, radius in enumerate((74, 62, 50)):
+        ring = _rgb((hue + 30 * (n + 1)) % 360, 0.5, 0.8)
+        draw.ellipse([80 - radius, 80 - radius, 80 + radius, 80 + radius], outline=ring + (255,), width=3)
+    light = _rgb((hue + 180) % 360, 0.3, 0.97) + (255,)
+    if index % 2 == 0:
+        draw.rectangle([46, 26, 114, 46], fill=light)
+    else:
+        draw.polygon([(80, 18), (110, 46), (50, 46)], fill=light)
+    for n in range(5):
+        draw.rectangle([44 + n * 15, 120, 52 + n * 15, 128], fill=light)
+    draw.ellipse([58, 58, 102, 102], fill=_rgb(hue, 0.2, 0.85) + (255,))
+    draw.ellipse([69, 69, 91, 91], fill=(0, 0, 0, 0))
+    return image
+
+
 def _rgb(hue: float, saturation: float, value: float) -> tuple[int, int, int]:
     import colorsys
     return tuple(round(c * 255) for c in colorsys.hsv_to_rgb(hue / 360, saturation, value))
 
 
 def build_pack(folder: Path, pak: Path, kind: str) -> bool:
-    """posters.pak or stills.pak, from pictures drawn here."""
+    """posters.pak, stills.pak or discs.pak, from pictures drawn here."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import poster_pack
 
@@ -344,7 +375,8 @@ def build_pack(folder: Path, pak: Path, kind: str) -> bool:
     except poster_pack.PackError as error:
         print(f"card.py: no {kind} ({error})", file=sys.stderr)
         return False
-    draw, missing = (poster, NO_POSTER) if kind == "posters" else (still, NO_STILL)
+    draw, missing = {"posters": (poster, NO_POSTER), "stills": (still, NO_STILL),
+                     "discs": (disc_art, NO_DISC)}[kind]
     art = folder / kind
     art.mkdir()
     records = []
@@ -483,6 +515,7 @@ def populate(root: Path, work: Path, posters: bool = True, probe: Path | None = 
         (root / "games" / f"{folder}.png").write_bytes(folder_picture(kind))
     with_posters = posters and build_pack(work, root / "swiss/ui/posters.pak", "posters")
     with_stills = posters and build_pack(work, root / "swiss/ui/stills.pak", "stills")
+    with_discs = posters and build_pack(work, root / "swiss/ui/discs.pak", "discs")
     (root / "swiss/ui/descriptions.txt").write_text(
         "# Descriptions of the demonstration disc's fictitious games\n" +
         "".join(f"{game_id} {text}\n" for game_id, text in sorted(DESCRIPTIONS.items())))
@@ -493,7 +526,8 @@ def populate(root: Path, work: Path, posters: bool = True, probe: Path | None = 
         apps += 1
     return {"games": len(GAMES), "damaged": len(DAMAGED), "manual_pages": manual,
             "posters": len(GAMES) - len(NO_POSTER) if with_posters else 0,
-            "stills": len(GAMES) - len(NO_STILL) if with_stills else 0, "apps": apps,
+            "stills": len(GAMES) - len(NO_STILL) if with_stills else 0,
+            "discs": len(GAMES) - len(NO_DISC) if with_discs else 0, "apps": apps,
             "probe": bool(probe)}
 
 

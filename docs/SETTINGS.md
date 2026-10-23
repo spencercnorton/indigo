@@ -218,10 +218,11 @@ most use the same key there.
 
 | Key | Values | Default | On screen |
 | --- | --- | --- | --- |
+| `Spin Discs` | `Yes`, `No`. `No`: the Jewel Case's disc rests instead of spinning. Z in the Jewel Case sets it and saves. | `Yes` | (Z in the Jewel Case) |
 | `Library Folders` | `Yes`, `No`. `Yes` shows as Library Folders › On: the Library shows the folders in `/games`, two levels deep. While it is `Yes`, Indigo flattens by `*/games/*/*` and `FlattenDir` keeps the value it replaced. | `No` | Library Folders |
 | `Hide Saves on Details` | `Yes`, `No`. `Yes` shows as Saves on Details › Off: a game's details leave the memory cards alone. With `No`, they read the memory cards and the Save Folder for the game's saves, and show them when there are two or more copies. | `No` | Saves on Details |
 | `Memory Card Folder Colors` | Saved colors for the small folder and RAW card-image cubes on Memory Cards, set with Y Folder. Up to 32 device-prefixed full paths, separated by `;`, each followed by `~1` through `~8` for Indigo, Azure, Emerald, Gold, Spice, Crimson, Rose and Jet Black. Reserved characters and spaces in paths use `%HH` hexadecimal escapes. For example `sda:/swiss/saves/Backups~3`. An empty value clears the colors; invalid entries are ignored. Resetting to Default removes that path. | empty | Memory Cards › Y Folder |
-| `Library Layout` | `Horizontal`, `Vertical`, `Grid`, `Spotlight`. How the Library shows your games: a row, a column, rows of five, or a gameplay still over a row of banners. | `Horizontal` | Library Layout |
+| `Library Layout` | `Horizontal`, `Vertical`, `Grid`, `Spotlight`, `Jewel Case`. How the Library shows your games: a row, a column, rows of five, a gameplay still over a row of banners, or one CD jewel case at a time with the game's disc spinning inside. | `Horizontal` | Library Layout |
 | `FileBrowserType` | `Standard`, `Fullwidth`, `Carousel`. Read and written for Swiss; Indigo ignores it. | `Standard` | — |
 | `AppsBrowserType` | `Standard`, `Fullwidth`, `Carousel`. Read and written for Swiss; Indigo ignores it. | `Fullwidth` | — |
 | `GameBrowserType` | `Standard`, `Fullwidth`, `Carousel`. Read and written for Swiss; Indigo ignores it. | `Fullwidth` | — |

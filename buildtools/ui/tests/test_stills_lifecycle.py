@@ -2,7 +2,7 @@
 """Run the renderer's pack lifecycle against counted device/cache stand-ins.
 
 Non-Spotlight requests must not touch stills, including a missing poster
-pack. Switching layout, switching device, failure and cancellation exercise
+pack, and only the Jewel Case opens discs. Switching layout, switching device, failure and cancellation exercise
 the actual open/request/cancel functions from FrameBufferMagic.c.
 """
 
@@ -36,21 +36,33 @@ typedef struct { u32 recordCount; int layout; uiGameflowCardSnapshot_t records[2
 #define UI_ASSETS_OK 0
 #define UI_ASSETS_SLOTS 25
 #define UI_STILLS_SLOTS 3
+#define UI_DISCS_SLOTS 3
 #define UI_ASSETS_WINDOW 9
 #define UI_ASSETS_ID_LEN 6
 #define UI_GAMEFLOW_LAYOUT_GRID 2
 #define UI_GAMEFLOW_LAYOUT_SPOTLIGHT 3
+#define UI_GAMEFLOW_LAYOUT_JEWEL_CASE 4
 #define LWP_MUTEX_NULL 0
 static int _videomutex = 1;
 static DEVICEHANDLER_INTERFACE *posterPackDevice;
 static bool posterPackAttempted, posterPackFileOwned, stillsPackFileOwned, stillsPackAttempted;
+static bool discsPackFileOwned, discsPackAttempted, discsReady;
 static bool descriptionsAttempted, postersReady, stillsReady, noPosters, noStills;
-static file_handle posterPackFile, stillsPackFile;
-static unsigned posterOpens, stillOpens, closes, stillRequests;
-static unsigned fullPosterReads, posterSteps, stillSteps;
+static file_handle posterPackFile, stillsPackFile, discsPackFile;
+static unsigned posterOpens, stillOpens, discOpens, closes, stillRequests, discRequests;
+static unsigned fullPosterReads, posterSteps, stillSteps, discSteps;
 static bool UIAssets_Poll(void) {fullPosterReads++;return true;}
 static bool UIAssets_PollStep(void) {posterSteps++;return true;}
 static bool UIStills_PollStep(void) {stillSteps++;return true;}
+static bool UIDiscs_PollStep(void) {discSteps++;return true;}
+static bool UIDiscs_Ready(void) { return discsReady; }
+static void UIDiscs_CancelForDeviceChange(void) { discsReady = false; }
+static int UIDiscs_Init(const uiAssetsSource_t *s, const uiAssetsSync_t *l) {
+    (void)s;(void)l;discsReady = true;return 0;
+}
+static void UIDiscs_RequestWindow(const char ids[][8], int count, int selected) {
+    (void)ids;(void)count;(void)selected;discRequests++;
+}
 static void closeFile(file_handle *f) { (void)f; closes++; }
 static void concat_path(char *out, const char *root, const char *leaf) {
     size_t a = strlen(root), b = strlen(leaf);
@@ -66,6 +78,7 @@ static void UIAssets_SyncFromMutex(int mutex, uiAssetsSync_t *s) { (void)mutex;(
 static int UIAssets_SourceFromFileHandle(file_handle *f, uiAssetsSource_t *s) {
     (void)s;
     if(strstr(f->name, "stills.pak")) { stillOpens++; return noStills ? -1 : 0; }
+    if(strstr(f->name, "discs.pak")) { discOpens++; return 0; }
     posterOpens++; return noPosters ? -1 : 0;
 }
 static int UIAssets_Init(const uiAssetsSource_t *s, const uiAssetsSync_t *l) {
@@ -92,19 +105,24 @@ int main(void) {
     assert(DrawGameflowPrimePoster());
     assert(fullPosterReads==1 && posterSteps==0 && stillSteps==0);
     assert(DrawGameflowPollPosters());
-    assert(fullPosterReads==1 && posterSteps==1 && stillSteps==1);
+    assert(fullPosterReads==1 && posterSteps==1 && stillSteps==1 && discSteps==1);
     for(int layout=0;layout<3;layout++) {
         snapshot.layout=layout;
         DrawGameflowRequestPosters(&a,&snapshot);
     }
-    assert(posterOpens==1 && stillOpens==0 && !stillsReady);
+    assert(posterOpens==1 && stillOpens==0 && !stillsReady && discOpens==0);
     snapshot.layout=UI_GAMEFLOW_LAYOUT_SPOTLIGHT;
     DrawGameflowRequestPosters(&a,&snapshot);
     DrawGameflowRequestPosters(&a,&snapshot);
-    assert(stillOpens==1 && stillRequests==2 && stillsReady);
+    assert(stillOpens==1 && stillRequests==2 && stillsReady && discOpens==0);
+    /* Discs: only the Jewel Case opens them, once per device. */
+    snapshot.layout=UI_GAMEFLOW_LAYOUT_JEWEL_CASE;
+    DrawGameflowRequestPosters(&a,&snapshot);
+    DrawGameflowRequestPosters(&a,&snapshot);
+    assert(discOpens==1 && discRequests==2 && discsReady && stillRequests==2);
     snapshot.layout=0;
     DrawGameflowRequestPosters(&b,&snapshot);
-    assert(posterOpens==2 && stillOpens==1 && !stillsReady && closes==2);
+    assert(posterOpens==2 && stillOpens==1 && !stillsReady && !discsReady && closes==3);
     snapshot.layout=UI_GAMEFLOW_LAYOUT_SPOTLIGHT;
     noStills=true;
     DrawGameflowRequestPosters(&b,&snapshot);
@@ -121,10 +139,11 @@ int main(void) {
     assert(stillOpens==3 && stillsReady && !postersReady);
     DrawGameflowCancelPosters();
     assert(!postersReady && !stillsReady && !stillsPackFileOwned);
+    assert(!discsPackFileOwned && !discsPackAttempted);
     _videomutex=LWP_MUTEX_NULL;
     DrawGameflowRequestPosters(&a,&snapshot);
     assert(stillOpens==3 && !stillsPackAttempted);
-    puts("stills lifecycle: lazy layouts, late Spotlight, device changes, failure and cancellation PASS");
+    puts("stills and discs lifecycle: lazy layouts, late Spotlight, Jewel Case, device changes, failure and cancellation PASS");
     return 0;
 }
 '''
@@ -134,9 +153,11 @@ def main():
     functions = "\n".join(extract_function(SOURCE, signature) for signature in (
         "static void _GameflowClosePosterPackFile(",
         "static void _GameflowCloseStillsPackFile(",
+        "static void _GameflowCloseDiscsPackFile(",
         "void DrawGameflowCancelPosters(",
         "static bool _GameflowOpenPosterPack(",
         "static bool _GameflowOpenStillsPack(",
+        "static bool _GameflowOpenDiscsPack(",
         "void DrawGameflowRequestPosters(",
         "bool DrawGameflowPrimePoster(",
         "bool DrawGameflowPollPosters(",
