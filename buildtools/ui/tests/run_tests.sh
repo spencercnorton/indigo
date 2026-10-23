@@ -90,6 +90,8 @@ run_binaries() {
 		case $test in
 			test_ui_png) python3 ./test_ui_png.py "./$test$suffix" ;;
 			test_ui_assets|test_ui_assets_target_sync) "./$test$suffix" $fixtures ;;
+			# A manual: its unit tests, then manual_pack.py's files through it.
+			test_ui_manual) "./$test$suffix"; python3 ./test_manual_pack.py "./$test$suffix" ;;
 			*) "./$test$suffix" ;;
 		esac
 	done

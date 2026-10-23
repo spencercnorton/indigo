@@ -4,9 +4,34 @@ Versions follow [semantic versioning](https://semver.org/). Each release is a
 `vX.Y.Z` tag on `main`, and a release candidate before it is a `vX.Y.Z-rc.N`
 tag on `beta`. The newest changes are at the top until their release is named.
 
-## Unreleased
+## v2.5.0 — Manuals, disc art and a connected cube
 
 ### New
+
+- The Library can show your games as **Jewel Case**: one clear CD jewel
+  case at a time, the game's disc spinning inside. Left and Right swap
+  cases, the old one falling back as the next swings in; the C-stick turns
+  the case in your hands. Choose it in Settings › Setup › Library ›
+  **Library Layout**. It is ported from the jewel case games view of
+  portlandhodl's Swiss (github.com/portlandhodl/swiss-gc), after Ann
+  Nguyen's CD Case (bubbbly.com/cd-case); System › Credits names them.
+- The Jewel Case's discs come from `/swiss/ui/discs.pak`, a third pack next
+  to the posters: a 160×160 picture of each game's disc. The poster pack
+  carries it, made from GameTDB's disc art, and `poster_pack.py --discs`
+  builds one from your own pictures. A game the pack has no disc for has
+  the middle of its cover printed on its disc, and one with no cover either
+  a bare silver disc.
+- In the Jewel Case, Z stops the disc spinning, and Z again starts it.
+  Indigo remembers the choice. There, Z no longer opens a file's actions
+  with Enable File Management on; the other layouts keep it.
+
+- Game manuals: a game whose manual is on the card has a **Manual** row at
+  the top of its details, and A opens it at the width of the screen. Up and
+  Down scroll, Left and Right turn the page (the next one is read ahead), Y
+  shows the whole page, L and R go to the first and last page. Indigo comes
+  with no manuals: `buildtools/ui/manual_pack.py` converts your own PDF or
+  page pictures into `/swiss/ui/manuals/<game ID>.pak`
+  ([docs/MANUALS.md](docs/MANUALS.md)).
 
 - Settings › Network › Sync Clock sets the console's clock from an NTP
   server each time the network starts, so a network adapter keeps the
@@ -26,7 +51,8 @@ tag on `beta`. The newest changes are at the top until their release is named.
   the top of the card, and the licences of what it's built from in
   `swiss/indigo/NOTICE.txt` and `swiss/indigo/LICENSE-mbedtls.txt`. Give it a side under Settings › Setup › Console
   (Up Face, Left Face, Right Face or Down Face › Web). It needs a network
-  adapter; in the browser, Settings › Exit to Indigo comes back. The
+  adapter; the browser's **Return to Indigo** button at bottom-left comes
+  back with one press. The
   browser reads `gcbrowser/` from an SD2SP2, an SD Gecko or a GC Loader,
   not from a FlippyDrive's card. With the console lab on (`LabServer=Yes`)
   the browser starts its own, so a test run can follow Indigo into it.
@@ -47,6 +73,18 @@ tag on `beta`. The newest changes are at the top until their release is named.
 
 ### Fixes
 
+- Updated the Swiss base through `abe21df5`: homebrew keeps its own banner
+  description while SDK metadata is read, apps without environment support
+  no longer inherit TZ, and FTP/copy/verification timeouts use the steady
+  clock. The pinned libogc2 r2482 SDK is unchanged.
+
+- Animal Crossing Deluxe starts with Force Widescreen off. The game has its
+  own Widescreen mode and sizes its rain and snow by it, so widening the game
+  from Indigo as well left the sides of the screen without weather and
+  stretched the clock and other on-screen displays. For 16:9, turn on
+  Widescreen mode in the game's Settings at startup. A game file that sets
+  Force Widescreen still applies.
+
 - Repository links, the address on System › Info and CI runner defaults
   follow the renamed GitHub account.
 
@@ -65,8 +103,9 @@ tag on `beta`. The newest changes are at the top until their release is named.
   encoding. The emulator launch probe checks the actual PowerPC conversions.
 - Updated the SDK to libogc2 r2482, including its AESND reset race fix, EXI
   locking cleanup, monotonic timing and SD fixes. The upstream audio fix
-  replaces Indigo's earlier local patch. A fresh MemCard PRO GC hardware
-  qualification is required before publishing this SDK as stable.
+  replaces Indigo's earlier local patch. The current SDK has not been qualified on a real MemCard PRO GC. The
+  earlier real-card report applies to the previous SDK; emulator and GCMCE
+  checks do not establish a new real-card result.
 
 - Updated the Swiss base from r2119 to commit `39a0867e`: newer translation
   and disc databases, Need for Speed 960i/1152i fixes, additional field-mode
@@ -83,6 +122,11 @@ tag on `beta`. The newest changes are at the top until their release is named.
   Path, and Saves counted by file with the save's own line.
 
 ### For developers
+
+- Release builds report MemCard PRO GC test coverage without requiring
+  hardware the maintainer does not own. Pending and historical records keep
+  their actual source/SDK identity; publication does not turn them into a
+  hardware pass.
 
 - A console lab for testing on real hardware, off by default. With
   `LabServer=Yes`, TCP port 4300 serves the framebuffer on screen, the debug

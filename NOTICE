@@ -27,6 +27,21 @@ gameplay-first GameCube launcher by mvizensk, with its author's permission:
 
 Indigo's code for the layout is its own. System › Credits thanks mvizensk too.
 
+The Library's Jewel Case layout, the selected game as a clear CD jewel case
+with its disc spinning inside, is ported from the jewel case games view of
+portlandhodl's fork of Swiss: gui/ui_jewel_case.c is that view's
+gui/jewelcase.c, its case, studio light, disc, glass and glints, the poses
+and the swap from one case to the next, adapted to the Library. That view
+is itself a port of CD Case by Ann Nguyen, who asks for a mention or a link
+back:
+
+    portlandhodl/swiss-gc — https://github.com/portlandhodl/swiss-gc
+    Licensed under the GNU General Public License, version 2.
+    CD Case by Ann Nguyen — https://www.bubbbly.com/cd-case
+    (source: https://github.com/annnguyentt/vibe-coding/tree/main/cd-case)
+
+System › Credits names them both.
+
 Memory Cards' save cubes are sized, coloured and moved by the GameCube's own
 Memory Card screen as Cubeboot and Gameplay Spotlight document it from their
 study of the console's menu: how far the highlighted cube sways and how

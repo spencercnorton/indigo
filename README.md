@@ -69,11 +69,14 @@ source, with artwork kept across navigation rather than re-read per frame,
 and your selection restored when you come back from a game's details. It
 opens as a row, with two covers either side of the game in the middle; it
 can also be a column with the title beside the cover, a grid five covers
-wide, or Spotlight: the selected game's gameplay still and description over
-a row of disc banners (Setup › Library › Library Layout), a design that
-comes from mvizensk's
+wide, Spotlight: the selected game's gameplay still and description over
+a row of disc banners, a design that comes from mvizensk's
 [Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight), with
-their permission. Y on a game opens its own settings. Cover art comes from a
+their permission, or Jewel Case: one clear CD jewel case at a time, the
+game's own disc spinning inside, from portlandhodl's
+[Swiss](https://github.com/portlandhodl/swiss-gc) after Ann Nguyen's
+[CD Case](https://www.bubbbly.com/cd-case) (Setup › Library › Library
+Layout). Y on a game opens its own settings. Cover art comes from a
 ready-made pack or one you build yourself (see [Posters](#posters)); without
 one, each game gets a card with its disc banner.
 
@@ -300,14 +303,19 @@ skipped and listed.
 
 The Spotlight layout also shows each game's gameplay still from
 `swiss/ui/stills.pak` and a few sentences about it from
-`swiss/ui/descriptions.txt`, which the poster pack carries beside the
-posters. Its covers and descriptions come from
+`swiss/ui/descriptions.txt`, and the Jewel Case layout each game's disc
+from `swiss/ui/discs.pak`; the poster pack carries all three beside the
+posters. Copy `discs.pak` to `swiss/ui/discs.pak` on the games card too:
+updating Indigo itself does not install the disc images. Restart Indigo
+after updating the pack. Its covers, descriptions and discs come from
 [GameTDB](https://www.gametdb.com/), and its stills from
 [libretro-thumbnails](https://github.com/libretro-thumbnails/Nintendo_-_GameCube),
 as do the screenshots above. The descriptions file is plain text you can
 edit (see [Posters](docs/guide/posters.md#game-descriptions)).
-To build one from your own screenshots (at least 320×240, named like the
-covers): `poster_pack.py --stills ~/screenshots --out stills.pak`. See
+To build stills from your own screenshots (at least 320×240, named like the
+covers): `poster_pack.py --stills ~/screenshots --out stills.pak`; disc art
+from pictures of the discs (at least 160×160):
+`poster_pack.py --discs ~/discs --out discs.pak`. See
 [Posters](docs/guide/posters.md#gameplay-stills).
 
 ### Apps
@@ -384,6 +392,9 @@ not endorsed by or affiliated with the Swiss project.
 The Library's Spotlight layout takes its design from
 [Gameplay Spotlight](https://github.com/mvizensk/gameplay-spotlight) by mvizensk
 (GPL-2.0), with its author's permission; Indigo's code for it is its own.
+The Jewel Case layout is ported from the jewel case games view of
+portlandhodl's [Swiss](https://github.com/portlandhodl/swiss-gc) (GPL-2.0),
+itself a port of [CD Case](https://www.bubbbly.com/cd-case) by Ann Nguyen.
 
 Indigo's interface was built with [Claude Code](https://claude.com/claude-code).
 

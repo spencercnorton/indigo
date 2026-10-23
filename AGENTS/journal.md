@@ -1,3 +1,234 @@
+## 2026-10-23 — Align agent instructions with the coverage policy
+
+Remove the obsolete real-card publication hold from AGENTS.md as well as
+the already-updated release procedure and workflow. Real MemCard PRO GC
+access is not a release requirement. Pending coverage and strict claimed-pass
+auditing remain unchanged; release approval is not hardware evidence. This
+prevents a later session from restoring the superseded expectation.
+
+## 2026-10-23 — Report unavailable card coverage without blocking release
+
+The maintainer explicitly removes real MemCard PRO GC access as a release
+requirement: that hardware is not available. The release workflow now emits
+an informational coverage report and continues. The record stays pending,
+bound to its historical source/SDK, and the default qualification audit
+remains strict. Candidate and stable reports both expose missing coverage;
+CI and GCMCE runs never become a real-card pass. The v2.5 notes disclose the
+current SDK coverage gap. This supersedes the earlier publication hold in
+the release-preparation entry below.
+
+## 2026-10-23 — Final candidate and release preparation
+
+The maintainer approves release after the combined candidate's console
+validation. Pin the merged browser return-button change in both build
+workflows, name the v2.5.0 changelog section and clarify disc-pack copying
+on the games card. The browser's one-press return and actual disc labels
+passed console checks. Indigo runtime source is unchanged from38367c3;
+the card-slot/SDK qualification remains pending and is not inferred from
+these results. Run the full native CI and packaged-build verification
+before promotion. Stable publication still requires its recorded hardware
+qualification; no release gate is removed here.
+
+## 2026-10-22 — Wait for System before the File Browser route continues
+
+The combined candidate's two-card route accepted a transition frame as
+"File Browser closed", then sent UP and A before System was ready. Its
+later save-comment assertion failed on a game's Details; the screenshots
+show the intervening commands had reopened the File Browser and picked the
+disc. Capture System's row text before entry and require it stable on B,
+as the existing file_browser route does. No added sleep, retry or relaxed
+save assertion, and no console code changes. The next pinned test build
+carries this stronger oracle with the combined features.
+
+## 2026-10-22 — Combined validation candidate
+
+Combine the current beta with the manuals test branch (0bcfc74), the Jewel
+Case/disc-art/Z-toggle test branch (4935a7b), the Deluxe widescreen default
+(02d01b4), and the Swiss intake through abe21df5. Retain all current beta
+clock, upload, browser and lab hardening. Manual cancellation joins the
+poster/stills/discs lifecycle, and all fuzz targets and host tests remain.
+The pinned test branch and CI package are for console validation before
+feature acceptance. MemCard PRO qualification remains pending; no stable
+promotion or card install is represented by assembling this candidate.
+
+## 2026-10-22 — Swiss intake through abe21df5 on the pinned SDK
+
+Account for the five upstream commits after 39a0867e. Keep Indigo's README
+and removed legacy file/settings screens. Import application SDK metadata
+without replacing a supplied banner description, clear TZ for programs that
+do not accept an environment, and use the monotonic clock for FTP timeouts
+and copy/verification progress. The SDK remains libogc2 r2482: its libraries
+export __SYS_SetTime but not __SYS_InitTime, so the newer-SDK shutdown call
+from 99b59e7a stays deferred and is listed in UPSTREAM. No physical-card
+qualification is inferred; its pending record remains unchanged.
+
+- 345e4d5e: upstream device-list README; Indigo's own README retained.
+- b3cd55b9: SDK metadata imported; Indigo's own screens retained.
+- 5341410b: TZ handoff imported.
+- 99b59e7a: deferred because it requires a newer SDK ABI.
+- abe21df5: monotonic FTP/copy/verification intervals imported; Indigo's
+  renderer already uses its own steady clock.
+
+## 2026-10-19 — The Jewel Case on beta
+
+The Jewel Case, its disc art and Z moved from v2.4.0 onto beta (CI's
+runners only carry the libogc2 r2482 toolchain now). Beta reads packs in
+16 KiB steps and opens stills only on first Spotlight use, so `discs.pak`
+follows suit: `_GameflowOpenDiscsPack` opens it on first Jewel Case use,
+once per mounted device (`discsPackAttempted`, reset with the others in
+`DrawGameflowCancelPosters`), and `DrawGameflowPollPosters` steps it with
+`UIDiscs_PollStep` after the posters and stills. test_stills_lifecycle.py
+covers discs too: only the Jewel Case opens them, once per device.
+
+## 2026-10-18 — Z stops the Jewel Case's disc
+
+A console tester on #139 (component, 3fedaab) found the Library smooth with
+discs streaming and asked for a way to stop the spin. In the Jewel Case, Z
+now flips `swissSettings.stillDiscs` (settings key `Spin Discs`, default
+`Yes`) and saves the settings file at once, as the autoload's Z does: the
+metadata thread is stopped and card art paused around
+`config_update_spin_discs(true)` (only that key, through the autoload's
+merge), then the metadata thread starts again and the
+loop's `folderArtShow` resumes card art. Z there no longer reaches
+`filesManage`; the other layouts keep it. `UIJewelCase_Draw` takes `spin`,
+and the disc's spin rate eases to 0 through the same filter that eases it
+up. The Library hint line is unchanged (one more item overflows the longest
+one); the guide's Library and Controls pages, SETTINGS.md and the changelog
+say it. The tester also saw NHL Hitz 2003 (US) with NHL 2K3's disc: that is
+GameTDB's picture; the poster pack's builder now gives it the PAL disc.
+
+## 2026-10-16 — Disc art for the Jewel Case
+
+A third Library pack, `/swiss/ui/discs.pak`, gives the Jewel Case each
+game's own disc: SWPK v1 with kind `discs`, one 160x160 CMPR level, 12,800
+bytes a record. `poster_pack.py --discs` builds it from pictures at least
+160x160, cropped square; what is clear around the disc and in its hole is
+laid on grey (176, 178, 184) first, so CMPR blocks at the rim don't take
+in black. ui_assets gains a third shape, `UIDiscs_*`, with three slots.
+FrameBufferMagic opens the file with the posters and, while the layout is
+Jewel Case, asks for the selected game's disc and its neighbours';
+`_GameflowDiscTexture` hands the jewel case the disc with the whole texture
+laid over it, fading in as it arrives. A game without one keeps the
+poster's middle square, and one without either the bare disc. Older Indigo
+never opens the file.
+
+GameTDB's disc art (art.gametdb.com/wii/disc/<LANG>/<ID>.png) is 160x160
+RGBA, the disc filling the square, its corners clear and a clear middle
+26.5 px across the radius: 80 sampled, all alike. 1,321 of GameTDB's
+1,708 GameCube IDs have one in their region's languages (Japan has 96 of
+351), about 16.9 MB of pack; the ready-made poster pack is to carry it.
+
+Emulator: card.py draws a disc for every demo game but three (`NO_DISC`;
+Ember and Ivy shows its cover's middle instead) and builds discs.pak from
+them, and the guide picture was recorded again with them. Dolphin shows the
+demo discs, the cover fallback, and real GameTDB discs (swapped in locally,
+never published) square on the disc, the case's hub over the clear middle.
+
+Tests: test_poster_pack.py builds a discs pack (header, shape, the grey
+under clear pixels, the minimum size); test_ui_assets.c loads discs one
+texture at a time and refuses the other packs' shapes;
+test_gameflow_gx_stream.py has the disc first, the poster's middle without
+one, a bare disc while it loads, and a mutant that ignores discs.pak;
+test_emulator.py checks `NO_DISC` against the demo games.
+
+## 2026-10-16 — Jewel Case, a fifth Library layout
+
+Library Layout gains **Jewel Case** (`UI_GAMEFLOW_LAYOUT_JEWEL_CASE`, saved
+as `Library Layout=Jewel Case`): one clear CD jewel case at a time, the
+selected game's cover printed on its spinning disc. It is a port of the
+jewel case games view of portlandhodl's Swiss fork (`gui/jewelcase.c` in
+github.com/portlandhodl/swiss-gc, GPL-2.0), itself a GX port of Ann
+Nguyen's CD Case (bubbbly.com/cd-case, whose author asks for a mention or a
+link back). NOTICE, README, the Library guide and System › Credits name
+them; Credits' Spotlight label became LIBRARY DESIGNS, over both credits,
+and the page's lines moved up a few pixels to make room.
+
+`gui/ui_jewel_case.c` keeps the original's case (rods swept along paths and
+clear sheets), the studio baked into a matcap and two cube-map tables, the
+disc with its rainbow, the lid's sheen, the glints, the resting sway and
+the keys a case leaves and arrives by. Left out: its dock of disc
+thumbnails, the PNG disc art (`swiss/discs/<GAMEID>.png`), the white page
+and shadows, the opening lid, the launch and the slideshow. The Library
+drives it: `_GameflowDrawJewelCases` hands it the records within a place of
+the middle (`relativeSlot + carouselTravel`), each with its poster, the
+middle square of the 192x256 cover (s 0..0.75, t 0.125..0.875) laid over
+the disc, and the frame's direction picks which keys a case follows. The
+carousel spring runs at 8 instead of 15 for this layout so the swap can be
+seen. No cards are drawn; the selected game's cover leaves the case for
+Detail and the launch, as Spotlight's does. The C-stick turns the case
+(`padInstrument`), and the cube waits off screen as for Grid and Spotlight.
+With no memory for its case (`UIJewelCase_Ready`), the layout draws as the
+carousel. `_DrawGameflow` no longer opens its card batches with no card.
+
+Cost: the original made about 2,000 sqrtf a frame at rest; per-frame maths
+now goes through `invLength`, an estimate with two Newton steps. The
+studio and meshes (about 670 KB, kept) are built once on the menu thread
+when a jewel case Library is first made, and the rods' display lists are
+recorded on the video thread on the first frame. frame_budget.c runs the
+real renderer: 0 sqrtf, 203 calls of trig and the like, 23,346 vertices at
+rest with a printed disc; 1,116 trig with a bare disc (its rainbow);
+45,668 vertices mid-swap. Dolphin shows the swap, the C-stick turn and
+spring-back, and Detail; frame time on the console is unmeasured.
+
+Tests: test_gameflow_gx_stream.py logs what the renderer is given (one case
+at rest, two while moving, which way, the print and its square, the bare
+disc, Detail's fade, the carousel fallback) with three mutants;
+test_ui_scene.c parks the cube; frame_budget.json has the jewel case
+scenes; the folders emulator route walks it as a fifth layout.
+
+## 2026-10-16 — Game manuals: a Manual row and a page viewer
+
+A game's manual, converted once on a computer, reads on the console from a
+Manual row at the top of its Game Details (requested in the issue tracker;
+the maintainer chose full width by default, the whole page as an overview).
+The console can't decode the PDFs people have: scans are JPEG 2000 or
+JBIG2 inside, a decoded page won't fit beside the menus, and a PDF library
+would not fit the DOL's headroom.
+
+- `buildtools/ui/manual_pack.py` (Pillow, NumPy, and pypdfium2 for a PDF)
+  renders each page at 1920 wide, trims the paper's margins and a scanner's
+  dark edge (the edge peel runs on the page's own edges only: inside, a band
+  of content is a heading, which the prototype peeled), splits spreads,
+  scales to 640 wide (a page taller than 1152 rows is scaled to that height)
+  and encodes GX CMPR (or I4 with `--gray`) itself, with NumPy, so no
+  devkitPro is needed. Format `SWMN` v1 in docs/MANUALS.md: the packs'
+  family, one fixed canvas a file, a record a page (the page, then its
+  half for the whole-page view), CRCs over the header and index and over
+  each page.
+- `gui/ui_manual.c` is pure: the header and index checks, a page's CRC, the
+  two page slots (the page shown, then the next one the way the pages turn;
+  a slot rests two frames after it stops showing before a read reuses it),
+  page placement and the memory guard. Host test `test_ui_manual` (every bit
+  of a header and index flipped is refused), `test_manual_pack.py` runs
+  packs the converter writes through it, fuzz target `manual`.
+- `gui/manual.c` finds `swiss/ui/manuals/<ID>.pak` (then the first four
+  characters', as a universal pack record) on the browsed device, reads
+  pages on a thread for a thread-safe device (on the menu thread between
+  frames for the disc drive) and runs the viewer; FrameBufferMagic draws it
+  (EV_MANUAL, a covering page), texels as they are: one texel a pixel with
+  GX_NEAR at full width on a 640 x 480 frame, linear otherwise, in two
+  strips past 1024 rows. Game Details has four layouts now (Saves, Manual,
+  both, neither); the row table holds top/bottom pairs, since the colour
+  audit reads a brace of three small numbers as a colour.
+- libogc2's zlib is zlib-ng: `crc32` over more than 256 KiB takes the
+  Chorba path with a 64 KiB table on the stack, and on the 32 KiB reader
+  thread the emulator's stack guard stopped it (DSI). A page is summed in
+  16 KiB pieces.
+
+The emulator's manual route (GC Loader) opens a synthetic manual made from
+the guide's own pictures of the demonstration data (Cobalt Harrier), turns,
+scrolls, toggles and closes it, refuses a damaged one (Ember and Ivy) and
+checks the viewer gave back every byte it took. Dolphin's texture cache
+sees a texture rewritten in place by 128 evenly spaced samples, which in a
+640-wide CMPR page all fall in its leftmost tile column, the paper margin:
+a slot refilled right after it showed kept its old page on screen. The
+route hashes textures whole (`SafeTextureCacheColorSamples = 0`); a console
+reads them anew after `GX_InvalidateTexAll`.
+
+Defaults a console and TV pass may change, each a constant: CMPR over I4
+and trimmed margins (manual_pack.py), and with Menu Widescreen a page keeps
+its 4:3 width (`UI_MANUAL_FILL_WIDESCREEN`).
+
 ## 2026-10-21 — The browser's lab ships off; cut-short DOLs; FlippyDrive
 
 Three follow-ups from the 2.5 review:

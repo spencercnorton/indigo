@@ -66,7 +66,7 @@ jobs:
           # The Web face launches this; built from a pinned commit of our
           # hardened fork (used with permission; see NOTICE).
           CUBEBROWSER_REPO: https://github.com/spencernorton/cubebrowser
-          CUBEBROWSER_REF: 412d5923f9dd09f949d74c2fc3f356c2c3744aa1
+          CUBEBROWSER_REF: e338aa6d0a2262a350363a431770e8720788e0cc
         run: |
           git clone --no-tags "$CUBEBROWSER_REPO" browser-src
           git -C browser-src -c advice.detachedHead=false checkout "$CUBEBROWSER_REF"
@@ -188,7 +188,7 @@ jobs:
           - { name: "Emulator (game, NTSC, SD2SP2)", route: game, region: ntsc, cable: composite,
               storage: sd2sp2, artifact: emulator-game-ntsc-sd2sp2 }
           # Folder names, artwork and every route back to Home, in all
-          # four Library layouts on a real FAT listing.
+          # five Library layouts on a real FAT listing.
           - { name: "Emulator (folders, NTSC, component, SD2SP2)", route: folders, region: ntsc, cable: component,
               storage: sd2sp2, artifact: emulator-folders-ntsc-component-sd2sp2 }
           # Both physical memory-card slots empty: browse a synthetic RAW
@@ -214,6 +214,12 @@ jobs:
           - { name: "Emulator (game, NTSC, component, GC Loader)", route: game, region: ntsc,
               cable: component, storage: gcloader, fragments: 40,
               artifact: emulator-game-ntsc-component-gcloader }
+          # A game's manual from its details: read at full width, scrolled,
+          # turned, the whole page, the last and first pages, closed; a damaged
+          # one refused with a message. Its pages are read on a thread, as from
+          # any SD card.
+          - { name: "Emulator (manual, NTSC, GC Loader)", route: manual, region: ntsc,
+              cable: component, storage: gcloader, artifact: emulator-manual-ntsc-gcloader }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

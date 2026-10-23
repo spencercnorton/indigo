@@ -56,6 +56,7 @@
 #include "gui/IPLFontWrite.h"
 #include "gui/apps.h"
 #include "gui/card_art.h"
+#include "gui/manual.h"
 #include "gui/ui_apps.h"
 #include "gui/ui_gameflow_detail.h"
 #include "gui/saves_stats.h"
@@ -2770,6 +2771,9 @@ typedef struct {
 	 * One given up on at the last read: its saves are missing. */
 	bool savesWaiting;
 	bool savesCardFailed;
+	/* The game's manual (gui/manual.c): its pages, 0 for none, -1 for one
+	 * that can't be read. */
+	int32_t manualPages;
 } gameflowLaunchContext_t;
 
 /* The copies of the open Detail's save, one Detail at a time. */
@@ -5246,10 +5250,23 @@ uiDrawObj_t* renderFileCarousel(file_handle** directory, int num_files, uiDrawOb
 			while(padsButtonsHeld() & BUTTON_X) VIDEO_WaitVSync();
 			break;
 		}
-		if((browserButtons & BUTTON_Z) && filesManage(directory)) {
+		if((browserButtons & BUTTON_Z) &&
+				layout == UI_GAMEFLOW_LAYOUT_JEWEL_CASE) {
+			/* Z stops the discs spinning or starts them, and the choice is
+			 * kept: the Jewel Case has no file management. Only its key is
+			 * saved, as the autoload's is, with the readers stopped while it
+			 * writes; the folders' posters go on with the next frame. */
+			swissSettings.stillDiscs ^= 1;
+			menuaudio_select();
+			meta_thread_stop();
+			CardArt_Pause();
+			config_update_spin_discs(true);
+			meta_thread_start(loadingBox);
+		}
+		else if((browserButtons & BUTTON_Z) && filesManage(directory)) {
 			break;
 		}
-		
+
 		if((browserButtons & BUTTON_B) && gameflowInsideFolder()) {
 			/* Library Folders: B goes up a folder, as X does; at /games
 			 * it goes Home. */
@@ -6443,8 +6460,8 @@ bool manage_file_ex(int preset, const char *destDir) {
 				DrawProgressBar(false, 0, txtbuffer);
 			DrawPublish(progBar);
 			
-			u64 startTime = gettime();
-			u64 lastTime = gettime();
+			u64 startTime = SYS_GetSystemTime();
+			u64 lastTime = SYS_GetSystemTime();
 			u32 lastOffset = 0;
 			int speed = 0;
 			int timeremain = 0;
@@ -6459,12 +6476,12 @@ bool manage_file_ex(int preset, const char *destDir) {
 					cancelled = 1;
 					break;
 				}
-				u32 timeDiff = diff_msec(lastTime, gettime());
-				u32 timeStart = diff_msec(startTime, gettime());
+				u32 timeDiff = diff_msec(lastTime, SYS_GetSystemTime());
+				u32 timeStart = diff_msec(startTime, SYS_GetSystemTime());
 				if(timeDiff >= 1000) {
 					speed = (int)((float)(curOffset-lastOffset) / (float)(timeDiff/1000.0f));
 					timeremain = (curFile.size - curOffset) / speed;
-					lastTime = gettime();
+					lastTime = SYS_GetSystemTime();
 					lastOffset = curOffset;
 				}
 				DrawUpdateProgressBarDetail(progBar, (int)((float)((float)curOffset/(float)curFile.size)*100), speed, timeStart/1000, timeremain);
@@ -6579,8 +6596,8 @@ void verify_game()
 	uiDrawObj_t* progBar = DrawProgressBar(false, 0, "Verifying\205");
 	DrawPublish(progBar);
 	
-	u64 startTime = gettime();
-	u64 lastTime = gettime();
+	u64 startTime = SYS_GetSystemTime();
+	u64 lastTime = SYS_GetSystemTime();
 	u32 lastOffset = 0;
 	int speed = 0;
 	int timeremain = 0;
@@ -6594,12 +6611,12 @@ void verify_game()
 			cancelled = 1;
 			break;
 		}
-		u32 timeDiff = diff_msec(lastTime, gettime());
-		u32 timeStart = diff_msec(startTime, gettime());
+		u32 timeDiff = diff_msec(lastTime, SYS_GetSystemTime());
+		u32 timeStart = diff_msec(startTime, SYS_GetSystemTime());
 		if(timeDiff >= 1000) {
 			speed = (int)((float)(curOffset-lastOffset) / (float)(timeDiff/1000.0f));
 			timeremain = (curFile.size - curOffset) / speed;
-			lastTime = gettime();
+			lastTime = SYS_GetSystemTime();
 			lastOffset = curOffset;
 		}
 		DrawUpdateProgressBarDetail(progBar, (int)((float)((float)curOffset/(float)curFile.size)*100), speed, timeStart/1000, timeremain);
@@ -7679,6 +7696,8 @@ static bool gameflowPublishDetail(ConfigEntry *config,
 	}
 	source.customSettings = (uint32_t)settings_game_custom_count(config);
 	source.firstCustomSetting = settings_game_custom_first(config);
+	context->manualPages = Manual_Pages(devices[DEVICE_CUR], context->gameId);
+	source.manualPages = context->manualPages;
 	if(meta != NULL && meta->banner != NULL &&
 		meta->bannerSize == UI_GAMEFLOW_DETAIL_BANNER_BYTES &&
 		meta->bannerSum != 0xFFFF) {
@@ -7818,6 +7837,8 @@ static int gameflow_info_game(ConfigEntry *config,
 					UI_GAMEFLOW_DETAIL_CAN_CHEATS : 0u) |
 				(devices[DEVICE_CONFIG] != NULL ?
 					UI_GAMEFLOW_DETAIL_CAN_AUTOLOAD : 0u) |
+				(context->manualPages != 0 ?
+					UI_GAMEFLOW_DETAIL_HAS_MANUAL : 0u) |
 				(is_verifiable_disc(&GCMDisk) ?
 					UI_GAMEFLOW_DETAIL_CAN_VERIFY : 0u) |
 				(((devices[DEVICE_CUR]->location & LOC_DVD_CONNECTOR) &&
@@ -7907,6 +7928,15 @@ static int gameflow_info_game(ConfigEntry *config,
 			DrawCheatsSelector(curFile.name);
 			saveCheatsSelection();
 			gameflowPublishDetail(config, context);
+		}
+		else if(action == UI_GAMEFLOW_DETAIL_ACTION_MANUAL) {
+			Manual_Show(devices[DEVICE_CUR], context->gameId);
+			gameflowPublishDetail(config, context);
+			/* Its file gone meanwhile: the row is too. */
+			if(context->manualPages == 0) {
+				focus = UI_GAMEFLOW_DETAIL_FOCUS_SETTINGS;
+				DrawSetGameflowDetailFocus(context->event, focus);
+			}
 		}
 		/* A modal's dismissal is not a new Detail action. Do not require
 		 * unrelated buttons or a held clean-boot modifier to be released. */

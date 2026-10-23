@@ -1,5 +1,8 @@
 from pathlib import Path
 import copy
+import contextlib
+import io
+from unittest import mock
 import json
 import subprocess
 import tempfile
@@ -56,6 +59,25 @@ class Qualification(unittest.TestCase):
         self.assertTrue(qualification.problems(self.root,"v2.4.0"))
         for tag in ["v2.4.0-beta.1","v2.4.0-rc.1"]:
             self.assertEqual(qualification.problems(self.root,tag),[])
+
+    def test_informational_reports_expose_pending_coverage_without_changing_it(self):
+        self.write({"status": "pending"})
+        before = self.record.read_bytes()
+        for tag in ["v2.5.0", "v2.5.0-rc.3"]:
+            with self.subTest(tag=tag), mock.patch.object(qualification, "ROOT", self.root), \
+                    mock.patch("sys.argv", ["qualification", tag, "--report"]), \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(qualification.main(), 0)
+                self.assertIn("pending real-card qualification", output.getvalue())
+                self.assertNotIn("recorded real-card pass matches", output.getvalue())
+        self.assertEqual(self.record.read_bytes(), before)
+
+    def test_strict_audit_still_rejects_a_pending_hardware_claim(self):
+        self.write({"status": "pending"})
+        with mock.patch.object(qualification, "ROOT", self.root), \
+                mock.patch("sys.argv", ["qualification", "v2.5.0"]), \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(qualification.main(), 1)
 
     def test_real_complete_record_and_matching_code_allow_stable(self):
         self.write(self.good)

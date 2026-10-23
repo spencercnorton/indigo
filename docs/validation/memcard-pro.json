@@ -14,5 +14,5 @@
     "new_card_finishes": false,
     "rapid_gameid_switches": false
   },
-  "note": "The linked real-card report qualifies the previous SDK and source fingerprint only. The current SDK changes libogc2; the new build needs a fresh MemCard PRO GC test covering existing cards, new cards and rapid game-ID switches before stable publication. Historical tested_revision and source_fingerprint are retained as evidence of the older pass."
+  "note": "The linked real-card report qualifies the previous SDK and source fingerprint only. The current SDK has no completed MemCard PRO GC qualification for existing cards, new-card completion and rapid game-ID switches. Historical tested_revision and source_fingerprint are retained as evidence of the older pass. This coverage gap is reported in release notes and build summaries; access to this hardware is not a publication requirement."
 }

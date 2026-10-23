@@ -16,7 +16,7 @@ banner and its six-character game ID.
 The ready-made pack is made from GameTDB's cover art, and one pack covers
 every region:
 
-- [Download the poster pack](https://indigo.norvitech.com/indigo-posters-all.zip) (about 90 MB)
+- [Download the poster pack](https://indigo.norvitech.com/indigo-posters-all.zip) (about 100 MB)
 
 Unzip it on your computer, then copy the files in its `swiss/ui` folder into
 the card's `swiss/ui` folder; make the folder if it isn't there. Swiss hides
@@ -24,7 +24,8 @@ its `swiss` folder, so first show hidden folders: press Shift-Command-Period
 in a Mac's Finder, or turn on **Hidden items** under **View** in Windows File
 Explorer. The pack holds `swiss/ui/posters.pak`, with the [gameplay
 stills](#gameplay-stills) and [descriptions](#game-descriptions)
-Spotlight shows beside it. Checksums are in
+Spotlight shows and the [disc art](#disc-art) the Jewel Case shows beside
+it. Checksums are in
 [SHA256SUMS.txt](https://indigo.norvitech.com/SHA256SUMS.txt), and the
 [Indigo page](https://norvitech.com/indigo/) has the details.
 
@@ -77,6 +78,29 @@ python3 buildtools/ui/poster_pack.py --stills ~/screenshots --out stills.pak
 
 Screenshots are cropped to 4:3 from the center. Copy `stills.pak` to
 `/swiss/ui/stills.pak` on the card.
+
+## Disc art
+
+The **Jewel Case** layout puts each game's own disc in its case, from a
+third file next to the posters, `/swiss/ui/discs.pak`: a 160×160 picture of
+each disc. It's optional as well: without it, or for a game it has no disc
+for, the disc carries the middle of the game's cover, and a game with
+neither has a bare silver disc. The poster pack carries it too, made from
+[GameTDB](https://www.gametdb.com/)'s disc art. Copy its `discs.pak` file to
+`/swiss/ui/discs.pak` on the card that holds your games, including when
+Indigo starts from a different card. Updating Indigo's executable alone
+does not add disc images. Restart Indigo after adding or replacing the pack.
+
+To build your own, put pictures of the discs in one folder, each named after
+its game ID and at least 160×160, the disc filling the picture edge to edge,
+and build the pack as you would posters:
+
+```bash
+python3 buildtools/ui/poster_pack.py --discs ~/discs --out discs.pak
+```
+
+Pictures are cropped square from the center, and a clear background around
+the disc is fine. Copy `discs.pak` to `/swiss/ui/discs.pak` on the card.
 
 ## Game descriptions
 

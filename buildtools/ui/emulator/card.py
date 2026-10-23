@@ -17,9 +17,13 @@ past the 2 MB one may have, and Classics.Set's, damaged.
 /swiss/ui/posters.pak holds posters drawn here from gradients and shapes, for
 all but two of the games, so the Library shows both kinds of card, and
 /swiss/ui/stills.pak gameplay stills drawn the same way for all but three, so
-Spotlight shows a still, a cover and a banner card, and
+Spotlight shows a still, a cover and a banner card, /swiss/ui/discs.pak disc
+art drawn the same way for all but three, so the Jewel Case shows a disc of
+its own, the middle of a cover and a bare disc, and
 /swiss/ui/descriptions.txt a line about all but one, which keeps its
-banner's. /apps holds stand-in programs for Apps, beside pictures drawn here
+banner's. /swiss/ui/manuals holds a manual for one game, made with
+manual_pack.py from pages laid out here of Indigo's own guide pictures
+(MANUAL_GAME), and a damaged one for another. /apps holds stand-in programs for Apps, beside pictures drawn here
 in each shape Indigo fits to a card, one in a Homebrew Channel folder whose
 boot.dol Apps must leave out. Nothing in it is anyone else's: no game, no
 box art, no screenshot, no text, no font.
@@ -65,6 +69,9 @@ FOLDERS = {"GRZZ01": "Racing.v1", "GNTZ01": "Racing.v1/Classics.Set", "GPLZ01": 
 FOLDER_PICTURES = {"Racing.v1": "shown", "Nintendo.GC": "too big", "Racing.v1/Classics.Set": "damaged"}
 SHOWN_PICTURE, REFUSED_PICTURE = (255, 0, 255), (0, 255, 255)
 NO_STILL = frozenset({"GDRZ01", "GPLZ01", "GSSZ01"})
+# The Jewel Case's discs: one with a poster and no disc prints its cover's
+# middle, and the two with neither are bare.
+NO_DISC = frozenset({"GEIZ01", "GPLZ01", "GSSZ01"})
 # Spotlight's descriptions; Rally Cross Zero keeps its banner's.
 DESCRIPTIONS = {
     "GACZ01": "Race through orbiting circuits where every lap rewires the track, and the fastest line is the one nobody has drawn yet.",
@@ -76,6 +83,20 @@ DESCRIPTIONS = {
     "GPLZ01": "Carry a paper lantern through a town of folded houses, where every door opens onto another story.",
     "GSSZ01": "Salvage what fell from the sky cities, then decide whether to sell it, keep it, or send it back up.",
 }
+# Cobalt Harrier's manual: two of Indigo's guide pictures a page, on paper,
+# under a band of a colour of the page's own, which run.py finds the page by.
+# Only pictures of this disc's own games and saves: none names a real game.
+# The last page is taller than a page may be, so its texture is the tallest
+# there is. Ember and Ivy's manual is cut short: Indigo must say it can't be
+# read.
+MANUAL_GAME, BROKEN_MANUAL_GAME = "GCHZ01", "GEIZ01"
+MANUAL_BANDS = ((220, 0, 0), (0, 190, 0), (0, 0, 220), (225, 225, 0), (0, 200, 200), (220, 0, 220),
+                (240, 120, 0))
+MANUAL_PICTURES = ("home-library-face", "home-files-face", "game-details", "settings-quick", "settings-setup",
+                   "home-sides", "memory-cards", "memory-cards-details", "memory-cards-options", "files",
+                   "files-actions", "apps", "system-info", "source-picker-still")
+MANUAL_PAPER = (238, 234, 224)
+GUIDE_PICTURES = Path(__file__).resolve().parents[3] / "docs/guide/images"
 DISC = ("QIDC00", "Indigo demonstration disc")
 MAGIC = 0xC2339F3D
 STUB_BYTES = 64 * 1024
@@ -313,13 +334,39 @@ def still(index: int):
     return image
 
 
+def disc_art(index: int):
+    """A disc's print for one fictitious game, as GameTDB draws one: the disc
+    filling the square, clear outside it and in its hole, with rings, a
+    shape for a logo and a strip of small marks."""
+    from PIL import Image, ImageDraw
+
+    size = 160
+    hue = (index * 67 + 20) % 360
+    image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.ellipse([0, 0, size - 1, size - 1], fill=_rgb(hue, 0.6, 0.55) + (255,))
+    for n, radius in enumerate((74, 62, 50)):
+        ring = _rgb((hue + 30 * (n + 1)) % 360, 0.5, 0.8)
+        draw.ellipse([80 - radius, 80 - radius, 80 + radius, 80 + radius], outline=ring + (255,), width=3)
+    light = _rgb((hue + 180) % 360, 0.3, 0.97) + (255,)
+    if index % 2 == 0:
+        draw.rectangle([46, 26, 114, 46], fill=light)
+    else:
+        draw.polygon([(80, 18), (110, 46), (50, 46)], fill=light)
+    for n in range(5):
+        draw.rectangle([44 + n * 15, 120, 52 + n * 15, 128], fill=light)
+    draw.ellipse([58, 58, 102, 102], fill=_rgb(hue, 0.2, 0.85) + (255,))
+    draw.ellipse([69, 69, 91, 91], fill=(0, 0, 0, 0))
+    return image
+
+
 def _rgb(hue: float, saturation: float, value: float) -> tuple[int, int, int]:
     import colorsys
     return tuple(round(c * 255) for c in colorsys.hsv_to_rgb(hue / 360, saturation, value))
 
 
 def build_pack(folder: Path, pak: Path, kind: str) -> bool:
-    """posters.pak or stills.pak, from pictures drawn here."""
+    """posters.pak, stills.pak or discs.pak, from pictures drawn here."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import poster_pack
 
@@ -328,7 +375,8 @@ def build_pack(folder: Path, pak: Path, kind: str) -> bool:
     except poster_pack.PackError as error:
         print(f"card.py: no {kind} ({error})", file=sys.stderr)
         return False
-    draw, missing = (poster, NO_POSTER) if kind == "posters" else (still, NO_STILL)
+    draw, missing = {"posters": (poster, NO_POSTER), "stills": (still, NO_STILL),
+                     "discs": (disc_art, NO_DISC)}[kind]
     art = folder / kind
     art.mkdir()
     records = []
@@ -344,6 +392,45 @@ def build_pack(folder: Path, pak: Path, kind: str) -> bool:
     manifest.write_text(json.dumps({"version": 1, "kind": kind, "records": records}))
     poster_pack.generate(str(manifest), str(pak), art_root=str(folder))
     return True
+
+
+def manual_page(n: int):
+    """Page n of MANUAL_GAME's manual, as a 300 dpi scan of a GameCube
+    manual's page would be: paper, the band, two guide pictures; the last
+    page has lines standing for text below them, which make it taller."""
+    from PIL import Image
+
+    last = n == len(MANUAL_BANDS) - 1
+    width, height, margin = 1350, 2500 if last else 2100, 90
+    inner = width - 2 * margin
+    page = Image.new("RGB", (width, height), MANUAL_PAPER)
+    page.paste(MANUAL_BANDS[n], (margin, margin, width - margin, margin + 110))
+    y = margin + 140
+    for name in MANUAL_PICTURES[2 * n:2 * n + 2]:
+        with Image.open(GUIDE_PICTURES / f"{name}.png") as picture:
+            shot = picture.convert("RGB").resize((inner, inner * 3 // 4), Image.Resampling.LANCZOS)
+        page.paste(shot, (margin, y))
+        y += shot.size[1] + 30
+    for line in range(12 if last else 0):
+        page.paste((40, 40, 48), (margin, y + line * 30, margin + inner * (60 + line * 7 % 40) // 100, y + line * 30 + 12))
+    return page
+
+
+def build_manuals(manuals: Path) -> int:
+    """swiss/ui/manuals: MANUAL_GAME's manual and BROKEN_MANUAL_GAME's, cut
+    short; returns the pages of the first. Without the guide's pictures (a
+    copy of buildtools/ui alone) there are none, with a notice."""
+    if not GUIDE_PICTURES.is_dir():
+        print(f"card.py: no manuals ({GUIDE_PICTURES} is missing)", file=sys.stderr)
+        return 0
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import manual_pack
+
+    manuals.mkdir(parents=True, exist_ok=True)
+    pak = manual_pack.build([manual_page(n) for n in range(len(MANUAL_BANDS))])
+    (manuals / f"{MANUAL_GAME}.pak").write_bytes(pak)
+    (manuals / f"{BROKEN_MANUAL_GAME}.pak").write_bytes(pak[:len(pak) // 2])
+    return len(MANUAL_BANDS)
 
 
 # Apps, sorted as Apps shows them. Arcade, first, has no picture.
@@ -428,16 +515,19 @@ def populate(root: Path, work: Path, posters: bool = True, probe: Path | None = 
         (root / "games" / f"{folder}.png").write_bytes(folder_picture(kind))
     with_posters = posters and build_pack(work, root / "swiss/ui/posters.pak", "posters")
     with_stills = posters and build_pack(work, root / "swiss/ui/stills.pak", "stills")
+    with_discs = posters and build_pack(work, root / "swiss/ui/discs.pak", "discs")
     (root / "swiss/ui/descriptions.txt").write_text(
         "# Descriptions of the demonstration disc's fictitious games\n" +
         "".join(f"{game_id} {text}\n" for game_id, text in sorted(DESCRIPTIONS.items())))
+    manual = build_manuals(root / "swiss/ui/manuals")
     apps = build_apps(root / "apps")
     if probe:
         (root / "apps" / PROBE_APP).write_bytes(probe.read_bytes())
         apps += 1
-    return {"games": len(GAMES), "damaged": len(DAMAGED),
+    return {"games": len(GAMES), "damaged": len(DAMAGED), "manual_pages": manual,
             "posters": len(GAMES) - len(NO_POSTER) if with_posters else 0,
-            "stills": len(GAMES) - len(NO_STILL) if with_stills else 0, "apps": apps,
+            "stills": len(GAMES) - len(NO_STILL) if with_stills else 0,
+            "discs": len(GAMES) - len(NO_DISC) if with_discs else 0, "apps": apps,
             "probe": bool(probe)}
 
 
